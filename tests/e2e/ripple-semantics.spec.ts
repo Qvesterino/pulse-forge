@@ -1,6 +1,6 @@
-import { expect, test, type Page } from "playwright/test";
+import { expect, test } from "playwright/test";
 
-import { dockTabLocator } from "./_helpers";
+import { clipGeometry, openArrangement } from "./_studio";
 
 /**
  * §16 RIPPLE SEMANTICS — the highest-blast-radius editing mode in the panel,
@@ -24,33 +24,8 @@ import { dockTabLocator } from "./_helpers";
  * `style.width`), never from a preview or a drag mid-flight.
  */
 
-const STUDIO_TIMEOUT = 60_000;
-
 /** Committed geometry of every arrangement clip, in DOM order. */
-async function geometry(page: Page): Promise<{ left: number; width: number }[]> {
-  return page.locator(".arr-clip").evaluateAll((els) =>
-    els.map((e) => ({
-      left: parseFloat((e as HTMLElement).style.left) || 0,
-      width: parseFloat((e as HTMLElement).style.width) || 0,
-    })),
-  );
-}
-
-async function openStudio(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    window.localStorage.setItem("pf-onboarded", "1");
-    window.localStorage.setItem("pf-tour-v1", "1");
-  });
-  await page.goto("/", { waitUntil: "domcontentloaded", timeout: 45_000 });
-  await page
-    .getByRole("button", { name: /start here/i })
-    .first()
-    .click({ timeout: STUDIO_TIMEOUT });
-  await dockTabLocator(page, "ARR").waitFor({ state: "attached", timeout: STUDIO_TIMEOUT });
-  await dockTabLocator(page, "ARR").click();
-  await page.locator(".arr-lane").first().waitFor({ state: "attached", timeout: STUDIO_TIMEOUT });
-  await page.waitForTimeout(600);
-}
+const geometry = clipGeometry;
 
 test("ripple delete closes the gap and preserves the spacing inside the tail", async ({ page }) => {
   const jsErrors: string[] = [];
@@ -61,7 +36,7 @@ test("ripple delete closes the gap and preserves the spacing inside the tail", a
     }
   });
 
-  await openStudio(page);
+  await openArrangement(page);
 
   // ── Fixture: three clips, side by side, with KNOWN gaps ─────────────────
   // Duplicating the template's single clip is the only way to build a tail in

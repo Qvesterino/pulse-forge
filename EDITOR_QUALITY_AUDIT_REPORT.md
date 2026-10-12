@@ -2002,6 +2002,78 @@ cycle.
 What it does **not** cover: audio buffer churn during long playback, IR loading,
 or project churn. Those need a longer soak than a CI-shaped run.
 
+### D15 — the editor was last in line for vertical space (owner decision, P1)
+
+Wave 10 fixed the grid but left the sequencer at 20 px. That number deserved a
+second look rather than a deferral, because of what the studio actually looked
+like: at 1280×720 the workspace column was 349 px and spent **151 px on the pad
+rack and 149 px on the pattern toolbar**, leaving **20 px for the sequencer** —
+the editor the application exists for. There was no empty rectangle to complain
+about; there was *content without meaning*: a pad grid, four rows of buttons and
+a mixer. At 1366×768 the sequencer got ~68 px.
+
+Two of my first visual readings here were wrong and the measurements killed
+them both: the pattern bar is **not** clipped (`scrollHeight == clientHeight ==
+149`, every child inside its own box — what looked like a half-rendered row is
+the 20 px sequencer), and the pad grid is **not** duplicated (one `.rack`, 16
+pads, 0 in the inspector).
+
+The owner chose the model, and the reasoning is recorded because it is the part
+worth keeping: **the editor has priority.** The pad rack is a sound browser and
+the pattern bar is a toolbar; neither is a canvas.
+
+`src/styles/25-short-viewport.css`:
+
+- `.workspace-main > .sequencer { min-height: 150px }` — outside any media
+  query, because the priority is the rule at every height and is only
+  observable where space is scarce.
+- `.workspace-main > .pattern-bar { min-height: 72px; overflow-y: auto }` — the
+  toolbar yields to the editor, and what it cannot show stays reachable.
+- `@media (max-height: 820px)` — the pad rack drops to one row, and the dock
+  stops at 34vh. The rack rule is written against the `.rack` RULE, not the
+  `--rack-columns` token: `ui/layout.ts` writes that token as an inline style on
+  `<html>`, so a media query on the token would need `!important` **and** would
+  overwrite the user's stored preference.
+- `@media (max-width: 860px)` — the editor floor relaxes to 90px, because below
+  860px the inspector becomes a ROW and shares the vertical budget.
+
+Measured after:
+
+| viewport | sequencer | rack | pattern bar | dock | clipped |
+| --- | --- | --- | --- | --- | --- |
+| 1280×720 | **150** (was 20) | 101, 1 row | 79 | 245 (capped) | 0 |
+| 1366×768 | **150** (was ~68) | 101, 1 row | 111 | 261 | 0 |
+| 1280×800 | **150** | 101, 1 row | 138 | 266 | 0 |
+| 1440×900 | 218 | 130, 2 rows | 141 | 266 | 0 |
+| 1920×1080 | 467 | 130, 2 rows | 72 | 266 | 0 |
+| 800×900 | 90 | 151 | 72 | 266 | 0 |
+
+The tall layouts are untouched — 1440×900 and 1920×1080 keep two rack rows and
+a toolbar that does not scroll — which is the assertion that matters most here,
+because a short-viewport rule that leaks upward is its own regression.
+
+**A regression this work caused, recorded because it nearly shipped.** The first
+formulation gave the editor its floor everywhere. At 800×900 the workspace column
+only gets 341 px, and against the rack's 151 and the 150 px floor the pattern
+toolbar was squeezed to **0 px tall** — the toolbar simply gone, worse than the
+bug it replaced. Caught by measurement, fixed with the 72 px toolbar floor and
+the 90 px narrow-layout editor floor, then locked by a test that asserts both
+numbers.
+
+**The file placement was fought over twice, and the repo was right both times.**
+The first attempt put these rules in `24-layout-tokens.css`; that file must not
+define its own 860px block, and the guard went red. The second attempt created
+`25-short-viewport.css` and imported it LAST; the same file pins
+`24-layout-tokens.css` as the final stylesheet, and the guard went red again.
+The arrangement that satisfies both without touching the guard: `25` imported
+BEFORE `24`, owning vertical-space priority only, with the `.rack` rule living in
+`24` beside the `.rack` rule `24` already owns. `layout-responsive.test.ts` is
+15/15.
+
+The cost, stated plainly: below ~820px the dock cannot be dragged past 34vh, and
+on one row the pad names truncate ("Kick Deep" → "Ki…"). Both are visible in the
+after screenshot and both are the price of the editor existing.
+
 ### What this wave does not close
 
 - **The sequencer still gets ~20 px at a 720 px viewport height.** With the
@@ -2009,7 +2081,9 @@ or project churn. Those need a longer soak than a CI-shaped run.
   strip (~151 px) and the pattern bar (~149 px) leave nothing. This is a
   vertical-space **policy** question — what gives when the screen is short —
   and §56 puts it outside an autonomous fix. Measured and recorded, not
-  silently resized.
+  silently resized. **(Resolved later in the same wave: the owner decided the
+  editor has priority — see D15 above. The sequencer now measures 150 px at
+  1280×720, 1366×768 and 1280×800.)**
 - **Six e2e specs can only run against the dev server**: `07`, `10`, `11`,
   `12`, `13`, `18-tsar` import `/src/*.ts` from inside the page (67 call
   sites). They exercise source modules, not the shipped bundle, so they have
@@ -2030,7 +2104,9 @@ or project churn. Those need a longer soak than a CI-shaped run.
 | `playwright --project=chromium`, specs 01–08 + 19, production build | **15 passed / 1 failed** (1.7 min), the single red being `07`, which imports `/src/*.ts` and cannot run against a production build at all |
 | `playwright --project=chromium`, specs 01, 03, 04, 05 + 19, production build, **final** CSS | **11 passed / 0 failed** |
 | `playwright --project=chromium`, specs 19 + 20 (§17) + 21 (§35), production build | **7 passed / 0 failed** (1.4 min), §17 reproducing −1.3 dBFS master peak and `-∞` after stop across four independent runs |
-| falsification runs | pre-fix CSS injected into the built bundle makes the layout assertions fail with the exact measured symptoms: at 800×900 `columns were "520px 280px"` (2 tracks, not 1); at 1280×720 `columns were "1000px 280px"` (2 tracks, not 3); GEN hit test `BUTTON.dock-resize-handle` instead of `GEN`; sequencer height 20 instead of >120; `--steps-label` 220px instead of 112px |
+| `playwright --project=chromium`, specs 19 (9) + 20 (§17) + 21 (§35) + 03, production build, **final** CSS | **12 passed / 0 failed** (1.1 min) |
+| falsification, D14 | pre-fix CSS injected into the built bundle makes the layout assertions fail with the exact measured symptoms: at 800×900 `columns were "520px 280px"` (2 tracks, not 1); at 1280×720 `columns were "1000px 280px"` (2 tracks, not 3); GEN hit test `BUTTON.dock-resize-handle` instead of `GEN`; sequencer height 20 instead of >120; `--steps-label` 220px instead of 112px |
+| falsification, D15 | reverting the short-viewport rules in the built bundle fails the new guards with the measured numbers: sequencer **20 px** at 1280×720 (floor 150), **57 px** at 1366×768, and the 800×900 toolbar case |
 
 **The two browser-verification items this audit inherited as unverified are now
 measured**: §17 playback/ghost audio (§17 section above) and §35 heap stability
@@ -2384,3 +2460,79 @@ audit changed — was run on its own to confirm: 2 failures, both unrelated to
 `tests/probe-split-undo.test.ts` is still in the tree as a committed scratch
 probe with one failing test. It is noise in every full-suite run and should be
 deleted by whoever owns it.
+
+## Wave 14 - 2026-10-11 - closing the measurement gap: the hit-test sweep
+
+D14 and D15 were the SAME bug twice: something invisible sat on top of an editing
+surface and answered for it. Neither was catchable by a unit test - jsdom has no
+layout and therefore no hit-testing. They were caught by asking one question of
+a real page, and until now that question lived inside a single spec's probe.
+
+That is now infrastructure: `tests/e2e/hit-test-sweep.spec.ts`.
+
+### What it does
+
+For every interactive surface, at every rendered viewport, ask
+`document.elementFromPoint` at the surface's own centre and require the answer to
+be the surface or something inside it. Surfaces swept: `.arr-clip`, the trim
+handle `.arr-clip-resize`, `.arr-ruler`, `.arr-lane` (marquee), plus
+`.arr-intensity-point` and `.arr-audio-clip` where rendered. It ALSO sweeps in
+the opposite direction - decorative layers that must be click-through
+(`.arr-bar-grid`), because a gridline that answers for the lane turns every
+empty-lane gesture into a silent no-op that reads as "drag is broken".
+
+Three viewports, because a fixed overlay only has to collide at ONE of them to
+be a defect - D15 was invisible at 1280x720 and fatal at 900x700.
+
+```
+[sweep 1280x720] blocked=0    [sweep 1100x800] blocked=0    [sweep 900x700] blocked=0
+not rendered at any size: .arr-intensity-point, .arr-audio-clip
+```
+
+Honest limitation, logged rather than hidden: **2 of the 6 surfaces are not
+rendered by the default template** (no intensity-curve points, no audio clips),
+so the sweep's coverage of those is exactly zero until a fixture provides them.
+The sweep reports absent surfaces by name so that gap cannot quietly become
+permanent.
+
+### Falsification - and the control that was wrong first
+
+The sweep's own control injects an overlay over the lane and requires it to be
+reported. The first run of that control **failed**:
+
+```
+[sweep control] after injecting a cover: 0/1 clips blocked
+```
+
+The sweep was right and the control was broken: the injected element reused the
+class `.arr-bar-grid`, which carries `pointer-events: none`, so the "overlay"
+was click-through and nothing was blocked. A control that cannot actually
+create the condition it claims to create proves nothing - and the sweep refused
+to pass rather than agreeing with a fake. Fixed by injecting a plain element
+with no stylesheet class:
+
+```
+[sweep control] after injecting a cover: 1/1 clips blocked, hit=div.
+4 passed (13.4s)
+```
+
+### The harness, and what it is honestly worth
+
+`tests/e2e/_studio.ts` opens a loaded, hittable editor: returning user, tour
+dismissed, arrangement dock tab open, transient toasts cleared. All four of
+those cost a failed drag somewhere in this audit before they were identified,
+and every one of them fails in a way that LOOKS like an editor defect - the most
+expensive wrong answer this suite can give.
+
+The ripple spec was migrated onto it as proof it works for a second spec, not
+just its author: **5 passed**, ripple still `shift=120px, jsErrors=0`. The other
+four browser specs from waves 9-13 still carry their own boot code; migrating
+them is mechanical follow-up and is deliberately not bundled into a commit that
+changes what those specs assert.
+
+### Attribution while this wave ran
+
+`npx tsc --noEmit` turned red during the migration. One error was mine (an unused
+`Page` type import, fixed immediately). The rest - five errors in
+`tests/e2e/14-recording-soak.spec.ts` - are in an **untracked** file owned by the
+concurrent recording session, and were left alone.
