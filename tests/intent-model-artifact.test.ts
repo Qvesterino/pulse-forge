@@ -208,6 +208,12 @@ describe("intent model decoder contract", () => {
     expect(Array.from(bow)).toEqual(Array.from(again));
   });
 
+  it("canonical intent comparisons ignore optional properties whose value is undefined", () => {
+    expect(canonicalModelJson({ kind: "production", intent: { targets: ["bass"], padTargets: undefined } })).toBe(
+      canonicalModelJson({ kind: "production", intent: { targets: ["bass"] } }),
+    );
+  });
+
   it("decodes head outputs into the compact action form (fader)", () => {
     const head = (name: string) => vocab.heads.find((candidate) => candidate.name === name)!;
     const one = (name: string, cls: string) => {
@@ -231,6 +237,50 @@ describe("intent model decoder contract", () => {
         kind: "fader",
         intent: { targets: ["drums"], pads: [], direction: "down", amount: "normal" },
       }),
+    );
+  });
+
+  it("decodes addTrack with schema-bounded instrument", () => {
+    const head = (name: string) => vocab.heads.find((candidate) => candidate.name === name)!;
+    const one = (name: string, cls: string) => {
+      const scores = new Float32Array(head(name).classes.length);
+      scores[head(name).classes.indexOf(cls)] = 5;
+      return scores;
+    };
+    const outputs: Record<string, Float32Array> = {
+      head_kind: one("kind", "exact"),
+      head_targets: new Float32Array(head("targets").classes.length).fill(-5),
+      head_pads: new Float32Array(head("pads").classes.length).fill(-5),
+      head_targets_one: one("targets_one", "__absent__"),
+      head_exactOp: one("exactOp", "addTrack"),
+      head_trackKind: one("trackKind", "instrument"),
+      head_instrument: one("instrument", "bass"),
+    };
+    expect(canonicalModelJson(decodeIntentHeads(outputs, vocab))).toBe(
+      canonicalModelJson({
+        kind: "exact",
+        ops: [{ kind: "addTrack", trackKind: "instrument", instrument: "bass" }],
+      }),
+    );
+  });
+
+  it("decodes the learned track name on renameTrack", () => {
+    const head = (name: string) => vocab.heads.find((candidate) => candidate.name === name)!;
+    const one = (name: string, cls: string) => {
+      const scores = new Float32Array(head(name).classes.length);
+      scores[head(name).classes.indexOf(cls)] = 5;
+      return scores;
+    };
+    const outputs: Record<string, Float32Array> = {
+      head_kind: one("kind", "exact"),
+      head_targets: new Float32Array(head("targets").classes.length).fill(-5),
+      head_pads: new Float32Array(head("pads").classes.length).fill(-5),
+      head_targets_one: one("targets_one", "lead"),
+      head_exactOp: one("exactOp", "renameTrack"),
+      head_trackName: one("trackName", "sub bass"),
+    };
+    expect(canonicalModelJson(decodeIntentHeads(outputs, vocab))).toBe(
+      canonicalModelJson({ kind: "exact", ops: [{ kind: "renameTrack", target: "lead", name: "sub bass" }] }),
     );
   });
 

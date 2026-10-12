@@ -51,6 +51,26 @@ describe("action-model fallback boundary", () => {
     },
   );
 
+  it.each([
+    "unsolo the bass",
+    "more delay on the bass",
+    "more reverb send on the lead",
+    "more saturation on the drums",
+    "make the bass metallic",
+    "add a keys track",
+  ])("does not classify a direct editor command as a creative brief: %s", (text) => {
+    const route = routeIntentText(text, doc);
+    expect(isCreativeBriefRoute(text, route)).toBe(false);
+    expect(shouldTryActionModelFallback(text, route)).toBe(route.kind === "pattern");
+  });
+
+  it("keeps a phrase describing a new song arrangement in the creative path", () => {
+    const text = "arrange into intro-verse-chorus";
+    const route = routeIntentText(text, doc);
+    expect(isCreativeBriefRoute(text, route)).toBe(true);
+    expect(shouldTryActionModelFallback(text, route)).toBe(false);
+  });
+
   it("treats a comparative beat edit as an action, not a new creative brief", () => {
     const text = "make the beat louder";
     const route = routeIntentText(text, doc);

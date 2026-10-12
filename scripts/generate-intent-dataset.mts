@@ -21,10 +21,13 @@ import path from "node:path";
 import { datasetDoc } from "./intent-sft-doc.mts";
 import { routeIntentText } from "../src/intent/route";
 import { compactIntentResponse } from "../src/intent/dataset";
+import { validateModelAction } from "../src/intent/model-schema";
+import type { ProjectDocument } from "../src/project-model/types";
 
-const DATASET_VERSION = 4;
+const DATASET_VERSION = 5;
 const OUT_DIR = path.join(process.cwd(), "scripts", "data", "intent-sft");
 const MINED_CORPUS_PATH = path.join(process.cwd(), "scripts", "data", "intent-mined-corpus.json");
+const unsupportedPairs = new Map<string, string[]>();
 
 interface Pair {
   instruction: string;
@@ -37,6 +40,11 @@ function collect(doc: ProjectDocument, lang: "en" | "sk", instructions: string[]
   for (const instruction of instructions) {
     const response = compactIntentResponse(routeIntentText(instruction, doc));
     if (response.kind === "pattern") continue; // generation is not a command
+    const validation = validateModelAction(response);
+    if (!validation.valid) {
+      unsupportedPairs.set(instruction, validation.errors);
+      continue; // do not teach the student an action outside its output contract
+    }
     pairs.push({ instruction, lang, response });
   }
   return pairs;
@@ -1764,7 +1772,9 @@ function minedCorpus(doc: ProjectDocument): Array<Pair & { source: string }> {
     console.log(`[dataset] mined regression corpus: ${out.length} row(s) from ${rows.length} mined`);
     return out;
   } catch (error) {
-    console.log(`[dataset] mined corpus unreadable (${error instanceof Error ? error.message : String(error)}) — continuing without it`);
+    console.log(
+      `[dataset] mined corpus unreadable (${error instanceof Error ? error.message : String(error)}) — continuing without it`,
+    );
     return [];
   }
 }
@@ -1924,6 +1934,12 @@ async function main(): Promise<void> {
     `intent-sft: ${unique.length} pairs (${train.length} train / ${val.length} val / ${golden.length} golden)`,
   );
   console.log(`kinds: ${[...kindCounts.entries()].map(([k, n]) => `${k}=${n}`).join(", ")}`);
+  if (unsupportedPairs.size > 0) {
+    console.log(`[dataset] excluded ${unsupportedPairs.size} teacher actions outside the model schema:`);
+    for (const [instruction, errors] of unsupportedPairs) {
+      console.log(`  ${JSON.stringify(instruction)}: ${errors.join("; ")}`);
+    }
+  }
 }
 
 await main();

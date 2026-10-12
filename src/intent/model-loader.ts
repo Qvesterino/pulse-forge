@@ -180,8 +180,14 @@ function request(
       if (event.data.type === "progress") return; // loading ticks — never settles the request
       settled = true;
       cleanup();
-      if (event.data.ok === false) recordFailure();
-      else workerFailures = 0;
+      if (event.data.ok === false) {
+        // ONNX abstention is a healthy, expected out-of-scope result. It
+        // falls through to deterministic routing and must not trip the
+        // infrastructure breaker after two normal misses.
+        if (event.data.type === "generate" && "abstained" in event.data && event.data.abstained) {
+          workerFailures = 0;
+        } else recordFailure();
+      } else workerFailures = 0;
       resolve(event.data);
     };
     const onError = () => fail("worker-error", true);
@@ -251,7 +257,11 @@ async function doEnsure(): Promise<boolean> {
       const response = await request({ type: "generate", requestId: nextRequestId++, instruction }, generateMs, true);
       if (!response.ok || response.type !== "generate" || typeof response.text !== "string") {
         const reason =
-          response.ok === false && "error" in response && response.error ? response.error : "model-generate-failed";
+          response.ok === false && "error" in response && response.error
+            ? response.error
+            : response.ok === false && "abstained" in response && response.abstained
+              ? "model-abstained"
+              : "model-generate-failed";
         throw new Error(reason);
       }
       if (!response.text.trim()) throw new Error("empty completion");

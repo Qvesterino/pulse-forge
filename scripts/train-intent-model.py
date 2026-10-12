@@ -191,8 +191,34 @@ EXACT_OPS = sorted(
     ]
 )
 TRACK_KINDS = sorted(["drum", "instrument"])
-INSTRUMENTS = sorted(["analog", "bass", "keys"])
-TRACK_NAMES = sorted(["sub", "sub bass"])
+INSTRUMENTS = sorted(
+    [
+        "sampler",
+        "analog",
+        "bass",
+        "808",
+        "texture",
+        "wavetable",
+        "granular",
+        "keys",
+        "organ",
+        "strings",
+        "bell",
+        "reese",
+        "clav",
+        "acid",
+        "brass",
+        "fm",
+        "pluck",
+        "flute",
+        "logdrum",
+        "spectral",
+        "vocalchop",
+        "drumsynth",
+        "tsar",
+        "kopa",
+    ]
+)
 EXPORT_FORMATS = sorted(["wav", "mp3"])
 SELECT_TARGETS = sorted(["drums", "bass", "lead", "chords"])
 REVISE_ATTRIBUTES = sorted(["energy", "density"])
@@ -214,6 +240,20 @@ PROD_CONCEPTS = sorted(
         "telephone",
         "tape",
         "stutter",
+        "filter",
+        "sidechain",
+        "notch",
+        "phaser",
+        "chorus",
+        "sharper",
+        "reverse",
+        "crunchy",
+        "vinyl",
+        "wide",
+        "sub",
+        "air",
+        "deess",
+        "phone",
     ]
 )
 # KEYS / semitones / steps are DERIVED from the corpus (build_head_specs) —
@@ -313,7 +353,7 @@ def extract_labels(row: dict) -> dict:
     labels["kind"] = kind
 
     ops = response.get("ops")
-    op = ops[0] if isinstance(ops, list) and len(ops) == 1 else None
+    op = ops[0] if kind == "exact" and isinstance(ops, list) and len(ops) == 1 else None
     if kind == "exact" and op is None:
         # multi-op plans are out of the v1 scope — abstain, never guess
         labels["kind"] = "abstain"
@@ -364,14 +404,22 @@ def extract_labels(row: dict) -> dict:
     )
     labels["reviseAttribute"] = as_class(payload.get("attribute"))
     labels["targetRole"] = as_class(payload.get("targetRole"))
-    arrange_first = (ops or [{}])[0] if isinstance(ops, list) and ops else {}
+    # `ops` is shared by exact, arrange, and clips responses. Read the
+    # arrange-specific heads only for arrange actions; otherwise clip ops such
+    # as copyClip were silently counted as unseen arrange labels.
+    first_operation = (
+        ops[0]
+        if kind in ("arrange", "clips") and isinstance(ops, list) and len(ops) == 1
+        else {}
+    )
+    arrange_first = first_operation if kind == "arrange" else {}
     note("arrangeOp", arrange_first.get("op"))
     labels["arrangeOp"] = as_class(arrange_first.get("op"))
     note("arrangeRole", arrange_first.get("role"))
     labels["arrangeRole"] = as_class(arrange_first.get("role"))
     note("arrangeBars", arrange_first.get("bars"))
     labels["arrangeBars"] = as_class(arrange_first.get("bars"))
-    clip = arrange_first if kind == "clips" else {}
+    clip = first_operation if kind == "clips" else {}
     note("clipOp", clip.get("op"))
     labels["clipOp"] = as_class(clip.get("op"))
     note("clipToBar", clip.get("toBar"))
@@ -431,6 +479,7 @@ def build_head_specs(rows: list[dict]) -> list[dict]:
     bars = sorted({v for v in numeric_field_values(rows, "arrangeBars")}, key=float)
     clip_to_bar = sorted({v for v in numeric_field_values(rows, "clipToBar")}, key=float)
     clip_bars = sorted({v for v in numeric_field_values(rows, "clipBars")}, key=float)
+    track_names = string_field_values(rows, "trackName")
     part_pcts = [
         sorted({v for v in numeric_field_values(rows, f"part{i}Percent")}, key=float) for i in (1, 2)
     ]
@@ -474,7 +523,7 @@ def build_head_specs(rows: list[dict]) -> list[dict]:
         {"name": "boolValue", "kind": "softmax", "classes": [ABSENT, "true", "false"]},
         {"name": "trackKind", "kind": "softmax", "classes": [ABSENT] + TRACK_KINDS},
         {"name": "instrument", "kind": "softmax", "classes": [ABSENT] + INSTRUMENTS},
-        {"name": "trackName", "kind": "softmax", "classes": [ABSENT] + TRACK_NAMES},
+        {"name": "trackName", "kind": "softmax", "classes": [ABSENT] + track_names},
         {"name": "transportAction", "kind": "softmax", "classes": [ABSENT] + TRANSPORT_ACTIONS},
         {"name": "exportFormat", "kind": "softmax", "classes": [ABSENT] + EXPORT_FORMATS},
         {"name": "selectTarget", "kind": "softmax", "classes": [ABSENT] + SELECT_TARGETS},
@@ -709,7 +758,11 @@ def main() -> None:
             if value is not None and value not in head["classes"]:
                 unseen.append(f"{head['name']}={value}")
     if unseen:
-        print(f"warning: {len(unseen)} unseen softmax labels: {sorted(set(unseen))[:8]}")
+        unseen_labels = sorted(set(unseen))
+        print(f"error: {len(unseen_labels)} softmax labels are outside the trainer vocabulary:")
+        for label in unseen_labels:
+            print(f"  {label}")
+        raise ValueError("refusing to train with labels silently mapped to the absent class")
 
     net = MultiHeadNet(len(tokens), heads, rng)
 

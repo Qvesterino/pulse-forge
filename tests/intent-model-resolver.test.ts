@@ -115,6 +115,35 @@ describe("model resolver — happy paths", () => {
     expect(next.tracks.find((t) => t.kind === "instrument")!.gain).toBeCloseTo(0.75, 5);
   });
 
+  it("loudness targetDb from the trained head survives schema validation and adaptation", async () => {
+    const doc = datasetDoc();
+    setIntentModelProvider(
+      fakeProvider({
+        "set loudness to -14 LUFS": { kind: "loudness", parse: { direction: "quieter", targetDb: -14 } },
+      }),
+    );
+    const route = await tryModelRoute("set loudness to -14 LUFS", doc);
+    expect(route?.kind).toBe("loudness");
+    if (route?.kind !== "loudness") throw new Error("expected loudness");
+    expect(route.parse).toMatchObject({ direction: "quieter", targetDb: -14 });
+  });
+
+  it("addTrack preserves the model's track kind and instrument", async () => {
+    const doc = datasetDoc();
+    setIntentModelProvider(
+      fakeProvider({
+        "add a bass track": {
+          kind: "exact",
+          ops: [{ kind: "addTrack", trackKind: "instrument", instrument: "bass" }],
+        },
+      }),
+    );
+    const route = await tryModelRoute("add a bass track", doc);
+    expect(route?.kind).toBe("exact");
+    if (route?.kind !== "exact") throw new Error("expected exact route");
+    expect(route.plan.ops).toContainEqual({ kind: "addTrack", trackKind: "instrument", instrument: "bass" });
+  });
+
   it("preset by NAME resolves to the factory id; unknown name → presetUnknown", async () => {
     const doc = datasetDoc();
     setIntentModelProvider(

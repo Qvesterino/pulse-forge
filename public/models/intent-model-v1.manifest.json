@@ -1,7 +1,7 @@
 {
   "intentModelVersion": "intent-model.v1",
   "schemaVersion": 1,
-  "grammarSha256": "d6a554c411a20db5ca7b11b2e5d99553961432236255b9cefd15a6b6d8ca3602",
+  "grammarSha256": "c93675455bf7fba53ec663032778bac3876524fd7fc937144bfedf4c453e99c1",
   "runtime": {
     "kind": "onnx-intent-v1",
     "module": "/models/llm/intent-runtime.js",
@@ -795,6 +795,6 @@
     },
     "gate": "scripts/validate-intent-model.mts — attempted-exact >= 0.95, wrongKind = 0",
     "validationReportPath": "scripts/data/intent-model-validation-report.json",
-    "validationReportSha256": "9cf830233845cd73c07408352a603e7dd4d62a2012eb80fd08c392f10dc209cd"
+    "validationReportSha256": "b477acb66855dd52129b656c4c1be38615f387762253139838e3a5c24ec0269a"
   }
 }

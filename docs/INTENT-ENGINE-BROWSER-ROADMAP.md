@@ -6,7 +6,7 @@
 > delivery. It is a plan and an evidence standard, not a claim that every stage
 > is already shipped.
 >
-> Baseline snapshot: 2026-10-11. Recheck live code and manifests before using
+> Baseline snapshot: 2026-10-12. Recheck live code and manifests before using
 > any baseline figure for a release decision.
 
 ## 1. Vision
@@ -93,57 +93,92 @@ Initial target ranges for Phase 0 to validate and preregister:
   budgets for each device class after measuring the current build. Do not hide
   slow low-memory devices inside a desktop average.
 
-## 4. Starting point and known gaps
+## 4. Starting point and measured gaps
 
-The browser action model at this snapshot is `public/models/intent-model-v1.onnx`
+The active browser action model is `public/models/intent-model-v1.onnx`
 (6,799,814 bytes), with a 4,015-token vocabulary and 47 output heads. It is a
-small, multi-head, closed-set slot-filling classifier. The file size is useful
-for download planning; it does not establish the exact parameter count or the
-quality of its predictions.
+multi-head, closed-set slot-filling classifier. File size supports download
+planning; it does not reveal the exact parameter count or prediction quality.
 
-The checked-in intent corpus has 2,088 train/validation rows (1,790 train and
-298 validation), and is English/Slovak. Its 74-row golden set overlaps the
-training/validation families and is not an independent holdout. The validation
-report records 245 exact outputs out of 252 attempted (97.22% conditional
-exactness), zero wrong-kind outputs, and 46 abstentions out of 298. The report
-marks generalization and musical quality as unproven. Treat these values as a
-development baseline, not an independent release score.
+The current checked-in dataset is v5: 1,793 train rows, 299 validation rows,
+and a 74-row golden regression set, in English and Slovak. Train and validation
+have no exact prompt overlap; golden overlaps train on 67 prompts and validation
+on 7, so golden is not an independent holdout. The active artifact was trained
+against the previous v4 snapshot (1,790/298/74); its report pins those old input
+hashes, while the v5 validator now evaluates and pins the active model against
+the current splits. Do not present the old training provenance as a v5 retrain.
 
-Known capability gaps to close through a contract-to-code audit:
+The current active-model validation is 285/287 exact among attempted outputs
+(99.3%), with zero wrong-kind and 12/299 abstentions (4.0%) on validation. The
+golden regression set is 63/63 exact among attempted outputs, with zero
+wrong-kind and 11/74 abstentions (14.9%). The release gate passes, but this is
+still a familiar, synthetic corpus rather than independent generalization or
+musical-quality evidence.
 
-- Preset examples exist, but the current model output does not have
-  `presetId`/`presetName` heads; the decoder intentionally abstains rather than
-  inventing a preset. Resolve known presets against the live registry and
-  define how unknown names are clarified.
-- The action schema and trainer do not yet cover every operation and field
-  consistently. For example, `stepEdit` and `soundSwap` are in `MODEL_ACTIONS`
-  but not in the trainer's current kind list. Audit `MODEL_ACTIONS`, trainer
-  kinds and heads, decoder, route resolver, command executor, and UI preview as
-  one capability matrix.
-- Effect intent has bounded `effectType`, `targets`, `direction`, and `percent`
-  fields. It does not imply arbitrary control of every plugin parameter. Add
-  new parameter actions only where the project schema, command, clamp, preview,
-  undo, and tests can safely represent them.
-- A model may recognize a kind without having enough fields to execute it.
-  Kind-only recognition must continue to abstain at the resolver until a safe,
-  useful action can be constructed.
-- The ONNX candidate ranker is about 25 KB and uses 54 features. Its current
-  training labels are heuristic-derived (`favoriteGroups: 0`), so it is not yet
-  evidence of human musical preference.
-- The optional multilingual MiniLM semantic model is already Q8 quantized and
-  roughly 118–120 MB. Its size and cold-load cost make it a separate,
-  explicitly managed browser model pack, not a boot-path dependency.
+Browser verification (`npm run verify:intent-model -- --full-eval`) also
+measured the actual dispatch path. All 299 current validation phrases were
+handled by deterministic routes, with 299/299 exact outputs and zero model
+fallback calls. This validates the existing deterministic path and adapter
+serialization; it does not measure the model's contribution. A separate
+model-only pass returned 241/242 exact routes (99.6% conditional exactness),
+zero wrong-kind, one slot mismatch, and 57/299 abstentions (19.1%). Those
+abstentions include creative-brief protection and routes whose references or
+fields the adapter refuses. The next model-quality gate needs a held-out set
+of genuinely unmatched phrasings and a combined route report by language,
+operation, and slot.
 
-The source audit on 2026-10-12 (`scripts/audit-intent-model-contract.mts`)
-found 23 action kinds in the schema, but only 21 in the trainer, active ONNX,
-and decoder. `stepEdit` and `soundSwap` are absent end-to-end. The active model
-and vocabulary hashes match their manifest, but its recorded training hashes
-and row counts no longer match the current corpus: the artifact report says
-1,790/298/74 train/validation/golden rows while the current manifest says
-1,799/300/74. This is a provenance gap, not evidence that the ONNX file is
-corrupt; the old training input snapshot cannot be reproduced from the current
-corpus. The first challenger must pin the exact current snapshot and must not
-replace the active model until it passes the registered quality gates.
+The browser run found and fixed a runtime failure mode: an expected ONNX
+abstention was being counted as a worker failure, so two ordinary out-of-scope
+prompts disabled the worker for the rest of that session. Abstention is now a
+distinct reply from infrastructure failure; a browser test sends three
+abstentions and then verifies that a later valid command still routes.
+The browser full-eval also sends a valid model request after its abstain rows
+and fails if the real worker does not recover; the latest Chromium run passed
+that recovery check.
+
+The browser audit found a field-name mismatch on the loudness action: the
+trained head and decoder use `targetDb`, while the schema and resolver used
+`targetLUFS`. The schema and adapter now match the trained `targetDb` contract;
+the live grammar pin and validation report were refreshed without changing the
+active weights.
+
+The 2026-10-12 contract audit (`scripts/audit-intent-model-contract.mts`)
+found 23 action kinds in the model schema, but only 21 in the trainer, active
+ONNX artifact, and decoder. `stepEdit` and `soundSwap` remain absent end to end.
+The v5 dataset generator now excludes seven teacher outputs outside the
+executable model schema, and the trainer rejects any unseen closed-class label
+instead of silently treating it as absent. Arrange and clip operation labels
+are separated; the trainer now includes all 24 instrument kinds and all current
+production concepts. This fixes label integrity but does not add missing model
+operations or justify a broader model claim.
+
+Known remaining capability gaps:
+
+- Preset recognition heads are absent from the active artifact. The decoder
+  abstains rather than inventing a preset; the deterministic preset registry
+  remains the source for known names and suggestions.
+- `stepEdit` and `soundSwap` need a complete schema → training → decoder →
+  resolver → command and preview contract before they are advertised as model
+  capabilities.
+- Effect intent has bounded effect, target, direction, and percent fields. It
+  does not imply arbitrary control of every plugin parameter. Add parameter
+  actions only where project state, command, clamp, preview, and undo support
+  them.
+- The ONNX candidate ranker is about 25 KB and uses 54 features. Its labels
+  remain heuristic-derived (`favoriteGroups: 0`), not evidence of human
+  musical preference.
+- The optional multilingual MiniLM model is already Q8 quantized and roughly
+  118–120 MB. Keep it in a separately managed browser model pack, not on the
+  boot path.
+
+A v5 challenger trained in ignored `.sft/intent-model-v2-challenger/` reached
+99.37% mean validation head accuracy, but decoded end-to-end it produced
+260/299 exact validation routes (90.6% coverage, 95.9% attempted exactness),
+two wrong-kind outputs, and 28 abstentions. The active model scored 285/299
+exact, 96.0% coverage, zero wrong-kind, and 12 abstentions. The challenger is
+rejected. It scored 70/74 on golden versus the active model's 63/74, but 67
+golden prompts overlap training, so that difference is not generalization
+evidence. Per-head accuracy alone is not a checkpoint or promotion metric.
 
 Reconcile this snapshot with
 [`docs/LOCAL-INTENT-MODEL.md`](LOCAL-INTENT-MODEL.md),

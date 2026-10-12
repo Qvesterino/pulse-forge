@@ -9,7 +9,7 @@ import { resolveClipRef, resolveSceneTarget, type ArrangeOp, type ClipArrangeOp 
 import type { FaderIntent, TempoIntent } from "./conversation";
 import type { EffectIntent, SendIntent, BypassIntent } from "./mix";
 import type { ExactOp, ExactTarget } from "./exact";
-import type { MusicalKey } from "../project-model/types";
+import type { InstrumentKind, MusicalKey } from "../project-model/types";
 import type { ProductionIntent } from "./production";
 
 /**
@@ -92,8 +92,8 @@ function exactFrom(m: ModelAction): RoutedIntent {
     else if (kind === "addTrack")
       ops.push({
         kind,
-        trackKind: "drums" === target ? "drum" : "instrument",
-        instrument: (rawOp.instrument as "analog") ?? "analog",
+        trackKind: (rawOp.trackKind as "drum" | "instrument") ?? (target === "drums" ? "drum" : "instrument"),
+        instrument: (rawOp.instrument as InstrumentKind) ?? "analog",
       });
     else if (kind === "renameTrack") ops.push({ kind, target: target ?? "bass", name: String(rawOp.name ?? "") });
     else if (kind === "removeTrack" || kind === "duplicateTrack") ops.push({ kind, target: target ?? "bass" });
@@ -360,7 +360,7 @@ function adaptRecord(
         kind: "loudness",
         parse: {
           direction: record.direction as "louder" | "quieter",
-          ...(record.targetLUFS != null ? { targetDb: record.targetLUFS as number } : {}),
+          ...(record.targetDb != null ? { targetDb: record.targetDb as number } : {}),
           detected: ["AI"],
         },
       };

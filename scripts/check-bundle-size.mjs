@@ -204,7 +204,12 @@ const ENTRY_BUDGET_KB = 1070;
 // remains 81 KB under its independent limit; all other optional/worklet
 // budgets pass. Set a bounded 5180 KB ceiling: 7 KB of headroom for this
 // measured tree, with subsequent DAW growth required to offset or justify.
-const TOTAL_BUDGET_KB = 5180;
+// 2026-10-12 (browser intent quality): the production intent model now
+// validates addTrack against the full instrument vocabulary and adapts the
+// trained loudness target field. Measured 5180.28 KB in the integrated tree;
+// boot path stays 2121/2200 KB. Set the smallest whole-KB ceiling (5181) and
+// keep subsequent growth offset or measured independently.
+const TOTAL_BUDGET_KB = 5181;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
 // symbolic/ranker workers. Keep these optional runtimes under one existing

@@ -228,11 +228,15 @@ export interface SectionTransitionParse {
 }
 
 const SECTION_TRANSITION_WORDS: ReadonlyArray<readonly [SectionTransitionKind, RegExp]> = [
-  ["fill", new RegExp("\\bfill(?:y|ov)?\\b|\\bfil(?:l|luj)\\b")],
-  ["riser", new RegExp("\\bris(?:er|y)\\b|\\brywajz\\b")],
-  ["break", new RegExp("\\bbreak\\b|\\bbrejk\\b")],
+  // The NOUN phrases producers say — "drum fill", "snare roll", "build-up" —
+  // each maps to a treatment even without the bare kind word.
+  ["fill", new RegExp("\\bfill(?:y|ov)?\\b|\\bfil(?:l|luj)\\b|\\b(?:drum|snare) ?roll\\b|\\broll(?:uj)?\\b")],
+  ["riser", new RegExp("\\bris(?:er|y)?\\b|\\brywajz\\b|\\bbuild[- ]?up\\b")],
+  ["break", new RegExp("\\bbreak\\b|\\bbrejk\\b|\\bdropout\\b|\\bticho\\b")],
 ];
-const SECTION_TRANSITION_VERB = new RegExp("\\b(?:add|pridaj|daj|insert|vkldaj|zapni)\\b");
+const SECTION_TRANSITION_VERB = new RegExp(
+  "\\b(?:add|pridaj|daj|insert|vkldaj|zapni|put|drop in|give|vlož|vloz|sprav|urob)\\b",
+);
 
 /**
  * STRUCTURAL ARRANGEMENT COMMAND (2026-10-11): "add a fill before every

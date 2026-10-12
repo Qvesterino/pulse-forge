@@ -3,26 +3,25 @@
 > Expansion plan (undo/query intents, step-level + sound-swap vocab, listening
 > loop, KYX as an MCP server): see docs/INTENT-MCP-EXPANSION-PLAN.md.
 
-> **Verified snapshot (2026-10-02).** KYX Web currently has a 6.75 MB
+> **Verified snapshot (2026-10-12).** KYX Web currently has a 6.80 MB
 > multi-head ONNX **action/slot-filling** model. Its provider is registered
 > only while the pinned manifest gate passes; deterministic routing remains
-> the fallback. The measured report is
-> `scripts/data/intent-model-validation-report.json`: current-corpus
-> validation 249/259 attempted-exact (96.1%), 0 wrong-kind, 39/298 abstain
-> (13.1%); golden regression 62/62 attempted-exact. This is not an independent
-> generalization set or a musical-quality evaluation: golden overlaps train
-> on 64 exact prompts and val on 10.
+> the first path and fallback. The current v5 evaluation in
+> `scripts/data/intent-model-validation-report.json` reports 285/287
+> attempted-exact (99.3%), 0 wrong-kind, and 12/299 abstentions (4.0%); golden
+> regression is 63/63 attempted-exact with 11/74 abstentions (14.9%). This is
+> not independent generalization or musical-quality evidence: the 74-row
+> golden set overlaps train on 67 exact prompts and validation on 7.
 >
 > This ONNX model is **not LFM2.5**, not a free-form creative-brief model and
 > not an audio/MIDI generator. The local LFM path is the separate Ollama
 > provider and requires a local Ollama server/model; it is not yet a
 > self-contained Studio runtime. Browser builds do not bundle LFM weights.
-> The current ONNX training report still says 1,761/294/74 rows while the
-> evaluated corpus is 1,790/298/74, and the historical artifact has no
-> training-input content hashes. The next trainer run will pin those hashes;
-> do not backfill them onto the existing model. LFM/SFT figures below are
-> historical measurements from different eval paths until reproduced by one
-> pinned report.
+> The active ONNX weights were trained on the previous v4 dataset snapshot
+> (1,790/298/74). Their training-input hashes are pinned in that report, but
+> they do not match the current v5 corpus (1,793/299/74); the manifest writer
+> refuses to pretend this is a v5 retrain. LFM/SFT figures below remain
+> historical measurements from separate evaluation paths.
 
 ## 1. The one-paragraph idea
 
@@ -129,7 +128,7 @@ artifact loader (ONNX now / wllama-GGUF later).
    for sub-2B models.
 
 3. **Model speaks human units, engine owns domain math.** The model emits
-   `percent: 50` (integer), `targetLUFS: -9`, preset NAME, clip REF
+   `percent: 50` (integer), `targetDb: -14`, preset NAME, clip REF
    ("intro"). The engine translates: 50% → gain 0.75, name → fuzzy id
    match (+ suggestions when unknown), ref → clip id. Derived values
    (`detected[]`, `matchedBy`, readbacks) are never model output —
@@ -156,18 +155,19 @@ artifact loader (ONNX now / wllama-GGUF later).
   `scripts/write-intent-model-manifest.mts`, which pins
   `grammarSha256 = sha256(toGbnfGrammar())` from the LIVE TypeScript grammar
   (python cannot produce it) plus model/vocab SHA-256s. The committed ONNX
-  training report records 1,761/294/74 rows, while the current evaluation
-  corpus is 1,790/298/74; this historical artifact does not pin its original
-  training-input hashes.
+  training report pins the previous v4 dataset snapshot (1,790/298/74); the
+  current v5 evaluation corpus is 1,793/299/74. The active weights were not
+  retrained on v5, and the provenance mismatch remains explicit.
 - **Action gate**: `scripts/validate-intent-model.mts` runs EVERY corpus row
   through the real ORT graph + the canonical TS decoder
   (`src/intent/model-decoder.ts`) and enforces attempted-exact ≥ 95 %,
   wrongKind = 0, abstain ≤ 20 % on val + golden regression suite, plus
-  determinism. The latest pinned run reports val 249/259 attempted-exact
-  (96.1 %), 0 wrong-kind, 39/298 abstain (13.1 %), and golden regression
-  62/62 attempted-exact. Exact model, data-split and evaluator hashes are in
-  `scripts/data/intent-model-validation-report.json`; golden overlaps train
-  (64 prompts) and val (10), so it is not generalization evidence. The
+  determinism. The latest pinned run reports val 285/287 attempted-exact
+  (99.3 %), 0 wrong-kind, 12/299 abstain (4.0 %), and golden regression
+  63/63 attempted-exact with 11/74 abstentions. Exact model, data-split and
+  evaluator hashes are in `scripts/data/intent-model-validation-report.json`;
+  golden overlaps train (67 prompts) and val (7), so it is not generalization
+  evidence. The
   manifest gate enables this closed-set action model only; it says nothing
   about creative briefs or musical quality.
 - **Training provenance hardening**: the Python trainer now snapshots and
@@ -266,9 +266,9 @@ Per-kind, v30-q8 → v33-q8 (the whole point of the flip):
   219/240 = 91,25 % with abstain 58/298. Same weights, same data, different
   number → the difference is in the **instrument or the abstention definition**,
   not in the model. **1,01 % is not a citable property of v31.**
-- **Row counts 272 and 294 are not today's corpus.** INTENT-MINING's
-  "IDENTICAL 294-row val" is an older 1761/294 split. The current val is
-  **298** rows (manifest v4: 1790 train / 298 val / 74 golden).
+- **Older SFT row counts are not today's corpus.** The pinned LFM scorecards
+  use a 298-row v4 validation split. The current ONNX v5 validation split is
+  **299** rows (1,793 train / 299 val / 74 golden).
 
 **Standing limitations of this scorecard** (from the reports themselves): it
 measures labelled action routing only and establishes no musical usefulness;

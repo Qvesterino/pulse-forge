@@ -6,15 +6,18 @@ const MUSICAL_OBJECT =
 const COMPOSITION_VERB =
   /\b(?:create|generate|compose|build|write|produce|sprav(?:i|te)?|urob(?:i|te)?|vytvor(?:i|te)?|zloz(?:i|te)?|skladaj|napis(?:i|te)?)\b|\bmake\s+(?:me|us|a|an|some|another)\b/;
 const ACTION_VERB =
-  /\b(?:mute|solo|delete|remove|move|copy|duplicate|rename|select|load|bypass|export|save|record|transpose|pan|set|turn|lower|raise|increase|decrease|automate|insert|fix|ease|park|shove|calm|tame|nudge|pull|push|lift|drop|stis(?:i|te)?|zni[zž](?:i|te)?|zv[yý]s(?:i|te)?|odstr[aá]n(?:i|te)?|pres[uú]n(?:i|te)?|premenuj|vyber|na[cč][ií]taj|vypni|zapni|oto[cč](?:i|te)?|pos[uú]n(?:i|te)?|pridaj|uber|zme[nň](?:i|te)?)\b/;
+  /\b(?:mute|solo|unmute|unsolo|delete|remove|move|copy|duplicate|rename|select|load|bypass|export|save|record|transpose|pan|set|turn|lower|raise|increase|decrease|automate|insert|fix|ease|park|shove|calm|tame|nudge|pull|push|lift|drop|stis(?:i|te)?|zni[zž](?:i|te)?|zv[yý]s(?:i|te)?|odstr[aá]n(?:i|te)?|pres[uú]n(?:i|te)?|premenuj|vyber|na[cč][ií]taj|vypni|zapni|oto[cč](?:i|te)?|pos[uú]n(?:i|te)?|pridaj|uber|zme[nň](?:i|te)?)\b/;
 const EDIT_COMPARATIVE =
-  /\b(?:louder|quieter|softer|darker|brighter|wider|narrower|warmer|colder|drier|wetter|punchier|harder|energetic|energic|busier|denser|sparser|hlasnejsi|tichsi|tmavsi|svetlejsi|sirsi|uzsi|teplejsi|suchsi|mokrejsi|razantnejsi|hustejsi|riedsi|energickejsi)\b/;
+  /\b(?:louder|quieter|softer|darker|brighter|wider|narrower|warmer|colder|drier|wetter|punchier|harder|energetic|energic|busier|denser|sparser|metallic|grittier|crunchy|robotic|deeper|lofi|vinyl|hlasnejsi|tichsi|tmavsi|svetlejsi|sirsi|uzsi|teplejsi|suchsi|mokrejsi|razantnejsi|hustejsi|riedsi|energickejsi)\b/;
 const VOCAL_CONTEXT =
   /\b(?:for|under|over|around|space|room|leave|leaves|sing|vocal|vocals|vocalist|singer|spev|hlas|pod|pre|miesto|priestor|spev[aá]k|spev[aá]ck)\b/;
 const PRESET_LOOKUP =
   /\b(?:give|get|find|choose|pick)\s+(?:me|us|the|a|an|that)?\s*[^.]{0,32}\b(?:preset|patch|sound|tone|kit)\b/;
+const SETTING_EDIT =
+  /\b(?:more|less|add|remove|increase|decrease|turn up|turn down)\s+(?:reverb|delay|saturation|distortion|chorus|flanger|phaser|tremolo|bitcrusher|compress(?:ion|or)?|sidechain|pump|eq|filter)\b|\b(?:reverb|delay)\s+send\b/;
+const ADD_TRACK_COMMAND = /\badd\b.{0,32}\b(?:tracks?|instrument)\b/;
 const EXISTING_SOUND_EDIT =
-  /\b(?:make|let|help)\s+(?:the|my|this|that)?\s*(?:low end|sub|bass|drums?|lead|chords?)\b.{0,28}\b(?:feel|sound|sit|land|hit)\b/;
+  /\b(?:make|let|help)\s+(?:the|my|this|that)?\s*(?:low end|sub|bass|drums?|lead|chords?)\b.{0,28}\b(?:feel|sound|sit|land|hit|warmer|darker|brighter|wider|grittier|metallic|crunchy|robotic|deeper|punchier|lofi)\b/;
 
 function normalizedText(value: string): string {
   return value
@@ -41,7 +44,13 @@ export function isCreativeBriefRoute(text: string, route: RoutedIntent): boolean
   const normalized = normalizedText(text);
   const hasMusicalObject = MUSICAL_OBJECT.test(normalized);
   const hasActionVerb = ACTION_VERB.test(normalized);
-  if (PRESET_LOOKUP.test(normalized) || EXISTING_SOUND_EDIT.test(normalized)) return false;
+  if (
+    PRESET_LOOKUP.test(normalized) ||
+    SETTING_EDIT.test(normalized) ||
+    ADD_TRACK_COMMAND.test(normalized) ||
+    EXISTING_SOUND_EDIT.test(normalized)
+  )
+    return false;
 
   // An explicit composition request is stronger than incidental parser
   // matches such as “bass” being read as a generation role.

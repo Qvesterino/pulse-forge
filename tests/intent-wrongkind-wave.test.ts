@@ -4,6 +4,7 @@ import { routeIntentText } from "../src/intent/route";
 import { compactIntentResponse } from "../src/intent/dataset";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
+import { warmFactoryPresets } from "../src/presets/factory-loader";
 import { addArrangementClip, createScene, setSceneRole } from "../src/commands/commands";
 import type { ProjectDocument } from "../src/project-model/types";
 
@@ -77,7 +78,8 @@ describe("wrongkind wave — teacher routing", () => {
     expect((r as unknown as { parse: { targetDb?: number } }).parse.targetDb).toBe(-8);
   });
 
-  it("SK preset asks accept inflected targets (na leade / na basu)", () => {
+  it("SK preset asks accept inflected targets (na leade / na basu)", async () => {
+    await warmFactoryPresets();
     const doc = datasetDoc();
     for (const q of ["načítaj warm preset na leade", "načítaj preset reese na leade"]) {
       const r = compactIntentResponse(routeIntentText(q, doc));

@@ -181,6 +181,7 @@ export function canonicalModelJson(value: unknown): string {
     const keys = Object.keys(value)
       .filter(
         (key) =>
+          (value as Record<string, unknown>)[key] !== undefined &&
           !COMPARE_STRIP_KEYS.has(key) &&
           !(opForm && OP_FORM_STRIP_KEYS.has(key)) &&
           !(kindStrip !== undefined && kindStrip.has(key)),

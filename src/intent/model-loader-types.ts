@@ -106,6 +106,7 @@ export type IntentModelResponse =
   | { type: "load"; requestId: number; ok: true }
   | { type: "load"; requestId: number; ok: false; error: string }
   | { type: "generate"; requestId: number; ok: true; text: string }
+  | { type: "generate"; requestId: number; ok: false; abstained: true; error?: string }
   | { type: "generate"; requestId: number; ok: false; error: string }
   | { type: "reset"; requestId: number; ok: true }
   | { type: "progress"; requestId: number; loaded: number; total: number };

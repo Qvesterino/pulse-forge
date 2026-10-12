@@ -22,6 +22,8 @@ export interface SunoSection {
   tag: string;
   /** The lyric lines between this tag and the next. */
   lyrics: string[];
+  /** "[Chorus x2]" — the tag's own repeat count (1 = absent). */
+  repeats: number;
 }
 
 export interface SunoFormat {
@@ -31,14 +33,18 @@ export interface SunoFormat {
 }
 
 const TAG_ROLES: ReadonlyArray<readonly [SceneRole, RegExp]> = [
+  // More-specific tags FIRST so [Pre-Chorus] never matches the plain chorus
+  // rule and [Post-Chorus] rides the same way.
+  ["build", /^\[?\s*pre[- ]?chorus\b/i],
+  ["chorus", /^\[?\s*post[- ]?chorus\b/i],
   ["intro", /^\[?\s*intro\b/i],
-  ["verse", /^\[?\s*verse\b/i],
-  ["chorus", /^\[?\s*(chorus|hook)\b/i],
-  ["bridge", /^\[?\s*bridge\b/i],
-  ["break", /^\[?\s*(break|breakdown)\b/i],
-  ["drop", /^\[?\s*drop\b/i],
-  ["build", /^\[?\s*(build|buildup)\b/i],
-  ["outro", /^\[?\s*(outro|end)\b/i],
+  ["verse", /^\[?\s*(verse|sloha|strofa)\b/i],
+  ["chorus", /^\[?\s*(chorus|hook|refren|refrén)\b/i],
+  ["bridge", /^\[?\s*(bridge|mostik|mostík|interlude)\b/i],
+  ["break", /^\[?\s*(break|breakdown|instrumental)\b/i],
+  ["drop", /^\[?\s*(drop|ad[- ]?lib)\b/i],
+  ["build", /^\[?\s*(build|buildup|build-up)\b/i],
+  ["outro", /^\[?\s*(outro|end|fade[- ]?out|záver|zaver)\b/i],
 ];
 
 function tagRole(tag: string): SceneRole | null {
@@ -59,13 +65,19 @@ export function parseSunoFormat(text: string): SunoFormat | null {
   for (const line of lines) {
     if (/^\[.+?\]$/.test(line)) {
       const role = tagRole(line);
+      const bareTag = line.replace(/^\[|\]$/g, "").trim();
+      // "[Chorus x2]" / "[Chorus 2x]" — a repeat suffix on the tag itself.
+      const repeatMatch = bareTag.match(/\b(?:x\s*(\d{1,2})|(\d{1,2})\s*x)\b/i);
+      const repeats = repeatMatch ? Math.max(1, Math.min(8, Number(repeatMatch[1] ?? repeatMatch[2]))) : 1;
       if (role) {
-        current = { role, tag: line.replace(/^\[|\]$/g, "").trim(), lyrics: [] };
+        current = { role, tag: bareTag, lyrics: [], repeats };
         sections.push(current);
         continue;
       }
-      // An unknown bracket tag ("[Instrumental]") — a boundary, no role.
-      current = { role: "verse", tag: line.replace(/^\[|\]$/g, "").trim(), lyrics: [] };
+      // An unknown bracket tag ("[Spoken Word]", "[Solo]") — a boundary; a
+      // solo reads as a bridge-shaped passage, spoken word as a verse.
+      const fallbackRole = /\bsolo\b/i.test(bareTag) ? "bridge" : "verse";
+      current = { role: fallbackRole, tag: bareTag, lyrics: [], repeats };
       sections.push(current);
       continue;
     }

@@ -9,6 +9,7 @@ import {
   validateModelOutputForDoc,
 } from "../src/intent/model-schema";
 import { createProjectFromTemplate } from "../src/project-model/templates";
+import { INSTRUMENT_DEFS } from "../src/instruments/registry";
 import { PRODUCTION_CONCEPTS } from "../src/intent/production";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
 import { addArrangementClip, createScene, setSceneRole } from "../src/commands/commands";
@@ -97,6 +98,18 @@ describe("local intent model schema", () => {
         goals: [{ concept: "darker", amount: 0.7 }],
       }).valid,
     ).toBe(true);
+    expect(
+      validateModelAction({
+        kind: "exact",
+        ops: [{ kind: "addTrack", trackKind: "instrument", instrument: "wavetable" }],
+      }).valid,
+    ).toBe(true);
+    expect(
+      validateModelAction({
+        kind: "exact",
+        ops: [{ kind: "addTrack", trackKind: "instrument", instrument: "skrutka" }],
+      }).valid,
+    ).toBe(false);
   });
 
   it("the GBNF grammar covers every kind and every enum value", () => {
@@ -117,6 +130,15 @@ describe("local intent model schema", () => {
         expect(grammar).toContain(`${kind}-${slot.name} ::=`);
       }
     }
+  });
+
+  it("keeps instrument slots in sync with the shipped instrument registry and Python trainer", () => {
+    expect([...VOCAB.instrument].sort()).toEqual(Object.keys(INSTRUMENT_DEFS).sort());
+    const trainer = readFileSync(path.join(process.cwd(), "scripts", "train-intent-model.py"), "utf8");
+    const block = trainer.match(/INSTRUMENTS\s*=\s*sorted\(\s*\[([\s\S]*?)\]\s*\)/u)?.[1];
+    expect(block).toBeDefined();
+    const trainerInstruments = Array.from(block!.matchAll(/"([^"]+)"/gu), (match) => match[1]);
+    expect(trainerInstruments.sort()).toEqual([...VOCAB.instrument].sort());
   });
 });
 

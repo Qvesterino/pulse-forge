@@ -180,7 +180,7 @@ describe("loader registration + timeouts + breaker", () => {
           type: "generate",
           requestId: request.requestId,
           ok: true,
-          text: JSON.stringify({ kind: "transport", action: "stop" }),
+          text: JSON.stringify({ kind: "fader", targets: ["chords"], direction: "down" }),
         });
       }
     };
@@ -192,8 +192,10 @@ describe("loader registration + timeouts + breaker", () => {
     // The registered provider is the resolver bridge's input — a model-form
     // action adapts into a real RoutedIntent the executors consume.
     const doc = createProjectFromTemplate("house");
-    const route = await tryModelRoute("halt everything now", doc);
-    expect(route?.kind).toBe("transport");
+    const route = await tryModelRoute("turn down the chords", doc);
+    expect(route?.kind).toBe("fader");
+    if (route?.kind !== "fader") throw new Error("expected fader");
+    expect(route.intent).toMatchObject({ targets: ["chords"], direction: "down" });
     expect(worker.seen.some((request) => request.type === "generate")).toBe(true);
   });
 
@@ -215,7 +217,7 @@ describe("loader registration + timeouts + breaker", () => {
     expect(provider).not.toBeNull();
     const doc = createProjectFromTemplate("house");
     await expect(provider!.generate("anything", doc)).rejects.toThrow(/timeout/);
-    await expect(tryModelRoute("halt everything now", doc)).resolves.toBeNull();
+    await expect(tryModelRoute("turn down the chords", doc)).resolves.toBeNull();
   });
 
   it("a cold load timeout does not trip the breaker — the next ensure recovers", async () => {
@@ -261,6 +263,47 @@ describe("loader registration + timeouts + breaker", () => {
     await expect(ensureIntentModelProvider()).resolves.toBe(false);
     expect(spawns).toBe(spawnsAfterBreaker); // worker no longer respawned
     expect(getIntentModelProvider()).toBeNull();
+  });
+
+  it("normal ONNX abstentions do not count as worker failures or trip the breaker", async () => {
+    setIntentModelMode("on");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json(validManifest())),
+    );
+    const worker = new FakeModelWorker();
+    worker.onMessage = (request, reply) => {
+      if (request.type === "load") reply({ type: "load", requestId: request.requestId, ok: true });
+      if (request.type === "generate") {
+        if (request.instruction.startsWith("unknown")) {
+          reply({
+            type: "generate",
+            requestId: request.requestId,
+            ok: false,
+            abstained: true,
+            error: "out-of-scope or unsure",
+          });
+        } else {
+          reply({
+            type: "generate",
+            requestId: request.requestId,
+            ok: true,
+            text: JSON.stringify({ kind: "fader", targets: ["chords"], direction: "down" }),
+          });
+        }
+      }
+    };
+    setIntentModelWorkerFactoryForTests(() => worker as unknown as Worker);
+    await expect(ensureIntentModelProvider()).resolves.toBe(true);
+    const provider = getIntentModelProvider()!;
+    const doc = createProjectFromTemplate("house");
+
+    await expect(provider.generate("unknown prompt one", doc)).rejects.toThrow("out-of-scope or unsure");
+    await expect(provider.generate("unknown prompt two", doc)).rejects.toThrow("out-of-scope or unsure");
+    await expect(provider.generate("unknown prompt three", doc)).rejects.toThrow("out-of-scope or unsure");
+    await expect(provider.generate("turn down the chords", doc)).resolves.toContain('"kind":"fader"');
+    expect(worker.terminated).toBe(false);
+    expect(worker.seen.filter((request) => request.type === "generate")).toHaveLength(4);
   });
 
   it("state transitions are observable for the panel chip", async () => {

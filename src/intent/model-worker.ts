@@ -139,9 +139,9 @@ async function ensureOnnxBackend(manifest: IntentModelManifest, weights: ArrayBu
 }
 
 /** Run one instruction through the native backend; null = the model abstained.
- * The decoded action is serialized to the SAME text contract the LLM runtime
- * adapter honours — the resolver bridge cannot tell the backends apart. */
-async function generateOnnx(backend: OnnxBackend, instruction: string): Promise<string | null> {
+ * Return the decoded action object. The message handler serializes it once to
+ * the same text contract the LLM runtime adapter honours. */
+async function generateOnnx(backend: OnnxBackend, instruction: string): Promise<ReturnType<typeof decodeIntentHeads>> {
   const bow = buildIntentBow(instruction, backend.vocab.tokens);
   const tensor = new backend.ort.Tensor("float32", bow, [1, bow.length]);
   const results = (await backend.session.run({ [backend.inputName]: tensor })) as Record<
@@ -154,8 +154,7 @@ async function generateOnnx(backend: OnnxBackend, instruction: string): Promise<
     if (!value) throw new Error(`session returned no head_${head.name}`);
     outputs[`head_${head.name}`] = value.data;
   }
-  const decoded = decodeIntentHeads(outputs, backend.vocab);
-  return decoded === null ? null : JSON.stringify(decoded);
+  return decodeIntentHeads(outputs, backend.vocab);
 }
 
 async function ensureRuntime(manifest: IntentModelManifest): Promise<void> {
@@ -269,7 +268,16 @@ self.onmessage = async (event: MessageEvent<unknown>) => {
         // abstention rejects — the main thread treats it as a controlled
         // miss and falls back to the deterministic parsers.
         const decoded = await generateOnnx(onnx, instruction);
-        if (decoded === null) throw new Error("model abstained — out of scope or unsure");
+        if (decoded === null) {
+          respond({
+            type: "generate",
+            requestId: request.requestId,
+            ok: false,
+            abstained: true,
+            error: "out-of-scope or unsure",
+          });
+          return;
+        }
         text = JSON.stringify(decoded);
       } else if (runtime) {
         text = await runtime.generate(buildIntentModelPrompt(activeManifest, instruction));

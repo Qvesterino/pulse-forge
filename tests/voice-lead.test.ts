@@ -49,7 +49,9 @@ describe("applyVoiceLeadCommand", () => {
     }).execute(first);
     const leads = second.tracks.filter((t) => t.kind === "instrument" && t.name === "Voice Lead — hum");
     expect(leads).toHaveLength(1);
-    expect(leads[0].sampleId).toBe("voice-lead-v2");
+    const lead = leads[0];
+    expect(lead?.kind).toBe("instrument");
+    if (lead?.kind === "instrument") expect(lead.sampleId).toBe("voice-lead-v2");
   });
 
   it("refuses honestly without staging or an empty melody", () => {
