@@ -36,6 +36,7 @@ import {
 import { createInstrumentTrackModel } from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { planVocalHarmonyPair } from "../vocal/harmony";
+import { voiceInstrumentTrack, type VoiceInstrumentSpec } from "./voice-instrument";
 import { generateOptionsFromIntent } from "./plan";
 import { normalizeIntent } from "./normalize";
 import { refreshPatternOutputHash, refreshPatternQuality } from "./quality";
@@ -177,6 +178,13 @@ export interface ComposeOptions {
   /** The artist's hummed hook — becomes the LEAD of the song. */
   hum?: ComposeHum;
   /**
+   * Hum-to-Beat: the artist's recorded voice AS the lead instrument. When
+   * present the hum notes play on a dedicated "Voice Lead" sampler track
+   * (created at install — one undo with the song), not on resolveLeadTrackId.
+   * The sample itself is persisted by the caller BEFORE the command runs.
+   */
+  voice?: VoiceInstrumentSpec;
+  /**
    * The singer's analyzed take — bends section energy/density toward the
    * phrasing (buildSong) and opens the vocal pocket in the mix. Only a
    * MEASURED profile takes effect; anything else builds the legacy song.
@@ -303,7 +311,10 @@ export async function composeFullTrack(
     }
   }
   if (hum && hum.notes.length > 0) {
-    const leadId = resolveLeadTrackId(doc);
+    // Hum-to-Beat: with a voice instrument the hum plays on the artist's OWN
+    // sampler track (created at install below) — never on the positional
+    // 808-bass fallback.
+    const leadId = options.voice ? options.voice.trackId : resolveLeadTrackId(doc);
     if (!leadId) {
       skipped.push("hum: no lead instrument track in this project");
     } else {
@@ -381,16 +392,26 @@ export async function composeFullTrack(
   // Hum & harmonize: when the hum requested the backing stack, the song
   // command installs a dedicated "Hum Harmony" instrument track (created
   // here, one id, deterministic) and the wrapper keeps ONE undo step for
-  // track + song + backing notes together.
+  // track + song + backing notes together. Hum-to-Beat: a requested voice
+  // instrument joins the same single-undo install.
+  const extraTracks: InstrumentTrack[] = [];
   if (harmonyTrackId) {
-    const harmonyTrack: InstrumentTrack = {
-      ...createInstrumentTrackModel("sampler", doc.tracks.length),
+    // Audible by construction: an analog synth needs no sample. The old
+    // sampleId:null sampler stayed SILENT until the user hand-picked a
+    // sample (Hum-to-Beat W4 fix).
+    extraTracks.push({
+      ...createInstrumentTrackModel("analog", doc.tracks.length + 1),
       id: harmonyTrackId,
       name: "Hum Harmony",
-      sampleId: null,
-    };
-    const withTrack: ProjectDocument = { ...doc, tracks: [...doc.tracks, harmonyTrack] };
+    });
+  }
+  if (options.voice) {
+    extraTracks.push(voiceInstrumentTrack(options.voice, doc.tracks.length + extraTracks.length + 1, uid("layer")));
+  }
+  if (extraTracks.length > 0) {
+    const withTrack: ProjectDocument = { ...doc, tracks: [...doc.tracks, ...extraTracks] };
     const inner = applySongCommand(withTrack, build);
+    const hasVoice = extraTracks.some((track) => track.name === "Voice Lead");
     return {
       text: trimmed,
       build,
@@ -398,7 +419,7 @@ export async function composeFullTrack(
       commands: {
         song: {
           type: "humAndHarmonizeSong",
-          label: `${inner.label} + hum harmony stack`,
+          label: hasVoice ? `${inner.label} + voice instrument` : `${inner.label} + hum harmony stack`,
           execute: () => inner.execute(withTrack),
           undo: () => doc,
         },

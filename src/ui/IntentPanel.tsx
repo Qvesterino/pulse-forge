@@ -93,7 +93,14 @@ import { parseSelectedStepIntent, type SelectedStepIntent } from "../assist/sele
 import type { StepSelection } from "../store/SelectionStore";
 import { applyPresetIntentCommand, presetReadback } from "../intent/preset-intent";
 import { analyzeAudioReference } from "../intent/audio-reference";
-import { analyzeVoiceIdea } from "../intent/voice-idea";
+import { analyzeVoiceTake, type VoiceTakeAnalysis } from "../intent/voice-take";
+import {
+  prepareVoiceSample,
+  saveVoiceSample,
+  voiceInstrumentTrack,
+  voiceInstrumentTrackCommand,
+} from "../intent/voice-instrument";
+import { uid } from "../shared/ids";
 import { resolveVocalTake } from "../vocal/resolve";
 import { analyzeVocalTake } from "../vocal/analyzer-client";
 import { applyVocalHookCommand, applyVocalKeyCommand, applyVocalTempoCommand } from "../vocal/adapt";
@@ -2019,6 +2026,16 @@ export function IntentPanel() {
   // needs it to point the vocalchop track at the USER'S OWN take audio.
   const [takeRef, setTakeRef] = useState<{ bufferId: string } | null>(null);
   const [refGroove, setRefGroove] = useState<GrooveExtraction | null>(null);
+  // Hum-to-Beat (IDEA 2.0): the whole-take analysis (melody AND rhythm) plus
+  // the take buffer for the voice-instrument slice.
+  const [voiceTake, setVoiceTake] = useState<VoiceTakeAnalysis | null>(null);
+  const [voiceInstrument, setVoiceInstrument] = useState<{
+    trackId: string;
+    sampleId: string;
+    rootPitch: number;
+  } | null>(null);
+  const [voiceInstrumentBusy, setVoiceInstrumentBusy] = useState(false);
+  const voiceTakeBufferRef = useRef<AudioBuffer | null>(null);
   // Voice idea (Fázy 1+2): the artist hums/sings — patch carries their tempo
   // + key, humNotes become the LEAD of the SUNO MODE song.
   const [voiceIdea, setVoiceIdea] = useState<{
@@ -2244,17 +2261,18 @@ export function IntentPanel() {
       const channel = take.buffer.getChannelData(0);
       const doc = services.store.getDoc();
       const activePattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
-      const result = await analyzeVoiceIdea(channel, take.buffer.sampleRate, {
+      // Hum-to-Beat: ONE take, BOTH analyzers — melody (YIN) and rhythm
+      // (groove extraction finally hears the microphone).
+      const analysis = await analyzeVoiceTake(channel, take.buffer.sampleRate, {
         ...(beatSync ? { bpm: doc.bpm } : {}),
         ...(beatSync && startTick !== null ? { transportStartTick: startTick } : {}),
         ...(beatSync && activePattern ? { patternLengthTicks: patternLengthTicks(activePattern) } : {}),
       });
-      if (!result) {
-        setError("🎤 idea: could not analyze the recording — try again, hum louder");
-        return;
-      }
-      setRefPatch(result.patch);
-      if (result.noteCount > 0) {
+      voiceTakeBufferRef.current = take.buffer;
+      setVoiceTake(analysis);
+      const result = analysis.melody;
+      if (result) setRefPatch(result.patch);
+      if (result && result.noteCount > 0) {
         setVoiceIdea({
           notes: result.notes,
           loopTicks: result.loopTicks,
@@ -2262,18 +2280,58 @@ export function IntentPanel() {
           summary: result.summary,
           harmonize: ideaHarmonize,
         });
-        setStatus(
-          `🎤 idea: ${result.summary} — hook live${ideaHarmonize ? " + harmony stack" : ""}, ♪ SONG builds around it`,
-        );
       } else {
         setVoiceIdea(null);
-        setStatus(`🎤 idea: ${result.summary} — patch live (no steady melody detected)`);
       }
+      if (analysis.groove && (analysis.verdict === "percussive" || analysis.verdict === "both")) {
+        // The same machinery the 🏥 REF file path uses — the 🥁→DRUMS button
+        // is now live for mic takes too.
+        setRefGroove(analysis.groove);
+      }
+      const lane =
+        analysis.verdict === "both"
+          ? "melódia + rytmus — 🎤 HLAS→NÁSTROJ, 🥁→DRUMS a ♪ SONG sú live"
+          : analysis.verdict === "percussive"
+            ? "rytmus — 🥁→DRUMS inštaluje groove"
+            : result && result.noteCount > 0
+              ? `hook live${ideaHarmonize ? " + harmony stack" : ""} — ♪ SONG stavia okolo toho`
+              : "patch live (no steady melody detected)";
+      setStatus(`🎤 idea: ${analysis.summary} — ${lane}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   };
   const toggleIdeaRecording = () => void (ideaRecording ? stopIdeaRecording() : startIdeaRecording());
+
+  // Hum-to-Beat: the take becomes a PLAYABLE sampler track — the artist's
+  // own timbre performs the hummed melody. The sample persists to the user
+  // library (IndexedDB, local); the track install is one undo step, and ♪
+  // SONG builds target it through the `voice` compose option.
+  const installVoiceInstrument = async () => {
+    const takeBuffer = voiceTakeBufferRef.current;
+    const melody = voiceTake?.melody;
+    if (!takeBuffer || !melody || melody.noteCount === 0) {
+      setError("🎤 voice instrument: nahraj najprv hum s melódiou (🎤 IDEA)");
+      return;
+    }
+    setVoiceInstrumentBusy(true);
+    try {
+      const name = `voice-lead-${new Date().toISOString().slice(0, 10)}`;
+      const prepared = prepareVoiceSample(takeBuffer, name, melody.notes);
+      await saveVoiceSample(prepared);
+      const spec = { trackId: uid("track"), sampleId: prepared.asset.id, rootPitch: prepared.rootPitch };
+      const track = voiceInstrumentTrack(spec, doc.tracks.length, uid("layer"));
+      services.store.execute(voiceInstrumentTrackCommand(doc, track));
+      setVoiceInstrument(spec);
+      setStatus(
+        `🎤 voice instrument: „Voice Lead“ hrá tvojou farbou (root ${prepared.rootPitch}) — ♪ SONG ho používa ako lead`,
+      );
+    } catch (err) {
+      setError(`🎤 voice instrument: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setVoiceInstrumentBusy(false);
+    }
+  };
 
   // Groove install: transcribed band hits become REAL rows on the active
   // pattern's drum track (one undo step).
@@ -2467,6 +2525,7 @@ export function IntentPanel() {
             }
           : {}),
         ...(takeProfile?.measured ? { vocalProfile: takeProfile } : {}),
+        ...(voiceInstrument ? { voice: voiceInstrument } : {}),
         bank: services.bank,
         candidateCount: 3,
         onProgress: (label, progress) => {
@@ -5054,6 +5113,17 @@ export function IntentPanel() {
           onToggleRecording={() => void toggleIdeaRecording()}
           disabled={refBusy}
         />
+        {voiceTake?.melody && voiceTake.melody.noteCount > 0 ? (
+          <button
+            type="button"
+            className="btn intent-voice-inst-btn"
+            disabled={voiceInstrumentBusy || refBusy || songBusy}
+            onClick={() => void installVoiceInstrument()}
+            title="Hum-to-Beat: tvoj nahraný zvuk sa stane hrateľným inštrumentom — Voice Lead sampler s tvojou timbrou; ♪ SONG ho používa ako lead"
+          >
+            {voiceInstrumentBusy ? "🎤…" : voiceInstrument ? "🎤 VOICE ✓" : "🎤 HLAS→NÁSTROJ"}
+          </button>
+        ) : null}
         <button
           type="button"
           className="btn intent-ref-btn"
