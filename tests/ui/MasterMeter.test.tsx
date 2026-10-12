@@ -74,7 +74,7 @@ describe("MasterMeter", () => {
     );
   });
 
-  it("expires the clip alert by elapsed time after a delayed meter frame", () => {
+  it("expires the visual clip badge by elapsed time after a delayed meter frame", () => {
     withMeterFrames(
       () => renderWithContext(<MasterMeter />),
       [
@@ -86,13 +86,15 @@ describe("MasterMeter", () => {
             engine.getMasterLevels = vi.fn().mockReturnValueOnce(clipped).mockReturnValue(silent);
           },
           assertFrame: () => {
-            expect(screen.getByRole("alert")).toBeInTheDocument();
+            const badge = document.querySelector(".master-clip-warning");
+            expect(badge).toBeInTheDocument();
+            expect(badge).toHaveAttribute("aria-hidden", "true");
           },
         },
         {
           timestamp: 1000,
           assertFrame: () => {
-            expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+            expect(document.querySelector(".master-clip-warning")).not.toBeInTheDocument();
           },
         },
       ],

@@ -59,6 +59,7 @@ export function createLimiterNode(ctx: BaseAudioContext, instance: { params: Rec
   safeApplyAudioParam(node, "releaseLink", instance.params.releaseLink ?? 1);
   safeApplyAudioParam(node, "character", instance.params.character ?? 0);
   safeApplyAudioParam(node, "mix", instance.params.mix ?? 1);
+  safeApplyAudioParam(node, "deltaListen", 0);
 
   const setParameter = (id: string, value: number, when = ctx.currentTime) => {
     if (id === "lookaheadMs") {

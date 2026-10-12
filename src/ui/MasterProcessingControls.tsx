@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { setMasterConfig } from "../commands/commands";
 import type { MasterConfig } from "../project-model/types";
 import { Slider } from "./controls";
@@ -24,6 +25,9 @@ export function MasterProcessingControls({
   const projectMaster = useMaster();
   const master = config ?? projectMaster;
   const advanced = view !== "simple";
+  const [deltaListenEnabled, setDeltaListenEnabled] = useState(false);
+  const isProjectControl = !config && !onChange;
+  const limiterUsesFallback = services.engine.getDegradedMasterStages().some((stage) => stage.stageId === "limiter");
   const showPrimaryControls = view !== "advanced-extras";
   const commit = (patch: Parameters<typeof setMasterConfig>[1]) => {
     if (disabled) return;
@@ -38,6 +42,20 @@ export function MasterProcessingControls({
     const db = 20 * Math.log10(Math.max(value, 0.001));
     return `${db <= -59 ? "-INF" : db.toFixed(1)} dB`;
   };
+
+  useEffect(() => {
+    if ((!advanced || !isProjectControl || !master.limiterEnabled) && deltaListenEnabled) {
+      services.engine.setMasterLimiterDeltaListen(false);
+      setDeltaListenEnabled(false);
+    }
+  }, [advanced, deltaListenEnabled, isProjectControl, master.limiterEnabled, services.engine]);
+
+  useEffect(
+    () => () => {
+      services.engine.setMasterLimiterDeltaListen(false);
+    },
+    [services.engine],
+  );
 
   return (
     <div
@@ -193,6 +211,27 @@ export function MasterProcessingControls({
               LIMIT
             </button>
           )}
+          {advanced && isProjectControl && (
+            <button
+              type="button"
+              className={`btn btn-small${deltaListenEnabled ? " active-solo" : ""}`}
+              title={
+                limiterUsesFallback
+                  ? "Limiter delta audition needs the live look-ahead worklet; the native fallback is active."
+                  : "Monitor only the aligned difference between limiter input and output. This signal is never exported."
+              }
+              aria-label="Listen to limiter gain reduction"
+              aria-pressed={deltaListenEnabled}
+              disabled={disabled || !master.limiterEnabled || limiterUsesFallback}
+              onClick={() => {
+                const next = !deltaListenEnabled;
+                const applied = services.engine.setMasterLimiterDeltaListen(next);
+                setDeltaListenEnabled(applied && next);
+              }}
+            >
+              GR LISTEN
+            </button>
+          )}
           {advanced && (
             <>
               {showPrimaryControls && (
@@ -257,6 +296,12 @@ export function MasterProcessingControls({
             </>
           )}
         </div>
+
+        {deltaListenEnabled && isProjectControl && (
+          <span className="master-delta-listen-status" role="status">
+            Limiter delta monitor active — not included in exports
+          </span>
+        )}
 
         {advanced && master.tapeEnabled && (
           <Slider

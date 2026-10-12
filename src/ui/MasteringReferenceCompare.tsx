@@ -22,6 +22,7 @@ import type { ProjectDocument } from "../project-model/types";
 import { uid } from "../shared/ids";
 import { useServices } from "./context";
 import { useMasteringExcerptLoudness } from "./useMasteringExcerptLoudness";
+import { compareMixBandShares } from "../reference/bandShares";
 
 interface LoadedReference {
   identity: string;
@@ -38,6 +39,7 @@ interface RenderedProjectMaster {
   sampleRate: number;
   buffer: AudioBuffer;
   summary: BufferSummary;
+  health: MixHealthReport;
 }
 
 const MAX_REFERENCE_FILE_BYTES = 96 * 1024 * 1024;
@@ -372,6 +374,13 @@ export function MasteringReferenceCompare({
     projectMaster?.revisionId === revisionId &&
     projectMaster.sampleBankRevision === sampleBankRevision &&
     projectMaster.sampleRate === sampleRate;
+  const toneBalance = useMemo(
+    () =>
+      currentProjectMaster && projectMaster && reference
+        ? compareMixBandShares(projectMaster.health.bandShares, reference.health.bandShares)
+        : [],
+    [currentProjectMaster, projectMaster, reference],
+  );
   const renderProjectMax = currentProjectMaster && projectMaster ? projectMaster.buffer.duration : 0;
   const renderReferenceMax = reference?.buffer.duration ?? 0;
   const compareExcerptDuration = Math.max(
@@ -604,6 +613,7 @@ export function MasteringReferenceCompare({
         sampleRate,
         buffer,
         summary,
+        health: analysis.mixHealth,
       });
       setStatus("Project master ready. Project and reference playback start at their selected comparison points.");
     } catch (caught) {
@@ -853,6 +863,76 @@ export function MasteringReferenceCompare({
               </button>
             )}
           </div>
+          <section className="master-reference-tone-balance" aria-labelledby="master-reference-tone-heading">
+            <header>
+              <div>
+                <h5 id="master-reference-tone-heading">Full-program tonal balance</h5>
+                <p>
+                  Broad-band energy shares are normalized to each program&apos;s own total. They compare tonal shape,
+                  not loudness or an EQ target; the audition above separately matches the selected excerpt.
+                </p>
+              </div>
+              <div className="master-reference-tone-legend" aria-hidden="true">
+                <span className="is-project">Project master</span>
+                <span className="is-reference">Reference</span>
+              </div>
+            </header>
+            <div className="master-reference-tone-scroll">
+              <table data-testid="master-reference-tone-balance">
+                <caption>
+                  Measured energy share by broad frequency band for the full project master and reference.
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Band</th>
+                    <th scope="col">Project master</th>
+                    <th scope="col">Reference</th>
+                    <th scope="col">Reference − project</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {toneBalance.map((row) => {
+                    const projectShare = projectMaster.health.bandShares[row.band];
+                    const referenceShare = reference.health.bandShares[row.band];
+                    const projectWidth = `${Math.max(0, Math.min(100, projectShare * 100)).toFixed(1)}%`;
+                    const referenceWidth = `${Math.max(0, Math.min(100, referenceShare * 100)).toFixed(1)}%`;
+                    return (
+                      <tr key={row.band} data-testid={`master-reference-tone-${row.band}`}>
+                        <th scope="row">
+                          <span>{row.label}</span>
+                          <small>{row.hz}</small>
+                        </th>
+                        <td>
+                          <div className="master-reference-tone-value">
+                            <span className="master-reference-tone-track" aria-hidden="true">
+                              <span className="master-reference-tone-fill is-project" style={{ width: projectWidth }} />
+                            </span>
+                            <span>{(projectShare * 100).toFixed(1)}%</span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="master-reference-tone-value">
+                            <span className="master-reference-tone-track" aria-hidden="true">
+                              <span
+                                className="master-reference-tone-fill is-reference"
+                                style={{ width: referenceWidth }}
+                              />
+                            </span>
+                            <span>{(referenceShare * 100).toFixed(1)}%</span>
+                          </div>
+                        </td>
+                        <td data-direction={row.empty ? "none" : row.deltaDb > 0 ? "reference" : "project"}>
+                          {row.empty || Math.abs(row.deltaDb) < 1.5
+                            ? "—"
+                            : `${row.deltaDb > 0 ? "+" : ""}${row.deltaDb.toFixed(1)} dB`}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
           <div className="master-reference-offsets">
             <div className="master-reference-offset-control">
               <label htmlFor="master-reference-project-offset">Project start</label>

@@ -3550,18 +3550,22 @@ const zenit: EffectDefinition = {
         case "bassMono":
           push(util!, "monoBassFrequency", v);
           break;
+        case "tpSafe":
+          if (!Number.isFinite(v)) break;
+          tpSafe = v >= 0.5;
+          push(lim!, "threshold", limitThreshold(limitValue, zenitEffectiveCeiling(tpSafe, ceilingValue)));
+          break;
         case "ceiling":
           ceilingValue = v;
           push(clip!, "ceiling", v);
           push(lim!, "ceiling", v);
           // Re-derive the limiter threshold so LIMIT keeps its meaning
-          // relative to the NEW ceiling (see the limitValue note above).
-          push(lim!, "threshold", limitThreshold(limitValue, v));
+          // relative to the NEW effective ceiling (including TP SAFE reserve).
+          push(lim!, "threshold", limitThreshold(limitValue, zenitEffectiveCeiling(tpSafe, v)));
           break;
         case "limit":
           // 0 = limiter idle (threshold rides the ceiling the clipper already
           // caught); >0 pushes the threshold harder for loudness.
-          limitValue = v;
           limitValue = v;
           push(lim!, "threshold", limitThreshold(v, zenitEffectiveCeiling(tpSafe, ceilingValue)));
           break;

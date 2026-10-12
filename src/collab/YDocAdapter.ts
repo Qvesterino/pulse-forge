@@ -863,29 +863,10 @@ export function applyProjectToYMap(_oldDoc: ProjectDocument, newDoc: ProjectDocu
   } else if (arrangement.has("transitions")) {
     arrangement.delete("transitions");
   }
-  // Master — mirror every MasterConfig field, otherwise collab round-trips
-  // silently drop the newer keys (lufsTarget/tape/ms vanished for peers).
+  // Master is a plain JSON config, so mirror its complete field set. This
+  // keeps new limiter and delivery fields from silently disappearing in peers.
   const master = ensureChildMap(yMap, "master");
-  mirrorScalars(master, newDoc.master, [
-    "masterGain",
-    "ceilingDb",
-    "limiterEnabled",
-    "clipperEnabled",
-    "tapeEnabled",
-    "tapeDrive",
-    "msEnabled",
-    "msMidGain",
-    "msSideGain",
-    "lufsTarget",
-    "deliveryProfileId",
-    "deliveryTruePeakDb",
-    "effects",
-    "glueEnabled",
-    "bassMonoEnabled",
-    "bassMonoFreq",
-    "tiltDb",
-    "loudnessTrimDb",
-  ]);
+  syncPlainFields(master, newDoc.master as unknown as Record<string, unknown>);
 
   // Groove
   if (newDoc.groove) {

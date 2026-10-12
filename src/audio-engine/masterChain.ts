@@ -215,6 +215,17 @@ export class MasterChain {
     this.masterLimiterWorklet?.setParameter("oversample", enabled && config.limiterEnabled ? 2 : 1);
   }
 
+  /** Monitor the live limiter's aligned input-minus-output signal. Never affects renders. */
+  setLimiterDeltaListen(enabled: boolean): boolean {
+    const ctx = this.deps.ctx();
+    const worklet = this.masterLimiterWorklet;
+    if (!ctx || !isLiveAudioContext(ctx) || !worklet) return false;
+    const config = this.deps.doc()?.master ?? defaultMasterConfig();
+    if (enabled && !config.limiterEnabled) return false;
+    worklet.setParameter("deltaListen", enabled ? 1 : 0);
+    return true;
+  }
+
   /** Keep the monitor-only raw branch aligned with fixed latency before the limiter. */
   syncMonitorBypassLatency(immediate = false): void {
     const ctx = this.deps.ctx();

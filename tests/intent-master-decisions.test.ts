@@ -116,21 +116,19 @@ describe("deepProfileToArtistMix — master.dynamicRange → glue (Phase 2 slice
 });
 
 describe("planMixProfile — master loudness bound (Phase 2 slice 3)", () => {
-  it("a loud artist lifts the target but never past the trim limit", () => {
-    // Travis Scott: targetLufs -7, so streaming -14 would need a 7 dB lift —
-    // the cap trims it to the 6 dB the song builder already allows.
+  it("a loud artist lifts the target within the trim limit", () => {
+    // Travis Scott: targetLufs -7 needs a 7 dB lift from the streaming target.
     const profile = planMixProfile(baseIntent("travis-scott"), {}, {});
-    const expected = SONG_LOUDNESS_TARGET_LUFS + SONG_LOUDNESS_TRIM_LIMIT_DB;
-    expect(profile.masterLufsTarget).toBe(expected);
+    expect(profile.masterLufsTarget).toBe(SONG_LOUDNESS_TARGET_LUFS + 7);
     expect(profile.masterLufsTarget!).toBeGreaterThanOrEqual(SONG_LOUDNESS_TARGET_LUFS);
+    expect(profile.masterLufsTarget!).toBeLessThanOrEqual(SONG_LOUDNESS_TARGET_LUFS + SONG_LOUDNESS_TRIM_LIMIT_DB);
   });
 
-  it("the loudest artist still respects the cap (Excision -6 would need 8 dB)", () => {
-    // Excision's -6 is 8 dB above the streaming target; the 6 dB trim limit
-    // holds it at -8 rather than letting a dubstep profile push the export
-    // out of the streaming band the product guarantees.
+  it("the loudest artist profile stays within the configured trim bound", () => {
+    // Excision's -6 is an 8 dB lift, inside the configured 9 dB limit.
     const profile = planMixProfile(baseIntent("excision"), {}, {});
-    expect(profile.masterLufsTarget).toBe(SONG_LOUDNESS_TARGET_LUFS + SONG_LOUDNESS_TRIM_LIMIT_DB);
+    expect(profile.masterLufsTarget).toBe(SONG_LOUDNESS_TARGET_LUFS + 8);
+    expect(profile.masterLufsTarget!).toBeLessThanOrEqual(SONG_LOUDNESS_TARGET_LUFS + SONG_LOUDNESS_TRIM_LIMIT_DB);
   });
 
   it("an artist just above the streaming target lifts by exactly the delta", () => {
@@ -145,7 +143,7 @@ describe("planMixProfile — master loudness bound (Phase 2 slice 3)", () => {
   });
 
   it("a mid artist lands between the streaming target and the cap", () => {
-    // Anyma: targetLufs -9 -> a 5 dB lift, inside the 6 dB cap.
+    // Anyma: targetLufs -9 -> a 5 dB lift, inside the 9 dB cap.
     const profile = planMixProfile(baseIntent("anyma"), {}, {});
     expect(profile.masterLufsTarget).toBe(SONG_LOUDNESS_TARGET_LUFS + 5);
   });

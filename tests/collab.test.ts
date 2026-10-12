@@ -183,7 +183,15 @@ describe("YDocAdapter — round-trip conversion", () => {
 
   it("preserves master config", () => {
     const base = createProjectFromTemplate("house");
-    const doc = { ...base, master: { ...base.master, tiltDb: 2.75 } };
+    const doc = {
+      ...base,
+      master: {
+        ...base.master,
+        tiltDb: 2.75,
+        limiterStereoLink: 0.75,
+        matchEq: { low: -1, lowMid: 0.5, highMid: 0.25, high: 1 },
+      },
+    };
     const yDoc = new Y.Doc();
     const yMap = yDoc.getMap("project");
     projectToYDoc(doc, yMap);

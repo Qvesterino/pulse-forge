@@ -271,7 +271,7 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     expect(body, "applyMasterConfig not found in masterChain.ts").not.toBe("");
     expect(body).toMatch(/const ceilingDb\s*=\s*Math\.min\(0,\s*Math\.max\(-12,\s*config\.ceilingDb\)\)/);
     expect(body).toMatch(/this\.masterLimiter\.threshold\.value\s*=\s*ceilingDb/);
-    expect(body).toMatch(/const workletCeilingParam\s*=\s*ceilingParam\s*-\s*0\.2/);
+    expect(body).toMatch(/const workletCeilingParam\s*=\s*ceilingParam\s*-\s*MASTER_LIMITER_TRUE_PEAK_RESERVE_DB/);
     expect(body).toMatch(/const thresholdParam\s*=\s*Math\.max\(-24,\s*workletCeilingParam\s*-\s*3\.2\)/);
     expect(body).toMatch(/worklet\.setParameter\("ceiling",\s*workletCeilingParam\)/);
     expect(body).toMatch(/worklet\.setParameter\("threshold",\s*thresholdParam\)/);

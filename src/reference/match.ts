@@ -38,6 +38,9 @@ import { setEffectParam } from "../commands/effectParams";
 import type { Command } from "../commands/types";
 import type { ProjectDocument } from "../project-model/types";
 import type { ResonancePeak } from "./resonance";
+import { compareMixBandShares } from "./bandShares";
+
+export { compareMixBandShares, MATCH_PARTICIPATION_FLOOR_DB } from "./bandShares";
 
 /* ───────────────────────── measurement inputs ───────────────────────── */
 
@@ -102,37 +105,12 @@ export interface ReferenceMatchReport {
 
 /* ─────────────────────────── constants ─────────────────────────── */
 
-/** Band display metadata — mix-doctor band order and edges. */
-const BAND_DEFS: ReadonlyArray<{
-  band: MatchBandRow["band"];
-  label: string;
-  hz: string;
-}> = [
-  { band: "sub", label: "Sub", hz: "20–60 Hz" },
-  { band: "low", label: "Low", hz: "60–120 Hz" },
-  { band: "lowmid", label: "Low-mid", hz: "120–350 Hz" },
-  { band: "mid", label: "Mid", hz: "350 Hz–2 kHz" },
-  { band: "himid", label: "High-mid", hz: "2–6 kHz" },
-  { band: "high", label: "High", hz: "6–12 kHz" },
-  { band: "air", label: "Air", hz: "12 kHz+" },
-];
-
 /** A |delta| below this is chasing trivia, not matching. */
 export const MATCH_DEADZONE_DB = 1.5;
 /** The loudness half only fires from a full LU of gap (LU are coarse). */
 export const MATCH_LOUDNESS_MIN_LU = 1;
 /** Both halves clamp to the same ±6 the master commands already enforce. */
 export const MATCH_MAX_DB = 6;
-/**
- * A band sitting this far below ITS OWN SIDE's loudest band holds no
- * information — the "difference" there is filter leakage, not a mix decision.
- * The same participation floor the sound-library audit's attack term uses: a
- * band with no body to measure against must never win a comparison on ringing
- * divided by near-zero. Relative per side, so a dark mix and a bright mix are
- * each judged against their own dominant band.
- */
-export const MATCH_PARTICIPATION_FLOOR_DB = 30;
-
 const round1 = (value: number): number => Math.round(value * 10) / 10;
 
 /** Linear share (0..1) → dB-of-share. A silent band reads the −120 floor. */
@@ -153,26 +131,12 @@ export function buildReferenceMatch(project: MatchProjectInput, reference: Match
   const mix = analyzeMixHealth(project.channels, project.sampleRate);
   const ref = analyzeMixHealth(reference.channels, reference.sampleRate);
 
-  const rows: Array<Omit<MatchBandRow, "empty">> = BAND_DEFS.map(({ band, label, hz }) => {
-    // mix-doctor bandShares are LINEAR shares (0..1 of own total); the match
-    // compares in dB-of-share (10·log10) so the table reads like every other
-    // dB column and deltas are perceptually proportional.
-    const mixDb = round1(dbOfShare(mix.bandShares[band]));
-    const refDb = round1(dbOfShare(ref.bandShares[band]));
-    return { band, label, hz, mixDb, refDb, deltaDb: round1(refDb - mixDb) };
-  });
   // Participation floor, per side: a band is EMPTY only when it is quiet on
   // BOTH sides — each judged against its own loudest band. A band loud on one
   // side and quiet on the other is the REAL gap a match exists to find (the
   // mix is missing the reference's sub, say), never "empty". The curve folds
   // only non-empty rows so leakage in a dead band cannot tilt the master EQ.
-  const mixLoudest = Math.max(...rows.map((r) => r.mixDb));
-  const refLoudest = Math.max(...rows.map((r) => r.refDb));
-  const quietOn = (db: number, loudest: number): boolean => db < loudest - MATCH_PARTICIPATION_FLOOR_DB;
-  const bands: MatchBandRow[] = rows.map((row) => ({
-    ...row,
-    empty: quietOn(row.mixDb, mixLoudest) && quietOn(row.refDb, refLoudest),
-  }));
+  const bands = compareMixBandShares(mix.bandShares, ref.bandShares);
   const participating = bands.filter((row) => !row.empty);
 
   const loudness: MatchLoudness = {

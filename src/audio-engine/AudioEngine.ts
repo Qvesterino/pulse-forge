@@ -658,6 +658,11 @@ export class AudioEngine {
     this.masterChain.setStudioLimiterOversampling(enabled);
   }
 
+  /** Monitor-only limiter delta audition; unavailable in offline contexts or native fallback. */
+  setMasterLimiterDeltaListen(enabled: boolean): boolean {
+    return this.masterChain.setLimiterDeltaListen(enabled);
+  }
+
   /** Apply monitor-only loudness match gains to the processed and bypass paths. */
   setMasterBypassMatchGains(wetGain: number, dryGain: number, immediate = false): void {
     this.masterChain.setBypassMatchGains(wetGain, dryGain, immediate);

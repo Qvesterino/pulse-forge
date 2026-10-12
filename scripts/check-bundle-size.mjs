@@ -204,12 +204,16 @@ const ENTRY_BUDGET_KB = 1070;
 // remains 81 KB under its independent limit; all other optional/worklet
 // budgets pass. Set a bounded 5180 KB ceiling: 7 KB of headroom for this
 // measured tree, with subsequent DAW growth required to offset or justify.
-// 2026-10-12 (browser intent quality): the production intent model now
-// validates addTrack against the full instrument vocabulary and adapts the
-// trained loudness target field. Measured 5180.28 KB in the integrated tree;
-// boot path stays 2121/2200 KB. Set the smallest whole-KB ceiling (5181) and
-// keep subsequent growth offset or measured independently.
-const TOTAL_BUDGET_KB = 5181;
+// 2026-10-12 (mastering integration): the integrated tree, including the
+// mastering workspace and complete MasterConfig collaboration mirror,
+// measures 5181.639 KB. Set the smallest whole-KB ceiling (5182), leaving
+// 0.361 KB of headroom; the studio boot path remains 2121/2200 KB. Subsequent
+// DAW growth must be offset or independently justified by a measured feature.
+// 2026-10-12 (mastering diagnostics): the seven-band reference comparison
+// and monitor-only limiter delta audition measure 5186 KB total / 2122 KB boot.
+// Keep the smallest whole-KB ceiling for that measured feature increment;
+// further DAW growth still needs an offset or an independent justification.
+const TOTAL_BUDGET_KB = 5186;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
 // symbolic/ranker workers. Keep these optional runtimes under one existing

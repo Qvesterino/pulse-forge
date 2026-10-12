@@ -502,7 +502,7 @@ describe("Worklet processors — RT-safety pins (source-grep)", () => {
   it("limiter defines applyKnee OUTSIDE the per-sample loop", () => {
     const source = read(SRC.limiter);
     const hoist = source.indexOf("const applyKnee = (peak)");
-    const sampleLoop = source.indexOf("for (let i = 0; i < len; i++, this.step++)");
+    const sampleLoop = source.indexOf("for (let i = 0; i < processingFrames; i++, this.step++)");
     expect(hoist).toBeGreaterThan(0);
     expect(sampleLoop).toBeGreaterThan(0);
     expect(hoist).toBeLessThan(sampleLoop);

@@ -26,6 +26,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { describeStageAdjustmentLimitation } from "../src/audio-engine/metering";
 
 const METERING_FILE = resolve(process.cwd(), "src/audio-engine/metering.ts");
 
@@ -54,6 +55,7 @@ const PURE_HELPERS: Anchor[] = [
   { name: "stereoCorrelation", kind: "fn" },
   { name: "summarizeBuffer", kind: "fn" },
   { name: "summarizePcm", kind: "fn" },
+  { name: "describeStageAdjustmentLimitation", kind: "fn" },
 ];
 
 // Constants and types — checked for shape and immutability but not for purity.
@@ -90,6 +92,17 @@ const KNOWN_EXPORTS: Anchor[] = [
   { name: "TruePeakChannelAccumulator", kind: "class" },
   { name: "PeakHold", kind: "class" },
 ];
+
+describe("AUTO STAGE limitation explanations", () => {
+  it("describes each profile and input-range guard, and stays silent without a limitation", () => {
+    expect(describeStageAdjustmentLimitation(null)).toBeNull();
+    expect(describeStageAdjustmentLimitation("profile-true-peak")).toContain("true-peak limit");
+    expect(describeStageAdjustmentLimitation("master-input-range")).toContain("master IN gain range");
+    const combined = describeStageAdjustmentLimitation("profile-and-input-range");
+    expect(combined).toContain("true-peak limit");
+    expect(combined).toContain("master IN gain range");
+  });
+});
 
 // Host-side-effect tokens that must NOT appear inside a pure utility body.
 // Each must be a whole-word token (regex word boundary) so e.g.

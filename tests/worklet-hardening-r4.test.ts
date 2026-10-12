@@ -490,7 +490,11 @@ describe("node wrappers — guard pins (source contract)", () => {
     expect(s).toContain("if (!Number.isFinite(value)) return;");
     expect(s).toContain("if (!Number.isFinite(value)) return LIMITER_LOOKAHEAD_DEFAULT_MS;");
     expect(s).toContain("Math.fround(effectiveMs / 1000)");
-    expect(s).toContain("Math.round(workletLookaheadSec * ctx.sampleRate) / ctx.sampleRate");
+    const normalized = s.replace(/\s+/g, " ");
+    expect(normalized).toContain("const lookaheadSamples = Math.round(workletLookaheadSec * ctx.sampleRate);");
+    expect(normalized).toContain(
+      "return (lookaheadSamples + LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES + oversamplerSamples) / ctx.sampleRate;",
+    );
   });
 
   it("bitcrusher + chorus nodes guard their native (non-worklet) param writes", () => {

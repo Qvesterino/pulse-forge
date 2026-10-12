@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { EFFECT_DEFS, defaultParamsOf, limitThreshold } from "../src/effects/registry";
+import { EFFECT_DEFS, defaultParamsOf, limitThreshold, zenitEffectiveCeiling } from "../src/effects/registry";
 import { apeksParams, prudParams, sirkaParams } from "../src/effects/definitions";
 import type { EffectInstance } from "../src/project-model/types";
 import type { EffectRuntime } from "../src/effects/types";
@@ -112,23 +112,42 @@ describe("ZENIT macro → stage mapping (both extremes, checklist #13)", () => {
     const rt = buildZenit({ ceiling: 0, limit: 1 });
     expect(writes.clip).toContainEqual({ id: "ceiling", value: 0 });
     expect(writes.lim).toContainEqual({ id: "ceiling", value: 0 });
-    expect(writes.lim).toContainEqual({ id: "threshold", value: limitThreshold(1, 0) });
+    expect(writes.lim).toContainEqual({ id: "threshold", value: limitThreshold(1, zenitEffectiveCeiling(true, 0)) });
     rt.setParameter("ceiling", -6);
     rt.setParameter("limit", 0);
     expect(writes.lim).toContainEqual({ id: "ceiling", value: -6 });
-    expect(writes.lim).toContainEqual({ id: "threshold", value: limitThreshold(1, -6) }); // re-derived on ceiling move
-    expect(writes.lim).toContainEqual({ id: "threshold", value: limitThreshold(0, -6) }); // idle at the new ceiling
+    expect(writes.lim).toContainEqual({ id: "threshold", value: limitThreshold(1, zenitEffectiveCeiling(true, -6)) });
+    expect(writes.lim).toContainEqual({ id: "threshold", value: limitThreshold(0, zenitEffectiveCeiling(true, -6)) });
+    rt.dispose();
+  });
+
+  it("TP SAFE toggles the limiter's 1 dB internal headroom and preserves the ceiling coupling", () => {
+    const writes = spyStages();
+    const rt = buildZenit({ ceiling: -3, limit: 0.5, tpSafe: 1 });
+    expect(writes.lim.at(-1)).toEqual({ id: "threshold", value: limitThreshold(0.5, -4) });
+    rt.setParameter("tpSafe", 0);
+    expect(writes.lim.at(-1)).toEqual({ id: "threshold", value: limitThreshold(0.5, -3) });
+    rt.setParameter("ceiling", -6);
+    expect(writes.lim.at(-1)).toEqual({ id: "threshold", value: limitThreshold(0.5, -6) });
+    rt.setParameter("tpSafe", 1);
+    expect(writes.lim.at(-1)).toEqual({ id: "threshold", value: limitThreshold(0.5, -7) });
     rt.dispose();
   });
 
   it("ceiling↔limit coupling is load-order independent (param object iteration order)", () => {
     const a = spyStages();
     const rtA = buildZenit({ limit: 0.5, ceiling: -3 });
-    expect(a.lim.filter((w) => w.id === "threshold").at(-1)?.value).toBeCloseTo(limitThreshold(0.5, -3), 9);
+    expect(a.lim.filter((w) => w.id === "threshold").at(-1)?.value).toBeCloseTo(
+      limitThreshold(0.5, zenitEffectiveCeiling(true, -3)),
+      9,
+    );
     rtA.dispose();
     const b = spyStages();
     const rtB = buildZenit({ ceiling: -3, limit: 0.5 });
-    expect(b.lim.filter((w) => w.id === "threshold").at(-1)?.value).toBeCloseTo(limitThreshold(0.5, -3), 9);
+    expect(b.lim.filter((w) => w.id === "threshold").at(-1)?.value).toBeCloseTo(
+      limitThreshold(0.5, zenitEffectiveCeiling(true, -3)),
+      9,
+    );
     rtB.dispose();
   });
 });

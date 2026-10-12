@@ -439,17 +439,16 @@ export function planMixProfile(
   // (e.g. -7 for a modern loud-master, -13 for character-over-loudness).
   // The project ships every generated song at SONG_LOUDNESS_TARGET_LUFS
   // (-14, streaming) and the song builder refuses to trim more than
-  // SONG_LOUDNESS_TRIM_LIMIT_DB (6) — so the artist signal is applied as a
+  // SONG_LOUDNESS_TRIM_LIMIT_DB (9) — so the artist signal is applied as a
   // BOUNDED OFFSET from that target rather than as a raw replacement:
   //
   //   lift = clamp(artistLufs - streamingTarget, 0, TRIM_LIMIT)
   //   target = streamingTarget + lift
   //
   // A loud artist (Travis Scott -7) is 7 dB above the streaming target, so
-  // the lift clamps to the 6 dB the song builder already allows and the
-  // master lands at -8, never at -7: the cap keeps exports inside the
-  // streaming band the product already guarantees, while still giving real
-  // per-artist differentiation. An artist AT or BELOW the streaming target
+  // it remains within the 9 dB trim bound and the master target lands at -7.
+  // The cap keeps any future artist profile inside the builder's supported
+  // range while preserving per-artist differentiation. An artist AT or BELOW the streaming target
   // (J Dilla -13 and quieter) contributes no lift and leaves the project
   // default untouched.
   let masterLufsTarget: number | undefined;

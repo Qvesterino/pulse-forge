@@ -1381,6 +1381,233 @@ test.describe("17 — mastering workspace", () => {
     expect(facts.compressorReorderDifferenceDb, JSON.stringify(facts)).toBeGreaterThan(-40);
   });
 
+  test("flagship dynamics, saturation, stereo width, and reverb match on the live and offline master", async ({
+    page,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "chromium",
+      "This acceptance compares realtime and offline AudioWorklet audio.",
+    );
+    test.setTimeout(150_000);
+    await page.goto("/apple-touch-icon.png", { waitUntil: "domcontentloaded", timeout: 120_000 });
+
+    const facts = await page.evaluate(async () => {
+      const audioEngineModulePath = ["/src", "audio-engine", "AudioEngine.ts"].join("/");
+      const templatesModulePath = ["/src", "project-model", "templates.ts"].join("/");
+      const workletLoaderPath = ["/src", "audio-worklets", "loader.ts"].join("/");
+      const effectRegistryPath = ["/src", "effects", "registry.ts"].join("/");
+      const [{ AudioEngine }, { createProjectFromTemplate }, { ensureWorkletsForDoc }, { defaultParamsOf }] =
+        await Promise.all([
+          import(audioEngineModulePath),
+          import(templatesModulePath),
+          import(workletLoaderPath),
+          import(effectRegistryPath),
+        ]);
+
+      const sampleRate = 44100;
+      const prismId = "parity-master-prism";
+      const saturationId = "parity-master-saturation";
+      const widenerId = "parity-master-widener";
+      const reverbId = "parity-master-reverb";
+      const vlyxId = "parity-master-vlyx";
+      const morphId = "parity-master-morph";
+      const driftId = "parity-master-drift";
+      const runtimeIds = [prismId, saturationId, widenerId, reverbId, vlyxId, morphId, driftId];
+      const doc = createProjectFromTemplate("empty");
+      doc.master.effects = [
+        {
+          id: prismId,
+          type: "fxeq",
+          bypassed: false,
+          params: { ...defaultParamsOf("fxeq"), outputGainDb: -3 },
+        },
+        {
+          id: saturationId,
+          type: "saturation",
+          bypassed: false,
+          params: { ...defaultParamsOf("saturation"), drive: 0.7, character: 2, mix: 0.6 },
+        },
+        {
+          id: widenerId,
+          type: "haasWidener",
+          bypassed: false,
+          params: { ...defaultParamsOf("haasWidener"), delayMs: 17, width: 0.8, crossfeed: 0.65 },
+        },
+        {
+          id: reverbId,
+          type: "reverb",
+          bypassed: false,
+          params: { ...defaultParamsOf("reverb"), decay: 2.5, mix: 0.25 },
+        },
+        {
+          id: vlyxId,
+          type: "ultina",
+          bypassed: false,
+          params: { ...defaultParamsOf("ultina"), "comp.enabled": 1 },
+        },
+        {
+          id: morphId,
+          type: "morphdynamics",
+          bypassed: false,
+          params: {
+            ...defaultParamsOf("morphdynamics"),
+            "macro.pressure": 65,
+            "macro.punch": 55,
+          },
+        },
+        {
+          id: driftId,
+          type: "ozvena",
+          bypassed: false,
+          params: { ...defaultParamsOf("ozvena"), "global.dryWet": 0.45 },
+        },
+      ];
+
+      type EngineInternals = {
+        projectPromise: Promise<void> | null;
+        masterFx: { runtimes: Map<string, unknown> };
+        masterChain: { input: AudioNode };
+      };
+      const internals = (engine: InstanceType<typeof AudioEngine>) => engine as unknown as EngineInternals;
+      const makeEngine = async (context: BaseAudioContext) => {
+        await ensureWorkletsForDoc(doc, context);
+        const engine = new AudioEngine();
+        engine.useContext(context);
+        engine.setProject(doc);
+        const pending = internals(engine).projectPromise;
+        if (pending) await pending;
+        const runtimes = internals(engine).masterFx.runtimes;
+        const missingRuntimes = runtimeIds.filter((id) => !runtimes.has(id));
+        if (missingRuntimes.length > 0) {
+          throw new Error(`Master insert runtimes did not become ready: ${missingRuntimes.join(", ")}.`);
+        }
+        return engine;
+      };
+      const fillProbe = (buffer: AudioBuffer) => {
+        const left = buffer.getChannelData(0);
+        const right = buffer.getChannelData(1);
+        for (let index = 0; index < buffer.length; index++) {
+          const time = index / sampleRate;
+          const transient = index % Math.round(sampleRate * 0.11) < Math.round(sampleRate * 0.003);
+          left[index] =
+            0.16 * Math.sin(2 * Math.PI * 997 * time) +
+            0.08 * Math.sin(2 * Math.PI * 3701 * time) +
+            (transient ? 0.18 * Math.sin(2 * Math.PI * 997 * time) : 0);
+          right[index] =
+            0.15 * Math.sin(2 * Math.PI * 997 * time + 0.23) +
+            0.07 * Math.sin(2 * Math.PI * 2203 * time + 0.51) +
+            (transient ? 0.16 * Math.sin(2 * Math.PI * 2203 * time + 0.51) : 0);
+        }
+      };
+
+      const liveContext = new AudioContext({ sampleRate });
+      await liveContext.resume();
+      await liveContext.audioWorklet.addModule(new URL("/parity-capture-worklet.js", location.href).href);
+      const liveEngine = await makeEngine(liveContext);
+      const liveInput = internals(liveEngine).masterChain.input;
+      const liveWorkletReadyTime = liveContext.currentTime;
+      const liveSource = liveContext.createBufferSource();
+      liveSource.buffer = liveContext.createBuffer(2, sampleRate, sampleRate);
+      fillProbe(liveSource.buffer);
+      liveSource.loop = true;
+      liveSource.connect(liveInput);
+      const sourceStartTime = liveWorkletReadyTime + 0.05;
+      const liveLeadSeconds = sourceStartTime - liveWorkletReadyTime;
+      liveSource.start(sourceStartTime);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      const liveTap = liveEngine.getMasterTapNode();
+      if (!liveTap) throw new Error("The live master output tap is unavailable.");
+      const captureNode = new AudioWorkletNode(liveContext, "capture-processor", {
+        numberOfInputs: 1,
+        numberOfOutputs: 0,
+        channelCount: 2,
+        channelInterpretation: "speakers",
+        processorOptions: { chunkFrames: 8192 },
+      });
+      liveTap.connect(captureNode);
+      const liveCapture = await new Promise<{ originTime: number; samples: Float32Array }>((resolve, reject) => {
+        const timeout = setTimeout(
+          () => reject(new Error("Timed out capturing the flagship live master output.")),
+          8000,
+        );
+        let originTime = Number.NaN;
+        captureNode.port.onmessage = (event: MessageEvent) => {
+          const data = event.data as { type?: string; time?: number; left?: Float32Array } | null;
+          if (data?.type === "capture-start" && typeof data.time === "number") originTime = data.time;
+          if (data?.type === "chunk" && data.left instanceof Float32Array && !Number.isNaN(originTime)) {
+            clearTimeout(timeout);
+            resolve({ originTime, samples: data.left });
+          }
+        };
+        captureNode.port.postMessage({ type: "arm", chunkFrames: 16384 });
+      });
+      captureNode.port.postMessage({ type: "stop" });
+      captureNode.port.onmessage = null;
+      liveTap.disconnect(captureNode);
+      captureNode.disconnect();
+      liveSource.stop();
+      liveSource.disconnect();
+
+      const offlineContext = new OfflineAudioContext(2, sampleRate * 2, sampleRate);
+      const offlineEngine = await makeEngine(offlineContext);
+      const offlineSourceStartTime = liveLeadSeconds;
+      const offlineSource = offlineContext.createBufferSource();
+      offlineSource.buffer = offlineContext.createBuffer(2, sampleRate, sampleRate);
+      fillProbe(offlineSource.buffer);
+      offlineSource.loop = true;
+      offlineSource.connect(internals(offlineEngine).masterChain.input);
+      offlineSource.start(offlineSourceStartTime);
+      await offlineEngine.prepareOfflineRender();
+      const offlineBuffer = await offlineContext.startRendering();
+      const offlineSamples = offlineBuffer.getChannelData(0);
+
+      const expectedOffset = Math.round(
+        (offlineSourceStartTime + liveCapture.originTime - sourceStartTime) * sampleRate,
+      );
+      const compareFrames = 8192;
+      let best = { offset: 0, correlation: -1, nullDb: Number.POSITIVE_INFINITY };
+      for (let adjustment = -512; adjustment <= 512; adjustment++) {
+        const start = expectedOffset + adjustment;
+        if (start < 0 || start + compareFrames > offlineSamples.length) continue;
+        let dot = 0;
+        let liveEnergy = 0;
+        let offlineEnergy = 0;
+        let errorEnergy = 0;
+        for (let index = 0; index < compareFrames; index++) {
+          const liveSample = liveCapture.samples[index];
+          const offlineSample = offlineSamples[start + index];
+          dot += liveSample * offlineSample;
+          liveEnergy += liveSample * liveSample;
+          offlineEnergy += offlineSample * offlineSample;
+          const error = liveSample - offlineSample;
+          errorEnergy += error * error;
+        }
+        const correlation = dot / Math.sqrt(Math.max(1e-30, liveEnergy * offlineEnergy));
+        if (correlation > best.correlation) {
+          best = {
+            offset: adjustment,
+            correlation,
+            nullDb: 10 * Math.log10((errorEnergy + 1e-30) / Math.max(1e-30, liveEnergy)),
+          };
+        }
+      }
+
+      await liveContext.close();
+      return {
+        runtimeAvailability: runtimeIds.map((id) => internals(liveEngine).masterFx.runtimes.has(id)),
+        liveOfflineCorrelation: best.correlation,
+        liveOfflineNullDb: best.nullDb,
+        liveOfflineAlignmentSamples: best.offset,
+      };
+    });
+
+    expect(facts.runtimeAvailability).toEqual([true, true, true, true, true, true, true]);
+    expect(facts.liveOfflineCorrelation, JSON.stringify(facts)).toBeGreaterThan(0.99);
+    expect(facts.liveOfflineNullDb, JSON.stringify(facts)).toBeLessThan(-40);
+    expect(Math.abs(facts.liveOfflineAlignmentSamples), JSON.stringify(facts)).toBeLessThanOrEqual(512);
+  });
+
   test("opens the simple view and follows signal-flow keyboard focus into advanced controls", async ({ page }) => {
     test.setTimeout(150_000);
     await openHouseTemplate(page, { timeoutMs: 120_000 });

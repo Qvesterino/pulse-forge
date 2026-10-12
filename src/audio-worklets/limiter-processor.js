@@ -146,6 +146,9 @@ class LimiterProcessor extends AudioWorkletProcessor {
       { name: "character", defaultValue: 0, minValue: 0, maxValue: 2, automationRate: "k-rate" },
       { name: "mix", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "oversample", defaultValue: 1, minValue: 1, maxValue: 2, automationRate: "k-rate" },
+      // Live monitor only: emit aligned input-minus-limited output so users can
+      // hear what the limiter removes. It is never stored in project state.
+      { name: "deltaListen", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
     ];
   }
 
@@ -195,6 +198,7 @@ class LimiterProcessor extends AudioWorkletProcessor {
     const transientLink = Math.min(legacyLink, clampLink(parameters.transientLink[0]));
     const releaseLink = Math.min(legacyLink, clampLink(parameters.releaseLink[0]));
     const mix = parameters.mix[0];
+    const deltaListen = parameters.deltaListen?.[0] > 0.5;
     const perChannel = outR !== null && (transientLink < 0.999 || releaseLink < 0.999);
     const attackCoef = 1 - Math.exp(-1 / (processingRate * attackMs * 0.001));
     const postCorrectionAttackCoef = 1 - Math.exp(-1 / (processingRate * 0.00005));
@@ -310,6 +314,14 @@ class LimiterProcessor extends AudioWorkletProcessor {
         else if (finalL < -postCorrectionCeiling) finalL = -postCorrectionCeiling;
         if (finalR > postCorrectionCeiling) finalR = postCorrectionCeiling;
         else if (finalR < -postCorrectionCeiling) finalR = -postCorrectionCeiling;
+      }
+      if (deltaListen) {
+        // Subtract aligned dry from the final limited path. At 2×, both are
+        // subtracted before the same decimation filter so timing and tone stay
+        // matched in the monitor signal.
+        const dryReadIdx = (((s - laSamples - postCorrectionDelay) % this.cap) + this.cap) % this.cap;
+        finalL = this.delayL[dryReadIdx] - finalL;
+        finalR = this.delayR[dryReadIdx] - finalR;
       }
       if (factor === 1) {
         outL[i] = finalL;

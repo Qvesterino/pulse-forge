@@ -1372,6 +1372,12 @@
   min-height: 28px;
 }
 
+.master-delta-listen-status {
+  color: var(--accent, #9a7cff);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .master-core-pair {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2312,6 +2318,143 @@
   background: var(--bg);
   color: var(--text-faint);
   font: 9px var(--mono);
+}
+
+.master-reference-tone-balance {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  background: var(--bg);
+}
+
+.master-reference-tone-balance > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px 14px;
+}
+
+.master-reference-tone-balance h5 {
+  margin: 0;
+  color: var(--text);
+  font-size: 10px;
+}
+
+.master-reference-tone-balance > header p {
+  max-width: 690px;
+  margin: 3px 0 0;
+  color: var(--text-dim);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.master-reference-tone-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  color: var(--text-dim);
+  font: 8px var(--mono);
+}
+
+.master-reference-tone-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.master-reference-tone-legend span::before {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--text-dim);
+  content: "";
+}
+
+.master-reference-tone-legend .is-project::before {
+  background: var(--accent);
+}
+
+.master-reference-tone-scroll {
+  overflow-x: auto;
+}
+
+.master-reference-tone-balance table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  color: var(--text-dim);
+  font: 8px var(--mono);
+  text-align: left;
+}
+
+.master-reference-tone-balance caption {
+  padding: 0 0 4px;
+  color: var(--text-faint);
+  text-align: left;
+}
+
+.master-reference-tone-balance th,
+.master-reference-tone-balance td {
+  padding: 4px 5px;
+  border-top: 1px solid var(--border-soft);
+  vertical-align: middle;
+}
+
+.master-reference-tone-balance thead th {
+  color: var(--text-faint);
+  font-weight: 500;
+}
+
+.master-reference-tone-balance tbody th {
+  width: 92px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.master-reference-tone-balance tbody th small {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-faint);
+  font-size: 7px;
+  font-weight: 400;
+}
+
+.master-reference-tone-value {
+  display: grid;
+  grid-template-columns: minmax(52px, 1fr) 36px;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.master-reference-tone-track {
+  display: block;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--bg-raise);
+}
+
+.master-reference-tone-fill {
+  display: block;
+  height: 100%;
+  min-width: 1px;
+  border-radius: inherit;
+  background: var(--text-dim);
+}
+
+.master-reference-tone-fill.is-project {
+  background: var(--accent);
+}
+
+.master-reference-tone-balance tbody td:last-child {
+  color: var(--text);
+  text-align: right;
+  white-space: nowrap;
 }
 
 .master-reference-offset-control {
