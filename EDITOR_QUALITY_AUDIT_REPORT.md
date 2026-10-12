@@ -2274,3 +2274,85 @@ Attribution before touching anything:
   sessions settled gives **live 944 = documented 944**.
 
 Neither was blessed, "fixed", or committed by this audit.
+
+## Wave 13 - 2026-10-11 - §11 snapping: one contract pinned, one measurement left open
+
+New spec `tests/e2e/snap-grid.spec.ts`. Bars are derived from the panel's own
+geometry (the duplicated fixture sits exactly four bars from its original),
+never assumed, and the same gesture is repeated at two zoom levels so that a
+"zoom-dependent snapping" defect would show up as a difference between them.
+
+### What is verified
+
+```
+lefts=0,120  barWidth=30 px/bar
+zoomSteps=0  pxPerBar=30.00   clip landed at 7 bars (210 px)
+zoomSteps=2  pxPerBar=58.80   clip landed at 5 bars (294 px)
+```
+
+Whole-bar landing, exact at both zooms, from a drag that is deliberately not a
+whole number of bars. That is the §11 contract and it holds.
+
+### A measurement of my own that was wrong before the editor was ever wrong
+
+The first revision reported "4 bars" for a clip sitting at 210 px. It derived
+px-per-bar from `left(clip2) - left(clip1)` AFTER the drag had already moved
+clip1 - so it divided 210 by a denominator computed from the moved pair (52.5)
+and got a tidy integer. The assertion looked healthy because both the positive
+and the negative branch shared the same bad denominator and therefore "proved"
+each other.
+
+`pxPerBar` is now captured BEFORE the drag and passed in. The lesson is
+narrower than "be careful": a derived quantity that is computed from the thing
+under test, after the thing under test has moved, is not a measurement - it is
+an echo.
+
+### The open measurement, NOT reported as a defect
+
+Three states were measured on the same gesture:
+
+| state | committed result |
+| --- | --- |
+| grid = `1` | 120 → **210** px (7 bars) |
+| grid = `off` | 120 → **210** px (7 bars) |
+| grid = `off` + Shift held | 120 → **210** px (7 bars) |
+
+Two things are unexplained:
+
+1. the select reads `off` (`selectValue=off` was logged) yet the result is
+   byte-identical to grid-on;
+2. **all three moved the clip +90 px for a +65 px pointer drag**, which is 3
+   whole bars rather than the 2.1667 bars the pointer asked for.
+
+Reading A: the scene-clip drag path applies secondary snap targets regardless
+of the grid setting, and something at bar 7 (a marker, an edge) captures the
+pointer. Reading B: the drag applies its own quantisation on commit. Both are
+consistent with the numbers; neither is proven, and no code was changed on this
+evidence - §41.
+
+The grid-ON and Shift-suspend branches are therefore **not** asserted in the
+committed spec. An assertion that contradicts an unexplained measurement is
+exactly how a wrong test becomes a wrong bug report. What the spec does say, in
+a comment, is that the OFF/Shift branches were measured and produced results
+indistinguishable from grid-ON.
+
+**This is the honest state of §11**: the grid contract is pinned, and whether
+the OFF setting and the Shift suspend actually reach scene-clip drags is an
+open question that needs one more controlled run (a marker-free fixture, and a
+drag distance that lands far from every secondary target).
+
+### Full-suite result, and what this audit did not do about it
+
+`npm run test` over the whole repo:
+
+```
+Test Files  36 failed | 911 passed (947)
+     Tests  51 failed | 10359 passed | 128 skipped (10538)
+Duration 867.94s
+```
+
+The visible failure in the tail is `tests/ui/reference-map-panel.test.tsx`, which
+belongs to the concurrent reference-map session, not to this audit's files. The
+remaining 50 are attributed by `npm run test:expectations` (the repo's own
+ratchet) rather than by eyeballing, and nothing here was "fixed", skipped or
+weakened on the way.
