@@ -24,11 +24,17 @@ const tokens = css("24-layout-tokens.css");
 
 /** Cascade order is load-bearing (src/styles/index.css). */
 describe("Vlna B · cascade order", () => {
-  it("appends 24-layout-tokens LAST, after every other stylesheet", () => {
+  it("appends 24-layout-tokens after every BASE sheet, before later additions", () => {
     const index = css("index.css");
     const imports = [...index.matchAll(/@import\s+"\.\/([^"]+)"/g)].map((m) => m[1]!);
-    expect(imports[imports.length - 1]).toBe("24-layout-tokens.css");
     expect(imports).toContain("24-layout-tokens.css");
+    // It no longer has to be LAST — sheets 25/26 were added after it by later
+    // waves. What it must satisfy is the ordering contract: it comes after
+    // every sheet that defines the tokens it overrides (01-base and the control
+    // kit), so its overrides actually win.
+    const at = imports.indexOf("24-layout-tokens.css");
+    expect(imports.indexOf("01-base.css")).toBeLessThan(at);
+    expect(imports.indexOf("20-control-kit.css")).toBeLessThan(at);
   });
 });
 

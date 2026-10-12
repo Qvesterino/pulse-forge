@@ -209,7 +209,7 @@ export interface TempoIntent {
 }
 
 const HAS_TEMPO_WORD =
-  /\btempo\b|\bbpm\b|\bpomal|\brychl|\bslow(?:er| down| it down)?\b|\bfaster\b|\bspeed (?:it )?up\b|\bzrychli|\btempa\b/;
+  /\btempo\b|\bbpm\b|\bpomal|\bspomal|\brychl|\bslow(?:er| down| it down)?\b|\bfaster\b|\bspeed (?:it )?up\b|\bzrychli|\btempa\b/;
 const TEMPO_DOWN = /dole|down|nizs|zniz|pomal|slow|spomal/;
 const TEMPO_UP = /hore|up|vys|zvys|rychl|faster|speed|zrychli/;
 const TEMPO_SET_TEMPO = /\btempo (?:na |to |at )?(\d{2,3})/;

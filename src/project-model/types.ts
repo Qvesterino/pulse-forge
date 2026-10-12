@@ -20,6 +20,7 @@ export type EffectType =
   | "compressor"
   | "saturation"
   | "tapeSat"
+  | "wowFlutter"
   | "clipper"
   | "limiter"
   | "stepGate"

@@ -196,7 +196,7 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
   // The capture allows hyphens so "hi-hats" resolves as the hats family.
   // "everything/all/všetko" resolves to the MIX family, which the applier
   // expands to EVERY track for mute/solo ("mute everything" is a real ask).
-  const muteMatch = /\b(mute|st\u00eds|vypni)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
+  const muteMatch = /\b(mute|st\u00eds|vypni|mutn\w*)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
   const unmuteMatch = /\b(unmute|zapni)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
   const soloMatch = /\b(solo|soluj|zosoluj)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
   const unsoloMatch = /\b(?:unsolo|solo\s+off|zrus\s+solo)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
@@ -225,22 +225,22 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
 
   // Pan: "pan the hats 20% right", "pan bass left 30" — pad families allowed.
   const pan =
-    /pan\s+(?:the\s+)?([a-z-]+)\s*(?:to\s*)?(\d{1,3})\s*%?\s*(left|right|lavo|pravo)?/.exec(lower) ??
-    /pan\s+(?:the\s+)?([a-z-]+)\s*(left|right)\s*(\d{1,3})?/.exec(lower);
+    /pan(?:uj|ujte)?\s+(?:the\s+)?([a-z-]+)\s*(?:to\s*)?(\d{1,3})\s*%?\s*(left|right|lavo|pravo|dolava|doprava)?/.exec(lower) ??
+    /pan(?:uj|ujte)?\s+(?:the\s+)?([a-z-]+)\s+(left|right|dolava|doprava)\s*(\d{1,3})?/.exec(lower);
   if (pan) {
     const target = firstTarget(pan[1], true);
     // The second alternative ("pan bass left 30") captures the DIRECTION in
     // [2] and the optional number in [3]; the first captures the number in
     // [2]. Reading [2] as a number unconditionally made Number("left") = NaN
     // and silently dropped the whole op.
-    const directional = pan[2] === "left" || pan[2] === "right";
+    const directional = ["left", "right", "dolava", "doprava"].includes(String(pan[2]));
     const pct = Number(directional ? pan[3] : pan[2]);
     const dir = directional ? pan[2] : pan[3];
     // "pan the mix" has no lane (the mix is not a pan target) — declining at
     // parse keeps the applier from producing a silent no-op command.
     if (target && target !== "mix" && Number.isFinite(pct)) {
       let value = pct;
-      if (dir === "left") value = -value;
+      if (dir === "left" || dir === "dolava") value = -value;
       if (!dir && /left|lavo/.test(lower) && /to\s*-?\d/.test(lower)) value = -value;
       value = Math.max(-1, Math.min(1, value / 100));
       ops.push({ kind: "pan", target, value });
@@ -375,10 +375,10 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
   // WHOLE tone (2 semitones — the SK musical meaning), polton/semiton = 1,
   // oktava = 12. Named groups — the three word orders have different layouts.
   const transposeSk =
-    /(drums?|bass|bas\w*|808|lead|synth\w*|chords?|keys?|bic\w*)\b\s+o\s+(?<count>\d+|dva|tri|styri|pat|sest|sedem|osem|devat|desat)\s+(?<unit>ton\w*|semiton\w*|polton\w*|oktav\w*)\b\s+(?<dir>hore|dole|nizsie|vyssie)/.exec(
+    /(drums?|bass|bas\w*|808|lead|synth\w*|chords?|keys?|bic\w*)\b\s+o\s+(?<count>\d+|jeden|jednu|dva|tri|styri|pat|sest|sedem|osem|devat|desat)?\s+(?<unit>ton\w*|semiton\w*|polton\w*|oktav\w*)\b\s+(?<dir>hore|dole|nizsie|vyssie)/.exec(
       lower,
     ) ||
-    /posun\s+(drums?|bass|bas\w*|808|lead|synth\w*|chords?|keys?|bic\w*)\b\s+(?<dir>hore|dole|nizsie|vyssie)\s+o\s+(?<count>\d+|dva|tri|styri|pat|sest|sedem|osem|devat|desat)\s+(?<unit>ton\w*|semiton\w*|polton\w*|oktav\w*)\b/.exec(
+    /posun\s+(drums?|bass|bas\w*|808|lead|synth\w*|chords?|keys?|bic\w*)\b\s+(?<dir>hore|dole|nizsie|vyssie)\s+o\s+(?<count>\d+|jeden|jednu|dva|tri|styri|pat|sest|sedem|osem|devat|desat)?\s+(?<unit>ton\w*|semiton\w*|polton\w*|oktav\w*)\b/.exec(
       lower,
     );
   if (transposeSk) {
@@ -470,7 +470,7 @@ export function parseTransportIntent(text: string): TransportAction | null {
   // and teach the model a clarify)
   const plain = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   if (
-    !/^\s*(?:please\s+|prosim\s+)?(?:play|stop|pause|hraj|hrat|start|pauza|pauzu|zastav|stoj|(?:metronome|metronom)(?:\s+(?:on|off|zapni|vypni))?|(?:loop|cykluj|cyklus)(?:\s+(?:on|off|zapni|vypni))?|(?:zapni|vypni)\s+(?:loop|cyklus))\s*(?:please|prosim)?\s*[.!]?\s*$/i.test(
+    !/^\s*(?:please\s+|prosim\s+)?(?:play|stop|pause|hraj|hrat|start|spusti|pauza|pauzu|zastav|stoj|stopni|(?:metronome|metronom)(?:\s+(?:on|off|zapni|vypni))?|(?:loop|cykluj|cyklus)(?:\s+(?:on|off|zapni|vypni))?|(?:zapni|vypni)\s+(?:loop|cyklus))\s*(?:please|prosim)?\s*[.!]?\s*$/i.test(
       plain,
     )
   ) {

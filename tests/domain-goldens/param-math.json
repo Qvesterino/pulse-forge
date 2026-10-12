@@ -727,6 +727,18 @@
           }
         },
         {
+          "type": "wowFlutter",
+          "defaults": {
+            "wowRate": 0.5,
+            "wowDepth": 10,
+            "flutterRate": 11,
+            "flutterDepth": 2.5,
+            "drift": 0.35,
+            "mix": 1,
+            "output": 0
+          }
+        },
+        {
           "type": "clipper",
           "defaults": {
             "drive": 0,

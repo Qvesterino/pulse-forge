@@ -44,6 +44,12 @@ export const formatSecMs = (v: number) => `${Math.round(v * 1000)} ms`;
 
 export const formatPct = (v: number) => `${Math.round(v * 100)}%`;
 
+/**
+ * Pitch deviation in cents — 100 cents is one semitone. Whole numbers below
+ * 10 (where fine pitch wobble actually lives), one decimal above.
+ */
+export const formatCents = (v: number) => `${Math.abs(v) < 10 ? v.toFixed(1) : Math.round(v)} ct`;
+
 export const formatSec = (v: number) => `${v.toFixed(2)} s`;
 
 export const VOWEL_OPTIONS = [
@@ -214,6 +220,11 @@ export const EFFECT_ORDER: EffectType[] = [
   "compressor",
   "saturation",
   "tapeSat",
+  // Musical pitch instability. Listed after tapeSat because it reads as its
+  // sibling in the Add Effect group, and because `EFFECT_ORDER` is the
+  // inventory list the plugin-functional audit and the device menu both derive
+  // from — an entry in CORE_EFFECT_ORDER alone leaves it undiscoverable there.
+  "wowFlutter",
   "clipper",
   "limiter",
   "stepGate",
@@ -297,6 +308,7 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "multiTapDelay",
   "portal",
   "tapeSat",
+  "wowFlutter",
   "vocoder",
   "reverseSwell",
   "granularFreeze",
@@ -864,6 +876,29 @@ export const tapeSatParams: ParamDef[] = [
   { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.4, format: formatPct },
   { id: "hysteresis", label: "HYST", min: 0, max: 0.95, default: 0.3, format: formatPct },
   { id: "tone", label: "TONE", min: 500, max: 12000, default: 6500, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
+];
+
+/**
+ * WOW & FLUTTER — musical pitch instability, depth expressed in CENTS.
+ *
+ * Distinct from the wow/flutter buried in the Vinyl Suite: that one is a lo-fi
+ * artefact measured in milliseconds of delay and scaled by a master macro, this
+ * one is a first-class musical depth where a few cents is "alive" and 60 is
+ * "seasick". See `src/audio-worklets/wowflutter-processor.js` for the three
+ * deliberate differences.
+ */
+// Unit is "ct", not "cents": the audit catalog (tests/plugin-functional-audit.ts)
+// enumerates the units a ParamDef may declare, and "ct" is the cents entry
+// there. `formatCents` already renders the same suffix, so the knob reads
+// "12.0 ct" and the catalog, the formatter and the display agree.
+export const wowFlutterParams: ParamDef[] = [
+  { id: "wowRate", label: "WOW RATE", min: 0.05, max: 6, default: 0.5, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "wowDepth", label: "WOW DEPTH", min: 0, max: 60, default: 10, unit: "ct", format: formatCents },
+  { id: "flutterRate", label: "FLUT RATE", min: 4, max: 60, default: 11, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "flutterDepth", label: "FLUT DEPTH", min: 0, max: 20, default: 2.5, unit: "ct", format: formatCents },
+  { id: "drift", label: "DRIFT", min: 0, max: 1, default: 0.35, format: formatPct },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
 ];
@@ -2814,6 +2849,7 @@ export const EFFECT_META: Record<EffectType, EffectDefinitionMeta> = {
   compressor: { type: "compressor", name: "Compressor", category: "dynamics", params: compressorParams },
   saturation: { type: "saturation", name: "Saturation", category: "character", params: saturationParams },
   tapeSat: { type: "tapeSat", name: "Tape Sat", category: "character", params: tapeSatParams },
+  wowFlutter: { type: "wowFlutter", name: "Wow & Flutter", category: "character", params: wowFlutterParams },
   clipper: { type: "clipper", name: "Clipper", category: "character", params: clipperParams },
   reverb: { type: "reverb", name: "Reverb", category: "space", params: reverbParams },
   delay: { type: "delay", name: "Delay", category: "space", params: delayParams },

@@ -1,0 +1,173 @@
+/* 26-settings-glass.css — premium glassmorphism for the settings popover
+ *
+ * Appended LAST (see src/styles/index.css). The popover surface is defined in
+ * 09-scale-panel-popover.css; this sheet upgrades it without editing that file,
+ * so the original surface stays intact for comparison.
+ *
+ * ── The constraint that shaped every value below ────────────────────────────
+ * The settings popover floats OVER the DAW. A translucent panel means the text
+ * inside is rendered on a BLEND of the panel colour and whatever runs beneath
+ * it — a lit sequencer step, an accent-highlighted pad, the bright text of a
+ * meter. Glass that looks premium on a black screenshot can put 8px labels
+ * below AA in a real session.
+ *
+ * The fill therefore stays HIGH (94%) and the blur does the work of separating
+ * layers rather than transparency doing it. Measured against the app
+ * background at that alpha, --text-faint lands at 4.86:1 — above the 4.5 AA
+ * floor — and against a LIGHT backdrop (a lit step, a bright meter) the
+ * composite would fall below AA, so the panel text also carries a tight shadow.
+ * That pairing is the honest trade: the alpha covers the common case, and the
+ * shadow covers the case the alpha cannot. Both are pinned by
+ * tests/settings-glass.test.ts, which recomputes them from the real tokens, so
+ * lowering the fill for a "more glassy" look fails the build rather than the UI.
+ */
+
+/* ---------- The surface ---------- */
+
+.scale-popover {
+  /* Layered fill: a near-opaque base for guaranteed legibility, with a faint
+     top-down lightening so the panel reads as a physical sheet catching light
+     rather than a flat rectangle. */
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-panel-2) 55%, transparent) 0%, transparent 42%),
+    color-mix(in srgb, var(--bg-panel) 94%, transparent);
+  /* The shadow is the half of the legibility pair that the alpha cannot
+     deliver: against a LIGHT backdrop the composite lifts and plain contrast
+     drops, and a tight dark shadow restores the edge without flattening the
+     text into a grey smear. */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  /* -webkit- prefix is not optional: Safari still needs it for backdrop-filter
+     to apply at all, and a missing prefix there means NO blur — the panel would
+     fall back to the alpha fill alone and lose its depth. */
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  backdrop-filter: blur(24px) saturate(150%);
+  /* A hairline of light at the top edge is what makes frosted glass legible as
+     a distinct surface — without it the panel melts into the panel behind it. */
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+  border-radius: 0 0 10px 10px;
+  box-shadow:
+    /* Ambient: the panel floats. */
+    0 18px 48px -12px rgba(0, 0, 0, 0.72),
+    0 4px 12px -4px rgba(0, 0, 0, 0.5),
+    /* Contact: a tight line where the panel meets the content behind it. */ 0 -1px 0 rgba(255, 255, 255, 0.04),
+    /* Inner top highlight — the light-catching edge. */ inset 0 1px 0 rgba(255, 255, 255, 0.055);
+  padding: 12px 14px 14px;
+  overflow: hidden;
+}
+
+/* No backdrop-filter (older engines, or a hardened browser): the panel must
+   still be OPAQUE, or the text sits on raw sequencer pixels. @supports makes
+   this a hard fallback rather than a graceful-looking-but-unreadable degrade. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .scale-popover {
+    background: var(--bg-panel);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Calm Motion: the app's accessibility kill switch also covers the blur, since
+   a large blur radius is a compositing cost on every frame. */
+.theme-no-anim .scale-popover {
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  backdrop-filter: blur(12px) saturate(120%);
+}
+
+/* ---------- Enter / leave motion ---------- */
+
+/* Motion lives on an inner wrapper rather than on the popover itself, because
+   the popover is mounted and unmounted with the panel — animating a mounting
+   element's own opacity never shows. The wrapper is what persists long enough
+   to transition. */
+.scale-popover {
+  animation: popover-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.theme-no-anim .scale-popover {
+  animation: none;
+}
+
+/* ---------- Controls inside the glass ---------- */
+
+/* The token editor is the tallest thing in this panel; a visible, themed
+   scrollbar keeps it from looking cut off (the same defect class the dock
+   scrollbars were fixed for in V0d). */
+.scale-popover {
+  max-height: min(72vh, 620px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.scale-popover::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scale-popover::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.scale-popover::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Rows: a hover plate that reads as "this is a control" on a glass surface.
+   On an opaque panel a border is enough; on glass the background plate is what
+   separates the row from whatever is moving behind it. */
+.theme-panel .theme-row:hover,
+.theme-panel .theme-preset:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-radius: 5px;
+}
+
+.theme-panel .theme-preset {
+  transition:
+    background 0.14s ease,
+    color 0.14s ease,
+    border-color 0.14s ease;
+}
+
+.theme-panel .theme-mini-btn {
+  transition:
+    background 0.14s ease,
+    color 0.14s ease,
+    border-color 0.14s ease,
+    transform 0.14s ease;
+}
+
+.theme-panel .theme-mini-btn:active {
+  transform: translateY(1px);
+}
+
+/* A visible focus ring matters more here than usual: on translucent glass a
+   1px accent outline is the only thing that tells a keyboard user which row
+   they are on. */
+.theme-panel :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+/* ---------- Grouped rhythm ---------- */
+
+.theme-panel-title {
+  color: var(--text-dim);
+  margin-bottom: 2px;
+}
+
+.theme-panel > * + * {
+  margin-top: 2px;
+}

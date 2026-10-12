@@ -29,11 +29,13 @@ export interface ComplaintIntent {
 }
 
 const COMPLAINT_WORDS: ReadonlyArray<readonly [RegExp, ComplaintKind]> = [
-  [/\b(?:empty|void|pr[áa]zdn\w*)\b/i, "empty"],
-  [/\b(?:thin|weak|tenk[ýý]\w*|chud[ýy]\w*|slab[ýy]\w*)\b/i, "thin"],
-  [/\bmuddy\b|\bblato\b|\bbahnist\w*|\bkaln\w*/i, "muddy"],
-  [/\bharsh\b|\bpiercing\b|\bostr[ýyá]\w*|\bdr[áá]ž\w*|\bpich[áa]\b/i, "harsh"],
-  [/\bno\s+punch\b|\bbez\s+razanc\w*|\bno\s+knock\b|\bm[äa]kk[ée]\w*\s+drums\b/i, "noPunch"],
+  // SK synonym wave (2026-10-12): deaccented stems, each mapping to an
+  // EXISTING kind — no new diagnosis plumbing, only more ways to say it.
+  [/\b(?:empty|void|prazdn\w*)\b|\bnic\s+sa\s+nedeje/i, "empty"],
+  [/\b(?:thin|weak|tenk\w*|chud\w*|slab\w*)\b/i, "thin"],
+  [/\bmuddy\b|\bblat[oi]?\b|\bblat[ai]st\w*|\bbahnist\w*|\bkaln\w*|\bzamuten\w*|\bdut\w*|\bhukot/i, "muddy"],
+  [/\bharsh\b|\bpiercing\b|\bostr\w*|\bdraz\w*|\bpicha\b|\bkrici\b|\bskrece\b|\bbodav/i, "harsh"],
+  [/\bno\s+punch\b|\bbez\s+razanc\w*|\bno\s+knock\b|\bmakk\w*\s+drums\b|\bmrtv\w*|\bbez\s+uder\w*|\bchyba\s+uder\w*/i, "noPunch"],
 ];
 
 const ROLE_WORDS: ReadonlyArray<readonly [RegExp, string]> = [
@@ -49,16 +51,23 @@ const ROLE_WORDS: ReadonlyArray<readonly [RegExp, string]> = [
 ];
 
 export function parseComplaintIntent(text: string): ComplaintIntent | null {
+  // Deaccented once: keyboards differ ("mŕtvy" vs "mrtvy") and the new stems
+  // are ASCII; the legacy [áa]-style alternations keep matching the
+  // deaccented input.
+  const plain = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
   let complaint: ComplaintKind | null = null;
   for (const [re, kind] of COMPLAINT_WORDS) {
-    if (re.test(text)) {
+    if (re.test(plain)) {
       complaint = kind;
       break;
     }
   }
   if (complaint == null) return null;
-  const role = ROLE_WORDS.find(([re]) => re.test(text))?.[1] ?? null;
-  const family = TARGET_WORDS.find(([re]) => re.test(text))?.[1] ?? null;
+  const role = ROLE_WORDS.find(([re]) => re.test(plain))?.[1] ?? null;
+  const family = TARGET_WORDS.find(([re]) => re.test(plain))?.[1] ?? null;
   // a complaint must point at SOMETHING — bare "muddy" alone is too vague
   if (role == null && family == null) return null;
   return { kind: complaint, role, family };

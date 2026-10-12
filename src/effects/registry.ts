@@ -38,6 +38,7 @@ import { createFreqShiftNode } from "../audio-worklets/freqshifter-node";
 import { createPitchCorrectNode } from "../audio-worklets/pitchcorrect-node";
 import { createPitchShiftNode } from "../audio-worklets/pitchshift-node";
 import { createVinylNode } from "../audio-worklets/vinyl-node";
+import { createWowFlutterNode } from "../audio-worklets/wowflutter-node";
 import { createBeatManglerNode } from "../audio-worklets/beatmangler-node";
 import { createVocoderNode } from "../audio-worklets/vocoder-node";
 import { createApeksNode, createSirkaNode, createPrudNode } from "../audio-worklets/zenit-m2-nodes";
@@ -57,6 +58,7 @@ import {
   defaultParamsOf,
   saturationParams,
   tapeSatParams,
+  wowFlutterParams,
   clipperParams,
   reverbParams,
   delayParams,
@@ -214,6 +216,7 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   autowah: "critical",
   stutter: "critical",
   tapeSat: "critical",
+  wowFlutter: "critical",
   comb: "critical",
   multiTapDelay: "critical",
   vowel: "critical",
@@ -1029,6 +1032,24 @@ const tapeSat: EffectDefinition = {
   factory(ctx, instance) {
     if (isWorkletReady("tapeSat", ctx)) return createTapeNode(ctx, instance);
     return bypassRuntime(ctx, "AudioWorklet unavailable — tape saturation bypassed (1:1 signal)");
+  },
+};
+
+/* ---------------- Wow & Flutter ---------------- */
+
+/**
+ * Musical pitch instability. NOT the Vinyl Suite's wow/flutter re-skinned: depth
+ * is in cents, the read pointer never wraps ahead of the write, and both
+ * channels share one modulation so a pad keeps its stereo image.
+ */
+const wowFlutter: EffectDefinition = {
+  type: "wowFlutter",
+  name: "Wow & Flutter",
+  category: "character",
+  params: wowFlutterParams,
+  factory(ctx, instance) {
+    if (isWorkletReady("tapeSat", ctx)) return createWowFlutterNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable - wow & flutter bypassed (1:1 signal)");
   },
 };
 
@@ -3808,6 +3829,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   compressor,
   saturation,
   tapeSat,
+  wowFlutter,
   clipper,
   limiter,
   stepGate,

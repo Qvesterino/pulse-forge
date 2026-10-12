@@ -233,6 +233,37 @@ at all. The token editor is the surface that closes that gap.
    back to a text field instead of showing a swatch that differs from the
    value.
 
+## Settings glass (2026-10-12) — premium, measured
+
+1. **`src/styles/26-settings-glass.css`, appended last.** It upgrades the
+   settings popover in place rather than rewriting `09-scale-panel-popover.css`,
+   so the original surface stays intact for comparison.
+2. **The fill alpha is a legibility budget, not a taste knob.** The popover
+   floats over the DAW, so its text renders on a blend of the panel colour and
+   whatever is behind it. Measured at 94% over the app background, `--text`
+   is 12.4:1, `--text-dim` 6.2:1 and `--text-faint` 4.86:1 — all above the AA
+   floor. `tests/settings-glass.test.ts` recomputes these from the real
+   `:root` tokens, so lowering the fill for a "more glassy" look fails the
+   build before it fails the UI.
+3. **A tight text shadow covers the case the alpha cannot.** Against a LIGHT
+   backdrop — a lit sequencer step, a bright meter — the composite alone falls
+   below AA. The test asserts that limitation explicitly rather than hiding it:
+   alpha alone is NOT sufficient there, and the declared `text-shadow` is what
+   closes the gap. Documenting the limit is the point; claiming the alpha
+   sufficed would be a measurement made only against a black backdrop.
+4. **`@supports not (backdrop-filter)` makes the panel opaque** where the blur
+   is unavailable. A browser that ignores the blur would otherwise render the
+   fill alpha over raw sequencer pixels, with no warning.
+5. **The `-webkit-` prefix is kept**, or Safari applies no blur at all and the
+   panel loses its depth silently.
+6. **Calm Motion cuts the blur as well as the animation** — a large blur
+   radius is a per-frame compositing cost, and the motion toggle is an
+   accessibility affordance that should also lighten rendering work.
+7. Entry motion animates opacity/transform, never layout. The panel is scrollable
+   with a themed scrollbar because the token editor can exceed its height, and
+   every control gets a 2px focus ring, which matters more than usual on
+   translucent glass.
+
 ## Non-goals for this ADR
 
 No change to `:root` defaults, no bundle-budget change. `--inspector-width`,

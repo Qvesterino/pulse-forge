@@ -155,9 +155,9 @@ export const CONCEPTS: readonly ConceptDef[] = [
     defaultTarget: "bass",
     patterns: [
       /\bdeeper\b/,
-      /\bhlb\u0161(ia|\u00ed|ie|\u00fd|\u00edu|iu)?(?![a-z0-9])/,
+      /\bhlbs(ia|i|ie|y|u|iu)?(?![a-z0-9])/,
       /\bsub-ier\b/,
-      /\bhlb\u010d\b/,
+      /\bhlbc\b/,
     ],
   },
   {
@@ -168,26 +168,26 @@ export const CONCEPTS: readonly ConceptDef[] = [
   {
     concept: "warmer",
     defaultTarget: "bass",
-    patterns: [/\bwarmer\b/, /\bteplej\u0161(ia|\u00ed|ie|\u00fd|\u00edu|iu)?(?![a-z0-9])/],
+    patterns: [/\bwarmer\b/, /\bteplejs(ia|i|ie|y|u|iu)?(?![a-z0-9])/],
   },
   {
     concept: "darker",
     defaultTarget: "drums",
-    patterns: [/\bdarker\b/, /\btmav\u0161(ia|\u00ed|ie|\u00fd|\u00edu|iu)?(?![a-z0-9])/],
+    patterns: [/\bdarker\b/, /\btmavs(ia|i|ie|y|u|iu)?(?![a-z0-9])/],
   },
   {
     concept: "brighter",
     defaultTarget: "drums",
     patterns: [
       /\bbrighter\b/,
-      /\bsvetlej\u0161(ia|\u00ed|ie|\u00fd|\u00edu|iu)?(?![a-z0-9])/,
-      /\bjasnej\u0161(ia|\u00ed|ie|\u00fd|\u00edu|iu)?(?![a-z0-9])/,
+      /\bsvetlejs(ia|i|ie|y|u|iu)?(?![a-z0-9])/,
+      /\bjasnejs(ia|i|ie|y|u|iu)?(?![a-z0-9])/,
     ],
   },
   {
     concept: "wider",
     defaultTarget: "lead",
-    patterns: [/\bwider\b/, /(?:^|[^a-z0-9])[s\u0161]ir[s\u0161](ia|\u00ed|ie|\u00fd|\u00edu|iu)?(?![a-z0-9])/],
+    patterns: [/\bwider\b/, /(?:^|[^a-z0-9])sirs(ia|i|ie|y|u|iu)?(?![a-z0-9])/, /\bsirok[xy]?\b/],
   },
   {
     concept: "grittier",
@@ -195,7 +195,8 @@ export const CONCEPTS: readonly ConceptDef[] = [
     patterns: [
       /\bgrittier\b/,
       /\bdirtier\b/,
-      /\b\u0161pinavej\u0161(ia|\u00ed|ie|\u00fd|\u00edu|iu)?(?![a-z0-9])/,
+      /\bspinavejs(ia|i|ie|y|u|iu)?(?![a-z0-9])/,
+      /\btazs(ia|i|ie|y|u|iu)?\b/,
       /\bmore grit\b/,
       /\bviac gritu\b/,
     ],
@@ -554,7 +555,13 @@ function targetForConcept(
 }
 
 export function parseProductionIntent(text: string): ProductionIntent | null {
-  const lower = text.toLowerCase();
+  // Deaccented once here: every SK stem below is ASCII, so "hlbšiu" and
+  // "hlbsiu" (keyboards differ) hit the same pattern. The diacritic-bearing
+  // legacy patterns were converted to ASCII stems with the suffix list.
+  const lower = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
   const goals: ProductionGoal[] = [];
   // Per-clause target index: the clause each concept was matched in, so a
   // two-clause request can aim its halves at two different tracks.

@@ -125,10 +125,10 @@ export function parseMixIntent(text: string): MixParse {
     detected.push("colder tone");
   }
 
-  if (/\bpunch(?:ier|y)?\b|\bmore punch\b|\btighter\b|\brazantnejsi|\brazant/.test(lower)) {
+  if (/\bpunch(?:ier|y)?\b|\bmore punch\b|\btighter\b|\brazantnejsi|\brazant|\b(?:viac |more )?kompres|\bsquash/.test(lower)) {
     overrides.punch = "more";
     detected.push("more punch");
-  } else if (/\bsofter (?:drums|mix|hit)\b|\bmenej razant/.test(lower)) {
+  } else if (/\bsofter (?:drums|mix|hit)\b|\bmenej razant|\bmenej kompres|\bless compress/.test(lower)) {
     overrides.punch = "less";
     detected.push("softer");
   }
@@ -175,9 +175,9 @@ export interface SectionFlowParse {
   detected: string[];
 }
 
-const REVISE_ENERGY_MORE = /\bmore (?:energetic|energic|energy)\b|\benergickejsi\b|\bviac (?:energie|energicky)\b/;
-const REVISE_ENERGY_LESS = /\bless (?:energetic|energic|energy)\b|\bcalmer\b|\bmenej (?:energie|energicky)\b/;
-const REVISE_DENSITY_MORE = /\b(?:more )?(?:busier|denser)\b|\bhustejsi\b|\bviac prvkov\b/;
+const REVISE_ENERGY_MORE = /\bmore (?:energetic|energic|energy)\b|\benergickejs|\bviac (?:energie|energicky)\b/;
+const REVISE_ENERGY_LESS = /\bless (?:energetic|energic|energy)\b|\bcalmer\b|\bpokojnejs|\bmenej (?:energie|energicky)\b/;
+const REVISE_DENSITY_MORE = /\b(?:more )?(?:busier|denser)\b|\bhustejs|\bviac prvkov\b/;
 const REVISE_DENSITY_LESS = /\bsparser\b|\bless busy\b|\bmenej hust/;
 
 /** Section-role words that turn a global revise into a TARGETED one. */

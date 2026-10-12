@@ -2944,3 +2944,194 @@ template's 0.95 satisfies `> 0`. Had I not added the BASELINE run, this wave wou
 reported "verified" on a test that could not fail. The assertion now compares against the
 baseline value, and the BASELINE test fails loudly if the template's first step ever moves
 so the recover test cannot quietly become meaningless.
+
+## Wave 17 - 2026-10-12 - wow & flutter: the depth control was 500x too weak, and my instrument was louder than the signal
+
+### The order of events, because it matters
+
+Daniel asked for the wow & flutter effect. It was built, wired, typechecked and given an e2e
+measurement spec. That spec was **red on arrival**:
+
+```
+[wow] depth=0 peak deviation = 231.85 cents over 48 windows     -> expected < 2, FAILED
+[wow] depth=30 peak = 0.6 cents, mean = -0.02                   -> expected > 15, FAILED
+[wow] requested 1 Hz -> measured 1.91 Hz over 131 windows       -> expected < 1.8, FAILED
+3 failed, 1 passed
+```
+
+Three different magnitudes in one run. That is a measurement talking, not a defect talking,
+so I built an instrument before touching the DSP.
+
+### Instrument 1: windowed zero crossings (the original). Rejected, with numbers.
+
+A 60 ms window at 440 Hz holds ~26 crossings, so frequency quantises in ~4% steps - about
+66 cents. "The effect does a little" and "the effect does nothing" are the same reading, and a
+small noisy envelope reads as a fast sign-flipping series, which is exactly how a requested
+1 Hz wobble produced 1.91 Hz. It cannot answer the question the knob makes.
+
+### Instrument 2: quadrature demodulation. Rejected, and this one was subtler.
+
+Demodulate at the probe tone, unwrap `arg z`, differentiate: `f_inst = f0 + (1/2pi) d/dt arg z`.
+Much finer resolution. Calibrated on a **pure 440 Hz sine through nothing at all**, it reported:
+
+```
+CALIBRATION (no effect)   peak = 13.80 cents   rms = 9.73 cents   sign changes at 879.89 Hz
+```
+
+880 Hz is 2*f0. The instrument was reporting the counter-rotating term of the analytic signal
+beating against the demodulation window - the DC term is exactly `-j*A/4` and whatever of the
+2*f0 component leaks rotates at 2*f0. The instrument's noise floor was ~14 cents while the
+signal under test was 0.02 cents. **An instrument with a noise floor above the signal cannot
+measure the signal.**
+
+### Instrument 3: measure the delay. Accepted.
+
+The effect modulates a delay, so measure the delay - the thing it actually claims to control.
+Feed isolated impulses and recover each one's delay by **amplitude centroid**. The read is a
+linear interpolation between two ring samples, so an impulse of amplitude 1 at fractional
+position `f` lands as exactly `[1-f, f]`: the two samples sum to 1, which is what makes the
+centroid exact rather than a fit. Then pitch follows analytically from the read position
+`r(t) = t - D(t)`:
+
+```
+frequency ratio = dr/dt = 1 - dD/dt        (dD/dt is DIMENSIONLESS)
+```
+
+No window length to defend, no filter, no unwrap. Calibration on the pass-through reads
+**0.000 cents**, which is what makes the other rows mean anything.
+
+Three bugs lived in this instrument before it was right, and all three were mine:
+
+1. **Sign.** A delay line _delays_: an impulse written at 2205 was observed at 2813.075, so
+   `D = write + delay`. The first version searched backwards and measured a whole multiple of
+   the impulse spacing (~60 ms for a 0 ms bypass).
+2. **Fractional loop bounds.** `for (i = w + prevD - SEARCH; ...)` starts at a non-integer, so
+   every array read was `undefined` and the whole train was unfindable while the integer-bounded
+   lead impulse still worked.
+3. **Dimension.** I divided `dD/dt` in samples-per-second by the delay in samples, which has
+   units 1/s, and called it a frequency ratio. The textbook `dD/dt / D` is the **granular
+   resampling** law - correct when `D` counts samples consumed per output sample, wrong for a
+   continuously modulated delay line. It reported 1.45 cents where the time-domain answer is
+   0.02.
+
+### D21 - the depth control delivered 0.02 cents for a requested 10 (P1, CONFIRMED + fixed)
+
+With the instrument calibrated, the table was unambiguous:
+
+| case               | requested | measured, before           |
+| ------------------ | --------- | -------------------------- |
+| depth 0 / drift 0  | 0 c       | 0.00 c (but D = 13.789 ms) |
+| depth 10 @ 0.5 Hz  | 10 c      | **0.02 c**                 |
+| depth 30 @ 0.5 Hz  | 30 c      | **0.06 c**                 |
+| depth 25 @ 1 Hz    | 25 c      | **0.05 c**                 |
+| flutter 10 @ 11 Hz | 10 c      | **0.02 c**                 |
+| drift = 1          | -         | **650 c**                  |
+
+Two independent defects, and the factor fell out of the arithmetic:
+
+1. `wfCentsToAmplitudeSeconds` multiplied by `baseDelaySeconds`. That is the resampling law
+   again, one level down. It is worth exactly `1/baseDelay` = **250x** at a 4 ms base.
+2. The read offset used `wobble * 0.5`, halving `dD/dt` and therefore halving the delivered
+   deviation: **2x**.
+
+250 x 2 = 500, which is the measured ratio. The model was not fitted after the fact - the
+factor was predicted from the source and then confirmed.
+
+A third defect came with it: `swing` unconditionally included `maxAmpSeconds * 0.35`, so the
+drift term was 35% of the entire 56 ms ring. That swung the delay by **19.6 ms** and measured at
+**650 cents** of pitch wander - the largest single bug in the effect, and invisible to a test
+that only checked "is the drift audible".
+
+### The fix, and what it costs
+
+- The conversion is now `A = r / (2*pi*f)` with `r = 1 - 2^(-cents/1200)` - subtractive, because
+  pitch goes _down_ as the delay grows. The two spellings differ by 3.4% at 60 cents, which is
+  not noise at this scale.
+- The offset centres as `base + swing/2 + wobble` with **no half on the wobble**, and the swing
+  budget is `base - 1` samples. That is the exact condition under which the offset stays >= 1
+  sample and the read provably never reaches the write pointer.
+- Drift is expressed in cents like everything else (`DRIFT_MAX_CENTS = 6` at the walk's own
+  3 Hz corner) instead of as a fraction of the ring.
+- When the terms overflow the budget they are scaled down **proportionally**, so the balance
+  between wow, flutter and drift survives the clamp instead of one term vanishing.
+- `BASE_DELAY_SECONDS` moved 4 ms -> **10 ms**. This is the trade-off, stated plainly: the
+  cents scale and the rate scale pull against each other, because delivering C cents at rate f
+  needs a swing of `r / (2*pi*f)` seconds, and 0.05 Hz is where that is largest. At a 4 ms base
+  the 60-cent end of the knob is unreachable below ~1.2 Hz; at 10 ms the full 60 cents is exact
+  from 0.5 Hz up and `wfAchievableCents` reports the truth below that. **The price is 10 ms of
+  insert latency** - ordinary for a musical time-based effect, but not free, and it is the
+  number to argue with if someone wants a shorter base.
+
+### After the fix - the same instrument, unchanged
+
+| case               | requested | measured                           | deviation from design |
+| ------------------ | --------- | ---------------------------------- | --------------------- |
+| pass-through       | -         | 0.00 c                             | calibration           |
+| depth 0 / drift 0  | 0 c       | **0.00 c**, D = 10.092 ms constant | exact                 |
+| depth 0 / drift 1  | -         | 1.86 c                             | was 650 c             |
+| depth 10 @ 0.5 Hz  | 10 c      | **9.86 c**                         | -1.4%                 |
+| depth 30 @ 0.5 Hz  | 30 c      | **29.69 c**                        | -1.0%                 |
+| depth 25 @ 1 Hz    | 25 c      | **25.01 c**                        | +0.04%                |
+| flutter 10 @ 11 Hz | 10 c      | **9.95 c**                         | -0.5%                 |
+| extreme corner     | -         | D = 16.0..24.9 ms, no wrap         |                       |
+
+The measured **delay range** matches the closed-form prediction to the sample - depth 30 at
+0.5 Hz measured 7.358..18.294 ms against a predicted 7.358..18.296 ms - which is a stronger
+statement than the cents column, because it pins the mechanism and not just the consequence.
+
+### One more instrument error, in the estimator this time
+
+After the fix the table still showed ~1.9x too much deviation, which would have been the second
+wrong "fix" of the day. It was not the DSP: **rms** sat exactly on `A/sqrt(2)` (depth 10 -> 6.97
+vs 7.07 predicted) while **peak** over-read. Peak is a single-sample estimator over a lightly
+sampled quasi-sine; one mis-assigned impulse spike doubles it. Depth is therefore judged on rms
+and peak is kept only as a diagnostic.
+
+### Three guards that were wrong before they were right
+
+- "Each impulse sums to 1": reads `~f` or `~1-f` depending on which element of the interpolant
+  pair is the peak.
+- "Every nonzero run is exactly 2 samples": **fails for a legitimate reason** - at the worst
+  corner the delay falls to ~220 samples, which _is_ the input spacing, so output impulses
+  land adjacent and merge into 4-sample runs (measured: 20 merges out of 1529).
+- "Total energy equals impulse count, to 0.01": the interpolant pair is `(1-f, f')` with
+  `f' != f` because the offset moves between the two samples that share an impulse, so
+  per-impulse energy varies by -0.7%..+1.4% and over 1529 impulses those differences random-walk
+  with sigma ~= 0.78 units. Measured surplus: +0.99. The band is now 2%, and the invariants that
+  are actually exact are the ones asserted: the delay never leaves the ring, and the tracker
+  finds essentially every impulse.
+
+### Falsification
+
+Each defect reintroduced one at a time, against the 16 headless specs:
+
+| mutation                                   | specs red |
+| ------------------------------------------ | --------- |
+| base-delay factor back into the conversion | **8**     |
+| `wobble * 0.5` back into the offset        | **5**     |
+| drift back to 35% of the ring              | **1**     |
+| restored                                   | 0 (16/16) |
+
+The drift mutation turning exactly one spec red - the regression that names it - is the useful
+one: the other two are caught broadly, so their guard would survive a subtler variant.
+
+### Gates for this wave
+
+- `tests/wow-flutter.test.ts` - **16/16**. Runs the real processor source headlessly (module
+  imported with the worklet globals stubbed, class captured from `registerProcessor`), so the
+  defect is caught by `npm run test` rather than only in a browser.
+- `tests/e2e/26-wow-flutter-measurement.spec.ts` - **7/7** in Chromium against the shipped
+  bundle, same measurement method, with a calibration row that must read 0.00 cents.
+- `scripts/probe-wow-flutter.mjs` - the standalone diagnostic that produced every table above.
+- `npx tsc --noEmit` clean; prettier clean.
+
+### What this wave does not close
+
+- The effect adds **10 ms** of latency. The engine's latency calibration path knows about
+  reported latency, but I have not verified that a 10 ms wow on a busy graph reads correctly in
+  the reported total.
+- `wfAchievableCents` is implemented and unit-tested, but **nothing in the UI calls it** - the
+  panel still displays the requested cents, so below 0.5 Hz the readout can overstate what the
+  buffer can deliver. The knob is honest; the number next to it is not yet.
+- The `peak` vs `rms` distinction is now recorded in the probe and the specs, but any future
+  measurement of a modulated delay should prefer rms for the same reason.

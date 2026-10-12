@@ -358,7 +358,7 @@ const NUMBER_WORDS: ReadonlyArray<readonly [RegExp, number]> = [
 ];
 
 const UNDO_ASK =
-  /^\s*(?:please\s+)?(?:undo|vr[aá]ť(?:\s+to)?|vrath?ni|sp[aä]ť(?:\s+to)?|step\s+back)(?:\s+(?:the\s+)?(?:last\s+)?(?:action|change|krok))?(?:\s+(two|dva|dve|three|tri|four|styri)|\s+(\d{1,2}))?(?:\s*(?:steps?|kroky|krokov))?\s*[.!]?\s*$/i;
+  /^\s*(?:please\s+)?(?:undo|vr[aá]ť(?:\s+to)?|vrath?ni|sp[aä]ť(?:\s+to)?|krok\s+sp[aä]ť|step\s+back)(?:\s+(?:the\s+)?(?:last\s+)?(?:action|change|krok))?(?:\s+(two|dva|dve|three|tri|four|styri)|\s+(\d{1,2}))?(?:\s*(?:steps?|kroky|krokov))?\s*[.!]?\s*$/i;
 const REDO_ASK = /^\s*(?:please\s+)?(?:redo|zopakuj|dopredn?\w*)(?:\s+(\d{1,2}))?\s*[.!]?\s*$/i;
 
 export function parseUndoIntent(text: string): UndoIntent | null {
@@ -413,7 +413,7 @@ export function parseCheckpointIntent(text: string): CheckpointIntent | null {
 
 const QUERY_SUBJECTS: ReadonlyArray<readonly [RegExp, QueryIntent["subject"]]> = [
   [/\b(?:tempo|bpm|takt(?:e|u)?)\b/i, "tempo"],
-  [/\bkey\b|\btonina\b/i, "key"],
+  [/\bkey\b|\btonina\b|\bkluc\b|k\u013e\u00fa\u010d/i, "key"],
   [/\btracks?\b|\btrackov\b|\blanes?\b/i, "tracks"],
   [/\bmarkers?\b|\bmarkery\b|\bcues?\b/i, "markers"],
   [/\bgroove\b|\bswing\b/i, "groove"],
@@ -423,7 +423,7 @@ const QUERY_SUBJECTS: ReadonlyArray<readonly [RegExp, QueryIntent["subject"]]> =
 export function parseQueryIntent(text: string): QueryIntent | null {
   const isQuestion =
     /\?\s*$/.test(text) ||
-    /^\s*(?:what|which|how many|list|show|ako|aky|ak[áá]|v akom|kolko|koľko|zoznam|ukaz|co|čo)\b/i.test(text);
+    /^\s*(?:what|which|how many|list|show|ako|aky|ake|akej|ak[áá]|v akom|kolko|koľko|zoznam|ukaz|co|čo)\b/i.test(text);
   if (!isQuestion) return null;
   // "what did you just do" / "čo si spravil" → the LAST action from history
   if (/\b(?:did you|you just|si spravil|si urobil|last action|posledn)/i.test(text)) {
