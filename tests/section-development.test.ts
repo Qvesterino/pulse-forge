@@ -47,7 +47,7 @@ function section(
     notes: leadNotes.length > 0 ? { [leadTrackId]: leadNotes } : {},
   };
   return {
-    role,
+    role: role as SongBuildSection["role"],
     label,
     bars: stepCount / 16,
     intensity: 0.8,
