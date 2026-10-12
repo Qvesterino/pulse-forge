@@ -2396,6 +2396,14 @@ export interface BuildSongOptions {
    */
   hookReprise?: boolean;
   /**
+   * Section development (W1 of the vocal campaign): repeated sections EVOLVE
+   * deterministically — later verses quote the hook's opening fragment, the
+   * last hook section lifts its drum back half, and a bridge/build directly
+   * before it dips (the quiet before the last hit). Default TRUE; false
+   * restores flat repetitions (A/B).
+   */
+  development?: boolean;
+  /**
    * #6 dynamic song form — length words ("short", "radio edit", "extended",
    * "epic journey", "3 minutes", "2:30") scale the core cycles.
    */
@@ -2438,6 +2446,134 @@ function repeatMotif(notes: NoteEvent[], donorSteps: number, targetSteps: number
     }
   }
   return out;
+}
+
+/**
+ * SECTION DEVELOPMENT ENGINE (2026-10-11, W1 of the vocal campaign) — a
+ * repeated section should EVOLVE, not roll new dice. Three deterministic
+ * treatments keyed off each section's REPETITION INDEX (how many sections
+ * of the same role preceded it) and its position in the song:
+ *
+ *   hook quotation  — later verses quote the chorus hook's opening fragment
+ *                     (first bar, half velocity): the verse REMEMBERS the
+ *                     chorus. Classic pop memory, free of any new generation.
+ *   final lift      — the LAST hook-role section (the big final chorus) gets
+ *                     a velocity lift on the drum rows' second half.
+ *   pre-final dip   — a bridge/build section immediately before that last
+ *                     chorus dips its drum rows' second half to half
+ *                     velocity — the quiet before the last hit.
+ *
+ * Pure and deterministic; runs AFTER the hook reprise (it quotes the donor
+ * the hook found) and BEFORE transitions carve section tails.
+ */
+export function applySectionDevelopment(
+  doc: ProjectDocument,
+  sections: readonly SongBuildSection[],
+  options: { instrumentTrackIds?: readonly string[] } = {},
+): SongBuildSection[] {
+  const leadTrack = instrumentTrackForRole(doc, "lead", options.instrumentTrackIds);
+  // The donor: the first hook section with lead notes (same rule as the hook).
+  let donorNotes: NoteEvent[] = [];
+  if (leadTrack) {
+    for (const section of sections) {
+      if (!HOOK_ROLES.has(section.role)) continue;
+      const notes = section.pattern.notes[leadTrack.id] ?? [];
+      if (notes.length > 0) {
+        donorNotes = notes;
+        break;
+      }
+    }
+  }
+  const motif = donorNotes
+    .filter((note) => note.duration > 0)
+    .slice(0, 4)
+    .map((note) => ({ ...note, velocity: Math.min(1, note.velocity * 0.55) }));
+
+  // Position bookkeeping: repetition index per role + the last hook section.
+  const roleCount = new Map<string, number>();
+  const lastHookIndex = sections.reduce((last, section, index) => (HOOK_ROLES.has(section.role) ? index : last), -1);
+
+  let changed = false;
+  const developed = sections.map((section, index) => {
+    const repeatIndex = roleCount.get(section.role) ?? 0;
+    roleCount.set(section.role, repeatIndex + 1);
+    let next = section;
+
+    // 1 — hook quotation in later verses (and only where lead is welcome).
+    if (
+      motif.length > 0 &&
+      repeatIndex >= 1 &&
+      section.role === "verse" &&
+      section.roles.includes("lead") &&
+      leadTrack
+    ) {
+      const existing = next.pattern.notes[leadTrack.id] ?? [];
+      const firstBarTicks = Math.min(next.stepCount, 16) * (BAR_TICKS / 16);
+      const quote = motif.map((note) => ({
+        ...note,
+        start: Math.min(note.start, firstBarTicks - note.duration),
+      }));
+      next = {
+        ...next,
+        pattern: {
+          ...next.pattern,
+          notes: {
+            ...next.pattern.notes,
+            [leadTrack.id]: [...quote, ...existing],
+          },
+        },
+      };
+      changed = true;
+    }
+
+    // 2 — the last hook section lifts its drum back half (the big final one).
+    if (index === lastHookIndex && HOOK_ROLES.has(section.role) && next.pattern.rows) {
+      const half = Math.floor(next.pattern.stepCount / 2);
+      const lifted: Record<string, number[]> = {};
+      let liftedAny = false;
+      for (const [padId, row] of Object.entries(next.pattern.rows)) {
+        const copy = [...row];
+        for (let step = half; step < copy.length; step++) {
+          if (copy[step] > 0) {
+            copy[step] = Math.min(1, copy[step] + 0.08);
+            liftedAny = true;
+          }
+        }
+        lifted[padId] = copy;
+      }
+      if (liftedAny) {
+        next = { ...next, pattern: { ...next.pattern, rows: lifted } };
+        changed = true;
+      }
+    }
+
+    // 3 — a bridge/build directly before that last chorus dips its back
+    // half (the quiet before the last hit).
+    const beforeLast = index === lastHookIndex - 1 && (section.role === "bridge" || section.role === "build");
+    if (beforeLast && next.pattern.rows) {
+      const half = Math.floor(next.pattern.stepCount / 2);
+      const dipped: Record<string, number[]> = {};
+      let dippedAny = false;
+      for (const [padId, row] of Object.entries(next.pattern.rows)) {
+        const copy = [...row];
+        for (let step = half; step < copy.length; step++) {
+          if (copy[step] > 0) {
+            copy[step] = Math.max(0.1, copy[step] * 0.5);
+            dippedAny = true;
+          }
+        }
+        dipped[padId] = copy;
+      }
+      if (dippedAny) {
+        next = { ...next, pattern: { ...next.pattern, rows: dipped } };
+        changed = true;
+      }
+    }
+
+    return next;
+  });
+
+  return changed ? developed : [...sections];
 }
 
 /**
@@ -2681,20 +2817,20 @@ export async function buildSong(
   // unrelated section previews.
   const hookScope = { instrumentTrackIds: baseIntent.targetTracks.instrumentTrackIds };
   const hookSections = options.hookReprise === false ? sections : applyLeadHook(doc, sections, hookScope);
-  const transitionedSections = applySongTransitions(doc, hookSections);
+  // Development runs on the hooked sections (it quotes the hook's donor)
+  // and before transitions carve tails.
+  const devSections =
+    options.development === false ? hookSections : applySectionDevelopment(doc, hookSections, hookScope);
+  const transitionedSections = applySongTransitions(doc, devSections);
   const alternatives: SongBuildAlternative[] = [];
   for (const lane of SONG_SEARCH_LANES) {
     const laneBuild = laneSections.get(lane);
     if (!laneBuild || laneBuild.some((section) => section === null)) continue;
+    const laneSectionList = laneBuild.filter((section): section is SongBuildSection => section !== null);
+    const hookedLane = options.hookReprise === false ? laneSectionList : applyLeadHook(doc, laneSectionList, hookScope);
     const completeSections = applySongTransitions(
       doc,
-      options.hookReprise === false
-        ? laneBuild.filter((section): section is SongBuildSection => section !== null)
-        : applyLeadHook(
-            doc,
-            laneBuild.filter((section): section is SongBuildSection => section !== null),
-            hookScope,
-          ),
+      options.development === false ? hookedLane : applySectionDevelopment(doc, hookedLane, hookScope),
     );
     const modes = laneModes.get(lane) ?? new Set<CandidateSearchInfo["mode"]>();
     alternatives.push({
