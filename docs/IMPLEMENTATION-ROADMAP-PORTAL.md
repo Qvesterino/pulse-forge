@@ -184,6 +184,39 @@ Formatters `formatMs / formatHz / formatDb / formatPct / formatSec` at `definiti
 
 `diffuse` must not call `Math.random()` directly — see §6.7.
 
+### 5.1 MOTION (added in v2, after the time-accuracy fix)
+
+Two parameters, both shipped **OFF**. `motionDepth` defaults to `0`, so a project
+that never touched them renders bit-identically to the pre-motion build — a new
+control must not change the sound of a project that did not ask for it.
+
+| id            | label    |  min | max | default | unit | taper | note                                                                                                                |
+| ------------- | -------- | ---: | --: | ------: | ---- | ----- | ------------------------------------------------------------------------------------------------------------------- |
+| `motionRate`  | `MOTION` | 0.05 |   8 |     0.6 | `Hz` | `log` | free-running LFO rate; **inert while `sync` holds a division**, exactly like every other LFO control in the catalog |
+| `motionDepth` | `WARP`   |    0 |   1 |       0 | —    | —     | how far the LFO may pull TIME and FEEDBACK; 0 = motionless                                                          |
+
+**One LFO, two destinations.** TIME takes the full swing and FEEDBACK a quarter of
+it, so the delay reads as a moving object rather than as a loudness effect. Both
+are **multiplicative** — a fraction of the user's own setting, not an absolute
+offset.
+
+TIME moves in **octaves**, not milliseconds: ±0.2 octave at `WARP 1`, i.e. ±15 %.
+An additive ±40 ms would be a huge sweep at 40 ms and inaudible at 2 s; ±15 % is
+6 ms of flutter at the short end and 300 ms of drift at the long end.
+
+**`SYNC` is shared, deliberately.** With a division selected the motion runs on
+the grid and `motionRate` is inert, so one dial means "put it on the grid" for
+both the delay length and the warp — rather than two SYNC knobs meaning different
+things. Pinned by `tests/spectral-motion.test.ts`, which asserts that two
+different `motionRate` values render **identically** under `sync`.
+
+**MOTION is inert in RESONATOR.** Measured, not assumed: that mode passes the ring
+`passInputThrough` and takes its output from the resonator, so nothing the LFO
+does to the delay read reaches the speaker — the difference is exactly `0`.
+RESONATOR has its own motion control in `resonance`. Both knobs are listed as
+inactive for RESONATOR in `PORTAL_ACTIVE_PARAMS_BY_MODE`, so the panel explains
+them instead of leaving them looking alive.
+
 ---
 
 ## 6. DSP traps specific to this effect

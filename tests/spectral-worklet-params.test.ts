@@ -381,6 +381,12 @@ const APPROVED_RACK: Array<[string, string, number, number, number, string | und
   ["drive", "DRIVE", 0, 1, 0, undefined, undefined],
   ["tone", "TONE", -24, 24, 0, "dB", undefined],
   ["mix", "MIX", 0, 1, 0.35, undefined, undefined],
+  // MOTION — one sine LFO, TIME full swing + FEEDBACK a quarter of it. `motionRate`
+  // follows the house LFO convention (0.05..8 Hz, log taper, default 0.6) and is
+  // inert while SYNC holds a division; `motionDepth` defaults to 0 so MOTION ships
+  // OFF and no existing project changes sound.
+  ["motionRate", "MOTION", 0.05, 8, 0.6, "Hz", "log"],
+  ["motionDepth", "WARP", 0, 1, 0, undefined, undefined],
 ];
 
 describe("PORTAL rack is the design that was approved", () => {

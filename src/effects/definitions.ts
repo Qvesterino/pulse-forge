@@ -2778,6 +2778,23 @@ export const portalParams: ParamDef[] = [
   { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
   { id: "tone", label: "TONE", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 0.35, format: formatPct },
+  // MOTION — one sine LFO, two destinations: TIME takes the full swing and
+  // FEEDBACK a quarter of it. RATE is the free-running rate and is INERT while
+  // SYNC holds a division, exactly like every other LFO control in the catalog
+  // (chorus, flanger, phaser, tremolo all use 0.05..8 Hz, default 0.6).
+  {
+    id: "motionRate",
+    label: "MOTION",
+    min: 0.05,
+    max: 8,
+    default: 0.6,
+    unit: "Hz",
+    format: (v) => `${v.toFixed(2)} Hz`,
+    taper: "log",
+  },
+  // Depth defaults to 0 so MOTION ships OFF. A new control must not alter the
+  // sound of a project that never touched it.
+  { id: "motionDepth", label: "WARP", min: 0, max: 1, default: 0, format: formatPct },
 ];
 
 /** Metadata half of an effect definition (params without the runtime). */

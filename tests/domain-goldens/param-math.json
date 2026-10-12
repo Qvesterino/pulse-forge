@@ -1409,7 +1409,9 @@
             "freeze": 0,
             "drive": 0,
             "tone": 0,
-            "mix": 0.35
+            "mix": 0.35,
+            "motionRate": 0.6,
+            "motionDepth": 0
           }
         }
       ]

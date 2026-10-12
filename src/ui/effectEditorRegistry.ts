@@ -14,9 +14,40 @@ const PORTAL_PRIMARY_BY_MODE: ReadonlyArray<readonly string[]> = [
   ["mode", "focus", "resonance", "mix"],
   ["mode", "feedback", "decay", "mix"],
 ];
+/**
+ * Is `paramId` actually used by PORTAL in `mode`?
+ *
+ * Single source of truth for the per-mode active set. The panel uses it to
+ * explain an inactive control instead of showing a knob that does nothing, and
+ * `tests/portal-presets.test.ts` uses it to reject a preset that stores values
+ * for a mode it never plays in.
+ *
+ * It was NOT a single source until a preset test failed against a private copy
+ * of the table: the UI knew MOTION was live in DELAY while the test believed
+ * otherwise. Two copies of one rule are a drift waiting for its turn — this
+ * predicate is the fix, not the second copy.
+ */
+export function isPortalParamActiveInMode(paramId: string, modeValue: number): boolean {
+  return PORTAL_ACTIVE_PARAMS_BY_MODE[portalModeIndex(modeValue)]!.has(paramId);
+}
+
 const PORTAL_MODE_LABELS = ["DELAY", "RESONATOR", "FREEZE"] as const;
 const PORTAL_ACTIVE_PARAMS_BY_MODE: ReadonlyArray<ReadonlySet<string>> = [
-  new Set(["mode", "time", "sync", "feedback", "decay", "shift", "diffuse", "freeze", "drive", "tone", "mix"]),
+  new Set([
+    "mode",
+    "time",
+    "sync",
+    "feedback",
+    "decay",
+    "shift",
+    "diffuse",
+    "freeze",
+    "drive",
+    "tone",
+    "mix",
+    "motionRate",
+    "motionDepth",
+  ]),
   new Set(["mode", "resonance", "focus", "focusWidth", "drive", "tone", "mix"]),
   new Set([
     "mode",
@@ -32,6 +63,13 @@ const PORTAL_ACTIVE_PARAMS_BY_MODE: ReadonlyArray<ReadonlySet<string>> = [
     "drive",
     "tone",
     "mix",
+    // FREEZE warps the held repeat, so MOTION is live here — measured, not
+    // assumed: tests/spectral-motion.test.ts renders both and requires the
+    // held tail to move. RESONATOR is absent on purpose — it never reads the
+    // delay ring, so a warp there is a provable no-op (the same test pins it)
+    // and the panel says so instead of offering two dead knobs.
+    "motionRate",
+    "motionDepth",
   ]),
 ];
 
@@ -84,7 +122,7 @@ export function effectEditorSpec(type: EffectType, values: Readonly<Record<strin
 export function portalParamModeHint(paramId: string, modeValue: number): string | undefined {
   if (paramId === "mode") return undefined;
   const mode = portalModeIndex(modeValue);
-  if (PORTAL_ACTIVE_PARAMS_BY_MODE[mode]!.has(paramId)) return undefined;
+  if (isPortalParamActiveInMode(paramId, mode)) return undefined;
 
   if (paramId === "freeze" && mode === 2) {
     return "FREEZE mode already holds the spectrum; this switch is used by DELAY mode.";

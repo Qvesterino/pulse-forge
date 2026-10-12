@@ -24,6 +24,7 @@
 import { ResonatorBank, type ResonatorParams } from "./resonator";
 import { SpectralDelayBank, type SpectralDelayParams } from "./spectralDelay";
 import { MAX_BLOCK, StftEngine, blockSmoothingCoefficient, clampBinMagnitude } from "./stft";
+import { syncedLfoHz } from "../../tempo-sync";
 
 export const SPECTRAL_MODE_DELAY = 0;
 export const SPECTRAL_MODE_RESONATOR = 1;
@@ -49,6 +50,10 @@ export interface SpectralParams {
   drive: number;
   tone: number;
   mix: number;
+  /** Free-running LFO rate in Hz. Only used when `sync` is OFF. */
+  motionRate: number;
+  /** How far the LFO may pull TIME and FEEDBACK. 0 = motionless. */
+  motionDepth: number;
 }
 
 export const DEFAULT_SPECTRAL_PARAMS: SpectralParams = {
@@ -66,6 +71,11 @@ export const DEFAULT_SPECTRAL_PARAMS: SpectralParams = {
   drive: 0,
   tone: 0,
   mix: 0.35,
+  // MOTION ships DISABLED. A new control must not change the sound of a project
+  // that never touched it, so the default depth is 0 and every render with an
+  // untouched instance is bit-identical to the pre-motion build.
+  motionRate: 0.6,
+  motionDepth: 0,
 };
 
 /** Tempo-sync divisions, matching the kaskada `SYNC_RATIO` contract:
@@ -73,6 +83,28 @@ export const DEFAULT_SPECTRAL_PARAMS: SpectralParams = {
  *  the division, not the manual time scaled by it — so SYNC actually lands on
  *  the grid instead of near it. */
 const SYNC_RATIOS = [0, 1, 0.5, 1 / 3, 0.25, 1 / 6] as const;
+
+const TWO_PI = Math.PI * 2;
+
+/**
+ * MOTION — one sine LFO, two destinations.
+ *
+ * TIME takes the full swing and FEEDBACK a smaller one, so the delay reads as
+ * a moving object rather than as a loudness effect. Both are MULTIPLICATIVE:
+ * a percentage of the user's own setting, not an absolute offset, so the motion
+ * stays proportional wherever the knob sits.
+ *
+ * TIME moves in OCTAVES, not milliseconds, which is what makes the warp musical
+ * at both ends of a 20..2000 ms range. An additive ±40 ms is a huge sweep at
+ * 40 ms and inaudible at 2 s; ±0.2 octaves is ±15 % everywhere, which is 6 ms of
+ * flutter at the short end and 300 ms of drift at the long end.
+ *
+ * The magnitudes here are a design judgement, so they are measured rather than
+ * asserted: `tests/spectral-motion.test.ts` renders a 2 s sweep and requires the
+ * warp to be audible at DEPTH 1 and silent at DEPTH 0.
+ */
+const MOTION_TIME_OCTAVES = 0.2;
+const MOTION_FEEDBACK_AMOUNT = 0.25;
 
 /** Tone is a dB tilt; one-pole shelf corners at each end. */
 const TONE_LP_HZ = 4000;
@@ -195,6 +227,27 @@ export class SpectralProcessor {
   private focusSmooth = DEFAULT_SPECTRAL_PARAMS.focus;
   private focusWidthSmooth = DEFAULT_SPECTRAL_PARAMS.focusWidth;
   private diffuseSmooth = DEFAULT_SPECTRAL_PARAMS.diffuse;
+
+  /**
+   * MOTION state.
+   *
+   * The phase advances once per BLOCK, keyed to the samples actually rendered,
+   * not per STFT frame. That matters for a reason that is easy to get wrong:
+   * `delayParams()` is called once for MID and once for SIDE per frame, so an
+   * accumulator advanced inside it would run at double speed and — worse — the
+   * two paths could read different values and pull the stereo image apart. One
+   * value per block makes both paths read the same number by construction.
+   *
+   * 375 Hz of update against a 0.05–8 Hz LFO is a staircase nobody can hear.
+   */
+  private motionRateSmooth = DEFAULT_SPECTRAL_PARAMS.motionRate;
+  private motionDepthSmooth = DEFAULT_SPECTRAL_PARAMS.motionDepth;
+  private motionPhase = 0;
+  /** Sine output, -1..1. Read by both paths; never recomputed per path. */
+  private motionValue = 0;
+  /** Multipliers derived from motionValue, computed once per block. */
+  private motionTimeScale = 1;
+  private motionFeedbackScale = 1;
 
   // Tone filter state, one pair per path.
   private lpStateMid = 0;
@@ -374,6 +427,16 @@ export class SpectralProcessor {
     this.focusSmooth = clampRange(this.params.focus, 20, 18000);
     this.focusWidthSmooth = clampRange(this.params.focusWidth, 0.1, 4);
     this.diffuseSmooth = clamp01(this.params.diffuse);
+    // Phase 0 means sin(0) = 0, so a freshly prepared instance starts exactly at
+    // the user's TIME and FEEDBACK and drifts away from it. Seeding any other
+    // phase would make the very first block jump to a delay the user never asked
+    // for — the audible equivalent of a preset that lands on the wrong value.
+    this.motionRateSmooth = clampRange(this.params.motionRate, 0.05, 8);
+    this.motionDepthSmooth = clamp01(this.params.motionDepth);
+    this.motionPhase = 0;
+    this.motionValue = 0;
+    this.motionTimeScale = 1;
+    this.motionFeedbackScale = 1;
     this.lpStateMid = 0;
     this.hpStateMid = 0;
     this.lpStateSide = 0;
@@ -433,6 +496,17 @@ export class SpectralProcessor {
     this.focusWidthSmooth = smoothLog(this.focusWidthSmooth, this.params.focusWidth, mixK, 0.1, 4);
     this.diffuseSmooth += (clamp01(this.params.diffuse) - this.diffuseSmooth) * mixK;
     this.meters.shiftSemitones = this.shiftSmooth;
+
+    // MOTION — advanced once per block, before either path reads the value.
+    this.motionRateSmooth = smoothLog(
+      this.motionRateSmooth,
+      clampRange(this.params.motionRate, 0.05, 8),
+      mixK,
+      0.05,
+      8,
+    );
+    this.motionDepthSmooth += (clamp01(this.params.motionDepth) - this.motionDepthSmooth) * mixK;
+    this.advanceMotion(n);
 
     // A live MIX close gets a short sample-ramped exit so a phase/spectral
     // discontinuity cannot click. Once it reaches the threshold, stop the STFT
@@ -523,6 +597,44 @@ export class SpectralProcessor {
     this.wetStateCleared = true;
   }
 
+  /**
+   * Advance the MOTION LFO by the samples just rendered and publish the two
+   * multipliers this block will use.
+   *
+   * Deterministic by construction: the phase is a pure accumulator over
+   * rendered samples, there is no RNG and no clock read, so an offline render
+   * of the same length produces the same samples as a live one. That is the
+   * NEW-EFFECT-CHECKLIST §7 contract, and it is why the phase lives on the
+   * processor instead of being sampled from the host.
+   *
+   * SYNC selects the rate the same way it selects the delay length: with a
+   * division chosen, the motion runs on the grid and `motionRate` is inert;
+   * with SYNC off the free-running Hz knob applies. One knob, one meaning —
+   * "put it on the grid" — rather than two SYNC dials meaning different things.
+   */
+  private advanceMotion(frames: number): void {
+    const hz = syncedLfoHz(this.syncBpm, this.params.sync, this.motionRateSmooth);
+    const depth = this.motionDepthSmooth;
+    if (depth <= 0 || hz <= 0 || this.sampleRate <= 0) {
+      // Below the audible floor the scales are exactly 1, which keeps a
+      // motionless render bit-identical rather than merely close to it.
+      this.motionValue = 0;
+      this.motionTimeScale = 1;
+      this.motionFeedbackScale = 1;
+      return;
+    }
+
+    // Phase BEFORE the output, so a block that starts at phase 0 emits 0 and
+    // the first frame sits on the user's own setting.
+    this.motionValue = Math.sin(this.motionPhase * TWO_PI);
+    this.motionPhase += (hz * frames) / this.sampleRate;
+    if (this.motionPhase >= 1) this.motionPhase -= Math.floor(this.motionPhase);
+
+    const swing = this.motionValue * depth;
+    this.motionTimeScale = Math.pow(2, swing * MOTION_TIME_OCTAVES);
+    this.motionFeedbackScale = 1 + swing * MOTION_FEEDBACK_AMOUNT;
+  }
+
   /** Sanitize once, then feed the aligned dry ring and (when active) both STFT paths. */
   private captureInputBlock(left: Float32Array, right: Float32Array, frames: number, feedWet: boolean): void {
     const latency = this.engineMid.latencySamples();
@@ -553,18 +665,19 @@ export class SpectralProcessor {
   }
 
   /**
-   * Resolve TIME against SYNC. With SYNC off the manual time is used as-is; with
-   * a division selected the delay becomes exactly one beat times that division,
-   * so it lands on the grid instead of near it.
+   * Resolve TIME against SYNC, then apply MOTION.
+   *
+   * With SYNC off the manual time is used as-is; with a division selected the
+   * delay becomes exactly one beat times that division, so it lands on the grid
+   * instead of near it. The MOTION warp is applied afterwards and to whichever
+   * base won, so the LFO moves the delay the user actually hears — a synced
+   * delay warps around the beat, it does not get replaced by the warp.
    */
   private effectiveDelaySeconds(): number {
     const syncIndex = this.params.sync | 0;
     const ratio = SYNC_RATIOS[syncIndex] ?? 0;
-    if (ratio > 0) {
-      const beatSec = 60 / Math.max(1, this.syncBpm);
-      return clampRange(beatSec * ratio, 0.02, 2);
-    }
-    return clampRange(this.timeSmooth / 1000, 0.02, 2);
+    const base = ratio > 0 ? (60 / Math.max(1, this.syncBpm)) * ratio : this.timeSmooth / 1000;
+    return clampRange(base * this.motionTimeScale, 0.02, 2);
   }
 
   /** Drive + tone on one path, in the sample domain after resynthesis. */
@@ -690,7 +803,11 @@ export class SpectralProcessor {
   private delayParams(delaySec: number, frozen: boolean): SpectralDelayParams {
     const p = this.delayScratch;
     p.timeSec = delaySec;
-    p.feedback = this.feedbackSmooth * (frozen ? 0.85 : 1);
+    // FEEDBACK takes the smaller share of the LFO: enough that the tail breathes
+    // with the warp, not enough that the tail length becomes the dominant thing
+    // you hear. Clamped to the unit range here so a deep warp cannot smuggle an
+    // out-of-range value past the host-side reporting into the bank.
+    p.feedback = clampRange(this.feedbackSmooth * this.motionFeedbackScale * (frozen ? 0.85 : 1), 0, 1);
     p.decay = this.decaySmooth;
     p.shiftSemitones = this.shiftSmooth;
     p.diffuse = this.diffuseSmooth;

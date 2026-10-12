@@ -52,6 +52,8 @@ const PARAM_IDS = [
   "drive",
   "tone",
   "mix",
+  "motionRate",
+  "motionDepth",
 ];
 
 class PortalWorkletProcessor extends AudioWorkletProcessor {
@@ -71,7 +73,15 @@ class PortalWorkletProcessor extends AudioWorkletProcessor {
    *
    * `bpm` is declared because SYNC is dead without it: portal-node.ts routes
    * `syncBpm()` into this AudioParam and readParams() feeds it to
-   * SpectralProcessor.setBpm().
+   * SpectralProcessor.setBpm(). SYNC now drives the MOTION LFO rate too, so this
+   * one AudioParam serves two features — a tempo-locked delay AND a tempo-locked
+   * warp.
+   *
+   * MOTION is declared for the same reason as everything else here. An
+   * undeclared parameter does not fail loudly: `node.parameters.get(id)` is
+   * undefined, `safeApplyAudioParam` no-ops, and the knob reads as "no change"
+   * while the effect keeps playing its baked-in default. Two dead knobs that
+   * look alive is the exact failure this list exists to prevent.
    */
   static get parameterDescriptors() {
     return [
@@ -90,6 +100,10 @@ class PortalWorkletProcessor extends AudioWorkletProcessor {
       { name: "drive", minValue: 0, maxValue: 1, defaultValue: 0, automationRate: "k-rate" },
       { name: "tone", minValue: -24, maxValue: 24, defaultValue: 0, automationRate: "k-rate" },
       { name: "mix", minValue: 0, maxValue: 1, defaultValue: 0.35, automationRate: "k-rate" },
+      { name: "motionRate", minValue: 0.05, maxValue: 8, defaultValue: 0.6, automationRate: "k-rate" },
+      // Default 0, not a musical value: MOTION ships OFF, so a project that
+      // never touched it renders bit-identically to the pre-motion build.
+      { name: "motionDepth", minValue: 0, maxValue: 1, defaultValue: 0, automationRate: "k-rate" },
     ];
   }
 

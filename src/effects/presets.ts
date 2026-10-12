@@ -462,6 +462,23 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
     tone: -2,
     mix: 0.45,
   }),
+  preset("portal-tape-warp", "Tape Warp", "portal", {
+    // The MOTION showcase. SYNC = 1/8 does double duty here on purpose: it locks
+    // the delay to the grid AND puts the LFO on the same division, so the warp
+    // breathes with the track instead of drifting against it. MOTION (rate) is
+    // deliberately left at its default and is INERT while a division is held —
+    // turn SYNC to OFF and the free-running rate takes over.
+    mode: 0, // DELAY
+    time: 250,
+    sync: 2, // 1/8
+    feedback: 0.58,
+    decay: 0.55,
+    diffuse: 0.4,
+    tone: 2,
+    mix: 0.38,
+    motionRate: 0.6,
+    motionDepth: 0.45,
+  }),
   preset("portal-formant-rise", "Formant Rise", "portal", {
     mode: 1, // RESONATOR
     resonance: 0.75,

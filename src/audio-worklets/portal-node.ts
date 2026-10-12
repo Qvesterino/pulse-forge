@@ -37,6 +37,8 @@ const PORTAL_PARAMS = [
   "drive",
   "tone",
   "mix",
+  "motionRate",
+  "motionDepth",
 ] as const;
 
 /** Validated live telemetry frame for the panel. */
