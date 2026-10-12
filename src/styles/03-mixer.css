@@ -352,6 +352,40 @@
   line-height: 1;
 }
 
+/* Scene CC remap allow-list (Scene.ccRemaps) — armed mappings are bright,
+   disarmed ones dim. */
+.scene-strip-cc {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.scene-strip-cc-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font: 700 9px var(--mono);
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.scene-strip-cc-item input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.scene-strip-cc-item.muted {
+  opacity: 0.45;
+}
+
 .scene-strip-chip {
   font-family: var(--mono);
   font-size: 9px;

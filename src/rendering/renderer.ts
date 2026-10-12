@@ -645,12 +645,14 @@ export function buildSceneIntensityPoints(
   value: number;
   packs?: Record<string, string> | null;
   sceneMacros?: Record<string, number> | null;
+  ccRemaps?: string[] | null;
 }> {
   const points: Array<{
     tick: number;
     value: number;
     packs?: Record<string, string> | null;
     sceneMacros?: Record<string, number> | null;
+    ccRemaps?: string[] | null;
   }> = [{ tick: 0, value: 0.7 }];
   const sorted = [...windows].sort((a, b) => a.from - b.from);
   for (let index = 0; index < sorted.length; index++) {
@@ -667,7 +669,12 @@ export function buildSceneIntensityPoints(
     }
     const packs = scene.packs && Object.keys(scene.packs).length > 0 ? scene.packs : null;
     const macros = scene.macros && Object.keys(scene.macros).length > 0 ? scene.macros : null;
-    const withScene = { ...(packs ? { packs } : {}), ...(macros ? { sceneMacros: macros } : {}) };
+    const cc = scene.ccRemaps && scene.ccRemaps.length > 0 ? scene.ccRemaps : null;
+    const withScene = {
+      ...(packs ? { packs } : {}),
+      ...(macros ? { sceneMacros: macros } : {}),
+      ...(cc ? { ccRemaps: cc } : {}),
+    };
 
     if (window.sceneId) {
       const sceneBase = window.sceneBase ?? window.base;
@@ -704,6 +711,7 @@ export function buildSceneIntensityPoints(
     value: number;
     packs?: Record<string, string> | null;
     sceneMacros?: Record<string, number> | null;
+    ccRemaps?: string[] | null;
   }> = [];
   for (const point of points.sort((a, b) => a.tick - b.tick)) {
     const previous = deduped[deduped.length - 1];
@@ -711,6 +719,7 @@ export function buildSceneIntensityPoints(
       previous.value = point.value;
       previous.packs = point.packs;
       previous.sceneMacros = point.sceneMacros;
+      previous.ccRemaps = point.ccRemaps;
     } else deduped.push(point);
   }
   return deduped;

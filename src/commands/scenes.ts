@@ -211,6 +211,45 @@ export function setSceneMacro(doc: ProjectDocument, sceneId: string, macroId: st
   );
 }
 
+/**
+ * Per-scene MIDI-CC remap arming (v25): the source:"midiCC" mappings that
+ * stay armed while this scene is active. Absent list = all armed (the
+ * pre-scene behavior); empty = none; otherwise an allow-list. Canonicalized:
+ * a list that covers every CC mapping collapses back to "all armed". The
+ * gate is live-only (hardware CC never reaches an export).
+ */
+export function setSceneCcRemap(doc: ProjectDocument, sceneId: string, mappingId: string, active: boolean): Command {
+  const scene = doc.scenes.find((candidate) => candidate.id === sceneId);
+  if (!scene) throw new Error(`Scene ${sceneId} not found`);
+  const isCcMapping = doc.macros.some((macro) =>
+    macro.mappings.some((mapping) => mapping.id === mappingId && mapping.source === "midiCC"),
+  );
+  if (!isCcMapping) throw new Error(`Mapping ${mappingId} is not a MIDI CC mapping`);
+  const allIds = doc.macros.flatMap((macro) =>
+    macro.mappings.filter((mapping) => mapping.source === "midiCC").map((mapping) => mapping.id),
+  );
+  const current = scene.ccRemaps;
+  const currentlyActive = current === undefined || current.includes(mappingId);
+  let next: string[] | undefined = current;
+  if (active && !currentlyActive) {
+    const merged = [...new Set([...(current ?? []), mappingId])];
+    next = allIds.every((id) => merged.includes(id)) ? undefined : merged;
+  } else if (!active && currentlyActive) {
+    const remaining = (current ?? allIds).filter((id) => id !== mappingId);
+    next = remaining.length === 0 ? [] : remaining;
+  }
+  const apply = (d: ProjectDocument): ProjectDocument => ({
+    ...d,
+    scenes: d.scenes.map((candidate) => (candidate.id === sceneId ? { ...candidate, ccRemaps: next } : candidate)),
+  });
+  return snapshot(
+    "setSceneCcRemap",
+    active ? `Arm CC mapping in ${scene.name}` : `Disarm CC mapping in ${scene.name}`,
+    doc,
+    apply(doc),
+  );
+}
+
 export function deleteScene(doc: ProjectDocument, sceneId: string): Command {
   if (doc.scenes.length <= 1) throw new Error("Cannot delete the last scene");
   const target = doc.scenes.find((s) => s.id === sceneId);

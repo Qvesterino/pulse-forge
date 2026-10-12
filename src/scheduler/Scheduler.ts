@@ -75,11 +75,12 @@ export interface SchedulerDeps {
   onSongWindow?(fromTick: number, toTick: number, mode: PlayMode): void;
   /** Trigger a marker cue at the absolute project tick (asset id may be null). */
   triggerMarker?(assetId: string | null, when: number, trackId?: string): void;
-  /** Update the live scene intensity signal (0..1), pack selection and macro pins. */
+  /** Update the live scene intensity signal (0..1), pack selection, macro pins and CC remaps. */
   setSceneIntensity?(
     intensity: number,
     packs?: Record<string, string> | null,
     sceneMacros?: Record<string, number> | null,
+    ccPins?: string[] | null,
   ): void;
   /** Schedule future scene-intensity changes inside the look-ahead window. */
   scheduleSceneIntensity?(
@@ -88,6 +89,7 @@ export interface SchedulerDeps {
       value: number;
       packs?: Record<string, string> | null;
       sceneMacros?: Record<string, number> | null;
+      ccRemaps?: string[] | null;
     }>,
     timeAt: (tick: number) => number,
   ): void;
@@ -873,6 +875,7 @@ export class Scheduler {
         activeScene ? Math.max(0, Math.min(1, activeScene.intensity)) : 0.7,
         activeScene?.packs ?? null,
         activeScene?.macros ?? null,
+        activeScene?.ccRemaps ?? null,
       );
       // Pattern mode has no arrangement context — follow the project tempo.
       this.applyTempo(null);
@@ -939,9 +942,10 @@ export class Scheduler {
             computeSceneIntensity(activeScene, activeClipStart, contentWindowStart),
             activeScene.packs ?? null,
             activeScene.macros ?? null,
+            activeScene.ccRemaps ?? null,
           );
         } else {
-          this.deps.setSceneIntensity(0.7, null, null);
+          this.deps.setSceneIntensity(0.7, null, null, null);
         }
       }
       // Scene tempo (release roadmap 2.2): while inside a clip whose scene
@@ -1252,17 +1256,21 @@ function sceneIntensityPointsForWindow(
   value: number;
   packs?: Record<string, string> | null;
   sceneMacros?: Record<string, number> | null;
+  ccRemaps?: string[] | null;
 }> {
   const points: Array<{
     tick: number;
     value: number;
     packs?: Record<string, string> | null;
     sceneMacros?: Record<string, number> | null;
+    ccRemaps?: string[] | null;
   }> = [];
   const packsOf = (scene: ProjectDocument["scenes"][number] | undefined): Record<string, string> | null =>
     scene?.packs && Object.keys(scene.packs).length > 0 ? scene.packs : null;
   const macrosOf = (scene: ProjectDocument["scenes"][number] | undefined): Record<string, number> | null =>
     scene?.macros && Object.keys(scene.macros).length > 0 ? scene.macros : null;
+  const ccOf = (scene: ProjectDocument["scenes"][number] | undefined): string[] | null =>
+    scene?.ccRemaps && scene.ccRemaps.length > 0 ? scene.ccRemaps : null;
   let cursor = fromTick;
   for (const clip of clips) {
     const clipStart = clip.startBar * BAR_TICKS;
@@ -1278,7 +1286,12 @@ function sceneIntensityPointsForWindow(
       const sceneBase = sceneBaseTickForClip(clip);
       const packs = packsOf(scene);
       const macros = macrosOf(scene);
-      const withScene = { ...(packs ? { packs } : {}), ...(macros ? { sceneMacros: macros } : {}) };
+      const cc = ccOf(scene);
+      const withScene = {
+        ...(packs ? { packs } : {}),
+        ...(macros ? { sceneMacros: macros } : {}),
+        ...(cc ? { ccRemaps: cc } : {}),
+      };
       points.push({ tick: from, value: computeSceneIntensity(scene, sceneBase, from), ...withScene });
       for (const curvePoint of scene.intensityCurve ?? []) {
         const tick = sceneBase + curvePoint.offset;
@@ -1305,6 +1318,7 @@ function sceneIntensityPointsForWindow(
     value: number;
     packs?: Record<string, string> | null;
     sceneMacros?: Record<string, number> | null;
+    ccRemaps?: string[] | null;
   }> = [];
   for (const point of ordered) {
     const previous = deduped[deduped.length - 1];
@@ -1312,6 +1326,7 @@ function sceneIntensityPointsForWindow(
       previous.value = point.value;
       previous.packs = point.packs;
       previous.sceneMacros = point.sceneMacros;
+      previous.ccRemaps = point.ccRemaps;
     } else deduped.push(point);
   }
   return deduped;

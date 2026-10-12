@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { testDoc } from "./fixtures/doc";
 import { defaultParamsOf } from "../src/effects/registry";
 import { normalizeProject } from "../src/project-model/schema";
-import { setSceneMacro, setScenePack } from "../src/commands/scenes";
+import { setSceneCcRemap, setSceneMacro, setScenePack } from "../src/commands/scenes";
 import { AutomationBridge } from "../src/audio-engine/automationBridge";
 import { DeviceLookup } from "../src/audio-engine/deviceLookup";
 import type { TrackOrGroupView } from "../src/audio-engine/deviceLookup";
@@ -195,6 +195,42 @@ describe("per-scene packs — model + command", () => {
     (hostile.scenes[0] as unknown as { macros: unknown }).macros = 4;
     expect(normalizeProject(hostile).scenes[0]!.macros).toBeUndefined();
   });
+
+  it("arms/disarms scene CC remaps with allow-list semantics", () => {
+    const { doc, trackId } = docWithSceneFx();
+    const scene = doc.scenes[0]!;
+    doc.macros[0]!.mappings.push(
+      { id: "cc-a", trackId, param: "gain", amount: 0.5, source: "midiCC", ccNumber: 74 },
+      { id: "cc-b", trackId, param: "gain", amount: 0.5, source: "midiCC", ccNumber: 1 },
+    );
+    // Disarm one from "all armed" → the rest become the allow-list.
+    const off = setSceneCcRemap(doc, scene.id, "cc-a", false).execute(doc);
+    expect(off.scenes[0]!.ccRemaps).toEqual(["cc-b"]);
+    // Re-arming it covers every mapping → canonical "all armed" (absent).
+    expect(setSceneCcRemap(off, scene.id, "cc-a", true).execute(off).scenes[0]!.ccRemaps).toBeUndefined();
+    // Disarming the last armed one → empty list = none armed.
+    const none = setSceneCcRemap(off, scene.id, "cc-b", false).execute(off);
+    expect(none.scenes[0]!.ccRemaps).toEqual([]);
+    // Undo restores the allow-list.
+    expect(setSceneCcRemap(off, scene.id, "cc-b", false).undo(none).scenes[0]!.ccRemaps).toEqual(["cc-b"]);
+    expect(() => setSceneCcRemap(doc, scene.id, "nope", false)).toThrow(/not a MIDI CC mapping/);
+  });
+
+  it("sanitizes scene.ccRemaps through normalizeProject", () => {
+    const { doc } = docWithSceneFx();
+    const dirty = JSON.parse(JSON.stringify(doc)) as ProjectDocument;
+    (dirty.scenes[0] as unknown as { ccRemaps: unknown }).ccRemaps = ["a", "a", "", "x".repeat(80), 5];
+    expect(normalizeProject(dirty).scenes[0]!.ccRemaps).toEqual(["a"]);
+    const empty = JSON.parse(JSON.stringify(doc)) as ProjectDocument;
+    (empty.scenes[0] as unknown as { ccRemaps: unknown }).ccRemaps = [];
+    expect(normalizeProject(empty).scenes[0]!.ccRemaps).toEqual([]);
+    const hostile = JSON.parse(JSON.stringify(doc)) as ProjectDocument;
+    (hostile.scenes[0] as unknown as { ccRemaps: unknown }).ccRemaps = "nope";
+    expect(normalizeProject(hostile).scenes[0]!.ccRemaps).toBeUndefined();
+    const junkOnly = JSON.parse(JSON.stringify(doc)) as ProjectDocument;
+    (junkOnly.scenes[0] as unknown as { ccRemaps: unknown }).ccRemaps = [5, ""];
+    expect(normalizeProject(junkOnly).scenes[0]!.ccRemaps).toBeUndefined();
+  });
 });
 
 describe("per-scene packs — scheduler hands the scene selection to the engine", () => {
@@ -209,6 +245,7 @@ describe("per-scene packs — scheduler hands the scene selection to the engine"
       intensity: 0.9,
       packs: { [growId]: "drill-phone-growl" },
       macros: { [doc.macros[0]!.id]: 0.9 },
+      ccRemaps: ["cc-seam"],
     };
     return {
       ...doc,
@@ -232,6 +269,7 @@ describe("per-scene packs — scheduler hands the scene selection to the engine"
         value: number;
         packs?: Record<string, string> | null;
         sceneMacros?: Record<string, number> | null;
+        ccRemaps?: string[] | null;
       }>
     > = [];
     let audioTime = 10;
@@ -265,13 +303,15 @@ describe("per-scene packs — scheduler hands the scene selection to the engine"
       expect(seam).toHaveLength(1);
       expect(seam[0]!.packs).toEqual(sceneB.packs);
       expect(seam[0]!.sceneMacros).toEqual(sceneB.macros);
+      expect(seam[0]!.ccRemaps).toEqual(sceneB.ccRemaps);
     }
-    // Inside scene A (no packs/macros) the points carry none.
+    // Inside scene A (no packs/macros/cc remaps) the points carry none.
     const insideA = scheduled.find((points) => points.some((point) => point.tick < seamTick));
     if (insideA) {
       for (const point of insideA.filter((candidate) => candidate.tick < seamTick)) {
         expect(point.packs).toBeUndefined();
         expect(point.sceneMacros).toBeUndefined();
+        expect(point.ccRemaps).toBeUndefined();
       }
     }
   });
@@ -406,5 +446,26 @@ describe("per-scene packs — bridge override", () => {
     bridge.automationReset();
     const last = [...writes].reverse().find((write) => write.id === "drive");
     expect(last?.value).toBeCloseTo(base, 9);
+  });
+
+  it("gates CC mappings by the active scene's allow-list and clears on stop", () => {
+    const { doc } = docWithSceneFx();
+    const { bridge } = bridgeHarness(doc);
+    // No scene pins → every mapping armed (pre-scene behavior).
+    expect(bridge.sceneAllowsMidiMapping("m1")).toBe(true);
+    bridge.setSceneIntensity(0.7, null, null, ["m2"]);
+    expect(bridge.sceneAllowsMidiMapping("m2")).toBe(true);
+    expect(bridge.sceneAllowsMidiMapping("m1")).toBe(false);
+    // [] = none armed while the scene plays.
+    bridge.setSceneIntensity(0.7, null, null, []);
+    expect(bridge.sceneAllowsMidiMapping("m2")).toBe(false);
+    // Stop lifts the gate.
+    bridge.automationReset();
+    expect(bridge.sceneAllowsMidiMapping("m1")).toBe(true);
+
+    // Song-mode points carry the same state through the scheduling heuristic.
+    bridge.scheduleSceneIntensity([{ tick: 0, value: 0.7, ccRemaps: ["m1"] }], (tick) => tick / 1000);
+    expect(bridge.sceneAllowsMidiMapping("m1")).toBe(true);
+    expect(bridge.sceneAllowsMidiMapping("m2")).toBe(false);
   });
 });

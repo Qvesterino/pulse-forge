@@ -442,3 +442,37 @@ undo, sanitizer, seam points carrying `sceneMacros`, pinned substitution in
 an armed macro-sourced mapping, scheduled pin points + stop restore) and the
 scene-strip suite (fader pins the scene value, stored pin renders the clear
 control, clearing restores the live macro).
+
+## Addendum 10 (2026-10-11) — scene CC remap arming (v2.8)
+
+The third per-scene performance override covers hardware input: a scene can
+arm which `source:"midiCC"` mappings listen while it plays. `Scene.ccRemaps`
+(SCHEMA_VERSION 25, sanitized; an EMPTY array is meaningful — "none armed" —
+and survives, a non-array is dropped, an array with only invalid entries
+falls back to absent so a corrupt blob can never silently disarm every
+mapping): absent = all armed (the pre-scene behavior), a list = allow-list.
+`setSceneCcRemap` (ONE undoable command) canonicalizes — a list covering
+every CC mapping collapses back to absent, removing the last armed id leaves
+the explicit empty list.
+
+Runtime: the scheduler already attaches the active clip's scene context to
+the scene-intensity points; `ccRemaps` rides along (builder + seam rule in
+`sceneIntensityPointsForWindow` and `buildSceneIntensityPoints`) and the
+bridge keeps it as `currentSceneCcPins` (live `setSceneIntensity(value,
+packs, macros, ccPins)` in pattern mode, first-point heuristic in song mode,
+cleared on stop). `MidiInput.handleCC` asks the engine
+(`sceneAllowsMidiMapping(mappingId)`) before letting a mapping sweep its
+macro — a missing method (mocks, pre-wire engines) keeps the old behavior.
+The gate is LIVE-ONLY by nature: hardware CC never reaches an export, so no
+timeline scheduling is involved; the direct workspace `config.ccMappings`
+path is untouched (workspace config, not project data).
+
+UI: the scene strip gains a CC row (only when the project has CC mappings):
+one checkbox per mapping ("DRUMS ← CC74"), armed = bright, disarmed = dim;
+toggling executes the command. Validation: `tests/scene-packs.test.ts`
+(command allow-list semantics + canonicalization + undo + refusal, sanitizer
+including the empty-list survival, seam points carrying `ccRemaps`, bridge
+gate + stop lift + scheduling heuristic), `tests/midi/MidiInput.test.ts`
+(disarmed mapping dropped, armed one lands, unrelated CC untouched) and the
+scene-strip suite (toggle writes the command, stored disarmed state renders
+unchecked).

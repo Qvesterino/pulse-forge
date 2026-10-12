@@ -4,6 +4,7 @@ import {
   applyKorenScenePair,
   applyTwistScenePair,
   korenSceneIntensityBound,
+  setSceneCcRemap,
   setSceneIntensity,
   setSceneMacro,
   setScenePack,
@@ -75,6 +76,17 @@ export function SceneStrip({ sceneId }: { sceneId?: string }) {
     }
     return scenes.find((candidate) => candidate.patternId === activePatternId) ?? scenes[0] ?? null;
   }, [sceneId, scenes, activePatternId]);
+
+  const ccMappings = useMemo(() => {
+    const out: Array<{ id: string; ccNumber: number; channel?: number; macroName: string }> = [];
+    for (const macro of macros) {
+      for (const mapping of macro.mappings) {
+        if (mapping.source !== "midiCC" || typeof mapping.ccNumber !== "number") continue;
+        out.push({ id: mapping.id, ccNumber: mapping.ccNumber, channel: mapping.channel, macroName: macro.name });
+      }
+    }
+    return out;
+  }, [macros]);
 
   const rows = useMemo(() => {
     const out: SceneFxRow[] = [];
@@ -292,6 +304,40 @@ export function SceneStrip({ sceneId }: { sceneId?: string }) {
                       </button>
                     )}
                   </div>
+                );
+              })}
+            </div>
+          )}
+          {ccMappings.length > 0 && (
+            <div className="scene-strip-cc" role="group" aria-label="Scene MIDI CC remaps">
+              {ccMappings.map((mapping) => {
+                const allowList = scene?.ccRemaps;
+                const activeForScene = !allowList || allowList.includes(mapping.id);
+                const label = `${mapping.macroName} ← CC${mapping.ccNumber}${
+                  mapping.channel !== undefined ? ` ch${mapping.channel}` : ""
+                }`;
+                return (
+                  <label
+                    key={mapping.id}
+                    className={`scene-strip-cc-item${activeForScene ? "" : " muted"}`}
+                    title={
+                      activeForScene
+                        ? `${label} is armed in this scene — untick to leave it out`
+                        : `${label} is disarmed in this scene — tick to arm it`
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={activeForScene}
+                      disabled={!scene}
+                      aria-label={`${label} armed in this scene`}
+                      onChange={(event) => {
+                        if (scene)
+                          services.store.execute(setSceneCcRemap(doc, scene.id, mapping.id, event.target.checked));
+                      }}
+                    />
+                    <span>{label}</span>
+                  </label>
                 );
               })}
             </div>

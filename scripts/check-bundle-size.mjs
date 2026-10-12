@@ -455,8 +455,9 @@ console.log(`[size-budget] SKRUTKA worklet: ${skrutkaWorkletKb.toFixed(0)} KB (b
 // module for the same reason SKRUTKA and PORTAL are — the core boot bundle has
 // no room. This one is genuinely larger than its siblings because it carries a
 // radix-2 FFT, the cepstral lifter, the per-voice phase vocoder and its inverse
-// (four IFFTs per hop at balanced quality), measured ~54 KB unminified. It pays
-// only for projects that actually insert it; the boot-path line is unaffected.
+// (four IFFTs per hop at balanced quality), measured ~46 KB with whitespace-only
+// minification and identifiers preserved. It pays only for projects that
+// actually insert it; the boot-path line is unaffected.
 const REZONANS_WORKLET_BUDGET_KB = 64;
 let rezonansWorkletKb = 0;
 {

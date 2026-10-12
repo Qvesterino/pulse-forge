@@ -452,6 +452,10 @@ export class MidiInput {
       for (const m of macro.mappings) {
         if (m.source !== "midiCC" || m.ccNumber !== cc) continue;
         if (m.channel !== undefined && m.channel !== channel) continue;
+        // Scene CC remap gate (Scene.ccRemaps): while a scene with an
+        // allow-list plays, only its mapping ids stay armed. Missing engine
+        // method (mocks, pre-wire) = old behavior (all armed).
+        if (this.engine?.sceneAllowsMidiMapping?.(m.id) === false) continue;
         const normalized = value / 127;
         this.pendingMacroValues.set(macro.id, normalized);
         this.scheduleMacroFlush();

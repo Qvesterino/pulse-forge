@@ -49,7 +49,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 24;
+export const SCHEMA_VERSION = 25;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -2129,8 +2129,40 @@ function normalizeSceneDetailsDomain(s: NormalizeState): void {
     s.changed = true;
   }
 
+  // Scene CC remap allow-lists (v25): string ids, deduped. An EMPTY array is
+  // meaningful ("none armed") and survives; a non-array is dropped; an array
+  // with only invalid entries falls back to undefined (= all armed), so a
+  // corrupt blob can never silently disarm every mapping.
+  let ccChanged = false;
+  const ccScenes = macroScenes.map((scene) => {
+    if (scene.ccRemaps === undefined) return scene;
+    const raw = scene.ccRemaps as unknown;
+    if (!Array.isArray(raw)) {
+      ccChanged = true;
+      return { ...scene, ccRemaps: undefined };
+    }
+    const seen = new Set<string>();
+    const clean: string[] = [];
+    for (const value of raw.slice(0, 64)) {
+      if (typeof value === "string" && value.length > 0 && value.length <= 64 && !seen.has(value)) {
+        seen.add(value);
+        clean.push(value);
+      }
+    }
+    const next = raw.length === 0 ? [] : clean.length > 0 ? clean : undefined;
+    if (JSON.stringify(next) !== JSON.stringify(scene.ccRemaps)) {
+      ccChanged = true;
+      return { ...scene, ccRemaps: next };
+    }
+    return scene;
+  });
+  if (ccChanged) {
+    s.doc = { ...s.doc, scenes: ccScenes };
+    s.changed = true;
+  }
+
   if (scenesChanged) {
-    s.doc = { ...s.doc, scenes: macroScenes };
+    s.doc = { ...s.doc, scenes: ccScenes };
     s.changed = true;
   }
 }
@@ -2842,6 +2874,8 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // v24 adds the optional per-scene `macros` (macroId → 0..1; pinned macro
   // values that substitute the live macro in every macro-sourced mapping
   // while the scene is active). Absent = play the doc macro values.
+  // v25 adds the optional per-scene `ccRemaps` (the source:"midiCC" mapping
+  // ids armed while the scene is active; absent = all armed, [] = none).
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

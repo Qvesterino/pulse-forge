@@ -2168,8 +2168,14 @@ export class AudioEngine {
     value: number,
     packs?: Record<string, string> | null,
     sceneMacros?: Record<string, number> | null,
+    ccPins?: string[] | null,
   ): void {
-    this.automation.setSceneIntensity(value, packs, sceneMacros);
+    this.automation.setSceneIntensity(value, packs, sceneMacros, ccPins);
+  }
+
+  /** Scene gate for incoming hardware CC (see AutomationBridge). */
+  sceneAllowsMidiMapping(mappingId: string): boolean {
+    return this.automation.sceneAllowsMidiMapping(mappingId);
   }
 
   scheduleSceneIntensity(
@@ -2178,6 +2184,7 @@ export class AudioEngine {
       value: number;
       packs?: Record<string, string> | null;
       sceneMacros?: Record<string, number> | null;
+      ccRemaps?: string[] | null;
     }>,
     timeAt: (tick: number) => number,
   ): void {

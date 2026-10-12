@@ -193,4 +193,35 @@ describe("SceneStrip", () => {
     const cleared = lastCommand(services2.store.execute).execute(after);
     expect(cleared.scenes.find((candidate) => candidate.id === scene.id)!.macros).toBeUndefined();
   });
+
+  it("arms and disarms CC remaps per scene", () => {
+    // Command outputs are frozen — rebuild a mutable copy before pushing the
+    // CC mapping into the macro.
+    const doc = JSON.parse(JSON.stringify(withSceneFx().doc)) as ProjectDocument;
+    const trackId = doc.tracks.find((track) => track.kind === "drum")!.id;
+    const macro = doc.macros[0]!;
+    macro.mappings.push({
+      id: "cc-ui",
+      trackId,
+      param: "gain",
+      amount: 0.5,
+      source: "midiCC",
+      ccNumber: 74,
+    });
+    const scene = doc.scenes.find((candidate) => candidate.patternId === doc.activePatternId) ?? doc.scenes[0]!;
+    const services = mockServices(doc);
+    const { unmount } = renderWithContext(<SceneStrip />, { services });
+
+    const box = screen.getByLabelText(`${macro.name} ← CC74 armed in this scene`) as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    fireEvent.click(box);
+    const after = lastCommand(services.store.execute).execute(doc);
+    // The only CC mapping was disarmed → the empty allow-list = none armed.
+    expect(after.scenes.find((candidate) => candidate.id === scene.id)!.ccRemaps).toEqual([]);
+    unmount();
+
+    const services2 = mockServices(after);
+    renderWithContext(<SceneStrip />, { services: services2 });
+    expect((screen.getByLabelText(`${macro.name} ← CC74 armed in this scene`) as HTMLInputElement).checked).toBe(false);
+  });
 });

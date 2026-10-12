@@ -727,6 +727,13 @@ export interface Scene {
    * its own value as the stopped-state baseline.
    */
   macros?: Record<string, number>;
+  /**
+   * Per-scene MIDI-CC remap allow-list: mapping ids (source "midiCC") that
+   * stay armed while this scene is active. Absent = every CC mapping is
+   * armed (the pre-scene behavior); an empty list = none; a list = only
+   * those. Live-only by nature (hardware CC never reaches an export).
+   */
+  ccRemaps?: string[];
 }
 
 export interface IntensityPoint {

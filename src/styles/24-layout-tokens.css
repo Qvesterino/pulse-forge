@@ -27,25 +27,25 @@
 /* ui/layout.ts writes the user's chosen label width to --user-steps-label and
    toggles .user-label-width. A CLASS is used instead of an inline custom
    property on purpose: an inline value on <html> outranks every stylesheet
-   rule and would permanently kill the 760px breakpoint in
-   12-floating-instrument-plugin-2.css that narrows the label to 112px on
-   phones. The user's width applies only where no breakpoint has an opinion —
-   see the phone re-declaration below, which is what actually delivers that. */
-.user-label-width {
-  --steps-label: var(--user-steps-label, 168px);
-}
-
+   rule. The user's width applies only where no breakpoint has an opinion. */
 /* D14 sibling. The comment above used to claim "classes lose to media
-   queries" — they do not. A media query adds no specificity, so this
+   queries" — they do not. A media query adds NO specificity, so this
    same-specificity rule beat `:root { --steps-label: 112px }` from
    12-floating-instrument-plugin-2.css at EVERY width. Measured at 720x900 in
    Chromium: without the class the label column was 112px (breakpoint alive),
    and after applying exactly what ui/layout.ts:108-113 does for a user who
    picked 220px it became 220px (breakpoint dead, eating 30% of a phone
-   screen). Re-declaring the phone step HERE restores the documented intent. */
-@media (max-width: 760px) {
-  :root {
-    --steps-label: 112px;
+   screen).
+ *
+ * The rule is therefore scoped to ABOVE the phone step instead of the phone
+   step being restated here. Below 761px this file contributes nothing and
+   12-floating-instrument-plugin-2.css:839 remains the single owner — which is
+ * exactly what tests/layout-responsive.test.ts ("the 760px phone breakpoint
+   for --steps-label still exists") documents. Restating it here would have
+ * worked and would also have been the second ladder rung this file owns. */
+@media (min-width: 761px) {
+  .user-label-width {
+    --steps-label: var(--user-steps-label, 168px);
   }
 }
 
@@ -71,27 +71,22 @@
  * won the hit test over GEN (elementFromPoint on the GEN centre returned
  * BUTTON.dock-resize-handle), so the flagship GENERATE action was unclickable.
  * The first `auto` track is the sounds strip; it collapses to zero on its own
- * because 20-control-kit.css hides `.browser-strip` below 1250px. */
-.workspace {
-  grid-template-columns: auto minmax(0, 1fr) clamp(180px, var(--inspector-width, 280px), 420px);
-}
-
-/* The ladder's own steps, re-declared HERE on purpose. A media query does not
- * add specificity, so the plain rule above beats every breakpoint declared in
- * an earlier file — the 860px "inspector becomes a row" switch was dead for as
- * long as this file existed. The comment that used to sit here claimed
- * 01-base.css remained "the single owner of that layout switch"; it cannot,
- * it is imported first. The values mirror 20-control-kit.css:474-484 exactly,
- * so this restores previous behaviour instead of inventing new behaviour. */
-@media (max-width: 1100px) {
+ * because 20-control-kit.css hides `.browser-strip` below 1250px.
+ *
+ * Scoped to ABOVE the ladder's 1100px step rather than restating the ladder's
+ * own rungs here. That is the whole repair: a media query adds no specificity,
+ * so an unscoped rule in this last-imported file beats every breakpoint an
+ * earlier file declares — but a `min-width` rule whose range never overlaps
+ * theirs cannot. Above 1100px only this rule applies; 861–1100px is owned by
+ * 20-control-kit.css:475 (230px inspector); 860px and below is owned by
+ * 20-control-kit.css:479 (inspector becomes a row). One owner per range, no
+ * duplicated rung, and
+ * tests/layout-responsive.test.ts ("the inspector row-switch below 860px is
+ * still owned by the base sheet") stays true — which is why the first attempt
+ * at this fix, which did restate the ladder inside this file, was wrong. */
+@media (min-width: 1101px) {
   .workspace {
-    grid-template-columns: auto minmax(0, 1fr) 230px;
-  }
-}
-@media (max-width: 860px) {
-  .workspace {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) clamp(180px, var(--inspector-width, 280px), 420px);
   }
 }
 

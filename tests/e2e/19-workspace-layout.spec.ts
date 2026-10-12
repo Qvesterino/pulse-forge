@@ -65,6 +65,43 @@ function probeLayout() {
 type Layout = ReturnType<typeof probeLayout>;
 
 test.describe("19 — workspace layout (D14)", () => {
+  test("the 860px ladder step switches the inspector to a row instead of two columns", async ({ page }) => {
+    test.setTimeout(120_000);
+    // Below 860px the inspector becomes a row UNDER the workspace. That switch
+    // was dead for as long as 24-layout-tokens.css existed: a media query adds
+    // no specificity, so its plain two-column rule beat the breakpoint.
+    //
+    // The discriminating measurement is the TRACK COUNT, not the width. With
+    // the pre-fix cascade at 800px the layout still resolved to two columns
+    // (`520px 280px`) and the inspector stayed a side column — a width-only
+    // assertion passes on the broken build, because workspace-main lands in
+    // the fluid track either way. Assert the thing that actually changed.
+    await page.setViewportSize({ width: 800, height: 900 });
+    await openHouseTemplate(page);
+    await page.waitForTimeout(300);
+
+    const ladder = await page.evaluate(() => {
+      const q = <T extends Element>(s: string) => document.querySelector(s) as T | null;
+      const workspace = q("main.workspace");
+      const main = q(".workspace-main");
+      const inspector = q(".inspector");
+      const top = (el: Element | null) => (el ? el.getBoundingClientRect().top : null);
+      return {
+        columnTemplate: workspace ? getComputedStyle(workspace).gridTemplateColumns : "",
+        tracks: workspace ? getComputedStyle(workspace).gridTemplateColumns.split(" ").length : 0,
+        mainTop: top(main),
+        inspectorTop: top(inspector),
+      };
+    });
+
+    // One track = the ladder step is alive and the inspector is a row.
+    expect(ladder.tracks, `columns were "${ladder.columnTemplate}" at 800x900`).toBe(1);
+    // And the inspector really did move below, rather than beside, the sequencer.
+    expect(ladder.mainTop, "workspace-main missing").not.toBeNull();
+    expect(ladder.inspectorTop, "inspector missing").not.toBeNull();
+    expect(ladder.inspectorTop!).toBeGreaterThan(ladder.mainTop!);
+  });
+
   test("the workspace keeps three grid tracks and gives the sequencer column to workspace-main", async ({ page }) => {
     test.setTimeout(120_000);
     await page.setViewportSize({ width: 1280, height: 720 });

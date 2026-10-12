@@ -3,6 +3,8 @@ import { MidiInput } from "../../src/midi/MidiInput";
 import { NoteRepeatController } from "../../src/audio-engine/NoteRepeat";
 import { Transport } from "../../src/transport/Transport";
 import { GM_DRUM_MAP } from "../../src/project-model/types";
+import type { ProjectDocument } from "../../src/project-model/types";
+import { createProjectFromTemplate } from "../../src/project-model/templates";
 
 describe("MidiInput", () => {
   it("can be instantiated", () => {
@@ -262,5 +264,91 @@ describe("MidiInput — device disconnect recovery", () => {
     handler(); // legacy no-arg notification shape
     expect(controller.isHolding("midi:0:36")).toBe(true);
     controller.stopAll();
+  });
+});
+
+describe("MidiInput — scene CC remap gate", () => {
+  function ccConfig() {
+    return {
+      enabled: true,
+      deviceId: "test",
+      drumChannel: 10,
+      instrumentChannel: 1,
+      ccMappings: [],
+      drumNoteMap: [],
+      pitchBendRange: 2,
+      clockMode: "off" as const,
+    };
+  }
+
+  function wireDoc(
+    midi: MidiInput,
+    doc: ProjectDocument,
+    execute: (command: unknown) => void,
+    allows: (id: string) => boolean,
+  ) {
+    const priv = midi as unknown as Record<string, unknown>;
+    priv.engine = { sceneAllowsMidiMapping: allows, applyMidiCc: vi.fn() };
+    priv.getDoc = () => doc;
+    priv.store = { execute };
+  }
+
+  it("drops CC for disarmed mappings and lands armed ones", () => {
+    vi.useFakeTimers();
+    try {
+      const doc = createProjectFromTemplate("house");
+      const macro = doc.macros[0]!;
+      macro.mappings.push({
+        id: "cc-gate",
+        trackId: doc.tracks[0]!.id,
+        param: "gain",
+        amount: 0.5,
+        source: "midiCC",
+        ccNumber: 74,
+      });
+      const execute = vi.fn();
+      const allows = vi.fn(() => false);
+      const midi = new MidiInput();
+      wireDoc(midi, doc, execute, allows);
+      const sendCc = (
+        midi as unknown as {
+          handleCC: (cc: number, value: number, channel: number, config: unknown) => void;
+        }
+      ).handleCC.bind(midi);
+
+      sendCc(74, 127, 1, ccConfig());
+      vi.advanceTimersByTime(50);
+      expect(allows).toHaveBeenCalledWith("cc-gate");
+      expect(execute).not.toHaveBeenCalled();
+
+      allows.mockReturnValue(true);
+      sendCc(74, 127, 1, ccConfig());
+      vi.advanceTimersByTime(50);
+      expect(execute).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves unrelated CC numbers alone", () => {
+    vi.useFakeTimers();
+    try {
+      const doc = createProjectFromTemplate("house");
+      const execute = vi.fn();
+      const allows = vi.fn(() => false);
+      const midi = new MidiInput();
+      wireDoc(midi, doc, execute, allows);
+      const sendCc = (
+        midi as unknown as {
+          handleCC: (cc: number, value: number, channel: number, config: unknown) => void;
+        }
+      ).handleCC.bind(midi);
+      sendCc(7, 100, 1, ccConfig());
+      vi.advanceTimersByTime(50);
+      expect(allows).not.toHaveBeenCalled();
+      expect(execute).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
