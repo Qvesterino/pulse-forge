@@ -175,6 +175,13 @@ export function voiceifyHum(
   const fadeSamples = Math.max(1, Math.floor((FADE_MS / 1000) * sampleRate));
   let phase = 0;
 
+  // 4-point cubic Hermite interpolation of the seamless region. The linear
+  // 2-point read leaves interpolation IMAGES in the upper spectrum (the
+  // voiceify test saw junk peaks near 14 kHz on an octave-up render) — the
+  // Hermite kernel suppresses them and stays deterministic + O(1) per
+  // sample. Indexing wraps the region so the seam reads as vibrato.
+  const regionAt = (index: number): number => region[((index % region.length) + region.length) % region.length] ?? 0;
+
   for (const note of notes) {
     // Resample ratio: target pitch over the hum's own (timbre stays, pitch
     // moves to the melody).
@@ -189,7 +196,15 @@ export function voiceifyHum(
       phase -= region.length * Math.floor(phase / region.length);
       const position = Math.floor(phase);
       const frac = phase - position;
-      const value = (region[position] ?? 0) * (1 - frac) + (region[(position + 1) % region.length] ?? 0) * frac;
+      const y0 = regionAt(position - 1);
+      const y1 = regionAt(position);
+      const y2 = regionAt(position + 1);
+      const y3 = regionAt(position + 2);
+      const m1 = (y2 - y0) * 0.5;
+      const m2 = (y3 - y1) * 0.5;
+      const t2 = frac * frac;
+      const t3 = t2 * frac;
+      const value = (2 * t3 - 3 * t2 + 1) * y1 + (t3 - 2 * t2 + frac) * m1 + (-2 * t3 + 3 * t2) * y2 + (t3 - t2) * m2;
       const edge = i < noteFade ? i / noteFade : i >= lengthSamples - noteFade ? (lengthSamples - i) / noteFade : 1;
       out[index] += value * gain * edge;
     }

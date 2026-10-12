@@ -182,3 +182,29 @@ describe("buildSong development (end-to-end)", () => {
     }
   });
 });
+
+describe("second-verse thin (2026-10-12 strengthening)", () => {
+  it("the SECOND verse halves its off-beat 16ths; the first keeps the full pattern", () => {
+    const doc = songDoc();
+    const drumPattern = (id: string): Pattern => ({
+      id,
+      name: id,
+      stepCount: 32,
+      rows: {
+        "hat-pad": Array.from({ length: 32 }, (_, i) => (i % 2 === 1 ? 0.6 : 0)), // offbeat 16ths
+      },
+      notes: {},
+    });
+    const sections: SongBuildSection[] = [
+      { ...section("verse", "Verse 1", 32, [], "lead-track"), pattern: drumPattern("v1") },
+      { ...section("chorus", "Chorus 1", 32, [], "lead-track"), pattern: drumPattern("c1") },
+      { ...section("verse", "Verse 2", 32, [], "lead-track"), pattern: drumPattern("v2") },
+    ];
+    const developed = applySectionDevelopment(doc, sections);
+    const rowOf = (i: number) => developed[i].pattern.rows["hat-pad"] ?? [];
+    expect(rowOf(0)[1], "first verse keeps the offbeat").toBeCloseTo(0.6, 5);
+    expect(rowOf(2)[1], "second verse halves the offbeat").toBeCloseTo(0.3, 5);
+    expect(rowOf(2)[3], "every odd step thinned").toBeCloseTo(0.3, 5);
+    expect(rowOf(2)[0], "on-beats untouched (silence stays silence)").toBe(0);
+  });
+});

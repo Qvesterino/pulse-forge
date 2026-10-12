@@ -2578,6 +2578,29 @@ export function applySectionDevelopment(
       }
     }
 
+    // 4 — SECOND-VERSE THIN: the second-and-later verse occurrence drops its
+    // drum rows' OFF-BEAT 16ths (odd steps) to half velocity — the vocal
+    // breathes while the first verse keeps the full pattern. Classic
+    // arrangement contrast, free of any new generation.
+    if (section.role === "verse" && repeatIndex >= 1 && next.pattern.rows) {
+      const thinned: Record<string, number[]> = {};
+      let thinnedAny = false;
+      for (const [padId, row] of Object.entries(next.pattern.rows)) {
+        const copy = [...row];
+        for (let step = 1; step < copy.length; step += 2) {
+          if (copy[step] > 0) {
+            copy[step] = copy[step] * 0.5;
+            thinnedAny = true;
+          }
+        }
+        thinned[padId] = copy;
+      }
+      if (thinnedAny) {
+        next = { ...next, pattern: { ...next.pattern, rows: thinned } };
+        changed = true;
+      }
+    }
+
     return next;
   });
 
@@ -2712,23 +2735,33 @@ export async function buildSong(
   } = suno
     ? {
         genre: baseIntent.genre,
-        sections: suno.sections.map((section): SongSectionSpec => ({
-          role: section.role,
-          label: section.tag,
-          bars: Math.max(4, section.lyrics.length * 2),
-          intensity: section.role === "chorus" || section.role === "drop" ? 0.9 : 0.65,
-          transitionIn:
-            section.role === "chorus" || section.role === "drop"
-              ? ("fill" as const)
-              : section.role === "bridge"
-                ? ("break" as const)
-                : null,
-          energyDelta: section.role === "chorus" || section.role === "drop" ? 0.3 : 0,
-          densityDelta: section.role === "chorus" || section.role === "drop" ? 0.2 : 0,
-          complexityDelta: 0,
-          instrumentation: ["drums", "bass", "chords", "lead"],
-        })),
-        totalBars: suno.sections.reduce((sum, section) => sum + Math.max(4, section.lyrics.length * 2), 0),
+        // The tag's repeat suffix expands IN the form — "[Chorus x2]" is two
+        // chorus sections (numbered relabels, so labels stay unique), each
+        // carrying the same lyrics. This is where the parsed `repeats`
+        // finally meets the arrangement.
+        sections: suno.sections.flatMap((section): SongSectionSpec[] => {
+          const bars = Math.max(4, section.lyrics.length * 2);
+          return Array.from({ length: section.repeats }, (_, copy) => ({
+            role: section.role,
+            label: section.repeats > 1 ? `${section.tag} (${copy + 1}/${section.repeats})` : section.tag,
+            bars,
+            intensity: section.role === "chorus" || section.role === "drop" ? 0.9 : 0.65,
+            transitionIn:
+              section.role === "chorus" || section.role === "drop"
+                ? ("fill" as const)
+                : section.role === "bridge"
+                  ? ("break" as const)
+                  : null,
+            energyDelta: section.role === "chorus" || section.role === "drop" ? 0.3 : 0,
+            densityDelta: section.role === "chorus" || section.role === "drop" ? 0.2 : 0,
+            complexityDelta: 0,
+            instrumentation: ["drums", "bass", "chords", "lead"],
+          }));
+        }),
+        totalBars: suno.sections.reduce(
+          (sum, section) => sum + Math.max(4, section.lyrics.length * 2) * section.repeats,
+          0,
+        ),
       }
     : planSongForm(baseIntent, options.sections, options.length);
   const requestedCandidates = options.candidateCount ?? 1;

@@ -109,3 +109,20 @@ describe("vocabulary expansion (2026-10-12)", () => {
     expect(parsed!.sections.map((s) => s.repeats)).toEqual([2, 2]);
   });
 });
+
+describe("repeats expansion (2026-10-12 strengthening)", () => {
+  it("[Chorus x2] expands into TWO chorus sections with numbered relabels", async () => {
+    const { buildSong } = await import("../src/intent/song");
+    const doc = (await import("./fixtures/doc")).testDoc();
+    const build = await buildSong(
+      doc,
+      { genre: "rock", seed: "repeats-e2e", length: 64 },
+      { lyrics: "[Intro]\n[Verse]\nla la la\n[Chorus x2]\nwe fly\n[Outro]" },
+    );
+    const roles = build.sections.map((s) => s.role);
+    expect(roles).toEqual(["intro", "verse", "chorus", "chorus", "outro"]);
+    const chorusLabels = build.sections.filter((s) => s.role === "chorus").map((s) => s.label);
+    expect(chorusLabels[0]).toMatch(/1\/2/);
+    expect(chorusLabels[1]).toMatch(/2\/2/);
+  });
+});
