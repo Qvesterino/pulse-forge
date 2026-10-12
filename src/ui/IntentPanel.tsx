@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useSelectionStore, useServices } from "./context";
+import { ProducerSessionHud } from "./intent/ProducerSessionHud";
 import { CandidateBank } from "./intent/CandidateBank";
 import {
   SongDraftPanel,
@@ -5155,40 +5156,24 @@ export function IntentPanel() {
           </button>
         </div>
       )}
-      {sessionSummary !== null && sessionTick >= 0 && (
-        <div className="producer-session-hud" aria-label="Producer session">
-          <span className="producer-session-chip">🎛 {sessionSummary}</span>
-          {bankResult &&
-            bankResult.bank &&
-            bankResult.bank.length > 0 &&
-            planVariantIntents(lastGeneration()?.intent ?? parsed?.input ?? {}).map((variant) => (
-              <button
-                key={variant.label}
-                type="button"
-                className="btn btn-small producer-variant-chip"
-                title={`Generate a ${variant.label} direction off this intent`}
-                onClick={() => {
-                  oneShotPatchRef.current = variant.patch;
-                  void generate();
-                }}
-              >
-                {variant.chip}
-              </button>
-            ))}
-          <button
-            type="button"
-            className="btn btn-small producer-session-reset"
-            title="Clear the producer session memory"
-            onClick={() => {
-              resetProducerSession();
-              setSessionTick((tick) => tick + 1);
-              setStatus("🎛 session cleared");
-            }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
+      <ProducerSessionHud
+        summary={sessionSummary}
+        sessionTick={sessionTick}
+        variants={
+          bankResult && bankResult.bank && bankResult.bank.length > 0
+            ? planVariantIntents(lastGeneration()?.intent ?? parsed?.input ?? {})
+            : []
+        }
+        onPickVariant={(patch) => {
+          oneShotPatchRef.current = patch;
+          void generate();
+        }}
+        onReset={() => {
+          resetProducerSession();
+          setSessionTick((tick) => tick + 1);
+          setStatus("🎛 session cleared");
+        }}
+      />
       {vocalMode && (
         <div className="vocal-hud" aria-label="Vocal-ready HUD">
           <span className="vocal-hud-bpm">{doc.bpm} BPM</span>
