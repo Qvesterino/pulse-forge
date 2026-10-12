@@ -26,8 +26,9 @@
 > **Revízia 2026-10-11 (F0 kampane):** doplnené vlny 09/10 — exact intenty,
 > production vrstva, brief contract/gate, producer session + iteration,
 > local intent model v1 + LFM2.5/Ollama, personal/Producer DNA vrstva,
-> melodic prior v3 a reálne počty (IntentPanel 6 276 riadkov, 37 druhov
-> route, 258 groove štýlov). Nové/aktualizované pasáže sú označené ⟦10-11⟧.
+> melodic prior v3 a reálne počty (IntentPanel 5 666 riadkov + 6 collaboratorov
+> v `src/ui/intent/`, 37 druhov route, 258 groove štýlov). Nové/aktualizované
+> pasáže sú označené ⟦10-11⟧.
 
 ---
 
@@ -173,7 +174,8 @@ Vrstvy, ktoré pôvodná mapa (09-19) ešte nepoznala. Počty riadkov overené
 
 | Súbor                                                 | Rola                                                                                                                                     | Poznámka                                                                                     |
 | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `src/ui/IntentPanel.tsx` (6 276) ⟦10-11⟧              | **hlavný intent povrch**: ⚡ DO IT (unified router), GENERATE (bank + audition), ♪ SONG, 🎤 IDEA, 🎧 REF, 🎧 VOCAL, producer session HUD | async `generateAsyncResult` + audition + `tryModelRoute` (§5.20c); dekompozícia = F4 kampane |
+| `src/ui/IntentPanel.tsx` (5 666) ⟦10-11⟧              | **hlavný intent povrch**: ⚡ DO IT (unified router), GENERATE (bank + audition), ♪ SONG, 🎤 IDEA, 🎧 REF, 🎧 VOCAL, producer session HUD | async `generateAsyncResult` + audition + `tryModelRoute` (§5.20c); F4 hotová — 6 296 → 5 666, fasáda nezmenená |
+| `src/ui/intent/` (6 modulov) ⟦10-12⟧                   | **collaboratori F4**: `SongDraftPanel` (646), `CandidateBank` (124), `VoiceIdeaControls` (61), `ProducerSessionHud` (51), `AudioRefChip` (46), `StatusLine` (17) | čisté renderery — 0 hookov, 0 audio uzlov, 0 mutácií; stav a commandy ostali v shelli |
 | `src/ui/GenerateDialog.tsx` (424)                     | plný dialog: genre/style/slidery/seed/length/candidates                                                                                  | migr na IntentSpec hotový (Fáza 4)                                                           |
 | `src/ui/DiceContext.tsx` (568) + `DiceTray.tsx` (514) | Dice: roll full/vary, seed history, locks, favorites, kit dice, score badge                                                              | sync preview ~0.5 s                                                                          |
 | `src/ui/AssistPanel.tsx`                              | chirurgické operácie (VARY/BUILD/FILL/REPLACE) nad rovnakým contractom                                                                   |                                                                                              |

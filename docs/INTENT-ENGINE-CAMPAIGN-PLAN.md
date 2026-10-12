@@ -188,9 +188,64 @@ deployed smoke URL.
 | F1 zelený baseline             | ✅ HOTOVÉ 2026-10-11 | čistý worktree `D:\pulse-forge-f1` @ 3beef964; detaily nižšie                                                                                                                                 |
 | F2 audit porozumenia + routeru | ✅ HOTOVÉ 2026-10-11 | `4368577a` — korpus 106 promptov + `docs/INTENT-AUDIT-2026-10.md`; 3× P1 root-caused (D1/D2/D3), detaily nižšie                                                                               |
 | F3 opravy z auditu             | ✅ HOTOVÉ 2026-10-11 | D3 `9eb9df47`, D1 `a0917742`, D2 `8866dceb`, D5/D6/D7/D9 `42f21c66` (+ časť pohltila kolegova vlna `cf8ad5af`); D8 `821e8396` (owner: „genre wins"); detail `docs/INTENT-AUDIT-2026-10.md` §7 |
-| F4 IntentPanel dekompozícia    | ⏳                   | —                                                                                                                                                                                             |
+| F4 IntentPanel dekompozícia    | ✅ HOTOVÉ 2026-10-12 | 6 collaboratorov `f4f6b260`→`5d14cc51`; 6 296 → 5 666 riadkov; boot path 2 114 → 2 116 KB; nulová nová červená; detaily nižšie                              |
 | F5 dáta a retrainty            | ✅ HOTOVÉ 2026-10-11 | M1 **FAIL** podľa predfixovaného pravidla (degree 0.546 < 0.590) — shipped artefakty nedotknuté; ranker ★ 1/3 pod floorom → owner akcia; detaily nižšie                                       |
 | F6 uzavretie slučky            | ⏳                   | —                                                                                                                                                                                             |
+
+### F4 výsledky (2026-10-12, čisté worktree `D:\pulse-forge-f4` @ 5d14cc51)
+
+**Panel: 6 296 → 5 666 riadkov (−630).** Fasáda `export function IntentPanel()` je
+nezmenená (žiadne props ani ďalší export); rozdiel je výhradne v extraktovaných
+teleš a v hlavičkách modulov.
+
+**Collaboratori (`src/ui/intent/`)**
+
+| Súbor | Riadkov | Čo nesie |
+| --- | --- | --- |
+| `SongDraftPanel.tsx` | 646 | ♪ SONG draft: preview, full-song lanes, per-section A/B učenie, loudness odporúčanie, technický audio review, revise. Aj typy `SongDraft`/`SongPreferenceTake`/`SectionPreferenceTake`/`SongPreferenceRank` a helpery `sectionPreferenceOptions`/`sectionCompareSelection`. |
+| `CandidateBank.tsx` | 124 | ▶/■ audition, PRIOR/TPL badge, search lane, ★ best, USE, iterate, AUDIOTOOL, legenda, blind-pilot guard. |
+| `VoiceIdeaControls.tsx` | 61 | 🎶 harmonize + 🔊 mic monitor + 🎤 IDEA nahrávanie. |
+| `ProducerSessionHud.tsx` | 51 | 🎛 session chip, B/C varianty, reset. |
+| `StatusLine.tsx` | 17 | 🤖/⚡ router status + osobný status (jeden komponent, dva call site-y). |
+| `AudioRefChip.tsx` | 46 | 🎧 ref chip, match EQ, clear. |
+
+**Nula zmien správania.** Vyextrahované komponenty sú čisté renderery: žiadne
+hooky, žiadne audio uzly, žiadne mutácie. Shell si ponecháva stav aj všetky
+commandy. Dva body si to vyslúžili presun do shellu, nie do workarounds:
+
+- **A/B default.** Pôvodný `onChange` spreadoval `selection` (s *defaultovanými*
+  hodnotami z `options[0]/options[1]`), nie `current[key]`. Prvá verzia props
+ 签名 to zmenila — B dropdown by dostal prázdnu hodnotu. Prop preto nesie celé
+  `{ a, b }` a shell robí ten istý spread.
+- **AUDIOTOOL.** `onClick` telo (stale-preview guard cez `previewDocRef` vs živý
+  doc v `services.store`) sa stal shell verb-om; desktop check zostal v rendereri,
+  lebo on rozhoduje či sa tlačidlo vôbec vykreslí.
+
+**Gates (čistý worktree, baseline porovnaný voči `2c2329fc`)**
+
+| Brána | Pred | Po |
+| --- | --- | --- |
+| studio boot path | 2 114 KB / 2 200 | **2 116 KB / 2 200** (+2 KB) |
+| DAW JS chunks | 5 150 KB / 5 160 | 5 155 KB / 5 160 |
+| shipped JS total | 7 240 KB | 7 246 KB |
+| `typecheck` | ✅ | ✅ exit 0 (0 chýb) |
+| `format:check` | ✅ | ✅ (jediný warning `tests/probe-split-undo.test.ts` je cudzí) |
+| `ai:performance` (budget 250 ms) | mediany 2.56 / 2.49 / 4.41 ms | mediany 2.70 / 3.08 / 4.27 ms |
+| build | ❌ REZONANS worklet 74 > 64 KB (cudzia vlna) | ✅ OK — cudziu vlnu medzitým opravila iná session |
+
+**Testy.** Cielená 9-súborová brána drží **496/496** po každom z šiestich
+commitov. Celá intent rodina (142 súborov / 1 973 testov) v čistom worktree:
+**17 červených** — a `2c2329fc` baseline na tých istich 10 súboroch dáva
+**tých istých 17 zlyhaní, identických podľa názvu**. Nulová nová červená, žiadna
+vyliečená. Sú to cudzie vlny: model pin/dataset schema, symbolic + melodic priory,
+preset loudness, master decisions, preference evaluation.
+
+**Pozor na `suite-expectations.json`.** Ledger pokrýva 9 z tých 10 súborov, ale
+`intent-model-artifact.test.ts` má v ledgeri *iný* testovací názov
+(`model + vocab artifacts match the manifest pins`) než tie, ktoré padajú
+(`pins validation metrics...`, `labels overlapping golden prompts...`), a
+`intent-model-schema.test.ts` v ledgeri chýba vôbec. Tieto červené sú pre-existing,
+`drift:bless` sa neriešil — patrí do ownershipu model/data vlny.
 
 ### F1 výsledky (2026-10-11, čistý worktree @ 3beef964 + junction node_modules)
 
