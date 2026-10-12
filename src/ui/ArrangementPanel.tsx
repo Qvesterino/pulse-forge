@@ -13,13 +13,13 @@ import {
   useToolStore,
   useTracks,
 } from "./context";
+import { ScenesPanel } from "./arrangement/ScenesPanel";
 import { ArrangementViewControls } from "./arrangement/ArrangementViewControls";
 import { ChordProgressionPanel, type ChordGenForm } from "./arrangement/ChordProgressionPanel";
 import { notifyOnboardingProgress } from "./OnboardingHint";
 import { publishSessionRecordingState, IDLE_SESSION_STATE } from "./sessionStateSurface";
 import { useActivePatternId } from "./context";
 import { SpectralEditPanel } from "./SpectralEditPanel";
-import { SceneStrip } from "./SceneStrip";
 import {
   addArrangementClip,
   addArrangementTransition,
@@ -104,7 +104,6 @@ import type {
   AudioClip,
   IntensityPoint,
   ProjectDocument,
-  SceneRole,
 } from "../project-model/types";
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { detectLoopBpm } from "../audio-engine/bpm-detect";
@@ -154,7 +153,7 @@ import {
 import { useCurrentItemId, usePlayheadBar } from "./playhead";
 import { useLongPress } from "./useLongPress";
 import type { Transport } from "../transport/Transport";
-import { SceneLauncher, useSceneRuntimeState } from "./SceneLauncher";
+import { useSceneRuntimeState } from "./SceneLauncher";
 import { StretchDialog } from "./StretchDialog";
 
 const BASE_BAR_WIDTH = 30;
@@ -282,19 +281,6 @@ function getWarpOnsets(
   warpOnsetPromises.set(key, p);
   return p;
 }
-const SCENE_ROLES: Array<{ value: SceneRole | ""; label: string }> = [
-  { value: "", label: "INFER FROM NAME" },
-  { value: "intro", label: "INTRO" },
-  { value: "build", label: "BUILD" },
-  { value: "drop", label: "DROP" },
-  { value: "break", label: "BREAK" },
-  { value: "outro", label: "OUTRO" },
-  { value: "fill", label: "FILL" },
-  { value: "verse", label: "VERSE" },
-  { value: "chorus", label: "CHORUS" },
-  { value: "bridge", label: "BRIDGE" },
-  { value: "custom", label: "CUSTOM" },
-];
 const TRANSITION_TYPES: ArrangementTransitionType[] = ["fill", "riser", "impact", "drop", "break", "custom"];
 
 interface DragState {
@@ -3290,98 +3276,19 @@ export function ArrangementPanel() {
     rippleGhost && !rippleGhost.skip.includes(id) && startBar >= threshold ? rippleGhost.delta : 0;
   return (
     <section className="arr-panel" aria-label="Arrangement and scenes">
-      <div className="arr-scenes">
-        <div className="arr-scenes-header">
-          <div className="arr-section-heading">
-            <h2 className="panel-title">SCENES</h2>
-            <span className="arr-section-label">SOURCE</span>
-          </div>
-          <button
-            type="button"
-            className="btn btn-small"
-            title="Create scene from active pattern"
-            onClick={() => execute(createScene(services.store.doc))}
-          >
-            + SCENE
-          </button>
-        </div>
-        <div className="scene-actions">
-          <button
-            type="button"
-            className="btn btn-small"
-            disabled={!selectedScene}
-            title="Give this scene an independent copy of its pattern — same scene, new editable pattern (the shared-pattern escape hatch)"
-            onClick={() => selectedScene && execute(duplicatePatternForScene(services.store.doc, selectedScene.id))}
-          >
-            DUP PATTERN
-          </button>
-          <button
-            type="button"
-            className="btn btn-small"
-            disabled={!selectedScene}
-            title="Create a variation scene: new scene + varied copy of the pattern"
-            onClick={() => selectedScene && execute(duplicateSceneAsVariation(services.store.doc, selectedScene.id))}
-          >
-            VARIATION
-          </button>
-        </div>
-        <SceneStrip sceneId={selectedScene?.id} />
-        <SceneLauncher
-          variant="panel"
-          currentClipId={currentClipId}
-          selectedSceneId={selectedScene?.id}
-          onSelectScene={(scene) => setSelectedSceneId(scene.id)}
-          onRenameScene={(scene, name) => execute(renameScene(services.store.doc, scene.id, name))}
-          onDeleteScene={(scene) => execute(deleteScene(services.store.doc, scene.id))}
-          onReorderScenes={(fromIndex, toIndex) => execute(reorderScenes(services.store.doc, fromIndex, toIndex))}
-          onDuplicatePattern={(scene) => execute(duplicatePatternForScene(services.store.doc, scene.id))}
-        />
-        {selectedScene && (
-          <label className="arr-scene-role">
-            ROLE
-            <select
-              value={selectedScene.role ?? sceneRoleOf(selectedScene) ?? ""}
-              onChange={(event) =>
-                execute(
-                  setSceneRole(services.store.doc, selectedScene.id, (event.target.value || null) as SceneRole | null),
-                )
-              }
-            >
-              {SCENE_ROLES.map((role) => (
-                <option key={role.value} value={role.value}>
-                  {role.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <div className="arr-quick-actions">
-          <button
-            type="button"
-            className="btn btn-small"
-            disabled={!selectedScene}
-            onClick={() => createRoleVariation("fill")}
-          >
-            FILL
-          </button>
-          <button
-            type="button"
-            className="btn btn-small"
-            disabled={!selectedScene}
-            onClick={() => createRoleVariation("drop")}
-          >
-            DROP
-          </button>
-          <button
-            type="button"
-            className="btn btn-small"
-            disabled={!selectedScene}
-            onClick={() => createRoleVariation("break")}
-          >
-            BREAK
-          </button>
-        </div>
-      </div>
+      <ScenesPanel
+        selectedScene={selectedScene}
+        currentClipId={currentClipId}
+        onCreateScene={() => execute(createScene(services.store.doc))}
+        onDuplicatePattern={(scene) => execute(duplicatePatternForScene(services.store.doc, scene.id))}
+        onCreateVariation={(scene) => execute(duplicateSceneAsVariation(services.store.doc, scene.id))}
+        onSelectScene={(scene) => setSelectedSceneId(scene.id)}
+        onRenameScene={(scene, name) => execute(renameScene(services.store.doc, scene.id, name))}
+        onDeleteScene={(scene) => execute(deleteScene(services.store.doc, scene.id))}
+        onReorderScenes={(fromIndex, toIndex) => execute(reorderScenes(services.store.doc, fromIndex, toIndex))}
+        onSetSceneRole={(sceneId, role) => execute(setSceneRole(services.store.doc, sceneId, role))}
+        onCreateRoleVariation={(role) => createRoleVariation(role)}
+      />
 
       <div className="arr-timeline">
         <div className="arr-timeline-header">
