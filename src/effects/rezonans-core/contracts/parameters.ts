@@ -33,8 +33,22 @@ export const REZ_PARAM = {
 export type RezParamId = (typeof REZ_PARAM)[keyof typeof REZ_PARAM];
 
 export const VOICE_COUNT = 4;
-export const VOICE_FIELDS = ["enabled", "degree", "level", "pan", "formant", "humanize"] as const;
+export const VOICE_FIELDS = ["enabled", "degree", "note", "level", "pan", "formant", "humanize"] as const;
 export type VoiceField = (typeof VOICE_FIELDS)[number];
+
+const MIDI_NOTE_NAMES = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"] as const;
+
+/** MIDI note label using the conventional C4 = MIDI 60 octave numbering. */
+export function midiNoteLabel(midi: number): string {
+  const note = Math.round(midi);
+  return `${MIDI_NOTE_NAMES[((note % 12) + 12) % 12]}${Math.floor(note / 12) - 1}`;
+}
+
+/** Absolute-note menu shared by the panel and generic parameter editor. */
+export const REZONANS_NOTE_OPTIONS = Array.from({ length: 61 }, (_, index) => {
+  const value = 36 + index;
+  return { value, label: midiNoteLabel(value) };
+});
 
 /** Per-voice parameter id, e.g. `voice2.formant`. */
 export function voiceParamId(voice: number, field: VoiceField): string {
@@ -75,12 +89,11 @@ export interface RezParamDef {
 /** Default per-voice values: a 3rd / 5th / 7th / tonic stack. */
 const VOICE_DEFAULTS: Record<VoiceField, number[]> = {
   enabled: [1, 1, 1, 0],
-  // Degrees stay inside a heptatonic scale (0..6). Higher indices are NOT
-  // silently wrong — `nthScaleTone` wraps them — but a default that depends on
-  // the wrap to mean anything is a default the user cannot predict: asking a
-  // 7-note scale for degree 7 lands on degree 0, which is a unison doubling
-  // rather than the octave the number suggests.
+  // Degrees default inside a heptatonic scale (0..6). The wider range is useful
+  // for other scale sizes and signed downward degree selection.
   degree: [2, 4, 6, 0],
+  // Absolute targets are dormant outside MANUAL NOTES mode.
+  note: [60, 67, 72, 79],
   level: [0.7, 0.7, 0.7, 0.7],
   pan: [-0.6, -0.2, 0.2, 0.6],
   formant: [0, 0, 0, 0],
@@ -89,8 +102,11 @@ const VOICE_DEFAULTS: Record<VoiceField, number[]> = {
 
 const VOICE_RANGES: Record<VoiceField, { min: number; max: number }> = {
   enabled: { min: 0, max: 1 },
-  // 0..14 covers a two-octave scale degree span (an octave is 7-8 steps).
-  degree: { min: 0, max: 14 },
+  // Signed semitones in INTERVAL mode; signed scale steps in DEGREES modes.
+  // The solver clamps INTERVAL to the phase vocoder's ±12-semitone range.
+  degree: { min: -12, max: 14 },
+  // The phase vocoder still enforces its existing ±12-semitone shift limit.
+  note: { min: 36, max: 96 },
   level: { min: 0, max: 1.5 },
   pan: { min: -1, max: 1 },
   formant: { min: -12, max: 12 },
@@ -104,8 +120,8 @@ export const REZONANS_PARAMS: RezParamDef[] = [
   { id: REZ_PARAM.formant, min: -12, max: 12, def: 0 },
   { id: REZ_PARAM.formantVoiceScale, min: 0, max: 1, def: 1 },
   { id: REZ_PARAM.envelopeSmooth, min: 0, max: 1, def: 0.5 },
-  // 0 = off, 1 = interval, 2 = degrees, 3 = chordTones.
-  { id: REZ_PARAM.harmonyMode, min: 0, max: 3, def: 2 },
+  // 0 = off, 1 = interval, 2 = degrees, 3 = chordTones, 4 = manual notes.
+  { id: REZ_PARAM.harmonyMode, min: 0, max: 4, def: 2 },
   { id: REZ_PARAM.voices, min: 1, max: VOICE_COUNT, def: VOICE_COUNT },
   { id: REZ_PARAM.spread, min: 0, max: 2, def: 1 },
   { id: REZ_PARAM.width, min: 0, max: 2, def: 1 },

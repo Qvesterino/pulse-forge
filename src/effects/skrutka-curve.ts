@@ -49,6 +49,14 @@ export interface SkrutkaCurveParams {
   punchMix?: number;
   /** M/S field (−1 mid-only … +1 side-only); 0 = legacy stereo topology. */
   field?: number;
+  /** Signed envelope drive; either polarity can increase the radius. */
+  dyn?: number;
+  /** 0 = OFF, 1 = PUMP, 2 = DUCK, with fractional transition states. */
+  keyMode?: number;
+  /** Dry/wet blend at the output stage. Omitted means fully wet. */
+  mix?: number;
+  /** Output gain in dB, applied after the dry/wet blend. */
+  output?: number;
 }
 
 /** Which chain a curve describes: legacy L/R or the M/S field components. */
@@ -64,21 +72,28 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 
 /** Pole radius of the DISPERSION stage (matches the processor). */
 export function skrutkaRadius(dispersion: number, shape = 0): number {
-  const reso = Math.round(clamp(shape, 0, 3)) === 3;
-  const floor = reso ? SKRUTKA_RESO_R_FLOOR : SKRUTKA_R_FLOOR;
-  const span = reso ? SKRUTKA_RESO_R_RANGE : SKRUTKA_R_RANGE;
-  return clamp(floor + span * clamp(dispersion, 0, 1), 0.05, SKRUTKA_R_MAX);
+  const resoBlend = clamp(clamp(shape, 0, 3) - 2, 0, 1);
+  const regular = SKRUTKA_R_FLOOR + SKRUTKA_R_RANGE * clamp(dispersion, 0, 1);
+  const reso = SKRUTKA_RESO_R_FLOOR + SKRUTKA_RESO_R_RANGE * clamp(dispersion, 0, 1);
+  const radius = resoBlend <= 0 ? regular : resoBlend >= 1 ? reso : regular + (reso - regular) * resoBlend;
+  return clamp(radius, 0.05, SKRUTKA_R_MAX);
 }
 
 /** Per-section FOCUS multipliers for a shape (matches the processor). */
 export function skrutkaSectionFactors(shape: number): number[] {
   const out: number[] = [];
+  const boundedShape = clamp(shape, 0, 3);
+  const shapeIndex = Math.min(2, Math.floor(boundedShape));
+  const shapeBlend = boundedShape - shapeIndex;
   for (let s = 0; s < SKRUTKA_LONG_SECTIONS; s++) {
-    if (shape === 1)
-      out.push(0.5 * Math.pow(4, s / (SKRUTKA_LONG_SECTIONS - 1))); // CHIRP
-    else if (shape === 2)
-      out.push(s % 2 === 0 ? 1 / SKRUTKA_PUNCH_BAND_RATIO : SKRUTKA_PUNCH_BAND_RATIO); // DOUBLE
-    else out.push(1); // GULP / RESO
+    const factorAt = (index: number) => {
+      if (index === 1) return 0.5 * Math.pow(4, s / (SKRUTKA_LONG_SECTIONS - 1)); // CHIRP
+      if (index === 2) return s % 2 === 0 ? 1 / SKRUTKA_PUNCH_BAND_RATIO : SKRUTKA_PUNCH_BAND_RATIO; // DOUBLE
+      return 1; // GULP / RESO
+    };
+    const from = factorAt(shapeIndex);
+    const to = factorAt(shapeIndex + 1);
+    out.push(shapeBlend <= 0 ? from : shapeBlend >= 1 ? to : from + (to - from) * shapeBlend);
   }
   return out;
 }
@@ -121,13 +136,25 @@ export function skrutkaFocusForChannel(focusHz: number, spread: number, channel:
 export interface SkrutkaDynRadiusRange {
   /** Static base radius (dyn/key inactive). */
   base: number;
-  /** Radius ceiling the dynamic/key drives can reach. */
-  driven: number;
+  /** Lowest radius reachable through the active KEY mode. */
+  min: number;
+  /** Highest radius reachable through DYNAMIC and KEY PUMP. */
+  max: number;
 }
 
-/** Base radius and the driven ceiling for the panel's shaded band. */
+/** Reachable radius range for the envelope and sidechain controls. */
 export function skrutkaDynRadiusRange(params: SkrutkaCurveParams): SkrutkaDynRadiusRange {
-  return { base: skrutkaRadius(params.dispersion, params.shape ?? 0), driven: SKRUTKA_R_HARD_MAX };
+  const base = skrutkaRadius(params.dispersion, params.shape ?? 0);
+  const keyMode = clamp(params.keyMode ?? 0, 0, 2);
+  const pumpBlend = keyMode < 1 ? keyMode : 2 - keyMode;
+  const duckBlend = keyMode < 1 ? 0 : keyMode - 1;
+  const keyDelta = pumpBlend * (SKRUTKA_R_HARD_MAX - base) - duckBlend * base * 0.7;
+  const dynamicHeadroom = Math.abs(clamp(params.dyn ?? 0, -1, 1)) * (SKRUTKA_R_HARD_MAX - base);
+  return {
+    base,
+    min: clamp(Math.min(base, base + keyDelta), 0.05, SKRUTKA_R_HARD_MAX),
+    max: clamp(Math.max(base + dynamicHeadroom, base + dynamicHeadroom + keyDelta), 0.05, SKRUTKA_R_HARD_MAX),
+  };
 }
 
 /** FOCUS sweep range of the LFO (multiplicative ±depth octaves). */
@@ -163,6 +190,200 @@ function biquadAllpassAt(omega: number, c1: number, c2: number): Complex {
   };
 }
 
+const COMPLEX_ONE: Complex = { re: 1, im: 0 };
+
+function complexAdd(a: Complex, b: Complex): Complex {
+  return { re: a.re + b.re, im: a.im + b.im };
+}
+
+function complexScale(value: Complex, amount: number): Complex {
+  return { re: value.re * amount, im: value.im * amount };
+}
+
+function complexMultiply(a: Complex, b: Complex): Complex {
+  return { re: a.re * b.re - a.im * b.im, im: a.re * b.im + a.im * b.re };
+}
+
+function allPassCascadeAt(omega: number, focusHz: number, sampleRate: number, radius: number, shape: number): Complex {
+  const factors = skrutkaSectionFactors(shape);
+  let response = COMPLEX_ONE;
+  for (const factor of factors) {
+    const sectionHz = clamp(focusHz * factor, SKRUTKA_SECTION_MIN_HZ, SKRUTKA_SECTION_MAX_HZ);
+    const w0 = Math.min((2 * Math.PI * sectionHz) / sampleRate, Math.PI * 0.95);
+    const c1 = -2 * radius * Math.cos(w0);
+    response = complexMultiply(response, biquadAllpassAt(omega, c1, radius * radius));
+  }
+  return response;
+}
+
+function punchTransferAt(params: SkrutkaCurveParams, sampleRate: number, omega: number, punchRadius: number): Complex {
+  const punchMix = clamp(params.punchMix ?? 1, 0, 1);
+  if (punchRadius <= 1e-4 || punchMix <= 1e-4) return COMPLEX_ONE;
+  const punchFocus = skrutkaPunchFocus(params.focusHz, params.punch, params.punchHz ?? 0, sampleRate);
+  const wPunch = Math.min((2 * Math.PI * punchFocus) / sampleRate, Math.PI * 0.95);
+  const c1 = -2 * punchRadius * Math.cos(wPunch);
+  let punchWet = COMPLEX_ONE;
+  for (let section = 0; section < SKRUTKA_PUNCH_SECTIONS; section++) {
+    punchWet = complexMultiply(punchWet, biquadAllpassAt(omega, c1, punchRadius * punchRadius));
+  }
+  return complexAdd(complexScale(COMPLEX_ONE, 1 - punchMix), complexScale(punchWet, punchMix));
+}
+
+/**
+ * Exact complex transfer for one diagonal L/R or M/S component at the output.
+ * It includes the FIELD dry/dispersed blend, PUNCH parallel blend, rack MIX,
+ * and OUTPUT gain. In intermediate FIELD states the M/S channels can crossfeed;
+ * this returns the exact response for a unit input on the selected component.
+ */
+export function skrutkaOutputTransferAt(
+  params: SkrutkaCurveParams,
+  sampleRate: number,
+  freqHz: number,
+  channel: SkrutkaChannel = "L",
+  radiusOverride?: number,
+  punchRadiusOverride?: number,
+): Complex {
+  const omega = clamp((2 * Math.PI * freqHz) / sampleRate, 1e-4, Math.PI - 1e-4);
+  const shape = clamp(params.shape ?? 0, 0, 3);
+  const radius = radiusOverride ?? skrutkaRadius(params.dispersion, shape);
+  const punchRadius = punchRadiusOverride ?? skrutkaPunchRadius(params.punch);
+  const field = clamp(params.field ?? 0, -1, 1);
+  const fieldActive = Math.abs(field) > 1e-4;
+  let longTransfer: Complex;
+
+  if (!fieldActive) {
+    const focus = skrutkaFocusForChannel(params.focusHz, params.spread, channel, field);
+    longTransfer = allPassCascadeAt(omega, focus, sampleRate, radius, shape);
+  } else {
+    const focusA = skrutkaFocusForChannel(params.focusHz, params.spread, "M", field);
+    const focusB = skrutkaFocusForChannel(params.focusHz, params.spread, "S", field);
+    const transferA = allPassCascadeAt(omega, focusA, sampleRate, radius, shape);
+    const transferB = allPassCascadeAt(omega, focusB, sampleRate, radius, shape);
+    const angle = Math.abs(field) * (Math.PI / 4);
+    const cross = Math.cos(angle) * Math.sin(angle);
+    const average = complexScale(complexAdd(transferA, transferB), 0.5);
+    const rawDifference = complexAdd(transferA, complexScale(transferB, -1));
+    const difference = complexScale(rawDifference, cross);
+    const midDiagonal = complexAdd(average, difference);
+    const sideDiagonal = complexAdd(average, complexScale(difference, -1));
+    const crossfeed = complexScale(rawDifference, Math.cos(2 * angle) * 0.5);
+    const amounts = skrutkaFieldAmounts(field);
+    const midAmount = amounts.mid;
+    const sideAmount = amounts.side;
+    const midOut = complexAdd(complexScale(COMPLEX_ONE, 1 - midAmount), complexScale(midDiagonal, midAmount));
+    const sideOut = complexAdd(complexScale(COMPLEX_ONE, 1 - sideAmount), complexScale(sideDiagonal, sideAmount));
+    const midToSide = complexScale(crossfeed, sideAmount);
+    const sideToMid = complexScale(crossfeed, midAmount);
+    if (channel === "M") longTransfer = midOut;
+    else if (channel === "S") longTransfer = sideOut;
+    else if (channel === "L") {
+      longTransfer = complexScale(complexAdd(complexAdd(midOut, sideOut), complexAdd(midToSide, sideToMid)), 0.5);
+    } else {
+      longTransfer = complexScale(
+        complexAdd(complexAdd(midOut, sideOut), complexScale(complexAdd(midToSide, sideToMid), -1)),
+        0.5,
+      );
+    }
+  }
+
+  const punch = punchTransferAt(params, sampleRate, omega, punchRadius);
+  const wetTransfer = complexMultiply(longTransfer, punch);
+  const mix = clamp(params.mix ?? 1, 0, 1);
+  const mixedTransfer = complexAdd(complexScale(COMPLEX_ONE, 1 - mix), complexScale(wetTransfer, mix));
+  const outputGain = Math.pow(10, clamp(params.output ?? 0, -18, 12) / 20);
+  return complexScale(mixedTransfer, outputGain);
+}
+
+/** Output magnitude including OUTPUT gain, bounded to a finite dB range. */
+export function skrutkaOutputMagnitudeDbAt(
+  params: SkrutkaCurveParams,
+  sampleRate: number,
+  freqHz: number,
+  channel: SkrutkaChannel = "L",
+  radiusOverride?: number,
+  punchRadiusOverride?: number,
+): number {
+  const response = skrutkaOutputTransferAt(params, sampleRate, freqHz, channel, radiusOverride, punchRadiusOverride);
+  return clamp(20 * Math.log10(Math.max(Math.hypot(response.re, response.im), 1e-6)), -120, 60);
+}
+
+/**
+ * Local output group delay in samples. A deep cancellation null has no stable
+ * phase derivative, so it returns null; the magnitude plot exposes that null.
+ */
+export function skrutkaOutputGroupDelaySamples(
+  params: SkrutkaCurveParams,
+  sampleRate: number,
+  freqHz: number,
+  channel: SkrutkaChannel = "L",
+  radiusOverride?: number,
+  punchRadiusOverride?: number,
+): number | null {
+  const omega = clamp((2 * Math.PI * freqHz) / sampleRate, 1e-4, Math.PI - 1e-4);
+  const at = (w: number) =>
+    skrutkaOutputTransferAt(
+      params,
+      sampleRate,
+      (w * sampleRate) / (2 * Math.PI),
+      channel,
+      radiusOverride,
+      punchRadiusOverride,
+    );
+  const center = at(omega);
+  const plus = at(omega + PHASE_DELTA);
+  const minus = at(omega - PHASE_DELTA);
+  const floor = 1e-5; // −100 dB: phase is not actionable below this response level.
+  if (
+    Math.hypot(center.re, center.im) < floor ||
+    Math.hypot(plus.re, plus.im) < floor ||
+    Math.hypot(minus.re, minus.im) < floor
+  )
+    return null;
+  const cross = plus.im * minus.re - plus.re * minus.im;
+  const dot = plus.re * minus.re + plus.im * minus.im;
+  return -Math.atan2(cross, dot) / (2 * PHASE_DELTA);
+}
+
+/** Log-spaced full output response, used by the OUTPUT DELAY and OUTPUT LEVEL views. */
+export function skrutkaOutputComponentCurve(
+  params: SkrutkaCurveParams,
+  sampleRate: number,
+  channel: SkrutkaChannel,
+  points = 160,
+  fLo = 30,
+  fHi = 16000,
+  radiusOverride?: number,
+  punchRadiusOverride?: number,
+  measure: "delay" | "level" | "both" = "both",
+): { freqHz: number; ms: number | null; db: number }[] {
+  const out: { freqHz: number; ms: number | null; db: number }[] = [];
+  const ratio = Math.log(fHi / fLo);
+  for (let i = 0; i < points; i++) {
+    const freqHz = fLo * Math.exp((i / (points - 1)) * ratio);
+    out.push({
+      freqHz,
+      ms:
+        measure === "level"
+          ? null
+          : ((skrutkaOutputGroupDelaySamples(
+              params,
+              sampleRate,
+              freqHz,
+              channel,
+              radiusOverride,
+              punchRadiusOverride,
+            ) ?? Number.NaN) /
+              sampleRate) *
+            1000,
+      db:
+        measure === "delay"
+          ? 0
+          : skrutkaOutputMagnitudeDbAt(params, sampleRate, freqHz, channel, radiusOverride, punchRadiusOverride),
+    });
+  }
+  return out;
+}
+
 /** Phase (radians) of the full wet chain at ω: long cascade + punch blend. */
 function skrutkaPhaseAt(
   params: SkrutkaCurveParams,
@@ -172,7 +393,10 @@ function skrutkaPhaseAt(
   radiusOverride?: number,
   punchRadiusOverride?: number,
 ): number {
-  const shape = Math.round(clamp(params.shape ?? 0, 0, 3));
+  // SHAPE is a discrete project choice, but the worklet glides through its
+  // fractional values during automation and snapshot morphs. Keep the model
+  // continuous too so the panel curve follows the coefficients the DSP uses.
+  const shape = clamp(params.shape ?? 0, 0, 3);
   const radius = radiusOverride ?? skrutkaRadius(params.dispersion, shape);
   const c2 = radius * radius;
   const focus = skrutkaFocusForChannel(params.focusHz, params.spread, channel, params.field ?? 0);
@@ -248,8 +472,9 @@ export function skrutkaDelayAt(
   freqHz: number,
   radius: number,
   channel: SkrutkaChannel = "L",
+  punchRadiusOverride?: number,
 ): number {
-  return skrutkaGroupDelaySamples(params, sampleRate, freqHz, channel, radius);
+  return skrutkaGroupDelaySamples(params, sampleRate, freqHz, channel, radius, punchRadiusOverride);
 }
 
 export interface SkrutkaCurvePoint {
@@ -335,9 +560,20 @@ export function skrutkaPeakDelay(
   params: SkrutkaCurveParams,
   sampleRate: number,
   channel: SkrutkaChannel = "L",
+  radiusOverride?: number,
+  punchRadiusOverride?: number,
 ): { ms: number; freqHz: number } {
   let best = { ms: 0, freqHz: 0 };
-  for (const point of skrutkaComponentCurve(params, sampleRate, channel, 240)) {
+  for (const point of skrutkaComponentCurve(
+    params,
+    sampleRate,
+    channel,
+    240,
+    30,
+    16000,
+    radiusOverride,
+    punchRadiusOverride,
+  )) {
     if (point.ms > best.ms) best = { ms: point.ms, freqHz: point.freqHz };
   }
   return best;

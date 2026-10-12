@@ -15,7 +15,7 @@
  * live/offline parity golden meaningful.
  */
 
-import { hzToMidi, MAX_RATIO, MIN_RATIO, nearestAllowedPc, nthScaleTone, type HarmonyMode } from "./harmony.js";
+import { clamp, hzToMidi, MAX_RATIO, MIN_RATIO, nearestAllowedPc, nthScaleTone, type HarmonyMode } from "./harmony.js";
 
 export interface SolverContext {
   mode: HarmonyMode;
@@ -63,7 +63,7 @@ export class HarmonySolver {
    * previous ratio and fading is the safe response there, because chasing an
    * unreliable f0 is how a harmonizer turns consonants into robot noise.
    */
-  solve(f0: number, ctx: SolverContext, degree: Float64Array, out: Float64Array): void {
+  solve(f0: number, ctx: SolverContext, degree: Float64Array, out: Float64Array, manualNotes?: Float64Array): void {
     if (!(f0 > 0)) return;
     const refMidi = hzToMidi(f0);
     const refPc = ((Math.round(refMidi) % 12) + 12) % 12;
@@ -77,7 +77,10 @@ export class HarmonySolver {
           // An interval is a distance from the singer's current pitch. Keep
           // the fractional MIDI part so vibrato and expressive intonation pass
           // through the harmonies instead of being quantized to equal tone.
-          targetMidi = refMidi + d;
+          // The phase vocoder supports one octave in either direction; clamp
+          // here so both the rendered ratio and lastMidi report the applied
+          // interval rather than an unreachable request.
+          targetMidi = refMidi + clamp(d, -12, 12);
           break;
         }
 
@@ -114,6 +117,14 @@ export class HarmonySolver {
           const chordScore = Math.abs(chordMidi - refMidi) * (1 - w);
           const scaleScore = Math.abs(scaleMidi - refMidi) * w;
           targetMidi = chordScore <= scaleScore ? chordMidi : scaleMidi;
+          break;
+        }
+
+        case "manual": {
+          const requestedMidi = Math.round(manualNotes?.[i] ?? refMidi);
+          // Keep MANUAL NOTES within the phase-vocoder pitch range and report
+          // the applied target through lastMidi so the panel stays truthful.
+          targetMidi = Math.max(refMidi - 12, Math.min(refMidi + 12, requestedMidi));
           break;
         }
 

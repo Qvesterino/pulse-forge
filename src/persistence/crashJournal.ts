@@ -49,6 +49,14 @@ export interface CrashJournalReport {
   /**
    * True when the journal is empty or ends on session-close — the previous
    * session shut down deliberately. False means the tab died mid-session.
+   *
+   * READ THIS BEFORE TRUSTING IT: `session-close` is only written by
+   * `closeProject`, i.e. by the in-app back-to-browser button. Closing the tab,
+   * following a link or refreshing never writes it, so this reads false for
+   * the overwhelmingly common case of an ordinary, deliberate exit. It cannot
+   * be otherwise: an IndexedDB write dispatched from a `pagehide` handler does
+   * not commit (measured — editor audit D20). Consumers must therefore treat
+   * `false` as "did not end cleanly", NEVER as "crashed".
    */
   lastSessionClean: boolean;
   /** Most recent event overall, null for an empty/absent journal. */

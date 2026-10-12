@@ -8,6 +8,9 @@ interface Props {
   /** Full-screen mode copy. Route apps without local state override the
    * studio's "your work has been saved" line, which would over-claim. */
   crashNote?: string;
+  /** Identity of the guarded subtree. When it changes the boundary forgets a
+   * previous crash. Defaults to `panel`. */
+  resetKey?: string;
 }
 
 interface State {
@@ -44,6 +47,21 @@ export class ErrorBoundary extends Component<Props, State> {
       this.props.onCrashSave?.();
     } catch {
       // best-effort — don't throw during error handling
+    }
+  }
+
+  /**
+   * Dock slots swap panels by POSITION, not by remount: `<div className="dock-slot">`
+   * renders `renderDockSlot(id)` with no `key`, so React reuses this instance and only
+   * updates props. A crash card from the previous occupant therefore survives the swap
+   * and blames the new panel for an error it never threw (`mixer` -> `devices` shows
+   * "devices crashed" plus the mixer's message). Forgetting the error when the
+   * subtree identity changes makes the card mean what it says.
+   */
+  componentDidUpdate(prevProps: Props) {
+    if (!this.state.hasError) return;
+    if ((this.props.resetKey ?? this.props.panel) !== (prevProps.resetKey ?? prevProps.panel)) {
+      this.setState({ hasError: false, error: null });
     }
   }
 

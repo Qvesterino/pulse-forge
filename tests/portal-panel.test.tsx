@@ -42,6 +42,7 @@ function singleBandFrame(band: number, value: number, extra: Partial<PortalMeter
   bandsIn[band] = value;
   bandsOut[band] = value;
   return {
+    sampleRate: 48000,
     peak: 0.5,
     activity: 0.1,
     delaySec: 0.25,
@@ -166,6 +167,22 @@ describe("PORTAL band geometry is one contract, not two implementations", () => 
       // band from its centre; 0.85..1.18 is that width with margin.
       expect(ratio, `${hz} Hz must land in a band that contains it`).toBeGreaterThan(0.85);
       expect(ratio, `${hz} Hz must land in a band that contains it`).toBeLessThan(1.18);
+    }
+  });
+
+  it("uses each audio context's Nyquist for band centres and markers", () => {
+    for (const sampleRate of [32000, 44100, 48000, 96000]) {
+      const nyquist = sampleRate / 2;
+      for (const hz of [20, 55, 220, 440, 1000, nyquist * 0.7, nyquist]) {
+        const band = Math.round(hzToBand(hz, sampleRate));
+        const centre = bandHz(band, sampleRate);
+        const ratio = centre / hz;
+        expect(ratio, `${hz} Hz @ ${sampleRate} Hz sample rate`).toBeGreaterThan(0.84);
+        expect(ratio, `${hz} Hz @ ${sampleRate} Hz sample rate`).toBeLessThan(1.2);
+        expect(hzToX(hz, 100, sampleRate)).toBeGreaterThanOrEqual(0);
+        expect(hzToX(hz, 100, sampleRate)).toBeLessThanOrEqual(100);
+      }
+      expect(hzToX(nyquist, 100, sampleRate)).toBe(100);
     }
   });
 

@@ -47,7 +47,8 @@ function createRecorder(
     loopCapture?: boolean;
     punchCapture?: { startTick: number; endTick: number };
     estimateStorage?: () => Promise<{ quota?: number; usage?: number }>;
-    routeMonitorOutput?: (monitorOutput: AudioNode) => (() => void) | null;
+    routeMonitorOutput?: (monitorOutput: AudioNode, channelIndex: number) => (() => void) | null;
+    monitorChannelCount?: number;
     refreshStartBar?: () => number | null;
   } = {},
 ) {
@@ -79,6 +80,7 @@ function createRecorder(
     connect: ReturnType<typeof vi.fn>;
     disconnect: ReturnType<typeof vi.fn>;
   }> = [];
+  const splitters: Array<{ connect: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> }> = [];
   const samples = [new Float32Array(0)];
   const contextStateEvents = new EventTarget();
   const context = {
@@ -90,6 +92,11 @@ function createRecorder(
     addEventListener: contextStateEvents.addEventListener.bind(contextStateEvents),
     removeEventListener: contextStateEvents.removeEventListener.bind(contextStateEvents),
     createMediaStreamSource: vi.fn(() => source),
+    createChannelSplitter: vi.fn(() => {
+      const splitter = { connect: vi.fn(), disconnect: vi.fn() };
+      splitters.push(splitter);
+      return splitter;
+    }),
     createGain: vi.fn(() => {
       const gain = {
         gain: { value: 1, cancelScheduledValues: vi.fn(), setTargetAtTime: vi.fn() },
@@ -139,6 +146,7 @@ function createRecorder(
     getUserMedia,
     estimateStorage: options.estimateStorage,
     routeMonitorOutput: options.routeMonitorOutput,
+    monitorChannelCount: options.monitorChannelCount,
     refreshStartBar: options.refreshStartBar,
   });
   const metadata = () => ({
@@ -165,6 +173,7 @@ function createRecorder(
     track,
     source,
     gains,
+    splitters,
     context,
     changeContextState,
     getUserMedia,
@@ -460,7 +469,7 @@ describe("PcmMicRecorder", () => {
     await recorder.start(metadata);
 
     expect(routeMonitorOutput).toHaveBeenCalledOnce();
-    expect(routeMonitorOutput).toHaveBeenCalledWith(gains[1]);
+    expect(routeMonitorOutput).toHaveBeenCalledWith(gains[1], 0);
     expect(gains[1].connect).not.toHaveBeenCalledWith(context.destination);
     await recorder.cancel();
     expect(detachMonitorRoute).toHaveBeenCalledOnce();
@@ -473,6 +482,70 @@ describe("PcmMicRecorder", () => {
     await expect(recorder.start(metadata)).rejects.toThrow(/armed track cannot receive software input monitoring/i);
 
     expect(gains[1].connect).not.toHaveBeenCalledWith(context.destination);
+    expect(track.stop).toHaveBeenCalledOnce();
+    expect(recorder.state).toBe("idle");
+  });
+
+  it("splits explicitly routed input channels into independent track-monitor paths", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const detachRoutes = Array.from({ length: 4 }, () => vi.fn());
+    const routedOutputs: AudioNode[] = [];
+    const routeMonitorOutput = vi.fn((monitorOutput: AudioNode, channelIndex: number) => {
+      routedOutputs[channelIndex] = monitorOutput;
+      return detachRoutes[channelIndex] ?? null;
+    });
+    const { recorder, metadata, context, splitters } = createRecorder({
+      monitorChannelCount: 4,
+      routeMonitorOutput,
+    });
+    recorder.setMonitoring(true);
+
+    await recorder.start(metadata);
+
+    expect(context.createChannelSplitter).toHaveBeenCalledWith(4);
+    expect(routeMonitorOutput).toHaveBeenCalledTimes(4);
+    expect(routeMonitorOutput.mock.calls.map(([, channelIndex]) => channelIndex)).toEqual([0, 1, 2, 3]);
+    expect(splitters[0]?.connect.mock.calls).toEqual(
+      routedOutputs.map((monitorOutput, channelIndex) => [monitorOutput, channelIndex]),
+    );
+    expect(routedOutputs.every((output) => (output as unknown as { gain: { value: number } }).gain.value === 1)).toBe(
+      true,
+    );
+
+    await recorder.cancel();
+
+    expect(detachRoutes.every((detach) => detach.mock.calls.length === 1)).toBe(true);
+    expect(splitters[0]?.disconnect).toHaveBeenCalledOnce();
+    expect(
+      routedOutputs.every(
+        (output) => (output as unknown as { disconnect: ReturnType<typeof vi.fn> }).disconnect.mock.calls.length === 1,
+      ),
+    ).toBe(true);
+  });
+
+  it("cleans up earlier channel-monitor routes when a later target track is unavailable", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const detachRoutes = [vi.fn(), vi.fn()];
+    const routedOutputs: AudioNode[] = [];
+    const routeMonitorOutput = vi.fn((monitorOutput: AudioNode, channelIndex: number) => {
+      routedOutputs[channelIndex] = monitorOutput;
+      return channelIndex < 2 ? detachRoutes[channelIndex] : null;
+    });
+    const { recorder, metadata, track, splitters } = createRecorder({
+      monitorChannelCount: 4,
+      routeMonitorOutput,
+    });
+
+    await expect(recorder.start(metadata)).rejects.toThrow(/input channel 3 cannot receive software monitoring/i);
+
+    expect(routeMonitorOutput).toHaveBeenCalledTimes(3);
+    expect(detachRoutes.every((detach) => detach.mock.calls.length === 1)).toBe(true);
+    expect(
+      routedOutputs.every(
+        (output) => (output as unknown as { disconnect: ReturnType<typeof vi.fn> }).disconnect.mock.calls.length === 1,
+      ),
+    ).toBe(true);
+    expect(splitters[0]?.disconnect).toHaveBeenCalledOnce();
     expect(track.stop).toHaveBeenCalledOnce();
     expect(recorder.state).toBe("idle");
   });

@@ -29,6 +29,13 @@ export interface SaveUnloadGuardsOptions {
   flushSave: () => Promise<void> | void;
   /** True when there are unsaved or unflushed changes that would be lost. */
   isDirty: () => boolean;
+  /**
+   * Synchronous last-chance hook, fired from the unload handler BEFORE
+   * `flushSave`. This is where the recovery buffer is taken (editor audit D20):
+   * IndexedDB is async and does not commit before teardown, so the buffer has
+   * to be written synchronously. Must never throw.
+   */
+  onUnload?: () => void;
 }
 
 export interface SaveUnloadGuards {
@@ -80,6 +87,18 @@ export function installSaveUnloadGuards(
     // pagehide is the one iOS Safari reliably fires before terminating
     // a tab. Fire-and-forget: IndexedDB may commit an already-open
     // transaction, but no browser guarantees completion after termination.
+    //
+    // MEASURED (editor audit D20, Chromium, production build): it does NOT
+    // commit here, and neither does the visibilitychange flush that ran a
+    // moment earlier. An edit inside the autosave debounce window is lost on
+    // an ordinary tab close even though this handler fires. That is why the
+    // synchronous `onUnload` observer runs FIRST: it is the only thing in the
+    // unload path that still survives to the next boot.
+    try {
+      options.onUnload?.();
+    } catch {
+      /* an unload observer must never break the save path */
+    }
     void options.flushSave();
   };
 

@@ -27,7 +27,7 @@ import { SpectralProcessor, DEFAULT_SPECTRAL_PARAMS } from "../src/effects/spect
 const SR = 44100;
 const BLOCK = 128;
 const SOAK_SECONDS = 60;
-const TOTAL_BLOCKS = Math.floor((SOAK_SECONDS * SR) / BLOCK);
+const DRIFT_WINDOW_SECONDS = 8;
 
 /** Heap growth ceiling, matching the plugin soak contract (AGENTS.md §6). */
 const HEAP_GROWTH_LIMIT_BYTES = 6 * 1024 * 1024;
@@ -48,7 +48,7 @@ const drive = (i: number) =>
 /**
  * Run the full soak and return the measured invariants.
  */
-function soak(params: Partial<typeof DEFAULT_SPECTRAL_PARAMS>) {
+function soak(params: Partial<typeof DEFAULT_SPECTRAL_PARAMS>, seconds = SOAK_SECONDS) {
   const proc = makeProcessor(params);
   const inL = new Float32Array(BLOCK);
   const inR = new Float32Array(BLOCK);
@@ -58,6 +58,16 @@ function soak(params: Partial<typeof DEFAULT_SPECTRAL_PARAMS>) {
   let nonFinite = 0;
   let subnormal = 0;
   let peak = 0;
+  let earlyEnergy = 0;
+  let lateEnergy = 0;
+  const earlyStart = (seconds >= 300 ? 224 : 8) * SR;
+  const earlyEnd = earlyStart + DRIFT_WINDOW_SECONDS * SR;
+  // The source repeats every second and the STFT hop is 256 samples. A 64 s
+  // separation realigns both the input and frame phase. The first 224 seconds
+  // let maximum-feedback transients settle before the like-for-like comparison.
+  const lateStart = (seconds >= 300 ? 288 : seconds - 36) * SR;
+  const lateEnd = lateStart + DRIFT_WINDOW_SECONDS * SR;
+  const totalBlocks = Math.floor((seconds * SR) / BLOCK);
 
   // Warm the processor before the heap snapshot. The delay rings are ~3 MB and
   // are allocated once in prepare(); counting that as "growth" measures the
@@ -70,7 +80,7 @@ function soak(params: Partial<typeof DEFAULT_SPECTRAL_PARAMS>) {
   global.gc?.();
   const heapBefore = process.memoryUsage().heapUsed;
   const ringBefore = proc.ringFrames();
-  for (let block = 0; block < TOTAL_BLOCKS; block++) {
+  for (let block = 0; block < totalBlocks; block++) {
     const off = block * BLOCK;
     for (let i = 0; i < BLOCK; i++) {
       inL[i] = drive(off + i);
@@ -85,6 +95,10 @@ function soak(params: Partial<typeof DEFAULT_SPECTRAL_PARAMS>) {
         nonFinite++;
         continue;
       }
+      const sampleIndex = off + i;
+      const energy = a * a + b * b;
+      if (sampleIndex >= earlyStart && sampleIndex < earlyEnd) earlyEnergy += energy;
+      if (sampleIndex >= lateStart && sampleIndex < lateEnd) lateEnergy += energy;
       const m = Math.max(Math.abs(a), Math.abs(b));
       if (m > peak) peak = m;
       // Subnormal = nonzero but below the flush threshold. A sustained run of
@@ -103,6 +117,7 @@ function soak(params: Partial<typeof DEFAULT_SPECTRAL_PARAMS>) {
     nonFinite,
     subnormal,
     peak,
+    driftDb: Math.abs(10 * Math.log10(lateEnergy / earlyEnergy)),
     heapGrowth: heapAfter - heapBefore,
     ringFrames: proc.ringFrames(),
     ringGrew: proc.ringFrames() !== ringBefore,
@@ -111,6 +126,23 @@ function soak(params: Partial<typeof DEFAULT_SPECTRAL_PARAMS>) {
 }
 
 describe("PORTAL soak", () => {
+  it("holds maximum DELAY feedback stable for 300 s", () => {
+    const r = soak({ mode: 0, time: 2000, feedback: 1, decay: 0, diffuse: 0, shift: 0, mix: 1 }, 300);
+
+    console.log(
+      `[portal-soak] 300 s peak=${r.peak.toFixed(3)} drift=${r.driftDb.toFixed(5)}dB ` +
+        `heapGrowth=${(r.heapGrowth / (1024 * 1024)).toFixed(1)}MB`,
+    );
+    expect(r.nonFinite).toBe(0);
+    expect(r.subnormal).toBe(0);
+    expect(r.peak).toBeGreaterThan(0.01);
+    expect(r.peak).toBeLessThan(4);
+    expect(r.driftDb).toBeLessThanOrEqual(0.003);
+    expect(r.heapGrowth).toBeLessThan(HEAP_GROWTH_LIMIT_BYTES);
+    expect(r.ringGrew).toBe(false);
+    expect(r.frames).toBeGreaterThan(0);
+  }, 300_000);
+
   it("DELAY at maximum feedback stays finite, bounded and denormal-free", () => {
     const r = soak({ mode: 0, time: 2000, feedback: 1, decay: 0, diffuse: 1, shift: 24, mix: 1 });
 

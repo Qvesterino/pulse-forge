@@ -78,10 +78,13 @@ const SYNC_RATIOS = [0, 1, 0.5, 1 / 3, 0.25, 1 / 6] as const;
 const TONE_LP_HZ = 4000;
 const TONE_HP_HZ = 200;
 
-/** Smoothing time constant for MIX / TONE / DRIVE, in seconds. */
+/** Smoothing time constant for continuous controls, in seconds. */
 const SMOOTHING_TC = 0.02;
 /** Shift moves across FFT bins; spread automation changes across several spectral frames. */
 const SHIFT_SMOOTHING_TC = 0.03;
+/** Mix-to-dry de-click window; the wet DSP is reset once this short fade completes. */
+const MIX_CLOSE_SECONDS = 0.005;
+const MIX_BYPASS_THRESHOLD = 1e-4;
 
 /**
  * Log-spaced band resolution for the panel spectrum. 64 bands across the
@@ -95,8 +98,18 @@ const BAND_DB_FLOOR = -84;
 
 /** First displayed frequency. The FOCUS minimum, so no control sits off-axis. */
 const BAND_MIN_HZ = 20;
+/** Preserve 18 dB of float headroom while containing corrupted extreme samples. */
+const MAX_INPUT_SAMPLE = 8;
+
+function sanitizeInputSample(sample: number): number {
+  if (sample >= -MAX_INPUT_SAMPLE && sample <= MAX_INPUT_SAMPLE) return sample;
+  if (!Number.isFinite(sample)) return 0;
+  return sample < 0 ? -MAX_INPUT_SAMPLE : MAX_INPUT_SAMPLE;
+}
 
 export interface SpectralMeters {
+  /** Sample rate used to build the log-spaced bands; the UI uses it for its axis. */
+  sampleRate: number;
   /** Peak wet magnitude observed in the analysed spectrum this frame. */
   peak: number;
   /** Fraction of bins carrying energy. */
@@ -168,9 +181,20 @@ export class SpectralProcessor {
 
   // Smoothed controls so a slider sweep never steps the output.
   private mixSmooth = DEFAULT_SPECTRAL_PARAMS.mix;
+  private mixCloseStart = 0;
+  private mixCloseTotalSamples = 0;
+  private mixCloseRemainingSamples = 0;
+  private wetStateCleared = true;
   private toneSmooth = DEFAULT_SPECTRAL_PARAMS.tone;
   private driveSmooth = DEFAULT_SPECTRAL_PARAMS.drive;
   private shiftSmooth = DEFAULT_SPECTRAL_PARAMS.shift;
+  private timeSmooth = DEFAULT_SPECTRAL_PARAMS.time;
+  private feedbackSmooth = DEFAULT_SPECTRAL_PARAMS.feedback;
+  private decaySmooth = DEFAULT_SPECTRAL_PARAMS.decay;
+  private resonanceSmooth = DEFAULT_SPECTRAL_PARAMS.resonance;
+  private focusSmooth = DEFAULT_SPECTRAL_PARAMS.focus;
+  private focusWidthSmooth = DEFAULT_SPECTRAL_PARAMS.focusWidth;
+  private diffuseSmooth = DEFAULT_SPECTRAL_PARAMS.diffuse;
 
   // Tone filter state, one pair per path.
   private lpStateMid = 0;
@@ -179,6 +203,7 @@ export class SpectralProcessor {
   private hpStateSide = 0;
 
   private readonly meters: SpectralMeters = {
+    sampleRate: 44100,
     peak: 0,
     activity: 0,
     delaySec: 0,
@@ -217,6 +242,7 @@ export class SpectralProcessor {
   prepare(sampleRate: number, fftSize: number = DEFAULT_FFT_SIZE): void {
     this.sampleRate = sampleRate;
     this.fftSize = fftSize;
+    this.meters.sampleRate = sampleRate;
     this.engineMid = new StftEngine(sampleRate, { fftSize });
     this.engineSide = new StftEngine(sampleRate, { fftSize });
     const bins = this.engineMid.binCount;
@@ -334,9 +360,20 @@ export class SpectralProcessor {
     this.dryScratchR.fill(0);
     this.dryWrite = 0;
     this.mixSmooth = clamp01(this.params.mix);
+    this.mixCloseStart = 0;
+    this.mixCloseTotalSamples = 0;
+    this.mixCloseRemainingSamples = 0;
+    this.wetStateCleared = true;
     this.toneSmooth = this.params.tone;
     this.driveSmooth = clamp01(this.params.drive);
     this.shiftSmooth = clampRange(this.params.shift, -24, 24);
+    this.timeSmooth = clampRange(this.params.time, 20, 2000);
+    this.feedbackSmooth = clamp01(this.params.feedback);
+    this.decaySmooth = clamp01(this.params.decay);
+    this.resonanceSmooth = clamp01(this.params.resonance);
+    this.focusSmooth = clampRange(this.params.focus, 20, 18000);
+    this.focusWidthSmooth = clampRange(this.params.focusWidth, 0.1, 4);
+    this.diffuseSmooth = clamp01(this.params.diffuse);
     this.lpStateMid = 0;
     this.hpStateMid = 0;
     this.lpStateSide = 0;
@@ -368,41 +405,49 @@ export class SpectralProcessor {
   process(left: Float32Array, right: Float32Array, outL: Float32Array, outR: Float32Array, blockLen: number): void {
     if (!this.ready || blockLen <= 0) return;
     const n = Math.min(blockLen, MAX_BLOCK);
-    this.delayDry(left, right, n);
+    const mixTarget = clamp01(this.params.mix);
+    const closingMix = mixTarget <= MIX_BYPASS_THRESHOLD;
+    if (!closingMix) {
+      this.mixCloseStart = 0;
+      this.mixCloseTotalSamples = 0;
+      this.mixCloseRemainingSamples = 0;
+    } else if (this.mixCloseRemainingSamples === 0 && this.mixSmooth > MIX_BYPASS_THRESHOLD) {
+      this.mixCloseStart = this.mixSmooth;
+      this.mixCloseTotalSamples = Math.max(1, Math.round(this.sampleRate * MIX_CLOSE_SECONDS));
+      this.mixCloseRemainingSamples = this.mixCloseTotalSamples;
+    }
+    const wetPathActive = !closingMix || this.mixCloseRemainingSamples > 0;
+    this.captureInputBlock(left, right, n, wetPathActive);
 
     const mixK = blockSmoothingCoefficient(n, SMOOTHING_TC, this.sampleRate);
-    const mixTarget = clamp01(this.params.mix);
     this.toneSmooth += (this.params.tone - this.toneSmooth) * mixK;
     this.driveSmooth += (clamp01(this.params.drive) - this.driveSmooth) * mixK;
     const shiftTarget = clampRange(this.params.shift, -24, 24);
     const shiftK = blockSmoothingCoefficient(n, SHIFT_SMOOTHING_TC, this.sampleRate);
     this.shiftSmooth += (shiftTarget - this.shiftSmooth) * shiftK;
+    this.timeSmooth = smoothLog(this.timeSmooth, this.params.time, mixK, 20, 2000);
+    this.feedbackSmooth += (clamp01(this.params.feedback) - this.feedbackSmooth) * mixK;
+    this.decaySmooth += (clamp01(this.params.decay) - this.decaySmooth) * mixK;
+    this.resonanceSmooth += (clamp01(this.params.resonance) - this.resonanceSmooth) * mixK;
+    this.focusSmooth = smoothLog(this.focusSmooth, this.params.focus, mixK, 20, 18000);
+    this.focusWidthSmooth = smoothLog(this.focusWidthSmooth, this.params.focusWidth, mixK, 0.1, 4);
+    this.diffuseSmooth += (clamp01(this.params.diffuse) - this.diffuseSmooth) * mixK;
     this.meters.shiftSemitones = this.shiftSmooth;
 
-    // Fully closed = pure passthrough, decided on the TARGET mix rather than
-    // the smoothed one: a knob dragged to zero must bypass immediately and
-    // bit-exactly, not ring out over the smoothing time. Smoothing governs how
-    // the control ENTERS the effect, never how it leaves it.
-    //
-    // This is also checklist §1 — the phaser shipped with a silent wet chain
-    // because its bypass path was never exercised. Here it additionally has to
-    // be bit-exact, so the test can pin it to the sample.
-    if (mixTarget <= 1e-4) {
+    // A live MIX close gets a short sample-ramped exit so a phase/spectral
+    // discontinuity cannot click. Once it reaches the threshold, stop the STFT
+    // and clear only wet state; the independent dry delay keeps running and
+    // remains bit-exact at MIX 0. A cold instance at MIX 0 takes this path
+    // immediately without allocating or processing the wet graph.
+    if (!wetPathActive) {
       this.mixSmooth = 0;
-      this.resoMid.clearPhaseHistory();
-      this.resoSide.clearPhaseHistory();
+      if (!this.wetStateCleared) this.clearWetState();
       outL.set(this.dryScratchL.subarray(0, n));
       outR.set(this.dryScratchR.subarray(0, n));
       return;
     }
-    this.mixSmooth += (mixTarget - this.mixSmooth) * mixK;
-
-    for (let i = 0; i < n; i++) {
-      const l = left[i];
-      const r = right[i];
-      this.scratchMid[i] = (l + r) * 0.5;
-      this.scratchSide[i] = (l - r) * 0.5;
-    }
+    if (!closingMix) this.mixSmooth += (mixTarget - this.mixSmooth) * mixK;
+    this.wetStateCleared = false;
 
     const n2 = this.effectiveDelaySeconds();
     this.engineMid.processBlock(this.scratchMid, n, this.scratchMid);
@@ -411,7 +456,6 @@ export class SpectralProcessor {
     const wetMid = this.scratchMid;
     const wetSide = this.scratchSide;
 
-    const mix = this.mixSmooth;
     const lpCoef = toneCoef(TONE_LP_HZ, n, this.sampleRate);
     const hpCoef = toneCoef(TONE_HP_HZ, n, this.sampleRate);
     const drive = this.driveSmooth;
@@ -420,6 +464,15 @@ export class SpectralProcessor {
     for (let i = 0; i < n; i++) {
       const wetM = this.toneAndDrive(wetMid[i], drive, tone, lpCoef, hpCoef, true);
       const wetS = this.toneAndDrive(wetSide[i], drive, tone, lpCoef, hpCoef, false);
+
+      let mix = this.mixSmooth;
+      if (closingMix && this.mixCloseRemainingSamples > 0) {
+        const progress = 1 - (this.mixCloseRemainingSamples - 1) / this.mixCloseTotalSamples;
+        const eased = progress * progress * (3 - 2 * progress);
+        mix = this.mixCloseStart * (1 - eased);
+        this.mixCloseRemainingSamples--;
+        this.mixSmooth = mix;
+      }
 
       const dryL = this.dryScratchL[i]!;
       const dryR = this.dryScratchR[i]!;
@@ -430,6 +483,11 @@ export class SpectralProcessor {
 
       outL[i] = mid + side;
       outR[i] = mid - side;
+    }
+
+    if (closingMix && this.mixCloseRemainingSamples === 0) {
+      this.mixSmooth = 0;
+      this.clearWetState();
     }
 
     const dm = this.delayMid.getMeters();
@@ -450,17 +508,38 @@ export class SpectralProcessor {
     this.dryWrite = 0;
   }
 
-  /** Push the source into a fixed ring and read the sample aligned to the wet path. */
-  private delayDry(left: Float32Array, right: Float32Array, frames: number): void {
+  /** Clear frozen wet history after MIX closes, without disturbing the live dry delay. */
+  private clearWetState(): void {
+    this.engineMid.reset();
+    this.engineSide.reset();
+    this.delayMid.reset();
+    this.delaySide.reset();
+    this.resoMid.reset();
+    this.resoSide.reset();
+    this.lpStateMid = 0;
+    this.hpStateMid = 0;
+    this.lpStateSide = 0;
+    this.hpStateSide = 0;
+    this.wetStateCleared = true;
+  }
+
+  /** Sanitize once, then feed the aligned dry ring and (when active) both STFT paths. */
+  private captureInputBlock(left: Float32Array, right: Float32Array, frames: number, feedWet: boolean): void {
     const latency = this.engineMid.latencySamples();
     const mask = this.dryDelayMask;
     for (let i = 0; i < frames; i++) {
+      const l = sanitizeInputSample(left[i]!);
+      const r = sanitizeInputSample(right[i]!);
       const write = this.dryWrite & mask;
-      this.dryDelayL[write] = left[i]!;
-      this.dryDelayR[write] = right[i]!;
+      this.dryDelayL[write] = l;
+      this.dryDelayR[write] = r;
       const read = (this.dryWrite - latency) & mask;
       this.dryScratchL[i] = this.dryDelayL[read]!;
       this.dryScratchR[i] = this.dryDelayR[read]!;
+      if (feedWet) {
+        this.scratchMid[i] = (l + r) * 0.5;
+        this.scratchSide[i] = (l - r) * 0.5;
+      }
       this.dryWrite++;
     }
   }
@@ -485,7 +564,7 @@ export class SpectralProcessor {
       const beatSec = 60 / Math.max(1, this.syncBpm);
       return clampRange(beatSec * ratio, 0.02, 2);
     }
-    return clampRange(this.params.time / 1000, 0.02, 2);
+    return clampRange(this.timeSmooth / 1000, 0.02, 2);
   }
 
   /** Drive + tone on one path, in the sample domain after resynthesis. */
@@ -522,7 +601,8 @@ export class SpectralProcessor {
 
   /**
    * Install the per-frame spectral callbacks once. They read the live
-   * parameters at frame time, so a knob change needs no re-installation.
+   * smoothed controls and current discrete mode at frame time, so a knob
+   * change needs no re-installation.
    */
   private installFrameCallbacks(): void {
     // `primary` marks the MID path. SIDE is the width channel; driving the
@@ -562,11 +642,11 @@ export class SpectralProcessor {
     reso: ResonatorBank,
   ): void {
     const mode = this.currentMode();
-    const resonance = clamp01(this.params.resonance);
+    const resonance = this.resonanceSmooth;
     const rp = this.resoScratch;
     rp.resonance = resonance;
-    rp.focusHz = this.params.focus;
-    rp.focusWidthOct = this.params.focusWidth;
+    rp.focusHz = this.focusSmooth;
+    rp.focusWidthOct = this.focusWidthSmooth;
 
     if (mode === SPECTRAL_MODE_RESONATOR) {
       // The resonator IS the effect here: the delay ring still receives the
@@ -610,10 +690,10 @@ export class SpectralProcessor {
   private delayParams(delaySec: number, frozen: boolean): SpectralDelayParams {
     const p = this.delayScratch;
     p.timeSec = delaySec;
-    p.feedback = clamp01(this.params.feedback) * (frozen ? 0.85 : 1);
-    p.decay = clamp01(this.params.decay);
+    p.feedback = this.feedbackSmooth * (frozen ? 0.85 : 1);
+    p.decay = this.decaySmooth;
     p.shiftSemitones = this.shiftSmooth;
-    p.diffuse = clamp01(this.params.diffuse);
+    p.diffuse = this.diffuseSmooth;
     p.freeze = frozen ? 1 : 0;
     return p;
   }
@@ -627,6 +707,15 @@ function clamp01(v: number): number {
 function clampRange(v: number, lo: number, hi: number): number {
   if (!Number.isFinite(v)) return lo;
   return v < lo ? lo : v > hi ? hi : v;
+}
+
+function smoothLog(current: number, target: number, coefficient: number, lo: number, hi: number): number {
+  const fromValue = clampRange(current, lo, hi);
+  const toValue = clampRange(target, lo, hi);
+  if (fromValue === toValue) return toValue;
+  const from = Math.log(fromValue);
+  const to = Math.log(toValue);
+  return Math.exp(from + (to - from) * coefficient);
 }
 
 /** One-pole smoothing coefficient for a corner frequency, applied per block. */

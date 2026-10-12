@@ -33,7 +33,12 @@ export const studioAppBase = process.env.STUDIO_APP_BASE ?? "/";
 
 export default defineConfig({
   base: studioAppBase,
-  server: { host: "127.0.0.1" },
+  server: {
+    host: "127.0.0.1",
+    // Keep an opt-in long audio soak isolated from HMR caused by edits in the
+    // shared working tree. Normal development retains hot reload.
+    ...(process.env.KYX_RECORDING_SOAK_SECONDS ? { hmr: false } : {}),
+  },
   plugins: [react(), ...(desktopBuild ? [] : [VitePWA(pwaOptions)])],
   resolve: {
     alias: [

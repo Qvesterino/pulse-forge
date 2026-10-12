@@ -1247,8 +1247,27 @@ test.describe("11 — audio-input recording", () => {
     await page.getByLabel("Captured channel 3 destination").selectOption(trackIds[2]!);
     await page.getByLabel("Captured channel 4 destination").selectOption(trackIds[3]!);
 
+    await page.evaluate(async () => {
+      const load = (specifier: string) => import(/* @vite-ignore */ specifier);
+      const { AudioEngine } = await load("/src/audio-engine/AudioEngine.ts");
+      const prototype = AudioEngine.prototype;
+      const original = prototype.attachDryInputMonitor;
+      const routes: string[] = [];
+      prototype.attachDryInputMonitor = function (trackId: string, source: AudioNode) {
+        routes.push(trackId);
+        return original.call(this, trackId, source);
+      };
+      (window as Window & { __recordingMonitorTrackIds?: string[] }).__recordingMonitorTrackIds = routes;
+    });
+    await page.getByRole("button", { name: "DRY SOFT MON OFF" }).click();
+
     await page.getByRole("button", { name: /REC$/ }).click();
     await expect(page.getByRole("button", { name: /STOP/ })).toBeVisible({ timeout: 15_000 });
+    await expect
+      .poll(() =>
+        page.evaluate(() => (window as Window & { __recordingMonitorTrackIds?: string[] }).__recordingMonitorTrackIds),
+      )
+      .toEqual(trackIds);
     await expect(page.getByRole("meter", { name: "Audio input level" })).toHaveAttribute(
       "aria-valuenow",
       /^(?!0(?:\.0+)?$)/,

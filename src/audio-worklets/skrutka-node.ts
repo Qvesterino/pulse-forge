@@ -65,11 +65,29 @@ const SKRUTKA_PARAMS = [
 /** Validated live telemetry frame for the panel. */
 export interface SkrutkaMeterFrame {
   lfo: number;
+  /** Current smoothed FOCUS after the LFO waveform/depth have been applied. */
+  focusHz: number;
   env: number;
   key: number;
   radius: number;
-  /** Current dynamic PUNCH radius (0 = stage off). */
+  dispersion: number;
+  /** Current signed PUNCH control after host-side morph and worklet smoothing. */
   punch: number;
+  punchHz: number;
+  punchMix: number;
+  /** Current PUNCH radius, including envelope-driven modulation (0 = stage off). */
+  punchRadius: number;
+  shape: number;
+  spread: number;
+  field: number;
+  dyn: number;
+  dynPunch: number;
+  keyMode: number;
+  lfoDepth: number;
+  /** Current smoothed global DRY/WET mix. */
+  mix: number;
+  /** Current smoothed output gain in dB. */
+  output: number;
 }
 
 /** Extra runtime surface used by the panel (not part of EffectRuntime). */
@@ -161,20 +179,70 @@ export function createSkrutkaNode(
     const msg = event.data as {
       type?: unknown;
       lfo?: unknown;
+      focusHz?: unknown;
       env?: unknown;
       key?: unknown;
       radius?: unknown;
+      dispersion?: unknown;
       punch?: unknown;
+      punchHz?: unknown;
+      punchMix?: unknown;
+      punchRadius?: unknown;
+      shape?: unknown;
+      spread?: unknown;
+      field?: unknown;
+      dyn?: unknown;
+      dynPunch?: unknown;
+      keyMode?: unknown;
+      lfoDepth?: unknown;
+      mix?: unknown;
+      output?: unknown;
     } | null;
     if (msg?.type !== "skrutka") return;
     const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
-    if (!finite(msg.lfo) || !finite(msg.env) || !finite(msg.key) || !finite(msg.radius)) return;
+    const inRange = (v: unknown, lo: number, hi: number): v is number => finite(v) && v >= lo && v <= hi;
+    if (
+      !finite(msg.lfo) ||
+      !inRange(msg.focusHz, 40, 4000) ||
+      !inRange(msg.env, 0, 1) ||
+      !inRange(msg.key, 0.3, 2) ||
+      !inRange(msg.radius, 0.05, 0.995) ||
+      !inRange(msg.dispersion, 0, 1) ||
+      !inRange(msg.punch, -1, 1) ||
+      !inRange(msg.punchHz, 0, 6000) ||
+      !inRange(msg.punchMix, 0, 1) ||
+      !inRange(msg.punchRadius, 0, 0.97) ||
+      !inRange(msg.shape, 0, 3) ||
+      !inRange(msg.spread, 0, 1) ||
+      !inRange(msg.field, -1, 1) ||
+      !inRange(msg.dyn, -1, 1) ||
+      !inRange(msg.dynPunch, -1, 1) ||
+      !inRange(msg.keyMode, 0, 2) ||
+      !inRange(msg.lfoDepth, 0, 1) ||
+      !inRange(msg.mix, 0, 1) ||
+      !inRange(msg.output, -18, 12)
+    )
+      return;
     meters = {
       lfo: msg.lfo,
+      focusHz: msg.focusHz,
       env: msg.env,
       key: msg.key,
       radius: msg.radius,
-      punch: finite(msg.punch) ? msg.punch : 0,
+      dispersion: msg.dispersion,
+      punch: msg.punch,
+      punchHz: msg.punchHz,
+      punchMix: msg.punchMix,
+      punchRadius: msg.punchRadius,
+      shape: msg.shape,
+      spread: msg.spread,
+      field: msg.field,
+      dyn: msg.dyn,
+      dynPunch: msg.dynPunch,
+      keyMode: msg.keyMode,
+      lfoDepth: msg.lfoDepth,
+      mix: msg.mix,
+      output: msg.output,
     };
   };
 

@@ -78,7 +78,7 @@ import type { MorphScenesState } from "../effects/morph-dynamics-core/contracts/
 import { EffectAbControls, type EffectAbState } from "./EffectAbControls";
 import { DockedPlugin } from "./FloatingPlugin";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
-import { effectEditorSpec, portalParamModeHint } from "./effectEditorRegistry";
+import { effectEditorSpec, portalParamModeHint, skrutkaParamModeHint } from "./effectEditorRegistry";
 import { EffectParameterGrid } from "./EffectParameterGrid";
 import { EffectIntentAssistant } from "./EffectIntentAssistant";
 import { EffectQuickControls, isEffectQuickControlParam } from "./EffectQuickControls";
@@ -663,8 +663,24 @@ function Device({
       (paramId) => (fx.params[paramId] ?? defaultParams[paramId]) !== defaultParams[paramId],
     ) || (fx.outputTrimDb ?? 0) !== 0;
   const editorSpec = effectEditorSpec(fx.type, fx.params);
+  const twistSlots =
+    fx.type === "skrutka" &&
+    fx.deviceState?.kind === "twist-curves-v1" &&
+    typeof fx.deviceState.data.slots === "object" &&
+    fx.deviceState.data.slots !== null
+      ? (fx.deviceState.data.slots as Record<string, unknown>)
+      : undefined;
+  const hasTwistKeySource = !!fx.sidechainTrackId && tracks.some((candidate) => candidate.id === fx.sidechainTrackId);
   const contextHint =
-    fx.type === "portal" ? (paramId: string) => portalParamModeHint(paramId, fx.params.mode ?? 0) : undefined;
+    fx.type === "portal"
+      ? (paramId: string) => portalParamModeHint(paramId, fx.params.mode ?? 0)
+      : fx.type === "skrutka"
+        ? (paramId: string) =>
+            skrutkaParamModeHint(paramId, fx.params, {
+              hasKeySource: hasTwistKeySource,
+              hasStoredCurve: !!(twistSlots?.A || twistSlots?.B),
+            })
+        : undefined;
   const genericParams = devicesMode
     ? fx.type === "fxeq"
       ? def.params.filter((param) => !/^band\d+\./.test(param.id))
@@ -1134,6 +1150,7 @@ function Device({
                 params={fx.params}
                 degraded={!!fallbackReason}
                 docked={devicesMode}
+                keySourceConnected={hasTwistKeySource}
                 deviceState={fx.deviceState}
                 sceneBound={twistMorphIntensityBound(doc, track.id, fx.id)}
                 onApplyScenePair={(pair) => services.store.execute(applyTwistScenePair(doc, track.id, fx.id, pair))}

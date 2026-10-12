@@ -72,19 +72,33 @@ describe("recording AudioWorklet PCM protocol", () => {
     expect(processor.messages[3]).toMatchObject({ type: "stopped", sequence: 2 });
   });
 
-  it("bounds unacknowledged chunks and reports backpressure instead of growing memory without limit", () => {
+  it("allows six seconds of bounded write jitter, then reports backpressure instead of growing without limit", () => {
     const processor = createProcessor();
     renderQuantum(processor, new Float32Array(128)); // initializes channel contract
     processor.port.onmessage!({ data: { type: "start" } });
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 13; i++) {
       const result = renderQuantum(processor, new Float32Array(128).fill(i));
-      if (i < 3) expect(result.keepAlive).toBe(true);
+      if (i < 12) expect(result.keepAlive).toBe(true);
       else expect(result.keepAlive).toBe(false);
     }
-    expect(processor.messages.filter((message: any) => message.type === "chunk")).toHaveLength(3);
+    expect(processor.messages.filter((message: any) => message.type === "chunk")).toHaveLength(12);
     expect(
       processor.messages.some((message: any) => message.type === "error" && /could not keep up/i.test(message.reason)),
     ).toBe(true);
+  });
+
+  it("resumes within the bounded queue when a delayed storage acknowledgement arrives", () => {
+    const processor = createProcessor();
+    renderQuantum(processor, new Float32Array(128));
+    processor.port.onmessage!({ data: { type: "start" } });
+    for (let i = 0; i < 12; i++) renderQuantum(processor, new Float32Array(128).fill(i));
+
+    processor.port.onmessage!({ data: { type: "ack", sequence: 0 } });
+    const resumed = renderQuantum(processor, new Float32Array(128).fill(12));
+
+    expect(resumed.keepAlive).toBe(true);
+    expect(processor.messages.filter((message: any) => message.type === "chunk")).toHaveLength(13);
+    expect(processor.messages.some((message: any) => message.type === "error")).toBe(false);
   });
 
   it("stops instead of clamping a loop boundary that arrived after its audio frame", () => {

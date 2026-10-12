@@ -196,7 +196,15 @@ const ENTRY_BUDGET_KB = 1070;
 // (one eager command module) and the in-flight REZONANS/gallery waves; the
 // pack DATA itself stays in the lazy panel chunk (type-only import in the
 // command). Boot path 2100/2200. Budget raised 5120 → 5160.
-const TOTAL_BUDGET_KB = 5160;
+// 2026-10-12: clean HEAD 00eed032 measures 5162 KB, already 2 KB above the
+// prior ceiling. The integrated working tree measures 5173 KB (+11 KB vs
+// clean HEAD) after channel-isolated recording monitoring, REZONANS manual
+// note targeting, SKRUTKA parameter/telemetry refinements and PORTAL sample-
+// rate-aware spectrum scaling. The boot path moves only 2116 → 2119 KB and
+// remains 81 KB under its independent limit; all other optional/worklet
+// budgets pass. Set a bounded 5180 KB ceiling: 7 KB of headroom for this
+// measured tree, with subsequent DAW growth required to offset or justify.
+const TOTAL_BUDGET_KB = 5180;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
 // symbolic/ranker workers. Keep these optional runtimes under one existing

@@ -138,8 +138,10 @@ export interface PcmMicRecorderDependencies {
   estimateStorage?: () => Promise<BrowserStorageEstimate>;
   /** Pre-capture input trim in dB (-24..+12). Applied to monitor + capture. */
   inputGainDb?: number;
-  /** Optional project-mixer destination for the dry software monitor; the recorder does not own its cleanup. */
-  routeMonitorOutput?: (monitorOutput: AudioNode) => (() => void) | null;
+  /** Optional project-mixer destination for one dry software-monitor channel. */
+  routeMonitorOutput?: (monitorOutput: AudioNode, channelIndex: number) => (() => void) | null;
+  /** Split this many input channels into isolated mono monitor routes when routing is enabled. */
+  monitorChannelCount?: number;
   /**
    * Optional side-effect-free re-read of the transport position, invoked
    * immediately before capture arms. The metadata snapshot (including
@@ -185,8 +187,9 @@ export class PcmMicRecorder {
   private source: MediaStreamAudioSourceNode | null = null;
   private node: AudioWorkletNode | null = null;
   private muteGain: GainNode | null = null;
-  private monitorGain: GainNode | null = null;
-  private monitorRouteCleanup: (() => void) | null = null;
+  private monitorGains: GainNode[] = [];
+  private monitorSplitter: ChannelSplitterNode | null = null;
+  private monitorRouteCleanups: Array<() => void> = [];
   private monitoringEnabled = false;
   /** Pre-capture trim stage (inputGainNode → capture/monitor). */
   private inputGainNode: GainNode | null = null;
@@ -224,11 +227,11 @@ export class PcmMicRecorder {
   /** Enable the dry software-monitor path independently of the silent capture worklet output. */
   setMonitoring(enabled: boolean): void {
     this.monitoringEnabled = enabled;
-    const gain = this.monitorGain?.gain;
-    if (!gain) return;
     const now = this.deps.ctx.currentTime;
-    gain.cancelScheduledValues(now);
-    gain.setTargetAtTime(enabled ? 1 : 0, now, 0.01);
+    for (const monitorGain of this.monitorGains) {
+      monitorGain.gain.cancelScheduledValues(now);
+      monitorGain.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.01);
+    }
   }
 
   /** Live input trim in dB (applies to capture AND monitor, takes effect immediately). */
@@ -364,6 +367,13 @@ export class PcmMicRecorder {
     ) {
       throw new Error("Requested audio input channel count must be a whole number from 1 to 32");
     }
+    const monitorChannelCount = this.deps.monitorChannelCount;
+    if (
+      monitorChannelCount !== undefined &&
+      (!Number.isSafeInteger(monitorChannelCount) || monitorChannelCount < 1 || monitorChannelCount > 32)
+    ) {
+      throw new Error("Monitored audio input channel count must be a whole number from 1 to 32");
+    }
     activeCapture = this;
     this.startInFlight = true;
     const token = ++this.startToken;
@@ -457,8 +467,17 @@ export class PcmMicRecorder {
       this.muteGain = ctx.createGain();
       this.workletStopped = false;
       this.muteGain.gain.value = 0;
-      this.monitorGain = ctx.createGain();
-      this.monitorGain.gain.value = this.monitoringEnabled ? 1 : 0;
+      const monitorChannelCount = this.deps.routeMonitorOutput ? (this.deps.monitorChannelCount ?? 1) : 1;
+      if (monitorChannelCount > 1) {
+        this.monitorSplitter = ctx.createChannelSplitter(monitorChannelCount);
+        this.monitorGains = [];
+        for (let channelIndex = 0; channelIndex < monitorChannelCount; channelIndex++) {
+          this.monitorGains.push(ctx.createGain());
+        }
+      } else {
+        this.monitorGains = [ctx.createGain()];
+      }
+      for (const monitorGain of this.monitorGains) monitorGain.gain.value = this.monitoringEnabled ? 1 : 0;
       // Pre-capture trim: source → inputGainNode → (capture worklet | monitor).
       // getInputLevel taps post-trim so the meter reads what will be saved.
       this.inputGainNode = ctx.createGain();
@@ -478,12 +497,27 @@ export class PcmMicRecorder {
       this.inputGainNode.connect(this.inputAnalyser);
       this.node.connect(this.muteGain);
       this.muteGain.connect(ctx.destination);
-      this.inputGainNode.connect(this.monitorGain);
       if (this.deps.routeMonitorOutput) {
-        this.monitorRouteCleanup = this.deps.routeMonitorOutput(this.monitorGain);
-        if (!this.monitorRouteCleanup) throw new Error("The armed track cannot receive software input monitoring");
+        if (this.monitorSplitter) {
+          this.inputGainNode.connect(this.monitorSplitter);
+          for (let channelIndex = 0; channelIndex < this.monitorGains.length; channelIndex++) {
+            const monitorGain = this.monitorGains[channelIndex]!;
+            this.monitorSplitter.connect(monitorGain, channelIndex);
+            const cleanup = this.deps.routeMonitorOutput(monitorGain, channelIndex);
+            if (!cleanup) throw new Error(`Input channel ${channelIndex + 1} cannot receive software monitoring`);
+            this.monitorRouteCleanups.push(cleanup);
+          }
+        } else {
+          const monitorGain = this.monitorGains[0]!;
+          this.inputGainNode.connect(monitorGain);
+          const cleanup = this.deps.routeMonitorOutput(monitorGain, 0);
+          if (!cleanup) throw new Error("The armed track cannot receive software input monitoring");
+          this.monitorRouteCleanups.push(cleanup);
+        }
       } else {
-        this.monitorGain.connect(ctx.destination);
+        const monitorGain = this.monitorGains[0]!;
+        this.inputGainNode.connect(monitorGain);
+        monitorGain.connect(ctx.destination);
       }
 
       const ready = await readyPromise;
@@ -859,13 +893,6 @@ export class PcmMicRecorder {
         /* already disconnected */
       }
     }
-    if (this.inputGainNode && this.monitorGain) {
-      try {
-        this.inputGainNode.disconnect(this.monitorGain);
-      } catch {
-        /* already disconnected */
-      }
-    }
     try {
       this.inputGainNode?.disconnect();
     } catch {
@@ -888,22 +915,32 @@ export class PcmMicRecorder {
     } catch {
       /* already disconnected */
     }
-    try {
-      this.monitorRouteCleanup?.();
-    } catch {
-      /* monitor routing is already detached or its mixer graph was disposed */
+    for (const cleanup of this.monitorRouteCleanups) {
+      try {
+        cleanup();
+      } catch {
+        /* monitor routing is already detached or its mixer graph was disposed */
+      }
     }
-    this.monitorRouteCleanup = null;
+    this.monitorRouteCleanups = [];
+    for (const monitorGain of this.monitorGains) {
+      try {
+        monitorGain.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    }
+    this.monitorGains = [];
     try {
-      this.monitorGain?.disconnect();
+      this.monitorSplitter?.disconnect();
     } catch {
       /* already disconnected */
     }
+    this.monitorSplitter = null;
     this.node?.port.close();
     this.node = null;
     this.source = null;
     this.muteGain = null;
-    this.monitorGain = null;
     this.stream?.getTracks().forEach((track) => track.stop());
     this.stream = null;
     this.track = null;

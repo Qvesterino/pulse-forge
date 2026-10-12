@@ -120,6 +120,22 @@ declare global {
 
 const ROUTE_FALLBACK = <div className="boot">KYX — loading…</div>;
 
+/**
+ * How long the boot phase may run before the UI stops looking busy and starts
+ * explaining itself. Measured: a healthy production boot reaches the project
+ * browser in ~1.6 s, so this is ~9x headroom for a cold server, a slow device
+ * or a large project. It is a WARNING, not an abort - the boot keeps running
+ * and this screen disappears the moment boot settles, so a slow-but-successful
+ * start is never turned into a failure.
+ *
+ * It exists because the layer below is bounded (`persistence/db.ts` caps a
+ * blocked IndexedDB open at 5 s and rejects with an actionable message) but a
+ * CHUNK REQUEST is not: `fetch()` has no timeout of its own, so a stalled or
+ * service-worker-starved `services` chunk left the user on "forging audio
+ * engine" forever - no error, no way out, nothing to click.
+ */
+const BOOT_WARN_MS = 15_000;
+
 // /embed — a standalone share player; skip the whole studio boot.
 if (/^\/embed(\/|$)/.test(PATH)) {
   root.render(
@@ -215,12 +231,24 @@ function Entry() {
 type Screen =
   | { kind: "booting" }
   | { kind: "browser"; core: CoreServices; importDoc?: ProjectDocument }
+  /** A project was chosen and the studio is being built. Holds no services yet,
+   *  so nothing here can be closed on the way out — it is a display state. */
+  | { kind: "opening" }
   | { kind: "studio"; services: Services }
   | { kind: "unsupported"; missing: string[] }
   | { kind: "error"; message: string };
 
 function Boot() {
   const [screen, setScreen] = useState<Screen>({ kind: "booting" });
+  // Flipped by a timer, not by the boot itself: the boot may still be perfectly
+  // healthy and just slow. Cleared by unmount only - once boot settles the
+  // screen leaves the "booting" branch and this no longer renders.
+  const [bootStalled, setBootStalled] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setBootStalled(true), BOOT_WARN_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -304,8 +332,18 @@ function Boot() {
   }, []);
 
   const openDoc = useCallback((core: CoreServices, doc: ProjectDocument) => {
+    // Claim the transition synchronously. The project browser stays mounted
+    // until this state commits, so anything dispatched before it commits can
+    // still reach its rows — that window is exactly where a double-open hides.
+    setScreen({ kind: "opening" });
     // Surface open failures (e.g. the lazy collab chunk cannot load) — a
     // silent rejection would leave the browser looking unresponsive.
+    // `openDoc` sets "opening" synchronously BEFORE this, so the project
+    // browser unmounts in the same commit. Without that the whole studio load
+    // ran behind a fully interactive browser: the user got no feedback at all,
+    // and a second click started a SECOND openProject — the loser's engine was
+    // orphaned with no closeProject(), so it never got its final save and kept
+    // its AudioContext alive next to the winner's.
     void import("./services")
       .then(({ openProject }) => openProject(core, doc))
       .then(
@@ -332,7 +370,7 @@ function Boot() {
   }, []);
 
   if (screen.kind === "booting") {
-    return <div className="boot">KYX — forging audio engine…</div>;
+    return bootStalled ? <BootStalledScreen /> : <div className="boot">KYX — forging audio engine…</div>;
   }
   if (screen.kind === "unsupported") {
     return <NoWebAudioScreen missing={screen.missing} />;
@@ -347,6 +385,9 @@ function Boot() {
       </ErrorBoundary>
     );
   }
+  if (screen.kind === "opening") {
+    return <div className="boot">KYX — opening studio…</div>;
+  }
   return (
     <ErrorBoundary onCrashSave={() => screen.kind === "studio" && void screen.services.flushSave()}>
       <Suspense fallback={<div className="boot">KYX — opening studio…</div>}>
@@ -360,7 +401,39 @@ function Boot() {
   );
 }
 
-/** Full-screen guidance when the browser cannot provide Web Audio — old
+/**
+ * Shown when the boot phase outlives `BOOT_WARN_MS`. This is deliberately a
+ * WARNING surface and not an error: the boot promise is still pending and will
+ * take over the screen by itself if it ever settles. It exists so a boot that
+ * never settles is still a screen with a button, instead of a permanent loader.
+ */
+function BootStalledScreen() {
+  const seconds = Math.round(BOOT_WARN_MS / 1000);
+  return (
+    <div className="crash-screen" role="alert">
+      <h1>KYX is still starting</h1>
+      <p className="crash-detail">
+        Loading has taken longer than {seconds} seconds. Nothing you saved is lost — your projects live in this
+        browser&apos;s storage. If this screen does not go away on its own, reload.
+      </p>
+      <ul className="crash-list">
+        <li>
+          <strong>Another KYX tab may be holding the project database open.</strong> Close your other KYX windows, then
+          reload.
+        </li>
+        <li>A flaky or offline connection can stall a part of the app before it finishes downloading.</li>
+        <li>
+          A tab left open across a deploy runs the old version against new files — reloading picks up the current build.
+        </li>
+      </ul>
+      <button type="button" className="crash-reload" onClick={() => location.reload()}>
+        Reload
+      </button>
+    </div>
+  );
+}
+
+/** Full-screen guidance when the browser cannot provide Web Audio - old
  *  browsers, hardened builds, or iOS/iPadOS Low Power Mode (the OS blocks
  *  the API entirely there). The studio cannot run without it, but the
  *  visitor deserves an actionable explanation, not a ReferenceError. */

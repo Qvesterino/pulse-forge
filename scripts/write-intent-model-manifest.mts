@@ -26,6 +26,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MODELS_DIR = path.join(ROOT, "public", "models");
 const REPORT_PATH = path.join(ROOT, "scripts", "data", "intent-model-report.json");
 const SFT_DATA_DIR = path.join(ROOT, "scripts", "data", "intent-sft");
+const TRAINER_PATH = path.join(ROOT, "scripts", "train-intent-model.py");
 
 const sha256 = (data: string | Uint8Array): string => createHash("sha256").update(data).digest("hex");
 
@@ -63,6 +64,9 @@ if (!report.trainingInputs) {
 }
 if (!/^[0-9a-f]{64}$/i.test(report.trainingInputs.trainerSha256)) {
   throw new Error("training report has no valid trainer source hash");
+}
+if (report.trainingInputs.trainerSha256.toLowerCase() !== sha256(readFileSync(TRAINER_PATH))) {
+  throw new Error("trainer source changed after ONNX training; retrain before writing a manifest");
 }
 if (report.trainingInputs.datasetVersion !== datasetManifest.datasetVersion) {
   throw new Error("training report datasetVersion differs from the current SFT dataset manifest");

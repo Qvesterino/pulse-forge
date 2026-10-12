@@ -254,3 +254,19 @@ Recorded deliberately: the cascade fallback is a different ADR-shaped decision
 (zero latency, no `getLatencySec` requirement, no phase locking) and would
 supersede decisions 2–5 and 12 of this ADR rather than amend them. Until P1/A5
 passes, this ADR describes intent, not shipped behaviour.
+
+## Addendum (2026-10-12) — input sanitization before analysis and bypass
+
+REZONANS converts non-finite input samples to silence and bounds finite peaks
+at ±8 (+18 dBFS), preserving generous float headroom while containing
+corrupted samples before pitch/formant analysis, the dry-delay ring, or the
+active harmony path. The same sanitization runs in `harmony.mode = off` and at
+`mix = 0`, so bypass cannot forward invalid values into downstream devices.
+This prevents a single bad sample from poisoning later analysis or recursive
+delay state.
+
+Validation compares source and shipped-worklet renders containing NaN,
+Infinity, and extreme finite peaks against renders with equivalent
+zeroed/clamped samples. It covers bypass and active MANUAL NOTES processing,
+checks finite output, verifies the active tail stays audible with RMS below
+0.2 and peak below 1, and confirms recovery.

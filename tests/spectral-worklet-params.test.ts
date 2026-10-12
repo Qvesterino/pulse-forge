@@ -151,6 +151,7 @@ function render(
   params: Record<string, Float32Array>,
   frames: number,
   input?: (i: number) => number,
+  right?: (i: number) => number,
 ): Float32Array {
   const out = new Float32Array(frames * BLOCK);
   const inL = new Float32Array(BLOCK);
@@ -163,7 +164,7 @@ function render(
       const idx = i * BLOCK + j;
       const s = input ? input(idx) : 0;
       inL[j] = s;
-      inR[j] = s;
+      inR[j] = right ? right(idx) : s;
     }
     instance.process([[inL, inR]], [[outL, outR]], params);
     out.set(outL, i * BLOCK);
@@ -173,6 +174,23 @@ function render(
 
 const peakOf = (a: Float32Array) => a.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
 const finite = (a: Float32Array) => a.every((v) => Number.isFinite(v));
+
+function freezeOutputDelta(cls: ProcessorCtor): number {
+  const sweptTone = (i: number) => {
+    const t = i / SR;
+    const phase = 2 * Math.PI * (120 * t + 160 * t * t);
+    return 0.45 * Math.sin(phase) + 0.18 * Math.sin(2 * phase);
+  };
+  const common = { mode: 0, time: 140, feedback: 0.75, decay: 0, diffuse: 0, mix: 1 };
+  const live = makeSurface(cls, { ...common, freeze: 0 });
+  const held = makeSurface(cls, { ...common, freeze: 1 });
+  const liveOut = render(live.instance, live.params, 700, sweptTone);
+  const heldOut = render(held.instance, held.params, 700, sweptTone);
+  const from = PORTAL_LATENCY + Math.floor(0.3 * SR);
+  let errorEnergy = 0;
+  for (let i = from; i < liveOut.length; i++) errorEnergy += (liveOut[i]! - heldOut[i]!) ** 2;
+  return Math.sqrt(errorEnergy / (liveOut.length - from));
+}
 
 describe("PORTAL worklet: every rack param is reachable through AudioParams", () => {
   const Cls = () => registered.get("portal")!;
@@ -261,6 +279,11 @@ describe("PORTAL worklet: every rack param is reachable through AudioParams", ()
     expect(finite(b)).toBe(true);
     expect(tail(b), "high FEEDBACK accumulates energy past the source").toBeGreaterThan(tail(a) * 2);
     expect(tail(b), "the tail is audible, not just different").toBeGreaterThan(1e-4);
+  });
+
+  it("writing DELAY HOLD captures a changing spectrum", () => {
+    const delta = freezeOutputDelta(Cls());
+    expect(delta, "DELAY HOLD must change the rendered spectrum by a measurable amount").toBeGreaterThan(0.01);
   });
 
   it("writing BPM changes the synced delay (SYNC is live)", () => {
@@ -354,7 +377,7 @@ const APPROVED_RACK: Array<[string, string, number, number, number, string | und
   ["focusWidth", "WIDTH", 0.1, 4, 1, "oct", undefined],
   ["shift", "SHIFT", -24, 24, 0, "st", undefined],
   ["diffuse", "DIFF", 0, 1, 0.3, undefined, undefined],
-  ["freeze", "FREEZE", 0, 1, 0, undefined, undefined],
+  ["freeze", "DELAY HOLD", 0, 1, 0, undefined, undefined],
   ["drive", "DRIVE", 0, 1, 0, undefined, undefined],
   ["tone", "TONE", -24, 24, 0, "dB", undefined],
   ["mix", "MIX", 0, 1, 0.35, undefined, undefined],
@@ -379,6 +402,13 @@ describe("PORTAL rack is the design that was approved", () => {
       expect(p.unit, `portal.${id} unit`).toBe(unit);
       expect(p.taper, `portal.${id} taper`).toBe(taper);
     }
+  });
+
+  it("exposes the DELAY-only spectral hold as a discrete switch", () => {
+    const hold = EFFECT_META.portal.params.find((param) => param.id === "freeze");
+    expect(hold?.kind).toBe("toggle");
+    expect(hold?.format?.(0)).toBe("OFF");
+    expect(hold?.format?.(1)).toBe("ON");
   });
 });
 
@@ -452,6 +482,11 @@ describe("PORTAL shipped bundle (the file the browser loads)", () => {
     expect(finite(b)).toBe(true);
   });
 
+  it("DELAY HOLD through the SHIPPED bundle captures a changing spectrum", () => {
+    const delta = freezeOutputDelta(loadShippedBundle());
+    expect(delta, "the shipped bundle must honour DELAY HOLD").toBeGreaterThan(0.01);
+  });
+
   it("mix = 0 through the SHIPPED bundle is bit-exact after the fixed latency", () => {
     const Cls = loadShippedBundle();
     const dry = makeSurface(Cls, { mix: 0 });
@@ -464,5 +499,25 @@ describe("PORTAL shipped bundle (the file the browser loads)", () => {
 
     const wet = makeSurface(Cls, { mix: 1 });
     expect(Array.from(render(wet.instance, wet.params, 16, sig))).not.toEqual(Array.from(dryOutput));
+  });
+
+  it("the SHIPPED bundle sanitizes invalid and extreme finite samples on dry and wet paths", () => {
+    const Cls = loadShippedBundle();
+    const tone = (i: number) => 0.4 * Math.sin((i / SR) * 2 * Math.PI * 220);
+    const left = (i: number) =>
+      i === 1000 ? Number.NaN : i === 1001 ? Number.POSITIVE_INFINITY : i === 1002 ? 1e20 : tone(i);
+    const right = (i: number) =>
+      i === 2000 ? Number.NEGATIVE_INFINITY : i === 2001 || i === 2002 ? -1e20 : tone(i) * 0.7;
+    const safeLeft = (i: number) => (i === 1000 || i === 1001 ? 0 : i === 1002 ? 8 : tone(i));
+    const safeRight = (i: number) => (i === 2000 ? 0 : i === 2001 || i === 2002 ? -8 : tone(i) * 0.7);
+
+    for (const mix of [0, 1]) {
+      const actualRuntime = makeSurface(Cls, { mix });
+      const expectedRuntime = makeSurface(Cls, { mix });
+      const actual = render(actualRuntime.instance, actualRuntime.params, 38, left, right);
+      const expected = render(expectedRuntime.instance, expectedRuntime.params, 38, safeLeft, safeRight);
+      expect(actual).toEqual(expected);
+      expect(finite(actual)).toBe(true);
+    }
   });
 });

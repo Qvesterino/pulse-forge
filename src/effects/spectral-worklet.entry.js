@@ -192,6 +192,7 @@ class PortalWorkletProcessor extends AudioWorkletProcessor {
       // audio thread — the one place this codebase must not allocate.
       this.port.postMessage({
         type: "meters",
+        sampleRate: m.sampleRate,
         peak: m.peak,
         activity: m.activity,
         delaySec: m.delaySec,

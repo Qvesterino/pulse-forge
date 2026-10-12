@@ -71,6 +71,7 @@ const SPREAD_OFFSET = 0.12; // per-channel focus offset fraction at spread = 1
 const FOCUS_MIN_HZ = 40; // descriptor floor (kept authoritative here too)
 const SECTION_MIN_HZ = 20; // per-section angle floor (CHIRP/DOUBLE skirts)
 const SECTION_MAX_HZ = 8000; // per-section angle ceiling
+const MAX_ABS_INPUT = 8; // +18 dBFS float headroom; contains corrupted extreme samples
 const SMOOTH_TAU_S = 0.03; // parameter glide time constant
 const DENORM = 1e-20; // state flush threshold
 const ENV_FAST_ATK_S = 0.001; // attackness follower attack
@@ -131,6 +132,12 @@ function makeRandom(seed) {
 
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const sanitizeAudioSample = (sample) => (Number.isFinite(sample) ? clamp(sample, -MAX_ABS_INPUT, MAX_ABS_INPUT) : 0);
+const shapeSectionFactor = (shape, section) => {
+  if (shape === 1) return 0.5 * Math.pow(4, section / (LONG_SECTIONS - 1)); // CHIRP
+  if (shape === 2) return section % 2 === 0 ? 1 / PUNCH_BAND_RATIO : PUNCH_BAND_RATIO; // DOUBLE
+  return 1; // GULP / RESO
+};
 
 /**
  * Transient score: the fast follower's lead over its 20 ms lag, with a margin
@@ -232,7 +239,28 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
     this.lastBodyness = 0;
     this.lastKeyGain = 1;
     this.meterSamples = 0;
-    this.meterFrame = { type: "skrutka", lfo: 0, env: 0, key: 1, radius: R_FLOOR, punch: 0 };
+    this.meterFrame = {
+      type: "skrutka",
+      lfo: 0,
+      focusHz: 220,
+      env: 0,
+      key: 1,
+      radius: R_FLOOR,
+      dispersion: 0.35,
+      punch: 0,
+      punchHz: 0,
+      punchMix: 1,
+      punchRadius: 0,
+      shape: 0,
+      spread: 0,
+      field: 0,
+      dyn: 0,
+      dynPunch: 0,
+      keyMode: 0,
+      lfoDepth: 0,
+      mix: 1,
+      output: 0,
+    };
   }
 
   process(inputs, outputs, parameters) {
@@ -255,14 +283,14 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
     target.punchHz = clamp(parameters.punchHz[0], 0, 6000);
     target.punchMix = clamp(parameters.punchMix[0], 0, 1);
     target.focusHz = clamp(parameters.focusHz[0], FOCUS_MIN_HZ, 4000);
-    target.shape = Math.round(clamp(parameters.shape[0], 0, 3));
+    target.shape = clamp(parameters.shape[0], 0, 3);
     target.spread = clamp(parameters.spread[0], 0, 1);
     target.field = clamp(parameters.field[0], -1, 1);
     target.dyn = clamp(parameters.dyn[0], -1, 1);
     target.dynPunch = clamp(parameters.dynPunch[0], -1, 1);
-    target.keyMode = Math.round(clamp(parameters.keyMode[0], 0, 2));
+    target.keyMode = clamp(parameters.keyMode[0], 0, 2);
     target.lfoHz = Math.max(0, parameters.lfoHz[0]);
-    target.lfoShape = Math.round(clamp(parameters.lfoShape[0], 0, 2));
+    target.lfoShape = clamp(parameters.lfoShape[0], 0, 2);
     target.lfoDepth = clamp(parameters.lfoDepth[0], 0, 1);
     target.mix = clamp(parameters.mix[0], 0, 1);
     target.output = clamp(parameters.output[0], -18, 12);
@@ -289,24 +317,38 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
     this.lfoPhase += sm.lfoHz * (len / sr);
     if (this.lfoPhase >= 1) {
       this.lfoPhase -= Math.floor(this.lfoPhase);
-      if (sm.lfoShape === 2) this.lfoRandValue = this.lfoRandom(); // one step per cycle
+      if (sm.lfoShape > 1) this.lfoRandValue = this.lfoRandom(); // one step per cycle while RAND is active
     }
     const p = this.lfoPhase;
+    const sineWave = Math.sin(2 * Math.PI * p);
+    const triangleWave = 4 * Math.abs(p - 0.5) - 1;
+    const randomWave = this.lfoRandValue * 2 - 1;
+    const lfoShapeIndex = Math.min(1, Math.floor(sm.lfoShape));
+    const lfoShapeBlend = sm.lfoShape >= 2 ? 1 : sm.lfoShape - lfoShapeIndex;
+    const lfoWaveA = lfoShapeIndex === 0 ? sineWave : triangleWave;
+    const lfoWaveB = lfoShapeIndex === 0 ? triangleWave : randomWave;
     const wave =
-      sm.lfoShape === 0
-        ? Math.sin(2 * Math.PI * p)
-        : sm.lfoShape === 1
-          ? 4 * Math.abs(p - 0.5) - 1
-          : this.lfoRandValue * 2 - 1;
+      lfoShapeBlend <= 0 ? lfoWaveA : lfoShapeBlend >= 1 ? lfoWaveB : lfoWaveA + (lfoWaveB - lfoWaveA) * lfoShapeBlend;
     const lfoFactor = sm.lfoDepth > 1e-4 ? Math.pow(2, sm.lfoDepth * wave) : 1;
 
     // --- dynamic/key radius mapping (control rate) -----------------------
     const dynActive = Math.abs(sm.dyn) > 1e-4;
     const dynPunchActive = Math.abs(sm.dynPunch) > 1e-4;
     const envelopesOn = dynActive || dynPunchActive;
-    const keyActive = sm.keyMode > 0;
-    const reso = sm.shape === 3;
-    const rBase = clamp((reso ? RESO_R_FLOOR : R_FLOOR) + (reso ? RESO_R_RANGE : R_RANGE) * sm.dispersion, 0.05, R_MAX);
+    const keyActive = sm.keyMode > 1e-4;
+    const shapeValue = clamp(sm.shape, 0, 3);
+    const resoBlend = clamp(shapeValue - 2, 0, 1);
+    const regularRadius = R_FLOOR + R_RANGE * sm.dispersion;
+    const resoRadius = RESO_R_FLOOR + RESO_R_RANGE * sm.dispersion;
+    const rBase = clamp(
+      resoBlend <= 0
+        ? regularRadius
+        : resoBlend >= 1
+          ? resoRadius
+          : regularRadius + (resoRadius - regularRadius) * resoBlend,
+      0.05,
+      R_MAX,
+    );
     this.lastAttackness = attackScore(this.envFast, this.envLag);
     this.lastBodyness = clamp01(this.envSlow / SUSTAIN_REF) * (1 - this.lastAttackness);
     let dynDrive = 0;
@@ -319,13 +361,12 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
     // ripple out while keeping the musical attack/tail response.
     let deltaRaw = dynDrive * (R_HARD_MAX - rBase);
     let keyGain = 1;
-    if (sm.keyMode === 1) {
-      deltaRaw += this.keyEnv * (R_HARD_MAX - rBase);
-      keyGain = 1 + this.keyEnv;
-    } else if (sm.keyMode === 2) {
-      deltaRaw -= rBase * KEY_DUCK_DEPTH * this.keyEnv;
-      keyGain = Math.max(1 - KEY_DUCK_DEPTH, 1 - KEY_DUCK_DEPTH * this.keyEnv);
-    }
+    const pumpBlend = sm.keyMode < 1 ? sm.keyMode : 2 - sm.keyMode;
+    const duckBlend = sm.keyMode < 1 ? 0 : sm.keyMode - 1;
+    const duckGain = Math.max(1 - KEY_DUCK_DEPTH, 1 - KEY_DUCK_DEPTH * this.keyEnv);
+    deltaRaw += pumpBlend * this.keyEnv * (R_HARD_MAX - rBase);
+    deltaRaw -= duckBlend * rBase * KEY_DUCK_DEPTH * this.keyEnv;
+    keyGain += pumpBlend * this.keyEnv + duckBlend * (duckGain - 1);
     this.lastKeyGain = keyGain;
     const radiusDeltaCoef = 1 - Math.exp(-len / (RADIUS_TAU_S * sr));
     if (!this.radiusPrimed) {
@@ -354,13 +395,12 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
     const fB = clamp(focusEff * (1 + SPREAD_OFFSET * sm.spread), FOCUS_MIN_HZ, SECTION_MAX_HZ);
     const cosL = this.cosL;
     const cosR = this.cosR;
+    const shapeIndex = Math.min(2, Math.floor(shapeValue));
+    const shapeBlend = shapeValue - shapeIndex;
     for (let s = 0; s < LONG_SECTIONS; s++) {
-      let factor;
-      if (sm.shape === 1)
-        factor = 0.5 * Math.pow(4, s / (LONG_SECTIONS - 1)); // CHIRP 0.5×…2×
-      else if (sm.shape === 2)
-        factor = s % 2 === 0 ? 1 / PUNCH_BAND_RATIO : PUNCH_BAND_RATIO; // DOUBLE
-      else factor = 1; // GULP / RESO
+      const factorA = shapeSectionFactor(shapeIndex, s);
+      const factorB = shapeSectionFactor(shapeIndex + 1, s);
+      const factor = shapeBlend <= 0 ? factorA : shapeBlend >= 1 ? factorB : factorA + (factorB - factorA) * shapeBlend;
       const wl = Math.min((2 * Math.PI * clamp(fA * factor, SECTION_MIN_HZ, SECTION_MAX_HZ)) / sr, Math.PI * 0.95);
       const wr = Math.min((2 * Math.PI * clamp(fB * factor, SECTION_MIN_HZ, SECTION_MAX_HZ)) / sr, Math.PI * 0.95);
       cosL[s] = Math.cos(wl);
@@ -416,12 +456,18 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
     const keyRel = 1 - Math.exp(-1 / (sr * KEY_REL_S));
 
     for (let i = 0; i < len; i++) {
-      const l = inL ? inL[i] : 0;
-      const r = inR ? inR[i] : l;
+      // Invalid samples must never enter recursive state: output-only guards
+      // cannot recover once a NaN has reached an all-pass delay cell. The
+      // ceiling also keeps corrupted finite Float32 peaks away from overflow.
+      const l = sanitizeAudioSample(inL ? inL[i] : 0);
+      const r = inR ? sanitizeAudioSample(inR[i]) : l;
 
       // --- envelope followers (DYNAMIC / DYNAMIC PUNCH) ------------------
       if (envelopesOn) {
-        const absIn = Math.abs((l + r) * 0.5);
+        // Link the detector by stereo energy, not the mid sum: L/R phase
+        // cancellation must not disable dynamics on wide or SIDE-only audio.
+        // Dual-mono input keeps the original detector level.
+        const absIn = Math.sqrt((l * l + r * r) * 0.5);
         this.envFast += (absIn > this.envFast ? envFastAtk : envFastRel) * (absIn - this.envFast);
         this.envLag += lagCoef * (this.envFast - this.envLag);
         this.envSlow += (absIn > this.envSlow ? envSlowAtk : envSlowRel) * (absIn - this.envSlow);
@@ -432,7 +478,12 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
 
       // --- sidechain key envelope (KEY) ----------------------------------
       if (keyActive) {
-        const k = keyL ? Math.abs(keyR ? (keyL[i] + keyR[i]) * 0.5 : keyL[i]) : 0;
+        const keyLeft = keyL ? sanitizeAudioSample(keyL[i]) : 0;
+        const keyRight = keyR ? sanitizeAudioSample(keyR[i]) : keyLeft;
+        // Link stereo energy rather than summing to mono: an anti-phase or
+        // SIDE-only KEY must still drive PUMP/DUCK. Dual-mono keys retain the
+        // same nominal detector level.
+        const k = keyL ? Math.sqrt((keyLeft * keyLeft + keyRight * keyRight) * 0.5) : 0;
         this.keyEnv += (k > this.keyEnv ? keyAtk : keyRel) * (k - this.keyEnv);
         if (this.keyEnv < DENORM) this.keyEnv = 0;
       }
@@ -580,10 +631,24 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
       this.meterSamples = 0;
       const frame = this.meterFrame;
       frame.lfo = this.lfoPhase;
+      frame.focusHz = focusEff;
       frame.env = envelopesOn ? Math.max(this.lastAttackness, this.lastBodyness) : 0;
       frame.key = this.lastKeyGain;
       frame.radius = this.lastRadius;
-      frame.punch = punchRadius;
+      frame.dispersion = sm.dispersion;
+      frame.punch = sm.punch;
+      frame.punchHz = sm.punchHz;
+      frame.punchMix = sm.punchMix;
+      frame.punchRadius = punchRadius;
+      frame.shape = sm.shape;
+      frame.spread = sm.spread;
+      frame.field = sm.field;
+      frame.dyn = sm.dyn;
+      frame.dynPunch = sm.dynPunch;
+      frame.keyMode = sm.keyMode;
+      frame.lfoDepth = sm.lfoDepth;
+      frame.mix = sm.mix;
+      frame.output = sm.output;
       this.port.postMessage(frame);
     }
     return true;

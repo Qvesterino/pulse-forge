@@ -99,6 +99,99 @@ describe("SkrutkaPanel", () => {
     liveContextSpy.mockRestore();
   });
 
+  it("plots the processor's full effective curve for a RAND LFO and automated parameters", () => {
+    const services = mockServices(createProjectFromTemplate("house"));
+    const arc = vi.fn();
+    const context = new Proxy(
+      { arc },
+      {
+        get(target, property) {
+          return property in target ? target[property as keyof typeof target] : () => undefined;
+        },
+        set() {
+          return true;
+        },
+      },
+    ) as unknown as CanvasRenderingContext2D;
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context);
+    (services.engine as unknown as Record<string, unknown>).getFxMeters = vi.fn(() => ({
+      lfo: 0.25,
+      focusHz: 1234,
+      env: 0,
+      key: 1,
+      radius: 0.7,
+      dispersion: 0.85,
+      punch: -0.5,
+      punchHz: 500,
+      punchMix: 0.7,
+      punchRadius: 0.4,
+      shape: 2.5,
+      spread: 0.35,
+      field: 0.3,
+      dyn: 0.4,
+      dynPunch: -0.3,
+      keyMode: 2,
+      lfoDepth: 0.75,
+      mix: 0.62,
+      output: -2,
+    }));
+
+    const { container } = renderWithContext(
+      <SkrutkaPanel
+        trackId="t1"
+        fxId="fx1"
+        params={{ ...paramsOf(), focusHz: 400, lfoShape: 2, lfoDepth: 1 }}
+        degraded={false}
+      />,
+      { services },
+    );
+    vi.advanceTimersByTime(66);
+
+    const expectedX = (Math.log(1234 / 30) / Math.log(16_000 / 30)) * 200;
+    expect(arc).toHaveBeenCalledTimes(2);
+    expect(arc.mock.calls[0]?.[0]).toBeCloseTo(expectedX, 5);
+    const expectedPeak = skrutkaPeakDelay(
+      {
+        dispersion: 0.85,
+        punch: -0.5,
+        punchHz: 500,
+        punchMix: 0.7,
+        focusHz: 1234,
+        spread: 0.35,
+        shape: 2.5,
+        field: 0.3,
+        mix: 0.62,
+        output: -2,
+      },
+      48_000,
+      "M",
+      0.7,
+      0.4,
+    );
+    expect(container.querySelector(".skrutka-readout")).toHaveTextContent(
+      `WET +${expectedPeak.ms.toFixed(1)} ms @ ${Math.round(expectedPeak.freqHz)} Hz`,
+    );
+  });
+
+  it("shows zero-delay and flat output when MIX is fully dry", () => {
+    const services = mockServices(createProjectFromTemplate("house"));
+    (services.engine as unknown as Record<string, unknown>).getFxMeters = vi.fn(() => null);
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(stub2dContext());
+    const { container } = renderWithContext(
+      <SkrutkaPanel trackId="t1" fxId="fx1" params={{ ...paramsOf(), mix: 0 }} degraded={false} />,
+      { services },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "OUT DELAY" }));
+    vi.advanceTimersByTime(66);
+    expect(container.querySelector(".skrutka-readout")).toHaveTextContent("OUT — no delay hump");
+
+    fireEvent.click(screen.getByRole("button", { name: "OUT LEVEL" }));
+    vi.advanceTimersByTime(66);
+    expect(container.querySelector(".skrutka-readout")).toHaveTextContent("OUT flat ±0.0 dB");
+    expect(screen.getByRole("button", { name: "OUT LEVEL" })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("BAND SOLO drives the monitor band on/off and releases it on unmount", () => {
     const services = mockServices(createProjectFromTemplate("house"));
     const setMonitorBand = vi.fn();
@@ -192,6 +285,55 @@ describe("SkrutkaPanel", () => {
     expect(screen.getByText("PUNCH-DYN OFF")).toBeInTheDocument();
     expect(screen.getByText("KEY PUMP")).toBeInTheDocument();
     expect(screen.getByText("LFO TRI 40%")).toBeInTheDocument();
+  });
+
+  it("shows live DYNAMIC and KEY response and reports a missing KEY source", () => {
+    const services = mockServices(createProjectFromTemplate("house"));
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(stub2dContext());
+    (services.engine as unknown as Record<string, unknown>).getFxMeters = vi.fn(() => ({
+      lfo: 0.25,
+      focusHz: 220,
+      env: 0.62,
+      key: 1.55,
+      radius: 0.7,
+      dispersion: 0.5,
+      punch: 0.3,
+      punchHz: 0,
+      punchMix: 1,
+      punchRadius: 0.28,
+      shape: 0,
+      spread: 0,
+      field: 0,
+      dyn: 0.5,
+      dynPunch: 0,
+      keyMode: 1,
+      lfoDepth: 0,
+      mix: 1,
+      output: 0,
+    }));
+
+    const props = {
+      trackId: "t1",
+      fxId: "fx1",
+      params: { ...paramsOf(), dyn: 0.5, keyMode: 1 },
+      degraded: false,
+      keySourceConnected: true,
+    };
+    const { rerender } = renderWithContext(<SkrutkaPanel {...props} />, { services });
+    vi.advanceTimersByTime(66);
+
+    expect(screen.getByRole("meter", { name: "DYNAMIC activity" })).toHaveAttribute("aria-valuenow", "62");
+    expect(screen.getByRole("meter", { name: "KEY response" })).toHaveAttribute("aria-valuenow", "55");
+    expect(screen.getByText("PUMP 55% · ×1.55")).toBeInTheDocument();
+
+    rerender(
+      <ServicesContext.Provider value={services}>
+        <SkrutkaPanel {...props} keySourceConnected={false} />
+      </ServicesContext.Provider>,
+    );
+    vi.advanceTimersByTime(66);
+    expect(screen.getByText("NO SOURCE")).toBeInTheDocument();
+    expect(screen.getByRole("meter", { name: "KEY response" })).toHaveAttribute("aria-valuenow", "0");
   });
 
   it("shows FIELD STEREO / MID variants for the neutral and negative field", () => {

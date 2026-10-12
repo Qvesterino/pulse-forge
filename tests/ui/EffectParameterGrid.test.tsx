@@ -19,6 +19,7 @@ import userEvent from "@testing-library/user-event";
 import { EffectParameterGrid } from "../../src/ui/EffectParameterGrid";
 import { renderWithContext } from "../helpers";
 import type { ParamDef } from "../../src/effects/types";
+import { EFFECT_META } from "../../src/effects/definitions";
 
 describe("EffectParameterGrid", () => {
   it("renders nothing for an empty params array", () => {
@@ -49,6 +50,21 @@ describe("EffectParameterGrid", () => {
     expect(select).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Off" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "On" })).toBeInTheDocument();
+  });
+
+  it("renders PORTAL's DELAY HOLD as a discrete Off/On control", async () => {
+    const hold = EFFECT_META.portal.params.find((param) => param.id === "freeze")!;
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    renderWithContext(
+      <EffectParameterGrid family="space" params={[hold]} values={{ freeze: 0 }} onChange={onChange} paged={false} />,
+    );
+
+    const select = screen.getByRole("combobox", { name: "DELAY HOLD" });
+    expect(select).toHaveValue("0");
+    expect(screen.queryByRole("slider", { name: /DELAY HOLD/ })).not.toBeInTheDocument();
+    await user.selectOptions(select, "1");
+    expect(onChange).toHaveBeenCalledWith("freeze", 1);
   });
 
   it("renders a select for a param with explicit options", () => {

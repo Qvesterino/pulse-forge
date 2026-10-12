@@ -41,6 +41,8 @@ const PORTAL_PARAMS = [
 
 /** Validated live telemetry frame for the panel. */
 export interface PortalMeterFrame {
+  /** Sample rate defines the Nyquist endpoint of the processor's band map. */
+  sampleRate: number;
   peak: number;
   activity: number;
   delaySec: number;
@@ -128,6 +130,7 @@ export function createPortalNode(ctx: BaseAudioContext, instance: { params: Reco
       return;
     }
     if (msg.type !== "meters" || !metersWanted) return;
+    if (!finite(msg.sampleRate) || msg.sampleRate <= 40) return;
     if (!finite(msg.peak) || !finite(msg.activity) || !finite(msg.delaySec) || !finite(msg.frames)) return;
     if (!finite(msg.shiftSemitones)) return;
     const bandsIn = readBands(msg.bandsIn);
@@ -137,6 +140,7 @@ export function createPortalNode(ctx: BaseAudioContext, instance: { params: Reco
     // is in fact making sound — the worst possible half-truth.
     if (!bandsIn || !bandsOut) return;
     meters = {
+      sampleRate: msg.sampleRate,
       peak: msg.peak,
       activity: msg.activity,
       delaySec: msg.delaySec,

@@ -21,8 +21,11 @@ import { describe, expect, it, vi } from "vitest";
 import { RezonansProcessor } from "../../src/effects/rezonans-core/dsp/rezonansProcessor.js";
 import {
   REZ_PARAM,
+  REZONANS_NOTE_OPTIONS,
   QUALITY_ECONOMY,
   QUALITY_FINE,
+  clampParam,
+  paramDef,
   resolveFormantSemitones,
   voiceParamId,
 } from "../../src/effects/rezonans-core/contracts/parameters.js";
@@ -33,9 +36,31 @@ import { FrameEngine } from "../../src/effects/rezonans-core/dsp/frame.js";
 import { fft, fftRealInto, hannWindow, ifftInto, ifftRealInto } from "../../src/effects/rezonans-core/dsp/fft.js";
 import { PhaseLocker } from "../../src/effects/rezonans-core/dsp/phaseLock.js";
 import { HarmonyVoice } from "../../src/effects/rezonans-core/dsp/voice.js";
+import { glidePitchShiftSemitones, pitchShiftRatio } from "../../src/effects/rezonans-core/dsp/pitchGlide.js";
 
 const SR = 48000;
 const BLOCK = 128;
+
+describe("REZONANS pitch glide", () => {
+  it("moves equal upward and downward intervals by the same musical distance", () => {
+    const retention = 0.42;
+    const up = glidePitchShiftSemitones(0, 2, retention);
+    const down = glidePitchShiftSemitones(0, 0.5, retention);
+    const expectedProgress = 12 * Math.log2(1 + (2 ** 1 - 1) * (1 - retention));
+
+    expect(up).toBeCloseTo(-down, 12);
+    expect(up).toBeCloseTo(expectedProgress, 12);
+    expect(pitchShiftRatio(up)).toBeGreaterThan(1);
+    expect(pitchShiftRatio(down)).toBeLessThan(1);
+  });
+
+  it("keeps invalid targets finite and respects the established octave limit", () => {
+    expect(glidePitchShiftSemitones(0, 4, 0)).toBeCloseTo(12, 12);
+    expect(glidePitchShiftSemitones(Number.NaN, Number.NaN, Number.NaN)).toBe(0);
+    expect(pitchShiftRatio(24)).toBeCloseTo(2, 12);
+    expect(pitchShiftRatio(-24)).toBeCloseTo(0.5, 12);
+  });
+});
 
 describe("REZONANS formant parameter resolution", () => {
   it("keeps global shift full, scales per-voice shift, and matches the DSP clamp", () => {
@@ -43,6 +68,14 @@ describe("REZONANS formant parameter resolution", () => {
     expect(resolveFormantSemitones(8, 4, 0)).toBe(8);
     expect(resolveFormantSemitones(10, 8, 0.5)).toBe(12);
     expect(resolveFormantSemitones(-10, -8, 0.5)).toBe(-12);
+  });
+
+  it("exposes the complete manual-note range and accepts the fifth harmony mode", () => {
+    expect(clampParam(REZ_PARAM.harmonyMode, 4)).toBe(4);
+    expect(paramDef(voiceParamId(0, "note"))).toMatchObject({ min: 36, max: 96, def: 60 });
+    expect(REZONANS_NOTE_OPTIONS).toHaveLength(61);
+    expect(REZONANS_NOTE_OPTIONS[0]).toEqual({ value: 36, label: "C2" });
+    expect(REZONANS_NOTE_OPTIONS.at(-1)).toEqual({ value: 96, label: "C7" });
   });
 });
 
@@ -592,6 +625,59 @@ describe("REZONANS golden — bypass", () => {
     expect(Array.from(out.l)).toEqual(Array.from(input));
   });
 
+  it("sanitizes invalid and extreme finite samples in bypass and active harmony", () => {
+    const source = makeVocal(0.3);
+    const sourceRight = Float32Array.from(source, (sample) => sample * 0.75);
+    const badLeft = new Float32Array(source);
+    const badRight = new Float32Array(sourceRight);
+    const safeLeft = new Float32Array(source);
+    const safeRight = new Float32Array(sourceRight);
+    badLeft[2048] = Number.NaN;
+    badLeft[2049] = Number.POSITIVE_INFINITY;
+    badLeft[2050] = 1e20;
+    safeLeft[2048] = 0;
+    safeLeft[2049] = 0;
+    safeLeft[2050] = 8;
+    badRight[4096] = Number.NEGATIVE_INFINITY;
+    badRight[4097] = -1e20;
+    safeRight[4096] = 0;
+    safeRight[4097] = -8;
+
+    const modes: Record<string, number>[] = [
+      { [REZ_PARAM.harmonyMode]: 0, [REZ_PARAM.mix]: 0.5 },
+      { [REZ_PARAM.harmonyMode]: 2, [REZ_PARAM.mix]: 0 },
+      {
+        [REZ_PARAM.quality]: QUALITY_ECONOMY,
+        [REZ_PARAM.harmonyMode]: 4,
+        [REZ_PARAM.mix]: 1,
+        [REZ_PARAM.bodyGate]: 0,
+        [REZ_PARAM.clarity]: 0.2,
+        [voiceParamId(0, "enabled")]: 1,
+        [voiceParamId(0, "note")]: 64,
+        [voiceParamId(0, "level")]: 1,
+        [voiceParamId(0, "humanize")]: 0,
+      },
+    ];
+
+    for (const params of modes) {
+      const actual = render(badLeft, { params }, badRight);
+      const expected = render(safeLeft, { params }, safeRight);
+      expect(actual.l).toEqual(expected.l);
+      expect(actual.r).toEqual(expected.r);
+      expect(Array.from(actual.l).every(Number.isFinite)).toBe(true);
+      expect(Array.from(actual.r).every(Number.isFinite)).toBe(true);
+    }
+
+    const active = render(badLeft, { params: modes[2]! }, badRight);
+    const activeTailRms = rms(active.l.subarray(5000));
+    let activePeak = 0;
+    for (let i = 5000; i < active.l.length; i++)
+      activePeak = Math.max(activePeak, Math.abs(active.l[i]!), Math.abs(active.r[i]!));
+    expect(activeTailRms).toBeGreaterThan(0.01);
+    expect(activeTailRms).toBeLessThan(0.2);
+    expect(activePeak).toBeLessThan(1);
+  });
+
   it("preserves an unvoiced consonant at 100% wet after a sung vowel", () => {
     const input = new Float32Array(SR);
     const rightInput = new Float32Array(SR);
@@ -670,16 +756,54 @@ describe("REZONANS rendered harmony pitch", () => {
     const windowStart = Math.floor(0.4 * sampleRate);
     const windowLength = 8192;
     const sourceHz = 220;
-    const expectedHz = sourceHz * Math.pow(2, 7 / 12);
+    for (const interval of [7, -7]) {
+      params[voiceParamId(0, "degree")] = interval;
+      const expectedHz = sourceHz * Math.pow(2, interval / 12);
+      for (const quality of [QUALITY_ECONOMY, 1, QUALITY_FINE]) {
+        const out = render(input, { sampleRate, params: { ...params, [REZ_PARAM.quality]: quality } });
+        const wetStart = windowStart + out.latency;
+        const sourceAmp = amplitudeAt(out.l, wetStart, windowLength, sampleRate, sourceHz);
+        const targetAmp = amplitudeAt(out.l, wetStart, windowLength, sampleRate, expectedHz);
+        const peakHz = peakFrequency(out.l, wetStart, windowLength, sampleRate, expectedHz * 0.7, expectedHz * 1.3);
+        expect(
+          targetAmp,
+          `${interval > 0 ? "up" : "down"} quality ${quality} must render the target pitch`,
+        ).toBeGreaterThan(sourceAmp * 2);
+        const pitchErrorSemitones = 12 * Math.log2(peakHz / expectedHz);
+        expect(
+          Math.abs(pitchErrorSemitones),
+          `${interval > 0 ? "up" : "down"} quality ${quality} pitch error`,
+        ).toBeLessThan(0.75);
+      }
+    }
+  });
+
+  it("renders the selected absolute note in MANUAL NOTES mode", () => {
+    const sampleRate = 48000;
+    const input = new Float32Array(Math.floor(0.8 * sampleRate));
+    for (let i = 0; i < input.length; i++) input[i] = Math.sin((2 * Math.PI * 220 * i) / sampleRate) * 0.4;
+    const params: Record<string, number> = {
+      [REZ_PARAM.harmonyMode]: 4,
+      [REZ_PARAM.voices]: 1,
+      [REZ_PARAM.mix]: 1,
+      [REZ_PARAM.bodyGate]: 1,
+      [REZ_PARAM.clarity]: 0.2,
+      [voiceParamId(0, "enabled")]: 1,
+      [voiceParamId(0, "note")]: 64,
+      [voiceParamId(0, "level")]: 1,
+      [voiceParamId(0, "humanize")]: 0,
+    };
+    const windowStart = Math.floor(0.4 * sampleRate);
+    const windowLength = 8192;
+    const expectedHz = midiToHz(64);
     for (const quality of [QUALITY_ECONOMY, 1, QUALITY_FINE]) {
       const out = render(input, { sampleRate, params: { ...params, [REZ_PARAM.quality]: quality } });
       const wetStart = windowStart + out.latency;
-      const sourceAmp = amplitudeAt(out.l, wetStart, windowLength, sampleRate, sourceHz);
+      const sourceAmp = amplitudeAt(out.l, wetStart, windowLength, sampleRate, 220);
       const targetAmp = amplitudeAt(out.l, wetStart, windowLength, sampleRate, expectedHz);
-      const peakHz = peakFrequency(out.l, wetStart, windowLength, sampleRate, 250, 400);
-      expect(targetAmp, `quality ${quality} must render the target pitch`).toBeGreaterThan(sourceAmp * 2);
-      const pitchErrorSemitones = 12 * Math.log2(peakHz / expectedHz);
-      expect(Math.abs(pitchErrorSemitones), `quality ${quality} output pitch error`).toBeLessThan(0.75);
+      const peakHz = peakFrequency(out.l, wetStart, windowLength, sampleRate, 300, 360);
+      expect(targetAmp, `quality ${quality} must render the selected note`).toBeGreaterThan(sourceAmp * 2);
+      expect(Math.abs(12 * Math.log2(peakHz / expectedHz)), `quality ${quality} output pitch error`).toBeLessThan(0.75);
     }
   });
 });
@@ -788,6 +912,21 @@ describe("REZONANS solver — key and chord", () => {
   const C_MINOR = 0b010110101101; // {0,2,3,5,7,8,10}
   const C_TRIAD = 0b10010001; // {0,4,7} — C E G
 
+  it("targets independent absolute notes and reports the ±12-semitone clamp", () => {
+    const ctx: SolverContext = { mode: "manual", keyRootPc: 0, scaleMask: C_MAJOR, chordMask: 0, chordFollow: 0 };
+    const solver = new HarmonySolver();
+    const out = new Float64Array(4);
+    solver.solve(midiToHz(60), ctx, new Float64Array(4), out, new Float64Array([64, 55, 96, 36]));
+
+    expect(Array.from(solver.lastMidi)).toEqual([64, 55, 72, 48]);
+    expect(Array.from(out, (ratio) => Number(ratio.toFixed(8)))).toEqual([
+      Number((2 ** (4 / 12)).toFixed(8)),
+      Number((2 ** (-5 / 12)).toFixed(8)),
+      2,
+      0.5,
+    ]);
+  });
+
   it("resolves scale degrees relative to the key root, not to the input note", () => {
     // Input C4 (261.6 Hz) in D minor (root 2) — degree 2 must be the 3rd of
     // the SCALE, i.e. F#(6) + ... resolved as an absolute pitch class.
@@ -878,7 +1017,8 @@ describe("REZONANS solver — key and chord", () => {
     // An empty mask is the only genuine "no tone", and it must stay negative
     // so the solver can distinguish "no scale yet" from "degree 0".
     expect(nthScaleTone(0, 0, 0)).toBe(-1);
-    expect(nthScaleTone(C_MAJOR, 0, -1)).toBe(-1);
+    expect(nthScaleTone(C_MAJOR, 0, -1)).toBe(11);
+    expect(nthScaleTone(C_MAJOR, 0, -7)).toBe(0);
   });
 
   it("an octave in INTERVAL mode is an octave, not a unison", () => {

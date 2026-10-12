@@ -799,8 +799,8 @@ The typecheck row above is therefore scoped to the files this audit changed: a r
 Wave 1 audited geometry, selection, the gesture state machine and render cost. The
 areas it never reached are the ones this wave takes: **locking** and the
 **clipboard**. Both turned out to be load-bearing contracts with a real defect
-class, and both were found by asking one question — *does every code path that
-claims to honour a guard actually reach it?*
+class, and both were found by asking one question — _does every code path that
+claims to honour a guard actually reach it?_
 
 Baseline before this wave — the editor hardening suites were green:
 
@@ -839,16 +839,16 @@ block-move commits.
 
 **A. Command layer — five verbs never called the guard**
 
-| Verb | What it does to a locked clip | Guard |
-| --- | --- | --- |
-| `moveAudioClip` / `resizeAudioClip` / `deleteAudioClip` | refuse | ✅ |
-| `sliceAudioClipToArrangement` | **deletes the clip, writes fragments** | ❌ |
-| `stripSilenceAudioClip` | **deletes the clip, writes segments** | ❌ |
-| `consolidateAudioClips` | **deletes every selected clip** | ❌ |
-| `fitAudioClipTempo` | rewrites `stretchMode`/`stretchRate` | ❌ |
-| `updateAudioClip` | slip / trim / stretch fields | ❌ |
+| Verb                                                    | What it does to a locked clip          | Guard |
+| ------------------------------------------------------- | -------------------------------------- | ----- |
+| `moveAudioClip` / `resizeAudioClip` / `deleteAudioClip` | refuse                                 | ✅    |
+| `sliceAudioClipToArrangement`                           | **deletes the clip, writes fragments** | ❌    |
+| `stripSilenceAudioClip`                                 | **deletes the clip, writes segments**  | ❌    |
+| `consolidateAudioClips`                                 | **deletes every selected clip**        | ❌    |
+| `fitAudioClipTempo`                                     | rewrites `stretchMode`/`stretchRate`   | ❌    |
+| `updateAudioClip`                                       | slip / trim / stretch fields           | ❌    |
 
-`splitAudioClipAtTick` — the one sibling in the same file — *does* guard. That is
+`splitAudioClipAtTick` — the one sibling in the same file — _does_ guard. That is
 what makes this a defect and not a design: the author guarded the split and
 missed the other three ways of destroying a clip.
 
@@ -882,7 +882,7 @@ for an edit that should never have happened.
 **Commands** (`src/commands/clipEditing.ts`): `assertClipEditable` added to
 `sliceAudioClipToArrangement`, `stripSilenceAudioClip`, `consolidateAudioClips`
 (every member, since consolidation deletes all of them) and
-`fitAudioClipTempo`. `updateAudioClip` guards **only** the fields that *are*
+`fitAudioClipTempo`. `updateAudioClip` guards **only** the fields that _are_
 contract verbs — `offsetSec` (slip), `trimStart`/`trimEnd` (trim),
 `stretchRate`/`stretchMode` (stretch) — so gain, fades, mute, loop, reverse and
 source props stay editable on a locked clip, exactly as the contract requires.
@@ -902,8 +902,8 @@ each clip independently, so dropping one loses no spacing.
 
 ### One more defect found on the way: refusals were silent, and one escaped entirely
 
-The scene commits wrapped their factories in `catch {}` with the comment *"clip
-deleted mid-drag — drop silently"*. That is correct for a clip deleted by a
+The scene commits wrapped their factories in `catch {}` with the comment _"clip
+deleted mid-drag — drop silently"_. That is correct for a clip deleted by a
 collab merge, and wrong for a lock refusal: the user drags a locked clip and
 nothing at all happens.
 
@@ -933,15 +933,15 @@ load-bearing, not decoration. The scene guard was observed red on pre-fix HEAD.
 
 ### Correction to wave 1 first
 
-Wave 1's remaining-risk item 5 recorded: *"No clipboard in the arrangement
-timeline (VERIFIED absent) — `grep -ri clipboard src/` returns nothing."*
+Wave 1's remaining-risk item 5 recorded: _"No clipboard in the arrangement
+timeline (VERIFIED absent) — `grep -ri clipboard src/` returns nothing."_
 
 **That was wrong, and wrong in a way that cost coverage.** `src/commands/clipClipboard.ts`
 landed on 2026-10-07 (copy/cut/paste for timeline clips, Ctrl+C/X/V) with callers
 in `App.tsx` and `ContextMenu.tsx`. The grep was run at a moment when the file
 did not exist and the conclusion was written down as a property of the editor
-rather than a property of that moment. §30 was therefore audited as *not
-applicable*. It is applicable, and it had a defect.
+rather than a property of that moment. §30 was therefore audited as _not
+applicable_. It is applicable, and it had a defect.
 
 ### Root cause
 
@@ -984,7 +984,7 @@ clip's scene no longer exists.
 **Why refuse rather than fall back**, when the audio lane right above it falls
 back for a dead track: a track is **routing** and the buffer is the content, so
 re-hosting a clip on a different track preserves exactly what it plays. A scene
-*is* the content — re-pointing the copy at an arbitrary live scene would play
+_is_ the content — re-pointing the copy at an arbitrary live scene would play
 different material just as silently. Refusing is the honest answer: the user
 learns the copy cannot be pasted, and nothing is lost later.
 
@@ -1006,7 +1006,7 @@ is), the dead-scene refusal with a save/load survival check.
 ### `crossfadeAudioClips` writes fades on a locked clip — a scope question, not a bug
 
 The crossfade verb (the `X` key, range crossfade, comping) rewrites `fadeIn` /
-`fadeOut` without consulting the lock. Every verb the contract *names* refuses;
+`fadeOut` without consulting the lock. Every verb the contract _names_ refuses;
 fades are not in that list, and mute/gain/fades deliberately stayed editable in
 `updateAudioClip` for the same reason. Whether a lock should also freeze fades is
 a **product decision about what "locked" means**, so it is recorded here rather
@@ -1040,13 +1040,13 @@ that pastes at the playhead behaves this way; changing it would be a UX decision
 
 Recorded when each ran; see the final wave summary for the aggregate.
 
-| Gate | Result |
-| --- | --- |
-| `tests/clip-lock-verbs.test.ts` | 9 passed |
-| `tests/ui/clip-lock-block-drag.test.tsx` | 6 passed (1 red under falsification) |
-| `tests/clip-clipboard-integrity.test.ts` | 11 passed (1 red under falsification) |
-| Wave-1 editor suites re-run after the changes | 65 passed |
-| `prettier --check` on every touched file | `All matched files use Prettier code style!` |
+| Gate                                          | Result                                       |
+| --------------------------------------------- | -------------------------------------------- |
+| `tests/clip-lock-verbs.test.ts`               | 9 passed                                     |
+| `tests/ui/clip-lock-block-drag.test.tsx`      | 6 passed (1 red under falsification)         |
+| `tests/clip-clipboard-integrity.test.ts`      | 11 passed (1 red under falsification)        |
+| Wave-1 editor suites re-run after the changes | 65 passed                                    |
+| `prettier --check` on every touched file      | `All matched files use Prettier code style!` |
 
 ---
 
@@ -1054,11 +1054,11 @@ Recorded when each ran; see the final wave summary for the aggregate.
 
 Found by the full-suite gate, not by reading the editor: the editor-surface
 regression run came back with `tests/ui/audio-selection-parity.test.tsx` red on
-*"SNAP OFF keeps the exact pre-snap free behavior"* — the drag landed on the
+_"SNAP OFF keeps the exact pre-snap free behavior"_ — the drag landed on the
 1/2 grid (1.5 bars) where the test expected free placement (1.3 bars).
 
 `snapController` is a deliberate UI-wide singleton (`src/ui/snap.ts:143` — "snap
-is a view preference, not per-mount state"), and that is correct: snap *is* a
+is a view preference, not per-mount state"), and that is correct: snap _is_ a
 user preference, and it should survive unmount. The spec's `afterEach` cleared
 `localStorage["pf:arr-snap"]` only, so the in-memory grid stayed at the `1/2` its
 predecessor had set and leaked into the next spec.
@@ -1078,7 +1078,7 @@ persisted key, so no spec in that block depends on the one before it. File
 result: 11 passed.
 
 This is also the one place in this audit where the honest reading of a red
-required *disproving* my own change first. A red next to your own diff is not
+required _disproving_ my own change first. A red next to your own diff is not
 evidence that your diff caused it.
 
 ---
@@ -1089,16 +1089,16 @@ Recorded as executed. This repo is shared with at least two other sessions
 (intent, rezonans) and they hold it dirty, so repo-wide gates cannot report a
 clean baseline; each row below says what it covered and what it could not.
 
-| Gate | Command | Result |
-| --- | --- | --- |
-| Wave-2 specs | `npx vitest run tests/clip-lock-verbs.test.ts tests/ui/clip-lock-block-drag.test.tsx tests/clip-clipboard-integrity.test.ts` | 9 + 6 + 11 passed |
-| Falsification | audio block guard disabled / dead-scene refusal disabled | 1 red each, controls stayed green |
-| Wave-1 editor suites, re-run after the changes | `npx vitest run` on the 6 wave-1 suites | 65 passed |
-| Snap-parity isolation | `npx vitest run tests/ui/audio-selection-parity.test.tsx` | 11 passed |
-| Editor-surface sweep | 137 suites matched `clip\|arrangement\|editor\|drag\|trim\|split\|select\|snap\|undo\|waveform\|audio\|track\|marker\|automation\|transport\|zoom\|viewport\|command` | see final summary |
-| `tsc --noEmit` (repo-wide) | `npx tsc --noEmit` | **EXIT 2** — errors confined to `src/intent/providers/local.ts` + `tests/intent-binding.test.ts`, another session's in-flight work. Zero errors in any file this audit touched. |
-| `prettier --check` | on every file this wave changed | `All matched files use Prettier code style!` |
-| `tests/drift-check.test.ts` | `npx vitest run tests/drift-check.test.ts` | passed with the updated spec count |
+| Gate                                           | Command                                                                                                                                                               | Result                                                                                                                                                                          |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Wave-2 specs                                   | `npx vitest run tests/clip-lock-verbs.test.ts tests/ui/clip-lock-block-drag.test.tsx tests/clip-clipboard-integrity.test.ts`                                          | 9 + 6 + 11 passed                                                                                                                                                               |
+| Falsification                                  | audio block guard disabled / dead-scene refusal disabled                                                                                                              | 1 red each, controls stayed green                                                                                                                                               |
+| Wave-1 editor suites, re-run after the changes | `npx vitest run` on the 6 wave-1 suites                                                                                                                               | 65 passed                                                                                                                                                                       |
+| Snap-parity isolation                          | `npx vitest run tests/ui/audio-selection-parity.test.tsx`                                                                                                             | 11 passed                                                                                                                                                                       |
+| Editor-surface sweep                           | 137 suites matched `clip\|arrangement\|editor\|drag\|trim\|split\|select\|snap\|undo\|waveform\|audio\|track\|marker\|automation\|transport\|zoom\|viewport\|command` | see final summary                                                                                                                                                               |
+| `tsc --noEmit` (repo-wide)                     | `npx tsc --noEmit`                                                                                                                                                    | **EXIT 2** — errors confined to `src/intent/providers/local.ts` + `tests/intent-binding.test.ts`, another session's in-flight work. Zero errors in any file this audit touched. |
+| `prettier --check`                             | on every file this wave changed                                                                                                                                       | `All matched files use Prettier code style!`                                                                                                                                    |
+| `tests/drift-check.test.ts`                    | `npx vitest run tests/drift-check.test.ts`                                                                                                                            | passed with the updated spec count                                                                                                                                              |
 
 **Not run in this wave:** `npm run build`, `npm run test:expectations`,
 `npm run drift:check`, `npm run test:browser`, `npm run test:e2e` — each reads
@@ -1114,12 +1114,12 @@ The editor-surface sweep (137 suites matching
 finished **4 failed / 133 passed files, 9 failed / 1314 passed / 1 skipped tests**.
 Every red was attributed before being dismissed:
 
-| Failing file | Failure | Owner |
-| --- | --- | --- |
-| `tests/audio-engine-lifecycle.test.ts` | source-grep: `applyMasterConfig` limiter-knee pattern | concurrent session — this audit touched no engine file |
-| `tests/audio-metering-purity.test.ts` | *"Novel export(s) in metering.ts not yet tracked: `describeStageAdjustmentLimitation` — add them to KNOWN_EXPORTS"* | concurrent session — the repo's own no-orphan-export guard doing its job |
-| `tests/chord-track-intent.test.ts` | `section "Break"/"Bridge" failed generation: candidate-0:brief-gate:empty` | intent wave |
-| `tests/probe-split-undo.test.ts` | a committed scratch probe (`it("probe")`, console.log only, no assertions) | concurrent session — left in place, not mine to delete |
+| Failing file                           | Failure                                                                                                             | Owner                                                                    |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `tests/audio-engine-lifecycle.test.ts` | source-grep: `applyMasterConfig` limiter-knee pattern                                                               | concurrent session — this audit touched no engine file                   |
+| `tests/audio-metering-purity.test.ts`  | _"Novel export(s) in metering.ts not yet tracked: `describeStageAdjustmentLimitation` — add them to KNOWN_EXPORTS"_ | concurrent session — the repo's own no-orphan-export guard doing its job |
+| `tests/chord-track-intent.test.ts`     | `section "Break"/"Bridge" failed generation: candidate-0:brief-gate:empty`                                          | intent wave                                                              |
+| `tests/probe-split-undo.test.ts`       | a committed scratch probe (`it("probe")`, console.log only, no assertions)                                          | concurrent session — left in place, not mine to delete                   |
 
 **Zero reds in any file this audit changed.** That claim is not "the suites I
 wrote pass" — it is the full 137-suite sweep filtered against the diff, with the
@@ -1152,8 +1152,8 @@ was unreachable code left by writing the guard twice.
 
 ## D11 — Mid-drag zoom re-scaling a live gesture: NOT a defect, and now proven (remaining-risk item #2 closed)
 
-Wave 1 left this as **UNCONFIRMED**: *"Mid-drag zoom or horizontal scroll
-re-scales a live drag."* It is not a defect — and the reason it is not is worth
+Wave 1 left this as **UNCONFIRMED**: _"Mid-drag zoom or horizontal scroll
+re-scales a live drag."_ It is not a defect — and the reason it is not is worth
 writing down, because the failure mode is silent.
 
 `barWidth` is a **render** value (`BASE_BAR_WIDTH * zoom`), and the Ctrl+wheel
@@ -1183,7 +1183,7 @@ Scrolling the lane mid-drag is **not** the same defect and is not covered here.
 The lane is the wide inner element inside the scroll container, so a scroll
 shifts the lane's own `getBoundingClientRect().left` and the pixel→bar
 conversion picks that up — which is why scrolling does not break the same way
-zoom does. Whether a drag should also freeze the scroll *origin* it grabbed
+zoom does. Whether a drag should also freeze the scroll _origin_ it grabbed
 against is a genuine product decision (a user who scrolls mid-drag may expect
 either "keep dragging in the original scale" or "follow the new view"), and it
 is recorded for human review rather than decided here.
@@ -1193,8 +1193,8 @@ is recorded for human review rather than decided here.
 ## Wave 3 — 2026-10-11 — §32/§36 malformed clip data
 
 Wave 2 closed the locking and clipboard contracts. Wave 3 asks the question
-§36 poses directly: *one bad entity should not crash the entire editor when
-isolation is possible* — and builds documents by writing **past the command
+§36 poses directly: _one bad entity should not crash the entire editor when
+isolation is possible_ — and builds documents by writing **past the command
 layer** on purpose, because `normalizeProject` sanitises on load and a
 malformed clip therefore cannot arrive from a normal import. The realistic
 sources are a **collab peer applying a remote update** (CRDT updates bypass
@@ -1216,7 +1216,7 @@ const totalBars = Math.max(
 straight through. That number is the grid extent:
 
 ```ts
-(visibleBarIndices ?? Array.from({ length: totalBars }, (_, index) => index))
+visibleBarIndices ?? Array.from({ length: totalBars }, (_, index) => index);
 ```
 
 `visibleBarIndices` is null exactly when the viewport has **never been
@@ -1233,8 +1233,8 @@ React unmounts the subtree, and the editor is blank. Measured, pre-fix:
               "huge":"THREW RangeError: Invalid array length"}
 ```
 
-`RangeError: Invalid array length` / *"The above error occurred in the
-`<ArrangementPanel>` component"*. Priority model: **P0 — editor action
+`RangeError: Invalid array length` / _"The above error occurred in the
+`<ArrangementPanel>` component"_. Priority model: **P0 — editor action
 crashing the application.**
 
 ### The NaN case, measured rather than assumed
@@ -1302,7 +1302,7 @@ non-finite member would make `delta` NaN and the commit would write NaN into
 **every** member — one bad clip becoming many, i.e. §32 corruption arriving
 through the gesture layer instead of a command. Reachable without any trick:
 select-all picks up the bad id, and a clip with no renderable position is
-*culled from the lane*, so the user drags a perfectly healthy neighbour while
+_culled from the lane_, so the user drags a perfectly healthy neighbour while
 the selection carries the poison.
 
 I wrote the spec, and it failed in the direction that refutes the hypothesis:
@@ -1326,14 +1326,14 @@ gesture-corruption bug that does not exist.
 
 `tests/clip-sanitization-boundary.test.ts` — 8 specs pinning the actual table:
 
-| Injected value | Result at the store boundary |
-| --- | --- |
-| `startBar: 4` | kept (control) |
-| `startBar: NaN` / `±Infinity` | **clip dropped** |
-| `lengthBars: 0` / `-2` / `NaN` | **clip dropped** |
-| audio clip `startBar: NaN` | **clip dropped** |
-| **`startBar: 1e308`** | **KEPT** |
-| a command that writes NaN | stripped before it reaches the doc |
+| Injected value                 | Result at the store boundary       |
+| ------------------------------ | ---------------------------------- |
+| `startBar: 4`                  | kept (control)                     |
+| `startBar: NaN` / `±Infinity`  | **clip dropped**                   |
+| `lengthBars: 0` / `-2` / `NaN` | **clip dropped**                   |
+| audio clip `startBar: NaN`     | **clip dropped**                   |
+| **`startBar: 1e308`**          | **KEPT**                           |
+| a command that writes NaN      | stripped before it reaches the doc |
 
 The `1e308` row is the whole lesson, and it retroactively sharpens D12: **a
 non-finite position can never reach the timeline, but a large FINITE one sails
@@ -1363,7 +1363,7 @@ not the fixture.
 
 ## Wave 5 — 2026-10-11 — §35 memory and cleanup, measured
 
-The §35 requirement is *"repeated mount/unmount … listeners … must not leak"*,
+The §35 requirement is _"repeated mount/unmount … listeners … must not leak"_,
 and until now the evidence behind it was **reading the effects and seeing a
 `return () => …`**. That is evidence that someone wrote a cleanup, not that the
 counts balance. This wave measures the balance instead.
@@ -1384,10 +1384,10 @@ including the `usePointerDragGuard` terminator that wave 1 added.
 ### A wrong assertion, caught by measurement
 
 The mid-gesture spec first asserted that a mid-gesture cycle registers the
-*same* listeners as a clean one. Measurement said 9 vs 4 — and the 9 is
+_same_ listeners as a clean one. Measurement said 9 vs 4 — and the 9 is
 **correct**: arming a live capture registers the guard's own pointer routing.
 The assertion was wrong, not the code. Rewritten to the invariant that actually
-matters: arming registers *extra* listeners, and **every one of them comes
+matters: arming registers _extra_ listeners, and **every one of them comes
 back**.
 
 This is the same shape as the `snapController` finding (D10): a test that fails
@@ -1420,11 +1420,11 @@ finding. This wave actually ran them.
 
 ### `npx playwright test 01…04` — 1 passed, 7 failed (4.9 min, Chromium)
 
-| Failure class | Evidence | Owner |
-| --- | --- | --- |
-| `page.goto` timeouts | `02-panel-toggles`: *"navigating to http://127.0.0.1:5199/, waiting until domcontentloaded — Timeout 60000ms exceeded"* | environmental (see below) |
-| Landing CTA copy | `01-landing-to-studio:59` waits for `getByRole('button', { name: /open in studio/i })`; the page renders `Open the studio` (`LandingPage.tsx:160,302`) while `LandingPrompt.tsx:196` still reads `Open in studio →` | not this audit |
-| Dock hit-target | `03-generate-flow` / `04-persistence-roundtrip`: clicking `.pattern-actions button:has-text("GEN")` reports *".dock-resize-handle … intercepts pointer events"* and *"element was detached from the DOM"* | not this audit — see below |
+| Failure class        | Evidence                                                                                                                                                                                                            | Owner                      |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| `page.goto` timeouts | `02-panel-toggles`: _"navigating to http://127.0.0.1:5199/, waiting until domcontentloaded — Timeout 60000ms exceeded"_                                                                                             | environmental (see below)  |
+| Landing CTA copy     | `01-landing-to-studio:59` waits for `getByRole('button', { name: /open in studio/i })`; the page renders `Open the studio` (`LandingPage.tsx:160,302`) while `LandingPrompt.tsx:196` still reads `Open in studio →` | not this audit             |
+| Dock hit-target      | `03-generate-flow` / `04-persistence-roundtrip`: clicking `.pattern-actions button:has-text("GEN")` reports _".dock-resize-handle … intercepts pointer events"_ and _"element was detached from the DOM"_           | not this audit — see below |
 
 None of these files is touched by this audit's commits (`ArrangementPanel`,
 `clipEditing`, `clipClipboard`, spec files).
@@ -1500,7 +1500,7 @@ A single module costs 20 s to transform and serve. The studio route's chunk
 graph contains hundreds of them. **That is what the stall is**: Vite cold
 transform on a contended machine, not an application fault. Nothing in this
 audit's commits runs before the studio route resolves — the lock guards, the
-clipboard refusal and the grid extent all live *inside* the chunk that never
+clipboard refusal and the grid extent all live _inside_ the chunk that never
 finished loading.
 
 ### What it is: an eternal loading state with no recovery surface (§20, §36)
@@ -1515,7 +1515,7 @@ That is a plain React `<Suspense>` fallback. It has:
 - **no timeout** — a chunk that never resolves and a chunk that resolves in 4
   minutes are pixel-identical;
 - **no error surface** — §36 asks that failures not be swallowed, and a stalled
-  import fails *silently* by construction here;
+  import fails _silently_ by construction here;
 - **no retry or reload affordance** — §20 asks that nothing leave the user
   "permanently stuck in dragging, trimming, **loading**, or disabled state".
 
@@ -1526,9 +1526,9 @@ output, no failed requests, forever.
 **Not fixed here.** A boot watchdog changes application startup architecture —
 it decides what the user sees when the app cannot start — which is §40's human
 review boundary, and `main.tsx` is shared surface that other sessions are
-editing. The honest disposition is to name it, with a reproduction: *load the
+editing. The honest disposition is to name it, with a reproduction: _load the
 dev server on a cold module cache and watch the boot screen; there is no state
-in which it admits it is stuck.*
+in which it admits it is stuck._
 
 ### Why this still does not complete the DoD
 
@@ -1543,8 +1543,8 @@ against a **production build** — where the module graph is pre-bundled and the
 
 ## Wave 8 — 2026-10-11 — the production build, the budget gate, and the answer to wave 7
 
-Wave 7 ended with an open question: *is the boot stall an application defect or a
-dev-server artefact?* The way to answer it is to remove the dev server.
+Wave 7 ended with an open question: _is the boot stall an application defect or a
+dev-server artefact?_ The way to answer it is to remove the dev server.
 
 ### `npm run build` — FAILED, and not on our code
 
@@ -1588,12 +1588,12 @@ the pre-bundled graph the browser needs.
 **Four budgets are within a rounding error of their limit**, and this is worth
 more than the pass itself:
 
-| Budget | Actual | Headroom |
-| --- | --- | --- |
-| core worklets | 149 / 150 KB | **1 KB** |
-| optional codecs | 168 / 170 KB | 2 KB |
-| optional on-demand runtimes | 640 / 650 KB | 10 KB |
-| DAW JS chunks | 5134 / 5160 KB | 26 KB |
+| Budget                      | Actual         | Headroom |
+| --------------------------- | -------------- | -------- |
+| core worklets               | 149 / 150 KB   | **1 KB** |
+| optional codecs             | 168 / 170 KB   | 2 KB     |
+| optional on-demand runtimes | 640 / 650 KB   | 10 KB    |
+| DAW JS chunks               | 5134 / 5160 KB | 26 KB    |
 
 One more worklet of ~1 KB, or one modest feature import, turns the build red.
 That is a **merge risk for every session in the repo**, not a defect, and it is
@@ -1611,14 +1611,14 @@ open_tab  http://127.0.0.1:4173/   →  success, navigation detected, loaded, 53
 **532 ms**, against a dev server that never finished in five minutes. That
 settles the question: **the boot stall is Vite's cold transform, not an
 application fault.** The §20 "eternal loading state" finding stands as a
-*robustness gap* (the fallback has no watchdog), but it is not manifesting as a
+_robustness gap_ (the fallback has no watchdog), but it is not manifesting as a
 real boot bug, and this report should not be read as claiming one.
 
-Every Browser operation *after* that navigation timed out at the tool's 275 s
+Every Browser operation _after_ that navigation timed out at the tool's 275 s
 ceiling — the control channel, not the page (navigation had already reported
 `loaded`). Interactive browser verification was therefore unavailable to this
 wave, and §17 / §33 / §35-browser / take-lane remain **unverified**. What this
-wave did establish is that they are *runnable*: the production build is fast,
+wave did establish is that they are _runnable_: the production build is fast,
 budget-clean and available, so those checks need a working Browser session on
 this machine, not another rewrite of the same gate.
 
@@ -1640,7 +1640,7 @@ chain: div.arr-intensity-lane < div.arr-lane < div.arr-lane-scroll < div.arr-tim
 ```
 
 The strip occupies **the same vertical band as the clips** (529..573 vs
-534..578) across the **full lane width** - not a strip *under* the clips. With
+534..578) across the **full lane width** - not a strip _under_ the clips. With
 `showIntensity` initialised to `true` (`ArrangementPanel.tsx:455`), a mouse
 press anywhere on any scene clip landed on the strip. Consequence, at the
 default configuration: **scene clips could be neither clicked nor dragged.**
@@ -1651,7 +1651,7 @@ Neither element declares a `z-index`, so both sit at `auto` and CSS painting
 order falls through to **tree order**. `.arr-clip` is
 `position:absolute` (`.arr-clip`, `04-arrangement.css:621`) and the intensity
 strip is the **last in-flow child** of `.arr-lane` (`ArrangementPanel.tsx`
-rendered it immediately before the lane's closing tag), i.e. a *later* sibling.
+rendered it immediately before the lane's closing tag), i.e. a _later_ sibling.
 Later wins. The lane itself is `height: LANE_HEIGHT` (56px, inline), the strip
 is `height: 44px`, and being in flow it placed itself at the top of the lane's
 content box - squarely on top of the clips.
@@ -1690,8 +1690,7 @@ chain: span.arr-clip-role < span.arr-clip-copy < div.arr-clip < div. < div.arr-l
 assertion rather than a log line:
 
 ```ts
-expect(probe.closestToClip,
-  `pointer at the clip centre resolved to ${probe.top} (...)`).toBe(true);
+expect(probe.closestToClip, `pointer at the clip centre resolved to ${probe.top} (...)`).toBe(true);
 ```
 
 plus `expect(await int.getAttribute("aria-pressed")).toBe("true")` - the spec
@@ -1754,13 +1753,13 @@ to be broken at **every viewport size**.
 
 Same build, same preview server, two drivers:
 
-| driver | result |
-| --- | --- |
-| in-app Browser — `open_tab` | `loaded: true`, **678 ms** |
-| in-app Browser — `inspect`, `query(console)` | `BROWSER_OPERATION_TIMEOUT` at the **275 s** ceiling, twice |
-| Playwright — `page.goto(waitUntil: "commit")` | **183 ms** |
-| Playwright — `page.evaluate(() => …)` ×5 | **205 / 789 / 1331 / 1874 / 2414 ms**, all returned |
-| Playwright — console errors during boot | **0** |
+| driver                                        | result                                                      |
+| --------------------------------------------- | ----------------------------------------------------------- |
+| in-app Browser — `open_tab`                   | `loaded: true`, **678 ms**                                  |
+| in-app Browser — `inspect`, `query(console)`  | `BROWSER_OPERATION_TIMEOUT` at the **275 s** ceiling, twice |
+| Playwright — `page.goto(waitUntil: "commit")` | **183 ms**                                                  |
+| Playwright — `page.evaluate(() => …)` ×5      | **205 / 789 / 1331 / 1874 / 2414 ms**, all returned         |
+| Playwright — console errors during boot       | **0**                                                       |
 
 `document.readyState` went `loading → complete` inside 789 ms and the DOM grew
 to 134 nodes by 1.9 s. A slow boot and a dead renderer look identical from
@@ -1792,12 +1791,12 @@ waves 6–8 kept hitting.
 
 Measured in Chromium against the production build, at four viewports:
 
-| viewport | `grid-template-columns` | `.workspace-main` | `.sequencer` | GEN hit test |
-| --- | --- | --- | --- | --- |
-| 1280×720 | `1000px 280px` | 280 × 173 | **256 × 20** | `BUTTON.dock-resize-handle` |
-| 1366×768 | `1086px 280px` | 280 × 197 | **256 × 20** | GEN |
-| 1440×900 | `1160px 280px` | 280 × 263 | **256 × 20** | GEN |
-| 1920×1080 | `1640px 280px` | 280 × 353 | **256 × 20** | GEN |
+| viewport  | `grid-template-columns` | `.workspace-main` | `.sequencer` | GEN hit test                |
+| --------- | ----------------------- | ----------------- | ------------ | --------------------------- |
+| 1280×720  | `1000px 280px`          | 280 × 173         | **256 × 20** | `BUTTON.dock-resize-handle` |
+| 1366×768  | `1086px 280px`          | 280 × 197         | **256 × 20** | GEN                         |
+| 1440×900  | `1160px 280px`          | 280 × 263         | **256 × 20** | GEN                         |
+| 1920×1080 | `1640px 280px`          | 280 × 353         | **256 × 20** | GEN                         |
 
 Two things in that table are worse than the GEN button:
 
@@ -1835,7 +1834,7 @@ The file's own comment recorded the mistaken belief that produced it:
 > the clamp above is overridden by the existing 01-base.css block, which stays
 > as the single owner of that layout switch
 
-`01-base.css` cannot override anything — it is imported *first*. A media query
+`01-base.css` cannot override anything — it is imported _first_. A media query
 does not add specificity either, so the same mistake also killed the
 `@media (max-width: 860px)` "inspector becomes a row" switch declared in
 `20-control-kit.css:479`.
@@ -1856,8 +1855,8 @@ the inspector row-switch below 860px is still owned by the base sheet
 ```
 
 That guard is a deliberate contract from an earlier wave, and its comment gives
-the reason: *"24-layout-tokens.css must NOT define its own 860px block that could
-race the existing one — that duplication is how these ladders drift."* Rewriting
+the reason: _"24-layout-tokens.css must NOT define its own 860px block that could
+race the existing one — that duplication is how these ladders drift."_ Rewriting
 a guard to fit my own patch is the failure mode §57 exists to prevent, and the
 guard had a point I had not measured: the ladder drifts by duplication, not only
 by override.
@@ -1867,11 +1866,11 @@ specificity, so an **unscoped** rule in this last-imported file beats every
 breakpoint an earlier file declares — but a `min-width` rule whose range never
 overlaps theirs cannot. So:
 
-| width | owner of `grid-template-columns` |
-| --- | --- |
-| ≥ 1101px | `24-layout-tokens.css` (`auto | 1fr | clamp(...)`) |
-| 861–1100px | `20-control-kit.css:475` (230 px inspector) |
-| ≤ 860px | `20-control-kit.css:479` (inspector becomes a row) |
+| width      | owner of `grid-template-columns`                   |
+| ---------- | -------------------------------------------------- |
+| ≥ 1101px   | `24-layout-tokens.css` (`auto                      | 1fr | clamp(...)`) |
+| 861–1100px | `20-control-kit.css:475` (230 px inspector)        |
+| ≤ 860px    | `20-control-kit.css:479` (inspector becomes a row) |
 
 One owner per range, no duplicated rung, and the existing guard is satisfied
 rather than rewritten. Same treatment for the label rule below
@@ -1888,11 +1887,11 @@ the assertions describe the defect and not the fix.
 
 ### Suite result, production build, Chromium
 
-| | before the fix | after the fix |
-| --- | --- | --- |
-| specs 01–08 | **8 passed / 5 failed** | **15 passed / 1 failed** |
-| failing | 01, 03, 04, 05, 07 | 07 only |
-| new `19-workspace-layout` | — | 4 passed |
+|                           | before the fix          | after the fix            |
+| ------------------------- | ----------------------- | ------------------------ |
+| specs 01–08               | **8 passed / 5 failed** | **15 passed / 1 failed** |
+| failing                   | 01, 03, 04, 05, 07      | 07 only                  |
+| new `19-workspace-layout` | —                       | 4 passed                 |
 
 Four product specs turned green — landing→studio, GEN generate flow,
 persistence roundtrip and keyboard shortcuts — all of them downstream of GEN
@@ -1942,11 +1941,11 @@ master strip's own peak readout (`.master-channel-peak-readout`, rendered by
 `MasterStereoMeters` straight from the engine's master stereo snapshot, in dB,
 `-∞` for silence). Three consecutive independent runs:
 
-| run | transport | master peak | track meters | after stop |
-| --- | --- | --- | --- | --- |
-| 1 | `1.1.3 → 8.2.3` | **−1.3 dBFS** | 100 | **−∞** |
-| 2 | `1.1.3 → 9.2.3` | **−1.3 dBFS** | 100 | **−∞** |
-| 3 | `1.1.2 → 9.4.4` | **−1.3 dBFS** | 100 | **−∞** |
+| run | transport       | master peak   | track meters | after stop |
+| --- | --------------- | ------------- | ------------ | ---------- |
+| 1   | `1.1.3 → 8.2.3` | **−1.3 dBFS** | 100          | **−∞**     |
+| 2   | `1.1.3 → 9.2.3` | **−1.3 dBFS** | 100          | **−∞**     |
+| 3   | `1.1.2 → 9.4.4` | **−1.3 dBFS** | 100          | **−∞**     |
 
 A sampled run of the master peak, 200 ms apart:
 
@@ -1990,7 +1989,7 @@ run 1  baseline 15.29 MB   samples 14.86 … 15.42   growth -0.22 MB
 run 2  baseline 16.40 MB   samples 15.09 … 16.16   growth -0.24 MB
 ```
 
-Flat in both runs, and slightly *down* at the end — there is no per-cycle
+Flat in both runs, and slightly _down_ at the end — there is no per-cycle
 retention in the panel lifecycle to find. The 4 MB bound is derived from those
 measurements rather than chosen in advance: the observed noise band is about
 ±0.6 MB, so 4 MB is roughly seven times the band, loose enough not to flake and
@@ -2009,7 +2008,7 @@ second look rather than a deferral, because of what the studio actually looked
 like: at 1280×720 the workspace column was 349 px and spent **151 px on the pad
 rack and 149 px on the pattern toolbar**, leaving **20 px for the sequencer** —
 the editor the application exists for. There was no empty rectangle to complain
-about; there was *content without meaning*: a pad grid, four rows of buttons and
+about; there was _content without meaning_: a pad grid, four rows of buttons and
 a mixer. At 1366×768 the sequencer got ~68 px.
 
 Two of my first visual readings here were wrong and the measurements killed
@@ -2039,14 +2038,14 @@ the pattern bar is a toolbar; neither is a canvas.
 
 Measured after:
 
-| viewport | sequencer | rack | pattern bar | dock | clipped |
-| --- | --- | --- | --- | --- | --- |
-| 1280×720 | **150** (was 20) | 101, 1 row | 79 | 245 (capped) | 0 |
-| 1366×768 | **150** (was ~68) | 101, 1 row | 111 | 261 | 0 |
-| 1280×800 | **150** | 101, 1 row | 138 | 266 | 0 |
-| 1440×900 | 218 | 130, 2 rows | 141 | 266 | 0 |
-| 1920×1080 | 467 | 130, 2 rows | 72 | 266 | 0 |
-| 800×900 | 90 | 151 | 72 | 266 | 0 |
+| viewport  | sequencer         | rack        | pattern bar | dock         | clipped |
+| --------- | ----------------- | ----------- | ----------- | ------------ | ------- |
+| 1280×720  | **150** (was 20)  | 101, 1 row  | 79          | 245 (capped) | 0       |
+| 1366×768  | **150** (was ~68) | 101, 1 row  | 111         | 261          | 0       |
+| 1280×800  | **150**           | 101, 1 row  | 138         | 266          | 0       |
+| 1440×900  | 218               | 130, 2 rows | 141         | 266          | 0       |
+| 1920×1080 | 467               | 130, 2 rows | 72          | 266          | 0       |
+| 800×900   | 90                | 151         | 72          | 266          | 0       |
 
 The tall layouts are untouched — 1440×900 and 1920×1080 keep two rack rows and
 a toolbar that does not scroll — which is the assertion that matters most here,
@@ -2094,19 +2093,19 @@ after screenshot and both are the price of the editor existing.
 
 ### Gates for this wave — what actually ran
 
-| gate | result |
-| --- | --- |
-| `npx vite build` (production bundle, after each change) | exit 0 |
-| `npm run typecheck` | exit 0 |
-| `npm run format:check` | clean for every file this wave touched; the one remaining warning is `tests/probe-split-undo.test.ts`, which belongs to another session |
-| `npm run test` (vitest) | 906 / 944 files passed, 38 red, 53 tests red — none reachable from this wave: the only source change is one CSS file, and `vitest.config.ts:86` excludes `tests/e2e/**`, so a stylesheet rule and the new Playwright spec cannot produce a vitest failure. The reds are co-tenant work in flight; `npm run test:expectations` is the gate that attributes them |
-| `tests/layout-responsive.test.ts` (pre-existing guard for this file) | **15/15** against the final CSS — it was red against the first formulation |
-| `playwright --project=chromium`, specs 01–08 + 19, production build | **15 passed / 1 failed** (1.7 min), the single red being `07`, which imports `/src/*.ts` and cannot run against a production build at all |
-| `playwright --project=chromium`, specs 01, 03, 04, 05 + 19, production build, **final** CSS | **11 passed / 0 failed** |
-| `playwright --project=chromium`, specs 19 + 20 (§17) + 21 (§35), production build | **7 passed / 0 failed** (1.4 min), §17 reproducing −1.3 dBFS master peak and `-∞` after stop across four independent runs |
-| `playwright --project=chromium`, specs 19 (9) + 20 (§17) + 21 (§35) + 03, production build, **final** CSS | **12 passed / 0 failed** (1.1 min) |
-| falsification, D14 | pre-fix CSS injected into the built bundle makes the layout assertions fail with the exact measured symptoms: at 800×900 `columns were "520px 280px"` (2 tracks, not 1); at 1280×720 `columns were "1000px 280px"` (2 tracks, not 3); GEN hit test `BUTTON.dock-resize-handle` instead of `GEN`; sequencer height 20 instead of >120; `--steps-label` 220px instead of 112px |
-| falsification, D15 | reverting the short-viewport rules in the built bundle fails the new guards with the measured numbers: sequencer **20 px** at 1280×720 (floor 150), **57 px** at 1366×768, and the 800×900 toolbar case |
+| gate                                                                                                      | result                                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npx vite build` (production bundle, after each change)                                                   | exit 0                                                                                                                                                                                                                                                                                                                                                                       |
+| `npm run typecheck`                                                                                       | exit 0                                                                                                                                                                                                                                                                                                                                                                       |
+| `npm run format:check`                                                                                    | clean for every file this wave touched; the one remaining warning is `tests/probe-split-undo.test.ts`, which belongs to another session                                                                                                                                                                                                                                      |
+| `npm run test` (vitest)                                                                                   | 906 / 944 files passed, 38 red, 53 tests red — none reachable from this wave: the only source change is one CSS file, and `vitest.config.ts:86` excludes `tests/e2e/**`, so a stylesheet rule and the new Playwright spec cannot produce a vitest failure. The reds are co-tenant work in flight; `npm run test:expectations` is the gate that attributes them               |
+| `tests/layout-responsive.test.ts` (pre-existing guard for this file)                                      | **15/15** against the final CSS — it was red against the first formulation                                                                                                                                                                                                                                                                                                   |
+| `playwright --project=chromium`, specs 01–08 + 19, production build                                       | **15 passed / 1 failed** (1.7 min), the single red being `07`, which imports `/src/*.ts` and cannot run against a production build at all                                                                                                                                                                                                                                    |
+| `playwright --project=chromium`, specs 01, 03, 04, 05 + 19, production build, **final** CSS               | **11 passed / 0 failed**                                                                                                                                                                                                                                                                                                                                                     |
+| `playwright --project=chromium`, specs 19 + 20 (§17) + 21 (§35), production build                         | **7 passed / 0 failed** (1.4 min), §17 reproducing −1.3 dBFS master peak and `-∞` after stop across four independent runs                                                                                                                                                                                                                                                    |
+| `playwright --project=chromium`, specs 19 (9) + 20 (§17) + 21 (§35) + 03, production build, **final** CSS | **12 passed / 0 failed** (1.1 min)                                                                                                                                                                                                                                                                                                                                           |
+| falsification, D14                                                                                        | pre-fix CSS injected into the built bundle makes the layout assertions fail with the exact measured symptoms: at 800×900 `columns were "520px 280px"` (2 tracks, not 1); at 1280×720 `columns were "1000px 280px"` (2 tracks, not 3); GEN hit test `BUTTON.dock-resize-handle` instead of `GEN`; sequencer height 20 instead of >120; `--steps-label` 220px instead of 112px |
+| falsification, D15                                                                                        | reverting the short-viewport rules in the built bundle fails the new guards with the measured numbers: sequencer **20 px** at 1280×720 (floor 150), **57 px** at 1366×768, and the 800×900 toolbar case                                                                                                                                                                      |
 
 **The two browser-verification items this audit inherited as unverified are now
 measured**: §17 playback/ghost audio (§17 section above) and §35 heap stability
@@ -2179,26 +2178,26 @@ multi-selection that the single-clip action did not touch. Recorded as a
 acts on the selection" is a product convention, not a bug.
 
 The assertion was rewritten anyway, because the first version was measuring the
-wrong thing. It compared *counts*, and "1 selected before, 1 after" reads
+wrong thing. It compared _counts_, and "1 selected before, 1 after" reads
 identically whether the selection was pruned correctly or a dead id was swapped
 for a survivor. It now compares **identities**: every clip still marked selected
 must still exist, and no removed clip may remain rendered.
 
 ### What the chain verified, in a real browser, on the default configuration
 
-| Section | Stage | Measured result |
-| --- | --- | --- |
-| 19/33 | pointer identity at the drag origin | `div.arr-clip` (was `.arr-intensity-lane`, D14) |
-| 5 | move, undo, redo | positions move, restore exactly, re-apply |
-| 6 | trim via `.arr-clip-resize` | committed width changes, clip count unchanged |
-| 7 | split with CUT | 1 clip -> 2 |
-| 8 | duplicate + move the copy | copy moves, original does not |
-| 4/14 | ctrl+click multi-select | 2 clips selected |
-| 9/4 | remove a clip | one gone, no dead id left selected |
-| 22 | undo/redo that removal | counts restore and re-apply exactly |
-| 13 | horizontal scroll | no unmount, no timing change |
-| 17 | play -> edit during playback -> stop | playhead 0px -> 29.4px -> seeked 543.9px, one clip `.playing`, clip count stable through a live drag, playhead frozen after Stop, zero `.playing` clips |
-| 33 | 900x700 viewport | clip is the pointer target |
+| Section | Stage                                | Measured result                                                                                                                                         |
+| ------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 19/33   | pointer identity at the drag origin  | `div.arr-clip` (was `.arr-intensity-lane`, D14)                                                                                                         |
+| 5       | move, undo, redo                     | positions move, restore exactly, re-apply                                                                                                               |
+| 6       | trim via `.arr-clip-resize`          | committed width changes, clip count unchanged                                                                                                           |
+| 7       | split with CUT                       | 1 clip -> 2                                                                                                                                             |
+| 8       | duplicate + move the copy            | copy moves, original does not                                                                                                                           |
+| 4/14    | ctrl+click multi-select              | 2 clips selected                                                                                                                                        |
+| 9/4     | remove a clip                        | one gone, no dead id left selected                                                                                                                      |
+| 22      | undo/redo that removal               | counts restore and re-apply exactly                                                                                                                     |
+| 13      | horizontal scroll                    | no unmount, no timing change                                                                                                                            |
+| 17      | play -> edit during playback -> stop | playhead 0px -> 29.4px -> seeked 543.9px, one clip `.playing`, clip count stable through a live drag, playhead frozen after Stop, zero `.playing` clips |
+| 33      | 900x700 viewport                     | clip is the pointer target                                                                                                                              |
 
 `1 passed (37.6 s)`, **jsErrors = 0** across the whole chain.
 
@@ -2387,10 +2386,10 @@ an echo.
 
 Three states were measured on the same gesture:
 
-| state | committed result |
-| --- | --- |
-| grid = `1` | 120 → **210** px (7 bars) |
-| grid = `off` | 120 → **210** px (7 bars) |
+| state                     | committed result          |
+| ------------------------- | ------------------------- |
+| grid = `1`                | 120 → **210** px (7 bars) |
+| grid = `off`              | 120 → **210** px (7 bars) |
 | grid = `off` + Shift held | 120 → **210** px (7 bars) |
 
 Two things are unexplained:
@@ -2536,3 +2535,412 @@ changes what those specs assert.
 `Page` type import, fixed immediately). The rest - five errors in
 `tests/e2e/14-recording-soak.spec.ts` - are in an **untracked** file owned by the
 concurrent recording session, and were left alone.
+
+---
+
+## Wave 15 - 2026-10-12 - error boundaries: one real defect, and a test harness that was lying to me
+
+Owner ask: _"zrobustniť error boundaries, spraviť nejaké edge case testy, unit testy,
+component testy ktoré by sa mohli zistiť."_
+
+### D16 - a crash card outlives the panel that caused it (P1, CONFIRMED + fixed)
+
+Dock slots render their occupant **by position, not by remount**. `App.tsx:1716-1718`:
+
+```tsx
+<div className="dock-slot" role="tabpanel" id={`dock-panel-${dock.slotA}`} ...>
+  <Suspense fallback={<div className="panel-loading">Loading panel…</div>}>
+    {renderDockSlot(dock.slotA)}      // no key
+  </Suspense>
+</div>
+```
+
+`renderDockSlot` (`App.tsx:1604`) returns `panelRenderers[id]`, and every one of those
+is `<ErrorBoundary panel="…">`. React reconciles by type and position, so switching the
+slot from `mixer` to `devices` **reuses the same `ErrorBoundary` instance** and updates
+only its props. `hasError: true` survives the swap.
+
+Consequence, in the order the user meets it:
+
+1. The mixer throws. Card reads `mixer crashed — <the mixer's message>`.
+2. The user clicks the `devices` tab to get unstuck.
+3. The card now reads **`devices crashed — <the mixer's message>`**.
+
+The new panel is blamed for an error it never threw, with the old panel's stack text
+attached, and the user has to work out that `Retry` is the only way out. The error
+report itself is wrong, which is worse than the crash.
+
+The shared `devicePanel` element (`App.tsx:1538-1542`, reused for the `devices` / `fx` /
+`plugin` ids) is the same instance, so it is unaffected by identity - correctly so,
+since it is literally the same subtree.
+
+Fix is in the boundary, not at each call site, so the whole class is covered
+(`src/ui/ErrorBoundary.tsx`):
+
+```tsx
+componentDidUpdate(prevProps: Props) {
+  if (!this.state.hasError) return;
+  if ((this.props.resetKey ?? this.props.panel) !== (prevProps.resetKey ?? prevProps.panel)) {
+    this.setState({ hasError: false, error: null });
+  }
+}
+```
+
+`resetKey` defaults to `panel`, so every existing call site is fixed without edits; it
+exists for the case where the label is stable but the guarded content is not (e.g. the
+same rack following a different track).
+
+**Sibling sweep.** All four `TopBar` boundaries (`scale-panel`, `collab`, `theme`,
+`assist`, `TopBar.tsx:862-883`) sit inside `{open && …}` and unmount wholesale, so they
+get a fresh boundary every time. The unconditional `App` boundaries (`browser-strip`,
+`sequencer`, `inspector`, `palette`) have stable identity and nothing to reset. The
+conditional ones (`diagnostics`, `io-panel`) unmount too. **Dock slots are the only
+swap-without-remount site in the app**, and the fix lives one level below them.
+
+### The measurement that invalidated one of my own tests
+
+I added a recovery test built on a counter inside the throwing child - "throw on the
+first invocation, succeed on the second" - and it failed in a way I first misread as
+test pollution. It was not pollution: it fails **in isolation too**, and the rendered DOM
+already contained `recovered` before the first assertion.
+
+Measured with a throwaway probe (since deleted):
+
+| Probe                                 | Result                                                  |
+| ------------------------------------- | ------------------------------------------------------- |
+| Always-throwing child, one `render()` | child invoked **5 times**                               |
+| Throw-on-first child, one `render()`  | child invoked **4 times**, `crash card present = false` |
+
+React 18 in DEV **replays a failed render**. A child that throws "only on its first
+invocation" succeeds on the replay, the boundary never sees an error, and the crash is
+silently swallowed. Any attempt-counter inside a throwing child is therefore worthless
+as a probe: it reports recoveries that never reached the boundary.
+
+The same replay explains a second number - `componentDidCatch` fires **4×** for one
+logical crash. My first version of the "keeps the card" test asserted
+`console.error` was called once and went red; that assertion was pinning a React
+implementation detail, not a product property. It now measures child invocations across
+the re-render, which is the property I actually care about: the crashed subtree is not
+re-attempted behind the card.
+
+Every flaky child in this file is now driven by an **external flag**, never a counter.
+One test pins the trap itself so nobody walks into it again.
+
+### Measured contracts, now pinned
+
+- **Retry is a clean remount, not a resume** - `count 2` → crash → Retry → `count 0`.
+  Recovering by _hiding_ the fallback would hand back a half-initialised panel.
+- **Route mode offers reload only, never Retry** - a studio-wide crash is not something
+  a re-render can clear, so a Retry button there would be a lie.
+- **The chunk classifier matters in both directions** - a miss means the user is told to
+  press Retry against a cached rejected promise (which can never resolve); a false
+  positive means a plain render crash sends them to a full reload and loses unsaved work.
+  All four patterns plus four near-misses are now covered, including the pair that only
+  a truth table catches: `"Loading chunk 42 succeeded"` (chunk marker, no `failed`) and
+  `"the render failed"` (`failed`, no chunk marker) must both stay on Retry.
+- **`attachProcessorErrorGuard` is idempotent per node**, which only holds because the
+  handler is a property assignment. If it ever becomes a listener list, every re-attach
+  inflates a diagnostic count that is shown to the user. Now pinned.
+
+`tests/fault-containment.test.tsx` went from **7 to 22 tests**.
+
+### Falsification
+
+Every guard was run against a deliberately broken build. None of these are "the test
+passed" claims.
+
+| Broken state                  | How                                | Result                                                                      |
+| ----------------------------- | ---------------------------------- | --------------------------------------------------------------------------- |
+| Panel-swap reset removed      | `componentDidUpdate` early-returns | **2 failed** (panel swap, `resetKey`)                                       |
+| `handleRetry` is a no-op      | `if (true) return;`                | **3 failed** (RECOVERS, REMOUNTS, re-containment)                           |
+| Classifier matches everything | `if (error) return true;`          | **7 failed** (all 4 negatives + the pre-existing "no Reload app" assertion) |
+
+### Gates for this wave
+
+| Gate                                                                                            | Result                                                                                                                                                                                       |
+| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/fault-containment.test.tsx`                                                              | **22 passed**                                                                                                                                                                                |
+| `tests/ui/ErrorBoundary.test.tsx` + `tests/ui/App.test.tsx` + `tests/layout-responsive.test.ts` | **49 passed** across 4 files, no render loop from the new `setState`                                                                                                                         |
+| `npx tsc --noEmit`                                                                              | **0 errors** - the red on `tests/e2e/14-recording-soak.spec.ts:395` recorded in wave 14 was fixed by the recording session in the meantime; the gate is green again without any edit from me |
+| `prettier --check` on both owned files                                                          | unchanged                                                                                                                                                                                    |
+| Sibling sweep                                                                                   | 21 boundary usages; only the dock-slot shape is affected                                                                                                                                     |
+
+### What this wave does not close
+
+`tests/ui/ErrorBoundary.test.tsx` still has 8 render-state-only tests that never click
+Retry. They overlap the new coverage and are now the weaker half of the pair - worth
+consolidating, but that is cleanup, not a defect. The dev-server-only e2e specs, the
+boot watchdog and the take-lane remain open from earlier waves.
+
+---
+
+## Wave 16 - 2026-10-12 - the boot path: a loader with no way out, and a click that answered nothing
+
+Owner ask: _"tak to dotiahni, a kľudne hľadaj ďalšie bugy, medzery, nedokonalosti."_
+
+Both defects below are in the path between "the user decided something" and "the user
+sees a result" - the part of the app that is easiest to leave silent, and the part that
+matches the owner's stated trauma with empty screens.
+
+### D17 - a stalled chunk left the boot screen up forever (P1, CONFIRMED + fixed)
+
+`Boot` in `src/main.tsx` awaits `import("./services")` and `createCoreServices()` with no
+timeout of its own.
+
+**The first hypothesis was wrong, and checking it was the useful part.** "IndexedDB
+blocked by another tab hangs the boot" is the classic version of this bug - and this
+codebase already handles it. `persistence/db.ts:41-103` caps a blocked open at 5 s and
+rejects with _"Database is locked by another KYX tab - close it and try again"_, and
+`src/interop/qvesterHandoff.ts:205-226` documents the same convention for the interop
+database. Reporting that as a defect would have been a false positive.
+
+What is _not_ bounded is the **chunk request**. `fetch()` has no timeout of its own.
+
+Measured in Chromium against the production build:
+
+| Scenario                         | Result                                                                                                |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Healthy boot -> project browser  | **1596 ms**                                                                                           |
+| `services` chunk never fulfilled | loader visible at **968 ms**, Reload button **never appeared** (spec failed after its full 30 s wait) |
+
+A stalled or service-worker-starved chunk therefore left the user on _"KYX - forging
+audio engine"_ with no error, no explanation and nothing to click - for as long as the
+network wanted.
+
+The fix is a **warning, deliberately not an abort** (`BOOT_WARN_MS = 15_000`, ~9x the
+measured healthy boot):
+
+```tsx
+const [bootStalled, setBootStalled] = useState(false);
+useEffect(() => {
+  const timer = setTimeout(() => setBootStalled(true), BOOT_WARN_MS);
+  return () => clearTimeout(timer);
+}, []);
+```
+
+It renders `BootStalledScreen` only while `screen.kind === "booting"`, so a boot that
+settles late takes the screen over by itself and the warning disappears. The screen
+reuses the existing `.crash-screen` / `.crash-list` / `.crash-reload` classes, so there
+is no new CSS, and it names the three real causes rather than shrugging.
+
+Measured after the fix:
+
+| Scenario                           | Result                                                               |
+| ---------------------------------- | -------------------------------------------------------------------- |
+| Stalled chunk                      | watchdog fired at **16 065 ms**, actionable screen                   |
+| Healthy boot                       | **1976 ms**, untouched                                               |
+| Chunk delayed 18 s, then delivered | warning shown, **boot still landed** in the browser, warning cleared |
+
+The third row is the falsification of the _design_, not just of the code: a warning
+surface is only safe if the boot is allowed to finish afterwards.
+
+### D18 - opening a project gave no feedback, and left a double-open window (P2, CONFIRMED + fixed)
+
+`ProjectBrowser` calls `onOpen`, and `openDoc` in `src/main.tsx` was fire-and-forget:
+
+```js
+void import("./services")
+  .then(({ openProject }) => openProject(core, doc))
+  .then((services) => setScreen({ kind: "studio", services }), ...)
+```
+
+`ProjectBrowser.openById` releases its `busy` guard in a `finally` right after `enterStudio`
+returns - but `enterStudio` returns as soon as `openDoc` dispatches, not when the studio
+is up. So the **entire studio build ran behind a fully interactive project browser**, and
+any second click in that window started a **second** `openProject`. The loser was never
+`closeProject()`-ed: no final save, `AudioContext` still open next to the winner's.
+
+`openProject` only awaits something lazily when `?collab=` is present (the yjs runtime is
+~300 KB and deliberately kept out of the boot path), which makes it the honest way to
+measure a large window.
+
+Measured, with the collab chunk delayed by 6 s:
+
+| State                         | Time for `.project-browser` to leave the screen              |
+| ----------------------------- | ------------------------------------------------------------ |
+| Fire-and-forget (before)      | **still present after 2 s** - sits there for the whole build |
+| `{ kind: "opening" }` (after) | **194 ms**                                                   |
+
+The fix is one line - claim the transition synchronously:
+
+```tsx
+const openDoc = useCallback((core, doc) => {
+  setScreen({ kind: "opening" });
+  void import("./services")...
+```
+
+Because React flushes a discrete click synchronously, this also removes the double-open
+window by unmounting the browser in the same commit. The new state holds no services, so
+nothing can be closed on the way out of it.
+
+### Falsification
+
+| Broken state       | How                                | Result                                                |
+| ------------------ | ---------------------------------- | ----------------------------------------------------- |
+| No watchdog        | pre-fix build                      | **failed** - Reload button absent after 30 s          |
+| No `opening` state | `setScreen` commented out, rebuilt | **failed** - `.project-browser` count 1 vs expected 0 |
+
+### Gates for this wave
+
+| Gate                                         | Result                                                  |
+| -------------------------------------------- | ------------------------------------------------------- |
+| `tests/e2e/22-boot-watchdog.spec.ts`         | **3 passed** (stall / healthy / slow-but-successful)    |
+| `tests/e2e/23-project-open-feedback.spec.ts` | **2 passed** (feedback + failed-open surfaces an error) |
+| `npx tsc --noEmit`                           | **0 errors**                                            |
+| `prettier --check`                           | clean on all three files                                |
+
+### Cost, stated plainly
+
+The watchdog adds one `setTimeout` to the boot phase and nothing else; it cannot make a
+slow boot fail because it does not abort anything. The cost is a screen change at 15 s
+on a genuinely slow boot where previously the loader simply kept spinning - a user who
+was waiting anyway now sees a button they do not need. Both states are safe; the new one
+is recoverable, which is the point.
+
+One honest caveat on D18: the double-open is a **latent** race rather than one I could
+demonstrate a user reaching, because React's synchronous flush on a discrete click
+usually unmounts the browser before a second click can land. The measured defect is the
+missing feedback; closing the race is defence, not a fix for an observed loss.
+
+### D19 - the crash banner called every ordinary exit a crash (P2, CONFIRMED + fixed)
+
+The Project Browser shows a banner whenever the crash journal does not end on
+`session-close`:
+
+> "Previous session may have ended unexpectedly (crash or force-quit)."
+
+But `session-close` is written in exactly one place - `closeProject`
+(`src/services.ts:1169`) - which only runs when the user clicks **back-to-browser inside
+the app**. Closing the tab, following a link or refreshing never writes it.
+
+Measured, Chromium, production build: open a template, navigate away normally, reopen.
+Last journal event = `session-open`, banner = visible, copy = _"Previous session may have
+ended unexpectedly (crash or force-quit). No completed save was recorded."_
+
+An entirely innocent session gets accused of a crash. A user who learns that this banner
+cries wolf stops reading it - which costs us the one case where it would have mattered.
+
+**The first fix I attempted was wrong, and measuring it is the useful part of this
+entry.** I added a `session-exit` journal event written from a new `onUnload` hook, so
+the app could distinguish a deliberate exit from a vanished tab. It never fired - the
+journal still ended on `session-open`. Rather than assume, I instrumented both handlers
+with a **synchronous `localStorage` write** alongside the IndexedDB one:
+
+```
+onUnload hook fired = 1791794444307
+last recorded event after a normal session = session-open
+```
+
+The hook fires; the IndexedDB write dies with the document. An unload-time journal entry
+is not writable, so the whole `session-exit` design was dead code and was removed.
+
+That measurement became the actual fix's justification. Since the app **cannot** know
+why a tab went away, it must not assert a cause. The copy now says only what is known:
+
+> "The last session did not end through KYX's normal shutdown — you may have closed the
+> tab or followed a link, or the app may have been interrupted."
+
+The banner still appears (the journal genuinely cannot prove a clean shutdown, and the
+module's contract is "may over-report, must never under-report" - hiding it would silence
+genuine iOS terminations, which fire the same `pagehide`). What changed is that it stops
+naming a cause. `CrashJournalReport` now carries that warning on the field itself, so the
+next reader of `lastSessionClean: false` cannot repeat the mistake.
+
+### D20 - the unload save flush does not save anything (P1, CONFIRMED + FIXED)
+
+This is the most serious finding of the audit.
+
+`installSaveUnloadGuards` exists for one reason. From its own header: _"the 'Continue last
+project' pointer can drift away from the last-saved body if the user closes the tab while
+a save is in flight or in the 800 ms debounce window."_ It answers **both**
+`visibilitychange`→hidden (via `services.ts` `onVisibility`) and `pagehide` with
+`flushSave()`.
+
+Measured, Chromium, production build, reading the persisted project document back out of
+IndexedDB rather than trusting the journal (the journal's own `save-ok` marker is _also_
+an IndexedDB write, so a missing marker cannot distinguish "the save was lost" from "only
+the marker was lost"):
+
+| Scenario                           | Stored first step | Meaning                     |
+| ---------------------------------- | ----------------- | --------------------------- |
+| BASELINE - template untouched      | 0.95              | template ships this step on |
+| CONTROL - click, then idle 3 s     | **0**             | toggle saved                |
+| UNLOAD - click, then close the tab | **0.95**          | **the edit is gone**        |
+
+And the guards are not being skipped - both events genuinely fire, proven with the
+synchronous markers (`{"visibilityHidden":1791794912662,"pagehide":1791794912660}`).
+
+**Neither IndexedDB transaction commits before teardown.** The user closes a tab and
+their last edit silently disappears, with no error anywhere. The safety net provides a
+false sense of protection.
+
+What actually protects the user today is the autosave window alone
+(`debounceMs: 800`, `maxDeferMs: 5000`), so the exposure is bounded at roughly **5
+seconds of work**, not the whole session - but 5 seconds of unsaved work is exactly what
+this guard was written to prevent.
+
+**Owner's decision: the synchronous recovery buffer, not a shorter autosave window.**
+
+`src/persistence/recoveryBuffer.ts` holds the uncommitted document in `localStorage`,
+which is the one store whose writes provably survive unload - that is exactly what the
+diagnostic above measured. The module is synchronous end to end; an async write is the
+very thing that does not survive.
+
+- **Written** from a new synchronous `onUnload` hook in `installSaveUnloadGuards`, which
+  runs _before_ `flushSave` in the pagehide handler.
+- **Cleared** the moment a save commits (`doSave` success), and when the user recovers or
+  discards - so a stale buffer can never shadow newer work.
+- **Offered** by the Project Browser only while `isBufferWorthOffering` holds, i.e. only
+  when the buffer is NEWER than the saved project's `updatedAt`. Recovering is a real
+  `repo.save` followed by opening the studio, not a one-shot view, so a second crash
+  keeps the work.
+- **Degrades silently** to exactly today's behaviour when `localStorage` is unavailable,
+  over quota (a project larger than localStorage will take), or the document is not
+  JSON-serialisable. The unload path can never throw because of it.
+
+**One predicate bug, caught by measurement rather than by reading.** The first version
+gated the write on `saveStatus` being `dirty` or `error`. Instrumenting the handler showed
+what the status actually is at pagehide:
+
+```
+{"status":"saving","wrote":false,...}
+```
+
+`saving` - the debounce had already started a write, and that write is the one that dies
+with the document. So the first version wrote **nothing** in precisely the case that loses
+work. The rule is "protect unless nothing is uncommitted" (`saveStatus !== "saved"`), not a
+whitelist of the states that look dirty.
+
+Verified after the fix, same Chromium / production-build harness:
+
+```
+buffer present = true, length = 9969
+stored step before recovery = 0.95     <- still lost from IndexedDB, as expected
+[Recover] clicked
+stored step after recovery = 0         <- the edit is back
+```
+
+The raw save still does not happen - that is the browser, not us - but the work is no
+longer lost, which is what the decision was for.
+
+`tests/recovery-buffer.test.ts` (10) covers round-trip, corrupt and structurally-wrong
+leftovers, quota exhaustion, non-serialisable documents, and the `isBufferWorthOffering`
+rule that stops Recover from downgrading current work.
+`tests/e2e/25-unload-save-flush.spec.ts` (3) pins the BASELINE / CONTROL fixture and the
+full recover-after-close flow.
+
+**Cost, stated plainly.** The whole document is serialised synchronously on unload while
+uncommitted. Measured for the House template: **9.9 KB**, so the common case is trivial. A
+very large project could approach the `localStorage` quota, in which case the write fails
+closed and the app behaves exactly as it does today. The autosave window is unchanged, so
+write frequency is unchanged - the ~4x IndexedDB amplification the shorter window would
+have cost was not paid.
+
+### A test of mine that passed on the broken state
+
+The first version of the D20 assertion was `expect(step).toBeGreaterThan(0)`. It **passed**
+against the defect - the click toggles the step _off_ (0.95 → 0), so the untouched
+template's 0.95 satisfies `> 0`. Had I not added the BASELINE run, this wave would have
+reported "verified" on a test that could not fail. The assertion now compares against the
+baseline value, and the BASELINE test fails loudly if the template's first step ever moves
+so the recover test cannot quietly become meaningless.

@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { EFFECT_DEFS } from "../../src/effects/registry";
 import { assetCategoryOf, categoryColor, moodLabel } from "../../src/ui/kitColors";
 import { getLastPlayActivity, recordPlayActivity, subscribePlayActivity } from "../../src/ui/playActivity";
-import { effectEditorSpec, portalParamModeHint } from "../../src/ui/effectEditorRegistry";
+import { effectEditorSpec, portalParamModeHint, skrutkaParamModeHint } from "../../src/ui/effectEditorRegistry";
 import { gestureMatches, gesturesByArea } from "../../src/ui/helpContent";
 import { FACTORY_ASSETS } from "../../src/sample-library/manifest";
 import type { DrumPad } from "../../src/project-model/types";
@@ -132,6 +132,19 @@ describe("effectEditorRegistry — page-1 controls", () => {
     expect(portalParamModeHint("focus", 0)).toContain("DELAY mode");
     expect(portalParamModeHint("freeze", 2)).toContain("already holds the spectrum");
     expect(portalParamModeHint("mix", 1)).toBeUndefined();
+  });
+
+  it("TWIST explains controls that need an active stage, sweep, key, or stored curve", () => {
+    expect(skrutkaParamModeHint("punchHz", { punch: 0, dynPunch: 0 })).toContain("Raise PUNCH or DYN PUNCH");
+    expect(skrutkaParamModeHint("punchMix", { punch: 0.5, dynPunch: 0, punchMix: 0 })).toContain("PUNCH MIX is 0%");
+    expect(skrutkaParamModeHint("lfoRate", { lfoDepth: 0 })).toContain("LFO DEPTH is 0%");
+    expect(skrutkaParamModeHint("keyMode", { keyMode: 1 }, { hasKeySource: false })).toContain("KEY SOURCE");
+    expect(skrutkaParamModeHint("morph", {}, { hasStoredCurve: false })).toContain("Store curve A or B");
+
+    expect(skrutkaParamModeHint("punchHz", { punch: 0.5, dynPunch: 0, punchMix: 1 })).toBeUndefined();
+    expect(skrutkaParamModeHint("lfoRate", { lfoDepth: 0.2 })).toBeUndefined();
+    expect(skrutkaParamModeHint("keyMode", { keyMode: 1 }, { hasKeySource: true })).toBeUndefined();
+    expect(skrutkaParamModeHint("morph", {}, { hasStoredCurve: true })).toBeUndefined();
   });
 });
 

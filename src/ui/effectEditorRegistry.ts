@@ -97,6 +97,35 @@ export function portalParamModeHint(paramId: string, modeValue: number): string 
   return `Not used in ${PORTAL_MODE_LABELS[mode]} mode; this saved value applies in ${activeModes.join(" and ")}.`;
 }
 
+export interface SkrutkaEditorContext {
+  hasKeySource?: boolean;
+  hasStoredCurve?: boolean;
+}
+
+/** Plain-language notes for TWIST controls that only act in a specific state. */
+export function skrutkaParamModeHint(
+  paramId: string,
+  values: Readonly<Record<string, number>>,
+  context: SkrutkaEditorContext = {},
+): string | undefined {
+  const punch = Math.abs(values.punch ?? 0) > 1e-4;
+  const dynamicPunch = Math.abs(values.dynPunch ?? 0) > 1e-4;
+  const punchMix = values.punchMix ?? 1;
+  const punchArmed = punch || dynamicPunch;
+  const punchStageMuted = punchMix <= 1e-4;
+
+  if (paramId === "morph" && !context.hasStoredCurve) return "Store curve A or B before MORPH can change the sound.";
+  if (paramId === "keyMode" && (values.keyMode ?? 0) > 1e-4 && !context.hasKeySource)
+    return "Choose a KEY SOURCE track to hear PUMP or DUCK.";
+  if (["lfoRate", "lfoSync", "lfoShape"].includes(paramId) && (values.lfoDepth ?? 0) <= 1e-4)
+    return "LFO DEPTH is 0%, so the FOCUS sweep is inaudible.";
+  if (["punch", "dynPunch", "punchHz", "punchMix"].includes(paramId) && punchStageMuted)
+    return "PUNCH MIX is 0%, so the transient stage is inaudible.";
+  if (["punchHz", "punchMix"].includes(paramId) && !punchArmed)
+    return "Raise PUNCH or DYN PUNCH to open the transient stage.";
+  return undefined;
+}
+
 function portalModeIndex(value: number | undefined): number {
   const raw = value ?? 0;
   return Number.isFinite(raw) ? Math.max(0, Math.min(2, Math.round(raw))) : 0;

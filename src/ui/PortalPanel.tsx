@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { PortalMeterFrame } from "../audio-worklets/portal-node";
 import { useServices } from "./context";
-import { PORTAL_AXIS_MIN_HZ, PORTAL_BAND_COUNT, bandHz, formatAxisHz, hzToX } from "./portalSpectrum";
+import {
+  PORTAL_AXIS_MIN_HZ,
+  PORTAL_BAND_COUNT,
+  PORTAL_DEFAULT_SAMPLE_RATE,
+  bandHz,
+  formatAxisHz,
+  hzToX,
+  portalNyquistHz,
+} from "./portalSpectrum";
 
 /**
  * PORTAL panel — the spectrum the device is actually producing.
@@ -112,12 +120,15 @@ export function PortalPanel({
       const p = paramsRef.current;
       const mode = Math.max(0, Math.min(2, Math.round(p.mode ?? 0)));
       const frame = frameRef.current;
+      const sampleRate = frame?.sampleRate ?? PORTAL_DEFAULT_SAMPLE_RATE;
+      const maxHz = portalNyquistHz(sampleRate);
 
       // --- axis: decade gridlines on a log axis ---------------------------
-      const xOf = (f: number) => hzToX(f, cw);
+      const xOf = (f: number) => hzToX(f, cw, sampleRate);
       c2d.font = "10px ui-monospace, monospace";
       c2d.textBaseline = "top";
-      for (const hz of [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]) {
+      for (const hz of [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 40000]) {
+        if (hz > maxHz) continue;
         const x = xOf(hz);
         c2d.strokeStyle = "rgba(255,255,255,0.06)";
         c2d.beginPath();
@@ -179,7 +190,7 @@ export function PortalPanel({
       const trace = (bands: Uint8Array, stroke: string, fill: string, width: number) => {
         c2d.beginPath();
         for (let b = 0; b < bands.length; b++) {
-          const x = xOf(bandHz(b));
+          const x = xOf(bandHz(b, sampleRate));
           const h = (bands[b]! / 255) * (ch - 16);
           if (b === 0) c2d.moveTo(x, ch - 14 - h);
           else c2d.lineTo(x, ch - 14 - h);
@@ -211,6 +222,9 @@ export function PortalPanel({
       // than the one actually running.
       const ok =
         !!raw &&
+        typeof raw.sampleRate === "number" &&
+        Number.isFinite(raw.sampleRate) &&
+        raw.sampleRate > PORTAL_AXIS_MIN_HZ * 2 &&
         typeof raw.peak === "number" &&
         Number.isFinite(raw.peak) &&
         raw.bandsIn instanceof Uint8Array &&

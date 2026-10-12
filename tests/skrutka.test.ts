@@ -6,8 +6,15 @@ import {
   SKRUTKA_PUNCH_R_HARD_MAX,
   skrutkaFieldAmounts,
   skrutkaFocusForChannel,
+  skrutkaDynRadiusRange,
   skrutkaGroupDelaySamples,
+  skrutkaOutputComponentCurve,
+  skrutkaOutputGroupDelaySamples,
+  skrutkaOutputMagnitudeDbAt,
+  skrutkaOutputTransferAt,
   skrutkaPunchFocus,
+  skrutkaRadius,
+  skrutkaSectionFactors,
 } from "../src/effects/skrutka-curve";
 import type { EffectInstance } from "../src/project-model/types";
 
@@ -64,7 +71,7 @@ function renderProcessor(
   params: Record<string, Float32Array>,
   seconds: number,
   input: (i: number) => number,
-  extras?: { key?: (i: number) => number },
+  extras?: { key?: (i: number) => number; keyRight?: (i: number) => number },
 ): Float32Array {
   const proc = new cls();
   const total = Math.ceil(seconds * SR);
@@ -73,7 +80,11 @@ function renderProcessor(
     const len = Math.min(BLOCK, total - offset);
     const inputs: Float32Array[][] = [[Float32Array.from({ length: len }, (_, i) => input(offset + i))]];
     if (extras?.key) {
-      inputs.push([Float32Array.from({ length: len }, (_, i) => extras.key!(offset + i))]);
+      const keyLeft = Float32Array.from({ length: len }, (_, i) => extras.key!(offset + i));
+      const keyInput = extras.keyRight
+        ? [keyLeft, Float32Array.from({ length: len }, (_, i) => extras.keyRight!(offset + i))]
+        : [keyLeft];
+      inputs.push(keyInput);
     }
     const out = [new Float32Array(len), new Float32Array(len)];
     proc.process(inputs, [out], params);
@@ -221,6 +232,43 @@ describe("TWIST processor behavior (phase-only)", () => {
     expect(phaseShift).toBeGreaterThan(0.1);
   });
 
+  it("sanitizes invalid program and key samples before they can poison filter state", () => {
+    const cls = registered.get("skrutka-processor");
+    const params = { dispersion: 0.65, focusHz: 320, keyMode: 1 };
+    const badProgramSamples = new Set([2048, 2049]);
+    const badKeySamples = new Set([4096, 4097]);
+    const program = (i: number) =>
+      badProgramSamples.has(i)
+        ? i % 2 === 0
+          ? Number.NaN
+          : Number.POSITIVE_INFINITY
+        : i === 2050
+          ? 1e20
+          : 0.4 * Math.sin((2 * Math.PI * 320 * i) / SR);
+    const sanitizedProgram = (i: number) => (badProgramSamples.has(i) ? 0 : i === 2050 ? 8 : program(i));
+    const key = (i: number) =>
+      badKeySamples.has(i)
+        ? i % 2 === 0
+          ? Number.NaN
+          : Number.NEGATIVE_INFINITY
+        : i === 4098
+          ? -1e20
+          : i > 1024
+            ? 0.7
+            : 0;
+    const sanitizedKey = (i: number) => (badKeySamples.has(i) ? 0 : i === 4098 ? -8 : key(i));
+
+    const actual = renderProcessor(cls, paramsOf(cls, params), 0.5, program, { key });
+    const expected = renderProcessor(cls, paramsOf(cls, params), 0.5, sanitizedProgram, { key: sanitizedKey });
+
+    expect(actual.every(Number.isFinite)).toBe(true);
+    expect(actual).toEqual(expected);
+    let peak = 0;
+    for (const sample of actual) peak = Math.max(peak, Math.abs(sample));
+    expect(peak).toBeLessThan(8);
+    expect(Math.abs(actual.at(-1)!)).toBeGreaterThan(0.01);
+  });
+
   it("measured group delay matches the analytic curve at the focus and off it", () => {
     const cls = registered.get("skrutka-processor");
     const base = { dispersion: 0.6, punch: 0, focusHz: 320, spread: 0 };
@@ -231,6 +279,96 @@ describe("TWIST processor behavior (phase-only)", () => {
         Math.max(2, model * 0.3),
       );
     }
+  });
+
+  it("models the full OUTPUT transfer including MIX and gain against rendered audio", () => {
+    const cls = registered.get("skrutka-processor");
+    const base = {
+      dispersion: 0.72,
+      punch: -0.55,
+      punchHz: 880,
+      punchMix: 0.63,
+      focusHz: 260,
+      spread: 0.2,
+      mix: 0.42,
+      output: -3,
+    };
+    const freq = 710;
+    const rendered = renderProcessor(cls, paramsOf(cls, base), 1.4, sineAt(freq));
+    const dry = renderProcessor(cls, paramsOf(cls, { ...base, mix: 0, output: 0 }), 1.4, sineAt(freq));
+    const measuredDb = 20 * Math.log10(goertzelAt(rendered, freq) / goertzelAt(dry, freq));
+    const modeledDb = skrutkaOutputMagnitudeDbAt(base, SR, freq, "L");
+    expect(modeledDb).toBeCloseTo(measuredDb, 2);
+
+    const renderAt = (hz: number) => renderProcessor(cls, paramsOf(cls, base), 1.4, sineAt(hz));
+    const deltaOmega = (2 * Math.PI * 8) / SR;
+    const measuredDelay =
+      -wrapPi(phaseAt(renderAt(freq + 8), freq + 8) - phaseAt(renderAt(freq - 8), freq - 8)) / (2 * deltaOmega);
+    const modeledDelay = skrutkaOutputGroupDelaySamples(base, SR, freq, "L");
+    expect(modeledDelay).not.toBeNull();
+    expect(Math.abs(modeledDelay! - measuredDelay)).toBeLessThan(4);
+  });
+
+  it("keeps output flat at full wet all-pass and dry when MIX is zero", () => {
+    const base = { dispersion: 0.8, punch: 0.8, focusHz: 220, spread: 0, punchMix: 1, mix: 1, output: 0 };
+    for (const channel of ["L", "R"] as const) {
+      expect(skrutkaOutputMagnitudeDbAt(base, SR, 340, channel)).toBeCloseTo(0, 8);
+      expect(skrutkaOutputGroupDelaySamples(base, SR, 340, channel)).toBeCloseTo(
+        skrutkaGroupDelaySamples(base, SR, 340, channel),
+        4,
+      );
+    }
+    const dry = skrutkaOutputTransferAt({ ...base, mix: 0, output: 6 }, SR, 340, "L");
+    expect(dry.re).toBeCloseTo(Math.pow(10, 6 / 20), 10);
+    expect(dry.im).toBeCloseTo(0, 10);
+    expect(skrutkaOutputMagnitudeDbAt({ ...base, mix: 0, output: 6 }, SR, 340, "L")).toBeCloseTo(6, 8);
+    expect(skrutkaOutputGroupDelaySamples({ ...base, mix: 0 }, SR, 340, "L")).toBeCloseTo(0, 8);
+  });
+
+  it("models the actual M/S output transfer through fractional FIELD rotation", () => {
+    const cls = registered.get("skrutka-processor");
+    const base = {
+      dispersion: 0.68,
+      punch: 0.45,
+      punchHz: 730,
+      punchMix: 0.7,
+      focusHz: 310,
+      spread: 0.8,
+      field: 0.62,
+      mix: 0.7,
+      output: -1.5,
+    };
+    const midAt = (hz: number) => {
+      const { L, R } = renderProcessorStereo(cls, paramsOf(cls, base), 1.4, sineAt(hz));
+      return Float32Array.from(L, (sample, i) => (sample + R[i]!) * 0.5);
+    };
+    const dryMidAt = (hz: number) => {
+      const { L, R } = renderProcessorStereo(cls, paramsOf(cls, { ...base, mix: 0, output: 0 }), 1.4, sineAt(hz));
+      return Float32Array.from(L, (sample, i) => (sample + R[i]!) * 0.5);
+    };
+    const freq = 570;
+    const measuredDb = 20 * Math.log10(goertzelAt(midAt(freq), freq) / goertzelAt(dryMidAt(freq), freq));
+    expect(skrutkaOutputMagnitudeDbAt(base, SR, freq, "M")).toBeCloseTo(measuredDb, 2);
+    const deltaOmega = (2 * Math.PI * 8) / SR;
+    const measuredDelay =
+      -wrapPi(phaseAt(midAt(freq + 8), freq + 8) - phaseAt(midAt(freq - 8), freq - 8)) / (2 * deltaOmega);
+    const modeledDelay = skrutkaOutputGroupDelaySamples(base, SR, freq, "M");
+    expect(modeledDelay).not.toBeNull();
+    expect(Math.abs(modeledDelay! - measuredDelay)).toBeLessThan(4);
+  });
+
+  it("returns finite sampled curves for the OUTPUT views", () => {
+    const curve = skrutkaOutputComponentCurve(
+      { dispersion: 0.9, punch: 1, punchMix: 0.4, focusHz: 160, spread: 0, mix: 0.5, output: 0 },
+      SR,
+      "L",
+      48,
+      30,
+      16000,
+    );
+    expect(curve).toHaveLength(48);
+    expect(curve.every((point) => Number.isFinite(point.freqHz) && Number.isFinite(point.db))).toBe(true);
+    expect(curve.some((point) => point.ms !== null && Number.isFinite(point.ms))).toBe(true);
   });
 
   it("FOCUS moves the delay hump (the larger delay follows the focus)", () => {
@@ -314,18 +452,120 @@ describe("TWIST v2 (shape / dynamic / key / punch controls / LFO)", () => {
     }
   });
 
-  it("CHIRP and RESO still match the analytic curve model", () => {
+  it("fractional SHAPE values blend section layouts and the RESO radius", () => {
+    const halfwayToChirp = skrutkaSectionFactors(0.5);
+    expect(halfwayToChirp[0]).toBeCloseTo(0.75);
+    expect(halfwayToChirp[7]).toBeCloseTo(1.5);
+
+    const halfwayToReso = skrutkaRadius(0.6, 2.5);
+    expect(halfwayToReso).toBeCloseTo((skrutkaRadius(0.6, 2) + skrutkaRadius(0.6, 3)) / 2);
+  });
+
+  it("models DYNAMIC, PUMP and DUCK radius ranges in their actual directions", () => {
+    const base = { dispersion: 0.6, punch: 0, focusHz: 320, spread: 0, shape: 0 };
+    const staticRadius = skrutkaRadius(base.dispersion, base.shape);
+    const pump = skrutkaDynRadiusRange({ ...base, keyMode: 1 });
+    const duck = skrutkaDynRadiusRange({ ...base, keyMode: 2 });
+    const dynamic = skrutkaDynRadiusRange({ ...base, dyn: -0.5 });
+
+    expect(pump.min).toBeCloseTo(staticRadius, 8);
+    expect(pump.max).toBeGreaterThan(staticRadius);
+    expect(duck.min).toBeLessThan(staticRadius);
+    expect(duck.max).toBeCloseTo(staticRadius, 8);
+    expect(dynamic.min).toBeCloseTo(staticRadius, 8);
+    expect(dynamic.max).toBeGreaterThan(staticRadius);
+  });
+
+  it("SHAPE automation changes filter coefficients continuously between enum values", () => {
     const cls = registered.get("skrutka-processor");
-    for (const shape of [1, 3]) {
+    const proc = new cls();
+    const params = paramsOf(cls, { shape: 0, focusHz: 320, dispersion: 0.7 });
+    const processBlock = () => proc.process([[]], [[new Float32Array(BLOCK), new Float32Array(BLOCK)]], params);
+
+    processBlock();
+    const before = Array.from(proc.cosL);
+    params.shape![0] = 1;
+    processBlock();
+
+    expect(proc.sm.shape).toBeGreaterThan(0);
+    expect(proc.sm.shape).toBeLessThan(1);
+    expect(Array.from(proc.cosL)).not.toEqual(before);
+  });
+
+  it("KEY mode glides from OFF into DUCK without dropping the sidechain response", () => {
+    const cls = registered.get("skrutka-processor");
+    const proc = new cls();
+    const params = paramsOf(cls, { keyMode: 0, focusHz: 200 });
+    const program = new Float32Array(BLOCK);
+    const key = new Float32Array(BLOCK).fill(0.8);
+    const processBlock = () =>
+      proc.process([[program], [key]], [[new Float32Array(BLOCK), new Float32Array(BLOCK)]], params);
+
+    processBlock();
+    params.keyMode![0] = 2;
+    for (let block = 0; block < 30; block++) processBlock();
+
+    expect(proc.sm.keyMode).toBeGreaterThan(1);
+    expect(proc.sm.keyMode).toBeLessThan(2);
+    expect(proc.lastKeyGain).toBeLessThan(1);
+  });
+
+  it("LFO shape automation blends SINE into TRI instead of selecting the random branch", () => {
+    const cls = registered.get("skrutka-processor");
+    const proc = new cls();
+    const params = paramsOf(cls, { focusHz: 400, lfoHz: 0, lfoDepth: 1, lfoPhase: 0.25, lfoShape: 0 });
+    const processBlock = () => proc.process([[]], [[new Float32Array(BLOCK), new Float32Array(BLOCK)]], params);
+    const focusFromFirstSection = () => (Math.acos(proc.cosL[0]!) * SR) / (2 * Math.PI);
+
+    processBlock();
+    const before = focusFromFirstSection();
+    params.lfoShape![0] = 1;
+    processBlock();
+    const during = focusFromFirstSection();
+
+    expect(proc.sm.lfoShape).toBeGreaterThan(0);
+    expect(proc.sm.lfoShape).toBeLessThan(1);
+    expect(during).toBeGreaterThan(700);
+    expect(during).toBeLessThan(before);
+  });
+
+  it("telemetry publishes the actual LFO-modulated FOCUS for RAND", () => {
+    const cls = registered.get("skrutka-processor");
+    const proc = new cls();
+    const params = paramsOf(cls, { focusHz: 400, lfoHz: 0, lfoShape: 2, lfoDepth: 1, lfoPhase: 0.25 });
+    proc.lfoRandValue = 0.75;
+    const outputs = [[new Float32Array(BLOCK), new Float32Array(BLOCK)]];
+    for (let block = 0; block < 19; block++) proc.process([[]], outputs, params);
+
+    const frame = proc.port.posted.at(-1) as { lfo: number; focusHz: number };
+    expect(frame.lfo).toBeCloseTo(0.25, 6);
+    expect(frame.focusHz).toBeCloseTo(400 * Math.sqrt(2), 5);
+    expect(frame.focusHz).not.toBeCloseTo(800, 3); // the old panel-side SINE guess at phase 0.25
+  });
+
+  it("SHAPE endpoints and glides match the analytic curve model", () => {
+    const cls = registered.get("skrutka-processor");
+    // The model uses a 1e-3 radian central difference; measure the processor
+    // over the same frequency spacing to compare the same group-delay value.
+    const df = (1e-3 * SR) / (2 * Math.PI);
+    for (const shape of [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3]) {
       const base = { dispersion: 0.7, punch: 0, focusHz: 320, spread: 0, shape };
       for (const f of [200, 320]) {
-        const measured = measuredGroupDelay(cls, base, f);
+        const measured = measuredGroupDelay(cls, base, f, df);
         const model = skrutkaGroupDelaySamples(base, SR, f, "L");
-        expect(Math.abs(measured - model), `shape=${shape} f=${f} measured=${measured} model=${model}`).toBeLessThan(
-          Math.max(2, model * 0.3),
-        );
+        expect(Math.abs(measured - model), `shape=${shape} f=${f} measured=${measured} model=${model}`).toBeLessThan(2);
       }
     }
+  });
+
+  it("the analytic curve stays continuous across an automated SHAPE midpoint", () => {
+    const base = { dispersion: 0.7, punch: 0, focusHz: 320, spread: 0 };
+    const left = skrutkaGroupDelaySamples({ ...base, shape: 0.4999 }, SR, 320, "L");
+    const midpoint = skrutkaGroupDelaySamples({ ...base, shape: 0.5 }, SR, 320, "L");
+    const right = skrutkaGroupDelaySamples({ ...base, shape: 0.5001 }, SR, 320, "L");
+
+    expect(Math.abs(left - right)).toBeLessThan(0.05);
+    expect(Math.abs(midpoint - (left + right) / 2)).toBeLessThan(0.03);
   });
 
   it("DYNAMIC: BODY deepens on sustain, ATTACK deepens on transients", () => {
@@ -375,6 +615,25 @@ describe("TWIST v2 (shape / dynamic / key / punch controls / LFO)", () => {
     expect(attackEarly).toBeGreaterThan(bodyEarly * 2); // ATTACK reacts first
   });
 
+  it("DYNAMIC follows side-only stereo energy without mid cancellation", () => {
+    const cls = registered.get("skrutka-processor");
+    const note = (i: number) => {
+      const t = i / SR;
+      return t > 0.05 && t < 0.35 ? 0.4 * Math.sin((2 * Math.PI * 180 * i) / SR) : 0;
+    };
+    const base = { dispersion: 0.55, punch: 0, focusHz: 180, spread: 0, field: 1, mix: 1 };
+    const plain = renderProcessorStereo(cls, paramsOf(cls, { ...base, dyn: 0 }), 0.4, note, (i) => -note(i));
+    const dynamic = renderProcessorStereo(cls, paramsOf(cls, { ...base, dyn: 1 }), 0.4, note, (i) => -note(i));
+    let differenceEnergy = 0;
+    for (let i = Math.round(0.055 * SR); i < Math.round(0.18 * SR); i++) {
+      const dL = dynamic.L[i]! - plain.L[i]!;
+      const dR = dynamic.R[i]! - plain.R[i]!;
+      differenceEnergy += dL * dL + dR * dR;
+    }
+
+    expect(differenceEnergy).toBeGreaterThan(0.01);
+  });
+
   it("KEY PUMP deepens and DUCK thins the hump on the key envelope", () => {
     const cls = registered.get("skrutka-processor");
     const base = { dispersion: 0.3, punch: 0, focusHz: 90, spread: 0, mix: 1 };
@@ -417,6 +676,34 @@ describe("TWIST v2 (shape / dynamic / key / punch controls / LFO)", () => {
     expect(Math.abs(duck)).toBeGreaterThan(0.1); // DUCK moves it too
     // PUMP deepens the hump (more delay) and DUCK thins it — opposite signs.
     expect(Math.sign(pump) * Math.sign(duck)).toBeLessThan(0);
+  });
+
+  it("KEY follows stereo-linked sidechain energy without phase cancellation", () => {
+    const cls = registered.get("skrutka-processor");
+    const base = { dispersion: 0.3, punch: 0, focusHz: 90, spread: 0, keyMode: 1, mix: 1 };
+    const keyBurst = (i: number) => {
+      const t = i / SR;
+      return t >= 0.5 && t < 0.8 ? 0.8 * Math.sin((2 * Math.PI * 60 * i) / SR) : 0;
+    };
+    const program = sineAt(80, 0.4);
+    const monoKey = renderProcessor(cls, paramsOf(cls, base), 1.0, program, { key: keyBurst });
+    const sideOnlyKey = renderProcessor(cls, paramsOf(cls, base), 1.0, program, {
+      key: keyBurst,
+      keyRight: (i) => -keyBurst(i),
+    });
+    const unkeyed = renderProcessor(cls, paramsOf(cls, { ...base, keyMode: 0 }), 1.0, program);
+    let linkedMaxDiff = 0;
+    let keyEffectEnergy = 0;
+    for (let i = 0; i < monoKey.length; i++) {
+      linkedMaxDiff = Math.max(linkedMaxDiff, Math.abs(sideOnlyKey[i]! - monoKey[i]!));
+      if (i >= Math.round(0.55 * SR) && i < Math.round(0.78 * SR)) {
+        const difference = sideOnlyKey[i]! - unkeyed[i]!;
+        keyEffectEnergy += difference * difference;
+      }
+    }
+
+    expect(linkedMaxDiff).toBeLessThan(1e-7);
+    expect(keyEffectEnergy).toBeGreaterThan(0.01);
   });
 
   it("KEY mode without a key feed is a bit-exact no-op (PUMP and DUCK)", () => {
@@ -741,12 +1028,56 @@ describe("TWIST node wrapper (key input + telemetry cache + LFO sync)", () => {
     const runtime = createSkrutkaNode(makeCtx(), { params: {} });
     const node = FakeWorkletNode.instances.at(-1)!;
     expect(runtime.getMeters!()).toBeNull();
-    node.port.onmessage!({ data: { type: "skrutka", lfo: 0.25, env: 0.4, key: 1.2, radius: 0.8 } });
+    node.port.onmessage!({
+      data: {
+        type: "skrutka",
+        lfo: 0.25,
+        focusHz: 1234,
+        env: 0.4,
+        key: 1.2,
+        radius: 0.8,
+        dispersion: 0.6,
+        punch: -0.4,
+        punchHz: 500,
+        punchMix: 0.7,
+        punchRadius: 0.5,
+        shape: 1.5,
+        spread: 0.25,
+        field: -0.3,
+        dyn: -0.25,
+        dynPunch: 0.4,
+        keyMode: 1.5,
+        lfoDepth: 0.35,
+        mix: 0.72,
+        output: -2.5,
+      },
+    });
     const frame = runtime.getMeters!() as SkrutkaMeterFrame;
     expect(frame.lfo).toBe(0.25);
+    expect(frame.focusHz).toBe(1234);
     expect(frame.radius).toBe(0.8);
+    expect(frame).toMatchObject({
+      dispersion: 0.6,
+      punch: -0.4,
+      punchHz: 500,
+      punchMix: 0.7,
+      punchRadius: 0.5,
+      shape: 1.5,
+      spread: 0.25,
+      field: -0.3,
+      dyn: -0.25,
+      dynPunch: 0.4,
+      keyMode: 1.5,
+      lfoDepth: 0.35,
+      mix: 0.72,
+      output: -2.5,
+    });
     // Shape violations and foreign messages never replace the cached frame.
     node.port.onmessage!({ data: { type: "skrutka", lfo: Number.NaN, env: 0, key: 1, radius: 0.5 } });
+    node.port.onmessage!({
+      data: { type: "skrutka", lfo: 0.3, focusHz: Number.POSITIVE_INFINITY, env: 0, key: 1, radius: 0.5 },
+    });
+    node.port.onmessage!({ data: { ...frame, type: "skrutka", key: 2.01 } });
     node.port.onmessage!({ data: { type: "koren", f0: 55 } });
     node.port.onmessage!({ data: null });
     expect(runtime.getMeters!()).toBe(frame);

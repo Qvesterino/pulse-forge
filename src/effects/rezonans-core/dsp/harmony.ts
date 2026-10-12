@@ -35,7 +35,7 @@ export const MAX_RATIO = 2;
  */
 export const BUS_UNITY_TRIM = Math.SQRT2;
 
-export type HarmonyMode = "off" | "interval" | "degrees" | "chordTones";
+export type HarmonyMode = "off" | "interval" | "degrees" | "chordTones" | "manual";
 
 export function clamp(x: number, lo: number, hi: number): number {
   return x < lo ? lo : x > hi ? hi : x;
@@ -59,24 +59,23 @@ function maskToneCount(mask: number): number {
 }
 
 /**
- * The n-th allowed pitch class at or above `rootPc`, given a 12-bit mask.
- * `degree 0` is the root, `degree 1` the next allowed tone above it, and so on.
+ * The n-th allowed pitch class relative to `rootPc`, given a 12-bit mask.
+ * `degree 0` is the root, positive degrees count upward and negative degrees
+ * count downward through the allowed tones.
  *
- * Degrees WRAP instead of running out. This is load-bearing: every scale in
- * the project model has 5 or 7 tones, so a 0..14 degree range would leave
- * degrees 7..14 (the octave and above — the most musical choices a user makes)
- * resolving to "no tone", which the caller degrades to unison. A user asking
- * for the octave would get a doubled unison and no explanation. Wrapping makes
- * degree 7 of a heptatonic scale degree 0, and the caller's nearest-instance
- * search puts it where the ear expects it.
+ * Degrees wrap in both directions. This is load-bearing: every scale in the
+ * project model has 5 or 7 tones, so wider positive and negative controls must
+ * keep naming valid scale tones instead of degrading to a misleading unison.
+ * The caller chooses the nearest octave instance; semitone INTERVAL mode is a
+ * separate operation for explicit up/down distances.
  *
  * Returns -1 only when the mask allows nothing at all.
  */
 export function nthScaleTone(mask: number, rootPc: number, degree: number): number {
-  if (mask === 0 || degree < 0) return -1;
+  if (mask === 0 || !Number.isFinite(degree)) return -1;
   const tones = maskToneCount(mask);
   if (tones === 0) return -1;
-  const wrapped = Math.round(degree) % tones;
+  const wrapped = ((Math.round(degree) % tones) + tones) % tones;
   let count = 0;
   for (let i = 0; i < 12; i++) {
     const pc = (((rootPc + i) % 12) + 12) % 12;

@@ -1314,6 +1314,280 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     check("TWIST: KEY PUMP moves the render on a real key feed (bit-exact without one)", false, String(error));
   }
 
+  // TWIST DYNAMIC — the linked detector must still see a signal when L/R are
+  // anti-phase and FIELD processes only SIDE. This guards the shipped bundle,
+  // not just the source processor exercised by Vitest.
+  try {
+    const renderSideDynamic = async (dyn: number) => {
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      await loadCoreWorklets(ctx);
+      await loadLazyWorklet(ctx, "skrutka");
+      const rt = EFFECT_DEFS.skrutka.factory(
+        ctx,
+        {
+          id: "check-skrutka-side-dynamic",
+          type: "skrutka",
+          bypassed: false,
+          params: { ...defaultParamsOf("skrutka"), dispersion: 0.55, focusHz: 180, field: 1, dyn, mix: 1 },
+        },
+        { bpm: 120 },
+      );
+      const buffer = ctx.createBuffer(2, SR, SR);
+      const left = buffer.getChannelData(0);
+      const right = buffer.getChannelData(1);
+      for (let i = Math.floor(0.05 * SR); i < Math.floor(0.35 * SR); i++) {
+        const sample = 0.4 * Math.sin((2 * Math.PI * 180 * i) / SR);
+        left[i] = sample;
+        right[i] = -sample;
+      }
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(rt.input);
+      rt.output.connect(ctx.destination);
+      source.start(0);
+      const rendered = await ctx.startRendering();
+      rt.dispose();
+      return {
+        left: rendered.getChannelData(0),
+        right: rendered.getChannelData(1),
+        ready: isWorkletReady("skrutka", ctx),
+      };
+    };
+    const plain = await renderSideDynamic(0);
+    const dynamic = await renderSideDynamic(1);
+    let differenceEnergy = 0;
+    for (let i = Math.floor(0.055 * SR); i < Math.floor(0.18 * SR); i++) {
+      const dL = dynamic.left[i]! - plain.left[i]!;
+      const dR = dynamic.right[i]! - plain.right[i]!;
+      differenceEnergy += dL * dL + dR * dR;
+    }
+    check(
+      "TWIST: DYNAMIC follows anti-phase SIDE-only input on the shipped worklet",
+      plain.ready && dynamic.ready && differenceEnergy > 0.01,
+      `ready=${plain.ready && dynamic.ready} differenceEnergy=${differenceEnergy.toFixed(4)}`,
+    );
+  } catch (error) {
+    check("TWIST: DYNAMIC follows anti-phase SIDE-only input on the shipped worklet", false, String(error));
+  }
+
+  // The KEY detector must use the same linked stereo-energy law as the
+  // program detector: an anti-phase / SIDE-only sidechain must not vanish.
+  try {
+    const renderStereoKey = async (antiPhase: boolean, keyMode = 1, connectKey = true) => {
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      await loadCoreWorklets(ctx);
+      await loadLazyWorklet(ctx, "skrutka");
+      const rt = EFFECT_DEFS.skrutka.factory(
+        ctx,
+        {
+          id: "check-skrutka-stereo-key",
+          type: "skrutka",
+          bypassed: false,
+          params: { ...defaultParamsOf("skrutka"), dispersion: 0.3, focusHz: 90, keyMode, mix: 1 },
+        },
+        { bpm: 120 },
+      );
+      const keyBuffer = ctx.createBuffer(2, SR, SR);
+      const keyLeft = keyBuffer.getChannelData(0);
+      const keyRight = keyBuffer.getChannelData(1);
+      for (let i = Math.floor(0.5 * SR); i < Math.floor(0.8 * SR); i++) {
+        const sample = 0.8 * Math.sin((2 * Math.PI * 60 * i) / SR);
+        keyLeft[i] = sample;
+        keyRight[i] = antiPhase ? -sample : sample;
+      }
+      const keySource = ctx.createBufferSource();
+      keySource.buffer = keyBuffer;
+      if (connectKey) rt.setSidechainInput?.(keySource);
+      const program = ctx.createOscillator();
+      program.type = "sine";
+      program.frequency.value = 80;
+      const programGain = ctx.createGain();
+      programGain.gain.value = 0.4;
+      program.connect(programGain).connect(rt.input);
+      rt.output.connect(ctx.destination);
+      keySource.start(0);
+      program.start(0);
+      const rendered = await ctx.startRendering();
+      rt.dispose();
+      return {
+        left: rendered.getChannelData(0),
+        right: rendered.getChannelData(1),
+        ready: isWorkletReady("skrutka", ctx),
+      };
+    };
+    const dualMonoKey = await renderStereoKey(false);
+    const sideOnlyKey = await renderStereoKey(true);
+    const unkeyed = await renderStereoKey(false, 0, false);
+    let maxDiff = 0;
+    let keyEffectEnergy = 0;
+    for (let i = 0; i < dualMonoKey.left.length; i++) {
+      maxDiff = Math.max(
+        maxDiff,
+        Math.abs(dualMonoKey.left[i]! - sideOnlyKey.left[i]!),
+        Math.abs(dualMonoKey.right[i]! - sideOnlyKey.right[i]!),
+      );
+      if (i >= Math.floor(0.55 * SR) && i < Math.floor(0.78 * SR)) {
+        keyEffectEnergy += (sideOnlyKey.left[i]! - unkeyed.left[i]!) ** 2;
+      }
+    }
+    check(
+      "TWIST: KEY detector follows anti-phase SIDE-only audio on the shipped worklet",
+      dualMonoKey.ready && sideOnlyKey.ready && unkeyed.ready && maxDiff < 1e-6 && keyEffectEnergy > 0.01,
+      `ready=${dualMonoKey.ready && sideOnlyKey.ready && unkeyed.ready} maxDiff=${maxDiff.toExponential(2)} keyEnergy=${keyEffectEnergy.toFixed(4)}`,
+    );
+  } catch (error) {
+    check("TWIST: KEY detector follows anti-phase SIDE-only audio on the shipped worklet", false, String(error));
+  }
+
+  // TWIST input hardening — the shipped worklet must turn invalid samples
+  // into silence before they reach its recursive all-pass state. Compare
+  // against an otherwise identical render with those samples already zeroed.
+  try {
+    const renderInvalidSampleProbe = async (invalid: boolean) => {
+      const ctx = new OfflineAudioContext(1, SR, SR);
+      await loadCoreWorklets(ctx);
+      await loadLazyWorklet(ctx, "skrutka");
+      const rt = EFFECT_DEFS.skrutka.factory(
+        ctx,
+        {
+          id: "check-skrutka-invalid-samples",
+          type: "skrutka",
+          bypassed: false,
+          params: { ...defaultParamsOf("skrutka"), dispersion: 0.65, focusHz: 320, mix: 1 },
+        },
+        { bpm: 120 },
+      );
+      const buffer = ctx.createBuffer(1, SR, SR);
+      const samples = buffer.getChannelData(0);
+      for (let i = 0; i < samples.length; i++) {
+        samples[i] = i === 2048 || i === 2049 ? 0 : 0.4 * Math.sin((2 * Math.PI * 320 * i) / SR);
+      }
+      if (invalid) {
+        samples[2048] = Number.NaN;
+        samples[2049] = Number.POSITIVE_INFINITY;
+      }
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(rt.input);
+      rt.output.connect(ctx.destination);
+      source.start(0);
+      const rendered = await ctx.startRendering();
+      rt.dispose();
+      return { data: rendered.getChannelData(0), ready: isWorkletReady("skrutka", ctx) };
+    };
+    const actual = await renderInvalidSampleProbe(true);
+    const expected = await renderInvalidSampleProbe(false);
+    let maxDiff = 0;
+    let tailEnergy = 0;
+    let finite = true;
+    const tailStart = Math.floor(SR * 0.8);
+    for (let i = 0; i < actual.data.length; i++) {
+      const sample = actual.data[i]!;
+      finite &&= Number.isFinite(sample);
+      maxDiff = Math.max(maxDiff, Math.abs(sample - expected.data[i]!));
+      if (i >= tailStart) tailEnergy += sample * sample;
+    }
+    const tailRms = Math.sqrt(tailEnergy / (actual.data.length - tailStart));
+    check(
+      "TWIST: invalid samples are silenced without poisoning the shipped filter state",
+      actual.ready && expected.ready && finite && maxDiff < 1e-6 && tailRms > 0.1,
+      `ready=${actual.ready && expected.ready} finite=${finite} maxDiff=${maxDiff.toExponential(2)} tailRms=${tailRms.toFixed(3)}`,
+    );
+  } catch (error) {
+    check("TWIST: invalid samples are silenced without poisoning the shipped filter state", false, String(error));
+  }
+
+  // TWIST's live curve depends on worklet telemetry for the values after
+  // AudioParam smoothing and host-side snapshot morphing. Verify the actual
+  // lazy bundle posts its full effective curve state on a live AudioContext;
+  // OfflineAudioContext does not deliver processor port messages mid-render.
+  try {
+    const ctx = new AudioContext();
+    let stopOscillator = () => {};
+    let disposeTwist = () => {};
+    try {
+      if (ctx.state === "suspended") await ctx.resume();
+      await loadCoreWorklets(ctx);
+      await loadLazyWorklet(ctx, "skrutka");
+      const expected = {
+        dispersion: 0.83,
+        punch: -0.45,
+        punchHz: 610,
+        punchMix: 0.72,
+        focusHz: 310,
+        shape: 2.5,
+        spread: 0.35,
+        field: -0.3,
+      };
+      const rt = EFFECT_DEFS.skrutka.factory(
+        ctx,
+        {
+          id: "check-skrutka-live-curve",
+          type: "skrutka",
+          bypassed: false,
+          params: { ...defaultParamsOf("skrutka"), ...expected, mix: 1 },
+        },
+        { bpm: 120, seed: 17 },
+      );
+      disposeTwist = () => rt.dispose();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      rt.output.connect(analyser);
+      analyser.connect(ctx.destination);
+      const osc = ctx.createOscillator();
+      osc.frequency.value = 110;
+      const gain = ctx.createGain();
+      gain.gain.value = 0.15;
+      osc.connect(gain).connect(rt.input);
+      osc.start();
+      stopOscillator = () => {
+        try {
+          osc.stop();
+        } catch {
+          /* already stopped */
+        }
+      };
+
+      let frame: Record<string, unknown> | null = null;
+      const deadline = performance.now() + 750;
+      while (!frame && performance.now() < deadline) {
+        frame = (rt.getMeters?.() as Record<string, unknown> | null) ?? null;
+        if (!frame) await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      const close = (actual: unknown, target: number) => typeof actual === "number" && Math.abs(actual - target) < 0.01;
+      const matches =
+        isWorkletReady("skrutka", ctx) &&
+        frame != null &&
+        close(frame.dispersion, expected.dispersion) &&
+        close(frame.punch, expected.punch) &&
+        close(frame.punchHz, expected.punchHz) &&
+        close(frame.punchMix, expected.punchMix) &&
+        close(frame.focusHz, expected.focusHz) &&
+        close(frame.shape, expected.shape) &&
+        close(frame.spread, expected.spread) &&
+        close(frame.field, expected.field) &&
+        close(frame.dyn, 0) &&
+        close(frame.dynPunch, 0) &&
+        close(frame.keyMode, 0) &&
+        close(frame.lfoDepth, 0) &&
+        close(frame.mix, 1) &&
+        close(frame.output, 0) &&
+        close(frame.radius, 0.8644) &&
+        close(frame.punchRadius, 0.4185);
+      check(
+        "TWIST: live worklet telemetry reports the effective curve parameters",
+        matches,
+        frame ? JSON.stringify(frame) : "no live telemetry frame received",
+      );
+    } finally {
+      stopOscillator();
+      disposeTwist();
+      await ctx.close();
+    }
+  } catch (error) {
+    check("TWIST: live worklet telemetry reports the effective curve parameters", false, String(error));
+  }
+
   // REZONANS (ADR 0040) — the lazy flagship worklet on a real render. Two
   // claims only a browser can close, because both live on the module path the
   // DSP goldens never touch (fetch → registration → processorOptions → port
@@ -1341,7 +1615,7 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     }
 
     const renderRez = async (params: Record<string, number>) => {
-      const ctx = new OfflineAudioContext(1, SR * 2, SR);
+      const ctx = new OfflineAudioContext(2, SR * 2, SR);
       await loadCoreWorklets(ctx);
       await loadLazyWorklet(ctx, "rezonans");
       const rt = EFFECT_DEFS.rezonans.factory(
@@ -1350,12 +1624,23 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
           id: "check-rezonans",
           type: "rezonans",
           bypassed: false,
-          params: { ...defaultParamsOf("rezonans"), quality: 2, mix: 1, ...params },
+          params: {
+            ...defaultParamsOf("rezonans"),
+            quality: 2,
+            mix: 1,
+            "harmony.bodyGate": 0,
+            "detect.clarity": 0.2,
+            "voice0.level": 1,
+            "voice0.pan": 0,
+            "voice0.humanize": 0,
+            ...params,
+          },
         },
         { bpm: 120 },
       );
-      const sourceBuffer = ctx.createBuffer(1, vocalSamples.length, SR);
+      const sourceBuffer = ctx.createBuffer(2, vocalSamples.length, SR);
       sourceBuffer.copyToChannel(vocalSamples, 0);
+      sourceBuffer.copyToChannel(vocalSamples, 1);
       const source = ctx.createBufferSource();
       source.buffer = sourceBuffer;
       const gain = ctx.createGain();

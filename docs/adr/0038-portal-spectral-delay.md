@@ -209,3 +209,67 @@ pins focused tones both on and between bin centers.
 - `docs/adr/0037-skrutka-phase-dispersion.md` — newest effect ADR, additivity rule
 - `src/audio-engine/phase-vocoder.ts:33` — the vendored-FFT import precedent
 - `scripts/check-bundle-size.mjs:235-241` — the kaskada precedent and the budget
+
+## Addendum (2026-10-12) — continuous-control glide
+
+Continuous controls now glide with a 20 ms one-pole at the audio-block boundary:
+TIME, FEEDBACK, DECAY, RESO, FOCUS, WIDTH and DIFF join the existing MIX, TONE,
+DRIVE and SHIFT smoothing. TIME, FOCUS and WIDTH use logarithmic interpolation;
+the other controls use linear interpolation. This keeps automation and live
+control movement from stepping the spectral banks while retaining stable,
+perceptual movement for time and frequency controls.
+
+MODE, SYNC and FREEZE remain discrete choices. `prepare()` / `reset()` seed the
+smoothers from the saved parameter values, so static presets start at their
+authored settings. The log smoother returns an unchanged target exactly; a
+static delay on a half-frame boundary must not round to the neighbouring delay
+frame because of floating-point noise.
+
+Validation: `tests/spectral-golden.test.ts` checks partial progress for every
+smoothed spectral control, exact preset seeding and unchanged DELAY / FREEZE
+goldens; `tests/spectral-soak.test.ts` keeps the existing bounded, finite and
+denormal-free guarantees.
+
+## Addendum (2026-10-12) — explicit DELAY HOLD switch
+
+The `freeze` parameter is a binary latch in DELAY mode: the delay bank captures
+the current spectrum at `0.5` and holds it until released. It is not a continuous
+amount. The rack now presents it as a discrete `DELAY HOLD` ON/OFF control.
+Selecting the separate FREEZE mode still holds the input spectrum by definition;
+the DELAY HOLD switch is ignored there, as the existing mode hint explains.
+
+The saved numeric values `0` and `1`, preset data and DSP path do not change.
+This corrects the control model without a project migration and removes the
+previous 0–100% slider positions that could not produce distinct sound.
+
+Validation: the source and shipped-bundle parameter tests compare OFF vs ON on
+a swept input and require a measurable output difference. The PORTAL soak now
+holds maximum DELAY feedback for 300 seconds, compares phase-aligned loudness
+windows after the transient has settled, and retains the per-mode boundedness
+checks for DELAY, RESONATOR and FREEZE.
+
+## Addendum (2026-10-12) — sample-rate-accurate spectrum axis
+
+The processor divides its 64 display bands logarithmically from 20 Hz to the
+active context's Nyquist frequency. Meter frames now carry that context sample
+rate, and the PORTAL panel uses it for band centres, the FOCUS / SHIFT markers,
+and the frequency axis. The previous fixed 24 kHz endpoint only matched a 48 kHz
+context; at 44.1 kHz it spread the upper bins across frequencies the processor
+never assigned to them.
+
+Validation: `tests/portal-panel.test.tsx` checks band and axis geometry at 32,
+44.1, 48 and 96 kHz, including the Nyquist endpoint.
+
+## Addendum (2026-10-12) — input sanitization before dry/wet paths
+
+Incoming stereo samples are now sanitized once before entering either PORTAL
+path. Non-finite values become silence, and finite peaks are bounded at ±8
+(+18 dBFS), preserving generous float headroom while containing corrupted
+samples before they enter the dry ring or recursive state. The same sanitized samples feed the latency-aligned dry ring and
+the MID/SIDE STFT inputs, so `MIX = 0` cannot leak a corrupted sample and a
+bad sample cannot contaminate successive analysis frames.
+
+Validation compares both `MIX = 0` and `MIX = 1` renders containing NaN,
+infinities and extreme finite values against equivalent renders with those
+samples replaced by silence or the safety ceiling. The source processor and
+the committed lazy-worklet bundle must match exactly.

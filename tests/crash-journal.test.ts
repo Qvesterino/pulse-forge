@@ -105,6 +105,18 @@ describe("analyzeCrashJournal (verdicts)", () => {
     expect(report.lastSessionClean).toBe(false);
     expect(report.lastEvent?.kind).toBe("save-fail");
   });
+
+  it("a journal with no session-close is NOT evidence of a crash", () => {
+    // `lastSessionClean: false` is what the Project Browser keys its banner on,
+    // and the ONLY thing that flips it to true is `closeProject` — the in-app
+    // back button. Closing a tab, following a link or refreshing never writes
+    // session-close, because an IndexedDB write dispatched from `pagehide` does
+    // not commit (editor audit D20). This test exists to stop a future reader
+    // from reading `false` as "crashed" — the banner copy depends on it.
+    const ordinaryExit = analyzeCrashJournal([ev("session-open"), ev("save-ok")]);
+    expect(ordinaryExit.lastSessionClean).toBe(false);
+    expect(ordinaryExit.lastSessionClean).not.toBe(true);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════

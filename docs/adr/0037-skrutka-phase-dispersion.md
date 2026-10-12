@@ -476,3 +476,150 @@ gate + stop lift + scheduling heuristic), `tests/midi/MidiInput.test.ts`
 (disarmed mapping dropped, armed one lands, unrelated CC untouched) and the
 scene-strip suite (toggle writes the command, stored disarmed state renders
 unchecked).
+
+## Addendum 11 (2026-10-12) — continuous mode transitions (v2.9)
+
+The discrete SHAPE, KEY MODE and LFO SHAPE choices now glide through their
+intermediate DSP states instead of snapping when an automation point or
+curve morph changes the selected mode. The project still stores the same
+integer enum values and the panel still presents the same choices; this uses
+the processor's existing block-length-corrected 30 ms parameter glide.
+
+- **SHAPE** interpolates each section's focus multiplier between neighboring
+  GULP / CHIRP / DOUBLE / RESO layouts. The long-stage radius also blends
+  between the regular and RESO ranges from DOUBLE toward RESO.
+- **KEY MODE** crossfades OFF → PUMP → DUCK. In the PUMP-to-DUCK interval,
+  both signed radius drives blend continuously; the matching key gain follows
+  the same weights.
+- **LFO SHAPE** blends SINE → TRI → seeded RAND. Random values still advance
+  once per LFO cycle, so a repeated render with the same seed and automation
+  remains deterministic.
+
+Exact enum endpoints select their original coefficients directly. The frozen
+v1 render hash remains pinned, the analytic curve model follows fractional
+SHAPE states, and the 300 s motion and static soaks now include the fractional
+SHAPE / KEY / LFO states. Validation: `tests/skrutka.test.ts`,
+`tests/skrutka-golden.test.ts`, `tests/skrutka-soak.test.ts`,
+`tests/ui/SkrutkaPanel.test.tsx`, and `npm run build:skrutka`.
+
+## Addendum 12 (2026-10-12) — actual LFO focus telemetry (v2.10)
+
+The worklet telemetry now carries `focusHz`: the current smoothed FOCUS after
+the active LFO waveform and depth have been applied. The node wrapper rejects
+non-finite or out-of-range values, and the panel plots this processor value
+directly. It no longer reconstructs the live focus from phase and the target
+LFO shape, which previously drew RAND as a SINE wave and missed the processor's
+short parameter glide. Telemetry cadence and audio-path behavior are unchanged.
+
+Validation: a processor pin checks the deterministic RAND focus value, the
+node-wrapper test rejects malformed focus telemetry, and the panel canvas test
+checks the live point's frequency coordinate against the processor value.
+`tests/skrutka.test.ts`, `tests/ui/SkrutkaPanel.test.tsx`, the frozen golden
+suite, `npm run typecheck`, and `npm run build:skrutka` pass.
+
+## Addendum 13 (2026-10-12) — full live response curve (v2.11)
+
+The panel previously combined a live LFO-focus point with the project's saved
+parameter values for the rest of its curve. That meant AudioParam automation,
+scene-intensity MORPH, and the worklet's own smoothing could change the sound
+without moving the plotted response. The processor's existing observer frame
+now includes the smoothed dispersion, signed punch settings, SHAPE, SPREAD,
+FIELD, dynamic controls, KEY mode, LFO depth, and the actual long/punch radii.
+The wrapper bounds-checks the full frame before caching it; the panel uses the
+validated state for the L/R or M/S curve and peak readout. Stored A/B ghosts
+remain references to the saved curves.
+
+The dynamic radius envelope now uses explicit minimum/base/maximum bounds.
+PUMP and DYNAMIC expand the radius, KEY DUCK reduces it, and transitional KEY
+states can show a range on both sides. Telemetry remains observer-only at the
+existing cadence; no DSP coefficients, audio routing, or persisted project
+state changed.
+
+Validation: the processor/node tests pin the full frame and reject malformed
+fields; the panel test checks an automated fractional SHAPE/FIELD/PUNCH curve
+against its live peak; the browser harness checks the built lazy worklet over a
+real `AudioContext`. The 300 s soaks and frozen audio golden remain applicable
+because the audio path is unchanged.
+
+## Addendum 14 (2026-10-12) — output-aware response view (v2.12)
+
+The device panel now separates the fully wet disperser curve from the
+effective output. **WET DELAY** retains the editable design curve;
+**OUT DELAY** measures the phase derivative after PUNCH, rack MIX and OUTPUT;
+**OUT LEVEL** shows the resulting magnitude in dB, including cancellation
+caused by the parallel PUNCH blend.
+
+The analytic output model evaluates the complex transfer, rather than
+interpolating group-delay values. It includes the rotated FIELD matrix and
+the M/S dry/dispersed blends, so intermediate FIELD settings are represented
+by their actual component transfer. A response below −100 dB has no useful
+phase derivative and is drawn as a gap; the level view shows the associated
+null. The existing ~20 Hz observer frame now includes smoothed MIX and OUTPUT
+so automation and worklet smoothing remain visible.
+
+Validation compares magnitude and group delay against rendered worklet audio
+for partial MIX/PUNCH and fractional FIELD, verifies the dry output is flat
+and delay-free at MIX 0, and checks the panel's three views. The audio
+processor path itself is unchanged.
+
+## Addendum 15 (2026-10-12) — phase-independent stereo dynamics detector
+
+The DYNAMIC and DYNAMIC PUNCH followers now use linked stereo energy,
+`sqrt((L² + R²) / 2)`, rather than the absolute mid sum. The previous
+`abs((L + R) / 2)` detector could cancel on anti-phase or SIDE-only material,
+leaving the dynamic controls inactive even while FIELD processed that SIDE
+content. Dual-mono input keeps the same nominal detector level.
+
+Validation: the processor suite renders an anti-phase SIDE-only transient
+through FIELD +1 and proves DYNAMIC changes the live output; existing mono
+attack/body tests keep their envelope behavior. This is an intentional DSP
+change for stereo dynamic material; static renders and the frozen v1 default
+remain unchanged because DYNAMIC defaults to off.
+
+## Addendum 16 (2026-10-12) — recursive-state input hardening
+
+The worklet now replaces non-finite program and KEY samples with silence
+before they reach the envelope followers or all-pass delay cells. It also
+bounds finite input peaks at ±8 (+18 dBFS), preserving generous float
+headroom while containing corrupted samples before they enter recursive state.
+An output-only finite check was insufficient:
+once a NaN entered a recursive delay cell, later valid audio could be muted
+indefinitely.
+
+Validation compares processor renders containing NaN/Infinity and extreme
+finite samples with equivalent silence and ±8 clamped samples. The shipped
+browser harness includes an extreme SIDE-only sample and checks finite output
+with peak below the input ceiling.
+
+## Addendum 17 (2026-10-12) — phase-independent stereo KEY detector
+
+The sidechain KEY envelope now uses linked stereo energy,
+`sqrt((L² + R²) / 2)`, matching the DYNAMIC detector. The previous
+`abs((L + R) / 2)` mono sum could cancel an anti-phase or SIDE-only key,
+leaving PUMP/DUCK inactive even though the key input carried signal. A
+dual-mono key retains its nominal detector level; mono key feeds retain the
+same behavior.
+
+Validation compares a stereo dual-mono key with an equal-level anti-phase
+key and proves both drive the same PUMP response. The browser harness repeats
+that comparison through the shipped lazy worklet and confirms that the
+sidechain changes the program output.
+
+## Addendum 18 (2026-10-12) — detector activity and context-aware controls
+
+The panel now exposes the existing DYNAMIC envelope score and effective KEY
+response as live, accessible meters. KEY reports whether PUMP or DUCK is
+moving the phase and its current gain factor; a selected KEY mode without a
+sidechain source is called out as `NO SOURCE`. The observer-frame validator
+now bounds that gain to the processor's actual 0.3–2.0 range.
+
+The parameter editor also explains when conditional controls cannot affect
+the sound: PUNCH settings with the stage blended out or unarmed, LFO settings
+with zero depth, KEY MODE without a key source, and MORPH without a stored
+curve. These are UI-only clarifications; the audio coefficients and saved
+project shape are unchanged.
+
+Validation: `tests/ui/SkrutkaPanel.test.tsx` pins live meter values and the
+missing-source state, `tests/ui/ui-small-logic.test.ts` pins every conditional
+hint, and `tests/skrutka.test.ts` rejects an out-of-range KEY gain telemetry
+frame without replacing the last valid frame.

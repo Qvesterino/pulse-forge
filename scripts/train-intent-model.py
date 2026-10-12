@@ -12,15 +12,18 @@ is structurally impossible and out-of-scope kinds decode to an explicit
 ABSTAIN (fall back), never a guess.
 
 Pipeline:
-1. Loads scripts/data/intent-sft/{train,val,golden}.jsonl (teacher = the
+1. Snapshots the dataset manifest, train/val/golden JSONL files, and this
+   trainer's source hash. The exact input hashes are included in the report;
+   training aborts before publishing if any source file changes mid-run.
+2. Loads scripts/data/intent-sft/{train,val,golden}.jsonl (teacher = the
    deterministic intent layer itself).
-2. Builds the tokenizer vocabulary from TRAIN instructions only (freq desc,
-   then lexicographic, cap 1024) and the closed per-slot class lists from
+3. Builds the tokenizer vocabulary from TRAIN instructions only (freq desc,
+   then lexicographic, cap 4096) and the closed per-slot class lists from
    TRAIN+VAL (class sets are schema, like the GBNF enums — not weights).
-3. Trains trunk [V,256,128] + heads with plain Adam on summed cross-entropy.
-4. Exports ONE ONNX graph (input "features" [N,V] -> trunk -> per-head
+4. Trains trunk [V,384,192] + heads with plain Adam on summed cross-entropy.
+5. Exports ONE ONNX graph (input "features" [N,V] -> trunk -> per-head
    outputs "head_<name>") via the official onnx helper, checked.
-5. Writes public/models/intent-model-v1.onnx,
+6. Writes public/models/intent-model-v1.onnx,
    public/models/intent-model-v1.vocab.json and
    scripts/data/intent-model-report.json (head accuracies + sizes).
    The MANIFEST is written by scripts/write-intent-model-manifest.mts —
@@ -33,9 +36,12 @@ implementations craters the validate gate, which runs the TS decoder on
 real ORT outputs.
 
 Run: python scripts/train-intent-model.py
+Challenger: python scripts/train-intent-model.py --out-dir .sft/intent-model-challenger
 """
 from __future__ import annotations
 
+import argparse
+import hashlib
 import json
 import re
 import unicodedata
@@ -57,6 +63,35 @@ LR = 2.5e-4
 GRAD_CLIP_NORM = 1.0
 WEIGHT_DECAY = 1e-4
 SEED = 0x5EED
+
+
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def parse_jsonl(data: bytes, label: str) -> list[dict]:
+    rows = []
+    for line_number, line in enumerate(data.decode("utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise ValueError(f"{label}:{line_number}: invalid JSON: {error}") from error
+        if not isinstance(row, dict):
+            raise ValueError(f"{label}:{line_number}: expected a JSON object")
+        rows.append(row)
+    return rows
+
+
+def current_training_hashes() -> dict[str, str]:
+    return {
+        "datasetManifestSha256": sha256_bytes((SFT_DIR / "manifest.json").read_bytes()),
+        "trainSha256": sha256_bytes((SFT_DIR / "train.jsonl").read_bytes()),
+        "valSha256": sha256_bytes((SFT_DIR / "val.jsonl").read_bytes()),
+        "goldenSha256": sha256_bytes((SFT_DIR / "golden.jsonl").read_bytes()),
+        "trainerSha256": sha256_bytes(Path(__file__).read_bytes()),
+    }
 
 # Per-head importance for long-tail CLASS-BALANCED heads (kind, clipToBar).
 # 1.0 keeps the plain sqrt-inverse-frequency balance — a 3× kind boost was
@@ -600,10 +635,47 @@ def label_smoothing() -> float:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Train the closed-set browser intent action model.")
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        help="write a non-active challenger artifact set here instead of public/models/",
+    )
+    args = parser.parse_args()
+    output_dir = args.out_dir.resolve() if args.out_dir else MODELS_DIR
+    report_path = (
+        output_dir / "intent-model-report.json"
+        if args.out_dir
+        else ROOT / "scripts" / "data" / "intent-model-report.json"
+    )
     rng = np.random.default_rng(SEED)
-    train_rows = [json.loads(line) for line in (SFT_DIR / "train.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
-    val_rows = [json.loads(line) for line in (SFT_DIR / "val.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
-    golden_rows = [json.loads(line) for line in (SFT_DIR / "golden.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    dataset_manifest_bytes = (SFT_DIR / "manifest.json").read_bytes()
+    dataset_manifest = json.loads(dataset_manifest_bytes.decode("utf-8"))
+    train_bytes = (SFT_DIR / "train.jsonl").read_bytes()
+    val_bytes = (SFT_DIR / "val.jsonl").read_bytes()
+    golden_bytes = (SFT_DIR / "golden.jsonl").read_bytes()
+    train_rows = parse_jsonl(train_bytes, "train.jsonl")
+    val_rows = parse_jsonl(val_bytes, "val.jsonl")
+    golden_rows = parse_jsonl(golden_bytes, "golden.jsonl")
+    expected_counts = {
+        "train": len(train_rows),
+        "val": len(val_rows),
+        "golden": len(golden_rows),
+    }
+    if any(dataset_manifest.get(split) != count for split, count in expected_counts.items()):
+        raise ValueError(
+            "intent SFT manifest row counts do not match the split files: "
+            f"manifest={{train:{dataset_manifest.get('train')}, val:{dataset_manifest.get('val')}, golden:{dataset_manifest.get('golden')}}}, "
+            f"files={expected_counts}"
+        )
+    training_inputs = {
+        "datasetVersion": dataset_manifest.get("datasetVersion"),
+        "datasetManifestSha256": sha256_bytes(dataset_manifest_bytes),
+        "trainSha256": sha256_bytes(train_bytes),
+        "valSha256": sha256_bytes(val_bytes),
+        "goldenSha256": sha256_bytes(golden_bytes),
+        "trainerSha256": sha256_bytes(Path(__file__).read_bytes()),
+    }
 
     # vocabulary from TRAIN instructions only
     freq: Counter[str] = Counter()
@@ -745,8 +817,16 @@ def main() -> None:
     checker.check_model(model)
     model_bytes = model.SerializeToString()
 
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    (MODELS_DIR / "intent-model-v1.onnx").write_bytes(model_bytes)
+    # Abort before publishing any artifact if the files changed during the
+    # long training run. The manifest writer checks these same pins again.
+    current_hashes = current_training_hashes()
+    expected_hashes = {key: value for key, value in training_inputs.items() if key != "datasetVersion"}
+    if current_hashes != expected_hashes:
+        changed = [key for key, value in expected_hashes.items() if current_hashes.get(key) != value]
+        raise RuntimeError("training inputs changed during training; refusing to publish: " + ", ".join(changed))
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "intent-model-v1.onnx").write_bytes(model_bytes)
     vocab_artifact = {
         "version": 1,
         "tokens": tokens,
@@ -754,7 +834,9 @@ def main() -> None:
         "heads": heads,
         "tokenPattern": "lower, NFD-strip, [a-z0-9%+]+ words; features = unigrams + word bigrams + char 3-grams (^word$); binary presence",
     }
-    (MODELS_DIR / "intent-model-v1.vocab.json").write_text(json.dumps(vocab_artifact, indent=2) + "\n", encoding="utf-8")
+    (output_dir / "intent-model-v1.vocab.json").write_text(
+        json.dumps(vocab_artifact, indent=2) + "\n", encoding="utf-8"
+    )
 
     report = {
         "modelVersion": "intent-model.v1",
@@ -770,9 +852,10 @@ def main() -> None:
         "trainHeadAccuracy": train_acc,
         "valHeadAccuracy": val_acc,
         "unseenLabels": unseen,
+        "trainingInputs": training_inputs,
         "note": "assembled exact/kindOK gate lives in scripts/validate-intent-model.mts (TS decoder on real ORT outputs)",
     }
-    (ROOT / "scripts" / "data" / "intent-model-report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     # kind confusion on val (diagnostic)
     _, _, val_logits = net.forward(x_val)
     kind_head = next(head for head in heads if head["name"] == "kind")
@@ -792,6 +875,8 @@ def main() -> None:
 
     weak = {name: acc for name, acc in val_acc.items() if acc < 0.95}
     print(f"model bytes: {len(model_bytes)}")
+    print(f"artifact directory: {output_dir}")
+    print(f"training report: {report_path}")
     print(f"vocab: {len(tokens)} tokens, {len(heads)} heads")
     print(f"val head accuracy: mean={sum(val_acc.values()) / len(val_acc):.4f}  weak(<0.95): {weak or 'none'}")
 

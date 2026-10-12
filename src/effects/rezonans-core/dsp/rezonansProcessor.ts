@@ -47,8 +47,9 @@ import {
   type HarmonyMode,
 } from "./harmony.js";
 import { HarmonySolver, SOLVER_VOICES, type SolverContext } from "./solver.js";
+import { glidePitchShiftSemitones, pitchShiftRatio } from "./pitchGlide.js";
 
-const MODES: HarmonyMode[] = ["off", "interval", "degrees", "chordTones"];
+const MODES: HarmonyMode[] = ["off", "interval", "degrees", "chordTones", "manual"];
 
 /**
  * Points in the log-spaced envelope the panel draws (ADR 0041 decision 8).
@@ -60,6 +61,14 @@ const ENVELOPE_METER_POINTS = 48;
 /** Low / high end of that log axis, matching the panel's frequency axis. */
 const ENVELOPE_METER_F_LO = 70;
 const ENVELOPE_METER_F_HI = 11000;
+/** Preserve 18 dB of float headroom while containing corrupted extreme samples. */
+const MAX_INPUT_SAMPLE = 8;
+
+function sanitizeInputSample(sample: number): number {
+  if (sample >= -MAX_INPUT_SAMPLE && sample <= MAX_INPUT_SAMPLE) return sample;
+  if (!Number.isFinite(sample)) return 0;
+  return sample < 0 ? -MAX_INPUT_SAMPLE : MAX_INPUT_SAMPLE;
+}
 
 export interface HarmonyContextInit {
   keyRootPc: number;
@@ -121,10 +130,11 @@ export class RezonansProcessor {
   private elapsedSec = 0;
 
   private ratioTarget = new Float64Array(SOLVER_VOICES);
-  private ratioSm = new Float64Array(SOLVER_VOICES);
+  private pitchShiftSm = new Float64Array(SOLVER_VOICES);
   private alpha = new Float64Array(SOLVER_VOICES);
   private voiceGain = new Float64Array(SOLVER_VOICES);
   private degree = new Float64Array(SOLVER_VOICES);
+  private manualNotes = new Float64Array(SOLVER_VOICES);
 
   private solverCtx: SolverContext = {
     mode: "degrees",
@@ -198,7 +208,7 @@ export class RezonansProcessor {
     this.solver.reset();
     this.clock.reset();
     this.ratioTarget.fill(1);
-    this.ratioSm.fill(1);
+    this.pitchShiftSm.fill(0);
     this.alpha.fill(1);
     this.voiceGain.fill(0);
     this.dryRingL.fill(0);
@@ -262,9 +272,12 @@ export class RezonansProcessor {
     // Glide: 0 → 80 ms, 1 → 5 ms.
     const glide = this.params[REZ_PARAM.glide] ?? 0.35;
     const glideTc = 0.08 - 0.075 * clamp(glide, 0, 1);
-    // ratioSm advances once per analysis frame, not once per sample. Scale
+    // Pitch glide advances once per analysis frame, not once per sample. Scale
     // the one-pole by the actual hop so the advertised 5–80 ms glide remains
-    // stable across Economy/Balanced/Fine quality settings.
+    // stable across Economy/Balanced/Fine quality settings. The smoothed value
+    // is in semitones so equal upward and downward intervals move in cents at
+    // the same rate; smoothing frequency ratios directly made those curves
+    // directionally asymmetric.
     this.glideCoef = Math.exp(-this.frame.synthesisHop / (glideTc * sr));
 
     // Body gate envelopes (the transient/body split reused from MORPH).
@@ -273,7 +286,7 @@ export class RezonansProcessor {
     this.gateCoef = Math.exp(-1 / (0.04 * sr));
 
     const modeIdx = Math.round(this.params[REZ_PARAM.harmonyMode] ?? 2);
-    this.solverCtx.mode = MODES[clamp(modeIdx, 0, 3)] ?? "degrees";
+    this.solverCtx.mode = MODES[clamp(modeIdx, 0, 4)] ?? "degrees";
     this.solverCtx.chordFollow = this.params[REZ_PARAM.chordFollow] ?? 1;
   }
 
@@ -408,7 +421,14 @@ export class RezonansProcessor {
     this.bypass = bypass;
 
     if (bypass) {
-      // Bit-exact bypass: no delay, no analysis, no allocation.
+      // Valid audio remains bit-exact. Sanitize corrupted samples even here so
+      // bypass cannot pass NaNs into downstream nodes or the master bus.
+      for (let i = 0; i < frames; i++) {
+        const l = sanitizeInputSample(left[i]!);
+        const r = sanitizeInputSample(right[i]!);
+        left[i] = l;
+        right[i] = r;
+      }
       this.bus.reset();
       this.frame.reset();
       return;
@@ -419,8 +439,8 @@ export class RezonansProcessor {
     this.clock.advance(frames, this.clockOriginSec + this.elapsedSec);
 
     for (let i = 0; i < frames; i++) {
-      const l = left[i]!;
-      const r = right[i]!;
+      const l = sanitizeInputSample(left[i]!);
+      const r = sanitizeInputSample(right[i]!);
       const mono = 0.5 * (l + r);
 
       // ── body gate: sustained vs transient, the split MORPH uses ──
@@ -488,6 +508,7 @@ export class RezonansProcessor {
 
     for (let v = 0; v < VOICE_COUNT; v++) {
       this.degree[v] = this.params[voiceParamId(v, "degree")] ?? 0;
+      this.manualNotes[v] = this.params[voiceParamId(v, "note")] ?? 60;
       const vf = this.params[voiceParamId(v, "formant")] ?? 0;
       // Per-voice α is free because the warp is applied during synthesis
       // (ADR 0040 decision 6) — no extra transform, only arithmetic.
@@ -503,13 +524,14 @@ export class RezonansProcessor {
     const voiced = this.frame.clarity >= (this.params[REZ_PARAM.clarity] ?? 0.75) && this.frame.f0 > 0;
     this.claritySum += this.frame.clarity;
     if (voiced) this.voicedFrames++;
-    if (voiced) this.solver.solve(this.frame.f0, this.solverCtx, this.degree, this.ratioTarget);
+    if (voiced) this.solver.solve(this.frame.f0, this.solverCtx, this.degree, this.ratioTarget, this.manualNotes);
 
     for (let v = 0; v < VOICE_COUNT; v++) {
-      // Ratio glide: an abrupt ratio change is a pitch jump, which comb-flares
-      // against the previous frame's partials.
-      this.ratioSm[v] = this.ratioSm[v]! + (this.ratioTarget[v]! - this.ratioSm[v]!) * (1 - this.glideCoef);
-      const ratio = clamp(this.ratioSm[v]!, MIN_RATIO, MAX_RATIO);
+      // Smooth the pitch offset in semitones, then convert to the vocoder's
+      // ratio domain. This keeps the time response equal for upward and
+      // downward target changes.
+      this.pitchShiftSm[v] = glidePitchShiftSemitones(this.pitchShiftSm[v]!, this.ratioTarget[v]!, this.glideCoef);
+      const ratio = clamp(pitchShiftRatio(this.pitchShiftSm[v]!), MIN_RATIO, MAX_RATIO);
       const active = v < voiceCount && this.params[voiceParamId(v, "enabled")]! > 0.5;
       const humanize = active ? (this.params[voiceParamId(v, "humanize")] ?? 0) : 0;
       const cents = humanizeCents(this.frame.frames, v, humanize);

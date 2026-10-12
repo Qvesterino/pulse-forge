@@ -28,7 +28,7 @@ import { defaultOzvenaStateV1 } from "./ozvena-core/v2/types";
 import { OZVENA_AUDIO_PARAM_SECTIONS, OZVENA_ENUM_VALUES, clampOzvenaParam } from "./ozvena-params";
 import { LFO_SYNC_DIVISIONS } from "./tempo-sync";
 import { CHARACTER_MODE_LABELS } from "./characterCurve";
-import { REZONANS_PARAMS } from "./rezonans-core/contracts/parameters";
+import { REZONANS_NOTE_OPTIONS, REZONANS_PARAMS } from "./rezonans-core/contracts/parameters";
 
 export const formatDb = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`;
 
@@ -1311,6 +1311,7 @@ export const REZONANS_MODE_OPTIONS = [
   { value: 1, label: "INTERVAL" },
   { value: 2, label: "DEGREES" },
   { value: 3, label: "CHORD TONES" },
+  { value: 4, label: "MANUAL NOTES" },
 ];
 
 /** Quality tiers — the FFT size behind each, which also sets the latency. */
@@ -1340,6 +1341,7 @@ const REZONANS_LABELS: Record<string, { label: string; unit?: string; fmt?: (v: 
 const REZONANS_VOICE_LABELS: Record<string, string> = {
   enabled: "ON",
   degree: "DEGREE",
+  note: "NOTE",
   level: "LEVEL",
   pan: "PAN",
   formant: "FORMANT",
@@ -1362,7 +1364,7 @@ export const rezonansParams: ParamDef[] = REZONANS_PARAMS.map((p) => {
   const label = voiceMatch
     ? `${voiceMatch[1] as string} · ${REZONANS_VOICE_LABELS[voiceMatch[2] as string] ?? voiceMatch[2]}`
     : meta.label;
-  const options = REZONANS_OPTIONS[p.id];
+  const options = voiceMatch?.[2] === "note" ? REZONANS_NOTE_OPTIONS : REZONANS_OPTIONS[p.id];
   return {
     id: p.id,
     label,
@@ -2756,7 +2758,15 @@ export const portalParams: ParamDef[] = [
     format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} st`,
   },
   { id: "diffuse", label: "DIFF", min: 0, max: 1, default: 0.3, format: formatPct },
-  { id: "freeze", label: "FREEZE", min: 0, max: 1, default: 0, format: formatPct },
+  {
+    id: "freeze",
+    label: "DELAY HOLD",
+    min: 0,
+    max: 1,
+    default: 0,
+    format: (value) => (value >= 0.5 ? "ON" : "OFF"),
+    kind: "toggle",
+  },
   { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
   { id: "tone", label: "TONE", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 0.35, format: formatPct },

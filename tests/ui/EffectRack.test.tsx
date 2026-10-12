@@ -372,6 +372,37 @@ describe("EffectRack — FXEQ panel", () => {
     expect(executed.some((command) => command.type === "setEffectSidechainSource")).toBe(true);
   });
 
+  it("explains when TWIST detail controls are waiting for their source or stage", async () => {
+    const doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find((candidate) => candidate.kind === "instrument")!;
+    track.effects = [
+      {
+        id: "twist",
+        type: "skrutka",
+        bypassed: false,
+        sidechainTrackId: "missing-key-source",
+        params: { keyMode: 2, punch: 0, dynPunch: 0, punchMix: 1, lfoDepth: 0 },
+      },
+    ];
+    const services = mockServices(doc);
+    renderWithContext(<EffectRack track={track} />, { services });
+
+    const keyMode = await screen.findByLabelText("KEY MODE", {}, { timeout: 10_000 });
+    expect(keyMode.closest("label")).toHaveAttribute("title", expect.stringContaining("KEY SOURCE"));
+    expect(screen.getByText("PUNCH FOCUS").closest(".slider")).toHaveAttribute(
+      "data-hint",
+      expect.stringContaining("Raise PUNCH or DYN PUNCH"),
+    );
+    expect(screen.getByText("LFO RATE").closest(".slider")).toHaveAttribute(
+      "data-hint",
+      expect.stringContaining("LFO DEPTH is 0%"),
+    );
+    expect(screen.getByText("MORPH").closest(".slider")).toHaveAttribute(
+      "data-hint",
+      expect.stringContaining("Store curve A or B"),
+    );
+  });
+
   it("uses one persisted A/B controller and hydrates PRISM morph slots", async () => {
     const { doc, track } = fxEqDoc();
     track.effects[0].deviceState = {

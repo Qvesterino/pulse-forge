@@ -134,6 +134,17 @@ Known capability gaps to close through a contract-to-code audit:
   roughly 118–120 MB. Its size and cold-load cost make it a separate,
   explicitly managed browser model pack, not a boot-path dependency.
 
+The source audit on 2026-10-12 (`scripts/audit-intent-model-contract.mts`)
+found 23 action kinds in the schema, but only 21 in the trainer, active ONNX,
+and decoder. `stepEdit` and `soundSwap` are absent end-to-end. The active model
+and vocabulary hashes match their manifest, but its recorded training hashes
+and row counts no longer match the current corpus: the artifact report says
+1,790/298/74 train/validation/golden rows while the current manifest says
+1,799/300/74. This is a provenance gap, not evidence that the ONNX file is
+corrupt; the old training input snapshot cannot be reproduced from the current
+corpus. The first challenger must pin the exact current snapshot and must not
+replace the active model until it passes the registered quality gates.
+
 Reconcile this snapshot with
 [`docs/LOCAL-INTENT-MODEL.md`](LOCAL-INTENT-MODEL.md),
 [`docs/intent-engine-ai-ranker-goal.md`](intent-engine-ai-ranker-goal.md),
@@ -417,7 +428,23 @@ matrix.
 - Do not let a model emit arbitrary project JSON or bypass command validation,
   undo, preview, audio-thread, or deterministic fallback boundaries.
 
-## 8. First implementation wave
+## 8. Recommended implementation start — browser action ONNX v2
+
+The long-term ambition is a world-class browser intent engine, with the
+action ONNX as the first model to improve because it already sits on the
+browser control path. Keep the scope of its first upgrade measurable: produce
+the right supported operation and slots, then hand a validated proposal to
+the existing command flow. This is not a plan to put every creative brief,
+artist reference, or music-quality decision into one classifier.
+
+For the first implementation pass, keep the current model and architecture as
+the control. The first deliverable is a reproducible, independent evaluation
+set plus the schema-to-executor capability matrix; training comes after those
+are usable. Then train one FP32 challenger on failure-mined, reviewed data. A
+similar-size retrain is a valid outcome if it materially improves independent
+results. Compare INT8 exports only after the FP32 challenger passes. Do not
+change the candidate ranker, semantic model pack, or generator in the same
+upgrade; they need separate evidence and release gates.
 
 Start the engineering work in this order:
 

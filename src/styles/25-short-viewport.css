@@ -1,0 +1,65 @@
+/* 25-short-viewport.css — the editor outranks the chrome when height is scarce.
+ *
+ * Imported BEFORE 24-layout-tokens.css, and that placement is deliberate.
+ * `tests/layout-responsive.test.ts` pins two contracts on the cascade:
+ * 24-layout-tokens.css must not define its own 860px block, and it must remain
+ * the LAST stylesheet in src/styles/index.css. This file therefore owns no
+ * `grid-template-columns` ladder rung and nothing that 24 later re-declares —
+ * it only sets vertical-space PRIORITY for the editor and the toolbar above it.
+ * The `.rack` rule it needs lives in 24, beside the `.rack` rule 24 owns.
+ *
+ * Why this exists, measured against the production build (Chromium):
+ *
+ *   viewport   workspace   rack   pattern bar   SEQUENCER
+ *   1280x720      349 px    151        149          20   <- the editor, gone
+ *   1366x768      373 px    151        149         ~68
+ *   1440x900      529 px    130        141         218
+ *
+ * The pad rack is a sound browser and the pattern bar is a toolbar. Neither is
+ * a canvas. At a short viewport the sequencer — the surface the work happens on
+ * — was last in line and effectively disappeared, which is why the studio reads
+ * as "pad grid, four rows of buttons, and a mixer" instead of a DAW.
+ */
+
+/* ---------- The priority order itself ---------- */
+
+/* Not inside a media query: the editor outranking the chrome is the rule, at
+ * every height. It is only observable where space is scarce. */
+.workspace-main > .sequencer {
+  min-height: 150px;
+}
+
+/* The toolbar yields to the editor instead of pushing it off screen.
+ * An explicit `min-height` is what lets flex shrink it at all — the default
+ * `auto` refuses to shrink below content height — and `overflow-y` keeps
+ * whatever is squeezed out reachable rather than silently clipped. The floor is
+ * about two rows of buttons: a toolbar squeezed to zero is not "compact", it is
+ * gone, and that was a real regression in the first attempt at this work. */
+.workspace-main > .pattern-bar {
+  min-height: 72px;
+  overflow-y: auto;
+}
+
+/* The dock is already user-resizable by dragging its grip. This only stops a
+ * STORED height that no longer fits from eating the editor's floor. The
+ * trade-off, stated plainly: on a screen shorter than ~820px the dock cannot be
+ * dragged past 34vh. */
+@media (max-height: 820px) {
+  .bottom-panels {
+    height: min(calc(var(--dock-height, 300px) + var(--dock-chrome-h, 46px)), 34vh);
+  }
+}
+
+/* ---------- Narrow layouts: 860px and below ---------- */
+
+/* Below 860px the inspector stops being a column and becomes a ROW, so the
+ * workspace column and the inspector share the vertical budget. Measured at
+ * 800x900: workspace-main got 341px against the rack's 151 and the sequencer's
+ * 150px floor, which left the pattern toolbar 0px tall — worse than the bug it
+ * replaced. So here the floor is lower. Nothing re-declares the ladder: this
+ * block only relaxes one floor, it does not re-state the 860px layout. */
+@media (max-width: 860px) {
+  .workspace-main > .sequencer {
+    min-height: 90px;
+  }
+}

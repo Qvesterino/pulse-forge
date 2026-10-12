@@ -15,6 +15,7 @@ import { MorphPresetRepository } from "./persistence/MorphPresetRepository";
 import { UltinaPresetRepository } from "./persistence/UltinaPresetRepository";
 import { installSaveUnloadGuards } from "./persistence/save-lifecycle";
 import { CrashJournalRepository } from "./persistence/crashJournal";
+import { clearRecoveryBuffer, writeRecoveryBuffer } from "./persistence/recoveryBuffer";
 import { createSchedulerDriver } from "./scheduler/schedulerDriver";
 import { processorErrorCount } from "./audio-worklets/processor-errors";
 import type {
@@ -986,6 +987,10 @@ export async function openProject(
       // flushSave unhandled during pagehide/beforeunload/crash-save.
       store.setSaveStatus("saving");
       await repo.save(documentAtStart);
+      // The save committed, so nothing is uncommitted any more: the unload
+      // buffer (D20) must not survive it, or the next boot would offer to
+      // "recover" work that is already on disk.
+      clearRecoveryBuffer();
       // Journal trails the data on purpose (recorded AFTER the commit): a
       // crash between the two leaves the journal conservative — it reports
       // an unclean session even though this revision landed. Detection may
@@ -1127,6 +1132,17 @@ export async function openProject(
   const uninstallUnloadGuards = installSaveUnloadGuards({
     flushSave,
     isDirty: () => store.saveStatus === "dirty" || store.saveStatus === "error",
+    // D20: the unload flush itself does not commit (measured). This synchronous
+    // write is what actually preserves the user's last edit across a tab close.
+    onUnload: () => {
+      // Protect unless nothing is uncommitted. Measured (D20): at pagehide the
+      // status is usually "saving", not "dirty" — the debounce had already
+      // started a write, and that write is the one that dies with the document.
+      // An earlier version gated on dirty/error only and therefore wrote
+      // NOTHING in the common case, which is exactly the case that loses work.
+      if (store.saveStatus === "saved") return;
+      writeRecoveryBuffer(store.doc, store.doc.id);
+    },
   });
   document.addEventListener("visibilitychange", onVisibility);
 

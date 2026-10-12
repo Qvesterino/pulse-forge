@@ -100,6 +100,20 @@
   grid-template-columns: repeat(var(--rack-columns, 8), minmax(0, 1fr));
 }
 
+/* Short viewports (820px and below): one row of pads instead of two, so the
+ * pad browser stops eating the sequencer's floor. Written against the RULE, not
+ * against the `--rack-columns` token, on purpose: `ui/layout.ts` writes that
+ * token as an inline style on <html>, so a media query on the token would need
+ * !important and would overwrite the user's stored preference. Overriding the
+ * grid here leaves the preference intact — it applies again as soon as the
+ * window is tall enough. It lives in this file because this file owns `.rack`
+ * and because the cascade-order guard pins THIS file last. */
+@media (max-height: 820px) {
+  .rack {
+    grid-template-columns: repeat(16, minmax(0, 1fr));
+  }
+}
+
 /* ---------- Typography scale ---------- */
 
 /* --type-scale is independent of the document zoom on purpose: a user who

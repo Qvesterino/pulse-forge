@@ -87,6 +87,38 @@ uses Web Audio too; its result is not evidence for a future native backend.
    and musical placement. Never perform this step in a project containing
    unsaved work.
 
+## Automated software recording soak
+
+`tests/e2e/14-recording-soak.spec.ts` is an opt-in Chromium soak for the
+AudioWorklet → PCM → IndexedDB path. It feeds a synthetic mono 48 kHz signal,
+checks each newly committed half-second block for sequence continuity, valid
+Float32 payloads, finite/non-silent samples and agreement with the session's
+frame/chunk totals, then crashes the renderer and confirms the take appears in
+the recovery UI. It deliberately does not restore a long take into an
+`AudioBuffer`, which could allocate multiple gigabytes during a multi-hour run.
+The worklet holds at most 12 unacknowledged half-second blocks (six seconds),
+then stops safely if durable storage remains behind; normal E2E runs disable
+HMR during the soak so edits elsewhere in the shared checkout cannot reload the
+recording page.
+
+The test is skipped in the ordinary E2E suite. Run a 30-minute soak from
+PowerShell with:
+
+```powershell
+$env:KYX_RECORDING_SOAK_SECONDS = "1800"
+npm run test:e2e:recording-soak
+Remove-Item Env:KYX_RECORDING_SOAK_SECONDS
+```
+
+Use `30` for a short smoke and up to `7200` for a two-hour run. Before it starts,
+the test estimates origin storage and refuses to record unless quota has 25%
+headroom plus 64 MiB. Playwright attaches a JSON report with checkpoints,
+quota estimates and Chromium heap samples where available. Heap figures are
+diagnostic, not a calibrated memory limit. This test proves the synthetic
+software path only; it does not certify hardware routing, physical-device
+stability, or round-trip latency. Keep the separate reference-interface test
+record for those claims.
+
 ## Pass / fail rules
 
 - **Pass this smoke run** only if the chosen input stays pinned, the PCM report

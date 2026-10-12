@@ -944,12 +944,22 @@ export function ArrangementPanel() {
       const { PcmMicRecorder } = await import("../audio-engine/PcmMicRecorder");
       // The component may have unmounted while the lazy module was loading.
       if (!recPanelMountedRef.current || attempt !== recStartAttemptRef.current) return;
+      const splitMonitorChannels = Boolean(armedSecondTrackId) || (requestedChannelCount ?? 0) > 2;
+      const monitorChannelCount = splitMonitorChannels ? (requestedChannelCount ?? 2) : 1;
+      const monitorTrackIds = [armedTrackId, armedSecondTrackId, ...armedAdditionalTrackIds].slice(
+        0,
+        monitorChannelCount,
+      );
       recorder = new PcmMicRecorder({
         ctx,
         recovery: recoveryRepoRef.current!,
         inputDeviceId: recordingInputDeviceId,
         inputGainDb,
-        routeMonitorOutput: (monitorOutput) => services.engine.attachDryInputMonitor(armedTrackId, monitorOutput),
+        ...(splitMonitorChannels ? { monitorChannelCount } : {}),
+        routeMonitorOutput: (monitorOutput, channelIndex) => {
+          const destinationTrackId = splitMonitorChannels ? monitorTrackIds[channelIndex] : armedTrackId;
+          return destinationTrackId ? services.engine.attachDryInputMonitor(destinationTrackId, monitorOutput) : null;
+        },
         // Overdub anchor: re-read the transport position immediately before
         // capture arms. The metadata snapshot predates the durable session
         // begin commit; while the transport is rolling, that IndexedDB gap
@@ -3512,7 +3522,7 @@ export function ArrangementPanel() {
               type="button"
               className={`btn btn-small${micMonitoring ? " active-solo" : ""}`}
               aria-pressed={micMonitoring}
-              title="Dry software monitoring through the armed track's mixer, bypassing its FX. Latency depends on the browser and device. For lowest latency, use the interface's hardware direct-monitor control. Headphones recommended; speakers can cause feedback."
+              title="Dry software monitoring routes each split input channel through its destination track mixer, bypassing track FX. Latency depends on the browser and device. For lowest latency, use the interface's hardware direct-monitor control. Headphones recommended; speakers can cause feedback."
               onClick={() => {
                 const next = !micMonitoring;
                 setMicMonitoring(next);

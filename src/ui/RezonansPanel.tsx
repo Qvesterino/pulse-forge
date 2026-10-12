@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   REZ_PARAM,
+  REZONANS_NOTE_OPTIONS,
   VOICE_COUNT,
   clampParam,
+  midiNoteLabel,
   paramDef,
   resolveFormantSemitones,
   voiceParamId,
@@ -32,22 +34,23 @@ import { useServices } from "./context";
  * outcome, and only the solver knows the final one. If the meter is missing,
  * the ladder says "waiting" instead of guessing.
  *
- * The voice table owns the 24 per-voice parameters so they are one labelled
+ * The voice table owns the 28 per-voice parameters so they are one labelled
  * row each rather than six pages of unlabelled knobs in the generic pager.
  */
 
-const MODE_LABELS = ["OFF", "INTERVAL", "DEGREES", "CHORD TONES"] as const;
+const MODE_LABELS = ["OFF", "INTERVAL", "DEGREES", "CHORD TONES", "MANUAL NOTES"] as const;
 const MODE_HINTS = [
   "harmony off",
   "intervals follow the singer's pitch",
   "degree selects a key note near the singer",
   "degree anchors each voice; chord follow pulls it into the chord",
+  "each voice follows its assigned note, within ±12 semitones of the singer",
 ] as const;
 const QUALITY_LABELS = ["ECONOMY", "BALANCED", "FINE"] as const;
 const NOTE_NAMES = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"] as const;
 
 /** Per-voice sliders shown in each row, in reading order. */
-const ROW_FIELDS = ["degree", "level", "pan", "formant", "humanize"] as const;
+const ROW_FIELDS = ["degree", "note", "level", "pan", "formant", "humanize"] as const;
 
 const VOICE_COLORS = [
   "rgba(120, 205, 255, 0.95)",
@@ -97,6 +100,7 @@ export function RezonansPanel({
   const services = useServices();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const readoutRef = useRef<HTMLSpanElement>(null);
+  const appliedNoteRefs = useRef<Array<HTMLSpanElement | null>>([]);
   const paramsRef = useRef(params);
   paramsRef.current = params;
   const draggingRef = useRef(false);
@@ -171,7 +175,38 @@ export function RezonansPanel({
       };
     };
 
+    const updateAppliedNoteStatus = (m: ReturnType<typeof readMeters>) => {
+      const p = paramsRef.current;
+      const manual = Math.round(p[REZ_PARAM.harmonyMode] ?? 0) === 4;
+      const clarityThreshold = p[REZ_PARAM.clarity] ?? 0.75;
+      const voiced =
+        !!m && Number.isFinite(m.f0) && m.f0 > 0 && Number.isFinite(m.clarity) && m.clarity >= clarityThreshold;
+      for (let i = 0; i < VOICE_COUNT; i++) {
+        const el = appliedNoteRefs.current[i];
+        if (!el) continue;
+        const requested = Math.round(p[voiceParamId(i, "note")] ?? 60);
+        const applied = m?.voiceMidi?.[i];
+        const limited =
+          manual &&
+          voiced &&
+          (p[voiceParamId(i, "enabled")] ?? 0) > 0.5 &&
+          typeof applied === "number" &&
+          Number.isFinite(applied) &&
+          Math.abs(applied - requested) > 0.5;
+        const label = limited ? `LIMIT ${midiNoteLabel(applied!)}` : "";
+        if (el.textContent !== label) el.textContent = label;
+        el.dataset.limited = limited ? "1" : "0";
+        const title = limited
+          ? `Requested ${midiNoteLabel(requested)} is limited to ${midiNoteLabel(applied!)} by the ±12-semitone pitch range.`
+          : "";
+        if (el.title !== title) el.title = title;
+      }
+    };
+
     const draw = () => {
+      const p = paramsRef.current;
+      const m = readMeters();
+      updateAppliedNoteStatus(m);
       const el = canvasRef.current;
       if (!el) return;
       const c2d = el.getContext("2d");
@@ -183,10 +218,8 @@ export function RezonansPanel({
       c2d.setTransform(dpr, 0, 0, dpr, 0, 0);
       c2d.clearRect(0, 0, cw, ch);
 
-      const p = paramsRef.current;
       const globalFormant = p[REZ_PARAM.formant] ?? 0;
       const voiceScale = p[REZ_PARAM.formantVoiceScale] ?? 1;
-      const m = readMeters();
       const f0 = m?.f0 ?? Number.NaN;
       const clarity = m?.clarity ?? Number.NaN;
       const chordPc = m?.chordPc ?? Number.NaN;
@@ -415,7 +448,7 @@ export function RezonansPanel({
 
       // ── readout ────────────────────────────────────────────────────────
       if (readoutRef.current) {
-        const mode = MODE_LABELS[Math.max(0, Math.min(3, Math.round(p[REZ_PARAM.harmonyMode] ?? 0)))]!;
+        const mode = MODE_LABELS[Math.max(0, Math.min(4, Math.round(p[REZ_PARAM.harmonyMode] ?? 0)))]!;
         const chord = Number.isFinite(chordPc) && chordPc >= 0 ? ` · ${pcLabel(chordPc)}` : "";
         const latency =
           m && Number.isFinite(m.latencySamples) && Number.isFinite(m.sampleRate) && m.sampleRate > 0
@@ -467,7 +500,7 @@ export function RezonansPanel({
     services.engine.previewFxParam?.(trackId, fxId, paramId, clampParam(paramId, value));
   };
 
-  const mode = Math.max(0, Math.min(3, Math.round(params[REZ_PARAM.harmonyMode] ?? 0)));
+  const mode = Math.max(0, Math.min(4, Math.round(params[REZ_PARAM.harmonyMode] ?? 0)));
   const quality = Math.max(0, Math.min(2, Math.round(params[REZ_PARAM.quality] ?? 1)));
   const chordFollowing = mode === 3;
   const globalFormant = params[REZ_PARAM.formant] ?? 0;
@@ -520,7 +553,7 @@ export function RezonansPanel({
         }}
       />
 
-      {/* The 24 per-voice parameters: one labelled row per voice. */}
+      {/* The 28 per-voice parameters: one labelled row per voice. */}
       <div className="rezonans-voices">
         {Array.from({ length: VOICE_COUNT }, (_, i) => {
           const enabled = (params[voiceParamId(i, "enabled")] ?? 0) > 0.5;
@@ -535,24 +568,63 @@ export function RezonansPanel({
                 V{i + 1}
               </button>
               {ROW_FIELDS.map((field) => {
+                if (field === "degree" && mode === 4) return null;
+                if (field === "note" && mode !== 4) return null;
                 const id = voiceParamId(i, field);
                 const def = paramDef(id);
                 if (!def) return null;
+                if (field === "note") {
+                  const selectedNote = Math.round(params[id] ?? def.def);
+                  return (
+                    <label key={field} className="rezonans-voice-select">
+                      <span>NOTE</span>
+                      <select
+                        aria-label={`V${i + 1} target note`}
+                        value={selectedNote}
+                        disabled={!enabled}
+                        onChange={(event) => onParam?.(id, Number(event.target.value))}
+                      >
+                        {REZONANS_NOTE_OPTIONS.map((note) => (
+                          <option key={note.value} value={note.value}>
+                            {midiNoteLabel(note.value)}
+                          </option>
+                        ))}
+                      </select>
+                      <span
+                        ref={(element) => {
+                          appliedNoteRefs.current[i] = element;
+                        }}
+                        className="rezonans-note-limit"
+                        aria-label={`V${i + 1} applied note range status`}
+                        aria-live="polite"
+                        role="status"
+                        data-limited="0"
+                      />
+                    </label>
+                  );
+                }
+                const intervalMode = field === "degree" && mode === 1;
+                const min = intervalMode ? -12 : def.min;
+                const max = intervalMode ? 12 : def.max;
+                const rawValue = params[id] ?? def.def;
+                const value = Math.max(min, Math.min(max, rawValue));
                 return (
                   <Slider
                     key={field}
                     compact
                     label={field === "degree" && mode === 1 ? "interval" : field}
-                    value={params[id] ?? def.def}
-                    min={def.min}
-                    max={def.max}
+                    value={value}
+                    min={min}
+                    max={max}
                     defaultValue={def.def}
                     disabled={!enabled}
                     format={(v) =>
                       field === "degree"
                         ? mode === 1
                           ? `${v > 0 ? "+" : ""}${Math.round(v)}st`
-                          : ordinal(v + 1)
+                          : Math.round(v) < 0
+                            ? `↓${Math.abs(Math.round(v))}`
+                            : ordinal(v + 1)
                         : field === "pan"
                           ? v.toFixed(2)
                           : v.toFixed(2)

@@ -185,3 +185,108 @@ test.describe("19 — workspace layout (D14)", () => {
     expect(withUserWidth.labelColumn).toBe("112px");
   });
 });
+
+/**
+ * Short-viewport priority (2026-10-12, owner's decision).
+ *
+ * Measured at 1280x720 before the change: the workspace column was 349px and
+ * spent 151px on the pad rack and 149px on the pattern toolbar, leaving the
+ * SEQUENCER — the editor the application exists for — 20px. The studio read as
+ * "pad grid, four rows of buttons, and a mixer". At 1366x768 it was ~68px.
+ *
+ * The rules live in src/styles/25-short-viewport.css: the editor has a floor,
+ * the toolbar above it yields and scrolls instead of vanishing, and on a short
+ * viewport the pad rack drops to one row and the dock stops at 34vh.
+ *
+ * These assertions are the three ways that can regress silently: the editor
+ * losing its floor again, the toolbar being squeezed to zero (which is worse
+ * than the original bug and happened once during this work), and content being
+ * clipped by `.app { overflow: hidden }` instead of laid out.
+ */
+test.describe("19b — short viewports give the editor the space", () => {
+  const probe = () => {
+    const q = <T extends Element>(s: string) => document.querySelector(s) as T | null;
+    const h = (el: Element | null) => (el ? el.getBoundingClientRect().height : 0);
+    const app = q(".app");
+    const bar = q(".pattern-bar");
+    return {
+      sequencer: h(q(".sequencer")),
+      patternBar: h(bar),
+      patternBarScrolls: bar ? bar.scrollHeight > bar.clientHeight + 1 : null,
+      // Count TRACKS, not distinct child tops: the rack also holds a header
+      // row, so a one-row rack measures as 2 distinct tops. A first attempt at
+      // this assertion counted tops and failed against a layout that was
+      // correct — the metric was wrong, not the CSS. Computed column count is
+      // the signal that actually tracks the rule.
+      rackCols: (() => {
+        const rack = q<HTMLElement>(".rack");
+        return rack ? getComputedStyle(rack).gridTemplateColumns.split(" ").length : 0;
+      })(),
+      dock: h(q(".bottom-panels")),
+      // `.app` clips overflow, so anything pushed below the fold is simply gone.
+      clippedPx: app ? app.scrollHeight - app.clientHeight : 0,
+      viewport: `${window.innerWidth}x${window.innerHeight}`,
+    };
+  };
+
+  test("1280x720 keeps a usable sequencer and clips nothing", async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await openHouseTemplate(page);
+    await page.waitForTimeout(300);
+
+    const m = await page.evaluate(probe);
+
+    // Pre-fix this measured 20px.
+    expect(m.sequencer, `sequencer height at ${m.viewport}`).toBeGreaterThanOrEqual(150);
+    // A toolbar squeezed to zero is not compact, it is gone.
+    expect(m.patternBar, `pattern toolbar height at ${m.viewport}`).toBeGreaterThanOrEqual(60);
+    expect(m.rackCols, `pad rack columns at ${m.viewport} (one row = 16 columns)`).toBe(16);
+    expect(m.clippedPx, `content pushed below the fold at ${m.viewport}`).toBe(0);
+  });
+
+  test("1366x768 keeps the editor floor too", async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await openHouseTemplate(page);
+    await page.waitForTimeout(300);
+
+    const m = await page.evaluate(probe);
+    // Pre-fix this measured ~68px.
+    expect(m.sequencer, `sequencer height at ${m.viewport}`).toBeGreaterThanOrEqual(150);
+    expect(m.clippedPx).toBe(0);
+  });
+
+  test("a tall viewport is untouched — the rack returns to its rows and the toolbar stops scrolling", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await openHouseTemplate(page);
+    await page.waitForTimeout(300);
+
+    const m = await page.evaluate(probe);
+
+    // The short-viewport rules must not leak into a screen that has room:
+    // pre-existing values at 1920x1080 were sequencer 468, rack 2 rows, bar 71.
+    expect(m.sequencer, `sequencer height at ${m.viewport}`).toBeGreaterThan(400);
+    expect(m.rackCols, `pad rack columns at ${m.viewport}`).toBe(8);
+    expect(m.patternBarScrolls, "the toolbar should not scroll when it fits").toBe(false);
+  });
+
+  test("a narrow stacked layout keeps both the editor and the toolbar", async ({ page }) => {
+    test.setTimeout(120_000);
+    // Below 860px the inspector becomes a ROW and shares the vertical budget.
+    // The first attempt at the floor left the toolbar 0px tall here, which is
+    // worse than the bug it replaced.
+    await page.setViewportSize({ width: 800, height: 900 });
+    await openHouseTemplate(page);
+    await page.waitForTimeout(300);
+
+    const m = await page.evaluate(probe);
+    expect(m.sequencer, `sequencer height at ${m.viewport}`).toBeGreaterThan(0);
+    expect(m.sequencer, `sequencer height at ${m.viewport}`).toBeGreaterThanOrEqual(90);
+    expect(m.patternBar, `pattern toolbar height at ${m.viewport}`).toBeGreaterThanOrEqual(60);
+    expect(m.clippedPx).toBe(0);
+  });
+});

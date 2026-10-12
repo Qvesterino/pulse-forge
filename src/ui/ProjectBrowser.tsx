@@ -6,6 +6,12 @@ import type { ProjectDocument } from "../project-model/types";
 import { TEMPLATES, createProjectFromTemplate } from "../project-model/templates";
 import type { TemplateId } from "../project-model/templates";
 import { importProject } from "../export/project-io";
+import {
+  clearRecoveryBuffer,
+  isBufferWorthOffering,
+  readRecoveryBuffer,
+  type RecoveryBuffer,
+} from "../persistence/recoveryBuffer";
 import { uid } from "../shared/ids";
 import { appUrl } from "../shared/mountBase";
 
@@ -45,6 +51,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   const [listError, setListError] = useState<string | null>(null);
   const [crashReport, setCrashReport] = useState<CrashJournalReport | null>(null);
   const [crashDismissed, setCrashDismissed] = useState(false);
+  const [recovery, setRecovery] = useState<RecoveryBuffer | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const applyLists = useCallback((list: SavedProjectMeta[], newer: IncompatibleProjectMeta[]) => {
@@ -214,6 +221,43 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
     };
   }, [core]);
 
+  // D20 recovery buffer: the unload save flush does not commit, so a session
+  // closed with uncommitted edits left them only in a synchronous localStorage
+  // buffer. Offer them back — but ONLY while the buffer is newer than the saved
+  // project, so this can never downgrade work that has since been saved.
+  useEffect(() => {
+    if (projects === null) return;
+    const buffer = readRecoveryBuffer();
+    if (!buffer) {
+      setRecovery(null);
+      return;
+    }
+    const saved = projects.find((meta) => meta.id === buffer.projectId) ?? null;
+    if (!isBufferWorthOffering(buffer, saved?.updatedAt ?? null)) {
+      clearRecoveryBuffer();
+      setRecovery(null);
+      return;
+    }
+    setRecovery(buffer);
+  }, [projects]);
+
+  const recover = (buffer: RecoveryBuffer) =>
+    guard(async () => {
+      const doc = buffer.doc as ProjectDocument;
+      // Commit the recovered document under its own id so "Recover" is a real
+      // save, not a one-shot view: a second crash keeps the work.
+      await core.repo.save(doc);
+      clearRecoveryBuffer();
+      setRecovery(null);
+      refresh();
+      enterStudio(doc);
+    });
+
+  const dismissRecovery = () => {
+    clearRecoveryBuffer();
+    setRecovery(null);
+  };
+
   const firstRun = projects !== null && projects.length === 0 && newerProjects.length === 0;
   const rows = projects === null ? null : mergeRows(projects, newerProjects);
   const latest = projects !== null && projects.length > 0 ? projects[0] : null;
@@ -236,10 +280,32 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
       </header>
 
       <div className="pb-body">
+        {recovery !== null && (
+          <div className="pb-crash-banner" role="alert">
+            <span className="pb-crash-text">
+              Uncommitted changes were found from your last session ({formatRelative(recovery.savedAt)}). The tab closed
+              before KYX could save them — recover them?
+            </span>
+            <button type="button" className="pb-crash-dismiss" onClick={() => recover(recovery)}>
+              Recover
+            </button>
+            <button type="button" className="pb-crash-dismiss" onClick={dismissRecovery}>
+              Discard
+            </button>
+          </div>
+        )}
         {crashReport !== null && !crashReport.lastSessionClean && !crashDismissed && (
           <div className="pb-crash-banner" role="alert">
             <span className="pb-crash-text">
-              Previous session may have ended unexpectedly (crash or force-quit).
+              {/* "crash or force-quit" was a claim the app cannot support. `session-close`
+                  is only written by the in-app back button, and an IndexedDB
+                  write dispatched from `pagehide` never commits (editor audit
+                  D20) — so this banner fires on every ordinary tab close, link
+                  and refresh. Telling those users their work may be missing
+                  trains them to ignore the one warning that would matter.
+                  Say what is actually known: the session did not end cleanly. */}
+              The last session did not end through KYX{"'"}s normal shutdown — you may have closed the tab or followed a
+              link, or the app may have been interrupted.
               {crashReport.lastSaveOk
                 ? ` Last completed save: ${formatRelative(crashReport.lastSaveOk.t)} — check the project for missing edits.`
                 : " No completed save was recorded."}
