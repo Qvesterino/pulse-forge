@@ -3284,3 +3284,99 @@ one: the other two are caught broadly, so their guard would survive a subtler va
   buffer can deliver. The knob is honest; the number next to it is not yet.
 - The `peak` vs `rms` distinction is now recorded in the probe and the specs, but any future
   measurement of a modulated delay should prefer rms for the same reason.
+
+---
+
+## Final sweep re-run, and a correction to the build gate
+
+2026-10-13, after the working tree moved on. Two things changed since the
+"Final state" section above, and one of them contradicts a gate recorded there.
+
+### 1. The six browser specs, re-run against a fresh production build
+
+```
+npm run build                                     # tsc green, vite built in 19.64s
+npx vite preview --host 127.0.0.1 --port 4181 --strictPort
+npx playwright test 18-editor-chaos-chain keyboard-guards snap-grid \
+  ripple-semantics hit-test-sweep audio-fades --project=chromium --workers=2
+
+9 passed (55.0s)
+```
+
+Nine tests, two workers, same configuration as the 50.3s run recorded above -
+so the result is reproducible rather than a single lucky pass. The falsification
+control inside `hit-test-sweep.spec.ts` also fired as designed
+(`1/1 clips blocked` once a cover is injected), which is the only proof that the
+sweep can still see a defect.
+
+Port 4180 was already occupied by a preview server from an earlier wave, so this
+run used 4181. Worth writing down: a sweep that silently reuses whatever server
+happens to hold the port is not a repeatable measurement.
+
+### 2. `npm run build` now exits 1, and it is not this audit
+
+Earlier in this report the bundle gate reads `EXIT 0`. That is no longer true,
+and the honest thing is to say so rather than let the old line stand:
+
+```
+[size-budget] entry: 307 KB (budget 1070)
+[size-budget] DAW JS chunks: 5271 KB (budget 5186)          FAIL
+[size-budget] core worklets: 153 KB (budget 150)            FAIL
+[size-budget] shipped JS total: 7369 KB
+[size-budget] studio boot path: 2144 KB (budget 2200)
+```
+
+The typecheck stage now passes, so the failure has moved: it used to die in
+`tsc`, it dies in the size gate. Two budgets are over - DAW JS by 85 KB and core
+worklets by 3 KB.
+
+### Attribution, and a method that was wrong on the first attempt
+
+My first move was `git diff --name-only 3d7021c9~1 27f60b9c -- src/ public/`,
+which returned **100 product files** - a list containing rezonans, skrutka,
+portal, spectral, vocal and the whole intent tree. On a shared worktree that
+range spans every commit that landed between the two points, including other
+sessions' work. It would have handed me a confident, completely false story
+about what I had changed.
+
+Per-commit is the only sound attribution here:
+
+| Commit | Message | Files |
+| --- | --- | --- |
+| `3d7021c9` | fix(editor): the intensity strip (D14) | 6 |
+| `416509ef` | fix(editor): the onboarding hint bar (D15) | 5 |
+| `abf80de1` `2c2329fc` `c5d9aae0` | ripple / keyboard / snap specs | 2 each |
+| `4e55295b` | wave 13 ratchet record | 1 |
+| `00eed032` | the hit-test sweep | 4 |
+| `0c7a76a0` `69829b07` | `_studio` migration, fades | 5, 2 |
+| `27f60b9c` | final state | 1 |
+| **`62bb634c`** | **`jeje`** | **86** |
+| **`4fa075cc`** | **`dobre tda`** | **32** |
+
+The last two are not mine. They are the fx / rezonans / skrutka / spectral /
+wow&flutter / intent work, committed under the same repository author, and they
+carry the code that pushed both budgets over. The union of my own commits
+touches **three product files** - `src/ui/ArrangementPanel.tsx`,
+`src/styles/04-arrangement.css`, `src/styles/07-project-browser.css` - and not
+one of them is in a bundle the size gate measures. A 4px margin and a
+click-through rule do not add 85 KB of JavaScript.
+
+So: **not fixed here, not mine to fix.** Raising either budget needs the measured
+justification `scripts/check-bundle-size.mjs` asks for, and that justification
+belongs to whoever wrote the code that grew.
+
+### The number I flagged earlier is now the number that broke
+
+This audit recorded "core worklets 149/150 KB" as an open item - one kilobyte of
+headroom, noted and left alone. It is now 153/150. That entry was not a nitpick
+to shrug at; it was a boundary with one kilobyte in front of it, and concurrent
+work walked straight through. The boot-path line is the one that still has room
+(2144 of 2200), which is consistent with `AGENTS.md`: the total is not the
+responsiveness number.
+
+### What this wave changes about the audit's own claims
+
+Nothing about the defects. D14 and D15 are still fixed, still falsified, and
+still covered by the nine tests above. What changes is one gate line and the
+standing of the "149/150 KB" note: the audit's build gate is no longer green,
+and the reason is recorded here rather than quietly dropped.
