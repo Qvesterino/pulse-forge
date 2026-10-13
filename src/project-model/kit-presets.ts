@@ -79,6 +79,24 @@ const HAT_DYNAMIC = dyn("factory.hat.closed.soft", [
   "factory.hat.closed.rr3",
 ]);
 const KICK_PUNCH_RR = rr("factory.kick.punch");
+/** Dusty jazz / boom-bap backbeat (2026-10-13).
+ *
+ * The `dyn` machinery has always modelled "soft hits are a different timbre",
+ * but every stock set used an EXISTING tight snare as its ghost layer, because
+ * no real ghost note existed. Now that factory.snare.ghost does, the set can be
+ * honest about the genre's own instruction: add one quiet snare before or after
+ * the backbeat, felt rather than announced. Under 0.35 velocity the pad plays the
+ * ghost; from there the dusty body rotates; the hard accent takes the top.
+ *
+ * The set must contain the pad's own assetId (kit-velocity-humanize enforces
+ * it), which is why the pad is snare.lofi and the room sits on the accent slot
+ * rather than carrying its own layers.
+ */
+const BOOM_BAP_SNARE_DYNAMIC = dyn(
+  "factory.snare.ghost",
+  ["factory.snare.lofi", "factory.snare.lofi.rr2", "factory.snare.lofi.rr3"],
+  "factory.snare.room",
+);
 const TIMBALE_RR = rr("factory.perc.timbale");
 const BONGOS_RR = rr("factory.perc.bongos");
 const CONGA_HIGH_RR = rr("factory.perc.conga.high");
@@ -347,6 +365,46 @@ export const KIT_PRESETS: KitPreset[] = [
       s(13, "factory.tom.mid", { gain: 0.9, pan: 0.1 }),
       s(14, "factory.tom.high", { gain: 0.85 }),
       s(15, "factory.crash.roll", { gain: 0.6 }),
+    ],
+  },
+  {
+    id: "dusty-jazz-kit",
+    name: "Dusty Jazz / Boom-Bap",
+    // Genre boombap, NOT jazz, and that is the whole reason this kit exists.
+    // Measured before it was added: "boombap" is a first-class genre in
+    // GENRES, but no kit claimed it, so getKitPresetsForGenre fell through to
+    // its whole-kit fallback and the dice could drop a boom-bap track on
+    // trap-808, techno-drive or bright-perc. "jazz" already has jazz-kit and
+    // that pool is correct as it is.
+    genre: "boombap",
+    description:
+      "Dusty jazz / boom-bap — hard kick, cracking snare, ghost-note pocket, dark stick ride, brushes for the swells",
+    pads: [
+      // The kick: round and mid-weighted, not sub. "Not a subwoofer rattling a
+      // car trunk" — it has to leave room for a walking bass. No RR set here:
+      // a layer set must contain its own pad voice (kit-velocity-humanize
+      // enforces it), and the punch variant already owns the round-robin set.
+      s(0, "factory.kick.soft", { chokeGroup: 1, gain: 0.95 }),
+      s(1, "factory.kick.lofi", { chokeGroup: 1, gain: 0.85 }),
+      s(2, "factory.kick.punch", { chokeGroup: 1, gain: 0.8, layers: KICK_PUNCH_RR }),
+      s(3, "factory.snare.ghost", { gain: 0.5 }),
+      // The backbeat, velocity-layered through the ghost: BOOM_BAP_SNARE_DYNAMIC
+      // puts the ghost note under soft hits and rotates the dusty body above.
+      s(4, "factory.snare.lofi", { gain: 0.95, layers: BOOM_BAP_SNARE_DYNAMIC }),
+      s(5, "factory.snare.room", { gain: 0.55 }),
+      s(6, "factory.clap.soft", { gain: 0.4 }),
+      s(7, "factory.rim.chip", { gain: 0.55, pan: 0.06 }),
+      // Swung hats: velocity and microtiming, not constant rolls.
+      s(8, "factory.hat.closed.soft", { chokeGroup: 2, gain: 0.7, layers: HAT_DYNAMIC }),
+      s(9, "factory.hat.closed", { chokeGroup: 2, gain: 0.65, layers: HAT_DYNAMIC }),
+      s(10, "factory.ride.ding", { chokeGroup: 2, gain: 0.85 }),
+      // The brushes. Tip and swirl are separate pads because they are separate
+      // gestures: the tip plays time, the swirl plays dynamics.
+      s(11, "factory.brush.tip", { gain: 0.7 }),
+      s(12, "factory.brush.swirl", { gain: 0.6 }),
+      s(13, "factory.perc.shaker.pop", { gain: 0.45, pan: -0.1 }),
+      s(14, "factory.ride.bell", { chokeGroup: 2, gain: 0.5 }),
+      s(15, "factory.crash.roll", { gain: 0.45 }),
     ],
   },
 ];

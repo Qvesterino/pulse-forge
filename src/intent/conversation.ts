@@ -99,6 +99,9 @@ export function parseFaderIntent(text: string): FaderIntent | null {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")} `;
+  // LUFS is an absolute mastering target, never a track-fader unit. Let the
+  // loudness route handle it instead of applying a generic relative nudge.
+  if (/\blufs\b/.test(lower)) return null;
   // ABSOLUTE SET ("set the bass to 50%", "nastav master na 80 %"): set-verb +
   // explicit percent + a fader target. The percent is the gain as a fraction
   // of the fader range (0..1.5). Effect nouns decline — knob asks belong to

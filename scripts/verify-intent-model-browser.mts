@@ -33,6 +33,8 @@ interface ValidationRow {
   instruction: string;
   lang?: string;
   response: unknown;
+  /** Optional route-specific expectation when deterministic APIs encode the same operation differently. */
+  routeResponse?: unknown;
 }
 
 function readJsonl(file: string): ValidationRow[] {
@@ -420,11 +422,12 @@ try {
             outcome = "abstain";
           } else {
             result.attempted += 1;
-            const expectedKind = (row.response as { kind?: unknown } | null)?.kind;
+            const expectedRoute = row.routeResponse ?? row.response;
+            const expectedKind = (expectedRoute as { kind?: unknown } | null)?.kind;
             if (actual.kind !== expectedKind) {
               result.wrongKind += 1;
               outcome = "wrong-kind";
-            } else if (decoder.canonicalModelJson(actual) !== decoder.canonicalModelJson(row.response)) {
+            } else if (decoder.canonicalModelJson(actual) !== decoder.canonicalModelJson(expectedRoute)) {
               result.slotMismatch += 1;
               outcome = "slot-mismatch";
             } else {
@@ -436,7 +439,7 @@ try {
               instruction: row.instruction,
               outcome,
               ...(cause ? { cause } : {}),
-              expected: row.response,
+              expected: row.routeResponse ?? row.response,
               actual,
             });
           }

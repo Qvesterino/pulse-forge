@@ -522,6 +522,9 @@ export function EffectRack({
             track={track}
             installedTypes={track.effects.map((fx) => fx.type)}
             onLoadKit={loadEssentialKit}
+            onParamChange={(fxId, paramId, value) =>
+              services.store.execute(setEffectParam(services.store.getDoc(), track.id, fxId, paramId, value))
+            }
           />
         )}
         <div className="device-surface">

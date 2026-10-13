@@ -35,6 +35,47 @@ describe("parseFaderIntent", () => {
     });
   });
 
+  it("natural command forms preserve relative versus absolute fader meaning", () => {
+    expect(parseFaderIntent("Take the bass channel down by 12 percent")).toMatchObject({
+      targets: ["bass"],
+      direction: "down",
+      percent: 12,
+    });
+    expect(parseFaderIntent("stiahni basu o 14 percent")).toMatchObject({
+      targets: ["bass"],
+      pads: [],
+      direction: "down",
+      percent: 14,
+    });
+    expect(parseFaderIntent("Bring the master bus up by 8 percent")).toMatchObject({
+      targets: ["master"],
+      direction: "up",
+      percent: 8,
+    });
+    expect(parseFaderIntent("pridaj masteru 10 percent")).toMatchObject({
+      targets: ["master"],
+      pads: [],
+      direction: "up",
+      percent: 10,
+    });
+    expect(parseFaderIntent("Set the lead level at 66 percent")).toMatchObject({
+      targets: ["lead"],
+      direction: "set",
+      percent: 66,
+    });
+    expect(parseFaderIntent("Drop drums to 55 percent")).toMatchObject({
+      targets: ["drums"],
+      direction: "set",
+      percent: 55,
+    });
+    expect(parseFaderIntent("daj lead na 62 percent")).toMatchObject({
+      targets: ["lead"],
+      direction: "set",
+      percent: 62,
+    });
+    expect(parseFaderIntent("stiahni hlasitost mastera na -16 LUFS")).toBeNull();
+  });
+
   it("master: stíš celý mix", () => {
     expect(parseFaderIntent("stíš celý mix")).toEqual({
       targets: ["master"],
@@ -141,6 +182,26 @@ describe("router wiring", () => {
     expect(routeIntentText("popovejšie", doc).kind).toBe("production");
     // pattern requests still win their own route
     expect(routeIntentText("dark techno at 138", doc).kind).toBe("pattern");
+  });
+
+  it("routes bounded command phrasing before generation", () => {
+    const doc = testDoc();
+    expect(routeIntentText("Take the bass channel down by 12 percent", doc).kind).toBe("fader");
+    expect(routeIntentText("Bring the master bus up by 8 percent", doc).kind).toBe("fader");
+    expect(routeIntentText("Set the lead level at 66 percent", doc).kind).toBe("fader");
+    expect(routeIntentText("Drop drums to 55 percent", doc).kind).toBe("fader");
+    expect(routeIntentText("Pause the running loop", doc)).toEqual({ kind: "transport", action: "pause" });
+    expect(routeIntentText("Count us in with the metronome", doc)).toEqual({
+      kind: "transport",
+      action: "metronomeOn",
+    });
+    expect(routeIntentText("Persist this session", doc)).toEqual({ kind: "save" });
+    expect(routeIntentText("Focus the chord lane", doc)).toEqual({ kind: "select", target: "chords" });
+    expect(routeIntentText("Make the kick hit harder", doc).kind).toBe("production");
+    expect(routeIntentText("stiahni hlasitost mastera na -16 LUFS", doc)).toMatchObject({
+      kind: "loudness",
+      parse: { direction: "quieter", targetDb: -16 },
+    });
   });
 
   it("named tracks beat the global loudness loop", () => {

@@ -12,6 +12,7 @@ export type AssetCategory =
   | "Tonal"
   | "Lead"
   | "Field"
+  | "Brush"
   | "FX";
 
 /** Mood/usage descriptors for curated browsing (FEATURES.md §23 character tags). */
@@ -415,6 +416,44 @@ export const FACTORY_ASSETS: FactoryAsset[] = [
     character: "Washey, Long, Comping",
     tags: ["ride", "jazz", "wash", "swing", "comping"],
     mood: ["warm", "atmosphere"],
+  },
+  // ── Dusty jazz / boom-bap (2026-10-13) ────────────────────────────────────
+  // Four voices, each one a gap that survived mapping the genre's vocabulary
+  // against the bank. Rhodes, upright bass, vibraphone, swung hats, shaker,
+  // tambourine, the ride wash and all of the tape/vinyl grit already exist —
+  // see the factory.ts comment for that map. What the genre rests on and the
+  // bank had none of: brushes, the ghost note, and a dry stick-led ride.
+  {
+    id: "factory.ride.ding",
+    name: "Ride Ding",
+    category: "Cymbal",
+    character: "Dark, Stick-led, Dry",
+    tags: ["ride", "jazz", "boombap", "stick", "dry", "dusty"],
+    mood: ["dark", "warm"],
+  },
+  {
+    id: "factory.brush.tip",
+    name: "Brush Tip",
+    category: "Brush",
+    character: "Bristle Stroke, No Body",
+    tags: ["brush", "jazz", "soft", "stroke"],
+    mood: ["warm", "clean"],
+  },
+  {
+    id: "factory.brush.swirl",
+    name: "Brush Swirl",
+    category: "Brush",
+    character: "1.1 s Sweep, No Attack",
+    tags: ["brush", "jazz", "swell", "sweep", "dynamic"],
+    mood: ["atmosphere", "warm"],
+  },
+  {
+    id: "factory.snare.ghost",
+    name: "Ghost Note",
+    category: "Snare",
+    character: "Wire Buzz, Felt Not Heard",
+    tags: ["snare", "ghost", "boombap", "jazz", "quiet", "pocket"],
+    mood: ["dark", "warm"],
   },
   {
     id: "factory.shaker.fast",

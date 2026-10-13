@@ -17,6 +17,11 @@ const CATEGORY_COLORS: Record<AssetCategory, string> = {
   Lead: "#c084fc",
   FX: "#e879f9",
   Field: "#7dd3a0",
+  // Brush is its own family because a brush head is neither a cymbal nor a
+  // snare: it has no metal and no shell, only bristles on skin. Given the
+  // Field green's neighbour rather than a wash of Cymbal's, so a kit carrying
+  // both reads as two instruments.
+  Brush: "#c4b5fd",
 };
 
 const MOOD_LABELS: Record<AssetMood, string> = {

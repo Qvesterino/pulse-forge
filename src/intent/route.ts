@@ -185,7 +185,7 @@ const REVISE_ENERGY_MORE = /\bmore (?:energetic|energic|energy)\b|\benergetick|\
 const REVISE_ENERGY_LESS =
   /\bless (?:energetic|energic|energy)\b|\bcalmer\b|\bpokojnejs|\bmenej (?:energie|energick)\b/;
 const REVISE_DENSITY_MORE = /\b(?:more )?(?:busier|denser)\b|\bhustejs|\bviac prvkov\b/;
-const REVISE_DENSITY_LESS = /\bsparser\b|\bless busy\b|\bmenej hust/;
+const REVISE_DENSITY_LESS = /\bsparser\b|\bless busy\b|\bless dense\b|\bmenej hust/;
 
 /** Section-role words that turn a global revise into a TARGETED one. */
 const REVISE_ROLE_WORDS: ReadonlyArray<readonly [SceneRole, RegExp]> = [
@@ -472,6 +472,13 @@ export function routeIntentText(
   const complaintIntent = parseComplaintIntent(text);
   if (complaintIntent) {
     return { kind: "complaintIntent", intent: complaintIntent };
+  }
+  // A non-structural request that says the arrangement needs more or less
+  // energy/density is a content revision. The noun "arrangement" alone must
+  // not trigger auto-arrange when scenes exist.
+  if (!studioGenreSignal && /\barrangement\b.{0,48}\b(?:needs?|could use|would benefit from)\b/.test(deaccent(text))) {
+    const revise = parseReviseIntent(text);
+    if (revise) return { kind: "revise", ...revise };
   }
   if (!studioGenreSignal) {
     // SECTION-SCOPED groove first ("more swing in the drop") — more specific

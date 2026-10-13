@@ -58,6 +58,14 @@ const CATEGORY_TREATMENT = {
   // be added by the processing chain. Tape tone opens up so a bright clap of
   // paper still reads.
   Field: { targetLufs: -22, tapeDrive: 0.02, tapeTone: 16000, ceiling: -3 },
+  // Dusty jazz / boom-bap brushes (2026-10-13). Here the tape reasoning INVERTS
+  // against Field's. A field recording should stay clean, but the whole genre
+  // the brushes belong to is defined by 12-bit samplers and tape hiss — a
+  // brush rendered dead-clean reads as a digital hi-hat. So Brush gets a
+  // moderate drive and a closed tape tone that rolls off the bristle hiss into
+  // something felt rather than heard, and a low ceiling because the tip has to
+  // survive being layered under a backbeat that already exists.
+  Brush: { targetLufs: -19, tapeDrive: 0.1, tapeTone: 9500, ceiling: -2.2 },
   Tonal: { targetLufs: -16, tapeDrive: 0.16, tapeTone: 9500, ceiling: -1.8 },
   FX: { targetLufs: -13, tapeDrive: 0.16, tapeTone: 10500, ceiling: -1.5 },
 };

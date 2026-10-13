@@ -94,6 +94,7 @@ describe("parseExactIntent", () => {
     expect(mute.ops).toEqual([{ kind: "mute", target: "bass", value: true }]);
     const unmute = parseExactIntent("unmute the bass")!;
     expect(unmute.ops).toEqual([{ kind: "mute", target: "bass", value: false }]);
+    expect(parseExactIntent("aktivuj stopu leadu")?.ops).toEqual([{ kind: "mute", target: "lead", value: false }]);
   });
 
   it("pan with side and percentage", () => {
@@ -113,9 +114,22 @@ describe("parseExactIntent", () => {
     expect(plan.ops).toEqual([{ kind: "transpose", target: "lead", semitones: 12 }]);
   });
 
+  it("natural pitch wording and spelled semitone counts", () => {
+    expect(parseExactIntent("Pitch the bass down by seven semitones")?.ops).toEqual([
+      { kind: "transpose", target: "bass", semitones: -7 },
+    ]);
+    expect(parseExactIntent("transpose the lead up 4 semitones")?.ops).toEqual([
+      { kind: "transpose", target: "lead", semitones: 4 },
+    ]);
+  });
+
   it("pattern length: 'pattern length to 32'", () => {
     const plan = parseExactIntent("pattern length to 32")!;
     expect(plan.ops).toEqual([{ kind: "patternLength", steps: 32 }]);
+  });
+
+  it("natural step-count length phrasing", () => {
+    expect(parseExactIntent("Use a 32-step loop length")?.ops).toEqual([{ kind: "patternLength", steps: 32 }]);
   });
 
   it("generation and production intents stay null", () => {

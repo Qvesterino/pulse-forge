@@ -76,6 +76,12 @@ const PORTAL_ACTIVE_PARAMS_BY_MODE: ReadonlyArray<ReadonlySet<string>> = [
 const EDITOR_OVERRIDES: Partial<Record<EffectType, Pick<EffectEditorSpec, "primaryParamIds">>> = {
   eq: { primaryParamIds: ["hpFreq", "lowShelfGain", "lowMidGain", "highShelfGain"] },
   compressor: { primaryParamIds: ["threshold", "ratio", "attack", "release"] },
+  // The ESSENTIAL KIT multiview renders `primaryParamIds` for five devices at
+  // once, so every kit slot needs a curated first page — a slot without one
+  // would show a different number of knobs than its four siblings.
+  saturation: { primaryParamIds: ["drive", "character", "tone", "mix"] },
+  delay: { primaryParamIds: ["time", "sync", "feedback", "mix"] },
+  reverb: { primaryParamIds: ["decay", "predelay", "damping", "mix"] },
   kaskada: { primaryParamIds: ["time", "sync", "feedback", "mix"] },
   // Frequency Shifter: the four headline controls on page 1; sweep detail
   // (fine, side, LFO), echo loop, drive/tone and spread live on later pages.

@@ -24,7 +24,7 @@ import { compactIntentResponse } from "../src/intent/dataset";
 import { validateModelAction } from "../src/intent/model-schema";
 import type { ProjectDocument } from "../src/project-model/types";
 
-const DATASET_VERSION = 5;
+const DATASET_VERSION = 6;
 const OUT_DIR = path.join(process.cwd(), "scripts", "data", "intent-sft");
 const MINED_CORPUS_PATH = path.join(process.cwd(), "scripts", "data", "intent-mined-corpus.json");
 const unsupportedPairs = new Map<string, string[]>();

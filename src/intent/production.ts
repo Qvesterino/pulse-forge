@@ -185,7 +185,11 @@ export const CONCEPTS: readonly ConceptDef[] = [
   {
     concept: "wider",
     defaultTarget: "lead",
-    patterns: [/\bwider\b/, /(?:^|[^a-z0-9])sirs(ia|i|ie|y|u|iu)?(?![a-z0-9])/, /\bsirok[xy]?\b/],
+    patterns: [
+      /\bwider\b|\bmore width\b|\bwidthier\b/,
+      /(?:^|[^a-z0-9])sirs(ia|i|ie|y|u|iu)?(?![a-z0-9])/,
+      /\bsirok[xy]?\b/,
+    ],
   },
   {
     concept: "grittier",

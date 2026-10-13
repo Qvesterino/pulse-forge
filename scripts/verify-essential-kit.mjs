@@ -82,6 +82,72 @@ try {
   );
   check("chain grew by exactly five", inserted.length === 5, `${before.length} → ${deviceNames.length}`);
 
+  // MULTIVIEW — every inserted device shows its own controls at once.
+  const multiview = await page.$(".kit-multiview");
+  check("multiview renders under the slot picker", !!multiview);
+  if (multiview) {
+    const columns = await page.$$eval(".kit-multiview-device", (n) =>
+      n.map((e) => ({
+        name: e.querySelector(".kit-multiview-name")?.textContent?.trim() ?? "?",
+        knobs: e.querySelectorAll(".slider, .fx-param-select").length,
+      })),
+    );
+    check(
+      "all five devices show their own MAIN page side by side",
+      columns.length === 5,
+      columns.map((c) => `${c.name}:${c.knobs}`).join(" "),
+    );
+    // A column with no knobs is the defect the curated primaryParamIds exist
+    // to prevent, and it renders as "nothing to tweak" rather than an error.
+    check(
+      "every column exposes its four primary knobs",
+      columns.every((c) => c.knobs === 4),
+      columns.map((c) => `${c.name}:${c.knobs}`).join(" "),
+    );
+  }
+
+  // THE REAL GATE: dragging a multiview knob must change the DOCUMENT, not just
+  // the rendered value. Read the reverb column's DECAY before and after a real
+  // pointer drag, then undo.
+  const decayBefore = await page
+    .$eval('.kit-multiview-device[data-type="reverb"]', (col) => {
+      const rows = Array.from(col.querySelectorAll(".slider, .fx-param-select"));
+      const row = rows.find((r) => /DECAY/i.test(r.textContent || ""));
+      const input = row?.querySelector("input[type=range]") || row?.querySelector("select");
+      return input ? { value: input.value, label: row.textContent.trim().slice(0, 24) } : null;
+    })
+    .catch(() => null);
+  check("reverb column exposes a DECAY control", !!decayBefore, decayBefore ? `${decayBefore.label} = ${decayBefore.value}` : "none");
+
+  if (decayBefore) {
+    const slider = await page.$('.kit-multiview-device[data-type="reverb"] input[type=range]');
+    if (slider) {
+      const box = await slider.boundingBox();
+      await page.mouse.move(box.x + box.width * 0.5, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width * 0.82, box.y + box.height / 2, { steps: 8 });
+      await page.mouse.up();
+      await page.waitForTimeout(1200);
+      const decayAfter = await page.$eval(
+        '.kit-multiview-device[data-type="reverb"] input[type=range]',
+        (el) => el.value,
+      );
+      check(
+        "dragging a multiview knob moves it and commits to the document",
+        decayAfter !== decayBefore.value,
+        `${decayBefore.value} → ${decayAfter}`,
+      );
+      // Undo must return the stored value — proof the drag went through the
+      // command path rather than straight into React state.
+      await page.keyboard.press("Control+z");
+      await page.waitForTimeout(1200);
+      const decayUndone = await page
+        .$eval('.kit-multiview-device[data-type="reverb"] input[type=range]', (el) => el.value)
+        .catch(() => null);
+      check("one undo restores the knob to its stored value", decayUndone === decayBefore.value, `${decayAfter} → ${decayUndone} (expected ${decayBefore.value})`);
+    }
+  }
+
   // One undo must remove the whole kit, not just the last device.
   await page.keyboard.press("Control+z");
   await page.waitForTimeout(1500);

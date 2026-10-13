@@ -51,6 +51,10 @@ describe("kick bank — manifest/builder/duration/curated coherence", () => {
       "factory.snare.dnb",
       "factory.snare.lofi",
       "factory.snare.room",
+      // Dusty jazz / boom-bap (2026-10-13): the ghost note. It is a Snare
+      // category asset, not a Rim one — a ghost is the snare WIRES, whereas a
+      // rimshot is the hollow shell, so the rim family cannot stand in for it.
+      "factory.snare.ghost",
     ]);
     expect(HAT_IDS).toEqual([
       "factory.hat.closed",

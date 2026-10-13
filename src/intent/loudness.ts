@@ -43,12 +43,13 @@ export function parseLoudnessIntent(text: string): LoudnessIntentParse | null {
     /\bmake it quieter\b|\bquieter\b|\bquieter mix\b|\btich(?:ie|si)|\bpotichu\b|\bticho\b|\bmenej hlas|\bsofter mix\b/.test(
       lower,
     );
+  const explicitlyDown = /\bstiah\w*|\bzniz\w*|\bstis\w*/.test(lower);
   if (targetMatch) {
     const raw = targetMatch[1] ?? targetMatch[2];
     const sign = raw.startsWith("\u2212") ? -1 : 1;
     const targetDb = sign * Number(raw.replace("\u2212", ""));
     const detected = [`loudness ${targetDb} LUFS`];
-    if (isQuieter) {
+    if (isQuieter || explicitlyDown) {
       return { direction: "quieter", targetDb, detected };
     }
     return { direction: "louder", targetDb, detected };

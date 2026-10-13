@@ -6,21 +6,28 @@ import {
   type EssentialKitSlot,
   type EssentialKitSlotId,
 } from "../effects/essentialKit";
+import { KitMultiview } from "./KitMultiview";
 
 type EssentialKitDockProps = {
   track: Track;
   /** Which device types already sit on this track, for the ON TRACK marks. */
   installedTypes: readonly EffectType[];
   onLoadKit: (selection: Readonly<Record<EssentialKitSlotId, string>>) => void;
+  /** Commit one parameter of an inserted kit device through the command path. */
+  onParamChange: (fxId: string, paramId: string, value: number) => void;
 };
 
 /**
  * Module-first companion to the SOURCE dock: pick a character for each of the
- * five fundamental devices, then load them all in one click. The dock holds
- * only the CHOICE — every insert goes through `applyEssentialKit`, so nothing
- * here owns audio or project state.
+ * five fundamental devices, then load them all in one click. Below the slots,
+ * every device that is actually on the track shows its own controls — the
+ * selection answers "which one", the multiview answers "what is it doing now".
+ *
+ * The dock holds only the CHOICE and renders document values; every insert and
+ * every drag goes through a command, so nothing here owns audio or project
+ * state.
  */
-export function EssentialKitDock({ track, installedTypes, onLoadKit }: EssentialKitDockProps) {
+export function EssentialKitDock({ track, installedTypes, onLoadKit, onParamChange }: EssentialKitDockProps) {
   const [selection, setSelection] = useState<Readonly<Record<EssentialKitSlotId, string>>>(() => ({
     ...ESSENTIAL_KIT_DEFAULT_VARIANT,
   }));
@@ -74,6 +81,7 @@ export function EssentialKitDock({ track, installedTypes, onLoadKit }: Essential
           );
         })}
       </div>
+      <KitMultiview track={track} onChange={onParamChange} />
       <span className="essential-kit-hint">FIVE DEVICES · ONE UNDO STEP · STACKS IN SIGNAL ORDER</span>
     </section>
   );

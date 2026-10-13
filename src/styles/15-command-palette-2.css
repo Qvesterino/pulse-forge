@@ -1778,6 +1778,72 @@
   font-size: 7px;
 }
 
+/* Kit multiview: the five inserted devices side by side, each showing the same
+   MAIN parameter page the single-device editor shows. */
+.kit-multiview {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px 6px;
+  min-width: 0;
+}
+
+.kit-multiview-device {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  padding: 3px 4px 5px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  background: color-mix(in srgb, var(--bg-raise) 52%, transparent);
+}
+
+.kit-multiview-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+}
+
+.kit-multiview-name {
+  overflow: hidden;
+  color: var(--text);
+  font: 800 9px var(--mono);
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kit-multiview-slot {
+  flex: none;
+  color: var(--text-faint);
+  font: 700 7px var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.kit-multiview-empty {
+  color: var(--text-faint);
+  font: 7px var(--mono);
+}
+
+/* One control per row inside a column: a 2-column grid at this width would
+   clip every knob to an unreadable sliver. */
+.kit-multiview-device .fx-device-params {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+}
+
+.kit-multiview-device .fx-device-params .slider-label {
+  font-size: 7px;
+}
+
+@container (max-width: 720px) {
+  .kit-multiview,
+  .essential-kit-slots {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 /* Shared preset touchpoints: every compatible device exposes the same
    MIX → FEEDBACK → SYNC order before its detailed parameter pages. */
 .fx-preset-controls {

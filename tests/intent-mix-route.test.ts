@@ -153,6 +153,13 @@ describe("mix intent parser (D1)", () => {
     expect(parseMixIntent("tmavší zvuk").overrides.tone).toBe("dark");
   });
 
+  it("maps removal phrasing to pump off", () => {
+    expect(parseMixIntent("take some pump out of the master")).toMatchObject({
+      overrides: { pump: "off" },
+      detected: ["pump off"],
+    });
+  });
+
   it("comparatives route to mix, plain adjectives do not", () => {
     expect(isMixIntentText("darker")).toBe(true);
     expect(isMixIntentText("dark techno")).toBe(false);
@@ -179,6 +186,28 @@ describe("unified router (D3)", () => {
   it("routes mix vocabulary to the mix executor", () => {
     const route = routeIntentText("more reverb please", docWithScenes());
     expect(route.kind).toBe("mix");
+  });
+
+  it("honors natural send, bypass, and pump-removal wording", () => {
+    const doc = testDoc();
+    expect(routeIntentText("Back off the reverb send on the bass", doc)).toMatchObject({
+      kind: "sendIntent",
+      intent: { effectType: "reverb", target: "bass", direction: "less" },
+    });
+    expect(routeIntentText("turn off the chorus module on chords", doc)).toMatchObject({
+      kind: "bypassIntent",
+      intent: { effectType: "chorus", target: "chords", bypassed: true },
+    });
+    expect(routeIntentText("take some pump out of the master", doc)).toMatchObject({
+      kind: "mix",
+      overrides: { pump: "off" },
+    });
+  });
+
+  it("routes width and arrangement content asks to production/revise", () => {
+    expect(routeIntentText("Give the chords more width", testDoc()).kind).toBe("production");
+    expect(routeIntentText("The arrangement needs more energy", docWithScenes()).kind).toBe("revise");
+    expect(routeIntentText("make it less dense overall", testDoc()).kind).toBe("revise");
   });
 
   it("routes everything else to pattern generation", () => {

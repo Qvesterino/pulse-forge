@@ -1170,7 +1170,7 @@ export function parseSendIntent(text: string): SendIntent | null {
     direction = "remove";
   } else if (/\bset\b|\bnastav\b/.test(lower)) {
     direction = "set";
-  } else if (/\bless\b|\bmenej\b/.test(lower)) {
+  } else if (/\bless\b|\bmenej\b|\bback off\b|\bdial back\b|\bpull back\b/.test(lower)) {
     direction = "less";
   }
   if (direction === "set") {
@@ -1247,8 +1247,8 @@ export interface BypassIntent {
 
 export function parseBypassIntent(text: string): BypassIntent | null {
   const lower = deaccentLower(text);
-  const bypassed = /\bbypass\b/.test(lower);
-  const enabled = /\b(?:unbypass|enable)\b/.test(lower);
+  const bypassed = /\bbypass\b|\bdisable\b|\bturn off\b|\bswitch off\b|\bdeactivate\b/.test(lower);
+  const enabled = /\b(?:unbypass|enable|turn on|switch on|activate)\b/.test(lower);
   if (!bypassed && !enabled) return null;
   const effectType = effectWordIn(lower);
   if (!effectType) return null;

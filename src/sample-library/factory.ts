@@ -687,6 +687,204 @@ function rideJazz(): Builder {
   };
 }
 
+/** ── Dusty jazz / boom-bap family (2026-10-13) ─────────────────────────────
+ *
+ * Chosen by mapping every named element of the genre against the bank first,
+ * not by genre association. What came back as already covered and therefore
+ * NOT rebuilt: Rhodes/Wurlitzer (tonal.rhodes, tonal.wurli), upright bass
+ * (bass.upright), vibraphone (mallet.vibes, which already has the rotating-disc
+ * tremolo), swing hats (hat.closed.soft), shaker, tambourine, ride wash, tape
+ * and vinyl grit (that is DSP — fxTapeSat, fxVinyl, fxBitcrusher).
+ *
+ * Four real gaps survived that map, and each one is named independently by
+ * every source on the style:
+ *   - BRUSHES, absent entirely. The genre guide describes the jazz drummer's
+ *     job as "dynamic swells" — so the brush is not one hit but two: the tip
+ *     (a stroke) and the swirl (a continuous sweep, which has no attack at
+ *     all because the bristles are always in contact with the head).
+ *   - the GHOST NOTE. The guide is unusually specific: "add one quiet snare
+ *     before or after a main backbeat; it should be felt more than announced.
+ *     If the ghost note remains obvious when the full beat plays, lower it."
+ *     Every snare in the bank is a backbeat, and the rim family is shell clicks
+ *     rather than snare wires.
+ *   - the DARK STICK RIDE. All three existing rides are bright — highpassed at
+ *     5.4-7 kHz with a long tail. The dry, stick-led ride that gives dusty jazz
+ *     its colour is a wash-over-ping balance the bank does not have.
+ */
+
+/** Brush tip — the stroke. A tuft of bristles is many thin rods, so the
+ * signature is broadband noise under a RATTLE: the rods bounce at slightly
+ * different rates, which is a fast amplitude modulation, not a static hiss.
+ * No drum body at all — that absence is what separates a brush from a snare. */
+function brushTip(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const noise = noiseSource(ctx, 601, 0.3, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 3200;
+    bp.Q.value = 0.9;
+    // Rattle: ~54 Hz tuft bounce, faded out with the stroke so the tail does
+    // not keep buzzing after the bristles have left the head.
+    const rattle = ctx.createGain();
+    rattle.gain.setValueAtTime(0.55, t0);
+    rattle.gain.linearRampToValueAtTime(1, t0 + 0.02);
+    const lfo = ctx.createOscillator();
+    lfo.type = "sine";
+    lfo.frequency.value = 54;
+    const lfoDepth = ctx.createGain();
+    lfoDepth.gain.value = 0.42;
+    lfo.connect(lfoDepth).connect(rattle.gain);
+    lfo.start(t0);
+    lfo.stop(t0 + 0.3);
+    const shape = ctx.createGain();
+    shape.gain.setValueAtTime(0.0001, t0);
+    shape.gain.linearRampToValueAtTime(0.9, t0 + 0.008);
+    shape.gain.exponentialRampToValueAtTime(0.0005, t0 + 0.19);
+    noise.connect(bp).connect(rattle).connect(shape).connect(dest);
+    // The stroke lands slightly off the centre of the head, so the very front
+    // has a touch of contact thud — a brush is not a ghost of a stick, it is
+    // still hitting something.
+    const body = noiseSource(ctx, 602, 0.05, t0);
+    const bodyLp = ctx.createBiquadFilter();
+    bodyLp.type = "lowpass";
+    bodyLp.frequency.value = 700;
+    body
+      .connect(bodyLp)
+      .connect(env(ctx, t0, 0.16, 0.045))
+      .connect(dest);
+  };
+}
+
+/** Brush swirl — the continuous sweep. No attack transient: the bristles never
+ * leave the head, so the sound is a swell that rises, turns over and releases.
+ * The bandpass sweeps WITH the motion (more bristle contact area = brighter),
+ * and the rattle speeds up as the stroke accelerates. This is the "dynamic
+ * swell" the genre actually rests on, and no existing voice is shaped like it. */
+function brushSwirl(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const dur = 1.1;
+    const noise = noiseSource(ctx, 611, dur + 0.1, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.Q.value = 1.1;
+    // Contact area opens through the sweep, so the centre frequency climbs.
+    bp.frequency.setValueAtTime(2400, t0);
+    bp.frequency.linearRampToValueAtTime(5200, t0 + dur * 0.72);
+    bp.frequency.exponentialRampToValueAtTime(2600, t0 + dur);
+
+    const shape = ctx.createGain();
+    shape.gain.setValueAtTime(0.0001, t0);
+    // Swell: a slow rise to a late peak, then the lift-off.
+    shape.gain.linearRampToValueAtTime(0.34, t0 + dur * 0.72);
+    shape.gain.exponentialRampToValueAtTime(0.0005, t0 + dur);
+    noise.connect(bp).connect(shape).connect(dest);
+
+    // Rattle rate rises with the stroke speed.
+    const lfo = ctx.createOscillator();
+    lfo.type = "triangle";
+    lfo.frequency.setValueAtTime(38, t0);
+    lfo.frequency.linearRampToValueAtTime(72, t0 + dur * 0.72);
+    lfo.frequency.linearRampToValueAtTime(30, t0 + dur);
+    const depth = ctx.createGain();
+    depth.gain.value = 0.4;
+    const mod = ctx.createGain();
+    mod.gain.value = 1;
+    lfo.connect(depth).connect(mod.gain);
+    lfo.start(t0);
+    lfo.stop(t0 + dur + 0.02);
+    // Re-route the filtered noise through the modulated gain.
+    bp.disconnect();
+    bp.connect(mod).connect(shape);
+  };
+}
+
+/** Ghost note — the stick barely touching the head. The genre guide's whole
+ * point is that it must be felt rather than announced, so the voice is built
+ * around what a ghost IS: snare WIRES with no drum body, very short, and low
+ * enough in level to sit under the backbeat. Two detuned high partials give the
+ * wires their characteristic buzz; the rim family cannot substitute, because a
+ * rimshot is the hollow shell, not the wires. */
+function snareGhost(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const noise = noiseSource(ctx, 621, 0.12, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 1900;
+    bp.Q.value = 1.1;
+    noise
+      .connect(bp)
+      .connect(env(ctx, t0, 0.3, 0.062))
+      .connect(dest);
+    // Wire buzz: the snare's own partials, detuned against each other so the
+    // short tail beats slightly — a dead-tuned buzz reads as a click instead.
+    for (const [hz, level, decay] of [
+      [1780, 0.1, 0.05],
+      [1935, 0.07, 0.038],
+    ] as const) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(hz, t0);
+      osc.frequency.exponentialRampToValueAtTime(hz * 0.9, t0 + decay);
+      osc.connect(env(ctx, t0, level, decay)).connect(dest);
+      osc.start(t0);
+      osc.stop(t0 + decay + 0.01);
+    }
+  };
+}
+
+/** Dark stick ride — the dry, stick-led ride. This is the one thing every
+ * source names and the bank does not have: `ride.jazz` is explicitly a long
+ * WASH, and ping/bell are both highpassed bright with long tails. The dusty
+ * ride inverts that balance — a pitched stick tone you can follow over a
+ * SHORT, DARK wash. The partial ratios are the standard inharmonic cymbal set
+ * (a struck cymbal is not harmonic), centred low at ~2.6 kHz where a 22-inch
+ * ride's stick tone actually sits, and the wash is lowpassed rather than
+ * highpassed so the ping leads instead of the shimmer. */
+function rideDing(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const root = 2620;
+    const partials: ReadonlyArray<readonly [number, number, number]> = [
+      [1, 0.26, 0.3],
+      [1.41, 0.13, 0.24],
+      [1.68, 0.09, 0.19],
+      [1.98, 0.06, 0.14],
+      [2.34, 0.04, 0.1],
+    ];
+    for (const [ratio, level, decay] of partials) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = root * ratio;
+      osc.connect(env(ctx, t0, level, decay)).connect(dest);
+      osc.start(t0);
+      osc.stop(t0 + decay + 0.02);
+    }
+    // The stick contact itself: a very short, very dry tick.
+    const stick = noiseSource(ctx, 631, 0.03, t0);
+    const stickBp = ctx.createBiquadFilter();
+    stickBp.type = "bandpass";
+    stickBp.frequency.value = 3400;
+    stickBp.Q.value = 2.4;
+    stick
+      .connect(stickBp)
+      .connect(env(ctx, t0, 0.2, 0.016))
+      .connect(dest);
+    // Dark wash — lowpassed where the other rides are highpassed.
+    const wash = noiseSource(ctx, 632, 0.55, t0);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 5200;
+    lp.Q.value = 0.7;
+    wash
+      .connect(lp)
+      .connect(env(ctx, t0, 0.15, 0.34))
+      .connect(dest);
+  };
+}
+
 /** Shaker fast — the third shaker voice: SHORT and driving, the latin/dnb
  * 16th top-end. The existing pair is long (slow swish) and soft (gentle
  * backbeat); the fast is the propulsive one: a 0.07 s envelope with a
@@ -4262,6 +4460,12 @@ export const BUILDERS: Record<string, Builder> = {
   // genre families reach for that the bank did not have.
   "factory.crash.china": china(),
   "factory.ride.jazz": rideJazz(),
+  // Dusty jazz / boom-bap (2026-10-13). Brush is a new category: a brush head
+  // has no metal and no shell, so it is neither a cymbal nor a snare.
+  "factory.ride.ding": rideDing(),
+  "factory.brush.tip": brushTip(),
+  "factory.brush.swirl": brushSwirl(),
+  "factory.snare.ghost": snareGhost(),
   "factory.shaker.fast": shakerFast(),
   "factory.crash.roll": crashRoll(),
   "factory.crash.main": crash(8200, 1.3, 0.6),
@@ -4568,6 +4772,10 @@ export const DURATIONS: Record<string, number> = {
   "factory.ride.splash": 0.5,
   "factory.crash.china": 1.0,
   "factory.ride.jazz": 1.6,
+  "factory.ride.ding": 0.55,
+  "factory.brush.tip": 0.3,
+  "factory.brush.swirl": 1.2,
+  "factory.snare.ghost": 0.12,
   "factory.shaker.fast": 0.2,
   "factory.crash.roll": 2.4,
   "factory.crash.main": 1.7,
@@ -4688,6 +4896,14 @@ export const RR_VARIATIONS: Record<string, Array<{ rate: number; gain: number }>
   "factory.snare.punch": [
     { rate: 1.014, gain: 1.03 },
     { rate: 0.988, gain: 0.96 },
+  ],
+  // Dusty jazz / boom-bap backbeat. Wider than the stock spreads on purpose:
+  // this voice's character IS its imperfection, so cloning it too tightly
+  // reproduces exactly the machine-gun repetition the map exists to kill — and
+  // a swung, laid-back groove is where identical backbeats read worst.
+  "factory.snare.lofi": [
+    { rate: 1.019, gain: 1.05 },
+    { rate: 0.981, gain: 0.93 },
   ],
   "factory.hat.closed": [
     { rate: 1.022, gain: 1.05 },
