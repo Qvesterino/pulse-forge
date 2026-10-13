@@ -1,0 +1,26 @@
+    - tests/ui/Mixer.test.tsx > Mixer performance workflow toggles the master buss glue through one command
+    - tests/ui/Mixer.test.tsx > Mixer track reorder drag (Wave D) a drop with no measurable width degrades to 'before' instead of guessing
+    - tests/ui/Mixer.test.tsx > Mixer track reorder drag (Wave D) drop on a strip's left half lands the dragged track before it
+    - tests/ui/Mixer.test.tsx > Mixer track reorder drag (Wave D) drop on a strip's right half lands the dragged track after it
+    - tests/ui/MixerSelectionHygiene.test.tsx > Mixer: deleting a track leaves no dead reference in the selection a zone bounce after the delete resolves to real audio, not an empty stem
+    - tests/ui/MixerSelectionHygiene.test.tsx > Mixer: deleting a track leaves no dead reference in the selection drops the deleted track from the selection
+    - tests/ui/MixerSelectionHygiene.test.tsx > Mixer: deleting a track leaves no dead reference in the selection drops the deleted track's note selection so no phantom pattern key can be written
+    - tests/ui/MixerSelectionHygiene.test.tsx > Mixer: deleting a track leaves no dead reference in the selection keeps the other selected tracks when one of several is deleted
+    - tests/ui/midi-io.test.tsx > ExportPanel MIDI export downloads the active pattern as .mid
+    - tests/ui/reference-map-panel.test.tsx > ReferenceMapPanel — input guards rejects an unsupported extension before touching the audio context
+    - tests/ui/touch-reachability.test.tsx > Mixer touch reachability exposes return creation as a clickable button per channel
+    - tests/ux-audit.test.ts > keyboard shortcut table covers every documented verb exactly once
+    - tests/ux-audit.test.ts > keyboard shortcut table maps every panel shortcut to a real bottom-panel id
+
+✗ CURED (10) — ratchet: remove from suite-expectations.json:
+    - tests/asio-host.test.ts > ASIO SDK vendor gate (scripts/vendor-asio.mjs) records provenance and hashes without committing SDK bytes
+    - tests/intent-master-decisions.test.ts > planMixProfile — master loudness bound (Phase 2 slice 3) > a loud artist lifts the target but never past the trim limit
+    - tests/intent-master-decisions.test.ts > planMixProfile — master loudness bound (Phase 2 slice 3) > the loudest artist still respects the cap (Excision -6 would need 8 dB)
+    - tests/intent-model-loader.test.ts > loader registration + timeouts + breaker a scripted model registers the resolver provider and routes through it
+    - tests/intent-sft-golden.test.ts > intent SFT dataset (LLM-as-sound-engineer distillation) every golden pair re-routes to the EXACT same canonical action
+    - tests/intent-wrongkind-wave.test.ts > wrongkind wave — teacher routing SK preset asks accept inflected targets (na leade / na basu)
+    - tests/model-packs.test.ts > model pack registry file hashes mirror the dev-time fetch manifest (single source of truth)
+    - tests/model-packs.test.ts > model pack registry manifestContent parses and pins the loader contract
+    - tests/preference-evaluation.test.ts > Producer DNA held-out evaluation > compares future preference predictions against the captured global selector
+    - tests/preset-loudness-audit.test.ts > preset gain sanity > clamp-hits equal the pinned inventory (fix the family/level, don't cap)
+EXIT:0
