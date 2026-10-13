@@ -180,11 +180,14 @@ formantmi zachovanými — štandard spevu od 90-tych rokov, zvládnuteľný v
 
 ---
 
-## KROK 4 — Marketing surface (lacné, po kroku 2)
+## KROK 4 — Marketing surface — STAV (2026-10-13): OVERENÉ, bez nového kódu
 
-- **Embed demo**: nahrávka humu → skladba — rovnaký embed flow ako
-  Interactive Beats; ľudia počujú SVOJ hlas v produkcii.
-- **Gallery**: "nahrané humom" badge — sociálny dôkaz, že to funguje.
+- **Embed**: `src/embed/energy.ts` už zaraďuje `vocalchop` do LEAD_KINDS —
+  hum-built skladba s Voice Lead trackom sa publikuje existujúcim flowom a
+  embed ju prehrá s energy sliderom. Žiadny kód netreba.
+- **Gallery "nahrané humom" badge**: otvorené — vyžaduje project-level
+  provenance flag (producer brief) a gallery UI zmeny; navrhnúť ako súčasť
+  budúcej gallery vlny.
 
 ---
 
