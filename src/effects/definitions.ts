@@ -281,49 +281,44 @@ export const EFFECT_ORDER: EffectType[] = [
   "rezonans",
 ];
 
+/**
+ * The FIRST menu layer — three devices per area, fifteen total.
+ *
+ * The Add Effect select used to open with 43 entries across eleven optgroups,
+ * which made "which one do I want" a scroll instead of a glance. These fifteen
+ * are the beatmaking daily set: shape the tone, control the level, give it
+ * character, move it in stereo, place it in a room. Everything else —
+ * mastering suites (ZENIT, APEX, SPAN, TIDE, PRUD), specialty motion
+ * (stutter, comb, vowel), spectral tools (PORTAL, granular freeze) — keeps its
+ * own optgroup in the "MORE ..." layer, and nothing is removed from the menu:
+ * `ADDITIONAL_EFFECT_GROUPS` derives from `!DEVICE_MENU_EFFECTS`, so every
+ * effect stays reachable one group further down.
+ *
+ * `tests/effects-essential-kit.test.ts` pins the count and the composition;
+ * `tests/plugin-functional-audit.test.ts` pins that all effects stay
+ * discoverable exactly once.
+ */
 export const CORE_EFFECT_ORDER: EffectType[] = [
+  // TONE — shape the spectrum.
   "eq",
   "msEq",
   "multiband",
-  "haasWidener",
-  // The four fundamentals. Compressor, saturation, delay and reverb used to
-  // sit only in the "MORE ..." optgroups, which put the most basic devices a
-  // beatmaker needs behind the second menu layer while character effects
-  // (tapeSat, vocoder, drumBuss) stayed in the first one.
+  // DYNAMICS — control the level.
   "compressor",
+  "limiter",
+  "gate",
+  // CHARACTER — make it sound like something.
   "saturation",
+  "tapeSat",
+  "drumBuss",
+  // MOVEMENT — put it in motion and in stereo.
+  "haasWidener",
+  "chorus",
+  "tremolo",
+  // SPACE — echo, then room.
   "delay",
   "reverb",
-  "transient",
-  "limiter",
-  "stepGate",
-  "svFilter",
-  "flanger",
-  "tremolo",
-  "autowah",
-  "stutter",
-  "comb",
-  "vowel",
   "duckDelay",
-  "multiTapDelay",
-  "portal",
-  "tapeSat",
-  "wowFlutter",
-  "vocoder",
-  "reverseSwell",
-  "granularFreeze",
-  "drumBuss",
-  "bassBuss",
-  "utility",
-  "gate",
-  "sidechain",
-  "chorus",
-  "zenit",
-  "apeks",
-  "sirka",
-  "prud",
-  "bassHarmonic",
-  "skrutka",
 ];
 
 export const FLAGSHIP_EFFECT_ORDER: EffectType[] = ["fxeq", "ultina", "ozvena", "kaskada", "morphdynamics", "rezonans"];

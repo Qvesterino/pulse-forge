@@ -1,13 +1,23 @@
 /**
- * Real-browser gate for the ESSENTIAL KIT dock.
+ * Real-browser gate for the ESSENTIAL KIT dock and the trimmed Add Effect menu.
  *
  * Unit tests prove the slot table and the command. This proves the SURFACE:
  * that the dock renders in the devices panel, that LOAD KIT inserts the five
- * fundamentals in signal-flow order, and that one click is one undo step.
+ * fundamentals in signal-flow order, that one click is one undo step, that a
+ * multiview drag reaches the document, and that the first menu layer is fifteen
+ * devices while every effect stays offered exactly once.
  *
- * Usage: node scripts/verify-essential-kit.mjs
+ * Run with vite-node so the effect registry can be imported as the single
+ * source of truth for the total — a hardcoded count here would rot the same
+ * way the literal totals rotted in zenit-composite.test.ts.
+ *
+ * Usage: npx vite-node scripts/verify-essential-kit.mjs
  */
 import { chromium } from "playwright-core";
+import { EFFECT_META } from "../src/effects/definitions";
+import { CORE_EFFECT_GROUPS, CORE_EFFECT_ORDER, FLAGSHIP_EFFECT_ORDER, ADDITIONAL_EFFECT_GROUPS } from "../src/effects/registry";
+
+const TOTAL_EFFECTS = Object.keys(EFFECT_META).length;
 
 const URL = process.env.KYX_URL ?? "http://127.0.0.1:5173/";
 const TIMEOUT = Number(process.env.KYX_TIMEOUT ?? 120000);
@@ -36,7 +46,18 @@ try {
     await page.waitForTimeout(3000);
   }
   // DEV is the devices panel in the bottom dock; the kit lives inside it.
-  await page.locator(".dock-tab", { hasText: "DEV" }).first().click();
+  // A timeout here means the studio shell never appeared; capture what WAS on
+  // screen rather than guessing from the stack trace.
+  try {
+    await page.waitForSelector(".dock-tab", { timeout: 90000 });
+    await page.locator(".dock-tab", { hasText: "DEV" }).first().click({ timeout: 30000 });
+  } catch (err) {
+    await page.screenshot({ path: ".artifacts/kit-gate-failure.png" }).catch(() => {});
+    const seen = await page
+      .$eval("body", (e) => e.innerText.slice(0, 400))
+      .catch(() => "(body unreadable)");
+    throw new Error(`studio shell never opened: ${err.message}\nON SCREEN: ${seen}`);
+  }
   await page.waitForSelector(".essential-kit-dock", { timeout: TIMEOUT });
 
   const dock = await page.$(".essential-kit-dock");
@@ -48,6 +69,60 @@ try {
     "five slots in signal-flow order",
     JSON.stringify(slotLabels) === JSON.stringify(["EQ", "DYNAMICS", "SATURATION", "DELAY", "REVERB"]),
     slotLabels.join(" → "),
+  );
+
+  // THE TRIMMED MENU — the +FX select in the dock must open on fifteen devices
+  // in five groups of three, with everything else one layer down.
+  // The registry is the source of truth for "what should be offered"; the DOM
+  // is the source of truth for "what IS offered". Comparing them in both
+  // directions is what catches a device that quietly stopped being insertable.
+  const menu = await page.$eval("select.devices-add-effect", (sel) => {
+    const groups = Array.from(sel.querySelectorAll("optgroup")).map((g) => ({
+      label: g.label,
+      items: Array.from(g.children).map((o) => o.textContent.trim()),
+    }));
+    // The select carries a `value=""` "+ FX" placeholder that is not a device.
+    // Counting it makes the DOM total read one higher than the registry. Note
+    // that a CSS `option[value]` selector does NOT help: it matches an empty
+    // value too, so the filter has to test the property in JS.
+    return {
+      total: sel.options.length,
+      real: Array.from(sel.options).filter((o) => o.value).length,
+      groups,
+    };
+  });
+  // `^(A|B|C)`, not `^A|B|C$`: the alternation binds looser than the anchors,
+  // so the loose form also matches "MORE DYNAMICS" and silently counts the
+  // second layer as the first.
+  const AREA_LABELS = new Set(["TONE", "DYNAMICS", "CHARACTER", "MOVEMENT", "SPACE"]);
+  const areaGroups = menu.groups.filter((g) => AREA_LABELS.has(g.label));
+  const moreLayer = menu.groups.filter((g) => g.label.startsWith("MORE"));
+
+  check(
+    "the first menu layer is fifteen devices, three per area",
+    areaGroups.length === 5 && areaGroups.every((g) => g.items.length === 3) &&
+      areaGroups.reduce((n, g) => n + g.items.length, 0) === CORE_EFFECT_ORDER.length,
+    areaGroups.map((g) => `${g.label}(${g.items.length})`).join(" "),
+  );
+  check(
+    "the mastered-away devices are one layer down, not gone",
+    moreLayer.some((g) => g.items.includes("ZENIT")) && moreLayer.some((g) => g.items.includes("PORTAL")),
+    moreLayer.map((g) => `${g.label}(${g.items.length})`).join(" "),
+  );
+  check(
+    "every registered effect is offered exactly once",
+    menu.real === TOTAL_EFFECTS && new Set(menu.groups.flatMap((g) => g.items)).size === TOTAL_EFFECTS,
+    `${menu.real} real options (+${menu.total - menu.real} placeholder) vs ${TOTAL_EFFECTS} in EFFECT_META`,
+  );
+  check(
+    "the menu matches the registry grouping, group for group",
+    JSON.stringify(menu.groups.map((g) => g.items.length)) ===
+      JSON.stringify([
+        ...CORE_EFFECT_GROUPS.map((g) => g.types.length),
+        FLAGSHIP_EFFECT_ORDER.length,
+        ...ADDITIONAL_EFFECT_GROUPS.map((g) => g.types.length),
+      ]),
+    menu.groups.map((g) => `${g.label}(${g.items.length})`).join(" "),
   );
 
   const variantCount = await page.$$eval(".essential-kit-variant", (n) => n.length);

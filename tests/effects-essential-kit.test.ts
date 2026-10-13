@@ -9,7 +9,14 @@ import {
   essentialKitVariant,
 } from "../src/effects/essentialKit";
 import { CORE_EFFECT_PRESETS } from "../src/effects/presets";
-import { ADDITIONAL_EFFECT_GROUPS, CORE_EFFECT_GROUPS, CORE_EFFECT_ORDER, EFFECT_DEFS } from "../src/effects/registry";
+import {
+  ADDITIONAL_EFFECT_GROUPS,
+  CORE_EFFECT_GROUPS,
+  CORE_EFFECT_ORDER,
+  EFFECT_DEFS,
+  FLAGSHIP_EFFECT_ORDER,
+} from "../src/effects/registry";
+import { EFFECT_ORDER as allEffectTypes } from "../src/effects/definitions";
 import { applyEssentialKit } from "../src/commands/effectParams";
 import { setEffectParam } from "../src/commands/commands";
 import { effectEditorSpec } from "../src/ui/effectEditorRegistry";
@@ -96,9 +103,43 @@ describe("ESSENTIAL_KIT — the menu these devices live in", () => {
     expect(overlap).toEqual([]);
   });
 
-  it("every core group is non-empty", () => {
-    for (const group of CORE_EFFECT_GROUPS) expect(group.types.length, group.key).toBeGreaterThan(0);
-    expect(CORE_EFFECT_ORDER.length).toBeGreaterThanOrEqual(37);
+  it("the first menu layer is exactly fifteen devices, three per area", () => {
+    // The point of the trim is the COUNT, so a count assertion is the one that
+    // has to fail when somebody adds a sixteenth "just in case". 3/3/3/3/3 also
+    // keeps every optgroup the same height, so the select reads as a grid.
+    expect(CORE_EFFECT_ORDER).toHaveLength(15);
+    for (const group of CORE_EFFECT_GROUPS) expect(group.types.length, group.key).toBe(3);
+  });
+
+  it("keeps the everyday beatmaking set in reach and pushes mastering out", () => {
+    const firstLayer = CORE_EFFECT_GROUPS.flatMap((group) => group.types);
+    // Present every day: shaping, level, character, stereo, echo, room.
+    for (const type of [
+      "eq",
+      "msEq",
+      "compressor",
+      "limiter",
+      "gate",
+      "saturation",
+      "tapeSat",
+      "drumBuss",
+      "delay",
+      "reverb",
+    ])
+      expect(firstLayer, `${type} should be in the first layer`).toContain(type);
+    // Mastering suites and specialty motion belong one layer down — the trim
+    // is about what is in reach, never about deleting a device.
+    for (const type of ["zenit", "apeks", "sirka", "prud", "stutter", "comb", "vowel", "portal", "granularFreeze"])
+      expect(firstLayer, `${type} should not crowd the first layer`).not.toContain(type);
+    expect(typesInMore, "mastering suite vanished instead of moving").toContain("zenit");
+  });
+
+  it("keeps every effect discoverable exactly once", () => {
+    // The trim must be a promotion, never a deletion: CORE + FLAGSHIP + MORE is
+    // what FxAddPopover and the mixer batch bar enumerate.
+    const seen = [...CORE_EFFECT_ORDER, ...FLAGSHIP_EFFECT_ORDER, ...typesInMore];
+    expect(seen).toHaveLength(allEffectTypes.length);
+    expect(new Set(seen).size).toBe(seen.length);
   });
 });
 
