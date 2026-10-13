@@ -3644,20 +3644,22 @@ built.
 Everything below is **NOT VERIFIED** and cannot be settled by jsdom or by a headless
 assertion. Each line names the gesture and the observable.
 
-| #   | Check                                             | How                                                        | What "pass" means                                                    |
-| --- | ------------------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------- |
-| 1   | Take-lane comp drag then click (item 1)           | Record a take, drag a comp range, release, click inside it | The range survives; `setActiveAudioTake` does not overwrite it       |
-| 2   | Crossfade on a locked clip (item 2)               | Lock two clips, press `X` over them                        | Decide the contract, then confirm the behaviour matches it           |
-| 3   | Toolbar vs keyboard on a multi-selection (item 3) | Select 2 clips, press toolbar `DEL`; undo; press `Delete`  | Both understood by the user, or they agree                           |
-| 4   | Fade handles at extreme zoom                      | Bounce a zone, zoom to 8x, drag a fade to each clip edge   | No handle escapes the clip box; no 1-px dead zone                    |
-| 5   | **Listening**: fade + crossfade shapes            | Bounce a zone, set fadeIn 0.5 s, fadeOut 2 s               | No click at either edge; crossfade smooth, not a dip                 |
-| 6   | **Listening**: ripple tail spacing                | Build a gapped arrangement, ripple-delete the first clip   | The gaps are audibly preserved, not collapsed                        |
-| 7   | **Listening**: wow & flutter below 0.5 Hz         | Sweep the rate under 0.5 Hz                                | The readout does not promise more than the buffer delivers (item 5)  |
-| 8   | **Listening**: split during playback              | Play, split a clip under the playhead                      | No orphaned voice; the engine restarts the frozen source             |
-| 9   | Grid OFF / Shift-suspend (item 10)                | Marker-free fixture, drag far from every edge              | The clip lands where the pointer is, un-snapped                      |
-| 10  | Unload recovery                                   | Edit, close the tab within 800 ms, reopen                  | `Recover` restores the edit; no duplicate offer after a clean save   |
-| 11  | Long-session soak                                 | 30 min of edit + play                                      | No heap growth; no listener accumulation (wave 5 measured 10 cycles) |
-| 12  | Mobile / narrow viewport editing                  | 390x844, touch a clip                                      | Hit targets >= 44 px; no overlay eats a press (the D14/D15 class)    |
+| #   | Check                                             | How                                                                                                          | What "pass" means                                                                                                                                         |
+| --- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Take-lane comp drag then click (item 1)           | Record a take, drag a comp range, release, click inside it                                                   | The range survives; `setActiveAudioTake` does not overwrite it                                                                                            |
+| 2   | Crossfade on a locked clip (item 2)               | Lock two clips, press `X` over them                                                                          | Decide the contract, then confirm the behaviour matches it                                                                                                |
+| 3   | Toolbar vs keyboard on a multi-selection (item 3) | Select 2 clips, press toolbar `DEL`; undo; press `Delete`                                                    | Both understood by the user, or they agree                                                                                                                |
+| 4   | Fade handles at extreme zoom                      | Bounce a zone, zoom to 8x, drag a fade to each clip edge                                                     | No handle escapes the clip box; no 1-px dead zone                                                                                                         |
+| 5   | **Listening**: fade + crossfade shapes            | Bounce a zone, set fadeIn 0.5 s, fadeOut 2 s                                                                 | No click at either edge; crossfade smooth, not a dip                                                                                                      |
+| 6   | **Listening**: ripple tail spacing                | Build a gapped arrangement, ripple-delete the first clip                                                     | The gaps are audibly preserved, not collapsed                                                                                                             |
+| 7   | **Listening**: wow & flutter below 0.5 Hz         | Sweep the rate under 0.5 Hz                                                                                  | The readout does not promise more than the buffer delivers (item 5)                                                                                       |
+| 8   | **Listening**: split during playback              | Play, split a clip under the playhead                                                                        | No orphaned voice; the engine restarts the frozen source                                                                                                  |
+| 9   | Grid OFF / Shift-suspend (item 10)                | Marker-free fixture, drag far from every edge                                                                | The clip lands where the pointer is, un-snapped                                                                                                           |
+| 10  | Unload recovery                                   | Edit, close the tab within 800 ms, reopen                                                                    | `Recover` restores the edit; no duplicate offer after a clean save                                                                                        |
+| 11  | Long-session soak                                 | 30 min of edit + play                                                                                        | No heap growth; no listener accumulation (wave 5 measured 10 cycles)                                                                                      |
+| 12  | Mobile / narrow viewport editing                  | 390x844, touch a clip                                                                                        | Hit targets >= 44 px; no overlay eats a press (the D14/D15 class)                                                                                         |
+| 13  | **Live vs offline parity, wave-20 verbs**         | Slip / stretch / crossfade / slice / strip silence, then compare playback against an export of the same edit | The live path matches the offline render. Wave 20 measured the **offline** render only; spec 12 does this for take lanes, nothing does it for these seven |
+| 14  | **Stretch pitch shift**                           | Stretch a clip to 2x length and listen                                                                       | An octave drop is audible. Wave 20 measured it (220 Hz -> 110 Hz); decide whether that is intended for the plain stretch verb                             |
 
 ---
 
@@ -3768,3 +3770,94 @@ existed.
 
 Product source was **not** modified in this wave. Only the report and the new spec
 land, so there is no regression surface beyond the suite itself.
+
+---
+
+# Wave 20 - 2026-10-13 - the gate clause wave 19 under-applied
+
+Wave 19 marked slip, stretch, crossfade, mute, consolidate, strip-silence and slice
+**VERIFIED**. It proved the state change, the history and the persistence. But the
+objective's acceptance gate says more than that:
+
+> A tool is VERIFIED only if its user interaction, intended state change, history
+> behavior and persistence are exercised successfully; **audio-affecting edits also
+> require applicable rendering verification.**
+
+So those seven verdicts were incomplete by the objective's own definition. A clip can
+carry a perfectly correct `stretchRate` or slip offset and still render the wrong audio,
+and **no jsdom test in this repository can catch it** - every render test under `tests/`
+stubs `OfflineAudioContext`, and none calls `startRendering`.
+
+`tests/e2e/20-audio-edit-render.spec.ts` closes that gap: real Chromium, a real
+`OfflineAudioContext`, the same `renderProject(doc, SampleBank, ...)` the export path
+uses, and a Goertzel single-frequency probe so each assertion can name **which source is
+audible** rather than only that "something changed". Two tones (220 Hz, 550 Hz) plus a
+frequency-ramp source stand in for the material.
+
+**Result: 7 verbs render-verified, 0 defects found, 3 behaviour facts recorded that the
+documented contract did not state.**
+
+## §I - What the render actually proved
+
+| Verb          | Verified in the rendered audio                                                                                                                                                                                                                                                                                                                                                           |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mute          | The muted clip is **silent**, not quieter (RMS < 0.01), while its neighbour is unaffected. Measured in isolation: the first attempt probed RMS at 4.5 s inside an _overlapping_ pair, where the unmuted clip is still sounding - the 550 Hz probe correctly read "mute works" while RMS read 0.09 and looked like a failure. **An energy probe cannot tell you which clip contributed.** |
+| Slip          | Same `startBar`, same `lengthBars`, **different source heard**: a ramp that is 220 Hz for its first 2 s and 550 Hz after renders as 220 Hz unslipped and 550 Hz after a 2 s slip. This is the only way to distinguish slip from move - a steady tone cannot.                                                                                                                             |
+| Stretch       | The clip renders, and the render reveals that `stretchRate` is a **resample, not a pitch-preserving phase vocoder**: at rate 0.5 a 220 Hz source arrives at 110 Hz. Asserting on 220 alone reported "rendered silence" at 0.0014 - which was the spec being wrong, not the verb.                                                                                                         |
+| Crossfade     | **Equal power, measured, not assumed**: summed power across the overlap stays above 80% of solo power. Falsified - see below.                                                                                                                                                                                                                                                            |
+| Slice         | The segments render, and D1's fade clamp holds per segment. The layout is a **clip row appended after the original**, not an in-place cut - see §J.                                                                                                                                                                                                                                      |
+| Strip silence | Only the requested segments survive, and the first kept segment is the right material.                                                                                                                                                                                                                                                                                                   |
+
+## §J - Three behaviours the documentation does not state
+
+1. **`sliceAudioClipToArrangement` keeps the original clip.** It lays the segments out
+   as a row _after_ it (`[...(doc.arrangement.audioClips ?? []), ...newClips]`), starting
+   half a bar past the original's end and stepping by (segment + 0.25 bar). My first
+   assertion assumed an in-place cut and failed on contiguity; the geometry in the
+   failure message - `[0, 4]` then `4.5` - is what exposed it. This matches the
+   command's own docstring ("SlicerX/PT-style: transient -> clip row") but **not** its
+   inline guard comment, which says "Slicing DELETES the clip and writes fragments in its
+   place". The comment is the stated reason for `assertClipEditable`, so the guard is
+   justified by a description of the behaviour that is not what the code does. Worth a
+   one-line comment fix; the guard itself is still right, since the verb derives new
+   clips from a locked source.
+
+2. **Stretching shifts pitch.** `stretchAudioClip` is documented as "length AND rate in
+   ONE undo step", which is accurate, but nothing tells the user that rate is a resample
+   rate. `fitAudioClipTempo` writes `stretchMode: "stretch"`, and the slice code
+   distinguishes the two (`preservingStretch`), so a pitch-preserving path exists for
+   tempo-fitting. The plain stretch verb does not use it.
+
+3. **A 12 s fixture buffer is required for a 4-bar clip.** The empty template is 120 BPM,
+   so one bar is 2 s. The first fixture used 4 s buffers and the control caught it -
+   `baselineLowLate` measured 0.0005 at t=4.5 s because the source had ended and the rest
+   of the clip was silence. **A control that only asserts "something was heard" would
+   have missed exactly that**; asserting that the material is still present at the END of
+   the clip is what caught it.
+
+## §K - Falsification
+
+The spec passed 40.6 s after the fixture corrections, so it was falsified before being
+believed:
+
+| #   | Mutation                                                  | Result                                                                                                                                                                                                                   |
+| --- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| F1  | Mute **nothing** (`setAudioClipsMute(pairDoc, [], true)`) | **caught** - "a muted clip is still audible", 550 Hz measured 0.127 against a 0.005 ceiling                                                                                                                              |
+| F2  | Force `curve: "linear"` on the crossfade                  | **caught** - "the crossfade dipped in the overlap", summed power 0.0082 against the required 0.0130. That is the predicted ~3 dB of a linear crossfade, so the equal-power assertion discriminates on the thing it names |
+
+Both mutations were reverted and the spec re-run green (49.6 s).
+
+## Wave 20 gates
+
+| gate                                                     | result                                                                                                                     |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `tests/e2e/20-audio-edit-render.spec.ts` (new, Chromium) | **1 passed** (49.6 s, real OfflineAudioContext)                                                                            |
+| falsification F1 / F2                                    | both caught, both reverted, re-run green                                                                                   |
+| `npx prettier --check`                                   | clean                                                                                                                      |
+| `npx tsc --noEmit`                                       | this file clean; the repo-wide run still reports one pre-existing error in an untracked file owned by a concurrent session |
+
+**Still NOT verified, and stated as such:** live-path parity for these seven verbs. Spec
+12 measures offline-vs-live for take lanes; this wave measures the **offline render
+only**. Whether the live scheduler produces the same audio for a slipped, stretched,
+crossfaded or sliced clip is **unverified**, and remains on the manual listening
+checklist.
