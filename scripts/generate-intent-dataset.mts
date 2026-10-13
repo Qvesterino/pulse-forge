@@ -2268,6 +2268,28 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
   en.push("raise the vocal");
   en.push("mute the vocal");
   en.push("more delay on the vocal and less bass");
+  // ── round 5: abstain clusters — compound (13/20), arrange (7/8),
+  // preset (4/4), query (3/7) val rows the model won't attempt ──
+  sk.push("zniz bicie a zvys spev");
+  sk.push("mute the lead a zvys pady");
+  sk.push("stis basu a zvys bicie");
+  sk.push("nastav spev na 70% a zniz bicie");
+  en.push("mute the lead and raise the pads");
+  en.push("turn down the chords and turn up the vocal");
+  en.push("set the bass to 40% and set tempo to 126");
+  en.push("raise the hats and lower the master");
+  sk.push("duplicituj drop");
+  sk.push("zdvojnásob chorus");
+  sk.push("skráti intro na 2 takty");
+  sk.push("predlži drop na 12 taktov");
+  en.push("duplicate the verse");
+  en.push("shorten the drop to 4 bars");
+  en.push("extend the bridge to 8 bars");
+  sk.push("načítaj preset warm sub na basu");
+  sk.push("load the pluck preset on the lead");
+  en.push("apply the reese preset to the bass");
+  sk.push("ake fx su na basu");
+  sk.push("aky je swing");
   en.push("more delay send on the vocal and raise the drums");
   sk.push("refren posobi prazdno");
   sk.push("intro posobi prazdno");
