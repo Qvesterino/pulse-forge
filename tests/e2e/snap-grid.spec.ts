@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "playwright/test";
 
-import { dockTabLocator } from "./_helpers";
+import { openArrangement } from "./_studio";
 
 /**
  * §11 SNAP AND GRID — "look for precision drift, off-by-one errors, and
@@ -26,24 +26,6 @@ import { dockTabLocator } from "./_helpers";
  * See wave 13 in EDITOR_QUALITY_AUDIT_REPORT.md.
  */
 
-const STUDIO_TIMEOUT = 60_000;
-
-async function openStudio(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    window.localStorage.setItem("pf-onboarded", "1");
-    window.localStorage.setItem("pf-tour-v1", "1");
-  });
-  await page.goto("/", { waitUntil: "domcontentloaded", timeout: 45_000 });
-  await page
-    .getByRole("button", { name: /start here/i })
-    .first()
-    .click({ timeout: STUDIO_TIMEOUT });
-  await dockTabLocator(page, "ARR").waitFor({ state: "attached", timeout: STUDIO_TIMEOUT });
-  await dockTabLocator(page, "ARR").click();
-  await page.locator(".arr-lane").first().waitFor({ state: "attached", timeout: STUDIO_TIMEOUT });
-  await page.waitForTimeout(600);
-}
-
 /** Committed left offset in px, straight from the rendered clip. */
 async function leftPx(page: Page, index: number): Promise<number> {
   const raw = await page
@@ -62,7 +44,7 @@ test("a dragged clip lands on the grid when snapping, and misses it when not", a
   const jsErrors: string[] = [];
   page.on("pageerror", (e) => jsErrors.push(`pageerror: ${e.message}`));
 
-  await openStudio(page);
+  await openArrangement(page);
 
   // Fixture: the template's single clip plus one copy, four bars apart.
   await page.locator(".arr-clip").first().click();
@@ -79,6 +61,10 @@ test("a dragged clip lands on the grid when snapping, and misses it when not", a
   /** Drag the COPY by 65 px — deliberately not a whole number of bars. */
   const dragCopy = async (pxPerBar: number, modifiers: { shift?: boolean } = {}): Promise<number> => {
     const target = page.locator(".arr-clip").nth(1);
+    // Scroll into view BEFORE measuring — see the note in the chaos chain's
+    // drag helper: boundingBox() is layout space, page.mouse is viewport space,
+    // and an arrangement lane parked below the fold makes every gesture a no-op.
+    await target.scrollIntoViewIfNeeded();
     const box = (await target.boundingBox())!;
     const startX = box.x + Math.min(24, box.width / 2);
     const startY = box.y + box.height / 2;

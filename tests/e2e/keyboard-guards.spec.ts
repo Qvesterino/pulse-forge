@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "playwright/test";
 
-import { dockTabLocator } from "./_helpers";
+import { openArrangement } from "./_studio";
 
 /**
  * §18 KEYBOARD SHORTCUTS vs FOCUSED CONTROLS — "destructive shortcuts must not
@@ -19,31 +19,13 @@ import { dockTabLocator } from "./_helpers";
  * key DOES remove a clip once the field has lost focus.
  */
 
-const STUDIO_TIMEOUT = 60_000;
-
-async function openStudio(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    window.localStorage.setItem("pf-onboarded", "1");
-    window.localStorage.setItem("pf-tour-v1", "1");
-  });
-  await page.goto("/", { waitUntil: "domcontentloaded", timeout: 45_000 });
-  await page
-    .getByRole("button", { name: /start here/i })
-    .first()
-    .click({ timeout: STUDIO_TIMEOUT });
-  await dockTabLocator(page, "ARR").waitFor({ state: "attached", timeout: STUDIO_TIMEOUT });
-  await dockTabLocator(page, "ARR").click();
-  await page.locator(".arr-lane").first().waitFor({ state: "attached", timeout: STUDIO_TIMEOUT });
-  await page.waitForTimeout(600);
-}
-
 const clipCount = (page: Page) => page.locator(".arr-clip").count();
 
 test("destructive shortcuts are inert while a panel field has focus", async ({ page }) => {
   const jsErrors: string[] = [];
   page.on("pageerror", (e) => jsErrors.push(`pageerror: ${e.message}`));
 
-  await openStudio(page);
+  await openArrangement(page);
 
   // The SECS field only exists for a selected clip — that is the precondition
   // under which a destructive key would have something to destroy.

@@ -1,5 +1,7 @@
 import { expect, test, type Locator, type Page } from "playwright/test";
 
+import { openArrangement } from "./_studio";
+
 /**
  * §42 REAL-USER CHAOS TEST — the editing chain, end to end, in a real Chromium
  * against a real production build.
@@ -20,47 +22,20 @@ import { expect, test, type Locator, type Page } from "playwright/test";
  * exactly why an earlier probe sat waiting for a selector that could not exist.
  */
 
-const STUDIO_TIMEOUT = 60_000;
-
 /** A failed sub-resource fetch is not a JavaScript error; a stack trace is. */
 function isNoise(message: string): boolean {
   return /net::ERR_CONNECTION_REFUSED|Failed to load resource/.test(message);
 }
 
+/**
+ * Boot is delegated to `_studio.openArrangement` (returning user, tour
+ * dismissed, ARR dock tab open, transient toasts cleared). The D14 guard below
+ * stays HERE, in this spec, because it is a claim about this chain: the
+ * intensity strip must be ON, the default, so the chain exercises the real
+ * configuration instead of a doctored one.
+ */
 async function openStudio(page: Page): Promise<void> {
-  await page.goto("/", { waitUntil: "domcontentloaded", timeout: 45_000 });
-  // Returning user: skip the landing page the way the app itself decides, and
-  // dismiss the first-run coach tour. `OnboardingTour` persists dismissal as
-  // localStorage["pf-tour-v1"] === "1" (src/ui/OnboardingTour.tsx:37) — setting
-  // the flag is deterministic, where clicking SKIP is not: the visible label is
-  // "SKIP" but the accessible name is "Skip tour", and the overlay is modal
-  // over the arrangement, so a missed click silently absorbs every drag.
-  await page.addInitScript(() => {
-    window.localStorage.setItem("pf-onboarded", "1");
-    window.localStorage.setItem("pf-tour-v1", "1");
-  });
-  await page.reload({ waitUntil: "domcontentloaded", timeout: 45_000 });
-
-  const start = page.getByRole("button", { name: /start here/i }).first();
-  await start.waitFor({ state: "visible", timeout: STUDIO_TIMEOUT });
-  await start.click();
-
-  await page.locator(".dock-tabs").first().waitFor({ state: "attached", timeout: STUDIO_TIMEOUT });
-  const arr = page.locator('.dock-tabs button[aria-label="Toggle arrangement and scenes"]').first();
-  await arr.click();
-  await page.locator(".arr-lane").first().waitFor({ state: "attached", timeout: STUDIO_TIMEOUT });
-
-  // Belt and braces: if a tour is showing anyway, it is modal over the
-  // arrangement and would swallow the pointer instead of moving a clip.
-  const skipTour = page.getByRole("button", { name: "Skip tour" }).first();
-  if (await skipTour.isVisible().catch(() => false)) await skipTour.click();
-  await page.waitForTimeout(300);
-
-  // D14 REGRESSION GUARD: the intensity strip is ON by default
-  // (`useState(true)`) and is a real editing surface — this spec must exercise
-  // the DEFAULT configuration, not a doctored one. An earlier revision turned
-  // INT off here to get a drag through, which is exactly the shape of a test
-  // that hides the defect it exists to catch.
+  await openArrangement(page);
   const int = page.getByRole("button", { name: "INT" }).first();
   expect(await int.getAttribute("aria-pressed"), "INT must be on for this chain").toBe("true");
 }
@@ -101,6 +76,14 @@ async function clipIds(page: Page, selectedOnly = false): Promise<string[]> {
 
 /** A pointer drag with real movement steps — the gesture path, not a click. */
 async function drag(page: Page, el: Locator, dx: number): Promise<void> {
+  // Scroll the target into the viewport FIRST. `boundingBox()` reports layout
+  // coordinates even for an element that is below the fold, and `page.mouse`
+  // needs viewport coordinates: measured 2026-10-13, the arrangement lane sat
+  // at y=749 in a 720px viewport, so the drag origin was off-screen,
+  // elementFromPoint answered `none`, and every gesture silently did nothing.
+  // The spec still failed loudly, but for the wrong reason — which is worse,
+  // because it points at the editor instead of at the test.
+  await el.scrollIntoViewIfNeeded();
   const b = await el.boundingBox();
   if (!b) throw new Error("no box to drag");
   const cx = b.x + Math.min(30, Math.max(6, b.width / 2));
@@ -138,6 +121,11 @@ test("the editing chain stays coherent and the console stays clean", async ({ pa
   // page what element receives the pointer at the drag origin — the same
   // question that surfaced the dock resize handle earlier.
   const first = page.locator(".arr-clip").first();
+  // Same reason as the drag helper: this probe asks elementFromPoint at the
+  // clip's centre, and that question is meaningless while the clip is parked
+  // below the fold — the answer is `none`, which reads like "an invisible
+  // overlay is stealing the click" and is not the same finding at all.
+  await first.scrollIntoViewIfNeeded();
   const b = (await first.boundingBox())!;
   const probe = await page.evaluate(
     ({ x, y }) => {
@@ -234,7 +222,9 @@ test("the editing chain stays coherent and the console stays clean", async ({ pa
   const beforeSplit = await page.locator(".arr-clip").count();
   await page.getByRole("button", { name: "CUT", exact: true }).click();
   await page.waitForTimeout(200);
-  const splitBox = (await page.locator(".arr-clip").first().boundingBox())!;
+  const splitTarget = page.locator(".arr-clip").first();
+  await splitTarget.scrollIntoViewIfNeeded();
+  const splitBox = (await splitTarget.boundingBox())!;
   await page.mouse.click(splitBox.x + splitBox.width * 0.5, splitBox.y + splitBox.height / 2);
   await page.waitForTimeout(400);
   const afterSplit = await page.locator(".arr-clip").count();
@@ -360,8 +350,11 @@ test("the editing chain stays coherent and the console stays clean", async ({ pa
   // the playhead starts at bar 0 — where, after those edits, there may be no
   // clip at all. "A clip is playing" is only a meaningful claim about a clip
   // the playhead is actually inside.
-  const firstBox = (await page.locator(".arr-clip").first().boundingBox())!;
-  const rulerBox = (await page.locator(".arr-ruler").first().boundingBox())!;
+  const firstTarget = page.locator(".arr-clip").first();
+  const rulerTarget = page.locator(".arr-ruler").first();
+  await firstTarget.scrollIntoViewIfNeeded();
+  const firstBox = (await firstTarget.boundingBox())!;
+  const rulerBox = (await rulerTarget.boundingBox())!;
   await page.mouse.click(firstBox.x + firstBox.width / 2, rulerBox.y + rulerBox.height / 2);
   await page.waitForTimeout(400);
   const seeked = await playheadLeft();

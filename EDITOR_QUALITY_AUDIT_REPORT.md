@@ -2536,6 +2536,81 @@ changes what those specs assert.
 `tests/e2e/14-recording-soak.spec.ts` - are in an **untracked** file owned by the
 concurrent recording session, and were left alone.
 
+## Wave 15 - 2026-10-11 - migrating the specs, and the bug that was in the TEST
+
+Four browser specs moved onto `_studio.ts` (chaos chain, keyboard guards, snap
+grid, ripple). The point was never DRY: each one carried its own copy of four
+boot obstacles, and each obstacle fails in a way that LOOKS like an editor
+defect.
+
+**No assertion changed.** Each spec was re-run after its migration and reports
+the same measurements it did before: ripple `shift=120px`, snap `7 bars` and
+`5 bars`, keyboard `control: 1 -> 0`, sweep `blocked=0` at three viewports,
+chaos `chain complete: 3 clips; jsErrors=0`.
+
+### What the migration exposed: the tests were measuring off-screen pixels
+
+The first run after migrating failed in two specs. The geometry explains why:
+
+```
+clip      y=755     ← in a 720px viewport: BELOW THE FOLD
+lane      y=749
+intensity y=809
+elementFromPoint at the clip's centre = "none"
+[snap] drag before=120 after=120       ← the drag did nothing at all
+```
+
+`boundingBox()` returns **layout** coordinates even for an element that is not
+visible; `page.mouse` needs **viewport** coordinates. The arrangement lane had
+drifted ~220 px down the page as the shell grew, and every gesture in those two
+specs was silently dispatching at a point that is not on screen.
+
+The failure was loud, which is the only reason it was caught — but it pointed at
+the editor, and the measurements it produced (`before=120 after=120`, and a
+"4 bars" derived from an unmoved pair) were fiction. Fixed in all four call
+sites by scrolling the target into view before measuring:
+
+```
+dragOrigin box={x:330, y:542} top=span.arr-clip-role
+intensity y=596   (lane ends at 592 — D14's fix still holds)
+chaos: chain complete: 3 clips; jsErrors=0    1 passed (38.4s)
+```
+
+**This is the same defect class as D14 and D15, in the test code instead of the
+product**: a surface the user can reach is not the same as coordinates the test
+believes exist. The sweep got it right from the start (its helper calls
+`scrollIntoView` on the element before hit-testing), which is exactly why the
+sweep stayed green while the older specs went red. A shared helper is worth
+more than a shared copy.
+
+## Wave 15b - §10 fades: the fixture exists, the GESTURE does not
+
+`BOUNCE ZONE` was the way to get a real audio clip without a microphone: it
+offline-renders the selected zone and flips it into a genuine audio clip
+(`addAudioClip`, `ArrangementPanel.tsx:3193`), with a real buffer and a real
+waveform. `tests/e2e/audio-fades.spec.ts` is written against it.
+
+It does not run yet. `BOUNCE ZONE` is `disabled={!selection.timeRange}` (line
+3743), and three documented gestures were driven with a real pointer:
+
+```
+ruler plain drag   -> enabled=false  .arr-time-range rendered=0
+lane ctrl+drag     -> enabled=false  .arr-time-range rendered=0
+lane shift+drag    -> enabled=false  .arr-time-range rendered=0
+```
+
+The ruler's pointer handlers plainly contain a `setTimeRange` path, and the
+overlay did not render either - so the gesture is not reaching it. **That is
+not enough to call anything a defect.** Whether the cause is the gesture, an
+unarmed track, or a real hole in range selection was not isolated, and §41
+applies.
+
+The spec is committed with `test.fixme(...)` rather than deleted (the work is
+worth keeping) and rather than committed red (that would break the suite for
+everyone). The question it leaves for whoever picks it up is a single one:
+**what does a user actually do in this panel to produce a time range, and does
+it work at all today?**
+
 ---
 
 ## Wave 15 - 2026-10-12 - error boundaries: one real defect, and a test harness that was lying to me
