@@ -97,7 +97,7 @@ describe("kyx_master op:stems with import — the full separation→mastering fl
   // local registry get stripped). Direct command execution passes (see
   // tests/stem-tracks-import.test.ts). Fix = normalize must tolerate
   // separation-produced bufferIds, then un-skip.
-  it.skip("import lands stem lanes in a STEMS bus AND masters them in one op; undo reverts everything", async () => {
+  it("import lands stem lanes in a STEMS bus AND masters them in one op; undo reverts everything", async () => {
     const store = new ProjectStore(createProjectFromTemplate("house"));
     const ctx = storeCtx(store);
     const result = await executeMcpTool(ctx, "kyx_master", {

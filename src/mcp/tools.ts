@@ -5176,7 +5176,8 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
     ids = [exactId];
   } else {
     ids = tracksInFamily(doc, String(record.family ?? ""));
-    if (ids.length === 0) {
+    // Import-only calls create their own lanes — no early refusal.
+    if (ids.length === 0 && !Array.isArray(record.import)) {
       return {
         text: `no track matches family "${String(record.family ?? "")}" — pass trackId (group buses allowed and encouraged: that IS stem mastering)`,
         mutated: false,
@@ -5295,6 +5296,7 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
   }
 
   if (op === "stems") {
+    const originalDoc = doc; // the import reassigns doc — prev must be the pre-import state
     // STEM MASTERING payoff: per-stem ZENIT shapes on the separated lanes
     // (vocals/drums/bass/other). Lanes are matched by NAME; a lane without
     // a stem role is reported, never touched. ONE snapshot for everything.
@@ -5357,7 +5359,7 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
         mutated: false,
       };
     }
-    ctx.execute(snapshot("mcpStemMastering", `MCP: stem mastering on ${matched} lane(s)`, doc, next));
+    ctx.execute(snapshot("mcpStemMastering", `MCP: stem mastering on ${matched} lane(s)`, originalDoc, next));
     return {
       text: `stem mastering applied on ${matched} lane(s), one undo step:\n${lines.join("\n")}\nland the master with op:land after a fresh measure`,
       mutated: true,
