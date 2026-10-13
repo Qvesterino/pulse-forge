@@ -240,6 +240,116 @@ describe("intent model decoder contract", () => {
     );
   });
 
+  it("decodes bounded listening-loop complaint slots", () => {
+    const complaintVocab: IntentModelVocab = {
+      ...vocab,
+      heads: [
+        ...vocab.heads.map((candidate) =>
+          candidate.name === "kind" ? { ...candidate, classes: [...candidate.classes, "complaintIntent"] } : candidate,
+        ),
+        { name: "complaint", kind: "softmax", classes: ["__absent__", "empty", "thin", "muddy", "harsh", "noPunch"] },
+        {
+          name: "complaintRole",
+          kind: "softmax",
+          classes: ["__absent__", "intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"],
+        },
+        {
+          name: "complaintFamily",
+          kind: "softmax",
+          classes: [
+            "__absent__",
+            "drums",
+            "bass",
+            "chords",
+            "lead",
+            "vocal",
+            "kick",
+            "snare",
+            "clap",
+            "hats",
+            "tom",
+            "perc",
+          ],
+        },
+      ],
+    };
+    const head = (name: string) => complaintVocab.heads.find((candidate) => candidate.name === name)!;
+    const one = (name: string, value: string) => {
+      const result = new Float32Array(head(name).classes.length).fill(-5);
+      result[head(name).classes.indexOf(value)] = 5;
+      return result;
+    };
+    const outputs: Record<string, Float32Array> = {
+      head_kind: one("kind", "complaintIntent"),
+      head_targets: new Float32Array(head("targets").classes.length).fill(-5),
+      head_pads: new Float32Array(head("pads").classes.length).fill(-5),
+      head_complaint: one("complaint", "empty"),
+      head_complaintRole: one("complaintRole", "drop"),
+      head_complaintFamily: one("complaintFamily", "__absent__"),
+    };
+    expect(canonicalModelJson(decodeIntentHeads(outputs, complaintVocab))).toBe(
+      canonicalModelJson({ kind: "complaintIntent", complaint: "empty", role: "drop" }),
+    );
+  });
+
+  it("decodes a bounded undo proposal", () => {
+    const undoVocab: IntentModelVocab = {
+      ...vocab,
+      heads: [
+        ...vocab.heads.map((candidate) =>
+          candidate.name === "kind" ? { ...candidate, classes: [...candidate.classes, "undoIntent"] } : candidate,
+        ),
+        { name: "undoAction", kind: "softmax", classes: ["__absent__", "undo", "redo"] },
+        { name: "undoSteps", kind: "softmax", classes: ["__absent__", "1", "2"] },
+      ],
+    };
+    const head = (name: string) => undoVocab.heads.find((candidate) => candidate.name === name)!;
+    const one = (name: string, value: string) => {
+      const result = new Float32Array(head(name).classes.length).fill(-5);
+      result[head(name).classes.indexOf(value)] = 5;
+      return result;
+    };
+    const outputs: Record<string, Float32Array> = {
+      head_kind: one("kind", "undoIntent"),
+      head_targets: new Float32Array(head("targets").classes.length).fill(-5),
+      head_pads: new Float32Array(head("pads").classes.length).fill(-5),
+      head_undoAction: one("undoAction", "undo"),
+      head_undoSteps: one("undoSteps", "1"),
+    };
+    expect(canonicalModelJson(decodeIntentHeads(outputs, undoVocab))).toBe(
+      canonicalModelJson({ kind: "undoIntent", action: "undo", steps: 1 }),
+    );
+  });
+
+  it("decodes a read-only query with an optional target", () => {
+    const queryVocab: IntentModelVocab = {
+      ...vocab,
+      heads: [
+        ...vocab.heads.map((candidate) =>
+          candidate.name === "kind" ? { ...candidate, classes: [...candidate.classes, "queryIntent"] } : candidate,
+        ),
+        { name: "querySubject", kind: "softmax", classes: ["__absent__", "tempo", "key", "tracks", "fxChain"] },
+        { name: "queryTarget", kind: "softmax", classes: ["__absent__", "drums", "bass", "lead", "chords", "mix"] },
+      ],
+    };
+    const head = (name: string) => queryVocab.heads.find((candidate) => candidate.name === name)!;
+    const one = (name: string, value: string) => {
+      const result = new Float32Array(head(name).classes.length).fill(-5);
+      result[head(name).classes.indexOf(value)] = 5;
+      return result;
+    };
+    const outputs: Record<string, Float32Array> = {
+      head_kind: one("kind", "queryIntent"),
+      head_targets: new Float32Array(head("targets").classes.length).fill(-5),
+      head_pads: new Float32Array(head("pads").classes.length).fill(-5),
+      head_querySubject: one("querySubject", "fxChain"),
+      head_queryTarget: one("queryTarget", "drums"),
+    };
+    expect(canonicalModelJson(decodeIntentHeads(outputs, queryVocab))).toBe(
+      canonicalModelJson({ kind: "queryIntent", subject: "fxChain", target: "drums" }),
+    );
+  });
+
   it("decodes addTrack with schema-bounded instrument", () => {
     const head = (name: string) => vocab.heads.find((candidate) => candidate.name === name)!;
     const one = (name: string, cls: string) => {

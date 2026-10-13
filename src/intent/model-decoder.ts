@@ -322,6 +322,38 @@ export function decodeIntentHeads(
       if (!target) return null;
       return { kind: "select", target };
     }
+    case "complaintIntent": {
+      // A rolling artifact from before complaint support must abstain rather
+      // than throw when the kind schema has advanced ahead of its slot heads.
+      const complaintHeads = ["complaint", "complaintRole", "complaintFamily"];
+      if (!complaintHeads.every((name) => vocab.heads.some((candidate) => candidate.name === name))) return null;
+      const complaint = opt("complaint");
+      if (!complaint) return null;
+      const role = opt("complaintRole");
+      const family = opt("complaintFamily");
+      return {
+        kind: "complaintIntent",
+        complaint,
+        ...(role ? { role } : {}),
+        ...(family ? { family } : {}),
+      };
+    }
+    case "undoIntent": {
+      if (!["undoAction", "undoSteps"].every((name) => vocab.heads.some((candidate) => candidate.name === name)))
+        return null;
+      const action = opt("undoAction");
+      const steps = optNum("undoSteps");
+      if (!action || steps === null) return null;
+      return { kind: "undoIntent", action, steps };
+    }
+    case "queryIntent": {
+      if (!["querySubject", "queryTarget"].every((name) => vocab.heads.some((candidate) => candidate.name === name)))
+        return null;
+      const subject = opt("querySubject");
+      if (!subject) return null;
+      const target = opt("queryTarget");
+      return { kind: "queryIntent", subject, ...(target ? { target } : {}) };
+    }
     case "arrange": {
       // Rolling-artifact guard: older vocabs predate the arrange heads —
       // abstain instead of throwing (the artifact and the app deploy

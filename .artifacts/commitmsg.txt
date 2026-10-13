@@ -1,0 +1,13 @@
+test(fx): multiview gate drags a real knob and proves undo writes to the doc
+
+The kit multiview's only interesting claim is that its sliders reach the
+DOCUMENT rather than React state, and a render assertion cannot tell the two
+apart. This gate grabs reverb DECAY in the live reverb column, drags the custom
+slider track, and requires the value to move (4.20 s to 15.02 s) and Ctrl+Z to
+restore it - a state-only slider would keep the dragged value through undo.
+
+It also corrects the gate's own earlier assumption: the KYX Slider is a
+div role=slider carrying aria-valuenow, not an input type=range, so the first
+version reported "no DECAY control" while the control was on screen.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

@@ -54,7 +54,6 @@ from onnx import TensorProto, checker, helper, numpy_helper
 
 ROOT = Path(__file__).resolve().parent.parent
 SFT_DIR = ROOT / "scripts" / "data" / "intent-sft"
-MODELS_DIR = ROOT / "public" / "models"
 
 TRUNK = [384, 192]
 VOCAB_CAP = 4096
@@ -133,7 +132,17 @@ KINDS = [
     "clarify",
     "preset",
     "presetUnknown",
+    "complaintIntent",
+    "undoIntent",
+    "queryIntent",
 ]
+
+COMPLAINT_KINDS = ["empty", "thin", "muddy", "harsh", "noPunch"]
+COMPLAINT_ROLES = ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"]
+COMPLAINT_FAMILIES = ["drums", "bass", "chords", "lead", "vocal", "kick", "snare", "clap", "hats", "tom", "perc"]
+UNDO_ACTIONS = ["undo", "redo"]
+QUERY_SUBJECTS = ["tempo", "key", "tracks", "fxChain", "markers", "groove", "lastAction"]
+QUERY_TARGETS = ["drums", "bass", "lead", "chords", "mix"]
 
 # Arrange slot mirrors of the schema enums (src/intent/model-schema.ts VOCAB)
 # — class sets are schema, like the GBNF enums, not weights. Sequence-student
@@ -352,6 +361,15 @@ def extract_labels(row: dict) -> dict:
         return labels
     labels["kind"] = kind
 
+    labels["complaint"] = as_class(response.get("complaint") if kind == "complaintIntent" else None)
+    labels["complaintRole"] = as_class(response.get("role") if kind == "complaintIntent" else None)
+    labels["complaintFamily"] = as_class(response.get("family") if kind == "complaintIntent" else None)
+    labels["undoAction"] = as_class(response.get("action") if kind == "undoIntent" else None)
+    note("undoSteps", response.get("steps") if kind == "undoIntent" else None)
+    labels["undoSteps"] = as_class(response.get("steps") if kind == "undoIntent" else None)
+    labels["querySubject"] = as_class(response.get("subject") if kind == "queryIntent" else None)
+    labels["queryTarget"] = as_class(response.get("target") if kind == "queryIntent" else None)
+
     ops = response.get("ops")
     op = ops[0] if kind == "exact" and isinstance(ops, list) and len(ops) == 1 else None
     if kind == "exact" and op is None:
@@ -392,7 +410,7 @@ def extract_labels(row: dict) -> dict:
     labels["trackKind"] = as_class((op or {}).get("trackKind"))
     labels["instrument"] = as_class((op or {}).get("instrument"))
     labels["trackName"] = as_class((op or {}).get("name"))
-    labels["transportAction"] = as_class(payload.get("action"))
+    labels["transportAction"] = as_class(payload.get("action") if kind == "transport" else None)
     labels["exportFormat"] = as_class(payload.get("format"))
     labels["selectTarget"] = as_class(payload.get("target") if kind == "select" else None)
     labels["targets_one"] = as_class(
@@ -485,6 +503,13 @@ def build_head_specs(rows: list[dict]) -> list[dict]:
     ]
     heads = [
         {"name": "kind", "kind": "softmax", "classes": ["abstain"] + KINDS},
+        {"name": "complaint", "kind": "softmax", "classes": [ABSENT] + COMPLAINT_KINDS},
+        {"name": "complaintRole", "kind": "softmax", "classes": [ABSENT] + COMPLAINT_ROLES},
+        {"name": "complaintFamily", "kind": "softmax", "classes": [ABSENT] + COMPLAINT_FAMILIES},
+        {"name": "undoAction", "kind": "softmax", "classes": [ABSENT] + UNDO_ACTIONS},
+        {"name": "undoSteps", "kind": "softmax", "classes": [ABSENT] + sorted({v for v in numeric_field_values(rows, "undoSteps")}, key=float)},
+        {"name": "querySubject", "kind": "softmax", "classes": [ABSENT] + QUERY_SUBJECTS},
+        {"name": "queryTarget", "kind": "softmax", "classes": [ABSENT] + QUERY_TARGETS},
         {"name": "arrangeOp", "kind": "softmax", "classes": [ABSENT] + ARRANGE_OPS},
         {"name": "arrangeRole", "kind": "softmax", "classes": [ABSENT] + ARRANGE_ROLES},
         {"name": "arrangeBars", "kind": "softmax", "classes": [ABSENT] + bars},
@@ -688,15 +713,17 @@ def main() -> None:
     parser.add_argument(
         "--out-dir",
         type=Path,
-        help="write a non-active challenger artifact set here instead of public/models/",
+        default=ROOT / ".sft" / "intent-model-challenger",
+        help="write a non-active challenger artifact set here (default: .sft/intent-model-challenger)",
+    )
+    parser.add_argument(
+        "--check-data-only",
+        action="store_true",
+        help="validate dataset rows and label vocabularies without training or writing artifacts",
     )
     args = parser.parse_args()
-    output_dir = args.out_dir.resolve() if args.out_dir else MODELS_DIR
-    report_path = (
-        output_dir / "intent-model-report.json"
-        if args.out_dir
-        else ROOT / "scripts" / "data" / "intent-model-report.json"
-    )
+    output_dir = args.out_dir.resolve()
+    report_path = output_dir / "intent-model-report.json"
     rng = np.random.default_rng(SEED)
     dataset_manifest_bytes = (SFT_DIR / "manifest.json").read_bytes()
     dataset_manifest = json.loads(dataset_manifest_bytes.decode("utf-8"))
@@ -763,6 +790,14 @@ def main() -> None:
         for label in unseen_labels:
             print(f"  {label}")
         raise ValueError("refusing to train with labels silently mapped to the absent class")
+    if args.check_data_only:
+        print(
+            "dataset check passed: "
+            f"v{dataset_manifest.get('datasetVersion')} train={len(train_rows)} "
+            f"val={len(val_rows)} golden={len(golden_rows)} "
+            f"vocab={len(tokens)} tokens heads={len(heads)}"
+        )
+        return
 
     net = MultiHeadNet(len(tokens), heads, rng)
 

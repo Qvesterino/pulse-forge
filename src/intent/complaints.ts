@@ -73,13 +73,6 @@ export function parseComplaintIntent(text: string): ComplaintIntent | null {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
   let complaint: ComplaintKind | null = null;
-  // eslint-disable-next-line no-console
-  console.log(
-    "[comp-dbg]",
-    JSON.stringify(plain),
-    JSON.stringify(COMPLAINT_WORDS[0][0].source),
-    COMPLAINT_WORDS[0][0].test(plain),
-  );
   for (const [re, kind] of COMPLAINT_WORDS) {
     if (re.test(plain)) {
       complaint = kind;

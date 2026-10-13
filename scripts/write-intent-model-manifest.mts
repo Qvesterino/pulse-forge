@@ -23,8 +23,19 @@ import { isIntentModelManifest } from "../src/intent/model-loader-types";
 import type { IntentModelVocab } from "../src/intent/model-decoder";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const MODELS_DIR = path.join(ROOT, "public", "models");
-const REPORT_PATH = path.join(ROOT, "scripts", "data", "intent-model-report.json");
+const modelDirFlag = process.argv.indexOf("--model-dir");
+const requestedModelDir = modelDirFlag >= 0 ? process.argv[modelDirFlag + 1] : undefined;
+if (modelDirFlag >= 0 && (!requestedModelDir || requestedModelDir.startsWith("--"))) {
+  throw new Error("--model-dir requires a directory path");
+}
+const MODELS_DIR = requestedModelDir ? path.resolve(ROOT, requestedModelDir) : path.join(ROOT, "public", "models");
+const relativeModelDir = path.relative(ROOT, MODELS_DIR);
+if (relativeModelDir.startsWith("..") || path.isAbsolute(relativeModelDir)) {
+  throw new Error("--model-dir must stay inside the repository");
+}
+const REPORT_PATH = requestedModelDir
+  ? path.join(MODELS_DIR, "intent-model-report.json")
+  : path.join(ROOT, "scripts", "data", "intent-model-report.json");
 const SFT_DATA_DIR = path.join(ROOT, "scripts", "data", "intent-sft");
 const TRAINER_PATH = path.join(ROOT, "scripts", "train-intent-model.py");
 

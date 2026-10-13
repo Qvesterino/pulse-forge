@@ -24,7 +24,7 @@ import { compactIntentResponse } from "../src/intent/dataset";
 import { validateModelAction } from "../src/intent/model-schema";
 import type { ProjectDocument } from "../src/project-model/types";
 
-const DATASET_VERSION = 6;
+const DATASET_VERSION = 8;
 const OUT_DIR = path.join(process.cwd(), "scripts", "data", "intent-sft");
 const MINED_CORPUS_PATH = path.join(process.cwd(), "scripts", "data", "intent-mined-corpus.json");
 const unsupportedPairs = new Map<string, string[]>();
@@ -1737,6 +1737,95 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
   sk.push("pridaj fill za drop");
   sk.push("usporiadaj pesničku");
 
+  // ── WAVE 9 (2026-10-13) — SK vocabulary audit closure: every family the
+  // live probe (tests/intent-sk-vocabulary.test.ts) proved the deterministic
+  // layer now resolves. The teacher (routeIntentText) labels these with the
+  // POST-wave-9 behavior, so the student learns the DESIGNED routing. ──
+  // transport + undo
+  sk.push("spusti");
+  sk.push("stopni");
+  sk.push("stopni to");
+  sk.push("krok spat");
+  sk.push("krok spa\u0165");
+  // tempo
+  sk.push("spomal to");
+  sk.push("spomal");
+  // exact: mute + pan with a number + transpose WITHOUT a count
+  sk.push("mutni lead");
+  sk.push("mutni bicie");
+  sk.push("panuj lead dolava 30");
+  sk.push("panuj kick doprava 40");
+  sk.push("panuj basu dolava 20");
+  sk.push("posun basu o oktavu nizsie");
+  sk.push("posun lead hore o oktavu");
+  sk.push("basu o oktavu dole");
+  // mix punch nouns + loudness
+  sk.push("viac kompresie");
+  sk.push("menej kompresie");
+  sk.push("urob to hlasnejsie");
+  // production ASCII stems
+  sk.push("sprav basu hlbsiu");
+  sk.push("hatsy jasnejsie");
+  // fader (priority beats production for the bare ask)
+  sk.push("bubny tazsie");
+  // revise
+  sk.push("energetickejsie");
+  sk.push("pokojnejsie");
+  sk.push("hustejsie");
+  sk.push("refren energetickejsie");
+  // arrange
+  sk.push("presun intro na koniec");
+  // complaints (listening loop)
+  en.push("the drop feels empty");
+  en.push("the drums sound thin");
+  en.push("the bass is muddy");
+  en.push("the lead sounds harsh");
+  en.push("the kick has no punch");
+  en.push("the intro feels empty");
+  en.push("the chorus feels empty");
+  en.push("the bridge sounds empty");
+  en.push("the verse is too thin");
+  en.push("the snare is weak");
+  en.push("the vocal is harsh");
+  en.push("the chords sound muddy");
+  en.push("the tom is muddy");
+  en.push("the clap is thin");
+  en.push("the drop has no punch");
+  en.push("the build has no punch");
+  en.push("the bass sounds thin");
+  en.push("the lead feels thin");
+  sk.push("kick je mrtvy");
+  sk.push("bicie su slabe");
+  sk.push("bicie su blatiste");
+  sk.push("lead krici");
+  sk.push("bicie su dute");
+  sk.push("nic sa nedeje v drope");
+  sk.push("drop posobi prazdno");
+  sk.push("refren posobi prazdno");
+  sk.push("intro posobi prazdno");
+  sk.push("bridge posobi prazdno");
+  sk.push("basa je slaba");
+  sk.push("vokal je ostry");
+  sk.push("snare je slabý");
+  sk.push("kick je bez razancie");
+  sk.push("drop je bez uderu");
+  sk.push("basa je blatista");
+  sk.push("clap znie slabo");
+  sk.push("tom znie blatisto");
+  sk.push("lead picha");
+  sk.push("vokal je slaby");
+  sk.push("bicie su bez razancie");
+  sk.push("chorus je dute");
+  // undo + query (kind head grew for them in wave 9)
+  sk.push("undo");
+  sk.push("zrus posledny krok");
+  en.push("undo the last two steps");
+  en.push("what is the current bpm");
+  sk.push("ake je tempo");
+  sk.push("aky je kluc");
+  sk.push("kolko trackov mas");
+  en.push("what fx are on the drums");
+
   return [
     { lang: "en", instructions: en },
     { lang: "sk", instructions: sk },
@@ -1893,6 +1982,9 @@ async function main(): Promise<void> {
     "shorten the drop to 4 bars",
     "mute the drums and boost the mix by 2 dB",
     "more energetic in the chorus",
+    "kick je mrtvy",
+    "undo",
+    "what is the current bpm",
   ];
   const byInstruction = new Map(unique.map((p) => [p.instruction, p]));
   for (const pick of goldenPicks) {

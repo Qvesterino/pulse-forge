@@ -35,6 +35,21 @@ export function compactIntentResponse(route: RoutedIntent): CompactIntentRespons
       };
     case "presetUnknown":
       return { kind: "presetUnknown", name: route.name, suggestions: route.suggestions };
+    case "undoIntent":
+      return { kind: "undoIntent", action: route.intent.kind, steps: route.intent.steps };
+    case "queryIntent":
+      return {
+        kind: "queryIntent",
+        subject: route.intent.subject,
+        ...(route.intent.target != null ? { target: route.intent.target } : {}),
+      };
+    case "complaintIntent":
+      return {
+        kind: "complaintIntent",
+        complaint: route.intent.kind,
+        ...(route.intent.role != null ? { role: route.intent.role } : {}),
+        ...(route.intent.family != null ? { family: route.intent.family } : {}),
+      };
     case "exact":
       return { kind: "exact", ops: route.plan.ops };
     case "arrange":

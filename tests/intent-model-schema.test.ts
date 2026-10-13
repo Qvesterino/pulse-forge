@@ -78,6 +78,13 @@ describe("local intent model schema", () => {
     expect(validateModelOutputForDoc({ kind: "save" }, doc).valid).toBe(true);
   });
 
+  it("accepts only the bounded listening-loop complaint fields", () => {
+    expect(validateModelAction({ kind: "complaintIntent", complaint: "empty", role: "drop" }).valid).toBe(true);
+    expect(validateModelAction({ kind: "complaintIntent", complaint: "harsh", family: "lead" }).valid).toBe(true);
+    expect(validateModelAction({ kind: "complaintIntent", complaint: "invented", family: "lead" }).valid).toBe(false);
+    expect(validateModelAction({ kind: "complaintIntent", complaint: "thin", family: "synth" }).valid).toBe(false);
+  });
+
   it("hand-written MODEL-form examples validate (what we ask the model for)", () => {
     // minimal fader — pads/amount optional, engine fills defaults
     expect(validateModelAction({ kind: "fader", targets: ["bass"], direction: "down" }).valid).toBe(true);
@@ -139,6 +146,23 @@ describe("local intent model schema", () => {
     expect(block).toBeDefined();
     const trainerInstruments = Array.from(block!.matchAll(/"([^"]+)"/gu), (match) => match[1]);
     expect(trainerInstruments.sort()).toEqual([...VOCAB.instrument].sort());
+  });
+
+  it("keeps new intent heads in sync with the TypeScript schema", () => {
+    const trainer = readFileSync(path.join(process.cwd(), "scripts", "train-intent-model.py"), "utf8");
+    const mirrors: Array<[string, readonly string[]]> = [
+      ["COMPLAINT_KINDS", VOCAB.complaintKind],
+      ["COMPLAINT_ROLES", VOCAB.complaintRole],
+      ["COMPLAINT_FAMILIES", VOCAB.complaintFamily],
+      ["UNDO_ACTIONS", VOCAB.undoAction],
+      ["QUERY_SUBJECTS", VOCAB.querySubject],
+      ["QUERY_TARGETS", VOCAB.exactTarget],
+    ];
+    for (const [constant, values] of mirrors) {
+      const block = trainer.match(new RegExp(`${constant}\\s*=\\s*\\[([^\\]]*)\\]`, "u"))?.[1];
+      expect(block, `${constant} must exist in the Python trainer`).toBeDefined();
+      expect(Array.from(block!.matchAll(/"([^"]+)"/gu), (match) => match[1])).toEqual([...values]);
+    }
   });
 });
 

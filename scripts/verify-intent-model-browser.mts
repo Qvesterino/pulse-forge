@@ -8,7 +8,8 @@
  * spawned, the ONNX wasm session resident, and a generate coming back
  * through the registered provider. This script IS that proof.
  *
- * Usage: npm run verify:intent-model [-- --full-eval]   (PORT env overrides 5291)
+ * Usage: npm run verify:intent-model -- [--full-eval] [--model-dir .sft/intent-model-challenger]
+ * PORT env overrides 5291. Candidate files are served from .sft without touching public/models.
  * Exit 0 = the model loaded and decoded the expected chords-down fader route.
  */
 import { createServer } from "vite";
@@ -20,6 +21,19 @@ import { readFileSync } from "node:fs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = Number(process.env.PORT) || 5291;
 const FULL_EVAL = process.argv.includes("--full-eval");
+const MODEL_DIR_FLAG_INDEX = process.argv.indexOf("--model-dir");
+const MODEL_DIR_ARG = MODEL_DIR_FLAG_INDEX >= 0 ? process.argv[MODEL_DIR_FLAG_INDEX + 1] : null;
+if (MODEL_DIR_FLAG_INDEX >= 0 && (!MODEL_DIR_ARG || MODEL_DIR_ARG.startsWith("--"))) {
+  throw new Error("--model-dir requires a candidate directory below .sft/");
+}
+const MODEL_DIR_OVERRIDE = MODEL_DIR_ARG ? path.resolve(root, MODEL_DIR_ARG) : null;
+if (MODEL_DIR_OVERRIDE) {
+  const privateRoot = path.resolve(root, ".sft");
+  const relativeModelDir = path.relative(privateRoot, MODEL_DIR_OVERRIDE);
+  if (!relativeModelDir || relativeModelDir.startsWith("..") || path.isAbsolute(relativeModelDir)) {
+    throw new Error("--model-dir must point to a candidate directory below the ignored .sft/ directory");
+  }
+}
 const HOLDOUT_FLAG_INDEX = process.argv.indexOf("--holdout");
 const HOLDOUT_ARG = HOLDOUT_FLAG_INDEX >= 0 ? process.argv[HOLDOUT_FLAG_INDEX + 1] : null;
 if (HOLDOUT_FLAG_INDEX >= 0 && (!HOLDOUT_ARG || HOLDOUT_ARG.startsWith("--"))) {
@@ -127,6 +141,42 @@ const server = await createServer({
   root,
   logLevel: "error",
   server: { port: PORT, host: "127.0.0.1", strictPort: true },
+  plugins: MODEL_DIR_OVERRIDE
+    ? [
+        {
+          name: "serve-private-intent-model-candidate",
+          enforce: "pre",
+          configureServer(viteServer) {
+            viteServer.middlewares.use((request, response, next) => {
+              const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
+              const files: Record<string, string> = {
+                "/models/intent-model-v1.onnx": "intent-model-v1.onnx",
+                "/models/intent-model-v1.vocab.json": "intent-model-v1.vocab.json",
+                "/models/intent-model-v1.manifest.json": "intent-model-v1.manifest.json",
+              };
+              const filename = files[pathname];
+              if (!filename) {
+                next();
+                return;
+              }
+              try {
+                const bytes = readFileSync(path.join(MODEL_DIR_OVERRIDE, filename));
+                response.statusCode = 200;
+                response.setHeader("Content-Length", String(bytes.byteLength));
+                response.setHeader(
+                  "Content-Type",
+                  filename.endsWith(".json") ? "application/json; charset=utf-8" : "application/octet-stream",
+                );
+                response.setHeader("Cache-Control", "no-store");
+                response.end(bytes);
+              } catch (error) {
+                next(error);
+              }
+            });
+          },
+        },
+      ]
+    : [],
 });
 await server.listen();
 

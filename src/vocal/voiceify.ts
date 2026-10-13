@@ -39,6 +39,13 @@ export interface VoiceifyOptions {
   gain?: number;
   /** Silence gate for the sustained-region scan (linear 0..1). Default 0.02. */
   gate?: number;
+  /**
+   * Pitch-shift engine. "psola" (default) shifts with formant preservation
+   * (TD-PSOLA — no chipmunk at wide intervals) and falls back to "resample"
+   * when the hum carries no usable epochs; "resample" forces the legacy
+   * Hermite-resample read (A/B).
+   */
+  engine?: "resample" | "psola";
 }
 
 const MIDI_A4 = 69;
@@ -47,6 +54,8 @@ const DEFAULT_PPQ = 480;
 const DEFAULT_GAIN = 0.8;
 const DEFAULT_GATE = 0.02;
 const FADE_MS = 5;
+import { psolaShiftPitch } from "./psola";
+
 const WINDOW = 4096;
 
 /** MIDI → Hz (A4 = 440). */
@@ -175,6 +184,21 @@ export function voiceifyHum(
   const fadeSamples = Math.max(1, Math.floor((FADE_MS / 1000) * sampleRate));
   let phase = 0;
 
+  // PSOLA engine: per UNIQUE target ratio, shift the region ONCE with formant
+  // preservation, then read the shifted region at 1:1 (no resample images at
+  // all). Falls back to the Hermite-resample path when the hum carries no
+  // usable epochs.
+  const engine = options.engine ?? "psola";
+  const shiftedCache = new Map<number, Float32Array>();
+  const psolaRegionFor = (ratio: number): Float32Array | null => {
+    const cached = shiftedCache.get(ratio);
+    if (cached) return cached;
+    const shifted = psolaShiftPitch(region, sampleRate, ratio);
+    if (!shifted || shifted.length === 0) return null;
+    shiftedCache.set(ratio, shifted);
+    return shifted;
+  };
+
   // 4-point cubic Hermite interpolation of the seamless region. The linear
   // 2-point read leaves interpolation IMAGES in the upper spectrum (the
   // voiceify test saw junk peaks near 14 kHz on an octave-up render) — the
@@ -189,6 +213,23 @@ export function voiceifyHum(
     const startSample = Math.floor(note.startTicks * ticksToSec * sampleRate);
     const lengthSamples = Math.max(1, Math.floor(note.durationTicks * ticksToSec * sampleRate));
     const noteFade = Math.min(fadeSamples, Math.floor(lengthSamples / 2));
+
+    if (engine === "psola") {
+      const shifted = psolaRegionFor(noteRatio);
+      if (shifted) {
+        const noteFadePs = Math.min(fadeSamples, Math.floor(lengthSamples / 2));
+        for (let i = 0; i < lengthSamples; i++) {
+          const index = startSample + i;
+          if (index >= outLength) break;
+          // 1:1 read — the shift already happened in the psola pass.
+          const value = shifted[i % shifted.length] ?? 0;
+          const edge = i < noteFadePs ? i / noteFadePs : i >= lengthSamples - noteFadePs ? (lengthSamples - i) / noteFadePs : 1;
+          out[index] += value * gain * edge;
+        }
+        continue;
+      }
+    }
+
     for (let i = 0; i < lengthSamples; i++) {
       const index = startSample + i;
       if (index >= outLength) break;

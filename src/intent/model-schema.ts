@@ -49,8 +49,29 @@ export const VOCAB = {
     "presetUnknown",
     "stepEdit",
     "soundSwap",
+    "complaintIntent",
+    "undoIntent",
+    "queryIntent",
   ] as const,
   faderTarget: ["drums", "bass", "chords", "lead", "master"] as const,
+  complaintKind: ["empty", "thin", "muddy", "harsh", "noPunch"] as const,
+  complaintRole: ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"] as const,
+  undoAction: ["undo", "redo"] as const,
+  undoSteps: [1, 2, 3, 4, 5] as const,
+  querySubject: ["tempo", "key", "tracks", "fxChain", "markers", "groove", "lastAction"] as const,
+  complaintFamily: [
+    "drums",
+    "bass",
+    "chords",
+    "lead",
+    "vocal",
+    "kick",
+    "snare",
+    "clap",
+    "hats",
+    "tom",
+    "perc",
+  ] as const,
   padFamily: ["kick", "snare", "clap", "hat", "perc", "tom"] as const,
   faderAmount: ["subtle", "normal", "big", "full"] as const,
   faderDirection: ["down", "up", "set"] as const,
@@ -229,6 +250,21 @@ const OA = (name: string, slots: Slot[], required = true): Slot => ({ name, type
 
 /** The full model-facing action schema — one spec per kind. */
 export const MODEL_ACTIONS: Record<string, ActionSpec> = {
+  // Listening loop (Phase C): the producer's complaint travels as three
+  // closed enums — the diagnosis/proposal layer stays engine-side.
+  complaintIntent: {
+    slots: [
+      E("complaint", VOCAB.complaintKind),
+      E("role", VOCAB.complaintRole, false),
+      E("family", VOCAB.complaintFamily, false),
+    ],
+  },
+  undoIntent: {
+    slots: [E("action", VOCAB.undoAction), I("steps", 1, 10, false)],
+  },
+  queryIntent: {
+    slots: [E("subject", VOCAB.querySubject), E("target", [...VOCAB.exactTarget], false)],
+  },
   fader: {
     slots: [
       EA("targets", VOCAB.faderTarget),

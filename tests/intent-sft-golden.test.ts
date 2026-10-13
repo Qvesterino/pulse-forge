@@ -121,6 +121,9 @@ describe("intent SFT dataset (LLM-as-sound-engineer distillation)", () => {
       "loudness",
       "tempo",
       "clarify",
+      "complaintIntent",
+      "undoIntent",
+      "queryIntent",
     ]) {
       expect(kinds.has(kind)).toBe(true);
     }

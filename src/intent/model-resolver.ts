@@ -11,6 +11,8 @@ import type { EffectIntent, SendIntent, BypassIntent } from "./mix";
 import type { ExactOp, ExactTarget } from "./exact";
 import type { InstrumentKind, MusicalKey } from "../project-model/types";
 import type { ProductionIntent } from "./production";
+import type { ComplaintIntent } from "./complaints";
+import type { QueryIntent, UndoIntent } from "./studio-words";
 
 /**
  * LOCAL INTENT MODEL — ADAPTER BRIDGE (pipeline step [C]→[D]).
@@ -373,6 +375,31 @@ function adaptRecord(
     }
     case "production":
       return productionFrom(record, instruction);
+    case "undoIntent":
+      return {
+        kind: "undoIntent",
+        intent: {
+          kind: (record.action as UndoIntent["kind"]) ?? "undo",
+          steps: Math.max(1, Math.min(10, Number(record.steps ?? 1))),
+        },
+      };
+    case "queryIntent":
+      return {
+        kind: "queryIntent",
+        intent: {
+          subject: record.subject as QueryIntent["subject"],
+          ...(record.target != null ? { target: record.target as string } : {}),
+        },
+      };
+    case "complaintIntent":
+      return {
+        kind: "complaintIntent",
+        intent: {
+          kind: record.complaint as ComplaintIntent["kind"],
+          role: (record.role as string | undefined) ?? null,
+          family: (record.family as string | undefined) ?? null,
+        },
+      };
     case "revise":
       return {
         kind: "revise",

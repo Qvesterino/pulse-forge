@@ -35,9 +35,20 @@ import {
 } from "../src/intent/model-decoder";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const MODELS_DIR = path.join(ROOT, "public", "models");
+const modelDirFlag = process.argv.indexOf("--model-dir");
+const requestedModelDir = modelDirFlag >= 0 ? process.argv[modelDirFlag + 1] : undefined;
+if (modelDirFlag >= 0 && (!requestedModelDir || requestedModelDir.startsWith("--"))) {
+  throw new Error("--model-dir requires a directory path");
+}
+const MODELS_DIR = requestedModelDir ? path.resolve(ROOT, requestedModelDir) : path.join(ROOT, "public", "models");
+const relativeModelDir = path.relative(ROOT, MODELS_DIR);
+if (relativeModelDir.startsWith("..") || path.isAbsolute(relativeModelDir)) {
+  throw new Error("--model-dir must stay inside the repository");
+}
 const DATA_DIR = path.join(ROOT, "scripts", "data", "intent-sft");
-const VALIDATION_REPORT_PATH = path.join(ROOT, "scripts", "data", "intent-model-validation-report.json");
+const VALIDATION_REPORT_PATH = requestedModelDir
+  ? path.join(MODELS_DIR, "intent-model-validation-report.json")
+  : path.join(ROOT, "scripts", "data", "intent-model-validation-report.json");
 const MANIFEST_PATH = path.join(MODELS_DIR, "intent-model-v1.manifest.json");
 const MODEL_SCHEMA_PATH = path.join(ROOT, "src", "intent", "model-schema.ts");
 const MODEL_DECODER_PATH = path.join(ROOT, "src", "intent", "model-decoder.ts");
@@ -428,7 +439,7 @@ const patched = JSON.parse(readFileSync(manifestPath, "utf8")) as typeof manifes
 patched.report = {
   ...patched.report,
   gatePassed: releaseGatePassed,
-  validationReportPath: "scripts/data/intent-model-validation-report.json",
+  validationReportPath: path.relative(ROOT, VALIDATION_REPORT_PATH).replaceAll(path.sep, "/"),
   validationReportSha256: sha256(validationReportBytes),
 };
 if (!isIntentModelManifest(patched)) throw new Error("patched manifest malformed — refusing to write");
@@ -443,7 +454,8 @@ if (!releaseGatePassed) {
   throw new Error(
     "RELEASE GATE FAILED — " +
       allGateFailures.join("; ") +
-      "; report saved to scripts/data/intent-model-validation-report.json",
+      "; report saved to " +
+      path.relative(ROOT, VALIDATION_REPORT_PATH).replaceAll(path.sep, "/"),
   );
 }
 console.log(
