@@ -2583,33 +2583,61 @@ believes exist. The sweep got it right from the start (its helper calls
 sweep stayed green while the older specs went red. A shared helper is worth
 more than a shared copy.
 
-## Wave 15b - §10 fades: the fixture exists, the GESTURE does not
+## Wave 15b - §10 FADES: verified, after my own "blocked" verdict turned out wrong
 
 `BOUNCE ZONE` was the way to get a real audio clip without a microphone: it
 offline-renders the selected zone and flips it into a genuine audio clip
 (`addAudioClip`, `ArrangementPanel.tsx:3193`), with a real buffer and a real
 waveform. `tests/e2e/audio-fades.spec.ts` is written against it.
 
-It does not run yet. `BOUNCE ZONE` is `disabled={!selection.timeRange}` (line
-3743), and three documented gestures were driven with a real pointer:
+### The first verdict was wrong, and it is worth keeping
+
+The first run reported the path as blocked:
 
 ```
-ruler plain drag   -> enabled=false  .arr-time-range rendered=0
-lane ctrl+drag     -> enabled=false  .arr-time-range rendered=0
-lane shift+drag    -> enabled=false  .arr-time-range rendered=0
+ruler plain drag   -> enabled=false  .arr-time-range=0
+lane ctrl+drag     -> enabled=false  .arr-time-range=0
+lane shift+drag    -> enabled=false  .arr-time-range=0
 ```
 
-The ruler's pointer handlers plainly contain a `setTimeRange` path, and the
-overlay did not render either - so the gesture is not reaching it. **That is
-not enough to call anything a defect.** Whether the cause is the gesture, an
-unarmed track, or a real hole in range selection was not isolated, and §41
-applies.
+`BOUNCE ZONE` is `disabled={!selection.timeRange}` (line 3743), so that reads
+like a hole in range selection. It was not. The arrangement lane - **and the
+ruler directly above it** - had drifted below the fold of the 720px viewport
+(measured the same day: lane y=755), so `page.mouse` dispatched every event at a
+point that is not on screen and the panel never saw a pointerdown.
 
-The spec is committed with `test.fixme(...)` rather than deleted (the work is
-worth keeping) and rather than committed red (that would break the suite for
-everyone). The question it leaves for whoever picks it up is a single one:
-**what does a user actually do in this panel to produce a time range, and does
-it work at all today?**
+That is the SAME bug the chaos chain hit hours earlier, one layer over, and the
+report already named it: `boundingBox()` is layout space, `page.mouse` is
+viewport space. What is worth recording is that **the two symptoms are
+identical from inside the panel** - "the gesture does nothing" and "the gesture
+never arrived" look exactly the same from there, and only one of them is a
+defect. I marked the spec `fixme` on the cautious reading, which was the right
+call under the evidence I had and the wrong conclusion.
+
+### After `scrollIntoViewIfNeeded` — the last open DoD area closes
+
+```
+zone attempt ruler plain drag: origin=div.arr-ruler  BOUNCE ZONE enabled=true  .arr-time-range=2
+clip={"count":1,"width":221,"height":48,"fadesInside":true,"waveform":1}
+title="Drums · user.bounce-0b-... · 7.5b · trim 0.00/0.00 fade 0.00/0.00 gain 1.00 — ..."
+before: fadeIn=0px      after drag: fadeIn=24px      clipWidth=221 (unchanged)
+undo -> 0px   redo -> 24px   jsErrors=0
+1 passed (19.1s)
+```
+
+What this covers in one gesture, in a real browser:
+
+- **§10** the fade commits (0 px -> 24 px), stays inside the clip's own box,
+  and the clip's length does not move underneath it;
+- **§22** undo restores the committed fade exactly and redo re-applies it;
+- **§26** the clip renders a real waveform element from the offline render -
+  the visual is derived from the buffer that is actually played;
+- **§25** the clip reaches the timeline through the real `addAudioClip` command
+  path, not through a test-only shortcut.
+
+**§10 fades are no longer an open DoD area.** The earlier "fades need a
+microphone" framing was wrong: they needed a time range, which a ruler drag
+produces, provided the pointer arrives.
 
 ---
 

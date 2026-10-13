@@ -81,28 +81,25 @@ async function dragHandle(page: Page, handle: Locator, dx: number, dy = 0): Prom
 }
 
 test("an audio clip takes a fade drag, keeps it inside the clip, and undoes exactly", async ({ page }) => {
-  // ── BLOCKED, and marked rather than deleted ──────────────────────────────
-  // BOUNCE ZONE is `disabled={!selection.timeRange}`
-  // (ArrangementPanel.tsx:3743), so this spec needs the app to produce a real
-  // time-range selection first. Three documented gestures were driven with a
-  // real pointer, and none of them produced one:
+  // HISTORY OF THIS SPEC, because the first "blocked" verdict was WRONG and the
+  // reason is worth keeping:
   //
-  //   ruler plain drag  -> enabled=false  .arr-time-range rendered=0
-  //   lane ctrl+drag    -> enabled=false  .arr-time-range rendered=0
-  //   lane shift+drag   -> enabled=false  .arr-time-range rendered=0
+  //   BOUNCE ZONE is `disabled={!selection.timeRange}`
+  //   (ArrangementPanel.tsx:3743), so this spec needs the app to produce a real
+  //   time range. Three gestures were driven and all three reported
+  //   `enabled=false  .arr-time-range=0`.
   //
-  // That is NOT enough to call anything a defect: the ruler's pointer handlers
-  // plainly contain a setTimeRange path, and the overlay did not render either,
-  // so the gesture is not reaching it — but whether the cause is the gesture,
-  // an un-armed track, or a real hole in the range-selection path was NOT
-  // isolated. Committing this red would break the suite for everyone; deleting
-  // it would lose the work. `fixme` keeps the question and the harness while
-  // leaving CI green.
+  //   That looked like a hole in range selection. It was not: the arrangement
+  //   lane — and the RULER ABOVE it — had drifted below the fold of the 720px
+  //   viewport (measured: lane y=755), so `page.mouse` dispatched every event
+  //   at a point that is not on screen and the panel never saw a pointerdown.
+  //   Same bug the chaos chain hit the same day, one layer over: boundingBox()
+  //   is layout space, page.mouse is viewport space. `scrollIntoViewIfNeeded()`
+  //   before measuring is the whole fix.
   //
-  // NEXT QUESTION to answer before this runs: what does a user do in this panel
-  // to produce `selection.timeRange`, and does it work at all today?
-  test.fixme(true, "no gesture measured so far produces selection.timeRange; see the comment above");
-
+  // Kept as a comment because "the gesture does nothing" and "the gesture never
+  // arrived" are indistinguishable from inside the panel, and only one of them
+  // is a defect.
   const jsErrors: string[] = [];
   page.on("pageerror", (e) => jsErrors.push(`pageerror: ${e.message}`));
   page.on("console", (m) => {
