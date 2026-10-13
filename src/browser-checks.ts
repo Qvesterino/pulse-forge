@@ -6,6 +6,8 @@ import { createSchedulerDriver } from "./scheduler/schedulerDriver";
 import { INSTRUMENT_DEFS, INSTRUMENT_ORDER, defaultInstrumentParams } from "./instruments/registry";
 import { generateFactoryBank, RR_VARIATIONS, type SampleBank } from "./sample-library/factory";
 import { CURATED_SAMPLES, loadCuratedLayer } from "./sample-library/curated";
+import { ensurePianoPackLoaded } from "./presets/piano-pack";
+import { ensureVscoPackLoaded } from "./presets/vsco-pack";
 import { normalizeIntent } from "./intent/normalize";
 import { planGeneration } from "./intent/plan";
 import { loadCoreWorklets, loadInstrumentWorklet } from "./audio-worklets/loader";
@@ -612,6 +614,15 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
   // preset audit must measure the sound users actually hear, not the synth
   // fallback. Sampler/texture probes sample curated overrides directly.
   await loadCuratedLayer(bank);
+  // Real-instrument packs audition through their samples, via the SAME
+  // ensure-on-apply path the studio uses. Without these two awaits the piano and
+  // VSCO presets measure their silent synth fallback and the check fails on
+  // peaks of 0 — the exact hole the loudness harness hit before it adopted the
+  // bounded ensure-queue. Order matches scripts/verify-factory-presets.mjs:
+  // curated layer first, then the packs, then the audit. The audit below must
+  // stay last, so anything it measures has to be in the bank by then.
+  await ensurePianoPackLoaded(bank);
+  await ensureVscoPackLoaded(bank);
   record(await auditFactoryPresetAudio(bank));
   record(await auditFxExpansion(bank));
   // Live↔offline parity gate (release-gate hardening): the obligation check

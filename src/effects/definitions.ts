@@ -12,6 +12,7 @@
  */
 import type { EffectType } from "../project-model/types";
 import type { ParamDef } from "./types";
+import { wfSwingPlan } from "../audio-worklets/wowflutter-math.js";
 import { buildSchema as buildFxEqSchema } from "./fxeq-core/core/parameterSchema";
 import {
   PARAM_BY_ID as ULTINA_PARAM_BY_ID,
@@ -884,15 +885,68 @@ export const tapeSatParams: ParamDef[] = [
  * "seasick". See `src/audio-worklets/wowflutter-processor.js` for the three
  * deliberate differences.
  */
+/**
+ * Wow & flutter readout: how many cents the ring will ACTUALLY deliver for the
+ * requested depth, rather than the number sitting on the knob.
+ *
+ * The depth knob is honest and the number next to it was not. Delivering C
+ * cents at rate f needs a delay swing of `r / (2*pi*f)` seconds, and the ring's
+ * whole budget is its 10 ms base delay — so at 0.5 Hz a 10-cent request asks for
+ * almost the entire budget, and below that it simply cannot be met. Everything
+ * at or above ~0.5 Hz is exact and prints nothing.
+ *
+ * The number comes from `wfSwingPlan`, the same allocation the worklet runs, so
+ * the readout cannot drift away from the audio. 48 kHz is assumed: the budget
+ * moves by 1.2 microseconds between 44.1 and 96 kHz, worth under 0.1 cents at
+ * the rates where it binds at all.
+ */
+function wowFlutterAchieved(v: Record<string, number>, term: "wow" | "flutter"): string | undefined {
+  const num = (key: string, fallback: number): number => {
+    const raw = v[key];
+    return typeof raw === "number" && Number.isFinite(raw) ? raw : fallback;
+  };
+  const depth = num(term === "wow" ? "wowDepth" : "flutterDepth", 0);
+  if (depth <= 0) return undefined;
+  const plan = wfSwingPlan({
+    wowDepth: num("wowDepth", 10),
+    wowRate: num("wowRate", 0.5),
+    flutterDepth: num("flutterDepth", 2.5),
+    flutterRate: num("flutterRate", 11),
+  });
+  const achieved = term === "wow" ? plan.wowCents : plan.flutterCents;
+  // Only speak up when the delivered value is materially below the request; a
+  // rounding hair is noise, not information.
+  if (achieved >= depth - 0.05) return undefined;
+  return `delivers ${formatCents(achieved)} of ${formatCents(depth)} — raise RATE`;
+}
+
 // Unit is "ct", not "cents": the audit catalog (tests/plugin-functional-audit.ts)
 // enumerates the units a ParamDef may declare, and "ct" is the cents entry
 // there. `formatCents` already renders the same suffix, so the knob reads
 // "12.0 ct" and the catalog, the formatter and the display agree.
 export const wowFlutterParams: ParamDef[] = [
   { id: "wowRate", label: "WOW RATE", min: 0.05, max: 6, default: 0.5, unit: "Hz", format: formatHz, taper: "log" },
-  { id: "wowDepth", label: "WOW DEPTH", min: 0, max: 60, default: 10, unit: "ct", format: formatCents },
+  {
+    id: "wowDepth",
+    label: "WOW DEPTH",
+    min: 0,
+    max: 60,
+    default: 10,
+    unit: "ct",
+    format: formatCents,
+    secondary: (v) => wowFlutterAchieved(v, "wow"),
+  },
   { id: "flutterRate", label: "FLUT RATE", min: 4, max: 60, default: 11, unit: "Hz", format: formatHz, taper: "log" },
-  { id: "flutterDepth", label: "FLUT DEPTH", min: 0, max: 20, default: 2.5, unit: "ct", format: formatCents },
+  {
+    id: "flutterDepth",
+    label: "FLUT DEPTH",
+    min: 0,
+    max: 20,
+    default: 2.5,
+    unit: "ct",
+    format: formatCents,
+    secondary: (v) => wowFlutterAchieved(v, "flutter"),
+  },
   { id: "drift", label: "DRIFT", min: 0, max: 1, default: 0.35, format: formatPct },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },

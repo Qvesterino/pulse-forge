@@ -1,4 +1,4 @@
-/* Molten Console 2.0 — bottom-dock DEV panel (ROADMAP-UI-2027 style pass).
+/* Qvester Signal Glass / KYX Pulse — bottom-dock DEV panel (ROADMAP-UI-2027 style pass).
    Loaded LAST so it owns the device surface visually. Semantics (classes,
    ARIA, commands) are unchanged: this file only re-skins the chain strip,
    the focused device header and the editor surface. */

@@ -62,7 +62,21 @@ describe("countSpecFiles", () => {
 describe("collectCountChecks (against the real docs/CURRENT-STATE.md)", () => {
   it("parses every tracked row and matches live code RIGHT NOW", () => {
     const checks = collectCountChecks(process.cwd());
-    expect(checks.map((c) => c.label)).toEqual(["Effects", "Instruments", "Project templates", "Vitest spec files"]);
+    // The sample-library rows (assets / categories / kits) joined this list in
+    // 2026-10-13. They were the hole in the gate: the dusty jazz wave moved
+    // assets 151->155 and categories 14->15 and nothing here noticed either.
+    // Pinning the label list is the point of the test — a NEW count added to
+    // collectCountChecks without a CURRENT-STATE row (or the reverse) has to
+    // turn this red, which is what it did on the first run of that wave.
+    expect(checks.map((c) => c.label)).toEqual([
+      "Effects",
+      "Instruments",
+      "Project templates",
+      "Vitest spec files",
+      "Factory assets",
+      "Asset categories",
+      "Genre kits",
+    ]);
     for (const check of checks) {
       expect(check.claimed, `${check.label} row must exist in CURRENT-STATE`).not.toBeNull();
       expect(check.actual, `${check.label} live count must be positive`).toBeGreaterThan(0);

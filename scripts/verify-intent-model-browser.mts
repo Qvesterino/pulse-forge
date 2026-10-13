@@ -8,7 +8,8 @@
  * spawned, the ONNX wasm session resident, and a generate coming back
  * through the registered provider. This script IS that proof.
  *
- * Usage: npm run verify:intent-model -- [--full-eval] [--model-dir .sft/intent-model-challenger]
+ * Usage: npm run verify:intent-model -- [--full-eval] [--holdout .sft/private.jsonl]
+ *        [--model-dir .sft/intent-model-challenger] [--measure-ungated-candidate]
  * PORT env overrides 5291. Candidate files are served from .sft without touching public/models.
  * Exit 0 = the model loaded and decoded the expected chords-down fader route.
  */
@@ -23,6 +24,7 @@ const PORT = Number(process.env.PORT) || 5291;
 const FULL_EVAL = process.argv.includes("--full-eval");
 const MODEL_DIR_FLAG_INDEX = process.argv.indexOf("--model-dir");
 const MODEL_DIR_ARG = MODEL_DIR_FLAG_INDEX >= 0 ? process.argv[MODEL_DIR_FLAG_INDEX + 1] : null;
+const MEASURE_UNGATED_CANDIDATE = process.argv.includes("--measure-ungated-candidate");
 if (MODEL_DIR_FLAG_INDEX >= 0 && (!MODEL_DIR_ARG || MODEL_DIR_ARG.startsWith("--"))) {
   throw new Error("--model-dir requires a candidate directory below .sft/");
 }
@@ -34,6 +36,9 @@ if (MODEL_DIR_OVERRIDE) {
     throw new Error("--model-dir must point to a candidate directory below the ignored .sft/ directory");
   }
 }
+if (MEASURE_UNGATED_CANDIDATE && !MODEL_DIR_OVERRIDE) {
+  throw new Error("--measure-ungated-candidate is only valid with a private --model-dir candidate");
+}
 const HOLDOUT_FLAG_INDEX = process.argv.indexOf("--holdout");
 const HOLDOUT_ARG = HOLDOUT_FLAG_INDEX >= 0 ? process.argv[HOLDOUT_FLAG_INDEX + 1] : null;
 if (HOLDOUT_FLAG_INDEX >= 0 && (!HOLDOUT_ARG || HOLDOUT_ARG.startsWith("--"))) {
@@ -44,8 +49,12 @@ const EVAL_LABEL = HOLDOUT_PATH ? "browser-holdout" : "browser";
 const RUN_FULL_EVAL = FULL_EVAL || HOLDOUT_PATH !== null;
 
 interface ValidationRow {
+  id?: string;
   instruction: string;
   lang?: string;
+  family?: string;
+  scenario?: string;
+  expectedDisposition?: "action" | "clarify" | "abstain";
   response: unknown;
   /** Optional route-specific expectation when deterministic APIs encode the same operation differently. */
   routeResponse?: unknown;
@@ -112,6 +121,18 @@ if (HOLDOUT_PATH) {
       }
     }
   }
+  for (const [index, row] of validationRows.entries()) {
+    const disposition = row.expectedDisposition ?? (row.response === null ? "abstain" : "action");
+    if ((row.lang !== "en" && row.lang !== "sk") || !row.family?.trim() || !row.scenario?.trim()) {
+      throw new Error(`holdout row ${index + 1} needs lang=en|sk, family, and scenario`);
+    }
+    if (disposition === "action" ? row.response == null : row.response !== null) {
+      throw new Error(`holdout row ${index + 1} has a response/disposition mismatch`);
+    }
+    if (disposition !== "action" && disposition !== "clarify" && disposition !== "abstain") {
+      throw new Error(`holdout row ${index + 1} has an invalid expectedDisposition`);
+    }
+  }
   console.log(
     `[intent-model/${EVAL_LABEL}] exact-prompt overlap with train/val/golden: 0 · rows=${validationRows.length}`,
   );
@@ -160,7 +181,22 @@ const server = await createServer({
                 return;
               }
               try {
-                const bytes = readFileSync(path.join(MODEL_DIR_OVERRIDE, filename));
+                let bytes = readFileSync(path.join(MODEL_DIR_OVERRIDE, filename));
+                // Research-only measurement seam: the production loader refuses
+                // candidates whose validation manifest has not passed release
+                // gates. Allow the browser evaluator to measure such weights
+                // without changing the candidate or anything under public/.
+                if (filename === "intent-model-v1.manifest.json" && MEASURE_UNGATED_CANDIDATE) {
+                  const manifest: unknown = JSON.parse(bytes.toString("utf8"));
+                  if (!manifest || typeof manifest !== "object") throw new Error("invalid candidate manifest");
+                  const record = manifest as Record<string, unknown>;
+                  const report =
+                    record.report && typeof record.report === "object"
+                      ? (record.report as Record<string, unknown>)
+                      : {};
+                  record.report = { ...report, gatePassed: true };
+                  bytes = Buffer.from(JSON.stringify(record));
+                }
                 response.statusCode = 200;
                 response.setHeader("Content-Length", String(bytes.byteLength));
                 response.setHeader(
@@ -179,6 +215,11 @@ const server = await createServer({
     : [],
 });
 await server.listen();
+if (MEASURE_UNGATED_CANDIDATE) {
+  console.log(
+    "[intent-model] MEASUREMENT ONLY: private candidate gate pin overridden in served manifest; no release eligibility implied",
+  );
+}
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
@@ -342,6 +383,13 @@ try {
         expected: unknown;
         actual: unknown;
       }>;
+      familyHoldout?: {
+        modes: Record<string, Record<string, number>>;
+        byFamily: Record<string, Record<string, Record<string, number>>>;
+        byScenario: Record<string, Record<string, Record<string, number>>>;
+        byLanguage: Record<string, Record<string, Record<string, number>>>;
+        mismatches: Record<string, Array<Record<string, unknown>>>;
+      };
     }>("full browser validation", () =>
       page.evaluate(async (rows) => {
         const resolver = await import("/src/intent/model-resolver.ts");
@@ -354,6 +402,133 @@ try {
         const { warmFactoryPresets } = await import("/src/presets/factory-loader.ts");
         await warmFactoryPresets();
         const doc = datasetDoc();
+        type Score = {
+          rows: number;
+          expectedAction: number;
+          expectedClarify: number;
+          expectedAbstain: number;
+          attempted: number;
+          exact: number;
+          actionExact: number;
+          wrongKind: number;
+          slotMismatch: number;
+          abstain: number;
+          correctClarify: number;
+          missedClarify: number;
+          correctAbstain: number;
+          falsePositive: number;
+        };
+        const emptyScore = (): Score => ({
+          rows: 0,
+          expectedAction: 0,
+          expectedClarify: 0,
+          expectedAbstain: 0,
+          attempted: 0,
+          exact: 0,
+          actionExact: 0,
+          wrongKind: 0,
+          slotMismatch: 0,
+          abstain: 0,
+          correctClarify: 0,
+          missedClarify: 0,
+          correctAbstain: 0,
+          falsePositive: 0,
+        });
+        const modes = {
+          deterministic: emptyScore(),
+          modelOnly: emptyScore(),
+          combined: emptyScore(),
+        };
+        const byFamily: Record<string, typeof modes> = {};
+        const byScenario: Record<string, typeof modes> = {};
+        const byLanguage: Record<string, typeof modes> = {};
+        const mismatches: Record<keyof typeof modes, Array<Record<string, unknown>>> = {
+          deterministic: [],
+          modelOnly: [],
+          combined: [],
+        };
+        const record = (scores: Score, row: (typeof rows)[number], actual: { kind: string } | null): void => {
+          scores.rows++;
+          const disposition = row.expectedDisposition ?? (row.response === null ? "abstain" : "action");
+          if (disposition === "action") scores.expectedAction++;
+          else if (disposition === "clarify") scores.expectedClarify++;
+          else scores.expectedAbstain++;
+          const executable = actual != null && actual.kind !== "pattern" && actual.kind !== "clarify";
+          if (disposition === "action") {
+            if (!executable) {
+              scores.abstain++;
+              return;
+            }
+            scores.attempted++;
+            const expected = row.routeResponse ?? row.response;
+            if (actual.kind !== (expected as { kind?: unknown }).kind) scores.wrongKind++;
+            else if (decoder.canonicalModelJson(actual) !== decoder.canonicalModelJson(expected)) scores.slotMismatch++;
+            else {
+              scores.exact++;
+              scores.actionExact++;
+            }
+          } else if (disposition === "clarify") {
+            if (actual?.kind === "clarify") {
+              scores.exact++;
+              scores.correctClarify++;
+            } else if (executable) {
+              scores.attempted++;
+              scores.falsePositive++;
+            } else scores.missedClarify++;
+          } else if (executable) {
+            scores.attempted++;
+            scores.falsePositive++;
+          } else {
+            scores.exact++;
+            scores.correctAbstain++;
+          }
+        };
+        const recordMode = (
+          mode: keyof typeof modes,
+          row: (typeof rows)[number],
+          actual: { kind: string } | null,
+        ): void => {
+          record(modes[mode], row, actual);
+          const disposition = row.expectedDisposition ?? (row.response === null ? "abstain" : "action");
+          const executable = actual != null && actual.kind !== "pattern" && actual.kind !== "clarify";
+          let outcome: string | null = null;
+          if (disposition === "action") {
+            if (!executable) outcome = "action-abstain";
+            else {
+              const expected = row.routeResponse ?? row.response;
+              if (actual.kind !== (expected as { kind?: unknown }).kind) outcome = "wrong-kind";
+              else if (decoder.canonicalModelJson(actual) !== decoder.canonicalModelJson(expected))
+                outcome = "slot-mismatch";
+            }
+          } else if (disposition === "clarify") {
+            if (actual?.kind !== "clarify") outcome = executable ? "false-positive" : "missed-clarify";
+          } else if (executable) outcome = "false-positive";
+          const sameOutcomeCount = outcome ? mismatches[mode].filter((entry) => entry.outcome === outcome).length : 0;
+          if (outcome && sameOutcomeCount < 2) {
+            mismatches[mode].push({
+              ...(row.id ? { id: row.id } : {}),
+              language: row.lang,
+              family: row.family,
+              scenario: row.scenario,
+              outcome,
+              instruction: row.instruction,
+              expected: disposition === "action" ? (row.routeResponse ?? row.response) : disposition,
+              actual,
+            });
+          }
+          for (const [slices, key] of [
+            [byFamily, String(row.family)],
+            [byScenario, String(row.scenario)],
+            [byLanguage, String(row.lang)],
+          ] as const) {
+            const slice = (slices[key] ??= {
+              deterministic: emptyScore(),
+              modelOnly: emptyScore(),
+              combined: emptyScore(),
+            });
+            record(slice[mode], row, actual);
+          }
+        };
         const result = {
           rows: rows.length,
           attempted: 0,
@@ -388,7 +563,20 @@ try {
             expected: unknown;
             actual: unknown;
           }>,
+          familyHoldout: { modes, byFamily, byScenario, byLanguage, mismatches },
         };
+        for (const row of rows) {
+          const disposition = row.expectedDisposition ?? (row.response === null ? "abstain" : "action");
+          if (disposition === "action") {
+            const expected = row.routeResponse ?? row.response;
+            const validation = schema.validateModelAction(expected);
+            if (!validation.valid) {
+              throw new Error(
+                `invalid expected action for ${row.id ?? row.instruction}: ${validation.errors.join(", ")}`,
+              );
+            }
+          }
+        }
         for (const row of rows) {
           let cause: string | undefined;
           const deterministic = routeIntent.routeIntentText(row.instruction, doc);
@@ -417,7 +605,10 @@ try {
             }
           }
           const modelActual = modelRoute == null ? null : dataset.compactIntentResponse(modelRoute);
-          const expectedKind = String((row.response as { kind?: unknown } | null)?.kind ?? "unknown");
+          recordMode("modelOnly", row, modelActual);
+          const expectedKind = String(
+            (row.response as { kind?: unknown } | null)?.kind ?? row.expectedDisposition ?? "unknown",
+          );
           const sliceKey = `${row.lang ?? "unknown"}/${expectedKind}`;
           const slice = (result.modelSlices[sliceKey] ??= {
             rows: 0,
@@ -466,6 +657,8 @@ try {
           if (modelFallback) result.modelFallback += 1;
           else result.deterministic += 1;
           const actual = route == null ? null : dataset.compactIntentResponse(route);
+          recordMode("deterministic", row, dataset.compactIntentResponse(deterministic));
+          recordMode("combined", row, actual);
           let outcome = "exact";
           if (actual == null) {
             result.abstain += 1;
@@ -505,40 +698,66 @@ try {
     );
     const attemptedExact = evaluation.exact / Math.max(1, evaluation.attempted);
     const abstainRate = evaluation.abstain / Math.max(1, evaluation.rows);
-    console.log(
-      `[intent-model/${EVAL_LABEL}] rows=${evaluation.rows} attempted=${evaluation.attempted} exact=${evaluation.exact} ` +
-        `attemptedExact=${(attemptedExact * 100).toFixed(1)}% wrongKind=${evaluation.wrongKind} ` +
-        `slotMismatch=${evaluation.slotMismatch} abstain=${evaluation.abstain} (${(abstainRate * 100).toFixed(1)}%) ` +
-        `deterministic=${evaluation.deterministic} modelFallback=${evaluation.modelFallback}`,
-    );
-    for (const failure of evaluation.failures) {
-      console.log(
-        `[intent-model/${EVAL_LABEL}-pipeline] ${failure.outcome}: ${failure.instruction} · expected=${JSON.stringify(failure.expected)} · actual=${JSON.stringify(failure.actual)}`,
-      );
-    }
     const modelAttemptedExact = evaluation.modelExact / Math.max(1, evaluation.modelAttempted);
     const modelAbstainRate = evaluation.modelAbstain / Math.max(1, evaluation.rows);
-    console.log(
-      `[intent-model/${EVAL_LABEL}-model-only] attempted=${evaluation.modelAttempted} exact=${evaluation.modelExact} ` +
-        `attemptedExact=${(modelAttemptedExact * 100).toFixed(1)}% wrongKind=${evaluation.modelWrongKind} ` +
-        `slotMismatch=${evaluation.modelSlotMismatch} abstain=${evaluation.modelAbstain} ` +
-        `(${(modelAbstainRate * 100).toFixed(1)}%) ` +
-        `workerRecoversAfterAbstain=${evaluation.workerRecoversAfterAbstain}`,
-    );
-    for (const [sliceKey, slice] of Object.entries(evaluation.modelSlices)) {
+    if (HOLDOUT_PATH && evaluation.familyHoldout) {
+      const formatScore = (score: Record<string, number>): string =>
+        `rows=${score.rows} actionExact=${score.actionExact}/${score.expectedAction} ` +
+        `wrongKind=${score.wrongKind} slotMismatch=${score.slotMismatch} actionAbstain=${score.abstain} ` +
+        `clarify=${score.correctClarify}/${score.expectedClarify} missedClarify=${score.missedClarify} ` +
+        `safeAbstain=${score.correctAbstain}/${score.expectedAbstain} falsePositive=${score.falsePositive}`;
+      for (const [mode, score] of Object.entries(evaluation.familyHoldout.modes)) {
+        console.log(`[intent-model/family-holdout/${mode}] ${formatScore(score)}`);
+      }
+      for (const [language, scores] of Object.entries(evaluation.familyHoldout.byLanguage)) {
+        console.log(`[intent-model/family-holdout/language/${language}] ${formatScore(scores.combined)}`);
+      }
+      for (const [family, scores] of Object.entries(evaluation.familyHoldout.byFamily)) {
+        console.log(`[intent-model/family-holdout/family/${family}] ${formatScore(scores.combined)}`);
+      }
+      for (const [scenario, scores] of Object.entries(evaluation.familyHoldout.byScenario)) {
+        console.log(`[intent-model/family-holdout/scenario/${scenario}] ${formatScore(scores.combined)}`);
+      }
+      for (const [mode, mismatches] of Object.entries(evaluation.familyHoldout.mismatches)) {
+        for (const mismatch of mismatches) {
+          console.log(`[intent-model/family-holdout/${mode}-miss] ${JSON.stringify(mismatch)}`);
+        }
+      }
       console.log(
-        `[intent-model/${EVAL_LABEL}-slice] ${sliceKey} rows=${slice.rows} exact=${slice.exact} ` +
-          `attempted=${slice.attempted} wrongKind=${slice.wrongKind} slotMismatch=${slice.slotMismatch} abstain=${slice.abstain}`,
+        `[intent-model/family-holdout] workerRecoversAfterAbstain=${evaluation.workerRecoversAfterAbstain} · measurement-only; no quality threshold applied`,
       );
-    }
-    for (const failure of evaluation.modelFailures) {
+    } else {
       console.log(
-        `[intent-model/${EVAL_LABEL}-model-only] ${failure.outcome}${failure.cause ? `/${failure.cause}` : ""}: ${failure.instruction} · expected=${JSON.stringify(failure.expected)} · actual=${JSON.stringify(failure.actual)}`,
+        `[intent-model/${EVAL_LABEL}] rows=${evaluation.rows} attempted=${evaluation.attempted} exact=${evaluation.exact} ` +
+          `attemptedExact=${(attemptedExact * 100).toFixed(1)}% wrongKind=${evaluation.wrongKind} ` +
+          `slotMismatch=${evaluation.slotMismatch} abstain=${evaluation.abstain} (${(abstainRate * 100).toFixed(1)}%) ` +
+          `deterministic=${evaluation.deterministic} modelFallback=${evaluation.modelFallback}`,
       );
+      for (const failure of evaluation.failures) {
+        console.log(
+          `[intent-model/${EVAL_LABEL}-pipeline] ${failure.outcome}: ${failure.instruction} · expected=${JSON.stringify(failure.expected)} · actual=${JSON.stringify(failure.actual)}`,
+        );
+      }
+      console.log(
+        `[intent-model/${EVAL_LABEL}-model-only] attempted=${evaluation.modelAttempted} exact=${evaluation.modelExact} ` +
+          `attemptedExact=${(modelAttemptedExact * 100).toFixed(1)}% wrongKind=${evaluation.modelWrongKind} ` +
+          `slotMismatch=${evaluation.modelSlotMismatch} abstain=${evaluation.modelAbstain} ` +
+          `(${(modelAbstainRate * 100).toFixed(1)}%) ` +
+          `workerRecoversAfterAbstain=${evaluation.workerRecoversAfterAbstain}`,
+      );
+      for (const [sliceKey, slice] of Object.entries(evaluation.modelSlices)) {
+        console.log(
+          `[intent-model/${EVAL_LABEL}-slice] ${sliceKey} rows=${slice.rows} exact=${slice.exact} ` +
+            `attempted=${slice.attempted} wrongKind=${slice.wrongKind} slotMismatch=${slice.slotMismatch} abstain=${slice.abstain}`,
+        );
+      }
+      for (const failure of evaluation.modelFailures) {
+        console.log(
+          `[intent-model/${EVAL_LABEL}-model-only] ${failure.outcome}${failure.cause ? `/${failure.cause}` : ""}: ${failure.instruction} · expected=${JSON.stringify(failure.expected)} · actual=${JSON.stringify(failure.actual)}`,
+        );
+      }
+      console.log(`[intent-model/${EVAL_LABEL}] abstain causes=${JSON.stringify(evaluation.causes)}`);
     }
-    console.log(`[intent-model/${EVAL_LABEL}] abstain causes=${JSON.stringify(evaluation.causes)}`);
-    if (HOLDOUT_PATH)
-      console.log(`[intent-model/${EVAL_LABEL}] measurement-only; no quality thresholds applied to private holdout`);
     if (
       !evaluation.workerRecoversAfterAbstain ||
       (!HOLDOUT_PATH &&

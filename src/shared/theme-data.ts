@@ -32,13 +32,15 @@ export interface ThemePreset {
 export const THEME_PRESETS: ThemePreset[] = [
   {
     /**
-     * The default identity: near-black glass, deep layered panels, amber
-     * molten accent. Mirrors `:root` in src/styles/01-base.css (first-paint parity), so
+     * The default identity: dark matte work surfaces, silver glass chrome,
+     * and an amber pulse. The UI label is Signal Glass; the persisted id stays
+     * "molten" so existing theme state and shared theme codes keep loading.
+     * Mirrors `:root` in src/styles/01-base.css (first-paint parity), so
      * a user with no stored theme sees exactly this and nothing shifts after
      * initTheme() runs.
      */
     id: "molten",
-    name: "Molten",
+    name: "Signal Glass",
     accent: "#f59e0b",
     vars: {
       "--accent": "#f59e0b",
@@ -57,7 +59,7 @@ export const THEME_PRESETS: ThemePreset[] = [
   {
     /**
      * Classic palette, kept for users whose stored theme is "forge". Since
-     * :root now mirrors Molten, Forge must carry its own overrides explicitly
+     * :root now mirrors Signal Glass, Forge must carry its own overrides explicitly
      * or the two presets would render identically.
      */
     id: "forge",
@@ -131,7 +133,7 @@ export const DEFAULT_THEME_STATE: ThemeState = {
 
 /**
  * Every CSS variable a preset is allowed to override. `applyTheme` clears
- * these before applying the preset, so switching Molten → Forge (vars: {})
+ * these before applying the preset, so switching Signal Glass → Forge (vars: {})
  * returns to the :root defaults instead of leaking the previous palette's
  * inline values onto the document root.
  */

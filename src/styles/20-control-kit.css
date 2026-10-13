@@ -3,7 +3,7 @@
    cascade: additive component classes that must win ties against the legacy
    per-panel styles. Do not reorder src/styles/index.css.
 
-   Hierarchy rules (Molten Console 2.0):
+   Hierarchy rules (Qvester Signal Glass / KYX Pulse):
    - accent  = interactive state + primary actions (sparingly!)
    - raised  = neutral secondary chrome
    - glow    = ACTIVE things only (recording, playing, selected tab/LED) */

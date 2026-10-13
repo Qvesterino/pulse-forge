@@ -100,12 +100,14 @@ The active browser action model is `public/models/intent-model-v1.onnx`
 multi-head, closed-set slot-filling classifier. File size supports download
 planning; it does not reveal the exact parameter count or prediction quality.
 
-The current checked-in dataset is v16: 2,531 rows total, with 2,169 train,
-362 validation, and 77 golden rows in English and Slovak (1,872 English and
-659 Slovak). The manifest records 2,489 deterministic labels and 42 reviewed
-residual labels. Train, validation, and golden are development/regression data;
-the private 27-row browser residual holdout is checked for normalized exact
-prompt overlap before use. Keep that holdout out of training and tuning.
+The checked-in dataset manifest is v16: 2,558 train + validation rows (2,193
+train and 365 validation), plus 77 golden rows, in English and Slovak (1,882
+English and 676 Slovak train + validation rows). The manifest records 2,516
+deterministic labels and 42 reviewed residual labels. The active ONNX artifact
+still pins its earlier 2,169/362/77 training snapshot in its own report; it
+has not been retrained on the current data files. Train, validation, and
+golden are development/regression data. Keep private browser holdouts out of
+training and tuning.
 
 An earlier v5 validation reported 285/287 exact among attempted outputs
 (99.3%), with zero wrong-kind and 12/299 abstentions (4.0%) on validation.
@@ -169,6 +171,50 @@ build compiles but exits on size budgets: DAW JS is 5,244/5,186 KB and core
 worklets are 152/150 KB; the studio boot path remains under budget at
 2,143/2,200 KB. Browser-model activation is verified, while the overall build
 budget gate still needs separate cleanup.
+
+The 2026-10-13 family holdout is a harder, separate browser baseline. Its
+private `.sft/intent-family-holdout-v1.jsonl` contains 96 assistant-authored,
+provisional EN/SK cases: 48 expected action routes, 24 clarifications, and 24
+abstentions across 12 phrasing families and 28 scenarios. The browser verifier
+confirmed zero normalized exact-prompt overlap with train, validation, and
+golden, validated each expected action against the production model schema,
+and completed the real Chromium worker-recovery check. The combined pipeline
+matched 11/48 action routes exactly (6 wrong-kind, 5 slot mismatches, 26
+abstentions), produced the expected clarification on 7/24 cases, safely
+abstained on 15/24 no-action cases, and made 15 false-positive routes across
+the clarification and abstention cases. The direct model-only pass matched
+6/48 actions and produced no expected clarifications; the deterministic
+router matched 8/48 actions. English action exact was 4/24 and Slovak was
+7/24. These small, self-authored slices are diagnostic only, not a release
+gate or independent user study, and this baseline must not be used for tuning.
+
+Two already-trained challengers were then measured against the same frozen
+browser set without changing their artifacts. The 7,011,152-byte FP32 model
+loaded in Chromium in 1,391 ms and inferred in 17 ms; its checked-in validation
+report fails only the abstention ceiling (22.2% vs 20%). The 1,803,913-byte
+quantized model loaded in 482 ms and inferred in 26 ms; its validation report
+fails all three gates: one wrong-kind, 94.8% attempted exactness, and 20.8%
+abstention. In the browser holdout, both candidates matched 5/48 model-only
+actions and the combined router matched 11/48 with 7 wrong-kind, versus the
+recorded active-model baseline of 11/48 with 6 wrong-kind. For this diagnostic
+only, the local verifier served an in-memory `gatePassed` override so the
+production loader could run the otherwise rejected private candidates; neither
+manifest nor `public/models/` was changed. Neither candidate is eligible for
+promotion. Quantization cut the file size and cold-load time, but did not
+improve intent quality and increased inference time in this run.
+An additional validation-only decoder calibration sweep across kind margins
+0–4.8 and abstain margins 2–6 found no configuration that simultaneously met
+the exactness, zero-wrong-kind, and abstention gates. Looser kind margins
+reduced abstentions only by admitting wrong operations and slot errors; a
+threshold-only fix is not supported by this candidate.
+
+The failure profile identifies areas for independent follow-up: conflict
+resolution, clarification for missing targets and values, semantic sensory
+paraphrases, and EN/SK transfer. The individual holdout prompts remain frozen
+and must not become training or tuning examples. Labels need domain-user
+adjudication before the set can become an acceptance gate; future training
+and iteration require separate development examples and a separately locked
+challenge set.
 
 Known remaining capability gaps:
 

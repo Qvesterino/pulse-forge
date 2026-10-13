@@ -254,7 +254,11 @@ describe("dusty jazz / boom-bap family", () => {
     ["agogo", /factory\.perc\.agogo/],
   ];
 
-  const fold = (s: string): string => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const fold = (s: string): string =>
+    s
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
 
   it("every kit description is backed by the assets that kit selects", () => {
     for (const kit of KIT_PRESETS) {

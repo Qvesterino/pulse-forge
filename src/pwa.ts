@@ -35,7 +35,7 @@ export const pwaOptions: Partial<VitePWAOptions> = {
     scope: mountBase,
     start_url: mountBase,
     display: "standalone",
-    // Molten app shell (mirrors --bg in src/styles/01-base.css / THEME_PRESETS[0]).
+    // Signal Glass app shell (mirrors --bg in src/styles/01-base.css / THEME_PRESETS[0]).
     background_color: "#0b0c10",
     theme_color: "#0b0c10",
     categories: ["music", "productivity", "entertainment"],

@@ -1,20 +1,20 @@
-# ROADMAP-UI-2027 — "FL-intuitívne, 2027 modern"
+# ROADMAP-UI-2027 — Qvester Signal Glass / KYX Pulse
 
 > Dizajnový roadmap pre redesign DAW UI, s dôrazom na **bottom dock**.
 > Vznikol z live vizuálneho auditu 2026-10-04 (všetky panely preklikané so screenshotmi)
 >
 > - kódového štúdia (`src/ui/dockLayout.ts`, `src/ui/App.tsx`, `src/ui/TopBar.tsx`,
 >   `src/styles/01..18-*.css`, `src/shared/theme-data.ts`).
->   Stav: **čaká na GO** — nič z tohto ešte nie je implementované.
+>   Stav: **vizuálny smer schválený a základná identita implementovaná 2026-10-13**.
 
 ---
 
 ## 1. Cieľ a non-goaly
 
 **Cieľ:** UI sa riadi podľa FL Studio v _learnability_ (všetko nájdeš na prvý
-pohľad, myš stačí, systém ťa učí kým hoveruješ) a vizuálne je to 2027 moderná
-tmavá konzola na úrovni Abletonu/Bitwigu — "Molten Console 2.0" (evolúcia
-súčasnej identity, nie rebrand).
+pohľad, myš stačí, systém ťa učí kým hoveruješ). Vizuálna identita KYX je
+**Qvester Signal Glass / KYX Pulse**: strieborné sklenené šasi, matná tmavá
+pracovná plocha a jantárový pulz pre výber, aktívny krok a hlavné akcie.
 
 **Non-goaly:**
 
@@ -24,6 +24,24 @@ súčasnej identity, nie rebrand).
 - Nemeníme audio architektúru, command flow ani project model (AGENTS.md
   invarianty zostávajú).
 - Landing/embed/gallery sú mimo scope (majú vlastnú identitu, tá funguje).
+
+### Schválený vizuálny jazyk
+
+- **Strieborné šasi:** jemný kovový gradient a sklenené odlesky na značke,
+  hornej lište, aktívnych záložkách a vybraných hlavných ovládacích prvkoch.
+- **Matná pracovná plocha:** sequencer, aranžmán, mixer a inspector ostávajú
+  tmavé, pokojné a bez rozmazaného skla za hustými hudobnými dátami.
+- **Jantárový pulz:** aktívny krok, vybraná stopa, playhead a hlavná akcia
+  zdieľajú tenkú jantárovú stopu. Výplne krokov naďalej nesú farbu nástroja;
+  vybraný pad dostane jemný jantárový vnútorný okraj; prehrávanie ostáva
+  zelené a nahrávanie červené.
+- **Jedna opakujúca sa stopa:** úzky pulz v hornej lište sa opakuje na
+  transporte, vybranej stope a aktívnom kroku. Svetlo je sústredené na
+  interakciu, nie na plochy pracovného plátna.
+- **Kompatibilita tém:** predvolená paleta sa v paneli tém volá `Signal Glass`.
+  Persistované ID `molten` zostáva zachované, aby existujúce projekty a
+  zdieľané theme kódy ďalej fungovali. Používateľské accent farby naďalej
+  riadia interaktívne stavy.
 
 ---
 
@@ -108,7 +126,7 @@ Kľúčové zmeny oproti dnešku:
 
 - `DockChrome.tsx` — tab row generovaná z `PANEL_KEYS` (dockLayout.ts je zdroj
   pravdy), `role="tablist"/"tab"/"tabpanel"` + `aria-selected`
-- tab = ikona + label, aktívny tab má accent underline/glow (Molten glow len
+- tab = ikona + label, aktívny tab má accent underline/glow (Pulse glow len
   na aktívnych — to je 2027 časť, nie na všetkom)
 - akcie vpravo: `⇔ split` (toggle slotB), `▾ collapse`
 - **resize grip**: 12 px hit area, 3 grip lines, dvojklik = default výška,

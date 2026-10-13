@@ -1,0 +1,32 @@
+feat(fx): paint the core EQ response curve in the kit multiview
+
+The EQ column showed four sliders for a device with 27 parameters, which is
+the one panel a beatmaker reaches for first and the one place four sliders say
+the least. It now paints its curve above them.
+
+eqCurve is an offline transcription of the worklet's own arithmetic, NOT
+BiquadFilterNode. eq-processor.js deliberately does not use textbook RBJ
+shelves: they are PARALLEL form over 2-pole Butterworth prototypes so both
+ends land exactly on 0 dB and +/-G, and peaking bands carry a bilinear Q
+pre-correction. A BiquadFilter response would therefore draw a curve that is
+close to, but not, the one the track is processing - for a level display that
+is worse than no curve at all. The two must change together.
+
+The spec pins the physics rather than smoothness: a flat passband, 3 dB at
+each HP/LP corner (factory hpFreq is 20 Hz, so 0 dB at 20 Hz would be the
+lie), and a +12 dB shelf that does NOT droop to +7 dB at 20 kHz - the exact
+failure the parallel topology exists to prevent. It also records that the
+analytic response floors at -60 dB while the display floors at -24, because
+at Nyquist a 2-pole lowpass is around -40 dB and flooring it early collapses
+two different responses onto one number.
+
+The gate reads the curve's pixels, not its presence: dragging LOW SHELF must
+change both the stored gain (0 dB to +13.5 dB) and the painted weight, and
+one Ctrl+Z must restore both. It also gates REACHABILITY - the EQ column is
+taller than its four siblings since it gained a curve, and a knob painted
+below the fold is identical to a usable one until the user reaches for it.
+Sizing it to fit (46px curve, 232px strip) was the fix; the first version of
+that check compared an absolute Y to the viewport height, which says nothing
+because the devices panel is nowhere near the bottom of the screen.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

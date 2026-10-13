@@ -1,0 +1,338 @@
+/* KYX visual language — Qvester Signal Glass / Pulse.
+ *
+ * This is the final, additive skin layer. It gives the studio chrome a satin
+ * silver glass finish while leaving the sequencer, arrangement and mixer as
+ * matte work surfaces. The amber trace repeats across the transport, selected
+ * track and active step; track colours and transport status colours remain
+ * semantic.
+ */
+
+:root {
+  --kyx-silver-bright: #eef2f6;
+  --kyx-silver-mid: #c7d0da;
+  --kyx-silver-steel: #8491a0;
+  --kyx-silver-edge: rgba(217, 224, 232, 0.28);
+  --kyx-silver-glass: linear-gradient(
+    145deg,
+    rgba(238, 242, 246, 0.3) 0%,
+    rgba(199, 208, 218, 0.17) 28%,
+    rgba(132, 145, 160, 0.11) 58%,
+    rgba(238, 242, 246, 0.21) 100%
+  );
+  --kyx-pulse: var(--accent);
+  --kyx-pulse-soft: var(--accent-soft);
+}
+
+/* The topbar is the silver chassis: a quiet edge highlight and one warm pulse
+   mark establish the visual signature without adding texture to the canvas. */
+.topbar {
+  isolation: isolate;
+  background:
+    linear-gradient(
+      112deg,
+      rgba(238, 242, 246, 0.16) 0%,
+      rgba(199, 208, 218, 0.08) 16%,
+      transparent 34%,
+      rgba(238, 242, 246, 0.045) 64%,
+      rgba(238, 242, 246, 0.13) 100%
+    ),
+    linear-gradient(180deg, #303740 0%, #22272e 48%, #171a1f 100%);
+  border-bottom-color: var(--kyx-silver-edge);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 5px 18px rgba(0, 0, 0, 0.38);
+}
+
+.topbar::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 14px;
+  left: 14px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(238, 242, 246, 0.16),
+    rgba(238, 242, 246, 0.52) 16%,
+    rgba(238, 242, 246, 0.08) 52%,
+    rgba(238, 242, 246, 0.24) 100%
+  );
+  pointer-events: none;
+}
+
+.topbar::after {
+  content: "";
+  position: absolute;
+  right: 14px;
+  bottom: 0;
+  left: 14px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(217, 224, 232, 0.12) 0%,
+    rgba(217, 224, 232, 0.12) 37%,
+    color-mix(in srgb, var(--kyx-pulse) 72%, #fff) 40%,
+    var(--kyx-pulse) 40.6%,
+    rgba(217, 224, 232, 0.16) 43%,
+    rgba(217, 224, 232, 0.08) 100%
+  );
+  opacity: 0.82;
+  pointer-events: none;
+}
+
+.brand-mark {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: linear-gradient(
+    145deg,
+    #ffffff 0%,
+    var(--kyx-silver-bright) 22%,
+    var(--kyx-silver-mid) 48%,
+    var(--kyx-silver-steel) 72%,
+    #e8edf2 100%
+  );
+  color: #171b21;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(34, 41, 50, 0.3),
+    0 2px 9px rgba(0, 0, 0, 0.35);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.32);
+}
+
+.brand-mark::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 2px;
+  left: 4px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--kyx-pulse) 30%, #ffe2a8 50%, var(--kyx-pulse) 70%, transparent);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--kyx-pulse) 58%, transparent);
+}
+
+.brand-name {
+  color: #e6ebf0;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.transport-cluster {
+  border-top: 1px solid rgba(217, 224, 232, 0.16);
+  border-bottom: 1px solid rgba(217, 224, 232, 0.1);
+  border-color: rgba(217, 224, 232, 0.24);
+  background: linear-gradient(180deg, rgba(238, 242, 246, 0.1), rgba(238, 242, 246, 0.015) 52%), rgba(0, 0, 0, 0.2);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.075),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.transport-cluster::after {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  left: 12px;
+  width: 28px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--kyx-pulse), #ffe2a8);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--kyx-pulse) 55%, transparent);
+  pointer-events: none;
+}
+
+.btn {
+  border-color: color-mix(in srgb, var(--border) 76%, var(--kyx-silver-mid));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.075),
+    0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--kyx-silver-mid) 48%, var(--accent));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 1px rgba(217, 224, 232, 0.035);
+}
+
+.btn.btn-primary {
+  border-color: color-mix(in srgb, var(--accent) 68%, #fff);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 78%, #fff),
+    var(--accent) 54%,
+    color-mix(in srgb, var(--accent) 76%, #7b4814)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.38),
+    inset 0 -1px 0 rgba(90, 54, 16, 0.2),
+    0 3px 12px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.position-display {
+  border-color: rgba(217, 224, 232, 0.19);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 1px 3px rgba(0, 0, 0, 0.28);
+}
+
+/* Selected tabs catch the silver light; the amber underline keeps the active
+   location easy to scan in both the track rack and bottom dock. */
+.track-tab {
+  border-color: rgba(217, 224, 232, 0.13);
+  background: linear-gradient(180deg, rgba(238, 242, 246, 0.045), transparent 70%), var(--bg-panel);
+}
+
+.track-tab.active {
+  position: relative;
+  color: var(--kyx-silver-bright);
+  border-color: color-mix(in srgb, var(--kyx-silver-mid) 68%, var(--accent));
+  background:
+    var(--kyx-silver-glass),
+    linear-gradient(180deg, rgba(238, 242, 246, 0.2), rgba(238, 242, 246, 0.06) 54%, var(--accent-soft)),
+    var(--bg-panel-2);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    inset 0 -1px 0 rgba(18, 22, 27, 0.28),
+    0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.track-tab.active::after {
+  content: "";
+  position: absolute;
+  right: 8px;
+  bottom: 0;
+  left: 8px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--kyx-pulse) 20%, #ffe2a8 50%, var(--kyx-pulse) 80%, transparent);
+}
+
+.pattern-chip {
+  border-color: rgba(217, 224, 232, 0.16);
+  background: linear-gradient(180deg, rgba(238, 242, 246, 0.055), transparent 76%), var(--bg-panel);
+}
+
+.pattern-chip.active {
+  position: relative;
+  color: var(--kyx-pulse);
+  border-color: color-mix(in srgb, var(--kyx-silver-mid) 38%, var(--kyx-pulse));
+  background: var(--kyx-silver-glass), linear-gradient(180deg, rgba(238, 242, 246, 0.13), var(--kyx-pulse-soft));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 1px 6px color-mix(in srgb, var(--kyx-pulse) 12%, transparent);
+}
+
+.pattern-chip.active::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  bottom: 2px;
+  left: 12px;
+  height: 1px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, transparent, var(--kyx-pulse) 24%, #ffe2a8 50%, var(--kyx-pulse) 76%, transparent);
+}
+
+.bottom-panels {
+  border-top-color: var(--kyx-silver-edge);
+  box-shadow: 0 -5px 18px rgba(0, 0, 0, 0.18);
+}
+
+.dock-tabs {
+  background:
+    var(--kyx-silver-glass), linear-gradient(180deg, color-mix(in srgb, var(--bg-panel) 90%, #000), var(--bg-panel));
+  border-bottom-color: var(--kyx-silver-edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.dock-tab.active {
+  color: var(--kyx-silver-bright);
+  border-bottom-color: var(--kyx-pulse);
+  background:
+    var(--kyx-silver-glass),
+    linear-gradient(180deg, rgba(238, 242, 246, 0.18), rgba(238, 242, 246, 0.05) 56%, var(--kyx-pulse-soft));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    inset 0 -1px 0 rgba(18, 22, 27, 0.2);
+}
+
+.dock-tab.active .dock-tab-led {
+  background: linear-gradient(135deg, #fff2d6, var(--kyx-pulse));
+  box-shadow: 0 0 7px color-mix(in srgb, var(--kyx-pulse) 72%, transparent);
+}
+
+.bottom-panels .dock-resize-handle span {
+  background: linear-gradient(90deg, rgba(217, 224, 232, 0.28), rgba(238, 242, 246, 0.72), rgba(217, 224, 232, 0.28));
+}
+
+.track-header-row.selected .track-header-name {
+  position: relative;
+  border-color: color-mix(in srgb, var(--kyx-silver-mid) 35%, var(--accent));
+  background: linear-gradient(105deg, var(--accent-soft), rgba(238, 242, 246, 0.045) 52%, transparent), var(--bg-raise);
+  color: var(--text);
+  box-shadow:
+    inset 2px 0 0 var(--kyx-pulse),
+    inset 0 1px 0 rgba(255, 255, 255, 0.11);
+}
+
+.track-header-row.selected .track-header-name::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 8px;
+  width: 24px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--kyx-pulse), #ffe2a8);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--kyx-pulse) 56%, transparent);
+}
+
+.track-header-row.playing .track-header-name {
+  border-color: color-mix(in srgb, var(--play) 52%, var(--border));
+  color: var(--play);
+  box-shadow:
+    inset 2px 0 0 var(--play),
+    inset 0 1px 0 rgba(255, 255, 255, 0.11);
+}
+
+.track-header-row.playing .track-header-name::after {
+  background: linear-gradient(90deg, var(--play), #c7f9d9);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--play) 54%, transparent);
+}
+
+.pad.selected {
+  border-color: color-mix(in srgb, var(--kyx-silver-mid) 46%, var(--pad-color, var(--accent)));
+  border-left-color: var(--pad-color, var(--accent));
+  background: linear-gradient(110deg, var(--kyx-pulse-soft), rgba(238, 242, 246, 0.055) 60%), var(--bg-raise);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 0 0 1px color-mix(in srgb, var(--kyx-pulse) 24%, transparent),
+    0 0 9px color-mix(in srgb, var(--kyx-pulse) 12%, transparent);
+}
+
+/* Row colour remains the step fill. The same amber pulse appears as a thin
+   leading edge, so the beat stays readable by instrument as well as state. */
+.step.active {
+  border-top-color: color-mix(in srgb, var(--kyx-pulse) 76%, #fff);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--kyx-pulse) 38%, #fff),
+    0 0 12px color-mix(in srgb, var(--pad-color, var(--accent)) calc(var(--step-velocity, 0.8) * 32%), transparent);
+}
+
+.step.playhead {
+  border-color: color-mix(in srgb, var(--kyx-pulse) 48%, var(--border));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--kyx-pulse) 52%, transparent),
+    0 0 7px color-mix(in srgb, var(--kyx-pulse) 32%, transparent);
+}
+
+.step.active.playhead {
+  border-top-color: #fff0cf;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 240, 207, 0.55),
+    0 0 9px color-mix(in srgb, var(--kyx-pulse) 48%, transparent);
+}
+
+.statusbar {
+  border-top-color: rgba(217, 224, 232, 0.14);
+}

@@ -1,6 +1,6 @@
 :root {
-  /* Molten — the default identity. These values mirror THEME_PRESETS[0]
-     ("Molten") in src/ui/theme.ts so the very first paint (before
+  /* Signal Glass — the default identity. These values mirror THEME_PRESETS[0]
+     ("Signal Glass") in src/shared/theme-data.ts so the very first paint (before
      initTheme() runs) already wears the branded palette. Changing one
      without the other is a bug. */
   --bg: #0b0c10;

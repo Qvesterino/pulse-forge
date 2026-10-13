@@ -1227,6 +1227,26 @@
   gap: 6px 10px;
 }
 
+/* One parameter and its optional secondary line share a grid cell, so the note
+   stays under its own knob instead of drifting into the next column. */
+.fx-param-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+/* Printed only when the requested value and the delivered value disagree —
+   e.g. wow & flutter below ~0.5 Hz, where the delay ring's swing budget cannot
+   carry the depth the knob asks for. */
+.fx-param-note {
+  font-size: 8px;
+  line-height: 1.25;
+  color: #fbbf24;
+  opacity: 0.85;
+  padding-left: 1px;
+}
+
 .fx-param-select {
   display: flex;
   flex-direction: column;

@@ -20,6 +20,16 @@ export interface ParamDef {
    */
   taper?: "linear" | "log";
   /**
+   * A secondary line under the knob, given the WHOLE parameter set rather than
+   * this param's value alone. It exists for controls whose displayed number is
+   * not the number the engine delivers: wow & flutter request depth in cents,
+   * but below ~0.5 Hz the delay ring's swing budget cannot carry them, so the
+   * honest readout is what the swing plan actually achieved. Return undefined
+   * to render nothing, which is the common case — when the request is fully
+   * achievable there is nothing to warn about.
+   */
+  secondary?: (values: Record<string, number>) => string | undefined;
+  /**
    * Legacy compatibility id: accepted on old documents (the command layer
    * remaps it to `aliasOf`), but excluded from automation target lists and
    * UI pickers — new code must always use the canonical id.

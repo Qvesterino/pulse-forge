@@ -285,8 +285,8 @@
 .step.active {
   /* Kit colour per row (kicks vs snares vs hats…) with velocity as opacity —
      the grid shows the shape of the beat, amber stays reserved for the
-     playhead and selection. Molten body: lit top edge + soft aura scaled by
-     velocity, so accents visibly burn brighter than ghosts. */
+     playhead and selection. A lit top edge + soft aura scaled by velocity
+     makes accents visibly burn brighter than ghosts. */
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--pad-color, var(--accent)) calc(var(--step-velocity, 0.8) * 88%), #17181c),

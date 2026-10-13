@@ -33,6 +33,8 @@
  */
 
 import { beforeAll, describe, expect, it } from "vitest";
+import { wfSwingBudgetSeconds, wfSwingPlan } from "../src/audio-worklets/wowflutter-math.js";
+import { wowFlutterParams } from "../src/effects/definitions";
 
 const SR = 44100;
 const BLOCK = 128;
@@ -433,5 +435,104 @@ describe("wow & flutter — measured behaviour", () => {
     const outR = new Float32Array(BLOCK);
     expect(proc.process([[]], [[outL, outR]], paramBlock({}, DEFAULTS))).toBe(true);
     for (let i = 0; i < BLOCK; i++) expect(outL[i]).toBe(0);
+  });
+});
+
+describe("wow & flutter — the shared math is what the DSP actually does", () => {
+  // The panel readout calls `wfSwingPlan` to print the cents the engine can
+  // deliver instead of the cents the knob requests. That is only honest if the
+  // plan IS the processor's allocation. These specs close the gap by measuring
+  // the rendered delay trajectory and comparing it against the plan's number:
+  // a future edit to the processor's budget split that forgets the math module
+  // turns this red instead of silently making the panel lie.
+  it("delivers exactly what wfSwingPlan promises when the budget binds", () => {
+    const params = { wowRate: 0.3, wowDepth: 60, flutterDepth: 0, drift: 0 };
+    const plan = wfSwingPlan({ ...params, sampleRate: SR });
+    // This case is chosen so the clamp really bites: 60 cents at 0.3 Hz needs
+    // ~18 ms of swing and the whole budget is ~10 ms.
+    expect(plan.scale, "the budget is binding in this case").toBeLessThan(1);
+    expect(plan.wowCents, "and the delivered value is well under the request").toBeLessThan(40);
+
+    const m = measure(params, 8);
+    expect(m.amplitude, "the DSP delivers the planned cents, not the requested ones").toBeGreaterThan(0);
+    expect(
+      Math.abs(m.amplitude - plan.wowCents),
+      `measured ${m.amplitude.toFixed(2)} ct vs planned ${plan.wowCents.toFixed(2)} ct`,
+    ).toBeLessThan(1.5);
+  });
+
+  it("leaves an achievable request untouched", () => {
+    const params = { wowRate: 1, wowDepth: 10, flutterDepth: 0, drift: 0 };
+    const plan = wfSwingPlan({ ...params, sampleRate: SR });
+    expect(plan.scale, "nothing is scaled away").toBe(1);
+    const m = measure(params, 4);
+    expect(Math.abs(m.amplitude - plan.wowCents)).toBeLessThan(1.5);
+  });
+
+  it("the budget is the whole base delay minus one sample", () => {
+    // Guards the number the readout depends on: if the base delay or the
+    // read-offset floor changes, every achieved-cents number moves with it.
+    expect(wfSwingBudgetSeconds(SR)).toBeCloseTo((Math.round(SR * 0.01) - 1) / SR, 12);
+    // Never the whole ring: the read-offset floor is what keeps the offset >= 1
+    // sample, so the budget must stay strictly under the base delay. Asserted as
+    // a bound rather than a literal, because the literal moves with the sample
+    // rate (44.1 kHz gives 9.9773 ms, 48 kHz gives 9.9792 ms) and pinning one
+    // rate's number would have hidden that.
+    expect(wfSwingBudgetSeconds(SR)).toBeLessThan(0.01);
+    expect(wfSwingBudgetSeconds(SR)).toBeGreaterThan(0.0099);
+  });
+});
+
+describe("wow & flutter — the panel readout", () => {
+  const wowDepth = wowFlutterParams.find((p) => p.id === "wowDepth")!;
+  const flutterDepth = wowFlutterParams.find((p) => p.id === "flutterDepth")!;
+
+  it("says nothing when the requested depth is fully deliverable", () => {
+    // The common case must stay silent: a note on every knob would be noise.
+    expect(wowDepth.secondary?.({ wowRate: 1, wowDepth: 10, flutterRate: 11, flutterDepth: 2.5 })).toBeUndefined();
+    expect(wowDepth.secondary?.({ wowRate: 0.5, wowDepth: 10, flutterRate: 11, flutterDepth: 2.5 })).toBeUndefined();
+    expect(wowDepth.secondary?.({ wowRate: 0.5, wowDepth: 0, flutterRate: 11, flutterDepth: 2.5 })).toBeUndefined();
+  });
+
+  it("names the delivered value when the swing budget cannot carry the request", () => {
+    const note = wowDepth.secondary?.({ wowRate: 0.05, wowDepth: 60, flutterRate: 11, flutterDepth: 2.5 });
+    expect(note, "a note is printed").toBeDefined();
+    // It must state the DELIVERED number, not restate the request.
+    expect(note).toMatch(/delivers\s+[\d.]+ ct of 60 ct/);
+    expect(note).toContain("raise RATE");
+    // And the number it prints is the one the engine delivers.
+    const delivered = Number(/delivers ([\d.]+) ct/.exec(note!)![1]);
+    const plan = wfSwingPlan({
+      wowRate: 0.05,
+      wowDepth: 60,
+      flutterRate: 11,
+      flutterDepth: 2.5,
+      sampleRate: SR,
+    });
+    expect(Math.abs(delivered - plan.wowCents)).toBeLessThan(0.2);
+    expect(delivered, "and it is genuinely short of the request").toBeLessThan(30);
+  });
+
+  it("survives a partially populated parameter set", () => {
+    // The grid passes whatever the editor holds, which mid-edit is not a full
+    // record. A readout that throws on a missing rate would blank the panel.
+    expect(() => wowDepth.secondary?.({})).not.toThrow();
+    expect(wowDepth.secondary?.({})).toBeUndefined();
+    expect(() => flutterDepth.secondary?.({ wowDepth: "x" as unknown as number })).not.toThrow();
+  });
+
+  it("flutter depth is declared but does not bind anywhere in its legal range", () => {
+    // Recorded rather than hidden: flutter tops out at 20 cents at 4 Hz, which
+    // needs ~0.5 ms of swing against a ~10 ms budget, so its note never fires on
+    // its own. It exists for symmetry and because a proportional scale can still
+    // shave flutter when wow eats the budget. Pinning it stops a future widening
+    // of the flutter range from silently going unreported.
+    for (const rate of [4, 11, 60]) {
+      const plan = wfSwingPlan({ wowDepth: 0, wowRate: 0.5, flutterDepth: 20, flutterRate: rate, sampleRate: SR });
+      expect(plan.scale, `flutter alone at ${rate} Hz`).toBe(1);
+      expect(
+        flutterDepth.secondary?.({ wowRate: 0.5, wowDepth: 0, flutterDepth: 20, flutterRate: rate }),
+      ).toBeUndefined();
+    }
   });
 });
