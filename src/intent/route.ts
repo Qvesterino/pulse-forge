@@ -13,7 +13,14 @@ import {
 import { parseIntentText, type ParsedIntent } from "./text-parser";
 import { parseEffectIntent, parseSendIntent, parseBypassIntent } from "./mix";
 import { parseLoudnessIntent } from "./loudness";
-import { parseFaderIntent, parseTempoIntent, parsePopIntent, type FaderIntent, type TempoIntent } from "./conversation";
+import {
+  parseFaderIntent,
+  parseNamedTrackFaderIntent,
+  parseTempoIntent,
+  parsePopIntent,
+  type FaderIntent,
+  type TempoIntent,
+} from "./conversation";
 import type { EffectIntent, MixOverrides } from "./mix";
 import type { SendIntent, BypassIntent } from "./mix";
 import { namesProductionTarget, parseProductionIntent, type ProductionIntent } from "./production";
@@ -615,6 +622,15 @@ export function routeIntentText(
   const fader = parseFaderIntent(text);
   if (fader) {
     return { kind: "fader", intent: fader };
+  }
+  // P1-A DOCUMENT-DERIVED TARGETS — the family tables are closed, the
+  // document is open: an ask naming one of the USER'S OWN tracks ("turn
+  // down the fx return bus") becomes a fader intent with pre-resolved ids.
+  // Must sit BEFORE the loudness parser, which would otherwise claim
+  // "lower the … by 2 db" as a master loudness nudge.
+  const namedTrackFader = parseNamedTrackFaderIntent(text, doc);
+  if (namedTrackFader) {
+    return { kind: "fader", intent: namedTrackFader };
   }
   // A bare Slovak comparative is often a request to adjust an unspecified
   // track fader. Ask which track before the broader loudness parser treats

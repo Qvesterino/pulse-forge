@@ -48,7 +48,15 @@ export type ProductionConcept =
   | "air"
   | "deess";
 
-export type ProductionTarget = "drums" | "bass" | "lead" | "chords" | "kick" | "snare" | "hats" | "mix";
+/**
+ * "vocal" is a RESOLVER-only target (P1-A, control-surface audit 2026-10-13):
+ * it exists so the exact applier and track selection can name a vocal lane,
+ * but TARGET_PATTERNS deliberately does not list it — the production PARSER
+ * must never claim vocal asks, because vocal words are a deliberate
+ * creative-brief signal in the fallback policy ("add vocals" generates, it
+ * does not nudge FX on a track that may not exist).
+ */
+export type ProductionTarget = "drums" | "bass" | "lead" | "chords" | "vocal" | "kick" | "snare" | "hats" | "mix";
 
 export interface ProductionGoal {
   concept: ProductionConcept;
@@ -675,6 +683,22 @@ export function resolveProductionTargets(doc: ProjectDocument, targets: Producti
     // transpose) onto whatever instrument happened to be first (usually the
     // bass): a silent wrong-target mutation. Unmatched targets now surface
     // through the planner's actionable "No matching track for targets" error.
+    if (target === "vocal") {
+      // Resolver-only target (see the type comment). Two steps, fader-path
+      // parity: a vocal-NAMED track (or vocalchop) wins; otherwise mix.ts
+      // semantics — the tracks carrying the singer's takes (audio-clip
+      // bindings), never a positional guess.
+      const named = instruments.find(
+        (t) => /\bvocal|\bvox\b|\bvokal|\bspev|hlas(?!nej|it|ilo)/i.test(t.name) || t.instrument === "vocalchop",
+      );
+      if (named) {
+        ids.push(named.id);
+        continue;
+      }
+      const clipTrackIds = new Set((doc.arrangement.audioClips ?? []).map((clip) => clip.trackId));
+      ids.push(...doc.tracks.filter((t) => clipTrackIds.has(t.id)).map((t) => t.id));
+      continue;
+    }
     const match = instruments.find((t) => {
       if (target === "bass") {
         return ["bass", "808", "logdrum"].includes(t.instrument) || /\bbass\b|\b808\b|\bsub\b/i.test(t.name);

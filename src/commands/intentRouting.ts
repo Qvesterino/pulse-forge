@@ -40,6 +40,16 @@ export function resolveExactTargetTracks(doc: ProjectDocument, target: ExactTarg
   const instruments = doc.tracks.filter(
     (t): t is import("../project-model/types").InstrumentTrack => t.kind === "instrument",
   );
+  if (target === "vocal") {
+    // STRICT name-or-kind only (this resolver serves DESTRUCTIVE ops —
+    // remove/rename/duplicate): a vocal-named track or the vocalchop
+    // instrument. Deliberately NO clip-binding fallback here — deleting or
+    // renaming "whatever carries takes" must never ride an indirect hint.
+    // Fader/gain semantics (named → clip-bound) live in the fader path.
+    return instruments
+      .filter((t) => /\bvocal|\bvox\b|\bvokal|\bspev|hlas(?!nej|it|ilo)/i.test(t.name) || t.instrument === "vocalchop")
+      .map((t) => t.id);
+  }
   const matched = instruments.filter((t) => {
     if (target === "bass") return ["bass", "808", "logdrum"].includes(t.instrument) || /\bbass\b|\b808\b/i.test(t.name);
     if (target === "chords") return /\bchord|\bkeys?\b|\bpad\b/i.test(t.name) || t.instrument === "keys";

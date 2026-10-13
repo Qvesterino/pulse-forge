@@ -13,7 +13,7 @@ import { parseIntentText } from "./text-parser";
  * caller can fall through to production/generation intents.
  */
 
-export type ExactTarget = "drums" | "bass" | "lead" | "chords" | "mix" | "kick" | "snare" | "hats";
+export type ExactTarget = "drums" | "bass" | "lead" | "chords" | "vocal" | "mix" | "kick" | "snare" | "hats";
 
 export type ExactOp =
   | { kind: "tempo"; bpm: number }
@@ -51,6 +51,14 @@ const TARGET_RES: [RegExp, ExactTarget][] = [
   [/\bbass\b|\bbas(?:a|u|y|e)?\b|\b808\b/i, "bass"],
   [/\blead\w*|\bsynth(?:esizer)?\b|\bsyntez/i, "lead"],
   [/\bchords?\b|\bkeys?\b|\bakord/i, "chords"],
+  // P1-A: "mute the vocal" / "pan the vocals left". Note the gainDb /
+  // gainDbAbsolute regexes below keep their OWN inline noun alternations
+  // WITHOUT vocal — gain asks route through the fader path, whose resolver
+  // owns the named-tracks-then-clip-bindings semantics (mix.ts parity); the
+  // exact gain applier resolves through production targets, which cannot
+  // express vocal fader semantics. The volume noun/adjective guard keeps
+  // "zníž hlasitosť basu" a bass ask.
+  [/\bvocals?\b|\bvox\b|\bvokal\w*|\bspev\w*|\bhlas(?!nej|it|ilo)\w*/i, "vocal"],
   [/\b(?:the )?mix\b|\bmaster\b|\bvsetko\b|\beverything\b|\ball\b/i, "mix"],
 ];
 
@@ -355,7 +363,11 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
     // positional fallback. A named-but-absent target fails loudly in the
     // applier instead.
     const named = firstTarget(transpose[1]);
-    if (named && named !== "mix") {
+    // "vocal" declines like "mix": the melodic transpose op moves PATTERN
+    // notes, and a vocal lane is the singer's audio takes — a clip-only
+    // track has no notes, so an exact transpose would land as a silent
+    // no-op. Vocal pitch work belongs to the vocal-take tooling, not this op.
+    if (named && named !== "mix" && named !== "vocal") {
       const target = named;
       const dir = /up|higher|hore/.test(transpose[2]) ? 1 : -1;
       const unit = transpose[4];

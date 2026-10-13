@@ -29,7 +29,13 @@ import type { DeclinedIntentClarification } from "./mix";
 
 // ── FADER ("zníž basu", "hlasnejšie bicie", "turn down the drums") ──────────
 
-export type FaderTarget = "drums" | "bass" | "chords" | "lead" | "master";
+/**
+ * P1-A (control-surface audit 2026-10-13): "vocal" joins the closed family
+ * set. Semantics mirror mix.ts MixTarget everywhere: a NAMED vocal track
+ * wins; otherwise the tracks carrying the singer's takes (audio-clip
+ * bindings), never a positional guess.
+ */
+export type FaderTarget = "drums" | "bass" | "chords" | "lead" | "vocal" | "master";
 
 /** Per-PAD families inside the drum track ("kick ťažší", "haty tichšie"). */
 export type FaderPadFamily = "kick" | "snare" | "clap" | "hat" | "perc" | "tom";
@@ -40,6 +46,14 @@ export interface FaderIntent {
   targets: FaderTarget[];
   /** Per-PAD families ("kick ťažší") — empty when the intent is track-level. */
   pads?: FaderPadFamily[];
+  /**
+   * P1-A document-derived targets (control-surface audit 2026-10-13): LIVE
+   * track ids resolved at route time from the user's own track names (the
+   * text named them; `parseNamedTrackFaderIntent` matched them against the
+   * document). Applied like any family target — same clamp, same fold, one
+   * undo step — and named in the label by their document names.
+   */
+  trackIds?: string[];
   /**
    * "down"/"up" move the fader RELATIVE; "set" is ABSOLUTE — percent IS the
    * gain as a fraction of the fader's own range (0..1.5, so 50% = 0.75).
@@ -70,6 +84,10 @@ const FADER_TARGETS: ReadonlyArray<readonly [RegExp, FaderTarget]> = [
   [/\bbic(?:i|ie|ich)?\b|\bbubn\w*|\bdrums?\b|\bbeat\b/, "drums"],
   [/\bklaves|\bakord\w*|\bchords?\b|\bkeys\b|\bpadov?\b/, "chords"],
   [/\blead\w*\b|\bmelodi\w*|\bsynth\w*\b/, "lead"],
+  // "vocal" — but never the volume NOUN/ADJECTIVE ("hlasnejšie", "hlasitosť"
+  // are loud-words, not the voice; the lookahead keeps "zníž hlasitosť basu"
+  // a BASS ask). Deaccented SK: spev/hlas/vokal.
+  [/\bvocals?\b|\bvox\b|\bvokal\w*|\bspev\w*|\bhlas(?!nej|it|ilo)\w*/, "vocal"],
   [
     /\bmaster\w*|\bvsetk\w*|\bcely (?:mix|beat)\b|\beverything\b|\bwhole (?:mix|beat)\b|\bmaster (?:fader|gain)\b/,
     "master",
@@ -93,6 +111,25 @@ const FADER_PADS: ReadonlyArray<readonly [RegExp, FaderPadFamily]> = [
 const AMOUNT_FULL = /\bupl\w*|\bplne\b|\bmaximal\w*|\bcomplete(?:ly)?\b|\bfully\b|\bextrem\w*/;
 const AMOUNT_BIG = /\bo dos\w*|\bdost\b|\bhodn\w*|\bvelm\w*|\ba lot\b|\bmuch\b/;
 const AMOUNT_SUBTLE = /\btrochu\b|\bkusok\b|\bjemn\w*|\bslight(?:ly)?\b|\ba bit\b|\ba little\b/;
+
+/**
+ * A stated dB magnitude ("by 2 dB", "o 3 db") as the fold's RELATIVE fader
+ * percent — true dB semantics through the multiplicative percent (−2 dB =
+ * ×10^(−2/20) ≈ −20.6 %). The fader path owns vocal asks, and a vocal ask
+ * that NAMES a number must apply that number: the old fallthrough to the
+ * vibe step (×0.82 for "by 2 dB") silently substituted the user's magnitude
+ * (SILENT-DEFAULT rule). Null when the ask names no dB magnitude — the vibe
+ * amount stays the documented default.
+ */
+function dBPercent(text: string, direction: "down" | "up"): number | undefined {
+  const m = /\b(?:by|o)\s+(\d+(?:[.,]\d+)?)\s*db\b/i.exec(text);
+  if (!m) return undefined;
+  const db = Math.min(24, Number(m[1]!.replace(",", ".")));
+  if (!Number.isFinite(db) || db <= 0) return undefined;
+  const factor = direction === "down" ? Math.pow(10, -db / 20) : Math.pow(10, db / 20);
+  const percent = direction === "down" ? (1 - factor) * 100 : (factor - 1) * 100;
+  return Math.round(percent * 10) / 10;
+}
 
 /** Effect nouns — an absolute-set ask naming one belongs to the effectIntent
  * set-mode ("set reverb mix to 25%" is a KNOB ask, not a fader ask). */
@@ -146,9 +183,64 @@ export function parseFaderIntent(text: string): FaderIntent | null {
       : AMOUNT_SUBTLE.test(lower)
         ? "subtle"
         : "normal";
-  // Explicit numbers beat vibe words ("o 10 %" wins over "trochu").
-  const percent = parsePercent(text);
+  // Explicit numbers beat vibe words ("o 10 %" wins over "trochu"); a
+  // stated dB magnitude converts to the same relative percent.
+  const percent = parsePercent(text) ?? dBPercent(text, down ? "down" : "up");
   return { targets, pads, direction: down ? "down" : "up", amount, ...(percent != null ? { percent } : {}) };
+}
+
+/**
+ * P1-A DOCUMENT-DERIVED TARGETS (control-surface audit 2026-10-13, GAP-03's
+ * root fix): the family tables above are closed, but the document is open.
+ * When no family word matched, the ask can still name one of the USER'S OWN
+ * tracks — "turn down the fx return bus", "zníž Reed 200 o 10 %". Match the
+ * text against the live track names (deaccented, phrase-bounded); a hit
+ * becomes a fader intent whose `trackIds` are resolved HERE, at route time,
+ * against the same document the command will execute on.
+ *
+ * Runs only after `parseFaderIntent` declined (so family-owned names like
+ * "bass" never double-resolve here) and BEFORE the loudness parser in
+ * route.ts — "lower the fx return bus by 2 db" is a fader ask, not a master
+ * loudness nudge. Null unless a direction stem AND a live track name both
+ * match: no guess, no fallback to whichever track sits first.
+ */
+export function parseNamedTrackFaderIntent(text: string, doc: ProjectDocument): FaderIntent | null {
+  const lower = ` ${text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")} `;
+  if (/\blufs\b/.test(lower)) return null;
+  const down = FADER_DOWN.test(lower);
+  const up = !down && (FADER_UP.test(lower) || SK_ADD_FADER.test(lower));
+  if (!down && !up) return null;
+  if (down && FADER_UP_DIRECTIONAL.test(lower)) return null; // conflicting directions decline
+  const named = doc.tracks.filter((track) => {
+    if (track.kind === "group") return false;
+    const name = ` ${track.name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()} `;
+    // Phrase-bounded: "fx return bus" must appear as a phrase. The 3-char
+    // floor keeps two-letter names ("To") from hijacking every sentence.
+    return name.trim().length >= 3 && lower.includes(name);
+  });
+  if (named.length === 0) return null;
+  const amount: FaderAmount = AMOUNT_FULL.test(lower)
+    ? "full"
+    : AMOUNT_BIG.test(lower)
+      ? "big"
+      : AMOUNT_SUBTLE.test(lower)
+        ? "subtle"
+        : "normal";
+  const percent = parsePercent(text) ?? dBPercent(text, down ? "down" : "up");
+  return {
+    targets: [],
+    trackIds: named.map((track) => track.id),
+    direction: down ? "down" : "up",
+    ...(amount !== "normal" ? { amount } : {}),
+    ...(percent != null ? { percent } : {}),
+  };
 }
 
 // ── CLARIFICATION: nearest interpretation for DECLINED fader asks ───────────
@@ -203,14 +295,22 @@ export function declinedFaderClarification(text: string): DeclinedIntentClarific
       ? [
           "turn down the drums",
           "turn down the bass",
+          "turn down the vocals",
           "turn down the chords",
           "turn down the lead",
           "turn down the master",
         ]
-      : ["raise the drums", "raise the bass", "raise the chords", "raise the lead", "raise the master"]
+      : [
+          "raise the drums",
+          "raise the bass",
+          "raise the vocals",
+          "raise the chords",
+          "raise the lead",
+          "raise the master",
+        ]
     : down
-      ? ["zníž basu", "zníž bicie", "zníž lead", "stíš master"]
-      : ["zvýš basu", "hlasnejšie bicie", "zvýš lead", "zvýš master"];
+      ? ["zníž basu", "zníž bicie", "zníž vokál", "zníž lead", "stíš master"]
+      : ["zvýš basu", "hlasnejšie bicie", "zvýš vokál", "zvýš lead", "zvýš master"];
   return { reason: en ? "which fader?" : "ktorý fader?", suggestions };
 }
 
@@ -314,6 +414,22 @@ function trackIdsForTarget(doc: ProjectDocument, target: FaderTarget): string[] 
   const instruments = doc.tracks.filter(
     (track): track is Extract<typeof track, { kind: "instrument" }> => track.kind === "instrument",
   );
+  if (target === "vocal") {
+    // Two steps, mirroring the production resolver and mix.ts parity. The
+    // name test is the SAME vocabulary the target regexes match in the text
+    // ("vox"/"vokál"/"spev" count as vocal names — a naive
+    // `name.includes("vocal")` would miss a track named "Vox").
+    const vocalNamed = instruments.filter(
+      (track) =>
+        /\bvocal|\bvox\b|\bvokal|\bspev|hlas(?!nej|itos)/i.test(track.name) || track.instrument === "vocalchop",
+    );
+    if (vocalNamed.length > 0) return vocalNamed.map((track) => track.id);
+    // Unnamed vocals = the singer's takes: the tracks carrying arrangement
+    // audio clips. Empty when no take is installed — vocal asks then apply
+    // to nothing, they never fall back to a guessed track.
+    const clipTrackIds = new Set((doc.arrangement.audioClips ?? []).map((clip) => clip.trackId));
+    return doc.tracks.filter((track) => clipTrackIds.has(track.id)).map((track) => track.id);
+  }
   const named = instruments.filter((track) => track.name.toLowerCase().includes(target));
   if (named.length > 0) return named.map((track) => track.id);
   const byKind = instruments.filter((track) => {
@@ -391,7 +507,22 @@ function foldFaderIntent(cursor: ProjectDocument, intent: FaderIntent): FaderFol
     }
   }
 
-  const label = [...intent.targets, ...(intent.pads ?? [])].join(" + ");
+  for (const trackId of intent.trackIds ?? []) {
+    // Document-derived targets: the id was resolved against the LIVE doc at
+    // route time; a track that vanished since simply applies to nothing.
+    const track = next.tracks.find((track) => track.id === trackId);
+    if (!track || track.kind === "group") continue;
+    const gain = targetGain(track.gain);
+    if (gain === track.gain) continue;
+    next = setTrackParams(next, trackId, { gain }).execute(next);
+    faders += 1;
+  }
+
+  const label = [
+    ...intent.targets,
+    ...(intent.pads ?? []),
+    ...(intent.trackIds ?? []).map((id) => cursor.tracks.find((track) => track.id === id)?.name ?? id),
+  ].join(" + ");
   const sizeNote = isSet
     ? `=${intent.percent ?? 0}%`
     : intent.percent != null
@@ -463,6 +594,13 @@ export function faderReadback(before: ProjectDocument, after: ProjectDocument, i
       if (gainBefore == null || gainAfter == null) continue;
       push(trackName(before, trackId), gainBefore, gainAfter);
     }
+  }
+
+  for (const trackId of intent.trackIds ?? []) {
+    const gainBefore = readGainOf(before, trackId);
+    const gainAfter = readGainOf(after, trackId);
+    if (gainBefore == null || gainAfter == null) continue;
+    push(trackName(before, trackId), gainBefore, gainAfter);
   }
 
   if ((intent.pads?.length ?? 0) > 0) {
