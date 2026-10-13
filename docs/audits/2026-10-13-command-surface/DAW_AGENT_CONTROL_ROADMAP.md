@@ -1,7 +1,7 @@
 # DAW AGENT CONTROL ROADMAP — KYX
 
 **Audit date:** 2026-10-13 · **Target:** KYX (`pulse-forge`) · **Revision:** `31cc20ad`
-**Status:** P0-A, P0-B, P0-C, **P1-A**, **P1-B**, P1-C and P1-E **IMPLEMENTED + VERIFIED 2026-10-13** — see `IMPL-2026-10-13-P0-P1.md` in this directory for changed files, test evidence and residual risks. All other items remain proposals.
+**Status:** P0-A, P0-B, P0-C, **P1-A**, **P1-B**, P1-C, **P1-D (S-scope; UNKNOWN resolved)** and P1-E **IMPLEMENTED + VERIFIED 2026-10-13** — see `IMPL-2026-10-13-P0-P1.md` in this directory for changed files, test evidence and residual risks. All other items remain proposals.
 
 Complexity is expressed as **relative size** (S / M / L), not calendar time — this audit has no basis for time estimates and inventing them would be false precision.
 
@@ -132,7 +132,7 @@ P0-A must land before anything else: every other intent-layer fix is unverifiabl
 
 ---
 
-### P1-D · Session isolation for the MCP bridge 🟠
+### P1-D · Session isolation for the MCP bridge 🟠 · **UNKNOWN RESOLVED + S-SCOPE IMPLEMENTED 2026-10-13** (relay shares the single-session model; result-level document attribution landed; wire-level session ownership in a parallel wave — evidence in `IMPL-2026-10-13-P0-P1.md`)
 
 **Goal:** concurrent agents cannot interleave on one document without trace.
 

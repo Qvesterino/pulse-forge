@@ -1704,6 +1704,12 @@ export interface McpToolResult {
    * The replay is honest even if the change was undone since: the
    * requestId names ONE logical operation, and the agent owns undo/redo. */
   replayed?: boolean;
+  /** P1-D document attribution: the document this mutation landed on, as of
+   * AFTER the command (a rename is reported renamed). Mutating results
+   * only; the same facts ride the text as a human-readable line, which is
+   * the one channel every transport forwards verbatim. */
+  docId?: string;
+  docName?: string;
 }
 
 const TICKS_PER_BAR = 4 * 480;
@@ -1995,13 +2001,31 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
     }
   }
   const result = await executeMcpToolDispatch(ctx, name, args);
-  if (requestId !== "" && result.mutated && result.isError !== true) {
-    idempotencyLedger.delete(requestId); // refresh FIFO position on re-bind
-    idempotencyLedger.set(requestId, { docId: ctx.getDoc().id, result });
-    while (idempotencyLedger.size > IDEMPOTENCY_LEDGER_CAP) {
-      const oldest = idempotencyLedger.keys().next();
-      if (oldest.done) break;
-      idempotencyLedger.delete(oldest.value);
+  // P1-D DOCUMENT/WINDOW ATTRIBUTION (control-surface audit 2026-10-13,
+  // GAP-06): every caller — desktop stdio, web relay, QMR — executes
+  // against the ONE relay session's document (the hub forwards to a single
+  // owning window; the relay's session-ownership model lives in
+  // mcp-core.mjs). Whatever that model evolves into, this attribution makes
+  // the shared reality OBSERVABLE at the result level:
+  // every mutating result states exactly which document (name + id) and
+  // which attributed surface produced it. The text carries the line — it
+  // is the one channel every transport forwards verbatim; the structured
+  // fields ride along for in-process consumers. A replay already carries
+  // its original line (the cache stores the attributed result — the line
+  // is appended exactly once per execution).
+  if (result.mutated && result.isError !== true) {
+    const doc = ctx.getDoc();
+    result.text = `${result.text}\nmutated on ${ctx.agentId ? `${ctx.agentId} · ` : ""}document "${doc.name}" (id ${doc.id})`;
+    result.docId = doc.id;
+    result.docName = doc.name;
+    if (requestId !== "") {
+      idempotencyLedger.delete(requestId); // refresh FIFO position on re-bind
+      idempotencyLedger.set(requestId, { docId: doc.id, result });
+      while (idempotencyLedger.size > IDEMPOTENCY_LEDGER_CAP) {
+        const oldest = idempotencyLedger.keys().next();
+        if (oldest.done) break;
+        idempotencyLedger.delete(oldest.value);
+      }
     }
   }
   return result;

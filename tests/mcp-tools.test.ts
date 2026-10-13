@@ -562,8 +562,11 @@ describe("mcp audit repairs", async () => {
     const ctx = makeCtx(datasetDoc());
     await executeMcpTool(ctx, "kyx_intent", { instruction: "set tempo to 140" });
     const result = await executeMcpTool(ctx, "kyx_intent", { instruction: "undo two steps" });
-    expect(result.text).toBe("undo ×1");
+    // P1-D: every mutating result states which document it landed on.
+    expect(result.text).toMatch(/^undo ×1\nmutated on document "/);
+    expect(result.text).toContain(datasetDoc().name);
     expect(result.mutated).toBe(true);
+    expect(result.docId).toBe(datasetDoc().id);
   });
 
   it("kyx_intent applier failures return honest text instead of throwing", async () => {
