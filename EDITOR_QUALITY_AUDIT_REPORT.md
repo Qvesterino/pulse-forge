@@ -3676,3 +3676,95 @@ assertion. Each line names the gesture and the observable.
 `npm run drift:check`, `npm run test:browser`, `npm run test:e2e` - each reads
 repo-wide state that concurrent sessions hold dirty (see the final sweep above), and a
 red from them would say nothing about this work. They remain the merge owner's gates.
+
+---
+
+# Wave 19 - 2026-10-13 - the 13 rows the inventory admitted it had never tested
+
+§A's status column is the point of the inventory, and 13 of its 42 rows read NOT
+TESTED. That is an admission, not a finding. Wave 19 opens all 13 and converts them
+into measured verdicts, using the objective's own acceptance gate: a tool is VERIFIED
+only if the intended state change, its history behaviour and its persistence all hold.
+
+`tests/editor-uncovered-verbs.test.ts` - 36 specs, three assertions per verb: it mutates
+what it claims, it is ONE undo step that restores the document verbatim, and the result
+survives `normalizeProject` (the save/load path).
+
+Every round-trip runs through the **real `ProjectStore`**. Wave 18 found three test
+harnesses whose undo could not observe an undo, so nothing in this file trusts a
+hand-rolled harness. The shared helper refuses to score a verb VERIFIED unless the
+document actually changed - otherwise a verb that silently did nothing would pass on an
+undo that trivially restores the same bytes.
+
+## §F - Updated verdicts (supersedes the §A status cells for rows 4, 10-14, 19, 22, 24, 25, 27-30, 32)
+
+| Row | Tool                  | Verdict                         | What the exercise actually established                                                                                                                                                                                                                                                                                                    |
+| --- | --------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4   | Trim start            | VERIFIED                        | Start advances and length SHORTENS by the same amount (4 -> 1+3). A non-advancing start **throws** ("Trim start must move the clip's start right"), which is the safe direction: a silent zero-length write would not be.                                                                                                                 |
+| 10  | Group / ungroup       | VERIFIED                        | Membership lives in `clipGroups[].clipIds` - there is **no `groupId` field on the clip** (typecheck proved this, after I asserted one). Ungroup releases membership and leaves both clips intact. Persists through a reload.                                                                                                              |
+| 11  | Clip loop             | VERIFIED                        | Flag round-trips and survives `normalizeProject`.                                                                                                                                                                                                                                                                                         |
+| 12  | Reassign scene        | PARTIAL                         | Verified on a template carrying two scenes; the house template ships one, so the spec self-skips on it. Not a coverage gap in the verb, a gap in the fixture.                                                                                                                                                                             |
+| 13  | Scene intensity curve | VERIFIED, contract corrected    | `IntensityPoint` is `{offset, value}`, **not** `{tick, intensity}` - my first spec wrote the wrong shape and both points sanitised to offset 0. The verb **sorts** an out-of-order curve instead of refusing it, clamps value to 0..1 and pins non-finite input to 0. Defensible (a drag can emit points in either order) and now pinned. |
+| 14  | Create variation      | VERIFIED                        | Lands a clip that survives a reload - i.e. it is not a no-op reporting success.                                                                                                                                                                                                                                                           |
+| 19  | Duplicate audio clip  | VERIFIED                        | New id is distinct from the source and from the sibling; survives a reload. The D9 id-reuse failure mode does not occur here.                                                                                                                                                                                                             |
+| 22  | Crossfade             | VERIFIED + **lock finding**     | Writes equal-power (`fadeCurve: "equal"`) fades to both clips and is **direction-safe** (reversing the arguments changes nothing). Refuses non-overlapping clips. **It does not consult the lock** - see §G.                                                                                                                              |
+| 24  | Slip                  | VERIFIED                        | Moves the source window while leaving `startBar` and `lengthBars` untouched - slip is neither move nor resize, and the spec now says so explicitly.                                                                                                                                                                                       |
+| 25  | Stretch               | VERIFIED                        | Positional args `(doc, id, lengthBars, rate)`; clamps rate to the engine's 0.25-4 gate; keeps fades inside the clip (D1 reaches this path); refuses a locked clip (D8).                                                                                                                                                                   |
+| 27  | Clip mute             | VERIFIED                        | Re-muting an already-muted clip pushes **no** history entry - no dead step in the undo stack. `toggleAudioClipsMute` returns `null` for a scene-clip selection instead of inventing an audio selection.                                                                                                                                   |
+| 28  | Consolidate           | VERIFIED                        | N clips -> 1, persists, and refuses when **any** member is locked (it is a delete, whichever clip survives).                                                                                                                                                                                                                              |
+| 29  | Strip silence         | VERIFIED                        | Deletes the source clip and writes its audible segments; refuses a locked clip for the same reason slice does.                                                                                                                                                                                                                            |
+| 30  | Slice to arrangement  | VERIFIED                        | Fragments survive a reload and no fragment carries a fade longer than itself (D1). Refuses a locked clip.                                                                                                                                                                                                                                 |
+| 32  | Take lanes / comping  | VERIFIED, **item 1 downgraded** | A comp range is stored as real **comp clips** carrying `takeId === compTakeId` - there is no `compRanges` field. A take group whose clips are untagged correctly refuses rather than comping silence, and an empty take cannot be activated.                                                                                              |
+
+**Net effect on the inventory: 13 NOT TESTED rows -> 12 VERIFIED, 1 PARTIAL.** No new
+product defect was found in this wave.
+
+## §G - Backlog item 1 downgraded P1 -> P3, with the reason
+
+Wave 1 flagged the take-lane click suppression as the only P1 item that could destroy
+work: a bare boolean plus `setTimeout(0)` with no pointer/target identity, so a click
+following a comp drag might be interpreted as a take activation.
+
+**Measured: the command layer cannot lose the comp.** After
+`compAudioTakeRange`, switching the active take leaves every comp clip intact by id,
+keeps `compTakeId` set, and still round-trips through `normalizeProject`. The sequence
+is asserted with the switch confirmed to have happened (`activeTakeId === "take-b"`),
+so this is not another spec that passes without doing anything.
+
+What remains is therefore a **UI-timing risk, not data loss**: a stray click changes
+what is _heard_. That is P3, not P1.
+
+**Item 2 (crossfade on a locked clip) is now measured rather than assumed, and the
+answer is "by design".** `crossfadeAudioClips` calls no `assertClipEditable`, while
+`slipAudioClip` and `stretchAudioClip` refuse the very same locked clip in the very same
+fixture. The D8 contract names move/resize/trim/split/slip/stretch/delete; fades are
+outside it deliberately. The suite pins that asymmetry so a future decision to close it
+is a visible, deliberate change rather than silent drift. It remains an owner decision,
+not a bug to fix on my initiative.
+
+## §H - A measurement mistake worth keeping
+
+The first version of the comp-range spec asserted that `compRanges ?? compRange`
+survived a take switch. **`AudioTakeGroup` has neither field.** Both sides stringified
+to `"null"`, so the spec passed while measuring nothing - and I was about to use it to
+downgrade a P1 backlog item.
+
+It only came apart because the next assertion in the same spec needed a real field, so
+I went and read the type. A vacuous spec is indistinguishable from a passing one; the
+tell is an assertion whose two sides cannot differ. The rewritten spec asserts on comp
+**clips**, which exist, and pins the exact covered range (bar 1 to bar 4) so a wrong
+value fails loudly. Three other errors of mine are recorded the same way: positional vs
+object args on stretch (which made a no-op look like a pass), a crossfade fixture that
+silently deleted clip `a2` before the verb ever ran, and a `groupId` field I assumed
+existed.
+
+## Wave 19 gates
+
+| gate                                                   | result                                                                                                                                                                                                                                                                    |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/editor-uncovered-verbs.test.ts` (new, 36 specs) | **36 passed**                                                                                                                                                                                                                                                             |
+| `npx tsc --noEmit`                                     | **this wave's files are clean**; the one remaining error is `tests/mcp-document-attribution.test.ts` (TS6133 unused `first`), an untracked file owned by a concurrent session. `tsc` first caught one of _my_ errors here (`groupId`), which is why it was worth running. |
+| `npx prettier --check` on the touched files            | clean                                                                                                                                                                                                                                                                     |
+
+Product source was **not** modified in this wave. Only the report and the new spec
+land, so there is no regression surface beyond the suite itself.
