@@ -358,7 +358,7 @@ const NUMBER_WORDS: ReadonlyArray<readonly [RegExp, number]> = [
 ];
 
 const UNDO_ASK =
-  /^\s*(?:please\s+)?(?:undo|vr[aá]ť(?:\s+to)?|vrath?ni|sp[aä]ť(?:\s+to)?|krok\s+sp[aä]ť|step\s+back)(?:\s+(?:the\s+)?(?:last\s+)?(?:action|change|krok))?(?:\s+(two|dva|dve|three|tri|four|styri)|\s+(\d{1,2}))?(?:\s*(?:steps?|kroky|krokov))?\s*[.!]?\s*$/i;
+  /^\s*(?:please\s+)?(?:undo|vr[aá]ť(?:\s+to)?|vrath?ni|sp[aä][tť](?:\s+to)?|krok\s+sp[aä][tť]|step\s+back)(?:\s+(?:the\s+)?(?:last\s+)?(?:action|change|krok))?(?:\s+(two|dva|dve|three|tri|four|styri)|\s+(\d{1,2}))?(?:\s*(?:steps?|kroky|krokov))?\s*[.!]?\s*$/i;
 const REDO_ASK = /^\s*(?:please\s+)?(?:redo|zopakuj|dopredn?\w*)(?:\s+(\d{1,2}))?\s*[.!]?\s*$/i;
 
 export function parseUndoIntent(text: string): UndoIntent | null {

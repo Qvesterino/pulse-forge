@@ -50,6 +50,17 @@ const ROLE_WORDS: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bfill\b|\bveto\b/i, "fill"],
 ];
 
+/** PAD families count as complaint targets — "kick je mŕtvy" points at the
+ * drum track more precisely than any TRACK family could. */
+const PAD_FAMILY_WORDS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\bkick\w*|\bkop[aá]k\w*/i, "kick"],
+  [/\bsnare\w*|\bvirbl?\w*/i, "snare"],
+  [/\bclap\w*|\bplesk\w*/i, "clap"],
+  [/\bhat\w*|\bhi.?hat\w*|\b\u010dinel\w*/i, "hats"],
+  [/\btom\w*|\btam\w*/i, "tom"],
+  [/\bperc\w*|\bperkus\w*/i, "perc"],
+];
+
 export function parseComplaintIntent(text: string): ComplaintIntent | null {
   // Deaccented once: keyboards differ ("mŕtvy" vs "mrtvy") and the new stems
   // are ASCII; the legacy [áa]-style alternations keep matching the
@@ -67,7 +78,8 @@ export function parseComplaintIntent(text: string): ComplaintIntent | null {
   }
   if (complaint == null) return null;
   const role = ROLE_WORDS.find(([re]) => re.test(plain))?.[1] ?? null;
-  const family = TARGET_WORDS.find(([re]) => re.test(plain))?.[1] ?? null;
+  const family =
+    TARGET_WORDS.find(([re]) => re.test(plain))?.[1] ?? PAD_FAMILY_WORDS.find(([re]) => re.test(plain))?.[1] ?? null;
   // a complaint must point at SOMETHING — bare "muddy" alone is too vague
   if (role == null && family == null) return null;
   return { kind: complaint, role, family };

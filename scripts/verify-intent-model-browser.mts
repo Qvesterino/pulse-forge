@@ -20,6 +20,14 @@ import { readFileSync } from "node:fs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = Number(process.env.PORT) || 5291;
 const FULL_EVAL = process.argv.includes("--full-eval");
+const HOLDOUT_FLAG_INDEX = process.argv.indexOf("--holdout");
+const HOLDOUT_ARG = HOLDOUT_FLAG_INDEX >= 0 ? process.argv[HOLDOUT_FLAG_INDEX + 1] : null;
+if (HOLDOUT_FLAG_INDEX >= 0 && (!HOLDOUT_ARG || HOLDOUT_ARG.startsWith("--"))) {
+  throw new Error("--holdout requires a private JSONL path under .sft/");
+}
+const HOLDOUT_PATH = HOLDOUT_ARG ? path.resolve(root, HOLDOUT_ARG) : null;
+const EVAL_LABEL = HOLDOUT_PATH ? "browser-holdout" : "browser";
+const RUN_FULL_EVAL = FULL_EVAL || HOLDOUT_PATH !== null;
 
 interface ValidationRow {
   instruction: string;
@@ -27,12 +35,71 @@ interface ValidationRow {
   response: unknown;
 }
 
-const validationRows: ValidationRow[] = FULL_EVAL
-  ? readFileSync(path.join(root, "scripts", "data", "intent-sft", "val.jsonl"), "utf8")
-      .split("\n")
-      .filter((line) => line.trim().length > 0)
-      .map((line) => JSON.parse(line) as ValidationRow)
+function readJsonl(file: string): ValidationRow[] {
+  return readFileSync(file, "utf8")
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .map((line, index) => {
+      let row: unknown;
+      try {
+        row = JSON.parse(line);
+      } catch {
+        throw new Error(`invalid JSON at ${path.relative(root, file)}:${index + 1}`);
+      }
+      if (
+        row == null ||
+        typeof row !== "object" ||
+        typeof (row as ValidationRow).instruction !== "string" ||
+        !("response" in row)
+      )
+        throw new Error(`invalid evaluation row at ${path.relative(root, file)}:${index + 1}`);
+      return row as ValidationRow;
+    });
+}
+
+function normalizePrompt(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+if (HOLDOUT_PATH) {
+  const privateRoot = path.resolve(root, ".sft");
+  const relativeHoldout = path.relative(privateRoot, HOLDOUT_PATH);
+  if (!relativeHoldout || relativeHoldout.startsWith("..") || path.isAbsolute(relativeHoldout))
+    throw new Error("--holdout must point to a file below the ignored .sft/ directory");
+}
+
+const validationRows: ValidationRow[] = RUN_FULL_EVAL
+  ? readJsonl(HOLDOUT_PATH ?? path.join(root, "scripts", "data", "intent-sft", "val.jsonl"))
   : [];
+
+if (HOLDOUT_PATH) {
+  const holdoutPrompts = new Set<string>();
+  for (const [file, rows] of [
+    ["holdout", validationRows],
+    ["train", readJsonl(path.join(root, "scripts", "data", "intent-sft", "train.jsonl"))],
+    ["validation", readJsonl(path.join(root, "scripts", "data", "intent-sft", "val.jsonl"))],
+    ["golden", readJsonl(path.join(root, "scripts", "data", "intent-sft", "golden.jsonl"))],
+  ] as const) {
+    for (const row of rows) {
+      const prompt = normalizePrompt(row.instruction);
+      if (file === "holdout") {
+        if (holdoutPrompts.has(prompt)) throw new Error(`duplicate normalized holdout prompt: ${row.instruction}`);
+        holdoutPrompts.add(prompt);
+      } else if (holdoutPrompts.has(prompt)) {
+        throw new Error(`holdout prompt overlaps ${file}: ${row.instruction}`);
+      }
+    }
+  }
+  console.log(
+    `[intent-model/${EVAL_LABEL}] exact-prompt overlap with train/val/golden: 0 · rows=${validationRows.length}`,
+  );
+}
 
 interface RegistrationResult {
   ok: boolean;
@@ -191,11 +258,12 @@ try {
     console.log(`[intent-model] panel state: ${chip}`);
   }
 
-  // 4 — OPTIONAL FULL BROWSER EVALUATION: run the current validation split
-  // through the registered worker AND the real model resolver. This catches
-  // failures that a node-side ONNX evaluator cannot see (serialization,
-  // worker messaging, route guards, and action adaptation).
-  if (!failed && FULL_EVAL) {
+  // 4 — OPTIONAL FULL BROWSER EVALUATION: run either the current validation
+  // split or a private, exact-overlap-checked holdout through the registered
+  // worker AND the real model resolver. This catches failures that a
+  // node-side ONNX evaluator cannot see (serialization, worker messaging,
+  // route guards, and action adaptation).
+  if (!failed && RUN_FULL_EVAL) {
     const evaluation = await evalWithRetry<{
       rows: number;
       attempted: number;
@@ -210,6 +278,10 @@ try {
       modelWrongKind: number;
       modelSlotMismatch: number;
       modelAbstain: number;
+      modelSlices: Record<
+        string,
+        { rows: number; attempted: number; exact: number; wrongKind: number; slotMismatch: number; abstain: number }
+      >;
       workerRecoversAfterAbstain: boolean;
       modelFailures: Array<{
         instruction: string;
@@ -252,6 +324,10 @@ try {
           modelWrongKind: 0,
           modelSlotMismatch: 0,
           modelAbstain: 0,
+          modelSlices: {} as Record<
+            string,
+            { rows: number; attempted: number; exact: number; wrongKind: number; slotMismatch: number; abstain: number }
+          >,
           workerRecoversAfterAbstain: false,
           modelFailures: [] as Array<{
             instruction: string;
@@ -289,21 +365,36 @@ try {
             }
           }
           const modelActual = modelRoute == null ? null : dataset.compactIntentResponse(modelRoute);
+          const expectedKind = String((row.response as { kind?: unknown } | null)?.kind ?? "unknown");
+          const sliceKey = `${row.lang ?? "unknown"}/${expectedKind}`;
+          const slice = (result.modelSlices[sliceKey] ??= {
+            rows: 0,
+            attempted: 0,
+            exact: 0,
+            wrongKind: 0,
+            slotMismatch: 0,
+            abstain: 0,
+          });
+          slice.rows += 1;
           let modelOutcome = "exact";
           if (modelActual == null) {
             result.modelAbstain += 1;
+            slice.abstain += 1;
             modelOutcome = "abstain";
           } else {
             result.modelAttempted += 1;
-            const expectedKind = (row.response as { kind?: unknown } | null)?.kind;
+            slice.attempted += 1;
             if (modelActual.kind !== expectedKind) {
               result.modelWrongKind += 1;
+              slice.wrongKind += 1;
               modelOutcome = "wrong-kind";
             } else if (decoder.canonicalModelJson(modelActual) !== decoder.canonicalModelJson(row.response)) {
               result.modelSlotMismatch += 1;
+              slice.slotMismatch += 1;
               modelOutcome = "slot-mismatch";
             } else {
               result.modelExact += 1;
+              slice.exact += 1;
             }
           }
           if (modelOutcome !== "exact" && result.modelFailures.length < 12) {
@@ -362,39 +453,48 @@ try {
     const attemptedExact = evaluation.exact / Math.max(1, evaluation.attempted);
     const abstainRate = evaluation.abstain / Math.max(1, evaluation.rows);
     console.log(
-      `[intent-model/browser] rows=${evaluation.rows} attempted=${evaluation.attempted} exact=${evaluation.exact} ` +
+      `[intent-model/${EVAL_LABEL}] rows=${evaluation.rows} attempted=${evaluation.attempted} exact=${evaluation.exact} ` +
         `attemptedExact=${(attemptedExact * 100).toFixed(1)}% wrongKind=${evaluation.wrongKind} ` +
         `slotMismatch=${evaluation.slotMismatch} abstain=${evaluation.abstain} (${(abstainRate * 100).toFixed(1)}%) ` +
         `deterministic=${evaluation.deterministic} modelFallback=${evaluation.modelFallback}`,
     );
     for (const failure of evaluation.failures) {
       console.log(
-        `[intent-model/browser-pipeline] ${failure.outcome}: ${failure.instruction} · expected=${JSON.stringify(failure.expected)} · actual=${JSON.stringify(failure.actual)}`,
+        `[intent-model/${EVAL_LABEL}-pipeline] ${failure.outcome}: ${failure.instruction} · expected=${JSON.stringify(failure.expected)} · actual=${JSON.stringify(failure.actual)}`,
       );
     }
     const modelAttemptedExact = evaluation.modelExact / Math.max(1, evaluation.modelAttempted);
     const modelAbstainRate = evaluation.modelAbstain / Math.max(1, evaluation.rows);
     console.log(
-      `[intent-model/browser-model-only] attempted=${evaluation.modelAttempted} exact=${evaluation.modelExact} ` +
+      `[intent-model/${EVAL_LABEL}-model-only] attempted=${evaluation.modelAttempted} exact=${evaluation.modelExact} ` +
         `attemptedExact=${(modelAttemptedExact * 100).toFixed(1)}% wrongKind=${evaluation.modelWrongKind} ` +
         `slotMismatch=${evaluation.modelSlotMismatch} abstain=${evaluation.modelAbstain} ` +
         `(${(modelAbstainRate * 100).toFixed(1)}%) ` +
         `workerRecoversAfterAbstain=${evaluation.workerRecoversAfterAbstain}`,
     );
-    for (const failure of evaluation.modelFailures) {
+    for (const [sliceKey, slice] of Object.entries(evaluation.modelSlices)) {
       console.log(
-        `[intent-model/browser-model-only] ${failure.outcome}${failure.cause ? `/${failure.cause}` : ""}: ${failure.instruction} · expected=${JSON.stringify(failure.expected)} · actual=${JSON.stringify(failure.actual)}`,
+        `[intent-model/${EVAL_LABEL}-slice] ${sliceKey} rows=${slice.rows} exact=${slice.exact} ` +
+          `attempted=${slice.attempted} wrongKind=${slice.wrongKind} slotMismatch=${slice.slotMismatch} abstain=${slice.abstain}`,
       );
     }
-    console.log(`[intent-model/browser] abstain causes=${JSON.stringify(evaluation.causes)}`);
+    for (const failure of evaluation.modelFailures) {
+      console.log(
+        `[intent-model/${EVAL_LABEL}-model-only] ${failure.outcome}${failure.cause ? `/${failure.cause}` : ""}: ${failure.instruction} · expected=${JSON.stringify(failure.expected)} · actual=${JSON.stringify(failure.actual)}`,
+      );
+    }
+    console.log(`[intent-model/${EVAL_LABEL}] abstain causes=${JSON.stringify(evaluation.causes)}`);
+    if (HOLDOUT_PATH)
+      console.log(`[intent-model/${EVAL_LABEL}] measurement-only; no quality thresholds applied to private holdout`);
     if (
-      evaluation.modelWrongKind > 0 ||
-      modelAttemptedExact < 0.95 ||
-      modelAbstainRate > 0.2 ||
       !evaluation.workerRecoversAfterAbstain ||
-      evaluation.wrongKind > 0 ||
-      attemptedExact < 0.95 ||
-      abstainRate > 0.2
+      (!HOLDOUT_PATH &&
+        (evaluation.modelWrongKind > 0 ||
+          modelAttemptedExact < 0.95 ||
+          modelAbstainRate > 0.2 ||
+          evaluation.wrongKind > 0 ||
+          attemptedExact < 0.95 ||
+          abstainRate > 0.2))
     )
       failed = true;
   }

@@ -375,10 +375,10 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
   // WHOLE tone (2 semitones — the SK musical meaning), polton/semiton = 1,
   // oktava = 12. Named groups — the three word orders have different layouts.
   const transposeSk =
-    /(drums?|bass|bas\w*|808|lead|synth\w*|chords?|keys?|bic\w*)\b\s+o\s+(?<count>\d+|jeden|jednu|dva|tri|styri|pat|sest|sedem|osem|devat|desat)?\s+(?<unit>ton\w*|semiton\w*|polton\w*|oktav\w*)\b\s+(?<dir>hore|dole|nizsie|vyssie)/.exec(
+    /(drums?|bass|bas\w*|808|lead|synth\w*|chords?|keys?|bic\w*)\b\s+o(?:\s+(?<count>\d+|jeden|jednu|dva|tri|styri|pat|sest|sedem|osem|devat|desat))?\s+(?<unit>ton\w*|semiton\w*|polton\w*|oktav\w*)\b\s+(?<dir>hore|dole|nizsie|vyssie)/.exec(
       lower,
     ) ||
-    /posun\s+(drums?|bass|bas\w*|808|lead|synth\w*|chords?|keys?|bic\w*)\b\s+(?<dir>hore|dole|nizsie|vyssie)\s+o\s+(?<count>\d+|jeden|jednu|dva|tri|styri|pat|sest|sedem|osem|devat|desat)?\s+(?<unit>ton\w*|semiton\w*|polton\w*|oktav\w*)\b/.exec(
+    /posun\s+(drums?|bass|bas\w*|808|lead|synth\w*|chords?|keys?|bic\w*)\b\s+(?<dir>hore|dole|nizsie|vyssie)\s+o(?:\s+(?<count>\d+|jeden|jednu|dva|tri|styri|pat|sest|sedem|osem|devat|desat))?\s+(?<unit>ton\w*|semiton\w*|polton\w*|oktav\w*)\b/.exec(
       lower,
     );
   if (transposeSk) {
