@@ -25,6 +25,16 @@ describe("complaint parsing", () => {
     const harsh = parseComplaintIntent("the lead is harsh");
     expect(harsh).toMatchObject({ kind: "harsh", family: "lead" });
     expect(parseComplaintIntent("bez razancie na bicích")?.kind).toBe("noPunch");
+    expect(parseComplaintIntent("the kick lacks punch")).toMatchObject({ kind: "noPunch", family: "kick" });
+    expect(parseComplaintIntent("The kick could use more impact.")).toMatchObject({ kind: "noPunch", family: "kick" });
+    expect(parseComplaintIntent("bas znie zahuhlane")).toMatchObject({ kind: "muddy", family: "bass" });
+    expect(parseComplaintIntent("The singer's tone feels shrill.")).toMatchObject({ kind: "harsh", family: "vocal" });
+    expect(parseComplaintIntent("The lead sounds too sharp.")).toMatchObject({ kind: "harsh", family: "lead" });
+    expect(parseComplaintIntent("The snare sounds brittle.")).toMatchObject({ kind: "harsh", family: "snare" });
+    expect(parseComplaintIntent("I can't feel the kick.")).toMatchObject({ kind: "noPunch", family: "kick" });
+    expect(parseComplaintIntent("The bass is boomy.")).toMatchObject({ kind: "muddy", family: "bass" });
+    expect(parseComplaintIntent("The bass feels woolly.")).toMatchObject({ kind: "muddy", family: "bass" });
+    expect(parseComplaintIntent("kopak nema silu")).toMatchObject({ kind: "noPunch", family: "kick" });
     expect(parseComplaintIntent("chorus je muddy")?.role).toBe("chorus");
   });
 

@@ -84,6 +84,7 @@ describe("SK vocabulary audit — effects / production", () => {
   });
   it("production concepts with SK stems", () => {
     expect(route("sprav basu hlbsiu")).toBe("production");
+    expect(route("daj base teplejsi zvuk")).toBe("production");
     expect(route("hatsy jasnejsie")).toBe("production");
     // "bubny tazsie" → the FADER wins by priority (named target + up stem);
     // the grittier reading stays reachable via "make the drums grittier".
@@ -119,6 +120,8 @@ describe("SK vocabulary audit — complaints (listening loop)", () => {
     expect(parseComplaintIntent("bicie su slabe")).toMatchObject({ kind: "thin", family: "drums" });
     expect(parseComplaintIntent("bicie su blatiste")).toMatchObject({ kind: "muddy", family: "drums" });
     expect(parseComplaintIntent("lead krici")).toMatchObject({ kind: "harsh", family: "lead" });
+    expect(parseComplaintIntent("vokal je ostry")).toMatchObject({ kind: "harsh", family: "vocal" });
+    expect(parseComplaintIntent("spev posobi prazdno")).toMatchObject({ kind: "empty", family: "vocal" });
     // PADS count as families: a kick/snare complaint targets the drum track.
     expect(parseComplaintIntent("kick je mrtvy")).toMatchObject({ kind: "noPunch", family: "kick" });
     expect(parseComplaintIntent("the hats sound muddy")).toMatchObject({ kind: "muddy", family: "hats" });

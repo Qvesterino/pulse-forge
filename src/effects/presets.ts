@@ -1005,6 +1005,22 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
   // ZENIT targets (ADR 0020) — loudness refinement happens via output trim
   // against the measured LUFS (kyx_master trim / export verdict), the presets
   // set the SHAPE: ceiling discipline, limiting push, glue and stereo field.
+  preset("wowflutter-vintage", "Vintage Deck", "wowFlutter", {
+    wowRate: 0.4,
+    wowDepth: 18,
+    flutterRate: 8,
+    flutterDepth: 3,
+    drift: 0.5,
+    mix: 1,
+  }),
+  preset("wowflutter-subtle", "Subtle Drift", "wowFlutter", {
+    wowRate: 0.8,
+    wowDepth: 5,
+    flutterRate: 14,
+    flutterDepth: 1.5,
+    drift: 0.25,
+    mix: 0.7,
+  }),
   preset("zenit-streaming", "Streaming −14", "zenit", {
     ceiling: -1,
     limit: 0.35,

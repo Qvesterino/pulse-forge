@@ -352,36 +352,76 @@ export interface QueryIntent {
 }
 
 const NUMBER_WORDS: ReadonlyArray<readonly [RegExp, number]> = [
+  [/\b(?:one|a|an|jeden|jedna|jedno)\b/i, 1],
   [/\b(?:two|dva|dve)\b/i, 2],
   [/\b(?:three|tri)\b/i, 3],
   [/\b(?:four|styri)\b/i, 4],
+  [/\b(?:five|pat)\b/i, 5],
+  [/\b(?:six|sest)\b/i, 6],
+  [/\b(?:seven|sedem)\b/i, 7],
+  [/\b(?:eight|osem)\b/i, 8],
+  [/\b(?:nine|devat)\b/i, 9],
+  [/\b(?:ten|desat)\b/i, 10],
 ];
+const NUMBER_TOKEN =
+  /\b(\d{1,2}|one|a|an|jeden|jedna|jedno|two|dva|dve|three|tri|four|styri|five|pat|six|sest|seven|sedem|eight|osem|nine|devat|ten|desat)\b/i;
 
-const UNDO_ASK =
-  /^\s*(?:please\s+)?(?:undo|vr[aá]ť(?:\s+to)?|vrath?ni|sp[aä][tť](?:\s+to)?|krok\s+sp[aä][tť]|step\s+back)(?:\s+(?:the\s+)?(?:last\s+)?(?:action|change|krok))?(?:\s+(two|dva|dve|three|tri|four|styri)|\s+(\d{1,2}))?(?:\s*(?:steps?|kroky|krokov))?\s*[.!]?\s*$/i;
-const REDO_ASK = /^\s*(?:please\s+)?(?:redo|zopakuj|dopredn?\w*)(?:\s+(\d{1,2}))?\s*[.!]?\s*$/i;
+const UNDO_PREFIX =
+  /^(?:please\s+)?(?:undo|revert|reverse|roll\s+back|take\s+back|vrat(?:\s+to)?|vratni|spat(?:\s+to)?|krok\s+(?:spat|dozadu)|step\s+back|go\s+back)\b\s*(.*)$/i;
+const REDO_PREFIX = /^(?:please\s+)?(?:redo|zopakuj|dopredu|urob\s+znova)\b\s*(.*)$/i;
+const REDO_REPHRASE =
+  /^(?:please\s+)?(?:(?:reapply|apply|repeat|do)\s+(?:(?:that|the|my|your|last|previous|latest|undone|reverted)\s+){0,2}(?:change|edit|adjustment|tweak|action)(?:\s+(?:again|once\s+more|znova|opat))?|bring\s+back\s+(?:(?:that|the|my|your|last|previous|latest)\s+){0,2}(?:change|edit|adjustment|tweak|action))$/i;
+
+function undoStepsFromTail(tail: string): number | null {
+  const normalized = tail
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[.!?]+$/g, "")
+    .trim();
+  if (!normalized) return 1;
+
+  let steps = 1;
+  const count = NUMBER_TOKEN.exec(normalized);
+  if (count) {
+    const raw = count[1].toLowerCase();
+    const numeric = /^\d+$/.test(raw) ? Number(raw) : NUMBER_WORDS.find(([word]) => word.test(raw))?.[1];
+    if (numeric == null) return null;
+    steps = numeric;
+  }
+
+  // Allow natural history references, while declining unrelated tails such
+  // as "undo the bass" or "go back to bar 8" instead of guessing.
+  const remainder = normalized
+    .replace(NUMBER_TOKEN, " ")
+    .replace(
+      /\b(?:the|my|that|this|what|i|most|recently|last|previous|posledn\w*|predchadzajuc\w*|action|akci\w*|change|changed|edit\w*|tweak\w*|step|steps|krok\w*|zmen\w*|to|o|spat|znova)\b/gi,
+      " ",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+  if (remainder) return null;
+  return Math.max(1, Math.min(20, steps));
+}
 
 export function parseUndoIntent(text: string): UndoIntent | null {
-  const undo = UNDO_ASK.exec(text);
+  const normalized = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[.!?]+$/g, "")
+    .trim();
+  const undo = UNDO_PREFIX.exec(normalized);
   if (undo) {
-    let steps = 1;
-    const digits = undo[2] != null ? Number(undo[2]) : null;
-    const word = undo[1] != null ? String(undo[1]).toLowerCase() : null;
-    if (digits != null) steps = digits;
-    else if (word != null) {
-      for (const [pattern, count] of NUMBER_WORDS) {
-        if (pattern.test(word)) {
-          steps = count;
-          break;
-        }
-      }
-    }
-    return { kind: "undo", steps: Math.max(1, Math.min(20, steps)) };
+    const steps = undoStepsFromTail(undo[1]);
+    return steps == null ? null : { kind: "undo", steps };
   }
-  const redo = REDO_ASK.exec(text);
+  const redo = REDO_PREFIX.exec(normalized);
   if (redo) {
-    return { kind: "redo", steps: redo[1] != null ? Math.max(1, Math.min(20, Number(redo[1]))) : 1 };
+    const steps = undoStepsFromTail(redo[1]);
+    return steps == null ? null : { kind: "redo", steps };
   }
+  if (REDO_REPHRASE.test(normalized)) return { kind: "redo", steps: 1 };
   return null;
 }
 
@@ -412,27 +452,42 @@ export function parseCheckpointIntent(text: string): CheckpointIntent | null {
 }
 
 const QUERY_SUBJECTS: ReadonlyArray<readonly [RegExp, QueryIntent["subject"]]> = [
-  [/\b(?:tempo|bpm|takt(?:e|u)?)\b/i, "tempo"],
-  [/\bkey\b|\btonina\b|\bkluc\b|k\u013e\u00fa\u010d/i, "key"],
-  [/\btracks?\b|\btrackov\b|\blanes?\b/i, "tracks"],
+  [
+    /\bfx\b|\beffects?\b|\befekt\w*\b|\bchain\b|\bplugin\w*\b|\bmodules?\b|\bprocessors?\b|\bdevices?\b|\bna sebe\b|\b(?:on|na)\s+(?:the\s+)?(?:bass|bas\w*|lead|chords|akord\w*|drums|bicie|bubn\w*)\b/i,
+    "fxChain",
+  ],
+  [/\b(?:tempo|bpm|pulse|pace|takt(?:e|u)?)\b/i, "tempo"],
+  [/\bkey\b|\btonina\b|\bkluc\b|k\u013e\u00fa\u010d|\btonic\b|\bscale\b|\btonal center\b|\bharmonic home\b/i, "key"],
+  [/\btracks?\b|\btrackov\b|\blanes?\b|\bchannels?\b|\bkanal\w*\b/i, "tracks"],
   [/\bmarkers?\b|\bmarkery\b|\bcues?\b/i, "markers"],
   [/\bgroove\b|\bswing\b/i, "groove"],
-  [/\bfx\b|\beffects?\b|\bchain\b|\bna sebe\b|\bplugin|\bon\s+(?:the\s+)?(?:bass|lead|chords|drums)\b/i, "fxChain"],
 ];
 
 export function parseQueryIntent(text: string): QueryIntent | null {
+  const plain = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
   const isQuestion =
-    /\?\s*$/.test(text) ||
-    /^\s*(?:what|which|how many|list|show|ako|aky|ake|akej|ak[áá]|v akom|kolko|koľko|zoznam|ukaz|co|čo)\b/i.test(text);
+    /\?\s*$/.test(plain) ||
+    /^\s*(?:what|which|how many|list|show|tell|identify|report|give|count|name|ako|aky|ake|aka|akej|v akom|kolko|zoznam|ukaz|povedz|co)\b/i.test(
+      plain,
+    );
   if (!isQuestion) return null;
   // "what did you just do" / "čo si spravil" → the LAST action from history
-  if (/\b(?:did you|you just|si spravil|si urobil|last action|posledn)/i.test(text)) {
+  if (
+    /\b(?:did you|what did i change|you just|si spravil|si urobil|si zmenil|si prave (?:spravil|urobil|zmenil)|last (?:action|thing)|most recent(?:ly)?|latest(?: project)? (?:change|edit)|you changed|naposled|posledn)/i.test(
+      plain,
+    )
+  ) {
     return { subject: "lastAction" };
   }
   for (const [re, subject] of QUERY_SUBJECTS) {
-    if (re.test(text)) {
+    if (re.test(plain)) {
       if (subject === "fxChain") {
-        const target = TARGET_WORDS.find(([pattern]) => pattern.test(text))?.[1];
+        const target =
+          TARGET_WORDS.find(([pattern]) => pattern.test(plain))?.[1] ??
+          (/\b(?:low[ -]end|sub(?:\s*-?bass)?)\b/.test(plain) ? "bass" : undefined);
         return { subject, ...(target != null ? { target } : {}) };
       }
       return { subject };

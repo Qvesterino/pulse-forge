@@ -84,12 +84,14 @@ const ABSENT = "__absent__";
  * near zero — a mute must never become a delete (LOCAL-INTENT-MODEL.md §5).
  */
 /**
- * Calibrated on the 47-head sparse artifact (2026-10-02 margin sweep): the
- * denser heads need less abstention — 2.5 passes all three gate bars on
- * val AND golden (97.2 % / wrongKind 0 / abstain 15.4 % on val; golden
- * 100 % / 0 / 14.9 %). The old 3.0 pin left golden abstain at 20.3 %.
+ * Calibrated on the current 54-head v16 model against the pinned v16
+ * validation + golden splits. A 4.8 margin gives 95.9% attempted exact,
+ * zero wrong-kind, and 19.1% abstain on validation; golden is 98.6% exact,
+ * zero wrong-kind, and 3.9% abstain. Lower thresholds retain wrong kinds;
+ * higher thresholds consume the validation abstain budget without gaining
+ * exact predictions. Keep this value pinned with the model artifact.
  */
-export const INTENT_MODEL_KIND_MARGIN = 2.5;
+export const INTENT_MODEL_KIND_MARGIN = 4.8;
 /**
  * Required logit gap between the winning kind and the ABSTAIN class
  * (calibration wave). Wider than the top-two margin: out-of-scope-kind

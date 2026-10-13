@@ -9,11 +9,10 @@ import { compactIntentResponse } from "../src/intent/dataset";
 import type { ProjectDocument } from "../src/project-model/types";
 
 /**
- * SFT GOLDEN LOCK — the training target for the "LLM as sound engineer"
- * distillation is the deterministic intent layer. This suite pins the golden
- * subset of (instruction → canonical action) pairs: if a parser change moves
- * a golden response, the diff IS the review — the training data moved with
- * it, and the model must be re-trained on the new teacher.
+ * SFT GOLDEN LOCK — deterministic routes are the primary teacher. A separate,
+ * explicitly provenance-tagged residual set adds human-reviewed labels for
+ * clear commands the router intentionally leaves unparsed. This suite pins
+ * the deterministic golden subset and checks both data sources.
  *
  * Mirrors datasetDoc() in scripts/generate-intent-dataset.mts exactly.
  */
@@ -35,10 +34,12 @@ interface SftPair {
   instruction: string;
   lang: "en" | "sk";
   response: Record<string, unknown>;
+  source?: "reviewed-residual";
 }
 
 const GOLDEN_PATH = path.join(process.cwd(), "scripts", "data", "intent-sft", "golden.jsonl");
 const TRAIN_PATH = path.join(process.cwd(), "scripts", "data", "intent-sft", "train.jsonl");
+const VAL_PATH = path.join(process.cwd(), "scripts", "data", "intent-sft", "val.jsonl");
 const MANIFEST_PATH = path.join(process.cwd(), "scripts", "data", "intent-sft", "manifest.json");
 
 function readJsonl(file: string): SftPair[] {
@@ -59,6 +60,7 @@ describe("intent SFT dataset (LLM-as-sound-engineer distillation)", () => {
   const doc = datasetDoc();
   const golden = readJsonl(GOLDEN_PATH);
   const train = readJsonl(TRAIN_PATH);
+  const val = readJsonl(VAL_PATH);
   const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as {
     datasetVersion: number;
     total: number;
@@ -66,6 +68,7 @@ describe("intent SFT dataset (LLM-as-sound-engineer distillation)", () => {
     val: number;
     golden: number;
     kinds: Record<string, number>;
+    sources?: { deterministic: number; reviewedResidual: number };
   };
 
   it("every golden pair re-routes to the EXACT same canonical action", () => {
@@ -96,6 +99,18 @@ describe("intent SFT dataset (LLM-as-sound-engineer distillation)", () => {
     expect(manifest.train).toBe(train.length);
     expect(manifest.golden).toBe(golden.length);
     expect(manifest.kinds["pattern"]).toBeUndefined();
+  });
+
+  it("pins human-reviewed residual labels separately and rejects router conflicts", () => {
+    const residual = [...train, ...val].filter((pair) => pair.source === "reviewed-residual");
+    expect(residual.length).toBeGreaterThanOrEqual(30);
+    expect(manifest.sources?.reviewedResidual).toBe(residual.length);
+    expect(manifest.sources?.deterministic).toBe(train.length + val.length - residual.length);
+    for (const pair of residual) {
+      expect(pair.response.kind).not.toBe("pattern");
+      const routed = compactIntentResponse(routeIntentText(pair.instruction, doc));
+      if (routed.kind !== "pattern") expect(JSON.stringify(routed)).toBe(JSON.stringify(pair.response));
+    }
   });
 
   it("the command set covers the DAW surface (kinds the model must learn)", () => {

@@ -46,6 +46,27 @@ describe("undo/redo intents", () => {
     expect(parseUndoIntent("zopakuj")?.kind).toBe("redo");
   });
 
+  it("understands natural EN/SK history references and rejects unrelated targets", () => {
+    expect(parseUndoIntent("undo the previous change")).toEqual({ kind: "undo", steps: 1 });
+    expect(parseUndoIntent("go back one step")).toEqual({ kind: "undo", steps: 1 });
+    expect(parseUndoIntent("vráť poslednú zmenu")).toEqual({ kind: "undo", steps: 1 });
+    expect(parseUndoIntent("vráť štyri kroky")).toEqual({ kind: "undo", steps: 4 });
+    expect(parseUndoIntent("zopakuj poslednú akciu")).toEqual({ kind: "redo", steps: 1 });
+    expect(parseUndoIntent("redo the last two steps")).toEqual({ kind: "redo", steps: 2 });
+    expect(parseUndoIntent("reapply my latest edit")).toEqual({ kind: "redo", steps: 1 });
+    expect(parseUndoIntent("repeat the previous adjustment")).toEqual({ kind: "redo", steps: 1 });
+    expect(parseUndoIntent("apply the bass again")).toBeNull();
+    expect(parseUndoIntent("revert one action")).toEqual({ kind: "undo", steps: 1 });
+    expect(parseUndoIntent("reverse what I changed most recently")).toEqual({ kind: "undo", steps: 1 });
+    expect(parseUndoIntent("go back two steps")).toEqual({ kind: "undo", steps: 2 });
+    expect(parseUndoIntent("undo ten steps")).toEqual({ kind: "undo", steps: 10 });
+    expect(parseUndoIntent("undo 10 steps")).toEqual({ kind: "undo", steps: 10 });
+    expect(parseUndoIntent("zopakuj sedem krokov")).toEqual({ kind: "redo", steps: 7 });
+    expect(parseUndoIntent("vráť päť krokov")).toEqual({ kind: "undo", steps: 5 });
+    expect(parseUndoIntent("undo the bass")).toBeNull();
+    expect(parseUndoIntent("go back to bar 8")).toBeNull();
+  });
+
   it("undo/redo routes win over pattern generation (bare words)", () => {
     const doc = testDoc();
     expect(routeIntentText("undo", doc).kind).toBe("undoIntent");
@@ -73,6 +94,29 @@ describe("query intents", () => {
     if (parseQueryIntent("čo má lead na sebe?")?.subject !== "fxChain") throw new Error("unreachable");
     expect(parseQueryIntent("what markers do we have?")?.subject).toBe("markers");
     expect(parseQueryIntent("ako znie groove?")?.subject).toBe("groove");
+    expect(parseQueryIntent("tell me the current bpm")?.subject).toBe("tempo");
+    expect(parseQueryIntent("aké efekty sú na base?")).toMatchObject({ subject: "fxChain", target: "bass" });
+    expect(parseQueryIntent("ukáž efekty na bicích")?.subject).toBe("fxChain");
+    expect(parseQueryIntent("which plugins are on the drums?")).toMatchObject({ subject: "fxChain", target: "drums" });
+    expect(parseQueryIntent("show all plugins on the low end channel?")).toMatchObject({
+      subject: "fxChain",
+      target: "bass",
+    });
+    expect(parseQueryIntent("which was my last action?")?.subject).toBe("lastAction");
+    expect(parseQueryIntent("what was the last thing you changed?")?.subject).toBe("lastAction");
+    expect(parseQueryIntent("čo si naposledy zmenil?")?.subject).toBe("lastAction");
+    expect(parseQueryIntent("čo si práve zmenil?")?.subject).toBe("lastAction");
+    expect(parseQueryIntent("Identify the current tempo value")).toEqual({ subject: "tempo" });
+    expect(parseQueryIntent("Tell me the tonal center of this beat.")).toEqual({ subject: "key" });
+    expect(parseQueryIntent("What scale are these notes in?")).toEqual({ subject: "key" });
+    expect(parseQueryIntent("Which modules are active on the low-end channel?")).toEqual({
+      subject: "fxChain",
+      target: "bass",
+    });
+    expect(parseQueryIntent("Report the latest project change")).toEqual({ subject: "lastAction" });
+    expect(parseQueryIntent("How many channels are populated?")).toEqual({ subject: "tracks" });
+    expect(parseQueryIntent("kolko kanalov sme pouzili")).toEqual({ subject: "tracks" });
+    expect(parseQueryIntent("what did I change immediately before this?")).toEqual({ subject: "lastAction" });
   });
 
   it("'what did you just do' → lastAction (history read)", () => {

@@ -37,6 +37,8 @@ import { fileURLToPath } from "node:url";
 import { EFFECT_META } from "../src/effects/definitions";
 import { INSTRUMENT_META } from "../src/instruments/definitions";
 import { TEMPLATES } from "../src/project-model/templates";
+import { FACTORY_ASSETS } from "../src/sample-library/manifest";
+import { KIT_PRESETS } from "../src/project-model/kit-presets";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(SCRIPT_DIR, "..");
@@ -113,6 +115,30 @@ export function collectCountChecks(root: string): CountCheck[] {
       label: "Vitest spec files",
       claimed: parseCountRow(markdown, "Vitest spec files"),
       actual: countSpecFiles(root),
+    },
+    // The sample-library counts were the hole this section had: the dusty jazz
+    // wave moved assets 151->155 and categories 14->15, and nothing here would
+    // have noticed either. Derived from the imported arrays rather than parsed
+    // out of the source text, because a regex over the manifest silently drops
+    // ids carrying characters outside [a-z0-9.] (factory.fx.riser-short), which
+    // is how a count reaches "close enough" instead of "right".
+    {
+      label: "Factory assets",
+      claimed: parseCountRow(markdown, "Factory assets"),
+      actual: FACTORY_ASSETS.length,
+    },
+    {
+      // Distinct categories ACTUALLY IN USE, which is deliberately not the same
+      // measurement as counting members of the AssetCategory union: a union member
+      // no asset uses is dead vocabulary, and the row documents what ships.
+      label: "Asset categories",
+      claimed: parseCountRow(markdown, "Asset categories"),
+      actual: new Set(FACTORY_ASSETS.map((a) => a.category)).size,
+    },
+    {
+      label: "Genre kits",
+      claimed: parseCountRow(markdown, "Genre kits"),
+      actual: KIT_PRESETS.length,
     },
   ];
 }

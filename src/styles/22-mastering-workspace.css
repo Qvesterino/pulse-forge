@@ -1971,6 +1971,21 @@
   line-height: 1.45;
 }
 
+.master-assistant-ranker-status {
+  margin: 6px 0;
+  color: var(--text-faint);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.master-assistant-shadow-rank {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-faint);
+  font-size: 8px;
+  font-weight: 400;
+}
+
 .master-assistant-section button {
   min-height: 26px;
   padding: 4px 8px;
@@ -2141,6 +2156,129 @@
   color: var(--warn, #efb34f);
 }
 
+.master-assistant-study {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 9px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.master-assistant-study > header strong {
+  color: var(--text);
+  font-size: 10px;
+}
+
+.master-assistant-study > header p,
+.master-assistant-study-reviewers > p,
+.master-assistant-study-trial > p,
+.master-assistant-study-note {
+  margin: 3px 0 0;
+  color: var(--text-dim);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.master-assistant-study-reviewers {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr) auto;
+  align-items: end;
+  gap: 6px;
+}
+
+.master-assistant-study-reviewers > p {
+  grid-column: 1 / -1;
+}
+
+.master-assistant-study-reviewers label,
+.master-assistant-study-setup label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-faint);
+  font-size: 9px;
+}
+
+.master-assistant-study-reviewers input,
+.master-assistant-study-setup select,
+.master-assistant-study-data input[type="file"] {
+  width: 100%;
+  min-width: 0;
+  min-height: 26px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-raise);
+  color: var(--text);
+  font: 9px var(--mono);
+}
+
+.master-assistant-study-setup {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(130px, 1fr) minmax(130px, 0.7fr) auto;
+  align-items: end;
+  gap: 6px;
+}
+
+.master-assistant-study-ready,
+.master-assistant-study-trial,
+.master-assistant-study-reveal,
+.master-assistant-study-data {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  background: var(--bg-raise);
+  color: var(--text-dim);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.master-assistant-study-trial {
+  border-color: var(--accent);
+}
+
+.master-assistant-study-ready button,
+.master-assistant-study-reveal button,
+.master-assistant-study-trial > button {
+  justify-self: start;
+}
+
+.master-assistant-study-playback,
+.master-assistant-study-choice,
+.master-assistant-study-data {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.master-assistant-study-choice {
+  min-width: 0;
+  margin: 0;
+  padding: 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+}
+
+.master-assistant-study-choice legend {
+  padding: 0 4px;
+  color: var(--text-faint);
+}
+
+.master-assistant-study-data label {
+  display: grid;
+  flex: 1 1 280px;
+  gap: 4px;
+  min-width: 0;
+}
+
+.master-assistant-study-data > span {
+  color: var(--text-faint);
+}
+
 .master-assistant-preview-results,
 .master-assistant-applied {
   display: grid;
@@ -2198,6 +2336,16 @@
 
   .master-assistant-value {
     justify-items: start;
+  }
+
+  .master-assistant-study-reviewers,
+  .master-assistant-study-setup {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .master-assistant-study-reviewers > button,
+  .master-assistant-study-setup > button {
+    justify-self: start;
   }
 }
 

@@ -1,6 +1,6 @@
 # Pulse Forge — realizačný plán: mastering
 
-> Stav plánu: priebežne aktualizovaná implementácia, 2026-10-12
+> Stav plánu: priebežne aktualizovaná implementácia, 2026-10-13
 > Produktové meno: **KYX**  
 > Rozsah: zjednotenie existujúceho masteringu do profesionálneho, merateľného a zrozumiteľného workflow  
 > Účel: vykonateľný plán nad aktuálnym kódom; nejde o tvrdenie, že všetky body už KYX obsahuje.
@@ -315,6 +315,39 @@ Implementácia snapshotov, monitor bypassu a referenčného porovnávania je v p
 **Stav:** UI a render workflow sú implementované. Akceptácia zostáva otvorená do existujúcich planner/UI/browser kontrol a manuálneho posluchu; doterajšie návrhové pravidlá treba ešte odborne overiť na žánrovo rôznych mixoch a skontrolovať ich malé bezpečné kroky.
 
 **Akceptácia:** golden proposals viažu merací input na konkrétne návrhy; no-signal/stale/error casos odmietnu apply; každý apply vytvorí jeden undo krok; rejected návrh nemení `ProjectDocument`; počuteľné A/B preview zodpovedá presnému návrhu, ktorý sa commitne.
+
+### Navrhované pokračovanie — lokálna mastering intelligence
+
+Mastering Assistant používa deterministické pravidlá; samostatné ONNX váhy pre mastering zatiaľ nie sú dodané. Implementovaný kontrakt a shadow runtime preto ponechávajú deterministický planner ako jediný zdroj viditeľného poradia, kým neexistujú skutočné masteringové preferenčné dáta a úspešný held-out výsledok.
+
+**Dátový kontrakt a zdroj pravdy**
+
+- [x] Zaviesť JSON-safe `MasteringAnalysisSnapshotV1` s verziou schémy/príznakov, song render scope, sample rate, sample-bank a project revision, measurement tap, delivery profil, referenčné merania a pôvod každej metriky. Nezmerané hodnoty sú `null`; odvodené údaje sa nevydávajú za meranie.
+- [x] Oddeliť stabilné vstupné vlastnosti od kandidátov. Planner vytvorí ohraničené návrhy; `mastering.features.v1` prevádza merania, delivery kontext a povolený parameter na pevné, testovateľné číselné stĺpce. Vysvetlenie, názov súboru, identita projektu a PCM nie sú modelové vstupy.
+- [x] Ranker klient odosiela workeru len row-major `Float32Array` vlastností a počet kandidátov. Projekt a referencia zostávajú v pamäti UI; modelové váhy a ONNX WASM runtime sa načítajú ako statické aplikáčné assety z nakonfigurovanej KYX asset cesty. Žiadny projekt, audio ani preferenčný záznam sa neposiela inference API.
+
+**Rola a hranice modelu**
+
+- [x] Prvá rola modelu je shadow ranker: môže iba zoradiť ID kandidátov vytvorených plannerom. UI ukáže jeho poradové čísla, ale ponechá zobrazené poradie a výber deterministického planneru; neexistuje cesta z výstupu modelu do `ProjectDocument` ani DSP parametrov.
+- [x] Zachovať planner, delivery limity, preview, stale-revision kontrolu a Apply cez undoable command ako autoritatívne pravidlá. Kandidáti naďalej vyžadujú rovnaký render a merané preview pred Apply.
+- [x] ONNX beží iba vo worker-i, nikdy v AudioWorklet/audio callbacku. Lazy worker kontroluje manifest, presný feature count/verziu, lokálnu model cestu, SHA-256, vstupné/výstupné mená a každú hodnotu batchu. Manifest/chýbajúci model, timeout, worker chyby a neplatné skóre bezpečne ponechajú deterministický planner; opakovaná chyba otvorí session circuit breaker.
+- [x] Implementovať lokálny evaluator `npm run mastering-ranker:evaluate`: dataset schema v3 odlišuje development od held-out blind; pri každom kandidátovi nesie presný 51-stĺpcový feature vector, aspoň dva unikátne recenzentské kódy na pár, session-salted revision marker, párovaný bootstrap CI a technickú bezpečnostnú kontrolu. Evaluátor povoľuje iba declared held-out dataset a baseline musí presne zodpovedať uloženému poradiu planneru. Evaluator navyše vyžaduje browser/WASM runtime sidecar naviazaný na presný model aj dataset hash; report/gate schema v2 uchová jeho SHA-256. Identitu poslucháčov ani unikátnosť zvukového mixu nevie dokázať; held-out zdroje vyžadujú oddelenú evidenciu a custody.
+- [x] Pridať lokálny Windows Chromium/WASM prediktor `npm run mastering-ranker:predict:browser`: zostaví a spustí produkčný `mastering-ranker-worker.ts` nad všetkými held-out feature vektormi, vytvorí zoradenia modelu aj deterministickej baseline a runtime sidecar v2 s hashmi modelu/datasetu, benchmark skriptu, presne servovaného worker bundlu a WASM binárky, verziou ONNX Runtime Web, p95 worker round-trip časom a baseline-adjusted Chromium process-tree private-bytes meraním. Ak process-tree sampler zlyhá, nevydá runtime metriky.
+- [x] Doplniť lokálny Development-only tréner `npm run mastering-ranker:train`: po odstránení nesúhlasných/tie párov vyžaduje aspoň 100 tréningových a 20 interných validačných párov, dve reviewer codes a štyri žánre; deterministicky trénuje regularizovaný lineárny pairwise ranker, exportuje ONNX a overí ho cez ONNX Runtime. Kandidát a manifest `evaluation: null` sa zapisujú len mimo `public/`; interná validácia nie je held-out dôkaz ani aktivácia. `npm run mastering-ranker:trainer-smoke` overuje iba syntetické ONNX plumbing.
+- [x] Pridať výslovne spúšťaný zber párov v Mastering Assistant: každého návrhu samostatný render z rovnakého zdroja, povinný LUFS loudness match, náhodné verziové poradie pre dvoch poslucháčov, stabilné anonymné listener kódy, odhalenie až po oboch hlasoch a lokálny import/export datasetu. Pred exportom sa nič neukladá ani neposiela.
+- [x] Implementovať aktivovací gate do manifest kontraktu: model musí prekonať deterministickú baseline na najmenej 100 held-out blind pároch s aspoň dvoma odlišnými recenzentskými kódmi a v aspoň štyroch žánrových skupinách; study operator musí pred product review nezávisle potvrdiť, že kódy patria rôznym poslucháčom. Dolná 95 % hranica rozdielu musí byť kladná, technické regresie musia byť nulové, p95 inferencie najviac 250 ms a peak memory najviac 128 MiB. Evaluácia je viazaná na konkrétny model aj dataset hash. Klient pred označením evaluácie za splnenú overí SHA-256 sidecar reportu a zhodu jeho obsahu s manifestom. Bez reportu model zostáva shadow-only; zatiaľ nie je aktivovaný žiadny mastering model.
+- [x] Model a preferencie ostávajú na zariadení. Žiadne tiché nahrávanie projektu, sample PCM ani preferencií. Preferencie existujú iba v pamäti karty až do výslovného lokálneho JSON exportu; importovaný alebo zozbieraný dataset možno vymazať obnovením karty.
+
+**Postup pred zapnutím pre používateľov**
+
+1. **Pripraviť kontrakt a evaluačný set:** zmraziť verzie príznakov, deterministické zlaté prípady a slepú, žánrovo rozmanitú sadu hlasitostne dorovnaných porovnaní. KYX vie páry vyrenderovať a lokálne vyexportovať, ale ľudské hlasy treba reálne nazbierať. Oddeliť tréningové a vyhodnocovacie mixy; do datasetu zahrnúť aj príklady, kde správnym výsledkom je „bezpečný návrh nie je k dispozícii“.
+2. **Shadow režim:** po dodaní modelu klient porovná jeho poradie s plannerom lokálne, nemení viditeľné poradie ani zvuk. UI ukáže shadow poradie a čas tohto behu; pri fallbacku oznámi dôvod. Automatický záznam používateľových výberov sa neukladá.
+3. **Kontrolované zapnutie:** aktivácia zatiaľ nemá používateľský prepínač ani runtime cestu. Vyžaduje dokončený held-out report, splnený manifest gate, osobitnú aktiváciu po review a následne stále preview + používateľské Apply. Neplatný alebo chýbajúci report nemôže ranker povýšiť.
+4. **Rozšírenie až podľa dôkazov:** pri každej zmene feature schémy alebo modelu zopakovať golden, slepé posluchové a runtime vyhodnotenie. Model, ktorý neprináša merateľné zlepšenie, sa neaktivuje; deterministický asistent zostáva plnohodnotnou offline cestou.
+
+**Stav:** verzovaný kontrakt, worker klient, strict manifest/model hash validácia, session fallback, shadow UI, lokálny zber/render/export blind párov s oddelenými development/held-out splitmi, Development-only pairwise ONNX tréner a held-out evaluator/report nástroj sú implementované. V repozitári zatiaľ nie sú skutočné masteringové preferencie, `mastering-ranker-v1.onnx`, jeho nasadený manifest ani nezávisle skontrolovaný held-out set; preto sa v praxi používa deterministické poradie a etapová akceptácia ostáva otvorená. Formát datasetu, tréningový a evaluačný príkaz dokumentuje `docs/MASTERING-RANKER-EVALUATION.md`.
+
+**Akceptácia:** chýbajúci model nemení návrhy ani audio; timeout, poškodený výstup a neznámy feature version bezpečne ponechajú deterministické poradie. Worker nikdy nedostane PCM ani identitu projektu a model nevie vytvoriť alebo aplikovať návrh mimo planner kandidátov. Aktivácia vyžaduje reprodukovateľný model/dataset/report hash, lokálnu inferenciu, splnenie latency/pamäťových hraníc a blind held-out výsledok nad deterministickou baseline bez technickej regresie.
 
 ## Etapa 7 — delivery QA a export
 

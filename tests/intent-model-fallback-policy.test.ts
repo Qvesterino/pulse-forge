@@ -64,6 +64,48 @@ describe("action-model fallback boundary", () => {
     expect(shouldTryActionModelFallback(text, route)).toBe(route.kind === "pattern");
   });
 
+  it.each([
+    "The bass needs to be less dominant.",
+    "Can you make the drum part less prominent?",
+    "Keep the drums more subdued.",
+    "The kick could use more impact.",
+    "The bass is boomy.",
+    "The lead sounds too sharp.",
+    "Identify the current tempo value",
+    "Tell me the tonal center of this beat.",
+    "What scale are these notes in?",
+    "Which modules are active on the low-end channel?",
+    "Report the latest project change",
+    "How many channels are populated?",
+    "the bass should feel less upfront",
+    "the drums are overwhelming the vocals",
+    "the lead disappears under the chords",
+    "there is too much level on the chords",
+    "the kick overpowers the bass",
+    "the 808 should sit more underneath",
+    "the snare needs more body up front",
+    "bicie su prilis vpredu",
+    "basa prekrikuje ostatne stopy",
+    "lead zanika pod akordmi",
+    "kopak prehlusi basu",
+    "the bass sounds cloudy",
+    "the lead has a glassy edge",
+    "the drop has no energy",
+    "basa ma zahmleny spodok",
+    "kopak straca uder",
+    "lead reze do usi",
+    "give me the BPM number",
+    "what's the tonic of the song?",
+    "tell me how many channels are in use",
+    "what number is setting the song's pulse?",
+    "what did I change immediately before this?",
+    "which processors are coloring the bass?",
+  ])("routes a plausible residual editor ask deterministically or to the action model: %s", (text) => {
+    const route = routeIntentText(text, doc);
+    expect(isCreativeBriefRoute(text, route)).toBe(false);
+    expect(route.kind !== "pattern" || shouldTryActionModelFallback(text, route)).toBe(true);
+  });
+
   it("keeps a phrase describing a new song arrangement in the creative path", () => {
     const text = "arrange into intro-verse-chorus";
     const route = routeIntentText(text, doc);

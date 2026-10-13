@@ -57,13 +57,13 @@ export interface FaderIntent {
 
 /** ALL SK stems DE-ACCENTED — the parser strips diacritics before matching. */
 const FADER_DOWN =
-  /\bzniz|\bstis|\bstiah\w*|\bnizs|\btahaj dole|\bdaj dole|\btichs|\bdole\b|\bturn down\b|\bpull down\b|\bbring down\b|\blower\b|\bdial down\b|\bquieter\b|\bquiet down\b|\b(?:take|bring|pull|turn|dial|drop)\b.{0,36}\bdown\b/;
+  /\bzniz|\bstis|\bstiah\w*|\bnizs|\btahaj dole|\bdaj dole|\btichs|\bdole\b|\bturn down\b|\bpull down\b|\bbring down\b|\blower\b|\bdial down\b|\bquieter\b|\bquiet down\b|\b(?:take|bring|pull|turn|dial|drop)\b.{0,36}\bdown\b|\bdrop\b.{0,24}\b(?:level|volume|fader)\b|\b(?:less|fewer|menej)\b.{0,28}\b(?:room|space|presence|dominant|prominent|forward|pronounced|vyrazn\w*|vystupujuc\w*)\b|\b(?:too|overly|prilis)\b.{0,20}\b(?:dominant|forward|prominent|vyrazn\w*)\b|\bmore\b.{0,20}\bsubdued\b|\b(?:in|into|do|v)\s+(?:the\s+)?(?:background|pozadi|uzadia)\b|\b(?:recede|recedes|receding|ease back|sit back|sit behind|ustup\w*|zazit do pozadia)\b/;
 const FADER_UP =
-  /\bzvis\b|\bzvys|\bvyss\b|\btazs\w*|\bpotiahni hore|\btahaj hore|\bdaj hore|\bhlasnej|\bhlasit|\bhore\b|\bturn up\b|\bbring up\b|\braise\b|\bpush up\b|\blouder\b|\b(?:bring|turn|push|move|take)\b.{0,36}\bup\b/;
+  /\bzvis\b|\bzvys|\bvyss\b|\btazs\w*|\bpotiahni hore|\btahaj hore|\bdaj hore|\bhlasnej|\bhlasit|\bhore\b|\bturn up\b|\bbring up\b|\braise\b|\bpush up\b|\blouder\b|\b(?:bring|turn|push|move)\b.{0,36}\bup\b|\btake\b.{0,36}\bup\b(?!\s+(?:less|fewer)\b)|\b(?:bring|move|push)\b.{0,28}\bforward\b/;
 const SK_ADD_FADER = /\bpridaj\s+(?:(?:hlasitos\w*|volume)\s+)?(?:bas\w*|lead\w*|master\w*|bic\w*)\b/;
 /** UP stems that unambiguously name a direction (loud-words excluded). */
 const FADER_UP_DIRECTIONAL =
-  /\bzvis\b|\bzvys|\bvyss\b|\btazs\w*|\bpotiahni hore|\btahaj hore|\bdaj hore|\bhore\b|\bturn up\b|\bbring up\b|\braise\b|\bpush up\b|\blouder\b|\b(?:bring|turn|push|move|take)\b.{0,36}\bup\b|\bpridaj\s+(?:(?:hlasitos\w*|volume)\s+)?(?:bas\w*|lead\w*|master\w*|bic\w*)\b/;
+  /\bzvis\b|\bzvys|\bvyss\b|\btazs\w*|\bpotiahni hore|\btahaj hore|\bdaj hore|\bhore\b|\bturn up\b|\bbring up\b|\braise\b|\bpush up\b|\blouder\b|\b(?:bring|turn|push|move)\b.{0,36}\bup\b|\btake\b.{0,36}\bup\b(?!\s+(?:less|fewer)\b)|\bpridaj\s+(?:(?:hlasitos\w*|volume)\s+)?(?:bas\w*|lead\w*|master\w*|bic\w*)\b|\b(?:bring|move|push)\b.{0,28}\bforward\b/;
 
 const FADER_TARGETS: ReadonlyArray<readonly [RegExp, FaderTarget]> = [
   [/\bbas(?:u|e|y|ov|om)?\b|\bbass\w*|\b808\w*/, "bass"],
@@ -75,6 +75,10 @@ const FADER_TARGETS: ReadonlyArray<readonly [RegExp, FaderTarget]> = [
     "master",
   ],
 ];
+
+/** Track mentions inside a comparison describe a reference, not an edit target. */
+const FADER_REFERENCE_CLAUSE =
+  /\b(?:behind|ahead of|in front of|compared with|compared to|than|za|pred|oproti)\b.{0,48}/g;
 
 const FADER_PADS: ReadonlyArray<readonly [RegExp, FaderPadFamily]> = [
   [/\bkick\w*/, "kick"],
@@ -113,8 +117,9 @@ export function parseFaderIntent(text: string): FaderIntent | null {
   if (setFaderVerb && !/\bpan\b/.test(lower) && !EFFECT_NOUN.test(lower)) {
     const setPercent = parsePercentAllowingZero(text);
     if (setPercent != null) {
-      const targets = FADER_TARGETS.filter(([pattern]) => pattern.test(lower)).map(([, target]) => target);
-      const pads = FADER_PADS.filter(([pattern]) => pattern.test(lower)).map(([, family]) => family);
+      const targetText = lower.replace(FADER_REFERENCE_CLAUSE, " ");
+      const targets = FADER_TARGETS.filter(([pattern]) => pattern.test(targetText)).map(([, target]) => target);
+      const pads = FADER_PADS.filter(([pattern]) => pattern.test(targetText)).map(([, family]) => family);
       if (targets.length > 0 || pads.length > 0) {
         return { targets, pads, direction: "set", percent: setPercent };
       }
@@ -130,8 +135,9 @@ export function parseFaderIntent(text: string): FaderIntent | null {
   // The loud-words ("hlasnejšie"/"hlasitosť") are excluded from the conflict
   // check: "zníž hlasitosť basu" names the volume NOUN, not an up-direction.
   if (down && FADER_UP_DIRECTIONAL.test(lower)) return null;
-  const targets = FADER_TARGETS.filter(([pattern]) => pattern.test(lower)).map(([, target]) => target);
-  const pads = FADER_PADS.filter(([pattern]) => pattern.test(lower)).map(([, family]) => family);
+  const targetText = lower.replace(FADER_REFERENCE_CLAUSE, " ");
+  const targets = FADER_TARGETS.filter(([pattern]) => pattern.test(targetText)).map(([, target]) => target);
+  const pads = FADER_PADS.filter(([pattern]) => pattern.test(targetText)).map(([, family]) => family);
   if (targets.length === 0 && pads.length === 0) return null; // "zniz" alone is ambiguous
   const amount: FaderAmount = AMOUNT_FULL.test(lower)
     ? "full"

@@ -1,38 +1,29 @@
 {
-  "baseModel": "LiquidAI/LFM2.5-1.2B-Instruct",
-  "trainExamples": 857,
-  "epochs": 3,
+  "baseModel": "D:\\pulse-forge\\.sft\\work\\v15\\merged",
+  "trainExamples": 1132,
+  "epochs": 1,
+  "batch": 2,
+  "accum": 8,
+  "effectiveBatch": 16,
+  "maxSeqLen": 1280,
+  "valLimit": 60,
   "loraR": 16,
   "loraAlpha": 32,
-  "lr": 0.0002,
+  "lr": 2e-05,
   "valHistory": [
     {
       "rows": 60,
-      "exact": 10,
+      "exact": 45,
       "kindOK": 60,
       "epoch": 1,
-      "trainLoss": 4.480710034258664
-    },
-    {
-      "rows": 60,
-      "exact": 25,
-      "kindOK": 60,
-      "epoch": 2,
-      "trainLoss": 0.9850651887245476
-    },
-    {
-      "rows": 60,
-      "exact": 25,
-      "kindOK": 60,
-      "epoch": 3,
-      "trainLoss": 2.073669049772434
+      "trainLoss": 3.2019882391832653
     }
   ],
   "valFinal": {
     "rows": 60,
-    "exact": 25,
+    "exact": 45,
     "kindOK": 60,
-    "epoch": 3,
-    "trainLoss": 2.073669049772434
+    "epoch": 1,
+    "trainLoss": 3.2019882391832653
   }
 }

@@ -2,11 +2,12 @@
  * Generates the INTENT SFT DATASET — (instruction → canonical action) pairs
  * for fine-tuning a small local model as a KYX sound engineer.
  *
- * The DETERMINISTIC intent layer is the teacher: every corpus instruction is
- * routed through `routeIntentText` against a FIXED dataset document, and the
- * routed action is compacted by `compactIntentResponse`. Pairs whose route
- * lands on "pattern" are EXCLUDED — generation is a proposal flow, not a
- * command, and stays with the existing candidate engine.
+ * The DETERMINISTIC intent layer is the primary teacher: every corpus
+ * instruction is routed through `routeIntentText` against a FIXED dataset
+ * document, and the action is compacted by `compactIntentResponse`. A small,
+ * explicitly reviewed residual set supplies typed labels for clear action
+ * paraphrases that intentionally remain on the `pattern` route. Other
+ * `pattern` routes stay excluded — generation is not a command.
  *
  * Output (scripts/data/intent-sft/):
  *   train.jsonl    — the full pair set (~deterministic order: corpus order)
@@ -22,9 +23,10 @@ import { datasetDoc } from "./intent-sft-doc.mts";
 import { routeIntentText } from "../src/intent/route";
 import { compactIntentResponse } from "../src/intent/dataset";
 import { validateModelAction } from "../src/intent/model-schema";
+import { canonicalModelJson } from "../src/intent/model-decoder";
 import type { ProjectDocument } from "../src/project-model/types";
 
-const DATASET_VERSION = 9;
+const DATASET_VERSION = 16;
 const OUT_DIR = path.join(process.cwd(), "scripts", "data", "intent-sft");
 const MINED_CORPUS_PATH = path.join(process.cwd(), "scripts", "data", "intent-mined-corpus.json");
 const unsupportedPairs = new Map<string, string[]>();
@@ -33,6 +35,7 @@ interface Pair {
   instruction: string;
   lang: "en" | "sk";
   response: Record<string, unknown>;
+  source?: "reviewed-residual";
 }
 
 function collect(doc: ProjectDocument, lang: "en" | "sk", instructions: string[]): Pair[] {
@@ -48,6 +51,412 @@ function collect(doc: ProjectDocument, lang: "en" | "sk", instructions: string[]
     pairs.push({ instruction, lang, response });
   }
   return pairs;
+}
+
+/**
+ * HUMAN-REVIEWED FALLBACK PARAPHRASES (2026-10-13). These are narrowly typed,
+ * low-risk edit and read-only actions for the ONNX model's true residual path.
+ * Each label is schema-validated. If the deterministic router later starts
+ * handling an example, it must agree exactly or dataset generation fails.
+ */
+function reviewedResidualPairs(doc: ProjectDocument): Pair[] {
+  const examples: Pair[] = [
+    // History controls: varied verbs and references, balanced undo/redo.
+    { lang: "en", instruction: "take the last edit back", response: { kind: "undoIntent", action: "undo", steps: 1 } },
+    {
+      lang: "en",
+      instruction: "reverse the previous adjustment",
+      response: { kind: "undoIntent", action: "undo", steps: 1 },
+    },
+    { lang: "en", instruction: "restore my earlier state", response: { kind: "undoIntent", action: "undo", steps: 1 } },
+    { lang: "en", instruction: "reapply my latest edit", response: { kind: "undoIntent", action: "redo", steps: 1 } },
+    {
+      lang: "en",
+      instruction: "repeat the last adjustment",
+      response: { kind: "undoIntent", action: "redo", steps: 1 },
+    },
+    {
+      lang: "en",
+      instruction: "do that previous change again",
+      response: { kind: "undoIntent", action: "redo", steps: 1 },
+    },
+    { lang: "sk", instruction: "obnov moj predosly stav", response: { kind: "undoIntent", action: "undo", steps: 1 } },
+    {
+      lang: "sk",
+      instruction: "vrat sa k predoslemu stavu",
+      response: { kind: "undoIntent", action: "undo", steps: 1 },
+    },
+    {
+      lang: "sk",
+      instruction: "zopakuj predchadzajucu upravu",
+      response: { kind: "undoIntent", action: "redo", steps: 1 },
+    },
+    {
+      lang: "sk",
+      instruction: "urob poslednu zmenu este raz",
+      response: { kind: "undoIntent", action: "redo", steps: 1 },
+    },
+    {
+      lang: "en",
+      instruction: "roll back the latest change I made",
+      response: { kind: "undoIntent", action: "undo", steps: 1 },
+    },
+    {
+      lang: "en",
+      instruction: "take me to the point before my previous tweak",
+      response: { kind: "undoIntent", action: "undo", steps: 1 },
+    },
+    {
+      lang: "en",
+      instruction: "discard the most recent adjustment",
+      response: { kind: "undoIntent", action: "undo", steps: 1 },
+    },
+    {
+      lang: "en",
+      instruction: "reverse what I changed most recently",
+      response: { kind: "undoIntent", action: "undo", steps: 1 },
+    },
+    {
+      lang: "en",
+      instruction: "step one edit into the past",
+      response: { kind: "undoIntent", action: "undo", steps: 1 },
+    },
+    {
+      lang: "en",
+      instruction: "reapply the edit that was just rolled back",
+      response: { kind: "undoIntent", action: "redo", steps: 1 },
+    },
+    {
+      lang: "en",
+      instruction: "bring back the last edit I undid",
+      response: { kind: "undoIntent", action: "redo", steps: 1 },
+    },
+    {
+      lang: "en",
+      instruction: "restore the change that I reverted",
+      response: { kind: "undoIntent", action: "redo", steps: 1 },
+    },
+    {
+      lang: "en",
+      instruction: "apply that undone edit again",
+      response: { kind: "undoIntent", action: "redo", steps: 1 },
+    },
+    {
+      lang: "en",
+      instruction: "repeat the change I backed out a moment ago",
+      response: { kind: "undoIntent", action: "redo", steps: 1 },
+    },
+    { lang: "sk", instruction: "odvolaj poslednu upravu", response: { kind: "undoIntent", action: "undo", steps: 1 } },
+    {
+      lang: "sk",
+      instruction: "zrus posledny zasah v projekte",
+      response: { kind: "undoIntent", action: "undo", steps: 1 },
+    },
+    {
+      lang: "sk",
+      instruction: "vykonaj opat zmenu, ktoru som vratil",
+      response: { kind: "undoIntent", action: "redo", steps: 1 },
+    },
+    {
+      lang: "sk",
+      instruction: "obnov zmenu, ktoru som prave odvolal",
+      response: { kind: "undoIntent", action: "redo", steps: 1 },
+    },
+
+    // Fader paraphrases without the usual imperative + up/down pattern.
+    {
+      lang: "en",
+      instruction: "the bass should take up less room",
+      response: { kind: "fader", intent: { targets: ["bass"], pads: [], direction: "down", amount: "normal" } },
+    },
+    {
+      lang: "en",
+      instruction: "keep the drums in the background",
+      response: { kind: "fader", intent: { targets: ["drums"], pads: [], direction: "down", amount: "normal" } },
+    },
+    {
+      lang: "en",
+      instruction: "let the lead recede behind the chords",
+      response: { kind: "fader", intent: { targets: ["lead"], pads: [], direction: "down", amount: "normal" } },
+    },
+    {
+      lang: "en",
+      instruction: "move the chords further into the background",
+      response: { kind: "fader", intent: { targets: ["chords"], pads: [], direction: "down", amount: "normal" } },
+    },
+    {
+      lang: "en",
+      instruction: "ease back the bass presence",
+      response: { kind: "fader", intent: { targets: ["bass"], pads: [], direction: "down", amount: "normal" } },
+    },
+    {
+      lang: "en",
+      instruction: "bring the drum bus forward",
+      response: { kind: "fader", intent: { targets: ["drums"], pads: [], direction: "up", amount: "normal" } },
+    },
+    {
+      lang: "en",
+      instruction: "the lead is too forward in the mix",
+      response: { kind: "fader", intent: { targets: ["lead"], pads: [], direction: "down", amount: "normal" } },
+    },
+    {
+      lang: "sk",
+      instruction: "nech su bicie menej vyrazne",
+      response: { kind: "fader", intent: { targets: ["drums"], pads: [], direction: "down", amount: "normal" } },
+    },
+    {
+      lang: "sk",
+      instruction: "lead nech ustupi do pozadia",
+      response: { kind: "fader", intent: { targets: ["lead"], pads: [], direction: "down", amount: "normal" } },
+    },
+    {
+      lang: "sk",
+      instruction: "akordy presun viac do uzadia",
+      response: { kind: "fader", intent: { targets: ["chords"], pads: [], direction: "down", amount: "normal" } },
+    },
+    {
+      lang: "en",
+      instruction: "the bass should feel less upfront",
+      response: { kind: "fader", intent: { targets: ["bass"], pads: [], direction: "down", amount: "normal" } },
+    },
+    {
+      lang: "en",
+      instruction: "the drums are overwhelming the vocals",
+      response: { kind: "fader", intent: { targets: ["drums"], pads: [], direction: "down", amount: "normal" } },
+    },
+    {
+      lang: "en",
+      instruction: "the lead disappears under the chords",
+      response: { kind: "fader", intent: { targets: ["lead"], pads: [], direction: "up", amount: "normal" } },
+    },
+    {
+      lang: "en",
+      instruction: "there is too much level on the chords",
+      response: { kind: "fader", intent: { targets: ["chords"], pads: [], direction: "down", amount: "normal" } },
+    },
+    {
+      lang: "en",
+      instruction: "the kick overpowers the bass",
+      response: { kind: "fader", intent: { targets: [], pads: ["kick"], direction: "down", amount: "normal" } },
+    },
+    {
+      lang: "en",
+      instruction: "the 808 should sit more underneath",
+      response: { kind: "fader", intent: { targets: ["bass"], pads: [], direction: "down", amount: "normal" } },
+    },
+    {
+      lang: "en",
+      instruction: "the snare needs more body up front",
+      response: { kind: "fader", intent: { targets: [], pads: ["snare"], direction: "up", amount: "normal" } },
+    },
+    {
+      lang: "sk",
+      instruction: "bicie su prilis vpredu",
+      response: { kind: "fader", intent: { targets: ["drums"], pads: [], direction: "down", amount: "normal" } },
+    },
+    {
+      lang: "sk",
+      instruction: "basa prekrikuje ostatne stopy",
+      response: { kind: "fader", intent: { targets: ["bass"], pads: [], direction: "down", amount: "normal" } },
+    },
+    {
+      lang: "sk",
+      instruction: "lead zanika pod akordmi",
+      response: { kind: "fader", intent: { targets: ["lead"], pads: [], direction: "up", amount: "normal" } },
+    },
+    {
+      lang: "sk",
+      instruction: "kopak prehlusi basu",
+      response: { kind: "fader", intent: { targets: [], pads: ["kick"], direction: "down", amount: "normal" } },
+    },
+
+    // Listening-loop observations map to a bounded complaint, not a guessed edit.
+    {
+      lang: "en",
+      instruction: "the kick lacks punch",
+      response: { kind: "complaintIntent", complaint: "noPunch", family: "kick" },
+    },
+    {
+      lang: "en",
+      instruction: "the low end feels woolly",
+      response: { kind: "complaintIntent", complaint: "muddy", family: "bass" },
+    },
+    {
+      lang: "en",
+      instruction: "the bass has a muddy low midrange",
+      response: { kind: "complaintIntent", complaint: "muddy", family: "bass" },
+    },
+    {
+      lang: "en",
+      instruction: "the snare has a brittle edge",
+      response: { kind: "complaintIntent", complaint: "harsh", family: "snare" },
+    },
+    {
+      lang: "en",
+      instruction: "the vocal sounds shrill",
+      response: { kind: "complaintIntent", complaint: "harsh", family: "vocal" },
+    },
+    {
+      lang: "en",
+      instruction: "the drums are too thin",
+      response: { kind: "complaintIntent", complaint: "thin", family: "drums" },
+    },
+    {
+      lang: "en",
+      instruction: "the chords sound hollow",
+      response: { kind: "complaintIntent", complaint: "empty", family: "chords" },
+    },
+    {
+      lang: "en",
+      instruction: "the hats are painfully piercing",
+      response: { kind: "complaintIntent", complaint: "harsh", family: "hats" },
+    },
+    {
+      lang: "sk",
+      instruction: "bas znie zahuhlane",
+      response: { kind: "complaintIntent", complaint: "muddy", family: "bass" },
+    },
+    {
+      lang: "sk",
+      instruction: "kopak nema razanciu",
+      response: { kind: "complaintIntent", complaint: "noPunch", family: "kick" },
+    },
+    {
+      lang: "sk",
+      instruction: "vokal picha do usi",
+      response: { kind: "complaintIntent", complaint: "harsh", family: "vocal" },
+    },
+    {
+      lang: "sk",
+      instruction: "bicie posobia prilis tenko",
+      response: { kind: "complaintIntent", complaint: "thin", family: "drums" },
+    },
+    {
+      lang: "en",
+      instruction: "the bass sounds cloudy",
+      response: { kind: "complaintIntent", complaint: "muddy", family: "bass" },
+    },
+    {
+      lang: "en",
+      instruction: "the lead has a glassy edge",
+      response: { kind: "complaintIntent", complaint: "harsh", family: "lead" },
+    },
+    {
+      lang: "en",
+      instruction: "the drop feels hollow",
+      response: { kind: "complaintIntent", complaint: "empty", role: "drop" },
+    },
+    {
+      lang: "sk",
+      instruction: "basa ma zahmleny spodok",
+      response: { kind: "complaintIntent", complaint: "muddy", family: "bass" },
+    },
+    {
+      lang: "sk",
+      instruction: "kopak straca uder",
+      response: { kind: "complaintIntent", complaint: "noPunch", family: "kick" },
+    },
+    {
+      lang: "sk",
+      instruction: "lead reze do usi",
+      response: { kind: "complaintIntent", complaint: "harsh", family: "lead" },
+    },
+
+    // Read-only questions: never execute; return only a closed query subject.
+    { lang: "en", instruction: "read me the beats per minute", response: { kind: "queryIntent", subject: "tempo" } },
+    {
+      lang: "en",
+      instruction: "what is the root key of this project",
+      response: { kind: "queryIntent", subject: "key" },
+    },
+    {
+      lang: "en",
+      instruction: "tell me the scale of the current song",
+      response: { kind: "queryIntent", subject: "key" },
+    },
+    { lang: "en", instruction: "count the instrument channels", response: { kind: "queryIntent", subject: "tracks" } },
+    {
+      lang: "en",
+      instruction: "show all plugins on the low end channel",
+      response: { kind: "queryIntent", subject: "fxChain", target: "bass" },
+    },
+    {
+      lang: "en",
+      instruction: "what processing is on the drums",
+      response: { kind: "queryIntent", subject: "fxChain", target: "drums" },
+    },
+    {
+      lang: "en",
+      instruction: "list the song marker positions",
+      response: { kind: "queryIntent", subject: "markers" },
+    },
+    { lang: "en", instruction: "is swing enabled here", response: { kind: "queryIntent", subject: "groove" } },
+    {
+      lang: "en",
+      instruction: "summarize the most recent project edit",
+      response: { kind: "queryIntent", subject: "lastAction" },
+    },
+    { lang: "sk", instruction: "povedz mi aktualne bpm", response: { kind: "queryIntent", subject: "tempo" } },
+    { lang: "sk", instruction: "v akom kluci je tento projekt", response: { kind: "queryIntent", subject: "key" } },
+    {
+      lang: "sk",
+      instruction: "ukaz vsetky efekty na bicich",
+      response: { kind: "queryIntent", subject: "fxChain", target: "drums" },
+    },
+    { lang: "en", instruction: "give me the BPM number", response: { kind: "queryIntent", subject: "tempo" } },
+    {
+      lang: "en",
+      instruction: "what's the tonic of the song",
+      response: { kind: "queryIntent", subject: "key" },
+    },
+    {
+      lang: "en",
+      instruction: "tell me how many channels are in use",
+      response: { kind: "queryIntent", subject: "tracks" },
+    },
+    {
+      lang: "en",
+      instruction: "what number is setting the song's pulse",
+      response: { kind: "queryIntent", subject: "tempo" },
+    },
+    {
+      lang: "en",
+      instruction: "what is the harmonic home for this song",
+      response: { kind: "queryIntent", subject: "key" },
+    },
+    {
+      lang: "en",
+      instruction: "what did I change immediately before this",
+      response: { kind: "queryIntent", subject: "lastAction" },
+    },
+    {
+      lang: "en",
+      instruction: "which processors are coloring the bass",
+      response: { kind: "queryIntent", subject: "fxChain", target: "bass" },
+    },
+  ];
+
+  const accepted: Pair[] = [];
+  const conflicts: string[] = [];
+  for (const example of examples) {
+    const validation = validateModelAction(example.response);
+    if (!validation.valid) {
+      throw new Error(`invalid reviewed residual label for "${example.instruction}": ${validation.errors.join("; ")}`);
+    }
+    const routed = compactIntentResponse(routeIntentText(example.instruction, doc));
+    if (routed.kind !== "pattern") {
+      if (canonicalModelJson(routed) !== canonicalModelJson(example.response)) {
+        conflicts.push(
+          `"${example.instruction}": router=${canonicalModelJson(routed)} reviewed=${canonicalModelJson(example.response)}`,
+        );
+      }
+      continue;
+    }
+    accepted.push({ ...example, source: "reviewed-residual" });
+  }
+  if (conflicts.length > 0) throw new Error(`router conflicts with reviewed labels:\n${conflicts.join("\n")}`);
+  console.log(`[dataset] reviewed fallback labels: ${accepted.length}/${examples.length}`);
+  return accepted;
 }
 
 // ── Corpus — curated EN + SK templates across every command kind ────────────
@@ -1817,6 +2226,49 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
   en.push("mute the bass and raise the lead");
   en.push("set the chords to 70% and set tempo to 128");
   en.push("turn down the drums and turn up the bass");
+  // ── round 3: the four val wrong-kind rows get TRAIN density ──
+  // targeted compression = effectIntent (bare form stays mix)
+  sk.push("menej kompresie na base");
+  sk.push("menej kompresie na leade");
+  sk.push("viac kompresie na bicie");
+  sk.push("viac kompresie na bicich");
+  en.push("less compression on the bass");
+  en.push("more compression on the drums");
+  // typo forms teach the clarify lane (the exact forms teach their own routes)
+  en.push("soloo the drums");
+  en.push("pann the hi-hats left 20");
+  en.push("pann the lead 20 right");
+  en.push("soloo the bass");
+  // query EN/SK breadth
+  en.push("list the tracks in the project");
+  en.push("list the markers");
+  en.push("show the groove");
+  en.push("what fx are on the bass");
+  sk.push("zobraz markery");
+  sk.push("ake su tracky");
+  // EN compound density
+  en.push("lower the bass and raise the lead");
+  en.push("raise the drums and lower the pads");
+  en.push("mute the hats and raise the clap");
+  en.push("turn down the 808 and turn up the lead");
+  // ── round 4: VOCAL family density (spev/vokál never entered the model
+  // corpus — the val rows "daj reverb na spev" / "viac delay send na
+  // vokál" / "viac delayu na vokál a zníž bicie" all confused) ──
+  sk.push("daj reverb na spev");
+  sk.push("daj delay na spev");
+  sk.push("viac delayu na spev");
+  sk.push("menej reverbu na speve");
+  sk.push("viac delay send na vokal");
+  sk.push("viac reverb send na spev");
+  sk.push("zniz spev");
+  sk.push("spievak hlasnejsi");
+  en.push("more reverb on the vocal");
+  en.push("more delay send on the vocal");
+  en.push("less reverb on the vocal");
+  en.push("raise the vocal");
+  en.push("mute the vocal");
+  en.push("more delay on the vocal and less bass");
+  en.push("more delay send on the vocal and raise the drums");
   sk.push("refren posobi prazdno");
   sk.push("intro posobi prazdno");
   sk.push("bridge posobi prazdno");
@@ -2028,6 +2480,102 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
   );
   sk.push("soloo basu", "soloo lead", "pannuj basu dolava 20", "mutni basu prosim");
 
+  // ── WAVE 11 (2026-10-13) — close the v9 held-out confusions and numeric
+  // slot gaps. Add contrastive model-teacher examples for track tone vs mix
+  // tone, mixed-language compound faders, every supported undo count/action,
+  // family-only complaints, and each read-only query subject. ──
+  en.push(
+    "warm up the bass",
+    "give the bass a warmer tone",
+    "make this bass warmer",
+    "make the whole mix warmer",
+    "warm up the overall mix",
+    "the bass is empty",
+    "the drums are empty",
+    "the lead feels empty",
+    "the chords feel empty",
+    "the vocal is empty",
+    "the kick is empty",
+    "the snare feels empty",
+    "the clap feels empty",
+    "the hats are empty",
+    "the tom feels empty",
+    "the percussion feels empty",
+    "set the lead to 65% and turn down the bass",
+    "set the chords to 45% and turn down the drums",
+    "set the bass to 55% and lower the lead",
+    "set the drums to 80% and lower the chords",
+    "set the lead to 35% and turn down the master",
+    "turn down the bass and set the lead to 60%",
+    "raise the drums and set the bass to 50%",
+    "lower the chords and set the vocal to 70%",
+    "what tempo is the beat running at?",
+    "tell me the beat's bpm",
+    "which key is selected?",
+    "how many tracks are in the session?",
+    "show me the track list",
+    "where are the song markers?",
+    "show the current swing amount",
+    "what plugins are on the drums?",
+    "which effects are on the chords?",
+    "what was the last thing you changed?",
+    "which action did you just perform?",
+  );
+  sk.push(
+    "teplejsia basa",
+    "bas znie teplejsie",
+    "daj base teplejsi zvuk",
+    "sprav bas teplejsi",
+    "urob basu teplejsiu",
+    "celkovy mix teplejsi",
+    "zohrej cely mix",
+    "basa je prazdna",
+    "bicie su prazdne",
+    "lead posobi prazdno",
+    "akordy posobia prazdno",
+    "spev posobi prazdno",
+    "kick posobi prazdno",
+    "snare posobi prazdno",
+    "clap posobi prazdno",
+    "hats su prazdne",
+    "tom posobi prazdno",
+    "perc posobi prazdno",
+    "set the lead to 65% a stis basu",
+    "nastav lead na 70 % a zniz basu",
+    "nastav basu na 60 % a stis lead",
+    "set the drums to 75% a stis lead",
+    "stis akordy a set the bass to 55%",
+    "zvys basu a set the lead to 60%",
+    "set the chords to 40% a zniz bicie",
+    "stis lead a nastav bicie na 80 %",
+    "ake tempo ma aktualne beat?",
+    "povedz tempo projektu",
+    "aka tonina je nastavena?",
+    "kolko trackov hra v session?",
+    "ukaz zoznam trackov",
+    "kde su markery skladby?",
+    "ukaz mieru swingu",
+    "ake pluginy su na bicich?",
+    "ake efekty su na akordoch?",
+    "co si naposledy zmenil?",
+    "aku akciu si prave spravil?",
+  );
+
+  // Dense closed-value coverage keeps every model-supported undo count
+  // representable and balances undo vs redo and English vs Slovak examples.
+  const englishCounts = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+  const slovakCounts = ["jeden", "dva", "tri", "styri", "pat", "sest", "sedem", "osem", "devat", "desat"];
+  for (let index = 0; index < 10; index += 1) {
+    const count = index + 1;
+    const enNoun = count === 1 ? "step" : "steps";
+    const skNoun = count === 1 ? "krok" : count < 5 ? "kroky" : "krokov";
+    for (const action of ["undo", "redo"] as const) {
+      const skAction = action === "undo" ? "vrat" : "zopakuj";
+      en.push(`${action} ${count} ${enNoun}`, `${action} ${englishCounts[index]} ${enNoun}`);
+      sk.push(`${skAction} ${count} ${skNoun}`, `${skAction} ${slovakCounts[index]} ${skNoun}`);
+    }
+  }
+
   return [
     { lang: "en", instructions: en },
     { lang: "sk", instructions: sk },
@@ -2083,6 +2631,9 @@ async function main(): Promise<void> {
       all.push({ ...pair, index: index++ });
     }
   }
+  for (const pair of reviewedResidualPairs(doc)) {
+    all.push({ ...pair, index: index++ });
+  }
   for (const pair of minedCorpus(doc)) {
     all.push({ ...pair, index: index++ });
   }
@@ -2090,17 +2641,24 @@ async function main(): Promise<void> {
   // determinism double-run: identical route on a second pass
   for (const pair of all) {
     const again = compactIntentResponse(routeIntentText(pair.instruction, doc));
-    if (JSON.stringify(again) !== JSON.stringify(pair.response)) {
+    if (pair.source === "reviewed-residual" && again.kind === "pattern") continue;
+    if (canonicalModelJson(again) !== canonicalModelJson(pair.response)) {
       throw new Error(`non-deterministic route for "${pair.instruction}"`);
     }
   }
 
-  // dedupe by instruction (keep first)
-  const seen = new Set<string>();
+  // Dedupe by instruction and fail if two teachers disagree on its label.
+  const seen = new Map<string, Pair>();
   const unique = all.filter((pair) => {
     const key = pair.instruction.toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
+    const prior = seen.get(key);
+    if (prior) {
+      if (canonicalModelJson(prior.response) !== canonicalModelJson(pair.response)) {
+        throw new Error(`conflicting intent labels for duplicate instruction "${pair.instruction}"`);
+      }
+      return false;
+    }
+    seen.set(key, pair);
     return true;
   });
 
@@ -2219,6 +2777,10 @@ async function main(): Promise<void> {
         golden: golden.length,
         langs: { en: unique.filter((p) => p.lang === "en").length, sk: unique.filter((p) => p.lang === "sk").length },
         kinds: Object.fromEntries([...kindCounts.entries()].sort()),
+        sources: {
+          deterministic: unique.filter((p) => p.source !== "reviewed-residual").length,
+          reviewedResidual: unique.filter((p) => p.source === "reviewed-residual").length,
+        },
       },
       null,
       2,

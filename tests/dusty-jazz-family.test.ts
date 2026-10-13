@@ -221,4 +221,81 @@ describe("dusty jazz / boom-bap family", () => {
     }
     expect(source).not.toMatch(/Math\.random\(\)/);
   });
+
+  /**
+   * The defect that started this: `jazz-kit` shipped the description "brushed
+   * backbeat" while containing no brush at all. Nothing failed — the description
+   * is a free-text string and no test compared it to the pads. This closes that
+   * class: any instrument vocabulary word in a kit description must be backed
+   * by an asset the kit actually selects, in its own pads or in a layer set.
+   *
+   * Folds diacritics because the latin kit says "cajón" and "agogô" and the ids
+   * say "cajon" / "agogo"; without folding the guard would be useless exactly
+   * where the vocabulary is richest.
+   */
+  const VOCABULARY: Array<[word: string, assetPattern: RegExp]> = [
+    ["kick", /factory\.kick\./],
+    ["snare", /factory\.snare\./],
+    ["hat", /factory\.hat\./],
+    ["brush", /factory\.brush\./],
+    ["ride", /factory\.ride\./],
+    ["bell", /factory\.ride\.bell/],
+    ["china", /factory\.crash\.china/],
+    ["crash", /factory\.crash\./],
+    ["tom", /factory\.tom\./],
+    ["clap", /factory\.clap\./],
+    ["rim", /factory\.rim\./],
+    ["shaker", /factory\.shaker\./],
+    ["cowbell", /factory\.perc\.cowbell/],
+    ["conga", /factory\.perc\.conga\./],
+    ["bongo", /factory\.perc\.bongo/],
+    ["timbale", /factory\.perc\.timbale/],
+    ["cajon", /factory\.perc\.cajon/],
+    ["agogo", /factory\.perc\.agogo/],
+  ];
+
+  const fold = (s: string): string => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+  it("every kit description is backed by the assets that kit selects", () => {
+    for (const kit of KIT_PRESETS) {
+      const used = new Set<string>();
+      for (const p of kit.pads) {
+        // A null pad assetId is legitimate here and only here: it is a synth
+        // pad (DrumSynthConfig, no sample). idOf stays strict for layer sampleIds,
+        // where null is a genuine defect.
+        if (p.assetId) used.add(p.assetId);
+        for (const l of p.layers ?? []) used.add(idOf(l.sampleId));
+      }
+      const spoken = fold(kit.description);
+      for (const [word, assetPattern] of VOCABULARY) {
+        // The word has to actually appear as a word or word-part in the
+        // description: "brushed"/"hats"/"toms"/"congas" all count, "kick"
+        // inside another word would not.
+        if (!new RegExp(`\\b${word}`, "i").test(spoken)) continue;
+        const ids = [...used];
+        expect(
+          ids.some((id) => assetPattern.test(id)),
+          `"${kit.id}" says "${word}" but selects no matching asset (has: ${ids.join(", ")})`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("jazz-kit carries the brushes its description promises, without losing the ride", () => {
+    const kit = KIT_PRESETS.find((k) => k.id === "jazz-kit")!;
+    const ids = kit.pads.map((p) => idOf(p.assetId));
+    // The brush family is now genuinely in this kit — the original defect.
+    expect(ids).toContain("factory.brush.tip");
+    expect(ids).toContain("factory.brush.swirl");
+    // And it was NOT bought by deleting something the description also promises:
+    // the washey ride comping voice and the dynamic closed hat both stay.
+    expect(ids, "washey ride survives").toContain("factory.ride.jazz");
+    const closedHat = kit.pads.find((p) => p.assetId === "factory.hat.closed.soft");
+    expect(closedHat, "closed hat survives").toBeDefined();
+    expect(closedHat!.layers?.length, "closed hat keeps HAT_DYNAMIC").toBeGreaterThan(0);
+    // The swirl has to be able to bloom OVER the ride wash, so it must not share
+    // the ride's choke group -- choking would silence the comping it swells.
+    const swirl = kit.pads.find((p) => p.assetId === "factory.brush.swirl")!;
+    expect(swirl.chokeGroup ?? null, "swirl is not choked by the ride").toBeNull();
+  });
 });

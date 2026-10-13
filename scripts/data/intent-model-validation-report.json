@@ -2,61 +2,61 @@
   "schemaVersion": 1,
   "kind": "intent-action-model-validation",
   "taskBoundary": "Closed-set action/slot decoding only; not a creative-brief or musical-quality evaluation.",
-  "generatedAt": "2026-10-12T15:28:06.075Z",
+  "generatedAt": "2026-10-13T09:59:13.432Z",
   "model": {
     "version": "intent-model.v1",
     "runtime": "onnxruntime-web@1.29.0/wasm",
-    "modelBytes": 6799814,
-    "modelSha256": "1d44f70bc639087cd2dfa1ca92ab277bdd82ba39b94ae1660ecef95dd51488e0",
-    "vocabularySha256": "dce5be5f10ba30fa2bc4e9d6872b7e2a60babfcd3d45aa48be1123713587f345",
-    "grammarSha256": "c93675455bf7fba53ec663032778bac3876524fd7fc937144bfedf4c453e99c1",
+    "modelBytes": 7010380,
+    "modelSha256": "9b0c0e65d5ca25ddb556cc7eb3cb2052c81b7b6674b68cb65f777d9ad126abae",
+    "vocabularySha256": "b891c2239c29347a52e4838295804d457c86e5ba5d70436deaacf9d3df975b62",
+    "grammarSha256": "a4016feca4f23c6b1fdb810927602975a1616997022de98c4121146c286d5acc",
     "trainingReport": {
-      "trainRows": 1790,
-      "valRows": 298,
-      "goldenRows": 74,
-      "valHeadAccuracyMean": 0.9949,
+      "trainRows": 2169,
+      "valRows": 362,
+      "goldenRows": 77,
+      "valHeadAccuracyMean": 0.9936,
       "trainingDataContentHashPinned": true,
       "trainingInputs": {
-        "datasetVersion": 4,
-        "datasetManifestSha256": "16154fd979be875e7e24dabb01d44f2b5a323da788ab0d8d4c2bce19c372649c",
-        "trainSha256": "e4dd10ef4783a331d872770de52c7cb88185fbbc4eb1ad959f2a7e42171bb25e",
-        "valSha256": "5b33d956c242fcbc6340e94a67dcbff5d0ba82b8416617dcfbaf7c87bf55887f",
-        "goldenSha256": "321785b46c371c78c76f8c19f078f7927593ff5273debaa11709e9a52db227c5",
-        "trainerSha256": "0f0da00a911276fa9b2d6b6689899db7003d1d08cb2698efdd54f68987561a7d"
+        "datasetVersion": 16,
+        "datasetManifestSha256": "b8f8ec37be9cab852c5bde63e213cfb8158bc66b101bb1be2cacefbed30a2242",
+        "trainSha256": "e56c895cda835251bf887a40d694e4c967acf4805f9cfb63db7b3254cda3877e",
+        "valSha256": "aa5c07ccb5a95062c9e31d905d9c9a18603e68e16479c135f5de4dd79aa19d5b",
+        "goldenSha256": "e64e8fc16d8cf3fe1af1b7bd8ea08bcd836d3ae7620618372db76d5dc8acf36e",
+        "trainerSha256": "d420b8983bf8f630b92eee846440e2b9c62e9817b3a5b4c582e9ab6145a908fc"
       }
     }
   },
   "evaluationDataset": {
-    "version": 5,
-    "manifestSha256": "b5154f4a33de8b954ddc3278e58a867036a7509265c2a3f730a974eea3853137",
+    "version": 16,
+    "manifestSha256": "b8f8ec37be9cab852c5bde63e213cfb8158bc66b101bb1be2cacefbed30a2242",
     "splits": {
       "train": {
-        "rows": 1793,
-        "sha256": "6a0cf3d60ec6090c82764ba92d580af7a2efcb32a6626ad99dbc8e67063d63dd"
+        "rows": 2169,
+        "sha256": "e56c895cda835251bf887a40d694e4c967acf4805f9cfb63db7b3254cda3877e"
       },
       "val": {
-        "rows": 299,
-        "sha256": "82a565035db80ebeac26953fd6dc06f90231cf882d1fe6e7f345283ae53de09a"
+        "rows": 362,
+        "sha256": "aa5c07ccb5a95062c9e31d905d9c9a18603e68e16479c135f5de4dd79aa19d5b"
       },
       "golden": {
-        "rows": 74,
-        "sha256": "b6a04d558a84c8a95d9b538cf0f53d26ddc6012a9c5f022ff6911f502be48099"
+        "rows": 77,
+        "sha256": "e64e8fc16d8cf3fe1af1b7bd8ea08bcd836d3ae7620618372db76d5dc8acf36e"
       }
     },
     "exactInstructionOverlap": {
       "normalization": "NFKC + trim + collapse whitespace + lowercase (en-US)",
       "trainVal": 0,
-      "trainGolden": 67,
-      "valGolden": 7,
+      "trainGolden": 69,
+      "valGolden": 8,
       "goldenIsIndependentHoldout": false,
       "candidateFamilyDisjointnessVerified": false
     },
-    "trainingReportRowCountsMatch": false
+    "trainingReportRowCountsMatch": true
   },
   "evaluator": {
-    "validatorSha256": "501861bd36a23749c2cfc90bc322034865e3e31bb78afe32744a410e96270989",
-    "decoderSha256": "18448e1297a0102c3ceadd5d30987b446b23a5d7b64695ec5401bce9c04e5583",
-    "schemaSourceSha256": "095cd2104cc84a6eb706ebfc6c4c476553b3675fe37a633576af4be41b86ab49",
+    "validatorSha256": "5ec5f39791228d31576c595a765176e76e930023eaa0315718a71b9610f3e2c7",
+    "decoderSha256": "c64331b166c2677d5fe6ab0bc929e66968c6c704a4337ca3f8e954410a4e92be",
+    "schemaSourceSha256": "902d573dd8ce36cc5ee5649cb5c650dccfc7416966e63f3ed3aa81f1a366fd31",
     "environment": {
       "platform": "win32",
       "arch": "x64",
@@ -66,328 +66,370 @@
     "wasmThreads": 1
   },
   "decode": {
-    "kindMargin": 2.5,
+    "kindMargin": 4.8,
     "abstainMargin": 2,
     "productionMargins": true
   },
   "metrics": {
     "train": {
-      "rows": 1793,
-      "attempted": 1635,
-      "exact": 1619,
-      "attemptedExactRate": 0.990214,
-      "wrongKind": 1,
-      "abstain": 158,
-      "abstainRate": 0.08812,
+      "rows": 2169,
+      "attempted": 2121,
+      "exact": 2115,
+      "attemptedExactRate": 0.997171,
+      "wrongKind": 0,
+      "abstain": 48,
+      "abstainRate": 0.02213,
       "perKind": {
         "arrange": {
-          "rows": 58,
-          "attempted": 48,
-          "exact": 48,
+          "rows": 59,
+          "attempted": 58,
+          "exact": 58,
           "wrongKind": 0,
-          "abstain": 10
+          "abstain": 1
         },
         "bypassIntent": {
+          "rows": 32,
+          "attempted": 32,
+          "exact": 32,
+          "wrongKind": 0,
+          "abstain": 0
+        },
+        "clarify": {
+          "rows": 50,
+          "attempted": 49,
+          "exact": 49,
+          "wrongKind": 0,
+          "abstain": 1
+        },
+        "clips": {
           "rows": 30,
           "attempted": 30,
           "exact": 30,
           "wrongKind": 0,
           "abstain": 0
         },
-        "clarify": {
-          "rows": 39,
-          "attempted": 30,
-          "exact": 30,
-          "wrongKind": 0,
-          "abstain": 9
-        },
-        "clips": {
-          "rows": 29,
-          "attempted": 29,
-          "exact": 28,
+        "complaintIntent": {
+          "rows": 115,
+          "attempted": 115,
+          "exact": 115,
           "wrongKind": 0,
           "abstain": 0
         },
         "compound": {
-          "rows": 50,
-          "attempted": 44,
-          "exact": 44,
+          "rows": 89,
+          "attempted": 87,
+          "exact": 87,
           "wrongKind": 0,
-          "abstain": 6
+          "abstain": 2
         },
         "effectIntent": {
-          "rows": 320,
-          "attempted": 299,
-          "exact": 298,
-          "wrongKind": 1,
-          "abstain": 21
+          "rows": 322,
+          "attempted": 321,
+          "exact": 321,
+          "wrongKind": 0,
+          "abstain": 1
         },
         "exact": {
-          "rows": 484,
-          "attempted": 454,
-          "exact": 442,
+          "rows": 495,
+          "attempted": 492,
+          "exact": 488,
           "wrongKind": 0,
-          "abstain": 30
+          "abstain": 3
         },
         "export": {
-          "rows": 10,
-          "attempted": 10,
-          "exact": 10,
+          "rows": 9,
+          "attempted": 9,
+          "exact": 9,
           "wrongKind": 0,
           "abstain": 0
         },
         "fader": {
-          "rows": 361,
-          "attempted": 330,
-          "exact": 330,
+          "rows": 365,
+          "attempted": 356,
+          "exact": 356,
           "wrongKind": 0,
-          "abstain": 31
+          "abstain": 9
         },
         "loudness": {
-          "rows": 51,
-          "attempted": 49,
-          "exact": 48,
+          "rows": 52,
+          "attempted": 50,
+          "exact": 50,
           "wrongKind": 0,
           "abstain": 2
         },
         "mix": {
-          "rows": 69,
-          "attempted": 56,
-          "exact": 56,
+          "rows": 78,
+          "attempted": 78,
+          "exact": 78,
           "wrongKind": 0,
-          "abstain": 13
+          "abstain": 0
         },
         "preset": {
-          "rows": 28,
+          "rows": 29,
           "attempted": 0,
           "exact": 0,
           "wrongKind": 0,
-          "abstain": 28
+          "abstain": 29
+        },
+        "presetUnknown": {
+          "rows": 1,
+          "attempted": 1,
+          "exact": 1,
+          "wrongKind": 0,
+          "abstain": 0
         },
         "production": {
-          "rows": 88,
-          "attempted": 86,
-          "exact": 86,
+          "rows": 98,
+          "attempted": 98,
+          "exact": 96,
           "wrongKind": 0,
-          "abstain": 2
+          "abstain": 0
+        },
+        "queryIntent": {
+          "rows": 54,
+          "attempted": 54,
+          "exact": 54,
+          "wrongKind": 0,
+          "abstain": 0
         },
         "record": {
-          "rows": 6,
-          "attempted": 6,
-          "exact": 6,
-          "wrongKind": 0,
-          "abstain": 0
-        },
-        "revise": {
-          "rows": 45,
-          "attempted": 45,
-          "exact": 45,
-          "wrongKind": 0,
-          "abstain": 0
-        },
-        "save": {
-          "rows": 6,
-          "attempted": 6,
-          "exact": 6,
-          "wrongKind": 0,
-          "abstain": 0
-        },
-        "select": {
-          "rows": 8,
-          "attempted": 8,
+          "rows": 7,
+          "attempted": 7,
           "exact": 7,
           "wrongKind": 0,
           "abstain": 0
         },
+        "revise": {
+          "rows": 51,
+          "attempted": 51,
+          "exact": 51,
+          "wrongKind": 0,
+          "abstain": 0
+        },
+        "save": {
+          "rows": 6,
+          "attempted": 6,
+          "exact": 6,
+          "wrongKind": 0,
+          "abstain": 0
+        },
+        "select": {
+          "rows": 8,
+          "attempted": 8,
+          "exact": 8,
+          "wrongKind": 0,
+          "abstain": 0
+        },
         "sendIntent": {
-          "rows": 69,
-          "attempted": 69,
-          "exact": 69,
+          "rows": 71,
+          "attempted": 71,
+          "exact": 71,
           "wrongKind": 0,
           "abstain": 0
         },
         "tempo": {
-          "rows": 21,
-          "attempted": 17,
-          "exact": 17,
+          "rows": 22,
+          "attempted": 22,
+          "exact": 22,
           "wrongKind": 0,
-          "abstain": 4
+          "abstain": 0
         },
         "transport": {
-          "rows": 21,
-          "attempted": 19,
-          "exact": 19,
+          "rows": 26,
+          "attempted": 26,
+          "exact": 26,
           "wrongKind": 0,
-          "abstain": 2
+          "abstain": 0
+        },
+        "undoIntent": {
+          "rows": 100,
+          "attempted": 100,
+          "exact": 100,
+          "wrongKind": 0,
+          "abstain": 0
         }
       }
     },
     "val": {
-      "rows": 299,
-      "attempted": 287,
-      "exact": 285,
-      "attemptedExactRate": 0.993031,
+      "rows": 362,
+      "attempted": 293,
+      "exact": 282,
+      "attemptedExactRate": 0.962457,
       "wrongKind": 0,
-      "abstain": 12,
-      "abstainRate": 0.040134,
+      "abstain": 69,
+      "abstainRate": 0.190608,
       "perKind": {
         "arrange": {
           "rows": 9,
-          "attempted": 8,
-          "exact": 8,
+          "attempted": 4,
+          "exact": 4,
           "wrongKind": 0,
-          "abstain": 1
+          "abstain": 5
         },
         "bypassIntent": {
           "rows": 8,
-          "attempted": 8,
-          "exact": 8,
+          "attempted": 7,
+          "exact": 7,
           "wrongKind": 0,
-          "abstain": 0
+          "abstain": 1
         },
         "clarify": {
-          "rows": 4,
+          "rows": 7,
           "attempted": 3,
           "exact": 3,
           "wrongKind": 0,
-          "abstain": 1
+          "abstain": 4
         },
         "clips": {
           "rows": 6,
           "attempted": 6,
-          "exact": 6,
+          "exact": 5,
           "wrongKind": 0,
           "abstain": 0
         },
-        "compound": {
-          "rows": 8,
-          "attempted": 8,
-          "exact": 8,
-          "wrongKind": 0,
-          "abstain": 0
-        },
-        "effectIntent": {
-          "rows": 52,
-          "attempted": 52,
-          "exact": 52,
-          "wrongKind": 0,
-          "abstain": 0
-        },
-        "exact": {
-          "rows": 80,
-          "attempted": 77,
-          "exact": 77,
-          "wrongKind": 0,
-          "abstain": 3
-        },
-        "export": {
-          "rows": 1,
-          "attempted": 1,
-          "exact": 1,
-          "wrongKind": 0,
-          "abstain": 0
-        },
-        "fader": {
-          "rows": 61,
-          "attempted": 60,
-          "exact": 60,
-          "wrongKind": 0,
-          "abstain": 1
-        },
-        "loudness": {
-          "rows": 6,
-          "attempted": 6,
-          "exact": 6,
-          "wrongKind": 0,
-          "abstain": 0
-        },
-        "mix": {
-          "rows": 13,
-          "attempted": 10,
+        "complaintIntent": {
+          "rows": 20,
+          "attempted": 14,
           "exact": 10,
           "wrongKind": 0,
-          "abstain": 3
+          "abstain": 6
         },
-        "preset": {
-          "rows": 3,
-          "attempted": 0,
-          "exact": 0,
+        "compound": {
+          "rows": 14,
+          "attempted": 9,
+          "exact": 9,
           "wrongKind": 0,
-          "abstain": 3
+          "abstain": 5
         },
-        "presetUnknown": {
+        "effectIntent": {
+          "rows": 54,
+          "attempted": 47,
+          "exact": 47,
+          "wrongKind": 0,
+          "abstain": 7
+        },
+        "exact": {
+          "rows": 78,
+          "attempted": 73,
+          "exact": 71,
+          "wrongKind": 0,
+          "abstain": 5
+        },
+        "export": {
           "rows": 2,
           "attempted": 2,
           "exact": 2,
           "wrongKind": 0,
           "abstain": 0
         },
+        "fader": {
+          "rows": 64,
+          "attempted": 55,
+          "exact": 55,
+          "wrongKind": 0,
+          "abstain": 9
+        },
+        "loudness": {
+          "rows": 8,
+          "attempted": 6,
+          "exact": 5,
+          "wrongKind": 0,
+          "abstain": 2
+        },
+        "mix": {
+          "rows": 11,
+          "attempted": 7,
+          "exact": 6,
+          "wrongKind": 0,
+          "abstain": 4
+        },
+        "preset": {
+          "rows": 2,
+          "attempted": 0,
+          "exact": 0,
+          "wrongKind": 0,
+          "abstain": 2
+        },
+        "presetUnknown": {
+          "rows": 1,
+          "attempted": 0,
+          "exact": 0,
+          "wrongKind": 0,
+          "abstain": 1
+        },
         "production": {
-          "rows": 17,
-          "attempted": 17,
+          "rows": 16,
+          "attempted": 16,
           "exact": 16,
           "wrongKind": 0,
           "abstain": 0
         },
-        "record": {
-          "rows": 1,
-          "attempted": 1,
-          "exact": 1,
+        "queryIntent": {
+          "rows": 9,
+          "attempted": 3,
+          "exact": 3,
           "wrongKind": 0,
-          "abstain": 0
+          "abstain": 6
         },
         "revise": {
-          "rows": 6,
-          "attempted": 6,
-          "exact": 6,
+          "rows": 8,
+          "attempted": 8,
+          "exact": 8,
           "wrongKind": 0,
           "abstain": 0
         },
         "save": {
           "rows": 1,
-          "attempted": 1,
-          "exact": 1,
+          "attempted": 0,
+          "exact": 0,
           "wrongKind": 0,
-          "abstain": 0
+          "abstain": 1
         },
         "select": {
-          "rows": 2,
+          "rows": 4,
           "attempted": 2,
-          "exact": 1,
+          "exact": 0,
           "wrongKind": 0,
-          "abstain": 0
+          "abstain": 2
         },
         "sendIntent": {
-          "rows": 12,
+          "rows": 13,
           "attempted": 12,
           "exact": 12,
           "wrongKind": 0,
-          "abstain": 0
+          "abstain": 1
         },
         "tempo": {
-          "rows": 3,
-          "attempted": 3,
-          "exact": 3,
+          "rows": 5,
+          "attempted": 2,
+          "exact": 2,
           "wrongKind": 0,
-          "abstain": 0
+          "abstain": 3
         },
         "transport": {
-          "rows": 4,
-          "attempted": 4,
-          "exact": 4,
+          "rows": 5,
+          "attempted": 2,
+          "exact": 2,
           "wrongKind": 0,
-          "abstain": 0
+          "abstain": 3
+        },
+        "undoIntent": {
+          "rows": 17,
+          "attempted": 15,
+          "exact": 15,
+          "wrongKind": 0,
+          "abstain": 2
         }
       }
     },
     "goldenRegressionSuite": {
-      "rows": 74,
-      "attempted": 63,
-      "exact": 63,
-      "attemptedExactRate": 1,
+      "rows": 77,
+      "attempted": 75,
+      "exact": 74,
+      "attemptedExactRate": 0.986667,
       "wrongKind": 0,
-      "abstain": 11,
-      "abstainRate": 0.148649,
+      "abstain": 2,
+      "abstainRate": 0.025974,
       "perKind": {
         "arrange": {
           "rows": 2,
@@ -405,15 +447,22 @@
         },
         "clarify": {
           "rows": 2,
-          "attempted": 1,
-          "exact": 1,
+          "attempted": 2,
+          "exact": 2,
           "wrongKind": 0,
-          "abstain": 1
+          "abstain": 0
         },
         "clips": {
           "rows": 3,
           "attempted": 3,
           "exact": 3,
+          "wrongKind": 0,
+          "abstain": 0
+        },
+        "complaintIntent": {
+          "rows": 1,
+          "attempted": 1,
+          "exact": 1,
           "wrongKind": 0,
           "abstain": 0
         },
@@ -426,17 +475,17 @@
         },
         "effectIntent": {
           "rows": 6,
-          "attempted": 5,
-          "exact": 5,
+          "attempted": 6,
+          "exact": 6,
           "wrongKind": 0,
-          "abstain": 1
+          "abstain": 0
         },
         "exact": {
           "rows": 15,
-          "attempted": 12,
-          "exact": 12,
+          "attempted": 15,
+          "exact": 15,
           "wrongKind": 0,
-          "abstain": 3
+          "abstain": 0
         },
         "export": {
           "rows": 2,
@@ -447,10 +496,10 @@
         },
         "fader": {
           "rows": 9,
-          "attempted": 6,
-          "exact": 6,
+          "attempted": 9,
+          "exact": 9,
           "wrongKind": 0,
-          "abstain": 3
+          "abstain": 0
         },
         "loudness": {
           "rows": 3,
@@ -461,10 +510,10 @@
         },
         "mix": {
           "rows": 2,
-          "attempted": 1,
-          "exact": 1,
+          "attempted": 2,
+          "exact": 2,
           "wrongKind": 0,
-          "abstain": 1
+          "abstain": 0
         },
         "preset": {
           "rows": 1,
@@ -484,6 +533,13 @@
           "rows": 3,
           "attempted": 3,
           "exact": 3,
+          "wrongKind": 0,
+          "abstain": 0
+        },
+        "queryIntent": {
+          "rows": 1,
+          "attempted": 1,
+          "exact": 1,
           "wrongKind": 0,
           "abstain": 0
         },
@@ -511,7 +567,7 @@
         "select": {
           "rows": 2,
           "attempted": 2,
-          "exact": 2,
+          "exact": 1,
           "wrongKind": 0,
           "abstain": 0
         },
@@ -524,15 +580,22 @@
         },
         "tempo": {
           "rows": 2,
-          "attempted": 1,
-          "exact": 1,
+          "attempted": 2,
+          "exact": 2,
           "wrongKind": 0,
-          "abstain": 1
+          "abstain": 0
         },
         "transport": {
           "rows": 4,
-          "attempted": 4,
-          "exact": 4,
+          "attempted": 3,
+          "exact": 3,
+          "wrongKind": 0,
+          "abstain": 1
+        },
+        "undoIntent": {
+          "rows": 1,
+          "attempted": 1,
+          "exact": 1,
           "wrongKind": 0,
           "abstain": 0
         }

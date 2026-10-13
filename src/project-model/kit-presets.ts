@@ -334,9 +334,29 @@ export const KIT_PRESETS: KitPreset[] = [
       s(6, "factory.clap.soft", { gain: 0.5 }),
       s(7, "factory.perc.conga.high", { gain: 0.6, pan: -0.08, layers: CONGA_HIGH_RR }),
       s(8, "factory.hat.closed.soft", { chokeGroup: 2, gain: 0.7, layers: HAT_DYNAMIC }),
-      s(9, "factory.hat.pedal", { chokeGroup: 2, gain: 0.6 }),
+      // The brushes, added so "brushed backbeat" in the description above is
+      // a fact about the kit and not a claim about it. Two placements, both
+      // deliberate, both preserving a promise the description already made:
+      //
+      //  - brush.tip takes the PEDAL hi-hat slot, not the closed one. The
+      //    closed hat carries HAT_DYNAMIC and is this kit's time-keeping
+      //    pulse; the pedal hat is the one a jazz drummer sits out most of
+      //    the time, and the tip stroke is exactly the gesture that replaces
+      //    it. Taking pad 8 instead would have bought a brush by deleting the
+      //    hat that keeps the swing.
+      //  - brush.swirl takes the bell slot, NOT the ride slot, because pad 10
+      //    is the washey ride the description names first. A 1.1 s attackless
+      //    sweep laid over the ride wash IS the jazz brushed backbeat (the
+      //    ding stroke), so the promise holds where a snare pad would have
+      //    been the literal-but-wrong reading. ride.bell keeps its home in
+      //    dusty-jazz-kit, so the voice is not orphaned.
+      //
+      // Neither brush pad takes a choke group, mirroring dusty-jazz-kit: the
+      // swirl has to be able to bloom OVER the ride wash. Sharing chokeGroup 2
+      // would let the sweep silence the comping it is supposed to swell.
+      s(9, "factory.brush.tip", { gain: 0.7 }),
       s(10, "factory.ride.jazz", { chokeGroup: 2, gain: 0.9 }),
-      s(11, "factory.ride.bell", { chokeGroup: 2, gain: 0.65 }),
+      s(11, "factory.brush.swirl", { gain: 0.6 }),
       s(12, "factory.tom.low", { gain: 0.75 }),
       s(13, "factory.tom.high", { gain: 0.75 }),
       s(14, "factory.crash.roll", { gain: 0.5 }),

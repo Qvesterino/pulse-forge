@@ -16,6 +16,32 @@ import { formatAuditionTrim, getLoudnessMatchGain, resolveLoudnessMatchTarget } 
 import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
 import { awaitMasteringSampleBankReady } from "../mastering/readiness";
 import { tryAcquireMasteringWork } from "../mastering/workGate";
+import {
+  buildMasteringProposalCandidates,
+  createMasteringAnalysisSnapshot,
+  isMasteringFeatureVector,
+  type MasteringProposalCandidate,
+  type MasteringAnalysisSnapshotV1,
+} from "../mastering/intelligence";
+import {
+  parseMasteringRankerBlindDataset,
+  type MasteringGenreBucket,
+  type MasteringRankerDatasetSplit,
+  type MasteringRankerBlindDataset,
+  type MasteringRankerBlindPair,
+  type MasteringRankerBlindJudgment,
+} from "../mastering/evaluation";
+import {
+  createStudyPairId,
+  createStudyRandomToken,
+  createStudyReviewerHash,
+  createStudySourceMixHash,
+} from "../mastering/preference-study";
+import {
+  compareMasteringCandidatesInShadowMode,
+  masteringRankerStatusText,
+  type MasteringRankerAssessment,
+} from "../mastering/mastering-ranker-client";
 import { estimateRenderPcmBytes, renderProject } from "../rendering/renderer";
 import type { EffectInstance, EffectType, ProjectDocument } from "../project-model/types";
 import { uid } from "../shared/ids";
@@ -24,6 +50,16 @@ import { useServices } from "./context";
 import { MasteringLevelMatchControl } from "./MasteringLevelMatchControl";
 
 const MAX_ASSISTANT_PCM_BYTES = 320 * 1024 * 1024;
+const MAX_STUDY_DATASET_BYTES = 32 * 1024 * 1024;
+const STUDY_GENRE_BUCKETS: readonly MasteringGenreBucket[] = [
+  "electronic",
+  "hip-hop",
+  "rock",
+  "acoustic",
+  "orchestral",
+  "ambient",
+  "other",
+];
 
 type MasterDevice = MasterAssistantStep["device"];
 type MasterInsertDevice = Exclude<MasterAssistantDevice, "master">;
@@ -38,8 +74,42 @@ interface AssistantAnalysis {
   usedReference: boolean;
   summary: BufferSummary;
   health: MixHealthReport;
+  snapshot: MasteringAnalysisSnapshotV1;
   plan: MasterAssistantStep[];
+  candidates: MasteringProposalCandidate[];
+  candidateIds: string[];
+  rankerAssessment: MasteringRankerAssessment;
   addedIds: Partial<Record<MasterInsertDevice, string>>;
+}
+
+type StudyVersionChoice = "first" | "second" | "none";
+type StudyPhase = "review-one" | "handoff" | "review-two" | "reveal-ready" | "revealed";
+
+interface StudyRenderedCandidate {
+  id: string;
+  buffer: AudioBuffer;
+  summary: BufferSummary;
+  safeAfterPreview: boolean;
+}
+
+interface StudyRenderedPair {
+  revisionId: string;
+  bankRevision: number;
+  sampleRate: number;
+  genreBucket: MasteringGenreBucket;
+  sourceMixHash: string;
+  leftIndex: number;
+  rightIndex: number;
+  left: StudyRenderedCandidate;
+  right: StudyRenderedCandidate;
+}
+
+interface StudyListenSession {
+  phase: StudyPhase;
+  versionOneId: string;
+  secondReviewerVersionOneId: string | null;
+  reviewerHash: string | null;
+  judgments: MasteringRankerBlindJudgment[];
 }
 
 interface AssistantPreview {
@@ -59,6 +129,19 @@ interface AppliedSnapshot {
 
 function bytesOf(buffer: AudioBuffer | null): number {
   return buffer ? buffer.length * buffer.numberOfChannels * Float32Array.BYTES_PER_ELEMENT : 0;
+}
+
+function randomizedStudyVersionOne(leftId: string, rightId: string): string {
+  return Number.parseInt(createStudyRandomToken().slice(0, 2), 16) % 2 === 0 ? leftId : rightId;
+}
+
+function isStudyCandidateSafe(summary: BufferSummary, targetTruePeakDb: number, graceDb: number): boolean {
+  return (
+    Number.isFinite(summary.peak) &&
+    summary.peak < 1 &&
+    Number.isFinite(summary.truePeakDb) &&
+    summary.truePeakDb <= targetTruePeakDb + graceDb
+  );
 }
 
 function formatDb(value: number, unit: string): string {
@@ -168,19 +251,26 @@ function isPlanConsistent(plan: readonly MasterAssistantStep[]): boolean {
   return !(increasesZenitLimit && addsApeksDrive);
 }
 
+function masterAssistantCurrentValue(source: ProjectDocument, step: MasterAssistantStep): number {
+  if (step.device === "master")
+    return step.param === "limiterEnabled" ? Number(source.master.limiterEnabled) : source.master.ceilingDb;
+  const type = step.device as DeviceEffectType;
+  const effect =
+    (source.master.effects ?? []).find((item) => item.type === type && !item.bypassed) ??
+    (source.master.effects ?? []).find((item) => item.type === type);
+  return clampEffectParam(type, step.param, effect?.params[step.param] ?? defaultParamsOf(type)[step.param] ?? 0);
+}
+
 function resolvePlanAgainstMaster(
   source: ProjectDocument,
   steps: readonly MasterAssistantStep[],
 ): MasterAssistantStep[] {
-  const effects = source.master.effects ?? [];
   const resolvedParams = new Map<string, number>();
   const resolved: MasterAssistantStep[] = [];
   for (const step of steps) {
     if (step.device === "master") {
       const key = `${step.device}:${step.param}`;
-      const current =
-        resolvedParams.get(key) ??
-        (step.param === "limiterEnabled" ? Number(source.master.limiterEnabled) : source.master.ceilingDb);
+      const current = resolvedParams.get(key) ?? masterAssistantCurrentValue(source, step);
       const isToggle = step.param === "limiterEnabled";
       const target = resolveMasterAssistantStepValue(step, current, isToggle ? 0 : -12, isToggle ? 1 : 0);
       const quantizedTarget = isToggle ? (target >= 0.5 ? 1 : 0) : target;
@@ -190,13 +280,9 @@ function resolvePlanAgainstMaster(
       continue;
     }
     const type = step.device as DeviceEffectType;
-    const effect =
-      effects.find((item) => item.type === type && !item.bypassed) ?? effects.find((item) => item.type === type);
     const definition = EFFECT_META[type].params.find((candidate) => candidate.id === step.param);
     const key = `${step.device}:${step.param}`;
-    const current =
-      resolvedParams.get(key) ??
-      clampEffectParam(type, step.param, effect?.params[step.param] ?? defaultParamsOf(type)[step.param] ?? 0);
+    const current = resolvedParams.get(key) ?? masterAssistantCurrentValue(source, step);
     const target = clampEffectParam(
       type,
       step.param,
@@ -295,10 +381,22 @@ export function MasteringAssistant({
     current: null,
     proposed: null,
   });
-  const [playing, setPlaying] = useState<"current" | "proposed" | null>(null);
+  const [playing, setPlaying] = useState<"current" | "proposed" | "study-one" | "study-two" | null>(null);
+  const [studyLeftIndex, setStudyLeftIndex] = useState(0);
+  const [studyRightIndex, setStudyRightIndex] = useState(1);
+  const [studyGenre, setStudyGenre] = useState<MasteringGenreBucket>("other");
+  const [studySplit, setStudySplit] = useState<MasteringRankerDatasetSplit>("development");
+  const [studyAudioPair, setStudyAudioPair] = useState<StudyRenderedPair | null>(null);
+  const [studyListen, setStudyListen] = useState<StudyListenSession | null>(null);
+  const [studyPairs, setStudyPairs] = useState<MasteringRankerBlindPair[]>([]);
+  const [studyDataStatus, setStudyDataStatus] = useState("");
+  const [studyListenerOneCode, setStudyListenerOneCode] = useState("");
+  const [studyListenerTwoCode, setStudyListenerTwoCode] = useState("");
+  const studyAudioRef = useRef<[AudioBuffer, AudioBuffer] | null>(null);
+  const studySaltRef = useRef<string | null>(null);
   const [levelMatch, setLevelMatch] = useState(true);
   const [useReferenceForPlan, setUseReferenceForPlan] = useState(false);
-  const [busy, setBusy] = useState<"analyze" | "preview" | "verify" | null>(null);
+  const [busy, setBusy] = useState<"analyze" | "preview" | "verify" | "study" | null>(null);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [appliedSnapshot, setAppliedSnapshot] = useState<AppliedSnapshot | null>(null);
@@ -310,7 +408,7 @@ export function MasteringAssistant({
   const playingRef = useRef(playing);
   playingRef.current = playing;
   const workBlocked = blockNewWork || busy !== null;
-  const updateBusy = (next: "analyze" | "preview" | "verify" | null) => {
+  const updateBusy = (next: "analyze" | "preview" | "verify" | "study" | null) => {
     setBusy(next);
     onBusyChange(next !== null);
   };
@@ -335,6 +433,14 @@ export function MasteringAssistant({
     candidatePreview.bankRevision === services.bank.revision &&
     candidatePreview.selectionKey === selection,
   );
+  const studyPairIsCurrent = Boolean(
+    analysisIsCurrent &&
+    analysis &&
+    studyAudioPair &&
+    studyAudioPair.revisionId === analysis.revisionId &&
+    studyAudioPair.bankRevision === analysis.bankRevision &&
+    studyAudioPair.sampleRate === sampleRate,
+  );
   const appliedIsCurrent = Boolean(appliedSnapshot && appliedSnapshot.revisionId === revisionId);
   const target = useMemo(() => resolveDeliveryTarget(doc.master), [doc.master]);
   const activeReferenceId = useReferenceForPlan ? (referenceMeasurement?.id ?? null) : null;
@@ -353,12 +459,17 @@ export function MasteringAssistant({
     setPlaying(null);
   }, [services.engine]);
 
+  const previewBytes = () =>
+    bytesOf(previewBuffersRef.current.current) +
+    bytesOf(previewBuffersRef.current.proposed) +
+    (studyAudioRef.current ? bytesOf(studyAudioRef.current[0]) + bytesOf(studyAudioRef.current[1]) : 0);
+
   const publishPreviewBuffer = useCallback(
     (side: "current" | "proposed", buffer: AudioBuffer | null) => {
       previewBuffersRef.current = { ...previewBuffersRef.current, [side]: buffer };
       if (side === "current") setCurrentPreviewBuffer(buffer);
       else setPreviewBuffer(buffer);
-      onPreviewBytes(bytesOf(previewBuffersRef.current.current) + bytesOf(previewBuffersRef.current.proposed));
+      onPreviewBytes(previewBytes());
     },
     [onPreviewBytes],
   );
@@ -366,13 +477,25 @@ export function MasteringAssistant({
   const releaseProposalPreview = useCallback(() => {
     previewBuffersRef.current = { ...previewBuffersRef.current, proposed: null };
     setPreviewBuffer(null);
-    onPreviewBytes(bytesOf(previewBuffersRef.current.current));
+    onPreviewBytes(previewBytes());
   }, [onPreviewBytes]);
+
+  const releaseStudyAudio = useCallback(() => {
+    services.engine.stopPreview();
+    setPlaying(null);
+    studyAudioRef.current = null;
+    setStudyAudioPair(null);
+    setStudyListen(null);
+    onPreviewBytes(previewBytes());
+  }, [onPreviewBytes, services.engine]);
 
   const releasePreview = useCallback(() => {
     previewBuffersRef.current = { current: null, proposed: null };
+    studyAudioRef.current = null;
     setPreviewBuffer(null);
     setCurrentPreviewBuffer(null);
+    setStudyAudioPair(null);
+    setStudyListen(null);
     onPreviewBytes(0);
   }, [onPreviewBytes]);
 
@@ -381,8 +504,34 @@ export function MasteringAssistant({
       services.engine.updateMasterComparePreview(auditionGains.current, false);
     } else if (playing === "proposed" && candidatePreview) {
       services.engine.updateMasterComparePreview(auditionGains.proposal, false);
+    } else if ((playing === "study-one" || playing === "study-two") && studyAudioPair) {
+      const pairGains = getAuditionMatchGains(
+        studyAudioPair.left.summary.lufsIntegrated,
+        studyAudioPair.right.summary.lufsIntegrated,
+        levelMatch,
+      );
+      const versionOneId =
+        studyListen?.phase === "review-two" ? studyListen.secondReviewerVersionOneId : studyListen?.versionOneId;
+      const selectedId =
+        playing === "study-one"
+          ? versionOneId
+          : versionOneId === studyAudioPair.left.id
+            ? studyAudioPair.right.id
+            : studyAudioPair.left.id;
+      const gain = selectedId === studyAudioPair.left.id ? pairGains.current : pairGains.proposal;
+      services.engine.updateMasterComparePreview(gain, false);
     }
-  }, [analysis, auditionGains.current, auditionGains.proposal, candidatePreview, playing, services.engine]);
+  }, [
+    analysis,
+    auditionGains.current,
+    auditionGains.proposal,
+    candidatePreview,
+    levelMatch,
+    playing,
+    services.engine,
+    studyAudioPair,
+    studyListen,
+  ]);
 
   useEffect(() => {
     if (comparisonEpoch === 0) return;
@@ -437,12 +586,7 @@ export function MasteringAssistant({
       onProgress: ({ progress, stage }) => setStatus(`${action} ${Math.round(progress * 100)}% · ${stage}`),
     });
 
-  const assertMemory = (
-    renderDoc: ProjectDocument,
-    otherPcmBytes = reservedPcmBytes +
-      bytesOf(previewBuffersRef.current.current) +
-      bytesOf(previewBuffersRef.current.proposed),
-  ) => {
+  const assertMemory = (renderDoc: ProjectDocument, otherPcmBytes = reservedPcmBytes + previewBytes()) => {
     const estimated = estimateRenderPcmBytes(renderDoc, { mode: "song", sampleRate });
     if (estimated + otherPcmBytes > MAX_ASSISTANT_PCM_BYTES) {
       throw new Error(
@@ -453,6 +597,7 @@ export function MasteringAssistant({
 
   const beginRender = () => {
     abortRef.current?.abort();
+    releaseStudyAudio();
     const controller = new AbortController();
     abortRef.current = controller;
     onBeforeRender();
@@ -548,6 +693,27 @@ export function MasteringAssistant({
             })
         : [];
       const plan = resolvePlanAgainstMaster(doc, suggestedPlan);
+      const snapshot = createMasteringAnalysisSnapshot({
+        projectRevisionId: revisionAtStart,
+        sampleBankRevision: bankRevisionAtStart,
+        sampleRate,
+        summary,
+        health,
+        delivery: target,
+        referenceMeasurement: referenceAtStart,
+      });
+      const candidates = buildMasteringProposalCandidates(
+        snapshot,
+        plan,
+        plan.map((step) => masterAssistantCurrentValue(doc, step)),
+      );
+      setStatus("Checking optional local mastering ranker in shadow mode…");
+      const rankerAssessment = await compareMasteringCandidatesInShadowMode(candidates, controller.signal);
+      if (controller.signal.aborted) throw new DOMException("Assistant analysis cancelled", "AbortError");
+      if (currentRevision(services, doc.id) !== revisionAtStart)
+        throw new Error("Projekt sa počas lokálneho porovnania zmenil. Starý report bol zahodený.");
+      if (services.bank.revision !== bankRevisionAtStart)
+        throw new Error("Sample bank sa počas lokálneho porovnania zmenil. Spusti nový render.");
       const addedIds: Partial<Record<MasterInsertDevice, string>> = {};
       for (const step of plan) {
         if (step.device === "master") continue;
@@ -563,7 +729,11 @@ export function MasteringAssistant({
         usedReference: referenceAtStart !== null,
         summary,
         health,
+        snapshot,
         plan,
+        candidates,
+        candidateIds: candidates.map((candidate) => candidate.id),
+        rankerAssessment,
         addedIds,
       });
       setSelected(plan.map((_, index) => index));
@@ -575,7 +745,7 @@ export function MasteringAssistant({
           plan.length > 0
             ? `Analýza hotová. Planner našiel ${plan.length} návrh${plan.length === 1 ? "" : "y"}; nič sa zatiaľ nezmenilo.`
             : "Analýza hotová. Z nameraných údajov nevznikol návrh na bezpečnú zmenu master chainu."
-        } ${measurementAnnouncement}${referenceAtStart ? ` Reference: ${referenceAtStart.fileName}.` : ""}`,
+        } ${measurementAnnouncement}${referenceAtStart ? ` Reference: ${referenceAtStart.fileName}.` : ""} ${masteringRankerStatusText(rankerAssessment)}`,
       );
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : String(caught);
@@ -646,6 +816,336 @@ export function MasteringAssistant({
       if (activeController && abortRef.current === activeController) abortRef.current = null;
       updateBusy(null);
       releaseMasteringWork();
+    }
+  };
+
+  const renderBlindStudyPair = async () => {
+    if (!analysisIsCurrent || !analysis || busy || blockAudition) return;
+    if (!levelMatch) {
+      setError("Enable Match audition loudness before collecting a held-out preference pair.");
+      return;
+    }
+    if (studyLeftIndex === studyRightIndex) {
+      setError("Choose two different mastering proposals for the blind comparison.");
+      return;
+    }
+    const leftCandidate = analysis.candidates[studyLeftIndex];
+    const rightCandidate = analysis.candidates[studyRightIndex];
+    if (
+      !leftCandidate ||
+      !rightCandidate ||
+      !isMasteringFeatureVector(leftCandidate.featureVector) ||
+      !isMasteringFeatureVector(rightCandidate.featureVector)
+    ) {
+      setError("These proposals do not have a valid mastering.features.v1 vector for local preference data.");
+      return;
+    }
+    let sourceMixHash: string;
+    try {
+      studySaltRef.current ??= createStudyRandomToken();
+      sourceMixHash = createStudySourceMixHash(analysis.revisionId, studySaltRef.current);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Secure local study identity could not be created.");
+      return;
+    }
+    if (studyPairs.some((pair) => pair.sourceMixHash === sourceMixHash)) {
+      setError("This project revision already has a pair in this collector session. Use a different project revision.");
+      return;
+    }
+    const releaseMasteringWork = tryAcquireMasteringWork();
+    if (!releaseMasteringWork) {
+      setStatus("Another MASTER audio task is in progress. Try the blind render again when it finishes.");
+      return;
+    }
+    let activeController: AbortController | null = null;
+    try {
+      releasePreview();
+      setCandidatePreview(null);
+      const { controller } = beginRender();
+      activeController = controller;
+      const bankRevisionAtStart = analysis.bankRevision;
+      updateBusy("study");
+      setError("");
+      setStatus("Rendering two individual proposals from the same source mix…");
+
+      const renderCandidate = async (
+        index: number,
+        stepNumber: 1 | 2,
+        previousBuffer: AudioBuffer | null,
+      ): Promise<StudyRenderedCandidate> => {
+        const candidate = analysis.candidates[index];
+        if (!candidate || !isMasteringFeatureVector(candidate.featureVector))
+          throw new Error("A proposal changed while the blind pair was being prepared.");
+        const candidateDoc = buildDraft(analysis.source, analysis.plan, [index], analysis.addedIds);
+        assertMemory(candidateDoc, reservedPcmBytes + bytesOf(previousBuffer));
+        setStatus(`Rendering blind proposal ${stepNumber} · SONG · ${sampleRate / 1000} kHz · Studio HQ…`);
+        const buffer = await renderProject(candidateDoc, services.bank, renderOptions(controller.signal));
+        if (controller.signal.aborted) throw new DOMException("Blind preference render cancelled", "AbortError");
+        if (currentRevision(services, doc.id) !== analysis.revisionId)
+          throw new Error("The project changed during blind rendering. The pair was discarded.");
+        if (services.bank.revision !== bankRevisionAtStart)
+          throw new Error("The sample bank changed during blind rendering. The pair was discarded.");
+        const { measurements } = await analyzeBuffer(
+          buffer,
+          controller.signal,
+          `Analyzing blind proposal ${stepNumber}`,
+        );
+        if (controller.signal.aborted) throw new DOMException("Blind preference analysis cancelled", "AbortError");
+        if (currentRevision(services, doc.id) !== analysis.revisionId || services.bank.revision !== bankRevisionAtStart)
+          throw new Error("The project or sample bank changed during blind analysis. The pair was discarded.");
+        return {
+          id: candidate.id,
+          buffer,
+          summary: measurements,
+          safeAfterPreview: isStudyCandidateSafe(
+            measurements,
+            analysis.snapshot.delivery.maxTruePeakDb,
+            target.truePeakGraceDb,
+          ),
+        };
+      };
+
+      const left = await renderCandidate(studyLeftIndex, 1, null);
+      const right = await renderCandidate(studyRightIndex, 2, left.buffer);
+      if (!getAuditionMatchGains(left.summary.lufsIntegrated, right.summary.lufsIntegrated, true).available)
+        throw new Error("Both blind previews need measurable LUFS-I so their audition can be loudness matched.");
+      const combinedBytes = bytesOf(left.buffer) + bytesOf(right.buffer);
+      if (combinedBytes + reservedPcmBytes > MAX_ASSISTANT_PCM_BYTES)
+        throw new Error("The two blind previews exceed the 320 MiB comparison-audio limit.");
+      const rendered: StudyRenderedPair = {
+        revisionId: analysis.revisionId,
+        bankRevision: bankRevisionAtStart,
+        sampleRate,
+        genreBucket: studyGenre,
+        sourceMixHash,
+        leftIndex: studyLeftIndex,
+        rightIndex: studyRightIndex,
+        left,
+        right,
+      };
+      studyAudioRef.current = [left.buffer, right.buffer];
+      setStudyAudioPair(rendered);
+      onPreviewBytes(previewBytes());
+      setStatus("The blind pair is ready. Start listener one when both previews can be heard at matched loudness.");
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : String(caught);
+      if (message.toLowerCase().includes("cancelled")) setStatus("Blind pair render cancelled.");
+      else setError(message);
+    } finally {
+      if (activeController && abortRef.current === activeController) abortRef.current = null;
+      updateBusy(null);
+      releaseMasteringWork();
+    }
+  };
+
+  const beginStudyReview = () => {
+    if (!studyAudioPair || !analysisIsCurrent || busy || blockAudition) return;
+    if (!levelMatch) {
+      setError("Enable Match audition loudness before starting a held-out preference review.");
+      return;
+    }
+    try {
+      const reviewerHash = createStudyReviewerHash(studyListenerOneCode);
+      if (reviewerHash === createStudyReviewerHash(studyListenerTwoCode)) {
+        setError("Listener 1 and listener 2 need different stable anonymous codes.");
+        return;
+      }
+      const [leftId, rightId] = [studyAudioPair.left.id, studyAudioPair.right.id];
+      setStudyListen({
+        phase: "review-one",
+        versionOneId: randomizedStudyVersionOne(leftId, rightId),
+        secondReviewerVersionOneId: null,
+        reviewerHash,
+        judgments: [],
+      });
+      setError("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Secure local reviewer identity could not be created.");
+    }
+  };
+
+  const playStudyVersion = (version: "one" | "two") => {
+    if (!studyAudioPair || !studyListen || blockAudition || !analysisIsCurrent) return;
+    const versionOneId =
+      studyListen.phase === "review-two" ? studyListen.secondReviewerVersionOneId : studyListen.versionOneId;
+    if (!versionOneId) return;
+    const candidateId =
+      version === "one"
+        ? versionOneId
+        : versionOneId === studyAudioPair.left.id
+          ? studyAudioPair.right.id
+          : studyAudioPair.left.id;
+    const rendered = candidateId === studyAudioPair.left.id ? studyAudioPair.left : studyAudioPair.right;
+    const gains = getAuditionMatchGains(
+      studyAudioPair.left.summary.lufsIntegrated,
+      studyAudioPair.right.summary.lufsIntegrated,
+      levelMatch,
+    );
+    stopPlayback();
+    setPlaying(version === "one" ? "study-one" : "study-two");
+    services.engine.previewMasterCompare(
+      rendered.buffer,
+      candidateId === studyAudioPair.left.id ? gains.current : gains.proposal,
+      () => setPlaying(null),
+    );
+    setStatus(`Playing blind version ${version === "one" ? "1" : "2"}.`);
+  };
+
+  const recordStudyPreference = (preference: StudyVersionChoice) => {
+    if (!studyAudioPair || !studyListen || !studyListen.reviewerHash) return;
+    if (studyListen.phase !== "review-one" && studyListen.phase !== "review-two") return;
+    services.engine.stopPreview();
+    setPlaying(null);
+    const versionOneId =
+      studyListen.phase === "review-two" ? studyListen.secondReviewerVersionOneId : studyListen.versionOneId;
+    if (!versionOneId) return;
+    const versionTwoId = versionOneId === studyAudioPair.left.id ? studyAudioPair.right.id : studyAudioPair.left.id;
+    const judgment: MasteringRankerBlindJudgment = {
+      reviewerHash: studyListen.reviewerHash,
+      preferredCandidateId: preference === "none" ? null : preference === "first" ? versionOneId : versionTwoId,
+    };
+    setStudyListen({
+      ...studyListen,
+      phase: studyListen.phase === "review-one" ? "handoff" : "reveal-ready",
+      reviewerHash: null,
+      judgments: [...studyListen.judgments, judgment],
+    });
+  };
+
+  const beginSecondStudyReview = () => {
+    if (!studyAudioPair || studyListen?.phase !== "handoff") return;
+    try {
+      setStudyListen({
+        ...studyListen,
+        phase: "review-two",
+        secondReviewerVersionOneId: randomizedStudyVersionOne(studyAudioPair.left.id, studyAudioPair.right.id),
+        reviewerHash: createStudyReviewerHash(studyListenerTwoCode),
+      });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Secure local reviewer identity could not be created.");
+    }
+  };
+
+  const exportStudyDataset = (pairs: readonly MasteringRankerBlindPair[]) => {
+    const dataset: MasteringRankerBlindDataset = {
+      schema: "kyx.mastering-ranker-blind-set",
+      schemaVersion: 3,
+      split: studySplit,
+      pairs: [...pairs],
+    };
+    const validated = parseMasteringRankerBlindDataset(dataset);
+    const text = `${JSON.stringify(validated, null, 2)}\n`;
+    const bytes = new TextEncoder().encode(text);
+    if (bytes.byteLength > MAX_STUDY_DATASET_BYTES)
+      throw new Error("The local study dataset exceeds the 32 MiB export limit.");
+    const objectUrl = URL.createObjectURL(new Blob([bytes], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = `kyx-mastering-ranker-blind-set-${validated.pairs.length}-pairs.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
+    return validated;
+  };
+
+  const exportCompletedStudyPair = () => {
+    if (!analysis || !studyAudioPair || studyListen?.phase !== "revealed" || studyListen.judgments.length !== 2) return;
+    const leftCandidate = analysis.candidates[studyAudioPair.leftIndex];
+    const rightCandidate = analysis.candidates[studyAudioPair.rightIndex];
+    if (!leftCandidate || !rightCandidate) {
+      setError("The source analysis changed. This preference pair cannot be exported.");
+      return;
+    }
+    const orderedCandidates: MasteringRankerBlindPair["candidates"] =
+      studyAudioPair.leftIndex < studyAudioPair.rightIndex
+        ? [
+            {
+              id: leftCandidate.id,
+              features: leftCandidate.featureVector,
+              safeAfterPreview: studyAudioPair.left.safeAfterPreview,
+            },
+            {
+              id: rightCandidate.id,
+              features: rightCandidate.featureVector,
+              safeAfterPreview: studyAudioPair.right.safeAfterPreview,
+            },
+          ]
+        : [
+            {
+              id: rightCandidate.id,
+              features: rightCandidate.featureVector,
+              safeAfterPreview: studyAudioPair.right.safeAfterPreview,
+            },
+            {
+              id: leftCandidate.id,
+              features: leftCandidate.featureVector,
+              safeAfterPreview: studyAudioPair.left.safeAfterPreview,
+            },
+          ];
+    try {
+      const pair: MasteringRankerBlindPair = {
+        pairId: createStudyPairId(),
+        sourceMixHash: studyAudioPair.sourceMixHash,
+        genreBucket: studyAudioPair.genreBucket,
+        candidates: orderedCandidates,
+        judgments: studyListen.judgments,
+      };
+      const nextPairs = [...studyPairs, pair];
+      const dataset = exportStudyDataset(nextPairs);
+      setStudyPairs(dataset.pairs);
+      releaseStudyAudio();
+      setStudyDataStatus(
+        `Downloaded ${dataset.pairs.length} local blind pair${dataset.pairs.length === 1 ? "" : "s"}. No data was saved to the project or uploaded.`,
+      );
+      setError("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The local blind pair could not be exported.");
+    }
+  };
+
+  const loadStudyDataset = async (input: HTMLInputElement) => {
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    if (file.size === 0 || file.size > MAX_STUDY_DATASET_BYTES) {
+      setError("Choose a non-empty local dataset file under 32 MiB.");
+      return;
+    }
+    try {
+      const parsed: unknown = JSON.parse(await file.text());
+      const dataset = parseMasteringRankerBlindDataset(parsed);
+      if (studyPairs.length > 0 && studySplit !== dataset.split) {
+        throw new Error(
+          `This tab already has ${studySplit} data. Download or clear it before importing ${dataset.split} data.`,
+        );
+      }
+      const merged = parseMasteringRankerBlindDataset({
+        schema: "kyx.mastering-ranker-blind-set",
+        schemaVersion: 3,
+        split: dataset.split,
+        pairs: [...studyPairs, ...dataset.pairs],
+      });
+      setStudySplit(dataset.split);
+      setStudyPairs(merged.pairs);
+      setStudyDataStatus(
+        `Imported ${dataset.pairs.length} local blind pair${dataset.pairs.length === 1 ? "" : "s"}; ${merged.pairs.length} total in this tab.`,
+      );
+      setError("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "This file is not a valid local mastering preference set.");
+    }
+  };
+
+  const generateStudyListenerCode = (listener: 1 | 2) => {
+    try {
+      const token = createStudyRandomToken();
+      if (listener === 1) setStudyListenerOneCode(token);
+      else setStudyListenerTwoCode(token);
+      setStudyDataStatus(`Generated listener ${listener}'s anonymous code. Keep and reuse it for this listener.`);
+      setError("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Secure local random numbers are unavailable.");
     }
   };
 
@@ -892,8 +1392,9 @@ export function MasteringAssistant({
           <span className="mastering-panel-kicker">MEASURE → REVIEW → APPLY</span>
           <h3>Master assistant</h3>
           <p>
-            Deterministic suggestions from a full SONG render. The assistant edits final-sum inserts and the built-in
-            limiter; every change needs an exact draft preview and remains one Undo step.
+            Measurement-backed suggestions from a full SONG render. An optional local model can compare their order in
+            shadow mode; deterministic rules remain in control. Every change needs an exact draft preview and stays one
+            Undo step.
           </p>
         </div>
         <div className="master-assistant-proposal-actions">
@@ -912,7 +1413,14 @@ export function MasteringAssistant({
         </div>
       </header>
       <div className="master-assistant-controls">
-        <MasteringLevelMatchControl checked={levelMatch} onChange={setLevelMatch} />
+        <MasteringLevelMatchControl
+          checked={levelMatch}
+          disabled={Boolean(studyListen)}
+          onChange={(checked) => {
+            if (!checked) releaseStudyAudio();
+            setLevelMatch(checked);
+          }}
+        />
         <label className="master-assistant-reference-control">
           <input
             type="checkbox"
@@ -1010,161 +1518,494 @@ export function MasteringAssistant({
       )}
       {analysisIsCurrent && analysis && (
         <>
-          <div className="master-assistant-measurements" aria-label="Measured source master">
-            <article>
-              <span>Integrated</span>
-              <strong>{formatDb(analysis.summary.lufsIntegrated, "LUFS-I")}</strong>
-            </article>
-            <article>
-              <span>True peak</span>
-              <strong>{formatDb(analysis.summary.truePeakDb, "dBTP")}</strong>
-            </article>
-            <article>
-              <span>Crest</span>
-              <strong>{analysis.health.crestDb.toFixed(1)} dB</strong>
-            </article>
-            <article>
-              <span>Stereo correlation</span>
-              <strong>{analysis.summary.correlation.toFixed(2)}</strong>
-            </article>
-            <article>
-              <span>High + air</span>
-              <strong>{((analysis.health.bandShares.high + analysis.health.bandShares.air) * 100).toFixed(0)}%</strong>
-            </article>
-          </div>
-          {analysis.referenceId && referenceMeasurement && (
-            <p className="master-assistant-reference-note">
-              Proposals compare this SONG render with “{referenceMeasurement.fileName}”. Missing measurements are
-              skipped.
+          <div hidden={Boolean(studyListen && studyListen.phase !== "revealed")}>
+            <div className="master-assistant-measurements" aria-label="Measured source master">
+              <article>
+                <span>Integrated</span>
+                <strong>{formatDb(analysis.summary.lufsIntegrated, "LUFS-I")}</strong>
+              </article>
+              <article>
+                <span>True peak</span>
+                <strong>{formatDb(analysis.summary.truePeakDb, "dBTP")}</strong>
+              </article>
+              <article>
+                <span>Crest</span>
+                <strong>{analysis.health.crestDb.toFixed(1)} dB</strong>
+              </article>
+              <article>
+                <span>Stereo correlation</span>
+                <strong>{analysis.summary.correlation.toFixed(2)}</strong>
+              </article>
+              <article>
+                <span>High + air</span>
+                <strong>
+                  {((analysis.health.bandShares.high + analysis.health.bandShares.air) * 100).toFixed(0)}%
+                </strong>
+              </article>
+            </div>
+            {analysis.referenceId && referenceMeasurement && (
+              <p className="master-assistant-reference-note">
+                Proposals compare this SONG render with “{referenceMeasurement.fileName}”. Missing measurements are
+                skipped.
+              </p>
+            )}
+            <p className="master-assistant-ranker-status" aria-label="Local mastering model status">
+              {masteringRankerStatusText(analysis.rankerAssessment)}
+              {analysis.rankerAssessment.status === "compared" && analysis.rankerAssessment.shadowOrderIds && (
+                <span> Shadow order is shown on proposal cards; it does not change selection or apply behavior.</span>
+              )}
             </p>
-          )}
-          <ul className="master-assistant-flags" aria-label="Source mix checks">
-            {reportLines(analysis.health).map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-          {analysis.plan.length > 0 ? (
-            <div className="master-assistant-proposals">
-              <div className="master-assistant-proposal-actions">
-                <span>
-                  {selected.length} / {analysis.plan.length} selected
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    stopPlayback();
-                    setSelected(analysis.plan.map((_, index) => index));
-                    setCandidatePreview(null);
-                    releaseProposalPreview();
-                  }}
-                  disabled={workBlocked}
-                >
-                  Select all
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    stopPlayback();
-                    setSelected([]);
-                    setCandidatePreview(null);
-                    releaseProposalPreview();
-                  }}
-                  disabled={workBlocked}
-                >
-                  Select none
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void renderProposal()}
-                  disabled={workBlocked || selected.length === 0}
-                >
-                  {busy === "preview" ? "Rendering draft…" : "Render selected preview"}
-                </button>
-                <button
-                  type="button"
-                  onClick={playCurrent}
-                  disabled={workBlocked || !analysisIsCurrent || blockAudition}
-                >
-                  {currentPreviewBuffer ? "Play current" : "Render & play current"}
-                </button>
-                <button
-                  type="button"
-                  onClick={playProposed}
-                  disabled={!previewIsCurrent || !previewBuffer || workBlocked || blockAudition}
-                >
-                  Play proposal
+            <ul className="master-assistant-flags" aria-label="Source mix checks">
+              {reportLines(analysis.health).map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+            {analysis.plan.length > 0 ? (
+              <div className="master-assistant-proposals">
+                <div className="master-assistant-proposal-actions">
+                  <span>
+                    {selected.length} / {analysis.plan.length} selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopPlayback();
+                      setSelected(analysis.plan.map((_, index) => index));
+                      setCandidatePreview(null);
+                      releaseProposalPreview();
+                    }}
+                    disabled={workBlocked}
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopPlayback();
+                      setSelected([]);
+                      setCandidatePreview(null);
+                      releaseProposalPreview();
+                    }}
+                    disabled={workBlocked}
+                  >
+                    Select none
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void renderProposal()}
+                    disabled={workBlocked || selected.length === 0}
+                  >
+                    {busy === "preview" ? "Rendering draft…" : "Render selected preview"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={playCurrent}
+                    disabled={workBlocked || !analysisIsCurrent || blockAudition}
+                  >
+                    {currentPreviewBuffer ? "Play current" : "Render & play current"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={playProposed}
+                    disabled={!previewIsCurrent || !previewBuffer || workBlocked || blockAudition}
+                  >
+                    Play proposal
+                  </button>
+                </div>
+                {analysis.plan.map((step, index) => {
+                  const shadowOrderIndex =
+                    analysis.rankerAssessment.shadowOrderIds?.indexOf(analysis.candidateIds[index] ?? "") ?? -1;
+                  const isMasterStep = step.device === "master";
+                  const effect =
+                    step.device === "master"
+                      ? undefined
+                      : ((analysis.source.master.effects ?? []).find(
+                          (candidate) => candidate.type === step.device && !candidate.bypassed,
+                        ) ??
+                        (analysis.source.master.effects ?? []).find((candidate) => candidate.type === step.device));
+                  const definition =
+                    step.device === "master"
+                      ? undefined
+                      : EFFECT_META[step.device].params.find((candidate) => candidate.id === step.param);
+                  const before = masterAssistantCurrentValue(analysis.source, step);
+                  const label =
+                    step.device === "master"
+                      ? step.param === "limiterEnabled"
+                        ? "Enable final limiter"
+                        : "Final limiter ceiling"
+                      : (definition?.label ?? step.param);
+                  const inserted = !isMasterStep && !effect;
+                  return (
+                    <article className="master-assistant-proposal" key={`${step.device}-${step.param}-${index}`}>
+                      <label className="master-assistant-select">
+                        <input
+                          type="checkbox"
+                          checked={selected.includes(index)}
+                          onChange={() => toggleStep(index)}
+                          disabled={workBlocked}
+                        />
+                        <span>
+                          {deviceName(step.device)} · {label}
+                          {shadowOrderIndex >= 0 && (
+                            <small className="master-assistant-shadow-rank">
+                              Local shadow rank #{shadowOrderIndex + 1}
+                            </small>
+                          )}
+                        </span>
+                      </label>
+                      <div className="master-assistant-value">
+                        <span>
+                          {inserted ? "Add device · default" : effect?.bypassed ? "Enable bypassed device" : "Current"}
+                        </span>
+                        <strong>
+                          {formatValue(step.device, step.param, before)} →{" "}
+                          {formatValue(step.device, step.param, step.value)}
+                        </strong>
+                      </div>
+                      <p>{step.why}</p>
+                      <small>
+                        {evidenceFor(
+                          step,
+                          analysis.summary,
+                          analysis.health,
+                          target.targetLufs,
+                          target.maxTruePeakDb,
+                          referenceMeasurement,
+                        )}
+                      </small>
+                      <small>{tradeoffFor(step)}</small>
+                      <small className="master-assistant-confidence">{confidenceFor(step)}</small>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="master-assistant-empty">
+                No master chain proposal. The flags below still help locate work that belongs in the mix or needs
+                listening.
+              </p>
+            )}
+          </div>
+          <section className="master-assistant-study" aria-label="Local blind preference study">
+            <header>
+              <div>
+                <strong>Collect local blind preferences</strong>
+                <p>
+                  Compare two individual proposals from this same render. Two listeners vote before either proposal is
+                  revealed. Audio and votes stay in local component memory until you explicitly download the JSON.
+                </p>
+                <p>
+                  Source deduplication is limited to this open collector session. Keep a separate held-out source ledger
+                  when combining datasets; the salted revision hash is not an audio fingerprint.
+                </p>
+                <p>
+                  Development data may be used for training or tuning. Held-out blind data is reserved for final
+                  evaluation and must never be used to train the ranker.
+                </p>
+              </div>
+            </header>
+            {studyListen && studyListen.phase !== "revealed" ? (
+              <div className="master-assistant-study-trial" aria-live="polite">
+                {(studyListen.phase === "review-one" || studyListen.phase === "review-two") && (
+                  <>
+                    <p>
+                      {studyListen.phase === "review-one" ? "Listener 1" : "Listener 2"}: use matched loudness when it
+                      is available, listen to both versions, and choose a preference. KYX hides proposal names until
+                      both votes are recorded.
+                    </p>
+                    <div className="master-assistant-study-playback">
+                      <button
+                        type="button"
+                        onClick={() => playStudyVersion("one")}
+                        disabled={!studyPairIsCurrent || busy !== null || blockAudition}
+                      >
+                        {playing === "study-one" ? "Playing version 1…" : "Listen to version 1"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => playStudyVersion("two")}
+                        disabled={!studyPairIsCurrent || busy !== null || blockAudition}
+                      >
+                        {playing === "study-two" ? "Playing version 2…" : "Listen to version 2"}
+                      </button>
+                      {playing && (
+                        <button type="button" onClick={stopPlayback}>
+                          Stop audition
+                        </button>
+                      )}
+                    </div>
+                    <fieldset className="master-assistant-study-choice">
+                      <legend>Which version sounds better?</legend>
+                      <button type="button" onClick={() => recordStudyPreference("first")}>
+                        Version 1
+                      </button>
+                      <button type="button" onClick={() => recordStudyPreference("second")}>
+                        Version 2
+                      </button>
+                      <button type="button" onClick={() => recordStudyPreference("none")}>
+                        No preference
+                      </button>
+                    </fieldset>
+                  </>
+                )}
+                {studyListen.phase === "handoff" && (
+                  <>
+                    <p>
+                      Listener 1 response recorded. Keep the identities hidden and pass the controls to a different
+                      listener before starting the second randomized comparison.
+                    </p>
+                    <button type="button" onClick={beginSecondStudyReview}>
+                      Start listener 2
+                    </button>
+                  </>
+                )}
+                {studyListen.phase === "reveal-ready" && (
+                  <>
+                    <p>
+                      Both responses are recorded. Reveal the proposal names only after both listeners have finished.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setStudyListen((current) => (current ? { ...current, phase: "revealed" } : current))
+                      }
+                    >
+                      Reveal proposal identities
+                    </button>
+                  </>
+                )}
+                <button type="button" onClick={releaseStudyAudio}>
+                  Discard blind previews
                 </button>
               </div>
-              {analysis.plan.map((step, index) => {
-                const isMasterStep = step.device === "master";
-                const effect =
-                  step.device === "master"
-                    ? undefined
-                    : ((analysis.source.master.effects ?? []).find(
-                        (candidate) => candidate.type === step.device && !candidate.bypassed,
-                      ) ?? (analysis.source.master.effects ?? []).find((candidate) => candidate.type === step.device));
-                const definition =
-                  step.device === "master"
-                    ? undefined
-                    : EFFECT_META[step.device].params.find((candidate) => candidate.id === step.param);
-                const before =
-                  step.device === "master"
-                    ? step.param === "limiterEnabled"
-                      ? Number(analysis.source.master.limiterEnabled)
-                      : analysis.source.master.ceilingDb
-                    : (effect?.params[step.param] ?? definition?.default ?? 0);
-                const label =
-                  step.device === "master"
-                    ? step.param === "limiterEnabled"
-                      ? "Enable final limiter"
-                      : "Final limiter ceiling"
-                    : (definition?.label ?? step.param);
-                const inserted = !isMasterStep && !effect;
-                return (
-                  <article className="master-assistant-proposal" key={`${step.device}-${step.param}-${index}`}>
-                    <label className="master-assistant-select">
-                      <input
-                        type="checkbox"
-                        checked={selected.includes(index)}
-                        onChange={() => toggleStep(index)}
-                        disabled={workBlocked}
-                      />
-                      <span>
-                        {deviceName(step.device)} · {label}
-                      </span>
-                    </label>
-                    <div className="master-assistant-value">
-                      <span>
-                        {inserted ? "Add device · default" : effect?.bypassed ? "Enable bypassed device" : "Current"}
-                      </span>
-                      <strong>
-                        {formatValue(step.device, step.param, before)} →{" "}
-                        {formatValue(step.device, step.param, step.value)}
-                      </strong>
-                    </div>
-                    <p>{step.why}</p>
-                    <small>
-                      {evidenceFor(
-                        step,
-                        analysis.summary,
-                        analysis.health,
-                        target.targetLufs,
-                        target.maxTruePeakDb,
-                        referenceMeasurement,
-                      )}
-                    </small>
-                    <small>{tradeoffFor(step)}</small>
-                    <small className="master-assistant-confidence">{confidenceFor(step)}</small>
-                  </article>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="master-assistant-empty">
-              No master chain proposal. The flags below still help locate work that belongs in the mix or needs
-              listening.
-            </p>
-          )}
+            ) : (
+              <>
+                <div className="master-assistant-study-reviewers">
+                  <p>
+                    Use a different listener for each ballot and keep each 64-digit code stable across all pairs. KYX
+                    exports only its SHA-256 hash; the raw codes stay in local component memory.
+                  </p>
+                  <label>
+                    <span>Listener 1 code</span>
+                    <input
+                      type="text"
+                      inputMode="text"
+                      autoComplete="off"
+                      spellCheck={false}
+                      maxLength={64}
+                      pattern="[0-9a-fA-F]{64}"
+                      value={studyListenerOneCode}
+                      onChange={(event) => setStudyListenerOneCode(event.currentTarget.value)}
+                      disabled={busy !== null || Boolean(studyListen)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => generateStudyListenerCode(1)}
+                    disabled={busy !== null || Boolean(studyListen) || studyListenerOneCode.length > 0}
+                  >
+                    Generate listener 1 code
+                  </button>
+                  <label>
+                    <span>Listener 2 code</span>
+                    <input
+                      type="text"
+                      inputMode="text"
+                      autoComplete="off"
+                      spellCheck={false}
+                      maxLength={64}
+                      pattern="[0-9a-fA-F]{64}"
+                      value={studyListenerTwoCode}
+                      onChange={(event) => setStudyListenerTwoCode(event.currentTarget.value)}
+                      disabled={busy !== null || Boolean(studyListen)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => generateStudyListenerCode(2)}
+                    disabled={busy !== null || Boolean(studyListen) || studyListenerTwoCode.length > 0}
+                  >
+                    Generate listener 2 code
+                  </button>
+                </div>
+                <div className="master-assistant-study-setup">
+                  <label>
+                    <span>Dataset split</span>
+                    <select
+                      value={studySplit}
+                      onChange={(event) => {
+                        releaseStudyAudio();
+                        setStudySplit(event.currentTarget.value as MasteringRankerDatasetSplit);
+                      }}
+                      disabled={busy !== null || Boolean(studyListen) || studyPairs.length > 0}
+                    >
+                      <option value="development">Development · training and tuning</option>
+                      <option value="held-out-blind">Held-out blind · final evaluation only</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Proposal 1</span>
+                    <select
+                      value={studyLeftIndex}
+                      onChange={(event) => {
+                        releaseStudyAudio();
+                        setStudyLeftIndex(Number(event.currentTarget.value));
+                      }}
+                      disabled={workBlocked || !analysisIsCurrent}
+                    >
+                      {analysis.plan.map((step, index) => (
+                        <option key={`${analysis.candidateIds[index]}-left`} value={index}>
+                          {deviceName(step.device)} · {step.param}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Proposal 2</span>
+                    <select
+                      value={studyRightIndex}
+                      onChange={(event) => {
+                        releaseStudyAudio();
+                        setStudyRightIndex(Number(event.currentTarget.value));
+                      }}
+                      disabled={workBlocked || !analysisIsCurrent}
+                    >
+                      {analysis.plan.map((step, index) => (
+                        <option key={`${analysis.candidateIds[index]}-right`} value={index}>
+                          {deviceName(step.device)} · {step.param}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Genre group</span>
+                    <select
+                      value={studyGenre}
+                      onChange={(event) => {
+                        releaseStudyAudio();
+                        setStudyGenre(event.currentTarget.value as MasteringGenreBucket);
+                      }}
+                      disabled={workBlocked || !analysisIsCurrent}
+                    >
+                      {STUDY_GENRE_BUCKETS.map((genre) => (
+                        <option key={genre} value={genre}>
+                          {genre}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void renderBlindStudyPair()}
+                    disabled={
+                      workBlocked ||
+                      !analysisIsCurrent ||
+                      analysis.candidates.length < 2 ||
+                      studyLeftIndex === studyRightIndex
+                    }
+                  >
+                    {busy === "study" ? "Rendering blind pair…" : "Render blind pair"}
+                  </button>
+                </div>
+                {analysis.candidates.length < 2 && (
+                  <p className="master-assistant-study-note">
+                    This analysis has fewer than two planner proposals. A pairwise preference requires two real,
+                    independently rendered candidates.
+                  </p>
+                )}
+                {studyAudioPair && studyPairIsCurrent && (
+                  <div className="master-assistant-study-ready">
+                    <span>
+                      Two individual previews are ready at {sampleRate / 1000} kHz. The current loudness-match control
+                      applies to both audition versions.
+                    </span>
+                    <span>
+                      Technical preview check · proposal 1 {studyAudioPair.left.safeAfterPreview ? "passes" : "flags"} ·
+                      proposal 2 {studyAudioPair.right.safeAfterPreview ? "passes" : "flags"} sample-peak/true-peak
+                      limits.
+                    </span>
+                    <button type="button" onClick={beginStudyReview} disabled={blockAudition || busy !== null}>
+                      Start listener 1
+                    </button>
+                    <button type="button" onClick={releaseStudyAudio}>
+                      Clear blind previews
+                    </button>
+                  </div>
+                )}
+                {studyListen?.phase === "revealed" && studyAudioPair && (
+                  <div className="master-assistant-study-reveal" role="status">
+                    <p>
+                      Proposal 1: {deviceName(analysis.plan[studyAudioPair.leftIndex]!.device)} ·{" "}
+                      {analysis.plan[studyAudioPair.leftIndex]!.param} ·{" "}
+                      {studyAudioPair.left.safeAfterPreview ? "preview passed" : "preview flagged"}.
+                    </p>
+                    <p>
+                      Proposal 2: {deviceName(analysis.plan[studyAudioPair.rightIndex]!.device)} ·{" "}
+                      {analysis.plan[studyAudioPair.rightIndex]!.param} ·{" "}
+                      {studyAudioPair.right.safeAfterPreview ? "preview passed" : "preview flagged"}.
+                    </p>
+                    <p>
+                      Listener 1: {studyListen.judgments[0]?.preferredCandidateId ?? "No preference"}. Listener 2:{" "}
+                      {studyListen.judgments[1]?.preferredCandidateId ?? "No preference"}.
+                    </p>
+                    <button type="button" onClick={exportCompletedStudyPair}>
+                      Download local preference dataset
+                    </button>
+                    <button type="button" onClick={releaseStudyAudio}>
+                      Clear blind previews
+                    </button>
+                  </div>
+                )}
+                <div className="master-assistant-study-data">
+                  <label>
+                    <span>Import an earlier local dataset to continue its collection</span>
+                    <input
+                      type="file"
+                      accept="application/json,.json"
+                      onChange={(event) => void loadStudyDataset(event.currentTarget)}
+                      disabled={busy !== null || Boolean(studyListen)}
+                    />
+                  </label>
+                  <span>
+                    {studyPairs.length} pair{studyPairs.length === 1 ? "" : "s"} in this collector session
+                  </span>
+                  {studyPairs.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          try {
+                            exportStudyDataset(studyPairs);
+                            setStudyDataStatus(`Downloaded ${studyPairs.length} ${studySplit} blind pairs.`);
+                          } catch (caught) {
+                            setError(
+                              caught instanceof Error ? caught.message : "The local dataset could not be exported.",
+                            );
+                          }
+                        }}
+                      >
+                        Download collected dataset
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy !== null || Boolean(studyListen)}
+                        onClick={() => {
+                          setStudyPairs([]);
+                          setStudySplit("development");
+                          setStudyDataStatus(
+                            "Cleared collected pairs from this session. Downloaded JSON files are unchanged.",
+                          );
+                        }}
+                      >
+                        Clear in-memory dataset
+                      </button>
+                    </>
+                  )}
+                  {studyDataStatus && <span role="status">{studyDataStatus}</span>}
+                </div>
+              </>
+            )}
+          </section>
         </>
       )}
       {candidatePreview && previewIsCurrent && analysis && (

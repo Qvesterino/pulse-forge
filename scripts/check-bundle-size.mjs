@@ -215,12 +215,13 @@ const ENTRY_BUDGET_KB = 1070;
 // further DAW growth still needs an offset or an independent justification.
 const TOTAL_BUDGET_KB = 5186;
 // Local inference runtimes are dynamically loaded inside lazily spawned
-// workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
-// symbolic/ranker workers. Keep these optional runtimes under one existing
-// cap instead of charging them to the core DAW payload. If Vite renames either
-// chunk, it falls back into TOTAL_BUDGET_KB and fails safe.
+// workers: Transformers.js for semantic embeddings, ONNX Runtime for the
+// symbolic/ranker workers, and the mastering-ranker worker entry itself. Keep
+// these optional runtimes under one existing cap instead of charging them to
+// the core DAW payload. If Vite renames a chunk, it falls back into
+// TOTAL_BUDGET_KB and fails safe.
 const OPTIONAL_AI_RUNTIME_BUDGET_KB = 650;
-const OPTIONAL_AI_RUNTIME_PREFIXES = ["transformers.web-", "ort.wasm.bundle.min-"];
+const OPTIONAL_AI_RUNTIME_PREFIXES = ["transformers.web-", "ort.wasm.bundle.min-", "mastering-ranker-worker-"];
 // MP3 encoding is also on-demand, but it is a codec rather than an AI runtime.
 // Keep its exported chunk out of the DAW graph while enforcing a separate cap.
 const OPTIONAL_CODEC_BUDGET_KB = 170;
@@ -317,6 +318,7 @@ const BOOT_FORBIDDEN_PREFIXES = [
   "audiotool-nexus-",
   "transformers.web-",
   "ort.wasm.bundle.min-",
+  "mastering-ranker-worker-",
   "mp3-",
   "flac-codec-",
 ];

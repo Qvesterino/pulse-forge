@@ -8,9 +8,13 @@ const COMPOSITION_VERB =
 const ACTION_VERB =
   /\b(?:mute|solo|unmute|unsolo|delete|remove|move|copy|duplicate|rename|select|load|bypass|export|save|record|transpose|pan|set|turn|lower|raise|increase|decrease|automate|insert|fix|ease|park|shove|calm|tame|nudge|pull|push|lift|drop|stis(?:i|te)?|zni[zž](?:i|te)?|zv[yý]s(?:i|te)?|odstr[aá]n(?:i|te)?|pres[uú]n(?:i|te)?|premenuj|vyber|na[cč][ií]taj|vypni|zapni|oto[cč](?:i|te)?|pos[uú]n(?:i|te)?|pridaj|uber|zme[nň](?:i|te)?)\b/;
 const EDIT_COMPARATIVE =
-  /\b(?:louder|quieter|softer|darker|brighter|wider|narrower|warmer|colder|drier|wetter|punchier|harder|energetic|energic|busier|denser|sparser|metallic|grittier|crunchy|robotic|deeper|lofi|vinyl|hlasnejsi|tichsi|tmavsi|svetlejsi|sirsi|uzsi|teplejsi|suchsi|mokrejsi|razantnejsi|hustejsi|riedsi|energickejsi)\b/;
+  /\b(?:louder|quieter|softer|darker|brighter|wider|narrower|warmer|colder|drier|wetter|punchier|harder|energetic|energic|busier|denser|sparser|metallic|grittier|crunchy|robotic|deeper|lofi|vinyl|dominant|prominent|subdued|subtle|tucked|hlasnejsi|tichsi|tmavsi|svetlejsi|sirsi|uzsi|teplejsi|suchsi|mokrejsi|razantnejsi|hustejsi|riedsi|energickejsi)\b/;
 const VOCAL_CONTEXT =
   /\b(?:for|under|over|around|space|room|leave|leaves|sing|vocal|vocals|vocalist|singer|spev|hlas|pod|pre|miesto|priestor|spev[aá]k|spev[aá]ck)\b/;
+const ACTION_SOUND_OBSERVATION =
+  /\b(?:can't|cannot)\s+feel\s+(?:the\s+)?(?:kick|bass|drums?|lead|chords?|808)\b|\b(?:could use|needs?|lacks?|has|have|is|are|sounds?|feels?|sit|sits|znie|posobi|su|je|ma|prehlus\w*|overpowers?|dominates?|drowns? out|disappears?|vanishes?)\b.{0,40}\b(?:boomy|woolly|muddy|cloudy|glassy|hollow|thin|harsh|sharp|piercing|brittle|shrill|weak|weightless|lightweight|impact|punch|weight|empty|energy|dominant|prominent|subdued|upfront|forward|buried|lost|under|underneath|overwhelming|too much level|(?:more|too much) body up front|too loud|loud|back|prilis|vpredu|zanika|uder|zahmlen\w*)\b|\b(?:kick|bass|drums?|lead|chords?|808|kopak|basa|bicie)\b.{0,28}\b(?:overpowers?|dominates?|drowns? out|disappears?|vanishes?|gets? lost|zanika|reze|prehlus\w*|prekriku\w*|nema|chyba|straca)\b/i;
+const READ_ONLY_QUERY =
+  /^(?:(?:what|which|how many|where|give me)\b.{0,80}\b(?:tempo|bpm|pulse|tonic|key|scale|tonal center|harmonic home|tracks?|lanes?|channels?|markers?|effects?|plugins?|processors?|devices?|groove|swing|change|action)\b|(?:tell me|identify|report|count|list|name)\b.{0,80}\b(?:tempo|bpm|pulse|tonic|key|scale|tonal center|harmonic home|tracks?|lanes?|channels?|markers?|effects?|plugins?|processors?|devices?|groove|swing|change|action)\b)/i;
 const PRESET_LOOKUP =
   /\b(?:give|get|find|choose|pick)\s+(?:me|us|the|a|an|that)?\s*[^.]{0,32}\b(?:preset|patch|sound|tone|kit)\b/;
 const SETTING_EDIT =
@@ -55,6 +59,14 @@ export function isCreativeBriefRoute(text: string, route: RoutedIntent): boolean
   // An explicit composition request is stronger than incidental parser
   // matches such as “bass” being read as a generation role.
   if (COMPOSITION_VERB.test(normalized) && hasMusicalObject) return true;
+
+  // Read-only questions remain eligible even when they mention instruments,
+  // tracks, or other music nouns that also occur in creative briefs.
+  if (READ_ONLY_QUERY.test(normalized)) return false;
+
+  // Natural-language observations can express a bounded mixer action or a
+  // listening-loop complaint without using an imperative verb.
+  if (ACTION_SOUND_OBSERVATION.test(normalized)) return false;
 
   // A well-formed musical brief already carries stronger evidence than an
   // incidental edit verb inside the same sentence (“dark trap, remove hats”).

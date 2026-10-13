@@ -78,6 +78,12 @@ describe("local intent model schema", () => {
     expect(validateModelOutputForDoc({ kind: "save" }, doc).valid).toBe(true);
   });
 
+  it("keeps the ONNX undo head pinned to its shipped vocabulary", () => {
+    expect(VOCAB.undoSteps).toEqual([1, 2, 3, 4, 5]);
+    expect(validateModelAction({ kind: "undoIntent", action: "undo", steps: 1 }).valid).toBe(true);
+    expect(validateModelAction({ kind: "undoIntent", action: "redo", steps: 5 }).valid).toBe(true);
+  });
+
   it("accepts only the bounded listening-loop complaint fields", () => {
     expect(validateModelAction({ kind: "complaintIntent", complaint: "empty", role: "drop" }).valid).toBe(true);
     expect(validateModelAction({ kind: "complaintIntent", complaint: "harsh", family: "lead" }).valid).toBe(true);

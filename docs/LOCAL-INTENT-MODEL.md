@@ -64,7 +64,7 @@ everything else.
 
 `src/intent/model-loader.ts` owns [C]→[D] wiring: flag `pf:intent-model`
 (default **on** since the 2026-10-01 release gate pass — the shipped
-artifact is a 6.75 MB ONNX head fetched lazily, the manifest's
+artifact is a 6.69 MiB ONNX head fetched lazily, the manifest's
 `report.gatePassed === true` pin gates registration, and the chip's OFF
 click stores an explicit `pf:intent-model=off` opt-out),
 a one-404 availability probe against `/models/intent-model-v1.manifest.json`,
@@ -85,8 +85,14 @@ head outputs through the canonical TS decoder — the action JSON text
 contract is identical for both backends, so the resolver bridge cannot tell
 them apart. The current ONNX manifest passes its action-level gate and can
 register; that gate does not establish LFM quality, creative-brief
-understanding, or musical quality. The deterministic path remains the
-fallback and is usable without model availability.
+understanding, or musical quality. The v16 artifact has 54 output heads and
+was trained from the pinned v16 dataset (2,169/362/77 train/val/golden). At
+the production kind margin 4.8, validation is 96.2% exact among attempted
+outputs with zero wrong-kind and 19.1% abstention; golden regression is 98.7%
+exact among attempted outputs with zero wrong-kind. Chromium verification
+registered the public provider as ready and the 27-row private residual holdout
+passed through the combined deterministic + model route. The deterministic
+path remains the fallback and is usable without model availability.
 
 **[A] and [C] share the same drawer**: `src/ai/` already ships the local-model
 pattern — worker isolation, manifest (modelHash, versions), load timeout,

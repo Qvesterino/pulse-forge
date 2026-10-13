@@ -33,10 +33,16 @@ const COMPLAINT_WORDS: ReadonlyArray<readonly [RegExp, ComplaintKind]> = [
   // EXISTING kind — no new diagnosis plumbing, only more ways to say it.
   [/\b(?:empty|void|prazdn\w*)\b|\bnic\s+sa\s+nedeje/i, "empty"],
   [/\b(?:thin|weak|tenk\w*|chud\w*|slab\w*)\b/i, "thin"],
-  [/\bmuddy\b|\bblat[oi]?\b|\bblat[ai]st\w*|\bbahnist\w*|\bkaln\w*|\bzamuten\w*|\bdut\w*|\bhukot/i, "muddy"],
-  [/\bharsh\b|\bpiercing\b|\bostr\w*|\bdraz\w*|\bpicha\b|\bkrici\b|\bskrece\b|\bbodav/i, "harsh"],
   [
-    /\bno\s+punch\b|\bbez\s+razanc\w*|\bno\s+knock\b|\bmakk\w*\s+drums\b|\bmrtv\w*|\bbez\s+uder\w*|\bchyba\s+uder\w*/i,
+    /\bmuddy\b|\bboomy\b|\bwoolly\b|\bblat[oi]?\b|\bblat[ai]st\w*|\bbahnist\w*|\bkaln\w*|\bzamuten\w*|\bdut\w*|\bhukot|\bzahuhl\w*/i,
+    "muddy",
+  ],
+  [
+    /\bharsh\b|\bpiercing\b|\bshrill\b|\bsharp\b|\bbrittle\b|\bostr\w*|\bdraz\w*|\bpicha\b|\bkrici\b|\bskrece\b|\bbodav/i,
+    "harsh",
+  ],
+  [
+    /\bno\s+punch\b|\blacks?\s+(?:enough\s+)?punch\b|\bpunchless\b|\b(?:could use|needs?)\s+(?:more|some)\s+(?:impact|punch)\b|\bcan't\s+feel\s+(?:the\s+)?(?:kick|bass|drums?)\b|\bcannot\s+feel\s+(?:the\s+)?(?:kick|bass|drums?)\b|\bbez\s+razanc\w*|\bno\s+knock\b|\bmakk\w*\s+drums\b|\bmrtv\w*|\bbez\s+uder\w*|\bchyba\s+uder\w*|\b(?:nema\s+silu|straca\s+uder)\b/i,
     "noPunch",
   ],
 ];
@@ -81,8 +87,15 @@ export function parseComplaintIntent(text: string): ComplaintIntent | null {
   }
   if (complaint == null) return null;
   const role = ROLE_WORDS.find(([re]) => re.test(plain))?.[1] ?? null;
+  // A named pad is a more specific target than its parent drum family. In
+  // particular, TARGET_WORDS intentionally treats "hats" as drums for mix
+  // routing, while a complaint should preserve the producer's pad-level
+  // target for the listening loop and model slots.
   const family =
-    TARGET_WORDS.find(([re]) => re.test(plain))?.[1] ?? PAD_FAMILY_WORDS.find(([re]) => re.test(plain))?.[1] ?? null;
+    PAD_FAMILY_WORDS.find(([re]) => re.test(plain))?.[1] ??
+    (/\b(?:singer|singer's|voice|voice's|vocalist)\b/.test(plain) ? "vocal" : null) ??
+    TARGET_WORDS.find(([re]) => re.test(plain))?.[1] ??
+    null;
   // a complaint must point at SOMETHING — bare "muddy" alone is too vague
   if (role == null && family == null) return null;
   return { kind: complaint, role, family };

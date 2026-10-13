@@ -1,7 +1,7 @@
 {
   "intentModelVersion": "intent-model.v1",
   "schemaVersion": 1,
-  "grammarSha256": "c93675455bf7fba53ec663032778bac3876524fd7fc937144bfedf4c453e99c1",
+  "grammarSha256": "a4016feca4f23c6b1fdb810927602975a1616997022de98c4121146c286d5acc",
   "runtime": {
     "kind": "onnx-intent-v1",
     "module": "/models/llm/intent-runtime.js",
@@ -9,8 +9,8 @@
   },
   "model": {
     "url": "/models/intent-model-v1.onnx",
-    "bytes": 6799814,
-    "sha256": "1d44f70bc639087cd2dfa1ca92ab277bdd82ba39b94ae1660ecef95dd51488e0"
+    "bytes": 7010380,
+    "sha256": "9b0c0e65d5ca25ddb556cc7eb3cb2052c81b7b6674b68cb65f777d9ad126abae"
   },
   "prompt": {
     "system": "You map a music-production instruction to one canonical action JSON object. Output only the JSON.",
@@ -22,12 +22,19 @@
   },
   "features": {
     "version": "intent-features.v2",
-    "vocabSha256": "dce5be5f10ba30fa2bc4e9d6872b7e2a60babfcd3d45aa48be1123713587f345",
-    "vocabSize": 4015,
+    "vocabSha256": "b891c2239c29347a52e4838295804d457c86e5ba5d70436deaacf9d3df975b62",
+    "vocabSize": 4096,
     "url": "/models/intent-model-v1.vocab.json",
     "inputName": "features",
     "outputNames": [
       "head_kind",
+      "head_complaint",
+      "head_complaintRole",
+      "head_complaintFamily",
+      "head_undoAction",
+      "head_undoSteps",
+      "head_querySubject",
+      "head_queryTarget",
       "head_arrangeOp",
       "head_arrangeRole",
       "head_arrangeBars",
@@ -101,7 +108,108 @@
           "compound",
           "clarify",
           "preset",
-          "presetUnknown"
+          "presetUnknown",
+          "complaintIntent",
+          "undoIntent",
+          "queryIntent"
+        ]
+      },
+      {
+        "name": "complaint",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "empty",
+          "thin",
+          "muddy",
+          "harsh",
+          "noPunch"
+        ]
+      },
+      {
+        "name": "complaintRole",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "intro",
+          "build",
+          "chorus",
+          "verse",
+          "bridge",
+          "drop",
+          "break",
+          "outro",
+          "fill"
+        ]
+      },
+      {
+        "name": "complaintFamily",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "drums",
+          "bass",
+          "chords",
+          "lead",
+          "vocal",
+          "kick",
+          "snare",
+          "clap",
+          "hats",
+          "tom",
+          "perc"
+        ]
+      },
+      {
+        "name": "undoAction",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "undo",
+          "redo"
+        ]
+      },
+      {
+        "name": "undoSteps",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9",
+          "10"
+        ]
+      },
+      {
+        "name": "querySubject",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "tempo",
+          "key",
+          "tracks",
+          "fxChain",
+          "markers",
+          "groove",
+          "lastAction"
+        ]
+      },
+      {
+        "name": "queryTarget",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "drums",
+          "bass",
+          "lead",
+          "chords",
+          "mix"
         ]
       },
       {
@@ -225,7 +333,14 @@
         "kind": "softmax",
         "classes": [
           "__absent__",
+          "10",
+          "35",
+          "40",
+          "45",
           "50",
+          "55",
+          "60",
+          "65",
           "70",
           "75",
           "80",
@@ -298,9 +413,14 @@
         "kind": "softmax",
         "classes": [
           "__absent__",
+          "5",
           "30",
           "40",
-          "50"
+          "45",
+          "50",
+          "55",
+          "60",
+          "80"
         ]
       },
       {
@@ -524,6 +644,7 @@
           "-0.5",
           "-0.3",
           "-0.25",
+          "-0.2",
           "-0.15",
           "-0.1",
           "0",
@@ -532,6 +653,7 @@
           "0.2",
           "0.25",
           "0.3",
+          "0.4",
           "0.5",
           "0.6",
           "0.75",
@@ -633,9 +755,30 @@
         "kind": "softmax",
         "classes": [
           "__absent__",
+          "808",
+          "acid",
           "analog",
           "bass",
-          "keys"
+          "bell",
+          "brass",
+          "clav",
+          "drumsynth",
+          "flute",
+          "fm",
+          "granular",
+          "keys",
+          "kopa",
+          "logdrum",
+          "organ",
+          "pluck",
+          "reese",
+          "sampler",
+          "spectral",
+          "strings",
+          "texture",
+          "tsar",
+          "vocalchop",
+          "wavetable"
         ]
       },
       {
@@ -644,7 +787,8 @@
         "classes": [
           "__absent__",
           "sub",
-          "sub bass"
+          "sub bass",
+          "top line"
         ]
       },
       {
@@ -710,19 +854,33 @@
         "kind": "softmax",
         "classes": [
           "__absent__",
+          "air",
           "brighter",
+          "chorus",
+          "crunchy",
           "darker",
           "deeper",
+          "deess",
+          "filter",
           "glue",
           "grittier",
           "lofi",
           "metallic",
+          "notch",
+          "phaser",
+          "phone",
           "punchier",
+          "reverse",
           "robotic",
+          "sharper",
+          "sidechain",
           "stutter",
+          "sub",
           "tape",
           "telephone",
+          "vinyl",
           "warmer",
+          "wide",
           "wider",
           "wobbly"
         ]
@@ -780,21 +938,21 @@
   },
   "report": {
     "gatePassed": true,
-    "trainRows": 1790,
-    "valRows": 298,
-    "goldenRows": 74,
-    "valHeadAccuracyMean": 0.9949,
+    "trainRows": 2169,
+    "valRows": 362,
+    "goldenRows": 77,
+    "valHeadAccuracyMean": 0.9936,
     "trainingDataContentHashPinned": true,
     "trainingInputs": {
-      "datasetVersion": 4,
-      "datasetManifestSha256": "16154fd979be875e7e24dabb01d44f2b5a323da788ab0d8d4c2bce19c372649c",
-      "trainSha256": "e4dd10ef4783a331d872770de52c7cb88185fbbc4eb1ad959f2a7e42171bb25e",
-      "valSha256": "5b33d956c242fcbc6340e94a67dcbff5d0ba82b8416617dcfbaf7c87bf55887f",
-      "goldenSha256": "321785b46c371c78c76f8c19f078f7927593ff5273debaa11709e9a52db227c5",
-      "trainerSha256": "0f0da00a911276fa9b2d6b6689899db7003d1d08cb2698efdd54f68987561a7d"
+      "datasetVersion": 16,
+      "datasetManifestSha256": "b8f8ec37be9cab852c5bde63e213cfb8158bc66b101bb1be2cacefbed30a2242",
+      "trainSha256": "e56c895cda835251bf887a40d694e4c967acf4805f9cfb63db7b3254cda3877e",
+      "valSha256": "aa5c07ccb5a95062c9e31d905d9c9a18603e68e16479c135f5de4dd79aa19d5b",
+      "goldenSha256": "e64e8fc16d8cf3fe1af1b7bd8ea08bcd836d3ae7620618372db76d5dc8acf36e",
+      "trainerSha256": "d420b8983bf8f630b92eee846440e2b9c62e9817b3a5b4c582e9ab6145a908fc"
     },
     "gate": "scripts/validate-intent-model.mts — attempted-exact >= 0.95, wrongKind = 0",
     "validationReportPath": "scripts/data/intent-model-validation-report.json",
-    "validationReportSha256": "b477acb66855dd52129b656c4c1be38615f387762253139838e3a5c24ec0269a"
+    "validationReportSha256": "cacb580f484675e1a0181483dd0891fdcd47037dd029030a3c3d022254583aea"
   }
 }

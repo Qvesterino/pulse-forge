@@ -390,13 +390,13 @@ export const CONCEPTS: readonly ConceptDef[] = [
 ];
 
 const TARGET_PATTERNS: [RegExp, ProductionTarget][] = [
-  [/((?:^|[^a-z0-9])kicks?(?:[^a-z0-9]|$))|kopák/i, "kick"],
+  [/((?:^|[^a-z0-9])kicks?(?:[^a-z0-9]|$))|\bkopak\w*/i, "kick"],
   [/((?:^|[^a-z0-9])snares?(?:[^a-z0-9]|$))|claps?|ženír/i, "snare"],
   [/hi-?hats?|\bhat\w*|\u010dinel/i, "hats"],
   // SK prefix + full inflections: "bicie/bicím/bubny" — the strict \bbicíc
   // form silently dropped every post-noun SK drums row at corpus time
   [/\bdrums?\b|\bbic|\bbubny\b/i, "drums"],
-  [/\bbass\b|\b808\b|\bsub\b|\bbas(?:a|u|y|i|ou|ov|om)?\b/i, "bass"],
+  [/\bbass\b|\b808\b|\bsub\b|\bbas(?:a|e|u|y|i|ou|ov|om)?\b/i, "bass"],
   [/\blead\b|\bsynth\b|\bsynt\u00e9z/i, "lead"],
   [/\bchords?\b|\bkeys?\b|\bakord/i, "chords"],
 ];

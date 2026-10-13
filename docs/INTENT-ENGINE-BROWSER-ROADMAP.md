@@ -6,7 +6,7 @@
 > delivery. It is a plan and an evidence standard, not a claim that every stage
 > is already shipped.
 >
-> Baseline snapshot: 2026-10-12. Recheck live code and manifests before using
+> Baseline snapshot: 2026-10-13. Recheck live code and manifests before using
 > any baseline figure for a release decision.
 
 ## 1. Vision
@@ -96,36 +96,35 @@ Initial target ranges for Phase 0 to validate and preregister:
 ## 4. Starting point and measured gaps
 
 The active browser action model is `public/models/intent-model-v1.onnx`
-(6,799,814 bytes), with a 4,015-token vocabulary and 47 output heads. It is a
+(7,010,380 bytes), with a 4,096-token vocabulary and 54 output heads. It is a
 multi-head, closed-set slot-filling classifier. File size supports download
 planning; it does not reveal the exact parameter count or prediction quality.
 
-The current checked-in dataset is v5: 1,793 train rows, 299 validation rows,
-and a 74-row golden regression set, in English and Slovak. Train and validation
-have no exact prompt overlap; golden overlaps train on 67 prompts and validation
-on 7, so golden is not an independent holdout. The active artifact was trained
-against the previous v4 snapshot (1,790/298/74); its report pins those old input
-hashes, while the v5 validator now evaluates and pins the active model against
-the current splits. Do not present the old training provenance as a v5 retrain.
+The current checked-in dataset is v16: 2,531 rows total, with 2,169 train,
+362 validation, and 77 golden rows in English and Slovak (1,872 English and
+659 Slovak). The manifest records 2,489 deterministic labels and 42 reviewed
+residual labels. Train, validation, and golden are development/regression data;
+the private 27-row browser residual holdout is checked for normalized exact
+prompt overlap before use. Keep that holdout out of training and tuning.
 
-The current active-model validation is 285/287 exact among attempted outputs
-(99.3%), with zero wrong-kind and 12/299 abstentions (4.0%) on validation. The
-golden regression set is 63/63 exact among attempted outputs, with zero
-wrong-kind and 11/74 abstentions (14.9%). The release gate passes, but this is
-still a familiar, synthetic corpus rather than independent generalization or
-musical-quality evidence.
+An earlier v5 validation reported 285/287 exact among attempted outputs
+(99.3%), with zero wrong-kind and 12/299 abstentions (4.0%) on validation.
+That result is historical and does not describe the current v16 artifact or
+dataset.
 
-Browser verification (`npm run verify:intent-model -- --full-eval`) also
-measured the actual dispatch path. All 299 current validation phrases were
-handled by deterministic routes, with 299/299 exact outputs and zero model
-fallback calls. This validates the existing deterministic path and adapter
-serialization; it does not measure the model's contribution. A separate
-model-only pass returned 241/242 exact routes (99.6% conditional exactness),
-zero wrong-kind, one slot mismatch, and 57/299 abstentions (19.1%). Those
-abstentions include creative-brief protection and routes whose references or
-fields the adapter refuses. The next model-quality gate needs a held-out set
-of genuinely unmatched phrasings and a combined route report by language,
-operation, and slot.
+An earlier v5 browser run (`npm run verify:intent-model -- --full-eval`)
+measured the actual dispatch path: all 299 validation phrases were handled by
+deterministic routes, with 299/299 exact outputs and no model fallback calls.
+Its model-only pass returned 241/242 exact routes, zero wrong-kind, one slot
+mismatch, and 57/299 abstentions. These are historical v5 measurements, not a
+current activation proof. A later v13 challenger evaluation on its 362-row
+validation and 77-row golden splits returned 317/339 exact among attempted outputs (93.5%), five wrong-kind,
+and 23 abstentions; golden was 75/76 exact among attempted outputs. It fails
+the release gate and must not be promoted. On the private browser holdout, the
+combined deterministic route plus that challenger fallback passed 27/27, with
+21 deterministic routes and 6 model fallbacks; the candidate alone was exact
+on 7/10 attempted rows and abstained on 17. This demonstrates parser coverage,
+not a passing model-only result.
 
 The browser run found and fixed a runtime failure mode: an expected ONNX
 abstention was being counted as a worker failure, so two ordinary out-of-scope
@@ -138,9 +137,8 @@ that recovery check.
 
 The browser audit found a field-name mismatch on the loudness action: the
 trained head and decoder use `targetDb`, while the schema and resolver used
-`targetLUFS`. The schema and adapter now match the trained `targetDb` contract;
-the live grammar pin and validation report were refreshed without changing the
-active weights.
+`targetLUFS`. The schema and adapter were updated to use the trained `targetDb`
+contract. That earlier repin did not retrain the active weights.
 
 The 2026-10-12 contract audit (`scripts/audit-intent-model-contract.mts`)
 found 23 action kinds in the model schema, but only 21 in the trainer, active
@@ -151,6 +149,26 @@ instead of silently treating it as absent. Arrange and clip operation labels
 are separated; the trainer now includes all 24 instrument kinds and all current
 production concepts. This fixes label integrity but does not add missing model
 operations or justify a broader model claim.
+
+The 2026-10-13 recheck first found a stale v4 manifest pin (`c93675455bf7…`)
+against the live grammar (`a4016feca4f2…`), which correctly caused the browser
+loader to refuse registration. This is resolved by the promoted v16 artifact:
+its manifest, vocabulary, weights, training report, and validation report are
+hash-pinned together. At the production kind margin 4.8, validation is
+282/293 exact among attempted outputs (96.2%), with zero wrong-kind and 69/362
+abstentions (19.1%); golden is 74/75 exact (98.7%), with zero wrong-kind.
+The public browser verifier now registers the model as `ready` (581 ms cold
+load, 12 ms inference) and the 27-row private residual holdout routes 27/27
+exactly through the combined parser + ONNX fallback path (23 deterministic,
+4 model fallbacks, zero wrong-kind, slot mismatch, or abstain). Model-only
+inference attempted those 4 fallback prompts and got all 4 exact; it abstained
+on the 23 prompts already handled by deterministic routes. The holdout is small
+and the synthetic validation/golden sets do not establish broad independent
+generalization or musical quality. The full checkout production
+build compiles but exits on size budgets: DAW JS is 5,244/5,186 KB and core
+worklets are 152/150 KB; the studio boot path remains under budget at
+2,143/2,200 KB. Browser-model activation is verified, while the overall build
+budget gate still needs separate cleanup.
 
 Known remaining capability gaps:
 
@@ -171,7 +189,7 @@ Known remaining capability gaps:
   118–120 MB. Keep it in a separately managed browser model pack, not on the
   boot path.
 
-A v5 challenger trained in ignored `.sft/intent-model-v2-challenger/` reached
+An earlier v5 challenger trained in ignored `.sft/intent-model-v2-challenger/` reached
 99.37% mean validation head accuracy, but decoded end-to-end it produced
 260/299 exact validation routes (90.6% coverage, 95.9% attempted exactness),
 two wrong-kind outputs, and 28 abstentions. The active model scored 285/299

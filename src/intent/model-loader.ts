@@ -26,7 +26,7 @@ export type { IntentModelMode, IntentModelState } from "./model-loader-types";
  * targets, undo) is untouched.
  *
  * DEFAULT ON since the 2026-10-01 release gate pass (docs/LOCAL-INTENT-
- * MODEL.md §5 activation bar): the artifact is a 6.75 MB ONNX head fetched
+ * MODEL.md §5 activation bar): the artifact is a 6.69 MiB ONNX head fetched
  * lazily on first use, the manifest pin `report.gatePassed === true` gates
  * registration (a candidate artifact never activates), and the chip's OFF
  * click stores an explicit opt-out. Without a gate-passed artifact on the

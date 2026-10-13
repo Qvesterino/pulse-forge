@@ -55,6 +55,7 @@ interface SliceStats {
 interface Stats extends SliceStats {
   perKind: Map<string, SliceStats>;
   perLanguage: Map<string, SliceStats>;
+  failures: Array<{ instruction: string; lang: string; outcome: string; expected: unknown; actual: unknown }>;
 }
 
 function loadRows(file: string): { bytes: Buffer; rows: Row[] } {
@@ -85,6 +86,7 @@ function emptyStats(): Stats {
     abstain: 0,
     perKind: new Map(),
     perLanguage: new Map(),
+    failures: [],
   };
 }
 
@@ -122,6 +124,7 @@ function reportStats(stats: Stats) {
     perLanguage: Object.fromEntries(
       [...stats.perLanguage.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, summarizeSlice(v)]),
     ),
+    failures: stats.failures,
   };
 }
 
@@ -174,6 +177,15 @@ async function evaluate(model: Awaited<ReturnType<typeof openModel>>, rows: Row[
       stats.abstain++;
       kindStats.abstain++;
       langStats.abstain++;
+      if (stats.failures.length < 500) {
+        stats.failures.push({
+          instruction: row.instruction,
+          lang: row.lang ?? "unknown",
+          outcome: "abstain",
+          expected: row.response,
+          actual: null,
+        });
+      }
       continue;
     }
     stats.attempted++;
@@ -183,6 +195,15 @@ async function evaluate(model: Awaited<ReturnType<typeof openModel>>, rows: Row[
       stats.wrongKind++;
       kindStats.wrongKind++;
       langStats.wrongKind++;
+      if (stats.failures.length < 500) {
+        stats.failures.push({
+          instruction: row.instruction,
+          lang: row.lang ?? "unknown",
+          outcome: "wrong-kind",
+          expected: row.response,
+          actual: decoded,
+        });
+      }
     } else if (canonicalModelJson(decoded) === canonicalModelJson(expected)) {
       stats.exact++;
       kindStats.exact++;
@@ -191,6 +212,15 @@ async function evaluate(model: Awaited<ReturnType<typeof openModel>>, rows: Row[
       stats.slotMismatch++;
       kindStats.slotMismatch++;
       langStats.slotMismatch++;
+      if (stats.failures.length < 500) {
+        stats.failures.push({
+          instruction: row.instruction,
+          lang: row.lang ?? "unknown",
+          outcome: "slot-mismatch",
+          expected: row.response,
+          actual: decoded,
+        });
+      }
     }
   }
   console.log(

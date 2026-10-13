@@ -76,6 +76,28 @@ describe("parseFaderIntent", () => {
     expect(parseFaderIntent("stiahni hlasitost mastera na -16 LUFS")).toBeNull();
   });
 
+  it("understands mix-position language without confusing 'take up less' for a boost", () => {
+    for (const [text, target, direction] of [
+      ["the bass should take up less room", "bass", "down"],
+      ["the bass needs to be less dominant", "bass", "down"],
+      ["keep the drums in the background", "drums", "down"],
+      ["let the lead recede behind the chords", "lead", "down"],
+      ["let the lead sit behind everything else", "lead", "down"],
+      ["move the chords further into the background", "chords", "down"],
+      ["drop the bass level just a little", "bass", "down"],
+      ["keep the drums more subdued", "drums", "down"],
+      ["ease back the bass presence", "bass", "down"],
+      ["bring the drum bus forward", "drums", "up"],
+      ["the lead is too forward in the mix", "lead", "down"],
+      ["nech su bicie menej vyrazne", "drums", "down"],
+      ["lead nech ustupi do pozadia", "lead", "down"],
+      ["akordy presun viac do uzadia", "chords", "down"],
+    ] as const) {
+      expect(parseFaderIntent(text), text).toMatchObject({ targets: [target], direction });
+    }
+    expect(parseFaderIntent("take the bass up")).toMatchObject({ targets: ["bass"], direction: "up" });
+  });
+
   it("master: stíš celý mix", () => {
     expect(parseFaderIntent("stíš celý mix")).toEqual({
       targets: ["master"],
