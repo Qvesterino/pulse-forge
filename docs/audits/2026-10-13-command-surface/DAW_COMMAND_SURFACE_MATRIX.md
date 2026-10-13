@@ -154,6 +154,33 @@ Transport is **deliberately not a Command** — it mutates runtime `Transport` s
 | Input inserts           | `setInputInsertMode` / `addInputEffect`                            | **throws** without armed input                           | tracks.ts:808,820      | VERIFIED |
 | Master config           | `setMasterConfig`                                                  | patch keys                                               | master.ts:49           | VERIFIED |
 
+#### Investigated, no action: the `Number.isFinite → no-op` guards
+
+Seven verbs return a **silent no-op** command when their numeric argument is not finite:
+`moveAudioClip` (audioClips.ts:494), `stretchAudioClip` (:611), `resizeAudioClip` (:632),
+`nudgeClips` (clipEditing.ts:697), `moveArrangementClipRipple` / `resizeArrangementClipRipple`
+(clipPlayback.ts:137,179) and `moveMarker` (markers.ts:66). Read cold, that is fail-open: the
+command returns success while nothing reaches the document.
+
+**Verdict: NOT a defect. No change made.** Two reasons, both measured rather than assumed:
+
+1. **No agent-reachable path.** The MCP `audioMove` op validates before calling —
+   `Math.round(Number(record.toBar))` + `Number.isFinite` → an honest refusal
+   (`tools.ts:4377-4380`), never the no-op branch. The intent layer and the remaining callers
+   are keyboard constants (`App.tsx:1462`: `direction * (shiftKey ? 0.0625 : 1)`) or drag
+   arithmetic already guarded by an inequality check and a try/catch
+   (`ArrangementPanel.tsx:2504-2518`).
+2. **The store already neutralises the failure mode.** `applyCommand` compares against the
+   current document identity and returns before pushing an undo entry
+   (`ProjectStore.ts:238-245`), so the observable result is "the gesture did nothing" — no
+   phantom history step, no dirty flag, no false undo.
+
+They are defence-in-depth *behind* an already-validating boundary. Converting them to throws
+would change behaviour on paths that currently work, for a malformed input no caller can
+produce. Recorded here so a later wave does not rediscover the pattern and "fix" it. If a
+future agent surface ever calls one of these without validating, that surface is the bug —
+not the command.
+
 ### (e) Automation — 6 VERIFIED · 1 MISSING
 
 | Capability                             | Internal command                              | Evidence                                                                                    | Status      |

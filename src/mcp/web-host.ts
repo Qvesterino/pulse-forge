@@ -48,9 +48,25 @@ export function mcpConfigText(serverUrl: string): string {
 
 let activeBridge: McpBridge | null = null;
 
+/**
+ * Why this window lost the relay to another KYX window, or null.
+ *
+ * The bridge STOPS on displacement instead of reconnecting (a takeover is a
+ * decision, not a fault), so without this the chip would sit on "connecting"
+ * forever — claiming progress that stopped happening. The reason is cleared
+ * whenever a bridge is started or stopped, so it can never outlive the state
+ * that produced it.
+ */
+let displacedReason: string | null = null;
+
 /** Live relay state for the chip (false when never started). */
 export function mcpWebBridgeConnected(): boolean {
   return activeBridge?.connected ?? false;
+}
+
+/** Set when a newer KYX window took the relay; cleared on start/stop. */
+export function mcpWebBridgeDisplaced(): string | null {
+  return displacedReason;
 }
 
 function depsFromServices(services: Services): McpBridgeDeps {
@@ -132,7 +148,11 @@ export function startMcpWebBridge(services: Services): McpBridge | null {
   // route's sync preset parsers read a present bank when agents ask.
   void import("../presets/factory-loader").then((m) => m.warmFactoryPresets());
   stopMcpWebBridge();
-  activeBridge = new McpBridge(depsFromServices(services), buildRelayUrl(mcpRelayServerUrl(), token));
+  displacedReason = null;
+  activeBridge = new McpBridge(
+    { ...depsFromServices(services), onDisplaced: (reason) => (displacedReason = reason) },
+    buildRelayUrl(mcpRelayServerUrl(), token),
+  );
   activeBridge.start();
   return activeBridge;
 }
@@ -140,6 +160,7 @@ export function startMcpWebBridge(services: Services): McpBridge | null {
 export function stopMcpWebBridge(): void {
   activeBridge?.stop();
   activeBridge = null;
+  displacedReason = null;
 }
 
 /** Boot-time re-arm: only starts when the user's persisted opt-in + token

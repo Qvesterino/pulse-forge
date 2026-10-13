@@ -705,6 +705,8 @@ export function IntentPanel() {
   // the external client's streamable-HTTP calls; without it nothing starts.
   const [webMcpEnabled, setWebMcpEnabled] = useState(() => mcpRelayEnabled());
   const [webMcpConnected, setWebMcpConnected] = useState(false);
+  /** Set when another KYX window took the relay — terminal, not "connecting". */
+  const [webMcpDisplaced, setWebMcpDisplaced] = useState<string | null>(null);
   const [webTokenDraft, setWebTokenDraft] = useState("");
   const webMcpServer = useMemo(() => mcpRelayServerUrl(), []);
   const [webMcpConfigText, setWebMcpConfigText] = useState("");
@@ -725,7 +727,9 @@ export function IntentPanel() {
     let stopped = false;
     const poll = setInterval(() => {
       void webHost.then((m) => {
-        if (!stopped) setWebMcpConnected(m.mcpWebBridgeConnected());
+        if (stopped) return;
+        setWebMcpConnected(m.mcpWebBridgeConnected());
+        setWebMcpDisplaced(m.mcpWebBridgeDisplaced());
       });
     }, 1500);
     return () => {
@@ -740,6 +744,7 @@ export function IntentPanel() {
       m.stopMcpWebBridge();
       setWebMcpEnabled(false);
       setWebMcpConnected(false);
+      setWebMcpDisplaced(null);
       return;
     }
     if (webTokenDraft.trim() !== "") setMcpRelayToken(webTokenDraft);
@@ -4564,14 +4569,16 @@ export function IntentPanel() {
           <button
             type="button"
             className="intent-model-chip"
-            data-state={webMcpEnabled ? (webMcpConnected ? "ready" : "loading") : "off"}
+            data-state={webMcpEnabled ? (webMcpConnected ? "ready" : webMcpDisplaced ? "error" : "loading") : "off"}
             onClick={toggleWebMcp}
             title={
-              webMcpEnabled
-                ? `MCP relay (${webMcpConnected ? "pripojené" : "pripájam…"}) — klikni pre vypnutie.`
-                : "MCP relay (web): pripoj KYX ku collab serveru /mcp-relay, aby externý MCP klient mohol ovládať tento projekt. Vyžaduje MCP token servera."
+              webMcpDisplaced
+                ? `MCP relay: ${webMcpDisplaced} — toto okno už nie je vykonávateľ. Klikni pre vypnutie a zapnutie v tom okne, ktoré má zostať.`
+                : webMcpEnabled
+                  ? `MCP relay (${webMcpConnected ? "pripojené" : "pripájam…"}) — klikni pre vypnutie.`
+                  : "MCP relay (web): pripoj KYX ku collab serveru /mcp-relay, aby externý MCP klient mohol ovládať tento projekt. Vyžaduje MCP token servera."
             }
-            aria-label={`MCP relay: ${webMcpEnabled ? "on" : "off"}`}
+            aria-label={`MCP relay: ${webMcpEnabled ? "on" : "off"}${webMcpDisplaced ? " — displaced" : ""}`}
           >
             ⚡
           </button>

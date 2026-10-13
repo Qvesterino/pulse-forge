@@ -9,6 +9,10 @@ import { createMcpHub } from "../server/mcp-core.mjs";
 import { createCollabServer } from "../server/collab-server.mjs";
 import { MCP_RELAY_DISPLACED_CODE, McpBridge } from "../src/mcp/bridge";
 import type { McpBridgeDeps } from "../src/mcp/bridge";
+import { mcpWebBridgeDisplaced, setMcpRelayToken, startMcpWebBridge, stopMcpWebBridge } from "../src/mcp/web-host";
+import { ProjectStore } from "../src/store/ProjectStore";
+import { createProjectFromTemplate } from "../src/project-model/templates";
+import type { Services } from "../src/services";
 
 /**
  * MCP RELAY SESSION OWNERSHIP (audit P1-D).
@@ -377,5 +381,69 @@ describe("mcp web bridge — displacement is terminal, a network drop is not", (
 
     vi.advanceTimersByTime(5_000);
     expect(FakeWebSocket.instances).toHaveLength(2);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* surface — a displaced window must be able to SAY so                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The chip used to answer "connecting" forever after a displacement: the
+ * bridge stopped on purpose, the socket was closed, and nothing distinguished
+ * "still trying" from "someone else owns this now". That is the same silence
+ * one layer up from the routing bug, so the reason has to reach the UI and —
+ * crucially — has to be CLEARED, or a fixed window would keep claiming it was
+ * displaced forever.
+ */
+describe("mcp web host — displacement state the chip can read", () => {
+  function fakeServices(): Services {
+    const store = new ProjectStore(createProjectFromTemplate("house"));
+    return {
+      store,
+      transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
+    } as unknown as Services;
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    FakeWebSocket.instances = [];
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+  });
+
+  afterEach(() => {
+    stopMcpWebBridge();
+    vi.unstubAllGlobals();
+  });
+
+  function start(): void {
+    setMcpRelayToken("tok");
+    expect(startMcpWebBridge(fakeServices())).not.toBeNull();
+  }
+
+  it("is null on a fresh bridge, set on displacement, cleared on stop and on restart", () => {
+    start();
+    expect(mcpWebBridgeDisplaced()).toBeNull();
+
+    FakeWebSocket.instances[0].onclose?.({
+      code: MCP_RELAY_DISPLACED_CODE,
+      reason: "another KYX window owns the MCP relay",
+    });
+    expect(mcpWebBridgeDisplaced()).toBe("another KYX window owns the MCP relay");
+
+    // Stopping clears it: the state must never outlive what produced it.
+    stopMcpWebBridge();
+    expect(mcpWebBridgeDisplaced()).toBeNull();
+
+    // ...and so does a fresh start, otherwise a re-armed window at boot would
+    // inherit a reason from a session it never had.
+    start();
+    expect(mcpWebBridgeDisplaced()).toBeNull();
+  });
+
+  it("CONTROL: a plain network drop displaces nothing", () => {
+    start();
+    FakeWebSocket.instances[0].onclose?.({ code: 1006, reason: "abnormal" });
+    expect(mcpWebBridgeDisplaced()).toBeNull();
   });
 });
