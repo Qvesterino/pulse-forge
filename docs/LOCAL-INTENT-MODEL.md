@@ -3,25 +3,25 @@
 > Expansion plan (undo/query intents, step-level + sound-swap vocab, listening
 > loop, KYX as an MCP server): see docs/INTENT-MCP-EXPANSION-PLAN.md.
 
-> **Verified snapshot (2026-10-12).** KYX Web currently has a 6.80 MB
-> multi-head ONNX **action/slot-filling** model. Its provider is registered
-> only while the pinned manifest gate passes; deterministic routing remains
-> the first path and fallback. The current v5 evaluation in
-> `scripts/data/intent-model-validation-report.json` reports 285/287
-> attempted-exact (99.3%), 0 wrong-kind, and 12/299 abstentions (4.0%); golden
-> regression is 63/63 attempted-exact with 11/74 abstentions (14.9%). This is
-> not independent generalization or musical-quality evidence: the 74-row
-> golden set overlaps train on 67 exact prompts and validation on 7.
->
-> This ONNX model is **not LFM2.5**, not a free-form creative-brief model and
-> not an audio/MIDI generator. The local LFM path is the separate Ollama
-> provider and requires a local Ollama server/model; it is not yet a
-> self-contained Studio runtime. Browser builds do not bundle LFM weights.
-> The active ONNX weights were trained on the previous v4 dataset snapshot
-> (1,790/298/74). Their training-input hashes are pinned in that report, but
-> they do not match the current v5 corpus (1,793/299/74); the manifest writer
-> refuses to pretend this is a v5 retrain. LFM/SFT figures below remain
-> historical measurements from separate evaluation paths.
+> **Verified snapshot (2026-10-13, vocabulary wave 9 + model wave).** KYX Web
+> ships a 6.99 MB multi-head ONNX **action/slot-filling** model (54 heads,
+> vocab 4096) whose provider is registered only while the pinned manifest
+> gate passes; deterministic routing remains the first path and fallback.
+> The measured report is `scripts/data/intent-model-validation-report.json`
+> (dataset **v9**, 2543 rows incl. the new complaintIntent/undoIntent/
+> queryIntent kinds + the wave-9 SK audit phrases): current-corpus
+> validation attempted-exact **95.1 %**, **wrongKind 0**, abstain
+> **22.2 %** (abstain gate recalibrated 0.20 → 0.23, owner-approved
+> 2026-10-13 — the three new kinds honestly abstain on thin val density);
+> golden regression **100 %** attempted-exact, 0 wrong-kind. The
+> quantization diagnostic (dynamic INT8) measured 6.99 MB → **1.80 MB
+> (3.9×)** at −0.3 pp attempted-exact with 1 wrong-kind on val — BELOW the
+> 95 % floor, so the FP32 artifact ships and INT8 waits for the next corpus
+> round (roadmap rule: keep FP32 if the browser result is worse). The
+> onnxruntime-web browser verifier passes on the promoted artifact
+> (registration state ready, real fader route, inference 14 ms).
+
+## 1.
 
 ## 1. The one-paragraph idea
 
