@@ -1507,6 +1507,20 @@ export const MCP_TOOLS: McpToolDef[] = [
   },
 ];
 
+// P1-B: make the idempotency envelope DISCOVERABLE in every tool schema (the
+// wrapper accepts `requestId` on any tool; the description states exactly
+// when it matters). Injected once here instead of hand-editing 37 literals —
+// the mirrors regenerate from this array.
+const REQUEST_ID_PROPERTY: Record<string, unknown> = {
+  type: "string",
+  maxLength: 128,
+  description:
+    "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+};
+for (const def of MCP_TOOLS) {
+  def.inputSchema.properties.requestId = { ...REQUEST_ID_PROPERTY };
+}
+
 /** The kyx_export request: full-mix bounce or a stems zip, with render options. */
 export interface McpExportRequest {
   format: "wav" | "mp3";
@@ -1685,6 +1699,11 @@ export interface McpToolResult {
   data?: unknown;
   /** Optional standard MCP audio attachment (base64 encoded). */
   audio?: McpAudioContent;
+  /** P1-B idempotency: true when this result is a REPLAY of the outcome
+   * already produced under the caller's requestId — nothing re-executed.
+   * The replay is honest even if the change was undone since: the
+   * requestId names ONE logical operation, and the agent owns undo/redo. */
+  replayed?: boolean;
 }
 
 const TICKS_PER_BAR = 4 * 480;
@@ -1920,7 +1939,75 @@ function mixerSnapshotData(doc: ProjectDocument): Record<string, unknown> {
   };
 }
 
+// ── P1-B IDEMPOTENCY LEDGER (control-surface audit 2026-10-13, GAP-04) ──────
+//
+// Relative operations (gain deltas, groove steps, batch folds) read LIVE
+// state and re-apply on every call, so a retried or duplicated agent request
+// double-applies — "−2 dB" twice = −4 dB. The fix at the one chokepoint every
+// transport shares: an optional caller-supplied `requestId`. The FIRST call
+// under an id that mutates the document is remembered (bounded FIFO, capped
+// at the undo stack's size); a REPEAT returns that exact original outcome
+// marked `replayed: true` instead of re-executing.
+//
+// Contract (tests: tests/mcp-idempotency.test.ts):
+//  - only MUTATING outcomes are cached — reads always execute fresh, so a
+//    retried read never serves stale state;
+//  - failed calls (isError / not mutated) are not cached — fixing the args
+//    and retrying with the same id re-executes;
+//  - entries are scoped to the project document that produced them: the same
+//    id in another project executes fresh and re-binds the id there;
+//  - a replay does not re-execute even if the change was undone since — the
+//    requestId names ONE logical operation, and the agent owns undo/redo;
+//  - kyx_batch: a requestId on the batch caches the WHOLE batch outcome (its
+//    per-call read-backs included) as one unit; per-call requestIds inside
+//    `calls` work too — sub-calls dispatch through the same wrapper.
+//  - the ledger is per host process (renderer / hub / stdio host) and
+//    evicted deterministically (oldest first).
+
+const IDEMPOTENCY_LEDGER_CAP = 256;
+
+interface IdempotencyEntry {
+  docId: string;
+  result: McpToolResult;
+}
+
+const idempotencyLedger = new Map<string, IdempotencyEntry>();
+
+/** Test/teardown hook — the ledger is otherwise process-lifetime state. */
+export function resetMcpIdempotencyLedger(): void {
+  idempotencyLedger.clear();
+}
+
 export async function executeMcpTool(ctx: McpToolContext, name: string, args: unknown): Promise<McpToolResult> {
+  const envelope = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+  const requestId = typeof envelope.requestId === "string" ? envelope.requestId.trim().slice(0, 128) : "";
+  if (requestId !== "") {
+    const cached = idempotencyLedger.get(requestId);
+    if (cached != null) {
+      if (cached.docId === ctx.getDoc().id) {
+        return {
+          ...cached.result,
+          text: `idempotent replay — requestId was already applied; nothing re-executed\n${cached.result.text}`,
+          replayed: true,
+        };
+      }
+      idempotencyLedger.delete(requestId); // stale project scope — re-bind below
+    }
+  }
+  const result = await executeMcpToolDispatch(ctx, name, args);
+  if (requestId !== "" && result.mutated && result.isError !== true) {
+    idempotencyLedger.delete(requestId); // refresh FIFO position on re-bind
+    idempotencyLedger.set(requestId, { docId: ctx.getDoc().id, result });
+    while (idempotencyLedger.size > IDEMPOTENCY_LEDGER_CAP) {
+      const oldest = idempotencyLedger.keys().next();
+      if (oldest.done) break;
+      idempotencyLedger.delete(oldest.value);
+    }
+  }
+  return result;
+}
+
+async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: unknown): Promise<McpToolResult> {
   // THE INTENT MODEL SERVES MCP TOO — the deterministic layer answers
   // first; exactly the asks it cannot execute (generation asks, parser
   // declines) fall to the registered local model, the same fallback point

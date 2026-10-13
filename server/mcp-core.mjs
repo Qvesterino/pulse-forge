@@ -181,6 +181,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           description: "Producer instruction, EN or SK",
         },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
       },
       required: ["instruction"],
     },
@@ -217,6 +223,12 @@ export const MCP_TOOL_DEFS = [
           enum: ["kick", "snare", "clap", "hat", "perc", "tom", "bass", "lead", "chords", "drums"],
           description: "Optional track family filter for fxChain and sends",
         },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
       },
       required: ["subject"],
     },
@@ -241,6 +253,12 @@ export const MCP_TOOL_DEFS = [
           type: "boolean",
           description:
             "Attributed agents only: consent to revert work made by OTHERS (another agent or the human). Refused without it when the top of history is foreign work.",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
       },
       required: ["action"],
@@ -303,6 +321,12 @@ export const MCP_TOOL_DEFS = [
           minimum: 2,
           description: "For loopRegion — last looped bar (inclusive; must be > startBar)",
         },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
       },
       required: ["action"],
     },
@@ -333,6 +357,12 @@ export const MCP_TOOL_DEFS = [
           enum: ["all", "drums", "bass", "music"],
           description: "Render stem groups into one zip instead of the full mix",
         },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
       },
       required: ["format"],
     },
@@ -349,6 +379,12 @@ export const MCP_TOOL_DEFS = [
           minimum: 1,
           maximum: 4,
           description: "Opening bars to render (default 2, maximum 4)",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
       },
     },
@@ -440,6 +476,12 @@ export const MCP_TOOL_DEFS = [
           },
           description: "Which roles the pattern plays (default all)",
         },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
       },
       required: ["genre"],
     },
@@ -465,6 +507,12 @@ export const MCP_TOOL_DEFS = [
           minimum: 0,
           maximum: 100,
           description: "Only for direction 'set'",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
       },
       required: ["direction"],
@@ -528,6 +576,12 @@ export const MCP_TOOL_DEFS = [
             description: "For reorder — 1-based final slot in the chain",
           },
         },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
       },
       required: ["effect", "action"],
     },
@@ -574,6 +628,12 @@ export const MCP_TOOL_DEFS = [
           maximum: 64,
           description: "For resize",
         },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
       },
       required: ["op", "role"],
     },
@@ -596,6 +656,12 @@ export const MCP_TOOL_DEFS = [
         name: {
           type: "string",
           description: "Optional marker name",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
       },
       required: ["op", "bar"],
@@ -671,6 +737,12 @@ export const MCP_TOOL_DEFS = [
           type: "boolean",
           description: "For setMute/setSolo — true = on",
         },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
       },
       required: ["op"],
     },
@@ -689,6 +761,12 @@ export const MCP_TOOL_DEFS = [
         pattern: {
           type: "string",
           description: "1-based index or pattern name (for select)",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
       },
       required: ["op"],
@@ -723,6 +801,12 @@ export const MCP_TOOL_DEFS = [
           minimum: 0.05,
           maximum: 1,
           description: "For add (default 0.8)",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
       },
       required: ["op", "family"],
@@ -796,6 +880,12 @@ export const MCP_TOOL_DEFS = [
           maximum: 127,
           description: "transpose shift (non-zero)",
         },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
       },
       required: ["op"],
     },
@@ -837,6 +927,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           description: 'transposeAll scope: track family or "all" (default all)',
         },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
       },
       required: ["op"],
     },
@@ -855,6 +951,12 @@ export const MCP_TOOL_DEFS = [
         effect: {
           type: "string",
           description: "Effect type for subject:effect (e.g. reverb, eq, compressor) — see subject:effects",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
       },
       required: ["subject"],
@@ -897,6 +999,12 @@ export const MCP_TOOL_DEFS = [
           type: "number",
           description: "Absolute NATIVE value for set (NOT normalized 0..1 unless the param's range is 0..1)",
         },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
       },
       required: ["op"],
     },
@@ -912,6 +1020,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           enum: ["master", "tracks", "all"],
           description: "Default all",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
       },
       required: [],
@@ -992,6 +1106,12 @@ export const MCP_TOOL_DEFS = [
           type: "number",
           description: "NATIVE value for addPoint (clamped into the target's range)",
         },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
       },
       required: ["op"],
     },
@@ -1067,6 +1187,12 @@ export const MCP_TOOL_DEFS = [
           type: "boolean",
           description: "For audioUpdate — loop the trimmed content over the clip length",
         },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
       },
       required: ["op"],
     },
@@ -1096,6 +1222,12 @@ export const MCP_TOOL_DEFS = [
             },
             required: ["tool"],
           },
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
       },
       required: ["calls"],
@@ -1144,6 +1276,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           enum: ["louder", "quieter"],
           description: "For match without targetDb — nudge direction (default louder)",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
       },
       required: ["op"],
@@ -1207,6 +1345,12 @@ export const MCP_TOOL_DEFS = [
             required: ["fileName", "base64"],
           },
         },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
       },
       required: ["name", "sfzBase64", "trackId", "samples"],
     },
@@ -1236,6 +1380,12 @@ export const MCP_TOOL_DEFS = [
         agent: {
           type: "string",
           description: "Your agent display name, e.g. 'Claude (MCP)' (default: 'unknown agent')",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
       },
       required: ["title"],
@@ -1268,6 +1418,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           enum: ["all", "tracks", "master"],
           description: "all = strips + master (default); tracks/master limit the pass",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
       },
     },
@@ -1307,6 +1463,12 @@ export const MCP_TOOL_DEFS = [
           enum: ["all", "master", "tracks"],
           description:
             "all = master + per-strip attribution (default); master = master findings only (1 render); tracks = strips only, master render skipped (N renders — the fast verify loop after a strip-level fix)",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
       },
     },
@@ -1376,6 +1538,12 @@ export const MCP_TOOL_DEFS = [
           description:
             "true = render the BEFORE/AFTER masters, level-match them and arm the studio MIX PREVIEW card so the human can listen before you apply. Read-only; render-bound transports only",
         },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
       },
       required: ["idea"],
     },
@@ -1394,6 +1562,12 @@ export const MCP_TOOL_DEFS = [
         name: {
           type: "string",
           description: "Checkpoint name (required for diff/restore/delete)",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
       },
       required: ["op"],
@@ -1451,6 +1625,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           enum: ["on", "off"],
         },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
       },
       required: ["genre"],
     },
@@ -1491,6 +1671,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           enum: ["short", "standard", "radio", "extended", "epic"],
           description: "Scales the form core cycles (default: genre standard)",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
       },
       required: ["genre"],
@@ -1544,6 +1730,12 @@ export const MCP_TOOL_DEFS = [
         loudness: {
           type: "number",
           description: "Target integrated LUFS - adds a render-backed loudness trim (second undo step)",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
       },
       required: ["genre"],
@@ -1610,6 +1802,12 @@ export const MCP_TOOL_DEFS = [
           maximum: 1.5,
           description: "For setReturnGain — linear return fader",
         },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
       },
       required: ["op"],
     },
@@ -1639,6 +1837,12 @@ export const MCP_TOOL_DEFS = [
           enum: ["off", "hpss"],
           description:
             'transcribe: "off" (default, full mix) or "hpss" (Tier-1 guide stems slow the pass but lift bass/drums lanes)',
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
       },
       required: ["action"],
@@ -1755,6 +1959,12 @@ export const MCP_TOOL_DEFS = [
           type: "number",
           description: "1-based ZENIT instance index when a track carries more than one",
         },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
       },
       required: ["op"],
     },
@@ -1777,6 +1987,12 @@ export const MCP_TOOL_DEFS = [
         takeId: {
           type: "string",
           description: "The take id to activate or delete",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
       },
       required: ["op"],
@@ -1818,6 +2034,12 @@ export const MCP_TOOL_DEFS = [
         reactionMs: {
           type: "integer",
           description: "For record — milliseconds from first playback",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
       },
       required: ["op"],
