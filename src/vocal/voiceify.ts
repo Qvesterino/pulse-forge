@@ -40,10 +40,12 @@ export interface VoiceifyOptions {
   /** Silence gate for the sustained-region scan (linear 0..1). Default 0.02. */
   gate?: number;
   /**
-   * Pitch-shift engine. "psola" (default) shifts with formant preservation
-   * (TD-PSOLA — no chipmunk at wide intervals) and falls back to "resample"
-   * when the hum carries no usable epochs; "resample" forces the legacy
-   * Hermite-resample read (A/B).
+   * Pitch-shift engine. "resample" (default) is the VERIFIED path —
+   * Hermite resample read, zero-crossing-pure pitch, at the cost of
+   * formant drift at wide intervals. "psola" opts into TD-PSOLA
+   * (formant-preserving) — the mapping is implemented but its
+   * amplitude behaviour on real hums is not yet owner-verified, so it
+   * stays opt-in until the ear-pass.
    */
   engine?: "resample" | "psola";
 }
@@ -188,7 +190,7 @@ export function voiceifyHum(
   // preservation, then read the shifted region at 1:1 (no resample images at
   // all). Falls back to the Hermite-resample path when the hum carries no
   // usable epochs.
-  const engine = options.engine ?? "psola";
+  const engine = options.engine ?? "resample";
   const shiftedCache = new Map<number, Float32Array>();
   const psolaRegionFor = (ratio: number): Float32Array | null => {
     const cached = shiftedCache.get(ratio);
@@ -223,7 +225,8 @@ export function voiceifyHum(
           if (index >= outLength) break;
           // 1:1 read — the shift already happened in the psola pass.
           const value = shifted[i % shifted.length] ?? 0;
-          const edge = i < noteFadePs ? i / noteFadePs : i >= lengthSamples - noteFadePs ? (lengthSamples - i) / noteFadePs : 1;
+          const edge =
+            i < noteFadePs ? i / noteFadePs : i >= lengthSamples - noteFadePs ? (lengthSamples - i) / noteFadePs : 1;
           out[index] += value * gain * edge;
         }
         continue;

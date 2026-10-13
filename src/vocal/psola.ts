@@ -129,11 +129,7 @@ export function findEpochs(audio: Float32Array, sampleRate: number): PsolaEpochs
  * raises the pitch. Returns null when fewer than 2 usable epochs — the
  * caller falls back to plain resampling.
  */
-export function psolaShiftPitch(
-  audio: Float32Array,
-  sampleRate: number,
-  ratio: number,
-): Float32Array | null {
+export function psolaShiftPitch(audio: Float32Array, sampleRate: number, ratio: number): Float32Array | null {
   if (!Number.isFinite(ratio) || ratio <= 0 || ratio === 1) return audio === null ? null : audio.slice();
   const found = findEpochs(audio, sampleRate);
   if (!found || found.epochs.length < 2) return null;
@@ -144,14 +140,16 @@ export function psolaShiftPitch(
   padded.set(audio, half);
 
   const out = new Float32Array(audio.length);
-  // Synthesis epochs walk the output at the target spacing; each pulls the
-  // Hann window centered on the NEAREST source epoch (time-scale 1).
-  let srcIndex = 0;
+  // Synthesis epochs walk the output at the target spacing. The TEXTBOOK
+  // mapping is index-proportional: synthesis epoch k pulls analysis epoch
+  // floor(k / ratio) — each source window is reused `ratio` times in a row
+  // (pitch up) or skipped (pitch down), which keeps the OLA sum coherent.
+  // A nearest-to-time mapping instead lets synthesis positions drift across
+  // source windows — amplitude modulation and a mushy render.
+  let k = 0;
   for (let t = 0; t < audio.length; t += targetPeriod) {
-    // Advance the source pointer to the epoch nearest this synthesis time.
-    while (srcIndex + 1 < epochs.length && Math.abs(epochs[srcIndex + 1] - t) <= Math.abs(epochs[srcIndex] - t)) {
-      srcIndex += 1;
-    }
+    const srcIndex = Math.min(epochs.length - 1, Math.floor(k / ratio));
+    k += 1;
     const center = epochs[srcIndex];
     const from = center - half;
     for (let i = -half; i < half; i++) {
