@@ -2656,15 +2656,15 @@ Nine tests, two workers, parallel — the same configuration that exposed the
 off-screen drag earlier now passes, which is the point: the fix is in the
 helpers, not in a serial-only path.
 
-| Artifact | What it pins |
-| --- | --- |
-| `hit-test-sweep.spec.ts` | no overlay may cover an editing surface, 3 viewports (§19/§33) |
-| `18-editor-chaos-chain.spec.ts` | the §42 chain end to end, jsErrors=0 |
-| `ripple-semantics.spec.ts` | §16 gap closes, spacing survives, undo/redo exact |
-| `keyboard-guards.spec.ts` | §18 destructive keys inert while a field has focus |
-| `snap-grid.spec.ts` | §11 whole-bar landing at two zooms |
-| `audio-fades.spec.ts` | §10 fade commits, stays in bounds; §26 waveform; §25 real command path |
-| `_studio.ts` | the four boot obstacles, once, for all of the above |
+| Artifact                        | What it pins                                                           |
+| ------------------------------- | ---------------------------------------------------------------------- |
+| `hit-test-sweep.spec.ts`        | no overlay may cover an editing surface, 3 viewports (§19/§33)         |
+| `18-editor-chaos-chain.spec.ts` | the §42 chain end to end, jsErrors=0                                   |
+| `ripple-semantics.spec.ts`      | §16 gap closes, spacing survives, undo/redo exact                      |
+| `keyboard-guards.spec.ts`       | §18 destructive keys inert while a field has focus                     |
+| `snap-grid.spec.ts`             | §11 whole-bar landing at two zooms                                     |
+| `audio-fades.spec.ts`           | §10 fade commits, stays in bounds; §26 waveform; §25 real command path |
+| `_studio.ts`                    | the four boot obstacles, once, for all of the above                    |
 
 Product changes made by this audit: **two**, both confirmed, both fixed, both
 falsified - D14 (the intensity strip answering for every clip press) and D15
@@ -3341,17 +3341,17 @@ about what I had changed.
 
 Per-commit is the only sound attribution here:
 
-| Commit | Message | Files |
-| --- | --- | --- |
-| `3d7021c9` | fix(editor): the intensity strip (D14) | 6 |
-| `416509ef` | fix(editor): the onboarding hint bar (D15) | 5 |
-| `abf80de1` `2c2329fc` `c5d9aae0` | ripple / keyboard / snap specs | 2 each |
-| `4e55295b` | wave 13 ratchet record | 1 |
-| `00eed032` | the hit-test sweep | 4 |
-| `0c7a76a0` `69829b07` | `_studio` migration, fades | 5, 2 |
-| `27f60b9c` | final state | 1 |
-| **`62bb634c`** | **`jeje`** | **86** |
-| **`4fa075cc`** | **`dobre tda`** | **32** |
+| Commit                           | Message                                    | Files  |
+| -------------------------------- | ------------------------------------------ | ------ |
+| `3d7021c9`                       | fix(editor): the intensity strip (D14)     | 6      |
+| `416509ef`                       | fix(editor): the onboarding hint bar (D15) | 5      |
+| `abf80de1` `2c2329fc` `c5d9aae0` | ripple / keyboard / snap specs             | 2 each |
+| `4e55295b`                       | wave 13 ratchet record                     | 1      |
+| `00eed032`                       | the hit-test sweep                         | 4      |
+| `0c7a76a0` `69829b07`            | `_studio` migration, fades                 | 5, 2   |
+| `27f60b9c`                       | final state                                | 1      |
+| **`62bb634c`**                   | **`jeje`**                                 | **86** |
+| **`4fa075cc`**                   | **`dobre tda`**                            | **32** |
 
 The last two are not mine. They are the fx / rezonans / skrutka / spectral /
 wow&flutter / intent work, committed under the same repository author, and they
@@ -3380,3 +3380,299 @@ Nothing about the defects. D14 and D15 are still fixed, still falsified, and
 still covered by the nine tests above. What changes is one gate line and the
 standing of the "149/150 KB" note: the audit's build gate is no longer green,
 and the reason is recorded here rather than quietly dropped.
+
+---
+
+# Wave 18 - 2026-10-13 - the deliverables the previous 17 waves never produced
+
+Every wave so far was **defect-led**: read a surface, find something broken, fix it,
+falsify the fix. That produces excellent evidence for the defects it found and **no
+answer at all** to four things the objective asks for by name:
+
+- **deliverable 1** - a complete edit-tool inventory, _including the DAW-specific
+  tools_;
+- **deliverable 2** - a functional matrix with an explicit status per operation;
+- **deliverable 6** - undo/redo, save/reload, autosave **and MCP parity** findings;
+- **deliverable 7** - a prioritized backlog of unsupported / partially implemented
+  tools.
+
+Waves 1-17 also never opened the **third door**. D8 argued that "every entry point in
+the product shares `assertClipEditable` - which is exactly why it is worth asking which
+callers actually call it", then audited the UI and the command layer. MCP is the
+remaining caller. This wave opens it, and starts with the inventory, because a parity
+claim needs a list of both sides.
+
+## §A - The edit-tool inventory
+
+Built from the **command layer outward**, not from the UI: a verb that exists as a
+`ProjectDocument -> Command` factory is a real tool; anything reachable only through a
+widget is UI. Sources: `src/commands/{arrangement,audioClips,clipEditing,clipPlayback,
+clipClipboard}.ts`, `src/ui/shortcuts.ts`, `src/ui/ArrangementPanel.tsx`,
+`src/mcp/tools.ts`.
+
+### A1 - Scene clips (arrangement lane)
+
+| #   | Tool                  | Entry point                  | Command                                             | Undo   | Status                                           |
+| --- | --------------------- | ---------------------------- | --------------------------------------------------- | ------ | ------------------------------------------------ |
+| 1   | Move                  | drag, marquee, nudge `,`/`.` | `moveArrangementClip` / `moveArrangementClipRipple` | 1 step | VERIFIED (D5, D11, wave 10/11)                   |
+| 2   | Multi-move (block)    | ctrl-select then drag        | inline, hand-built doc                              | 1 step | VERIFIED (chaos chain §14; D8 guard)             |
+| 3   | Resize (right edge)   | `.arr-clip-resize`           | `resizeArrangementClip` / `...Ripple`               | 1 step | VERIFIED (§6)                                    |
+| 4   | Trim start            | left edge drag               | `trimArrangementClipStart`                          | 1 step | PARTIAL - command covered, no browser spec       |
+| 5   | Split                 | CUT tool (`C`), toolbar      | `splitArrangementClipAtTick`                        | 1 step | VERIFIED (§7)                                    |
+| 6   | Duplicate             | toolbar `DUP`                | `duplicateArrangementClip`                          | 1 step | VERIFIED (§8)                                    |
+| 7   | Delete                | `DEL`, context menu          | `deleteArrangementClip` / `...Ripple`               | 1 step | VERIFIED (§4/§9, §16)                            |
+| 8   | Copy / Cut / Paste    | `Ctrl+C/X/V`                 | `cutClips` / `pasteClips`                           | 1 step | VERIFIED (D9, 11 specs)                          |
+| 9   | Lock / unlock         | `Shift+L`                    | `assertClipEditable` gate                           | n/a    | VERIFIED (D8)                                    |
+| 10  | Group / ungroup       | `Ctrl+G` / `Ctrl+Shift+G`    | `clipGroups.ts`                                     | 1 step | NOT TESTED - no audit evidence                   |
+| 11  | Loop                  | per-clip toggle (`:4142`)    | `setArrangementClipLoop`                            | 1 step | NOT TESTED                                       |
+| 12  | Reassign scene        | -                            | `setArrangementClipScene`                           | 1 step | NOT TESTED                                       |
+| 13  | Scene intensity curve | `.arr-intensity-point`       | `setSceneIntensityCurve`                            | 1 step | NOT TESTED - cancel path is epoch-only (D3 note) |
+| 14  | Create variation      | -                            | `createVariationAndPlaceClip`                       | 1 step | NOT TESTED                                       |
+
+### A2 - Audio clips (track lanes)
+
+| #   | Tool                 | Entry point                   | Command                                                        | Undo   | Status                                                        |
+| --- | -------------------- | ----------------------------- | -------------------------------------------------------------- | ------ | ------------------------------------------------------------- |
+| 15  | Move                 | drag, `audioMove`             | `moveAudioClip`                                                | 1 step | VERIFIED (D11, §9, D8 guard)                                  |
+| 16  | Multi-move (block)   | ctrl-select drag              | inline                                                         | 1 step | VERIFIED (D8)                                                 |
+| 17  | Resize / trim        | `.arr-clip-resize`, left edge | `resizeAudioClip`, `trimAudioClipStart`                        | 1 step | VERIFIED (D4 stale-offset fix, §6)                            |
+| 18  | Split                | CUT, `audioSplit`             | `splitAudioClipAtTick`                                         | 1 step | VERIFIED (§7, wave 18 parity)                                 |
+| 19  | Duplicate            | toolbar / context menu        | `duplicateAudioClip`                                           | 1 step | NOT TESTED                                                    |
+| 20  | Delete               | `DEL`, `audioDelete`          | `deleteAudioClip`                                              | 1 step | VERIFIED (§4/§9)                                              |
+| 21  | Fade in / out        | fade handles                  | `updateAudioClip`                                              | 1 step | VERIFIED (wave 15b, real browser)                             |
+| 22  | Crossfade            | `X`                           | `crossfadeAudioClips`                                          | 1 step | NOT TESTED - bypasses the lock by design (wave 2)             |
+| 23  | Gain                 | clip gain field               | `updateAudioClip`                                              | 1 step | VERIFIED (wave 15b title reads gain)                          |
+| 24  | Slip                 | drag with slip modifier       | `slipAudioClip`                                                | 1 step | NOT TESTED                                                    |
+| 25  | Stretch (tempo fit)  | warp UI                       | `stretchAudioClip`, `fitAudioClipTempo`                        | 1 step | NOT TESTED (D8 added its guard)                               |
+| 26  | Reverse / loop       | toggles                       | `updateAudioClip`                                              | 1 step | VERIFIED (parity, wave 18)                                    |
+| 27  | Clip mute            | `M`                           | `toggleAudioClipsMute`                                         | 1 step | NOT TESTED                                                    |
+| 28  | Consolidate          | toolbar                       | `consolidateAudioClips`                                        | 1 step | NOT TESTED (D8 added its guard)                               |
+| 29  | Strip silence        | toolbar                       | `stripSilenceAudioClip`                                        | 1 step | NOT TESTED (D8 guard)                                         |
+| 30  | Slice to arrangement | toolbar                       | `sliceAudioClipToArrangement`                                  | 1 step | NOT TESTED (D1 fade clamp, D8 guard)                          |
+| 31  | Bounce stems -> clip | `BOUNCE ZONE`                 | `bounceStemsToAudioClip`                                       | 1 step | VERIFIED (wave 15b - the path that produced the fade fixture) |
+| 32  | Take lanes / comping | take lane drag                | `addAudioTakeClip`, `compAudioTakeRange`, `setActiveAudioTake` | 1 step | PARTIAL - jsdom characterization only (wave 1 #10)            |
+
+### A3 - Global editing tools
+
+| #   | Tool                        | Entry point            | Status                                                        |
+| --- | --------------------------- | ---------------------- | ------------------------------------------------------------- |
+| 33  | Snap grid toggle            | `J` + toolbar          | VERIFIED whole-bar (wave 13); **grid-OFF/Shift unexplained**  |
+| 34  | Zoom (horizontal)           | `Ctrl`+wheel           | VERIFIED (D5, D11)                                            |
+| 35  | Vertical scroll             | scroll container       | VERIFIED (wave 10 §13)                                        |
+| 36  | Marquee / time-range select | lane drag, ruler drag  | VERIFIED (D3, wave 15b)                                       |
+| 37  | Playhead / seek             | ruler, `Home`, `,`/`.` | VERIFIED                                                      |
+| 38  | Undo / redo                 | `Ctrl+Z` / `Ctrl+Y`    | VERIFIED (155-test baseline, wave 18 harness fix)             |
+| 39  | Select all / deselect       | ctrl+A / `Escape`      | PARTIAL - deselect in the D3 cascade; select-all not isolated |
+| 40  | Nudge                       | `,` / `.`              | VERIFIED in-command; not browser-tested                       |
+| 41  | Save / reload / autosave    | autosave debouncer     | VERIFIED (D20 - the unload recovery buffer)                   |
+| 42  | Viewport windowing          | automatic              | VERIFIED (D7, measured 800->10 nodes)                         |
+
+**What is deliberately absent from this inventory**: no MIDI note edit, piano-roll
+gesture, automation-lane point edit, mixer-strip edit or sample-editor tool appears,
+because those surfaces were not audited in any wave. `kyx_notes` / `kyx_steps` /
+`kyx_automation` exist on the MCP side and are covered by the repo's own MCP suites,
+but this audit produced **no** evidence about their UI equivalents. Listing them as
+VERIFIED because a handler exists is exactly the conflation the objective forbids.
+
+---
+
+## §B - MCP parity (deliverable 6)
+
+### B1 - The parity table, measured
+
+Every cell below was **executed**, not read. "Equivalent command" is the exact factory
+the UI gesture commits on `pointerup`; both routes ran on **one shared document**. (An
+early version of this test built two fixtures, which minted different uids, so it
+compared two different clips and reported a difference. That is a fixture measuring its
+own randomness - recorded here because it nearly read as a product defect.)
+
+| MCP op                                      | Equivalent command     | Result                                                               |
+| ------------------------------------------- | ---------------------- | -------------------------------------------------------------------- |
+| `kyx_clips move`                            | `moveArrangementClip`  | **PARITY** - identical geometry, compared by id                      |
+| `kyx_clips resize` / `duplicate` / `delete` | same-named commands    | same factories, same shared guards                                   |
+| `kyx_clips audioMove`                       | `moveAudioClip`        | **PARITY**, and both refuse a locked clip                            |
+| `kyx_clips audioSplit`                      | `splitAudioClipAtTick` | **PARITY** - fragment lengths, offsets and inherited fades identical |
+| `kyx_clips audioUpdate`                     | `updateAudioClip`      | **PARITY** - including the D1 fade clamp                             |
+| `kyx_clips audioDelete`                     | `deleteAudioClip`      | **PARITY** - lock honoured, D4 gate honoured                         |
+| any of the above -> `undo()`                | `ProjectStore.undo`    | **PARITY after the fix in §C**                                       |
+
+So: **the MCP door inherits every contract this audit fixed.** The D1 fade clamp, the D8
+lock, the D4 destructive gate and the delta-based undo all reach an agent, because MCP
+dispatches through the same command factories. That is a real, non-obvious result - it
+was true, and until this wave nothing in the repository asserted it.
+
+### B2 - Where MCP is genuinely behind the UI (backlog, not defects)
+
+| Command verb                                                                       | UI                  | MCP | Note                                |
+| ---------------------------------------------------------------------------------- | ------------------- | --- | ----------------------------------- |
+| `splitArrangementClipAtTick`                                                       | CUT                 | -   | MCP splits **audio** clips only     |
+| ripple move/resize/delete                                                          | `RIPPLE` toggle     | -   | MCP always uses the non-ripple verb |
+| `cutClips` / `pasteClips`                                                          | `Ctrl+C/X/V`        | -   | no clipboard op                     |
+| group / ungroup / lock                                                             | `Ctrl+G`, `Shift+L` | -   | no op                               |
+| slip / stretch / consolidate / strip silence / slice / crossfade / duplicate-audio | toolbar + shortcuts | -   | ~9 verbs absent                     |
+| `nudgeClips`                                                                       | `,` / `.`           | -   | no op                               |
+
+**A deliberate scope statement, not an oversight**: the objective says "flag missing
+parity without inventing unsupported endpoints". These are recorded as backlog. Nothing
+in this wave adds an MCP op.
+
+---
+
+## §C - D22: the MCP test harness could not observe an undo (P2, CONFIRMED + fixed)
+
+This is a finding **about the audit's own evidence**, and it is the reason the parity
+table above needed a rebuild before it could be trusted.
+
+### Root cause
+
+`snapshot()` builds an inverse-patch command over a document delta
+(`src/commands/core.ts`):
+
+```ts
+undo: (d) => applyDocDelta(d, backward.ops),
+```
+
+It does not care what `d` **is** - it applies "restore these rows / remove these rows"
+to whatever document it is handed. `ProjectStore.undo` therefore passes `this.doc_`,
+the **current** document:
+
+```ts
+undone = command.undo(this.doc_);
+```
+
+Three MCP test harnesses passed the **previous** document instead:
+
+```ts
+const prev = current;
+current = command.execute(current);
+undoStack.push({ undo: () => command.undo(prev), ... });   // wrong document
+```
+
+### Measured consequence
+
+A split's undo did not remove the two fragments. It re-applied "restore the parent" on
+top of the document that never left that state:
+
+```
+[probe] before    : ["audio-clip-1@0+4"]
+[probe] after     : ["audioClip-b9d0...@0+2","audioClip-ef5f...@2+2"]
+[probe] undone    : ["audio-clip-1@0+4"]              <- correct, real store
+[probe] undo(prev): ["audio-clip-1@0+4","audio-clip-1@0+4"]   <- harness shape
+```
+
+Two entries, **one id** - a document `normalizeProject` does not prune, so it would
+have persisted.
+
+`tests/mcp-preset-bank-warm.test.ts` had the same capture bug **plus** a second one:
+`undo: () => { undoStack.pop()?.undo(); }` **discards the return value**, so its `undo()`
+could not change the document at all.
+
+### Attribution, and why this is not a product defect
+
+The first instinct is "MCP undo is broken". Measurement killed that: the probe ran the
+identical command through the real `ProjectStore` and got the correct single-clip restore.
+**The product was correct the whole time.** The defect was in three test files, so the
+exposure is _evidence_, not user data - any MCP test asserting undo through those
+harnesses was asserting a fiction, and none does today (all 133 pass after the fix).
+
+### Fix
+
+All three harnesses now mirror `ProjectStore`: both terminals are called with the
+document **current at call time**, and the preset-bank harness assigns undo's result
+back. Changed: `tests/mcp-tools.test.ts`, `tests/mcp-idempotency.test.ts`,
+`tests/mcp-preset-bank-warm.test.ts`.
+
+### Regression coverage
+
+`tests/mcp-undo-harness-fidelity.test.ts` - 4 specs, written so the _broken_ shape is
+pinned too:
+
+- **CONTROL** - the product undo is correct through the real `ProjectStore`;
+- the corrected harness observes a real undo;
+- **FALSIFICATION** - the committed harness shape demonstrably produces the duplicate id
+  (asserted _on purpose_, so the claim stays re-derivable);
+- undo -> redo round-trips, and the two fragments carry **distinct** ids.
+
+---
+
+## §D - Prioritized backlog (deliverable 7)
+
+Ordered by user-visible blast radius / effort. **Nothing here was implemented** - the
+objective is explicit that a missing optional feature gets recommended, not silently
+built.
+
+### P1 - correctness / data integrity
+
+| #   | Item                                                                                                                        | Impact                                                                                                                                 | Effort                                                           |
+| --- | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| 1   | **Take-lane click suppression is a timing bet** (wave 1 #10) - a bare boolean + `setTimeout(0)`, no pointer/target identity | A comp-range drag can be swallowed by the following click, discarding the range the user just drew                                     | S - needs the identity token, then a Playwright repro to confirm |
+| 2   | **`crossfadeAudioClips` writes fades on a locked clip**                                                                     | The lock contract names move/resize/trim/split/slip/stretch/delete; fades are deliberately outside it. **Product decision, not a bug** | S - one `assertClipEditable` if the answer is "yes"              |
+| 3   | **Toolbar `DUP`/`DEL` act on the active clip; keyboard acts on the whole selection** (wave 10)                              | With a 2-clip selection the toolbar removes one. Both self-consistent - it is a convention                                             | S - align them or label them                                     |
+| 4   | **Waveform canvas does not re-render on resize** (wave 2)                                                                   | Drawn window stays correct, resolution goes soft                                                                                       | S - DPR-aware redraw on **zoom only**, never per resize frame    |
+| 5   | **`wfAchievableCents` exists but nothing in the UI calls it** (wave 17)                                                     | Below 0.5 Hz the wow&flutter readout overstates what the buffer can deliver                                                            | XS                                                               |
+
+### P2 - missing capability (MCP parity, §B2)
+
+| #   | Item                                                                                                        | Impact                                                                                               | Effort |
+| --- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------ |
+| 6   | No `splitArrangementClipAtTick` on MCP                                                                      | An agent cannot split a scene clip - the one verb wave 1 verified as deliberately unsnapped          | S      |
+| 7   | No ripple variants on MCP                                                                                   | An agent's delete never closes the gap the UI's `RIPPLE` toggle produces. Silent semantic divergence | M      |
+| 8   | No clipboard ops on MCP                                                                                     | No copy/cut/paste for an agent                                                                       | M      |
+| 9   | ~9 audio verbs absent (slip, stretch, consolidate, strip silence, slice, crossfade, duplicate, mute, nudge) | See §B2                                                                                              | M      |
+
+### P3 - hardening / unverified
+
+| #   | Item                                                                                                                                               | Impact                                                                                                           | Effort                          |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| 10  | **Grid-OFF and Shift-suspend measured indistinguishable from grid-ON** (wave 13)                                                                   | If real, snap cannot be turned off for scene clips. Unexplained, unproven, **not called a defect**               | M - needs a marker-free fixture |
+| 11  | Ten inline px->beat conversions with three rounding policies in `ArrangementPanel.tsx`                                                             | Agree today; a snap-threshold fix in one place would diverge silently from the rest                              | L - architectural, human review |
+| 12  | Mid-drag horizontal scroll                                                                                                                         | The lane's rect moves, so conversion follows; whether a drag should _freeze_ its scroll origin is a product call | S once decided                  |
+| 13  | Untested tools from §A (groups, loop, scene reassign, slip, stretch, consolidate, strip, slice, crossfade, clip mute, duplicate-audio, take lanes) | 13 of 42 inventory rows have **no** audit evidence                                                               | M - one spec each               |
+
+### P4 - architecture / owner decisions
+
+| #   | Item                                                                                                                                    |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 14  | Boot watchdog landed in wave 16; what remains is the §20 surface shown when the app genuinely cannot start                              |
+| 15  | Six e2e specs import `/src/*.ts` from inside the page (67 call sites) and therefore **have never validated a production build**         |
+| 16  | The in-app Browser control channel timed out at its 275 s ceiling repeatedly (waves 6-10); Playwright is the working driver on this box |
+
+---
+
+## §E - Manual GUI + listening checklist (deliverable 5)
+
+Everything below is **NOT VERIFIED** and cannot be settled by jsdom or by a headless
+assertion. Each line names the gesture and the observable.
+
+| #   | Check                                             | How                                                        | What "pass" means                                                    |
+| --- | ------------------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------- |
+| 1   | Take-lane comp drag then click (item 1)           | Record a take, drag a comp range, release, click inside it | The range survives; `setActiveAudioTake` does not overwrite it       |
+| 2   | Crossfade on a locked clip (item 2)               | Lock two clips, press `X` over them                        | Decide the contract, then confirm the behaviour matches it           |
+| 3   | Toolbar vs keyboard on a multi-selection (item 3) | Select 2 clips, press toolbar `DEL`; undo; press `Delete`  | Both understood by the user, or they agree                           |
+| 4   | Fade handles at extreme zoom                      | Bounce a zone, zoom to 8x, drag a fade to each clip edge   | No handle escapes the clip box; no 1-px dead zone                    |
+| 5   | **Listening**: fade + crossfade shapes            | Bounce a zone, set fadeIn 0.5 s, fadeOut 2 s               | No click at either edge; crossfade smooth, not a dip                 |
+| 6   | **Listening**: ripple tail spacing                | Build a gapped arrangement, ripple-delete the first clip   | The gaps are audibly preserved, not collapsed                        |
+| 7   | **Listening**: wow & flutter below 0.5 Hz         | Sweep the rate under 0.5 Hz                                | The readout does not promise more than the buffer delivers (item 5)  |
+| 8   | **Listening**: split during playback              | Play, split a clip under the playhead                      | No orphaned voice; the engine restarts the frozen source             |
+| 9   | Grid OFF / Shift-suspend (item 10)                | Marker-free fixture, drag far from every edge              | The clip lands where the pointer is, un-snapped                      |
+| 10  | Unload recovery                                   | Edit, close the tab within 800 ms, reopen                  | `Recover` restores the edit; no duplicate offer after a clean save   |
+| 11  | Long-session soak                                 | 30 min of edit + play                                      | No heap growth; no listener accumulation (wave 5 measured 10 cycles) |
+| 12  | Mobile / narrow viewport editing                  | 390x844, touch a clip                                      | Hit targets >= 44 px; no overlay eats a press (the D14/D15 class)    |
+
+---
+
+## Wave 18 gates - what actually ran
+
+| gate                                                                                 | result                                                                                                                                               |
+| ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/mcp-edit-parity.test.ts` (new, 12 specs)                                      | **12 passed**                                                                                                                                        |
+| `tests/mcp-undo-harness-fidelity.test.ts` (new, 4 specs)                             | **4 passed**                                                                                                                                         |
+| `tests/mcp-tools` + `mcp-idempotency` + `mcp-preset-bank-warm` after the harness fix | **133 passed** - nothing depended on the wrong behaviour                                                                                             |
+| falsification, D22                                                                   | `mcp-undo-harness-fidelity` asserts the _broken_ harness shape produces `["audio-clip-1","audio-clip-1"]`, and the corrected shape produces one clip |
+| `npx prettier --check` on the four touched files                                     | run in the commit that lands this section                                                                                                            |
+| `npx tsc --noEmit`                                                                   | run in the commit that lands this section                                                                                                            |
+
+**Not run in this wave:** `npm run build`, `npm run test:expectations`,
+`npm run drift:check`, `npm run test:browser`, `npm run test:e2e` - each reads
+repo-wide state that concurrent sessions hold dirty (see the final sweep above), and a
+red from them would say nothing about this work. They remain the merge owner's gates.

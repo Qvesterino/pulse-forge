@@ -33,10 +33,15 @@ function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } =
   return {
     getDoc: () => current,
     execute: (command) => {
-      const prev = current;
       current = command.execute(current);
       labels.push(command.label);
-      undoStack.push({ undo: () => command.undo(prev), redo: () => command.execute(current) });
+      // Both terminals are called with the document CURRENT AT CALL TIME, which
+      // is what the real ProjectStore does (`command.undo(this.doc_)`). The
+      // delta-based snapshot() ignores its argument's identity and applies its
+      // ops to whatever it is handed, so capturing `prev` here produced an undo
+      // that ADDED the parent clip back next to the fragments instead of
+      // removing them - a harness that could not observe a real undo.
+      undoStack.push({ undo: () => command.undo(current), redo: () => command.execute(current) });
       redoStack.length = 0;
     },
     undo: () => {

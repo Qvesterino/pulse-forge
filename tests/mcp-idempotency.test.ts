@@ -42,10 +42,14 @@ function makeCtx(start: ProjectDocument): {
   const ctx: McpToolContext = {
     getDoc: () => current,
     execute: (command) => {
-      const prev = current;
       current = command.execute(current);
       labels.push(command.label);
-      undoStack.push({ undo: () => command.undo(prev), redo: () => command.execute(current) });
+      // Called with the document CURRENT AT CALL TIME, matching the real
+      // ProjectStore (`command.undo(this.doc_)`). snapshot() is delta-based:
+      // it applies its inverse ops to whatever document it is handed, so
+      // capturing `prev` here made undo re-add the parent instead of removing
+      // the fragments it had created.
+      undoStack.push({ undo: () => command.undo(current), redo: () => command.execute(current) });
       redoStack.length = 0;
     },
     undo: () => {

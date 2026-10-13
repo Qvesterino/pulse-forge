@@ -29,13 +29,18 @@ function makeCtx(doc: ProjectDocument): McpToolContext {
   return {
     getDoc: () => current,
     execute: (command) => {
-      const prev = current;
       current = command.execute(current);
       labels.push(command.label);
-      undoStack.push({ undo: () => command.undo(prev), redo: () => command.execute(current) });
+      // Mirrors ProjectStore: the undo terminal is called with the document
+      // CURRENT AT CALL TIME, and its RESULT is assigned back. The previous
+      // version did neither - it captured `prev` (delta-based snapshot() then
+      // applied its inverse ops to the wrong document) AND discarded undo's
+      // return value, so undo() could not change the document at all.
+      undoStack.push({ undo: () => command.undo(current), redo: () => command.execute(current) });
     },
     undo: () => {
-      undoStack.pop()?.undo();
+      const entry = undoStack.pop();
+      if (entry) current = entry.undo();
     },
     redo: () => {},
     undoStackLength: () => undoStack.length,
