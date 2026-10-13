@@ -896,6 +896,17 @@ export function createCollabServer({
     rejectedPayloads: 0,
   };
   let mcpRelaySocket = null;
+  // Identity per relay connection — the hub routes answers by it, so a
+  // displaced window cannot resolve the live window's pending calls.
+  let mcpRelaySessionSeq = 0;
+  /**
+   * WebSocket close code sent to a window that lost relay ownership to a
+   * newer one. Application-defined (4000-4999). The browser bridge reads it
+   * in src/mcp/bridge.ts (MCP_RELAY_DISPLACED_CODE) and stops reconnecting —
+   * a takeover is a decision, not a network fault, and reconnecting would
+   * start an ownership flap between two live windows.
+   */
+  const MCP_RELAY_DISPLACED_CODE = 4409;
 
   // KYX MCP server (docs/INTENT-MCP-EXPANSION-PLAN.md Phase D3): opt-in via
   // MCP_TOKEN env — without it /mcp and /mcp-relay 404/refuse and the
@@ -1284,15 +1295,27 @@ export function createCollabServer({
         return;
       }
       wss.handleUpgrade(request, socket, head, (conn) => {
+        // ONE executor session per server, taken over EXPLICITLY.
+        // `mcpRelaySocket` is single by design — the relay executes tool
+        // calls in one window against one document. A second window used to
+        // overwrite it silently, which left the displaced window connected
+        // and answering `mcp-result` frames for the live window's calls: an
+        // agent's edit landing in a different project, reported as success.
+        // Now ownership moves in the open (the old window is closed with a
+        // reason and the hub ignores anything but the current session), and
+        // the close is guarded below so the OLD socket's close event cannot
+        // tear down the session that just replaced it.
+        const sessionId = `relay-${++mcpRelaySessionSeq}`;
+        const displaced = mcpRelaySocket;
         mcpRelaySocket = conn;
         conn.isAlive = true;
         conn.on("pong", () => {
           conn.isAlive = true;
         });
-        mcpHub.connectSession(); // the window IS the tool-executor session — without this every tools/call answers -32002
+        mcpHub.connectSession(sessionId); // the window IS the tool-executor session — without this every tools/call answers -32002
         conn.on("message", (raw) => {
           try {
-            mcpHub.handleSessionMessage(JSON.parse(String(raw)));
+            mcpHub.handleSessionMessage(JSON.parse(String(raw)), sessionId);
           } catch {
             /* malformed relay message — ignored */
           }
@@ -1300,9 +1323,16 @@ export function createCollabServer({
         conn.on("close", () => {
           if (mcpRelaySocket === conn) {
             mcpRelaySocket = null;
-            mcpHub.disconnectSession(); // reject pending calls instead of letting them hang to timeout
+            mcpHub.disconnectSession(sessionId); // reject pending calls instead of letting them hang to timeout
           }
         });
+        // Tell the previous window WHY it lost the relay. The bridge treats
+        // this code as final (no reconnect), so two windows cannot flap the
+        // ownership back and forth. Keep in sync with MCP_RELAY_DISPLACED_CODE
+        // in src/mcp/bridge.ts — pinned by tests/mcp-relay-session-ownership.test.ts.
+        if (displaced != null && displaced !== conn) {
+          displaced.close(MCP_RELAY_DISPLACED_CODE, "another KYX window owns the MCP relay");
+        }
       });
       return;
     }

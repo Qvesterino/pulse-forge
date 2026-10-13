@@ -2102,6 +2102,9 @@ export const MCP_RESOURCE_DEFS = [
   },
 ];
 
+/** Session id used by a host that connects exactly one executor (desktop, tests). */
+const DEFAULT_SESSION_ID = "default";
+
 export function createMcpHub({
   token,
   sendToSession,
@@ -2109,16 +2112,31 @@ export function createMcpHub({
   longCallTimeoutMs = LONG_CALL_TIMEOUT_MS,
 }) {
   let sessionConnected = false;
+  /**
+   * Id of the window that owns the relay, or null when none is connected.
+   * ONE executor session: a result is honoured only from THAT session, so a
+   * displaced window cannot resolve the live window's calls. Without the
+   * identity, a second window taking over the relay kept answering with its
+   * own `mcp-result` frames — the agent's edit landed in a different
+   * project's document and the call still resolved successfully.
+   */
+  let sessionId = null;
   let nextCallId = 1;
   const pendingCalls = new Map();
 
   return {
-    /** Relay session connected (KYX window). */
-    connectSession() {
+    /** Relay session connected (KYX window). The last caller wins ownership. */
+    connectSession(id = DEFAULT_SESSION_ID) {
       sessionConnected = true;
+      sessionId = id;
+      return id;
     },
-    disconnectSession() {
+    disconnectSession(id = DEFAULT_SESSION_ID) {
+      // A DISPLACED window closing must not tear down the session that took
+      // over from it — that would reject the live window's in-flight calls.
+      if (id !== DEFAULT_SESSION_ID && id !== sessionId) return;
       sessionConnected = false;
+      sessionId = null;
       for (const [, entry] of pendingCalls) {
         clearTimeout(entry.timer);
         entry.reject(new Error("KYX session disconnected"));
@@ -2127,6 +2145,10 @@ export function createMcpHub({
     },
     hasSession() {
       return sessionConnected;
+    },
+    /** Which window currently owns the relay (null = none). */
+    sessionId() {
+      return sessionId;
     },
     /** Forward a tool call to the KYX session; resolves the result text. */
     async callTool(name, args) {
@@ -2146,8 +2168,11 @@ export function createMcpHub({
       return promise;
     },
     /** Resolve a forwarded call response arriving from the relay. */
-    handleSessionMessage(message) {
+    handleSessionMessage(message, id = DEFAULT_SESSION_ID) {
       if (!sessionConnected) return false;
+      // A displaced window is still connected for a moment; its answers are
+      // about a DIFFERENT document and must never resolve this call.
+      if (id !== sessionId) return false;
       if (message == null || typeof message !== "object") return false;
       if (message.type === "mcp-result" && pendingCalls.has(message.id)) {
         const entry = pendingCalls.get(message.id);

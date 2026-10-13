@@ -136,11 +136,27 @@ P0-A must land before anything else: every other intent-layer fix is unverifiabl
 
 **Goal:** concurrent agents cannot interleave on one document without trace.
 
-**Prerequisites:** first **resolve the UNKNOWN** — read `server/mcp-core.mjs` (75 KB) to determine whether the web relay shares the single-session model (`desktop/mcp-host-manager.cjs:97,219-237`).
+**What the UNKNOWN turned out to be.** The web relay **is** single-session: `createMcpHub`
+held one boolean and `server/collab-server.mjs` one `mcpRelaySocket`; desktop is separately
+single-window by architecture. That answer was not a design preference — it was a **P1
+defect**: a second window silently stole the relay, and because the hub accepted
+`mcp-result` frames from *any* socket, the displaced window's answers could resolve the live
+window's tool calls. An agent's edit could land in a different project and report success.
 
-**Minimal scope (pending that answer):** per-call session identity and attribution surfaced in results; consider a project-lock for destructive ops. Do not build a full multi-session architecture before the web relay is understood.
+**Repair (wire-level ownership).** Each relay connection carries an identity; the hub honours
+a result only from the current session and ignores a displaced window's close. The server
+moves ownership explicitly and closes the loser with code 4409 + a reason; the browser bridge
+treats that close as terminal (no reconnect flap) and reports it through `onDisplaced`.
+Evidence, falsification per guard, and residual risk: **`P1D-RELAY-SESSION-OWNERSHIP.md`** in
+this directory. Locked by `tests/mcp-relay-session-ownership.test.ts` (9 specs, real server +
+real sockets, every guard falsified).
 
-**Acceptance criteria:** the result of any mutation states which document/window it touched.
+**Still open:** true multi-session routing (an agent cannot address two projects at once) and
+rendering `onDisplaced` in the settings chip.
+
+**Acceptance criteria:** the result of any mutation states which document/window it touched
+(result-level attribution — landed); a displaced window is inert at the hub rather than merely
+closed later (landed).
 
 **Complexity:** S for attribution surfacing, L for true isolation.
 

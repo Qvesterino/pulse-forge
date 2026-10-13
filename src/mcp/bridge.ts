@@ -21,6 +21,19 @@ import { withAgentAttribution } from "./attribution";
  * server cannot churn the network forever.
  */
 
+/**
+ * Close code the relay server sends to a window that lost ownership of the
+ * single executor session to a newer one (`server/collab-server.mjs`,
+ * `MCP_RELAY_DISPLACED_CODE`). Application-defined range 4000-4999.
+ */
+export const MCP_RELAY_DISPLACED_CODE = 4409;
+
+/** Minimal shape of the close event this bridge reads. */
+interface RelayCloseEvent {
+  code?: number;
+  reason?: string;
+}
+
 export interface McpBridgeDeps {
   getDoc(): ProjectDocument;
   execute(command: Command): void;
@@ -30,6 +43,8 @@ export interface McpBridgeDeps {
   historyLabels(): string[];
   isMicRecordingActive(): boolean;
   transport: McpToolContext["transport"];
+  /** Another KYX window took the relay: this window is no longer the executor. */
+  onDisplaced?: (reason: string) => void;
   export?: (request: McpExportRequest) => Promise<string>;
   audioPreview?: NonNullable<McpToolContext["audioPreview"]>;
   meters?: () => McpMeterSnapshot | null;
@@ -86,9 +101,19 @@ export class McpBridge {
     this.socket.onmessage = (event) => {
       void this.handleRelayMessage(event);
     };
-    this.socket.onclose = () => {
+    this.socket.onclose = (event?: RelayCloseEvent) => {
       this.socket = null;
-      if (!this.stopped) this.scheduleReconnect();
+      if (this.stopped) return;
+      // Displacement is a DECISION, not a fault. Reconnecting would hand the
+      // relay straight back and two live windows would flap ownership (and
+      // tool calls would land in whichever document won the last race). Stop
+      // here and say so — the user re-enables MCP in the window they mean.
+      if (event?.code === MCP_RELAY_DISPLACED_CODE) {
+        this.stopped = true;
+        this.deps.onDisplaced?.(event.reason || "another KYX window owns the MCP relay");
+        return;
+      }
+      this.scheduleReconnect();
     };
     this.socket.onerror = () => {
       /* close handler owns reconnection */
