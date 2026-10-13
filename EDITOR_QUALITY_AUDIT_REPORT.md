@@ -2641,6 +2641,52 @@ produces, provided the pointer arrives.
 
 ---
 
+## Final state, 2026-10-13
+
+All browser specs from this audit, run together against the production build:
+
+```
+npx playwright test 18-editor-chaos-chain keyboard-guards snap-grid \
+  ripple-semantics hit-test-sweep audio-fades --project=chromium --workers=2
+
+9 passed (50.3s)
+```
+
+Nine tests, two workers, parallel — the same configuration that exposed the
+off-screen drag earlier now passes, which is the point: the fix is in the
+helpers, not in a serial-only path.
+
+| Artifact | What it pins |
+| --- | --- |
+| `hit-test-sweep.spec.ts` | no overlay may cover an editing surface, 3 viewports (§19/§33) |
+| `18-editor-chaos-chain.spec.ts` | the §42 chain end to end, jsErrors=0 |
+| `ripple-semantics.spec.ts` | §16 gap closes, spacing survives, undo/redo exact |
+| `keyboard-guards.spec.ts` | §18 destructive keys inert while a field has focus |
+| `snap-grid.spec.ts` | §11 whole-bar landing at two zooms |
+| `audio-fades.spec.ts` | §10 fade commits, stays in bounds; §26 waveform; §25 real command path |
+| `_studio.ts` | the four boot obstacles, once, for all of the above |
+
+Product changes made by this audit: **two**, both confirmed, both fixed, both
+falsified - D14 (the intensity strip answering for every clip press) and D15
+(the onboarding bar doing the same below 1280px).
+
+### What a reader should still be suspicious of
+
+- The grid-OFF and Shift-suspend branches: measured, indistinguishable from
+  grid-ON, unexplained. Not asserted, not called a defect.
+- The full-suite ratchet: 39 new reds and 8 cured, owned by concurrent
+  sessions, attributed and left alone.
+- Take lanes and heap behaviour: covered by other sessions' specs, not by this
+  audit.
+- Four product decisions still sit with a human, listed in this report rather
+  than decided here.
+
+**This audit does not claim the editor is correct.** It claims the things above
+were reproduced or explicitly not claimed, and that the failures it did find
+are no longer reachable in the way they were.
+
+---
+
 ## Wave 15 - 2026-10-12 - error boundaries: one real defect, and a test harness that was lying to me
 
 Owner ask: _"zrobustniť error boundaries, spraviť nejaké edge case testy, unit testy,
