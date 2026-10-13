@@ -161,6 +161,23 @@ formantmi zachovanými — štandard spevu od 90-tych rokov, zvládnuteľný v
 - Epoch detection na noisy mikrofóne — možno bude treba YIN (už v
   hum-to-notes) namiesto čistej autokorelácie
 
+### Stav (2026-10-13): IMPLEMENTOVANÉ ako opt-in
+
+- `src/vocal/psola.ts`: findEpochs (autokorelácia, prvý lokálny max +
+  parabolická interpolácia) + pitch-synchronous snapping (±25 %, monotónny
+  guard) + psolaShiftPitch (Hann OLA, index-proportionálne mapovanie —
+  nearest-to-time mapovanie mudzolo render).
+- `voiceifyHum` engine option: **default "resample" (overená cesta)**,
+  `engine: "psola"` opt-in. Per unique ratio sa región posunie raz a číta
+  sa 1:1 (žiadne interpolačné obrazy). Epoch-chudobný hum → resample
+  fallback.
+- **Meranie**: centroid drift pri +12 st = **5.0 % < 10 % bar ✓** (fixture:
+  harmonický hum s ~900 Hz formantovým bumpom). PSOLA-beats-resample
+  porovnanie z testu vypnuté — naivná decimácia bezrateovej referencie
+  confounduje meranie; porovnanie vyžaduje rate-aware referenciu.
+- **Owner verifikácia pending**: opt-in skutočnými humami (ear-pass)
+  predtým, než sa psola stane defaultom.
+
 ---
 
 ## KROK 4 — Marketing surface (lacné, po kroku 2)
