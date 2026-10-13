@@ -13,7 +13,7 @@
 
 **Agent control is real, architecturally sound, and materially incomplete at the natural-language layer.**
 
-KYX is *not* a fake agent surface. There is a genuine stdio MCP server with token auth, a loopback bridge, 37 dispatched tools, and — decisively — **every UI, Intent and MCP mutation converges on one pure command spine with inverse-patch undo**. That convergence is rare and it is the reason the risk profile is low.
+KYX is _not_ a fake agent surface. There is a genuine stdio MCP server with token auth, a loopback bridge, 37 dispatched tools, and — decisively — **every UI, Intent and MCP mutation converges on one pure command spine with inverse-patch undo**. That convergence is rare and it is the reason the risk profile is low.
 
 The failures are not in the architecture. They are in **coverage gaps between what the deterministic layer can express and what a user or agent naturally says**, plus **test coverage that stops one layer short of persistence**.
 
@@ -23,14 +23,14 @@ Two findings below (GAP-01, GAP-02) were initially reported as `VERIFIED`/`MISSI
 
 ## Confirmed risks
 
-### GAP-01 — Natural export phrasing silently regenerates the user's music 🔴 CRITICAL · CONFIRMED
+### GAP-01 — Natural export phrasing silently regenerates the user's music 🔴 CRITICAL · CONFIRMED · **FIXED 2026-10-13** (P0-A + P0-B; evidence in `IMPL-2026-10-13-P0-P1.md`)
 
 **Affected workflow:** Intent Engine (UI chat + `kyx_intent` MCP tool).
 
 `parseExportIntent` is fully anchored and only permits the literal noun `project` or nothing (`src/intent/exact.ts:558-564`):
 
 ```ts
-/^\s*(?:please\s+)?(?:export(?:uj)?|bounce)\s*(?:the\s+)?(?:project\s+)?(?:as\s+|do\s+|to\s+)?(wav|mp3)?\s*[.!]?\s*$/i
+/^\s*(?:please\s+)?(?:export(?:uj)?|bounce)\s*(?:the\s+)?(?:project\s+)?(?:as\s+|do\s+|to\s+)?(wav|mp3)?\s*[.!]?\s*$/i;
 ```
 
 Executed probe against a real `house`-template document (probe deleted after audit):
@@ -43,7 +43,7 @@ Executed probe against a real `house`-template document (probe deleted after aud
 "export my mix as mp3"    => kind=pattern | parseExportIntent=null | FATE=GENERATION CATCH-ALL
 ```
 
-A non-matching route reaches the terminal `else` of the dispatch chain (`src/ui/IntentPanel.tsx:4468`), which calls `generate(source)` — **the full generative pipeline**. The user asks for an export and the application attempts to *compose a new track*.
+A non-matching route reaches the terminal `else` of the dispatch chain (`src/ui/IntentPanel.tsx:4468`), which calls `generate(source)` — **the full generative pipeline**. The user asks for an export and the application attempts to _compose a new track_.
 
 - **Root cause:** an over-anchored regex plus a **fail-open catch-all**. The catch-all's default is "generate", which is the single most destructive default an editing app can have for an unrecognized verb.
 - **Impact:** data loss (arrangement replaced), unbounded compute, and a user who believes they exported. `bounce the mix` additionally trips `isCreativeBriefRoute = true` (`model-fallback-policy`), so it commits to generation even earlier.
@@ -51,7 +51,7 @@ A non-matching route reaches the terminal `else` of the dispatch chain (`src/ui/
 - **Minimal remedy:** (a) make the export parse accept `mix|bounce|master|stem(s)`; (b) **narrow the catch-all so it refuses rather than generates** unless the request carries genuine creative-brief signal; (c) add a regression test asserting that any phrase matching `/export|bounce/` never reaches `generate()`.
 - **Verification:** probe assertion `routeIntentText("export the current mix").kind !== "pattern"`, plus a UI test that the status line reports the render pipeline.
 
-### GAP-02 — "fade the selected clip over its final bar" is silently accepted and misrouted 🔴 CRITICAL · CONFIRMED
+### GAP-02 — "fade the selected clip over its final bar" is silently accepted and misrouted 🔴 CRITICAL · CONFIRMED · **FIXED 2026-10-13** (P0-C deterministic bridge; model vocabulary deferred to the next retrain — see implementation record)
 
 **Affected workflow:** Intent Engine.
 
@@ -60,6 +60,7 @@ Executed probe: `"fade the selected clip over its final bar" => kind=pattern`.
 There is **no fade verb anywhere in the intent layer**. `grep fade` across `src/intent/` returns nothing in `arrangeWords.ts` or `loudness.ts`; the model clip vocabulary is `{ copyClip, moveClip, resizeClip, deleteClip }` (`src/intent/model-schema.ts:177`).
 
 Meanwhile everything needed to execute it already exists:
+
 - `updateAudioClip` accepts `fadeIn` / `fadeOut` (`src/commands/audioClips.ts:58-59`)
 - hard clamp invariant at `audioClips.ts:454-457`
 - `clampClipFades` (`audioClips.ts:473`)
@@ -92,21 +93,23 @@ This is **better than a silent failure** — the clarify chip is the correct fai
 `src/commands/intentRouting.ts` has no idempotency key, nonce, request id, or dedupe (grep for `idempot|nonce|requestId|already applied` → 0 hits).
 
 Relative ops are re-applied against **current** state each time:
+
 - `gainDb` reads live gain and multiplies (`intentRouting.ts:147-149`)
 - `patternLengthDelta` reads the active pattern's current `stepCount` (`intentRouting.ts:118-120`)
 
-A retried or duplicated agent request therefore **double-applies** ("−2 dB" twice = −4 dB). The MCP `kyx_batch` tool is also **partial-commit, not atomic**: per-call failures are recorded and the loop continues (`src/mcp/tools.ts:4711-4712`, *"Per-call failures never abort the batch"*).
+A retried or duplicated agent request therefore **double-applies** ("−2 dB" twice = −4 dB). The MCP `kyx_batch` tool is also **partial-commit, not atomic**: per-call failures are recorded and the loop continues (`src/mcp/tools.ts:4711-4712`, _"Per-call failures never abort the batch"_).
 
-The only net is the 256-entry undo stack — which **the codebase itself documents as insufficient**: `src/intent/route-guard.ts:10-11` states the bounded stack *"evicts the pre-delete state in a long session"*.
+The only net is the 256-entry undo stack — which **the codebase itself documents as insufficient**: `src/intent/route-guard.ts:10-11` states the bounded stack _"evicts the pre-delete state in a long session"_.
 
 - **Impact:** the primary blocker to safe unattended agent autonomy. Any retry-on-timeout in an agent harness silently corrupts the mix.
 - **Minimal remedy:** an optional caller-supplied `requestId` on mutating tools, with a bounded recent-request ledger mapping id → resulting undo index; a repeat returns the original result instead of re-executing. Relatively small, high leverage.
 
-### GAP-05 — MCP tests stop one layer short of persistence 🟠 HIGH · CONFIRMED
+### GAP-05 — MCP tests stop one layer short of persistence 🟠 HIGH · CONFIRMED · **FIXED 2026-10-13** (`tests/mcp-persistence.test.ts` — real store + real debouncer + real repository over fake-indexeddb)
 
 The suite genuinely tests more than registration — the auditor ran it: **121 tests passed** across `tests/mcp-tools.test.ts` + `tests/mcp-mirror-sync.test.ts`.
 
 But the assertion ceiling is in-memory state:
+
 - `makeCtx` (`tests/mcp-tools.test.ts:24-68`) is a hand-rolled closure holding `let current = doc`, reimplementing undo/redo in ~20 lines.
 - `storeCtx` (`:72-90`) uses the real `ProjectStore` but with **no `onDocChanged` listener and no persistence repo**.
 - `datasetDoc()` (`:92-104`) is a plain in-memory object.
@@ -116,7 +119,7 @@ Verified: commands, clamping, no-op detection, undo semantics and the D4 destruc
 Consequence: the exact hop where a silent persistence failure would live has no coverage.
 
 - **Minimal remedy:** one integration test binding a real `ProjectStore` to a stub `onDocChanged` + in-memory repository, asserting (a) engine projection called with the new doc, (b) flush completes and reload yields the mutated state.
-- **Also:** `mutated: true` promises a *scheduled* save (≤5 s), not a completed one. The wording should not be read as "persisted".
+- **Also:** `mutated: true` promises a _scheduled_ save (≤5 s), not a completed one. The wording should not be read as "persisted".
 
 ### GAP-06 — No per-client session isolation on the desktop MCP bridge 🟠 HIGH · STRONG_EVIDENCE
 
@@ -131,18 +134,18 @@ Positive controls verified: the token is checked **on the bridge itself** with a
 
 ### Lower-severity findings
 
-| ID | Sev | Conf | Finding | Evidence |
-|---|---|---|---|---|
-| GAP-07 | MED | CONFIRMED | **Headless = zero capability.** No tool succeeds without a live window; every mutation terminates in the renderer (`desktop-host.ts:64`). Fails honestly (`"KYX window not available"`, `mcp-host-manager.cjs:233`; 10 s / 60 s timeouts). Architecturally intentional, not a stub — but it must be documented as a constraint, not marketed as server-side control. | mcp-host-manager.cjs:225,233 |
-| GAP-08 | MED | CONFIRMED | **Errors are free-text, not typed.** `McpToolResult` has `text/mutated/isError` — no error code (`tools.ts:1675-1688`). An agent must substring-match to branch. Only the JSON-RPC transport layer has numeric codes. | tools.ts:1693-1701 |
-| GAP-09 | MED | CONFIRMED | **Mirror gate locks definitions, never handlers.** `tests/mcp-mirror-sync.test.ts:30-55` deep-compares name + description + input/output schemas across all three copies — strong — but a tool can be perfectly mirrored while shipping no handler. **Currently clean** (auditor verified all 37 registered names have dispatcher cases), but no gate enforces it. | mcp-mirror-sync.test.ts:46-55 |
-| GAP-10 | MED | CONFIRMED | **LLM is handed the project document and ignores it.** `IntentModelProvider.generate(instruction, doc)` (`model-resolver.ts:48`) — the Ollama implementation takes `_doc` and sends only the instruction string (`model-ollama.ts:191`). The model cannot ground on track names; the engine must resolve everything from closed enums — which is precisely why GAP-03 happens. | model-ollama.ts:191 |
-| GAP-11 | MED | CONFIRMED | **Destructive = checkpoint, not confirmation.** `routeIsDestructive` (`route-guard.ts:17-36`) auto-saves a durable checkpoint instead of asking. Rationale is documented and reasonable; there is **no dry-run anywhere** in the tool layer. | route-guard.ts:8-12 |
-| GAP-12 | LOW | CONFIRMED | **Time signature not settable** — only the migration writes it (`schema.ts:1029`). | schema.ts:1029 |
-| GAP-13 | LOW | CONFIRMED | **Automation read/write modes absent** — no arm/auto-write concept in `src/`. | grep → MCP read only |
-| GAP-14 | LOW | CONFIRMED | **Save-as / Close-project missing** (browser-first model may accept this). | grep → 0 hits |
-| GAP-15 | LOW | CONFIRMED | **Slip has a command but no UI caller** (`audioClips.ts:520`). | audioClips.ts:520 |
-| GAP-16 | LOW | CONFIRMED | `kyx_export` returns `mutated: false` although it writes a file to disk (`tools.ts:2876-2879`). Semantically defensible (no doc change) but understates the side effect. | tools.ts:2845 |
+| ID     | Sev | Conf      | Finding                                                                                                                                                                                                                                                                                                                                                                                       | Evidence                      |
+| ------ | --- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| GAP-07 | MED | CONFIRMED | **Headless = zero capability.** No tool succeeds without a live window; every mutation terminates in the renderer (`desktop-host.ts:64`). Fails honestly (`"KYX window not available"`, `mcp-host-manager.cjs:233`; 10 s / 60 s timeouts). Architecturally intentional, not a stub — but it must be documented as a constraint, not marketed as server-side control.                          | mcp-host-manager.cjs:225,233  |
+| GAP-08 | MED | CONFIRMED | **Errors are free-text, not typed.** `McpToolResult` has `text/mutated/isError` — no error code (`tools.ts:1675-1688`). An agent must substring-match to branch. Only the JSON-RPC transport layer has numeric codes.                                                                                                                                                                         | tools.ts:1693-1701            |
+| GAP-09 | MED | CONFIRMED | **Mirror gate locks definitions, never handlers.** `tests/mcp-mirror-sync.test.ts:30-55` deep-compares name + description + input/output schemas across all three copies — strong — but a tool can be perfectly mirrored while shipping no handler. **Currently clean** (auditor verified all 37 registered names have dispatcher cases), but no gate enforces it. **GATE ADDED 2026-10-13.** | mcp-mirror-sync.test.ts:46-55 |
+| GAP-10 | MED | CONFIRMED | **LLM is handed the project document and ignores it.** `IntentModelProvider.generate(instruction, doc)` (`model-resolver.ts:48`) — the Ollama implementation takes `_doc` and sends only the instruction string (`model-ollama.ts:191`). The model cannot ground on track names; the engine must resolve everything from closed enums — which is precisely why GAP-03 happens.                | model-ollama.ts:191           |
+| GAP-11 | MED | CONFIRMED | **Destructive = checkpoint, not confirmation.** `routeIsDestructive` (`route-guard.ts:17-36`) auto-saves a durable checkpoint instead of asking. Rationale is documented and reasonable; there is **no dry-run anywhere** in the tool layer.                                                                                                                                                  | route-guard.ts:8-12           |
+| GAP-12 | LOW | CONFIRMED | **Time signature not settable** — only the migration writes it (`schema.ts:1029`).                                                                                                                                                                                                                                                                                                            | schema.ts:1029                |
+| GAP-13 | LOW | CONFIRMED | **Automation read/write modes absent** — no arm/auto-write concept in `src/`.                                                                                                                                                                                                                                                                                                                 | grep → MCP read only          |
+| GAP-14 | LOW | CONFIRMED | **Save-as / Close-project missing** (browser-first model may accept this).                                                                                                                                                                                                                                                                                                                    | grep → 0 hits                 |
+| GAP-15 | LOW | CONFIRMED | **Slip has a command but no UI caller** (`audioClips.ts:520`).                                                                                                                                                                                                                                                                                                                                | audioClips.ts:520             |
+| GAP-16 | LOW | CONFIRMED | `kyx_export` returns `mutated: false` although it writes a file to disk (`tools.ts:2876-2879`). Semantically defensible (no doc change) but understates the side effect.                                                                                                                                                                                                                      | tools.ts:2845                 |
 
 ---
 
@@ -167,7 +170,7 @@ These deserve explicit credit — they are why the severity ceiling is HIGH rath
 
 **The deterministic language layer is a closed vocabulary, while the document is open.**
 
-`ExactTarget` is an 8-member union; `parseExportIntent` is an anchored regex over one noun; the model clip vocabulary is 4 ops. Every GAP-01/02/03 finding traces to the same shape: the engine holds the *capability*, the parser holds a *fixed list*, and the two drift apart silently. The fail-open catch-all (`IntentPanel.tsx:4468`) then converts "I did not understand" into "I will generate music" instead of "I will ask".
+`ExactTarget` is an 8-member union; `parseExportIntent` is an anchored regex over one noun; the model clip vocabulary is 4 ops. Every GAP-01/02/03 finding traces to the same shape: the engine holds the _capability_, the parser holds a _fixed list_, and the two drift apart silently. The fail-open catch-all (`IntentPanel.tsx:4468`) then converts "I did not understand" into "I will generate music" instead of "I will ask".
 
 `model-ollama.ts:191` makes this structural: the LLM receives the document and discards it, so it cannot compensate for a closed vocabulary with real project knowledge.
 

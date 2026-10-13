@@ -67,4 +67,27 @@ describe("mcp mirror sync gate", () => {
       expect(new Set(names).size).toBe(names.length);
     }
   });
+
+  // GAP-09 gate (control-surface audit 2026-10-13): the mirror gate locks
+  // DEFINITIONS across all three copies but never the HANDLERS — a tool
+  // could ship as a perfectly-mirrored definition with no dispatcher case,
+  // and every call would fall to the unknown-tool path. Assert the
+  // registration surface and the dispatch surface in tools.ts cover each
+  // other exactly.
+  it("every registered tool name has a dispatcher case (and no orphan cases)", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const source = await readFile(resolve(root, "src/mcp/tools.ts"), "utf8");
+    const dispatched = new Set([...source.matchAll(/case\s+"(kyx_[a-z0-9_]+)"\s*:/g)].map((match) => match[1]!));
+    const names = MCP_TOOLS.map((tool) => tool.name);
+    const undefinedButDispatched = [...dispatched].filter((name) => !names.includes(name));
+    expect(
+      undefinedButDispatched,
+      `dispatcher cases without a definition: ${undefinedButDispatched.join(", ")}`,
+    ).toEqual([]);
+    const definedButNotDispatched = names.filter((name) => !dispatched.has(name));
+    expect(
+      definedButNotDispatched,
+      `tools defined but never dispatched: ${definedButNotDispatched.join(", ")}`,
+    ).toEqual([]);
+  });
 });

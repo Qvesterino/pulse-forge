@@ -6,7 +6,7 @@ const MUSICAL_OBJECT =
 const COMPOSITION_VERB =
   /\b(?:create|generate|compose|build|write|produce|sprav(?:i|te)?|urob(?:i|te)?|vytvor(?:i|te)?|zloz(?:i|te)?|skladaj|napis(?:i|te)?)\b|\bmake\s+(?:me|us|a|an|some|another)\b/;
 const ACTION_VERB =
-  /\b(?:mute|solo|unmute|unsolo|delete|remove|move|copy|duplicate|rename|select|load|bypass|export|save|record|transpose|pan|set|turn|lower|raise|increase|decrease|automate|insert|fix|ease|park|shove|calm|tame|nudge|pull|push|lift|drop|stis(?:i|te)?|zni[zž](?:i|te)?|zv[yý]s(?:i|te)?|odstr[aá]n(?:i|te)?|pres[uú]n(?:i|te)?|premenuj|vyber|na[cč][ií]taj|vypni|zapni|oto[cč](?:i|te)?|pos[uú]n(?:i|te)?|pridaj|uber|zme[nň](?:i|te)?)\b/;
+  /\b(?:mute|solo|unmute|unsolo|delete|remove|move|copy|duplicate|rename|select|load|bypass|export|save|record|transpose|pan|set|turn|lower|raise|increase|decrease|automate|insert|fix|ease|park|shove|calm|tame|nudge|pull|push|lift|drop|trim|fade|shorten|lengthen|stretch|resize|split|slip|consolidate|quantize|reverse|stis(?:i|te)?|zni[zž](?:i|te)?|zv[yý]s(?:i|te)?|odstr[aá]n(?:i|te)?|pres[uú]n(?:i|te)?|premenuj|vyber|na[cč][ií]taj|vypni|zapni|oto[cč](?:i|te)?|pos[uú]n(?:i|te)?|pridaj|uber|zme[nň](?:i|te)?)\b/;
 const EDIT_COMPARATIVE =
   /\b(?:louder|quieter|softer|darker|brighter|wider|narrower|warmer|colder|drier|wetter|punchier|harder|energetic|energic|busier|denser|sparser|metallic|grittier|crunchy|robotic|deeper|lofi|vinyl|dominant|prominent|subdued|subtle|tucked|hlasnejsi|tichsi|tmavsi|svetlejsi|sirsi|uzsi|teplejsi|suchsi|mokrejsi|razantnejsi|hustejsi|riedsi|energickejsi)\b/;
 const VOCAL_CONTEXT =
@@ -68,6 +68,17 @@ export function isCreativeBriefRoute(text: string, route: RoutedIntent): boolean
   // listening-loop complaint without using an imperative verb.
   if (ACTION_SOUND_OBSERVATION.test(normalized)) return false;
 
+  // EXCEPTION — clip-editing verbs are never incidental parse matches: “trim
+  // the clip at bar 5 to 2 bars” parses “2 bars” as a brief length field, but
+  // that number belongs to the edit. These verbs therefore outrank a
+  // length/bpm-only structured brief (P0-A, control-surface audit 2026-10-13).
+  // Genre/style/artist briefs are unaffected — composition-verb and
+  // structured-brief classification above still wins for its own forms, and
+  // the legacy edit-verb precedence below is unchanged.
+  if (/\b(?:trim|fade|shorten|lengthen|stretch|resize|slip|consolidate|quantize|split)\b/.test(normalized)) {
+    return false;
+  }
+
   // A well-formed musical brief already carries stronger evidence than an
   // incidental edit verb inside the same sentence (“dark trap, remove hats”).
   if (route.kind === "pattern" && hasStructuredCreativeBrief(route.input)) return true;
@@ -92,3 +103,26 @@ export function isCreativeBriefRoute(text: string, route: RoutedIntent): boolean
 export function shouldTryActionModelFallback(text: string, route: RoutedIntent): boolean {
   return route.kind === "pattern" && !isCreativeBriefRoute(text, route);
 }
+
+/**
+ * P0-A fail-closed contract (control-surface audit 2026-10-13, GAP-01): the
+ * terminal unmatched route may reach generation ONLY on a positive
+ * creative-brief signal — `isCreativeBriefRoute` is that gate, checked before
+ * anything else runs. When the action model also misses, the request lands
+ * here: an explicit clarify with executable suggestions. The previous
+ * behaviour — falling through to `generate()` — recomposed the user's
+ * arrangement for editing asks like "export the current mix"; an
+ * unrecognized verb must never default to the most destructive operation in
+ * the app.
+ */
+export const UNMATCHED_ROUTE_CLARIFY: { reason: string; suggestions: string[] } = {
+  reason:
+    "I couldn't map that to an editor action, so I didn't change anything and I didn't generate. Try one of these:",
+  suggestions: [
+    "mute the drums",
+    "lower the bass by 2 dB",
+    "more swing on this selected clip",
+    "export wav",
+    "dark rolling techno at 140",
+  ],
+};

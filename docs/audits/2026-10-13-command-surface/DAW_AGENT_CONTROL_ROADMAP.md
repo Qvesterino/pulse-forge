@@ -1,7 +1,7 @@
 # DAW AGENT CONTROL ROADMAP — KYX
 
 **Audit date:** 2026-10-13 · **Target:** KYX (`pulse-forge`) · **Revision:** `31cc20ad`
-**Status:** proposals only. **No fix has been implemented.** This document is a plan awaiting explicit authorization.
+**Status:** P0-A, P0-B, P0-C, P1-C and P1-E **IMPLEMENTED + VERIFIED 2026-10-13** — see `IMPL-2026-10-13-P0-P1.md` in this directory for changed files, test evidence and residual risks. All other items remain proposals.
 
 Complexity is expressed as **relative size** (S / M / L), not calendar time — this audit has no basis for time estimates and inventing them would be false precision.
 
@@ -37,6 +37,7 @@ P0-A must land before anything else: every other intent-layer fix is unverifiabl
 **Minimal scope:** require positive creative-brief signal before `generate(source)` in the terminal `else`. Preserve the current behaviour for genuine briefs; make everything else fall to `clarify`.
 
 **Acceptance criteria:**
+
 - `routeIntentText("export the current mix")` does not yield a route that reaches `generate()`.
 - Existing generation briefs still route to generation (regression: full intent suite green).
 - The clarify chip offers executable suggestions rather than a dead end.
@@ -162,15 +163,19 @@ P0-A must land before anything else: every other intent-layer fix is unverifiabl
 ## P2 — Parity and multi-step safeguards
 
 ### P2-A · MCP capability parity sweep
+
 Reconcile the 46 VERIFIED commands in `DAW_COMMAND_SURFACE_MATRIX.md` against the 37 MCP tools; publish a per-capability UI/Intent/MCP reachability table. Close `kyx_intent`'s natural-language gaps via P1-A. **Prereq:** P0-A, P1-A. **Complexity:** M.
 
 ### P2-B · Typed error contract
+
 Add stable error codes to `McpToolResult` (`tools.ts:1675-1688`) so agents branch on codes instead of substrings. **Prereq:** none. **Complexity:** M.
 
 ### P2-C · Multi-step execution safeguards
+
 Atomic-or-explicit semantics for `kyx_batch` (currently partial-commit by design, `tools.ts:4711-4712`); dry-run/preview mode across mutating tools. **Prereq:** P1-B. **Complexity:** M.
 
 ### P2-D · Add the genuinely missing capabilities
+
 Time signature command (GAP-12), automation read/write modes (GAP-13), save-as (GAP-14), slip UI caller (GAP-15). Each is small; they are listed for completeness, not urgency. **Complexity:** S each.
 
 ---
@@ -178,12 +183,15 @@ Time signature command (GAP-12), automation read/write modes (GAP-13), save-as (
 ## P3 — Advanced autonomy and diagnostics
 
 ### P3-A · Unattended agent operation
+
 Only safe once P1-B (idempotency) and P1-D (isolation) land. Includes retry policy, cancellation propagation, and stale-selection detection. **Complexity:** L.
 
 ### P3-H · Headless evaluation
+
 Headless is currently **zero-capability by design** (`desktop/mcp-host-manager.cjs:225,233`). If CI-driven agent evaluation is wanted, that is a new capability with its own ADR — not a bug fix. **Complexity:** L.
 
 ### P3-D · Versioned action schema
+
 Add a version field + migration hook to `MODEL_ACTIONS` (`model-schema.ts:252-383`). **Complexity:** S.
 
 ---
@@ -191,7 +199,7 @@ Add a version field + migration hook to `MODEL_ACTIONS` (`model-schema.ts:252-38
 ## Explicitly not recommended
 
 - **Do not rewrite the command spine.** `snapshot()` inverse-patch undo with dev-time self-verification (`core.ts:34-66`) is the strongest asset in the codebase.
-- **Do not merge KYX and ZYVO implementations.** They are separate products (`D:\VocalForge_DAW` is a distinct monorepo); share *contracts*, not code.
+- **Do not merge KYX and ZYVO implementations.** They are separate products (`D:\VocalForge_DAW` is a distinct monorepo); share _contracts_, not code.
 - **Do not weaken the D4 destructive gate** (`flags.ts:9-17`) or the token/rate-limit controls (`mcp-bridge-server.cjs:154`, `:27-42`). They are working and tested.
 - **Do not introduce LLM inference, network, or filesystem work into any audio callback.** Verified absent today across all 41 processors; keep it that way.
 
@@ -203,4 +211,4 @@ Add a version field + migration hook to `MODEL_ACTIONS` (`model-schema.ts:252-38
 
 Small, surgical, and closes both CRITICAL findings without touching the command spine. Every intent-layer fix after this is unverifiable while an unrecognized verb can regenerate the arrangement.
 
-**Awaiting explicit authorization before any implementation.**
+**IMPLEMENTED 2026-10-13** (together with P1-C and P1-E) — evidence in `IMPL-2026-10-13-P0-P1.md`.

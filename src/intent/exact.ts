@@ -550,14 +550,21 @@ export function parseSaveIntent(text: string): boolean {
 
 /**
  * "export wav" / "exportuj mp3" / "bounce" / "export the project as mp3" /
+ * "export the current mix" / "bounce the mix" / "export my mix as mp3" /
  * bare "export" → the master-bounce format. Bare "export"/"bounce" defaults
  * to WAV (the master delivery format — a bounded, documented default).
- * Execution is the async render+encode+download pipeline the export panel
- * drives; parsing stays pure.
+ * Control-surface audit 2026-10-13 (GAP-01): the noun is optional and no
+ * longer limited to "project" — mix/master/song/track phrasings route to the
+ * same master-bounce pipeline. Deliberately NOT included: "stems" (a
+ * different multi-file pipeline the intent route cannot drive — the
+ * established contract in intent-e2e-audit keeps "export the stems" a
+ * prompt). Still end-anchored, so creative tails ("export a dark mix at 140
+ * bpm") stay generation prompts. Execution is the async render+encode+
+ * download pipeline the export panel drives; parsing stays pure.
  */
 export function parseExportIntent(text: string): ExportFormat | null {
   const m =
-    /^\s*(?:please\s+)?(?:export(?:uj)?|bounce)\s*(?:the\s+)?(?:project\s+)?(?:as\s+|do\s+|to\s+)?(wav|mp3)?\s*[.!]?\s*$/i.exec(
+    /^\s*(?:please\s+)?(?:export(?:uj)?|bounce)\b\s*(?:(?:the|my|this|that|a|current|whole|entire|final|full|cel[yý]|kompletn[yý]|terazn[eejí]\w*)\s+)*(?:(?:projects?|projekt\w*|mix\w*|masters?|mastering|songs?|tracks?|skladb\w*)\b\s*)?(?:(?:as|ako|in|do|to|v)\s+)?(wav|mp3)?\s*[.!]?\s*$/i.exec(
       text,
     );
   if (!m) return null;

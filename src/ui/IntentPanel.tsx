@@ -166,7 +166,7 @@ import { destructiveCheckpointName, routeIsDestructive } from "../intent/route-g
 import { restoreIntentCheckpoint, saveIntentCheckpoint } from "../intent/checkpoints";
 import { snapshot } from "../commands/core";
 import { getIntentModelProvider, tryModelRoute } from "../intent/model-resolver";
-import { isCreativeBriefRoute } from "../intent/model-fallback-policy";
+import { isCreativeBriefRoute, UNMATCHED_ROUTE_CLARIFY } from "../intent/model-fallback-policy";
 import { installIntentFailureDevtools, logIntentMiningEvent } from "../intent/failure-log";
 import { diagnoseComplaint } from "../intent/complaints";
 import type { SongSectionMeter } from "../intent/song-audio-review";
@@ -4474,6 +4474,15 @@ export function IntentPanel() {
           await generate(source);
           return;
         }
+        // P0-A exception: a RESOLVED session-candidate reference ("ten
+        // druhý") is a deterministic, bounded action owned by generate() —
+        // including its cross-project guard, which must keep reporting a
+        // foreign session instead of a generic clarify.
+        const lastSession = lastGeneration();
+        if (lastSession && resolveSessionReference(source, lastSession.candidates)) {
+          await generate(source);
+          return;
+        }
         // LOCAL-MODEL FALLBACK: the deterministic layer came up empty — let
         // the registered intent model try the instruction before falling to
         // generation. A hit re-enters with the adapted route (one dispatch);
@@ -4495,11 +4504,21 @@ export function IntentPanel() {
           void routeAndExecute();
           return;
         }
-        // MINING: no provider answered or nothing validated — the sentence
-        // fell through to generation; that is exactly the row a corpus
-        // round (or a parser sibling) should learn from
+        // MINING: no provider answered or nothing validated. P0-A fail-closed
+        // (control-surface audit 2026-10-13): the miss path used to fall
+        // through to generate() — "export the current mix" recomposed the
+        // user's song. Only a positive creative-brief signal (checked above)
+        // may generate; everything else lands in the clarify chip with
+        // executable suggestions.
         logIntentMiningEvent({ prompt: source, outcome: "model-miss" });
-        await generate();
+        logIntentMiningEvent({ prompt: source, outcome: "clarify", reason: UNMATCHED_ROUTE_CLARIFY.reason });
+        stopAudition();
+        setClarify({
+          reason: UNMATCHED_ROUTE_CLARIFY.reason,
+          suggestions: [...UNMATCHED_ROUTE_CLARIFY.suggestions],
+          prompt: source,
+        });
+        setStatus(UNMATCHED_ROUTE_CLARIFY.reason);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

@@ -4,6 +4,7 @@ import {
   parseArrangeIntent,
   parseClipArrangeIntent,
   parseSelectedClipArrangeIntent,
+  parseSelectedAudioClipFadeIntent,
   parseSelectedTimeRangeIntent,
   type ArrangeOp,
   type ClipArrangeOp,
@@ -444,6 +445,13 @@ export function routeIntentText(
   if (context.selectedClipId) {
     const ops = parseSelectedClipArrangeIntent(text, doc, context.selectedClipId);
     if (ops) return { kind: "selectedClipArrange", clipId: context.selectedClipId, ops };
+    // AUDIO-CLIP FADE ("fade the selected clip over its final bar") — fades
+    // live only on audio clips, so the same selection id is resolved against
+    // arrangement.audioClips here; a scene-clip selection returns null and
+    // the pattern-clip handling below stays authoritative. Executes through
+    // the "clips" path (one undoable command, non-destructive).
+    const audioFadeOps = parseSelectedAudioClipFadeIntent(text, doc, context.selectedClipId);
+    if (audioFadeOps) return { kind: "clips", ops: audioFadeOps };
     const normalized = deaccent(text);
     if (
       /\b(?:selected|this|the|tomto|vybranom|vybrany|vybrana|vybrate)\s+(?:arrangement\s+)?(?:clip|klip\w*)\b/.test(

@@ -20,7 +20,9 @@ import {
   setStepMeta,
   setSceneRole,
   snapshot,
+  updateAudioClip,
 } from "../commands/commands";
+import { audioClipDurationSec } from "../commands/audioClips";
 import { canonicalizePattern, contentHash } from "../ai/evaluation";
 
 /**
@@ -96,6 +98,7 @@ const VERBS = {
   remove: /\b(remove|delete|take out|strip|odstra|odstran|vymaz|vyhod)\b/,
   duplicate: /\b(duplicate|double|copy|zdvoj(?:n[aá]sob)?|duplikuj|skopir(?:uj)?|opakuj)\b/,
   move: /\b(move|shift|push|posun|presun)/,
+  fade: /\bfades?\b/,
   arrange: /\b(arrange|usporiadaj|usporiad|into a song|do pesnicky|do piesne)/,
 };
 
@@ -451,6 +454,7 @@ export type ClipArrangeOp =
   | { op: "moveClip"; clipId: string; toBar: number }
   | { op: "resizeClip"; clipId: string; bars: number }
   | { op: "deleteClip"; clipId: string }
+  | { op: "fadeClip"; clipId: string; edge: "in" | "out"; seconds: number }
   | {
       op: "clipGroove";
       clipId: string;
@@ -708,6 +712,70 @@ export function parseClipArrangeIntent(text: string, doc: ProjectDocument): Clip
 }
 
 /**
+ * Fade length for an audio-clip fade request. Bar phrases resolve against the
+ * tempo map at the clip's start (audioClipDurationSec reads the scene-pinned
+ * BPM the scheduler actually runs the clip at); explicit values accept
+ * seconds or milliseconds. Null when the sentence carries no length ("fade
+ * the clip") or contradicts itself ("fade in … over its final bar") — those
+ * clarify upstream rather than guessing a fade.
+ */
+function parseFadeAmount(
+  clause: string,
+  doc: ProjectDocument,
+  clip: Pick<ArrangementClip, "startBar" | "lengthBars">,
+): { edge: "in" | "out"; seconds: number } | null {
+  const explicit = /\bfade\s+(in|out)\b/i.exec(clause);
+  const lastBars = /\b(?:final|last|posledn\w*)\s*(\d+)?\s*(?:bars?|takt\w*)\b/i.exec(clause);
+  const firstBars = /\b(?:first|prv\w*)\s*(\d+)?\s*(?:bars?|takt\w*)\b/i.exec(clause);
+  const msAmount = /\b(\d+(?:[.,]\d+)?)\s*(?:ms|milisek\w*)\b/i.exec(clause);
+  const secAmount = /\b(\d+(?:[.,]\d+)?)\s*(?:s\b|sec\w*|seconds?|sek\w*)/i.exec(clause);
+  let edge: "in" | "out" | null = explicit ? (explicit[1]!.toLowerCase() as "in" | "out") : null;
+  let seconds: number | null = null;
+  if (lastBars) {
+    if (edge === "in") return null;
+    edge = "out";
+    seconds = audioClipDurationSec(doc, Number(lastBars[1] ?? 1), clip.startBar);
+  } else if (firstBars) {
+    if (edge === "out") return null;
+    edge = "in";
+    seconds = audioClipDurationSec(doc, Number(firstBars[1] ?? 1), clip.startBar);
+  }
+  if (seconds === null) {
+    if (msAmount) seconds = Number(msAmount[1]!.replace(",", ".")) / 1000;
+    else if (secAmount) seconds = Number(secAmount[1]!.replace(",", "."));
+  }
+  if (!edge || seconds === null || !Number.isFinite(seconds) || seconds <= 0) return null;
+  // A fade may never outlive its clip — pre-clamp to the stored length so the
+  // op reports (and the label shows) the value that actually lands.
+  const clipDur = audioClipDurationSec(doc, clip.lengthBars, clip.startBar);
+  return { edge, seconds: Math.max(0.001, Math.min(seconds, clipDur)) };
+}
+
+/**
+ * Selection-grounded AUDIO-clip fade ("fade the selected clip over its final
+ * bar"). Fades live only on audio clips (updateAudioClip fadeIn/fadeOut), so
+ * the selected id is resolved against `arrangement.audioClips` — a scene-clip
+ * selection returns null and keeps the pattern-clip arrange parser
+ * authoritative. Route.ts gives that parser the first chance; this one never
+ * fires for a pattern clip, and the emitted op is executed by the same ONE-
+ * undoable applyClipArrangeOps command as the other clip ops.
+ */
+export function parseSelectedAudioClipFadeIntent(
+  text: string,
+  doc: ProjectDocument,
+  selectedClipId: string,
+): ClipArrangeOp[] | null {
+  const clip = (doc.arrangement.audioClips ?? []).find((candidate) => candidate.id === selectedClipId);
+  if (!clip) return null;
+  const normalized = deaccent(text);
+  if (!/\b(?:clip|klip|selection|vybran\w*|vyber)\b/i.test(normalized)) return null;
+  if (!verbHits(normalized, VERBS.fade)) return null;
+  const amount = parseFadeAmount(normalized, doc, clip);
+  if (!amount) return null;
+  return [{ op: "fadeClip", clipId: clip.id, edge: amount.edge, seconds: amount.seconds }];
+}
+
+/**
  * Parse an arrangement edit initiated from one selected clip. Generic clip
  * references ("move this clip to bar 8") are locked to that selection; an
  * explicit reference to some other clip is rejected instead of overriding
@@ -848,6 +916,19 @@ export function applyClipArrangeOps(doc: ProjectDocument, ops: ClipArrangeOp[]):
   let cursor = doc;
   const labels: string[] = [];
   for (const op of ops) {
+    if (op.op === "fadeClip") {
+      // Fades live on AUDIO clips — resolve against audioClips, never the
+      // pattern-clip guard below (an audio id would read as "lost" there).
+      const clip = (cursor.arrangement.audioClips ?? []).find((c) => c.id === op.clipId);
+      if (!clip) return null; // arrangement changed under the request — refuse
+      cursor = updateAudioClip(
+        cursor,
+        op.clipId,
+        op.edge === "in" ? { fadeIn: op.seconds } : { fadeOut: op.seconds },
+      ).execute(cursor);
+      labels.push(`fade ${op.edge} ${op.seconds.toFixed(2)}s`);
+      continue;
+    }
     const clip = cursor.arrangement.clips.find((c) => c.id === op.clipId);
     if (!clip) return null; // arrangement changed under the request — refuse
     if (op.op === "clipGroove") {
