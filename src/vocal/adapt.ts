@@ -102,7 +102,7 @@ export function applyVocalTempoCommand(
 /* ---------------- Vlna 3: "urob hook z môjho hlasu" ---------------- */
 
 /** Track params for the planted hook — the UKG-chop voicing (Vlna 2). */
-const HOOK_PARAMS: Record<string, number> = {
+export const HOOK_PARAMS: Record<string, number> = {
   root: 60,
   vowel: 1,
   color: 0.85,

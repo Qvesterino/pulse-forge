@@ -180,6 +180,8 @@ import type { NoteEvent } from "../project-model/types";
 import { BAR_TICKS, PPQ } from "../project-model/types";
 import { rankerMode } from "../ai/ranking/ranker-client";
 import { playAuditionBuffer, renderAuditionBuffer, renderSongAuditionBuffer, stopAudition } from "../intent/audition";
+import { voiceifyHum } from "../vocal/voiceify";
+import { applyVocalEnsembleCommand } from "../vocal/ensemble";
 import { semanticIntentFor } from "../intent/semantic";
 import { takeIntentPrefill, takeRegenFlag } from "../landing/handoff";
 import { freshRegenSeed, intentSnapshotOfDoc, promptFromIntent } from "../gallery/intentCarry";
@@ -2328,6 +2330,48 @@ export function IntentPanel() {
       );
     } catch (err) {
       setError(`🎤 voice instrument: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setVoiceInstrumentBusy(false);
+    }
+  };
+
+  // HUM A HIT (KROK 2, 2026-10-12): the take → voiceify render → a THREE-voice
+  // ensemble (lead + double + harmony) installed as one undoable snapshot —
+  // a chorus from one hum, in the user's own timbre.
+  const installVocalEnsemble = async () => {
+    const takeBuffer = voiceTakeBufferRef.current;
+    const melody = voiceTake?.melody;
+    if (!takeBuffer || !melody || melody.noteCount === 0) {
+      setError("🎤 zbor: nahraj najprv hum s melódiou (🎤 IDEA)");
+      return;
+    }
+    setVoiceInstrumentBusy(true);
+    try {
+      const channel = takeBuffer.getChannelData(0) as Float32Array<ArrayBuffer>;
+      const render = voiceifyHum(
+        channel as Float32Array<ArrayBuffer>,
+        takeBuffer.sampleRate,
+        melody.notes.map((n) => ({ midi: n.pitch, startTicks: n.start, durationTicks: n.duration })),
+        { bpm: services.store.getDoc().bpm },
+      );
+      const name = `voice-ensemble-${new Date().toISOString().slice(0, 10)}`;
+      const buffer = new AudioBuffer({ length: render.length, sampleRate: takeBuffer.sampleRate, numberOfChannels: 1 });
+      buffer.copyToChannel(render as Float32Array<ArrayBuffer>, 0);
+      const prepared = prepareVoiceSample(buffer, name, melody.notes);
+      await saveVoiceSample(prepared);
+      const outcome = applyVocalEnsembleCommand(services.store.getDoc(), {
+        bufferId: prepared.asset.id,
+        renderTicks: melody.loopTicks,
+        bpm: services.store.getDoc().bpm,
+      });
+      if (!outcome.ok || !outcome.command) {
+        setError(`🎤 zbor: ${outcome.error ?? "ensemble failed"}`);
+        return;
+      }
+      services.store.execute(outcome.command);
+      setStatus(`🎤 HUM A HIT: ${outcome.label} — tvoj hum spieva v trojhlase`);
+    } catch (err) {
+      setError(`🎤 zbor: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setVoiceInstrumentBusy(false);
     }
@@ -5122,6 +5166,17 @@ export function IntentPanel() {
             title="Hum-to-Beat: tvoj nahraný zvuk sa stane hrateľným inštrumentom — Voice Lead sampler s tvojou timbrou; ♪ SONG ho používa ako lead"
           >
             {voiceInstrumentBusy ? "🎤…" : voiceInstrument ? "🎤 VOICE ✓" : "🎤 HLAS→NÁSTROJ"}
+          </button>
+        ) : null}
+        {voiceTake?.melody && voiceTake.melody.noteCount > 0 ? (
+          <button
+            type="button"
+            className="btn intent-voice-inst-btn"
+            disabled={voiceInstrumentBusy || refBusy || songBusy}
+            onClick={() => void installVocalEnsemble()}
+            title="HUM A HIT: tvoj hum → ladený lead → TROJHLAS (lead + double + harmónia) v tvojej farbe, jeden undo krok"
+          >
+            {voiceInstrumentBusy ? "🎤…" : "🎤 HUM A HIT"}
           </button>
         ) : null}
         <button
