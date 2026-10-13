@@ -24,7 +24,7 @@ import { compactIntentResponse } from "../src/intent/dataset";
 import { validateModelAction } from "../src/intent/model-schema";
 import type { ProjectDocument } from "../src/project-model/types";
 
-const DATASET_VERSION = 8;
+const DATASET_VERSION = 9;
 const OUT_DIR = path.join(process.cwd(), "scripts", "data", "intent-sft");
 const MINED_CORPUS_PATH = path.join(process.cwd(), "scripts", "data", "intent-mined-corpus.json");
 const unsupportedPairs = new Map<string, string[]>();
@@ -1801,6 +1801,22 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
   sk.push("bicie su dute");
   sk.push("nic sa nedeje v drope");
   sk.push("drop posobi prazdno");
+  // ── round 2: clarify + compound boundary density (the 2 val wrongKinds
+  // were one clarify and one compound row — feed the boundary) ──
+  sk.push("pridaj delay na trubky");
+  sk.push("pridaj reverb na husle");
+  en.push("pann the hi-hats left");
+  en.push("soloo the lead");
+  en.push("raise the choir by 10 percent");
+  en.push("add more compression");
+  sk.push("stis master a zvys bicie");
+  sk.push("mute the hats a zvys snare");
+  sk.push("set the lead to 60% a zniz basu");
+  sk.push("zniz basu na 40% a zvys lead");
+  sk.push("nastav bicie na 80% a stis lead");
+  en.push("mute the bass and raise the lead");
+  en.push("set the chords to 70% and set tempo to 128");
+  en.push("turn down the drums and turn up the bass");
   sk.push("refren posobi prazdno");
   sk.push("intro posobi prazdno");
   sk.push("bridge posobi prazdno");
@@ -1825,6 +1841,192 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
   sk.push("aky je kluc");
   sk.push("kolko trackov mas");
   en.push("what fx are on the drums");
+
+  // ── WAVE 10 (2026-10-13) — browser-model long-tail balance. The previous
+  // student had only five query rows, three undo/redo rows, and 38 listening
+  // complaints across every family. Add independently worded rows through
+  // the live teacher so the model learns the existing executable contract,
+  // not hand-authored labels. ──
+  en.push(
+    "the verse feels empty",
+    "the outro feels empty",
+    "the drums feel empty",
+    "the hats feel empty",
+    "the bass feels empty",
+    "the kick sounds thin",
+    "the hats sound weak",
+    "the chords sound thin",
+    "the lead is weak",
+    "the vocal feels thin",
+    "the snare sounds thin",
+    "the clap feels weak",
+    "the tom sounds thin",
+    "the bass sounds muddy",
+    "the kick sounds muddy",
+    "the snare is muddy",
+    "the hats sound muddy",
+    "the lead sounds muddy",
+    "the vocal is muddy",
+    "the chords sound muddy",
+    "the tom is muddy",
+    "the bass sounds harsh",
+    "the hats are piercing",
+    "the snare is harsh",
+    "the vocal sounds harsh",
+    "the chords sound harsh",
+    "the kick is harsh",
+    "the lead is piercing",
+    "the snare has no punch",
+    "the kick has no knock",
+    "the bass has no punch",
+    "the clap has no punch",
+    "the tom has no punch",
+    "the hats have no punch",
+  );
+  sk.push(
+    "chorus posobi prazdno",
+    "basa posobi prazdno",
+    "hats posobia prazdno",
+    "vokal znie prazdno",
+    "bas je tenky",
+    "hats su slabe",
+    "lead je tenky",
+    "akordy zneju slabo",
+    "vokal je tenky",
+    "snare znie slabo",
+    "clap je slaby",
+    "tom znie slabo",
+    "kick znie blatisto",
+    "snare je blatista",
+    "hats zneju blatisto",
+    "lead znie blatisto",
+    "vokal je blatisty",
+    "akordy su blatisté",
+    "basa je kalna",
+    "tom znie kalne",
+    "basa je ostra",
+    "hats su ostre",
+    "snare znie ostro",
+    "vokal je drazdivy",
+    "akordy zneju ostro",
+    "kick picha",
+    "lead je piercing",
+    "snare je bez uderu",
+    "kopak je bez razancie",
+    "basa je bez razancie",
+    "clap je bez uderu",
+    "tom je mrtvy",
+    "hats su mrtve",
+  );
+
+  // Queries cover every read-only subject and the named FX target slot in
+  // both languages. These remain questions; declarative DAW actions do not
+  // get relabelled as read-back requests.
+  en.push(
+    "what bpm is this project at?",
+    "what is the song tempo?",
+    "tell me the current bpm",
+    "what key is this song in?",
+    "show me the project key",
+    "how many tracks are in this song?",
+    "list the tracks in the project",
+    "which markers are set?",
+    "show the song markers",
+    "what groove is active?",
+    "show me the current groove",
+    "what effects are on the bass?",
+    "which effects are on the lead?",
+    "show the effects on the drums",
+    "what did you just do?",
+    "what was the last action?",
+  );
+  sk.push(
+    "ake bpm ma tento projekt?",
+    "ake je aktualne tempo skladby?",
+    "povedz aktualne bpm",
+    "v akej tonine je skladba?",
+    "ukaz toninu projektu",
+    "kolko trackov je v tejto skladbe?",
+    "zoznam trackov v projekte",
+    "ktore markery su nastavene?",
+    "ukaz markery skladby",
+    "aky groove je aktivny?",
+    "ukaz aktualny groove",
+    "ake efekty su na base?",
+    "ktore efekty su na leade?",
+    "ukaz efekty na bicich",
+    "co si prave spravil?",
+    "aka bola posledna akcia?",
+  );
+
+  // Undo/redo paraphrases stay short and operational. Repetition is useful
+  // here because the student has to learn a safety-sensitive session action
+  // without confusing it with transport or arbitrary project edits.
+  en.push(
+    "please undo the last action",
+    "undo the last change",
+    "undo that change",
+    "go back one step",
+    "step back",
+    "undo 3 steps",
+    "undo four steps",
+    "redo the last action",
+    "redo 2 steps",
+    "please redo",
+  );
+  sk.push(
+    "vrat posledny krok",
+    "vrat poslednu zmenu",
+    "vrat to spat",
+    "vrat o jeden krok",
+    "krok dozadu",
+    "vrat 3 kroky",
+    "vrat styri kroky",
+    "zopakuj poslednu akciu",
+    "zopakuj 2 kroky",
+    "urob znova",
+  );
+
+  // Two explicit mixer operations per request: train the kind head against
+  // its common single-fader neighbors and retain both supported slot payloads.
+  en.push(
+    "lower the bass and raise the lead",
+    "raise the drums and lower the bass",
+    "turn down the lead and turn up the chords",
+    "turn up the bass and turn down the drums",
+    "set the bass to 60% and set the lead to 45%",
+    "set the drums to 70% and lower the lead",
+    "raise the chords by 10% and lower the bass by 5%",
+    "lower the vocal and raise the drums",
+    "turn up the lead and turn down the chords",
+    "set the master to 80% and set the bass to 55%",
+  );
+  sk.push(
+    "stis basu a zvys lead",
+    "zvys bicie a stis basu",
+    "stis lead a pridaj hlasitost akordom",
+    "pridaj basu a stis bicie",
+    "nastav basu na 60 % a lead na 45 %",
+    "nastav bicie na 70 % a stis lead",
+    "zvys akordy o 10 % a stis basu o 5 %",
+    "stis vokal a zvys bicie",
+    "zvys lead a stis akordy",
+    "nastav master na 80 % a basu na 55 %",
+  );
+
+  // Similar typo families teach the model that an obvious correction prompt
+  // is clarify, while the correctly spelled counterpart remains exact.
+  en.push(
+    "soloo the bass",
+    "soloo the lead",
+    "soloo the chords",
+    "pann the lead left 30",
+    "pann the drums right 20",
+    "mut the bass",
+    "mut the chords",
+    "mut the lead",
+  );
+  sk.push("soloo basu", "soloo lead", "pannuj basu dolava 20", "mutni basu prosim");
 
   return [
     { lang: "en", instructions: en },

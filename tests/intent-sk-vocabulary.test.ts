@@ -121,6 +121,8 @@ describe("SK vocabulary audit — complaints (listening loop)", () => {
     expect(parseComplaintIntent("lead krici")).toMatchObject({ kind: "harsh", family: "lead" });
     // PADS count as families: a kick/snare complaint targets the drum track.
     expect(parseComplaintIntent("kick je mrtvy")).toMatchObject({ kind: "noPunch", family: "kick" });
+    expect(parseComplaintIntent("the hats sound muddy")).toMatchObject({ kind: "muddy", family: "hats" });
+    expect(parseComplaintIntent("hats posobia prazdno")).toMatchObject({ kind: "empty", family: "hats" });
     expect(parseComplaintIntent("bicie su dute")).toMatchObject({ kind: "muddy", family: "drums" });
     expect(parseComplaintIntent("nic sa nedeje v drope")).toMatchObject({ kind: "empty", role: "drop" });
   });
