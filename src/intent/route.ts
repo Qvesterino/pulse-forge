@@ -125,7 +125,11 @@ export function parseMixIntent(text: string): MixParse {
     detected.push("colder tone");
   }
 
-  if (/\bpunch(?:ier|y)?\b|\bmore punch\b|\btighter\b|\brazantnejsi|\brazant|\b(?:viac |more )?kompres|\bsquash/.test(lower)) {
+  if (
+    /\bpunch(?:ier|y)?\b|\bmore punch\b|\btighter\b|\brazantnejsi|\brazant|\b(?:viac |more )?kompres|\bsquash/.test(
+      lower,
+    )
+  ) {
     overrides.punch = "more";
     detected.push("more punch");
   } else if (/\bsofter (?:drums|mix|hit)\b|\bmenej razant|\bmenej kompres|\bless compress/.test(lower)) {
@@ -134,7 +138,9 @@ export function parseMixIntent(text: string): MixParse {
   }
 
   if (
-    /\bno pump\b|\bwithout (?:pump|sidechain)\b|\bbez pumpy/.test(lower) ||
+    /\bno pump\b|\bwithout (?:pump|sidechain)\b|\bbez pumpy\b|\b(?:take|remove)\b.{0,24}\bpump\b.{0,24}\bout\b/.test(
+      lower,
+    ) ||
     /\bsidechain (?:off|vypni)\b|\bpump(?:a|u)? (?:off|vypni)\b|\bvypni (?:sidechain|pump(?:a|u)?)\b/.test(lower)
   ) {
     overrides.pump = "off";
@@ -175,8 +181,9 @@ export interface SectionFlowParse {
   detected: string[];
 }
 
-const REVISE_ENERGY_MORE = /\bmore (?:energetic|energic|energy)\b|\benergickejs|\bviac (?:energie|energicky)\b/;
-const REVISE_ENERGY_LESS = /\bless (?:energetic|energic|energy)\b|\bcalmer\b|\bpokojnejs|\bmenej (?:energie|energicky)\b/;
+const REVISE_ENERGY_MORE = /\bmore (?:energetic|energic|energy)\b|\benergetick|\bviac (?:energie|energicky)\b/;
+const REVISE_ENERGY_LESS =
+  /\bless (?:energetic|energic|energy)\b|\bcalmer\b|\bpokojnejs|\bmenej (?:energie|energick)\b/;
 const REVISE_DENSITY_MORE = /\b(?:more )?(?:busier|denser)\b|\bhustejs|\bviac prvkov\b/;
 const REVISE_DENSITY_LESS = /\bsparser\b|\bless busy\b|\bmenej hust/;
 
@@ -273,6 +280,7 @@ export function parseReviseIntent(text: string): ReviseParse | null {
     .replace(/[\u0300-\u036f]/g, "")} `;
   const targetRole = reviseRoleIn(lower);
   const detected = targetRole ? [`${targetRole} §`] : [];
+
   if (REVISE_ENERGY_MORE.test(lower)) {
     return { attribute: "energy", direction: "more", detected, targetRole };
   }
@@ -592,6 +600,16 @@ export function routeIntentText(
   const fader = parseFaderIntent(text);
   if (fader) {
     return { kind: "fader", intent: fader };
+  }
+  // A bare Slovak comparative is often a request to adjust an unspecified
+  // track fader. Ask which track before the broader loudness parser treats
+  // the word as a master-level loudness nudge. Full phrases such as
+  // "urob to hlasnejšie" still route to loudness below.
+  if (/^\s*hlasnejsie(?:\s+prosim)?\s*[.!]?\s*$/i.test(deaccent(text))) {
+    const clarification = declinedFaderClarification(text);
+    if (clarification) {
+      return { kind: "clarify", reason: clarification.reason, suggestions: clarification.suggestions };
+    }
   }
   const loudness = parseLoudnessIntent(text);
   if (loudness) {

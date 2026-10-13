@@ -153,17 +153,19 @@ export const CONCEPTS: readonly ConceptDef[] = [
   {
     concept: "deeper",
     defaultTarget: "bass",
-    patterns: [
-      /\bdeeper\b/,
-      /\bhlbs(ia|i|ie|y|u|iu)?(?![a-z0-9])/,
-      /\bsub-ier\b/,
-      /\bhlbc\b/,
-    ],
+    patterns: [/\bdeeper\b/, /\bhlbs(ia|i|ie|y|u|iu)?(?![a-z0-9])/, /\bsub-ier\b/, /\bhlbc\b/],
   },
   {
     concept: "punchier",
     defaultTarget: "drums",
-    patterns: [/\bpunchier\b/, /\bmore punch\b/, /\bknock\b/, /\bv\u00e4\u010d\u0161\u00ed punch\b/, /\brazantnej/i],
+    patterns: [
+      /\bpunchier\b/,
+      /\bmore punch\b/,
+      /\bknock\b/,
+      /\bhit harder\b|\bharder hit\b/,
+      /\bv\u00e4\u010d\u0161\u00ed punch\b/,
+      /\brazantnej/i,
+    ],
   },
   {
     concept: "warmer",
@@ -178,11 +180,7 @@ export const CONCEPTS: readonly ConceptDef[] = [
   {
     concept: "brighter",
     defaultTarget: "drums",
-    patterns: [
-      /\bbrighter\b/,
-      /\bsvetlejs(ia|i|ie|y|u|iu)?(?![a-z0-9])/,
-      /\bjasnejs(ia|i|ie|y|u|iu)?(?![a-z0-9])/,
-    ],
+    patterns: [/\bbrighter\b/, /\bsvetlejs(ia|i|ie|y|u|iu)?(?![a-z0-9])/, /\bjasnejs(ia|i|ie|y|u|iu)?(?![a-z0-9])/],
   },
   {
     concept: "wider",
@@ -390,7 +388,7 @@ export const CONCEPTS: readonly ConceptDef[] = [
 const TARGET_PATTERNS: [RegExp, ProductionTarget][] = [
   [/((?:^|[^a-z0-9])kicks?(?:[^a-z0-9]|$))|kopák/i, "kick"],
   [/((?:^|[^a-z0-9])snares?(?:[^a-z0-9]|$))|claps?|ženír/i, "snare"],
-  [/hi-?hats?|((?:^|[^a-z0-9])hats?(?:[^a-z0-9]|$))|činel/i, "hats"],
+  [/hi-?hats?|\bhat\w*|\u010dinel/i, "hats"],
   // SK prefix + full inflections: "bicie/bicím/bubny" — the strict \bbicíc
   // form silently dropped every post-noun SK drums row at corpus time
   [/\bdrums?\b|\bbic|\bbubny\b/i, "drums"],

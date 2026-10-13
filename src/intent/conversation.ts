@@ -57,12 +57,13 @@ export interface FaderIntent {
 
 /** ALL SK stems DE-ACCENTED — the parser strips diacritics before matching. */
 const FADER_DOWN =
-  /\bzniz|\bstis|\bnizs|\btahaj dole|\bdaj dole|\btichs|\bdole\b|\bturn down\b|\bpull down\b|\bbring down\b|\blower\b|\bdial down\b|\bquieter\b|\bquiet down\b/;
+  /\bzniz|\bstis|\bstiah\w*|\bnizs|\btahaj dole|\bdaj dole|\btichs|\bdole\b|\bturn down\b|\bpull down\b|\bbring down\b|\blower\b|\bdial down\b|\bquieter\b|\bquiet down\b|\b(?:take|bring|pull|turn|dial|drop)\b.{0,36}\bdown\b/;
 const FADER_UP =
-  /\bzvis\b|\bzvys|\bvyss\b|\btazs\w*|\bpotiahni hore|\btahaj hore|\bdaj hore|\bhlasnej|\bhlasit|\bhore\b|\bturn up\b|\bbring up\b|\braise\b|\bpush up\b|\blouder\b/;
+  /\bzvis\b|\bzvys|\bvyss\b|\btazs\w*|\bpotiahni hore|\btahaj hore|\bdaj hore|\bhlasnej|\bhlasit|\bhore\b|\bturn up\b|\bbring up\b|\braise\b|\bpush up\b|\blouder\b|\b(?:bring|turn|push|move|take)\b.{0,36}\bup\b/;
+const SK_ADD_FADER = /\bpridaj\s+(?:(?:hlasitos\w*|volume)\s+)?(?:bas\w*|lead\w*|master\w*|bic\w*)\b/;
 /** UP stems that unambiguously name a direction (loud-words excluded). */
 const FADER_UP_DIRECTIONAL =
-  /\bzvis\b|\bzvys|\bvyss\b|\btazs\w*|\bpotiahni hore|\btahaj hore|\bdaj hore|\bhore\b|\bturn up\b|\bbring up\b|\braise\b|\bpush up\b|\blouder\b/;
+  /\bzvis\b|\bzvys|\bvyss\b|\btazs\w*|\bpotiahni hore|\btahaj hore|\bdaj hore|\bhore\b|\bturn up\b|\bbring up\b|\braise\b|\bpush up\b|\blouder\b|\b(?:bring|turn|push|move|take)\b.{0,36}\bup\b|\bpridaj\s+(?:(?:hlasitos\w*|volume)\s+)?(?:bas\w*|lead\w*|master\w*|bic\w*)\b/;
 
 const FADER_TARGETS: ReadonlyArray<readonly [RegExp, FaderTarget]> = [
   [/\bbas(?:u|e|y|ov|om)?\b|\bbass\w*|\b808\w*/, "bass"],
@@ -70,7 +71,7 @@ const FADER_TARGETS: ReadonlyArray<readonly [RegExp, FaderTarget]> = [
   [/\bklaves|\bakord\w*|\bchords?\b|\bkeys\b|\bpadov?\b/, "chords"],
   [/\blead\w*\b|\bmelodi\w*|\bsynth\w*\b/, "lead"],
   [
-    /\bmaster\b|\bvsetk\w*|\bcely (?:mix|beat)\b|\beverything\b|\bwhole (?:mix|beat)\b|\bmaster (?:fader|gain)\b/,
+    /\bmaster\w*|\bvsetk\w*|\bcely (?:mix|beat)\b|\beverything\b|\bwhole (?:mix|beat)\b|\bmaster (?:fader|gain)\b/,
     "master",
   ],
 ];
@@ -81,7 +82,7 @@ const FADER_PADS: ReadonlyArray<readonly [RegExp, FaderPadFamily]> = [
   [/\bclap\w*/, "clap"],
   [/\bhat\w*|\bhi.?hat\w*|\bcinel\w*/, "hat"],
   [/\btoms?\b/, "tom"],
-  [/\bperc\w*|\bperkus\w*/, "perc"],
+  [/\bperc(?:ussion\w*|s)?\b|\bperkus\w*/, "perc"],
 ];
 
 /** Amount modifiers: "trochu" / "o dosť" / "úplne" scale the fader step. */
@@ -102,7 +103,11 @@ export function parseFaderIntent(text: string): FaderIntent | null {
   // explicit percent + a fader target. The percent is the gain as a fraction
   // of the fader range (0..1.5). Effect nouns decline — knob asks belong to
   // the effectIntent set-mode; pan declines (pan direction is its own axis).
-  if (/\bset\b|\bnastav\b/.test(lower) && !/\bpan\b/.test(lower) && !EFFECT_NOUN.test(lower)) {
+  const setFaderVerb =
+    /\bset\b|\bnastav\b/.test(lower) ||
+    (/\b(?:drop|put|place)\b.{0,32}\b(?:to|at)\b/.test(lower) && parsePercentAllowingZero(text) != null) ||
+    (/\bdaj\b.{0,24}\bna\b/.test(lower) && parsePercentAllowingZero(text) != null);
+  if (setFaderVerb && !/\bpan\b/.test(lower) && !EFFECT_NOUN.test(lower)) {
     const setPercent = parsePercentAllowingZero(text);
     if (setPercent != null) {
       const targets = FADER_TARGETS.filter(([pattern]) => pattern.test(lower)).map(([, target]) => target);
@@ -115,7 +120,7 @@ export function parseFaderIntent(text: string): FaderIntent | null {
     // own their own set-modes); fall through below for the relative stems.
   }
   const down = FADER_DOWN.test(lower);
-  const up = !down && FADER_UP.test(lower);
+  const up = !down && (FADER_UP.test(lower) || SK_ADD_FADER.test(lower));
   if (!down && !up) return null;
   // CONFLICTING directions ("zníž basu a zvýš lead") must not silently take
   // the down-priority and move BOTH targets the same way — decline instead.
@@ -166,7 +171,7 @@ export function declinedFaderClarification(text: string): DeclinedIntentClarific
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")} `;
   const down = FADER_DOWN.test(lower);
-  const up = FADER_UP.test(lower);
+  const up = FADER_UP.test(lower) || SK_ADD_FADER.test(lower);
   if (!down && !up) return null;
 
   if (down && FADER_UP_DIRECTIONAL.test(lower)) {

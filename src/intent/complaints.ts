@@ -35,7 +35,10 @@ const COMPLAINT_WORDS: ReadonlyArray<readonly [RegExp, ComplaintKind]> = [
   [/\b(?:thin|weak|tenk\w*|chud\w*|slab\w*)\b/i, "thin"],
   [/\bmuddy\b|\bblat[oi]?\b|\bblat[ai]st\w*|\bbahnist\w*|\bkaln\w*|\bzamuten\w*|\bdut\w*|\bhukot/i, "muddy"],
   [/\bharsh\b|\bpiercing\b|\bostr\w*|\bdraz\w*|\bpicha\b|\bkrici\b|\bskrece\b|\bbodav/i, "harsh"],
-  [/\bno\s+punch\b|\bbez\s+razanc\w*|\bno\s+knock\b|\bmakk\w*\s+drums\b|\bmrtv\w*|\bbez\s+uder\w*|\bchyba\s+uder\w*/i, "noPunch"],
+  [
+    /\bno\s+punch\b|\bbez\s+razanc\w*|\bno\s+knock\b|\bmakk\w*\s+drums\b|\bmrtv\w*|\bbez\s+uder\w*|\bchyba\s+uder\w*/i,
+    "noPunch",
+  ],
 ];
 
 const ROLE_WORDS: ReadonlyArray<readonly [RegExp, string]> = [
@@ -44,7 +47,7 @@ const ROLE_WORDS: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bchorus\b|\bhook\b|\brefren/i, "chorus"],
   [/\bverse\b|\bzloh/i, "verse"],
   [/\bbridge\b|\bmost/i, "bridge"],
-  [/\bdrop\b/i, "drop"],
+  [/\bdrop\w*/i, "drop"],
   [/\bbreak\b|\bbrejk/i, "break"],
   [/\boutro\b|\bzaver\b|\bkoncovk/i, "outro"],
   [/\bfill\b|\bveto\b/i, "fill"],
@@ -70,6 +73,13 @@ export function parseComplaintIntent(text: string): ComplaintIntent | null {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
   let complaint: ComplaintKind | null = null;
+  // eslint-disable-next-line no-console
+  console.log(
+    "[comp-dbg]",
+    JSON.stringify(plain),
+    JSON.stringify(COMPLAINT_WORDS[0][0].source),
+    COMPLAINT_WORDS[0][0].test(plain),
+  );
   for (const [re, kind] of COMPLAINT_WORDS) {
     if (re.test(plain)) {
       complaint = kind;

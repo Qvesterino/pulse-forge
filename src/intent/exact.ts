@@ -49,7 +49,7 @@ export interface ExactIntentPlan {
 const TARGET_RES: [RegExp, ExactTarget][] = [
   [/\bdrums?\b|\bbic\u00edc|\bbic(?:i|ie|ich)?\b|\bbubny\b/i, "drums"],
   [/\bbass\b|\bbas(?:a|u|y|e)?\b|\b808\b/i, "bass"],
-  [/\blead\b|\bsynth(?:esizer)?\b|\bsyntez/i, "lead"],
+  [/\blead\w*|\bsynth(?:esizer)?\b|\bsyntez/i, "lead"],
   [/\bchords?\b|\bkeys?\b|\bakord/i, "chords"],
   [/\b(?:the )?mix\b|\bmaster\b|\bvsetko\b|\beverything\b|\ball\b/i, "mix"],
 ];
@@ -197,11 +197,12 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
   // "everything/all/všetko" resolves to the MIX family, which the applier
   // expands to EVERY track for mute/solo ("mute everything" is a real ask).
   const muteMatch = /\b(mute|st\u00eds|vypni|mutn\w*)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
-  const unmuteMatch = /\b(unmute|zapni)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
+  const unmuteMatch = /\b(unmute|zapni|activate)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
+  const activateTrackMatch = /\baktivuj(?:te)?\s+(?:stopu\s+)?([a-z-]+)\b/.exec(lower);
   const soloMatch = /\b(solo|soluj|zosoluj)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
   const unsoloMatch = /\b(?:unsolo|solo\s+off|zrus\s+solo)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
-  if (unmuteMatch) {
-    const target = firstTarget(unmuteMatch[2], true);
+  if (unmuteMatch || activateTrackMatch) {
+    const target = firstTarget(unmuteMatch?.[2] ?? activateTrackMatch?.[1] ?? "", true);
     if (target) ops.push({ kind: "mute", target, value: false });
   } else if (muteMatch) {
     const target = firstTarget(muteMatch[2], true);
@@ -225,8 +226,9 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
 
   // Pan: "pan the hats 20% right", "pan bass left 30" — pad families allowed.
   const pan =
-    /pan(?:uj|ujte)?\s+(?:the\s+)?([a-z-]+)\s*(?:to\s*)?(\d{1,3})\s*%?\s*(left|right|lavo|pravo|dolava|doprava)?/.exec(lower) ??
-    /pan(?:uj|ujte)?\s+(?:the\s+)?([a-z-]+)\s+(left|right|dolava|doprava)\s*(\d{1,3})?/.exec(lower);
+    /pan(?:uj|ujte)?\s+(?:the\s+)?([a-z-]+)\s*(?:to\s*)?(\d{1,3})\s*%?\s*(left|right|lavo|pravo|dolava|doprava)?/.exec(
+      lower,
+    ) ?? /pan(?:uj|ujte)?\s+(?:the\s+)?([a-z-]+)\s+(left|right|dolava|doprava)\s*(\d{1,3})?/.exec(lower);
   if (pan) {
     const target = firstTarget(pan[1], true);
     // The second alternative ("pan bass left 30") captures the DIRECTION in
@@ -342,7 +344,7 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
 
   // Transpose: "transpose the lead up one octave", "transpose bass down 3 semitones"
   const transpose =
-    /transpose\s+(?:the\s+)?([a-z]+)\s+(up|down|hore|dole)\s+(one|two|three|an)?\s*(octaves?|semitones?|st)\b/.exec(
+    /(?:transpose|pitch)\s+(?:the\s+)?([a-z]+)\s+(up|down|higher|lower|hore|dole)\s+(?:by\s+)?(one|two|three|four|five|six|seven|eight|nine|ten|an|\d+)?\s*(octaves?|semitones?|st)\b/.exec(
       lower,
     );
   if (transpose) {
@@ -355,16 +357,13 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
     const named = firstTarget(transpose[1]);
     if (named && named !== "mix") {
       const target = named;
-      const dir = /up|hore/.test(transpose[2]) ? 1 : -1;
+      const dir = /up|higher|hore/.test(transpose[2]) ? 1 : -1;
       const unit = transpose[4];
+      const countWord = transpose[3] ?? "one";
       const count =
-        transpose[3] === "one" || transpose[3] === "an"
-          ? 1
-          : transpose[3] === "two"
-            ? 2
-            : transpose[3] === "three"
-              ? 3
-              : Number(transpose[3] ?? 1);
+        ({ one: 1, an: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 }[
+          countWord
+        ] as number | undefined) ?? Number(countWord);
       const semitones = dir * (/octave/.test(unit) ? 12 * (count || 1) : count || 1);
       ops.push({ kind: "transpose", target, semitones });
     }
@@ -421,9 +420,11 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
   }
 
   // Pattern length: "pattern length to 32", "length to 64"
-  const length = /(?:pattern\s+)?length\s*(?:to|=|:)?\s*(\d{1,3})\b/.exec(lower);
+  const length =
+    /(?:use|set|make|change)?\s*(\d{1,3})\s*[- ]?steps?\s+(?:loop|pattern)\s+length\b/.exec(lower) ||
+    /(?:pattern\s+)?(?:loop\s+)?length\s*(?:to|=|:)?\s*(\d{1,3})\b/.exec(lower);
   if (length) {
-    const steps = Number(length[1]);
+    const steps = Number(length[2] ?? length[1]);
     if ([16, 32, 64, 128, 256].includes(steps)) ops.push({ kind: "patternLength", steps });
   }
 
@@ -469,6 +470,13 @@ export function parseTransportIntent(text: string): TransportAction | null {
   // and the anchored regex is ASCII ("metronóm zapni" used to miss the gate
   // and teach the model a clarify)
   const plain = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const commandObject =
+    /^\s*(?:please\s+)?(play|pause|stop)\s+(?:the\s+)?(?:(?:currently|running)\s+)?(?:loop|playback|transport)\s*(?:please)?\s*[.!]?\s*$/i.exec(
+      plain,
+    );
+  if (commandObject) return commandObject[1]!.toLowerCase() as "play" | "pause" | "stop";
+  if (/^\s*(?:please\s+)?count us in with (?:the )?metronome\s*[.!]?\s*$/i.test(plain)) return "metronomeOn";
+  if (/^\s*vypni klik metronomu\s*[.!]?\s*$/i.test(plain)) return "metronomeOff";
   if (
     !/^\s*(?:please\s+|prosim\s+)?(?:play|stop|pause|hraj|hrat|start|spusti|pauza|pauzu|zastav|stoj|stopni|(?:metronome|metronom)(?:\s+(?:on|off|zapni|vypni))?|(?:loop|cykluj|cyklus)(?:\s+(?:on|off|zapni|vypni))?|(?:zapni|vypni)\s+(?:loop|cyklus))\s*(?:please|prosim)?\s*[.!]?\s*$/i.test(
       plain,
@@ -514,7 +522,7 @@ export function parseTransportIntent(text: string): TransportAction | null {
  * selects it. "the mix"/pad families are not selectable lanes → declined.
  */
 export function parseSelectIntent(text: string): ExactTarget | null {
-  const m = /^\s*(?:select|vyber)\s+(?:the\s+)?([a-z-]+)\s*[.!]?\s*$/i.exec(
+  const m = /^\s*(?:select|focus|vyber)\s+(?:the\s+)?([a-z-]+)(?:\s+(?:track|lane))?\s*[.!]?\s*$/i.exec(
     text.normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
   );
   if (!m) return null;
@@ -535,7 +543,8 @@ export type ExportFormat = "wav" | "mp3";
 export function parseSaveIntent(text: string): boolean {
   return (
     /^\s*(?:please\s+)?save(?:\s+(?:the\s+)?(?:project|it))?\s*[.!]?\s*$/i.test(text) ||
-    /^\s*(?:please\s+)?ulo[zž](?:i[ťt])?(?:\s+(?:to|it|projekt))?\s*[.!]?\s*$/i.test(text)
+    /^\s*(?:please\s+)?ulo[zž](?:i[ťt])?(?:\s+(?:to|it|projekt))?\s*[.!]?\s*$/i.test(text) ||
+    /^\s*(?:please\s+)?persist (?:this |the )?(?:session|project)\s*[.!]?\s*$/i.test(text)
   );
 }
 
