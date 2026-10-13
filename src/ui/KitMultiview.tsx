@@ -3,6 +3,7 @@ import { EFFECT_DEFS } from "../effects/registry";
 import { ESSENTIAL_KIT_SLOTS, type EssentialKitSlot } from "../effects/essentialKit";
 import { effectEditorSpec } from "./effectEditorRegistry";
 import { EffectParameterGrid } from "./EffectParameterGrid";
+import { EqCurveCanvas } from "./EqCurveCanvas";
 
 type KitMultiviewProps = {
   track: Track;
@@ -67,6 +68,7 @@ function KitDeviceColumn({
         <span className="kit-multiview-name">{def.name}</span>
         <span className="kit-multiview-slot">{slot.label}</span>
       </div>
+      {fx.type === "eq" && <EqCurveCanvas params={fx.params} />}
       {params.length > 0 ? (
         <EffectParameterGrid
           family={spec.family}

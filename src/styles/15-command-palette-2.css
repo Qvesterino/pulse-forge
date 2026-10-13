@@ -1783,8 +1783,16 @@
 .kit-multiview {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: start;
   gap: 4px 6px;
   min-width: 0;
+  /* The EQ column carries a curve on top of its four knobs and is therefore
+     taller than its four siblings. Sized so it FITS rather than scrolls: a
+     knob that is painted but below the fold is a knob the user can see and
+     cannot reach, and a hidden scrollbar is the worst way to say so. */
+  max-height: 232px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .kit-multiview-device {
@@ -1826,6 +1834,16 @@
   font: 7px var(--mono);
 }
 
+/* The EQ column paints its curve; it is taller than the other four columns by
+   exactly the curve height, so the row stays a grid. */
+.kit-eq-curve {
+  display: block;
+  margin: 1px 0 3px;
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+}
+
 /* One control per row inside a column: a 2-column grid at this width would
    clip every knob to an unreadable sliver. */
 .kit-multiview-device .fx-device-params {
@@ -1837,7 +1855,7 @@
   font-size: 7px;
 }
 
-@container (max-width: 720px) {
+@media (max-width: 720px) {
   .kit-multiview,
   .essential-kit-slots {
     grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -27,6 +27,14 @@ export const EQ_CURVE_MAX_HZ = 20000;
 /** Shelf gains clamp to ±15 dB, peaks to ±15, free bands to ±24. */
 export const EQ_CURVE_MIN_DB = -24;
 export const EQ_CURVE_MAX_DB = 24;
+/**
+ * The analytic response floors far BELOW the drawn range on purpose. At
+ * Nyquist a 2-pole lowpass is around -40 dB, and flooring it at -24 collapses
+ * two different responses onto the same number — which is how a shelf spec
+ * ends up measuring 0 dB of shelf instead of its gain. `eqCurve` clamps to the
+ * drawn range instead, at the display boundary.
+ */
+const EQ_RESPONSE_FLOOR_DB = -60;
 
 type Proto = { b0: number; b1: number; b2: number; a1: number; a2: number };
 
@@ -124,11 +132,7 @@ function num(params: Record<string, number>, id: string, fallback: number): numb
 }
 
 /** Free bands: gain 0 is transparent, so skip the prototype entirely. */
-function freeBand(
-  p: Record<string, number>,
-  index: 1 | 2,
-  sr: number,
-): Proto | null {
+function freeBand(p: Record<string, number>, index: 1 | 2, sr: number): Proto | null {
   const gain = num(p, `free${index}Gain`, 0);
   if (gain === 0) return null;
   const fc = num(p, `free${index}Freq`, index === 1 ? 1000 : 3000);
@@ -141,7 +145,10 @@ function freeBand(
  * pathological parameter set cannot throw a canvas out of its own height.
  */
 export function eqResponseDbAt(p: Record<string, number>, hz: number, sr = EQ_CURVE_SAMPLE_RATE): number {
-  const f = Math.max(EQ_CURVE_MIN_HZ, Math.min(EQ_CURVE_MAX_HZ, hz));
+  // Analytic: the frequency is NOT clamped to the drawn axis. Clamping here
+  // would silently move a Nyquist probe to 20 kHz and make the shelf specs
+  // below measure the wrong point. `eqCurve` picks the drawn range instead.
+  const f = Math.max(1, hz);
   const w = (2 * Math.PI * f) / sr;
 
   let h = protoMag(hpProto(num(p, "hpFreq", 20), sr), w);
@@ -149,8 +156,30 @@ export function eqResponseDbAt(p: Record<string, number>, hz: number, sr = EQ_CU
   const ls = protoMag(lpProto(num(p, "lowShelfFreq", 120), sr), w);
   h = mul(h, { re: 1 + lsG * ls.re, im: lsG * ls.im });
 
-  h = mul(h, protoMag(peakProto(num(p, "lowMidFreq", 400), num(p, "lowMidGain", 0), decrampedQ(num(p, "lowMidQ", 1), num(p, "lowMidFreq", 400), sr), sr), w));
-  h = mul(h, protoMag(peakProto(num(p, "highMidFreq", 2500), num(p, "highMidGain", 0), decrampedQ(num(p, "highMidQ", 1), num(p, "highMidFreq", 2500), sr), sr), w));
+  h = mul(
+    h,
+    protoMag(
+      peakProto(
+        num(p, "lowMidFreq", 400),
+        num(p, "lowMidGain", 0),
+        decrampedQ(num(p, "lowMidQ", 1), num(p, "lowMidFreq", 400), sr),
+        sr,
+      ),
+      w,
+    ),
+  );
+  h = mul(
+    h,
+    protoMag(
+      peakProto(
+        num(p, "highMidFreq", 2500),
+        num(p, "highMidGain", 0),
+        decrampedQ(num(p, "highMidQ", 1), num(p, "highMidFreq", 2500), sr),
+        sr,
+      ),
+      w,
+    ),
+  );
 
   const f1 = freeBand(p, 1, sr);
   if (f1) h = mul(h, protoMag(f1, w));
@@ -164,9 +193,9 @@ export function eqResponseDbAt(p: Record<string, number>, hz: number, sr = EQ_CU
   h = mul(h, protoMag(lpProto(num(p, "lpFreq", 20000), sr), w));
 
   const mag = Math.hypot(h.re, h.im);
-  if (!(mag > 0)) return EQ_CURVE_MIN_DB;
+  if (!(mag > 0)) return EQ_RESPONSE_FLOOR_DB;
   const db = 20 * Math.log10(mag);
-  return Math.max(EQ_CURVE_MIN_DB, Math.min(EQ_CURVE_MAX_DB, db));
+  return Math.max(EQ_RESPONSE_FLOOR_DB, Math.min(EQ_CURVE_MAX_DB, db));
 }
 
 /** Log-spaced dB samples across the spectrum, ready to plot. */
@@ -181,7 +210,8 @@ export function eqCurve(
   for (let i = 0; i < points; i++) {
     const t = points === 1 ? 0 : i / (points - 1);
     const hz = Math.exp(logMin + t * (logMax - logMin));
-    out.push({ hz, db: eqResponseDbAt(params, hz, sr) });
+    const db = eqResponseDbAt(params, hz, sr);
+    out.push({ hz, db: Math.max(EQ_CURVE_MIN_DB, Math.min(EQ_CURVE_MAX_DB, db)) });
   }
   return out;
 }
