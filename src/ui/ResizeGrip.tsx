@@ -23,8 +23,9 @@ import { getLayoutSnapshot, setLayout, subscribeLayout } from "./layout";
 
 /** Snap a drag to the legal band for this region, so a fling can never leave
  * the inspector invisible or wider than the workspace. */
-function clampRegion(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, Math.round(value)));
+function clampRegion(value: number, min: number, max: number, fractional = false): number {
+  const normalized = fractional ? value : Math.round(value);
+  return Math.min(max, Math.max(min, normalized));
 }
 
 /**
@@ -104,6 +105,7 @@ export function ResizeGrip({ region, ariaLabel, title, axis = "x", keyboardStep 
         startRef.current.value + (axisRatio(region) ? signed / spanFor(region) : signed),
         boundsFor(region).min,
         boundsFor(region).max,
+        axisRatio(region),
       );
       preview(next);
     };
@@ -129,10 +131,10 @@ export function ResizeGrip({ region, ariaLabel, title, axis = "x", keyboardStep 
     // is the invariant that keeps keyboard and mouse agreeing.
     if (event.key === "ArrowLeft") {
       event.preventDefault();
-      commit(clampRegion(readRegion(region) + regionStep, boundsFor(region).min, boundsFor(region).max));
+      commit(clampRegion(readRegion(region) + regionStep, boundsFor(region).min, boundsFor(region).max, axisRatio(region)));
     } else if (event.key === "ArrowRight") {
       event.preventDefault();
-      commit(clampRegion(readRegion(region) - regionStep, boundsFor(region).min, boundsFor(region).max));
+      commit(clampRegion(readRegion(region) - regionStep, boundsFor(region).min, boundsFor(region).max, axisRatio(region)));
     } else if (event.key === "Enter") {
       event.preventDefault();
       commit(defaultsFor(region));
