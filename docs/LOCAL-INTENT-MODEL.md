@@ -3,31 +3,29 @@
 > Expansion plan (undo/query intents, step-level + sound-swap vocab, listening
 > loop, KYX as an MCP server): see docs/INTENT-MCP-EXPANSION-PLAN.md.
 
-> **Verified snapshot (2026-10-13, vocabulary wave 9 + model wave).** KYX Web
-> ships a 6.99 MB multi-head ONNX **action/slot-filling** model (54 heads,
-> vocab 4096) whose provider is registered only while the pinned manifest
-> gate passes; deterministic routing remains the first path and fallback.
-> The measured report is `scripts/data/intent-model-validation-report.json`
-> (dataset **v9**, 2543 rows incl. the new complaintIntent/undoIntent/
-> queryIntent kinds + the wave-9 SK audit phrases): current-corpus
-> validation attempted-exact **95.1 %**, **wrongKind 0**, abstain
-> **22.2 %** (abstain gate recalibrated 0.20 → 0.23, owner-approved
-> 2026-10-13 — the three new kinds honestly abstain on thin val density);
-> golden regression **100 %** attempted-exact, 0 wrong-kind. The
-> quantization diagnostic (dynamic INT8) measured 6.99 MB → **1.80 MB
-> (3.9×)** at −0.3 pp attempted-exact with 1 wrong-kind on val — BELOW the
-> 95 % floor, so the FP32 artifact ships and INT8 waits for the next corpus
-> round (roadmap rule: keep FP32 if the browser result is worse). The
-> onnxruntime-web browser verifier passes on the promoted artifact
-> (registration state ready, real fader route). **SHIPPED AS DYNAMIC INT8
-> (2026-10-13):** the promoted `public/models` artifact is the dynamic-INT8
-> quantization of the gate-passed v16 — 1.80 MB (3.9× smaller download),
-> release gate IDENTICAL to FP32 (97.9 % / 0 wrongKind / 9.9 % abstain on
-> val; golden 98.6 % / 0 / 3.9 %), browser verifier green. Trade-off: wasm
-> inference ~34–88 ms vs ~12–14 ms FP32 — accepted for the 4× download
-> win; the FP32 artifact stays in git history and .sft/intent-model-v16-
-> challenger for rollback. INT8 variants per-channel and QUInt8 were also
-> gated (94.8/94.7 % — below the floor, rejected).
+> **Verified snapshot (2026-10-14, active browser artifact).** KYX Web ships
+> `public/models/intent-model-v1.onnx`, a dynamic-INT8 multi-head
+> **action/slot-filling** model at 2,601,522 bytes (2.48 MiB), with 6,144
+> input features, 59 output heads, and 26 kind classes including abstain.
+> Its pinned v17 dataset has 2,244 train, 374 validation, and 77 golden rows.
+> Current validation is 287/297 exact among attempted outputs (96.6 %), zero
+> wrong-kind, and 77/374 abstentions (20.6 %); the release gate allows up to
+> 23 % abstention. Golden regression is 71/71 exact among attempted outputs,
+> zero wrong-kind, and 6 abstentions, but 68 of its 77 prompts overlap
+> training. The current artifact and browser registration are verified with
+> onnxruntime-web; Chromium loaded it in about 1,200 ms and returned the smoke
+> fader route in about 29 ms on one workstation.
+>
+> A separate 144-row, assistant-authored English browser diagnostic has zero
+> normalized exact-prompt overlap with train/validation/golden. Combined
+> deterministic routing + model fallback matched 71/72 provisional action
+> labels, all 36 expected clarifications, and all 36 safe abstentions, with
+> no false-positive actions. The active model alone matched 13/72 actions,
+> had 7 slot mismatches, abstained on 52 actions, missed the 36 clarifications,
+> and produced 9 false-positive actions. The combined path keeps deterministic
+> routing and clarification guards ahead of model execution. These synthetic,
+> development-inspected cases are diagnostic only, not a blind acceptance
+> score or user study.
 
 ## 1.
 
@@ -72,7 +70,7 @@ everything else.
 
 `src/intent/model-loader.ts` owns [C]→[D] wiring: flag `pf:intent-model`
 (default **on** since the 2026-10-01 release gate pass — the shipped
-artifact is a 6.69 MiB ONNX head fetched lazily, the manifest's
+artifact is a 2.48 MiB dynamic-INT8 ONNX model fetched lazily, the manifest's
 `report.gatePassed === true` pin gates registration, and the chip's OFF
 click stores an explicit `pf:intent-model=off` opt-out),
 a one-404 availability probe against `/models/intent-model-v1.manifest.json`,
@@ -93,14 +91,13 @@ head outputs through the canonical TS decoder — the action JSON text
 contract is identical for both backends, so the resolver bridge cannot tell
 them apart. The current ONNX manifest passes its action-level gate and can
 register; that gate does not establish LFM quality, creative-brief
-understanding, or musical quality. The v16 artifact has 54 output heads and
-was trained from the pinned v16 dataset (2,169/362/77 train/val/golden). At
-the production kind margin 4.8, validation is 96.2% exact among attempted
-outputs with zero wrong-kind and 19.1% abstention; golden regression is 98.7%
-exact among attempted outputs with zero wrong-kind. Chromium verification
-registered the public provider as ready and the 27-row private residual holdout
-passed through the combined deterministic + model route. The deterministic
-path remains the fallback and is usable without model availability.
+understanding, or musical quality. The active v17 artifact has 59 output heads
+and pins the current dataset snapshot (2,244/374/77 train/val/golden). At the
+production kind margin 4.8, validation is 96.6% exact among attempted outputs
+with zero wrong-kind and 20.6% abstention; golden regression is 100% exact
+among attempted outputs with zero wrong-kind. Current Chromium verification
+registers the public provider as ready; the deterministic path remains the
+first route and works without model availability.
 
 **[A] and [C] share the same drawer**: `src/ai/` already ships the local-model
 pattern — worker isolation, manifest (modelHash, versions), load timeout,

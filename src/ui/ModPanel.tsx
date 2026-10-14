@@ -1461,7 +1461,7 @@ function ScenePanel() {
 
           {/* Groove pool: saved groove maps applicable to any pattern */}
           <div className="mod-section">
-            <h3 className="panel-title" style={{ fontSize: "9px", marginBottom: "6px" }}>
+            <h3 className="panel-title" style={{ marginBottom: "6px" }}>
               GROOVE POOL
             </h3>
             {poolEntries.length === 0 && (
@@ -1510,7 +1510,7 @@ function ScenePanel() {
 
           {/* Intensity curve editor */}
           <div className="mod-section">
-            <h3 className="panel-title" style={{ fontSize: "9px", marginBottom: "6px" }}>
+            <h3 className="panel-title" style={{ marginBottom: "6px" }}>
               INTENSITY CURVE
             </h3>
             <div style={{ fontSize: "10px", color: "var(--text-faint)", marginBottom: "4px" }}>
@@ -1526,7 +1526,7 @@ function ScenePanel() {
 
           {/* Scene automation lanes */}
           <div className="mod-section">
-            <h3 className="panel-title" style={{ fontSize: "9px", marginBottom: "6px" }}>
+            <h3 className="panel-title" style={{ marginBottom: "6px" }}>
               SCENE AUTOMATION
             </h3>
             <div className="mod-lane-add">

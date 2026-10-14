@@ -19,7 +19,7 @@ export interface GenerativePlayerHandle {
 }
 
 /**
- * Create the realtime PCM sink after `loadCoreWorklets()` reports readiness.
+ * Create the realtime PCM sink after `loadGenerativePlayerWorklet()` reports readiness.
  * Providers and React never touch the worklet queue directly; this is the
  * small AudioEngine-facing adapter that keeps ownership and lifecycle clear.
  */

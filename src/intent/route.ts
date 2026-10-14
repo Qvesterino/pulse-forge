@@ -86,7 +86,7 @@ const COMPARATIVE =
 const HYPOTHETICAL_ACTION_QUESTION =
   /^\s*(?:(?:would|could|might)\s+(?:(?!you\b)(?:(?:a|an|the|this|that)\s+|[a-z]+ing\b|we\b))|should\s+(?:we|i|you)\b|what\s+if\b|maybe\b)[\s\S]*\b(?:help|make|improve|work|sound|feel|add|remove|delete|change|raise|lower|increase|decrease|mute|unmute|pan|move|set|turn|bypass|apply|insert)\b[\s\S]*\?\s*$/i;
 const NEGATED_MUTATION_COMMAND =
-  /^\s*(?:please\s+)?(?:do\s+not|don't|dont|never)\b[\s\S]*\b(?:mute|unmute|solo|delete|remove|add|raise|lower|turn|change|set|increase|decrease|move|pan|bypass|apply|insert|undo|redo|start|stop|record)\b/i;
+  /(?:^|[,;.!?]\s*|\b(?:and|but|while)\s+)(?:please\s+)?(?:do\s+not|don't|dont|never)\b[\s\S]*?\b(?:mute|unmute|solo|delete|remove|add|raise|lower|turn|change|set|increase|decrease|move|pan|bypass|apply|insert|undo|redo|start|stop|record)\b/i;
 
 export function isMixIntentText(text: string): boolean {
   // Same normalization parseMixIntent applies — the guard must never be
@@ -387,7 +387,9 @@ function clarifyAmbiguousCommand(text: string): RoutedIntent | null {
   if (
     targets.length === 1 &&
     /\b(?:but|and|while)\b/.test(lower) &&
-    ((/\b(?:mute|muted)\b/.test(lower) && /\b(?:audible|playing|unmuted)\b/.test(lower)) ||
+    ((/\b(?:mute|muted)\b/.test(lower) &&
+      (/\b(?:audible|playing|unmuted)\b/.test(lower) ||
+        /\b(?:not|never|don't|dont|without)\b[\s\S]{0,30}\bsilent\b/.test(lower))) ||
       (/\bunmute\b/.test(lower) && /\bmuted\b/.test(lower)))
   ) {
     return clarify("conflicting-actions", ["mute the track", "keep the track audible"]);

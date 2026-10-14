@@ -69,6 +69,9 @@ export const pwaOptions: Partial<VitePWAOptions> = {
       // The optional SDK and its KYX adapter are downloaded only after the
       // user chooses Audiotool export; do not include either in PWA install/update.
       "**/audiotool-nexus-*.js",
+      // Stem separation's WebGPU-capable ONNX runtime is imported only after
+      // the user selects an available model; cache it after that first use.
+      "**/ort.bundle.min-*.js",
       // FLAC workers and WASM codecs are opt-in; cache their
       // chunks after first use instead of downloading them during PWA install.
       "**/flac-codec-*.js",
@@ -102,6 +105,15 @@ export const pwaOptions: Partial<VitePWAOptions> = {
     // makes `npm run build` succeed on a machine that has them.
     maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
     runtimeCaching: [
+      {
+        urlPattern: /\/assets\/ort\.bundle\.min-[^/]+\.js$/,
+        handler: "CacheFirst",
+        options: {
+          cacheName: "kyx-stem-runtime",
+          cacheableResponse: { statuses: [0, 200] },
+          expiration: { maxEntries: 4, maxAgeSeconds: 60 * 60 * 24 * 365 },
+        },
+      },
       {
         urlPattern: /\/assets\/flac-codec-[^/]+\.js$/,
         handler: "CacheFirst",

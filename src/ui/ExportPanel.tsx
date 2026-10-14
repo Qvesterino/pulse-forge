@@ -1795,19 +1795,24 @@ function MixHealthLine({ health, stage }: { health: MixHealthReport; stage: "PRE
   const red = health.flags.filter((f) => f.severity === "red");
   const yellow = health.flags.filter((f) => f.severity === "yellow");
   const measured = health.integratedLufs !== null;
+  const state = !measured ? "not-measured" : red.length === 0 ? "pass" : "issues";
+  const verdict = !measured
+    ? "NOT MEASURED"
+    : red.length === 0
+      ? "PASS"
+      : `${red.length} ISSUE${red.length > 1 ? "S" : ""}`;
   const stats = `low ${(health.lowEndShare * 100).toFixed(0)}% · crest ${health.crestDb.toFixed(1)} dB · peak −${health.headroomDb.toFixed(1)} dBFS`;
   const notes = [...red, ...yellow]
     .map((f) => `${f.severity === "red" ? "⚠" : "○"} ${f.check}: ${f.detail}`)
     .join(" · ");
+  const announcement = [`MIX CHECK ${stage}: ${verdict}`, stats, notes].filter(Boolean).join(". ");
   return (
-    <div className="export-resample-hint" role="status">
-      {!measured
-        ? `MIX CHECK · ${stage} NOT MEASURED — `
-        : red.length === 0
-          ? `MIX CHECK · ${stage} PASS — `
-          : `MIX CHECK · ${stage} — ${red.length} ISSUE${red.length > 1 ? "S" : ""} — `}
-      {stats}
-      {notes && ` — ${notes}`}
+    <div className="export-resample-hint export-mix-health" role="status" aria-label={announcement} data-state={state}>
+      <span className="export-mix-health-heading">
+        MIX CHECK · {stage} · {verdict}
+      </span>
+      <span className="export-mix-health-stats">{stats}</span>
+      {notes && <span className="export-mix-health-notes">{notes}</span>}
     </div>
   );
 }

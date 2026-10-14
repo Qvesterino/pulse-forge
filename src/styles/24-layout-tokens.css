@@ -200,7 +200,7 @@ body {
   height: 26px;
   border-radius: 1px;
   background: transparent;
-  transition: background 0.12s;
+  transition: background var(--motion-fast) var(--motion-ease);
 }
 
 .resize-grip:hover span,
@@ -473,9 +473,12 @@ body {
 }
 
 .token-row-hex:focus {
-  outline: 1px solid var(--accent);
-  outline-offset: 0;
   border-color: var(--accent);
+}
+
+.token-row-hex:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: -2px;
 }
 
 .token-row-hex::placeholder {

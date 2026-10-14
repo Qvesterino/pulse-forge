@@ -181,6 +181,10 @@
   .midi-mapping-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .midi-creative-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

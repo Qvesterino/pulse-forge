@@ -5,6 +5,14 @@
   --dock-chrome-h: 40px;
 }
 
+@media (max-width: 760px) {
+  /* The mobile tab row grows to 34px, so keep the chrome token aligned with
+     its 10px resize grip and preserve the dock panel's configured height. */
+  :root {
+    --dock-chrome-h: 44px;
+  }
+}
+
 .app {
   grid-template-rows: minmax(calc(42px + env(safe-area-inset-top, 0px)), max-content) minmax(0, 1fr) auto auto 26px;
 }
@@ -74,8 +82,8 @@
   font-size: 10px;
   cursor: pointer;
   transition:
-    color 0.12s,
-    background 0.12s;
+    color var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease);
 }
 
 .inspector-rail-toggle:hover {

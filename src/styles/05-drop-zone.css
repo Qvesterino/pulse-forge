@@ -561,7 +561,6 @@
 }
 
 .theme-mini-btn:disabled {
-  opacity: 0.58;
   cursor: not-allowed;
 }
 
@@ -595,7 +594,7 @@
 }
 
 .theme-compact .pad {
-  min-height: 44px;
+  min-height: var(--touch-target-large);
 }
 
 .theme-compact .sequencer {

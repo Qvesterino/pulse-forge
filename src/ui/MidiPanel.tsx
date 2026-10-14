@@ -218,9 +218,7 @@ export function MidiPanel({
 
               <div className="midi-mapping-grid">
                 <div className="midi-cc-section">
-                  <h3 className="panel-title" style={{ fontSize: "10px" }}>
-                    CC MAPPINGS
-                  </h3>
+                  <h3 className="panel-title">CC MAPPINGS</h3>
                   {midi.ccMappings.length === 0 && <div className="midi-empty">No CC mappings. Add one below.</div>}
                   {midi.ccMappings.map((m) => (
                     <MidiCcRow key={m.id} mapping={m} doc={doc} />
@@ -282,9 +280,7 @@ export function MidiPanel({
 
                 <div className="midi-drum-section">
                   <div className="midi-drum-header">
-                    <h3 className="panel-title" style={{ fontSize: "10px" }}>
-                      DRUM NOTE MAP
-                    </h3>
+                    <h3 className="panel-title">DRUM NOTE MAP</h3>
                     {midi.drumNoteMap.length > 0 && (
                       <button
                         type="button"

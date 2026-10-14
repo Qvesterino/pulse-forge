@@ -6,6 +6,7 @@
  * relative imports: a data URL has no hierarchical base, so Chrome rejects
  * every `./sidechain-processor.js` import. Keep the two-module loader contract
  * while serving real hierarchical files from public/ in both dev and dist.
+ * The bounded generative PCM sink is emitted as a third, on-demand module.
  */
 import { build } from "esbuild";
 
@@ -13,9 +14,8 @@ const shared = {
   bundle: true,
   format: "iife",
   target: "es2022",
-  // These stock processors load during studio startup; emit compact modules
-  // so worklet parsing stays quick and the shipped core bundle stays within
-  // its explicit release budget. DSP sources remain readable and testable.
+  // Emit compact modules to keep studio-startup and on-demand worklet parsing
+  // quick. DSP sources remain readable and testable.
   minify: true,
   logLevel: "warning",
 };
@@ -38,4 +38,15 @@ await build({
   },
 });
 
-console.log("[core-worklets] bundles written to public/bitcrusher-worklet.js and public/core-worklet.js");
+await build({
+  ...shared,
+  entryPoints: ["src/audio-worklets/generative-player-processor.js"],
+  outfile: "public/generative-player-worklet.js",
+  banner: {
+    js: "/* KYX on-demand generative player worklet — generated. Do not edit. */",
+  },
+});
+
+console.log(
+  "[core-worklets] bundles written to public/bitcrusher-worklet.js, public/core-worklet.js, and public/generative-player-worklet.js",
+);

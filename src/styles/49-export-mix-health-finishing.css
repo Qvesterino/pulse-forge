@@ -1,0 +1,78 @@
+/* Keep the export's MIX CHECK easy to scan: verdict first, measurements
+   second, and any advisory detail on its own readable line. */
+.export-mix-health {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 78%, #fff);
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface-1));
+  color: var(--text-dim);
+  font-family: var(--sans);
+  font-size: 10px;
+  line-height: 1.45;
+  opacity: 1;
+}
+
+.export-mix-health[data-state="issues"] {
+  border-left-color: var(--stop);
+}
+
+.export-mix-health[data-state="not-measured"] {
+  border-left-color: var(--warning, #f0b44d);
+}
+
+.export-mix-health-heading {
+  color: var(--accent);
+  font: 700 10px var(--mono);
+  letter-spacing: 0.07em;
+}
+
+.export-mix-health[data-state="issues"] .export-mix-health-heading {
+  color: var(--stop);
+}
+
+.export-mix-health[data-state="not-measured"] .export-mix-health-heading {
+  color: var(--warning, #f0b44d);
+}
+
+.export-mix-health-stats {
+  color: var(--text);
+  font: 11px/1.4 var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.export-mix-health-notes {
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+/* The Master panel can occupy one half of a split dock or a phone-width slot.
+   Preserve usable targets in its analysis and delivery flow at those widths. */
+@container mastering-overview (max-width: 420px) {
+  .mastering-overview-action .mastering-overview-analyze:not(:disabled),
+  .mastering-overview-action .mastering-overview-analyze:disabled {
+    min-height: var(--touch-target-large);
+  }
+}
+
+@container mastering-panel (max-width: 420px) {
+  .mastering-panel .master-verdict-target select,
+  .mastering-panel .mastering-render-section .export-options select,
+  .mastering-panel .mastering-render-section .export-options input[type="text"] {
+    min-height: var(--touch-target-large);
+    font-size: 12px;
+  }
+
+  .mastering-panel .mastering-render-section .mastering-profile-export-suggestion > .btn,
+  .mastering-panel .mastering-render-section .export-buttons > .btn {
+    min-height: var(--touch-target-large);
+  }
+
+  .mastering-panel .mastering-render-section .export-buttons > .export-master-action {
+    height: var(--touch-target-large);
+  }
+}

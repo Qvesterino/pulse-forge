@@ -359,7 +359,9 @@ h3.panel-title {
 .btn:focus-visible,
 .dock-tab:focus-visible,
 .track-tab:focus-visible,
-.pattern-chip:focus-visible {
+.pattern-chip:focus-visible,
+.preset-preview:focus-visible,
+.preset-name:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
   outline-offset: 1px;
 }
@@ -407,13 +409,13 @@ h3.panel-title {
 
   .intent-panel > .intent-candidates[aria-label="Candidate bank"] .intent-audition-btn,
   .intent-panel > .intent-candidates[aria-label="Candidate bank"] .intent-use-btn {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--touch-target-large);
+    min-height: var(--touch-target-large);
   }
 
   .intent-panel > .intent-candidates[aria-label="Candidate bank"] .intent-candidate-row > .btn,
   .intent-panel > .intent-candidates[aria-label="Candidate bank"] .intent-iteration-controls > summary {
-    min-height: 44px;
+    min-height: var(--touch-target-large);
   }
 
   .intent-panel
@@ -421,7 +423,7 @@ h3.panel-title {
     .intent-iteration-controls[open]
     .intent-iteration-panel
     .btn {
-    min-height: 44px;
+    min-height: var(--touch-target-large);
   }
 
   .intent-panel > .intent-candidates[aria-label="Candidate bank"] .intent-candidate-meta {

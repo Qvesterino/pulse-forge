@@ -10,7 +10,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr));
   align-items: end;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -53,7 +53,7 @@
 }
 
 .dice-roll-row {
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -96,6 +96,16 @@
 }
 
 @container dice-panel (max-width: 560px) {
+  .dice-seed-field {
+    grid-template-columns: auto minmax(0, 1fr) var(--touch-target-large);
+  }
+
+  .dice-field select,
+  .dice-field input:not([type="range"]) {
+    min-height: var(--touch-target-large);
+    font-size: 12px;
+  }
+
   .dice-tray > .panel-header {
     align-items: flex-start;
   }
@@ -121,13 +131,13 @@
 
   .dice-intent-row,
   .dice-intent-sliders {
-    gap: 7px;
+    gap: var(--space-2);
   }
 
   .dice-locks {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 92px), 1fr));
-    gap: 5px;
+    gap: var(--space-1);
   }
 
   .dice-locks-label {
@@ -137,13 +147,13 @@
   .dice-lock {
     width: 100%;
     padding-inline: 4px;
-    min-height: 44px;
+    min-height: var(--touch-target-large);
   }
 
   .dice-history {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 6px;
+    gap: var(--space-2);
   }
 
   .dice-history > .dice-history-label,
@@ -182,27 +192,27 @@
   .dice-mode-switch > .btn,
   .dice-history > .btn,
   .dice-preview-header > .btn {
-    min-height: 44px;
+    min-height: var(--touch-target-large);
   }
 
   .dice-seed-field button {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--touch-target-large);
+    min-height: var(--touch-target-large);
   }
 
   .dice-history-strip {
-    min-height: 44px;
+    min-height: var(--touch-target-large);
     align-items: center;
   }
 
   .dice-history-strip > .dice-history-dot {
-    width: 44px;
-    height: 44px;
+    width: var(--touch-target-large);
+    height: var(--touch-target-large);
   }
 
   .dice-jitter input[type="range"],
   .dice-slider input[type="range"] {
-    min-height: 44px;
+    min-height: var(--touch-target-large);
   }
 
   .dice-preview-header {
@@ -217,7 +227,7 @@
 
 @container bottom-dock-slot (max-width: 560px) {
   .dice-tray {
-    gap: 8px;
+    gap: var(--space-2);
     padding-inline: 10px;
   }
 }

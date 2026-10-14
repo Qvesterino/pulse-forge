@@ -1033,7 +1033,7 @@
 .mastering-overview-scope select:focus-visible,
 .mastering-overview-select select:focus-visible,
 .mastering-overview-analyze:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
   outline-offset: 2px;
 }
 
@@ -1426,10 +1426,13 @@
   cursor: pointer;
 }
 
-.mastering-flow-jump:hover,
+.mastering-flow-jump:hover {
+  border-color: var(--accent);
+}
+
 .mastering-flow-jump:focus-visible {
   border-color: var(--accent);
-  outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
   outline-offset: 1px;
 }
 
@@ -1519,7 +1522,7 @@
 
 .mastering-flow-stage-action:focus-visible {
   border-radius: 2px;
-  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
   outline-offset: 2px;
 }
 
@@ -1558,7 +1561,7 @@
 }
 
 .mastering-insert-controls:focus {
-  outline: 2px solid var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
   outline-offset: 2px;
 }
 
@@ -1781,7 +1784,6 @@
 }
 
 .master-ab-section button:disabled {
-  opacity: 0.58;
   cursor: not-allowed;
 }
 
@@ -1998,7 +2000,6 @@
 }
 
 .master-assistant-section button:disabled {
-  opacity: 0.58;
   cursor: not-allowed;
 }
 
@@ -2642,7 +2643,7 @@
   border-radius: 3px;
   background: var(--bg-raise);
   color: var(--text-dim);
-  font: 8px var(--mono);
+  font: 10px var(--mono);
   cursor: pointer;
 }
 
@@ -2652,7 +2653,6 @@
 }
 
 .master-reference-offset-input button:disabled {
-  opacity: 0.58;
   cursor: not-allowed;
 }
 
@@ -2748,7 +2748,7 @@
 }
 
 .master-render-measurement[tabindex="-1"]:focus {
-  outline: 2px solid var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
   outline-offset: 3px;
 }
 

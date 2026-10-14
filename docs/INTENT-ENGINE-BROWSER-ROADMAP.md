@@ -96,18 +96,17 @@ Initial target ranges for Phase 0 to validate and preregister:
 ## 4. Starting point and measured gaps
 
 The active browser action model is `public/models/intent-model-v1.onnx`
-(7,010,380 bytes), with a 4,096-token vocabulary and 54 output heads. It is a
+(2,601,522 bytes), with a 6,144-feature vocabulary and 59 output heads. It is a
 multi-head, closed-set slot-filling classifier. File size supports download
 planning; it does not reveal the exact parameter count or prediction quality.
 
-The checked-in dataset manifest is v16: 2,558 train + validation rows (2,193
-train and 365 validation), plus 77 golden rows, in English and Slovak (1,882
-English and 676 Slovak train + validation rows). The manifest records 2,516
-deterministic labels and 42 reviewed residual labels. The active ONNX artifact
-still pins its earlier 2,169/362/77 training snapshot in its own report; it
-has not been retrained on the current data files. Train, validation, and
-golden are development/regression data. Keep private browser holdouts out of
-training and tuning.
+The checked-in dataset manifest is v17: 2,244 train + 374 validation rows,
+plus 77 golden rows, in English and Slovak (1,932 English and 686 Slovak
+train + validation rows). The manifest records 2,580 deterministic labels
+and 38 reviewed residual labels. The active ONNX manifest pins this exact v17
+corpus and trainer snapshot. Train, validation, and golden are
+development/regression data. Keep private browser holdouts out of training
+and tuning.
 
 An earlier v5 validation reported 285/287 exact among attempted outputs
 (99.3%), with zero wrong-kind and 12/299 abstentions (4.0%) on validation.
@@ -215,6 +214,39 @@ and must not become training or tuning examples. Labels need domain-user
 adjudication before the set can become an acceptance gate; future training
 and iteration require separate development examples and a separately locked
 challenge set.
+
+### 2026-10-14 — current Chromium baseline and router safety fixes
+
+The active manifest now pins the v17 public artifact above. On the current
+Chromium workstation, the real worker registered `ready`, loaded in about
+1,200 ms, and returned the smoke fader action in about 29 ms. These are one
+machine's measurements, not a cross-device latency claim. The pinned v17
+validation report is 287/297 exact among attempted outputs (96.6%), zero
+wrong-kind, and 77/374 abstentions (20.6%); its gate allows up to 23%
+abstention. Golden regression is 71/71 exact among attempted outputs, but 68
+of 77 golden prompts overlap training, so it is not independent evidence.
+
+The expanded private English diagnostic set has 144 assistant-authored rows
+(72 action, 36 clarify, 36 abstain). The browser verifier now normalizes away
+case, punctuation, and diacritics before checking train/validation/golden
+overlap; the set has zero overlap under that stricter comparison. In Chromium,
+the deterministic router matched 71/72 expected actions, all 36 clarifications,
+and all 36 safe abstentions. The combined browser path had the same result,
+with zero wrong-kind, slot mismatch, or false-positive actions. For “Raise the
+lead delay return,” the provisional expected label says to increase a send,
+while the production router clarifies because the wording can mean either a
+track send or an effect return. The label needs domain-user adjudication.
+
+The active model alone matched 13/72 actions, had 7 slot mismatches and 52
+action abstentions, missed all 36 expected clarifications, and produced 9
+false-positive actions among clarification/no-op cases. This diagnostic is a
+strong reason to keep model output behind deterministic routing and
+clarification guards. The two combined-path false positives found in this
+run were fixed: negated mutations after a clause boundary now clarify, and
+“mute … but do not make it silent” is recognized as contradictory. The
+targeted route suite passes 34/34 tests. The private set is synthetic and
+already inspected during development; these numbers are diagnostic, not a
+blind acceptance score or user study.
 
 Known remaining capability gaps:
 

@@ -211,8 +211,8 @@
 }
 
 .master-verdict-target-label {
-  font-size: 9px;
-  letter-spacing: 1px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
   color: var(--text-faint);
 }
 
@@ -234,7 +234,8 @@
 
 .master-custom-targets {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   padding-bottom: 6px;
 }
 
@@ -243,7 +244,7 @@
   align-items: center;
   gap: 4px;
   color: var(--text-faint);
-  font-size: 8px;
+  font-size: 10px;
   letter-spacing: 0.3px;
 }
 
@@ -273,7 +274,7 @@
 
 .master-verdict-actions .btn {
   flex: 1;
-  font-size: 9px;
+  font-size: 10px;
 }
 
 /* Limiter gain-reduction lane drawn from the top of each channel bar. */
@@ -340,7 +341,7 @@
 
 .master-channel-label {
   font-family: var(--mono);
-  font-size: 8px;
+  font-size: 10px;
   color: var(--text-faint);
   letter-spacing: 1px;
 }
@@ -456,8 +457,8 @@
 
 .master-correlation-label {
   font-family: var(--mono);
-  font-size: 8px;
-  letter-spacing: 1px;
+  font-size: 9px;
+  letter-spacing: 0.5px;
   text-align: center;
 }
 

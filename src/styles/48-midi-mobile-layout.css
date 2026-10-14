@@ -1,0 +1,77 @@
+/* In a narrow dock, let the slot own vertical scrolling. The MIDI panel's
+   fixed-height nested scroller otherwise traps the mobile sheet's content. */
+@container bottom-dock-slot (max-width: 560px) {
+  .midi-panel {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+/* Mobile MIDI setup is the entry point to real input. Keep its primary
+   actions and channel/device selectors comfortable to use by touch. */
+@container bottom-dock-slot (max-width: 420px) {
+  .midi-panel-header .midi-tabs {
+    gap: 8px;
+  }
+
+  .midi-panel-header .midi-tabs > .btn,
+  .midi-panel > .midi-row > .btn {
+    min-height: var(--touch-target-large);
+    font-size: 12px;
+  }
+
+  .midi-routing-grid .midi-select {
+    height: var(--touch-target-large);
+    font-size: 12px;
+  }
+
+  .midi-routing-grid .drag-number {
+    min-height: var(--touch-target-large);
+    font-size: 12px;
+  }
+
+  .midi-routing-grid .drag-number-input {
+    width: 64px;
+    max-width: 100%;
+    height: var(--touch-target-large);
+    min-height: var(--touch-target-large);
+    box-sizing: border-box;
+    font-size: 14px;
+  }
+
+  .midi-add-row .midi-select {
+    height: var(--touch-target-large);
+    font-size: 12px;
+  }
+
+  .midi-creativity .midi-row {
+    flex-wrap: wrap;
+  }
+
+  .midi-creativity .btn,
+  .midi-creativity .midi-select,
+  .midi-creativity .midi-seed,
+  .midi-creativity .drag-number {
+    min-height: var(--touch-target-large);
+    font-size: 12px;
+  }
+
+  .midi-creativity .midi-select {
+    height: var(--touch-target-large);
+  }
+
+  .midi-creativity .midi-seed {
+    height: var(--touch-target-large);
+  }
+
+  .midi-creativity .drag-number-input {
+    height: var(--touch-target-large);
+    min-height: var(--touch-target-large);
+    font-size: 14px;
+  }
+
+  .midi-creativity .midi-row > .midi-select {
+    flex: 1 1 80px;
+    min-width: 0;
+  }
+}

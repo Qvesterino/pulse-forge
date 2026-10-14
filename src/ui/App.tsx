@@ -100,6 +100,7 @@ import {
   openInSlotA,
   ensurePanelVisible,
   clampDockHeight,
+  maxDockHeightForViewport,
   defaultDockHeight,
   type BottomPanel,
   type DockState,
@@ -407,13 +408,13 @@ export function App({
   const [ioOpen, setIoOpen] = useState(false);
   // The dock ceiling is a function of the live viewport, so it has to be
   // state and not a render-time read: a browser resize must re-clamp a dock
-  // that was sized on a taller window (audit 16). Reading `innerHeight` during
-  // render alone only re-evaluated on the next unrelated re-render.
+  // that was sized on a taller window. The cap reserves the sequencer's
+  // working height instead of letting a stored dock starve it.
   const [viewportMax, setViewportMax] = useState(() =>
-    typeof window === "undefined" ? 800 : window.innerHeight * 0.7,
+    typeof window === "undefined" ? 800 : maxDockHeightForViewport(window.innerHeight),
   );
   useEffect(() => {
-    const onResize = () => setViewportMax(window.innerHeight * 0.7);
+    const onResize = () => setViewportMax(maxDockHeightForViewport(window.innerHeight));
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);

@@ -1,0 +1,136 @@
+/* Core transport actions remain easy to hit on phones while desktop chrome
+   keeps its compact sizing. The transport row grows only to fit these targets. */
+@media (max-width: 520px) {
+  .topbar > .transport-cluster .btn-play,
+  .topbar > .transport-cluster .btn-record,
+  .topbar > .transport-cluster .btn-stop {
+    width: var(--touch-target-large);
+    min-width: var(--touch-target-large);
+    height: var(--touch-target-large);
+    min-height: var(--touch-target-large);
+  }
+}
+
+/* The dock tab viewport clips vertical overflow at every size. Keep the
+   keyboard ring inside the row so its top and bottom edges remain visible. */
+.dock-tabs .dock-tab:focus-visible {
+  outline-offset: -3px;
+}
+
+.browser-strip-collapse:focus-visible,
+.browser-strip-rail:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: -2px;
+}
+
+/* Inspector collapse/expand stays easy to hit in the compact tablet and phone
+   layout. The desktop mouse rail remains 28px wide; coarse pointers get a
+   wider rail so the collapsed state still has a useful target. */
+@media (max-width: 860px) {
+  .inspector-topline {
+    min-height: var(--touch-target-large);
+  }
+
+  .btn.btn-icon.inspector-collapse-toggle {
+    flex-basis: var(--touch-target-large);
+    width: var(--touch-target-large);
+    min-width: var(--touch-target-large);
+    height: var(--touch-target-large);
+    min-height: var(--touch-target-large);
+  }
+
+  .workspace.inspector-collapsed {
+    grid-template-rows: minmax(0, 1fr) var(--touch-target-large);
+  }
+
+  .workspace.inspector-collapsed .inspector-rail {
+    height: var(--touch-target-large);
+  }
+
+  .inspector-rail-toggle {
+    min-height: var(--touch-target-large);
+  }
+}
+
+@media (pointer: coarse) and (min-width: 861px) {
+  .workspace.inspector-collapsed {
+    grid-template-columns: auto minmax(0, 1fr) var(--touch-target-large);
+  }
+
+  .workspace.inspector-collapsed > .inspector-rail {
+    width: var(--touch-target-large);
+    min-width: var(--touch-target-large);
+  }
+}
+
+@media (pointer: coarse) and (min-width: 861px) and (max-width: 1249px) {
+  .workspace.inspector-collapsed {
+    grid-template-columns: minmax(0, 1fr) var(--touch-target-large);
+  }
+}
+
+@media (pointer: coarse) and (min-width: 1250px) {
+  .browser-strip-head {
+    min-height: var(--touch-target-large);
+  }
+
+  .browser-strip-collapse {
+    width: var(--touch-target-large);
+    min-width: var(--touch-target-large);
+    height: var(--touch-target-large);
+    min-height: var(--touch-target-large);
+  }
+
+  .browser-strip.collapsed {
+    width: var(--touch-target-large);
+  }
+
+  .browser-strip-rail {
+    width: var(--touch-target-large);
+    min-width: var(--touch-target-large);
+  }
+}
+
+/* On taller phones, preserve drum-pad names and use the familiar 4×4
+   performance layout instead of squeezing sixteen pads into eight narrow
+   columns. Short viewports keep the single-row rack owned by ADR 0036. */
+@media (max-width: 520px) and (min-height: 821px) {
+  .rack {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .rack > .pad {
+    min-height: 56px;
+    padding: 6px 7px;
+  }
+
+  .rack > .pad .pad-name {
+    display: -webkit-box;
+    overflow: hidden;
+    white-space: normal;
+    line-height: 1.15;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}
+
+@media (max-width: 520px) {
+  .pattern-chip {
+    height: var(--touch-target-large);
+    min-height: var(--touch-target-large);
+  }
+
+  .pattern-groove .drag-number {
+    min-height: var(--touch-target-large);
+  }
+
+  .pattern-actions > .toolbar-group .btn-primary,
+  .pattern-actions > .pattern-length {
+    height: var(--touch-target-large);
+    min-height: var(--touch-target-large);
+  }
+
+  .pattern-actions > .pattern-length {
+    font-size: 12px;
+  }
+}

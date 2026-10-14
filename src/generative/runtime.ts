@@ -1,7 +1,7 @@
 import { decodeAudioData } from "../services/audio-decode";
 import type { AudioEngine } from "../audio-engine/AudioEngine";
 import { createGenerativePlayerNode, type GenerativePlayerHandle } from "../audio-worklets/generative-player-node";
-import { isWorkletReady, loadCoreWorklets } from "../audio-worklets/loader";
+import { isWorkletReady, loadGenerativePlayerWorklet } from "../audio-worklets/loader";
 import { ticksPerBar } from "../project-model/schema";
 import { PPQ } from "../project-model/types";
 import type { GenerativeTrack, ProjectDocument } from "../project-model/types";
@@ -95,7 +95,7 @@ export class GenerativeRuntime {
   ) => GenerativePlayerHandle;
 
   constructor(private readonly options: GenerativeRuntimeOptions) {
-    this.loadWorklets = options.loadWorklets ?? loadCoreWorklets;
+    this.loadWorklets = options.loadWorklets ?? loadGenerativePlayerWorklet;
     this.isPlayerReady = options.isPlayerReady ?? ((ctx) => isWorkletReady("generativePlayer", ctx));
     this.createPlayer = options.createPlayer ?? createGenerativePlayerNode;
   }

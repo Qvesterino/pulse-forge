@@ -44,4 +44,8 @@
     animation: none;
     transform: none;
   }
+
+  .intent-song-progress-fill {
+    transition: none;
+  }
 }

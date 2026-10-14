@@ -67,9 +67,9 @@
   border-top: 2px solid transparent;
   border-bottom: 2px solid transparent;
   transition:
-    color 0.12s,
-    background 0.12s,
-    border-color 0.12s;
+    color var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-state) var(--motion-ease);
 }
 .dock-tab:hover {
   color: var(--text);
@@ -94,8 +94,8 @@
   background: var(--border);
   box-shadow: inset 0 0 2px rgba(0, 0, 0, 0.6);
   transition:
-    background 0.12s,
-    box-shadow 0.12s;
+    background var(--motion-state) var(--motion-ease),
+    box-shadow var(--motion-state) var(--motion-ease);
 }
 .dock-tab.active .dock-tab-led {
   background: var(--accent);
@@ -143,7 +143,6 @@
   border-color: #343945;
 }
 .dock-close-all:disabled {
-  opacity: 0.58;
   cursor: not-allowed;
 }
 

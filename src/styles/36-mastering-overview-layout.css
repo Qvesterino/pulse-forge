@@ -55,6 +55,20 @@
   line-height: 1.4;
 }
 
+@container mastering-overview (max-width: 420px) {
+  .mastering-overview-scope select,
+  .mastering-overview-select select {
+    min-height: var(--touch-target-large);
+    font-size: 12px;
+  }
+
+  .mastering-overview-analyze {
+    flex: 1 1 100%;
+    min-height: var(--touch-target-large);
+    font-size: 12px;
+  }
+}
+
 /* Mastering can be split into a narrow dock slot on a wide viewport. Let its
    nested workspaces respond to the slot width as well as the window width. */
 @container mastering-panel (max-width: 760px) {

@@ -826,7 +826,7 @@
   height: 3px;
   border-radius: 2px;
   background: var(--border);
-  transition: background 0.15s;
+  transition: background var(--motion-state) var(--motion-ease);
 }
 .bottom-panels .dock-resize-handle:hover span,
 .bottom-panels .dock-resize-handle:focus-visible span {

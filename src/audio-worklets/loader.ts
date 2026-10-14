@@ -9,15 +9,17 @@ import { assetUrl } from "../shared/assetUrls";
  * make factories construct AudioWorkletNodes in contexts where the processor
  * was never registered — which throws.
  *
- * Modules come in two weight classes:
- *  - CORE (bitcrusher + core-processor: sidechain, transient, gate, limiter,
- *    envFollower, compressor) — a few KB, used by stock effects everywhere.
+ * Modules come in three weight classes:
+ *  - CORE (bitcrusher + core-processor: stock FX/instrument processors) —
+ *    shared by the AudioEngine's normal live and offline audio paths.
  *  - LAZY (fxeq / ultina / ozvena / morphdynamics / bassHarmonic / skrutka) —
  *    heavier DSP (vendored suites + first-party processors), loaded on demand: only
  *    when a project actually uses the effect (see ensureWorkletsForDoc) or
  *    when the engine builds its chain (which then hot-swaps the bypass
  *    runtime once the module lands). Loading ~500 KB of reverb EQ a beat
  *    never touches would be pure waste on metered/mobile connections.
+ *  - GENERATIVE PLAYER — bounded PCM sink, loaded only when a provider-backed
+ *    generative track starts.
  *
  * All failures are swallowed: loaders never reject, callers fire-and-forget,
  * and factories keep the fallback/bypass implementation for contexts that
@@ -27,6 +29,8 @@ import { assetUrl } from "../shared/assetUrls";
 const readyContexts = new WeakSet<BaseAudioContext>();
 const failedContexts = new WeakSet<BaseAudioContext>();
 const inflight = new Map<BaseAudioContext, Promise<void>>();
+const readyGenerativePlayers = new WeakSet<BaseAudioContext>();
+const generativePlayerInflight = new Map<BaseAudioContext, Promise<void>>();
 
 /** Lazy worklet DSP modules (vendored suites + first-party) — per effect type, on demand. */
 export const LAZY_WORKLET_TYPES = [
@@ -93,10 +97,9 @@ const CORE_TYPES = [
   "vocoder",
   "reverseSwell",
   "granularFreeze",
-  "generativePlayer",
 ] as const;
 
-export type WorkletType = (typeof CORE_TYPES)[number] | LazyWorkletType;
+export type WorkletType = (typeof CORE_TYPES)[number] | LazyWorkletType | "generativePlayer";
 
 /**
  * FLAGSHIP INSTRUMENT worklets - loaded on demand like plugin effects, NOT in
@@ -129,6 +132,7 @@ export function isWorkletReady(
   if ((INSTRUMENT_WORKLET_TYPES as readonly string[]).includes(type)) {
     return readyInstrumentTypes.get(ctx)?.has(type as InstrumentWorkletType) ?? false;
   }
+  if (type === "generativePlayer") return readyGenerativePlayers.has(ctx);
   return true;
 }
 
@@ -168,6 +172,29 @@ export async function loadCoreWorklets(ctx: BaseAudioContext): Promise<void> {
       inflight.delete(ctx);
     });
   inflight.set(ctx, load);
+  return load;
+}
+
+/** Load the bounded generative PCM player only when a generative track starts. */
+export async function loadGenerativePlayerWorklet(ctx: BaseAudioContext): Promise<void> {
+  if (!ctx?.audioWorklet) return;
+  await loadCoreWorklets(ctx);
+  if (failedContexts.has(ctx) || readyGenerativePlayers.has(ctx)) return;
+  const pending = generativePlayerInflight.get(ctx);
+  if (pending) return pending;
+
+  const load = ctx.audioWorklet
+    .addModule(new URL(assetUrl("/generative-player-worklet.js"), import.meta.url).href)
+    .then(() => {
+      readyGenerativePlayers.add(ctx);
+    })
+    .catch((err) => {
+      console.warn("[audio-worklets] generative player module load failed:", err);
+    })
+    .finally(() => {
+      generativePlayerInflight.delete(ctx);
+    });
+  generativePlayerInflight.set(ctx, load);
   return load;
 }
 
@@ -309,5 +336,6 @@ export async function loadAllWorklets(ctx: BaseAudioContext): Promise<void> {
   await Promise.all([
     ...LAZY_WORKLET_TYPES.map((type) => loadLazyWorklet(ctx, type)),
     ...INSTRUMENT_WORKLET_TYPES.map((type) => loadInstrumentWorklet(ctx, type)),
+    loadGenerativePlayerWorklet(ctx),
   ]);
 }

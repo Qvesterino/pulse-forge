@@ -30,6 +30,20 @@ export const DOCK_MIN_HEIGHT = 160;
 // priority. A 800 px dock (the old ceiling) could cover two thirds of a 900 px
 // screen and starve the primary writing area.
 export const DOCK_MAX_HEIGHT = 560;
+const DOCK_CHROME_RESERVE = 44;
+
+/**
+ * Keep the support dock proportional to the viewport, while letting it grow
+ * from 34vh on short windows to 38vh on a standard 900px-high workspace.
+ * Above that point the 38vh ceiling remains until the hard 560px panel limit
+ * naturally takes over. The 44px reserve covers the mobile dock chrome too.
+ */
+export function maxDockHeightForViewport(viewportHeight: number): number {
+  const height = Number.isFinite(viewportHeight) ? Math.max(0, viewportHeight) : 800;
+  const growth = Math.min(1, Math.max(0, (height - 820) / 80));
+  const dockRatio = 0.34 + 0.04 * growth;
+  return Math.min(DOCK_MAX_HEIGHT, Math.floor(height * dockRatio) - DOCK_CHROME_RESERVE);
+}
 
 const isPanel = (value: unknown): value is BottomPanel =>
   typeof value === "string" &&

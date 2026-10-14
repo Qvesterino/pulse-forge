@@ -1209,7 +1209,7 @@
   border-radius: 999px;
   padding: 5px 16px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--motion-state) var(--motion-ease);
 }
 
 .agents-copy:hover {

@@ -8,6 +8,7 @@ import {
   LAZY_WORKLET_TYPES,
   loadAllWorklets,
   loadCoreWorklets,
+  loadGenerativePlayerWorklet,
   loadLazyWorklet,
   lazyWorkletTypesInDoc,
 } from "../src/audio-worklets/loader";
@@ -27,7 +28,7 @@ describe("AudioWorklet loader", () => {
     expect(isWorkletReady("sidechain", undefined)).toBe(false);
   });
 
-  it("marks a context ready after CORE modules load (no lazy fetches)", async () => {
+  it("loads the generative player only when its runtime requests it", async () => {
     const addModule = vi.fn(async () => {});
     const ctx = mockCtx(addModule);
     await loadCoreWorklets(ctx);
@@ -36,11 +37,17 @@ describe("AudioWorklet loader", () => {
     expect(isWorkletReady("sidechain", ctx)).toBe(true);
     expect(isWorkletReady("limiter", ctx)).toBe(true);
     expect(isWorkletReady("compressor", ctx)).toBe(true);
-    expect(isWorkletReady("generativePlayer", ctx)).toBe(true);
-    // Lazy worklet suites are NOT loaded by the core path.
+    expect(isWorkletReady("generativePlayer", ctx)).toBe(false);
+    // Lazy worklet suites and the generative PCM sink are not loaded by core.
     expect(isWorkletReady("fxeq", ctx)).toBe(false);
     expect(isWorkletReady("ultina", ctx)).toBe(false);
     expect(isWorkletReady("ozvena", ctx)).toBe(false);
+
+    await loadGenerativePlayerWorklet(ctx);
+    expect(addModule).toHaveBeenCalledTimes(3);
+    expect(isWorkletReady("generativePlayer", ctx)).toBe(true);
+    await loadGenerativePlayerWorklet(ctx);
+    expect(addModule).toHaveBeenCalledTimes(3);
   });
 
   it("loads lazy modules on demand, per type", async () => {
@@ -112,6 +119,8 @@ describe("AudioWorklet loader", () => {
     // Lazy loads on a failed context are also graceful no-ops.
     await expect(loadLazyWorklet(ctx, "fxeq")).resolves.toBeUndefined();
     expect(isWorkletReady("fxeq", ctx)).toBe(false);
+    await expect(loadGenerativePlayerWorklet(ctx)).resolves.toBeUndefined();
+    expect(isWorkletReady("generativePlayer", ctx)).toBe(false);
   });
 
   it("loadAllWorklets still fetches every module (browser check suite)", async () => {
@@ -122,13 +131,14 @@ describe("AudioWorklet loader", () => {
     // PORTAL took it to 11 and REZONANS to 12, both times with a green-looking
     // comment. Reading the count off the loader's own lists makes a new lazy
     // module update this assertion instead of quietly rotting it.
-    expect(addModule).toHaveBeenCalledTimes(2 + LAZY_WORKLET_TYPES.length + INSTRUMENT_WORKLET_TYPES.length);
+    expect(addModule).toHaveBeenCalledTimes(2 + LAZY_WORKLET_TYPES.length + INSTRUMENT_WORKLET_TYPES.length + 1);
     expect(isWorkletReady("fxeq", ctx)).toBe(true);
     expect(isWorkletReady("ultina", ctx)).toBe(true);
     expect(isWorkletReady("ozvena", ctx)).toBe(true);
     expect(isWorkletReady("bassHarmonic", ctx)).toBe(true);
     expect(isWorkletReady("skrutka", ctx)).toBe(true);
     expect(isWorkletReady("rezonans", ctx)).toBe(true);
+    expect(isWorkletReady("generativePlayer", ctx)).toBe(true);
   });
 
   it("resolves silently without audioWorklet (jsdom)", async () => {

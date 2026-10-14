@@ -222,6 +222,12 @@ const TOTAL_BUDGET_KB = 5186;
 // TOTAL_BUDGET_KB and fails safe.
 const OPTIONAL_AI_RUNTIME_BUDGET_KB = 650;
 const OPTIONAL_AI_RUNTIME_PREFIXES = ["transformers.web-", "ort.wasm.bundle.min-", "mastering-ranker-worker-"];
+// The WebGPU-capable ONNX runtime used by opt-in stem separation is imported
+// only after the user selects the gated model workflow. Keep it out of the
+// core DAW sum and cap it separately; its runtime must also stay out of the
+// install-time PWA precache. If Vite renames it, it falls back into TOTAL.
+const OPTIONAL_STEM_RUNTIME_BUDGET_KB = 430;
+const OPTIONAL_STEM_RUNTIME_PREFIXES = ["ort.bundle.min-"];
 // MP3 encoding is also on-demand, but it is a codec rather than an AI runtime.
 // Keep its exported chunk out of the DAW graph while enforcing a separate cap.
 const OPTIONAL_CODEC_BUDGET_KB = 170;
@@ -353,6 +359,7 @@ if (
 const entryKb = statSync(entryFile).size / 1024;
 let totalKb = 0;
 let optionalAiRuntimeKb = 0;
+let optionalStemRuntimeKb = 0;
 let optionalCodecKb = 0;
 let optionalFlacCodecKb = 0;
 let optionalNexusKb = 0;
@@ -360,11 +367,15 @@ let optionalQmrKb = 0;
 let optionalPackKb = 0;
 const optionalNexusFiles = [];
 const optionalFlacCodecFiles = [];
+const optionalStemRuntimeFiles = [];
 for (const file of readdirSync(join(dist, "assets"))) {
   if (!file.endsWith(".js")) continue;
   const sizeKb = statSync(join(dist, "assets", file)).size / 1024;
   if (OPTIONAL_AI_RUNTIME_PREFIXES.some((prefix) => file.startsWith(prefix))) optionalAiRuntimeKb += sizeKb;
-  else if (OPTIONAL_FLAC_CODEC_PREFIXES.some((prefix) => file.startsWith(prefix))) {
+  else if (OPTIONAL_STEM_RUNTIME_PREFIXES.some((prefix) => file.startsWith(prefix))) {
+    optionalStemRuntimeKb += sizeKb;
+    optionalStemRuntimeFiles.push(file);
+  } else if (OPTIONAL_FLAC_CODEC_PREFIXES.some((prefix) => file.startsWith(prefix))) {
     optionalFlacCodecKb += sizeKb;
     optionalFlacCodecFiles.push(file);
   } else if (OPTIONAL_CODEC_PREFIXES.some((prefix) => file.startsWith(prefix))) optionalCodecKb += sizeKb;
@@ -381,6 +392,9 @@ console.log(`[size-budget] DAW JS chunks: ${totalKb.toFixed(0)} KB (budget ${TOT
 console.log(
   `[size-budget] optional on-demand runtimes: ${optionalAiRuntimeKb.toFixed(0)} KB (budget ${OPTIONAL_AI_RUNTIME_BUDGET_KB})`,
 );
+console.log(
+  `[size-budget] optional stem separation runtime: ${optionalStemRuntimeKb.toFixed(0)} KB (budget ${OPTIONAL_STEM_RUNTIME_BUDGET_KB})`,
+);
 console.log(`[size-budget] optional codecs: ${optionalCodecKb.toFixed(0)} KB (budget ${OPTIONAL_CODEC_BUDGET_KB})`);
 console.log(
   `[size-budget] optional FLAC codec: ${optionalFlacCodecKb.toFixed(0)} KB (budget ${OPTIONAL_FLAC_CODEC_BUDGET_KB})`,
@@ -390,7 +404,7 @@ console.log(
 );
 console.log(`[size-budget] optional QMR HUD: ${optionalQmrKb.toFixed(0)} KB (budget ${OPTIONAL_QMR_BUDGET_KB})`);
 console.log(
-  `[size-budget] shipped JS total: ${(totalKb + optionalAiRuntimeKb + optionalCodecKb + optionalFlacCodecKb + optionalNexusKb).toFixed(0)} KB`,
+  `[size-budget] shipped JS total: ${(totalKb + optionalAiRuntimeKb + optionalStemRuntimeKb + optionalCodecKb + optionalFlacCodecKb + optionalNexusKb).toFixed(0)} KB`,
 );
 
 let coreWorkletKb = 0;
@@ -403,6 +417,24 @@ for (const file of ["bitcrusher-worklet.js", "core-worklet.js"]) {
   coreWorkletKb += statSync(path).size / 1024;
 }
 console.log(`[size-budget] core worklets: ${coreWorkletKb.toFixed(0)} KB (budget ${CORE_WORKLET_BUDGET_KB})`);
+
+// The bounded PCM queue is used only by provider-backed generative tracks;
+// its module loads when such a track starts, not with the stock core bundle.
+const GENERATIVE_PLAYER_WORKLET_BUDGET_KB = 4;
+let generativePlayerWorkletKb = 0;
+{
+  const path = join(dist, "generative-player-worklet.js");
+  if (!statSync(path, { throwIfNoEntry: false })?.isFile()) {
+    console.error(
+      "[size-budget] FAIL — missing on-demand generative player worklet: dist/generative-player-worklet.js",
+    );
+    process.exit(1);
+  }
+  generativePlayerWorkletKb = statSync(path).size / 1024;
+}
+console.log(
+  `[size-budget] generative player worklet: ${generativePlayerWorkletKb.toFixed(0)} KB (budget ${GENERATIVE_PLAYER_WORKLET_BUDGET_KB})`,
+);
 
 // TSAR flagship instrument worklet (ADR 0023): a LAZY instrument module
 // (loaded only for projects with a TSAR track), so it carries its own budget
@@ -528,6 +560,12 @@ if (optionalAiRuntimeKb > OPTIONAL_AI_RUNTIME_BUDGET_KB) {
   );
   failed = true;
 }
+if (optionalStemRuntimeKb > OPTIONAL_STEM_RUNTIME_BUDGET_KB) {
+  console.error(
+    `[size-budget] FAIL — optional stem runtime over budget: ${optionalStemRuntimeKb.toFixed(0)} > ${OPTIONAL_STEM_RUNTIME_BUDGET_KB} KB.`,
+  );
+  failed = true;
+}
 if (optionalCodecKb > OPTIONAL_CODEC_BUDGET_KB) {
   console.error(
     `[size-budget] FAIL — optional codecs over budget: ${optionalCodecKb.toFixed(0)} > ${OPTIONAL_CODEC_BUDGET_KB} KB.`,
@@ -582,6 +620,13 @@ if (eagerlyLoadedNexus.length > 0) {
   );
   failed = true;
 }
+const eagerlyLoadedStemRuntime = optionalStemRuntimeFiles.filter((file) => initialSeen.has(file));
+if (eagerlyLoadedStemRuntime.length > 0) {
+  console.error(
+    `[size-budget] FAIL — optional stem runtime is statically reachable at boot: ${eagerlyLoadedStemRuntime.join(", ")}`,
+  );
+  failed = true;
+}
 const eagerlyLoadedFlacCodec = optionalFlacCodecFiles.filter((file) => initialSeen.has(file));
 if (eagerlyLoadedFlacCodec.length > 0) {
   console.error(
@@ -600,6 +645,13 @@ if (precachedFlacCodec.length > 0) {
   console.error(`[size-budget] FAIL — optional FLAC codec is in the PWA precache: ${precachedFlacCodec.join(", ")}`);
   failed = true;
 }
+const precachedStemRuntime = optionalStemRuntimeFiles.filter((file) => serviceWorker.includes(file));
+if (precachedStemRuntime.length > 0) {
+  console.error(
+    `[size-budget] FAIL — optional stem runtime is in the PWA precache: ${precachedStemRuntime.join(", ")}`,
+  );
+  failed = true;
+}
 const nexusRuntime = optionalNexusFiles.map((file) => readFileSync(join(dist, "assets", file), "utf8")).join("\n");
 if (/undici|connect-node/i.test(nexusRuntime)) {
   console.error("[size-budget] FAIL — Node-only Nexus transport code entered the browser bundle.");
@@ -608,6 +660,12 @@ if (/undici|connect-node/i.test(nexusRuntime)) {
 if (coreWorkletKb > CORE_WORKLET_BUDGET_KB) {
   console.error(
     `[size-budget] FAIL — core worklets over budget: ${coreWorkletKb.toFixed(0)} > ${CORE_WORKLET_BUDGET_KB} KB.`,
+  );
+  failed = true;
+}
+if (generativePlayerWorkletKb > GENERATIVE_PLAYER_WORKLET_BUDGET_KB) {
+  console.error(
+    `[size-budget] FAIL — generative player worklet over budget: ${generativePlayerWorkletKb.toFixed(0)} > ${GENERATIVE_PLAYER_WORKLET_BUDGET_KB} KB.`,
   );
   failed = true;
 }

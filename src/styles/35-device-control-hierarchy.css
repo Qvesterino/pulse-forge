@@ -23,7 +23,7 @@
   .essential-kit-variant {
     height: 25px;
     padding-inline: 4px;
-    font-size: 9px;
+    font-size: 10px;
     letter-spacing: 0.02em;
   }
 }
@@ -56,6 +56,9 @@
     width: 100%;
     max-width: none;
     min-width: 0;
+    height: var(--touch-target-large);
+    min-height: var(--touch-target-large);
+    font-size: 12px;
   }
 }
 

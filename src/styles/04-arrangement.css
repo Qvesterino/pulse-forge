@@ -33,6 +33,13 @@
   letter-spacing: 0.7px;
 }
 
+.arr-midi-lanes-heading > span:first-child {
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
 .arr-midi-lane-row {
   display: grid;
   grid-template-columns: 136px max-content;
@@ -75,7 +82,6 @@
 }
 
 .arr-midi-lane-label button:disabled {
-  opacity: 0.58;
   cursor: not-allowed;
 }
 
@@ -412,7 +418,7 @@
   min-height: 20px;
   margin-right: 3px;
   padding: 1px 6px;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .arr-audio-take-lane-select:hover,
@@ -1446,7 +1452,6 @@
 }
 
 .arr-auto-lane-label button:disabled {
-  opacity: 0.58;
   cursor: not-allowed;
 }
 

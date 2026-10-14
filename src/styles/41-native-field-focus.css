@@ -33,3 +33,15 @@
   outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
   outline-offset: 3px;
 }
+
+/* INTENT's legacy :focus rule is more specific than the shared panel rule in
+   32, so restate its keyboard state here at the shared 2px amber strength. */
+.intent-textarea:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: 2px;
+}
+
+.effect-intent-form input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: 2px;
+}

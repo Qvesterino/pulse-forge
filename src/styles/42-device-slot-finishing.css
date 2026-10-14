@@ -41,4 +41,13 @@
   .rezonans-panel .rezonans-voice {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 86px), 1fr));
   }
+
+  /* Make each effect in the mobile signal chain a reliable touch target while
+     keeping the existing wrapping behavior inside a narrow dock slot. */
+  .devices-panel .devices-chain > .device-chain-item {
+    height: var(--touch-target-large);
+    min-height: var(--touch-target-large);
+    padding-inline: 10px;
+    font-size: 12px;
+  }
 }

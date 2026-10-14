@@ -122,6 +122,39 @@
     border-color 140ms ease;
 }
 
+.arr-panel .scene-launcher-panel :is(.scene-select-control, .scene-action, .scene-edit-input):focus-visible {
+  position: relative;
+  z-index: 3;
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: -2px;
+}
+
+.arr-panel .scene-launcher-panel .scene-drag-grip:focus-visible {
+  z-index: 3;
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: -2px;
+}
+
+.scene-strip :is(.scene-strip-toggle, .scene-strip-track, .scene-strip-macro-clear):focus-visible {
+  position: relative;
+  z-index: 3;
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: -2px;
+}
+
+.arr-panel .arr-midi-clip:focus-visible {
+  z-index: 3;
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: -2px;
+}
+
+.arr-panel .arr-midi-lane-label button:focus-visible {
+  position: relative;
+  z-index: 3;
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: -2px;
+}
+
 @container arrangement-timeline (max-width: 620px) {
   .arr-panel .arr-audio-take-lanes-heading {
     justify-content: flex-start;
@@ -154,7 +187,305 @@
   }
 
   .arr-panel .arr-audio-take-lane-audition {
-    min-height: 36px;
+    min-height: var(--touch-target-large);
+  }
+
+  .arr-panel .arr-record-toolbar > .btn,
+  .arr-panel .arr-record-toolbar > .arr-arm-select,
+  .arr-panel .arr-capture-setup > summary,
+  .arr-panel .arr-capture-setup-grid .arr-arm-select,
+  .arr-panel .arr-input-channel-routing > summary,
+  .arr-panel .arr-edit-toolbar > .btn,
+  .arr-panel .arr-edit-toolbar .arr-zoom-group > .btn,
+  .arr-panel .arr-production-toolbar > .btn,
+  .arr-panel .arr-production-toolbar > .arr-arm-select,
+  .arr-panel .arr-ripple-row > .arr-ripple-toggle,
+  .arr-panel .arr-snap-label > .arr-arm-select,
+  .arr-panel .arr-audio-take-lane-select {
+    min-height: var(--touch-target-large);
+    font-size: 12px;
+  }
+
+  .arr-panel .arr-input-channel-routing > summary {
+    display: flex;
+    align-items: center;
+    padding-inline: 8px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-sm);
+    background: var(--surface-1);
+    color: var(--text-dim);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .arr-panel .arr-ripple-row {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .arr-panel .arr-midi-lane-row {
+    min-height: 50px;
+  }
+
+  .arr-panel .arr-midi-lane-label button {
+    flex: 0 0 var(--touch-target-large);
+    width: var(--touch-target-large);
+    height: var(--touch-target-large);
+  }
+
+  .arr-panel .arr-midi-lane-track {
+    height: 50px;
+  }
+
+  .arr-panel .arr-midi-clip {
+    height: 44px;
+  }
+
+  .arr-panel .arr-midi-clip-name {
+    line-height: 44px;
+  }
+}
+
+/* The scene launcher is a second workflow inside Arrangement. At phone widths,
+   keep scene selection distinct from its four actions and give every action a
+   full touch target instead of squeezing them beside the scene metadata. */
+.arr-panel .arr-scenes {
+  container-type: inline-size;
+  container-name: arrangement-scenes scene-strip-host;
+}
+
+@media (max-width: 760px), (pointer: coarse) {
+  @container arrangement-scenes (max-width: 420px) {
+    .arr-panel .arr-scenes-header > .btn,
+    .arr-panel .scene-actions > .btn,
+    .arr-panel .arr-quick-actions > .btn,
+    .arr-panel .arr-scene-role select,
+    .arr-panel .scene-launcher-footer > .btn {
+      height: var(--touch-target-large);
+      min-height: var(--touch-target-large);
+      font-size: 12px;
+    }
+
+    .arr-panel .scene-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .arr-panel .arr-quick-actions {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .arr-panel .scene-actions > .btn,
+    .arr-panel .arr-quick-actions > .btn {
+      width: 100%;
+      padding-inline: 4px;
+    }
+
+    .arr-panel .arr-scene-role select {
+      height: var(--touch-target-large);
+    }
+
+    .arr-panel .scene-launcher-panel .scene-launch-card {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+        "scene state"
+        "actions actions";
+      gap: 6px;
+    }
+
+    .arr-panel .scene-launcher-panel .scene-select-control,
+    .arr-panel .scene-launcher-panel .scene-edit-input {
+      grid-area: scene;
+      min-height: var(--touch-target-large);
+    }
+
+    .arr-panel .scene-launcher-panel .scene-edit-input {
+      height: var(--touch-target-large);
+    }
+
+    .arr-panel .scene-launcher-panel .scene-state-badges {
+      grid-area: state;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      padding-top: 0;
+    }
+
+    .arr-panel .scene-launcher-panel .scene-launch-actions {
+      grid-area: actions;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--touch-target-large)), 1fr));
+      align-items: stretch;
+      gap: 4px;
+    }
+
+    .arr-panel .scene-launcher-panel .scene-action {
+      min-width: var(--touch-target-large);
+      height: var(--touch-target-large);
+      min-height: var(--touch-target-large);
+      padding-inline: 4px;
+      font-size: 10px;
+    }
+  }
+}
+
+@media (max-width: 760px), (pointer: coarse) {
+  @container scene-strip-host (max-width: 420px) {
+    .scene-strip {
+      align-items: stretch;
+      gap: 6px;
+      padding: 6px;
+    }
+
+    .scene-strip-toggle {
+      flex: 1 1 100%;
+      justify-content: flex-start;
+      min-height: var(--touch-target-large);
+      padding-inline: 8px;
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-sm);
+      background: var(--surface-1);
+      font-size: 12px;
+    }
+
+    .scene-strip-scene {
+      display: grid;
+      flex: 1 1 100%;
+      grid-template-columns: minmax(0, 1fr) auto;
+      max-width: none;
+      gap: 6px;
+    }
+
+    .scene-strip-name,
+    .scene-strip-intensity,
+    .scene-strip-chip {
+      grid-column: 1 / -1;
+    }
+
+    .scene-strip-name {
+      max-width: none;
+    }
+
+    .scene-strip-intensity {
+      min-width: 0;
+    }
+
+    .scene-strip-intensity .slider-compact .slider-track,
+    .scene-strip-macro-slider .slider-compact .slider-track {
+      height: var(--touch-target-large);
+      border-color: transparent;
+      background: linear-gradient(
+        to bottom,
+        transparent calc(50% - 2px),
+        var(--bg) calc(50% - 2px),
+        var(--bg) calc(50% + 2px),
+        transparent calc(50% + 2px)
+      );
+    }
+
+    .scene-strip-intensity .slider-fill,
+    .scene-strip-macro-slider .slider-fill {
+      top: calc(50% - 2px);
+      bottom: auto;
+      height: 4px;
+    }
+
+    .scene-strip-intensity .slider-thumb,
+    .scene-strip-macro-slider .slider-thumb {
+      top: calc(50% - 6px);
+      bottom: auto;
+      height: 12px;
+    }
+
+    .scene-strip-macro {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) var(--touch-target-large);
+      grid-template-areas:
+        "name clear"
+        "slider slider";
+      align-items: center;
+      gap: 4px 6px;
+    }
+
+    .scene-strip-macro-name {
+      grid-area: name;
+    }
+
+    .scene-strip-macro-slider {
+      grid-area: slider;
+    }
+
+    .scene-strip-macro-clear {
+      grid-area: clear;
+      justify-self: end;
+    }
+
+    .scene-strip-fx {
+      display: grid;
+      flex: 1 1 100%;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 6px;
+    }
+
+    .scene-strip-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .scene-strip-track,
+    .scene-strip-kind,
+    .scene-strip-row > .scene-strip-chip {
+      grid-column: 1 / -1;
+    }
+
+    .scene-strip-track {
+      width: 100%;
+      max-width: none;
+      min-height: var(--touch-target-large);
+      text-align: left;
+    }
+
+    .scene-strip-pair {
+      width: 100%;
+      max-width: none;
+      min-width: 0;
+      height: var(--touch-target-large);
+      min-height: var(--touch-target-large);
+      font-size: 12px;
+    }
+
+    .scene-strip-macro-clear {
+      flex: 0 0 var(--touch-target-large);
+      width: var(--touch-target-large);
+      height: var(--touch-target-large);
+      border-radius: var(--radius-sm);
+      font-size: 18px;
+    }
+
+    .scene-strip-cc-item {
+      flex: 1 1 180px;
+      min-width: 0;
+      min-height: var(--touch-target-large);
+      white-space: normal;
+      line-height: 1.35;
+    }
+  }
+}
+
+@media (pointer: coarse) {
+  @container arrangement-scenes (max-width: 420px) {
+    .arr-panel .scene-launcher-panel .scene-launch-card {
+      padding-left: calc(var(--touch-target-large) + 4px);
+    }
+
+    .arr-panel .scene-launcher-panel .scene-drag-grip {
+      left: 1px;
+      width: var(--touch-target-large);
+      height: var(--touch-target-large);
+    }
   }
 }
 

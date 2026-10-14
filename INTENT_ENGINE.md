@@ -23,12 +23,10 @@
 > (`src/intent/exact.ts`, `src/intent/production.ts`). Pri nesúhlasu: tento
 > dokument popisuje realitu, master dokument cieľ.
 >
-> **Revízia 2026-10-11 (F0 kampane):** doplnené vlny 09/10 — exact intenty,
-> production vrstva, brief contract/gate, producer session + iteration,
-> local intent model v1 + LFM2.5/Ollama, personal/Producer DNA vrstva,
-> melodic prior v3 a reálne počty (IntentPanel 5 666 riadkov + 6 collaboratorov
-> v `src/ui/intent/`, 37 druhov route, 258 groove štýlov). Nové/aktualizované
-> pasáže sú označené ⟦10-11⟧.
+> **Revízia 2026-10-14:** modelová mapa zosúladená s aktívnym browser ONNX
+> v17 (dynamic INT8, 2,601,522 B, 6,144 input features, 59 heads), jeho
+> aktuálnou validačnou bránou a Chromium diagnostikou. Staršie dátované
+> pasáže zostávajú historickým záznamom, nie aktuálnym modelovým baseline.
 
 ---
 
@@ -1094,17 +1092,26 @@ Tri triedy intentov podľa `docs/KYX_PRODUCTION_INTENT_ENGINE_MASTER.md` §4:
 
 #### c) LOCAL INTENT MODEL v1 + LFM2.5/Ollama (detail `docs/LOCAL-INTENT-MODEL.md`)
 
-- **`public/models/intent-model-v1.onnx` (6 799 814 B, sha256 pin)** —
-  multi-head ACTION/SLOT-FILLING model: **47 výstupných headov**
-  (`head_kind`, `head_arrangeOp`, `head_part1Percent`, …), kind head má
-  **22 tried** (abstain + 21 route druhov). Pattern GENERÁCIA medzi triedami
-  NIE JE — kreatívny brief zostáva výhradne deterministický. Vstup
-  `intent-features.v2` (vocab 4 015), generácia = 1 token, temperature 0.
-  Engine je teacher (`scripts/train-intent-model.py` nad SFT korpusom).
-- **Release gate PASSED (2026-10-01)**; validácia
-  `scripts/data/intent-model-validation-report.json` (regen 2026-10-11:
-  train 1 790 / val 298 / golden 74, valHeadAccuracyMean 0.995,
-  `trainingDataContentHashPinned: true`, dataset v4).
+- **`public/models/intent-model-v1.onnx` (2 601 522 B, dynamic INT8, SHA-256 pin)** —
+  multi-head ACTION/SLOT-FILLING model: **59 output heads**, 6,144 input
+  features; kind head has **26 classes** (abstain + 25 action kinds).
+  Pattern GENERATION is not a class — creative briefs remain on the
+  deterministic generation path. The model consumes `intent-features.v2`;
+  the decoder and schema still refuse unsupported or invalid actions.
+  Training uses `scripts/train-intent-model.py` over the pinned SFT corpus.
+- **Current release gate PASSED (2026-10-14, dataset v17)**;
+  `scripts/data/intent-model-validation-report.json` pins 2,244 train / 374
+  validation / 77 golden rows and their hashes. Validation is 287/297 exact
+  among attempted outputs (96.6%), zero wrong-kind, and 77 abstentions (20.6%;
+  ceiling 23%). Golden regression is 71/71 exact among attempted outputs,
+  zero wrong-kind; 68 of 77 golden prompts overlap training.
+- **Browser behavior remains parser-first:** on the 144-row private English
+  diagnostic, Chromium measured combined 71/72 expected actions, 36/36
+  clarifications, and 36/36 safe abstentions. The model-only result was 13/72
+  exact actions, 7 slot mismatches, 52 action abstentions, and 9 false-positive
+  routes on clarification/no-op cases. This set is synthetic and development-
+  inspected; it is diagnostic, not independent user evidence. See
+  `docs/INTENT-ENGINE-BROWSER-ROADMAP.md` for full slices and caveats.
 - **Poradie v paneli (overené v kóde):** deterministická `routeIntentText`
   sa počíta PRVÁ a vchádza do `tryModelRoute(instruction, doc,
 deterministicRoute)`; creative-brief route model NEPIE (early return).
@@ -1221,8 +1228,8 @@ deterministicRoute)`; creative-brief route model NEPIE (early return).
 | Vocals             | —                                                                                                                                                                                                                              | v prehliadači realisticky až neskôr (pozri §8 T5)                                |
 | Feedback loop      | **HOTOVÉ (C1+C2 + #7 style-vector)**: favorites → retrain všetkých 3 modelov + live style-vector blend (0.75 intent / 0.25 štýl). Aktuálne artifacty: ranker `favoriteGroups: 0` — reálny ★ retrain je otvorený                | cloud-free zdieľanie packov, implicitné signály (USE bez audition)               |
 
-> ⟦10-11⟧ **Update riadkov** (realita 2026-10-11): Text understanding = +
-> local intent model v1 (47 headov, LIVE, §5.20c) + LFM2.5/Ollama SFT
+> ⟦10-14⟧ **Update riadkov** (realita 2026-10-14): Text understanding = +
+> local intent model v1 (59 headov, LIVE, §5.20c) + LFM2.5/Ollama SFT
 > (desktop) + mining loop. Žánre/style = **258 groove štýlov** (§5.20d),
 > nie 21. Generatívny model = + melodic prior v3 artifacts (harmony-aware;
 > runner hotový, provider wiring otvorený, §5.20d). Intent → mix = +
@@ -1251,7 +1258,7 @@ deterministicRoute)`; creative-brief route model NEPIE (early return).
   regresia na 190 vzorkách, len fallback).
 - **⟦10-11⟧ symbolic-melodic v3 (28 131 B, 68-dim harmony-aware, ds.v3,
   valDegreeAcc 0.570)** — runner hotový, provider wiring otvorený (§5.20d).
-- **⟦10-11⟧ intent-model-v1 (6 799 814 B, 47 headov, kind 22 tried)** —
+- **⟦10-14⟧ intent-model-v1 (2 601 522 B, 59 headov, kind 26 tried)** —
   action/slot-filling, LIVE, deterministická vrstva beží prvá (§5.20c).
 - **⟦10-11⟧ Desktop (mimo browser bundle):** LFM2.5-1.2B SFT q8 cez Ollama,
   defaultne aktívny s probe bránou.

@@ -39,5 +39,4 @@ import "./vocoder-processor.js";
 import "./bassbuss-sub-processor.js";
 import "./reverseswell-processor.js";
 import "./granularfreeze-processor.js";
-import "./generative-player-processor.js";
 import "./wowflutter-processor.js";

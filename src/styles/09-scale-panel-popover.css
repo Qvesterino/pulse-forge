@@ -322,7 +322,7 @@
   height: 10px;
   background: var(--bg-raise);
   border-radius: 1px;
-  transition: background 0.1s;
+  transition: background var(--motion-fast) var(--motion-ease);
 }
 
 .preview-cell.beat {

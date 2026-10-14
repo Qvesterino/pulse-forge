@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSelection, useServices, useTracks } from "./context";
 import {
   createDrumTrack,
@@ -62,6 +62,7 @@ export function TrackTabs({
   const tracks = useTracks();
   const doc = services.store.getDoc();
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
+  const selectedTabRef = useRef<HTMLButtonElement | null>(null);
   // Sample drop hover (V4) — which tab is currently under a KYX sample drag.
   const [sampleOver, setSampleOver] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -80,6 +81,10 @@ export function TrackTabs({
     }
     setEditingTrackId(null);
   };
+
+  useEffect(() => {
+    selectedTabRef.current?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [selectedTrackId]);
 
   return (
     <div className="track-tabs" role="tablist" aria-label="Tracks">
@@ -106,6 +111,7 @@ export function TrackTabs({
           <button
             key={track.id}
             type="button"
+            ref={track.id === selectedTrackId ? selectedTabRef : undefined}
             role="tab"
             aria-selected={isSelected}
             aria-label={`${track.name} (${track.kind === "drum" ? "Drum track" : track.kind === "group" ? "Group track" : track.kind === "generative" ? "Generative track" : `${track.instrument} track`})${track.mute ? ", muted" : ""}${track.solo ? ", soloed" : ""}`}

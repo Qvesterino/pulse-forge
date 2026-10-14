@@ -2,6 +2,7 @@
 
 .mixer {
   contain: layout style;
+  container: scene-strip-host / inline-size;
   max-height: 170px;
   overflow-x: auto;
   /* hidden clipped the RETURN/master rows at the dock edge with no way to
@@ -541,7 +542,6 @@
   color: var(--accent);
 }
 .fader-menu button:disabled {
-  opacity: 0.58;
   cursor: not-allowed;
 }
 
@@ -635,14 +635,23 @@
   gap: 6px;
 }
 
-/* Keep the compact master toggles in three equal columns. Six controls form
-   two rows without widening the 150px column into the metering wall. */
+/* Keep Master switches legible inside the fixed 150px strip; GR LISTEN spans
+   two cells so the short processing labels can use a larger type size. */
 .master-strip .master-toggles .btn {
-  flex: 1 1 0;
+  width: 100%;
   min-width: 0;
   padding: 0 4px;
-  font-size: 9px;
-  letter-spacing: 0.3px;
+  font-size: 10px;
+  letter-spacing: 0.2px;
+}
+
+.master-strip .master-toggles .master-gr-listen-toggle {
+  grid-column: span 2;
+}
+
+.master-strip .master-toggles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .master-strip .meter {
@@ -676,7 +685,7 @@
 }
 
 .freeze-controls .btn-small {
-  font-size: 8px;
+  font-size: 10px;
   padding: 1px 4px;
   min-width: auto;
 }

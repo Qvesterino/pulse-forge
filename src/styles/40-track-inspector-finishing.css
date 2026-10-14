@@ -1,6 +1,6 @@
 /* Keep track identity and keyboard focus legible in the dense rack/Inspector
    area without changing its established compact geometry. */
-.rack-wrap .track-tab {
+.track-tabs .track-tab {
   transition:
     border-color 140ms ease,
     background-color 140ms ease,
@@ -8,11 +8,11 @@
     box-shadow 140ms ease;
 }
 
-.rack-wrap .track-tab:not([aria-selected="true"]):hover {
+.track-tabs .track-tab:not([aria-selected="true"]):hover {
   border-color: color-mix(in srgb, var(--accent) 35%, var(--hairline));
 }
 
-.rack-wrap .track-tab[aria-selected="true"] {
+.track-tabs .track-tab[aria-selected="true"] {
   border-color: color-mix(in srgb, var(--accent) 58%, var(--hairline));
   background: linear-gradient(
     180deg,
@@ -34,8 +34,54 @@
   cursor: not-allowed;
 }
 
+@media (max-width: 520px) {
+  /* Keep each track name intact and use the strip's own horizontal scroll on
+     phones instead of compressing the tabs into narrow, truncated columns. */
+  .track-tabs {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 4px;
+    scrollbar-color: var(--border) transparent;
+    scrollbar-width: thin;
+  }
+
+  .rack-header .track-tabs {
+    flex: 0 1 100%;
+  }
+
+  .rack-header-divider {
+    display: none;
+  }
+
+  .track-tabs > .track-tab {
+    flex: 0 0 auto;
+    max-width: min(70vw, 260px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .track-tabs > .track-tab-rename,
+  .track-tabs > .track-add {
+    flex: 0 0 auto;
+  }
+
+  .track-tabs::-webkit-scrollbar {
+    height: 5px;
+  }
+
+  .track-tabs::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .rack-wrap .track-tab {
+  .track-tabs .track-tab {
     transition: none;
   }
 }

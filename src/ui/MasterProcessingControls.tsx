@@ -214,7 +214,7 @@ export function MasterProcessingControls({
           {advanced && isProjectControl && (
             <button
               type="button"
-              className={`btn btn-small${deltaListenEnabled ? " active-solo" : ""}`}
+              className={`btn btn-small master-gr-listen-toggle${deltaListenEnabled ? " active-solo" : ""}`}
               title={
                 limiterUsesFallback
                   ? "Limiter delta audition needs the live look-ahead worklet; the native fallback is active."

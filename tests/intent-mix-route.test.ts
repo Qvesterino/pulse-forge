@@ -107,6 +107,7 @@ describe("ambiguous and contradictory commands", () => {
       "Make the bass louder and quieter by the same amount.",
       "Pan the lead fully left and fully right at once.",
       "Mute the lead but keep it audible.",
+      "Mute the lead, but do not make it silent.",
       "Make the lead louder but reduce its level.",
       "Set the kick to twenty and ninety percent at once.",
       "Keep the drums muted while making them audible.",
@@ -122,6 +123,10 @@ describe("ambiguous and contradictory commands", () => {
       reason: "negated-mutation-command",
     });
     expect(routeIntentText("Don't remove the reverb.", doc).kind).toBe("clarify");
+    expect(routeIntentText("Leave the master centered; don't move its pan.", doc)).toMatchObject({
+      kind: "clarify",
+      reason: "negated-mutation-command",
+    });
     expect(routeIntentText("Raise the lead delay return.", doc)).toMatchObject({
       kind: "clarify",
       reason: "ambiguous-send-return",

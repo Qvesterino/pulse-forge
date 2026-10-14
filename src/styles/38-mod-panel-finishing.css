@@ -41,6 +41,26 @@
   box-shadow: inset 2px 0 color-mix(in srgb, var(--accent) 80%, #fff);
 }
 
+/* In compact dock slots, MOD controls need the same reliable touch targets as
+   the rest of the mobile workspace without changing the desktop density. */
+@container bottom-dock-slot (max-width: 560px) {
+  .mod-panel .mod-lane-list {
+    padding: 4px;
+  }
+
+  .mod-panel .mod-lane-row > :is(.mod-lane-label, .btn),
+  .mod-panel .mod-lane-add :is(select, input, .btn),
+  .mod-panel .lfo-row-controls .fx-param-select select {
+    min-height: var(--touch-target-large);
+  }
+
+  .mod-panel .lfo-row-header > .btn {
+    width: var(--touch-target-large);
+    min-width: var(--touch-target-large);
+    height: var(--touch-target-large);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mod-panel :is(.lfo-row, .macro-card) {
     transition: none;
