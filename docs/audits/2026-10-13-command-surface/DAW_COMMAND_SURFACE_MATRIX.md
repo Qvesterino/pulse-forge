@@ -175,7 +175,7 @@ command returns success while nothing reaches the document.
    (`ProjectStore.ts:238-245`), so the observable result is "the gesture did nothing" — no
    phantom history step, no dirty flag, no false undo.
 
-They are defence-in-depth *behind* an already-validating boundary. Converting them to throws
+They are defence-in-depth _behind_ an already-validating boundary. Converting them to throws
 would change behaviour on paths that currently work, for a malformed input no caller can
 produce. Recorded here so a later wave does not rediscover the pattern and "fix" it. If a
 future agent surface ever calls one of these without validating, that surface is the bug —
@@ -210,6 +210,105 @@ not the command.
 - **Natural-language parity is where it breaks.** See `DAW_AGENT_CONTROL_GAP_REPORT.md` GAP-01/GAP-02: a phrase that is trivially expressible in the UI and in MCP (`kyx_export`, `kyx_mix setGain`) is _misrouted or declined_ by the Intent Engine.
 
 ---
+
+---
+
+## 3-P2-A. CAPABILITY PARITY SWEEP — UI ↔ Command ↔ MCP ↔ Intent (2026-10-13, post-P0/P1/P2-B)
+
+The original §3 gave a coarse verdict. This sweep is the per-capability table the
+roadmap's P2-A asked for, re-measured at the post-P1-A tree (37 tools, count
+re-verified by regex: 37 `name:` vs 37 dispatcher cases). MCP mappings cite the
+dispatcher case; NL cites the route kind + parser. **Verdict vocabulary:** FULL =
+reachable from all three surfaces · PARTIAL(x) = missing paths named ·
+MISSING = no surface (capability itself absent).
+
+Legend: UI per §2 evidence · **MCP** = tool+op · **NL** = intent route (✦ = in-app
+only — `kyx_intent` refuses it over MCP per tools.ts:6205,6269-6281; the structured
+tool remains the agent path).
+
+### (a) Project lifecycle
+
+| Capability              | Command       | MCP                          | NL                        | Verdict                                                                                        |
+| ----------------------- | ------------- | ---------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------- |
+| Create from template    | factory       | —                            | —                         | UI-ONLY                                                                                        |
+| Open / import `.kyx`    | repo          | —                            | —                         | UI-ONLY (app-side by design)                                                                   |
+| Save / autosave flush   | repo          | —                            | ✦ `save` (exact.ts:555)   | PARTIAL(NL in-app; no MCP flush — `kyx_checkpoint save` is a doc snapshot, not a project save) |
+| Export project          | repo          | `kyx_export` (tools.ts:2960) | ✦ `export` (exact.ts:577) | FULL (agent path = kyx_export)                                                                 |
+| Migrate / crash-restore | pure/recovery | —                            | —                         | UI-ONLY                                                                                        |
+| Save-as / close-project | MISSING       | —                            | —                         | MISSING (GAP-14)                                                                               |
+
+### (b) Transport
+
+| Capability      | Command  | MCP                                       | NL                                       | Verdict          |
+| --------------- | -------- | ----------------------------------------- | ---------------------------------------- | ---------------- |
+| Play/pause/stop | runtime  | `kyx_transport` (tools.ts:2190→1776)      | `transport` (exact.ts:480)               | FULL             |
+| Seek            | runtime  | `kyx_transport seek` (tools.ts:1886)      | —                                        | PARTIAL(NL)      |
+| Loop            | runtime  | `kyx_transport loopOn/Off` + `loopRegion` | `transport` (exact.ts:509)               | FULL             |
+| Tempo (BPM)     | `setBpm` | `kyx_music setTempo` (tools.ts:2915)      | `tempo` (conversation.ts:334) + exact op | FULL             |
+| Metronome       | runtime  | `kyx_transport metronomeOn/Off`           | `transport`                              | FULL             |
+| Time signature  | MISSING  | —                                         | —                                        | MISSING (GAP-12) |
+
+### (c) Timeline / arrangement
+
+| Capability                 | Command              | MCP                                                          | NL                                            | Verdict                                                                |
+| -------------------------- | -------------------- | ------------------------------------------------------------ | --------------------------------------------- | ---------------------------------------------------------------------- |
+| Track create/delete        | tracks.ts            | `kyx_tracks add*/remove`                                     | exact addTrack/removeTrack                    | FULL                                                                   |
+| Track duplicate            | tracks.ts:273        | **NONE**                                                     | exact duplicateTrack (exact.ts:300)           | PARTIAL(MCP) — reverse asymmetry                                       |
+| Clip create (audio)        | addAudioClip         | **NONE** (only stem lanes via `kyx_master stems import`)     | `record` arms recorder ✦                      | PARTIAL(MCP; NL in-app)                                                |
+| Clip delete                | deleteAudioClip      | `kyx_clips delete/audioDelete` (4464/4405)                   | `clips` deleteClip                            | FULL                                                                   |
+| Clip duplicate             | clipEditing.ts:247   | `kyx_clips duplicate` (4457)                                 | `clips` copyClip (dest bar required)          | FULL                                                                   |
+| Clip split                 | clipEditing.ts:292   | `kyx_clips audioSplit` (4371, audio only)                    | **NONE**                                      | PARTIAL(NL; no scene-clip split anywhere)                              |
+| Clip trim/resize           | audioClips.ts:628    | `kyx_clips resize` (4446, scene clips) + audio trim **NONE** | `clips` resizeClip                            | PARTIAL(audio trim on MCP; NL scene-only)                              |
+| Clip move                  | audioClips.ts:490    | `kyx_clips move/audioMove`                                   | `clips` moveClip                              | FULL (wave-18 measured parity)                                         |
+| Stretch                    | audioClips.ts:602    | **NONE**                                                     | **NONE**                                      | UI-ONLY (ArrangementPanel:2913)                                        |
+| Fade                       | clamp invariant      | `kyx_clips audioUpdate fadeIn/fadeOut` (4383)                | `clips` fadeClip (P0-C, selection-grounded)   | FULL                                                                   |
+| Crossfade                  | clipEditing.ts:620   | **NONE**                                                     | **NONE**                                      | UI-ONLY (rangeCrossfade.ts:83)                                         |
+| Snap                       | pre-command geometry | —                                                            | —                                             | UI-ONLY (by design — a gesture modifier)                               |
+| Quantize                   | quantize.ts          | `kyx_notes quantize` (2857)                                  | **NONE** (declined-word only)                 | PARTIAL(NL)                                                            |
+| Markers                    | markers.ts           | `kyx_markers` (2481)                                         | `markerIntent` (studio-words.ts:172)          | FULL                                                                   |
+| Scenes                     | scenes.ts            | `kyx_sections` (2448→5031)                                   | `arrange` (arrangeWords.ts:188)               | FULL                                                                   |
+| Time-range dup/consolidate | timeRange.ts         | **NONE**                                                     | ✦ `selectedRangeArrange` (selection-grounded) | PARTIAL(MCP; NL in-app selection-bound)                                |
+| Slip                       | audioClips.ts:520    | **NONE**                                                     | **NONE**                                      | UI-ONLY (ArrangementPanel:2953 — the old "no UI caller" note is STALE) |
+
+### (d) Mixer
+
+| Capability        | Command           | MCP                                                      | NL                                                | Verdict                        |
+| ----------------- | ----------------- | -------------------------------------------------------- | ------------------------------------------------- | ------------------------------ |
+| Gain/pan          | setTrackParams    | `kyx_tracks setGain/setPan` (2605)                       | `fader` + exact + P1-A named-track fader          | FULL                           |
+| Mute/solo         | setTrackParams    | `kyx_tracks setMute/setSolo`                             | exact mute/solo                                   | FULL                           |
+| Group mute/solo   | tracks.ts:533/548 | **NONE**                                                 | **NONE**                                          | UI-ONLY                        |
+| Clear solos/mutes | tracks.ts:728/740 | **NONE**                                                 | **NONE**                                          | UI-ONLY                        |
+| Return tracks     | tracks.ts:561/589 | `kyx_routing createReturn/removeReturn`                  | **NONE**                                          | PARTIAL(NL)                    |
+| Sends             | master.ts:66      | `kyx_routing setSend` (4658)                             | `sendIntent` (mix.ts:1161, needs existing return) | FULL                           |
+| Return gain       | master.ts:93      | `kyx_routing setReturnGain` (4673)                       | **NONE** (returns are not in the fader resolver)  | PARTIAL(NL)                    |
+| Track FX inserts  | tracks.ts:862     | `kyx_fx` (2276: insert/remove/bypass/more/less/instance) | `effectIntent` + `bypassIntent`                   | FULL                           |
+| Input inserts     | tracks.ts:771/808 | **NONE**                                                 | **NONE**                                          | UI-ONLY                        |
+| Master config     | master.ts:49      | `kyx_master` (2713→5206) + `kyx_export autofix`          | ✦ loudness nudge + `fader master`                 | FULL (agent path = kyx_master) |
+
+### (e) Automation
+
+| Capability            | Command            | MCP                                                                 | NL                                     | Verdict                  |
+| --------------------- | ------------------ | ------------------------------------------------------------------- | -------------------------------------- | ------------------------ |
+| Add/remove lane       | automation.ts      | `kyx_automation` (addPoint auto-creates; removeLane D4-gated, 4167) | `automateIntent` (creates ramp)        | FULL                     |
+| Add/move/delete point | automation.ts      | `kyx_automation addPoint/movePoint/deletePoint` (4035/4112/4079)    | PARTIAL (ramp only; no move/delete NL) | FULL (MCP) / PARTIAL(NL) |
+| Scene automation      | sceneAutomation.ts | `kyx_sections intensity` (2451)                                     | **NONE**                               | PARTIAL(NL)              |
+| Read/write modes      | MISSING            | —                                                                   | —                                      | MISSING (GAP-13)         |
+
+**NOTE correcting the original audit:** `kyx_automation` is NOT read-only — it
+mutates (add/move/delete/clear point ops, D4-gated lanes). The §2(e) row and the
+§3 read-only class list (which counted it among readers) are stale on this point.
+
+### Sweep summary
+
+- **FULL: 30 of 52** · **PARTIAL: 14** (each missing path named above) · **UI-ONLY: 8**
+  (create/open, migrate/crash-restore, stretch, crossfade, snap, group ops, clear-alls,
+  input inserts) · **MISSING: 4** (save-as, close, time-sig, automation modes).
+- **The mutation seam stays clean**: every ✓ above still converges on
+  `store.execute` — the sweep added zero bypasses.
+- **Highest-value small gaps** (each one op): track-duplicate on `kyx_tracks` (the
+  only capability where NL _exceeds_ MCP), audio trim on `kyx_clips`,
+  stretch/crossfade/slip ops on `kyx_clips`, scene-intensity NL, return-gain NL.
+  These are P2-D candidates, listed for completeness — the sweep's job is the map.
 
 ## 4. Bypass audit — direct UI state mutation
 

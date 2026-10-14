@@ -1,7 +1,7 @@
 # DAW AGENT CONTROL ROADMAP — KYX
 
 **Audit date:** 2026-10-13 · **Target:** KYX (`pulse-forge`) · **Revision:** `31cc20ad`
-**Status:** P0-A, P0-B, P0-C, **P1-A**, **P1-B**, P1-C, **P1-D (S-scope; UNKNOWN resolved)**, P1-E and **P2-B** **IMPLEMENTED + VERIFIED 2026-10-13** — see `IMPL-2026-10-13-P0-P1.md` in this directory for changed files, test evidence and residual risks. All other items remain proposals.
+**Status:** P0-A, P0-B, P0-C, **P1-A**, **P1-B**, P1-C, **P1-D (S-scope; UNKNOWN resolved)**, P1-E, **P2-A (parity sweep)** and **P2-B** **IMPLEMENTED + VERIFIED 2026-10-13** — see `IMPL-2026-10-13-P0-P1.md` in this directory for changed files, test evidence and residual risks. All other items remain proposals.
 
 Complexity is expressed as **relative size** (S / M / L), not calendar time — this audit has no basis for time estimates and inventing them would be false precision.
 
@@ -178,7 +178,7 @@ closed later (landed).
 
 ## P2 — Parity and multi-step safeguards
 
-### P2-A · MCP capability parity sweep
+### P2-A · MCP capability parity sweep · **IMPLEMENTED 2026-10-13** (per-capability table in `DAW_COMMAND_SURFACE_MATRIX.md` §3-P2-A: 30 FULL / 14 PARTIAL / 8 UI-ONLY / 4 MISSING; automation read-only row corrected; GAP-15 stale) — prereqs P0-A/P1-A both landed
 
 Reconcile the 46 VERIFIED commands in `DAW_COMMAND_SURFACE_MATRIX.md` against the 37 MCP tools; publish a per-capability UI/Intent/MCP reachability table. Close `kyx_intent`'s natural-language gaps via P1-A. **Prereq:** P0-A, P1-A. **Complexity:** M.
 
