@@ -807,9 +807,68 @@ const TWIST_MOVES: ReadonlyArray<{ re: RegExp; move: EffectMove }> = [
   },
 ];
 
-/** The semantic move a text asks for, if any (TWIST only, named or implied). */
+/**
+ * PRESET ANCHORS (param wave P4, plan 2026-10-14) — a NAMED CHARACTER on a
+ * NAMED EFFECT is an absolute re-voicing: "hall reverb na leade", "slapback
+ * delay na basse". Each anchor carries the factory preset's param map as an
+ * EffectMove, so the whole move machinery (add-if-missing + clamp + focus +
+ * one undo) applies unchanged. Params mirror `CORE_EFFECT_PRESETS`
+ * (src/effects/presets.ts) — the preset ids ride along for provenance.
+ */
+const ANCHOR_MOVES: ReadonlyArray<{ effect: EffectType; re: RegExp; move: EffectMove }> = [
+  {
+    effect: "reverb",
+    re: /\bhall\b|\bhala\b|\bkatedr/,
+    move: {
+      id: "reverb-hall",
+      label: "Hall",
+      params: { decay: 4.2, predelay: 40, tone: 5200, diffusion: 0.9, mix: 0.26 },
+    },
+  },
+  {
+    effect: "reverb",
+    re: /\btight room\b|\broom\b|\bmiestnost|\butesn/,
+    move: {
+      id: "reverb-tight-room",
+      label: "Tight Room",
+      params: { decay: 0.6, predelay: 8, tone: 7000, diffusion: 0.7, mix: 0.18 },
+    },
+  },
+  {
+    effect: "reverb",
+    re: /\bplate\b|\bplatna\b|\bdark plate\b/,
+    move: {
+      id: "reverb-dark-plate",
+      label: "Dark Plate",
+      params: { decay: 2.6, predelay: 24, tone: 3200, diffusion: 0.85, mix: 0.3 },
+    },
+  },
+  {
+    effect: "delay",
+    re: /\bslap\b|\bslapback\b|\bplacnut/,
+    move: {
+      id: "delay-slap",
+      label: "Slapback",
+      params: { time: 120, sync: 0, pingPong: 0, feedback: 0.15, tone: 6000, mix: 0.2 },
+    },
+  },
+];
+
+/** The semantic move a text asks for, if any (TWIST implied, preset anchors named). */
 function effectMoveFor(lower: string, named: EffectType | null): { effectType: EffectType; move: EffectMove } | null {
-  if (named && named !== "skrutka") return null; // an explicitly named effect owns the ask
+  // A preset anchor needs its effect NAMED ("hall reverb na leade") — an
+  // anchor word alone never hijacks another effect's ask. And it never fires
+  // on a REDUCTION idiom: "ease off the room reverb" is a less-ask on the
+  // knob, not a character swap.
+  if (named) {
+    const reduction =
+      /\bless\b|\bmenej|\bease off\b|\bpull(?: .*|)? back\b|\bstiahn|\bzniz|\bodstran|\bremove\b|\bbez\s/;
+    for (const anchor of ANCHOR_MOVES) {
+      if (anchor.effect === named && !reduction.test(lower) && anchor.re.test(lower))
+        return { effectType: named, move: anchor.move };
+    }
+    return null; // an explicitly named effect owns the ask
+  }
   for (const { re, move } of TWIST_MOVES) {
     if (re.test(lower)) return { effectType: "skrutka", move };
   }

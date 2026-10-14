@@ -340,7 +340,7 @@ function currentParamValue(
   return defaultParamsOf(effectType)[paramId] ?? 0;
 }
 
-function trackIdsForMixTarget(doc: Parameters<typeof applyMixIntent>[0], target: MixTarget): string[] {
+export function trackIdsForMixTarget(doc: Parameters<typeof applyMixIntent>[0], target: MixTarget): string[] {
   // Reuses the mix layer's resolution through a one-decision profile apply —
   // but resolution must not mutate, so resolve ids directly.
   const ids: string[] = [];

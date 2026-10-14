@@ -154,6 +154,7 @@ import {
   sendReadback,
 } from "../intent/mix";
 import { applyParamIntent, paramReadback } from "../intent/param-intent";
+import { measureParamVerification } from "../intent/param-readback";
 import { applyLoudnessIntent, measurePreviewLoudness } from "../intent/loudness";
 import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
 import {
@@ -397,6 +398,20 @@ type SelectedArrangementPromptPreview =
       operation: SelectedTimeRangeOperation;
       description: string;
     };
+
+function iterationFailureMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.startsWith("iteration:brief-gate:unexpected-role-content:")) {
+    return "Tento uložený take obsahuje aj noty mimo rozsahu iterácie. Skús iný take alebo vygeneruj nové kandidáty.";
+  }
+  if (message.startsWith("iteration:brief-gate:empty:")) {
+    return "Iterácia nevytvorila bicie ani noty. Skús upraviť zadanie alebo vytvoriť nové kandidáty.";
+  }
+  if (message.startsWith("iteration:brief-gate:")) {
+    return "Návrh sa nepodarilo bezpečne pripraviť v zvolenom rozsahu. Skús iný uložený take alebo vygeneruj nové kandidáty.";
+  }
+  return `Iteráciu sa nepodarilo dokončiť: ${message}`;
+}
 
 function selectedClipPatternHash(doc: ProjectDocument, clip: ArrangementClip): string | null {
   const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
@@ -1219,7 +1234,7 @@ export function IntentPanel() {
         });
       } catch (err) {
         if (!iterationController.signal.aborted) {
-          setError(`Iteráciu sa nepodarilo dokončiť: ${err instanceof Error ? err.message : String(err)}`);
+          setError(iterationFailureMessage(err));
           setBusy(false);
         }
         return;
@@ -1231,7 +1246,11 @@ export function IntentPanel() {
       if (iteration) {
         rememberPrompt(promptText);
         if (!iteration.result.proposal) {
-          setError(iteration.result.diagnostics.errors[0] ?? "Návrh iterácie neprešiel kontrolou briefu.");
+          setError(
+            iteration.result.diagnostics.errors[0]
+              ? iterationFailureMessage(iteration.result.diagnostics.errors[0])
+              : "Návrh iterácie neprešiel kontrolou briefu.",
+          );
           setBusy(false);
           return;
         }
@@ -4264,12 +4283,36 @@ export function IntentPanel() {
       } else if (route.kind === "paramIntent") {
         // Param wave P1: a named KNOB ("dlhší chvost na reverbe", "set delay
         // time to 375 ms") — add-if-missing + clamp + one undo via the mix layer.
+        // P3: after the knob readback, MEASURE the landing (renderTrack
+        // before/after → spectral/stereo delta) and report it — or offer the
+        // correction chip when the measurement shows no audible move.
         stopAudition();
         try {
           const command = applyParamIntent(doc, route.intent);
           services.store.execute(command);
           const readback = paramReadback(doc, services.store.getDoc(), route.intent);
           setStatus(`⚡ ${route.intent.detected.join(" · ")}${readback ? ` — ${readback}` : ""} (one undo step)`);
+          const afterDoc = services.store.getDoc();
+          void measureParamVerification(doc, afterDoc, route.intent, async (renderDoc, trackId) => {
+            const { renderTrack } = await import("../rendering/track-renderer");
+            try {
+              return await renderTrack(renderDoc, trackId, services.bank, {
+                mode: "pattern",
+                sampleRate: services.engine.getLiveAudioContext()?.sampleRate ?? 48000,
+              });
+            } catch {
+              return null;
+            }
+          })
+            .then((verification) => {
+              const suffix = verification.correction
+                ? ` — ${verification.correction}`
+                : verification.measurable
+                  ? ` — ${verification.line}`
+                  : "";
+              if (suffix) setStatus((prev) => `${prev}${suffix}`);
+            })
+            .catch(() => undefined);
         } catch (err) {
           setError(err instanceof Error ? err.message : String(err));
         }
