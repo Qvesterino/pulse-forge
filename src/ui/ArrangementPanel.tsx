@@ -15,6 +15,13 @@ import {
 } from "./context";
 import { ScenesPanel } from "./arrangement/ScenesPanel";
 import { ArrangementViewControls } from "./arrangement/ArrangementViewControls";
+import { MidiClipLanes } from "./arrangement/MidiClipLanes";
+import { AutomationClipLanes } from "./arrangement/AutomationClipLanes";
+import {
+  clearTimelineGroupDragPreview,
+  publishTimelineGroupDragPreview,
+  useTimelineGroupDragPreview,
+} from "./arrangement/groupDragPreview";
 import { ChordProgressionPanel, type ChordGenForm } from "./arrangement/ChordProgressionPanel";
 import { notifyOnboardingProgress } from "./OnboardingHint";
 import { publishSessionRecordingState, IDLE_SESSION_STATE } from "./sessionStateSurface";
@@ -32,7 +39,9 @@ import {
   createScene,
   createVariationAndPlaceClip,
   deleteArrangementClip,
+  deleteAutomationClip,
   deleteAudioClip,
+  deleteMidiClip,
   deleteScene,
   duplicateArrangementClip,
   duplicateAudioClip,
@@ -52,6 +61,7 @@ import {
   resizeArrangementClip,
   transitionsForClips,
   resizeArrangementClipRipple,
+  nudgeClips,
   moveArrangementClipRipple,
   trimArrangementClipStart,
   deleteArrangementClipRipple,
@@ -102,7 +112,9 @@ import type {
   ArrangementClip,
   ArrangementTransitionType,
   AudioClip,
+  ArrangementAutomationClip,
   IntensityPoint,
+  MidiClip,
   ProjectDocument,
 } from "../project-model/types";
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
@@ -316,6 +328,11 @@ interface DragState {
    * flip the preview and the commit apart.
    */
   movingHasLocked?: boolean;
+  /** Cross-lane group drag state shared with MIDI and automation lanes. */
+  groupId?: string;
+  groupClipIds?: string[];
+  groupHasScene?: boolean;
+  groupDeltaTicks?: number;
 }
 
 /**
@@ -338,6 +355,8 @@ const UNMEASURED_GRID_BAR_CAP = 512;
 function timelineExtentBars(
   clips: readonly Pick<ArrangementClip, "startBar" | "lengthBars">[],
   audioClips: readonly Pick<AudioClip, "startBar" | "lengthBars">[],
+  midiClips: readonly Pick<MidiClip, "startTick" | "lengthTicks">[],
+  automationClips: readonly Pick<ArrangementAutomationClip, "startTick" | "lengthTicks">[] = [],
 ): number {
   let extent = 16;
   for (const list of [clips, audioClips]) {
@@ -346,6 +365,16 @@ function timelineExtentBars(
       if (!Number.isFinite(end)) continue;
       if (end > extent) extent = end;
     }
+  }
+  for (const clip of midiClips) {
+    const end = (clip.startTick + clip.lengthTicks) / BAR_TICKS + 4;
+    if (!Number.isFinite(end)) continue;
+    if (end > extent) extent = end;
+  }
+  for (const clip of automationClips) {
+    const end = (clip.startTick + clip.lengthTicks) / BAR_TICKS + 4;
+    if (!Number.isFinite(end)) continue;
+    if (end > extent) extent = end;
   }
   return Math.min(UNMEASURED_GRID_BAR_CAP, Math.max(16, Math.ceil(extent)));
 }
@@ -432,6 +461,7 @@ export function ArrangementPanel() {
   const markers = useMarkers();
   const patterns = usePatterns();
   const activePatternId = useActivePatternId();
+  const groupDragPreview = useTimelineGroupDragPreview();
   // `doc` is still needed for the BPM scalar, the project id, and command
   // arguments. It's a plain getter (no React subscription).
   const doc = services.store.getDoc();
@@ -476,6 +506,7 @@ export function ArrangementPanel() {
     );
   }, []);
   const [showSkeletonPreview, setShowSkeletonPreview] = useState(false);
+  const [autoArrangeMinutes, setAutoArrangeMinutes] = useState(3);
   const [transitionBoundary, setTransitionBoundary] = useState<TransitionBoundary | null>(null);
   const [transitionDraft, setTransitionDraft] = useState<TransitionDraft>({
     type: "custom",
@@ -1492,6 +1523,11 @@ export function ArrangementPanel() {
     /** §29 — see DragState.movingHasLocked: the block move writes the document
      * by hand, so the lock has to be sampled here and enforced at the commit. */
     movingHasLocked?: boolean;
+    /** Cross-lane group drag state shared with scene, MIDI and automation lanes. */
+    groupId?: string;
+    groupClipIds?: string[];
+    groupHasScene?: boolean;
+    groupDeltaTicks?: number;
   } | null>(null);
   const [audioStretchPreview, setAudioStretchPreview] = useState<{ clipId: string; rate: number } | null>(null);
   const [audioDrag, setAudioDrag] = useState<{ startBar: number; lengthBars: number } | null>(null);
@@ -1665,7 +1701,29 @@ export function ArrangementPanel() {
    * unmounting the panel. §36 asks the editor to isolate one bad entity, and a
    * non-finite position is not a position: it is skipped, not rendered around.
    */
-  const totalBars = timelineExtentBars(clips, audioClips);
+  const midiClips = arrangement.midiClips ?? [];
+  const automationClips = arrangement.automationClips ?? [];
+  const totalBars = timelineExtentBars(clips, audioClips, midiClips, automationClips);
+  const visibleMidiClips = useMemo(() => {
+    if (!viewport) return midiClips;
+    const fromTick = Math.max(0, viewport.firstBar) * BAR_TICKS;
+    const toTick = Math.min(totalBars, viewport.lastBar) * BAR_TICKS;
+    return midiClips.filter(
+      (clip) =>
+        (groupDragPreview?.projectId === doc.id && groupDragPreview.clipIds.includes(clip.id)) ||
+        (clip.startTick < toTick && clip.startTick + clip.lengthTicks > fromTick),
+    );
+  }, [doc.id, groupDragPreview, midiClips, totalBars, viewport]);
+  const visibleAutomationClips = useMemo(() => {
+    if (!viewport) return automationClips;
+    const fromTick = Math.max(0, viewport.firstBar) * BAR_TICKS;
+    const toTick = Math.min(totalBars, viewport.lastBar) * BAR_TICKS;
+    return automationClips.filter(
+      (clip) =>
+        (groupDragPreview?.projectId === doc.id && groupDragPreview.clipIds.includes(clip.id)) ||
+        (clip.startTick < toTick && clip.startTick + clip.lengthTicks > fromTick),
+    );
+  }, [automationClips, doc.id, groupDragPreview, totalBars, viewport]);
 
   /**
    * VIEWPORT WINDOWING.
@@ -1706,6 +1764,9 @@ export function ArrangementPanel() {
     // Audio gestures are single-clip (no `movingIds` on this ref), so `clipId`
     // is the whole forced set on the audio side.
     if (audioDrag?.clipId) forced.add(audioDrag.clipId);
+    if (groupDragPreview?.projectId === doc.id) {
+      for (const id of groupDragPreview.clipIds) forced.add(id);
+    }
 
     const pick = <T extends { id: string; startBar: number; lengthBars: number }>(
       list: readonly T[],
@@ -1731,7 +1792,7 @@ export function ArrangementPanel() {
     return { clips: pick(clips), audioClips: pick(audioClips) };
     // The drag refs are read, not tracked: `drag` / `multiDrag` are the state
     // that changes during a gesture, and both force a recompute anyway.
-  }, [clips, audioClips, viewport, drag, multiDrag]);
+  }, [clips, audioClips, viewport, drag, multiDrag, groupDragPreview, doc.id]);
   const visibleClips = windowed.clips;
   const visibleAudioClips = windowed.audioClips;
 
@@ -2283,6 +2344,41 @@ export function ArrangementPanel() {
       );
       return;
     }
+    // A grouped clip always moves its complete cross-lane group, even when
+    // the group selection is active. This keeps the gesture semantics the
+    // same whichever lane supplied the pointerdown.
+    if (mode === "move") {
+      const liveDoc = services.store.doc;
+      const group = liveDoc.arrangement.clipGroups?.find((candidate) => candidate.clipIds.includes(clipId));
+      const liveIds = new Set(timelineItemsOf(liveDoc).map((item) => item.id));
+      const groupClipIds = group?.clipIds ?? [];
+      const liveGroupIds = groupClipIds.filter((id) => liveIds.has(id));
+      if (group && liveGroupIds.length > 1) {
+        const liveClip = liveDoc.arrangement.clips.find((candidate) => candidate.id === clipId);
+        if (!liveClip) return;
+        const groupHasScene = liveDoc.arrangement.clips.some((candidate) => liveGroupIds.includes(candidate.id));
+        selectionStore.setClips(liveGroupIds);
+        event.currentTarget.setPointerCapture(event.pointerId);
+        dragRef.current = {
+          mode,
+          clipId,
+          pointerId: event.pointerId,
+          origStart: liveClip.startBar,
+          origLength: liveClip.lengthBars,
+          grabBar: barFromEventAt(event, barWidth),
+          barWidth,
+          groupId: group.id,
+          groupClipIds: [...groupClipIds],
+          groupHasScene,
+          groupDeltaTicks: 0,
+        };
+        setClipDrag({ startBar: liveClip.startBar, lengthBars: liveClip.lengthBars });
+        setClipMultiDrag(null);
+        publishTimelineGroupDragPreview(liveDoc, group.id, groupClipIds);
+        dragGuard.arm();
+        return;
+      }
+    }
     // Plain press on a clip inside an active multi-selection moves ALL
     // selected clips together (resize stays single-clip).
     if (mode === "move" && selection.clipIds.length > 1 && selectionStore.isClipSelected(clipId)) {
@@ -2306,33 +2402,6 @@ export function ArrangementPanel() {
       dragGuard.arm();
       return;
     }
-    // GROUP-AWARE MOVE: a plain press on a grouped clip drags the whole group.
-    // Same-system members only (v1 boundary — a cross-system group moves via
-    // multi-select). Reuses the block-move machinery: one delta, relative
-    // spacing preserved, one undo entry at commit.
-    if (mode === "move") {
-      const group = arrangement.clipGroups?.find((g) => g.clipIds.includes(clipId));
-      const groupIds = (group?.clipIds ?? []).filter((id) => clips.some((c) => c.id === id));
-      if (groupIds.length > 1) {
-        const origStarts = Object.fromEntries(groupIds.map((id) => [id, clips.find((c) => c.id === id)!.startBar]));
-        event.currentTarget.setPointerCapture(event.pointerId);
-        dragRef.current = {
-          mode,
-          clipId,
-          pointerId: event.pointerId,
-          origStart: clip.startBar,
-          origLength: clip.lengthBars,
-          grabBar: barFromEventAt(event, barWidth),
-          barWidth,
-          movingIds: groupIds,
-          origStarts,
-        };
-        setClipDrag({ startBar: clip.startBar, lengthBars: clip.lengthBars });
-        setClipMultiDrag(0);
-        dragGuard.arm();
-        return;
-      }
-    }
     if (!selectionStore.isClipSelected(clipId)) selectionStore.setClips([clipId]);
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = {
@@ -2354,6 +2423,30 @@ export function ArrangementPanel() {
     // The gesture's OWN scale, not the render's: Ctrl+wheel can change
     // `barWidth` mid-drag, and mixing the two scales silently mis-places the clip.
     const bar = barFromEventAt(event, current.barWidth);
+    if (current.groupId && current.groupClipIds) {
+      const liveDoc = services.store.doc;
+      const liveGroup = liveDoc.arrangement.clipGroups?.find((group) => group.id === current.groupId);
+      const groupStillMatches =
+        liveGroup?.clipIds.length === current.groupClipIds.length &&
+        current.groupClipIds.every((id) => liveGroup.clipIds.includes(id)) &&
+        timelineItemsOf(liveDoc).some((item) => item.id === current.clipId);
+      if (!groupStillMatches) {
+        dragRef.current = null;
+        setClipDrag(null);
+        clearTimelineGroupDragPreview();
+        return;
+      }
+      const deltaBars = current.groupHasScene
+        ? Math.round(bar - current.grabBar)
+        : snapDelta(bar - current.grabBar, snapBarsFor(snapGrid));
+      const deltaTicks = Math.round(deltaBars * BAR_TICKS);
+      const planned = nudgeClips(liveDoc, [current.clipId], deltaTicks / BAR_TICKS).execute(liveDoc);
+      const nextScene = planned.arrangement.clips.find((clip) => clip.id === current.clipId);
+      dragRef.current = { ...current, groupDeltaTicks: deltaTicks };
+      if (nextScene) setClipDrag({ startBar: nextScene.startBar, lengthBars: nextScene.lengthBars });
+      publishTimelineGroupDragPreview(planned, current.groupId, current.groupClipIds);
+      return;
+    }
     if (current.movingIds) {
       // A locked member refuses the whole block: the ghost must not promise a
       // move the commit will reject. The preview still writes 0 rather than
@@ -2407,6 +2500,19 @@ export function ArrangementPanel() {
     dragRef.current = null;
     setClipDrag(null);
     setClipMultiDrag(null);
+    if (current?.groupId && current.groupClipIds) {
+      clearTimelineGroupDragPreview();
+      if (current.groupDeltaTicks === 0) return;
+      const beforeDoc = services.store.doc;
+      const liveGroup = beforeDoc.arrangement.clipGroups?.find((group) => group.id === current.groupId);
+      const groupStillMatches =
+        liveGroup?.clipIds.length === current.groupClipIds.length &&
+        current.groupClipIds.every((id) => liveGroup.clipIds.includes(id)) &&
+        timelineItemsOf(beforeDoc).some((item) => item.id === current.clipId);
+      if (!groupStillMatches) return;
+      execute(nudgeClips(beforeDoc, [current.clipId], (current.groupDeltaTicks ?? 0) / BAR_TICKS));
+      return;
+    }
     if (!current || !finalDrag) return;
     if (current.movingIds) {
       // Ahead of the `!delta` short-circuit: a click on a locked selection is
@@ -2536,6 +2642,7 @@ export function ArrangementPanel() {
     dragRef.current = null;
     setClipDrag(null);
     setClipMultiDrag(null);
+    clearTimelineGroupDragPreview();
   };
 
   // Ripple mode (arrangement-as-a-tool): moves/resizes/deletes shift every
@@ -2566,18 +2673,29 @@ export function ArrangementPanel() {
         .map((id) => beforeDoc.arrangement.clips.find((c) => c.id === id))
         .filter((clip): clip is NonNullable<typeof clip> => Boolean(clip))
         .sort((a, b) => b.startBar - a.startBar);
-      if (removed.length === 0) return;
-      firstName = scenes.find((sceneItem) => sceneItem.id === removed[0]!.sceneId)?.name ?? "clip";
+      firstName =
+        removed.length > 0
+          ? (scenes.find((sceneItem) => sceneItem.id === removed[0]!.sceneId)?.name ?? "clip")
+          : "clip";
       for (const clip of removed) {
         nextDoc = deleteArrangementClipRipple(nextDoc, clip.id).execute(nextDoc);
       }
     } else {
       for (const id of ids) {
         const clip = beforeDoc.arrangement.clips.find((c) => c.id === id);
-        if (!clip) continue;
-        const scene = scenes.find((sceneItem) => sceneItem.id === clip.sceneId);
-        if (!firstName) firstName = scene?.name ?? "clip";
-        nextDoc = deleteArrangementClip(nextDoc, id).execute(nextDoc);
+        if (clip) {
+          if (!nextDoc.arrangement.clips.some((candidate) => candidate.id === id)) continue;
+          const scene = scenes.find((sceneItem) => sceneItem.id === clip.sceneId);
+          if (!firstName) firstName = scene?.name ?? "clip";
+          nextDoc = deleteArrangementClip(nextDoc, id).execute(nextDoc);
+          continue;
+        }
+        const item = timelineItemsOf(beforeDoc).find((candidate) => candidate.id === id);
+        if (!item) continue;
+        if (!firstName) firstName = item.kind === "automation" ? "automation" : item.kind === "midi" ? "MIDI" : "audio";
+        if (item.kind === "audio") nextDoc = deleteAudioClip(nextDoc, id).execute(nextDoc);
+        else if (item.kind === "midi") nextDoc = deleteMidiClip(nextDoc, id).execute(nextDoc);
+        else if (item.kind === "automation") nextDoc = deleteAutomationClip(nextDoc, id).execute(nextDoc);
       }
     }
     if (nextDoc === beforeDoc) return;
@@ -2590,6 +2708,8 @@ export function ArrangementPanel() {
     selectionStore.retainClips([
       ...nextDoc.arrangement.clips.map((c) => c.id),
       ...(nextDoc.arrangement.audioClips ?? []).map((c) => c.id),
+      ...(nextDoc.arrangement.midiClips ?? []).map((c) => c.id),
+      ...(nextDoc.arrangement.automationClips ?? []).map((c) => c.id),
     ]);
     setDeleteToast({ label });
   };
@@ -2633,21 +2753,30 @@ export function ArrangementPanel() {
         return;
       }
     }
+    let groupDragInfo: { groupId: string; groupClipIds: string[]; groupHasScene: boolean } | undefined;
+    if (mode === "move") {
+      const liveDoc = services.store.doc;
+      const group = liveDoc.arrangement.clipGroups?.find((candidate) => candidate.clipIds.includes(clipId));
+      const groupClipIds = group?.clipIds ?? [];
+      const liveIds = new Set(timelineItemsOf(liveDoc).map((item) => item.id));
+      const liveGroupIds = groupClipIds.filter((id) => liveIds.has(id));
+      if (group && liveGroupIds.length > 1) {
+        groupDragInfo = {
+          groupId: group.id,
+          groupClipIds: [...groupClipIds],
+          groupHasScene: liveDoc.arrangement.clips.some((candidate) => liveGroupIds.includes(candidate.id)),
+        };
+        selectionStore.setClips(liveGroupIds);
+      }
+    }
     if (!selectionStore.isClipSelected(clipId)) selectionStore.setClips([clipId]);
     // Plain press on a selected clip inside an active multi-selection moves
-    // ALL selected audio clips together (resize/trim/fade/gain stay
-    // single-clip by nature — same rule as the scene block move).
-    // GROUP-AWARE MOVE: a plain press on a grouped clip drags its same-system
-    // group members (same v1 boundary as the scene lane).
+    // all selected audio clips together. A persisted clip group takes the
+    // cross-lane path above; this branch is for ad hoc selection blocks.
     let movingIds: string[] | undefined =
-      mode === "move" && selection.clipIds.length > 1 && selectionStore.isClipSelected(clipId)
+      !groupDragInfo && mode === "move" && selection.clipIds.length > 1 && selectionStore.isClipSelected(clipId)
         ? selection.clipIds.filter((id) => audioClips.some((c) => c.id === id))
         : undefined;
-    if (mode === "move" && movingIds === undefined) {
-      const group = arrangement.clipGroups?.find((g) => g.clipIds.includes(clipId));
-      const groupIds = (group?.clipIds ?? []).filter((id) => audioClips.some((c) => c.id === id));
-      if (groupIds.length > 1) movingIds = groupIds;
-    }
     const multiMoving = movingIds !== undefined && movingIds.length > 1 ? movingIds : undefined;
     const origStarts =
       multiMoving !== undefined
@@ -2710,6 +2839,7 @@ export function ArrangementPanel() {
             movingHasLocked: multiMoving.some((id) => audioClips.find((c) => c.id === id)?.locked === true),
           }
         : {}),
+      ...(groupDragInfo ? { ...groupDragInfo, groupDeltaTicks: 0 } : {}),
     };
     dragGuard.arm();
     if (multiMoving !== undefined) setAudioMultiDragLive(0);
@@ -2717,6 +2847,8 @@ export function ArrangementPanel() {
       setAudioFadeLive({ clipId, fadeIn: clip.fadeIn ?? 0, fadeOut: clip.fadeOut ?? 0 });
     if (mode === "gain") setAudioGainLive({ clipId, gain: clip.gain ?? 1 });
     setAudioDragLive({ startBar: clip.startBar, lengthBars: clip.lengthBars });
+    if (groupDragInfo)
+      publishTimelineGroupDragPreview(services.store.doc, groupDragInfo.groupId, groupDragInfo.groupClipIds);
   };
   /**
    * Secondary snap targets for an audio gesture (in bars): every OTHER audio
@@ -2748,6 +2880,28 @@ export function ArrangementPanel() {
     // Snap grid for THIS event: Shift suspends it (the DAW convention).
     // Fades/gain/slip live in source-time/audio-rate domains — never snapped.
     const grid = event.shiftKey ? null : snapBarsFor(snapGrid);
+    if (cur.groupId && cur.groupClipIds) {
+      const liveDoc = services.store.doc;
+      const liveGroup = liveDoc.arrangement.clipGroups?.find((group) => group.id === cur.groupId);
+      const groupStillMatches =
+        liveGroup?.clipIds.length === cur.groupClipIds.length &&
+        cur.groupClipIds.every((id) => liveGroup.clipIds.includes(id)) &&
+        timelineItemsOf(liveDoc).some((item) => item.id === cur.clipId);
+      if (!groupStillMatches) {
+        audioDragRef.current = null;
+        clearAudioDragLive();
+        clearTimelineGroupDragPreview();
+        return;
+      }
+      const deltaBars = cur.groupHasScene ? Math.round(delta) : snapDelta(delta, grid);
+      const deltaTicks = Math.round(deltaBars * BAR_TICKS);
+      const planned = nudgeClips(liveDoc, [cur.clipId], deltaTicks / BAR_TICKS).execute(liveDoc);
+      const nextAudio = (planned.arrangement.audioClips ?? []).find((clip) => clip.id === cur.clipId);
+      audioDragRef.current = { ...cur, groupDeltaTicks: deltaTicks };
+      if (nextAudio) setAudioDragLive({ startBar: nextAudio.startBar, lengthBars: nextAudio.lengthBars });
+      publishTimelineGroupDragPreview(planned, cur.groupId, cur.groupClipIds);
+      return;
+    }
     // Secondary snap targets (B-vlna): other clips' edges, markers and loop
     // bounds catch the pointer within an 8 px pull, overriding a closer grid
     // line — "snap my start to the neighbour" is the everyday case. Grid OFF
@@ -2851,6 +3005,19 @@ export function ArrangementPanel() {
     audioDragRef.current = null;
     clearAudioDragLive();
     if (!cur) return;
+    if (cur.groupId && cur.groupClipIds) {
+      clearTimelineGroupDragPreview();
+      if (cur.groupDeltaTicks === 0) return;
+      const beforeDoc = services.store.doc;
+      const liveGroup = beforeDoc.arrangement.clipGroups?.find((group) => group.id === cur.groupId);
+      const groupStillMatches =
+        liveGroup?.clipIds.length === cur.groupClipIds.length &&
+        cur.groupClipIds.every((id) => liveGroup.clipIds.includes(id)) &&
+        timelineItemsOf(beforeDoc).some((item) => item.id === cur.clipId);
+      if (!groupStillMatches) return;
+      execute(nudgeClips(beforeDoc, [cur.clipId], (cur.groupDeltaTicks ?? 0) / BAR_TICKS));
+      return;
+    }
     // BLOCK MOVE: every selected audio clip slides by the shared delta in ONE
     // command (one gesture = one undo entry). AudioClips LAYER — the
     // documented overlap contract means no collision guard, unlike the scene
@@ -2975,6 +3142,7 @@ export function ArrangementPanel() {
     releasePointerCaptureSafely(event?.currentTarget, audioDragRef.current?.pointerId);
     audioDragRef.current = null;
     clearAudioDragLive();
+    clearTimelineGroupDragPreview();
   };
 
   /**
@@ -3008,6 +3176,7 @@ export function ArrangementPanel() {
    */
   const cancelAllArrangementGestures = useCallback(() => {
     dragRef.current = null;
+    clearTimelineGroupDragPreview();
     // Live drag refs are cleared directly rather than through the
     // write-through setters: this callback has an empty dep array, and only
     // refs + setState are identity-stable. A stale live ref would otherwise
@@ -3319,596 +3488,641 @@ export function ArrangementPanel() {
             </div>
           </div>
           <div className="arr-timeline-actions">
-            <select
-              className="arr-arm-select"
-              aria-label="Arm track for recording"
-              title="Arm a track — recorded audio-input takes land here as audio clips"
-              value={armedTrackId}
-              disabled={recState !== "idle"}
-              onChange={(event) => {
-                const trackId = event.target.value;
-                setArmedTrackId(trackId);
-                if (trackId === armedSecondTrackId) setArmedSecondTrackId("");
-                if (trackId) setArmedAdditionalTrackIds((current) => current.map((id) => (id === trackId ? "" : id)));
-              }}
-            >
-              <option value="">ARM: pick track…</option>
-              {tracks.map((track) => (
-                <option key={track.id} value={track.id}>
-                  {track.name}
-                </option>
-              ))}
-            </select>
-            <select
-              className="arr-arm-select"
-              aria-label="Captured channel 2 destination"
-              title="Optionally place browser-captured channel 2 on another track. This is the capture stream channel order, not a verified physical interface connector mapping."
-              value={armedSecondTrackId}
-              disabled={recState !== "idle" || !!recordingTakeMode || loopTakeCapture || requestedChannelCount === 1}
-              onChange={(event) => {
-                const trackId = event.target.value;
-                setArmedSecondTrackId(trackId);
-                if (trackId) setArmedAdditionalTrackIds((current) => current.map((id) => (id === trackId ? "" : id)));
-              }}
-            >
-              <option value="">CH 2: keep stereo</option>
-              {tracks
-                .filter((track) => track.id !== armedTrackId && !armedAdditionalTrackIds.includes(track.id))
-                .map((track) => (
+            <div className="arr-record-toolbar" role="group" aria-label="Audio recording controls">
+              <select
+                className="arr-arm-select"
+                aria-label="Arm track for recording"
+                title="Arm a track — recorded audio-input takes land here as audio clips"
+                value={armedTrackId}
+                disabled={recState !== "idle"}
+                onChange={(event) => {
+                  const trackId = event.target.value;
+                  setArmedTrackId(trackId);
+                  if (trackId === armedSecondTrackId) setArmedSecondTrackId("");
+                  if (trackId) setArmedAdditionalTrackIds((current) => current.map((id) => (id === trackId ? "" : id)));
+                }}
+              >
+                <option value="">ARM: pick track…</option>
+                {tracks.map((track) => (
                   <option key={track.id} value={track.id}>
-                    CH 2 → {track.name}
+                    {track.name}
                   </option>
                 ))}
-            </select>
-            <details className="arr-input-channel-routing" hidden={routingChannelCount <= 2}>
-              <summary>INPUT ROUTING · {routingChannelCount} CHANNELS</summary>
-              {Array.from({ length: Math.max(0, routingChannelCount - 2) }, (_, routeIndex) => {
-                const channelIndex = routeIndex + 2;
-                const currentTrackId = armedAdditionalTrackIds[routeIndex] ?? "";
-                const assignedElsewhere = new Set([
-                  armedTrackId,
-                  armedSecondTrackId,
-                  ...armedAdditionalTrackIds.filter((_, index) => index !== routeIndex),
-                ]);
-                return (
+              </select>
+              <details className="arr-capture-setup" aria-label="Recording and input configuration">
+                <summary>
+                  <span>CAPTURE SETUP</span>
+                  <span className="arr-capture-setup-state">
+                    {loopTakeCapture
+                      ? "LOOP TAKES"
+                      : punchCapture
+                        ? "PUNCH"
+                        : recordingTakeMode
+                          ? "ALT TAKE"
+                          : `${requestedChannelCount ?? "AUTO"} CH`}
+                  </span>
+                </summary>
+                <div className="arr-capture-setup-grid">
                   <select
-                    key={channelIndex}
                     className="arr-arm-select"
-                    aria-label={`Captured channel ${channelIndex + 1} destination`}
-                    title={`Route captured input channel ${channelIndex + 1} to a separate timeline track; channel order is not verified against physical connectors.`}
-                    value={currentTrackId}
-                    disabled={recState !== "idle" || !!recordingTakeMode || loopTakeCapture}
+                    aria-label="Captured channel 2 destination"
+                    title="Optionally place browser-captured channel 2 on another track. This is the capture stream channel order, not a verified physical interface connector mapping."
+                    value={armedSecondTrackId}
+                    disabled={
+                      recState !== "idle" || !!recordingTakeMode || loopTakeCapture || requestedChannelCount === 1
+                    }
                     onChange={(event) => {
                       const trackId = event.target.value;
-                      setArmedAdditionalTrackIds((current) => {
-                        const next = current.slice();
-                        while (next.length <= routeIndex) next.push("");
-                        next[routeIndex] = trackId;
-                        return trackId
-                          ? next.map((id, index) => (index !== routeIndex && id === trackId ? "" : id))
-                          : next;
-                      });
+                      setArmedSecondTrackId(trackId);
+                      if (trackId)
+                        setArmedAdditionalTrackIds((current) => current.map((id) => (id === trackId ? "" : id)));
                     }}
                   >
-                    <option value="">CH {channelIndex + 1}: select track…</option>
+                    <option value="">CH 2: keep stereo</option>
                     {tracks
-                      .filter((track) => track.id === currentTrackId || !assignedElsewhere.has(track.id))
+                      .filter((track) => track.id !== armedTrackId && !armedAdditionalTrackIds.includes(track.id))
                       .map((track) => (
                         <option key={track.id} value={track.id}>
-                          CH {channelIndex + 1} → {track.name}
+                          CH 2 → {track.name}
                         </option>
                       ))}
                   </select>
-                );
-              })}
-            </details>
-            <select
-              className="arr-arm-select"
-              aria-label="Recording take mode"
-              title="Record one standalone take, start a take group, or add an alternate pass aligned to an existing take group."
-              value={recordingTakeMode}
-              disabled={!armedTrackId || recState !== "idle" || punchCapture}
-              onChange={(event) => {
-                const mode = event.target.value;
-                setRecordingTakeGroupSelection(mode);
-                if (mode) {
-                  setArmedSecondTrackId("");
-                  setArmedAdditionalTrackIds([]);
-                }
-              }}
-            >
-              <option value="">SINGLE TAKE</option>
-              <option value="new">NEW TAKE GROUP</option>
-              {recordingTakeGroups.map((group, index) => {
-                const passCount = new Set(
-                  (arrangement.audioClips ?? [])
-                    .filter((clip) => clip.takeGroupId === group.id && clip.takeId)
-                    .map((clip) => clip.takeId),
-                ).size;
-                return (
-                  <option key={group.id} value={group.id}>
-                    ALT TAKE · GROUP {index + 1} ({passCount} pass{passCount === 1 ? "" : "es"})
-                  </option>
-                );
-              })}
-            </select>
-            <button
-              type="button"
-              className={`btn btn-small${loopTakeCapture ? " active-solo" : ""}`}
-              aria-pressed={loopTakeCapture}
-              aria-label="Record transport loop as alternate takes"
-              title="Capture each complete transport-loop pass as a selectable alternate. Requires explicit loop start and end locators; single-track capture only."
-              disabled={
-                recState !== "idle" ||
-                punchCapture ||
-                !services.transport.loopEnabled ||
-                services.transport.loopEnd <= services.transport.loopStart
-              }
-              onClick={() => {
-                setLoopTakeCapture((enabled) => !enabled);
-                setArmedSecondTrackId("");
-                setArmedAdditionalTrackIds([]);
-              }}
-            >
-              LOOP PASSES {loopTakeCapture ? "ON" : "OFF"}
-            </button>
-            <button
-              type="button"
-              className={`btn btn-small${punchCapture ? " active-solo" : ""}`}
-              aria-pressed={punchCapture}
-              aria-label="Arm punch-in and punch-out recording"
-              title="Use the transport IN/OUT locators as one punch range. REC rolls into IN using the existing count-in/pre-roll; PCM is trimmed at the exact in frame, stops at the exact out frame, and playback continues. Turn LOOP off first."
-              disabled={
-                recState !== "idle" ||
-                !armedTrackId ||
-                services.transport.playing ||
-                services.transport.loopEnabled ||
-                services.transport.loopEnd <= services.transport.loopStart ||
-                loopTakeCapture ||
-                !!recordingTakeMode
-              }
-              onClick={() => setPunchCapture((enabled) => !enabled)}
-            >
-              PUNCH {punchCapture ? "ON" : "OFF"}
-            </button>
-            <select
-              className="arr-arm-select"
-              aria-label="Capture input channel count"
-              title="Request an exact independent input-channel count from the selected device. Unsupported counts stop before recording; Auto leaves browser defaults unchanged."
-              value={requestedChannelCount ?? "auto"}
-              disabled={recState !== "idle"}
-              onChange={(event) => {
-                const value = event.target.value;
-                const next = value === "auto" ? null : Number(value);
-                setRequestedChannelCount(next);
-                if (next === 1) setArmedSecondTrackId("");
-                if (next !== null) {
-                  setArmedAdditionalTrackIds((current) => current.slice(0, Math.max(0, next - 2)));
-                }
-              }}
-            >
-              <option value="auto">INPUT CH: AUTO</option>
-              {Array.from({ length: 8 }, (_, index) => index + 1).map((count) => (
-                <option key={count} value={count} disabled={(!!recordingTakeMode || loopTakeCapture) && count > 2}>
-                  INPUT CH: {count}
-                </option>
-              ))}
-            </select>
-            <select
-              className="arr-arm-select"
-              aria-label="Audio input device"
-              title="Choose a microphone or audio-interface input for recording. Device names may be hidden until input permission is granted."
-              value={recordingInputDeviceId}
-              disabled={recState !== "idle"}
-              onChange={(event) => {
-                const deviceId = event.target.value;
-                setRecordingInputDeviceId(deviceId);
-                setLastCaptureInfo(null);
-                saveRecordingInputDeviceId(deviceId);
-              }}
-            >
-              <option value="">INPUT: system default</option>
-              {recordingInputDeviceId &&
-                !recordingInputDevices.some((device) => device.deviceId === recordingInputDeviceId) && (
-                  <option value={recordingInputDeviceId}>Saved audio input (not listed)</option>
-                )}
-              {recordingInputDevices.map((device) => (
-                <option key={device.deviceId} value={device.deviceId}>
-                  {device.label}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              className={`btn btn-small${micMonitoring ? " active-solo" : ""}`}
-              aria-pressed={micMonitoring}
-              title="Dry software monitoring routes each split input channel through its destination track mixer, bypassing track FX. Latency depends on the browser and device. For lowest latency, use the interface's hardware direct-monitor control. Headphones recommended; speakers can cause feedback."
-              onClick={() => {
-                const next = !micMonitoring;
-                setMicMonitoring(next);
-                recRef.current?.setMonitoring(next);
-              }}
-            >
-              {micMonitoring ? "DRY SOFT MON ON" : "DRY SOFT MON OFF"}
-            </button>
-            <label className="arr-arm-gain" aria-label="Audio input gain">
-              <span
-                className="arr-arm-gain-value"
-                title="Pre-capture input trim (applies to the saved take and monitoring)"
-              >
-                GAIN {inputGainDb > 0 ? "+" : ""}
-                {inputGainDb.toFixed(1)} dB
-              </span>
-              <input
-                type="range"
-                min={MIN_INPUT_GAIN_DB}
-                max={MAX_INPUT_GAIN_DB}
-                step={0.5}
-                value={inputGainDb}
-                disabled={recState !== "idle"}
-                aria-label="Audio input gain"
-                title="Trim the input before capture: raise until peaks are healthy but never clipped; lower if the clip warning shows"
-                onChange={(event) => changeInputGain(Number(event.target.value))}
-              />
-            </label>
-            <div
-              className="arr-mic-meter"
-              role="meter"
-              aria-valuemin={0}
-              aria-valuemax={1}
-              aria-valuenow={Number(micPeak.toFixed(2))}
-              aria-label="Audio input level"
-            >
-              <div className="arr-mic-meter-fill" style={{ width: `${Math.min(100, micPeak * 100)}%` }} />
-              {micClipped && (
-                <button
-                  type="button"
-                  className="arr-mic-clip"
-                  role="status"
-                  title="Input clipped since the last reset — lower GAIN, then click to clear"
-                  onClick={resetMicClip}
-                >
-                  CLIP
-                </button>
-              )}
-            </div>
-            {lastCaptureInfo && (
-              <span
-                className="arr-rec-input-report"
-                role="status"
-                aria-label="Observed audio input capture format"
-                title="Web Audio reports the live stream and PCM capture format. Browser channel limits and mapping may differ from the physical interface."
-              >
-                LAST CAPTURE: {lastCaptureInfo.capturedChannels} ch @{" "}
-                {formatCaptureRate(lastCaptureInfo.capturedSampleRate)}
-                {lastCaptureInfo.inputTrackChannels !== null &&
-                  ` · track ${lastCaptureInfo.inputTrackChannels} ch${
-                    lastCaptureInfo.inputTrackSampleRate !== null
-                      ? ` @ ${formatCaptureRate(lastCaptureInfo.inputTrackSampleRate)}`
-                      : ""
-                  }`}
-                {lastCaptureInfo.supportedChannelCount
-                  ? ` · browser range ${formatChannelRange(lastCaptureInfo.supportedChannelCount)} ch`
-                  : " · browser channel range unavailable"}
-                <span className="arr-rec-input-report-note">
-                  Browser capture may limit or remap channels; this does not verify physical interface routing.
-                </span>
-              </span>
-            )}
-            {recState === "recording" ? (
-              <button type="button" className="btn btn-small btn-rec btn-rec-stop" onClick={() => void stopRec()}>
-                ■ STOP {recSeconds.toFixed(0)}s
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-small btn-rec"
-                title="Record the selected audio input onto the armed track at the playhead (rolls the transport)"
-                disabled={!armedTrackId || recState !== "idle" || (punchCapture && services.transport.playing)}
-                onClick={() => void startRec()}
-              >
-                {recState === "starting" ? "◌ INPUT…" : "● REC"}
-              </button>
-            )}
-            {recState === "starting" && <span className="arr-rec-saving">opening audio input…</span>}
-            {recState === "saving" && <span className="arr-rec-saving">placing clip…</span>}
-            {recordingInputListError && (
-              <span className="arr-rec-saving" role="status" aria-live="polite">
-                audio input list unavailable; system default remains usable
-              </span>
-            )}
-            {loopTakeCapture && (
-              <span className="arr-rec-saving" role="status">
-                Each transport-loop wrap marks an alternate pass in the PCM source; stop to place and select the
-                captured passes.
-              </span>
-            )}
-            {!loopTakeCapture && recordingTakeMode && (
-              <span className="arr-rec-saving" role="status">
-                Alternate passes align to the group start; stereo stays together on the armed track.
-              </span>
-            )}
-            {punchCapture && (
-              <span className="arr-rec-saving" role="status">
-                Punch range is armed: REC rolls into IN, audio is trimmed at that frame, capture ends at OUT, and
-                playback rolls on for post-roll.
-              </span>
-            )}
-            {recError && (
-              <span className="arr-rec-error" role="alert">
-                {recError}
-              </span>
-            )}
-            {recStorageWarning && (
-              <span className="arr-rec-warning" role="status" aria-live="polite">
-                {recStorageWarning}
-              </span>
-            )}
-            <ArrangementViewControls
-              rulerMode={rulerMode}
-              onToggleRulerMode={() => setRulerMode(rulerMode === "bars" ? "seconds" : "bars")}
-              showIntensity={showIntensity}
-              onToggleIntensity={() => setShowIntensity((value) => !value)}
-              onZoomOut={() => setZoom((value) => Math.max(MIN_ZOOM, value / 1.4))}
-              onFit={() => {
-                const viewport = scrollRef.current?.clientWidth ?? 800;
-                setZoom(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, viewport / Math.max(1, totalBars * BASE_BAR_WIDTH))));
-                if (scrollRef.current) scrollRef.current.scrollLeft = 0;
-              }}
-              onZoomIn={() => setZoom((value) => Math.min(MAX_ZOOM, value * 1.4))}
-            />
-            {selectedClip && (
-              <label className="arr-clip-secs">
-                SECS
-                <input
-                  type="number"
-                  min={0.5}
-                  // The field is in seconds; the cap is a bar count, so convert
-                  // it at the clip's own tempo (a bar is 4 beats).
-                  max={Math.round(sceneBarsToSeconds(MAX_ARRANGEMENT_CLIP_BARS, selectedClipBpm))}
-                  step={0.5}
-                  aria-label="Clip length in seconds"
-                  title={`${selectedClip.lengthBars} bars at ${Math.round(selectedClipBpm)} BPM — Enter resizes the clip`}
-                  value={secsDraft ?? selectedClipSeconds.toFixed(2)}
-                  onFocus={() => setSecsDraft(selectedClipSeconds.toFixed(2))}
-                  onChange={(event) => setSecsDraft(event.target.value)}
-                  onBlur={commitClipSecs}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") commitClipSecs();
-                    if (event.key === "Escape") setSecsDraft(null);
-                  }}
-                />
-              </label>
-            )}
-            <button
-              type="button"
-              className="btn btn-small"
-              disabled={!selectedScene}
-              onClick={() => selectedScene && placeScene(selectedScene.id, appendBar())}
-            >
-              + CLIP
-            </button>
-            <button
-              type="button"
-              className="btn btn-small"
-              disabled={!selectedClipId}
-              onClick={() => selectedClipId && execute(duplicateArrangementClip(services.store.doc, selectedClipId))}
-            >
-              DUP
-            </button>
-            <button
-              type="button"
-              className="btn btn-small btn-danger"
-              disabled={!selectedClipId}
-              onClick={() => {
-                if (!selectedClipId) return;
-                // The SHARED delete path (context menu / long-press): one
-                // undoable gesture, the delete toast, ripple-mode support,
-                // and SelectionStore pruning. This header button used to
-                // execute deleteArrangementClip directly and cleared only the
-                // panel-local mirror — selectionStore.clipIds kept the dead
-                // id (third copy of the same stale-selection hole).
-                deleteClipsWithToast([selectedClipId]);
-              }}
-            >
-              DEL
-            </button>
-            {!capture.capturing ? (
-              <button type="button" className="btn btn-small" onClick={() => services.capture.start()}>
-                CAPTURE
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  className="btn btn-small active-solo"
-                  onClick={() => {
-                    try {
-                      services.capture.finish();
-                    } catch (error) {
-                      setActionError(error instanceof Error ? error.message : "Capture failed");
-                    }
-                  }}
-                >
-                  FINISH {capture.launchCount}
-                </button>
-                <button type="button" className="btn btn-small btn-danger" onClick={() => services.capture.cancel()}>
-                  CANCEL
-                </button>
-              </>
-            )}
-            <button
-              type="button"
-              className="btn btn-small"
-              disabled={!selection.timeRange || bouncingZone}
-              title="Bounce the selected zone (selected tracks, with FX/groups/sends) to an editable audio clip via an offline render. Shift the zone, hit bounce, flip it to a pad."
-              onClick={() => void bounceZoneToClip()}
-            >
-              BOUNCE ZONE
-            </button>
-            {selectedAudioTakeGroup && (selectedAudioTakeIds.length > 0 || selectedAudioTakeGroup.compTakeId) && (
-              <label className="arr-arm-gain">
-                <span>ACTIVE PASS</span>
-                <select
-                  className="arr-arm-select"
-                  aria-label="Active audio take"
-                  title="Only the active pass plays and exports; alternate passes stay editable and undoable."
-                  value={selectedAudioTakeGroup.activeTakeId}
-                  onChange={(event) => {
-                    const nextTakeId = event.target.value;
-                    execute(setActiveAudioTake(doc, selectedAudioTakeGroup.id, nextTakeId));
-                    const nextClip = (arrangement.audioClips ?? []).find(
-                      (clip) => clip.takeGroupId === selectedAudioTakeGroup.id && clip.takeId === nextTakeId,
-                    );
-                    if (nextClip) setSelectedAudioClipId(nextClip.id);
-                  }}
-                >
-                  {selectedAudioTakeIds.map((takeId, index) => (
-                    <option key={takeId} value={takeId}>
-                      TAKE {index + 1}
-                    </option>
-                  ))}
-                  {selectedAudioTakeGroup.compTakeId && <option value={selectedAudioTakeGroup.compTakeId}>COMP</option>}
-                </select>
-              </label>
-            )}
-            {selectedAudioTakeGroup && (selectedAudioTakeIds.length > 0 || selectedAudioTakeGroup.compTakeId) && (
-              <button
-                type="button"
-                className={`btn btn-small${showAudioTakeLanes ? " active-solo" : ""}`}
-                aria-label={showAudioTakeLanes ? "Hide audio take lanes" : "Show audio take lanes"}
-                aria-expanded={showAudioTakeLanes}
-                onClick={() => setShowAudioTakeLanes((visible) => !visible)}
-              >
-                TAKE LANES {showAudioTakeLanes ? "ON" : "OFF"}
-              </button>
-            )}
-            {selectedAudioTakeGroup &&
-              selectedAudioTakeGroup.activeTakeId !== selectedAudioTakeGroup.compTakeId &&
-              selectedAudioTakeIds.includes(selectedAudioTakeGroup.activeTakeId) && (
-                <button
-                  type="button"
-                  className="btn btn-small"
-                  aria-label="Comp selected transport range from active take"
-                  title="Replace the current comp inside the transport start/end locators with the active source take. Source takes remain unchanged; the edit is undoable."
-                  onClick={() =>
-                    compAudioRange(
-                      selectedAudioTakeGroup.id,
-                      selectedAudioTakeGroup.activeTakeId,
-                      services.transport.loopStart,
-                      services.transport.loopEnd,
-                    )
-                  }
-                >
-                  COMP RANGE
-                </button>
-              )}
-            {selectedAudioTakeGroup && selectedAudioTakeIds.length >= 2 && (
-              <button
-                type="button"
-                className={`btn btn-small${smartCompPlan ? " active-solo" : ""}`}
-                aria-label="Suggest a comp from the best parts of every take"
-                aria-expanded={smartCompPlan !== null}
-                title="Measure every take (groove lock, pitch drift, noise floor, clipping) and propose which take should feed each bar. Nothing is edited until you apply the plan."
-                disabled={smartCompBusy}
-                onClick={() => {
-                  if (smartCompPlan) setSmartCompPlan(null);
-                  else suggestSmartComp(selectedAudioTakeGroup.id);
-                }}
-              >
-                {smartCompBusy ? "ANALYSING…" : "SUGGEST COMP"}
-              </button>
-            )}
-            {smartCompPlan && selectedAudioTakeGroup && (
-              <div className="arr-smart-comp" role="group" aria-label="Smart comp suggestion">
-                <div className="arr-smart-comp-head">
-                  <strong>SMART COMP SUGGESTION</strong>
-                  <span>
-                    {planBars(smartCompPlan)} bars · {smartCompPlan.segments.length} segment
-                    {smartCompPlan.segments.length === 1 ? "" : "s"} · {smartCompPlan.segments.length - 1} seam
-                    {smartCompPlan.segments.length - 1 === 1 ? "" : "s"}
-                    {smartCompPlan.uncoveredBars.length > 0
-                      ? ` · ${smartCompPlan.uncoveredBars.length} bar${
-                          smartCompPlan.uncoveredBars.length === 1 ? "" : "s"
-                        } no take covers`
-                      : ""}
-                  </span>
-                </div>
-                <div className="arr-smart-comp-takes">
-                  {smartCompPlan.takeSummaries
-                    .slice()
-                    .sort((a, b) => b.score.score - a.score.score)
-                    .map((entry) => {
-                      const laneIndex = selectedAudioTakeIds.indexOf(entry.takeId) + 1;
+                  <details className="arr-input-channel-routing" hidden={routingChannelCount <= 2}>
+                    <summary>INPUT ROUTING · {routingChannelCount} CHANNELS</summary>
+                    {Array.from({ length: Math.max(0, routingChannelCount - 2) }, (_, routeIndex) => {
+                      const channelIndex = routeIndex + 2;
+                      const currentTrackId = armedAdditionalTrackIds[routeIndex] ?? "";
+                      const assignedElsewhere = new Set([
+                        armedTrackId,
+                        armedSecondTrackId,
+                        ...armedAdditionalTrackIds.filter((_, index) => index !== routeIndex),
+                      ]);
                       return (
-                        <div className="arr-smart-comp-take" key={entry.takeId}>
-                          <span className="arr-smart-comp-take-name">
-                            TAKE {laneIndex > 0 ? laneIndex : entry.takeId} · {entry.score.score.toFixed(0)}
-                          </span>
-                          <span className="arr-smart-comp-take-evidence">{entry.score.evidence.join(" · ")}</span>
-                        </div>
+                        <select
+                          key={channelIndex}
+                          className="arr-arm-select"
+                          aria-label={`Captured channel ${channelIndex + 1} destination`}
+                          title={`Route captured input channel ${channelIndex + 1} to a separate timeline track; channel order is not verified against physical connectors.`}
+                          value={currentTrackId}
+                          disabled={recState !== "idle" || !!recordingTakeMode || loopTakeCapture}
+                          onChange={(event) => {
+                            const trackId = event.target.value;
+                            setArmedAdditionalTrackIds((current) => {
+                              const next = current.slice();
+                              while (next.length <= routeIndex) next.push("");
+                              next[routeIndex] = trackId;
+                              return trackId
+                                ? next.map((id, index) => (index !== routeIndex && id === trackId ? "" : id))
+                                : next;
+                            });
+                          }}
+                        >
+                          <option value="">CH {channelIndex + 1}: select track…</option>
+                          {tracks
+                            .filter((track) => track.id === currentTrackId || !assignedElsewhere.has(track.id))
+                            .map((track) => (
+                              <option key={track.id} value={track.id}>
+                                CH {channelIndex + 1} → {track.name}
+                              </option>
+                            ))}
+                        </select>
                       );
                     })}
-                </div>
-                <div className="arr-smart-comp-segments">
-                  {smartCompPlan.segments.map((segment) => {
-                    const laneIndex = selectedAudioTakeIds.indexOf(segment.sourceTakeId) + 1;
-                    return (
-                      <span className="arr-smart-comp-segment" key={`${segment.sourceTakeId}:${segment.startBar}`}>
-                        bars {segment.startBar + 1}–{segment.endBar} → TAKE {laneIndex}
-                      </span>
-                    );
-                  })}
-                </div>
-                <div className="arr-smart-comp-actions">
+                  </details>
+                  <select
+                    className="arr-arm-select"
+                    aria-label="Recording take mode"
+                    title="Record one standalone take, start a take group, or add an alternate pass aligned to an existing take group."
+                    value={recordingTakeMode}
+                    disabled={!armedTrackId || recState !== "idle" || punchCapture}
+                    onChange={(event) => {
+                      const mode = event.target.value;
+                      setRecordingTakeGroupSelection(mode);
+                      if (mode) {
+                        setArmedSecondTrackId("");
+                        setArmedAdditionalTrackIds([]);
+                      }
+                    }}
+                  >
+                    <option value="">SINGLE TAKE</option>
+                    <option value="new">NEW TAKE GROUP</option>
+                    {recordingTakeGroups.map((group, index) => {
+                      const passCount = new Set(
+                        (arrangement.audioClips ?? [])
+                          .filter((clip) => clip.takeGroupId === group.id && clip.takeId)
+                          .map((clip) => clip.takeId),
+                      ).size;
+                      return (
+                        <option key={group.id} value={group.id}>
+                          ALT TAKE · GROUP {index + 1} ({passCount} pass{passCount === 1 ? "" : "es"})
+                        </option>
+                      );
+                    })}
+                  </select>
                   <button
                     type="button"
-                    className="btn btn-small"
-                    onClick={() => setSmartCompPlan(null)}
-                    title="Discard the suggestion — the document was never touched"
+                    className={`btn btn-small${loopTakeCapture ? " active-solo" : ""}`}
+                    aria-pressed={loopTakeCapture}
+                    aria-label="Record transport loop as alternate takes"
+                    title="Capture each complete transport-loop pass as a selectable alternate. Requires explicit loop start and end locators; single-track capture only."
+                    disabled={
+                      recState !== "idle" ||
+                      punchCapture ||
+                      !services.transport.loopEnabled ||
+                      services.transport.loopEnd <= services.transport.loopStart
+                    }
+                    onClick={() => {
+                      setLoopTakeCapture((enabled) => !enabled);
+                      setArmedSecondTrackId("");
+                      setArmedAdditionalTrackIds([]);
+                    }}
                   >
-                    CANCEL
+                    LOOP PASSES {loopTakeCapture ? "ON" : "OFF"}
                   </button>
                   <button
                     type="button"
-                    className="btn btn-small intent-use-btn"
-                    onClick={() => applySmartCompPlan(selectedAudioTakeGroup.id)}
-                    title="Apply the suggested comp as ONE undoable edit. Source takes stay intact."
+                    className={`btn btn-small${punchCapture ? " active-solo" : ""}`}
+                    aria-pressed={punchCapture}
+                    aria-label="Arm punch-in and punch-out recording"
+                    title="Use the transport IN/OUT locators as one punch range. REC rolls into IN using the existing count-in/pre-roll; PCM is trimmed at the exact in frame, stops at the exact out frame, and playback continues. Turn LOOP off first."
+                    disabled={
+                      recState !== "idle" ||
+                      !armedTrackId ||
+                      services.transport.playing ||
+                      services.transport.loopEnabled ||
+                      services.transport.loopEnd <= services.transport.loopStart ||
+                      loopTakeCapture ||
+                      !!recordingTakeMode
+                    }
+                    onClick={() => setPunchCapture((enabled) => !enabled)}
                   >
-                    APPLY COMP
+                    PUNCH {punchCapture ? "ON" : "OFF"}
                   </button>
+                  <select
+                    className="arr-arm-select"
+                    aria-label="Capture input channel count"
+                    title="Request an exact independent input-channel count from the selected device. Unsupported counts stop before recording; Auto leaves browser defaults unchanged."
+                    value={requestedChannelCount ?? "auto"}
+                    disabled={recState !== "idle"}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      const next = value === "auto" ? null : Number(value);
+                      setRequestedChannelCount(next);
+                      if (next === 1) setArmedSecondTrackId("");
+                      if (next !== null) {
+                        setArmedAdditionalTrackIds((current) => current.slice(0, Math.max(0, next - 2)));
+                      }
+                    }}
+                  >
+                    <option value="auto">INPUT CH: AUTO</option>
+                    {Array.from({ length: 8 }, (_, index) => index + 1).map((count) => (
+                      <option
+                        key={count}
+                        value={count}
+                        disabled={(!!recordingTakeMode || loopTakeCapture) && count > 2}
+                      >
+                        INPUT CH: {count}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="arr-arm-select"
+                    aria-label="Audio input device"
+                    title="Choose a microphone or audio-interface input for recording. Device names may be hidden until input permission is granted."
+                    value={recordingInputDeviceId}
+                    disabled={recState !== "idle"}
+                    onChange={(event) => {
+                      const deviceId = event.target.value;
+                      setRecordingInputDeviceId(deviceId);
+                      setLastCaptureInfo(null);
+                      saveRecordingInputDeviceId(deviceId);
+                    }}
+                  >
+                    <option value="">INPUT: system default</option>
+                    {recordingInputDeviceId &&
+                      !recordingInputDevices.some((device) => device.deviceId === recordingInputDeviceId) && (
+                        <option value={recordingInputDeviceId}>Saved audio input (not listed)</option>
+                      )}
+                    {recordingInputDevices.map((device) => (
+                      <option key={device.deviceId} value={device.deviceId}>
+                        {device.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+              </details>
+              <button
+                type="button"
+                className={`btn btn-small${micMonitoring ? " active-solo" : ""}`}
+                aria-pressed={micMonitoring}
+                title="Dry software monitoring routes each split input channel through its destination track mixer, bypassing track FX. Latency depends on the browser and device. For lowest latency, use the interface's hardware direct-monitor control. Headphones recommended; speakers can cause feedback."
+                onClick={() => {
+                  const next = !micMonitoring;
+                  setMicMonitoring(next);
+                  recRef.current?.setMonitoring(next);
+                }}
+              >
+                {micMonitoring ? "DRY SOFT MON ON" : "DRY SOFT MON OFF"}
+              </button>
+              <label className="arr-arm-gain" aria-label="Audio input gain">
+                <span
+                  className="arr-arm-gain-value"
+                  title="Pre-capture input trim (applies to the saved take and monitoring)"
+                >
+                  GAIN {inputGainDb > 0 ? "+" : ""}
+                  {inputGainDb.toFixed(1)} dB
+                </span>
+                <input
+                  type="range"
+                  min={MIN_INPUT_GAIN_DB}
+                  max={MAX_INPUT_GAIN_DB}
+                  step={0.5}
+                  value={inputGainDb}
+                  disabled={recState !== "idle"}
+                  aria-label="Audio input gain"
+                  title="Trim the input before capture: raise until peaks are healthy but never clipped; lower if the clip warning shows"
+                  onChange={(event) => changeInputGain(Number(event.target.value))}
+                />
+              </label>
+              <div
+                className="arr-mic-meter"
+                role="meter"
+                aria-valuemin={0}
+                aria-valuemax={1}
+                aria-valuenow={Number(micPeak.toFixed(2))}
+                aria-label="Audio input level"
+              >
+                <div className="arr-mic-meter-fill" style={{ width: `${Math.min(100, micPeak * 100)}%` }} />
+                {micClipped && (
+                  <button
+                    type="button"
+                    className="arr-mic-clip"
+                    role="status"
+                    title="Input clipped since the last reset — lower GAIN, then click to clear"
+                    onClick={resetMicClip}
+                  >
+                    CLIP
+                  </button>
+                )}
               </div>
-            )}
-            {selectedAudioClipId && (
+              {lastCaptureInfo && (
+                <span
+                  className="arr-rec-input-report"
+                  role="status"
+                  aria-label="Observed audio input capture format"
+                  title="Web Audio reports the live stream and PCM capture format. Browser channel limits and mapping may differ from the physical interface."
+                >
+                  LAST CAPTURE: {lastCaptureInfo.capturedChannels} ch @{" "}
+                  {formatCaptureRate(lastCaptureInfo.capturedSampleRate)}
+                  {lastCaptureInfo.inputTrackChannels !== null &&
+                    ` · track ${lastCaptureInfo.inputTrackChannels} ch${
+                      lastCaptureInfo.inputTrackSampleRate !== null
+                        ? ` @ ${formatCaptureRate(lastCaptureInfo.inputTrackSampleRate)}`
+                        : ""
+                    }`}
+                  {lastCaptureInfo.supportedChannelCount
+                    ? ` · browser range ${formatChannelRange(lastCaptureInfo.supportedChannelCount)} ch`
+                    : " · browser channel range unavailable"}
+                  <span className="arr-rec-input-report-note">
+                    Browser capture may limit or remap channels; this does not verify physical interface routing.
+                  </span>
+                </span>
+              )}
+              {recState === "recording" ? (
+                <button type="button" className="btn btn-small btn-rec btn-rec-stop" onClick={() => void stopRec()}>
+                  ■ STOP {recSeconds.toFixed(0)}s
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-small btn-rec"
+                  title="Record the selected audio input onto the armed track at the playhead (rolls the transport)"
+                  disabled={!armedTrackId || recState !== "idle" || (punchCapture && services.transport.playing)}
+                  onClick={() => void startRec()}
+                >
+                  {recState === "starting" ? "◌ INPUT…" : "● REC"}
+                </button>
+              )}
+              {recState === "starting" && <span className="arr-rec-saving">opening audio input…</span>}
+              {recState === "saving" && <span className="arr-rec-saving">placing clip…</span>}
+              {recordingInputListError && (
+                <span className="arr-rec-saving" role="status" aria-live="polite">
+                  audio input list unavailable; system default remains usable
+                </span>
+              )}
+              {loopTakeCapture && (
+                <span className="arr-rec-saving" role="status">
+                  Each transport-loop wrap marks an alternate pass in the PCM source; stop to place and select the
+                  captured passes.
+                </span>
+              )}
+              {!loopTakeCapture && recordingTakeMode && (
+                <span className="arr-rec-saving" role="status">
+                  Alternate passes align to the group start; stereo stays together on the armed track.
+                </span>
+              )}
+              {punchCapture && (
+                <span className="arr-rec-saving" role="status">
+                  Punch range is armed: REC rolls into IN, audio is trimmed at that frame, capture ends at OUT, and
+                  playback rolls on for post-roll.
+                </span>
+              )}
+              {recError && (
+                <span className="arr-rec-error" role="alert">
+                  {recError}
+                </span>
+              )}
+              {recStorageWarning && (
+                <span className="arr-rec-warning" role="status" aria-live="polite">
+                  {recStorageWarning}
+                </span>
+              )}
+            </div>
+            <div className="arr-edit-toolbar" role="group" aria-label="Arrangement editing controls">
+              <ArrangementViewControls
+                rulerMode={rulerMode}
+                onToggleRulerMode={() => setRulerMode(rulerMode === "bars" ? "seconds" : "bars")}
+                showIntensity={showIntensity}
+                onToggleIntensity={() => setShowIntensity((value) => !value)}
+                onZoomOut={() => setZoom((value) => Math.max(MIN_ZOOM, value / 1.4))}
+                onFit={() => {
+                  const viewport = scrollRef.current?.clientWidth ?? 800;
+                  setZoom(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, viewport / Math.max(1, totalBars * BASE_BAR_WIDTH))));
+                  if (scrollRef.current) scrollRef.current.scrollLeft = 0;
+                }}
+                onZoomIn={() => setZoom((value) => Math.min(MAX_ZOOM, value * 1.4))}
+              />
+              {selectedClip && (
+                <label className="arr-clip-secs">
+                  SECS
+                  <input
+                    type="number"
+                    min={0.5}
+                    // The field is in seconds; the cap is a bar count, so convert
+                    // it at the clip's own tempo (a bar is 4 beats).
+                    max={Math.round(sceneBarsToSeconds(MAX_ARRANGEMENT_CLIP_BARS, selectedClipBpm))}
+                    step={0.5}
+                    aria-label="Clip length in seconds"
+                    title={`${selectedClip.lengthBars} bars at ${Math.round(selectedClipBpm)} BPM — Enter resizes the clip`}
+                    value={secsDraft ?? selectedClipSeconds.toFixed(2)}
+                    onFocus={() => setSecsDraft(selectedClipSeconds.toFixed(2))}
+                    onChange={(event) => setSecsDraft(event.target.value)}
+                    onBlur={commitClipSecs}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") commitClipSecs();
+                      if (event.key === "Escape") setSecsDraft(null);
+                    }}
+                  />
+                </label>
+              )}
+              <button
+                type="button"
+                className="btn btn-small"
+                disabled={!selectedScene}
+                onClick={() => selectedScene && placeScene(selectedScene.id, appendBar())}
+              >
+                + CLIP
+              </button>
+              <button
+                type="button"
+                className="btn btn-small"
+                disabled={!selectedClipId}
+                onClick={() => selectedClipId && execute(duplicateArrangementClip(services.store.doc, selectedClipId))}
+              >
+                DUP
+              </button>
               <button
                 type="button"
                 className="btn btn-small btn-danger"
+                disabled={!selectedClipId}
                 onClick={() => {
-                  execute(deleteAudioClip(services.store.doc, selectedAudioClipId));
-                  setSelectedAudioClipId(null);
+                  if (!selectedClipId) return;
+                  // The SHARED delete path (context menu / long-press): one
+                  // undoable gesture, the delete toast, ripple-mode support,
+                  // and SelectionStore pruning. This header button used to
+                  // execute deleteArrangementClip directly and cleared only the
+                  // panel-local mirror — selectionStore.clipIds kept the dead
+                  // id (third copy of the same stale-selection hole).
+                  deleteClipsWithToast([selectedClipId]);
                 }}
               >
-                DEL AUDIO
+                DEL
               </button>
-            )}
-            <button type="button" className="btn btn-small" onClick={() => setShowSkeletonPreview((value) => !value)}>
-              BUILD SKELETON
-            </button>
-            <button
-              type="button"
-              className="btn btn-small btn-export"
-              title="Lay all scenes into a song: intro → build → drop → break → drop → outro, with transitions and cue markers"
-              onClick={() => {
-                try {
-                  execute(autoArrangeSong(services.store.doc));
-                } catch (err) {
-                  setActionError(err instanceof Error ? err.message : "Auto-arrange failed");
-                }
-              }}
-            >
-              AUTO ARRANGE
-            </button>
+              {!capture.capturing ? (
+                <button type="button" className="btn btn-small" onClick={() => services.capture.start()}>
+                  CAPTURE
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-small active-solo"
+                    onClick={() => {
+                      try {
+                        services.capture.finish();
+                      } catch (error) {
+                        setActionError(error instanceof Error ? error.message : "Capture failed");
+                      }
+                    }}
+                  >
+                    FINISH {capture.launchCount}
+                  </button>
+                  <button type="button" className="btn btn-small btn-danger" onClick={() => services.capture.cancel()}>
+                    CANCEL
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                className="btn btn-small"
+                disabled={!selection.timeRange || bouncingZone}
+                title="Bounce the selected zone (selected tracks, with FX/groups/sends) to an editable audio clip via an offline render. Shift the zone, hit bounce, flip it to a pad."
+                onClick={() => void bounceZoneToClip()}
+              >
+                BOUNCE ZONE
+              </button>
+              {selectedAudioTakeGroup && (selectedAudioTakeIds.length > 0 || selectedAudioTakeGroup.compTakeId) && (
+                <label className="arr-arm-gain">
+                  <span>ACTIVE PASS</span>
+                  <select
+                    className="arr-arm-select"
+                    aria-label="Active audio take"
+                    title="Only the active pass plays and exports; alternate passes stay editable and undoable."
+                    value={selectedAudioTakeGroup.activeTakeId}
+                    onChange={(event) => {
+                      const nextTakeId = event.target.value;
+                      execute(setActiveAudioTake(doc, selectedAudioTakeGroup.id, nextTakeId));
+                      const nextClip = (arrangement.audioClips ?? []).find(
+                        (clip) => clip.takeGroupId === selectedAudioTakeGroup.id && clip.takeId === nextTakeId,
+                      );
+                      if (nextClip) setSelectedAudioClipId(nextClip.id);
+                    }}
+                  >
+                    {selectedAudioTakeIds.map((takeId, index) => (
+                      <option key={takeId} value={takeId}>
+                        TAKE {index + 1}
+                      </option>
+                    ))}
+                    {selectedAudioTakeGroup.compTakeId && (
+                      <option value={selectedAudioTakeGroup.compTakeId}>COMP</option>
+                    )}
+                  </select>
+                </label>
+              )}
+              {selectedAudioTakeGroup && (selectedAudioTakeIds.length > 0 || selectedAudioTakeGroup.compTakeId) && (
+                <button
+                  type="button"
+                  className={`btn btn-small${showAudioTakeLanes ? " active-solo" : ""}`}
+                  aria-label={showAudioTakeLanes ? "Hide audio take lanes" : "Show audio take lanes"}
+                  aria-expanded={showAudioTakeLanes}
+                  onClick={() => setShowAudioTakeLanes((visible) => !visible)}
+                >
+                  TAKE LANES {showAudioTakeLanes ? "ON" : "OFF"}
+                </button>
+              )}
+              {selectedAudioTakeGroup &&
+                selectedAudioTakeGroup.activeTakeId !== selectedAudioTakeGroup.compTakeId &&
+                selectedAudioTakeIds.includes(selectedAudioTakeGroup.activeTakeId) && (
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    aria-label="Comp selected transport range from active take"
+                    title="Replace the current comp inside the transport start/end locators with the active source take. Source takes remain unchanged; the edit is undoable."
+                    onClick={() =>
+                      compAudioRange(
+                        selectedAudioTakeGroup.id,
+                        selectedAudioTakeGroup.activeTakeId,
+                        services.transport.loopStart,
+                        services.transport.loopEnd,
+                      )
+                    }
+                  >
+                    COMP RANGE
+                  </button>
+                )}
+              {selectedAudioTakeGroup && selectedAudioTakeIds.length >= 2 && (
+                <button
+                  type="button"
+                  className={`btn btn-small${smartCompPlan ? " active-solo" : ""}`}
+                  aria-label="Suggest a comp from the best parts of every take"
+                  aria-expanded={smartCompPlan !== null}
+                  title="Measure every take (groove lock, pitch drift, noise floor, clipping) and propose which take should feed each bar. Nothing is edited until you apply the plan."
+                  disabled={smartCompBusy}
+                  onClick={() => {
+                    if (smartCompPlan) setSmartCompPlan(null);
+                    else suggestSmartComp(selectedAudioTakeGroup.id);
+                  }}
+                >
+                  {smartCompBusy ? "ANALYSING…" : "SUGGEST COMP"}
+                </button>
+              )}
+              {smartCompPlan && selectedAudioTakeGroup && (
+                <div className="arr-smart-comp" role="group" aria-label="Smart comp suggestion">
+                  <div className="arr-smart-comp-head">
+                    <strong>SMART COMP SUGGESTION</strong>
+                    <span>
+                      {planBars(smartCompPlan)} bars · {smartCompPlan.segments.length} segment
+                      {smartCompPlan.segments.length === 1 ? "" : "s"} · {smartCompPlan.segments.length - 1} seam
+                      {smartCompPlan.segments.length - 1 === 1 ? "" : "s"}
+                      {smartCompPlan.uncoveredBars.length > 0
+                        ? ` · ${smartCompPlan.uncoveredBars.length} bar${
+                            smartCompPlan.uncoveredBars.length === 1 ? "" : "s"
+                          } no take covers`
+                        : ""}
+                    </span>
+                  </div>
+                  <div className="arr-smart-comp-takes">
+                    {smartCompPlan.takeSummaries
+                      .slice()
+                      .sort((a, b) => b.score.score - a.score.score)
+                      .map((entry) => {
+                        const laneIndex = selectedAudioTakeIds.indexOf(entry.takeId) + 1;
+                        return (
+                          <div className="arr-smart-comp-take" key={entry.takeId}>
+                            <span className="arr-smart-comp-take-name">
+                              TAKE {laneIndex > 0 ? laneIndex : entry.takeId} · {entry.score.score.toFixed(0)}
+                            </span>
+                            <span className="arr-smart-comp-take-evidence">{entry.score.evidence.join(" · ")}</span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                  <div className="arr-smart-comp-segments">
+                    {smartCompPlan.segments.map((segment) => {
+                      const laneIndex = selectedAudioTakeIds.indexOf(segment.sourceTakeId) + 1;
+                      return (
+                        <span className="arr-smart-comp-segment" key={`${segment.sourceTakeId}:${segment.startBar}`}>
+                          bars {segment.startBar + 1}–{segment.endBar} → TAKE {laneIndex}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  <div className="arr-smart-comp-actions">
+                    <button
+                      type="button"
+                      className="btn btn-small"
+                      onClick={() => setSmartCompPlan(null)}
+                      title="Discard the suggestion — the document was never touched"
+                    >
+                      CANCEL
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-small intent-use-btn"
+                      onClick={() => applySmartCompPlan(selectedAudioTakeGroup.id)}
+                      title="Apply the suggested comp as ONE undoable edit. Source takes stay intact."
+                    >
+                      APPLY COMP
+                    </button>
+                  </div>
+                </div>
+              )}
+              {selectedAudioClipId && (
+                <button
+                  type="button"
+                  className="btn btn-small btn-danger"
+                  onClick={() => {
+                    execute(deleteAudioClip(services.store.doc, selectedAudioClipId));
+                    setSelectedAudioClipId(null);
+                  }}
+                >
+                  DEL AUDIO
+                </button>
+              )}
+            </div>
+            <div className="arr-production-toolbar" role="group" aria-label="Song building controls">
+              <button type="button" className="btn btn-small" onClick={() => setShowSkeletonPreview((value) => !value)}>
+                BUILD SKELETON
+              </button>
+              <select
+                className="arr-arm-select"
+                aria-label="Auto-arrange target song length"
+                title="Approximate duration at project BPM; scene tempo pins can change the final length."
+                value={autoArrangeMinutes}
+                onChange={(event) => setAutoArrangeMinutes(Number(event.target.value))}
+              >
+                <option value={1}>SONG · 1:00</option>
+                <option value={2}>SONG · 2:00</option>
+                <option value={3}>SONG · 3:00</option>
+                <option value={4}>SONG · 4:00</option>
+              </select>
+              <button
+                type="button"
+                className="btn btn-small btn-export"
+                title="Replace the current arrangement with all scenes in a full song form sized to SONG LENGTH"
+                onClick={() => {
+                  try {
+                    const currentDoc = services.store.getDoc();
+                    const targetBars = sceneSecondsToBars(autoArrangeMinutes * 60, currentDoc.bpm);
+                    execute(autoArrangeSong(currentDoc, targetBars));
+                  } catch (err) {
+                    setActionError(err instanceof Error ? err.message : "Auto-arrange failed");
+                  }
+                }}
+              >
+                AUTO ARRANGE
+              </button>
+            </div>
           </div>
         </div>
 
@@ -4641,7 +4855,12 @@ export function ArrangementPanel() {
               const isDragging = dragRef.current?.clipId === clip.id && drag !== null;
               const ghostShift = ghostShiftFor(clip.id, clip.startBar, rippleGhost?.fromScene ?? 0);
               const multiMoving = dragRef.current?.movingIds?.includes(clip.id) && multiDrag !== null;
-              const startBar = multiMoving ? clip.startBar + multiDrag : isDragging ? drag.startBar : clip.startBar;
+              const groupStartBar =
+                groupDragPreview?.projectId === doc.id && groupDragPreview.clipIds.includes(clip.id)
+                  ? (groupDragPreview.startTicks[clip.id] ?? clip.startBar * BAR_TICKS) / BAR_TICKS
+                  : undefined;
+              const startBar =
+                groupStartBar ?? (multiMoving ? clip.startBar + multiDrag : isDragging ? drag.startBar : clip.startBar);
               const lengthBars = isDragging ? drag.lengthBars : clip.lengthBars;
               const nextClip = clips[index + 1];
               const selected = selectedClipId === clip.id || selectionStore.isClipSelected(clip.id);
@@ -4744,11 +4963,17 @@ export function ArrangementPanel() {
               // same threshold the ripple commands shift audio by.
               const audioGhostShift =
                 isDragging || multiMovingAudio ? 0 : ghostShiftFor(clip.id, clip.startBar, rippleGhost?.fromAudio ?? 0);
-              const startBar = multiMovingAudio
-                ? Math.max(0, clip.startBar + audioMultiDrag)
-                : isDragging
-                  ? audioDrag.startBar
-                  : clip.startBar + audioGhostShift;
+              const groupStartBar =
+                groupDragPreview?.projectId === doc.id && groupDragPreview.clipIds.includes(clip.id)
+                  ? (groupDragPreview.startTicks[clip.id] ?? clip.startBar * BAR_TICKS) / BAR_TICKS
+                  : undefined;
+              const startBar =
+                groupStartBar ??
+                (multiMovingAudio
+                  ? Math.max(0, clip.startBar + audioMultiDrag)
+                  : isDragging
+                    ? audioDrag.startBar
+                    : clip.startBar + audioGhostShift);
               const lengthBars = isDragging ? audioDrag.lengthBars : clip.lengthBars;
               // Shared selection drives the visual, same as scene clips; the
               // local mirror stays for panel features that follow ONE clip
@@ -4959,6 +5184,37 @@ export function ArrangementPanel() {
               );
             })}
           </div>
+          <MidiClipLanes
+            doc={services.store.getDoc()}
+            tracks={tracks}
+            midiClips={visibleMidiClips}
+            selectedClipId={selection.clipIds.find((id) => midiClips.some((clip) => clip.id === id)) ?? null}
+            totalBars={totalBars}
+            barWidth={barWidth}
+            snapGrid={snapGrid}
+            playheadTick={services.transport.position}
+            onExecute={execute}
+            onSelect={(id) => {
+              setSelectedClipId(null);
+              setSelectedAudioClipId(null);
+              selectionStore.setClips([id]);
+            }}
+          />
+          <AutomationClipLanes
+            doc={services.store.getDoc()}
+            automationClips={visibleAutomationClips}
+            selectedClipId={selection.clipIds.find((id) => automationClips.some((clip) => clip.id === id)) ?? null}
+            totalBars={totalBars}
+            barWidth={barWidth}
+            snapGrid={snapGrid}
+            playheadTick={services.transport.position}
+            onExecute={execute}
+            onSelect={(id) => {
+              setSelectedClipId(null);
+              setSelectedAudioClipId(null);
+              selectionStore.setClips([id]);
+            }}
+          />
           {/* The intensity strip is a SIBLING of the clip lane, not its last
               child. Inside a fixed-height `.arr-lane` the 44px strip overflowed
               the clips (both `z-index: auto`, so tree order gave the strip the

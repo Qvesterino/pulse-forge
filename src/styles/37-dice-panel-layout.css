@@ -1,0 +1,129 @@
+/* DICE panel geometry follows its dock slot so split docks keep usable controls. */
+
+.dice-tray {
+  container: dice-panel / inline-size;
+  min-width: 0;
+}
+
+.dice-intent-row,
+.dice-intent-sliders {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr));
+  align-items: end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dice-intent-sliders {
+  align-items: center;
+  padding-block: 8px;
+}
+
+.dice-field,
+.dice-slider {
+  min-width: 0;
+}
+
+.dice-field select,
+.dice-field input:not([type="range"]) {
+  width: 100%;
+  min-width: 0;
+  min-height: 28px;
+}
+
+.dice-seed-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 32px;
+}
+
+.dice-seed-field input {
+  width: 100%;
+  min-width: 0;
+}
+
+.dice-seed-field button {
+  min-width: 32px;
+  min-height: 28px;
+  padding-inline: 4px;
+}
+
+.dice-slider input[type="range"] {
+  width: 100%;
+  min-width: 0;
+}
+
+.dice-roll-row {
+  gap: 8px;
+  min-width: 0;
+}
+
+.dice-big {
+  min-height: 36px;
+}
+
+.dice-jitter {
+  flex: 1 1 170px;
+  min-width: 150px;
+  margin-left: 0;
+}
+
+.dice-jitter label {
+  justify-content: space-between;
+}
+
+.dice-jitter input[type="range"] {
+  width: 100%;
+  min-width: 72px;
+  accent-color: var(--accent);
+}
+
+.dice-lock {
+  min-height: 28px;
+}
+
+.dice-history-strip {
+  min-width: 0;
+}
+
+.dice-preview {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.dice-preview-grid {
+  width: max-content;
+  min-width: 100%;
+}
+
+@container dice-panel (max-width: 560px) {
+  .dice-intent-row,
+  .dice-intent-sliders {
+    gap: 7px;
+  }
+
+  .dice-locks {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 92px), 1fr));
+    gap: 5px;
+  }
+
+  .dice-locks-label {
+    grid-column: 1 / -1;
+  }
+
+  .dice-lock {
+    width: 100%;
+    padding-inline: 4px;
+  }
+
+  .dice-history {
+    gap: 6px;
+  }
+}
+
+@container bottom-dock-slot (max-width: 560px) {
+  .dice-tray {
+    gap: 8px;
+    padding-inline: 10px;
+  }
+}

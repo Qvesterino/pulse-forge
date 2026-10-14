@@ -1,0 +1,62 @@
+/* Shared finishing for high-use dock controls and analysis surfaces. */
+
+:where(
+    .sequencer,
+    .inspector,
+    .mixer,
+    .devices-toolbar,
+    .arr-panel,
+    .mod-panel,
+    .dice-tray,
+    .intent-panel,
+    .export-panel,
+    .mastering-panel,
+    .midi-panel,
+    .reference-map-panel
+  )
+  :is(select, textarea, input:not([type="range"]):not([type="checkbox"]):not([type="radio"])):focus-visible {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: 2px;
+}
+
+.inspector-rail-toggle:focus-visible,
+.resize-grip:focus-visible,
+.dock-resize-handle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: 1px;
+}
+
+.dice-field > span,
+.dice-slider > span,
+.dice-locks-label,
+.dice-history-label {
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.mastering-overview-metrics > .mastering-overview-metric:nth-child(-n + 2) {
+  border-color: color-mix(in srgb, var(--hairline-strong, #fff) 36%, var(--hairline));
+  background: color-mix(in srgb, var(--surface-2) 38%, var(--surface-1));
+}
+
+.mastering-overview-metrics > .mastering-overview-metric:nth-child(-n + 2) > strong {
+  font-size: 16px;
+}
+
+.mastering-overview-action .mastering-overview-analyze:not(:disabled) {
+  min-height: 32px;
+  border-color: color-mix(in srgb, var(--accent) 78%, #fff);
+  background: linear-gradient(112deg, color-mix(in srgb, var(--accent) 82%, #fff), var(--accent) 66%);
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--on-accent, #17130c);
+}
+
+.mastering-overview-action .mastering-overview-analyze:disabled {
+  min-height: 32px;
+  background: var(--surface-1);
+  box-shadow: none;
+  color: var(--text-faint);
+}

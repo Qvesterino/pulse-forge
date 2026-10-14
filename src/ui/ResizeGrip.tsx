@@ -84,7 +84,9 @@ export function ResizeGrip({ region, ariaLabel, title, axis = "x", keyboardStep 
     event.preventDefault();
     draggingRef.current = true;
     const startPos = axis === "x" ? event.clientX : event.clientY;
-    startRef.current = { pos: startPos, value: readRegion(region) };
+    const currentValue = readRegion(region);
+    startRef.current = { pos: startPos, value: currentValue };
+    liveRef.current = currentValue;
 
     const onMove = (move: PointerEvent) => {
       if (!draggingRef.current) return;
@@ -108,7 +110,7 @@ export function ResizeGrip({ region, ariaLabel, title, axis = "x", keyboardStep 
     const stop = () => {
       draggingRef.current = false;
       // One write, on release: the store and the persisted copy settle here.
-      commit(liveRef.current);
+      if (liveRef.current !== startRef.current.value) commit(liveRef.current);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", stop);
       window.removeEventListener("pointercancel", stop);
@@ -120,16 +122,17 @@ export function ResizeGrip({ region, ariaLabel, title, axis = "x", keyboardStep 
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
     const step = event.shiftKey ? keyboardStep * 3 : keyboardStep;
+    const regionStep = axisRatio(region) ? step / spanFor(region) : step;
     // ArrowLeft means "move the boundary LEFT". For the right-hand inspector
     // that GROWS the column; for the split, slot A is on the left so it also
     // grows. Both regions therefore share one rule — mirroring the drag, which
     // is the invariant that keeps keyboard and mouse agreeing.
     if (event.key === "ArrowLeft") {
       event.preventDefault();
-      commit(clampRegion(readRegion(region) + step, boundsFor(region).min, boundsFor(region).max));
+      commit(clampRegion(readRegion(region) + regionStep, boundsFor(region).min, boundsFor(region).max));
     } else if (event.key === "ArrowRight") {
       event.preventDefault();
-      commit(clampRegion(readRegion(region) - step, boundsFor(region).min, boundsFor(region).max));
+      commit(clampRegion(readRegion(region) - regionStep, boundsFor(region).min, boundsFor(region).max));
     } else if (event.key === "Enter") {
       event.preventDefault();
       commit(defaultsFor(region));

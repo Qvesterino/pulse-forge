@@ -64,10 +64,17 @@ function createFilteredDoc(doc: ProjectDocument, trackId: string, includeRouting
 
   // Filter audioClips to only those on the frozen track/group so bounced stems are self-contained
   const filteredAudioClips = (doc.arrangement.audioClips ?? []).filter((c) => trackIds.has(c.trackId));
-  const filteredArrangement =
-    filteredAudioClips.length > 0
-      ? { ...doc.arrangement, clips: doc.arrangement.clips, audioClips: filteredAudioClips }
-      : doc.arrangement;
+  const filteredMidiClips = (doc.arrangement.midiClips ?? []).filter((clip) => trackIds.has(clip.trackId));
+  const filteredAutomationClips = (doc.arrangement.automationClips ?? []).filter((clip) =>
+    trackIds.has(clip.target.trackId),
+  );
+  const filteredArrangement = {
+    ...doc.arrangement,
+    clips: doc.arrangement.clips,
+    ...(doc.arrangement.audioClips ? { audioClips: filteredAudioClips } : {}),
+    ...(doc.arrangement.midiClips ? { midiClips: filteredMidiClips } : {}),
+    ...(doc.arrangement.automationClips ? { automationClips: filteredAutomationClips } : {}),
+  };
   return {
     ...doc,
     tracks: filteredTracks,

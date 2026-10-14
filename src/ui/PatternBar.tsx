@@ -395,7 +395,7 @@ export function PatternBar({
         <select
           className="pattern-length"
           aria-label="Pattern length"
-          title="Pattern length — 16 steps = 1 bar (long pads want 32+)"
+          title="Pattern length — 16 steps = 1 bar; max 128 steps = 8 bars. Use SONG + ARR for a full track."
           value={active.stepCount}
           onChange={(event) =>
             services.store.execute(setPatternLength(doc, activePatternId, Number(event.target.value)))
@@ -405,7 +405,6 @@ export function PatternBar({
           <option value={32}>32 · 2 bars</option>
           <option value={64}>64 · 4 bars</option>
           <option value={128}>128 · 8 bars</option>
-          <option value={256}>256 · 16 bars</option>
         </select>
         <select
           className="pattern-length"

@@ -100,6 +100,8 @@ export function markerClampPatch(
     0,
     ...scenes.map((sc) => (patterns.find((p) => p.id === sc.patternId)?.stepCount ?? 0) * STEP_TICKS),
     ...(arrangement.clips?.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS) ?? []),
+    ...(arrangement.midiClips?.map((c) => c.startTick + c.lengthTicks) ?? []),
+    ...(arrangement.automationClips?.map((c) => c.startTick + c.lengthTicks) ?? []),
   );
   let changed = false;
   const clamped = markers.map((m) => {

@@ -254,7 +254,7 @@
 
 .macro-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -764,7 +764,10 @@
 .statusbar {
   display: flex;
   align-items: center;
-  padding: 0 14px;
+  min-width: 0;
+  /* Keep the right-aligned performance readout clear of the floating QMR
+     control, which owns the lower-right 44px corner on every viewport. */
+  padding: 0 calc(66px + env(safe-area-inset-right, 0px)) 0 14px;
   background: var(--bg-panel);
   border-top: 1px solid var(--border);
   font-size: 10px;

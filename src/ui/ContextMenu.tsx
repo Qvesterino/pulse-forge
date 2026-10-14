@@ -3,11 +3,17 @@ import { useActivePatternId, useArrangement, useSelection, useSelectionStore, us
 import {
   clearSteps,
   deleteArrangementClip,
+  deleteAutomationClip,
   deleteAudioClip,
+  deleteMidiClip,
   deleteNote,
   deleteNotes,
   duplicateNotes,
   duplicatePattern,
+  duplicateArrangementClip,
+  duplicateAudioClip,
+  duplicateMidiClip,
+  duplicateAutomationClip,
   duplicateTimeRange,
   groupClips,
   setClipsLocked,
@@ -202,14 +208,16 @@ export function ContextMenu({
     !hasAudioClipSelection || selectedAudioClips.some((clip) => clip.muted !== true) ? "Mute" : "Unmute";
   // Lock is a BOTH-systems property; the label announces what the click does.
   const selectedAnyClip = selection.clipIds.length > 0;
+  const selectedTimelineClips = timelineItemsOf(doc).filter((clip) => selection.clipIds.includes(clip.id));
+  const clipLocked = (id: string) =>
+    doc.arrangement.clips.find((clip) => clip.id === id)?.locked === true ||
+    (doc.arrangement.audioClips ?? []).find((clip) => clip.id === id)?.locked === true ||
+    (doc.arrangement.midiClips ?? []).find((clip) => clip.id === id)?.locked === true ||
+    (doc.arrangement.automationClips ?? []).find((clip) => clip.id === id)?.locked === true;
   const allSelectedClipsLocked =
     selectedAnyClip &&
-    (doc.arrangement.clips.filter((c) => selection.clipIds.includes(c.id)).every((c) => c.locked === true) ||
-      (doc.arrangement.audioClips ?? [])
-        .filter((c) => selection.clipIds.includes(c.id))
-        .every((c) => c.locked === true) ||
-      (doc.arrangement.clips.filter((c) => selection.clipIds.includes(c.id)).length === 0 &&
-        (doc.arrangement.audioClips ?? []).filter((c) => selection.clipIds.includes(c.id)).length === 0));
+    selectedTimelineClips.length === selection.clipIds.length &&
+    selectedTimelineClips.every((clip) => clipLocked(clip.id));
   const clipLockLabel = allSelectedClipsLocked ? "Unlock" : "Lock";
 
   const handle = (action: string) => {
@@ -236,6 +244,8 @@ export function ContextMenu({
             const kind = kinds.get(clipId);
             if (kind === "scene") next = deleteArrangementClip(next, clipId).execute(next);
             else if (kind === "audio") next = deleteAudioClip(next, clipId).execute(next);
+            else if (kind === "midi") next = deleteMidiClip(next, clipId).execute(next);
+            else if (kind === "automation") next = deleteAutomationClip(next, clipId).execute(next);
           }
           if (next !== doc) {
             // Multiple selected clips are one user gesture and therefore one
@@ -252,6 +262,8 @@ export function ContextMenu({
             selectionStore.retainClips([
               ...next.arrangement.clips.map((clip) => clip.id),
               ...(next.arrangement.audioClips ?? []).map((clip) => clip.id),
+              ...(next.arrangement.midiClips ?? []).map((clip) => clip.id),
+              ...(next.arrangement.automationClips ?? []).map((clip) => clip.id),
             ]);
           }
         }
@@ -286,12 +298,16 @@ export function ContextMenu({
         const liveIds = selection.clipIds.filter(
           (id) =>
             doc.arrangement.clips.some((c) => c.id === id) ||
-            (doc.arrangement.audioClips ?? []).some((c) => c.id === id),
+            (doc.arrangement.audioClips ?? []).some((c) => c.id === id) ||
+            (doc.arrangement.midiClips ?? []).some((c) => c.id === id) ||
+            (doc.arrangement.automationClips ?? []).some((c) => c.id === id),
         );
         if (liveIds.length === 0) break;
         const anyUnlocked =
           doc.arrangement.clips.some((c) => liveIds.includes(c.id) && c.locked !== true) ||
-          (doc.arrangement.audioClips ?? []).some((c) => liveIds.includes(c.id) && c.locked !== true);
+          (doc.arrangement.audioClips ?? []).some((c) => liveIds.includes(c.id) && c.locked !== true) ||
+          (doc.arrangement.midiClips ?? []).some((c) => liveIds.includes(c.id) && c.locked !== true) ||
+          (doc.arrangement.automationClips ?? []).some((c) => liveIds.includes(c.id) && c.locked !== true);
         services.store.execute(setClipsLocked(doc, liveIds, anyUnlocked));
         break;
       }
@@ -317,6 +333,23 @@ export function ContextMenu({
             setRangeEditOpen(true);
             keepOpen = true;
           }
+        } else if (hasClips) {
+          const kinds = new Map(timelineItemsOf(doc).map((item) => [item.id, item.kind] as const));
+          let next = doc;
+          for (const id of selection.clipIds) {
+            const kind = kinds.get(id);
+            if (kind === "scene") next = duplicateArrangementClip(next, id).execute(next);
+            else if (kind === "audio") next = duplicateAudioClip(next, id).execute(next);
+            else if (kind === "midi") next = duplicateMidiClip(next, id).execute(next);
+            else if (kind === "automation") next = duplicateAutomationClip(next, id).execute(next);
+          }
+          if (next !== doc)
+            services.store.execute({
+              type: "duplicateClips",
+              label: "Duplicate clips",
+              execute: () => next,
+              undo: () => doc,
+            });
         } else if (hasNotes) {
           const sel = selection.noteSelections[0];
           if (sel) services.store.execute(duplicateNotes(doc, sel.trackId, sel.noteIds));

@@ -112,7 +112,7 @@ describe("ExportPanel MIDI export", () => {
     await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(1), { timeout: 10_000 });
     const anchor = container.querySelector("a[download*='.mid']") ?? { download: "" };
     // The download fired with a .mid filename and the status confirms it.
-    expect(screen.getByText(/MIDI exported/)).toBeInTheDocument();
+    expect(container.querySelector(".export-status")).toHaveTextContent(/MIDI exported/);
     expect(anchor).toBeTruthy();
   });
 });

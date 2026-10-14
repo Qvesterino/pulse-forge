@@ -1,6 +1,7 @@
 import type { IntentInput, IntentRole } from "./types";
 import type { IntentGenre } from "./types";
 import { matchAllArtistPresets, matchArtistPreset, parseVibeBlend } from "./artists";
+import { parseSunoFormat } from "./suno-format";
 
 /**
  * Natural language → IntentInput parser (goal: "dark rolling techno at 140
@@ -1061,7 +1062,9 @@ export function parseKeyPhrase(text: string): string | null {
  * Pure function — same text → same result.
  */
 export function parseIntentText(text: string): ParsedIntent {
-  const lower = ` ${deaccent(text)
+  const suno = parseSunoFormat(text);
+  const intentText = suno ? suno.preamble.join(" ").trim() : text;
+  const lower = ` ${deaccent(intentText)
     .replace(/[\s,.]+/g, " ")
     .trim()} `;
   const detected: string[] = [];
@@ -1073,7 +1076,7 @@ export function parseIntentText(text: string): ParsedIntent {
   // which only covers a small slice of the groove library. That is why the
   // multi-vibe blend above keeps both artist names in the text: the blend has
   // to reach MiniLM for the conditioning to see it.
-  const input: IntentInput = { text };
+  const input: IntentInput = { text: intentText };
 
   // Prime the semantic embedding channel now (fix C) rather than waiting for
   // the provider to ask. Between parse and generate the groove is resolved and
@@ -1085,7 +1088,9 @@ export function parseIntentText(text: string): ParsedIntent {
   // a head start, never a correctness dependency.
   // Lazy: a static import would pull the semantic client into the landing
   // route's static closure, which the client itself is built to avoid.
-  void import("./semantic-conditioning").then((module) => module.primeSemanticForText(text)).catch(() => undefined);
+  void import("./semantic-conditioning")
+    .then((module) => module.primeSemanticForText(intentText))
+    .catch(() => undefined);
 
   // ARTIST "type beat" preset (C1) — applied FIRST as the base: it sets
   // genre/style/mood/sliders/BPM, and the explicit-word steps below still

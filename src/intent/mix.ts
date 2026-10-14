@@ -860,7 +860,11 @@ export function parseEffectIntent(text: string): EffectIntent | null {
     )
   ) {
     direction = "remove";
-  } else if (/\bless\b|\bmenej/.test(lower)) {
+  } else if (
+    /\bless\b|\bmenej|\bease off\b|\bdial back\b|\bback off\b|\breduce\b|\breducing\b|\bturn(?:ing)? down\b|\bcut back\b/.test(
+      lower,
+    )
+  ) {
     direction = "less";
   }
 

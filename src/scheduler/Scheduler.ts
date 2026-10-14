@@ -2,7 +2,14 @@ import type { DrumTrack, Pattern, PlayMode, ProjectDocument } from "../project-m
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { ticksPerBar, ticksPerBeat } from "../project-model/schema";
 import { drumHitsInWindow } from "../project-model/groove";
-import { noteEventsInWindow, patternBaseTickForClip, sceneBaseTickForClip } from "../project-model/events";
+import {
+  arrangementAutomationSegmentsInWindow,
+  midiClipEventsInWindow,
+  noteEventsInWindow,
+  patternBaseTickForClip,
+  sceneBaseTickForClip,
+  type ScheduledNote,
+} from "../project-model/events";
 import { computeSceneIntensity } from "../project-model/intensity";
 import { audioClipsForPlayback } from "../project-model/audio-takes";
 import { markerCueTrackId } from "../project-model/markers";
@@ -51,6 +58,7 @@ export interface SchedulerDeps {
     relOf: (tick: number) => number,
     scheduleOffsetSec?: number,
     timeAt?: (tick: number) => number,
+    suppressedTargets?: ReadonlySet<string>,
   ): void;
   /**
    * Schedulable track modulators (random S&H / step) for the same window.
@@ -66,6 +74,14 @@ export interface SchedulerDeps {
     fromTick: number,
     toTick: number,
     sceneStartTick: number,
+    scheduleOffsetSec?: number,
+    timeAt?: (tick: number) => number,
+  ): void;
+  /** Apply an arrangement automation clip with its own tick origin. */
+  applyArrangementAutomationClip?(
+    clip: import("../project-model/types").ArrangementAutomationClip,
+    fromTick: number,
+    toTick: number,
     scheduleOffsetSec?: number,
     timeAt?: (tick: number) => number,
   ): void;
@@ -193,7 +209,13 @@ function resolveLoopEnd(transport: Transport, doc: ProjectDocument, mode: PlayMo
     // pattern; the document boundary repairs the invariant.
     return STEP_TICKS * (findActivePattern(doc)?.stepCount ?? 16);
   }
-  return Math.max(0, ...doc.arrangement.clips.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS));
+  return Math.max(
+    0,
+    ...doc.arrangement.clips.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS),
+    ...audioClipsForPlayback(doc.arrangement).map((c) => (c.startBar + c.lengthBars) * BAR_TICKS),
+    ...(doc.arrangement.midiClips ?? []).map((c) => c.startTick + c.lengthTicks),
+    ...(doc.arrangement.automationClips ?? []).map((c) => c.startTick + c.lengthTicks),
+  );
 }
 
 export class Scheduler {
@@ -1026,6 +1048,25 @@ export class Scheduler {
           automationCtx = { base: patternBase, patternTicks };
         }
       }
+      const scheduleOffsetSec = this.scheduleOffsetSec();
+      for (const clip of doc.arrangement.midiClips ?? []) {
+        const clipEnd = clip.startTick + clip.lengthTicks;
+        const from = Math.max(contentWindowStart, clip.startTick);
+        const to = Math.min(windowEnd, clipEnd);
+        if (to <= from || clip.muted) continue;
+        const pattern = patternsById.get(clip.patternId);
+        if (!pattern) continue;
+        const base = clip.startTick - (clip.phaseOffsetTicks ?? 0);
+        this.scheduleNoteEvents(
+          pattern,
+          midiClipEventsInWindow(doc, clip, from, to),
+          base,
+          timeAtForWindow,
+          now,
+          scheduleOffsetSec,
+          doc,
+        );
+      }
       if (!automationCtx) {
         const covering = clips.find((c) => {
           const cs = c.startBar * BAR_TICKS;
@@ -1107,6 +1148,34 @@ export class Scheduler {
           // events' musical times — in tempo-split windows this is the
           // piecewise map, so the seam stays exact for automation too.
           this.songTimeAt ?? ((tick: number) => transport.timeAtTick(tick)),
+          mode === "song"
+            ? new Set(
+                (doc.arrangement.automationClips ?? [])
+                  .filter((clip) => !clip.muted)
+                  .map(
+                    (clip) =>
+                      `${clip.target.kind}|${clip.target.trackId}|${clip.target.fxId ?? ""}|${clip.target.paramId ?? ""}`,
+                  ),
+              )
+            : undefined,
+        );
+      }
+    }
+
+    if (mode === "song" && this.deps.applyArrangementAutomationClip) {
+      const timeAt = this.songTimeAt ?? ((tick: number) => this.deps.getTransport().timeAtTick(tick));
+      const scheduleOffsetSec = this.scheduleOffsetSec();
+      for (const segment of arrangementAutomationSegmentsInWindow(
+        doc.arrangement.automationClips ?? [],
+        contentWindowStart,
+        windowEnd,
+      )) {
+        this.deps.applyArrangementAutomationClip(
+          segment.clip,
+          segment.fromTick,
+          segment.toTick,
+          scheduleOffsetSec,
+          timeAt,
         );
       }
     }
@@ -1140,13 +1209,9 @@ export class Scheduler {
     // on the NEW tempo integrated from the boundary, not on the not-yet-
     // re-anchored transport map).
     const timeAt = timeAtOverride ?? ((tick: number) => transport.timeAtTick(tick));
-    // Local seconds-per-tick from the SAME map that schedules the note's
-    // `when`: in a tempo-split window the transport still runs the OLD tempo
-    // until the flip, so `transport.secondsPerTick` gave notes started on the
-    // far side of the boundary (and its 1-tick neighbourhood) wrong LIVE
-    // durations while the offline render (per-clip windows) used the new
-    // tempo. A 1-tick delta of a piecewise-linear map is its exact local spt.
-    const sptAt = (tick: number) => timeAt(tick + 1) - timeAt(tick);
+    // The shared note scheduler maps both note start and note end through this
+    // window's tempo map, so a sustained note can cross a scene tempo seam
+    // without using the pre-seam BPM for its whole duration.
     const audible = (when: number) => when >= now - 0.002;
 
     for (const hit of drumHitsInWindow(doc, pattern, base, windowStart, windowEnd)) {
@@ -1176,7 +1241,28 @@ export class Scheduler {
       this.stats.scheduledEvents += 1;
     }
 
-    for (const event of noteEventsInWindow(pattern, base, windowStart, windowEnd)) {
+    this.scheduleNoteEvents(
+      pattern,
+      noteEventsInWindow(pattern, base, windowStart, windowEnd),
+      base,
+      timeAt,
+      now,
+      scheduleOffsetSec,
+      doc,
+    );
+  }
+
+  private scheduleNoteEvents(
+    pattern: Pattern,
+    events: ScheduledNote[],
+    base: number,
+    timeAt: (tick: number) => number,
+    now: number,
+    scheduleOffsetSec: number,
+    doc: ProjectDocument,
+  ): void {
+    const audible = (when: number) => when >= now - 0.002;
+    for (const event of events) {
       const track = this.tracksById(doc).get(event.trackId);
       if (!track || track.kind !== "instrument") continue;
       const when = timeAt(event.tick) + scheduleOffsetSec;
@@ -1199,7 +1285,7 @@ export class Scheduler {
         event.note.pitch,
         event.note.velocity,
         when,
-        event.note.duration * sptAt(event.tick),
+        timeAt(event.tick + event.note.duration) - timeAt(event.tick),
         slideFrom?.tick,
         slideFrom?.pitch,
         locks,
@@ -1211,14 +1297,14 @@ export class Scheduler {
         pitch: event.note.pitch,
         velocity: event.note.velocity,
         tick: event.tick,
-        duration: event.note.duration * sptAt(event.tick),
+        duration: timeAt(event.tick + event.note.duration) - timeAt(event.tick),
       });
       // MIDI output for instrument tracks
       if (this.deps.midiNoteOn && track.midiOutput?.enabled) {
         const ch = (track.midiOutput.channel || 1) - 1;
         this.deps.midiNoteOn(track.id, ch, event.note.pitch, Math.round(event.note.velocity * 127), when);
         if (this.deps.midiNoteOff) {
-          const noteOffWhen = when + event.note.duration * sptAt(event.tick);
+          const noteOffWhen = timeAt(event.tick + event.note.duration) + scheduleOffsetSec;
           this.deps.midiNoteOff(track.id, ch, event.note.pitch, noteOffWhen);
         }
       }

@@ -1,0 +1,503 @@
+/* Reference Map — premium hierarchy for the analysis surface.
+   The waveform stays matte; amber identifies actions and detected signals. */
+.reference-map-panel {
+  container: reference-map / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-3);
+  overflow-y: auto;
+  border-top: 1px solid var(--hairline);
+  background: var(--surface-0);
+}
+
+.reference-map-panel > .panel-header {
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  padding-bottom: var(--space-2);
+  margin-bottom: 0;
+}
+
+.reference-map-panel > .panel-header h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  letter-spacing: 0.01em;
+}
+
+.reference-map-panel > .panel-header .panel-sub {
+  max-width: 760px;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.reference-dropzone {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: 112px;
+  padding: var(--space-4) var(--space-5);
+  border: 1px dashed color-mix(in srgb, var(--text-dim) 48%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.reference-dropzone::before {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--hairline));
+  border-radius: 50%;
+  color: var(--accent);
+  content: "↥";
+  font-size: 20px;
+  line-height: 1;
+}
+
+.reference-dropzone > span {
+  width: min(100%, 760px);
+}
+
+.reference-dropzone:hover,
+.reference-dropzone.is-over {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-1));
+  color: var(--text);
+}
+
+.reference-dropzone:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: 2px;
+}
+
+.dock-slot > .reference-map-panel {
+  flex: 1 1 0;
+}
+
+/* An empty analysis surface should feel like a deliberate first step, not an
+   upload target stretched across an otherwise blank workspace. */
+.reference-map-panel:not(:has(.reference-primary)) {
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+}
+
+.reference-map-panel:not(:has(.reference-primary)) > .panel-header {
+  align-self: stretch;
+}
+
+.reference-map-panel:not(:has(.reference-primary)) > .reference-dropzone {
+  align-content: center;
+  align-items: center;
+  align-self: center;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  width: min(100%, 760px);
+  min-height: 104px;
+  margin-block: auto;
+  text-align: center;
+}
+
+.reference-map-panel:not(:has(.reference-primary)) > .reference-dropzone::before {
+  width: 42px;
+  height: 42px;
+}
+
+.reference-map-panel .panel-error {
+  margin: 0;
+}
+
+.reference-primary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.reference-primary-bpm,
+.reference-primary-key,
+.reference-confidence {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-height: 68px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.reference-primary-bpm {
+  color: var(--accent);
+  font: 700 24px var(--mono);
+}
+
+.reference-primary-key {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.reference-confidence {
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.reference-warnings {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: var(--space-2) var(--space-3) var(--space-2) 28px;
+  border-left: 2px solid var(--warn, #efb34f);
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.reference-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  align-items: end;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.reference-controls > label,
+.reference-apply-row > label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--text-dim);
+  font: 700 10px var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.reference-controls input,
+.reference-controls select,
+.reference-apply select {
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: var(--surface-0);
+  color: var(--text);
+  font: 12px var(--mono);
+}
+
+.reference-controls > button,
+.reference-reading button,
+.reference-apply button {
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: var(--surface-1);
+  color: var(--text-dim);
+  font: 700 10px var(--mono);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.reference-controls > button:hover:not(:disabled),
+.reference-reading button:hover:not(:disabled),
+.reference-apply button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.reference-controls > button:disabled,
+.reference-reading button:disabled,
+.reference-apply button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.reference-controls > [data-testid="reference-build"],
+.reference-controls > [data-testid="reference-build-go"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent, #17130c);
+}
+
+.reference-reading {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.reference-reading button {
+  flex: 1 1 auto;
+}
+
+.reference-reading button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 -2px 0 var(--accent);
+  color: var(--text);
+  opacity: 1;
+}
+
+.reference-reading button[aria-pressed="true"]:disabled {
+  cursor: default;
+}
+
+.reference-apply {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.reference-apply > h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.reference-apply-row {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.reference-apply-row > label {
+  min-width: min(100%, 170px);
+}
+
+.reference-apply-row input[type="range"] {
+  min-height: 30px;
+}
+
+.reference-apply-note,
+.reference-applied {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.reference-applied {
+  color: var(--accent);
+}
+
+.reference-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.reference-tabs button {
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-dim);
+  font: 700 10px var(--mono);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.reference-tabs button[aria-selected="true"] {
+  border-color: var(--hairline);
+  background: var(--surface-2);
+  box-shadow: inset 0 -2px 0 var(--accent);
+  color: var(--text);
+}
+
+.reference-tabs button:focus-visible,
+.reference-map-panel button:focus-visible,
+.reference-map-panel input:focus-visible,
+.reference-map-panel select:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: 2px;
+}
+
+.reference-tabpanel {
+  min-width: 0;
+  min-height: 140px;
+  padding: var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+}
+
+.reference-wave {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.reference-wave-bar {
+  position: absolute;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--text-dim) 55%, transparent);
+}
+
+.reference-beat {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.reference-seek {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+}
+
+.reference-map-panel .reference-summary,
+.reference-map-panel .panel-sub {
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+@container reference-map (max-width: 700px) {
+  .reference-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reference-dropzone {
+    min-height: 96px;
+    padding: var(--space-3);
+  }
+
+  .reference-map-panel:not(:has(.reference-primary)) > .reference-dropzone {
+    min-height: 96px;
+    margin-block: var(--space-2);
+  }
+}
+
+@container reference-map (max-width: 420px) {
+  .reference-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .reference-primary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  /* The mobile dock is an auto-height sheet rather than a flex-height slot. */
+  .dock-slot > .reference-map-panel {
+    flex: 0 0 auto;
+    min-height: 204px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reference-dropzone,
+  .reference-controls > button,
+  .reference-apply button {
+    transition: none;
+  }
+}
+
+/* Give dense action rows one clear starting point; keep every export available. */
+.export-buttons > .btn-export.export-master-action {
+  min-height: 34px;
+  padding-inline: 18px;
+  border-color: color-mix(in srgb, var(--accent) 78%, #fff);
+  background: linear-gradient(
+    112deg,
+    color-mix(in srgb, var(--accent) 82%, #fff),
+    var(--accent) 58%,
+    color-mix(in srgb, var(--accent) 82%, #c86b25)
+  );
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--on-accent, #17130c);
+  font-weight: 800;
+}
+
+.export-buttons > .btn-export.export-master-action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 65%, #fff);
+  background: linear-gradient(
+    112deg,
+    color-mix(in srgb, var(--accent) 88%, #fff),
+    var(--accent) 58%,
+    color-mix(in srgb, var(--accent) 88%, #c86b25)
+  );
+  color: var(--on-accent, #17130c);
+  filter: brightness(1.04);
+}
+
+.export-buttons > .btn-export.export-master-action:disabled {
+  box-shadow: none;
+}
+
+.export-buttons > .btn-export:not(.export-master-action):not(.btn-export-scorepack) {
+  border-color: var(--hairline);
+  color: var(--text-dim);
+}
+
+.export-buttons > .btn-export:not(.export-master-action):not(:disabled):hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.export-buttons > .btn-export-scorepack {
+  border-color: var(--hairline);
+  background: var(--surface-1);
+  color: var(--text-dim);
+}
+
+.export-buttons > .btn-export-scorepack:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .export-buttons > .btn-export.export-master-action:hover:not(:disabled) {
+    filter: none;
+  }
+}

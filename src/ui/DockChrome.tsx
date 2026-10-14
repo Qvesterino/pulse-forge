@@ -1,4 +1,4 @@
-import type { KeyboardEvent, PointerEvent } from "react";
+import { useEffect, useRef, type KeyboardEvent, type PointerEvent } from "react";
 import type { BottomPanel, DockState } from "./dockLayout";
 
 /**
@@ -88,6 +88,25 @@ export function DockChrome({
   onResizeStep,
 }: DockChromeProps) {
   const anyOpen = dock.slotA !== null || dock.slotB !== null;
+  const tabsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const tabs = tabsRef.current;
+    const selectedPanel = dock.slotB ?? dock.slotA;
+    if (!tabs || !selectedPanel || typeof ResizeObserver === "undefined") return;
+
+    const revealSelectedTab = () => {
+      const selectedTab = tabs.querySelector<HTMLButtonElement>(`[data-dock-tab="${selectedPanel}"]`);
+      if (selectedTab && typeof selectedTab.scrollIntoView === "function") {
+        selectedTab.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
+    };
+
+    revealSelectedTab();
+    const observer = new ResizeObserver(revealSelectedTab);
+    observer.observe(tabs);
+    return () => observer.disconnect();
+  }, [dock.slotA, dock.slotB]);
+
   const onGripKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (event.key === "ArrowUp") {
       event.preventDefault();
@@ -115,7 +134,7 @@ export function DockChrome({
         <span aria-hidden="true" />
         <span aria-hidden="true" />
       </button>
-      <div className="dock-tabs" role="tablist" aria-label="Bottom dock panels">
+      <div className="dock-tabs" role="tablist" aria-label="Bottom dock panels" ref={tabsRef}>
         {DOCK_TABS.map((tab) => {
           const inA = dock.slotA === tab.id;
           const inB = dock.slotB === tab.id;
@@ -129,6 +148,7 @@ export function DockChrome({
               aria-label={tab.ariaLabel}
               aria-selected={open}
               aria-controls={`dock-panel-${tab.id}`}
+              data-dock-tab={tab.id}
               className={"dock-tab" + (open ? " active" : "") + (inB ? " in-split" : "")}
               onClick={(event) => onToggle(tab.id, event.ctrlKey || event.metaKey)}
               title={tab.title}

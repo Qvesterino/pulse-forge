@@ -5124,7 +5124,7 @@ export function IntentPanel() {
           </div>
         </div>
       )}
-      <div className="intent-actions">
+      <div className="intent-actions intent-brief-actions">
         <label
           className="intent-detected"
           title="Local-only A/B study; the ranked bank stays hidden until your choice."

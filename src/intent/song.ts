@@ -19,7 +19,7 @@ import { instrumentTrackForRole } from "../ai/role-targets";
 import { findProgression, selectProgression, progressionsForGenre, expandProgression } from "../ai/harmony";
 import { NOTE_NAMES } from "../project-model/chords";
 import { attachProvenance } from "./providers/candidate";
-import { refreshPatternQuality } from "./quality";
+import { refreshPatternOutputHash, refreshPatternQuality } from "./quality";
 import type { RenderCandidateFn } from "./audio-feedback";
 import type { SampleBank } from "../sample-library/factory";
 import { applyTransitionToPattern } from "./transitions";
@@ -46,6 +46,7 @@ import type { VocalProfile } from "../vocal/types";
 import { EFFECT_META } from "../effects/definitions";
 import { createSongSectionIntent } from "./song-section-intent";
 import { hashString } from "../shared/rng";
+import { buildProsodyGrid, buildSyllableTimeline, shapeMelodyToLyrics } from "../vocal/prosody";
 import { songPreferenceCandidate } from "./song-preferences";
 import { scoreWithPersonalPreferences } from "./personal-ranker";
 import { scoreWithSongDramaturgyPreferences } from "./song-dramaturgy-ranker";
@@ -86,6 +87,8 @@ export interface SongSectionSpec {
    * arrangement is instrumentation, not just louder/quieter.
    */
   instrumentation: IntentRole[];
+  /** Transient lyric lines for this section; only their phrasing is applied to notes. */
+  lyrics?: string[];
   /**
    * Wave 3 — an FX request scoped to THIS section ("vinyl break"). The
    * effect chain is installed on the section's target track and gated to
@@ -2407,8 +2410,9 @@ export interface BuildSongOptions {
   /**
    * SUNO-format compatibility (W4): a bracketed prompt ([Verse]/[Chorus] +
    * lyric lines). When it parses, the bracket sequence REPLACES the planned
-   * form — bar counts scale with lyric length, section lyrics ride into the
-   * build for the hum→voice wave. Absent = the planned genre form.
+   * form — bar counts follow lyric phrasing and existing lead notes adopt the
+   * syllable rhythm. Raw lyric text remains transient and is not installed in
+   * the project. Absent = the planned genre form.
    */
   lyrics?: string;
   /**
@@ -2422,6 +2426,74 @@ export interface BuildSongOptions {
    * form builds exactly as before.
    */
   vocalProfile?: VocalProfile | null;
+}
+
+const MAX_LYRIC_SECTION_STEPS = 256;
+
+function lyricChunkSteps(lines: readonly string[]): number {
+  return buildProsodyGrid(buildSyllableTimeline(lines.join("\n"))).totalSteps;
+}
+
+function splitLyricsIntoPatternSizedChunks(lines: readonly string[]): string[][] {
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let currentSteps = 0;
+  for (const line of lines) {
+    const lineSteps = lyricChunkSteps([line]);
+    if (current.length > 0 && currentSteps + lineSteps > MAX_LYRIC_SECTION_STEPS) {
+      chunks.push(current);
+      current = [];
+      currentSteps = 0;
+    }
+    current.push(line);
+    currentSteps += lineSteps;
+  }
+  if (current.length > 0 || chunks.length === 0) chunks.push(current);
+  return chunks;
+}
+
+/** Shape a generated lead to the section's lyric rhythm without storing text in the project. */
+function applyLyricProsodyToPattern(
+  doc: ProjectDocument,
+  pattern: Pattern,
+  lyrics: readonly string[] | undefined,
+  leadTrackId: string | null,
+  sectionIntent: IntentSpec,
+): Pattern {
+  if (!lyrics || lyrics.length === 0 || !leadTrackId) return pattern;
+  const sourceNotes = [...(pattern.notes[leadTrackId] ?? [])].sort(
+    (a, b) => a.start - b.start || a.pitch - b.pitch || a.id.localeCompare(b.id),
+  );
+  if (sourceNotes.length === 0) return pattern;
+
+  const grid = buildProsodyGrid(buildSyllableTimeline(lyrics.join("\n")));
+  if (grid.notes.length === 0) return pattern;
+  const ticksPerStep = BAR_TICKS / 16;
+  const patternTicks = pattern.stepCount * ticksPerStep;
+  const shaped = shapeMelodyToLyrics(
+    sourceNotes.map((note) => ({ pitch: note.pitch, velocity: note.velocity })),
+    grid,
+  ).flatMap((note, index): NoteEvent[] => {
+    const start = note.startStep * ticksPerStep;
+    const duration = Math.min(note.durationSteps * ticksPerStep, patternTicks - start);
+    if (start < 0 || start >= patternTicks || duration <= 0) return [];
+    return [
+      {
+        id: `${pattern.id}-lyric-${index}`,
+        pitch: note.pitch,
+        start,
+        duration,
+        velocity: note.velocity,
+      },
+    ];
+  });
+  if (shaped.length === 0) return pattern;
+
+  const withProsody = { ...pattern, notes: { ...pattern.notes, [leadTrackId]: shaped } };
+  return refreshPatternOutputHash(
+    doc,
+    refreshPatternQuality(doc, withProsody, generateOptionsFromIntent(sectionIntent)),
+  );
 }
 
 const yieldToUi = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -2724,11 +2796,11 @@ export async function buildSong(
   const baseIntent = normalizeIntent(input);
   // SUNO-format compatibility (W4): a bracketed prompt ([Verse]/[Chorus] +
   // lyric lines) defines the form ITSELF — the bracket sequence is the
-  // arrangement, bar counts scale with lyric length (2 bars per lyric line,
-  // min 4), and each section's lyrics ride into the build (the hum→voice
-  // wave sings them). Takes precedence over the planned form.
+  // arrangement, bars follow the syllable grid (at least 4 per section),
+  // and generated lead notes adopt each section's lyric rhythm. Takes
+  // precedence over the planned form.
   const suno = options.lyrics ? parseSunoFormat(options.lyrics) : null;
-  const form: {
+  const plannedForm: {
     genre: IntentSpec["genre"];
     sections: SongSectionSpec[];
     totalBars: number;
@@ -2740,30 +2812,49 @@ export async function buildSong(
         // carrying the same lyrics. This is where the parsed `repeats`
         // finally meets the arrangement.
         sections: suno.sections.flatMap((section): SongSectionSpec[] => {
-          const bars = Math.max(4, section.lyrics.length * 2);
-          return Array.from({ length: section.repeats }, (_, copy) => ({
-            role: section.role,
-            label: section.repeats > 1 ? `${section.tag} (${copy + 1}/${section.repeats})` : section.tag,
-            bars,
-            intensity: section.role === "chorus" || section.role === "drop" ? 0.9 : 0.65,
-            transitionIn:
-              section.role === "chorus" || section.role === "drop"
-                ? ("fill" as const)
-                : section.role === "bridge"
-                  ? ("break" as const)
-                  : null,
-            energyDelta: section.role === "chorus" || section.role === "drop" ? 0.3 : 0,
-            densityDelta: section.role === "chorus" || section.role === "drop" ? 0.2 : 0,
-            complexityDelta: 0,
-            instrumentation: ["drums", "bass", "chords", "lead"],
-          }));
+          const chunks = splitLyricsIntoPatternSizedChunks(section.lyrics);
+
+          return Array.from({ length: section.repeats }, (_, copy) =>
+            chunks.map((lines, chunkIndex): SongSectionSpec => {
+              const bars = Math.max(4, Math.ceil(lyricChunkSteps(lines) / 16));
+              const repeatLabel = section.repeats > 1 ? `${section.tag} (${copy + 1}/${section.repeats})` : section.tag;
+              return {
+                role: section.role,
+                label: chunks.length > 1 ? `${repeatLabel} · part ${chunkIndex + 1}/${chunks.length}` : repeatLabel,
+                bars,
+                intensity: section.role === "chorus" || section.role === "drop" ? 0.9 : 0.65,
+                transitionIn:
+                  section.role === "chorus" || section.role === "drop"
+                    ? "fill"
+                    : section.role === "bridge"
+                      ? "break"
+                      : null,
+                energyDelta: section.role === "chorus" || section.role === "drop" ? 0.3 : 0,
+                densityDelta: section.role === "chorus" || section.role === "drop" ? 0.2 : 0,
+                complexityDelta: 0,
+                instrumentation: ["drums", "bass", "chords", "lead"],
+                ...(lines.length > 0 ? { lyrics: lines } : {}),
+              };
+            }),
+          ).flat();
         }),
-        totalBars: suno.sections.reduce(
-          (sum, section) => sum + Math.max(4, section.lyrics.length * 2) * section.repeats,
-          0,
-        ),
+        totalBars: suno.sections.reduce((sum, section) => {
+          const chunks = splitLyricsIntoPatternSizedChunks(section.lyrics);
+          const sectionBars = chunks.reduce(
+            (bars, lines) => bars + Math.max(4, Math.ceil(lyricChunkSteps(lines) / 16)),
+            0,
+          );
+          return sum + sectionBars * section.repeats;
+        }, 0),
       }
     : planSongForm(baseIntent, options.sections, options.length);
+  const formSections =
+    suno && options.sections ? applySectionRequests(plannedForm.sections, options.sections) : plannedForm.sections;
+  const form = {
+    ...plannedForm,
+    sections: formSections,
+    totalBars: suno ? formSections.reduce((sum, section) => sum + section.bars, 0) : plannedForm.totalBars,
+  };
   const requestedCandidates = options.candidateCount ?? 1;
   const candidateCount = Number.isFinite(requestedCandidates)
     ? Math.max(1, Math.min(5, Math.floor(requestedCandidates)))
@@ -2776,6 +2867,7 @@ export async function buildSong(
 
   const ALL_ROLES: IntentRole[] = ["drums", "bass", "chords", "lead"];
   const userRoles = baseIntent.roles ?? ALL_ROLES;
+  const leadTrack = instrumentTrackForRole(doc, "lead", baseIntent.targetTracks.instrumentTrackIds);
   // The song's harmonic identity — computed ONCE, shared by every section
   // (the bridge takes the related turn). Absent on user-override paths.
   const harmonyPlan =
@@ -2849,9 +2941,16 @@ export async function buildSong(
     }
     if (resolvedBpm === null) resolvedBpm = result.plan.resolvedBpm;
     if (key === null && result.plan.options.key) key = result.plan.options.key;
+    const pattern = applyLyricProsodyToPattern(
+      doc,
+      result.proposal.pattern,
+      section.lyrics,
+      sectionRoles.includes("lead") ? (leadTrack?.id ?? null) : null,
+      sectionIntent,
+    );
     sections.push({
       ...section,
-      pattern: result.proposal.pattern,
+      pattern,
       stepCount: section.bars * 16,
       roles: sectionRoles,
     });
@@ -2868,7 +2967,13 @@ export async function buildSong(
       if (laneBuild[index] === null) {
         laneBuild[index] = {
           ...section,
-          pattern: candidate.pattern,
+          pattern: applyLyricProsodyToPattern(
+            doc,
+            candidate.pattern,
+            section.lyrics,
+            sectionRoles.includes("lead") ? (leadTrack?.id ?? null) : null,
+            sectionIntent,
+          ),
           stepCount: section.bars * 16,
           roles: sectionRoles,
         };

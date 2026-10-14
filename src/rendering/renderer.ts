@@ -4,6 +4,7 @@ import { userSamplesReadyWithin } from "../persistence/UserSampleRepository";
 import type { SampleBank } from "../sample-library/factory";
 import type {
   AutomationPoint,
+  AutomationTarget,
   EffectInstance,
   EffectType,
   Pattern,
@@ -12,10 +13,19 @@ import type {
 } from "../project-model/types";
 import { BAR_TICKS, MASTER_EFFECT_OWNER_ID, PPQ, STEP_TICKS, getActivePattern } from "../project-model/types";
 import { drumHitsInWindow } from "../project-model/groove";
-import { noteEventsInWindow, patternBaseTickForClip, sceneBaseTickForClip } from "../project-model/events";
+import {
+  arrangementAutomationSegmentsInWindow,
+  automationClipEventsInWindow,
+  midiClipEventsInWindow,
+  noteEventsInWindow,
+  patternBaseTickForClip,
+  sceneBaseTickForClip,
+  type ScheduledNote,
+} from "../project-model/events";
 import { computeSceneIntensity } from "../project-model/intensity";
 import { ensureWorkletsForDoc } from "../audio-worklets/loader";
 import { audioClipsForPlayback } from "../project-model/audio-takes";
+import { targetParamDef } from "../project-model/targets";
 
 export type ExportQuality = "live" | "studio";
 
@@ -353,7 +363,15 @@ export function computeRenderTicks(doc: ProjectDocument, mode: PlayMode): number
       (max, c) => Math.max(max, c.startBar + c.lengthBars),
       0,
     );
-    const total = Math.max(end, audioEnd);
+    const midiEnd = (doc.arrangement.midiClips ?? []).reduce(
+      (max, clip) => Math.max(max, (clip.startTick + clip.lengthTicks) / BAR_TICKS),
+      0,
+    );
+    const automationEnd = (doc.arrangement.automationClips ?? []).reduce(
+      (max, clip) => Math.max(max, (clip.startTick + clip.lengthTicks) / BAR_TICKS),
+      0,
+    );
+    const total = Math.max(end, audioEnd, midiEnd, automationEnd);
     if (total > 0) return total * BAR_TICKS;
   }
   return getActivePattern(doc).stepCount * STEP_TICKS;
@@ -380,7 +398,12 @@ function collectClipWindows(doc: ProjectDocument, mode: PlayMode, arrangementOnl
         sceneId: clip.sceneId,
       });
     }
-    if (windows.length > 0 || arrangementOnly) return windows;
+    const hasArrangementContent =
+      doc.arrangement.clips.length > 0 ||
+      audioClipsForPlayback(doc.arrangement).length > 0 ||
+      (doc.arrangement.midiClips?.length ?? 0) > 0;
+    const hasAutomation = (doc.arrangement.automationClips?.length ?? 0) > 0;
+    if (windows.length > 0 || arrangementOnly || hasArrangementContent || hasAutomation) return windows;
   }
   const pattern = getActivePattern(doc);
   const patternTicks = pattern.stepCount * STEP_TICKS;
@@ -559,9 +582,25 @@ export async function renderProject(
     // BPM won for tempo-synced FX across the whole export.
     engine.setEffectiveBpm(window.bpm ?? null, timeAt(window.from));
     scheduleDrums(doc, window, timeAt, engine);
-    scheduleNotes(window, timeAt, 60 / ((window.bpm ?? doc.bpm) * PPQ), engine);
+    scheduleNotes(window, timeAt, engine);
   }
-  scheduleAutomation(doc, windows, timeAt, engine);
+  if (options.mode === "song") {
+    for (const clip of doc.arrangement.midiClips ?? []) {
+      const pattern = doc.patterns.find((candidate) => candidate.id === clip.patternId);
+      if (!pattern || clip.muted) continue;
+      const base = clip.startTick - (clip.phaseOffsetTicks ?? 0);
+      const window: ClipWindow = {
+        pattern,
+        base,
+        from: clip.startTick,
+        to: Math.min(totalTicks, clip.startTick + clip.lengthTicks),
+        sceneBase: base,
+        bpm: doc.bpm,
+      };
+      scheduleNotes(window, timeAt, engine, midiClipEventsInWindow(doc, clip, 0, totalTicks));
+    }
+  }
+  scheduleAutomation(doc, windows, timeAt, engine, options.mode, totalTicks);
   // Scene automation lanes (release roadmap 1.2): live applies these per
   // window via applySceneAutomationLane; offline schedules the lane's exact
   // shape through each owning clip's window via the same tempo map.
@@ -740,11 +779,11 @@ function scheduleDrums(
 function scheduleNotes(
   window: ClipWindow,
   timeAt: (tick: number) => number,
-  secondsPerTick: number,
   engine: AudioEngine,
+  events: ScheduledNote[] = noteEventsInWindow(window.pattern, window.base, window.from, window.to),
 ): void {
-  const { base, from, to } = window;
-  for (const event of noteEventsInWindow(window.pattern, base, from, to)) {
+  const { base } = window;
+  for (const event of events) {
     // FL slide note: glide from previous non-slide note's end (live==offline)
     const slideFrom = event.slideFrom;
     const step = Math.floor((event.tick - base) / 120);
@@ -758,7 +797,7 @@ function scheduleNotes(
       event.note.pitch,
       event.note.velocity,
       timeAt(event.tick),
-      event.note.duration * secondsPerTick,
+      timeAt(event.tick + event.note.duration) - timeAt(event.tick),
       slideFrom?.tick,
       slideFrom?.pitch,
       locks,
@@ -915,37 +954,53 @@ function scheduleAutomation(
   windows: ClipWindow[],
   timeAt: (tick: number) => number,
   engine: AudioEngine,
+  mode: PlayMode,
+  totalTicks: number,
 ): void {
-  if (doc.automation.length === 0 || windows.length === 0) return;
+  const automationClips = mode === "song" ? (doc.arrangement.automationClips ?? []) : [];
+  const automationClipTargets = new Set(
+    automationClips.filter((clip) => !clip.muted).map((clip) => automationTargetKey(clip.target)),
+  );
   for (const lane of doc.automation) {
+    if (mode === "song" && automationClipTargets.has(automationTargetKey(lane.target))) continue;
+    if (windows.length === 0) continue;
     if (lane.points.length === 0) continue;
     const expanded = expandAutomationAcrossWindows(lane.points, windows);
     if (expanded.length === 0) continue;
-    switch (lane.target.kind) {
-      case "trackGain":
-        engine.scheduleTrackAutomation(lane.target.trackId, "gain", expanded, timeAt);
-        break;
-      case "trackPan":
-        engine.scheduleTrackAutomation(lane.target.trackId, "pan", expanded, timeAt);
-        break;
-      case "fxParam": {
-        if (!lane.target.fxId) break;
-        engine.scheduleDeviceAutomation(
-          lane.target.trackId,
-          "fx",
-          lane.target.fxId,
-          lane.target.paramId,
-          expanded,
-          timeAt,
-        );
-        break;
-      }
-      case "instParam": {
-        engine.scheduleDeviceAutomation(lane.target.trackId, "inst", undefined, lane.target.paramId, expanded, timeAt);
-        break;
-      }
-    }
+    engine.scheduleAutomationTarget(lane.target, expanded, timeAt);
   }
+  const clipEventsByTarget = new Map<string, { target: AutomationTarget; points: Map<number, number> }>();
+  for (const segment of arrangementAutomationSegmentsInWindow(automationClips, 0, totalTicks)) {
+    const { clip } = segment;
+    const events = automationClipEventsInWindow(
+      clip,
+      segment.fromTick,
+      segment.toTick,
+      targetDefault(doc, clip.target),
+    );
+    if (events.length === 0) continue;
+    const key = automationTargetKey(clip.target);
+    let resolved = clipEventsByTarget.get(key);
+    if (!resolved) {
+      resolved = { target: clip.target, points: new Map() };
+      clipEventsByTarget.set(key, resolved);
+    }
+    // Segment order is chronological, so the later segment wins at shared
+    // boundaries and matches live scheduling when the active clip changes.
+    for (const event of events) resolved.points.set(event.tick, event.value);
+  }
+  for (const { target, points } of clipEventsByTarget.values()) {
+    const events = [...points].map(([tick, value]) => ({ tick, value })).sort((a, b) => a.tick - b.tick);
+    if (events.length > 0) engine.scheduleAutomationTarget(target, events, timeAt);
+  }
+}
+
+function automationTargetKey(target: AutomationTarget): string {
+  return `${target.kind}|${target.trackId}|${target.fxId ?? ""}|${target.paramId ?? ""}`;
+}
+
+function targetDefault(doc: ProjectDocument, target: AutomationTarget): number {
+  return targetParamDef(doc, target)?.default ?? (target.kind === "trackGain" ? 1 : 0);
 }
 
 /**

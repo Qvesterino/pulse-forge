@@ -42,6 +42,20 @@ describe("targeted effect intents (D1 v2a)", () => {
     expect(parseEffectIntent("bez reverbU na basi")!.direction).toBe("remove");
   });
 
+  it("recognizes English reduction idioms for targeted effects", () => {
+    for (const text of [
+      "Ease off the room reverb on the lead",
+      "Dial back the reverb on the lead",
+      "Reduce reverb on the lead",
+      "Turn down the reverb on the lead",
+    ]) {
+      const parsed = parseEffectIntent(text);
+      expect(parsed?.effectType, text).toBe("reverb");
+      expect(parsed?.targets, text).toContain("lead");
+      expect(parsed?.direction, text).toBe("less");
+    }
+  });
+
   it("non-effect text returns null", () => {
     expect(parseEffectIntent("dark rolling techno at 140")).toBeNull();
     expect(parseEffectIntent("travis scott type beat")).toBeNull();

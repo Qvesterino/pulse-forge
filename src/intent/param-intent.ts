@@ -17,7 +17,7 @@
  * Apply compiles into existing MixDecisions (add-if-missing + clamp +
  * setEffectParam + ONE snapshot) — no new command machinery.
  */
-import type { EffectType } from "../effects/types";
+import type { EffectType } from "../project-model/types";
 import type { ParamDef } from "../effects/types";
 import { EFFECT_META, clampEffectParam, defaultParamsOf } from "../effects/definitions";
 import type { Command } from "../commands/types";
@@ -275,6 +275,52 @@ export function parseParamIntent(text: string): ParamIntent | null {
     amount,
     ...(percent != null ? { percent } : {}),
     detected,
+  };
+}
+
+const VALID_MIX_TARGETS: readonly MixTarget[] = ["drums", "bass", "chords", "lead", "vocal"];
+
+/**
+ * Rebuild a full ParamIntent from the MODEL's decoded action record (param
+ * wave P2). The model emits only the closed enums + numbers; this resolves
+ * role → paramId, re-applies the primary-knob shadow rule and the clamps —
+ * the same guards the parser runs, so a model hit can never bypass them.
+ * Null ⇒ the resolver abstains (deterministic layer owns the row).
+ */
+export function paramIntentFromModel(
+  effect: string,
+  role: string,
+  targets: readonly string[],
+  mode: "set" | "more" | "less",
+  value?: number,
+  percent?: number,
+): ParamIntent | null {
+  const def = PARAM_ROLES[role as ParamRole];
+  const effectType = effect as EffectType;
+  if (!def || !def.params[effectType]) return null;
+  const paramId = def.params[effectType] as string;
+  if (EFFECT_KNOB[effectType] === paramId) return null; // primary ⇒ effect layer
+  const param = paramDefOf(effectType, paramId);
+  if (!param) return null;
+  const validTargets = targets.filter((target): target is MixTarget =>
+    (VALID_MIX_TARGETS as readonly string[]).includes(target),
+  );
+  if (validTargets.length === 0) return null;
+  const clampedPercent = percent === undefined ? undefined : Math.max(0, Math.min(100, Math.round(percent)));
+  const clampedValue =
+    mode === "set" && value !== undefined && Number.isFinite(value)
+      ? clampEffectParam(effectType, paramId, value)
+      : undefined;
+  return {
+    effectType,
+    role: role as ParamRole,
+    paramId,
+    targets: validTargets,
+    mode,
+    ...(clampedValue !== undefined ? { value: clampedValue } : {}),
+    amount: "medium",
+    ...(clampedPercent !== undefined ? { percent: clampedPercent } : {}),
+    detected: [`${role} → ${effectType}.${paramId}`, `→ ${validTargets.join("+")}`],
   };
 }
 

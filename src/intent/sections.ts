@@ -2,6 +2,7 @@ import type { SceneRole } from "../project-model/types";
 import type { ProductionConcept, ProductionIntent, ProductionTarget } from "./production";
 import { CONCEPTS } from "./production";
 import type { SongSectionSpec } from "./song";
+import { parseSunoFormat } from "./suno-format";
 
 /**
  * SECTION VOCABULARY (wave 2): the beatmaker names the passages in the
@@ -149,6 +150,18 @@ const clampSectionBars = (bars: number): number => Math.max(2, Math.min(16, bars
  * when the sentence carries no section vocabulary at all.
  */
 export function parseSectionRequests(text: string): SectionParse | null {
+  const suno = parseSunoFormat(text);
+  if (suno) {
+    const preamble = suno.preamble.join(" ").trim();
+    return (
+      parseSectionRequests(preamble) ?? {
+        requests: [],
+        scopedFx: [],
+        remainingText: preamble,
+      }
+    );
+  }
+
   let working = ` ${text.replace(/[\s,.]+/g, " ").trim()} `;
   const requests: SectionRequest[] = [];
   const scopedFx: ScopedFx[] = [];

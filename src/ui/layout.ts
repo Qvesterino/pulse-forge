@@ -112,9 +112,10 @@ export function applyLayoutToDocument(next: LayoutState): void {
     root.style.setProperty("--user-steps-label", `${next.sequencerLabelWidth}px`);
   }
 
-  // These two have no competing media query today, so an inline value is safe
-  // and keeps the value exact.
+  // These geometry values have no competing media query, so inline values keep
+  // them exact.
   root.style.setProperty("--inspector-width", `${next.inspectorWidth}px`);
+  root.style.setProperty("--dock-split-ratio", String(next.dockSplitRatio));
   root.style.setProperty("--rack-columns", String(next.rackColumns));
   root.style.setProperty("--type-scale", String(next.typeScale));
 

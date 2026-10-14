@@ -50,6 +50,14 @@ describe("prosody grid", () => {
     const last = grid.notes[grid.notes.length - 1];
     expect(last.startStep + last.durationSteps).toBeLessThanOrEqual(grid.lineSteps + 4);
   });
+
+  it("keeps every syllable in a dense rap line and expands the phrase grid", () => {
+    const grid = buildProsodyGrid(buildSyllableTimeline(Array.from({ length: 40 }, () => "la").join(" ")));
+    expect(grid.notes).toHaveLength(40);
+    expect(grid.totalSteps).toBe(64);
+    expect(new Set(grid.notes.map((note) => note.startStep)).size).toBe(40);
+    expect(grid.notes.every((note) => note.startStep + note.durationSteps <= grid.totalSteps)).toBe(true);
+  });
 });
 
 describe("shapeMelodyToLyrics", () => {
@@ -73,6 +81,8 @@ describe("shapeMelodyToLyrics", () => {
 
   it("empty melody or empty grid is honest-empty", () => {
     expect(shapeMelodyToLyrics([], buildProsodyGrid(buildSyllableTimeline("la la")))).toEqual([]);
-    expect(shapeMelodyToLyrics([{ pitch: 60, velocity: 0.7 }], { notes: [], lineSteps: 32, lineCount: 0 })).toEqual([]);
+    expect(
+      shapeMelodyToLyrics([{ pitch: 60, velocity: 0.7 }], { notes: [], lineSteps: 32, lineCount: 0, totalSteps: 0 }),
+    ).toEqual([]);
   });
 });

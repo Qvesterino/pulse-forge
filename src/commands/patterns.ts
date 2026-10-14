@@ -16,7 +16,8 @@ import {
 import type { Pattern } from "../project-model/types";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
-import { cloneStepMeta, markerClampPatch } from "./docOps";
+import { cloneStepMeta, markerClampPatch, unlinkMarkersOfClips } from "./docOps";
+import { clipGroupsWithoutIds } from "./clipGroups";
 
 /* ---------------- patterns ---------------- */
 
@@ -90,16 +91,27 @@ export function deletePattern(doc: ProjectDocument, patternId: string): Command 
   // Remove them (and any arrangement clips referencing them) with it.
   const removedSceneIds = new Set(doc.scenes.filter((s) => s.patternId === patternId).map((s) => s.id));
   const scenes = removedSceneIds.size > 0 ? doc.scenes.filter((s) => !removedSceneIds.has(s.id)) : doc.scenes;
+  const removedSceneClips = doc.arrangement.clips.filter((clip) => removedSceneIds.has(clip.sceneId));
+  const removedMidiClips = (doc.arrangement.midiClips ?? []).filter((clip) => clip.patternId === patternId);
+  const removedClipIds = [...removedSceneClips, ...removedMidiClips].map((clip) => clip.id);
+  const sceneClips = doc.arrangement.clips.filter((clip) => !removedSceneIds.has(clip.sceneId));
+  const clipGroups = clipGroupsWithoutIds(doc.arrangement.clipGroups, removedClipIds);
   const arrangement =
-    removedSceneIds.size > 0 && doc.arrangement.clips.some((c) => removedSceneIds.has(c.sceneId))
+    removedClipIds.length > 0
       ? {
-          clips: doc.arrangement.clips.filter((c) => !removedSceneIds.has(c.sceneId)),
-          ...(sanitizeArrangementTransitions(
-            doc.arrangement.transitions,
-            doc.arrangement.clips.filter((c) => !removedSceneIds.has(c.sceneId)),
-          ) ?? {}),
+          ...doc.arrangement,
+          clips: sceneClips,
+          ...(removedSceneClips.length > 0
+            ? (sanitizeArrangementTransitions(doc.arrangement.transitions, sceneClips) ?? {})
+            : {}),
+          ...(doc.arrangement.midiClips
+            ? { midiClips: doc.arrangement.midiClips.filter((clip) => clip.patternId !== patternId) }
+            : {}),
+          ...(clipGroups ? { clipGroups } : {}),
+          ...(doc.arrangement.clipGroups && !clipGroups ? { clipGroups: undefined } : {}),
         }
       : doc.arrangement;
+  const markers = unlinkMarkersOfClips(doc.markers, new Set(removedClipIds));
   // Audit 08 D4: if the cascade emptied the scene list, synthesize a
   // deterministic default scene IN-COMMAND — normalize's backfill mints a
   // fresh-uid "Scene A" outside the delta, resurrecting a phantom scene
@@ -116,6 +128,7 @@ export function deletePattern(doc: ProjectDocument, patternId: string): Command 
     ...(doc.sceneAutomation
       ? { sceneAutomation: doc.sceneAutomation.filter((l) => !removedSceneIds.has(l.sceneId)) }
       : {}),
+    ...(markers ? { markers } : {}),
     // Audit 08 D3: clamp markers to the shrunken project end IN-COMMAND so
     // undo restores their ticks (normalize clamps them outside any delta).
     ...markerClampPatch(doc.markers, finalScenes, remaining, arrangement),

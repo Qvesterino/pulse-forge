@@ -9,9 +9,9 @@
  *   We are the ones who light the flame
  *
  * `parseSunoFormat` reads that structure: bracket tags → section roles in
- * ORDER (the sequence IS the form), the lines between tags → the section's
- * lyrics, and each section's bar count scales with its lyric length (the
- * W2 prosody default: 2 bars per lyric line). Pure and deterministic.
+ * ORDER (the sequence IS the form), and the lines between tags → section
+ * lyrics. The song builder derives bars from its prosody grid and applies
+ * syllable timing to generated lead notes. Pure and deterministic.
  */
 
 import type { SceneRole } from "../project-model/types";

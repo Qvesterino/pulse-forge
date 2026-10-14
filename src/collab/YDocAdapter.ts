@@ -9,6 +9,7 @@
  */
 import * as Y from "yjs";
 import type {
+  ArrangementAutomationClip,
   ArrangementClip,
   ArrangementTransition,
   AudioClip,
@@ -24,6 +25,7 @@ import type {
   MacroMapping,
   Marker,
   MasterConfig,
+  MidiClip,
   MidiConfig,
   NoteEvent,
   Pattern,
@@ -74,6 +76,16 @@ function yMapToProject(m: Y.Map<unknown>): ProjectDocument {
           ? {
               audioClips: yArrToList(arrangement.get("audioClips") as Y.Array<unknown>).map(
                 (v) => plainValue(v) as unknown as AudioClip,
+              ),
+            }
+          : {}),
+        ...(arrangement?.has("midiClips")
+          ? { midiClips: yArrToList(arrangement.get("midiClips") as Y.Array<unknown>).map(yMapToMidiClip) }
+          : {}),
+        ...(arrangement?.has("automationClips")
+          ? {
+              automationClips: yArrToList(arrangement.get("automationClips") as Y.Array<unknown>).map(
+                yMapToAutomationClip,
               ),
             }
           : {}),
@@ -294,6 +306,34 @@ function yMapToClip(m: unknown): ArrangementClip {
     ...(map.has("phaseOffsetTicks") ? { phaseOffsetTicks: map.get("phaseOffsetTicks") as number } : {}),
     ...(map.has("sceneOffsetTicks") ? { sceneOffsetTicks: map.get("sceneOffsetTicks") as number } : {}),
     loop: map.get("loop") as boolean | undefined,
+  };
+}
+
+function yMapToMidiClip(m: unknown): MidiClip {
+  const map = m as Y.Map<unknown>;
+  return {
+    id: map.get("id") as string,
+    trackId: map.get("trackId") as string,
+    patternId: map.get("patternId") as string,
+    startTick: map.get("startTick") as number,
+    lengthTicks: map.get("lengthTicks") as number,
+    ...(map.has("phaseOffsetTicks") ? { phaseOffsetTicks: map.get("phaseOffsetTicks") as number } : {}),
+    ...(map.has("muted") ? { muted: map.get("muted") as boolean } : {}),
+    ...(map.has("locked") ? { locked: map.get("locked") as boolean } : {}),
+  };
+}
+
+function yMapToAutomationClip(m: unknown): ArrangementAutomationClip {
+  const map = m as Y.Map<unknown>;
+  return {
+    id: map.get("id") as string,
+    target: yMapToObj(map.get("target") as Y.Map<unknown>) as unknown as ArrangementAutomationClip["target"],
+    startTick: map.get("startTick") as number,
+    lengthTicks: map.get("lengthTicks") as number,
+    points: yArrToList(map.get("points") as Y.Array<unknown>).map(yPointToAutomation),
+    ...(map.has("phaseOffsetTicks") ? { phaseOffsetTicks: map.get("phaseOffsetTicks") as number } : {}),
+    ...(map.has("muted") ? { muted: map.get("muted") as boolean } : {}),
+    ...(map.has("locked") ? { locked: map.get("locked") as boolean } : {}),
   };
 }
 
@@ -853,6 +893,26 @@ export function applyProjectToYMap(_oldDoc: ProjectDocument, newDoc: ProjectDocu
   } else if (arrangement.has("audioClips")) {
     arrangement.delete("audioClips");
   }
+  if (newDoc.arrangement.midiClips !== undefined) {
+    syncIdList(
+      ensureChildArray(arrangement, "midiClips"),
+      newDoc.arrangement.midiClips,
+      syncMidiClipEntity,
+      midiClipToYMap,
+    );
+  } else if (arrangement.has("midiClips")) {
+    arrangement.delete("midiClips");
+  }
+  if (newDoc.arrangement.automationClips !== undefined) {
+    syncIdList(
+      ensureChildArray(arrangement, "automationClips"),
+      newDoc.arrangement.automationClips,
+      syncAutomationClipEntity,
+      automationClipToYMap,
+    );
+  } else if (arrangement.has("automationClips")) {
+    arrangement.delete("automationClips");
+  }
   if (newDoc.arrangement.transitions !== undefined) {
     syncIdList(
       ensureChildArray(arrangement, "transitions"),
@@ -1125,6 +1185,48 @@ function clipToYMap(c: ArrangementClip): Y.Map<unknown> {
   if (c.sceneOffsetTicks !== undefined) m.set("sceneOffsetTicks", c.sceneOffsetTicks);
   if (c.loop !== undefined) m.set("loop", c.loop);
   return m;
+}
+
+function syncMidiClipEntity(target: Y.Map<unknown>, clip: MidiClip): void {
+  syncPlainFields(target, clip as unknown as Record<string, unknown>);
+}
+
+function syncAutomationClipEntity(target: Y.Map<unknown>, clip: ArrangementAutomationClip): void {
+  setIfChanged(target, "startTick", clip.startTick);
+  setIfChanged(target, "lengthTicks", clip.lengthTicks);
+  setOrDelete(target, "phaseOffsetTicks", clip.phaseOffsetTicks);
+  setOrDelete(target, "muted", clip.muted);
+  setOrDelete(target, "locked", clip.locked);
+  syncPlainFields(ensureChildMap(target, "target"), clip.target as unknown as Record<string, unknown>);
+  syncPoints(ensureChildArray(target, "points"), clip.points);
+}
+
+function automationClipToYMap(clip: ArrangementAutomationClip): Y.Map<unknown> {
+  const map = new Y.Map<unknown>();
+  map.set("id", clip.id);
+  map.set("startTick", clip.startTick);
+  map.set("lengthTicks", clip.lengthTicks);
+  if (clip.phaseOffsetTicks !== undefined) map.set("phaseOffsetTicks", clip.phaseOffsetTicks);
+  if (clip.muted !== undefined) map.set("muted", clip.muted);
+  if (clip.locked !== undefined) map.set("locked", clip.locked);
+  const target = new Y.Map<unknown>();
+  map.set("target", target);
+  for (const [key, value] of Object.entries(clip.target)) target.set(key, value);
+  const points = new Y.Array<unknown>();
+  map.set("points", points);
+  for (const point of clip.points) points.push([objToYMap(point as unknown as Record<string, unknown>)]);
+  return map;
+}
+
+function midiClipToYMap(clip: MidiClip): Y.Map<unknown> {
+  const map = new Y.Map<unknown>();
+  // New entities are inserted into their parent Y.Array after this factory
+  // returns. Avoid reading from an unattached Y.Map here: Yjs emits an
+  // "Invalid access" warning for .get() on a type that has no document yet.
+  for (const [key, value] of Object.entries(clip)) {
+    if (value !== undefined) map.set(key, value);
+  }
+  return map;
 }
 
 function transitionToYMap(t: ArrangementTransition): Y.Map<unknown> {

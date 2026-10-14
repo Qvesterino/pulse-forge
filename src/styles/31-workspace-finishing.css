@@ -1,0 +1,74 @@
+/* Sequencer and Inspector finishing pass. Keep the grid matte and use the
+   existing theme tokens for interaction, labels, and section boundaries. */
+
+.sequencer .ruler-label-title {
+  color: var(--text-dim);
+  font-size: 10px;
+  letter-spacing: 0.8px;
+}
+
+.sequencer-ruler {
+  border-bottom-color: var(--hairline);
+  box-shadow: 0 3px 5px -5px rgba(0, 0, 0, 0.5);
+}
+
+.sequencer-ruler .beat-focus-toggle,
+.sequencer-ruler .cheat-toggle {
+  min-width: 24px;
+  min-height: 24px;
+  height: 24px;
+  padding-inline: 6px;
+  font-size: 10px;
+}
+
+.step-selection-toolbar {
+  border-left-color: var(--accent);
+}
+
+.sequencer .step:focus-visible,
+.sequencer .row-pad:focus-visible,
+.sequencer .track-header-name:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 84%, #fff);
+  outline-offset: 2px;
+}
+
+.inspector .panel-title {
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.inspector-control-mode {
+  gap: 4px;
+  padding: 4px 0 8px;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  border-radius: 0;
+  background: transparent;
+}
+
+.inspector-control-mode-label {
+  color: var(--text-dim);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.inspector-control-mode .btn-small {
+  min-height: 28px;
+  height: 28px;
+  padding-inline: 10px;
+  border-radius: var(--radius-sm);
+}
+
+.inspector .inspector-subtitle {
+  padding-left: 8px;
+  border-left: 2px solid var(--hairline-strong, var(--border));
+  color: var(--text-dim);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  line-height: 1.3;
+}
+
+.inspector .field-label,
+.inspector .slider-label {
+  color: var(--text-dim);
+}

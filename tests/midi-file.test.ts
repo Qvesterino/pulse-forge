@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { MidiParseError, parseMidiFile, writeMidiFile } from "../src/midi/midiFile";
-import { importMidiCommand, patternToMidi } from "../src/midi/midiProject";
+import { arrangementToMidi, importMidiCommand, patternToMidi } from "../src/midi/midiProject";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { STEP_TICKS, type DrumTrack } from "../src/project-model/types";
 
@@ -266,6 +266,45 @@ describe("project → MIDI export", () => {
     const starts = new Set(drums.notes.map((n) => n.startTick));
     for (const start of starts) expect(start % STEP_TICKS).toBe(0);
     for (const note of drums.notes) expect(note.endTick - note.startTick).toBe(STEP_TICKS);
+  });
+
+  it("exports arrangement scene clips and independent MIDI lanes across the song", () => {
+    const source = createProjectFromTemplate("house");
+    const track = source.tracks.find((candidate) => candidate.kind === "instrument");
+    const scene = source.scenes[0];
+    expect(track?.kind).toBe("instrument");
+    expect(scene).toBeTruthy();
+    if (!track || track.kind !== "instrument" || !scene) return;
+    const pattern = source.patterns.find((candidate) => candidate.id === source.activePatternId)!;
+    const doc = {
+      ...source,
+      patterns: source.patterns.map((candidate) =>
+        candidate.id === pattern.id
+          ? {
+              ...candidate,
+              stepCount: 16,
+              notes: {
+                ...candidate.notes,
+                [track.id]: [{ id: "export-note", pitch: 41, start: 0, duration: 360, velocity: 0.8 }],
+              },
+            }
+          : candidate,
+      ),
+      scenes: source.scenes.map((candidate) => (candidate.id === scene.id ? { ...candidate, bpm: 96 } : candidate)),
+      arrangement: {
+        ...source.arrangement,
+        clips: [{ id: "scene-clip", sceneId: scene.id, startBar: 0, lengthBars: 1 }],
+        midiClips: [{ id: "midi-clip", trackId: track.id, patternId: pattern.id, startTick: 3840, lengthTicks: 3840 }],
+      },
+    };
+    const parsed = parseMidiFile(arrangementToMidi(doc));
+    expect(parsed.bpm).toBe(96);
+    const instrument = parsed.tracks.find((candidate) => candidate.name === track.name)!;
+    expect(instrument.notes.map(({ pitch, startTick, endTick }) => [pitch, startTick, endTick])).toEqual([
+      [41, 0, 360],
+      [41, 3840, 4200],
+      [41, 5760, 6120],
+    ]);
   });
 });
 

@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { autoArrangeSong, assistVary, setSceneBpm } from "../src/commands/commands";
 import { createDefaultProject } from "../src/project-model/schema";
 import { sceneRoleOf } from "../src/project-model/schema";
+import { BAR_TICKS } from "../src/project-model/types";
+import { sceneSecondsToBars } from "../src/project-model/scene-time";
+import { computeRenderTicks } from "../src/rendering/renderer";
 import type { ProjectDocument } from "../src/project-model/types";
 
 /** Project with named scenes — sceneRoleOf infers roles from names. */
@@ -47,6 +50,34 @@ describe("autoArrangeSong", () => {
     for (const clip of next.arrangement.clips) {
       expect(doc.scenes.some((s) => s.id === clip.sceneId)).toBe(true);
     }
+  });
+
+  it("builds a contiguous three-minute song whose SONG render reaches the exact end", () => {
+    const doc = { ...docWithScenes("Kick Jam"), bpm: 120 };
+    const targetBars = sceneSecondsToBars(180, doc.bpm);
+    const next = autoArrangeSong(doc, targetBars).execute(doc);
+    const clips = next.arrangement.clips;
+
+    expect(clips).toHaveLength(7);
+    expect(clips.every((clip) => clip.lengthBars >= 1)).toBe(true);
+    expect(clips.reduce((sum, clip) => sum + clip.lengthBars, 0)).toBe(90);
+    let endBar = 0;
+    for (const clip of clips) {
+      expect(clip.startBar).toBe(endBar);
+      endBar += clip.lengthBars;
+      expect(doc.scenes.some((scene) => scene.id === clip.sceneId)).toBe(true);
+    }
+    expect(computeRenderTicks(next, "song")).toBe(90 * BAR_TICKS);
+    expect(computeRenderTicks(next, "pattern")).toBeLessThan(computeRenderTicks(next, "song"));
+  });
+
+  it("keeps all seven sections non-empty when the requested arrangement is shorter than seven bars", () => {
+    const doc = docWithScenes("Only Scene");
+    const next = autoArrangeSong(doc, 1).execute(doc);
+
+    expect(next.arrangement.clips).toHaveLength(7);
+    expect(next.arrangement.clips.every((clip) => clip.lengthBars === 1)).toBe(true);
+    expect(next.arrangement.clips.at(-1)?.startBar).toBe(6);
   });
 
   it("cycles multiple drop scenes into DROP A / DROP B", () => {

@@ -1,6 +1,15 @@
-import type { ArrangementClip, NoteEvent, Pattern, ProjectDocument } from "./types";
+import type {
+  ArrangementAutomationClip,
+  ArrangementClip,
+  AutomationPoint,
+  MidiClip,
+  NoteEvent,
+  Pattern,
+  ProjectDocument,
+} from "./types";
 import { BAR_TICKS, STEP_TICKS } from "./types";
 import { drumHitsInWindow, type DrumHit } from "./groove";
+import { valueAt } from "./automation";
 
 /** Resolve the absolute tick origin shared by live and offline pattern events. */
 export function patternBaseTickForClip(clip: Pick<ArrangementClip, "startBar" | "phaseOffsetTicks">): number {
@@ -64,11 +73,18 @@ export interface PatternEventPlan {
  * the previous non-slide note's pitch + absolute tick (sorted by start), so
  * the runtime glides between the two. Live and offline produce identical glides.
  */
-export function noteEventsInWindow(pattern: Pattern, base: number, fromTick: number, toTick: number): ScheduledNote[] {
+export function noteEventsInWindow(
+  pattern: Pattern,
+  base: number,
+  fromTick: number,
+  toTick: number,
+  onlyTrackId?: string,
+): ScheduledNote[] {
   const patternTicks = pattern.stepCount * STEP_TICKS;
   if (patternTicks <= 0 || toTick <= fromTick) return [];
   const events: ScheduledNote[] = [];
   for (const [trackId, notes] of Object.entries(pattern.notes ?? {})) {
+    if (onlyTrackId !== undefined && trackId !== onlyTrackId) continue;
     // Sorted by start within the track so "previous note" is deterministic
     let sorted = sortedNotesCache.get(notes);
     if (!sorted) {
@@ -125,6 +141,122 @@ export function noteEventsInWindow(pattern: Pattern, base: number, fromTick: num
       // alphanumeric strings — no locale-aware comparison needed).
       (a.trackId < b.trackId ? -1 : a.trackId > b.trackId ? 1 : 0) ||
       a.note.pitch - b.note.pitch,
+  );
+}
+
+/** Expand one instrument MIDI clip into its bounded, absolute note events. */
+export function midiClipEventsInWindow(
+  doc: ProjectDocument,
+  clip: MidiClip,
+  fromTick: number,
+  toTick: number,
+): ScheduledNote[] {
+  if (clip.muted || toTick <= fromTick) return [];
+  const pattern = doc.patterns.find((candidate) => candidate.id === clip.patternId);
+  if (!pattern || !doc.tracks.some((track) => track.id === clip.trackId && track.kind === "instrument")) return [];
+  const clipEnd = clip.startTick + clip.lengthTicks;
+  const from = Math.max(fromTick, clip.startTick);
+  const to = Math.min(toTick, clipEnd);
+  if (to <= from) return [];
+  const base = clip.startTick - (Number.isFinite(clip.phaseOffsetTicks) ? (clip.phaseOffsetTicks ?? 0) : 0);
+  return noteEventsInWindow(pattern, base, from, to, clip.trackId).map((event) => {
+    const duration = Math.min(event.note.duration, clipEnd - event.tick);
+    return duration === event.note.duration ? event : { ...event, note: { ...event.note, duration } };
+  });
+}
+
+/** Resolve a standalone automation clip into absolute boundary and point events. */
+export function automationClipEventsInWindow(
+  clip: ArrangementAutomationClip,
+  fromTick: number,
+  toTick: number,
+  fallback = 0,
+): AutomationPoint[] {
+  if (clip.muted || clip.points.length === 0 || toTick <= fromTick) return [];
+  const clipEnd = clip.startTick + clip.lengthTicks;
+  const from = Math.max(fromTick, clip.startTick);
+  const to = Math.min(toTick, clipEnd);
+  if (to <= from) return [];
+  const phase = Number.isFinite(clip.phaseOffsetTicks) ? (clip.phaseOffsetTicks ?? 0) : 0;
+  const localAt = (tick: number) => phase + tick - clip.startTick;
+  const points = [...clip.points].sort((a, b) => a.tick - b.tick);
+  const events: AutomationPoint[] = [
+    { tick: from, value: valueAt(points, localAt(from), fallback) },
+    { tick: to, value: valueAt(points, localAt(to), fallback) },
+  ];
+  for (const point of points) {
+    const absoluteTick = clip.startTick + point.tick - phase;
+    if (absoluteTick > from && absoluteTick < to) events.push({ tick: absoluteTick, value: point.value });
+  }
+  events.sort((a, b) => a.tick - b.tick);
+  return events.filter((event, index) => index === 0 || event.tick !== events[index - 1].tick);
+}
+
+export interface ArrangementAutomationSegment {
+  clip: ArrangementAutomationClip;
+  fromTick: number;
+  toTick: number;
+}
+
+/**
+ * Resolve overlapping arrangement automation before either playback path
+ * schedules it. For a target, the clip with the latest start tick owns the
+ * overlap; clip id breaks ties so collaborators resolve same-tick clips alike.
+ * Earlier clips resume after the winner ends.
+ */
+export function arrangementAutomationSegmentsInWindow(
+  clips: readonly ArrangementAutomationClip[],
+  fromTick: number,
+  toTick: number,
+): ArrangementAutomationSegment[] {
+  if (!Number.isFinite(fromTick) || !Number.isFinite(toTick) || toTick <= fromTick) return [];
+  const from = Math.max(0, fromTick);
+  const to = Math.max(from, toTick);
+  if (to <= from) return [];
+
+  const byTarget = new Map<string, ArrangementAutomationClip[]>();
+  for (const clip of clips) {
+    if (clip.muted || !Number.isFinite(clip.startTick) || !Number.isFinite(clip.lengthTicks) || clip.lengthTicks <= 0)
+      continue;
+    const key = `${clip.target.kind}|${clip.target.trackId}|${clip.target.fxId ?? ""}|${clip.target.paramId ?? ""}`;
+    const group = byTarget.get(key);
+    if (group) group.push(clip);
+    else byTarget.set(key, [clip]);
+  }
+
+  const segments: ArrangementAutomationSegment[] = [];
+  for (const group of byTarget.values()) {
+    const candidates = group.filter((clip) => clip.startTick < to && clip.startTick + clip.lengthTicks > from);
+    if (candidates.length === 0) continue;
+    const precedence = [...candidates].sort(
+      (a, b) => b.startTick - a.startTick || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    );
+    const boundaries = new Set<number>([from, to]);
+    for (const clip of candidates) {
+      const end = clip.startTick + clip.lengthTicks;
+      if (clip.startTick > from && clip.startTick < to) boundaries.add(clip.startTick);
+      if (end > from && end < to) boundaries.add(end);
+    }
+    const sorted = [...boundaries].sort((a, b) => a - b);
+    for (let index = 0; index < sorted.length - 1; index++) {
+      const start = sorted[index];
+      const end = sorted[index + 1];
+      if (end <= start) continue;
+      const winner = precedence.find((clip) => clip.startTick <= start && clip.startTick + clip.lengthTicks >= end);
+      if (!winner) continue;
+      const previous = segments[segments.length - 1];
+      if (previous?.clip.id === winner.id && previous.toTick === start) {
+        previous.toTick = end;
+      } else {
+        segments.push({ clip: winner, fromTick: start, toTick: end });
+      }
+    }
+  }
+  return segments.sort(
+    (a, b) =>
+      a.fromTick - b.fromTick ||
+      (a.clip.target.trackId < b.clip.target.trackId ? -1 : a.clip.target.trackId > b.clip.target.trackId ? 1 : 0) ||
+      (a.clip.id < b.clip.id ? -1 : a.clip.id > b.clip.id ? 1 : 0),
   );
 }
 

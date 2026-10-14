@@ -1,0 +1,115 @@
+- generic [ref=f24e4]:
+  - banner [ref=f24e5]:
+    - link "KYX — go to landing page" [ref=f24e6] [cursor=pointer]:
+      - /url: /?landing
+      - generic [ref=f24e7]: KX
+      - generic [ref=f24e8]: KYX
+    - generic [ref=f24e9]: beat & scene-score workstation
+  - generic [ref=f24e10]:
+    - alert [ref=f24e11]:
+      - generic [ref=f24e12]: The last session did not end through KYX's normal shutdown — you may have closed the tab or followed a link, or the app may have been interrupted. No completed save was recorded.
+      - button "Dismiss crash notice" [ref=f24e13] [cursor=pointer]: Dismiss
+    - button "CONTINUE LAST PROJECT House Beat 124 BPM · 3 tracks · saved 6 days ago" [ref=f24e15] [cursor=pointer]:
+      - generic [ref=f24e16]: CONTINUE LAST PROJECT
+      - generic [ref=f24e17]: House Beat
+      - generic [ref=f24e18]: 124 BPM · 3 tracks · saved 6 days ago
+    - generic [ref=f24e19]:
+      - heading "IMPORT PROJECT" [level=2] [ref=f24e20]
+      - button "IMPORT FROM FILE" [ref=f24e21] [cursor=pointer]
+    - generic [ref=f24e22]:
+      - heading "NEW PROJECT" [level=2] [ref=f24e23]
+      - generic [ref=f24e24]:
+        - button "HOUSE 124 BPM 4-on-the-floor groove with offbeat hats and a sub bass line. Ready to play. groove · sub · starter" [ref=f24e25] [cursor=pointer]:
+          - generic [ref=f24e26]:
+            - generic [ref=f24e27]: HOUSE
+            - generic [ref=f24e28]: 124 BPM
+          - generic [ref=f24e29]: 4-on-the-floor groove with offbeat hats and a sub bass line. Ready to play.
+          - generic [ref=f24e30]: groove · sub · starter
+        - button "TECHNO 132 BPM Driving kick, offbeat open hats and a gritty rumble bass. Two loop variations. driving · dark · loop" [ref=f24e31] [cursor=pointer]:
+          - generic [ref=f24e32]:
+            - generic [ref=f24e33]: TECHNO
+            - generic [ref=f24e34]: 132 BPM
+          - generic [ref=f24e35]: Driving kick, offbeat open hats and a gritty rumble bass. Two loop variations.
+          - generic [ref=f24e36]: driving · dark · loop
+        - button "TRAP 140 BPM Half-time snare, rolling hats and a long-decay 808 with a sparse lead. 808 · half-time" [ref=f24e37] [cursor=pointer]:
+          - generic [ref=f24e38]:
+            - generic [ref=f24e39]: TRAP
+            - generic [ref=f24e40]: 140 BPM
+          - generic [ref=f24e41]: Half-time snare, rolling hats and a long-decay 808 with a sparse lead.
+          - generic [ref=f24e42]: 808 · half-time
+        - button "AMBIENT 80 BPM Slow evolving texture pads and soft analog chords. No drums in your way. pads · atmosphere · slow" [ref=f24e43] [cursor=pointer]:
+          - generic [ref=f24e44]:
+            - generic [ref=f24e45]: AMBIENT
+            - generic [ref=f24e46]: 80 BPM
+          - generic [ref=f24e47]: Slow evolving texture pads and soft analog chords. No drums in your way.
+          - generic [ref=f24e48]: pads · atmosphere · slow
+        - 'button "SCENE SCORE 120 BPM Arrangement-first: INTRO / BUILD / DROP / BREAK / OUTRO scenes pre-placed on a 24-bar timeline. arrangement · scenes · sync" [ref=f24e49] [cursor=pointer]':
+          - generic [ref=f24e50]:
+            - generic [ref=f24e51]: SCENE SCORE
+            - generic [ref=f24e52]: 120 BPM
+          - generic [ref=f24e53]: "Arrangement-first: INTRO / BUILD / DROP / BREAK / OUTRO scenes pre-placed on a 24-bar timeline."
+          - generic [ref=f24e54]: arrangement · scenes · sync
+        - button "UK GARAGE 133 BPM Swung 2-step drums, sub syncopation and organ stabs at 133 BPM. 2-step · swing · stabs" [ref=f24e55] [cursor=pointer]:
+          - generic [ref=f24e56]:
+            - generic [ref=f24e57]: UK GARAGE
+            - generic [ref=f24e58]: 133 BPM
+          - generic [ref=f24e59]: Swung 2-step drums, sub syncopation and organ stabs at 133 BPM.
+          - generic [ref=f24e60]: 2-step · swing · stabs
+        - button "JERSEY CLUB 140 BPM The signature 3-3-2-3-3-2 kick bounce with squeak accents at 140 BPM. bounce · club" [ref=f24e61] [cursor=pointer]:
+          - generic [ref=f24e62]:
+            - generic [ref=f24e63]: JERSEY CLUB
+            - generic [ref=f24e64]: 140 BPM
+          - generic [ref=f24e65]: The signature 3-3-2-3-3-2 kick bounce with squeak accents at 140 BPM.
+          - generic [ref=f24e66]: bounce · club
+        - button "PHONK 145 BPM Half-time snare, driven drum buss and a sliding 808 cowbell hook at 145 BPM. 808 · half-time · driven" [ref=f24e67] [cursor=pointer]:
+          - generic [ref=f24e68]:
+            - generic [ref=f24e69]: PHONK
+            - generic [ref=f24e70]: 145 BPM
+          - generic [ref=f24e71]: Half-time snare, driven drum buss and a sliding 808 cowbell hook at 145 BPM.
+          - generic [ref=f24e72]: 808 · half-time · driven
+        - button "DRILL 142 BPM Sparse kick, rolling hats and a sliding 808 at 142 BPM. 808 · slide · dark" [ref=f24e73] [cursor=pointer]:
+          - generic [ref=f24e74]:
+            - generic [ref=f24e75]: DRILL
+            - generic [ref=f24e76]: 142 BPM
+          - generic [ref=f24e77]: Sparse kick, rolling hats and a sliding 808 at 142 BPM.
+          - generic [ref=f24e78]: 808 · slide · dark
+        - button "LO-FI HOUSE 118 BPM Dusty swung 4-to-the-floor with tape-saturated drums and soft keys. lo-fi · swing · dusty" [ref=f24e79] [cursor=pointer]:
+          - generic [ref=f24e80]:
+            - generic [ref=f24e81]: LO-FI HOUSE
+            - generic [ref=f24e82]: 118 BPM
+          - generic [ref=f24e83]: Dusty swung 4-to-the-floor with tape-saturated drums and soft keys.
+          - generic [ref=f24e84]: lo-fi · swing · dusty
+        - button "REGGAETON 96 BPM The dembow riddim over a rolling sub at 96 BPM. dembow · club" [ref=f24e85] [cursor=pointer]:
+          - generic [ref=f24e86]:
+            - generic [ref=f24e87]: REGGAETON
+            - generic [ref=f24e88]: 96 BPM
+          - generic [ref=f24e89]: The dembow riddim over a rolling sub at 96 BPM.
+          - generic [ref=f24e90]: dembow · club
+        - button "BOOM BAP 90 BPM The golden-era breakbeat pocket — knock kick, hard snare, dusty chops at 90 BPM. hip-hop · dusty · swing" [ref=f24e91] [cursor=pointer]:
+          - generic [ref=f24e92]:
+            - generic [ref=f24e93]: BOOM BAP
+            - generic [ref=f24e94]: 90 BPM
+          - generic [ref=f24e95]: The golden-era breakbeat pocket — knock kick, hard snare, dusty chops at 90 BPM.
+          - generic [ref=f24e96]: hip-hop · dusty · swing
+        - button "DRUM & BASS 174 BPM Two-step break, chopped-hat ghost snare and a Reese sub roller at 174 BPM. break · reese · roller" [ref=f24e97] [cursor=pointer]:
+          - generic [ref=f24e98]:
+            - generic [ref=f24e99]: DRUM & BASS
+            - generic [ref=f24e100]: 174 BPM
+          - generic [ref=f24e101]: Two-step break, chopped-hat ghost snare and a Reese sub roller at 174 BPM.
+          - generic [ref=f24e102]: break · reese · roller
+        - button "EMPTY 120 BPM One drum track and a blank pattern. Nothing else. blank · advanced" [ref=f24e103] [cursor=pointer]:
+          - generic [ref=f24e104]:
+            - generic [ref=f24e105]: EMPTY
+            - generic [ref=f24e106]: 120 BPM
+          - generic [ref=f24e107]: One drum track and a blank pattern. Nothing else.
+          - generic [ref=f24e108]: blank · advanced
+    - generic [ref=f24e109]:
+      - heading "PROJECTS" [level=2] [ref=f24e110]
+      - generic [ref=f24e112]:
+        - button "House Beat" [ref=f24e113] [cursor=pointer]
+        - generic [ref=f24e114]: 124 BPM · 3 tracks · saved 6 days ago
+        - generic [ref=f24e115]:
+          - button "OPEN" [ref=f24e116] [cursor=pointer]
+          - button "DUP" [ref=f24e117] [cursor=pointer]
+          - button "REN" [ref=f24e118] [cursor=pointer]
+          - button "DEL" [ref=f24e119] [cursor=pointer]

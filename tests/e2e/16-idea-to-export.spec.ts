@@ -148,6 +148,20 @@ test.describe("16 — idea → export", () => {
     "offline render needs Web Audio — WebKit/Windows has none",
   );
 
+  test("bracketed lyrics reach the browser song composer", async ({ page }) => {
+    test.slow();
+    await openIntentPanel(page);
+    await page
+      .locator(PROMPT)
+      .fill("house at 122\n[Verse]\nA private line about moonlight\n[Chorus]\nwe rise together");
+    await page.locator("button.intent-song-btn").click();
+
+    await expect(page.locator(".intent-song-draft")).toBeVisible({ timeout: 150_000 });
+    await expect(page.locator(STATUS)).toContainText(/SUNO MODE/i, { timeout: 30_000 });
+    await expect(page.locator(".intent-song-sections")).toContainText("Verse");
+    await expect(page.locator(".intent-song-sections")).toContainText("Chorus");
+  });
+
   test("an intent-built project renders to a real, audible WAV file", async ({ page }, testInfo) => {
     test.slow();
 

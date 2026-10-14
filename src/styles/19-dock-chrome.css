@@ -147,9 +147,9 @@
   cursor: default;
 }
 
-/* Collapsed dock = the tab row alone: grip and slots hide, the chrome
-   stays. Re-declares (and beats) the legacy rule in 12-...css, which hid
-   everything but the now-removed mobile sheet handle. */
+/* Collapsed dock = the tab row alone: grip and slots hide, the chrome stays.
+   Visibility belongs here at every breakpoint; the old mobile grab-handle
+   exception in 12-...css has been removed. */
 .bottom-panels.sheet-collapsed {
   height: auto;
   overflow: visible;
@@ -216,5 +216,9 @@
   }
   .bottom-panels.sheet-collapsed > :not(.dock-chrome) {
     display: none;
+  }
+  /* The tab row is the reopen control when the panel sheet is collapsed. */
+  .bottom-panels.sheet-collapsed > .dock-chrome {
+    display: flex;
   }
 }

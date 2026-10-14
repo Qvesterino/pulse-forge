@@ -121,61 +121,76 @@ export interface ProsodyNote {
 
 export interface ProsodyGrid {
   notes: ProsodyNote[];
-  /** Steps per line (the consumer spaces lines by this). */
+  /** Default phrase span in steps (2 bars); dense lines expand in whole bars. */
   lineSteps: number;
   /** Total lines the grid covers. */
   lineCount: number;
+  /** Total timeline length in steps, including any dense-line expansions. */
+  totalSteps: number;
 }
 
 const LINE_STEPS = 32; // 2 bars per lyric line — the pop default
 const BEAT_STEPS = 4;
 
 /**
- * The syllable timeline → a SINGABLE grid at 2 bars per line:
- * stressed syllables sit ON the beat at the line head, unstressed ride
- * 8ths after, the line's last syllable holds through the tail, and the
- * remainder of the line breathes (no notes — the singer's rest).
- * Deterministic; more syllables than steps wrap into 8th-note runs.
+ * The syllable timeline → a SINGABLE grid. Ordinary lyric lines get 2 bars;
+ * dense lines expand in 2-bar blocks so every syllable has a note instead of
+ * silently truncating a fast phrase. Syllables are evenly distributed across
+ * the phrase, stress is expressed in velocity and (where space permits) beat
+ * placement, and each line's last syllable holds to its phrase tail.
  */
 export function buildProsodyGrid(timeline: SyllableTimeline): ProsodyGrid {
   const notes: ProsodyNote[] = [];
   let cursor = 0;
   for (let line = 0; line < timeline.lineCounts.length; line++) {
     const lineStart = cursor;
-    const count = timeline.lineCounts[line];
+    const count = timeline.lineCounts[line] ?? 0;
+    if (count <= 0) continue;
+    const lineSteps = Math.max(LINE_STEPS, Math.min(256, Math.ceil(count / LINE_STEPS) * LINE_STEPS));
     const syllablesOfLine = timeline.syllables.filter((syl) => syl.line === line);
-    let step = lineStart;
+    const starts: number[] = [];
+    let previousStart = lineStart - 1;
     for (let i = 0; i < syllablesOfLine.length; i++) {
       const syl = syllablesOfLine[i];
-      const isLast = i === syllablesOfLine.length - 1;
-      const stressed = syl.stressed && i === 0 ? true : syl.stressed;
-      let duration: number;
-      if (count > LINE_STEPS / 2) {
-        duration = 1; // 16th run — the grid cannot breathe, so syllables wrap
-      } else if (isLast) {
-        // The tail holds through the line's remaining steps (min 2).
-        duration = Math.max(2, lineStart + LINE_STEPS - step);
-      } else if (stressed) {
-        duration = BEAT_STEPS;
-      } else {
-        duration = 2;
+      if (!syl) continue;
+      const rawStart = lineStart + Math.floor((i * lineSteps) / syllablesOfLine.length);
+      let start = rawStart;
+      if (syl.stressed) {
+        const beat = lineStart + Math.round((rawStart - lineStart) / BEAT_STEPS) * BEAT_STEPS;
+        const nextRaw =
+          i + 1 < syllablesOfLine.length
+            ? lineStart + Math.floor(((i + 1) * lineSteps) / syllablesOfLine.length)
+            : lineStart + lineSteps;
+        if (beat > previousStart && beat < nextRaw) start = beat;
       }
-      const velocity = stressed ? 0.85 : 0.6;
+      start = Math.max(previousStart + 1, Math.min(lineStart + lineSteps - 1, start));
+      starts.push(start);
+      previousStart = start;
+    }
+
+    for (let i = 0; i < syllablesOfLine.length; i++) {
+      const syl = syllablesOfLine[i];
+      const startStep = starts[i];
+      if (!syl || startStep === undefined) continue;
+      const isLast = i === syllablesOfLine.length - 1;
+      const nextStart = starts[i + 1] ?? lineStart + lineSteps;
+      const available = Math.max(1, nextStart - startStep);
+      const duration = isLast
+        ? Math.max(2, available)
+        : Math.max(1, Math.round(available * (syl.stressed ? 0.8 : 0.6)));
+      const velocity = syl.stressed ? 0.85 : 0.6;
       notes.push({
-        startStep: step,
+        startStep,
         durationSteps: duration,
         syllable: syl.text,
         velocity,
         line,
-        stressed,
+        stressed: syl.stressed,
       });
-      // Stressed syllables occupy their beat; unstressed ride 8ths.
-      step += Math.max(1, stressed && !isLast ? BEAT_STEPS : 2);
-      if (step >= lineStart + LINE_STEPS) break; // the line is full — the rest breathes
     }
-    cursor = lineStart + LINE_STEPS;
+    cursor = lineStart + lineSteps;
   }
-  return { notes, lineSteps: LINE_STEPS, lineCount: timeline.lineCounts.length };
+  return { notes, lineSteps: LINE_STEPS, lineCount: timeline.lineCounts.length, totalSteps: cursor };
 }
 
 /**

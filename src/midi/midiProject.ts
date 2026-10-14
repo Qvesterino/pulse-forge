@@ -18,12 +18,22 @@ import {
   createPatternForDoc,
   normalizeProject,
 } from "../project-model/schema";
-import { PPQ, STEP_TICKS, type DrumTrack, type InstrumentTrack, type ProjectDocument } from "../project-model/types";
+import {
+  BAR_TICKS,
+  PPQ,
+  STEP_TICKS,
+  type DrumTrack,
+  type InstrumentTrack,
+  type ProjectDocument,
+} from "../project-model/types";
 import { downloadBlob } from "../export/download";
-import { parseMidiFile, writeMidiFile, type MidiTrackData } from "./midiFile";
+import { drumHitsInWindow } from "../project-model/groove";
+import { midiClipEventsInWindow, noteEventsInWindow, patternBaseTickForClip } from "../project-model/events";
+import { parseMidiFile, writeMidiFile, type MidiExportTrack, type MidiTrackData } from "./midiFile";
 
 const GM_DRUM_CHANNEL = 9; // 0-based (MIDI channel 10)
 const MAX_PATTERN_STEPS = 512; // 32 bars of 16ths — sane import ceiling
+const MAX_SONG_MIDI_NOTES = 200_000;
 
 /** GM percussion note → default-kit pad index (see makeKit in schema.ts). */
 const GM_TO_PAD: Record<number, number> = {
@@ -262,6 +272,90 @@ export function patternToMidi(doc: ProjectDocument, patternId: string): Uint8Arr
     bpm: doc.bpm,
     timeSignature: { num: 4, den: 4 },
     tracks,
+  });
+}
+
+/** Export the whole Song arrangement as a format-1 MIDI file. */
+export function arrangementToMidi(doc: ProjectDocument): Uint8Array {
+  const notesByTrack = new Map<string, MidiExportTrack["notes"]>();
+  const channelsByTrack = new Map<string, number>();
+  let totalNotes = 0;
+  let nextChannel = 0;
+  for (const track of doc.tracks) {
+    if (track.kind === "drum") {
+      channelsByTrack.set(track.id, GM_DRUM_CHANNEL);
+      notesByTrack.set(track.id, []);
+    } else if (track.kind === "instrument") {
+      if (nextChannel === GM_DRUM_CHANNEL) nextChannel++;
+      channelsByTrack.set(track.id, nextChannel++ % 16);
+      notesByTrack.set(track.id, []);
+    }
+  }
+  const appendNote = (trackId: string, pitch: number, startTick: number, endTick: number, velocity: number) => {
+    const notes = notesByTrack.get(trackId);
+    if (!notes || !Number.isFinite(startTick) || !Number.isFinite(endTick) || endTick <= startTick) return;
+    if (totalNotes >= MAX_SONG_MIDI_NOTES) {
+      throw new Error(`Song MIDI export exceeds ${MAX_SONG_MIDI_NOTES.toLocaleString()} notes`);
+    }
+    notes.push({ pitch, startTick, endTick, velocity });
+    totalNotes++;
+  };
+
+  const tempoEvents: Array<{ tick: number; bpm: number; priority: number }> = [{ tick: 0, bpm: doc.bpm, priority: 0 }];
+  for (const clip of [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar)) {
+    const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
+    const pattern = scene ? doc.patterns.find((candidate) => candidate.id === scene.patternId) : undefined;
+    if (!scene || !pattern) continue;
+    const from = clip.startBar * BAR_TICKS;
+    const to = from + clip.lengthBars * BAR_TICKS;
+    const base = patternBaseTickForClip(clip);
+    for (let cursor = from; cursor < to; cursor += BAR_TICKS) {
+      const windowEnd = Math.min(to, cursor + BAR_TICKS);
+      for (const hit of drumHitsInWindow(doc, pattern, base, cursor, windowEnd)) {
+        appendNote(hit.trackId, gmNoteForPad(hit.pad), hit.tick, Math.min(to, hit.tick + STEP_TICKS), hit.velocity);
+      }
+      for (const event of noteEventsInWindow(pattern, base, cursor, windowEnd)) {
+        appendNote(
+          event.trackId,
+          event.note.pitch,
+          event.tick,
+          Math.min(to, event.tick + event.note.duration),
+          event.note.velocity,
+        );
+      }
+    }
+    tempoEvents.push({ tick: from, bpm: scene.bpm ?? doc.bpm, priority: 1 });
+    tempoEvents.push({ tick: to, bpm: doc.bpm, priority: 0 });
+  }
+  for (const clip of doc.arrangement.midiClips ?? []) {
+    const clipEnd = clip.startTick + clip.lengthTicks;
+    for (let cursor = clip.startTick; cursor < clipEnd; cursor += BAR_TICKS) {
+      for (const event of midiClipEventsInWindow(doc, clip, cursor, Math.min(clipEnd, cursor + BAR_TICKS))) {
+        appendNote(event.trackId, event.note.pitch, event.tick, event.tick + event.note.duration, event.note.velocity);
+      }
+    }
+  }
+
+  const tracks: MidiTrackData[] = doc.tracks.flatMap((track) => {
+    const channel = channelsByTrack.get(track.id);
+    const notes = notesByTrack.get(track.id) ?? [];
+    return channel === undefined || notes.length === 0 ? [] : [{ name: track.name, channel, notes }];
+  });
+  const sortedTempoEvents = tempoEvents
+    .filter(({ tick, bpm }) => Number.isFinite(tick) && tick >= 0 && Number.isFinite(bpm) && bpm > 0)
+    .sort((a, b) => a.tick - b.tick || a.priority - b.priority);
+  const tempoChanges: Array<{ tick: number; bpm: number }> = [];
+  for (const event of sortedTempoEvents) {
+    const previous = tempoChanges[tempoChanges.length - 1];
+    if (previous?.tick === event.tick) previous.bpm = event.bpm;
+    else tempoChanges.push({ tick: event.tick, bpm: event.bpm });
+  }
+  return writeMidiFile({
+    division: PPQ,
+    bpm: doc.bpm,
+    tempoChanges,
+    timeSignature: { num: doc.timeSignature.numerator, den: doc.timeSignature.denominator },
+    tracks: tracks.map((track) => ({ name: track.name, channel: track.channel, notes: track.notes })),
   });
 }
 

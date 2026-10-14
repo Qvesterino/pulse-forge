@@ -849,7 +849,7 @@
     position: fixed;
     left: 0;
     right: 0;
-    bottom: 26px; /* above the statusbar row */
+    bottom: calc(83px + env(safe-area-inset-bottom, 0px)); /* clear the wrapped statusbar and the bottom inset */
     z-index: 70;
     max-height: 55vh;
     overflow-y: auto;
@@ -881,13 +881,16 @@
     background: var(--text-faint);
   }
 
-  /* Collapsed: only the grab handle stays. */
-  .bottom-panels.sheet-collapsed > :not(.sheet-handle) {
-    display: none;
-  }
-
   .statusbar {
     padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .statusbar > :first-child {
+    max-width: 180px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .workspace {

@@ -204,8 +204,8 @@ export function MasteringPanel() {
               <MasterProfileFileGuidance profile={profile} />
             </p>
             <p className="mastering-monitor-note" role="note">
-              Master A/B and reference audition play through the active browser output. Open Studio I/O in the top bar to
-              choose an output where supported and view browser-reported latency. KYX does not measure hardware
+              Master A/B and reference audition play through the active browser output. Open Studio I/O in the top bar
+              to choose an output where supported and view browser-reported latency. KYX does not measure hardware
               round-trip latency or calibrate monitor response; check the result on a known monitor or headphone chain.
             </p>
           </div>

@@ -20,6 +20,7 @@ import { clampArrangementTransitionType, MAX_ARRANGEMENT_CLIP_BARS, sceneRoleOf 
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
 import { markerClampPatch, unlinkMarkersOfClips } from "./docOps";
+import { clipGroupsWithoutIds } from "./clipGroups";
 
 /* ---------------- arrangement shapes ---------------- */
 function transitionBetween(doc: ProjectDocument, fromClipId: string, toClipId: string): void {
@@ -137,13 +138,16 @@ export function arrangementSkeletonPreview(doc: ProjectDocument): ArrangementSke
  * Auto-Arrange: lay ALL scenes into a classic electronic song template —
  * intro → build → drop → break → build → drop → outro — with riser/fill
  * transitions between the key boundaries and drop/buildup cue markers.
+ * An optional target length scales the seven sections proportionally while
+ * keeping whole-bar boundaries. Omitting it preserves the original 36-bar
+ * shape for existing callers.
  *
  * Scenes are bucketed by role (`sceneRoleOf` infers from names); slots pick
  * from their bucket in order, cycling when a bucket has several scenes
  * (two drops → DROP A / DROP B). Missing roles fall back through a chain so
  * even a 3-scene jam gets a coherent song.
  */
-export function autoArrangeSong(doc: ProjectDocument): Command {
+export function autoArrangeSong(doc: ProjectDocument, targetBars?: number): Command {
   if (doc.scenes.length === 0) throw new Error("No scenes to arrange — create a few first");
   type Bucket = "intro" | "build" | "drop" | "break" | "outro" | "other";
   const buckets = new Map<Bucket, string[]>();
@@ -161,6 +165,7 @@ export function autoArrangeSong(doc: ProjectDocument): Command {
     buckets.set(bucket, list);
   }
   const cursor = new Map<Bucket, number>();
+  let fallbackCursor = 0;
   const pick = (primary: Bucket, fallbacks: Bucket[]): string | null => {
     for (const bucket of [primary, ...fallbacks]) {
       const list = buckets.get(bucket) ?? [];
@@ -169,7 +174,12 @@ export function autoArrangeSong(doc: ProjectDocument): Command {
       cursor.set(bucket, (at + 1) % list.length);
       return list[at];
     }
-    return null;
+    // A project may contain only one role (for example, only BUILD scenes).
+    // Keep every target-duration section populated by cycling the available
+    // scenes instead of silently shortening the arrangement.
+    const fallback = doc.scenes[fallbackCursor % doc.scenes.length];
+    fallbackCursor++;
+    return fallback?.id ?? null;
   };
 
   const TEMPLATE: Array<{
@@ -218,17 +228,38 @@ export function autoArrangeSong(doc: ProjectDocument): Command {
     { primary: "outro", fallbacks: ["break", "intro", "other"], lengthBars: 4, transitionIn: "break" },
   ];
 
+  const templateBars = TEMPLATE.reduce((sum, slot) => sum + slot.lengthBars, 0);
+  const desiredBars =
+    typeof targetBars === "number" && Number.isFinite(targetBars)
+      ? Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(TEMPLATE.length, Math.round(targetBars)))
+      : templateBars;
+  // Reserve one bar for every section before distributing the remaining bars.
+  // This keeps very short API requests from producing zero-length clips.
+  const distributableBars = desiredBars - TEMPLATE.length;
+  const exactSlotLengths = TEMPLATE.map((slot) => 1 + (slot.lengthBars / templateBars) * distributableBars);
+  const slotLengths = exactSlotLengths.map(Math.floor);
+  const barsLeft = desiredBars - slotLengths.reduce((sum, length) => sum + length, 0);
+  const remainderOrder = exactSlotLengths
+    .map((length, index) => ({ index, fraction: length - Math.floor(length) }))
+    .sort((a, b) => b.fraction - a.fraction || a.index - b.index);
+  for (let i = 0; i < barsLeft; i++) {
+    const slot = remainderOrder[i % remainderOrder.length];
+    if (slot) slotLengths[slot.index] = (slotLengths[slot.index] ?? 0) + 1;
+  }
+
   let bar = 0;
   const clips: ArrangementClip[] = [];
   const transitions: ArrangementTransition[] = [];
   const markers: Marker[] = [];
   let previousClipId: string | null = null;
   let usedSlots = 0;
-  for (const slot of TEMPLATE) {
+  for (let slotIndex = 0; slotIndex < TEMPLATE.length; slotIndex++) {
+    const slot = TEMPLATE[slotIndex]!;
     const sceneId = pick(slot.primary, slot.fallbacks);
     if (!sceneId) continue;
     usedSlots += 1;
-    const clip: ArrangementClip = { id: uid("clip"), sceneId, startBar: bar, lengthBars: slot.lengthBars };
+    const lengthBars = slotLengths[slotIndex] ?? slot.lengthBars;
+    const clip: ArrangementClip = { id: uid("clip"), sceneId, startBar: bar, lengthBars };
     clips.push(clip);
     if (previousClipId && slot.transitionIn) {
       transitions.push({
@@ -249,7 +280,7 @@ export function autoArrangeSong(doc: ProjectDocument): Command {
       });
     }
     previousClipId = clip.id;
-    bar += slot.lengthBars;
+    bar += lengthBars;
   }
   if (usedSlots === 0) throw new Error("No scenes could be placed — create a few scenes first");
 
@@ -265,9 +296,20 @@ export function autoArrangeSong(doc: ProjectDocument): Command {
     clips,
     transitions,
   });
+  const clipGroups = clipGroupsWithoutIds(
+    doc.arrangement.clipGroups,
+    doc.arrangement.clips.map((clip) => clip.id),
+  );
   const next: ProjectDocument = {
     ...doc,
-    arrangement: { ...doc.arrangement, clips, transitions },
+    arrangement: {
+      ...doc.arrangement,
+      clips,
+      transitions,
+      ...(clipGroups !== doc.arrangement.clipGroups
+        ? { clipGroups: clipGroups && clipGroups.length > 0 ? clipGroups : undefined }
+        : {}),
+    },
     markers: clamp.markers ?? mergedMarkers,
   };
   return snapshot("autoArrangeSong", `Auto-arrange song (intro→build→drop→break→drop→outro)`, doc, next);
@@ -286,10 +328,21 @@ export function createArrangementSkeleton(doc: ProjectDocument): Command {
   // them must be unlinked in-command — same contract as deleteArrangementClip
   // (the stale id would survive every save; schema keeps any string).
   const unlinked = unlinkMarkersOfClips(doc.markers, new Set(doc.arrangement.clips.map((c) => c.id)));
+  const clipGroups = clipGroupsWithoutIds(
+    doc.arrangement.clipGroups,
+    doc.arrangement.clips.map((clip) => clip.id),
+  );
   const next: ProjectDocument = {
     ...doc,
     ...(unlinked !== undefined ? { markers: unlinked } : {}),
-    arrangement: { ...doc.arrangement, clips, transitions: undefined },
+    arrangement: {
+      ...doc.arrangement,
+      clips,
+      transitions: undefined,
+      ...(clipGroups !== doc.arrangement.clipGroups
+        ? { clipGroups: clipGroups && clipGroups.length > 0 ? clipGroups : undefined }
+        : {}),
+    },
   };
   return snapshot("createArrangementSkeleton", "Build arrangement skeleton", doc, next);
 }

@@ -50,15 +50,33 @@ measurements make estimates credible.
 | 1     | Lock the reference setup                        | Confirm the Windows host and UA Volt 276 reference, then publish driver, channel map, sample rate, buffer settings and the initial Web/Studio support matrix           | Another developer can reproduce the setup; tested and unverified capabilities are distinct                                                                                              |
 | 2     | Qualify Windows audio I/O                       | Correct shared-WASAPI diagnostics with MMCSS; measure software and physical duplex/loopback paths; assess registered ASIO; use exclusive mode only for a measured need | Raw measurements separate reported period and digital loopback estimates from physical latency; stability, mapping, dropouts and device-loss evidence support a dedicated audio I/O ADR |
 | 3     | Implement and certify the recording path        | Device selection, explicit routing, monitoring, recovery, real instrument capture, takes, comping, non-destructive edits, save/reopen and export                       | Reference setup passes the channel-count/duration gate; real edits survive reload and match offline export                                                                              |
-| 4     | Improve first-session speed                     | Loop discovery, kits/templates, audition and a short path from a new project to an editable exported beat                                                              | First-time users complete the loop-to-song path, save/reopen and export without data loss; time-to-export and blockers are recorded                                                     |
-| 5     | Complete release readiness                      | Product/content/model licensing and privacy inventory, signed installer, update/recovery path, current release report and published support matrix                     | A clean release candidate installs, updates, recovers projects and passes declared platform, security, licensing and deployed-smoke gates                                               |
-| 6     | Add the desktop plug-in ecosystem               | Isolated VST3 scanning/hosting, saved state, automation, channel layouts, PDC and offline-render rules                                                                 | Plug-in projects reopen; crashes are contained; latency and real-time/offline behavior are verified on the compatibility set                                                            |
-| 7     | Expand AI assistance against listening evidence | Optional producer/mix assistance with reversible edits and a human blind-listening benchmark                                                                           | Demonstrated workflow or listening improvement over baseline; unavailable models never block core DAW use                                                                               |
+| 4     | Make pattern-to-song creation dependable        | Clear pattern, piano-roll and song roles; target-duration song arrangement; full-form playback and export, starting with ~3-minute projects                            | A user creates a 180-second song, saves/reopens it, plays it to the end and exports the same form without pattern-boundary truncation                                                   |
+| 5     | Add independent MIDI track lanes                | Multi-bar MIDI clips on instrument lanes, sharing the song timeline with scene and audio clips                                                                         | 90+ bar projects support clip editing, note resizing, undo/redo, save/reopen, live playback and offline parity                                                                          |
+| 6     | Complete release readiness                      | Product/content/model licensing and privacy inventory, signed installer, update/recovery path, current release report and published support matrix                     | A clean release candidate installs, updates, recovers projects and passes declared platform, security, licensing and deployed-smoke gates                                               |
+| 7     | Add the desktop plug-in ecosystem               | Isolated VST3 scanning/hosting, saved state, automation, channel layouts, PDC and offline-render rules                                                                 | Plug-in projects reopen; crashes are contained; latency and real-time/offline behavior are verified on the compatibility set                                                            |
+| 8     | Expand AI assistance against listening evidence | Optional producer/mix assistance with reversible edits and a human blind-listening benchmark                                                                           | Demonstrated workflow or listening improvement over baseline; unavailable models never block core DAW use                                                                               |
 
 Release-readiness work (licensing, signing, update/recovery, support claims)
 starts alongside Milestones 0–4 so it does not become a last-minute project.
 Public commercial claims wait for the relevant release gates. Web Audio remains
 the Web backend; Studio support is documented separately.
+
+### Pattern → full-song workflow (2026-10-14)
+
+The owner confirmed both composition scales, in sequence: first make the current
+pattern/scene workflow reliable for complete songs; then add independent
+instrument MIDI lanes. See [ADR 0043](./adr/0043-patterns-and-full-song-workflow.md).
+
+The current 16-step default is one 4/4 bar. The project model safely supports
+patterns up to 128 steps (8 bars), while arrangement clips and song-mode export
+can extend much farther. The misleading 256-step selector option is removed.
+Auto Arrange now has a 1–4 minute target and scales its seven sections to whole
+bars; projects missing a requested scene role cycle their available scenes so
+the requested arrangement length is preserved. This UI path still needs its
+reliability gates before it is called complete. Do not raise the pattern array
+ceiling to represent a whole song. Stage 2 will put sparse, editable MIDI clips
+on instrument lanes and requires a separate storage/runtime ADR before changing
+the project schema.
 
 ### Current execution queue (2026-10-12)
 

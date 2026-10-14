@@ -1,0 +1,194 @@
+/* Capture choices are available on demand; the armed track, monitor, meter,
+   gain, and REC action stay in the arrangement toolbar. */
+
+.arr-capture-setup {
+  flex: 0 0 auto;
+  min-width: 132px;
+}
+
+.arr-capture-setup[open] {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.arr-capture-setup > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-dim);
+  font: 700 10px var(--mono);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  list-style: none;
+}
+
+.arr-capture-setup > summary::-webkit-details-marker {
+  display: none;
+}
+
+.arr-capture-setup > summary::after {
+  margin-left: auto;
+  color: var(--accent);
+  content: "+";
+  font-size: 14px;
+}
+
+.arr-capture-setup[open] > summary {
+  border-color: var(--hairline);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.arr-capture-setup[open] > summary::after {
+  content: "−";
+}
+
+.arr-capture-setup > summary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: 2px;
+}
+
+.arr-capture-setup-state {
+  overflow: hidden;
+  max-width: 90px;
+  color: var(--text-faint);
+  font-size: 9px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arr-capture-setup[open] .arr-capture-setup-state {
+  color: var(--accent);
+}
+
+.arr-capture-setup-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  align-items: end;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--hairline);
+  border-top: 0;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.arr-capture-setup-grid > .arr-arm-select {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
+.arr-capture-setup-grid > .arr-input-channel-routing {
+  grid-column: 1 / -1;
+}
+
+.arr-capture-setup-grid > .arr-input-channel-routing > summary {
+  color: var(--text-dim);
+  cursor: pointer;
+  font: 700 9px var(--mono);
+  letter-spacing: 0.06em;
+}
+
+/* Give the timeline toolbar a compact hierarchy instead of one long wrapping
+   strip: capture stays together, while edit and song-building actions read as
+   separate workflows. */
+.arr-timeline {
+  container: arrangement-timeline / inline-size;
+}
+
+.arr-timeline-header {
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.arr-timeline-title-group {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.arr-timeline-actions {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-areas:
+    "record record"
+    "edit production";
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px 8px;
+  min-width: 0;
+  justify-content: stretch;
+}
+
+.arr-record-toolbar,
+.arr-edit-toolbar,
+.arr-production-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.arr-record-toolbar {
+  grid-area: record;
+  flex-wrap: wrap;
+  padding: 5px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.arr-edit-toolbar {
+  grid-area: edit;
+  flex-wrap: wrap;
+}
+
+.arr-production-toolbar {
+  grid-area: production;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-soft);
+}
+
+.arr-record-toolbar > .arr-rec-input-report,
+.arr-record-toolbar > .arr-rec-saving,
+.arr-record-toolbar > .arr-rec-error,
+.arr-record-toolbar > .arr-rec-warning {
+  flex: 1 1 100%;
+}
+
+@container arrangement-timeline (max-width: 760px) {
+  .arr-timeline-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .arr-timeline-title-group {
+    flex-wrap: wrap;
+    align-self: stretch;
+  }
+
+  .arr-timeline-actions {
+    grid-template-areas:
+      "record"
+      "edit"
+      "production";
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .arr-production-toolbar {
+    justify-content: flex-start;
+    padding-top: 5px;
+    padding-left: 0;
+    border-top: 1px solid var(--border-soft);
+    border-left: 0;
+  }
+}

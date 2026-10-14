@@ -1,11 +1,11 @@
 /**
- * Clip groups + clip lock (schema v15) — edit ergonomics over BOTH clip
- * systems.
+ * Clip groups + clip lock (schema v15) — edit ergonomics over all timeline
+ * clip kinds.
  *
  * GROUPS: a clip belongs to at most ONE group (`groupClips` moves membership),
  * a group dies with its last member. Groups are pure edit ergonomics — no
- * audio semantics, no scheduling role; the gesture layer expands block moves
- * to members, which is the entire runtime effect.
+ * audio semantics, no scheduling role; editing commands expand grouped
+ * nudges/moves to members, which is the entire runtime effect.
  *
  * LOCK: `locked` is enforced at COMMAND level — the choke point every entry
  * point (UI, MCP, intent) shares. Direct editing verbs (move/resize/trim/
@@ -15,15 +15,26 @@
  * range operations flowing around a locked clip are a documented boundary.
  */
 import type { Command } from "./types";
-import type { ArrangementClip, AudioClip, ClipGroup, ProjectDocument } from "../project-model/types";
+import type {
+  ArrangementAutomationClip,
+  ArrangementClip,
+  AudioClip,
+  ClipGroup,
+  MidiClip,
+  ProjectDocument,
+} from "../project-model/types";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
 
-/** Live ids from BOTH clip systems, in selection order. */
+/** Live timeline clip ids, in selection order. */
 function routeSelection(doc: ProjectDocument, clipIds: readonly string[]): string[] {
-  const arrangementIds = new Set(doc.arrangement.clips.map((c) => c.id));
-  const audioIds = new Set((doc.arrangement.audioClips ?? []).map((c) => c.id));
-  return clipIds.filter((id) => arrangementIds.has(id) || audioIds.has(id));
+  const liveIds = new Set([
+    ...doc.arrangement.clips.map((clip) => clip.id),
+    ...(doc.arrangement.audioClips ?? []).map((clip) => clip.id),
+    ...(doc.arrangement.midiClips ?? []).map((clip) => clip.id),
+    ...(doc.arrangement.automationClips ?? []).map((clip) => clip.id),
+  ]);
+  return clipIds.filter((id) => liveIds.has(id));
 }
 
 /** Strip the given ids from every group; groups that end up empty are dropped. */
@@ -75,11 +86,21 @@ export function ungroupClips(doc: ProjectDocument, clipIds: readonly string[]): 
 }
 
 export function setClipsLocked(doc: ProjectDocument, clipIds: readonly string[], locked: boolean): Command {
-  const ids = new Set(routeSelection(doc, clipIds));
+  const knownIds = new Set([
+    ...doc.arrangement.clips.map((clip) => clip.id),
+    ...(doc.arrangement.audioClips ?? []).map((clip) => clip.id),
+    ...(doc.arrangement.midiClips ?? []).map((clip) => clip.id),
+    ...(doc.arrangement.automationClips ?? []).map((clip) => clip.id),
+  ]);
+  const ids = new Set(clipIds.filter((id) => knownIds.has(id)));
   if (ids.size === 0) return snapshot("setClipsLocked", "Lock clips (no-op)", doc, doc);
   const arrangement = doc.arrangement.clips.some((c) => ids.has(c.id) && (c.locked === true) !== locked);
   const audio = (doc.arrangement.audioClips ?? []).some((c) => ids.has(c.id) && (c.locked === true) !== locked);
-  if (!arrangement && !audio)
+  const midi = (doc.arrangement.midiClips ?? []).some((c) => ids.has(c.id) && (c.locked === true) !== locked);
+  const automation = (doc.arrangement.automationClips ?? []).some(
+    (c) => ids.has(c.id) && (c.locked === true) !== locked,
+  );
+  if (!arrangement && !audio && !midi && !automation)
     return snapshot("setClipsLocked", locked ? "Lock clips (no-op)" : "Unlock clips (no-op)", doc, doc);
   const next: ProjectDocument = {
     ...doc,
@@ -87,6 +108,10 @@ export function setClipsLocked(doc: ProjectDocument, clipIds: readonly string[],
       ...doc.arrangement,
       clips: doc.arrangement.clips.map((c) => (ids.has(c.id) ? { ...c, locked: locked === true } : c)),
       audioClips: (doc.arrangement.audioClips ?? []).map((c) =>
+        ids.has(c.id) ? { ...c, locked: locked === true } : c,
+      ),
+      midiClips: (doc.arrangement.midiClips ?? []).map((c) => (ids.has(c.id) ? { ...c, locked: locked === true } : c)),
+      automationClips: (doc.arrangement.automationClips ?? []).map((c) =>
         ids.has(c.id) ? { ...c, locked: locked === true } : c,
       ),
     },
@@ -104,6 +129,9 @@ function jsonEqualGroups(a: ClipGroup[] | undefined, b: ClipGroup[] | undefined)
 }
 
 /** Shared guard for the direct editing verbs. Call right after the clip lookup. */
-export function assertClipEditable(clip: Pick<ArrangementClip | AudioClip, "locked">, verb: string): void {
+export function assertClipEditable(
+  clip: Pick<ArrangementClip | AudioClip | MidiClip | ArrangementAutomationClip, "locked">,
+  verb: string,
+): void {
   if (clip.locked) throw new Error(`Clip is locked — unlock it to ${verb}`);
 }

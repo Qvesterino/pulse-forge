@@ -1,0 +1,132 @@
+/* High-use panel states: dense MIDI routing and export feedback. */
+
+.midi-panel {
+  container-name: midi-panel;
+  container-type: inline-size;
+}
+
+.midi-routing-grid,
+.midi-mapping-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.midi-routing-grid {
+  gap: 4px 12px;
+  padding: 4px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.midi-cc-section,
+.midi-drum-section {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.midi-routing-grid .midi-row {
+  gap: 8px;
+  padding: 5px 6px;
+  border: 0;
+  background: transparent;
+}
+
+.midi-routing-grid .midi-select {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+}
+
+.midi-cc-section,
+.midi-drum-section {
+  gap: 6px;
+}
+
+.midi-cc-section > .panel-title,
+.midi-drum-header > .panel-title {
+  margin: 0;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.midi-add-row {
+  min-width: 0;
+  gap: 5px;
+}
+
+.midi-add-row .midi-select-small {
+  flex: 1;
+  min-width: 0;
+}
+
+.midi-add-row .midi-select-tiny {
+  flex: 0 0 auto;
+}
+
+.export-status.export-busy {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px 10px;
+}
+
+.export-status.export-busy > span {
+  min-width: 0;
+  line-height: 1.45;
+}
+
+.export-progress {
+  position: relative;
+  grid-column: 1 / -1;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.export-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #fff));
+  transition: width 140ms linear;
+}
+
+.export-progress.is-indeterminate > span {
+  position: absolute;
+  width: 36%;
+  animation: export-progress-sweep 1.25s ease-in-out infinite alternate;
+}
+
+@keyframes export-progress-sweep {
+  from {
+    transform: translateX(-8%);
+  }
+
+  to {
+    transform: translateX(188%);
+  }
+}
+
+@container midi-panel (max-width: 620px) {
+  .midi-routing-grid,
+  .midi-mapping-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .export-progress > span {
+    transition: none;
+  }
+
+  .export-progress.is-indeterminate > span {
+    animation: none;
+    transform: none;
+  }
+}

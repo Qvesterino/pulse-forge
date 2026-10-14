@@ -1,0 +1,35 @@
+/* Core device choices deserve readable labels at the roomy dock widths. */
+
+.source-profile-tab {
+  height: 27px;
+  padding-inline: 5px;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background-color 120ms ease;
+}
+
+.source-profile-tab:focus-visible,
+.essential-kit-variant:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: 1px;
+}
+
+@container bottom-dock-slot (min-width: 1000px) {
+  .essential-kit-variant {
+    height: 25px;
+    padding-inline: 4px;
+    font-size: 9px;
+    letter-spacing: 0.02em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .source-profile-tab {
+    transition: none;
+  }
+}

@@ -10,8 +10,7 @@ import type { Command } from "./types";
 import type { AudioClip, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, PPQ } from "../project-model/types";
 import { arrangementSecondsBetweenTicks, tempoAtTick } from "../project-model/scene-time";
-import { normalizeProject } from "../project-model/schema";
-import { clipsOverlap } from "./arrangement";
+import { MAX_ARRANGEMENT_CLIP_TICKS, normalizeProject } from "../project-model/schema";
 import { buildStemProject } from "../rendering/stems";
 import { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
 import { uid } from "../shared/ids";
@@ -681,41 +680,131 @@ export function crossfadeAudioClips(
 }
 
 /**
- * NUDGE selected clips (both systems) by `deltaBars` — the keyboard-move verb
+ * NUDGE selected clips (all timeline systems) by `deltaBars` — the keyboard-move verb
  * (←/→, Shift = fine). Semantics:
  *  - locked clips are skipped (same outcome as the command-level lock guard,
  *    but a nudge over a mixed selection must stay partial, not fail whole);
  *  - audio clips layer freely, floored at bar 0;
+ *  - MIDI and automation clips retain their source and lane, shifting by ticks;
  *  - arrangement clips respect the no-overlap lane: a clip whose target would
  *    collide stays put while the rest of the selection moves (partial
  *    application, never a thrown-away whole gesture);
- *  - grouped clips: selecting one member nudges the whole group (same rule
- *    as the drag gesture — otherwise nudge and drag would disagree);
+ *  - grouped clips: selecting one member nudges the whole group across all
+ *    four timeline clip kinds;
  *  - nothing moved = no-op history entry. One command, one undo step.
  */
 export function nudgeClips(doc: ProjectDocument, clipIds: readonly string[], deltaBars: number): Command {
   if (!Number.isFinite(deltaBars) || deltaBars === 0) return snapshot("nudgeClips", "Nudge clips (no-op)", doc, doc);
   const ids = new Set(clipIds);
-  // Group expansion: any group containing a selected clip contributes all of
-  // its members (drag parity).
+  const deltaTicks = Math.round(deltaBars * BAR_TICKS);
+  const groups = doc.arrangement.clipGroups ?? [];
+  const groupForId = new Map<string, (typeof groups)[number]>();
+  for (const group of groups) for (const id of group.clipIds) groupForId.set(id, group);
+  // Group expansion applies to all four timeline kinds.
   for (const group of doc.arrangement.clipGroups ?? []) {
     if (group.clipIds.some((id) => ids.has(id))) for (const id of group.clipIds) ids.add(id);
   }
+
+  const blocked = new Set<string>();
+  const liveIds = new Set([
+    ...doc.arrangement.clips.map((clip) => clip.id),
+    ...(doc.arrangement.audioClips ?? []).map((clip) => clip.id),
+    ...(doc.arrangement.midiClips ?? []).map((clip) => clip.id),
+    ...(doc.arrangement.automationClips ?? []).map((clip) => clip.id),
+  ]);
+  const isLocked = (id: string): boolean =>
+    doc.arrangement.clips.some((clip) => clip.id === id && clip.locked === true) ||
+    (doc.arrangement.audioClips ?? []).some((clip) => clip.id === id && clip.locked === true) ||
+    (doc.arrangement.midiClips ?? []).some((clip) => clip.id === id && clip.locked === true) ||
+    (doc.arrangement.automationClips ?? []).some((clip) => clip.id === id && clip.locked === true);
+  const tickGeometry = (id: string): { start: number; end: number } | null => {
+    const scene = doc.arrangement.clips.find((clip) => clip.id === id);
+    if (scene) return { start: scene.startBar * BAR_TICKS, end: (scene.startBar + scene.lengthBars) * BAR_TICKS };
+    const audio = (doc.arrangement.audioClips ?? []).find((clip) => clip.id === id);
+    if (audio) return { start: audio.startBar * BAR_TICKS, end: (audio.startBar + audio.lengthBars) * BAR_TICKS };
+    const midi = (doc.arrangement.midiClips ?? []).find((clip) => clip.id === id);
+    if (midi) return { start: midi.startTick, end: midi.startTick + midi.lengthTicks };
+    const automation = (doc.arrangement.automationClips ?? []).find((clip) => clip.id === id);
+    if (automation) return { start: automation.startTick, end: automation.startTick + automation.lengthTicks };
+    return null;
+  };
+
+  // A multi-kind group moves atomically. Don't split its members at bar zero,
+  // at the arrangement safety limit, across a locked member, or when a
+  // sub-bar nudge cannot be represented by a scene clip.
+  for (const group of groups) {
+    if (!group.clipIds.some((id) => clipIds.includes(id))) continue;
+    const members = group.clipIds.filter((id) => liveIds.has(id));
+    const geometry = members.map(tickGeometry).filter((item): item is { start: number; end: number } => item !== null);
+    const hasScene = doc.arrangement.clips.some((clip) => members.includes(clip.id));
+    if (
+      members.some(isLocked) ||
+      (hasScene && Math.abs(deltaBars - Math.round(deltaBars)) > 1e-9) ||
+      geometry.some((item) => item.start + deltaTicks < 0 || item.end + deltaTicks > MAX_ARRANGEMENT_CLIP_TICKS)
+    ) {
+      for (const id of members) blocked.add(id);
+    }
+  }
+
+  // Scene clips cannot overlap. If a grouped scene member hits a stationary
+  // scene, block that entire group; standalone clips retain the existing
+  // partial-nudge behavior.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const movingSceneIds = new Set(
+      doc.arrangement.clips
+        .filter((clip) => ids.has(clip.id) && !clip.locked && !blocked.has(clip.id))
+        .map((clip) => clip.id),
+    );
+    for (const clip of doc.arrangement.clips) {
+      if (!movingSceneIds.has(clip.id)) continue;
+      const target = Math.max(0, Math.round(clip.startBar + deltaBars));
+      if (target === clip.startBar) continue;
+      const collision = doc.arrangement.clips.some(
+        (other) =>
+          !movingSceneIds.has(other.id) &&
+          target < other.startBar + other.lengthBars &&
+          target + clip.lengthBars > other.startBar,
+      );
+      if (!collision) continue;
+      const group = groupForId.get(clip.id);
+      const blockers = group ? group.clipIds.filter((id) => liveIds.has(id)) : [clip.id];
+      for (const id of blockers) {
+        if (!blocked.has(id)) {
+          blocked.add(id);
+          changed = true;
+        }
+      }
+    }
+  }
+
   const movedArrangement = new Map<string, number>();
   for (const clip of doc.arrangement.clips) {
-    if (!ids.has(clip.id) || clip.locked) continue;
+    if (!ids.has(clip.id) || clip.locked || blocked.has(clip.id)) continue;
     const target = Math.max(0, Math.round(clip.startBar + deltaBars));
     if (target === clip.startBar) continue;
-    if (clipsOverlap(doc.arrangement.clips, clip.id, target, clip.lengthBars)) continue;
     movedArrangement.set(clip.id, target);
   }
   const movedAudio = new Map<string, number>();
   for (const clip of doc.arrangement.audioClips ?? []) {
-    if (!ids.has(clip.id) || clip.locked) continue;
+    if (!ids.has(clip.id) || clip.locked || blocked.has(clip.id)) continue;
     const target = Math.max(0, Math.round((clip.startBar + deltaBars) * 100) / 100);
     if (target !== clip.startBar) movedAudio.set(clip.id, target);
   }
-  if (movedArrangement.size === 0 && movedAudio.size === 0) {
+  const movedMidi = new Map<string, number>();
+  for (const clip of doc.arrangement.midiClips ?? []) {
+    if (!ids.has(clip.id) || clip.locked || blocked.has(clip.id) || deltaTicks === 0) continue;
+    const target = Math.max(0, Math.min(MAX_ARRANGEMENT_CLIP_TICKS - clip.lengthTicks, clip.startTick + deltaTicks));
+    if (target !== clip.startTick) movedMidi.set(clip.id, target);
+  }
+  const movedAutomation = new Map<string, number>();
+  for (const clip of doc.arrangement.automationClips ?? []) {
+    if (!ids.has(clip.id) || clip.locked || blocked.has(clip.id) || deltaTicks === 0) continue;
+    const target = Math.max(0, Math.min(MAX_ARRANGEMENT_CLIP_TICKS - clip.lengthTicks, clip.startTick + deltaTicks));
+    if (target !== clip.startTick) movedAutomation.set(clip.id, target);
+  }
+  if (movedArrangement.size === 0 && movedAudio.size === 0 && movedMidi.size === 0 && movedAutomation.size === 0) {
     return snapshot("nudgeClips", "Nudge clips (no-op)", doc, doc);
   }
   const next: ProjectDocument = {
@@ -728,8 +817,14 @@ export function nudgeClips(doc: ProjectDocument, clipIds: readonly string[], del
       audioClips: (doc.arrangement.audioClips ?? [])
         .map((c) => (movedAudio.has(c.id) ? { ...c, startBar: movedAudio.get(c.id)! } : c))
         .sort((a, b) => a.startBar - b.startBar),
+      midiClips: (doc.arrangement.midiClips ?? [])
+        .map((clip) => (movedMidi.has(clip.id) ? { ...clip, startTick: movedMidi.get(clip.id)! } : clip))
+        .sort((a, b) => a.startTick - b.startTick),
+      automationClips: (doc.arrangement.automationClips ?? [])
+        .map((clip) => (movedAutomation.has(clip.id) ? { ...clip, startTick: movedAutomation.get(clip.id)! } : clip))
+        .sort((a, b) => a.startTick - b.startTick),
     },
   };
-  const count = movedArrangement.size + movedAudio.size;
+  const count = movedArrangement.size + movedAudio.size + movedMidi.size + movedAutomation.size;
   return snapshot("nudgeClips", `Nudge ${count} ${count === 1 ? "clip" : "clips"}`, doc, next);
 }

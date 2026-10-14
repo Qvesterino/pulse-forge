@@ -14,6 +14,7 @@ export { trackEffectsOf } from "./docOps";
 export * from "./freeze";
 export * from "./instrument";
 export * from "./automation";
+export * from "./automationClips";
 export * from "./master";
 export * from "./notes";
 export * from "./quantize";
@@ -46,6 +47,7 @@ export * from "./clipClipboard";
 export * from "./clipGroups";
 export * from "./chordTrack";
 export * from "./drumContent";
+export * from "./midiClips";
 // NOT `export *`: splitAudioClipAtTickWithMinimumFragment is exported from ./clipEditing because
 // ./timeRange calls it, but it was internal before the split — a star re-export would publish it
 // and the surface would be 234 names instead of 233.

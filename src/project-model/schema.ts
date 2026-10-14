@@ -13,10 +13,13 @@ import type {
   IntensityPoint,
   Lfo,
   Macro,
+  MidiClip,
   MacroMapping,
   Marker,
   MasterConfig,
   ArrangementClip,
+  ArrangementAutomationClip,
+  AutomationPoint,
   Pattern,
   ProjectDocument,
   ProjectLineage,
@@ -49,7 +52,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 25;
+export const SCHEMA_VERSION = 27;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -72,6 +75,7 @@ export const FALLBACK_STEP_COUNT = STEPS_PER_PATTERN;
  * budget. Resize commands clamp to it; the UI mirrors it as a field maximum.
  */
 export const MAX_ARRANGEMENT_CLIP_BARS = 8192;
+export const MAX_ARRANGEMENT_CLIP_TICKS = MAX_ARRANGEMENT_CLIP_BARS * BAR_TICKS;
 
 function makePad(index: number, name: string, assetId: string, idPrefix: string, opts: Partial<DrumPad> = {}): DrumPad {
   return {
@@ -1700,6 +1704,114 @@ function normalizeArrangementDomain(s: NormalizeState): void {
       return normalized;
     })
     .sort((a, b) => a.startBar - b.startBar);
+  const rawMidiClips = (arrangement as unknown as Record<string, unknown>).midiClips;
+  const instrumentTrackIds = new Set(
+    doc.tracks.filter((track) => track.kind === "instrument").map((track) => track.id),
+  );
+  const midiClips = Array.isArray(rawMidiClips)
+    ? (rawMidiClips as Partial<MidiClip>[])
+        .filter((clip) => {
+          if (
+            typeof clip?.id !== "string" ||
+            clip.id === "" ||
+            typeof clip.trackId !== "string" ||
+            !instrumentTrackIds.has(clip.trackId) ||
+            typeof clip.patternId !== "string" ||
+            !patternsById.has(clip.patternId) ||
+            !Number.isFinite(clip.startTick) ||
+            !Number.isFinite(clip.lengthTicks)
+          )
+            return false;
+          const startTick = Math.round(clip.startTick!);
+          const lengthTicks = Math.round(clip.lengthTicks!);
+          return (
+            startTick >= 0 &&
+            lengthTicks > 0 &&
+            startTick <= MAX_ARRANGEMENT_CLIP_TICKS &&
+            lengthTicks <= MAX_ARRANGEMENT_CLIP_TICKS &&
+            startTick + lengthTicks <= MAX_ARRANGEMENT_CLIP_TICKS
+          );
+        })
+        .map((clip) => {
+          const pattern = patternsById.get(clip.patternId!);
+          const patternTicks = pattern ? pattern.stepCount * STEP_TICKS : 0;
+          const startTick = Math.round(clip.startTick!);
+          const lengthTicks = Math.round(clip.lengthTicks!);
+          const rawPhase = clip.phaseOffsetTicks;
+          const phase = typeof rawPhase === "number" && Number.isFinite(rawPhase) ? Math.max(0, rawPhase) : 0;
+          const phaseOffsetTicks = patternTicks > 0 ? Math.round(phase) % patternTicks : 0;
+          return {
+            id: clip.id!,
+            trackId: clip.trackId!,
+            patternId: clip.patternId!,
+            startTick,
+            lengthTicks,
+            ...(phaseOffsetTicks > 0 ? { phaseOffsetTicks } : {}),
+            ...(clip.muted === true ? { muted: true } : {}),
+            ...(clip.locked === true ? { locked: true } : {}),
+          } satisfies MidiClip;
+        })
+        .sort((a, b) => a.startTick - b.startTick || a.id.localeCompare(b.id))
+    : undefined;
+  const midiClipsChanged = !jsonEqual(midiClips, rawMidiClips);
+  const rawAutomationClips = (arrangement as unknown as Record<string, unknown>).automationClips;
+  const automationClips = Array.isArray(rawAutomationClips)
+    ? (rawAutomationClips as Partial<ArrangementAutomationClip>[])
+        .filter((clip) => {
+          if (
+            typeof clip?.id !== "string" ||
+            clip.id === "" ||
+            !clip.target ||
+            !isAutomationTargetValid(doc, clip.target) ||
+            !Number.isFinite(clip.startTick) ||
+            !Number.isFinite(clip.lengthTicks)
+          )
+            return false;
+          const startTick = Math.round(clip.startTick!);
+          const lengthTicks = Math.round(clip.lengthTicks!);
+          return (
+            startTick >= 0 &&
+            lengthTicks > 0 &&
+            startTick <= MAX_ARRANGEMENT_CLIP_TICKS &&
+            lengthTicks <= MAX_ARRANGEMENT_CLIP_TICKS &&
+            startTick + lengthTicks <= MAX_ARRANGEMENT_CLIP_TICKS
+          );
+        })
+        .map((clip) => {
+          const startTick = Math.round(clip.startTick!);
+          const lengthTicks = Math.round(clip.lengthTicks!);
+          const rawPhase = clip.phaseOffsetTicks;
+          const phaseOffsetTicks =
+            typeof rawPhase === "number" && Number.isFinite(rawPhase)
+              ? Math.max(0, Math.min(MAX_ARRANGEMENT_CLIP_TICKS - lengthTicks, Math.round(rawPhase)))
+              : 0;
+          const points: AutomationPoint[] = Array.isArray(clip.points)
+            ? clip.points
+                .filter(
+                  (point): point is AutomationPoint =>
+                    Boolean(point) && Number.isFinite(point.tick) && Number.isFinite(point.value),
+                )
+                .slice(0, 16384)
+                .map((point) => ({
+                  tick: Math.max(0, Math.min(MAX_ARRANGEMENT_CLIP_TICKS, Math.round(point.tick))),
+                  value: clampTargetValue(doc, clip.target!, point.value),
+                }))
+                .sort((a, b) => a.tick - b.tick)
+            : [];
+          return {
+            id: clip.id!,
+            target: { ...clip.target! },
+            startTick,
+            lengthTicks,
+            points,
+            ...(phaseOffsetTicks > 0 ? { phaseOffsetTicks } : {}),
+            ...(clip.muted === true ? { muted: true } : {}),
+            ...(clip.locked === true ? { locked: true } : {}),
+          } satisfies ArrangementAutomationClip;
+        })
+        .sort((a, b) => a.startTick - b.startTick || a.id.localeCompare(b.id))
+    : undefined;
+  const automationClipsChanged = !jsonEqual(automationClips, rawAutomationClips);
   const transitions = sanitizeArrangementTransitions(arrangement.transitions, sorted);
   const sanitizedAudioClips = sanitizeAudioClips(
     (arrangement as unknown as Record<string, unknown>).audioClips,
@@ -1746,13 +1858,15 @@ function normalizeArrangementDomain(s: NormalizeState): void {
   const transitionsChanged = !jsonEqual(transitions, arrangement.transitions);
   const audioChanged = !jsonEqual(audioClips, (arrangement as unknown as Record<string, unknown>).audioClips);
   const takeGroupsChanged = !jsonEqual(takeGroups, (arrangement as unknown as Record<string, unknown>).takeGroups);
-  // Clip groups (v15): membership is clamped to LIVE clips of both systems
+  // Clip groups (v15): membership is clamped to LIVE clips of all four kinds
   // (dead ids stripped, duplicates collapsed), empty groups are dropped — a
   // group dies with its last member. A hand-edited or partially-merged file
   // can never keep a group pointing at nothing.
   const validClipIds = new Set<string>([
     ...sorted.map((clip) => clip.id),
     ...(audioClips ?? []).map((clip) => clip.id),
+    ...(midiClips ?? []).map((clip) => clip.id),
+    ...(automationClips ?? []).map((clip) => clip.id),
   ]);
   const rawClipGroups = (arrangement as unknown as Record<string, unknown>).clipGroups;
   const clipGroups = Array.isArray(rawClipGroups)
@@ -1817,12 +1931,23 @@ function normalizeArrangementDomain(s: NormalizeState): void {
         .sort((a, b) => a.startBar - b.startBar)
     : undefined;
   const chordsChanged = !jsonEqual(chords, rawChords);
-  if (clipsChanged || transitionsChanged || audioChanged || takeGroupsChanged || clipGroupsChanged || chordsChanged) {
+  if (
+    clipsChanged ||
+    transitionsChanged ||
+    audioChanged ||
+    midiClipsChanged ||
+    automationClipsChanged ||
+    takeGroupsChanged ||
+    clipGroupsChanged ||
+    chordsChanged
+  ) {
     s.doc = {
       ...doc,
       arrangement: {
         clips: sorted,
         ...(audioClips ? { audioClips } : {}),
+        ...(midiClips ? { midiClips } : {}),
+        ...(automationClips ? { automationClips } : {}),
         ...(takeGroups ? { takeGroups } : {}),
         ...(transitions !== undefined ? { transitions } : {}),
         ...(clipGroups ? { clipGroups } : {}),
@@ -2876,6 +3001,8 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // while the scene is active). Absent = play the doc macro values.
   // v25 adds the optional per-scene `ccRemaps` (the source:"midiCC" mapping
   // ids armed while the scene is active; absent = all armed, [] = none).
+  // v26 adds optional per-instrument MIDI arrangement clips; absent = none.
+  // v27 adds independent song-timeline automation clips; absent = none.
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

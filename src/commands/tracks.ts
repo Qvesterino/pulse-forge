@@ -30,6 +30,7 @@ import { uid } from "../shared/ids";
 import { getYDocHelpers } from "./yDocBridge";
 import { trackEffectsOf, unlinkMarkersOfClips, withTrackEffects } from "./docOps";
 import { snapshot } from "./core";
+import { clipGroupsWithoutIds } from "./clipGroups";
 
 /**
  * Tracks and the effect-instance lifecycle that belongs to them.
@@ -211,13 +212,18 @@ export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
   // normalize pass dropped them. Remove them with the track (same contract
   // as the automation lanes above).
   const audioClips = doc.arrangement.audioClips?.filter((clip) => clip.trackId !== trackId);
-  // Markers linked to the track's audio clips are cross-references held by
+  const midiClips = doc.arrangement.midiClips?.filter((clip) => clip.trackId !== trackId);
+  const automationClips = doc.arrangement.automationClips?.filter((clip) => clip.target.trackId !== trackId);
+  // Markers linked to the track's audio or MIDI clips are cross-references held by
   // other entities — clear them here, inside the command, not in the
   // post-apply normalize (same contract as the sidechain/MIDI cleanup below).
-  const unlinkedMarkers = unlinkMarkersOfClips(
-    doc.markers,
-    new Set((doc.arrangement.audioClips ?? []).filter((clip) => clip.trackId === trackId).map((clip) => clip.id)),
-  );
+  const removedClipIds = [
+    ...(doc.arrangement.audioClips ?? []).filter((clip) => clip.trackId === trackId).map((clip) => clip.id),
+    ...(doc.arrangement.midiClips ?? []).filter((clip) => clip.trackId === trackId).map((clip) => clip.id),
+    ...(doc.arrangement.automationClips ?? []).filter((clip) => clip.target.trackId === trackId).map((clip) => clip.id),
+  ];
+  const unlinkedMarkers = unlinkMarkersOfClips(doc.markers, new Set(removedClipIds));
+  const clipGroups = clipGroupsWithoutIds(doc.arrangement.clipGroups, removedClipIds);
   // Cross-references HELD BY OTHER ENTITIES must be removed here, inside the
   // command — NOT left for the post-apply normalize pass. normalizeProject
   // prunes dangling sidechainTrackId / MIDI CC targets / aftertouch targets
@@ -259,6 +265,10 @@ export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
     arrangement: {
       ...doc.arrangement,
       ...(doc.arrangement.audioClips ? { audioClips } : {}),
+      ...(doc.arrangement.midiClips ? { midiClips } : {}),
+      ...(doc.arrangement.automationClips ? { automationClips } : {}),
+      ...(clipGroups ? { clipGroups } : {}),
+      ...(doc.arrangement.clipGroups && !clipGroups ? { clipGroups: undefined } : {}),
     },
     ...(doc.automation ? { automation } : {}),
     ...(doc.lfos ? { lfos } : {}),
@@ -592,6 +602,12 @@ export function deleteReturnTrack(doc: ProjectDocument, returnId: string): Comma
   const automation = doc.automation?.filter((lane) => lane.target.trackId !== returnId);
   const lfos = doc.lfos?.filter((lfo) => lfo.trackId !== returnId && lfo.target?.trackId !== returnId);
   const sceneAutomation = doc.sceneAutomation?.filter((lane) => lane.target.trackId !== returnId);
+  const automationClips = doc.arrangement.automationClips?.filter((clip) => clip.target.trackId !== returnId);
+  const removedAutomationClipIds = (doc.arrangement.automationClips ?? [])
+    .filter((clip) => clip.target.trackId === returnId)
+    .map((clip) => clip.id);
+  const unlinkedMarkers = unlinkMarkersOfClips(doc.markers, new Set(removedAutomationClipIds));
+  const clipGroups = clipGroupsWithoutIds(doc.arrangement.clipGroups, removedAutomationClipIds);
   const macros = doc.macros?.map((macro) => ({
     ...macro,
     mappings: macro.mappings.filter((m) => m.trackId !== returnId && m.target?.trackId !== returnId),
@@ -607,12 +623,23 @@ export function deleteReturnTrack(doc: ProjectDocument, returnId: string): Comma
   };
   const next: ProjectDocument = {
     ...doc,
+    ...(unlinkedMarkers !== undefined ? { markers: unlinkedMarkers } : {}),
     tracks: doc.tracks.map(stripSend),
     returns: doc.returns.filter((r) => r.id !== returnId),
     ...(midi ? { midi: { ...midi, ccMappings: midi.ccMappings.filter((m) => m.target?.trackId !== returnId) } } : {}),
     ...(doc.automation ? { automation } : {}),
     ...(doc.lfos ? { lfos } : {}),
     ...(doc.sceneAutomation ? { sceneAutomation } : {}),
+    ...(doc.arrangement.automationClips
+      ? {
+          arrangement: {
+            ...doc.arrangement,
+            automationClips,
+            ...(clipGroups ? { clipGroups } : {}),
+            ...(doc.arrangement.clipGroups && !clipGroups ? { clipGroups: undefined } : {}),
+          },
+        }
+      : {}),
     ...(doc.macros ? { macros } : {}),
   };
   return snapshot("deleteReturnTrack", `Delete return ${target.name}`, doc, next);
@@ -952,6 +979,7 @@ export function stripDanglingEffectReferences(doc: ProjectDocument, removed: Set
     target?.fxId ? `${String(target.trackId)}|${String(target.fxId)}` : "";
   const automation = doc.automation?.filter((lane) => !removed.has(keyOf(lane.target)));
   const sceneAutomation = doc.sceneAutomation?.filter((lane) => !removed.has(keyOf(lane.target)));
+  const automationClips = doc.arrangement.automationClips?.filter((clip) => !removed.has(keyOf(clip.target)));
   const lfos = doc.lfos?.filter((lfo) => !removed.has(keyOf(lfo.target)));
   const macros = doc.macros?.map((macro) => ({
     ...macro,
@@ -963,6 +991,7 @@ export function stripDanglingEffectReferences(doc: ProjectDocument, removed: Set
     ...(automation ? { automation } : {}),
     ...(lfos ? { lfos } : {}),
     ...(sceneAutomation ? { sceneAutomation } : {}),
+    ...(doc.arrangement.automationClips ? { arrangement: { ...doc.arrangement, automationClips } } : {}),
     ...(macros ? { macros } : {}),
     ...(doc.midi
       ? {

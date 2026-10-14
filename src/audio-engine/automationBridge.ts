@@ -42,6 +42,10 @@ import type { DeviceLookup, TrackOrGroupView, ReturnView } from "./deviceLookup"
 
 const LFO_DIVISION_MULTS = [1 / 4, 1 / 2, 1, 2, 4];
 
+export function automationTargetKey(target: AutomationTarget): string {
+  return `${target.kind}|${target.trackId}|${target.fxId ?? ""}|${target.paramId ?? ""}`;
+}
+
 /**
  * One scene-intensity point. `packs` carries the per-scene scene-pack
  * selection (fxId → pair id) active at that tick — the scheduler and the
@@ -875,7 +879,7 @@ export class AutomationBridge {
    * endpoint-only collapse played dense sweeps as straight lines live.
    */
   applySceneAutomationLane(
-    lane: SceneAutomation,
+    lane: Pick<SceneAutomation, "id" | "target" | "points">,
     fromTick: number,
     toTick: number,
     sceneStartTick: number,
@@ -915,6 +919,23 @@ export class AutomationBridge {
         this.writeAutomationTargetAt(lane.target, ev.value, Math.max(ctx.currentTime, when + offset));
       }
     }
+  }
+
+  applyArrangementAutomationClip(
+    clip: {
+      id: string;
+      target: AutomationTarget;
+      points: AutomationPoint[];
+      startTick: number;
+      phaseOffsetTicks?: number;
+    },
+    fromTick: number,
+    toTick: number,
+    scheduleOffsetSec = 0,
+    timeAt?: (tick: number) => number,
+  ): void {
+    const origin = clip.startTick - (Number.isFinite(clip.phaseOffsetTicks) ? (clip.phaseOffsetTicks ?? 0) : 0);
+    this.applySceneAutomationLane(clip, fromTick, toTick, origin, scheduleOffsetSec, timeAt);
   }
 
   /** Apply a single automation lane directly (not via doc.automation). */
@@ -1141,6 +1162,7 @@ export class AutomationBridge {
     relOf: (tick: number) => number,
     scheduleOffsetSec = 0,
     timeAt?: (tick: number) => number,
+    suppressedTargets?: ReadonlySet<string>,
   ): void {
     const ctx = this.deps.ctx();
     const doc = this.deps.doc();
@@ -1166,6 +1188,7 @@ export class AutomationBridge {
       }
     }
     for (const lane of doc.automation) {
+      if (suppressedTargets?.has(automationTargetKey(lane.target))) continue;
       if (lane.points.length === 0) continue;
       const fallback =
         targetParamDef(doc, lane.target)?.default ??
@@ -1231,6 +1254,22 @@ export class AutomationBridge {
     }
   }
 
+  scheduleAutomationTarget(
+    target: AutomationTarget,
+    points: AutomationPoint[],
+    timeAt: (tick: number) => number,
+  ): void {
+    if (target.kind === "trackGain") {
+      this.scheduleTrackAutomation(target.trackId, "gain", points, timeAt);
+    } else if (target.kind === "trackPan") {
+      this.scheduleTrackAutomation(target.trackId, "pan", points, timeAt);
+    } else if (target.kind === "fxParam") {
+      this.scheduleDeviceAutomation(target.trackId, "fx", target.fxId, target.paramId, points, timeAt);
+    } else {
+      this.scheduleDeviceAutomation(target.trackId, "inst", undefined, target.paramId, points, timeAt);
+    }
+  }
+
   automationReset(): void {
     const ctx = this.deps.ctx();
     if (!ctx) return;
@@ -1273,6 +1312,11 @@ export class AutomationBridge {
     for (const lane of this.deps.doc()?.sceneAutomation ?? []) {
       if (lane.target.kind === "fxParam" || lane.target.kind === "instParam") {
         deviceTargets.set(JSON.stringify(lane.target), lane.target);
+      }
+    }
+    for (const clip of this.deps.doc()?.arrangement.automationClips ?? []) {
+      if (clip.target.kind === "fxParam" || clip.target.kind === "instParam") {
+        deviceTargets.set(JSON.stringify(clip.target), clip.target);
       }
     }
     for (const target of deviceTargets.values()) {

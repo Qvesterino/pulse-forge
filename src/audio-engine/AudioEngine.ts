@@ -6,6 +6,7 @@ import type {
   ProjectDocument,
   SampleLayer,
   SceneAutomation,
+  ArrangementAutomationClip,
 } from "../project-model/types";
 import { MASTER_EFFECT_OWNER_ID } from "../project-model/types";
 import type { AudioClip, AutomationPoint } from "../project-model/types";
@@ -2197,7 +2198,7 @@ export class AudioEngine {
   }
 
   applySceneAutomationLane(
-    lane: SceneAutomation,
+    lane: Pick<SceneAutomation, "id" | "target" | "points">,
     fromTick: number,
     toTick: number,
     sceneStartTick: number,
@@ -2205,6 +2206,16 @@ export class AudioEngine {
     timeAt?: (tick: number) => number,
   ): void {
     this.automation.applySceneAutomationLane(lane, fromTick, toTick, sceneStartTick, scheduleOffsetSec, timeAt);
+  }
+
+  applyArrangementAutomationClip(
+    clip: ArrangementAutomationClip,
+    fromTick: number,
+    toTick: number,
+    scheduleOffsetSec = 0,
+    timeAt?: (tick: number) => number,
+  ): void {
+    this.automation.applyArrangementAutomationClip(clip, fromTick, toTick, scheduleOffsetSec, timeAt);
   }
 
   applyModulators(fromTick: number, toTick: number, whenFor: (tick: number) => number): void {
@@ -2225,8 +2236,9 @@ export class AudioEngine {
     relOf: (tick: number) => number,
     scheduleOffsetSec = 0,
     timeAt?: (tick: number) => number,
+    suppressedTargets?: ReadonlySet<string>,
   ): void {
-    this.automation.applyAutomation(fromTick, toTick, relOf, scheduleOffsetSec, timeAt);
+    this.automation.applyAutomation(fromTick, toTick, relOf, scheduleOffsetSec, timeAt, suppressedTargets);
   }
 
   scheduleTrackAutomation(
@@ -2247,6 +2259,14 @@ export class AudioEngine {
     timeAt: (tick: number) => number,
   ): void {
     this.automation.scheduleDeviceAutomation(trackId, kind, deviceId, paramId, points, timeAt);
+  }
+
+  scheduleAutomationTarget(
+    target: AutomationTarget,
+    points: AutomationPoint[],
+    timeAt: (tick: number) => number,
+  ): void {
+    this.automation.scheduleAutomationTarget(target, points, timeAt);
   }
 
   automationReset(): void {

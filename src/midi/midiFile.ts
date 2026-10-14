@@ -270,6 +270,7 @@ export interface MidiExportTrack {
 export function writeMidiFile(options: {
   division?: number;
   bpm?: number;
+  tempoChanges?: Array<{ tick: number; bpm: number }>;
   timeSignature?: { num: number; den: number };
   tracks: MidiExportTrack[];
 }): Uint8Array {
@@ -288,20 +289,36 @@ export function writeMidiFile(options: {
     ]),
   );
 
-  // Conductor track: name + tempo + time signature + EOT.
+  // Conductor track: name + tempo map + time signature + EOT.
   const meta: number[] = [];
+  const metaEvents: Array<{ tick: number; order: number; bytes: number[] }> = [];
   const nameBytes = [...new TextEncoder().encode("KYX")];
-  writeVlq(meta, 0);
-  meta.push(0xff, 0x03, nameBytes.length, ...nameBytes);
-  if (options.bpm && options.bpm > 0) {
-    const usPerQuarter = Math.round(60_000_000 / options.bpm);
-    writeVlq(meta, 0);
-    meta.push(0xff, 0x51, 0x03, (usPerQuarter >>> 16) & 0xff, (usPerQuarter >>> 8) & 0xff, usPerQuarter & 0xff);
-  }
+  metaEvents.push({ tick: 0, order: 0, bytes: [0xff, 0x03, nameBytes.length, ...nameBytes] });
+  const tempoChanges = options.tempoChanges?.length
+    ? options.tempoChanges
+    : options.bpm && options.bpm > 0
+      ? [{ tick: 0, bpm: options.bpm }]
+      : [];
+  tempoChanges.forEach(({ tick, bpm }, index) => {
+    if (!Number.isFinite(tick) || tick < 0 || !Number.isFinite(bpm) || bpm <= 0) return;
+    const usPerQuarter = Math.max(1, Math.min(0xffffff, Math.round(60_000_000 / bpm)));
+    metaEvents.push({
+      tick: Math.round(tick),
+      order: index + 1,
+      bytes: [0xff, 0x51, 0x03, (usPerQuarter >>> 16) & 0xff, (usPerQuarter >>> 8) & 0xff, usPerQuarter & 0xff],
+    });
+  });
   if (options.timeSignature) {
     const denPow = Math.round(Math.log2(options.timeSignature.den));
-    writeVlq(meta, 0);
-    meta.push(0xff, 0x58, 0x04, options.timeSignature.num, denPow, 24, 8);
+    metaEvents.push({ tick: 0, order: 0.5, bytes: [0xff, 0x58, 0x04, options.timeSignature.num, denPow, 24, 8] });
+  }
+  metaEvents.sort((a, b) => a.tick - b.tick || a.order - b.order);
+  let lastMetaTick = 0;
+  for (const event of metaEvents) {
+    const tick = Math.max(lastMetaTick, Math.round(event.tick));
+    writeVlq(meta, tick - lastMetaTick);
+    meta.push(...event.bytes);
+    lastMetaTick = tick;
   }
   writeVlq(meta, 0);
   meta.push(0xff, 0x2f, 0x00);

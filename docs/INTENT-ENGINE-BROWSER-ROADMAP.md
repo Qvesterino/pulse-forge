@@ -6,7 +6,7 @@
 > delivery. It is a plan and an evidence standard, not a claim that every stage
 > is already shipped.
 >
-> Baseline snapshot: 2026-10-13. Recheck live code and manifests before using
+> Baseline snapshot: 2026-10-14. Recheck live code and manifests before using
 > any baseline figure for a release decision.
 
 ## 1. Vision
@@ -526,6 +526,20 @@ matrix.
   synthetic golden overlap, or a smaller file as a standalone release claim.
 - Do not let a model emit arbitrary project JSON or bypass command validation,
   undo, preview, audio-thread, or deterministic fallback boundaries.
+
+### 2026-10-14 implementation note — lyric-aware browser composition
+
+Bracketed `[Verse]` / `[Chorus]` prompts now travel through the browser's
+`composeFullTrack` path. Only the text before the first section tag is parsed
+as the creative brief; section order and lyric lines drive the arrangement.
+The generated lead keeps its pitch contour and adopts the EN/SK syllable grid,
+with denser phrases expanded to fit and long sections split into pattern-sized
+parts. The applied project stores the resulting notes, not the lyric text.
+
+This is a capability increment, not sung-vocal synthesis or proof of Suno-level
+music quality. The targeted prosody, prompt-integration, and composition tests
+pass; blinded listening and real-device browser evaluation remain necessary
+before making a quality claim.
 
 ## 8. Recommended implementation start — browser action ONNX v2
 

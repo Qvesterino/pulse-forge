@@ -8,12 +8,12 @@ import {
   validateProjectShape,
 } from "../src/project-model/schema";
 import { createProjectFromTemplate } from "../src/project-model/templates";
-import { getDrumTrack, BAR_TICKS, STEP_TICKS } from "../src/project-model/types";
+import { getDrumTrack, BAR_TICKS, PPQ, STEP_TICKS } from "../src/project-model/types";
 import { Scheduler } from "../src/scheduler/Scheduler";
 import { Transport } from "../src/transport/Transport";
 import type { DrumPad, Pattern, ProjectDocument } from "../src/project-model/types";
 import { setStepVelocity } from "../src/project-model/transform";
-import { addAudioTakeClip } from "../src/commands/commands";
+import { addAudioTakeClip, addMidiClip } from "../src/commands/commands";
 import { createLiveAudioTakeAuditionProject } from "../src/rendering/take-audition";
 
 describe("default project", () => {
@@ -395,6 +395,30 @@ describe("scheduler", () => {
     expect(first.pitch).toBe(28);
     expect(first.when).toBeCloseTo(10, 3);
     expect(bassEvents.map((e) => e.pitch)).toContain(31);
+    scheduler.stop();
+  });
+
+  it("plays independent MIDI arrangement clips in Song mode at their absolute tick positions", () => {
+    const base = createDefaultProject();
+    const bass = base.tracks.find(
+      (track): track is import("../src/project-model/types").InstrumentTrack => track.kind === "instrument",
+    )!;
+    const pattern = base.patterns.find((candidate) => candidate.id === base.activePatternId)!;
+    const withClip = addMidiClip(base, bass.id, pattern.id, BAR_TICKS * 2, BAR_TICKS).execute(base);
+    const doc = { ...withClip, arrangement: { ...withClip.arrangement, clips: [] } };
+    const { noteEvents, transport, scheduler, advance } = makeHarness(doc, "song");
+    transport.play(0);
+    scheduler.start();
+    for (let i = 0; i < 190; i++) {
+      advance(0.025);
+      scheduler["tick"]();
+    }
+    const bassEvents = noteEvents.filter((event) => event.trackId === bass.id);
+    expect(bassEvents.length).toBeGreaterThan(0);
+    expect(bassEvents[0].when).toBeCloseTo(10 + (BAR_TICKS * 2 * 60) / (base.bpm * 480), 3);
+    const sourceNote = pattern.notes[bass.id]?.[0];
+    if (!sourceNote) throw new Error("default bass pattern has no fixture note");
+    expect(bassEvents[0].durationSec).toBeCloseTo((60 / (base.bpm * PPQ)) * sourceNote.duration, 6);
     scheduler.stop();
   });
 

@@ -1,11 +1,9 @@
 /* 25-short-viewport.css — the editor outranks the chrome when height is scarce.
  *
- * Imported BEFORE 24-layout-tokens.css, and that placement is deliberate.
- * `tests/layout-responsive.test.ts` pins two contracts on the cascade:
- * 24-layout-tokens.css must not define its own 860px block, and it must remain
- * the LAST stylesheet in src/styles/index.css. This file therefore owns no
- * `grid-template-columns` ladder rung and nothing that 24 later re-declares —
- * it only sets vertical-space PRIORITY for the editor and the toolbar above it.
+ * Imported immediately AFTER 24-layout-tokens.css. The 24 sheet owns the
+ * responsive grid and its breakpoint ladder; this sheet owns vertical-space
+ * priority for the editor and the toolbar above it. Later visual-only layers
+ * may follow, but must not duplicate or redefine the layout ladder.
  * The `.rack` rule it needs lives in 24, beside the `.rack` rule 24 owns.
  *
  * Why this exists, measured against the production build (Chromium):

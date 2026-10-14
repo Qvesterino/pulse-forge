@@ -12,6 +12,7 @@ import {
 } from "./context";
 import {
   addAutomationLane,
+  addAutomationClipFromLane,
   addAutomationPoint,
   addLfo,
   addMacroMapping,
@@ -370,6 +371,18 @@ export function ModPanel() {
                 <button type="button" className="mod-lane-label" onClick={() => setSelectedLaneId(lane.id)}>
                   {laneLabel(lane, track ? ("name" in track ? track.name : "MASTER") : "?", fxName)} ·{" "}
                   {lane.points.length} pts
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  title="Copy this curve to the arrangement at the playhead"
+                  onClick={() =>
+                    services.store.execute(
+                      addAutomationClipFromLane(services.store.doc, lane.id, Math.max(0, services.transport.position)),
+                    )
+                  }
+                >
+                  ARR
                 </button>
                 <button
                   type="button"

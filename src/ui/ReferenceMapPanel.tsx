@@ -820,6 +820,7 @@ export function ReferenceMapPanel() {
             <div className="reference-reading" role="group" aria-label="Tempo reading">
               <button
                 type="button"
+                aria-pressed={correction.reading === "half"}
                 onClick={() => setCorrection((c) => ({ ...c, reading: "half" }))}
                 disabled={halfCandidate === null && rhythmBpm === null}
                 data-testid="reference-half"
@@ -828,6 +829,7 @@ export function ReferenceMapPanel() {
               </button>
               <button
                 type="button"
+                aria-pressed={correction.reading === "as-detected"}
                 onClick={() => setCorrection((c) => ({ ...c, reading: "as-detected" }))}
                 disabled={correction.reading === "as-detected"}
                 data-testid="reference-as-detected"
@@ -836,6 +838,7 @@ export function ReferenceMapPanel() {
               </button>
               <button
                 type="button"
+                aria-pressed={correction.reading === "double"}
                 onClick={() => setCorrection((c) => ({ ...c, reading: "double" }))}
                 disabled={doubleCandidate === null && rhythmBpm === null}
                 data-testid="reference-double"

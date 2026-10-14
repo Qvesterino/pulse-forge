@@ -17,6 +17,7 @@
 import { parseIntentText } from "./text-parser";
 import type { IntentInput } from "./types";
 import { parseSectionRequests, type SectionParse } from "./sections";
+import { parseSunoFormat } from "./suno-format";
 import {
   buildSong,
   applySongCommand,
@@ -244,11 +245,13 @@ export async function composeFullTrack(
 ): Promise<ComposeResult> {
   const skipped: string[] = [];
   const trimmed = (text ?? "").trim();
+  const suno = parseSunoFormat(trimmed);
+  const intentText = suno ? suno.preamble.join(" ").trim() : trimmed;
 
   // 1 — parse: intent + section requests + length hint (#6).
   const parsed = parseIntentText(trimmed);
-  const sectionRequests = options.sections ?? parseSectionRequests(trimmed);
-  const length = options.length !== undefined ? options.length : parseSongLength(trimmed);
+  const sectionRequests = options.sections ?? parseSectionRequests(intentText);
+  const length = options.length !== undefined ? options.length : parseSongLength(intentText);
 
   // 2 — generate: whole song, transitions and scoped FX baked per section.
   // A measured vocal take bends section energy/density toward the phrasing;
@@ -266,6 +269,7 @@ export async function composeFullTrack(
     {
       ...(sectionRequests ? { sections: sectionRequests } : {}),
       ...(length ? { length } : {}),
+      ...(suno ? { lyrics: trimmed } : {}),
       ...(vocalProfile ? { vocalProfile } : {}),
       ...(options.candidateCount !== undefined ? { candidateCount: options.candidateCount } : {}),
       ...(options.bank ? { bank: options.bank } : {}),

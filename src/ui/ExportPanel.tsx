@@ -345,6 +345,8 @@ export function ExportPanel({
   const [chopNote, setChopNote] = useState<string | null>(null);
 
   const busy = status.kind === "busy";
+  const progressMatch = busy ? status.label.match(/\b(\d{1,3})%/) : null;
+  const progressPercent = progressMatch ? Math.min(100, Math.max(0, Number(progressMatch[1]))) : null;
   const deliveredMeasurements =
     masterReport?.encodedDelivery?.decode.status === "measured"
       ? (masterReport.encodedDelivery.decode.measurements ?? null)
@@ -867,16 +869,21 @@ export function ExportPanel({
     return copyText(snippet, "Embed iframe copied — paste it into a website");
   };
 
-  /** MIDI export: the active pattern as a format-1 .mid (drums on ch 10). */
+  /** Export the current pattern or the complete Song arrangement as format-1 MIDI. */
   const exportMidi = async () => {
     try {
       // The SMF writer is a lazy chunk — fetched on first MIDI export.
-      const { patternToMidi, downloadMidi } = await import("../midi/midiProject");
-      const bytes = patternToMidi(doc, activePatternId);
-      downloadMidi(bytes, `${baseName}-${sanitizeFilename(activePatternName)}`);
+      const { arrangementToMidi, patternToMidi, downloadMidi } = await import("../midi/midiProject");
+      const hasSongArrangement = doc.arrangement.clips.length > 0 || (doc.arrangement.midiClips?.length ?? 0) > 0;
+      const exportSong = mode === "song" && hasSongArrangement;
+      const bytes = exportSong ? arrangementToMidi(doc) : patternToMidi(doc, activePatternId);
+      const suffix = exportSong ? "song" : sanitizeFilename(activePatternName);
+      downloadMidi(bytes, `${baseName}-${suffix}`);
       setStatus({
         kind: "done",
-        label: `MIDI exported (${activePatternName}) — opens in any DAW`,
+        label: exportSong
+          ? "Song arrangement MIDI exported — opens in any DAW"
+          : `MIDI exported (${activePatternName}) — opens in any DAW`,
         summary: EMPTY_EXPORT_SUMMARY,
       });
     } catch (error) {
@@ -1392,7 +1399,7 @@ export function ExportPanel({
           <>
             <button
               type="button"
-              className="btn btn-export"
+              className="btn btn-export export-master-action"
               disabled={
                 busy ||
                 blockMasteringWork ||
@@ -1425,7 +1432,7 @@ export function ExportPanel({
           <>
             <button
               type="button"
-              className="btn btn-export"
+              className="btn btn-export export-master-action"
               disabled={busy || (format === "video" && !videoSupported)}
               onClick={() => void exportMaster()}
             >
@@ -1509,10 +1516,16 @@ export function ExportPanel({
               type="button"
               className="btn btn-export"
               disabled={busy}
-              title="Download the active pattern as a .mid file (drums on channel 10, one track per instrument)"
+              title={
+                mode === "song" && (doc.arrangement.clips.length > 0 || (doc.arrangement.midiClips?.length ?? 0) > 0)
+                  ? "Download the whole Song arrangement as a .mid file, including independent instrument lanes and tempo changes"
+                  : "Download the active pattern as a .mid file (drums on channel 10, one track per instrument)"
+              }
               onClick={() => void exportMidi()}
             >
-              EXPORT MIDI (PATTERN)
+              {mode === "song" && (doc.arrangement.clips.length > 0 || (doc.arrangement.midiClips?.length ?? 0) > 0)
+                ? "EXPORT MIDI (SONG)"
+                : "EXPORT MIDI (PATTERN)"}
             </button>
             <button
               type="button"
@@ -1542,6 +1555,19 @@ export function ExportPanel({
           <button type="button" className="btn btn-small" onClick={cancelExport} aria-label="Cancel export">
             CANCEL
           </button>
+        )}
+        {busy && (
+          <div
+            className={`export-progress${progressPercent === null ? " is-indeterminate" : ""}`}
+            role="progressbar"
+            aria-label="Export progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progressPercent ?? undefined}
+            aria-valuetext={progressPercent === null ? status.label : `${progressPercent}%`}
+          >
+            <span style={{ width: progressPercent === null ? undefined : `${progressPercent}%` }} />
+          </div>
         )}
       </div>
       <div

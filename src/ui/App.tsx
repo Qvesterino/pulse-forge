@@ -46,7 +46,9 @@ import {
   addAudioClip,
   clearSteps,
   deleteArrangementClip,
+  deleteAutomationClip,
   deleteAudioClip,
+  deleteMidiClip,
   deleteNote,
   deleteNotes,
   duplicatePattern,
@@ -416,11 +418,11 @@ export function App({
     return () => window.removeEventListener("resize", onResize);
   }, []);
   const [dock, setDock] = useDockLayout(viewportMax);
-  /** Panels with dense content need a minimum dock to be usable — the dice
-      tray in a 240px sliver shows three sliders and hides the rolls. The
-      user can still drag the dock smaller afterwards. */
+  /** Dense panels get enough room for their primary controls on open, while
+      the sequencer keeps priority. Extra panel content remains scrollable and
+      users can drag the dock taller when they want to focus on it. */
   const PANEL_OPEN_HEIGHT: Partial<Record<BottomPanel, number>> = {
-    dice: 470,
+    dice: 360,
     mixer: 320,
     devices: 420,
     arr: 420,
@@ -794,12 +796,16 @@ export function App({
         const liveIds = selection.clipIds.filter(
           (id) =>
             doc.arrangement.clips.some((c) => c.id === id) ||
-            (doc.arrangement.audioClips ?? []).some((c) => c.id === id),
+            (doc.arrangement.audioClips ?? []).some((c) => c.id === id) ||
+            (doc.arrangement.midiClips ?? []).some((c) => c.id === id) ||
+            (doc.arrangement.automationClips ?? []).some((c) => c.id === id),
         );
         if (liveIds.length === 0) return;
         const anyUnlocked =
           doc.arrangement.clips.some((c) => liveIds.includes(c.id) && c.locked !== true) ||
-          (doc.arrangement.audioClips ?? []).some((c) => liveIds.includes(c.id) && c.locked !== true);
+          (doc.arrangement.audioClips ?? []).some((c) => liveIds.includes(c.id) && c.locked !== true) ||
+          (doc.arrangement.midiClips ?? []).some((c) => liveIds.includes(c.id) && c.locked !== true) ||
+          (doc.arrangement.automationClips ?? []).some((c) => liveIds.includes(c.id) && c.locked !== true);
         try {
           services.store.execute(setClipsLocked(doc, liveIds, anyUnlocked));
         } catch (e) {
@@ -900,6 +906,8 @@ export function App({
             const kind = kinds.get(clipId);
             if (kind === "scene") newDoc = deleteArrangementClip(newDoc, clipId).execute(newDoc);
             else if (kind === "audio") newDoc = deleteAudioClip(newDoc, clipId).execute(newDoc);
+            else if (kind === "midi") newDoc = deleteMidiClip(newDoc, clipId).execute(newDoc);
+            else if (kind === "automation") newDoc = deleteAutomationClip(newDoc, clipId).execute(newDoc);
           }
           services.store.execute({
             type: "deleteClips",

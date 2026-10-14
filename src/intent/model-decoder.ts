@@ -356,6 +356,29 @@ export function decodeIntentHeads(
       const target = opt("queryTarget");
       return { kind: "queryIntent", subject, ...(target ? { target } : {}) };
     }
+    case "paramIntent": {
+      // Param wave P2 — rolling-artifact guard like every newer kind.
+      const paramHeads = ["paramEffect", "paramRole", "paramMode"];
+      if (!paramHeads.every((name) => vocab.heads.some((candidate) => candidate.name === name)))
+        return null;
+      const effect = opt("paramEffect");
+      const role = opt("paramRole");
+      const mode = opt("paramMode");
+      if (!effect || !role || !mode) return null;
+      const targets = activeClasses(head("targets"), scores("targets"));
+      if (targets.length === 0) return null;
+      const value = optNum("paramValue");
+      const percent = optNum("paramPercent");
+      return {
+        kind: "paramIntent",
+        effect,
+        role,
+        targets,
+        mode,
+        ...(value !== null ? { value } : {}),
+        ...(percent !== null ? { percent } : {}),
+      };
+    }
     case "arrange": {
       // Rolling-artifact guard: older vocabs predate the arrange heads —
       // abstain instead of throwing (the artifact and the app deploy

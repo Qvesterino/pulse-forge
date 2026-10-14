@@ -1,8 +1,9 @@
 # Arrangement
 
-The timeline where a song is built. Two layers share it: **scene clips** (the
-musical structure — bars playing a scene each) and **audio clips** (sound on
-audio tracks). Each has its own rules, both share one toolbox.
+The timeline where a song is built. It holds **scene clips** (sections),
+**instrument MIDI clips** (per-track phrases), **audio clips**, and
+**automation clips**. Each has its own rules, all follow the song's tick and
+tempo map.
 
 ## Navigation
 
@@ -23,6 +24,35 @@ audio tracks). Each has its own rules, both share one toolbox.
 - **Swap scene**: replace a clip's scene without touching position or length
   (the variant swap in the clip menu).
 - **Split**: use the razor (cut tool) at the click position — bar-accurate.
+
+## Build a complete song
+
+1. Create or duplicate scenes for the sections you need; assign roles such as
+   INTRO, BUILD, DROP, BREAK and OUTRO.
+2. Switch the transport to **SONG** and open **ARR**.
+3. Choose **SONG · 1:00–4:00** next to **AUTO ARRANGE**, then click
+   **AUTO ARRANGE**. The seven-section form is scaled to the selected duration
+   in whole bars at the project tempo. Scene tempo changes can change its final
+   wall-clock duration.
+4. Refine the clips on the timeline, then play and export in SONG mode. The
+   arrangement continues beyond the active pattern's length. **AUTO ARRANGE**
+   replaces the scene-clip layout as one undoable edit.
+
+For hand-built arrangements, drag scenes from the launcher into the timeline,
+resize clips to extend them, and duplicate sections to repeat them. A 3-minute
+4/4 song is about 90 bars at 120 BPM or 93 bars at 124 BPM.
+
+## Instrument MIDI clips — notes across the song
+
+The step grid is a pattern editor, not the song-length limit. In the **MIDI
+TRACKS** lanes, press **+** beside an instrument or double-click its lane to
+place the active pattern at that time. Each clip plays only that instrument's
+notes, repeats them to fill its visible length, and can be moved or extended
+without growing the bounded step grid. Drag the left edge to trim while
+keeping the phrase phase; drag the right edge to extend it. Use the clip menu
+to duplicate or make it unique before changing notes that should differ from
+other clips using the same pattern. A sustained 808 note can cross pattern
+bars in the Piano Roll; its end is cut only at the MIDI clip's end.
 
 ## Audio clips — sound
 
@@ -47,26 +77,30 @@ audio tracks). Each has its own rules, both share one toolbox.
 
 ## The shared toolbox
 
-| Action             | How                                                                      |
-| ------------------ | ------------------------------------------------------------------------ |
-| Select             | click; `Ctrl`+click toggles; `Shift`+click ranges; marquee on empty lane |
-| Copy / Cut / Paste | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` — paste lands at the playhead             |
-| Duplicate          | the clip menu (or `Ctrl+D` for patterns/time ranges)                     |
-| Delete             | `Delete`                                                                 |
-| Group / Ungroup    | `Ctrl+G` / `Ctrl+Shift+G` — a plain press on one member moves the group  |
-| Lock / Unlock      | `Shift+L` — locked clips refuse moves, trims, splits and deletes         |
-| Nudge              | `←`/`→` (one bar), `Shift`+arrows (1/16)                                 |
-| Ripple             | the ripple toggle shifts everything after the edit to preserve gaps      |
-| Mute               | `M` on selected audio clips                                              |
-| Locators / loop    | `P` — selection becomes the loop region                                  |
+| Action             | How                                                                                                                              |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| Select             | click; `Ctrl`+click toggles; `Shift`+click ranges; marquee on empty lane                                                         |
+| Copy / Cut / Paste | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` — all four clip kinds paste together at the playhead, keeping relative spacing within the project |
+| Duplicate          | the clip menu (or `Ctrl+D` for patterns/time ranges)                                                                             |
+| Delete             | `Delete`                                                                                                                         |
+| Group / Ungroup    | `Ctrl+G` / `Ctrl+Shift+G` — arrow nudges move all group members together                                                         |
+| Lock / Unlock      | `Shift+L` — locked clips refuse moves, trims, splits and deletes                                                                 |
+| Nudge              | `←`/`→` (one bar), `Shift`+arrows (1/16)                                                                                         |
+| Ripple             | the ripple toggle shifts everything after the edit to preserve gaps                                                              |
+| Mute               | `M` on selected audio clips                                                                                                      |
+| Locators / loop    | `P` — selection becomes the loop region                                                                                          |
 
 ## Groups and locks
 
-Groups (violet top bar) make a set of clips move as one: drag any member and
-the whole group travels, relative spacing preserved. Locks (dashed, dimmed)
-make clips immune to editing — a locked clip refuses moves, trims, splits and
-deletes from every surface, keyboard included. Muting and duplication still
-work on locked clips.
+Groups (violet top bar) make selected clips move as one under arrow nudging or
+dragging, preserving their relative timing across scene, audio, MIDI and
+automation lanes. Fine nudges and sub-bar dragging work for groups without
+scene clips; a group containing a scene clip moves by whole bars. The live
+preview shows the planned position for every member, and one completed drag is
+one undo step.
+Locks (dashed, dimmed) make clips immune to direct edits — a locked clip
+refuses moves, trims, splits and deletes from every surface. Muting and
+duplication still work on locked clips.
 
 ## Chord track
 
@@ -112,3 +146,18 @@ Scenes can drive track parameters over time: add a scene automation lane
 whenever a clip of that scene is active. The curve is anchored to the clip's
 content — moving or trimming the clip keeps the automation aligned to the
 music, never to bare timeline time.
+
+For a curve that belongs to a song section instead of a repeating pattern or
+scene, open **MOD**, choose or create an automation target, then press **ARR**
+beside its lane. KYX copies the curve to the arrangement at the playhead, with
+the active pattern's length as its starting duration. In **AUTOMATION CLIPS**,
+use **+** to place another copy at the playhead, drag the body to move it, and
+drag its edges to trim or extend it. Double-click a clip to add a point at that
+time and value; drag a point to edit it or right-click the point to remove it.
+Right-click the clip to duplicate, mute, lock or delete. In Song mode,
+an unmuted arrangement clip takes priority over the MOD lane for that target;
+Pattern mode continues to use the MOD lane. When two arrangement clips for
+the same target overlap, the one that starts later controls the overlap; the
+earlier curve resumes when it ends. If both start together, clip ID provides a
+stable tie-break, so move one clip by a small snap amount to choose the winner
+visibly.

@@ -230,6 +230,12 @@
   }
 }
 
+@media (min-width: 861px) and (max-width: 1249px) {
+  .workspace.inspector-collapsed {
+    grid-template-columns: minmax(0, 1fr) 28px;
+  }
+}
+
 @media (max-width: 860px) {
   .workspace.inspector-collapsed {
     grid-template-columns: 1fr;

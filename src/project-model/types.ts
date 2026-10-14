@@ -785,6 +785,39 @@ export interface ArrangementClip {
   locked?: boolean;
 }
 
+/** A single instrument's pattern phrase arranged independently in Song mode. */
+export interface MidiClip {
+  id: ID;
+  trackId: ID;
+  patternId: ID;
+  /** Absolute project tick; integer PPQ ticks, independent of bar snapping. */
+  startTick: number;
+  /** Visible/playable range; source notes repeat until this tick range ends. */
+  lengthTicks: number;
+  /** Pattern-relative tick already elapsed when this clip begins; absent = 0. */
+  phaseOffsetTicks?: number;
+  /** Clip-level mute; absent = audible. */
+  muted?: boolean;
+  /** Direct editing verbs refuse the clip when true. */
+  locked?: boolean;
+}
+
+/** Standalone song-timeline automation, independent of pattern and scene loops. */
+export interface ArrangementAutomationClip {
+  id: ID;
+  target: AutomationTarget;
+  /** Absolute project tick; integer PPQ ticks. */
+  startTick: number;
+  /** Visible and active duration in project ticks. */
+  lengthTicks: number;
+  /** Source-curve offset retained when the visible clip is left-trimmed. */
+  phaseOffsetTicks?: number;
+  /** Curve ticks are relative to the source clip origin, with values in target units. */
+  points: AutomationPoint[];
+  muted?: boolean;
+  locked?: boolean;
+}
+
 export interface ArrangementTransition {
   id: ID;
   fromClipId: ID;
@@ -909,6 +942,8 @@ export interface ChordEvent {
 export interface Arrangement {
   clips: ArrangementClip[];
   audioClips?: AudioClip[];
+  midiClips?: MidiClip[];
+  automationClips?: ArrangementAutomationClip[];
   takeGroups?: AudioTakeGroup[];
   transitions?: ArrangementTransition[];
   clipGroups?: ClipGroup[];

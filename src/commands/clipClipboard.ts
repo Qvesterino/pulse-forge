@@ -1,5 +1,5 @@
 /**
- * Clip clipboard — copy / cut / paste for TIMELINE clips (audio + arrangement).
+ * Clip clipboard — copy / cut / paste for every timeline clip kind.
  *
  * The clipboard PAYLOAD is plain state owned by the UI (App's `useState`, the
  * same pattern as PatternClipboard — a module singleton would leak across
@@ -22,55 +22,84 @@
  *    so editing a paste never rewrites the copied originals.
  */
 import type { Command } from "./types";
-import type { AudioClip, ArrangementClip, ProjectDocument } from "../project-model/types";
+import type {
+  ArrangementAutomationClip,
+  ArrangementClip,
+  AudioClip,
+  MidiClip,
+  ProjectDocument,
+} from "../project-model/types";
 import { BAR_TICKS } from "../project-model/types";
+import { MAX_ARRANGEMENT_CLIP_TICKS } from "../project-model/schema";
+import { clampTargetValue, isAutomationTargetValid } from "../project-model/targets";
 import { uid } from "../shared/ids";
 import { addAudioClip, deleteAudioClip } from "./audioClips";
 import { clipsOverlap, deleteArrangementClip } from "./arrangement";
+import { deleteAutomationClip } from "./automationClips";
+import { deleteMidiClip } from "./midiClips";
 
 export interface ClipClipboard {
+  /** Clip references are valid only in the project they were copied from. */
+  projectId: string;
   /** Deep copies in their ORIGINAL coordinates (the anchor maps them on paste). */
   audioClips: AudioClip[];
   arrangementClips: ArrangementClip[];
-  /** Earliest start tick across both systems at capture time. */
+  midiClips: MidiClip[];
+  automationClips: ArrangementAutomationClip[];
+  /** Earliest start tick across all systems at capture time. */
   anchorTick: number;
 }
 
-/** True when the id names a live arrangement or audio clip. */
+/** Resolve one selected timeline id to its persisted clip kind. */
 function resolveClip(
   doc: ProjectDocument,
   clipId: string,
-): { kind: "audio"; clip: AudioClip } | { kind: "arrangement"; clip: ArrangementClip } | null {
+):
+  | { kind: "audio"; clip: AudioClip }
+  | { kind: "arrangement"; clip: ArrangementClip }
+  | { kind: "midi"; clip: MidiClip }
+  | { kind: "automation"; clip: ArrangementAutomationClip }
+  | null {
   const audio = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (audio) return { kind: "audio", clip: audio };
   const arrangement = doc.arrangement.clips.find((c) => c.id === clipId);
   if (arrangement) return { kind: "arrangement", clip: arrangement };
+  const midi = (doc.arrangement.midiClips ?? []).find((c) => c.id === clipId);
+  if (midi) return { kind: "midi", clip: midi };
+  const automation = (doc.arrangement.automationClips ?? []).find((c) => c.id === clipId);
+  if (automation) return { kind: "automation", clip: automation };
   return null;
 }
 
 /**
  * Snapshot the given clip ids into a clipboard payload. Ids are routed per
- * kind (selections mix both systems); dead ids are skipped. Returns null when
+ * kind (selections can mix all timeline systems); dead ids are skipped. Returns null when
  * nothing matched — callers treat that as "nothing to copy" and must not
  * clear a previous clipboard over it.
  */
 export function buildClipClipboard(doc: ProjectDocument, clipIds: readonly string[]): ClipClipboard | null {
   const audioClips: AudioClip[] = [];
   const arrangementClips: ArrangementClip[] = [];
+  const midiClips: MidiClip[] = [];
+  const automationClips: ArrangementAutomationClip[] = [];
   let anchorTick = Number.POSITIVE_INFINITY;
   for (const clipId of clipIds) {
     const resolved = resolveClip(doc, clipId);
     if (!resolved) continue;
     const startTick =
-      resolved.kind === "audio" ? resolved.clip.startBar * BAR_TICKS : resolved.clip.startBar * BAR_TICKS;
+      resolved.kind === "audio" || resolved.kind === "arrangement"
+        ? resolved.clip.startBar * BAR_TICKS
+        : resolved.clip.startTick;
     anchorTick = Math.min(anchorTick, startTick);
     // Deep copy: the payload must not alias the live document — later edits
     // (warp pin drags, fade drags) would silently rewrite clipboard history.
     if (resolved.kind === "audio") audioClips.push(structuredClone(resolved.clip));
-    else arrangementClips.push(structuredClone(resolved.clip));
+    else if (resolved.kind === "arrangement") arrangementClips.push(structuredClone(resolved.clip));
+    else if (resolved.kind === "midi") midiClips.push(structuredClone(resolved.clip));
+    else automationClips.push(structuredClone(resolved.clip));
   }
   if (!Number.isFinite(anchorTick)) return null;
-  return { audioClips, arrangementClips, anchorTick };
+  return { projectId: doc.id, audioClips, arrangementClips, midiClips, automationClips, anchorTick };
 }
 
 /**
@@ -81,10 +110,14 @@ export function buildClipClipboard(doc: ProjectDocument, clipIds: readonly strin
 export function cutClips(doc: ProjectDocument, clipIds: readonly string[]): Command {
   const arrangementIds = new Set(doc.arrangement.clips.map((c) => c.id));
   const audioIds = new Set((doc.arrangement.audioClips ?? []).map((c) => c.id));
+  const midiIds = new Set((doc.arrangement.midiClips ?? []).map((c) => c.id));
+  const automationIds = new Set((doc.arrangement.automationClips ?? []).map((c) => c.id));
   let next = doc;
   for (const clipId of clipIds) {
     if (arrangementIds.has(clipId)) next = deleteArrangementClip(next, clipId).execute(next);
     else if (audioIds.has(clipId)) next = deleteAudioClip(next, clipId).execute(next);
+    else if (midiIds.has(clipId)) next = deleteMidiClip(next, clipId).execute(next);
+    else if (automationIds.has(clipId)) next = deleteAutomationClip(next, clipId).execute(next);
   }
   return {
     type: "cutClips",
@@ -98,15 +131,21 @@ export function cutClips(doc: ProjectDocument, clipIds: readonly string[]): Comm
 /**
  * Paste the clipboard at `playheadTick` as ONE undoable entry.
  *
- * Throws when the clipboard is empty or the document has no track to paste
- * onto (an audio clip whose owning track was deleted falls back to the first
- * live track; with no tracks at all there is nowhere to go).
+ * Throws when the clipboard is empty, a referenced source no longer exists,
+ * or the document has no track to paste audio onto. A deleted audio routing
+ * track falls back to a live track; MIDI lanes and automation targets are not
+ * silently reassigned because their track or parameter is part of the content.
  */
 export function pasteClips(doc: ProjectDocument, clipboard: ClipClipboard, playheadTick: number): Command {
   const hasAudio = clipboard.audioClips.length > 0;
   const hasArrangement = clipboard.arrangementClips.length > 0;
-  if (!hasAudio && !hasArrangement) throw new Error("Clipboard is empty");
+  const hasMidi = clipboard.midiClips.length > 0;
+  const hasAutomation = clipboard.automationClips.length > 0;
+  if (!hasAudio && !hasArrangement && !hasMidi && !hasAutomation) throw new Error("Clipboard is empty");
   if (!Number.isFinite(playheadTick)) throw new Error("Paste position must be finite");
+  if (clipboard.projectId !== doc.id) {
+    throw new Error("Cannot paste — this timeline clipboard belongs to a different project");
+  }
   // §30 — the payload outlives the entities it names. An arrangement clip
   // REFERENCES its scene (which references the pattern), so a scene deleted
   // after the copy leaves a clip with no content behind it: it renders, it
@@ -122,7 +161,19 @@ export function pasteClips(doc: ProjectDocument, clipboard: ClipClipboard, playh
   if (deadSceneId) {
     throw new Error("Cannot paste — the scene this clip came from no longer exists");
   }
+  const invalidMidi = clipboard.midiClips.find((clip) => {
+    const track = doc.tracks.find((candidate) => candidate.id === clip.trackId);
+    return !track || track.kind !== "instrument" || !doc.patterns.some((pattern) => pattern.id === clip.patternId);
+  });
+  if (invalidMidi) {
+    throw new Error("Cannot paste — the MIDI clip's instrument track or source pattern no longer exists");
+  }
+  const invalidAutomation = clipboard.automationClips.find((clip) => !isAutomationTargetValid(doc, clip.target));
+  if (invalidAutomation) {
+    throw new Error("Cannot paste — an automation clip's target no longer exists");
+  }
   const deltaBars = (Math.max(0, playheadTick) - clipboard.anchorTick) / BAR_TICKS;
+  const deltaTicks = Math.round(Math.max(0, playheadTick) - clipboard.anchorTick);
 
   let pasted = doc;
 
@@ -179,6 +230,53 @@ export function pasteClips(doc: ProjectDocument, clipboard: ClipClipboard, playh
         arrangement: { ...pasted.arrangement, clips: [...pasted.arrangement.clips, copy] },
       };
     }
+  }
+
+  // ── Instrument MIDI lanes: retain source pattern, phase and lane ──
+  if (hasMidi) {
+    const midiClips = [...(pasted.arrangement.midiClips ?? [])];
+    for (const stored of clipboard.midiClips) {
+      const lengthTicks = Math.max(1, Math.min(MAX_ARRANGEMENT_CLIP_TICKS, Math.round(stored.lengthTicks)));
+      const startTick = Math.max(
+        0,
+        Math.min(MAX_ARRANGEMENT_CLIP_TICKS - lengthTicks, Math.round(stored.startTick + deltaTicks)),
+      );
+      const copy: MidiClip = {
+        ...structuredClone(stored),
+        id: uid("midiclip"),
+        startTick,
+        lengthTicks,
+      };
+      midiClips.push(copy);
+    }
+    midiClips.sort((a, b) => a.startTick - b.startTick);
+    pasted = { ...pasted, arrangement: { ...pasted.arrangement, midiClips } };
+  }
+
+  // ── Automation lanes: preserve the curve and parameter target ──
+  if (hasAutomation) {
+    const automationClips = [...(pasted.arrangement.automationClips ?? [])];
+    for (const stored of clipboard.automationClips) {
+      const lengthTicks = Math.max(1, Math.min(MAX_ARRANGEMENT_CLIP_TICKS, Math.round(stored.lengthTicks)));
+      const startTick = Math.max(
+        0,
+        Math.min(MAX_ARRANGEMENT_CLIP_TICKS - lengthTicks, Math.round(stored.startTick + deltaTicks)),
+      );
+      const copy: ArrangementAutomationClip = {
+        ...structuredClone(stored),
+        id: uid("autoclip"),
+        startTick,
+        lengthTicks,
+        target: { ...stored.target },
+        points: stored.points.map((point) => ({
+          tick: Math.max(0, Math.min(MAX_ARRANGEMENT_CLIP_TICKS, Math.round(point.tick))),
+          value: clampTargetValue(doc, stored.target, point.value),
+        })),
+      };
+      automationClips.push(copy);
+    }
+    automationClips.sort((a, b) => a.startTick - b.startTick);
+    pasted = { ...pasted, arrangement: { ...pasted.arrangement, automationClips } };
   }
 
   return {

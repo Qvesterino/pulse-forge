@@ -82,6 +82,7 @@ h3.panel-title {
   padding-inline: 7px;
   font-size: 11px;
   letter-spacing: 0.75px;
+  scroll-margin-inline: 8px;
 }
 
 .track-tab {
@@ -94,12 +95,146 @@ h3.panel-title {
 .pattern-chip {
   height: 28px;
   padding-inline: 11px;
+  border-radius: var(--radius-md);
   font-size: 12px;
 }
 
 .drag-number-label {
   font-size: 9px;
   letter-spacing: 1.2px;
+}
+
+/* Mixer / devices / arrangement keep their own geometry, but share the same
+   quieter dividers and readable names as the rest of the studio. */
+.mixer {
+  padding: var(--space-2) var(--space-3) var(--space-3);
+}
+
+.mixer-batch-bar {
+  gap: var(--space-2);
+  padding: var(--space-1) 0 var(--space-2);
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  border-radius: 0;
+  margin-bottom: var(--space-2);
+  background: transparent;
+}
+
+.channel-strip {
+  gap: var(--space-2);
+  padding: 9px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-1);
+}
+
+.channel-name-input {
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.devices-toolbar {
+  border-bottom-color: var(--hairline);
+}
+
+.devices-chain::before {
+  font-size: 9px;
+}
+
+.device-chain-item {
+  height: 30px;
+  font-size: 10px;
+}
+
+.device-editor .fx-device-name {
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+
+.arr-section-label {
+  font-size: 9px;
+  border-color: var(--hairline);
+}
+
+.arr-scene-role {
+  font-size: 10px;
+}
+
+.scene-strip {
+  background: transparent;
+  border-color: var(--hairline);
+}
+
+.midi-label {
+  font-size: 10px;
+}
+
+.mod-panel .mod-section {
+  border-color: var(--hairline);
+  background: var(--surface-1);
+  box-shadow: var(--elev-1);
+}
+
+/* The intent prompt is the product entry point. Keep its blind-study setting
+   separate from the action row and let Generate own the single amber fill. */
+.intent-brief-actions {
+  align-items: center;
+  gap: 6px;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--hairline);
+}
+
+.intent-brief-actions > .intent-detected {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0 var(--space-2);
+  border-bottom: 1px solid var(--hairline);
+  color: var(--text-dim);
+}
+
+.intent-brief-actions > .intent-detected input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.intent-brief-actions > .btn {
+  min-width: 92px;
+  height: 30px;
+  flex: 0 0 auto;
+  padding-inline: 10px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.intent-brief-actions > .intent-generate-btn:not(:disabled) {
+  min-width: 124px;
+  border-color: color-mix(in srgb, var(--accent) 78%, #fff);
+  background: linear-gradient(112deg, color-mix(in srgb, var(--accent) 82%, #fff), var(--accent) 66%);
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--on-accent, #17130c);
+}
+
+.intent-brief-actions > .intent-generate-btn:disabled {
+  background: var(--surface-1);
+  box-shadow: none;
+  color: var(--text-faint);
+}
+
+.intent-brief-actions > .intent-route-btn,
+.intent-brief-actions > .intent-song-btn {
+  border-color: var(--hairline);
+  background: var(--surface-1);
+  color: var(--text-dim);
+}
+
+.intent-brief-actions > .intent-route-btn:hover:not(:disabled),
+.intent-brief-actions > .intent-song-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
 }
 
 /* Mastering overview: give the measurement the strongest type, keep its
