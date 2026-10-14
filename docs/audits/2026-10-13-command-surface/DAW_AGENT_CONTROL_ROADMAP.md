@@ -1,7 +1,7 @@
 # DAW AGENT CONTROL ROADMAP — KYX
 
 **Audit date:** 2026-10-13 · **Target:** KYX (`pulse-forge`) · **Revision:** `31cc20ad`
-**Status:** P0-A, P0-B, P0-C, **P1-A**, **P1-B**, P1-C, **P1-D (S-scope; UNKNOWN resolved)**, P1-E, **P2-A (parity sweep)** and **P2-B** **IMPLEMENTED + VERIFIED 2026-10-13** — see `IMPL-2026-10-13-P0-P1.md` in this directory for changed files, test evidence and residual risks. All other items remain proposals.
+**Status:** P0-A, P0-B, P0-C, **P1-A**, **P1-B**, P1-C, **P1-D (S-scope; UNKNOWN resolved)**, P1-E, **P2-A (parity sweep)**, **P2-B** and **P2-C/P2-D (batch safeguards, dry-run, parity ops)** **IMPLEMENTED + VERIFIED 2026-10-13/14** — see `IMPL-2026-10-13-P0-P1.md` in this directory for changed files, test evidence and residual risks. All other items remain proposals.
 
 Complexity is expressed as **relative size** (S / M / L), not calendar time — this audit has no basis for time estimates and inventing them would be false precision.
 
@@ -186,11 +186,11 @@ Reconcile the 46 VERIFIED commands in `DAW_COMMAND_SURFACE_MATRIX.md` against th
 
 Add stable error codes to `McpToolResult` (`tools.ts:1675-1688`) so agents branch on codes instead of substrings. **Prereq:** none. **Complexity:** M.
 
-### P2-C · Multi-step execution safeguards
+### P2-C · Multi-step execution safeguards · **IMPLEMENTED 2026-10-14** (atomic:true + sandbox dryRun envelope; evidence in `IMPL-2026-10-13-P0-P1.md`)
 
 Atomic-or-explicit semantics for `kyx_batch` (currently partial-commit by design, `tools.ts:4711-4712`); dry-run/preview mode across mutating tools. **Prereq:** P1-B. **Complexity:** M.
 
-### P2-D · Add the genuinely missing capabilities
+### P2-D · Add the genuinely missing capabilities · **PARTIALLY IMPLEMENTED 2026-10-14** (track-duplicate, audioStretch, audioSlip landed; crossfade + scene-intensity NL + return-gain NL remain recorded; GAP-12/13/14 stay open)
 
 Time signature command (GAP-12), automation read/write modes (GAP-13), save-as (GAP-14), slip UI caller (GAP-15). Each is small; they are listed for completeness, not urgency. **Complexity:** S each.
 
