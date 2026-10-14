@@ -86,13 +86,26 @@ export function Inspector({
   track,
   selectedPadId,
   onOpenPlugin,
+  onCollapse,
 }: {
   track: Track;
   selectedPadId: string;
   onOpenPlugin?: () => void;
+  onCollapse?: () => void;
 }) {
   const services = useServices();
   const doc = services.store.getDoc();
+  const collapseToggle = onCollapse ? (
+    <button
+      type="button"
+      className="btn btn-small btn-icon inspector-collapse-toggle"
+      onClick={onCollapse}
+      aria-label="Collapse inspector"
+      title="Collapse inspector"
+    >
+      ▸
+    </button>
+  ) : null;
   const [sliceLabOpen, setSliceLabOpen] = useState(false);
   const [advancedInstrumentControls, setAdvancedInstrumentControls] = useState(false);
   const [pendingSamplerMapping, setPendingSamplerMapping] = useState<SampleLayer[] | null>(null);
@@ -200,6 +213,7 @@ export function Inspector({
               DEVICES
             </button>
           )}
+          {collapseToggle}
         </div>
 
         <div className="inspector-control-mode" role="group" aria-label="Instrument control view">
@@ -392,6 +406,10 @@ export function Inspector({
   if (track.kind === "group") {
     return (
       <aside className="inspector" aria-label="Inspector">
+        <div className="inspector-topline">
+          <span className="inspector-topline-label">TRACK</span>
+          {collapseToggle}
+        </div>
         {trackSection}
       </aside>
     );
@@ -546,6 +564,10 @@ export function Inspector({
     };
     return (
       <aside className="inspector" aria-label="Inspector">
+        <div className="inspector-topline">
+          <span className="inspector-topline-label">GENERATIVE</span>
+          {collapseToggle}
+        </div>
         {trackSection}
         <h2 className="panel-title">MRT2 GENERATIVE</h2>
         <p className="inspector-subtitle">
@@ -843,6 +865,7 @@ export function Inspector({
             DEVICES
           </button>
         )}
+        {collapseToggle}
       </div>
       {sliceLabOpen && track.kind === "drum" && (
         <Suspense fallback={<p className="inspector-subtitle">SLICE LAB — loading…</p>}>

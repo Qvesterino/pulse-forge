@@ -1,0 +1,34 @@
+fix(mcp): the relay has ONE executor window - and says so (P1-D)
+
+P1-D was filed as "first resolve the UNKNOWN: does the web relay share the
+single-session model?". It does - and the answer was a P1 defect, not a
+design preference.
+
+createMcpHub held one boolean (sessionConnected) and the collab server one
+mcpRelaySocket. A second KYX window overwrote both silently. The displaced
+window stayed connected and kept sending mcp-result frames, which the hub
+accepted from ANY socket - so a tool call could execute against a DIFFERENT
+project's document and still resolve successfully: an agent's edit landing
+in the wrong window with no trace. Exactly the Phase 3 failure this audit
+exists to close.
+
+- server/mcp-core.mjs: the hub names the session that owns the relay. A
+  result is honoured only from the current session; a displaced window's
+  close cannot tear down the session that replaced it. Both parameters
+  default, so the desktop bridge and every existing suite keep the old
+  signature.
+- server/collab-server.mjs: each connection carries an identity. Ownership
+  still moves last-writer-wins (no in-flight export is torn down mid-agent),
+  but it moves in the open: the loser is closed with 4409 + a reason, and
+  the existing socket-identity guard keeps its close from disconnecting the
+  winner.
+- src/mcp/bridge.ts: that close is terminal, not a fault. Reconnecting would
+  hand the relay back and two live windows would flap ownership. The bridge
+  stops and reports via the new optional onDisplaced.
+
+tests/mcp-relay-session-ownership.test.ts (9 specs) drives a REAL collab
+server over REAL ws sockets, not a mocked hub. Every guard was falsified
+individually: disabling the identity check lets the displaced answer through;
+disabling displaced.close() leaves the loser hanging; disabling the bridge
+check produces the reconnect storm. Evidence in
+docs/audits/2026-10-13-command-surface/P1D-RELAY-SESSION-OWNERSHIP.md.

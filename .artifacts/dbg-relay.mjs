@@ -1,0 +1,24 @@
+import { WebSocket } from "ws";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+const { createCollabServer } = await import("../server/collab-server.mjs");
+const dir = mkdtempSync(join(tmpdir(), "kyx-dbg-"));
+const { server } = createCollabServer({ mcpToken: "tok", galleryFile: join(dir,"g.json"), battlesFile: join(dir,"b.json"), intakeFile: join(dir,"i.json") });
+await new Promise(r => server.listen(0, "127.0.0.1", r));
+const port = server.address().port;
+console.log("port", port);
+const a = new WebSocket(`ws://127.0.0.1:${port}/mcp-relay?token=tok`);
+a.on("open", () => console.log("A open"));
+a.on("error", (e) => console.log("A error", e.message));
+a.on("close", (c, r) => console.log("A close", c, String(r)));
+await new Promise(r => setTimeout(r, 800));
+const b = new WebSocket(`ws://127.0.0.1:${port}/mcp-relay?token=tok`);
+b.on("open", () => console.log("B open"));
+b.on("close", (c, r) => console.log("B close", c, String(r)));
+await new Promise(r => setTimeout(r, 800));
+a.terminate(); b.terminate();
+server.close();
+rmSync(dir, { recursive: true, force: true });
+process.exit(0);
+

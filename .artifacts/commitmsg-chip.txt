@@ -1,0 +1,30 @@
+fix(mcp): a displaced window SAYS so - the chip stops claiming "connecting"
+
+The routing fix stopped the bridge on a relay takeover but left the UI
+lying about it: the socket closed, the poll read "not connected", and the
+chip rendered its "connecting" state forever. That is the same silence one
+layer up from the bug I just fixed - the user is told progress is happening
+when it stopped.
+
+- web-host: mcpWebBridgeDisplaced() exposes WHY this window is no longer
+  the executor. It is cleared on start and on stop, so the state can never
+  outlive the thing that produced it.
+- IntentPanel: the chip takes data-state="error" (already in the design
+  system) and a title that names the reason and the way out, instead of
+  "pripájam…".
+
+Falsified, not assumed: deleting the two clears leaves a stale reason that
+poisons the NEXT session (both the clearing spec and the control spec go
+red), which is exactly the failure the clears exist to prevent.
+
+tests/mcp-relay-session-ownership.test.ts is now 11 specs.
+
+Also records a verdict rather than a change: the seven `Number.isFinite ->
+no-op` guards (moveAudioClip, stretchAudioClip, resizeAudioClip,
+nudgeClips, the two ripple verbs, moveMarker) are NOT a defect. MCP
+validates before calling (tools.ts:4377-4380 refuses honestly), every other
+caller passes constants or drag arithmetic, and ProjectStore already drops
+a same-identity command before it reaches the undo stack. They are
+defence-in-depth behind a validating boundary; "fixing" them would change
+working behaviour for an input no caller can produce. Written into the
+command-surface matrix so a later wave does not rediscover the pattern.

@@ -396,4 +396,208 @@ test.describe("20 — audio-edit render verification", () => {
     expect(report.crossfadeSwappedLow as number).toBeCloseTo(report.crossfadeLow as number, 4);
     expect(report.crossfadeSwappedHigh as number).toBeCloseTo(report.crossfadeHigh as number, 4);
   });
+
+  /**
+   * Two gaps the first test did not close, both recorded rather than glossed:
+   *
+   *  1. **Consolidate was missing.** The wave-20 report said "7 verbs
+   *     render-verified", but the first version of this spec contained six.
+   *     Consolidate appears here so the number and the coverage agree.
+   *
+   *  2. **Live-path parity was declared NOT VERIFIED** at the end of wave 20.
+   *     Offline-only is exactly the "code presence mistaken for proven
+   *     functionality" the audit keeps warning about, so the live scheduler is
+   *     driven here through an OfflineAudioContext standing in for the live
+   *     context (the pattern spec 12 uses) and compared sample-for-sample
+   *     against the offline render.
+   */
+  test("consolidate merges clips in the render, and the live path matches the offline one", async ({ page }) => {
+    test.setTimeout(180_000);
+    await openHouseTemplate(page);
+
+    const report = await page.evaluate(async () => {
+      const load = (specifier: string) => import(/* @vite-ignore */ specifier);
+      const [templateModule, commandModule, sampleModule, rendererModule, engineModule, workletModule, takesModule] =
+        await Promise.all([
+          load("/src/project-model/templates.ts"),
+          load("/src/commands/commands.ts"),
+          load("/src/sample-library/factory.ts"),
+          load("/src/rendering/renderer.ts"),
+          load("/src/audio-engine/AudioEngine.ts"),
+          load("/src/audio-worklets/loader.ts"),
+          load("/src/project-model/audio-takes.ts"),
+        ]);
+      const { createProjectFromTemplate } = templateModule;
+      const { addAudioClip, consolidateAudioClips, slipAudioClip, stretchAudioClip, crossfadeAudioClips } =
+        commandModule;
+      const { SampleBank } = sampleModule;
+      const { renderProject } = rendererModule;
+      const { AudioEngine } = engineModule;
+      const { ensureWorkletsForDoc } = workletModule;
+      const { audioClipsForPlayback } = takesModule;
+
+      const sampleRate = 44_100;
+      const TONE_SECONDS = 16; // consolidate produces an 8-bar span = 16 s
+      const makeTone = (frequency: number): AudioBuffer => {
+        const buffer = new OfflineAudioContext(1, sampleRate * TONE_SECONDS, sampleRate).createBuffer(
+          1,
+          sampleRate * TONE_SECONDS,
+          sampleRate,
+        );
+        const samples = buffer.getChannelData(0);
+        for (let frame = 0; frame < samples.length; frame++) {
+          samples[frame] = 0.2 * Math.sin((2 * Math.PI * frequency * frame) / sampleRate);
+        }
+        return buffer;
+      };
+      const bank = new SampleBank();
+      // 330 Hz is deliberately different from the 220/550 pair in the first
+      // test: the consolidated clip must be provably the clip we created, not
+      // an echo of a tone measured by the other spec.
+      bank.add("w20.mid", makeTone(330));
+      bank.add("w20.low", makeTone(220));
+      bank.add("w20.high", makeTone(550));
+
+      const template = createProjectFromTemplate("empty");
+      const track = template.tracks[0];
+      if (!track) throw new Error("empty-project audio track fixture missing");
+      const bare = { ...template, arrangement: { ...template.arrangement, clips: [], audioClips: [] } };
+
+      const amplitudeAt = (buffer: AudioBuffer, frequency: number, startSec: number, windowSec = 0.35): number => {
+        const samples = buffer.getChannelData(0);
+        const start = Math.round(sampleRate * startSec);
+        const count = Math.round(sampleRate * windowSec);
+        let real = 0;
+        let imaginary = 0;
+        for (let index = 0; index < count; index++) {
+          const sample = samples[start + index] ?? 0;
+          const phase = (2 * Math.PI * frequency * index) / sampleRate;
+          real += sample * Math.cos(phase);
+          imaginary -= sample * Math.sin(phase);
+        }
+        return (2 * Math.hypot(real, imaginary)) / count;
+      };
+
+      /** Render a project through the LIVE scheduler path, for parity. */
+      const renderLive = async (project: Parameters<typeof renderProject>[0], lengthFrames: number) => {
+        const liveContext = new OfflineAudioContext(2, lengthFrames, sampleRate);
+        await ensureWorkletsForDoc(project, liveContext);
+        const engine = new AudioEngine();
+        engine.attachBank(bank);
+        engine.useContext(liveContext);
+        engine.setProject(project);
+        // 120 BPM => 2 s per bar, which is why startBar * 2 is the wall time.
+        for (const clip of audioClipsForPlayback(project.arrangement)) {
+          engine.triggerAudioClip(clip, clip.startBar * 2, clip.lengthBars * 2);
+        }
+        const rendered = await liveContext.startRendering();
+        engine.detachBank();
+        return rendered;
+      };
+      const maxAbsDiff = (a: AudioBuffer, b: AudioBuffer): number => {
+        const left = a.getChannelData(0);
+        const right = b.getChannelData(0);
+        const count = Math.min(left.length, right.length);
+        let worst = 0;
+        for (let frame = 0; frame < count; frame++) {
+          worst = Math.max(worst, Math.abs((left[frame] ?? 0) - (right[frame] ?? 0)));
+        }
+        return worst;
+      };
+
+      const render = async (project: Parameters<typeof renderProject>[0]) =>
+        renderProject(project, bank, { mode: "song", sampleRate, tailSeconds: 0 });
+
+      const out: Record<string, unknown> = {};
+
+      // ── CONSOLIDATE: two 4-bar clips of one source -> one 8-bar clip ──────
+      const pairA = addAudioClip(bare, track.id, "w20.mid", 0, 4).execute(bare);
+      const pairB = addAudioClip(pairA, track.id, "w20.mid", 4, 4).execute(pairA);
+      const pairIds = (pairB.arrangement.audioClips ?? []).map((c: { id: string }) => c.id);
+      out.pairCount = pairIds.length;
+
+      // The consolidated clip points at a NEW buffer id, so the rendered result
+      // of the pair is registered in the bank first - exactly what the real
+      // consolidate flow does when it hands back a bounce buffer.
+      const pairRender = await render(pairB);
+      bank.add("w20.consolidated", pairRender);
+
+      const consolidated = consolidateAudioClips(pairB, pairIds, "w20.consolidated").execute(pairB);
+      const merged = (consolidated.arrangement.audioClips ?? []) as Array<{
+        startBar: number;
+        lengthBars: number;
+        bufferId: string;
+      }>;
+      out.mergedCount = merged.length;
+      out.mergedGeometry = merged.map((c) => [c.startBar, c.lengthBars]);
+      out.mergedBufferId = merged[0]?.bufferId;
+      const mergedRender = await render(consolidated);
+      // Audible across the WHOLE merged span, not just where one input was.
+      out.mergedEarlyMid = amplitudeAt(mergedRender, 330, 1.5);
+      out.mergedLateMid = amplitudeAt(mergedRender, 12);
+      // The untouched pair renders the same tone over the same span, which is
+      // what makes the merged render comparable rather than merely non-silent.
+      out.pairEarlyMid = amplitudeAt(pairRender, 330, 1.5);
+      out.pairLateMid = amplitudeAt(pairRender, 330, 12);
+
+      // ── LIVE vs OFFLINE, on the crossfaded pair and the consolidated clip ──
+      const overlapA = addAudioClip(bare, track.id, "w20.low", 0, 6).execute(bare);
+      const overlapB = addAudioClip(overlapA, track.id, "w20.high", 2, 4).execute(overlapA);
+      const [overlapLowId, overlapHighId] = (overlapB.arrangement.audioClips ?? []).map((c: { id: string }) => c.id);
+      const crossfaded = crossfadeAudioClips(overlapB, overlapLowId!, overlapHighId!).execute(overlapB);
+
+      const xfOffline = await render(crossfaded);
+      const xfLive = await renderLive(crossfaded, xfOffline.length);
+      out.crossfadeOfflineVsLive = maxAbsDiff(xfOffline, xfLive);
+      out.crossfadeOfflineLow = amplitudeAt(xfOffline, 220, 5.6);
+      out.crossfadeLiveLow = amplitudeAt(xfLive, 220, 5.6);
+      out.crossfadeLiveHigh = amplitudeAt(xfLive, 550, 5.6);
+
+      // A slitted clip: the live path must schedule every fragment.
+      const toSlip = addAudioClip(bare, track.id, "w20.low", 0, 4).execute(bare);
+      const slipId = toSlip.arrangement.audioClips?.[0]?.id;
+      const slipped = slipAudioClip(toSlip, slipId!, 2).execute(toSlip);
+      const slippedOffline = await render(slipped);
+      const slippedLive = await renderLive(slipped, slippedOffline.length);
+      out.slipOfflineVsLive = maxAbsDiff(slippedOffline, slippedLive);
+
+      // A stretched clip: rate handling differs most between the two paths.
+      const toStretch = addAudioClip(bare, track.id, "w20.low", 0, 4).execute(bare);
+      const stretchId = toStretch.arrangement.audioClips?.[0]?.id;
+      const stretched = stretchAudioClip(toStretch, stretchId!, 8, 0.5).execute(toStretch);
+      const stretchOffline = await render(stretched);
+      const stretchLive = await renderLive(stretched, stretchOffline.length);
+      out.stretchOfflineVsLive = maxAbsDiff(stretchOffline, stretchLive);
+      out.stretchLiveShifted = amplitudeAt(stretchLive, 110, 0.5);
+
+      return out;
+    });
+
+    // ── CONSOLIDATE ───────────────────────────────────────────────────────
+    expect(report.pairCount as number).toBe(2);
+    expect(report.mergedCount as number, `consolidate left ${report.mergedCount} clips`).toBe(1);
+    // One clip spanning the union of the two 4-bar inputs = 8 bars at bar 0.
+    expect(report.mergedGeometry, `merged geometry=${JSON.stringify(report.mergedGeometry)}`).toEqual([[0, 8]]);
+    expect(report.mergedBufferId as string).toBe("w20.consolidated");
+    // CONTROL: the inputs really did sound across the whole span.
+    expect(report.pairEarlyMid as number).toBeGreaterThan(0.05);
+    expect(report.pairLateMid as number, "the second input never sounded").toBeGreaterThan(0.05);
+    // ...and so does the merged clip.
+    expect(report.mergedEarlyMid as number, "the consolidated clip is silent at the start").toBeGreaterThan(0.05);
+    expect(report.mergedLateMid as number, "the consolidated clip is silent at the end").toBeGreaterThan(0.05);
+
+    // ── LIVE vs OFFLINE ───────────────────────────────────────────────────
+    // The live path must reproduce the crossfade, including both tones and the
+    // equal-power shape. A zero difference is NOT required (the two paths
+    // schedule differently); a small one is. These thresholds are calibrated
+    // against the offline render, not chosen to be safe.
+    expect(report.crossfadeOfflineLow as number).toBeGreaterThan(0.05);
+    expect(report.crossfadeLiveLow as number, "live playback lost the low tone").toBeGreaterThan(0.05);
+    expect(report.crossfadeLiveHigh as number, "live playback lost the high tone").toBeGreaterThan(0.05);
+    expect(report.crossfadeOfflineVsLive as number, "live and offline crossfades diverge").toBeLessThan(0.05);
+    expect(report.slipOfflineVsLive as number, "live and offline slips diverge").toBeLessThan(0.05);
+    expect(report.stretchOfflineVsLive as number, "live and offline stretches diverge").toBeLessThan(0.05);
+    // The stretch's pitch shift must be present live too, not just offline.
+    expect(report.stretchLiveShifted as number, "live playback did not apply the stretch rate").toBeGreaterThan(0.05);
+  });
 });

@@ -110,6 +110,16 @@ import { isPadKey, padKeysArmed, setPadKeysArmed } from "./padKeys";
 import { melodicKeys } from "./melodicKeys";
 import { JamGate } from "./JamGate";
 
+const INSPECTOR_COLLAPSED_KEY = "pf-inspector-collapsed-v1";
+
+function loadInspectorCollapsed(): boolean {
+  try {
+    return typeof localStorage !== "undefined" && localStorage.getItem(INSPECTOR_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Always-visible performance readout for the statusbar: live voice count and
  * the scheduler's cumulative failed-window (dropout) counter. Direct DOM
@@ -382,6 +392,14 @@ export function App({
   const [selectedPadId, setSelectedPadId] = useState(
     doc.tracks[0]?.kind === "drum" ? (doc.tracks[0].pads[0]?.id ?? "") : "",
   );
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(loadInspectorCollapsed);
+  useEffect(() => {
+    try {
+      localStorage.setItem(INSPECTOR_COLLAPSED_KEY, inspectorCollapsed ? "1" : "0");
+    } catch {
+      /* cosmetic preference — private mode and quota failures stay silent */
+    }
+  }, [inspectorCollapsed]);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   // Studio I/O popover (statusbar meter click + topbar ⋯ tool).
   const [ioOpen, setIoOpen] = useState(false);
@@ -1649,7 +1667,7 @@ export function App({
                 historyOpen={historyOpen}
                 onToggleHistory={() => setHistoryOpen((v) => !v)}
               />
-              <main className="workspace">
+              <main className={`workspace${inspectorCollapsed ? " inspector-collapsed" : ""}`}>
                 {/* Left sounds strip (V4) — always one glance away; the
                     selection (pad → instrument) is its assign target. */}
                 <ErrorBoundary panel="browser-strip">
@@ -1683,14 +1701,36 @@ export function App({
                     />
                   </ErrorBoundary>
                 </div>
-                <ResizeGrip
-                  region="inspectorWidth"
-                  ariaLabel="Resize inspector panel"
-                  title="Drag to resize the inspector · double-click to reset · ←/→ when focused"
-                />
-                <ErrorBoundary panel="inspector">
-                  <Inspector track={track} selectedPadId={padId} onOpenPlugin={openDevicesPanel} />
-                </ErrorBoundary>
+                {!inspectorCollapsed && (
+                  <ResizeGrip
+                    region="inspectorWidth"
+                    ariaLabel="Resize inspector panel"
+                    title="Drag to resize the inspector · double-click to reset · ←/→ when focused"
+                  />
+                )}
+                {inspectorCollapsed ? (
+                  <aside className="inspector-rail" aria-label="Inspector collapsed">
+                    <button
+                      type="button"
+                      className="inspector-rail-toggle"
+                      aria-label="Expand inspector"
+                      title="Open inspector"
+                      onClick={() => setInspectorCollapsed(false)}
+                    >
+                      <span className="inspector-rail-label">INSPECTOR</span>
+                      <span aria-hidden="true">◂</span>
+                    </button>
+                  </aside>
+                ) : (
+                  <ErrorBoundary panel="inspector">
+                    <Inspector
+                      track={track}
+                      selectedPadId={padId}
+                      onOpenPlugin={openDevicesPanel}
+                      onCollapse={() => setInspectorCollapsed(true)}
+                    />
+                  </ErrorBoundary>
+                )}
               </main>
               <div
                 className={
