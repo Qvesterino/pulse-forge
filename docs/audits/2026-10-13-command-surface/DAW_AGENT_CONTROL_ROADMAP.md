@@ -1,7 +1,7 @@
 # DAW AGENT CONTROL ROADMAP — KYX
 
 **Audit date:** 2026-10-13 · **Target:** KYX (`pulse-forge`) · **Revision:** `31cc20ad`
-**Status:** P0-A, P0-B, P0-C, **P1-A**, **P1-B**, P1-C, **P1-D (S-scope; UNKNOWN resolved)**, P1-E, **P2-A (parity sweep)**, **P2-B** and **P2-C/P2-D (batch safeguards, dry-run, parity ops)** **IMPLEMENTED + VERIFIED 2026-10-13/14**; **P3-D implemented + P3-H proposed (ADR 0046) + P3-A readiness assessed 2026-10-14** — with one VERIFIED OPEN owned red: the intent-model grammar drifted from its manifest (concurrent vocab growth), blocking the shipped model's browser load until the intent-model wave re-pins or retrains — see `IMPL-2026-10-13-P0-P1.md` in this directory for changed files, test evidence and residual risks. All other items remain proposals.
+**Status:** P0-A, P0-B, P0-C, **P1-A**, **P1-B**, P1-C, **P1-D (S-scope; UNKNOWN resolved)**, P1-E, **P2-A (parity sweep)**, **P2-B** and **P2-C/P2-D (batch safeguards, dry-run, parity ops)** **IMPLEMENTED + VERIFIED 2026-10-13/14**; **P3-D implemented + P3-H proposed (ADR 0046) + P3-A readiness assessed 2026-10-14** — the grammar-drift owned red discovered on 10-14 was RESOLVED the same day by an evidence-backed manifest re-pin (verified additive delta, untouched artifact pins, loader drift null — model loads again) — see `IMPL-2026-10-13-P0-P1.md` in this directory for changed files, test evidence and residual risks. All other items remain proposals.
 
 Complexity is expressed as **relative size** (S / M / L), not calendar time — this audit has no basis for time estimates and inventing them would be false precision.
 

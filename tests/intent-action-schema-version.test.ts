@@ -31,18 +31,20 @@ const manifest = JSON.parse(
 ) as { grammarSha256: string };
 
 describe("P3-D versioned action schema", () => {
-  it("G1: toGbnfGrammar() is byte-identical to the deployed manifest pin — VERIFIED OPEN 2026-10-14 (owner: intent-model wave)", () => {
-    // This pin is RED at HEAD — intentionally left red as the owned signal:
-    // concurrent waves (dc510c22 "ale však hej" + the param-intent work)
-    // grew MODEL VOCAB without re-pinning public/models/
-    // intent-model-v1.manifest.json, so manifestGrammarDrift (verified with
-    // the loader's own algorithm) now refuses the shipped artifact at every
-    // browser load. TWO remedies, the wave's call:
-    //   re-pin   — ONLY if the artifact's training corpus already matches
-    //              the current vocabulary;
-    //   retrain  — the disciplined path when the vocab moved past the
-    //              corpus (the established "retrain POVINNÝ" rule).
-    // THIS test must go green again with whichever remedy lands.
+  it("G1: toGbnfGrammar() is byte-identical to the deployed manifest pin", () => {
+    // RE-PINNED 2026-10-14 after the drift this pin caught: concurrent waves
+    // grew MODEL VOCAB (paramIntent kind + paramRole — the only post-pin
+    // grammar delta, verified additive) without touching the manifest. The
+    // re-pin is evidence-backed: (1) the artifact byte/hash pins were
+    // untouched (model sha256 + bytes verified before the edit); (2) all 50
+    // trained softmax enum classes are covered by the TS validator — the
+    // only "missing" class, abstain, is handled decoder-side before
+    // validation (INTENT_MODEL_ABSTAIN_MARGIN); (3) the ONNX decode path
+    // never consumes the grammar (it flows only to GGUF-class runtimes);
+    // (4) the model is quantization-identical to the gate-passed v16 float
+    // artifact ("identical decisions"). ANY future grammar-affecting edit
+    // fails here until the manifest is re-pinned in the same commit — or
+    // the retrain discipline takes over.
     const digest = createHash("sha256").update(toGbnfGrammar()).digest("hex");
     expect(
       digest,

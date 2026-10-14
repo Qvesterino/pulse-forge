@@ -158,13 +158,6 @@
       "reason": "caveat wording pin: test matches /prompt\\/session groups are not stored/ but the report now says the holdout is 'chronological, candidate-hash-disjoint ... diagnostic, not a statistically independent user study' — privacy claim still present, reworded; re-pin the string",
       "addedAt": "2026-10-11",
       "evidence": "F1 campaign baseline 2026-10-11, clean worktree at 3beef964: caveat regex mismatch at preference-evaluation.test.ts:75"
-    },
-    {
-      "id": "tests/intent-action-schema-version.test.ts > P3-D versioned action schema > G1: toGbnfGrammar() is byte-identical to the deployed manifest pin — VERIFIED OPEN 2026-10-14 (owner: intent-model wave)",
-      "owner": "intent-model wave",
-      "reason": "grammar drift: concurrent waves grew MODEL VOCAB (complaint/undo/query families + param-intent surfaces) without re-pinning public/models/intent-model-v1.manifest.json — manifestGrammarDrift refuses the shipped artifact at browser load. Fix is the wave's call: re-pin (only if the training corpus matches the current vocab) or retrain per the established discipline. Discovered by the P3-D grammar pin; loader-level drift verified with the loader's own algorithm.",
-      "addedAt": "2026-10-14",
-      "evidence": "tests/intent-action-schema-version.test.ts G1 + a loader-level probe returned the drift error verbatim"
     }
   ]
 }
