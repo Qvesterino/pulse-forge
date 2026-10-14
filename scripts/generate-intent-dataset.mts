@@ -2621,6 +2621,37 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
     "add a little more of that effect",
   );
 
+  // PARAM WAVE P2 (2026-10-14) — named-KNOB asks: time/tone on reverb+delay,
+  // mix on saturation (the NON-primary knobs; drive/width stay out of scope
+  // in this wave). Teacher = parseParamIntent via the router (param wave P1).
+  for (const target of ["lead", "bass", "drums"]) {
+    for (const ms of ["250", "375", "500"]) {
+      en.push(`set delay time to ${ms} ms on the ${target}`);
+    }
+    for (const sec of ["1.2", "2.5", "4"]) {
+      en.push(`set reverb decay to ${sec} s on the ${target}`);
+    }
+    for (const hz of ["5200", "8000"]) {
+      en.push(`set reverb tone to ${hz} hz on the ${target}`);
+      en.push(`set delay tone to ${hz} hz on the ${target}`);
+    }
+    en.push(`longer reverb tail on the ${target}`);
+    en.push(`shorter reverb tail on the ${target}`);
+    en.push(`darker reverb tone on the ${target}`);
+    en.push(`brighter delay tone on the ${target}`);
+    en.push(`drier saturation on the ${target}`);
+  }
+  sk.push("nastav delay time na 375 ms na leade");
+  sk.push("nastav reverb decay na 2.5 s na base");
+  sk.push("dlhsi chvost na reverbe na leade");
+  sk.push("kratsi chvost na reverbe na base");
+  sk.push("tmavsi ton reverbu na leade");
+  sk.push("jasnejsi ton delayu na leade");
+  sk.push("suchsia saturacia na leade");
+  sk.push("dlhsi delay time na bicich");
+  sk.push("set delay time to 375 ms na leade");
+  sk.push("reverb decay na 4 s v drope");
+
   return [
     { lang: "en", instructions: en },
     { lang: "sk", instructions: sk },

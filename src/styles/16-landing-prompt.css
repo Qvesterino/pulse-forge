@@ -51,8 +51,8 @@
 }
 
 .landing-forge-btn:disabled {
-  opacity: 0.45;
-  cursor: default;
+  opacity: 0.58;
+  cursor: not-allowed;
 }
 
 .landing-prompt-chips {
@@ -80,8 +80,8 @@
 }
 
 .landing-chip:disabled {
-  opacity: 0.5;
-  cursor: default;
+  opacity: 0.58;
+  cursor: not-allowed;
 }
 
 .landing-prompt-hint {

@@ -1,0 +1,7 @@
+/* Explain why generation is unavailable before the user has entered a prompt. */
+.intent-prompt-hint {
+  margin: -4px 0 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.45;
+}

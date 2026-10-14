@@ -5,7 +5,7 @@
    step quieter for the local sections inside larger workspaces. */
 h2.panel-title {
   color: var(--text);
-  font-size: 14px;
+  font-size: 15px;
   letter-spacing: 1.15px;
   line-height: 1.25;
 }
@@ -44,7 +44,7 @@ h3.panel-title {
    inside an already busy work area. The first group stays flush with content. */
 .toolbar {
   gap: var(--space-2);
-  row-gap: 6px;
+  row-gap: var(--space-1);
 }
 
 .toolbar-group {
@@ -78,8 +78,8 @@ h3.panel-title {
 /* A little more label area makes the permanent dock and track rack scannable
    while preserving their compact height and horizontally-scrollable behavior. */
 .dock-tab {
-  gap: 5px;
-  padding-inline: 7px;
+  gap: var(--space-1);
+  padding-inline: var(--space-2);
   font-size: 11px;
   letter-spacing: 0.75px;
   scroll-margin-inline: 8px;
@@ -87,14 +87,14 @@ h3.panel-title {
 
 .track-tab {
   height: 28px;
-  padding-inline: 11px;
+  padding-inline: var(--space-3);
   font-size: 12px;
   letter-spacing: 0.35px;
 }
 
 .pattern-chip {
   height: 28px;
-  padding-inline: 11px;
+  padding-inline: var(--space-3);
   border-radius: var(--radius-md);
   font-size: 12px;
 }
@@ -122,13 +122,13 @@ h3.panel-title {
 
 .channel-strip {
   gap: var(--space-2);
-  padding: 9px;
+  padding: var(--space-2);
   border-radius: var(--radius-md);
   box-shadow: var(--elev-1);
 }
 
 .channel-name-input {
-  padding: 2px 6px;
+  padding: 2px var(--space-1);
   font-size: 12px;
 }
 
@@ -247,7 +247,7 @@ h3.panel-title {
 .mastering-intro-notes {
   grid-column: 1 / -1;
   min-width: 0;
-  padding-top: 6px;
+  padding-top: var(--space-2);
   border-top: 1px solid var(--hairline);
 }
 
@@ -328,8 +328,8 @@ h3.panel-title {
 }
 
 .mastering-overview-metric {
-  gap: 6px;
-  padding: 9px;
+  gap: var(--space-2);
+  padding: var(--space-2);
   border-color: var(--hairline);
   border-radius: var(--radius-sm);
 }
@@ -371,7 +371,7 @@ h3.panel-title {
 
   .dock-tab {
     min-height: 34px;
-    padding-inline: 9px;
+    padding-inline: var(--space-2);
   }
 }
 
@@ -394,6 +394,56 @@ h3.panel-title {
 
   .toolbar-group:first-child {
     padding-left: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  /* Keep candidate provenance readable on a phone. The audition, label and
+     USE stay on the first row; iteration and export actions wrap below. */
+  .intent-panel > .intent-candidates[aria-label="Candidate bank"] > .intent-candidate-row {
+    flex-wrap: wrap;
+    row-gap: 5px;
+  }
+
+  .intent-panel > .intent-candidates[aria-label="Candidate bank"] .intent-audition-btn,
+  .intent-panel > .intent-candidates[aria-label="Candidate bank"] .intent-use-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .intent-panel > .intent-candidates[aria-label="Candidate bank"] .intent-candidate-row > .btn,
+  .intent-panel > .intent-candidates[aria-label="Candidate bank"] .intent-iteration-controls > summary {
+    min-height: 44px;
+  }
+
+  .intent-panel
+    > .intent-candidates[aria-label="Candidate bank"]
+    .intent-iteration-controls[open]
+    .intent-iteration-panel
+    .btn {
+    min-height: 44px;
+  }
+
+  .intent-panel > .intent-candidates[aria-label="Candidate bank"] .intent-candidate-meta {
+    flex: 1 1 140px;
+  }
+
+  .intent-panel > .intent-candidates[aria-label="Candidate bank"] .intent-iteration-controls {
+    flex: 0 0 120px;
+  }
+
+  .intent-panel > .intent-candidates[aria-label="Candidate bank"] .intent-iteration-controls[open] {
+    flex: 1 1 100%;
+  }
+
+  .intent-panel
+    > .intent-candidates[aria-label="Candidate bank"]
+    .intent-iteration-controls[open]
+    .intent-iteration-panel {
+    position: static;
+    width: auto;
+    margin-top: 5px;
+    box-shadow: none;
   }
 }
 

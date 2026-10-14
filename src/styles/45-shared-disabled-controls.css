@@ -1,0 +1,85 @@
+/* Disabled controls stay legible. A matte surface and quiet border communicate
+   unavailability while preserving the type contrast used by active controls. */
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 1;
+  border-color: var(--border-soft);
+  background: var(--surface-0);
+  box-shadow: none;
+  color: var(--text-dim);
+  filter: none;
+}
+
+.btn.btn-primary:disabled {
+  border-color: var(--border-soft);
+  background: var(--surface-0);
+  box-shadow: none;
+  color: var(--text-dim);
+}
+
+.intent-panel .intent-generate-btn:disabled {
+  border-color: var(--border-soft);
+  background: var(--surface-0);
+  box-shadow: none;
+  color: var(--text-dim);
+}
+
+.device-editor .fx-device-buttons .btn-small:disabled {
+  opacity: 1;
+}
+
+.mastering-overview-action .mastering-overview-analyze:disabled {
+  border-color: var(--border-soft);
+  background: var(--surface-0);
+  color: var(--text-dim);
+}
+
+.chip:disabled,
+.seg-item:disabled {
+  cursor: not-allowed;
+  opacity: 1;
+  border-color: var(--border-soft);
+  background: var(--surface-0);
+  box-shadow: none;
+  color: var(--text-dim);
+}
+
+/* Older panel-specific controls still set their own disabled alpha. Keep the
+   button labels readable until those bespoke controls adopt the shared kit. */
+.arr-midi-lane-label button:disabled,
+.arr-auto-lane-label button:disabled,
+.fader-menu button:disabled,
+.theme-mini-btn:disabled,
+.context-menu button:disabled,
+.arr-chord-editor .arr-chord-edit-apply:disabled,
+.brief-chip.brief-role-toggle:disabled,
+.landing-forge-btn:disabled,
+.landing-chip:disabled,
+.dock-close-all:disabled,
+.master-ab-section button:disabled,
+.master-assistant-section button:disabled,
+.master-reference-offset-input button:disabled,
+.reference-controls > button:disabled,
+.reference-reading button:disabled,
+.reference-apply button:disabled,
+.reference-match-header button:disabled,
+.reference-match-resonances button:disabled,
+.arr-panel .arr-ripple-toggle:disabled {
+  opacity: 1;
+}
+
+.reference-reading button[aria-pressed="true"]:disabled {
+  opacity: 1;
+}
+
+.btn.active:disabled,
+.btn[aria-pressed="true"]:disabled,
+.chip.active:disabled,
+.chip[aria-pressed="true"]:disabled,
+.seg-item.active:disabled,
+.seg-item[aria-pressed="true"]:disabled {
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--border-soft));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-0));
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--accent) 58%, transparent);
+  color: var(--accent);
+}

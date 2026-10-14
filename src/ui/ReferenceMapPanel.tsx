@@ -131,6 +131,7 @@ export function ReferenceMapPanel() {
   const services = useServices();
   const [tab, setTab] = useState<TabId>("map");
   const [analysis, setAnalysis] = useState<Analyzed | null>(null);
+  const [analysisVersion, setAnalysisVersion] = useState(0);
   const [stage, setStage] = useState<ReferenceStage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -155,6 +156,7 @@ export function ReferenceMapPanel() {
 
   const analyze = useCallback(
     async (file: File) => {
+      setAnalysisVersion((version) => version + 1);
       setError(null);
       setAnalysis(null);
       setCorrection(EMPTY_CORRECTION);
@@ -655,18 +657,34 @@ export function ReferenceMapPanel() {
   // ---------------------------------------------------------------------------
   const [matchReport, setMatchReport] = useState<ReferenceMatchReport | null>(null);
   const [matchStrips, setMatchStrips] = useState<MatchStrip[]>([]);
+  const [matchBasis, setMatchBasis] = useState<{ doc: ProjectDocument; analysisVersion: number } | null>(null);
   const [matchBusy, setMatchBusy] = useState(false);
   const [matchError, setMatchError] = useState<string | null>(null);
+  const matchStale =
+    matchReport !== null &&
+    (matchBasis === null || matchBasis.doc !== doc || matchBasis.analysisVersion !== analysisVersion);
+
+  useEffect(() => {
+    if (matchBasis && (matchBasis.doc !== doc || matchBasis.analysisVersion !== analysisVersion)) {
+      // Keep the measured report readable, but release the old project snapshot
+      // once it can no longer be applied.
+      setMatchBasis(null);
+    }
+  }, [analysisVersion, doc, matchBasis]);
 
   const runMatch = useCallback(async () => {
     if (!analysis) return;
+    const measuredDoc = doc;
+    const measuredAnalysis = analysis;
+    const measuredAnalysisVersion = analysisVersion;
     setMatchBusy(true);
     setMatchError(null);
     setMatchReport(null);
     setMatchStrips([]);
+    setMatchBasis(null);
     try {
       const { renderProject } = await import("../rendering/renderer");
-      const buffer = await renderProject(doc, services.bank, {
+      const buffer = await renderProject(measuredDoc, services.bank, {
         mode: "pattern",
         sampleRate: 44100,
         tailSeconds: 0.3,
@@ -675,24 +693,25 @@ export function ReferenceMapPanel() {
       const channels = Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c).slice());
       const report = buildReferenceMatch(
         { channels, sampleRate: buffer.sampleRate },
-        { channels: analysis.channels, sampleRate: analysis.sampleRate },
+        { channels: measuredAnalysis.channels, sampleRate: measuredAnalysis.sampleRate },
       );
       setMatchReport(report);
+      setMatchBasis({ doc: measuredDoc, analysisVersion: measuredAnalysisVersion });
 
       // Per-track attribution: render each content track as its own pre-master
       // stem so a band gap can name the strip that owns it. Failures degrade
       // to no attribution, never a broken measurement.
-      const strips = await collectMatchStrips(doc, services.bank);
+      const strips = await collectMatchStrips(measuredDoc, services.bank);
       setMatchStrips(strips);
     } catch (err) {
       setMatchError(err instanceof Error ? err.message : "Match failed.");
     } finally {
       setMatchBusy(false);
     }
-  }, [analysis, doc, services.bank]);
+  }, [analysis, analysisVersion, doc, services.bank]);
 
   const applyMatch = useCallback(() => {
-    if (!matchReport) return;
+    if (!matchReport || matchStale || matchBusy) return;
     // ONE command: master match-EQ curve + loudness trim + every unmuted
     // per-track fader move + the device proposals ("this is a GROW job")
     // folded into a single undo step.
@@ -705,12 +724,13 @@ export function ReferenceMapPanel() {
     }
     services.store.execute(command);
     setApplied(command.label);
-  }, [matchReport, matchStrips, doc, services.store]);
+  }, [matchBusy, matchReport, matchStale, matchStrips, doc, services.store]);
 
   /** Cut every detected resonance on ONE track (the native EQ's two free
    *  bands) as a single undo step. */
   const applyResonancesForStrip = useCallback(
     (strip: MatchStrip) => {
+      if (matchStale) return;
       const peaks = strip.resonances ?? [];
       const command = applyResonanceCutsCommand(doc, strip.id, peaks);
       if (!command) {
@@ -720,7 +740,7 @@ export function ReferenceMapPanel() {
       services.store.execute(command);
       setApplied(`${strip.name}: ${command.label}`);
     },
-    [doc, services.store],
+    [doc, matchStale, services.store],
   );
 
   // Tick length is tempo-dependent, so marker placement is only correct if the
@@ -1194,11 +1214,14 @@ export function ReferenceMapPanel() {
                 onApplyResonances={applyResonancesForStrip}
                 canApply={
                   matchReport !== null &&
+                  !matchBusy &&
+                  !matchStale &&
                   (matchReport.curve !== null ||
                     matchReport.loudnessTrimDb !== null ||
                     matchStripMoves(matchReport, matchStrips).some((m) => m.gainDb !== 0) ||
                     matchDeviceMoves(matchReport, matchStrips).length > 0)
                 }
+                stale={matchStale}
               />
             )}
           </div>
@@ -1542,6 +1565,7 @@ function MatchTab({
   onApply,
   onApplyResonances,
   canApply,
+  stale,
 }: {
   report: ReferenceMatchReport | null;
   strips: readonly MatchStrip[];
@@ -1552,6 +1576,7 @@ function MatchTab({
   onApply: () => void;
   onApplyResonances: (strip: MatchStrip) => void;
   canApply: boolean;
+  stale: boolean;
 }) {
   // Per-track attribution is derived from the measured report + strips — pure,
   // computed at render, so it can never drift from the table above it.
@@ -1593,47 +1618,61 @@ function MatchTab({
         </p>
       )}
 
+      {stale && (
+        <p className="reference-match-stale" role="status" data-testid="reference-match-stale">
+          The project or reference changed after this measurement. The report stays available for review; measure again
+          before applying it.
+        </p>
+      )}
+
       {report && (
         <>
           <p className="reference-summary" data-testid="reference-match-summary">
             {report.summary}
           </p>
 
-          <table className="reference-match-table" data-testid="reference-match-table">
-            <thead>
-              <tr>
-                <th>Band</th>
-                <th>Range</th>
-                <th>Mix</th>
-                <th>Reference</th>
-                <th>Δ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {report.bands.map((row) => (
-                <tr
-                  key={row.band}
-                  className={
-                    !row.empty && Math.abs(row.deltaDb) >= 1.5 ? "is-gapped" : row.empty ? "is-empty" : undefined
-                  }
-                  data-testid={`reference-match-band-${row.band}`}
-                >
-                  <td>{row.label}</td>
-                  <td>{row.hz}</td>
-                  <td>{row.mixDb.toFixed(1)} dB</td>
-                  <td>{row.refDb.toFixed(1)} dB</td>
-                  <td>
-                    {/* A band empty on BOTH sides has no information in its
-                        delta — showing a filter-leakage number as a gap would
-                        send the user after a band neither mix occupies. */}
-                    {row.empty || Math.abs(row.deltaDb) < 1.5
-                      ? "—"
-                      : `${row.deltaDb > 0 ? "+" : ""}${row.deltaDb.toFixed(1)} dB`}
-                  </td>
+          <div
+            className="reference-match-table-scroll"
+            role="region"
+            aria-label="Reference mix frequency comparison"
+            tabIndex={0}
+          >
+            <table className="reference-match-table" data-testid="reference-match-table">
+              <thead>
+                <tr>
+                  <th>Band</th>
+                  <th>Range</th>
+                  <th>Mix</th>
+                  <th>Reference</th>
+                  <th>Δ</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {report.bands.map((row) => (
+                  <tr
+                    key={row.band}
+                    className={
+                      !row.empty && Math.abs(row.deltaDb) >= 1.5 ? "is-gapped" : row.empty ? "is-empty" : undefined
+                    }
+                    data-testid={`reference-match-band-${row.band}`}
+                  >
+                    <td>{row.label}</td>
+                    <td>{row.hz}</td>
+                    <td>{row.mixDb.toFixed(1)} dB</td>
+                    <td>{row.refDb.toFixed(1)} dB</td>
+                    <td>
+                      {/* A band empty on BOTH sides has no information in its
+                          delta — showing a filter-leakage number as a gap would
+                          send the user after a band neither mix occupies. */}
+                      {row.empty || Math.abs(row.deltaDb) < 1.5
+                        ? "—"
+                        : `${row.deltaDb > 0 ? "+" : ""}${row.deltaDb.toFixed(1)} dB`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           <dl className="reference-match-meta">
             <dt>Loudness</dt>
@@ -1737,6 +1776,7 @@ function MatchTab({
                     <button
                       type="button"
                       onClick={() => onApplyResonances(strip)}
+                      disabled={stale}
                       data-testid={`reference-match-resonance-apply-${strip.id}`}
                       title="Notch these peaks on this track (one undo step)"
                     >

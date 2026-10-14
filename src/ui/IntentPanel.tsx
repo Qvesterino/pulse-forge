@@ -4716,6 +4716,7 @@ export function IntentPanel() {
         className="intent-textarea"
         title="Describe the beat you want — genre, mood, tempo, bars, instruments, arrangement. Ctrl/Cmd+Enter generates."
         placeholder="dark rolling techno at 140 with lead… · tmavé rolujúce techno na 140, 8 taktov…"
+        aria-describedby={!text.trim() && !activeProjectBrief ? "intent-prompt-empty-hint" : undefined}
         value={text}
         onChange={(e) => {
           replacePrompt(e.target.value);
@@ -4729,6 +4730,11 @@ export function IntentPanel() {
         rows={3}
         aria-label="Intent description"
       />
+      {!text.trim() && !activeProjectBrief && (
+        <p className="intent-prompt-hint" id="intent-prompt-empty-hint">
+          Napíš alebo nadiktuj brief — generovanie sa sprístupní po zadaní opisu.
+        </p>
+      )}
       <div className="intent-voice-row">
         <button
           type="button"
@@ -5139,7 +5145,7 @@ export function IntentPanel() {
           ))}
         </div>
       )}
-      <StatusLine message={status} />
+      <StatusLine message={status} busy={busy || routeBusy || theatreBusy || mutateBusy} />
       {songBusy && songProgress && (
         <div
           className="intent-song-progress"

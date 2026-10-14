@@ -57,6 +57,9 @@ describe("P2-D kyx_tracks duplicate (D1)", () => {
     expect(next.tracks).toHaveLength(doc.tracks.length + 1);
     const originalIds = new Set(doc.tracks.map((t) => t.id));
     const clone = next.tracks.find((t) => !originalIds.has(t.id))!;
+    if (source.kind !== "instrument" || clone.kind !== "instrument") {
+      throw new Error("duplicated instrument track fixture changed kind");
+    }
     expect(clone.instrument).toBe(source.instrument);
     expect(clone.effects.map((fx) => fx.type)).toEqual(source.effects.map((fx) => fx.type));
   });

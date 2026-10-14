@@ -561,8 +561,8 @@
 }
 
 .theme-mini-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
+  opacity: 0.58;
+  cursor: not-allowed;
 }
 
 .theme-mini-btn.on {

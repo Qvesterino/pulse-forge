@@ -59,6 +59,7 @@ import {
   renameScene,
   reorderScenes,
   resizeArrangementClip,
+  setActivePattern,
   transitionsForClips,
   resizeArrangementClipRipple,
   nudgeClips,
@@ -5198,6 +5199,19 @@ export function ArrangementPanel() {
               setSelectedClipId(null);
               setSelectedAudioClipId(null);
               selectionStore.setClips([id]);
+            }}
+            onEditSource={(trackId, patternId) => {
+              const currentDoc = services.store.getDoc();
+              if (!currentDoc.tracks.some((track) => track.id === trackId && track.kind === "instrument")) return;
+              if (!currentDoc.patterns.some((pattern) => pattern.id === patternId)) return;
+              setSelectedClipId(null);
+              setSelectedAudioClipId(null);
+              selectionStore.setClips([]);
+              selectionStore.setTracks([trackId]);
+              selectionStore.clearNotes();
+              selectionStore.setStepSelection(null);
+              selectionStore.clearTimeRange();
+              if (currentDoc.activePatternId !== patternId) execute(setActivePattern(currentDoc, patternId));
             }}
           />
           <AutomationClipLanes

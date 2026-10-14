@@ -4,6 +4,165 @@ import { openHouseTemplate } from "./_helpers";
 test.describe("13 — rendered audio consolidation", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "WebKit on Windows has no Web Audio media stack");
 
+  test("a 93-bar arrangement survives reload and exports audio from its final bar", async ({ page }) => {
+    test.setTimeout(180_000);
+    await openHouseTemplate(page);
+
+    const report = await page.evaluate(async () => {
+      const load = (specifier: string) => import(/* @vite-ignore */ specifier);
+      const [
+        templateModule,
+        commandModule,
+        schemaModule,
+        typesModule,
+        sampleModule,
+        rendererModule,
+        wavModule,
+        projectRepoModule,
+      ] = await Promise.all([
+        load("/src/project-model/templates.ts"),
+        load("/src/commands/commands.ts"),
+        load("/src/project-model/schema.ts"),
+        load("/src/project-model/types.ts"),
+        load("/src/sample-library/factory.ts"),
+        load("/src/rendering/renderer.ts"),
+        load("/src/rendering/wav.ts"),
+        load("/src/persistence/ProjectRepository.ts"),
+      ]);
+      const { createProjectFromTemplate } = templateModule;
+      const { addAudioClip, addMidiClip, addNote, setPatternLength } = commandModule;
+      const { createInstrumentTrackModel } = schemaModule;
+      const { BAR_TICKS } = typesModule;
+      const { SampleBank } = sampleModule;
+      const { computeRenderTicks, renderProject } = rendererModule;
+      const { encodeWavAsync } = wavModule;
+      const { ProjectRepository } = projectRepoModule;
+      const sampleRate = 8_000;
+      const sampleSeconds = 1.4;
+      const source = new OfflineAudioContext(1, sampleRate * sampleSeconds, sampleRate).createBuffer(
+        1,
+        Math.floor(sampleRate * sampleSeconds),
+        sampleRate,
+      );
+      const sourceSamples = source.getChannelData(0);
+      for (let frame = 0; frame < source.length; frame++) {
+        sourceSamples[frame] = 0.15 * Math.sin((2 * Math.PI * 440 * frame) / sampleRate);
+      }
+
+      const projectId = `e2e-long-song-${crypto.randomUUID()}`;
+      const bufferId = `e2e-long-song-audio-${crypto.randomUUID()}`;
+      const template = createProjectFromTemplate("empty");
+      const track = template.tracks.find((candidate: { kind: string }) => candidate.kind !== "group");
+      if (!track) throw new Error("long-song audio fixture is missing a playable track");
+      const instrument = createInstrumentTrackModel("808", 1);
+      const base = {
+        ...template,
+        id: projectId,
+        name: "93-Bar Acceptance",
+        bpm: 124,
+        tracks: [...template.tracks, instrument],
+        arrangement: { ...template.arrangement, clips: [], audioClips: [] },
+      };
+      const expanded = setPatternLength(base, base.activePatternId, 128).execute(base);
+      const withNote = addNote(expanded, instrument.id, {
+        pitch: 36,
+        start: 0,
+        duration: 4 * BAR_TICKS,
+        velocity: 0.9,
+      }).execute(expanded);
+      const withMidiClip = addMidiClip(
+        withNote,
+        instrument.id,
+        base.activePatternId,
+        89 * BAR_TICKS,
+        4 * BAR_TICKS,
+      ).execute(withNote);
+      const withAudioClip = addAudioClip(withMidiClip, track.id, bufferId, 92, 1, {
+        fadeIn: 0,
+        fadeOut: 0,
+      }).execute(withMidiClip);
+      const project = withAudioClip;
+      const bank = new SampleBank();
+      bank.add(bufferId, source);
+      const projects = new ProjectRepository();
+
+      try {
+        await projects.save(project);
+        const reopened = await new ProjectRepository().load(projectId);
+        if (!reopened) throw new Error("93-bar project did not reopen from IndexedDB");
+        const rendered = await renderProject(reopened, bank, {
+          mode: "song",
+          sampleRate,
+          tailSeconds: 0,
+          masterProcessing: false,
+          arrangementOnly: true,
+        });
+        const wav = await encodeWavAsync(rendered, 16);
+        const wavView = new DataView(wav);
+        const channel = rendered.getChannelData(0);
+        const lastBarStart = Math.floor((92 * 4 * 60 * sampleRate) / reopened.bpm);
+        const energyFrames = sampleRate;
+        let squareSum = 0;
+        for (let frame = lastBarStart; frame < lastBarStart + energyFrames; frame++) {
+          const value = channel[frame] ?? 0;
+          squareSum += value * value;
+        }
+        const sustainStart = rendered.length - Math.floor(sampleRate * 0.25);
+        let sustainSquareSum = 0;
+        for (let frame = sustainStart; frame < rendered.length; frame++) {
+          const value = channel[frame] ?? 0;
+          sustainSquareSum += value * value;
+        }
+        const reopenedPattern = reopened.patterns.find(
+          (candidate: { id: string }) => candidate.id === base.activePatternId,
+        );
+        const sustainNote = reopenedPattern?.notes[instrument.id]?.find(
+          (note: { pitch: number; duration: number }) => note.pitch === 36 && note.duration === 4 * BAR_TICKS,
+        );
+        return {
+          bpm: reopened.bpm,
+          clipStartBar: reopened.arrangement.audioClips?.[0]?.startBar,
+          clipLengthBars: reopened.arrangement.audioClips?.[0]?.lengthBars,
+          sustainClipStartBar: reopened.arrangement.midiClips?.[0]?.startTick / BAR_TICKS,
+          sustainClipLengthBars: reopened.arrangement.midiClips?.[0]?.lengthTicks / BAR_TICKS,
+          sustainNoteTicks: sustainNote?.duration,
+          renderTicks: computeRenderTicks(reopened, "song"),
+          frames: rendered.length,
+          durationSeconds: rendered.duration,
+          finalBarRms: Math.sqrt(squareSum / energyFrames),
+          finalQuarterSecondRms: Math.sqrt(sustainSquareSum / (rendered.length - sustainStart)),
+          wavRiff: String.fromCharCode(...new Uint8Array(wav, 0, 4)),
+          wavWave: String.fromCharCode(...new Uint8Array(wav, 8, 4)),
+          wavSampleRate: wavView.getUint32(24, true),
+          wavChannels: wavView.getUint16(22, true),
+          wavBitsPerSample: wavView.getUint16(34, true),
+          wavDataBytes: wavView.getUint32(40, true),
+        };
+      } finally {
+        await projects.delete(projectId);
+      }
+    });
+
+    expect(report).toMatchObject({
+      bpm: 124,
+      clipStartBar: 92,
+      clipLengthBars: 1,
+      sustainClipStartBar: 89,
+      sustainClipLengthBars: 4,
+      sustainNoteTicks: 4 * 4 * 480,
+      renderTicks: 93 * 4 * 480,
+      wavRiff: "RIFF",
+      wavWave: "WAVE",
+      wavSampleRate: 8_000,
+      wavChannels: 2,
+      wavBitsPerSample: 16,
+    });
+    expect(report.durationSeconds).toBeCloseTo(180, 3);
+    expect(report.wavDataBytes).toBe(report.frames * 2 * 2);
+    expect(report.finalBarRms).toBeGreaterThan(0.02);
+    expect(report.finalQuarterSecondRms).toBeGreaterThan(0.01);
+  });
+
   test("renders, persists, reloads and exports selected clips without changing their sound", async ({ page }) => {
     test.setTimeout(120_000);
     await openHouseTemplate(page);

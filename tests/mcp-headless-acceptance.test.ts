@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
 import { createHeadlessMcpHost } from "../src/mcp/headless-host";
 import { resetMcpIdempotencyLedger, MCP_TOOLS } from "../src/mcp/tools";

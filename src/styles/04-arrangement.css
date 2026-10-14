@@ -75,8 +75,8 @@
 }
 
 .arr-midi-lane-label button:disabled {
-  opacity: 0.4;
-  cursor: default;
+  opacity: 0.58;
+  cursor: not-allowed;
 }
 
 .arr-midi-lane-track {
@@ -1446,8 +1446,8 @@
 }
 
 .arr-auto-lane-label button:disabled {
-  opacity: 0.45;
-  cursor: default;
+  opacity: 0.58;
+  cursor: not-allowed;
 }
 
 .arr-auto-lane-track {

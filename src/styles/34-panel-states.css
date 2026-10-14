@@ -113,6 +113,24 @@
   flex: 0 0 auto;
 }
 
+.export-panel {
+  container: export-panel / inline-size;
+  min-width: 0;
+}
+
+@container export-panel (max-width: 560px) {
+  .export-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 10px;
+  }
+
+  .export-summary-row,
+  .export-summary-value {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
 .export-status.export-busy {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

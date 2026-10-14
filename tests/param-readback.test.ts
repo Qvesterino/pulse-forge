@@ -161,7 +161,6 @@ describe("preset anchors (P4)", () => {
   });
 
   it("the anchor applies: one undo restores, params land clamped", () => {
-    const doc = testDoc();
     const parsed = parseEffectIntent("hall reverb na 808");
     expect(parsed).not.toBeNull();
     // applyEffectIntent is the move path — exercised by the mix suite; here

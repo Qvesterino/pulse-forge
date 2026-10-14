@@ -56,7 +56,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SFT_DIR = ROOT / "scripts" / "data" / "intent-sft"
 
 TRUNK = [384, 192]
-VOCAB_CAP = 4096
+VOCAB_CAP = 6144
 EPOCHS = 4000
 LR = 2.5e-4
 GRAD_CLIP_NORM = 1.0
@@ -135,6 +135,7 @@ KINDS = [
     "complaintIntent",
     "undoIntent",
     "queryIntent",
+    "paramIntent",
 ]
 
 COMPLAINT_KINDS = ["empty", "thin", "muddy", "harsh", "noPunch"]
@@ -143,6 +144,9 @@ COMPLAINT_FAMILIES = ["drums", "bass", "chords", "lead", "vocal", "kick", "snare
 UNDO_ACTIONS = ["undo", "redo"]
 QUERY_SUBJECTS = ["tempo", "key", "tracks", "fxChain", "markers", "groove", "lastAction"]
 QUERY_TARGETS = ["drums", "bass", "lead", "chords", "mix"]
+# Param wave P2 (src/intent/param-intent.ts PARAM_ROLES; model-schema VOCAB.paramRole)
+PARAM_ROLES = ["mix", "time", "tone", "drive", "width"]
+PARAM_MODES = ["set", "more", "less"]
 
 # Arrange slot mirrors of the schema enums (src/intent/model-schema.ts VOCAB)
 # — class sets are schema, like the GBNF enums, not weights. Sequence-student
@@ -369,6 +373,14 @@ def extract_labels(row: dict) -> dict:
     labels["undoSteps"] = as_class(response.get("steps") if kind == "undoIntent" else None)
     labels["querySubject"] = as_class(response.get("subject") if kind == "queryIntent" else None)
     labels["queryTarget"] = as_class(response.get("target") if kind == "queryIntent" else None)
+    # Param wave P2 — flat compact record (effect, role, targets, mode, value/percent)
+    labels["paramEffect"] = as_class(response.get("effect") if kind == "paramIntent" else None)
+    labels["paramRole"] = as_class(response.get("role") if kind == "paramIntent" else None)
+    labels["paramMode"] = as_class(response.get("mode") if kind == "paramIntent" else None)
+    note("paramValue", response.get("value") if kind == "paramIntent" else None)
+    labels["paramValue"] = as_class(response.get("value") if kind == "paramIntent" else None)
+    note("paramPercent", response.get("percent") if kind == "paramIntent" else None)
+    labels["paramPercent"] = as_class(response.get("percent") if kind == "paramIntent" else None)
 
     ops = response.get("ops")
     op = ops[0] if kind == "exact" and isinstance(ops, list) and len(ops) == 1 else None
@@ -510,6 +522,11 @@ def build_head_specs(rows: list[dict]) -> list[dict]:
         {"name": "undoSteps", "kind": "softmax", "classes": [ABSENT] + sorted({v for v in numeric_field_values(rows, "undoSteps")}, key=float)},
         {"name": "querySubject", "kind": "softmax", "classes": [ABSENT] + QUERY_SUBJECTS},
         {"name": "queryTarget", "kind": "softmax", "classes": [ABSENT] + QUERY_TARGETS},
+        {"name": "paramEffect", "kind": "softmax", "classes": [ABSENT] + EFFECT_TYPES},
+        {"name": "paramRole", "kind": "softmax", "classes": [ABSENT] + PARAM_ROLES},
+        {"name": "paramMode", "kind": "softmax", "classes": [ABSENT] + PARAM_MODES},
+        {"name": "paramValue", "kind": "softmax", "classes": [ABSENT] + sorted({v for v in numeric_field_values(rows, "paramValue")}, key=float)},
+        {"name": "paramPercent", "kind": "softmax", "classes": [ABSENT] + sorted({v for v in numeric_field_values(rows, "paramPercent")}, key=float)},
         {"name": "arrangeOp", "kind": "softmax", "classes": [ABSENT] + ARRANGE_OPS},
         {"name": "arrangeRole", "kind": "softmax", "classes": [ABSENT] + ARRANGE_ROLES},
         {"name": "arrangeBars", "kind": "softmax", "classes": [ABSENT] + bars},

@@ -28,7 +28,12 @@
   filter: brightness(1.06);
 }
 .btn.btn-primary:disabled {
-  opacity: 0.4;
+  opacity: 1;
+  cursor: not-allowed;
+  border-color: var(--border-soft);
+  background: var(--bg-raise);
+  color: var(--text-muted);
+  box-shadow: none;
 }
 
 /* Soft: regular secondary actions — a raised surface, no accent. */
@@ -73,8 +78,13 @@
   border-color: #343945;
 }
 .chip:focus-visible {
-  outline: 1px solid var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
   outline-offset: 1px;
+}
+.chip:disabled,
+.seg-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 .chip[aria-pressed="true"],
 .chip.active {
@@ -113,6 +123,12 @@
   color: var(--text-faint);
   border-radius: var(--radius-xs);
 }
+.seg-item:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: 1px;
+}
 .seg-item:hover {
   color: var(--text);
 }
@@ -120,6 +136,7 @@
 .seg-item.active {
   color: var(--accent);
   background: var(--accent-soft);
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--accent) 84%, #fff);
 }
 
 /* Dice roll buttons: FULL carries the panel's primary fill; the LIT

@@ -26,9 +26,9 @@ import { ACTION_SCHEMA_VERSION, migrateModelAction, toGbnfGrammar } from "../src
  */
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const manifest = JSON.parse(
-  readFileSync(resolve(root, "public/models/intent-model-v1.manifest.json"), "utf8"),
-) as { grammarSha256: string };
+const manifest = JSON.parse(readFileSync(resolve(root, "public/models/intent-model-v1.manifest.json"), "utf8")) as {
+  grammarSha256: string;
+};
 
 describe("P3-D versioned action schema", () => {
   it("G1: toGbnfGrammar() is byte-identical to the deployed manifest pin", () => {
@@ -63,9 +63,15 @@ describe("P3-D versioned action schema", () => {
   });
 
   it("a current-version envelope passes through", () => {
-    const action = { kind: "exact", op: "mute", target: "drums", value: true, actionSchemaVersion: 1 };
+    const action = {
+      kind: "exact",
+      op: "mute",
+      target: "drums",
+      value: true,
+      actionSchemaVersion: ACTION_SCHEMA_VERSION,
+    };
     const out = migrateModelAction(action);
-    expect(out).toEqual({ action, version: 1 });
+    expect(out).toEqual({ action, version: ACTION_SCHEMA_VERSION });
   });
 
   it("a FUTURE version refuses with an update hint — never silently mis-migrated", () => {

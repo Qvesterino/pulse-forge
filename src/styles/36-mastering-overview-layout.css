@@ -1,5 +1,10 @@
 /* The mastering summary lives in a resizable dock slot; size it by the slot. */
 
+.mastering-panel {
+  container-name: mastering-panel;
+  container-type: inline-size;
+}
+
 .mastering-overview {
   container-name: mastering-overview;
   container-type: inline-size;
@@ -48,4 +53,60 @@
 .mastering-overview-metric > small {
   font-size: 10px;
   line-height: 1.4;
+}
+
+/* Mastering can be split into a narrow dock slot on a wide viewport. Let its
+   nested workspaces respond to the slot width as well as the window width. */
+@container mastering-panel (max-width: 760px) {
+  .mastering-panel-intro {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mastering-flow-stages {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .master-processing-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .master-processing-controls[data-view="simple"] .master-core-control-bank:first-child {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+
+  .mastering-panel .master-meter {
+    grid-template-columns: minmax(0, 1fr) minmax(170px, 0.8fr);
+  }
+}
+
+@container mastering-panel (max-width: 620px) {
+  .master-ab-blind-sides {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .master-ab-blind-choice > button {
+    flex: 1 1 90px;
+  }
+
+  .master-assistant-heading {
+    align-items: flex-start;
+  }
+
+  .master-assistant-proposal {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .master-assistant-value {
+    justify-items: start;
+  }
+
+  .master-assistant-study-reviewers,
+  .master-assistant-study-setup {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .master-assistant-study-reviewers > button,
+  .master-assistant-study-setup > button {
+    justify-self: start;
+  }
 }

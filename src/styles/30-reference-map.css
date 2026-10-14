@@ -122,6 +122,16 @@
 
 .reference-map-panel .panel-error {
   margin: 0;
+  display: block;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--stop) 28%, var(--hairline));
+  border-left: 3px solid var(--stop);
+  background: color-mix(in srgb, var(--stop) 7%, var(--surface-1));
+  color: var(--text-dim);
+  font-family: inherit;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .reference-primary {
@@ -239,7 +249,7 @@
 .reference-controls > button:disabled,
 .reference-reading button:disabled,
 .reference-apply button:disabled {
-  opacity: 0.48;
+  opacity: 0.58;
   cursor: not-allowed;
 }
 
@@ -270,7 +280,8 @@
 }
 
 .reference-reading button[aria-pressed="true"]:disabled {
-  cursor: default;
+  opacity: 0.78;
+  cursor: not-allowed;
 }
 
 .reference-apply {
@@ -499,5 +510,278 @@
 @media (prefers-reduced-motion: reduce) {
   .export-buttons > .btn-export.export-master-action:hover:not(:disabled) {
     filter: none;
+  }
+}
+
+/* MATCH results: concise controls above a scan-friendly measurement, with
+   suggestions grouped as supporting evidence rather than competing panels. */
+.reference-match {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.reference-match-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.reference-match-header button,
+.reference-match-resonances button {
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    color 140ms ease,
+    opacity 140ms ease;
+}
+
+.reference-match-header button:hover:not(:disabled),
+.reference-match-resonances button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--hairline));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-1));
+}
+
+.reference-match-header button[data-testid="reference-match-apply"] {
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--hairline));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-1));
+  color: var(--text);
+}
+
+.reference-match-header button:disabled,
+.reference-match-resonances button:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+}
+
+.reference-match-stale {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--hairline));
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-1));
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.reference-map-panel .reference-summary {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid color-mix(in srgb, var(--accent) 72%, var(--hairline));
+  background: var(--surface-1);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.reference-match-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+  scrollbar-color: var(--hairline) var(--surface-0);
+}
+
+.reference-match-table-scroll:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: 2px;
+}
+
+.reference-match-table {
+  width: 100%;
+  min-width: 500px;
+  border-collapse: collapse;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+
+.reference-match-table th,
+.reference-match-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
+}
+
+.reference-match-table th {
+  background: var(--surface-1);
+  color: var(--text-dim);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.reference-match-table th:last-child,
+.reference-match-table td:last-child {
+  text-align: right;
+}
+
+.reference-match-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.reference-match-table tbody tr.is-gapped td {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  color: var(--text);
+}
+
+.reference-match-table tbody tr.is-gapped td:last-child {
+  color: var(--accent);
+  font-weight: 750;
+}
+
+.reference-match-table tbody tr.is-empty {
+  opacity: 0.58;
+}
+
+.reference-map-panel .reference-match-meta {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.22fr) minmax(0, 1fr);
+  gap: 0 var(--space-3);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.reference-match-meta dt,
+.reference-match-meta dd {
+  min-width: 0;
+  margin: 0;
+  padding-block: 5px;
+  border-bottom: 1px solid color-mix(in srgb, var(--hairline) 72%, transparent);
+}
+
+.reference-match-meta dt {
+  color: var(--text-dim);
+  font-weight: 700;
+}
+
+.reference-match-meta dd {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.reference-match-meta > :nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.reference-match-attribution,
+.reference-match-device,
+.reference-match-resonances {
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.reference-match-attribution h4,
+.reference-match-device h4,
+.reference-match-resonances h4 {
+  margin: 0 0 var(--space-2);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.035em;
+}
+
+.reference-match-attribution > ul,
+.reference-match-device > ul,
+.reference-match-resonances > ul {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reference-match-attribution > ul > li,
+.reference-match-device > ul > li,
+.reference-match-resonances > ul > li {
+  min-width: 0;
+  padding: var(--space-2);
+  border: 1px solid color-mix(in srgb, var(--hairline) 82%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.reference-match-resonances > ul > li > strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text);
+}
+
+.reference-match-resonances > ul > li > ul {
+  display: grid;
+  gap: 3px;
+  margin: 0 0 var(--space-2);
+  padding-left: 16px;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.reference-map-panel .reference-match-attribution .panel-sub,
+.reference-map-panel .reference-match-device .panel-sub,
+.reference-map-panel .reference-match-resonances .panel-sub,
+.reference-map-panel .reference-match-note {
+  margin: var(--space-2) 0 0;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+@container reference-map (max-width: 420px) {
+  .reference-match-header {
+    align-items: stretch;
+  }
+
+  .reference-match-header button {
+    flex: 1 1 100%;
+  }
+
+  .reference-map-panel .reference-match-meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .reference-match-meta dt {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+
+  .reference-match-meta dd {
+    padding-top: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reference-match-header button,
+  .reference-match-resonances button {
+    transition: none;
   }
 }

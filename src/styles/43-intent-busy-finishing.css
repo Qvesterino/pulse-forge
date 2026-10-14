@@ -1,0 +1,47 @@
+/* A live INTENT operation gets one quiet amber activity rail. SONG keeps its
+   separate determinate section counter and does not use this indeterminate cue. */
+.intent-status[data-state="busy"] {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 8px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 86%, #fff);
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface-1));
+  color: var(--text);
+}
+
+.intent-status-progress {
+  position: relative;
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.intent-status-progress > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 34%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 62%, #fff));
+  animation: intent-status-sweep 1.25s ease-in-out infinite alternate;
+}
+
+@keyframes intent-status-sweep {
+  from {
+    transform: translateX(-14%);
+  }
+
+  to {
+    transform: translateX(214%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intent-status-progress > span {
+    animation: none;
+    transform: none;
+  }
+}

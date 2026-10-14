@@ -282,7 +282,8 @@ button {
 }
 
 .btn-history:disabled {
-  opacity: 0.3;
+  opacity: 0.58;
+  cursor: not-allowed;
 }
 
 .btn-ghost.active {
@@ -304,8 +305,8 @@ button {
 }
 
 .btn:disabled {
-  opacity: 0.35;
-  cursor: default;
+  opacity: 0.58;
+  cursor: not-allowed;
 }
 
 .position-display {
@@ -350,7 +351,7 @@ button {
 .scene-chip:focus-visible,
 .scene-chip.selected:focus-visible,
 .btn:focus-visible {
-  outline: 1px solid var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
   outline-offset: 1px;
 }
 

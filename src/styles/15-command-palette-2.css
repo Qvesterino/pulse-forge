@@ -941,6 +941,10 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42);
 }
 
+.intent-iteration-controls:not([open]) > .intent-iteration-panel {
+  display: none;
+}
+
 .intent-iteration-label,
 .intent-iteration-footnote {
   color: var(--text-muted, #aaa);
@@ -1453,7 +1457,8 @@
 }
 
 .beatmangler-repeat-controls select:disabled {
-  opacity: 0.46;
+  opacity: 0.58;
+  cursor: not-allowed;
 }
 
 /* Preset shelf: the signature shapes as one-click chips. */

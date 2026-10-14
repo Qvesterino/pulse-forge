@@ -2,7 +2,13 @@ import { describe, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { normalizeProject } from "../src/project-model/schema";
 import { ProjectStore } from "../src/store/ProjectStore";
-import { addArrangementClip, addAudioClip, deleteArrangementClip, groupClips, splitArrangementClipAtTick } from "../src/commands/commands";
+import {
+  addArrangementClip,
+  addAudioClip,
+  deleteArrangementClip,
+  groupClips,
+  splitArrangementClipAtTick,
+} from "../src/commands/commands";
 import { BAR_TICKS } from "../src/project-model/types";
 
 describe("probe split undo", () => {

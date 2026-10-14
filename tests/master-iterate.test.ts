@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { iterateTowardTarget, isConverged, DEFAULT_TOLERANCES } from "../src/mcp/master-iterate";
+import { iterateTowardTarget, isConverged } from "../src/mcp/master-iterate";
 import type { IterateMeasurement } from "../src/mcp/master-iterate";
 
 /**

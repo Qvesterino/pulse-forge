@@ -394,6 +394,7 @@ export function DiceTray() {
           <button
             type="button"
             className={`btn btn-small${session.mode === "full" ? " active-solo" : ""}`}
+            aria-pressed={session.mode === "full"}
             onClick={() => setMode("full")}
           >
             FULL
@@ -401,6 +402,7 @@ export function DiceTray() {
           <button
             type="button"
             className={`btn btn-small${session.mode === "vary" ? " active-solo" : ""}`}
+            aria-pressed={session.mode === "vary"}
             onClick={() => setMode("vary")}
           >
             VARY
@@ -414,6 +416,7 @@ export function DiceTray() {
         <button
           type="button"
           className={`btn btn-small dice-lock${session.locks.drums ? " active-solo" : ""}`}
+          aria-pressed={session.locks.drums}
           onClick={() => toggleLockKey("drums")}
           title="Lock all drums"
         >
@@ -422,6 +425,7 @@ export function DiceTray() {
         <button
           type="button"
           className={`btn btn-small dice-lock${session.locks.kick ? " active-solo" : ""}`}
+          aria-pressed={session.locks.kick}
           onClick={() => toggleLockKey("kick")}
           disabled={session.locks.drums}
           title="Lock kicks"
@@ -431,6 +435,7 @@ export function DiceTray() {
         <button
           type="button"
           className={`btn btn-small dice-lock${session.locks.snare ? " active-solo" : ""}`}
+          aria-pressed={session.locks.snare}
           onClick={() => toggleLockKey("snare")}
           disabled={session.locks.drums}
           title="Lock snares"
@@ -440,6 +445,7 @@ export function DiceTray() {
         <button
           type="button"
           className={`btn btn-small dice-lock${session.locks.hats ? " active-solo" : ""}`}
+          aria-pressed={session.locks.hats}
           onClick={() => toggleLockKey("hats")}
           disabled={session.locks.drums}
           title="Lock hats"
@@ -449,6 +455,7 @@ export function DiceTray() {
         <button
           type="button"
           className={`btn btn-small dice-lock${session.locks.bass ? " active-solo" : ""}`}
+          aria-pressed={session.locks.bass}
           onClick={() => toggleLockKey("bass")}
           title="Lock bass"
         >
@@ -457,6 +464,7 @@ export function DiceTray() {
         <button
           type="button"
           className={`btn btn-small dice-lock${session.locks.chords ? " active-solo" : ""}`}
+          aria-pressed={session.locks.chords}
           onClick={() => toggleLockKey("chords")}
           title="Lock chords"
         >
@@ -465,6 +473,7 @@ export function DiceTray() {
         <button
           type="button"
           className={`btn btn-small dice-lock${session.locks.lead ? " active-solo" : ""}`}
+          aria-pressed={session.locks.lead}
           onClick={() => toggleLockKey("lead")}
           title="Lock lead"
         >
@@ -473,6 +482,7 @@ export function DiceTray() {
         <button
           type="button"
           className={`btn btn-small dice-lock${session.locks.kit ? " active-solo" : ""}`}
+          aria-pressed={session.locks.kit}
           onClick={() => toggleLockKey("kit")}
           title="Lock kit — don't randomize samples"
         >
@@ -512,6 +522,7 @@ export function DiceTray() {
         <button
           type="button"
           className={`btn btn-small${session.favorites.has(session.cursor) ? " active-solo" : ""}`}
+          aria-pressed={session.favorites.has(session.cursor)}
           onClick={() => toggleFav(session.cursor)}
           title="Favorite current roll"
         >

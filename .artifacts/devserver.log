@@ -575,3 +575,289 @@
 [2m11:22:29[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
 [2m11:22:29[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/ArrangementPanel.tsx[22m Could not Fast Refresh ("warpPinTickFromClientX" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
 [2m11:22:29[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m15:28:26[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mplaywright-report/index.html[22m
+[2m15:28:26[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mplaywright-report/trace/index.html[22m
+[2m15:28:26[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mplaywright-report/trace/snapshot.html[22m
+[2m15:28:26[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mplaywright-report/trace/uiMode.html[22m
+[2m15:29:14[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mplaywright-report/index.html[22m
+[2m15:29:14[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mplaywright-report/trace/index.html[22m
+[2m15:29:14[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mplaywright-report/trace/snapshot.html[22m
+[2m15:29:14[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mplaywright-report/trace/uiMode.html[22m
+[2m15:31:18[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/Sequencer.tsx[22m
+[2m15:31:42[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m15:45:06[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m15:45:40[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m15:53:59[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m15:56:12[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m15:56:58[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:03:02[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/IntentPanel.tsx[22m
+[2m16:14:02[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:14:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:18:32[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:18:32[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:22:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:23:26[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:26:09[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m16:26:09[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:26:09[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m16:26:46[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/ContextMenu.tsx, /src/ui/AssistPanel.tsx, /src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx, /src/ui/ReferenceMapPanel.tsx, /src/ui/ArrangementPanel.tsx[22m
+[2m16:26:47[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/ContextMenu.tsx[22m Could not Fast Refresh ("deriveContext" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:26:47[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m16:26:47[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:26:47[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m16:26:47[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/ArrangementPanel.tsx[22m Could not Fast Refresh ("warpPinTickFromClientX" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:26:47[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m16:27:33[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:28:26[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/ContextMenu.tsx, /src/ui/AssistPanel.tsx, /src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx, /src/ui/ReferenceMapPanel.tsx, /src/ui/ArrangementPanel.tsx[22m
+[2m16:28:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/ContextMenu.tsx[22m Could not Fast Refresh ("deriveContext" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:28:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m16:28:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:28:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m16:28:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/ArrangementPanel.tsx[22m Could not Fast Refresh ("warpPinTickFromClientX" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:28:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/main.tsx, /src/ui/CollabPanel.tsx, /src/ui/App.tsx, /src/ui/TopBar.tsx, /src/ui/PatternBar.tsx, /src/ui/ContextMenu.tsx, /src/ui/IntentPanel.tsx, /src/ui/Inspector.tsx, /src/ui/BrowserStrip.tsx, /src/ui/TrackTabs.tsx, /src/ui/DiceContext.tsx, /src/ui/MasterMeter.tsx, /src/ui/Sequencer.tsx, /src/ui/RackStrip.tsx, /src/ui/ModMatrixRow.tsx, /src/ui/ScalePanel.tsx, /src/ui/AssistPanel.tsx, /src/ui/SceneLauncher.tsx, /src/ui/QmrChipMount.tsx, /src/ui/PianoRoll.tsx, /src/ui/MixPreviewChip.tsx, /src/ui/EffectRack.tsx, /src/ui/FxIntentBar.tsx, /src/ui/ReferenceMapPanel.tsx, /src/ui/ArrangementPanel.tsx, /src/ui/DropZone.tsx, /src/ui/EffectIntentAssistant.tsx, /src/ui/HumToMelody.tsx, /src/ui/Mixer.tsx, /src/ui/SceneStrip.tsx, /src/ui/FreezeButton.tsx, /src/ui/MacroPerformanceBar.tsx, /src/ui/MasterProcessingControls.tsx, /src/ui/ExportPanel.tsx, /src/ui/BeatManglerEditor.tsx, /src/ui/FloatingPlugin.tsx, /src/ui/EnvEditor.tsx, /src/ui/GranularPanel.tsx, /src/ui/WavetablePanel.tsx, /src/ui/TsarPanel.tsx, /src/ui/SpectralEditPanel.tsx, /src/ui/ModPanel.tsx, /src/ui/MidiPanel.tsx, /src/ui/PresetBrowser.tsx, /src/ui/GenerateDialog.tsx[22m
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/main.tsx[22m Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/main.tsx[22m
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/ContextMenu.tsx[22m Could not Fast Refresh ("deriveContext" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/TrackTabs.tsx[22m Could not Fast Refresh ("trackBadge" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/Sequencer.tsx, /src/ui/Mixer.tsx, /src/ui/ModPanel.tsx[22m
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/DiceContext.tsx[22m Could not Fast Refresh ("useDice" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/DiceTray.tsx[22m
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/ModMatrixRow.tsx[22m Could not Fast Refresh ("isModMatrixParam" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/Inspector.tsx, /src/ui/FloatingPlugin.tsx[22m
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/SceneLauncher.tsx[22m Could not Fast Refresh ("useSceneRuntimeState" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/PatternBar.tsx, /src/ui/ArrangementPanel.tsx, /src/ui/arrangement/ScenesPanel.tsx[22m
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/ArrangementPanel.tsx[22m Could not Fast Refresh ("warpPinTickFromClientX" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/HumToMelody.tsx[22m Could not Fast Refresh ("humContourLayout" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/PianoRoll.tsx[22m
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/MacroPerformanceBar.tsx[22m Could not Fast Refresh ("formatMacroValue" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:28:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/Mixer.tsx, /src/ui/SceneStrip.tsx, /src/ui/ModPanel.tsx[22m
+[2m16:29:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/IntentPanel.tsx[22m
+[2m16:29:56[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m16:29:56[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/MixPreviewChip.tsx, /src/ui/App.tsx, /src/ui/IntentPanel.tsx, /src/ui/QmrChipMount.tsx, /src/ui/EffectRack.tsx, /src/ui/FxIntentBar.tsx, /src/ui/DiceContext.tsx, /src/ui/GenerateDialog.tsx, /src/ui/ArrangementPanel.tsx, /src/ui/ReferenceMapPanel.tsx[22m
+[2m16:29:56[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:29:56[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m16:31:13[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/IntentPanel.tsx[22m
+[2m16:31:53[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/MixPreviewChip.tsx, /src/ui/App.tsx, /src/ui/IntentPanel.tsx, /src/ui/QmrChipMount.tsx, /src/ui/EffectRack.tsx, /src/ui/FxIntentBar.tsx, /src/ui/DiceContext.tsx, /src/ui/GenerateDialog.tsx, /src/ui/ArrangementPanel.tsx, /src/ui/ReferenceMapPanel.tsx[22m
+[2m16:31:53[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:31:53[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m16:31:53[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/DiceContext.tsx[22m Could not Fast Refresh ("useDice" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:31:53[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/DiceTray.tsx[22m
+[2m16:32:40[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:32:48[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:34:18[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mplaywright-report/index.html[22m
+[2m16:34:35[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m16:34:35[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:34:35[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m16:34:53[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/IntentPanel.tsx[22m
+[2m16:36:33[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m16:36:33[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:36:33[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m16:38:05[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:38:15[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m16:38:15[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:38:15[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m16:38:26[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:39:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m16:39:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:39:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m16:40:56[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:40:58[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:42:13[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:43:56[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:46:01[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:46:01[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:46:01[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:46:01[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:46:01[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:46:01[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:46:01[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:46:01[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:46:01[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:46:22[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:46:22[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:48:24[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/arrangement/MidiClipLanes.tsx[22m
+[2m16:48:24[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/ArrangementPanel.tsx[22m
+[2m16:49:26[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/arrangement/MidiClipLanes.tsx[22m
+[2m16:49:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:49:57[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/ArrangementPanel.tsx[22m
+[2m16:49:57[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/arrangement/MidiClipLanes.tsx[22m
+[2m16:53:19[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:55:14[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m16:56:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/DiceTray.tsx[22m
+[2m16:56:38[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m16:56:38[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:56:38[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m16:58:11[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m16:58:11[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m16:58:11[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:58:11[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m16:59:19[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m16:59:19[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/IntentPanel.tsx[22m
+[2m16:59:19[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m16:59:19[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m16:59:46[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m17:04:44[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m17:04:44[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m17:04:44[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m17:05:26[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/ModPanel.tsx[22m
+[2m17:05:26[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m17:05:52[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m17:05:52[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/IntentPanel.tsx[22m
+[2m17:05:52[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m17:05:52[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m17:05:52[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m17:10:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m17:10:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m17:10:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m17:12:19[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m17:12:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m17:12:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m17:14:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/ReferenceMapPanel.tsx[22m
+[2m17:15:02[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/ReferenceMapPanel.tsx[22m
+[2m17:15:21[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m17:15:29[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/ReferenceMapPanel.tsx[22m
+[2m17:15:35[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m17:15:35[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m17:15:35[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m17:15:35[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m17:15:35[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m17:15:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m17:15:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m17:15:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m17:15:40[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/ReferenceMapPanel.tsx[22m
+[2m17:18:43[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[31mUnable to resolve `@import "./39-arrangement-interaction-finishing.css"` from D:/pulse-forge/src/styles[39m
+[2m17:18:43[22m [31m[1m[vite][22m[39m [31mInternal server error: [postcss] ENOENT: no such file or directory, open 'D:\pulse-forge\39-arrangement-interaction-finishing.css'[39m
+  Plugin: [35mvite:css[39m
+  File: [36mD:/pulse-forge/src/styles/index.css[39m:undefined:NaN
+      at async open (node:internal/fs/promises:642:25)
+      at async Object.readFile (node:internal/fs/promises:1279:14)
+      at async Object.load (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43886:25)
+      at async loadImportContent (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:673:19)
+      at async Promise.all (index 0)
+      at async resolveImportId (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:629:27)
+      at async parseStyles$1 (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:537:5)
+      at async Object.Once (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:794:22)
+      at async LazyResult.runAsync (D:\pulse-forge\node_modules\postcss\lib\lazy-result.js:299:11)
+      at async runPostCSS (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43983:21)
+      at async compilePostCSS (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43953:18)
+      at async compileCSS (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43808:27)
+      at async TransformPluginContext.handler (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43124:11)
+      at async EnvironmentPluginContainer.transform (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:42453:18)
+      at async loadAndTransform (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:35845:27)
+      at async viteTransformMiddleware (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:37369:24)
+[2m17:20:30[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[31mUnable to resolve `@import "./40-track-inspector-finishing.css"` from D:/pulse-forge/src/styles[39m
+[2m17:20:31[22m [31m[1m[vite][22m[39m [31mInternal server error: [postcss] ENOENT: no such file or directory, open 'D:\pulse-forge\40-track-inspector-finishing.css'[39m
+  Plugin: [35mvite:css[39m
+  File: [36mD:/pulse-forge/src/styles/index.css[39m:undefined:NaN
+      at async open (node:internal/fs/promises:642:25)
+      at async Object.readFile (node:internal/fs/promises:1279:14)
+      at async Object.load (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43886:25)
+      at async loadImportContent (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:673:19)
+      at async Promise.all (index 0)
+      at async resolveImportId (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:629:27)
+      at async parseStyles$1 (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:537:5)
+      at async Object.Once (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:794:22)
+      at async LazyResult.runAsync (D:\pulse-forge\node_modules\postcss\lib\lazy-result.js:299:11)
+      at async runPostCSS (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43983:21)
+      at async compilePostCSS (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43953:18)
+      at async compileCSS (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43808:27)
+      at async TransformPluginContext.handler (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43124:11)
+      at async EnvironmentPluginContainer.transform (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:42453:18)
+      at async loadAndTransform (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:35845:27)
+      at async viteTransformMiddleware (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:37369:24)
+[2m17:28:32[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/intent/model-decoder.ts[22m
+[2m17:31:18[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m17:31:24[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m17:34:12[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[31mUnable to resolve `@import "./41-native-field-focus.css"` from D:/pulse-forge/src/styles[39m
+[2m17:34:12[22m [31m[1m[vite][22m[39m [31mInternal server error: [postcss] ENOENT: no such file or directory, open 'D:\pulse-forge\41-native-field-focus.css'[39m
+  Plugin: [35mvite:css[39m
+  File: [36mD:/pulse-forge/src/styles/index.css[39m:undefined:NaN
+      at async open (node:internal/fs/promises:642:25)
+      at async Object.readFile (node:internal/fs/promises:1279:14)
+      at async Object.load (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43886:25)
+      at async loadImportContent (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:673:19)
+      at async Promise.all (index 0)
+      at async resolveImportId (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:629:27)
+      at async parseStyles$1 (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:537:5)
+      at async Object.Once (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:794:22)
+      at async LazyResult.runAsync (D:\pulse-forge\node_modules\postcss\lib\lazy-result.js:299:11)
+      at async runPostCSS (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43983:21)
+      at async compilePostCSS (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43953:18)
+      at async compileCSS (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43808:27)
+      at async TransformPluginContext.handler (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43124:11)
+      at async EnvironmentPluginContainer.transform (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:42453:18)
+      at async loadAndTransform (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:35845:27)
+      at async viteTransformMiddleware (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:37369:24)
+[2m17:45:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m17:49:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m17:52:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m17:53:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/intent/StatusLine.tsx[22m
+[2m17:53:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/IntentPanel.tsx[22m
+[2m17:53:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m17:58:13[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m18:00:00[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m18:00:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m18:04:13[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/IntentPanel.tsx[22m
+[2m18:04:13[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m18:05:03[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m18:10:15[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m18:10:48[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m18:10:48[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[31mUnable to resolve `@import "./44-intent-empty-prompt.css"` from D:/pulse-forge/src/styles[39m
+[2m18:10:48[22m [31m[1m[vite][22m[39m [31mInternal server error: [postcss] ENOENT: no such file or directory, open 'D:\pulse-forge\44-intent-empty-prompt.css'[39m
+  Plugin: [35mvite:css[39m
+  File: [36mD:/pulse-forge/src/styles/index.css[39m:undefined:NaN
+      at async open (node:internal/fs/promises:642:25)
+      at async Object.readFile (node:internal/fs/promises:1279:14)
+      at async Object.load (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43886:25)
+      at async loadImportContent (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:673:19)
+      at async Promise.all (index 0)
+      at async resolveImportId (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:629:27)
+      at async parseStyles$1 (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:537:5)
+      at async Object.Once (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:794:22)
+      at async LazyResult.runAsync (D:\pulse-forge\node_modules\postcss\lib\lazy-result.js:299:11)
+      at async runPostCSS (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43983:21)
+      at async compilePostCSS (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43953:18)
+      at async compileCSS (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43808:27)
+      at async TransformPluginContext.handler (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43124:11)
+      at async EnvironmentPluginContainer.transform (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:42453:18)
+      at async loadAndTransform (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:35845:27)
+      at async viteTransformMiddleware (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:37369:24)
+[31mUnable to resolve `@import "./44-intent-empty-prompt.css"` from D:/pulse-forge/src/styles[39m
+[2m18:10:49[22m [31m[1m[vite][22m[39m [31mInternal server error: [postcss] ENOENT: no such file or directory, open 'D:\pulse-forge\44-intent-empty-prompt.css'[39m
+  Plugin: [35mvite:css[39m
+  File: [36mD:/pulse-forge/src/styles/index.css[39m:undefined:NaN
+      at async open (node:internal/fs/promises:642:25)
+      at async Object.readFile (node:internal/fs/promises:1279:14)
+      at async Object.load (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43886:25)
+      at async loadImportContent (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:673:19)
+      at async Promise.all (index 0)
+      at async resolveImportId (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:629:27)
+      at async parseStyles$1 (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:537:5)
+      at async Object.Once (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-CV-fz3CQ.js:794:22)
+      at async LazyResult.runAsync (D:\pulse-forge\node_modules\postcss\lib\lazy-result.js:299:11)
+      at async runPostCSS (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43983:21)
+      at async compilePostCSS (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43953:18)
+      at async compileCSS (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43808:27)
+      at async TransformPluginContext.handler (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:43124:11)
+      at async EnvironmentPluginContainer.transform (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:42453:18)
+      at async loadAndTransform (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:35845:27)
+      at async viteTransformMiddleware (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js:37369:24)
+[2m18:10:51[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m18:13:33[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m18:16:11[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m18:17:07[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m18:19:12[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m18:19:30[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m18:20:59[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m18:25:33[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m18:28:05[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m18:28:44[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/@fs/D:/QVESTER_LANDING_PAGE/packages/qmr-hud/src/qmr-mini-chip-mount.tsx[22m

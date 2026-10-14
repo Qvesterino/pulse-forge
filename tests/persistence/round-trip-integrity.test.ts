@@ -3,9 +3,17 @@ import { describe, expect, it } from "vitest";
 import { ProjectRepository } from "../../src/persistence/ProjectRepository";
 import { TEMPLATES, createProjectFromTemplate } from "../../src/project-model/templates";
 import { migrateProject, normalizeProject } from "../../src/project-model/schema";
-import { addAudioClip, splitAudioClipAtTick } from "../../src/commands/commands";
+import {
+  addAudioClip,
+  addMidiClip,
+  addNote,
+  autoArrangeSong,
+  setPatternLength,
+  splitAudioClipAtTick,
+} from "../../src/commands/commands";
 import { BAR_TICKS, PPQ } from "../../src/project-model/types";
 import type { ProjectDocument } from "../../src/project-model/types";
+import { computeRenderTicks } from "../../src/rendering/renderer";
 
 /**
  * Project persistence & data integrity audit.
@@ -99,6 +107,52 @@ describe("persistence integrity — deep save/load round-trip", () => {
     expect(fragments[0]!.loopPhaseOffsetSec).toBe(phaseSec);
     expect(fragments[1]!.loopPhaseOffsetSec).toBeCloseTo(expectedRightPhase, 12);
     expect(stripStamps(reopened!)).toEqual(stripStamps(split));
+  });
+
+  it("preserves a four-bar 808 sustain in a 93-bar song through save and reopen", async () => {
+    const repo = new ProjectRepository();
+    const base = { ...createProjectFromTemplate("house"), bpm: 124 };
+    const arranged = autoArrangeSong(base, 93).execute(base);
+    const instrument = arranged.tracks.find(
+      (track): track is import("../../src/project-model/types").InstrumentTrack =>
+        track.kind === "instrument" && track.instrument === "808",
+    );
+    const pattern = arranged.patterns.find((candidate) => candidate.id === arranged.activePatternId);
+    if (!instrument || !pattern) throw new Error("long-song MIDI fixture is missing its instrument or pattern");
+    const expanded = setPatternLength(arranged, pattern.id, 128).execute(arranged);
+    const withSustain = addNote(expanded, instrument.id, {
+      pitch: 36,
+      start: 0,
+      duration: 4 * BAR_TICKS,
+      velocity: 0.9,
+    }).execute(expanded);
+    const song = addMidiClip(withSustain, instrument.id, pattern.id, 89 * BAR_TICKS, 4 * BAR_TICKS).execute(
+      withSustain,
+    );
+    const persistedSong = normalizeProject(song);
+
+    await repo.save(persistedSong);
+    const reopened = await repo.load(persistedSong.id);
+
+    expect(reopened).not.toBeNull();
+    expect(computeRenderTicks(reopened!, "song")).toBe(93 * BAR_TICKS);
+    expect(reopened!.arrangement.clips.reduce((end, clip) => Math.max(end, clip.startBar + clip.lengthBars), 0)).toBe(
+      93,
+    );
+    expect(reopened!.arrangement.midiClips).toHaveLength(1);
+    const reopenedClip = reopened!.arrangement.midiClips?.[0];
+    expect(reopenedClip).toMatchObject({
+      trackId: instrument.id,
+      patternId: pattern.id,
+      startTick: 89 * BAR_TICKS,
+      lengthTicks: 4 * BAR_TICKS,
+    });
+    const reopenedPattern = reopened!.patterns.find((candidate) => candidate.id === pattern.id);
+    expect(reopenedPattern?.stepCount).toBe(128);
+    expect(reopenedPattern?.notes[instrument.id]).toContainEqual(
+      expect.objectContaining({ pitch: 36, start: 0, duration: 4 * BAR_TICKS }),
+    );
+    expect(stripStamps(reopened!)).toEqual(stripStamps(persistedSong));
   });
 });
 

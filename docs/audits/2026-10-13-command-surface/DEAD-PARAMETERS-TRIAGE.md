@@ -20,14 +20,14 @@ Before changing a single product line, the claim was measured directly.
 stimuli, three parameter-write styles:
 
 | gate param | continuous tone | burst stimulus |
-| --- | --- | --- |
-| threshold | 0 % | **40.9 %** |
-| hold | 0 % | **11.0 %** |
-| range | 0 % | **20.4 %** |
-| mix | 0 % | **32.7 %** |
-| attack | 0 % | **0.5 %** |
-| hysteresis | 0 % | **1.6 %** |
-| release | 0 % | **40.9 %** |
+| ---------- | --------------- | -------------- |
+| threshold  | 0 %             | **40.9 %**     |
+| hold       | 0 %             | **11.0 %**     |
+| range      | 0 %             | **20.4 %**     |
+| mix        | 0 %             | **32.7 %**     |
+| attack     | 0 %             | **0.5 %**      |
+| hysteresis | 0 %             | **1.6 %**      |
+| release    | 0 %             | **40.9 %**     |
 
 Seven of the eight parameters the audit calls dead are wired, working, and move the render by up to
 41 %. The registry applies them (`createWorkletRuntime` → `safeApplyAudioParam`), the worklet declares
@@ -35,21 +35,21 @@ all eight, and `process()` reads all eight.
 
 **The audit's test tone cannot close a gate.** It is a continuous sine+saw with one 250 ms kick at the
 start; after that it never falls below any threshold, so the device never engages and every
-threshold/range/hold/release parameter is correctly *inert for that signal*.
+threshold/range/hold/release parameter is correctly _inert for that signal_.
 
 ### The hypothesis I had to abandon
 
 The first suspicion was that `setValueAtTime(value, ctx.currentTime)` lands at `t = 0` in an
 `OfflineAudioContext` (where `currentTime` is 0 until rendering) and loses to the descriptor defaults.
 **Falsified by measurement:** direct `.value` assignment and `setValueAtTime` at `currentTime` produced
-*identical* deltas for every parameter. The write path is fine.
+_identical_ deltas for every parameter. The write path is fine.
 
 ### The measurement that was wrong twice
 
-My own probe was wrong before the product was. `dyn = block-RMS hi/lo` is blind to gate *timing* — a
+My own probe was wrong before the product was. `dyn = block-RMS hi/lo` is blind to gate _timing_ — a
 burst signal already has a huge hi/lo ratio, so an open gate and a closed one score the same. And the
 first burst had a 220 ms gap, too short for the shipped 20 ms hold + 80 ms release to pull the
-one-pole envelope below a −36 dB threshold: a *correctly open* gate read as inert. Only a 1.7 s gap
+one-pole envelope below a −36 dB threshold: a _correctly open_ gate read as inert. Only a 1.7 s gap
 with a gap-depth metric showed the gate closing (−69.94 dB → −102.38 dB).
 
 This is recorded because it is the trap the whole dead-parameter column sits in: **a metric that
@@ -62,19 +62,19 @@ tone, takes the best delta, and records WHICH stimulus won (`ParamAudit.stimulus
 untouched, and because the best-of-two can only turn a false negative into a true positive, the change
 cannot invent a pass.
 
-The harness already knew this failure mode — it documents it for the vocoder: *"without a modulator
-feed … every sidechain ducking knob is legitimately inert"* (`buildModulatorBuffer`). That fix was
+The harness already knew this failure mode — it documents it for the vocoder: _"without a modulator
+feed … every sidechain ducking knob is legitimately inert"_ (`buildModulatorBuffer`). That fix was
 applied to the modulator input and never to the main sweep signal.
 
 ### Measured, after (`KYX_AUDIT_ONLY=gate,compressor,limiter,duckDelay,transient`)
 
-| effect | dead before | dead after | what the remainder is |
-| --- | --- | --- | --- |
-| gate | 7 | **2** | attack, lookahead — both change *timing*, which no RMS/side/centroid/dyn metric measures |
-| compressor | 1 | 2 | scHpf + scBandHz — **companion-gated** (see below) |
-| limiter | 4 | 4 | not excited: the stimulus peaks at −9 dBFS, its threshold sits above that |
-| duckDelay | 2 | 2 | needs a tail-length metric, not a level metric |
-| transient | 0 | 0 | — |
+| effect     | dead before | dead after | what the remainder is                                                                    |
+| ---------- | ----------- | ---------- | ---------------------------------------------------------------------------------------- |
+| gate       | 7           | **2**      | attack, lookahead — both change _timing_, which no RMS/side/centroid/dyn metric measures |
+| compressor | 1           | 2          | scHpf + scBandHz — **companion-gated** (see below)                                       |
+| limiter    | 4           | 4          | not excited: the stimulus peaks at −9 dBFS, its threshold sits above that                |
+| duckDelay  | 2           | 2          | needs a tail-length metric, not a level metric                                           |
+| transient  | 0           | 0          | —                                                                                        |
 
 **The compressor count going UP is the proof the fix works in both directions:** `scBandHz` was masked
 by the old stimulus, and the new one exposed it.
@@ -87,7 +87,7 @@ by the old stimulus, and the new one exposed it.
    change a sample. Same shape as an EQ band's frequency while its gain is 0 dB, and `scHpf`'s band
    range is degenerate in the mode it runs in. **No code change — the sweep must engage the companion.**
 3. **Metric-blind.** Timing-only parameters (`attack`, `lookahead`) and texture parameters: the four
-   metrics are level/spectrum aggregates and cannot see *when*.
+   metrics are level/spectrum aggregates and cannot see _when_.
 4. **Not excited by this stimulus.** Limiter (needs a hot signal), duckDelay (needs a tail metric).
 
 ## 5. A second, separate artefact — found, not yet repaired
@@ -95,12 +95,12 @@ by the old stimulus, and the new one exposed it.
 Four bar-synced effects produce output identical to dry in the isolated factory sweep
 (`bypassDelta === 0`) while **processing normally in the host render**:
 
-| effect | sweep `bypassDelta` | `hostDelta` (host render) |
-| --- | --- | --- |
-| beatMangler | 0 | 0.489 |
-| reverseSwell | 0 | 4.1e-9 (`hostProcesses: false`) |
-| tapeStop | 0 | 0.373 |
-| granularFreeze | 0 | 0.509 |
+| effect         | sweep `bypassDelta` | `hostDelta` (host render)       |
+| -------------- | ------------------- | ------------------------------- |
+| beatMangler    | 0                   | 0.489                           |
+| reverseSwell   | 0                   | 4.1e-9 (`hostProcesses: false`) |
+| tapeStop       | 0                   | 0.373                           |
+| granularFreeze | 0                   | 0.509                           |
 
 The sweep calls `rt.onTransportStarted?.(0, 0)` once and renders; the host path advances the transport.
 A longer signal does not help (`signalSecondsFor` already gives these 4.4 s). This is a different cause

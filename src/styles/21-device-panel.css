@@ -133,6 +133,12 @@
 .device-chain-item.active::before {
   opacity: 1;
 }
+.device-chain-item:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: 1px;
+}
 .device-chain-item.is-bypassed {
   opacity: 0.55;
   border-style: dashed;
@@ -232,7 +238,8 @@
   color: var(--text);
 }
 .device-editor .fx-device-buttons .btn-small:disabled {
-  opacity: 0.3;
+  opacity: 0.58;
+  cursor: not-allowed;
 }
 .device-editor .fx-device-buttons .btn-small.active-mute {
   color: #f59e0b;

@@ -1781,7 +1781,7 @@
 }
 
 .master-ab-section button:disabled {
-  opacity: 0.5;
+  opacity: 0.58;
   cursor: not-allowed;
 }
 
@@ -1998,7 +1998,7 @@
 }
 
 .master-assistant-section button:disabled {
-  opacity: 0.5;
+  opacity: 0.58;
   cursor: not-allowed;
 }
 
@@ -2652,7 +2652,7 @@
 }
 
 .master-reference-offset-input button:disabled {
-  opacity: 0.45;
+  opacity: 0.58;
   cursor: not-allowed;
 }
 

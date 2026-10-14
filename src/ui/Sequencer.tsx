@@ -1168,60 +1168,87 @@ function StepEditor({
 
   return (
     <div className="step-editor" role="group" aria-label="Step performance editor">
-      <span className="step-editor-title">
-        STEP {stepIndex + 1} · {pad?.name ?? "?"}
-        {isInSelection && stepSelection
-          ? ` · +${stepSelection.padIds.length * (stepSelection.to - stepSelection.from + 1) - 1} SELECTED`
-          : ""}
-      </span>
-      <button
-        type="button"
-        className="step-editor-close btn btn-small"
-        onClick={onClose}
-        title="Close step editor"
-        aria-label="Close step editor"
-      >
-        ×
-      </button>
-      <div className="step-editor-field">
-        <Slider
-          compact
-          label="PROB"
-          value={meta.probability ?? 1}
-          min={0}
-          max={1}
-          defaultValue={1}
-          format={(v) => `${Math.round(v * 100)}%`}
-          onCommit={(probability) => set({ probability })}
-        />
-      </div>
-      <label className="step-editor-field">
-        <span className="slider-label">RATCHET</span>
-        <select
-          value={meta.ratchet ?? 1}
-          onChange={(event) => set({ ratchet: Number(event.target.value) })}
-          aria-label="Ratchet count"
-          title="Ratchet count — repeats the step N times inside its slot for rolls and fills (1× = off). Pairs with the amount bar below."
+      <div className="step-editor-head">
+        <span className="step-editor-title">
+          STEP {stepIndex + 1} · {pad?.name ?? "?"}
+          {isInSelection && stepSelection
+            ? ` · +${stepSelection.padIds.length * (stepSelection.to - stepSelection.from + 1) - 1} SELECTED`
+            : ""}
+        </span>
+        <button
+          type="button"
+          className="step-editor-close btn btn-small"
+          onClick={onClose}
+          title="Close step editor"
+          aria-label="Close step editor"
         >
-          {[1, 2, 3, 4, 6, 8].map((n) => (
-            <option key={n} value={n}>
-              {n}×
-            </option>
-          ))}
-        </select>
-      </label>
-      <DragNumber
-        label="MICRO"
-        value={meta.microtiming ?? 0}
-        min={-1}
-        max={1}
-        defaultValue={0}
-        sensitivity={0.01}
-        format={(v) =>
-          Math.abs(v) < 0.02 ? "0" : v < 0 ? `${Math.round(v * 100)} EARLY` : `+${Math.round(v * 100)} LATE`
-        }
-        onCommit={(microtiming) => set({ microtiming })}
-      />
+          ×
+        </button>
+      </div>
+      <div className="step-editor-performance">
+        <div className="step-editor-field step-editor-probability">
+          <Slider
+            compact
+            label="PROB"
+            value={meta.probability ?? 1}
+            min={0}
+            max={1}
+            defaultValue={1}
+            format={(v) => `${Math.round(v * 100)}%`}
+            onCommit={(probability) => set({ probability })}
+          />
+        </div>
+        <label className="step-editor-field step-editor-ratchet">
+          <span className="slider-label">RATCHET</span>
+          <select
+            value={meta.ratchet ?? 1}
+            onChange={(event) => set({ ratchet: Number(event.target.value) })}
+            aria-label="Ratchet count"
+            title="Ratchet count — repeats the step N times inside its slot for rolls and fills (1× = off). Pairs with the amount bar below."
+          >
+            {[1, 2, 3, 4, 6, 8].map((n) => (
+              <option key={n} value={n}>
+                {n}×
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="step-editor-micro">
+          <DragNumber
+            label="MICRO"
+            value={meta.microtiming ?? 0}
+            min={-1}
+            max={1}
+            defaultValue={0}
+            sensitivity={0.01}
+            format={(v) =>
+              Math.abs(v) < 0.02 ? "0" : v < 0 ? `${Math.round(v * 100)} EARLY` : `+${Math.round(v * 100)} LATE`
+            }
+            onCommit={(microtiming) => set({ microtiming })}
+          />
+        </div>
+        <button
+          type="button"
+          className="step-editor-reset btn btn-small"
+          title="Reset step performance to defaults"
+          onClick={() => {
+            if (isInSelection && stepSelection) {
+              executeUserEdit(
+                services.store,
+                clearStepLocks(doc, pattern.id, stepSelection.padIds, stepSelection.from, stepSelection.to),
+              );
+            } else {
+              set({ probability: 1, ratchet: 1, microtiming: 0, locks: undefined } as StepMeta);
+              // The `locks: undefined` patch above ALREADY clears every lock —
+              // the extra per-key setLock loop used to fire redundant commands
+              // that each rebuilt the pattern object (never identity-equal), so
+              // one RESET click spammed up to 6 dead Ctrl+Z entries.
+            }
+          }}
+        >
+          RESET
+        </button>
+      </div>
       <div className="step-editor-locks" role="group" aria-label="Parameter locks">
         <span className="slider-label">
           P-LOCKS {hasLocks ? "●" : ""} {isInSelection ? "(BULK)" : ""}
@@ -1357,27 +1384,6 @@ function StepEditor({
           </button>
         </div>
       </div>
-      <button
-        type="button"
-        className="btn btn-small"
-        title="Reset step performance to defaults"
-        onClick={() => {
-          if (isInSelection && stepSelection) {
-            executeUserEdit(
-              services.store,
-              clearStepLocks(doc, pattern.id, stepSelection.padIds, stepSelection.from, stepSelection.to),
-            );
-          } else {
-            set({ probability: 1, ratchet: 1, microtiming: 0, locks: undefined } as StepMeta);
-            // The `locks: undefined` patch above ALREADY clears every lock —
-            // the extra per-key setLock loop used to fire redundant commands
-            // that each rebuilt the pattern object (never identity-equal), so
-            // one RESET click spammed up to 6 dead Ctrl+Z entries.
-          }
-        }}
-      >
-        RESET
-      </button>
     </div>
   );
 }

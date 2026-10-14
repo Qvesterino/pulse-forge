@@ -1,0 +1,60 @@
+/* MOD and DICE interaction states: clear selection and editing focus. */
+
+/* MOD has four peer sections. Give each a usable base width, fit as many as
+   the dock slot allows, and keep short cards from stretching to the height of
+   the taller Scenes section. */
+.mod-panel {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  align-items: start;
+}
+
+.mod-panel .mod-lane-row:not(.selected):hover .mod-lane-label {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+  color: var(--text);
+}
+
+.mod-panel .mod-lane-label[aria-current="true"] {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 12%, var(--surface-1)), var(--surface-1) 82%);
+  box-shadow: inset 2px 0 var(--accent);
+  color: var(--accent);
+}
+
+.mod-panel :is(.mod-lane-label, .macro-name):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: 2px;
+}
+
+.mod-panel :is(.lfo-row, .macro-card) {
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.mod-panel :is(.lfo-row, .macro-card):hover {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+}
+
+.mod-panel :is(.lfo-row, .macro-card):focus-within {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+  background-color: color-mix(in srgb, var(--surface-1) 88%, var(--accent-soft));
+  box-shadow: inset 2px 0 color-mix(in srgb, var(--accent) 80%, #fff);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mod-panel :is(.lfo-row, .macro-card) {
+    transition: none;
+  }
+}
+
+/* DICE keeps the selected mode readable through an edge trace rather than a
+   persistent outer glow. */
+.dice-tray .btn.active-solo:not(:disabled) {
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--accent) 84%, #fff);
+}
+
+.dice-tray .btn.dice-big.dice-active {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -2px 0 color-mix(in srgb, var(--accent) 84%, #fff);
+}

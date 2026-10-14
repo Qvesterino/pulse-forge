@@ -368,7 +368,12 @@ export function ModPanel() {
                 : undefined;
             return (
               <div key={lane.id} className={`mod-lane-row${lane.id === selectedLaneId ? " selected" : ""}`}>
-                <button type="button" className="mod-lane-label" onClick={() => setSelectedLaneId(lane.id)}>
+                <button
+                  type="button"
+                  className="mod-lane-label"
+                  aria-current={lane.id === selectedLaneId ? "true" : undefined}
+                  onClick={() => setSelectedLaneId(lane.id)}
+                >
                   {laneLabel(lane, track ? ("name" in track ? track.name : "MASTER") : "?", fxName)} ·{" "}
                   {lane.points.length} pts
                 </button>

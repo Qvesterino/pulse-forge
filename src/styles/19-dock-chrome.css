@@ -143,8 +143,8 @@
   border-color: #343945;
 }
 .dock-close-all:disabled {
-  opacity: 0.3;
-  cursor: default;
+  opacity: 0.58;
+  cursor: not-allowed;
 }
 
 /* Collapsed dock = the tab row alone: grip and slots hide, the chrome stays.

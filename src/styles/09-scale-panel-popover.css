@@ -542,7 +542,7 @@
 
 .embed-energy input[type="range"]:disabled {
   cursor: wait;
-  opacity: 0.45;
+  opacity: 0.58;
 }
 
 .embed-energy-value {

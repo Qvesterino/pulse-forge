@@ -1,0 +1,25 @@
+/* Disabled selects remain readable because their current value is useful
+   context. Native range/check/radio controls keep their quieter disabled cue. */
+:is(
+    .sequencer,
+    .inspector,
+    .mixer,
+    .devices-toolbar,
+    .devices-panel,
+    .arr-panel,
+    .mod-panel,
+    .dice-tray,
+    .intent-panel,
+    .export-panel,
+    .mastering-panel,
+    .midi-panel,
+    .reference-map-panel,
+    .beatmangler-repeat-controls
+  )
+  select:disabled {
+  cursor: not-allowed;
+  opacity: 1;
+  border-color: var(--border-soft);
+  background: var(--surface-0);
+  color: var(--text-dim);
+}

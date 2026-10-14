@@ -672,38 +672,230 @@ scripts/check-bundle-size.mjs` zlyhal na širšom aktuálnom výstupe: DAW JS
   zvislo rolovateľné a dokument nemá horizontálny overflow.
   Snímka: `output/playwright/premium-export-default-390x844.png`.
 
+### Sequencer — P-lock layout a 128-krokový pattern — 2026-10-14
+
+- P-lock editor má teraz oddelenú hlavičku, skupinu výkonových ovládačov a
+  maticu zámkov. Na širokom paneli sa šesť lockov skladá do troch stĺpcov;
+  do 860 px sa matica zmení na dva stĺpce a výkonové ovládače sa zalamujú podľa
+  šírky. Pred úpravou mal editor pri 800 px 880 px obsahu v 735 px paneli a
+  horizontálne skrýval približne 145 px ovládania.
+- Po úprave: pri 1440 px má P-lock editor 1107 × 110 px a matica 3 × 2;
+  pri 800 px 739 × 233 px a matica 2 × 3; pri 390 px 329 × 275 px a matica
+  2 × 3. Vo všetkých troch šírkach sa šírka editora zhoduje s jeho klientskou
+  šírkou, dokument nemá horizontálny overflow. Pri mobile s otvoreným MOD
+  dock sheet zakrýva časť pracovnej plochy; po jeho zbalení sa editor zmestí
+  do šírky a jeho spodná časť zostáva dostupná zvislým scrollom Sequenceru.
+- Dôkaz: `output/playwright/premium-live-sequencer-plock-open-1440x900-after.png`,
+  `output/playwright/premium-live-sequencer-plock-open-800x900-after.png` a
+  `output/playwright/premium-live-sequencer-plock-open-390x844-dock-closed.png`.
+- Na dočasnej kópii projektu sa nastavil 128-krokový pattern bez prehrávania
+  alebo zmeny krokov. Windowing renderuje stredné okno `1–41` (41 stĺpcov)
+  a pri horizontálnom konci `81–128` (48 stĺpcov) z celkových 128 krokov;
+  vodorovný posun zostáva v Sequenceri a šírka dokumentu sa nemení.
+  Koncová pozícia je `scrollLeft=2414`; ruler na konci ukazuje takty/beaty
+  21–32. Snímky: `output/playwright/premium-live-sequencer-128-1440x900.png`,
+  `output/playwright/premium-live-sequencer-128-1440x900-end.png` a
+  `output/playwright/premium-live-sequencer-128-1440x900-workspace-scrolled.png`.
+- Kontextové otvorenie P-locku na kroku 1 nemenilo locky; dokladá len vizuálny
+  stav. Projektová kópia zostáva oddelená od House Beat počas zvyšnej panelovej
+  QA. Automatické testy sa nespúšťali.
+
+### INTENT, EXP, Arrangement a MASTER — aktívne stavy — 2026-10-14
+
+- INTENT dostal mobilné zalamovanie kandidátskej hlavičky a iterácie v
+  `src/styles/29-premium-hierarchy.css`. Pri 390 px majú metadáta 256 px,
+  audition 28 px a `USE` 38 px; iterácia a audio nástroj sa presunú do druhého
+  riadka. Otvorený iterátor sa zmení na plnošírkový blok 334 px pri x=23, takže
+  jeho voľby ostanú v dock sheete a dajú sa zvislo posúvať. Pri 800 px zostáva
+  kandidátsky riadok v paneli. Šírka dokumentu ostáva na oboch šírkach rovná
+  viewportu. Následná úprava dáva audition, `USE`, iterátoru aj audio akcii na
+  telefóne minimálnu 44 px výšku; audition a `USE` majú aj 44 px minimálnu
+  šírku. Po tejto úprave treba znovu zmerať riadok s práve pripojeným
+  kandidátskym bankom.
+- Lokálna INTENT generácia vytvorila päť návrhov. `USE` sa nespustilo a návrhy
+  nemenili obsah QA projektu. Dôkaz: `output/playwright/premium-live-intent-candidates-390x844-after.png`,
+  `output/playwright/premium-live-intent-iteration-open-390x844-scrolled.png` a
+  `output/playwright/premium-live-intent-candidates-800x900.png`.
+- Kontrola uloženej vetvy odhalila zamietnutú iteráciu, ktorá ukazovala interný
+  brief-gate kód a track UUID. `src/ui/IntentPanel.tsx` teraz pri tomto známom
+  brief-gate stave vysvetlí, že take obsahuje noty mimo rozsahu, a ponúkne
+  bezpečný ďalší krok.
+  Pri 390 px sa text zalomí v paneli bez horizontálneho overflow. Snímky pred a
+  po: `output/playwright/premium-live-intent-iteration-error-390x844-before.png`
+  a `output/playwright/premium-live-intent-iteration-error-390x844-after.png`.
+- EXP sa preveril pri 390, 800 a 1440 px. Na mobile má približne 720 px obsahu
+  pod kratším dock sheetom a obe časti zostávajú dostupné zvislým scrollom.
+  Master export sa spustil iba po zobrazenie neurčitého stavu „Rendering
+  master…“ a zrušil pred kódovaním alebo sťahovaním. Zrušenie ukázalo zrozumiteľný
+  výsledkový status; determinate priebeh ani dokončený súbor sa netestovali.
+  Snímky: `output/playwright/premium-live-export-cancelled-390x844.png` a
+  `output/playwright/premium-live-export-cancelled-1440x900.png`.
+- Arrangement sa v QA kópii vytvoril audio klipom cez `BOUNCE ZONE` z
+  vybraného osembarového úseku. Vznikol približne 7,97-barový klip na Drums;
+  pri 390 px sa zachováva vlastný scroll timeline a dokument má šírku presne
+  390 px. MIDI klipy na 808 a Chords zostali viditeľné. Take lanes sa bez
+  pripojeného a armed audio vstupu nespúšťali. Snímky:
+  `output/playwright/premium-live-arrangement-audio-bounce-1440x900.png` a
+  `output/playwright/premium-live-arrangement-audio-bounce-390x844.png`.
+- MASTER vykonal lokálnu analýzu 20,1 s programu pri 44,1 kHz / Studio HQ.
+  Report uviedol -9,6 LUFS-I, -1,3 dBTP, stereo correlation 1.00 a štyri
+  nálezy; stav bol `NEEDS ATTENTION`, nie úspešný masteringový cieľ. Po zmene
+  tempa z 124 na 125 BPM sa report označil ako `STALE · ANALYZE AGAIN` a
+  vysvetlil, že výsledky patria skoršiemu projektu. Pri 800 aj 390 px sa
+  zachovala presná šírka dokumentu; pri 800 sa metriky skladajú do mriežky 3+2.
+  Snímky: `output/playwright/premium-live-mastering-report-800x900.png`,
+  `output/playwright/premium-live-mastering-stale-800x900.png` a
+  `output/playwright/premium-live-mastering-stale-390x844.png` a
+  `output/playwright/premium-live-mastering-stale-1440x900.png`.
+- Mixer a Devices sa v tej istej QA vlne skontrolovali aj s prázdnym chainom a
+  piatimi vloženými efektmi pri 1440, 800 a 390 px. Snímky sú v
+  `premium-live-devices-chain-5-*` a `premium-live-devices-800x900-empty-chain.png`;
+  panelový horizontal overflow sa nenašiel. Teraz sú doplnené aj 2 px selected
+  zvýraznenie stripu, 2 px focus device-chain tlačidiel a čitateľnejšie disabled
+  ovládače; ich nový živý stav ešte treba odfotiť.
+
 ### Zostáva
 
-- Dokončiť husté stavy Sequencer/Inspector, Mixer s plným FX chainom, INTENT,
-  EXP, MASTER a zapnuté MIDI. Arrangement má scénu a Capture Setup, no stále
-  treba overiť audio/MIDI klipy a take lanes; Reference má analyzovaný stav pri
-  troch šírkach, no stale/error stav a výsledkové detaily zostávajú otvorené.
-  Prázdne stavy INTENT a MIDI už majú zachytenú hierarchiu.
-- Mastering notes disclosure už prešiel 3 šírkami. Zostávajú ostatné overlaye
-  a stale/error stavy; tabletový súbeh Inspectoru a docku je upravený.
-- Overiť selected/hover/focus a disabled kontrast na reálnych ovládacích
-  prvkoch; resize gripy už majú live pointer/keyboard kontrolu, ostatné panely
-  potrebujú vlastnú kontrolu stavov a rytmu.
-- Po oprave troch existujúcich TypeScript a troch formátovacích blockerov zopakovať
-  celý typecheck, format check a produkčný build; potom pokračovať v cielenom
-  panelovom QA.
+- Doplniť husté track/Inspector stavy a panelovo špecifické selected,
+  focus-visible a disabled stavy. Track rack má amber trace pre vybraný track,
+  Inspector SIMPLE/ADVANCED aj native-select keyboard focus majú oddelený
+  selected/focus stav. Spoločný 2 px fokus teraz pokrýva chipy,
+  segmented ovládače, custom keyboard slidery, kroky a pady aj natívne range,
+  checkbox a radio ovládače; živé potvrdenie kontrastu a prípadné kolízie
+  outline ešte zostávajú otvorené.
+- INTENT má kandidátov, mobilný iterátor a ľudsky čitateľnú brief-gate chybu;
+  päť čerstvých kandidátov má na mobile overené 44 px hit plochy a bezchybný
+  horizontálny layout. Generovanie, routovanie, SESSION THEATRE a MUTATE majú
+  spoločnú nepercentuálnu amber busy stopu; SONG si ponecháva determinate
+  sekčný progress. Disabled INTENT akcie teraz používajú matný povrch a
+  čitateľný sekundárny text; živé potvrdenie empty/disabled stavu zostáva
+  otvorené. EXP má dokončený lokálny WAV
+  export s decoded delivery kontrolou a reportom pri 1440/390 px; disabled
+  akcie aj natívne polia dedia spoločné pravidlá. Zostáva živý dôkaz determinate
+  progress fázy a panelových disabled variantov.
+- Arrangement má MIDI aj audio klipy. Take lanes teraz majú selected/focus
+  stav a responzívne zalomenie hlavičky; live zobrazenie aj reálny capture treba
+  stále potvrdiť s armed vstupom. Reference Map má analyzovaný stav
+  pri troch šírkach a `role=alert` error surface. MATCH teraz zachová report po
+  zmene projektu alebo referencie, označí ho ako stale a zablokuje APPLY aj
+  rezonančné rezy; výsledková tabuľka sa na úzkych plochách dá posúvať vnútri
+  vlastnej oblasti. Tieto nové stavy zatiaľ nemajú živú screenshot kontrolu.
+  Zapnuté MIDI s externým zariadením sa nedá doložiť bez pripojeného zariadenia.
+- Mastering notes disclosure aj stale report prešli tri šírky. Základné
+  mastering grids teraz reagujú aj na šírku vlastného split dock slotu; zostávajú
+  živé overlay/state kombinácie v split shelli. Tabletový súbeh Inspectoru a
+  docku je upravený.
+- Arrangement toggles aj Inspector selecty už majú panelovo špecifický
+  selected/hover/focus/disabled treatment. Zvyšné legacy focus resety dostávajú
+  samostatný amber `:focus-visible` ring: globálny DragNumber, premenovanie
+  tracku, `+ TRACK`, plávajúce plugin selecty, Generate range, Gallery publish,
+  landing prompt a TSAR controls. Resetované polia v pracovných dock paneloch
+  kryje spoločná vrstva 32. Zostáva live kontrola kontrastu a orezania ringov;
+  resize gripy už majú live pointer/keyboard kontrolu.
+- Cielený Prettier a `git diff --check` prechádzajú. Aktuálny
+  `npm run typecheck` prešiel po odstránení nepoužitého importu `beforeEach` z
+  `tests/mcp-headless-acceptance.test.ts`; správanie testu sa nemenilo.
+- Repo-wide `npm run format:check` teraz prechádza. Opravilo sa iba
+  formátovanie `src/intent/model-decoder.ts` a `tests/probe-split-undo.test.ts`;
+  logika ani správanie testu sa nemenili.
+- Vite build prechádza, no bundle gate zlyháva na aktuálnych 5368/5186 KB DAW JS
+  a 153/150 KB core workletov; boot path je 2176/2200 KB. Limity sa nezvyšovali;
+  pred uzavretím treba obe prekročenia vyhodnotiť a napraviť.
 
 ### Panelová matica dokončenia
 
-| Plocha                | Zapracované                                                                                                                                      | Zostávajúci dôkaz pred uzavretím                                                 |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| Shell / TopBar / dock | Kompaktný layout, tab hierarchia a 2 px rail/grip focus; split grid + pomer; zbalený Inspector/dock 800/390/1024; tabletový Inspector+dock súbeh | Selected/focus kontrast a ďalšie breakpoint/state kombinácie                     |
-| Sequencer / Inspector | Typografia, 24 px ruler, amber select/focus; 808 SIMPLE/ADVANCED pri 4 šírkach; preset názvy v 230 px sidebar                                    | P-lock/long pattern scroll, ďalšie stavy a live screenshot                       |
-| Mixer / Devices       | Hierarchia, responzívne makrá, source/kit voľby; Devices hlavička pri 3 šírkach                                                                  | Plný FX chain, scroll, hover/focus a mobilný panel s vybraným efektom            |
-| Arrangement           | Groove scene, MIDI lanes, Capture Setup a tri toolbar skupiny pri 1440/800/390                                                                   | Audio/MIDI klipy, take lanes, capture state a výška timeline                     |
-| MOD / DICE            | Sekčné karty, DICE hustý stav, responzívny split, výška a resize správanie                                                                       | Naplnené LFO/automation a husté DICE history/locks pri split docku               |
-| INTENT / EXP          | Prompt a pripravený INTENT pri 3 šírkach; default EXP pri 3 šírkach, mobile scroll                                                               | Kandidáti/chyby; determinate/indeterminate export, disabled a úzke šírky         |
-| MASTER                | Report/nálezy, notes disclosure pri 3 šírkach, busy/completed, 5 kariet a vycentrovaný 3-col layout                                              | Stale stav, split dock a ďalšie breakpoint/state kombinácie                      |
-| MIDI / Reference      | MIDI-off a responsive routing; Reference empty aj analyzovaný stav pri 3 šírkach                                                                 | MIDI zapnuté s pripojeným zariadením; Reference stale/error a výsledkové detaily |
+| Plocha                | Zapracované                                                                                                                                                                                                                                                      | Zostávajúci dôkaz pred uzavretím                                                                   |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Shell / TopBar / dock | Kompaktný layout, tab hierarchia a 2 px rail/grip focus; split grid + pomer; zbalený Inspector/dock 800/390/1024; tabletový Inspector+dock súbeh                                                                                                                 | Selected/focus kontrast a ďalšie breakpoint/state kombinácie                                       |
+| Shared controls       | 2 px amber `:focus-visible` pre tlačidlá, chipy, segmented, role=slider, kroky/pady a natívne fields; disabled buttony a selecty majú čitateľný text na matnom povrchu, range/checkbox/radio si ponechávajú tlmený disabled signál; selected stav má amber stopu | Živá kontrola outline clippingu, kontrastu disabled prvkov a selected variantov                    |
+| Sequencer / Inspector | Typografia, 24 px ruler, amber select/focus; selected trace track tabov; SIMPLE/ADVANCED selected state; 808 pri 4 šírkach; preset názvy v 230 px sidebar; responzívny P-lock; 128-step windowing pri 3 šírkach                                                  | Ďalšie track varianty a živá kontrola keyboard kontrastu/select focusu                             |
+| Mixer / Devices       | Hierarchia, responzívne makrá, source/kit voľby; 2 px selected strip a chain focus; disabled button/select labels s plnou opacitou; range/checkbox/radio ostávajú tlmené; päťefektový chain pri 1440/800/390; GROW/REZONANS vnútorné mriežky podľa dock slotu    | Živý hover/focus a mobilný panel s vybraným efektom                                                |
+| Arrangement           | Groove scene, MIDI lanes, audio bounce clip, Capture Setup a toolbar pri 1440/800/390; amber trace pre edit/loop/capture/take selection a ripple preview; mobile take-lane heading                                                                               | Armed capture, výška timeline a live kontrola selected/focus stavov a úzkej hlavičky               |
+| MOD / DICE            | Sekčné karty, DICE 3-roll history a locky pri 1440/800/390; MOD 4-section auto-fit; vybrané/fokusované stavy a DICE aria-pressed                                                                                                                                 | Naplnené LFO/automation; živá kontrola nového MOD gridu a MOD/DICE selected/disabled v split docku |
+| INTENT / EXP          | Prompt, 5 návrhov, responzívny iterátor, 44 px tlačidlá pri 390 px; spoločný busy signál a čitateľné disabled akcie INTENT; EXP cancel/progress pri 3 šírkach a dokončený WAV + report pri 1440/390                                                              | Live kontrola INTENT busy/disabled a EXP determinate progress, vrátane ďalších úzkych šírok        |
+| MASTER                | Report/nálezy, notes disclosure, busy/completed/stale, 5 kariet a 3+2 mriežka pri 390/800/1440; mastering controls adaptujú aj podľa šírky split dock slotu                                                                                                      | Živé overlay/state kombinácie v split docku                                                        |
+| MIDI / Reference      | MIDI-off a responsive routing; Reference empty/analyzed pri 3 šírkach; error alert; MATCH staleness guard; scrollovateľná tabuľka a hierarchia reportu                                                                                                           | MIDI zapnuté s pripojeným zariadením; čerstvá živá QA Reference stale/error a výsledkového layoutu |
 
 Tabuľka oddeľuje implementované zmeny od dôkazu, ktorý ešte treba získať.
 Starší screenshot ani úspešný bundler nenahrádza kontrolu aktívneho panelového
 stavu.
+
+### INTENT candidate bank — 2026-10-14
+
+- Z čerstvo vygenerovaného banku piatich kandidátov sa pri 390 × 844 px zmerali
+  reálne produkčné prvky: audition aj USE majú 44 × 44 px, iterátor 120 × 44 px
+  a Audiotool 85,5 × 44 px. Každý riadok má 342 × 99 px; bank nemá vnútorný
+  horizontálny overflow a dokument ostáva široký 390 px.
+- Otvorený iterátor sa skladá do šírky 334 px a jeho desať tlačidiel má minimálne
+  44 px výšku. Ani otvorený stav nevytvára horizontálny scroll. Päť návrhov sa
+  počas QA nevložilo do projektu tlačidlom USE.
+- Kontrola odkryla chybu disclosure: `.intent-iteration-panel` mal `display:flex`
+  aj pod zatvoreným `<details>`, takže jeho akcie zostávali vykreslené mimo karty.
+  Pravidlo v `src/styles/15-command-palette-2.css` teraz panel pri zatvorenom
+  stave skryje; mobilné pravidlo nastavuje 44 px aj pre všetky akcie otvoreného
+  iterátora v `src/styles/29-premium-hierarchy.css`.
+- Aktuálne snímky:
+  `output/playwright/premium-live-intent-candidates-390x844-hitareas.png` a
+  `output/playwright/premium-live-intent-iteration-open-390x844-hitareas.png`.
+  Cielený Prettier a `git diff --check`: **PASS**. Automatické testy sa
+  nespúšťali.
+
+### Zdieľané stavy tlačidiel — 2026-10-14
+
+- Spoločný `.btn:focus-visible` vykresľuje 2 px jantárový outline. Audit živého
+  shellu našiel `REDO` pri 35 % opacity; všeobecné disabled tlačidlá teraz
+  používajú 58 % opacity a `not-allowed` kurzor. Disabled primárne tlačidlo sa
+  prepne na neutrálny raised povrch, text `--text-muted` a bez tieňa/glow, aby
+  vyzeralo nedostupne a zostalo čitateľné.
+- Po HMR mali reálne disabled `REDO` aj `PASTE` computed opacity 0.58. Dočasný
+  DOM fixture pre disabled `.btn-primary` potvrdil opacity 1, neutrálny povrch a
+  `box-shadow: none`; fixture bol hneď odstránený. Snímka reálneho shellu:
+  `output/playwright/premium-live-disabled-hierarchy-1440x900.png`.
+- Klávesnicový fokus na aktívnom MOD dock tabe skutočne zodpovedá
+  `:focus-visible`: computed outline je 2 px solid amber s 1 px offsetom a
+  selected amber tab state ostáva čitateľný súčasne. Snímka:
+  `output/playwright/premium-live-dock-focus-visible-1440x900.png`.
+- Zmena je spoločný základ. Fokus/disabled kontrast natívnych selectov,
+  sliderov, špecializovaných toggle prvkov a per-panel selected stavov zostáva
+  samostatnou QA položkou.
+
+### DICE hustá história a mobilné ovládanie — 2026-10-14
+
+- Dva neaplikované VARY návrhy rozšírili živú históriu na `3/3`. Pri 1440 × 900
+  a 800 × 900 sa obsah zmestil bez horizontálneho presahu; dock-slot mal 790 px
+  vnútornú šírku pri 800 px. Pri 390 × 844 sa panel čisto vertikálne scrolluje,
+  pričom celý dokument zostal široký 390 px.
+- Na mobile už DICE názov ani návod nezostávajú skrátené. FULL/VARY, locky,
+  mode switch, Fav/export, seed, preview/apply, history body a rozsahy sliderov
+  majú 44 px dotykovú výšku/šírku. Deväť lockov sa zobrazí ako 3 × 3 mriežka;
+  tri history body a ich akcie sú oddelené do riadkov bez prekrytia.
+- Snímky: `output/playwright/premium-live-dice-history-3-800x900.png`,
+  `output/playwright/premium-live-dice-mobile-controls-390x844-top.png` a
+  `output/playwright/premium-live-dice-mobile-controls-390x844-bottom.png`.
+  Zmeny sú v `src/styles/37-dice-panel-layout.css`; žiadny preview sa
+  tlačidlom APPLY nevložil do projektu.
+
+### EXP dokončený lokálny WAV a mobilný report — 2026-10-14
+
+- Z QA projektu sa stiahol 20,0 s WAV export: 44,1 kHz, 16-bit. Dokončená
+  správa potvrdila dekódovaný súbor a zobrazila delivery merania; výsledok
+  úprimne označil mix ako `TOO LOUD (Δ 2.9 dB)` a upozornil na low-end dominance.
+- Report pri 390 px používal štyri úzke stĺpce a lámal verdict/odporúčanie do
+  4 riadkov. `src/styles/34-panel-states.css` teraz dáva `.export-panel` vlastný
+  inline-size container a skladá summary do dvoch stĺpcov pod 560 px. Po úprave
+  report je 352 px široký, má dve 158 px kolóny a dokument nepresahuje 390 px.
+- Snímky: `output/playwright/premium-live-export-complete-1440x900.png` a
+  `output/playwright/premium-live-export-complete-390x844-status.png`.
+  Uskutočnený export bol z QA projektu; project pattern sa exportom nemení.
+
+### Build po DICE a EXP mobile layout — 2026-10-14
+
+- `npx vite build --logLevel error`: **PASS** po zmenách disabled/focus CSS,
+  mobilného DICE layoutu a responzívneho EXP reportu. Bundle-size skript nad
+  novým `dist/` hlási DAW JS 5359/5186 KB a core worklets 153/150 KB; štúdio
+  boot path je 2175/2200 KB. Čistý HEAD baseline je 5357/5186 KB a 153/150 KB
+  workletov, takže oba prekročené limity sú staršie než tieto CSS úpravy.
+  Žiadny limit sa nemenil.
 
 ### Build po Inspector úprave — 2026-10-14
 
@@ -719,3 +911,466 @@ stavu.
   build budgety prešli. Automatické testy sa nespúšťali.
 - Cielený Prettier a `git diff --check`: **PASS** po všetkých uvedených
   CSS a dokumentačných úpravách.
+
+### Najnovšia kontrola — 2026-10-14
+
+- `npx prettier --write` pre plán a `src/styles/29-premium-hierarchy.css`:
+  **PASS**. `git diff --check`: **PASS**. Cielený Prettier pre tieto súbory:
+  **PASS**. `npm run typecheck`: **PASS**. Repo-wide `npm run format:check`:
+  **FAIL** iba na nedotknutých `src/intent/model-decoder.ts` a
+  `tests/probe-split-undo.test.ts`.
+- `npm run build` dokončil TypeScript aj Vite kompiláciu, no záverečný size gate
+  vrátil **FAIL**: DAW JS 5358/5186 KB a core worklets 153/150 KB. Studio boot
+  path 2174/2200 KB a ostatné samostatné kategórie prešli. Vite ponechal
+  upozornenia na zdieľané statické/dynamické importy a chunky nad 500 KB.
+  Automatické testy sa nespúšťali a bundle budgety sa nemenili.
+
+### Overenie bundle baseline na čistom HEAD — 2026-10-14
+
+- Čistý worktree na `5b551d53f11d1e7697fa7d421cce92463ab3f415` hlási DAW JS
+  **5357/5186 KB** a core worklets **153/150 KB**. Working tree po UI zmenách
+  pri prvom meraní hlásil 5358/5186 KB; následný build hlási 5359/5186 KB.
+  Boot path bol 2174/2200 KB a neskôr 2175/2200 KB. Tieto dve budget
+  prekročenia teda existovali pred zmenami tohto plánu a následný rozdiel sa
+  pohybuje o 1–2 KB; limity ostávajú nezmenené.
+- `npm run build` v čistom HEAD sa zastavil ešte v TSC na troch existujúcich
+  chybách v `tests/intent-action-schema-version.test.ts`,
+  `tests/master-iterate.test.ts` a `tests/mcp-p2d-ops.test.ts`; samostatný
+  `npx vite build` prešiel. Bundle baseline bol preto porovnaný priamo cez
+  `scripts/check-bundle-size.mjs`, ktorý v čistom HEAD potvrdil rovnaké dve
+  prekročenia. Automatické testy sa nespúšťali.
+
+### Build po INTENT disclosure úprave — 2026-10-14
+
+- `npm run build`: TSC a Vite **PASS**; Vite dokončil za 20,25 s. Záverečný
+  bundle gate ostáva **FAIL** na DAW JS 5358/5186 KB a core worklets 153/150 KB;
+  studio boot path je 2174/2200 KB a ostatné kategórie prešli. Čistý HEAD
+  preukázal 5357/5186 KB a rovnakých 153/150 KB workletov, takže tieto budget
+  prekročenia nie sú regresia premium UI. Bundle limity sa nemenili a automatické
+  testy sa nespúšťali.
+
+### Spoločný fokus a disabled stavy ovládačov — 2026-10-14
+
+- `.chip` a `.seg-item` majú 2 px jantárový `:focus-visible` outline;
+  vybraný segmented stav dostáva tenký spodný jantárový indikátor. Disabled
+  chip/segmented prvky ukazujú `not-allowed` a zníženú opacity. Zdieľaný základ
+  01-base dáva 2 px fokus aj custom `.slider-track`, sekvenčným krokom a padom.
+- Hlavné dock panely teraz dávajú 2 px outline sliderom, checkboxom a rádiám,
+  používajú jantárový native accent a tlmia disabled select/range/checkbox/radio
+  prvky jednotným spôsobom. Disabled custom slider má čitateľnejších 58 % opacity
+  a `not-allowed` kurzor. Existujúci input/select fokus zostáva zachovaný.
+- Zmena je zatiaľ overená zdrojovo; Browser karta nevrátila otvorenú lokálnu
+  stránku, preto outline clipping, konkrétne disabled ovládače a selected
+  varianty ešte potrebujú živú kontrolu pri 1440/800/390 px.
+- Súbory: `src/styles/01-base.css`, `src/styles/02-sequencer.css`,
+  `src/styles/20-control-kit.css` a `src/styles/32-dock-panel-finishing.css`.
+  Automatické testy sa nespúšťali.
+
+### Mixer a Devices — focus, selected a disabled výnimky — 2026-10-14
+
+- Vybraný mixer strip používa 2 px jantárovú vnútornú stopu. FX device-chain
+  tlačidlá majú vlastný 2 px `:focus-visible` outline, aj keď nie sú `.btn`.
+- FX device akcie a fader-menu disabled tlačidlá zjednotili opacity na 0.58 a
+  kurzor `not-allowed`; predtým používali 0.3/0.4 a prepisovali spoločný stav.
+- Zmena je zdrojovo skontrolovaná. Aktívny selected strip, keyboard focus
+  device chain a disabled menu prvky ešte nemajú novú živú screenshot kontrolu.
+- Upravené: `src/styles/03-mixer.css` a `src/styles/21-device-panel.css`.
+
+### Build po zjednotení fokusu natívnych ovládačov — 2026-10-14
+
+- `npx vite build --logLevel error`: **PASS**. Cielený Prettier a
+  `git diff --check`: **PASS**; `npm run typecheck`: **PASS**.
+  Automatické testy sa nespúšťali.
+- Bundle-size gate hlási DAW JS **5364/5186 KB**, core worklets **153/150 KB**
+  a štúdio boot path **2176/2200 KB**. Čistý HEAD baseline je 5357/5186 KB
+  a 153/150 KB; aktuálny pracovný strom je teda o 7 KB vyššie v DAW súčte.
+  Rozdiel treba vyhodnotiť spolu so súčasne zmenenými zdrojovými súbormi mimo
+  tejto CSS vlny; žiadny bundle limit sa nemenil.
+
+### Inspector — viditeľný selected režim — 2026-10-14
+
+- Tlačidlá SIMPLE/ADVANCED mali správne `aria-pressed` aj `active` triedu, no
+  chýbal im selected vizuálny stav. Aktívna voľba teraz používa tlmený amber
+  povrch, jasný text a 2 px spodnú stopu; ostatné amber akcie tým nemenia farbu.
+- Upravené: `src/styles/31-workspace-finishing.css`. Nový selected stav ešte
+  treba overiť pri prepnutí oboch režimov na 1440/800/390 px.
+
+### Aktuálne overenie — 2026-10-14
+
+- `npx vite build --logLevel error`: **PASS**; cielený Prettier a
+  `git diff --check`: **PASS**. Automatické testy sa nespúšťali.
+- Bundle gate: DAW JS **5364/5186 KB**, core worklets **153/150 KB**,
+  studio boot path **2176/2200 KB**. Limity sa nemenili.
+- Posledný `npm run typecheck`: **FAIL** na `src/intent/conversation.ts:538`
+  (`setReturnGain` nie je definované) a `tests/param-readback.test.ts:164`
+  (`doc` nie je použité). Obe chyby sú mimo vizuálnych súborov tejto vlny;
+  nepripisujem ich CSS zmenám.
+
+### Reference Map — rozlíšiteľný disabled selected stav — 2026-10-14
+
+- Disabled tlačidlá v Reference Map používajú 58 % opacity; vybraná, ale
+  disabled reading voľba používa 78 %, takže si zachová selected identitu a
+  zároveň pôsobí nedostupne. Kurzor pre oba prípady ukazuje `not-allowed`.
+- `ReferenceMapPanel` renderuje chyby cez `role="alert"`. Scoped karta teraz
+  používa tlmenú plochu so stop-color ľavým okrajom, prirodzenou typografiou a
+  zalamovaním dlhých názvov/detailov; jej reálny error aj stale výsledkový stav
+  ešte zostávajú na živú kontrolu.
+- Upravené: `src/styles/30-reference-map.css`. Automatické testy sa nespúšťali.
+
+### Konzistentná disabled čitateľnosť naprieč panelmi — 2026-10-14
+
+- Odstránené boli staršie disabled výnimky s 30–50 % opacity v history/dock
+  ovládačoch, Arrangement, Theme, landing, context menu, chord editor,
+  Beatmangler a Mastering A/B/Assistant. Tieto prvky teraz používajú 58 %
+  opacity a `not-allowed`; dočasne čakajúci energy slider si ponecháva `wait`
+  kurzor. Vybraná disabled voľba Reference čítania zostáva na 78 % a informatívna
+  Mastering metrika na 100 % opacity.
+- Zdrojový audit po úprave nenašiel disabled opacity pod 58 % okrem zámerných
+  selected/informačných variantov. Nový vizuálny dôkaz busy/disabled kombinácií
+  ešte treba získať na živej stránke.
+- Neskoršia kontrola empty-state snímok ukázala, že 58 % stále príliš tlmí text
+  spoločných tlačidiel a chipov. Vrstva 45 teraz nastavuje plnú typografickú
+  opacitu pre `.btn`, chipy, segmented controls aj vlastné panelové button
+  triedy; matný povrch a tlmený okraj zachovávajú čitateľný disabled signál.
+  Natívne selecty teraz zachovávajú čitateľnú hodnotu na matnom povrchu;
+  range/checkbox/radio polia si naďalej ponechávajú tlmený disabled signál.
+- Upravené: `01-base.css`, `04-arrangement.css`, `05-drop-zone.css`,
+  `09-scale-panel-popover.css`, `10-scale-panel-popover-2.css`,
+  `15-command-palette-2.css`, `16-landing-prompt.css`, `19-dock-chrome.css` a
+  `22-mastering-workspace.css`. Automatické testy sa nespúšťali.
+
+### Aktuálne overenie disabled hierarchie — 2026-10-14
+
+- `npx vite build --logLevel error`: **PASS**; cielený Prettier a
+  `git diff --check`: **PASS**. Automatické testy sa nespúšťali.
+- Bundle gate zostáva **FAIL** na DAW JS **5364/5186 KB** a core worklets
+  **153/150 KB**; studio boot path je **2176/2200 KB**. Bundle limity sa nemenili.
+- Aktuálny `npm run typecheck` stále hlási chyby v
+  `src/intent/conversation.ts:538` (`setReturnGain`) a
+  `tests/param-readback.test.ts:164` (nepoužitý `doc`).
+
+### Aktuálne overenie Reference error surface — 2026-10-14
+
+- `npx vite build --logLevel error`: **PASS**; cielený Prettier a
+  `git diff --check`: **PASS**. Automatické testy sa nespúšťali.
+- Bundle-size gate: DAW JS **5365/5186 KB**, core worklets **153/150 KB**,
+  studio boot path **2176/2200 KB**. Čistý HEAD DAW baseline je 5357 KB; limity
+  zostali nezmenené.
+- Browser tab-list ostáva prázdny aj po zaradení lokálnej KYX stránky do panelu,
+  preto nový error card a ostatné nedávne states ešte potrebujú screenshot QA.
+
+### MOD vybraná automation a kontext úprav — 2026-10-14
+
+- Vybraná automation lane teraz nesie tlmený amber povrch a vnútornú pulznú
+  stopu, takže výber nespolieha iba na farbu textu a okraja. Nefokusované lane
+  dostávajú jemný hover; klávesnicový fokus je samostatný 2 px outline.
+  `aria-current="true"` na vybranej lane poháňa aj jej štýl, aby vizuálny a
+  prístupnostný selected stav zostali zviazané.
+- LFO a macro karty jemne zvýraznia okraj pri hover a pri editovaní ovládania
+  pomocou `:focus-within`. Prechody sú krátke a pri reduced motion vypnuté.
+- Upravené: `src/styles/38-mod-panel-finishing.css` a import na konci
+  `src/styles/index.css`; `src/ui/ModPanel.tsx` oznamuje selected lane cez
+  `aria-current`. Starší split screenshot potvrdzuje geometriu kariet,
+  nie nové stavy; browser tab-list je prázdny, takže vizuálna kontrola nového
+  výberu/fokusu ešte zostáva. Automatické testy sa nespúšťali.
+
+### DICE selected režim — jemnejší pulz — 2026-10-14
+
+- FULL/VARY, locky a favorite si zachovávajú amber selected povrch, no teraz
+  majú aj tenkú vnútornú spodnú stopu. Aktívny veľký roll button si zachová
+  strieborný horný odlesk a zreteľný amber gradient, ale trvalý vonkajší glow
+  nahrádza vnútorný amber edge trace. Výber je tak čitateľný bez toho, aby
+  aktívny DICE prvok neustále súťažil s preview a ostatným obsahom.
+- Upravené v `src/styles/38-mod-panel-finishing.css`. Stav je potvrdený iba
+  zdrojovo; živá kontrola DICE FULL/VARY/lock/favorite pri split docku ostáva
+  otvorená. Automatické testy sa nespúšťali.
+
+### DICE sémantický toggle stav — 2026-10-14
+
+- Prepínače FULL/VARY, všetkých deväť lockov a aktuálny favorite teraz
+  vystavujú `aria-pressed` podľa rovnakého stavu, ktorý určuje selected štýl.
+  Veľké FULL/VARY generovacie akcie zostávajú akciami a netvária sa ako toggle.
+- Upravené: `src/ui/DiceTray.tsx`. Potrebuje ešte živú kontrolu v a11y strome;
+  automatické testy sa nespúšťali.
+
+### Build po MOD/DICE stavovej vrstve — 2026-10-14
+
+- `npx vite build --logLevel error`: **PASS**; cielený Prettier a
+  `git diff --check`: **PASS**. Automatické testy sa nespúšťali.
+- Bundle gate ostáva **FAIL** na DAW JS 5365/5186 KB a core worklets 153/150 KB;
+  studio boot path je 2176/2200 KB. Tieto hodnoty zodpovedajú predchádzajúcej
+  kontrole a CSS úprava veľkosť JavaScriptu nemení.
+- `npm run typecheck`: **FAIL** na `src/intent/conversation.ts:538`
+  (`setReturnGain` nie je definované) a `tests/param-readback.test.ts:164`
+  (nepoužitý `doc`); obe chyby sú mimo tejto vizuálnej vrstvy.
+- Aktuálny Browser tab-list je prázdny, preto nový MOD focus/selected stav ani
+  utlmený DICE glow zatiaľ nemajú čerstvý screenshot dôkaz.
+
+### Najnovšie overenie po DICE toggle sémantike — 2026-10-14
+
+- `npx vite build --logLevel error`: **PASS**; cielený Prettier a
+  `git diff --check`: **PASS**. Automatické testy sa nespúšťali.
+- `npm run typecheck`: **FAIL** iba na existujúcom nepoužitom `doc` v
+  `tests/param-readback.test.ts:164`; predchádzajúca chyba v
+  `src/intent/conversation.ts` sa v tejto kontrole už neobjavila.
+- Bundle gate: DAW JS **5366/5186 KB**, core worklets **153/150 KB**,
+  studio boot path **2176/2200 KB**. Obe prekročenia zostávajú otvorené;
+  limity sa nemenili. Čerstvá živá kontrola nových MOD/DICE stavov ešte chýba.
+
+### MOD grid — všetky štyri sekcie v pracovnom riadku — 2026-10-14
+
+- Screenshot `output/playwright/premium-live-mod-panel-1440x900-review.png`
+  ukazuje, že pri 1440 px mal MOD iba tri explicitné stĺpce, a preto sa MACROS
+  presunuli pod AUTOMATION, MODULATORS a SCENES. Krátke prázdne karty sa navyše
+  natiahli na výšku SCENES.
+- `.mod-panel` teraz používa auto-fit mriežku s minimálnou šírkou 300 px pre
+  sekciu a zarovnáva karty od horného okraja. Pri dostatočne širokom dock slote
+  sa zmestia štyri sekcie do jedného riadka; split a úzke režimy znižujú počet
+  stĺpcov podľa skutočnej šírky slotu.
+- Upravené v `src/styles/38-mod-panel-finishing.css`. Je to zatiaľ zdrojová
+  zmena; nové rozloženie potrebuje screenshot kontrolu pri 1440/1280, split
+  docku a 390 px.
+
+### Build a quality gates po MOD grid — 2026-10-14
+
+- `npx vite build --logLevel error`: **PASS**. Cielený Prettier a
+  `git diff --check`: **PASS**; automatické testy sa nespúšťali.
+- `npm run format:check`: **FAIL** na šiestich súboroch mimo tejto vizuálnej
+  iterácie. `npm run typecheck`: **FAIL** iba na nepoužitom `doc` v
+  `tests/param-readback.test.ts:164`.
+- Bundle-size gate ostáva **FAIL**: DAW JS 5366/5186 KB, core worklets 153/150 KB;
+  studio boot path 2176/2200 KB. Limity sa nemenili.
+- Snímka pred úpravou je
+  `output/playwright/premium-live-mod-panel-1440x900-review.png`; po zmene
+  treba získať nové 1440/1280, split a mobilné zábery.
+
+### Obnovený strict typecheck — 2026-10-14
+
+- Odstránená bola nepoužitá lokálna `doc` deklarácia v
+  `tests/param-readback.test.ts`; lokálny objekt sa v tomto parse-only teste
+  nepoužíval. Správanie testov ani produkčný kód sa tým nemení.
+- `npm run typecheck`: **PASS**. Cielený Prettier pre test súbor: **PASS**;
+  automatické testy sa nespúšťali.
+- Repo-wide `npm run format:check` stále zlyháva na šiestich iných súboroch
+  súčasne upravovaných mimo tejto UI práce. Bundle gate ostáva na 5367/5186 KB
+  DAW JS a 153/150 KB core workletov; limity sa nemenili.
+
+### Plný build po obnovení typechecku — 2026-10-14
+
+- `npm run build` úspešne dokončil AudioWorklet prebuildy, `tsc --noEmit`, Vite
+  aj generovanie PWA. Zlyhal až záverečný bundle-size gate: DAW JS
+  **5367/5186 KB**, core worklets **153/150 KB**. Studio boot path je
+  **2176/2200 KB**. Žiadny limit sa nemenil.
+- `npm run typecheck`: **PASS**. Repo-wide `npm run format:check` ostáva
+  **FAIL** na šiestich súboroch mimo tejto UI iterácie. Automatické testy sa
+  nespúšťali.
+
+### Reference MATCH — stale guard a výsledková hierarchia — 2026-10-14
+
+- MATCH výsledok si pamätá identitu projektu a verziu referenčnej analýzy, z
+  ktorých vznikol. Pri zmene ktoréhokoľvek z nich zostáva report čitateľný,
+  zobrazí status správu a zablokuje APPLY MATCH aj per-track rezonančné rezy;
+  starý snapshot projektu sa po označení stale uvoľní. Počas merania je APPLY
+  vypnutý, takže sa nedá použiť čiastočne dokončený report bez stem atribúcie.
+- Výsledková tabuľka má vlastný klávesnicovo dostupný horizontálny scroll.
+  Summary, meracie metadáta, vlastníctvo pásiem, návrhy GROW a rezonancie majú
+  oddelenú typografickú a povrchovú hierarchiu, ktorá sa skladá pri úzkom paneli.
+- Upravené: `src/ui/ReferenceMapPanel.tsx` a `src/styles/30-reference-map.css`.
+  `npm run typecheck`, `npx vite build --logLevel error`, cielený Prettier a
+  `git diff --check`: **PASS**. Automatické testy sa nespúšťali. Posledný plný
+  bundle gate zostáva otvorený na 5367/5186 KB DAW JS a 153/150 KB core
+  workletov; boot path bol 2176/2200 KB. Posledný repo-wide `format:check`
+  zlyhal na dvoch nesúvisiacich súboroch mimo tejto UI vlny. Browser tab-list
+  je prázdny, takže čerstvá živá kontrola stale guardu a úzkeho reportu ešte
+  chýba.
+
+### Arrangement — zjednotené selected a keyboard focus stavy — 2026-10-14
+
+- RIPPLE, CUT, GEN a LOOP pre vybraný clip už nepoužívajú izolovaný modrý
+  selected stav. Aktívny prepínač má tlmený jantárový povrch a 2 px vnútornú
+  stopu; hover zvýši kontrast bez trvalého glow. Recording toolbar používa
+  rovnakú stopu pre aktívne LOOP/PUNCH/monitor ovládanie a ripple preview pri
+  posúvaní klipov používa jantárový dashed overlay.
+- Capture Setup selecty už pri klávesnicovom fokuse nestrácajú obrys: 2 px
+  amber outline sa zobrazuje nad ich pôvodným focus-border pravidlom. Gain
+  slider aj samostatné Arrangement toggles majú rovnakú viditeľnú focus
+  treatment; disabled prepínače zostávajú čitateľné a ukazujú `not-allowed`.
+- Audio take lane má selected povrch s vnútornou amber stopou, samostatný
+  `:focus-visible` pre výber take aj klipové segmenty a 28–36 px ovládacie
+  ciele. Hlavička take lanes sa v úzkom arrangement kontajneri skladá do
+  viacerých riadkov; farby comp waveform segmentov zostávajú zachované.
+- Upravené: `src/styles/39-arrangement-interaction-finishing.css` a import v
+  `src/styles/index.css`. Zmena je zatiaľ potvrdená zdrojovo; live screenshot a
+  overenie kontrastu po theme prepnutí ešte chýbajú. Automatické testy sa
+  nespúšťali.
+
+### Track rack a Inspector — selected/focus dokončenie — 2026-10-14
+
+- Vybraný track teraz používa rovnakú tenkú amber stopu ako ostatné vybrané
+  ovládanie; názov aj farebná bodka stopy zostávajú čitateľné. Hover na
+  nevybraných track tabs mení iba kontrast okraja.
+- Inspector select pri klávesnicovom fokuse znovu získava 2 px focus ring,
+  ktorý predtým rušilo všeobecné `outline: none`. Disabled select zachová názov
+  pri 58 % opacity a ukazuje `not-allowed`; selected SIMPLE/ADVANCED stav už
+  predtým používal spodnú amber stopu.
+- Upravené: `src/styles/40-track-inspector-finishing.css` a import v
+  `src/styles/index.css`. Toto je zdrojová kontrola bez čerstvého live
+  screenshotu. Automatické testy sa nespúšťali.
+
+### Natívne polia — focus ring mimo dock plôch — 2026-10-14
+
+- Audit všetkých legacy `:focus { outline: none; }` pravidiel potvrdil, že polia
+  v pracovných dock paneloch už pokrýva spoločná focus vrstva 32. Projektové,
+  browser, scale/generate, plugin, gallery, help a command-palette polia túto
+  vrstvu nepoužívajú, preto dostali vlastný 2 px amber `:focus-visible` ring.
+  Dodatočná kontrola odhalila aj globálny číselný input DragNumber používaný
+  v TopBare a value popoveroch, `+ TRACK` select mimo dock scope a selecty
+  plávajúceho instrument pluginu. Rozšírený audit doplnil aj track rename,
+  Generate range, Gallery publish input, landing prompt a TSAR select/toggle.
+  Všetky získali zodpovedajúci amber focus ring.
+- Cielená vrstva nemení mouse focus ani vzhľad polí bez fokusu. Rozsah sleduje
+  pôvodné resetované triedy, aby sa nemenili ostatné native controls.
+- Druhý úplný scan `outline: none` v `src/styles` priradil všetky nálezy k
+  existujúcej spoločnej vrstve 32, Arrangement vrstve 39 alebo tejto vrstve 41;
+  nezostal neklasifikovaný reset.
+- Upravené: `src/styles/41-native-field-focus.css` a import v
+  `src/styles/index.css`. Čerstvá vizuálna kontrola nových ringov ešte chýba.
+
+### Overenie po natívnom focus a posledných finishing vrstvách — 2026-10-14
+
+- `npm run build` dokončil AudioWorklet prebuildy, typecheck, Vite aj PWA a
+  zlyhal len na záverečnom bundle-budget gate: DAW JS **5367/5186 KB**, core
+  worklets **153/150 KB**; studio boot path **2176/2200 KB**. Limity sa
+  nemenili. Ostatné budgety prešli.
+- Priamy `npx vite build --logLevel error` prešiel aj po take-lane a kompletnom
+  audite legacy focus resetov pre DragNumber, track rename, `+ TRACK`, plugin,
+  Generate, Gallery, landing a TSAR;
+  cielený Prettier, `git diff --check`, nový `npm run typecheck` aj repo-wide
+  `npm run format:check` tiež prešli. Automatické testy sa nespúšťali.
+- Následný `node scripts/check-bundle-size.mjs` potvrdil na aktuálnom `dist`:
+  DAW JS **5367/5186 KB**, core worklets **153/150 KB**, studio boot path
+  **2176/2200 KB**. Obe prekročenia sú potvrdené; limity sa nezmenili.
+- Živý browser context stále nemá otvorenú kartu, takže čerstvá screenshot QA
+  týchto nových stavov zostáva otvorená.
+
+### Mastering — responzívne správanie split docku — 2026-10-14
+
+- `.mastering-panel` teraz vystavuje vlastnú inline-size container query.
+  Intro, mastering flow, processing controls, meter a úzke A/B/assistant
+  skupiny sa skladajú podľa šírky panelového slotu aj na širokom okne so
+  split dockom; existujúce breakpointy podľa viewportu zostávajú zachované.
+- Summary cards si ponechávajú vlastné 3+2 vyváženie pri šírke 578–765 px;
+  nové panelové query neprepisujú ich lokálnu geometriu.
+- Upravené: `src/styles/36-mastering-overview-layout.css`. Zmena potrebuje
+  ešte live screenshot kontrolu v otvorenom split docku a pri 390 px.
+- `npx vite build --logLevel error`, repo-wide `npm run format:check` a
+  `git diff --check` prešli; automatické testy sa nespúšťali.
+
+### Devices — úzke GROW/REZONANS sloty — 2026-10-14
+
+- GROW readout a akcie sa pri úzkom dock slote zalomia podľa dostupnej šírky;
+  scene chip môže prejsť do ďalšieho riadka bez horizontálneho pretečenia.
+- REZONANS readout a hint sa skladajú podľa slotu. Pod 420 px prejde každá
+  voice karta z pevnej päťstĺpcovej rady na šírkovo vhodnú mriežku, aby selecty
+  nestratili použiteľnú šírku v split docku.
+- Upravené: `src/styles/42-device-slot-finishing.css` a import v
+  `src/styles/index.css`. Potrebuje live kontrolu pri 560, 420 a 390 px.
+- `npx vite build --logLevel error`, cielený Prettier a `git diff --check`
+  prešli; automatické testy sa nespúšťali.
+- `npm run typecheck` teraz hlási iba nepoužitý import `beforeEach` v
+  `tests/mcp-headless-acceptance.test.ts`; tento nový súbor nesúvisí s UI briefom.
+  Bundle gate aktuálne hlási DAW JS **5368/5186 KB**, core worklets
+  **153/150 KB** a studio boot path **2176/2200 KB**. Limity sa nemenili.
+
+### INTENT — spoločný busy signál — 2026-10-14
+
+- Hlavný status riadok teraz dostane jemnú amber stopu počas generovania,
+  smart routingu, SESSION THEATRE a MUTATE. Indikátor je zámerne neurčitý;
+  SONG zostáva pri existujúcom determinate počítadle sekcií.
+- Indikátor je dekoratívny pre accessibility tree a rešpektuje
+  `prefers-reduced-motion`; textový `role=status` ostáva jediným zdrojom
+  oznámenia aktivity.
+- Upravené: `src/ui/intent/StatusLine.tsx`, `src/ui/IntentPanel.tsx`,
+  `src/styles/43-intent-busy-finishing.css` a import v `src/styles/index.css`.
+  Potrebuje live kontrolu generovania, smart routingu, split docku a reduced
+  motion. `npm run typecheck`, `npx vite build --logLevel error`, cielený
+  Prettier aj `git diff --check` prešli; automatické testy sa nespúšťali.
+- Aktuálny bundle gate stále hlási DAW JS **5367/5186 KB** a core worklets
+  **153/150 KB**; studio boot path je **2176/2200 KB**. Ostatné kategórie
+  prešli a limity sa nemenili. Dve prekročenia ostávajú otvorené.
+
+### INTENT — čitateľné vypnuté akcie — 2026-10-14
+
+- Snímka prázdneho stavu ukázala, že spoločné `opacity: 0.58` robilo popisy
+  vypnutých akcií príliš nevýrazné. Spoločné tlačidlá, chipy a segmented
+  ovládanie si teraz ponechávajú plnú opacitu textu a používajú tmavší matný
+  povrch, tlmený okraj a žiadny tieň; zvolený disabled prvok zachová jemnú
+  amber stopu. Aktívny stav GENERATE sa nemení. V predvolenom Signal Glass
+  theme má text `--text-dim` na `--surface-0` kontrast 6,41:1.
+- Keď chýba textový aj projektový brief, pod poľom sa zobrazí stručný pokyn,
+  ktorý vysvetlí, ako odomknúť generovanie. Rovnaký text je naviazaný na
+  textarea cez `aria-describedby`; pri dostupnom uloženom brief-e pokyn zmizne.
+- Upravené: `src/styles/44-intent-empty-prompt.css`,
+  `src/styles/45-shared-disabled-controls.css`, `src/styles/index.css` a
+  `src/ui/IntentPanel.tsx`. Na potvrdenie
+  disabled/active kontrastu a orezania focus ringu ešte treba čerstvú živú
+  snímku na desktope aj mobile.
+- `npx vite build --logLevel error`, cielený Prettier a `git diff --check`
+  prešli. `npm run typecheck` hlási jedinú chybu: nepoužitý `beforeEach` v
+  novom `tests/mcp-headless-acceptance.test.ts`; UI zmeny testy nemenili.
+- `node scripts/check-bundle-size.mjs` stále zlyháva na DAW JS **5368/5186 KB**
+  a core worklets **153/150 KB**; studio boot path je **2176/2200 KB**.
+  Limity sa nemenili. Automatické testy sa nespúšťali.
+
+### Disabled selecty — čitateľné aktuálne hodnoty — 2026-10-14
+
+- Disabled selecty v pracovných paneloch teraz zachovávajú čitateľný text a
+  používajú matný povrch s tlmeným okrajom. Hodnota zostáva užitočným kontextom,
+  aj keď ovládanie práve nemožno zmeniť. Range, checkbox a radio si ponechávajú
+  tichší disabled signál.
+- Upravené: `src/styles/46-disabled-select-readability.css` a import v
+  `src/styles/index.css`. Interakcia ani projektové dáta sa nemenia.
+- `npx vite build --logLevel error`, cielený Prettier a `git diff --check`
+  prešli; automatické testy sa nespúšťali. `npm run typecheck` stále blokuje
+  nepoužitý `beforeEach` v `tests/mcp-headless-acceptance.test.ts`.
+- Bundle gate aktuálne zlyháva pri DAW JS **5368/5186 KB** a core worklets
+  **153/150 KB**; studio boot path je **2176/2200 KB**. Limity sa nemenili.
+  Čerstvá živá snímka disabled selectov ešte chýba.
+
+### Strict typecheck — posledný beh — 2026-10-14
+
+- Odstránený nepoužitý import `beforeEach` z
+  `tests/mcp-headless-acceptance.test.ts`; žiadna testovacia logika sa nemenila.
+- `npm run typecheck`: **PASS**. Cielený Prettier a `git diff --check`:
+  **PASS**. Automatické testy sa nespúšťali.
+- Produkčný Vite build prešiel; size gate aktuálne prekračuje limity o 182 KB
+  pre DAW JS a o 3 KB pre core worklets. Čistý HEAD baseline z predošlej
+  kontroly už bol nad oboma limitmi.
+
+### Panelové nadpisy — typografická kotva — 2026-10-14
+
+- Hlavné `h2.panel-title` nadpisy sa zjednotili na 15 px, čo je dolná hranica
+  definovaného rozsahu 15–17 px pre názov panelu. Lokálne `h3` a metadata
+  zostávajú kompaktné, takže sa nezväčšuje typografia hustých ovládacích plôch.
+- Upravené: `src/styles/29-premium-hierarchy.css`. Toto je zdrojová zmena;
+  screenshot pri 1440/800/390 px ešte treba vizuálne skontrolovať.
+- `npm run typecheck`, `npm run format:check`, `npx vite build --logLevel error`,
+  cielený Prettier pre plán a `git diff --check`: **PASS**. Automatické testy
+  sa nespúšťali.
+- Bundle gate: DAW JS **5368/5186 KB**, core worklets **153/150 KB**;
+  studio boot path **2176/2200 KB**. Dve prekročenia sú potvrdené na aktuálnom
+  builde; žiadny budget sa nemenil.
+
+### Zjednotenie spoločného spacingu — 2026-10-14
+
+- Opakované medzery v panelovej navigácii a hlavných ovládacích plochách teraz
+  používajú existujúce tokeny 4/8/12 px: riadky Pattern toolbaru, dock tabs,
+  track tabs, pattern chips, Mixer channel strips a Mastering metriky.
+- Pri dock taboch zostáva mobilná výška 34 px; zmenili sa iba vnútorné
+  medzery, aby aktívna záložka a názvy sledovali rovnaký rytmus ako desktop.
+- Upravené: `src/styles/29-premium-hierarchy.css`. Zmena zachováva hustý
+  control sizing; nový screenshot pri všetkých šírkach ešte chýba.
+- Cielený Prettier, `git diff --check` a `npx vite build --logLevel error`:
+  **PASS**. `scripts/check-bundle-size.mjs` potvrdil DAW JS **5368/5186 KB**,
+  core worklets **153/150 KB** a studio boot path **2176/2200 KB**; limity sa
+  nemenili. Automatické testy sa nespúšťali.

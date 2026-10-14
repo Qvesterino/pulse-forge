@@ -1,0 +1,35 @@
+/* Restore KYX keyboard focus where legacy field rules suppress the browser
+   outline. Docked work surfaces use the shared focus layer in 32. */
+:is(
+  .drag-number-input,
+  .fx-add-select,
+  .fx-param-select select,
+  .track-tab-rename,
+  .project-name,
+  .pb-rename-input,
+  .preset-save-input,
+  .preset-search,
+  .scale-select,
+  .generate-select,
+  .generate-seed-input,
+  .text-prompt-textarea,
+  .slice-number input,
+  .fxeq-split-input,
+  .ozvena-pad-input,
+  .gallery-publish-form input,
+  .gallery-publish-form textarea,
+  .gallery-search,
+  .help-header .help-search,
+  .palette-input,
+  .landing-prompt-input,
+  .tsar-param-select select,
+  .tsar-toggle-button
+):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: 2px;
+}
+
+.generate-slider:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: 3px;
+}

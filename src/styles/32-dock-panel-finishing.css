@@ -22,6 +22,7 @@
     .inspector,
     .mixer,
     .devices-toolbar,
+    .devices-panel,
     .arr-panel,
     .mod-panel,
     .dice-tray,
@@ -35,6 +36,65 @@
   border-color: var(--accent);
   outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
   outline-offset: 2px;
+}
+
+:where(
+    .sequencer,
+    .inspector,
+    .mixer,
+    .devices-toolbar,
+    .devices-panel,
+    .arr-panel,
+    .mod-panel,
+    .dice-tray,
+    .intent-panel,
+    .export-panel,
+    .mastering-panel,
+    .midi-panel,
+    .reference-map-panel
+  )
+  :is(input[type="range"], input[type="checkbox"], input[type="radio"]):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: 3px;
+}
+
+:where(
+    .sequencer,
+    .inspector,
+    .mixer,
+    .devices-toolbar,
+    .devices-panel,
+    .arr-panel,
+    .mod-panel,
+    .dice-tray,
+    .intent-panel,
+    .export-panel,
+    .mastering-panel,
+    .midi-panel,
+    .reference-map-panel
+  )
+  :is(input[type="checkbox"], input[type="radio"]) {
+  accent-color: var(--accent);
+}
+
+:where(
+    .sequencer,
+    .inspector,
+    .mixer,
+    .devices-toolbar,
+    .devices-panel,
+    .arr-panel,
+    .mod-panel,
+    .dice-tray,
+    .intent-panel,
+    .export-panel,
+    .mastering-panel,
+    .midi-panel,
+    .reference-map-panel
+  )
+  :is(select, input[type="range"], input[type="checkbox"], input[type="radio"]):disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .inspector-rail-toggle:focus-visible,

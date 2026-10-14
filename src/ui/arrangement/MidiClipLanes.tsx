@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { Command } from "../../commands/types";
 import {
   addMidiClip,
@@ -11,7 +11,7 @@ import {
   trimMidiClipStart,
 } from "../../commands/midiClips";
 import { nudgeClips } from "../../commands/clipEditing";
-import type { MidiClip, ProjectDocument, Track } from "../../project-model/types";
+import type { MidiClip, NoteEvent, ProjectDocument, Track } from "../../project-model/types";
 import { BAR_TICKS, STEP_TICKS } from "../../project-model/types";
 import { snapBarsFor, snapTick, type SnapGridId } from "../snap";
 import {
@@ -31,6 +31,7 @@ interface MidiClipLanesProps {
   playheadTick: number;
   onExecute: (command: Command) => boolean;
   onSelect: (clipId: string) => void;
+  onEditSource: (trackId: string, patternId: string) => void;
 }
 
 interface ClipDrag {
@@ -48,6 +49,40 @@ interface ClipDrag {
   groupHasScene?: boolean;
 }
 
+const EMPTY_NOTES: readonly NoteEvent[] = [];
+
+const MidiClipNoteMarks = memo(function MidiClipNoteMarks({
+  notes,
+  patternTicks,
+  phase,
+  lengthTicks,
+}: {
+  notes: readonly NoteEvent[];
+  patternTicks: number;
+  phase: number;
+  lengthTicks: number;
+}) {
+  if (patternTicks <= 0 || lengthTicks <= 0) return null;
+  const marks = [];
+  for (const note of notes) {
+    if (marks.length >= 256) break;
+    const firstOffset = (((note.start - phase) % patternTicks) + patternTicks) % patternTicks;
+    for (let offset = firstOffset; offset < lengthTicks && marks.length < 256; offset += patternTicks) {
+      marks.push(
+        <i
+          className="arr-midi-note-mark"
+          key={`${note.id}:${offset}`}
+          style={{
+            left: `${(offset / lengthTicks) * 100}%`,
+            width: `${Math.max(0.5, (Math.min(note.duration, lengthTicks - offset) / lengthTicks) * 100)}%`,
+          }}
+        />,
+      );
+    }
+  }
+  return <>{marks}</>;
+});
+
 function snapToGrid(tick: number, grid: SnapGridId, suspended: boolean): number {
   const bars = suspended ? null : snapBarsFor(grid);
   return Math.round(bars === null ? tick : snapTick(tick, bars));
@@ -64,6 +99,7 @@ export function MidiClipLanes({
   playheadTick,
   onExecute,
   onSelect,
+  onEditSource,
 }: MidiClipLanesProps) {
   const instruments = tracks.filter((track) => track.kind === "instrument");
   const dragRef = useRef<ClipDrag | null>(null);
@@ -71,6 +107,7 @@ export function MidiClipLanes({
   const groupDragPreview = useTimelineGroupDragPreview();
   const [menu, setMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
   const laneWidth = totalBars * barWidth;
+  const menuClip = menu ? midiClips.find((clip) => clip.id === menu.clipId) : undefined;
   const clipsByTrack = new Map<string, MidiClip[]>();
   for (const clip of midiClips) {
     const clips = clipsByTrack.get(clip.trackId) ?? [];
@@ -266,34 +303,13 @@ export function MidiClipLanes({
                 const source = doc.patterns.find((candidate) => candidate.id === clip.patternId);
                 const patternTicks = source ? source.stepCount * STEP_TICKS : 0;
                 const phase = clip.phaseOffsetTicks ?? 0;
-                const noteMarks = [];
-                for (const note of source?.notes?.[track.id] ?? []) {
-                  if (patternTicks <= 0 || noteMarks.length >= 256) break;
-                  const firstOffset = (((note.start - phase) % patternTicks) + patternTicks) % patternTicks;
-                  for (
-                    let offset = firstOffset;
-                    offset < lengthTicks && noteMarks.length < 256;
-                    offset += patternTicks
-                  ) {
-                    noteMarks.push(
-                      <i
-                        className="arr-midi-note-mark"
-                        key={`${note.id}:${offset}`}
-                        style={{
-                          left: `${(offset / lengthTicks) * 100}%`,
-                          width: `${Math.max(0.5, (Math.min(note.duration, lengthTicks - offset) / lengthTicks) * 100)}%`,
-                        }}
-                      />,
-                    );
-                  }
-                }
                 return (
                   <button
                     type="button"
                     key={clip.id}
                     className={`arr-midi-clip${selectedClipId === clip.id ? " selected" : ""}${clip.muted ? " muted" : ""}${clip.locked ? " locked" : ""}${doc.arrangement.clipGroups?.some((group) => group.clipIds.includes(clip.id)) ? " grouped" : ""}`}
                     aria-label={`${source?.name ?? "Pattern"} MIDI clip on ${track.name}, bar ${Math.floor(startTick / BAR_TICKS) + 1}`}
-                    title={`${source?.name ?? "Pattern"} · ${track.name} · ${lengthTicks} ticks · double-click empty lane to place · right-click for clip actions`}
+                    title={`${source?.name ?? "Pattern"} · ${track.name} · ${lengthTicks} ticks · double-click to edit source pattern · right-click for clip actions`}
                     style={{
                       left: (startTick / BAR_TICKS) * barWidth,
                       width: Math.max(10, (lengthTicks / BAR_TICKS) * barWidth - 3),
@@ -302,6 +318,11 @@ export function MidiClipLanes({
                     onPointerMove={updateDrag}
                     onPointerUp={finishDrag}
                     onPointerCancel={cancelDrag}
+                    onDoubleClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onEditSource(track.id, clip.patternId);
+                    }}
                     onContextMenu={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
@@ -310,7 +331,12 @@ export function MidiClipLanes({
                     }}
                   >
                     <span className="arr-midi-clip-name">{source?.name ?? "MIDI"}</span>
-                    {noteMarks}
+                    <MidiClipNoteMarks
+                      notes={source?.notes?.[track.id] ?? EMPTY_NOTES}
+                      patternTicks={patternTicks}
+                      phase={phase}
+                      lengthTicks={lengthTicks}
+                    />
                   </button>
                 );
               })}
@@ -318,9 +344,10 @@ export function MidiClipLanes({
           </div>
         );
       })}
-      {menu && (
+      {menu && menuClip && (
         <div className="arr-midi-clip-menu" style={{ left: menu.x, top: menu.y }} role="menu">
           {[
+            ["Edit source pattern", () => onEditSource(menuClip.trackId, menuClip.patternId)],
             ["Duplicate", () => onExecute(duplicateMidiClip(doc, menu.clipId))],
             ["Make unique", () => onExecute(makeMidiClipUnique(doc, menu.clipId))],
             [

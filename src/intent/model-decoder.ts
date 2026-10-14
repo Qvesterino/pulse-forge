@@ -359,8 +359,7 @@ export function decodeIntentHeads(
     case "paramIntent": {
       // Param wave P2 — rolling-artifact guard like every newer kind.
       const paramHeads = ["paramEffect", "paramRole", "paramMode"];
-      if (!paramHeads.every((name) => vocab.heads.some((candidate) => candidate.name === name)))
-        return null;
+      if (!paramHeads.every((name) => vocab.heads.some((candidate) => candidate.name === name))) return null;
       const effect = opt("paramEffect");
       const role = opt("paramRole");
       const mode = opt("paramMode");

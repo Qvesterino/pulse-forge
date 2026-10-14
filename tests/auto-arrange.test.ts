@@ -52,22 +52,23 @@ describe("autoArrangeSong", () => {
     }
   });
 
-  it("builds a contiguous three-minute song whose SONG render reaches the exact end", () => {
-    const doc = { ...docWithScenes("Kick Jam"), bpm: 120 };
+  it("builds a contiguous three-minute song at 124 BPM whose SONG render reaches the exact end", () => {
+    const doc = { ...docWithScenes("Kick Jam"), bpm: 124 };
     const targetBars = sceneSecondsToBars(180, doc.bpm);
     const next = autoArrangeSong(doc, targetBars).execute(doc);
     const clips = next.arrangement.clips;
 
+    expect(targetBars).toBe(93);
     expect(clips).toHaveLength(7);
     expect(clips.every((clip) => clip.lengthBars >= 1)).toBe(true);
-    expect(clips.reduce((sum, clip) => sum + clip.lengthBars, 0)).toBe(90);
+    expect(clips.reduce((sum, clip) => sum + clip.lengthBars, 0)).toBe(93);
     let endBar = 0;
     for (const clip of clips) {
       expect(clip.startBar).toBe(endBar);
       endBar += clip.lengthBars;
       expect(doc.scenes.some((scene) => scene.id === clip.sceneId)).toBe(true);
     }
-    expect(computeRenderTicks(next, "song")).toBe(90 * BAR_TICKS);
+    expect(computeRenderTicks(next, "song")).toBe(93 * BAR_TICKS);
     expect(computeRenderTicks(next, "pattern")).toBeLessThan(computeRenderTicks(next, "song"));
   });
 

@@ -96,6 +96,29 @@
 }
 
 @container dice-panel (max-width: 560px) {
+  .dice-tray > .panel-header {
+    align-items: flex-start;
+  }
+
+  .dice-tray > .panel-header .panel-header-id {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: baseline;
+    gap: 2px 8px;
+    width: 100%;
+  }
+
+  .dice-tray > .panel-header .panel-title-line,
+  .dice-tray > .panel-header .panel-hint {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .dice-tray > .panel-header .panel-hint {
+    grid-column: 2;
+  }
+
   .dice-intent-row,
   .dice-intent-sliders {
     gap: 7px;
@@ -114,10 +137,81 @@
   .dice-lock {
     width: 100%;
     padding-inline: 4px;
+    min-height: 44px;
   }
 
   .dice-history {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
+  }
+
+  .dice-history > .dice-history-label,
+  .dice-history > .dice-history-strip {
+    grid-column: 1 / -1;
+  }
+
+  .dice-history > .dice-history-strip {
+    width: 100%;
+    min-width: 0;
+    flex: initial;
+  }
+
+  .dice-history > .btn:nth-of-type(1) {
+    grid-column: 1;
+  }
+
+  .dice-history > .dice-favorites-stat {
+    grid-column: 2;
+    justify-self: center;
+  }
+
+  .dice-history > .btn:nth-of-type(2) {
+    grid-column: 3;
+  }
+
+  .dice-history > .dice-seed-display {
+    grid-column: 4;
+    justify-self: end;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dice-big,
+  .dice-mode-switch > .btn,
+  .dice-history > .btn,
+  .dice-preview-header > .btn {
+    min-height: 44px;
+  }
+
+  .dice-seed-field button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .dice-history-strip {
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .dice-history-strip > .dice-history-dot {
+    width: 44px;
+    height: 44px;
+  }
+
+  .dice-jitter input[type="range"],
+  .dice-slider input[type="range"] {
+    min-height: 44px;
+  }
+
+  .dice-preview-header {
+    flex-wrap: wrap;
+  }
+
+  .dice-preview-meta {
+    flex: 1 1 100%;
+    order: 5;
   }
 }
 

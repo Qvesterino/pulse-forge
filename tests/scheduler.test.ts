@@ -13,7 +13,7 @@ import { Scheduler } from "../src/scheduler/Scheduler";
 import { Transport } from "../src/transport/Transport";
 import type { DrumPad, Pattern, ProjectDocument } from "../src/project-model/types";
 import { setStepVelocity } from "../src/project-model/transform";
-import { addAudioTakeClip, addMidiClip } from "../src/commands/commands";
+import { addAudioTakeClip, addMidiClip, addNote, clearPattern, setPatternLength } from "../src/commands/commands";
 import { createLiveAudioTakeAuditionProject } from "../src/rendering/take-audition";
 
 describe("default project", () => {
@@ -419,6 +419,44 @@ describe("scheduler", () => {
     const sourceNote = pattern.notes[bass.id]?.[0];
     if (!sourceNote) throw new Error("default bass pattern has no fixture note");
     expect(bassEvents[0].durationSec).toBeCloseTo((60 / (base.bpm * PPQ)) * sourceNote.duration, 6);
+    scheduler.stop();
+  });
+
+  it("reaches and schedules a MIDI clip in bar 93 during Song playback", () => {
+    const base = { ...createDefaultProject(), bpm: 124 };
+    const bass = base.tracks.find(
+      (track): track is import("../src/project-model/types").InstrumentTrack =>
+        track.kind === "instrument" && track.instrument === "808",
+    )!;
+    const pattern = base.patterns.find((candidate) => candidate.id === base.activePatternId)!;
+    const expanded = setPatternLength(base, pattern.id, 128).execute(base);
+    const blank = clearPattern(expanded, pattern.id).execute(expanded);
+    const withSustain = addNote(blank, bass.id, {
+      pitch: 36,
+      start: 0,
+      duration: 4 * BAR_TICKS,
+      velocity: 0.9,
+    }).execute(blank);
+    const lateStartTick = 89 * BAR_TICKS;
+    const withClip = addMidiClip(withSustain, bass.id, pattern.id, lateStartTick, 4 * BAR_TICKS).execute(withSustain);
+    const song = { ...withClip, arrangement: { ...withClip.arrangement, clips: [] } };
+    const { noteEvents, transport, scheduler, advance } = makeHarness(song, "song");
+
+    transport.play(0, { leadIn: false });
+    scheduler.start();
+    const lateStartSeconds = (89 * 4 * 60) / base.bpm;
+    // Advance the fake audio clock through the full song rather than waiting
+    // three real minutes. The scheduler must catch the late arrangement span.
+    advance(lateStartSeconds);
+    scheduler["tick"]();
+
+    expect(transport.position).toBeCloseTo(lateStartTick, 5);
+    const lateBassEvent = noteEvents.find(
+      (event) =>
+        event.trackId === bass.id && event.pitch === 36 && Math.abs(event.when - (10 + lateStartSeconds)) < 0.001,
+    );
+    expect(lateBassEvent).toBeDefined();
+    expect(lateBassEvent?.durationSec).toBeCloseTo((4 * BAR_TICKS * 60) / (base.bpm * PPQ), 6);
     scheduler.stop();
   });
 

@@ -1,0 +1,168 @@
+/* Arrangement toggles and capture inputs follow the shared KYX interaction
+   language while keeping the timeline and recording surface matte. */
+.arr-panel .arr-ripple-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-dim);
+  font: 650 10px var(--mono);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.arr-panel .arr-ripple-toggle:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--hairline));
+  color: var(--text);
+}
+
+.arr-panel .arr-ripple-toggle.on,
+.arr-panel .arr-ripple-toggle[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--hairline));
+  background: linear-gradient(110deg, color-mix(in srgb, var(--accent) 11%, var(--surface-1)), var(--surface-1));
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--accent) 86%, #fff);
+  color: var(--accent);
+}
+
+.arr-panel .arr-ripple-toggle:focus-visible,
+.arr-panel .arr-arm-select:focus-visible,
+.arr-panel .arr-arm-gain input[type="range"]:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: 2px;
+}
+
+.arr-panel .arr-arm-select:focus-visible {
+  border-color: var(--accent);
+}
+
+.arr-panel .arr-ripple-toggle:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.arr-panel .arr-record-toolbar > .btn.active-solo:not(:disabled) {
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--accent) 84%, #fff);
+}
+
+.arr-panel .arr-swap-bar button {
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.arr-panel .arr-swap-bar button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: 2px;
+}
+
+.arr-panel .arr-swap-loop[aria-pressed="true"],
+.arr-panel .arr-swap-loop.on {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--hairline));
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface-1));
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--accent) 86%, #fff);
+  color: var(--accent);
+}
+
+.arr-panel .arr-ripple-ghost {
+  border-color: color-mix(in srgb, var(--accent) 76%, #fff);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.arr-panel .arr-audio-take-lane-select {
+  min-height: 28px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.arr-panel .arr-audio-take-lane-select:hover:not([aria-pressed="true"]) {
+  background: color-mix(in srgb, var(--surface-2) 42%, transparent);
+  color: var(--text);
+}
+
+.arr-panel .arr-audio-take-lane-select[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--hairline));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-1));
+  box-shadow: inset 2px 0 color-mix(in srgb, var(--accent) 84%, #fff);
+  color: var(--text);
+}
+
+.arr-panel .arr-audio-take-lane-select[aria-pressed="true"] .arr-audio-take-lane-status {
+  color: var(--accent);
+}
+
+.arr-panel .arr-audio-take-lane-select:focus-visible,
+.arr-panel .arr-audio-take-lane-segment:focus-visible {
+  z-index: 3;
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: 1px;
+}
+
+.arr-panel .arr-audio-take-lane-audition {
+  min-height: 28px;
+}
+
+.arr-panel .arr-audio-take-lane-segment {
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+@container arrangement-timeline (max-width: 620px) {
+  .arr-panel .arr-audio-take-lanes-heading {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+  }
+
+  .arr-panel .arr-audio-take-lanes-track-name {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+
+  .arr-panel .arr-audio-take-lane-header {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .arr-panel .arr-audio-take-lane-audition {
+    min-height: 32px;
+  }
+}
+
+@container arrangement-timeline (max-width: 420px) {
+  .arr-panel .arr-audio-take-lanes-heading > .btn {
+    flex: 1 1 100%;
+  }
+
+  .arr-panel .arr-audio-take-lane-select {
+    flex: 1 1 100%;
+  }
+
+  .arr-panel .arr-audio-take-lane-audition {
+    min-height: 36px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arr-panel .arr-ripple-toggle,
+  .arr-panel .arr-swap-bar button,
+  .arr-panel .arr-audio-take-lane-select,
+  .arr-panel .arr-audio-take-lane-segment {
+    transition: none;
+  }
+}
