@@ -5,7 +5,8 @@ import { normalizeProject } from "../src/project-model/schema";
 import { addArrangementClip } from "../src/commands/commands";
 import { moveArrangementClip, deleteArrangementClip } from "../src/commands/arrangement";
 import { splitAudioClipAtTick, updateAudioClip } from "../src/commands/clipEditing";
-import { audioClipDurationSec } from "../src/commands/audioClips";
+import { audioClipDurationSec, slipAudioClip, stretchAudioClip } from "../src/commands/audioClips";
+import { setClipsLocked } from "../src/commands/clipGroups";
 import type { ProjectDocument } from "../src/project-model/types";
 
 /**
@@ -309,6 +310,13 @@ describe("MCP edit parity — verbs the command layer has and the tool surface d
    * A gap is not a defect by itself. This spec pins the SURFACE so the backlog
    * line is falsifiable: if an op is added, this goes red and the report must
    * be updated rather than left stale.
+   *
+   * **This pin has now fired once, which is the point of writing it.** It
+   * originally probed `op: "audioStretch"` as a deliberately bogus op. A
+   * concurrent session added real `audioStretch` and `audioSlip` ops, the probe
+   * stopped being bogus, and this spec went red - correctly. The probe was moved
+   * to an op that is still absent, and the two NEW ops were added to the pinned
+   * surface below so the drift becomes coverage instead of just noise.
    */
   it("kyx_clips exposes exactly the ops it advertises", async () => {
     // The unknown-op message only exists on the path that gets PAST target
@@ -316,13 +324,78 @@ describe("MCP edit parity — verbs the command layer has and the tool surface d
     // omitted `family` and measured the "need trackId or family" guard instead
     // of the op whitelist - a test that passed for the wrong reason.
     const ctx = makeCtx(fixture());
-    const bogus = await executeMcpTool(ctx, "kyx_clips", { op: "audioStretch", family: "drums", bar: 2 });
+    const bogus = await executeMcpTool(ctx, "kyx_clips", { op: "audioWarp", family: "drums", bar: 2 });
     expect(bogus.mutated).toBe(false);
-    // The unknown-op message enumerates the real surface; pin it.
-    expect(bogus.text).toContain("audioMove");
-    expect(bogus.text).toContain("audioSplit");
-    expect(bogus.text).toContain("audioUpdate");
-    expect(bogus.text).toContain("audioDelete");
+    // The unknown-op message enumerates the real surface; pin it IN FULL, so
+    // the next op that lands shows up as a failure rather than as drift.
+    for (const op of [
+      "list",
+      "audioList",
+      "audioMove",
+      "audioSplit",
+      "audioUpdate",
+      "audioStretch",
+      "audioSlip",
+      "audioDelete",
+    ]) {
+      expect(bogus.text, `kyx_clips no longer advertises ${op}`).toContain(op);
+    }
+  });
+
+  it("PARITY: the audioStretch / audioSlip ops added after wave 18 match their commands", async () => {
+    // These two ops did not exist when §B1 was written. The report's parity
+    // table listed slip and stretch as ABSENT from MCP; that row is now stale
+    // and this spec is what keeps it honest.
+    const base = fixture();
+
+    // SLIP: offsetSec moves, position and length do not.
+    const slipCtx = makeCtx(base);
+    const slipped = await executeMcpTool(slipCtx, "kyx_clips", {
+      op: "audioSlip",
+      family: "drums",
+      bar: 2,
+      offsetSec: 0.5,
+    });
+    expect(slipped.mutated).toBe(true);
+    const viaMcpSlip = slipCtx.getDoc().arrangement.audioClips!.find((c) => c.id === "audio-clip-1")!;
+    const directSlip = slipAudioClip(base, "audio-clip-1", 0.5).execute(base).arrangement.audioClips![0]!;
+    expect(viaMcpSlip.offsetSec).toBe(directSlip.offsetSec);
+    expect(viaMcpSlip.startBar).toBe(directSlip.startBar);
+    expect(viaMcpSlip.lengthBars).toBe(directSlip.lengthBars);
+
+    // STRETCH: length and rate change together, position does not.
+    const stretchCtx = makeCtx(base);
+    const stretched = await executeMcpTool(stretchCtx, "kyx_clips", {
+      op: "audioStretch",
+      family: "drums",
+      bar: 2,
+      bars: 8,
+      rate: 0.5,
+    });
+    expect(stretched.mutated).toBe(true);
+    const viaMcpStretch = stretchCtx.getDoc().arrangement.audioClips!.find((c) => c.id === "audio-clip-1")!;
+    const directStretch = stretchAudioClip(base, "audio-clip-1", 8, 0.5).execute(base).arrangement.audioClips![0]!;
+    expect(viaMcpStretch.lengthBars).toBe(directStretch.lengthBars);
+    expect(viaMcpStretch.stretchRate).toBe(directStretch.stretchRate);
+    expect(viaMcpStretch.startBar).toBe(directStretch.startBar);
+
+    // Both still honour the lock, like every other audio verb (D8).
+    const locked = setClipsLocked(base, ["audio-clip-1"], true).execute(base) as ProjectDocument;
+    const lockedSlip = await executeMcpTool(makeCtx(locked), "kyx_clips", {
+      op: "audioSlip",
+      family: "drums",
+      bar: 2,
+      offsetSec: 0.5,
+    });
+    expect(lockedSlip.mutated).toBe(false);
+    const lockedStretch = await executeMcpTool(makeCtx(locked), "kyx_clips", {
+      op: "audioStretch",
+      family: "drums",
+      bar: 2,
+      bars: 8,
+      rate: 0.5,
+    });
+    expect(lockedStretch.mutated).toBe(false);
   });
 
   it("the arrangement lane names its own op surface", async () => {

@@ -3503,18 +3503,41 @@ was true, and until this wave nothing in the repository asserted it.
 
 ### B2 - Where MCP is genuinely behind the UI (backlog, not defects)
 
-| Command verb                                                                       | UI                  | MCP | Note                                |
-| ---------------------------------------------------------------------------------- | ------------------- | --- | ----------------------------------- |
-| `splitArrangementClipAtTick`                                                       | CUT                 | -   | MCP splits **audio** clips only     |
-| ripple move/resize/delete                                                          | `RIPPLE` toggle     | -   | MCP always uses the non-ripple verb |
-| `cutClips` / `pasteClips`                                                          | `Ctrl+C/X/V`        | -   | no clipboard op                     |
-| group / ungroup / lock                                                             | `Ctrl+G`, `Shift+L` | -   | no op                               |
-| slip / stretch / consolidate / strip silence / slice / crossfade / duplicate-audio | toolbar + shortcuts | -   | ~9 verbs absent                     |
-| `nudgeClips`                                                                       | `,` / `.`           | -   | no op                               |
+| Command verb                                                                       | UI                  | MCP                         | Note                                                                                                        |
+| ---------------------------------------------------------------------------------- | ------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `splitArrangementClipAtTick`                                                       | CUT                 | -                           | MCP splits **audio** clips only                                                                             |
+| ripple move/resize/delete                                                          | `RIPPLE` toggle     | -                           | MCP always uses the non-ripple verb                                                                         |
+| `cutClips` / `pasteClips`                                                          | `Ctrl+C/X/V`        | -                           | no clipboard op                                                                                             |
+| group / ungroup / lock                                                             | `Ctrl+G`, `Shift+L` | -                           | no op                                                                                                       |
+| slip / stretch / consolidate / strip silence / slice / crossfade / duplicate-audio | toolbar + shortcuts | `audioSlip`, `audioStretch` | **STALE — see §B3.** consolidate, strip silence, slice, crossfade, duplicate and clip mute are still absent |
+| `nudgeClips`                                                                       | `,` / `.`           | -                           | no op                                                                                                       |
 
 **A deliberate scope statement, not an oversight**: the objective says "flag missing
 parity without inventing unsupported endpoints". These are recorded as backlog. Nothing
 in this wave adds an MCP op.
+
+## §B3 - Drift correction: two of the "absent" verbs have landed
+
+The §B2 table above is **partly stale**, and the pin in `tests/mcp-edit-parity.test.ts`
+is what says so. That spec probes a deliberately bogus op and asserts the unknown-op
+message enumerates the real surface — written specifically so that "if an op is added,
+this goes red and the report must be updated rather than left stale".
+
+It fired. The probe was `op: "audioStretch"`; a concurrent session added **real**
+`audioStretch` and `audioSlip` ops, the probe stopped being bogus, and the spec went red.
+
+Rather than move the probe and call it drift, the two new ops were **measured against
+their commands**:
+
+| Op                                    | Parity                                                            | Lock                  |
+| ------------------------------------- | ----------------------------------------------------------------- | --------------------- |
+| `audioSlip` (offsetSec)               | offsetSec, startBar and lengthBars all match `slipAudioClip`      | refuses a locked clip |
+| `audioStretch` (rate + optional bars) | lengthBars, stretchRate and startBar all match `stretchAudioClip` | refuses a locked clip |
+
+So the D8 lock reaches the two new doors too, and backlog item 9 drops from nine absent
+verbs to **seven**. The probe moved to an op that is genuinely absent (`audioWarp`), and
+the pinned surface list now names all eight ops, so the next op to land fails the spec
+again instead of silently ageing this table.
 
 ---
 
@@ -3613,12 +3636,12 @@ built.
 
 ### P2 - missing capability (MCP parity, §B2)
 
-| #   | Item                                                                                                        | Impact                                                                                               | Effort |
-| --- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------ |
-| 6   | No `splitArrangementClipAtTick` on MCP                                                                      | An agent cannot split a scene clip - the one verb wave 1 verified as deliberately unsnapped          | S      |
-| 7   | No ripple variants on MCP                                                                                   | An agent's delete never closes the gap the UI's `RIPPLE` toggle produces. Silent semantic divergence | M      |
-| 8   | No clipboard ops on MCP                                                                                     | No copy/cut/paste for an agent                                                                       | M      |
-| 9   | ~9 audio verbs absent (slip, stretch, consolidate, strip silence, slice, crossfade, duplicate, mute, nudge) | See §B2                                                                                              | M      |
+| #   | Item                                                                                                                                                                 | Impact                                                                                               | Effort |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------ |
+| 6   | No `splitArrangementClipAtTick` on MCP                                                                                                                               | An agent cannot split a scene clip - the one verb wave 1 verified as deliberately unsnapped          | S      |
+| 7   | No ripple variants on MCP                                                                                                                                            | An agent's delete never closes the gap the UI's `RIPPLE` toggle produces. Silent semantic divergence | M      |
+| 8   | No clipboard ops on MCP                                                                                                                                              | No copy/cut/paste for an agent                                                                       | M      |
+| 9   | Audio verbs absent on MCP — **2 of the 9 landed** (`audioSlip`, `audioStretch`, §B3); consolidate, strip silence, slice, crossfade, duplicate, mute and nudge remain | See §B2 / §B3                                                                                        | M      |
 
 ### P3 - hardening / unverified
 

@@ -1,4 +1,5 @@
 import { expect, test } from "playwright/test";
+import type { ProjectDocument } from "../../src/project-model/types";
 import { openHouseTemplate } from "./_helpers";
 
 /**
@@ -110,7 +111,7 @@ test.describe("20 — audio-edit render verification", () => {
       const withLowAt0 = addAudioClip(bare, track.id, "w20.low", 0, 4).execute(bare);
       const withLowAndHigh = addAudioClip(withLowAt0, track.id, "w20.high", 2, 4).execute(withLowAt0);
 
-      const render = async (project: Parameters<typeof renderProject>[0]) =>
+      const render = async (project: ProjectDocument) =>
         renderProject(project, bank, { mode: "song", sampleRate, tailSeconds: 0 });
 
       // ── CONTROL: the untouched pair renders BOTH tones ────────────────────
@@ -479,7 +480,7 @@ test.describe("20 — audio-edit render verification", () => {
       };
 
       /** Render a project through the LIVE scheduler path, for parity. */
-      const renderLive = async (project: Parameters<typeof renderProject>[0], lengthFrames: number) => {
+      const renderLive = async (project: ProjectDocument, lengthFrames: number) => {
         const liveContext = new OfflineAudioContext(2, lengthFrames, sampleRate);
         await ensureWorkletsForDoc(project, liveContext);
         const engine = new AudioEngine();
@@ -505,7 +506,7 @@ test.describe("20 — audio-edit render verification", () => {
         return worst;
       };
 
-      const render = async (project: Parameters<typeof renderProject>[0]) =>
+      const render = async (project: ProjectDocument) =>
         renderProject(project, bank, { mode: "song", sampleRate, tailSeconds: 0 });
 
       const out: Record<string, unknown> = {};
