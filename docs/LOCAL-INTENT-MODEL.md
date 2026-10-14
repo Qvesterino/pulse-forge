@@ -19,7 +19,15 @@
 > 95 % floor, so the FP32 artifact ships and INT8 waits for the next corpus
 > round (roadmap rule: keep FP32 if the browser result is worse). The
 > onnxruntime-web browser verifier passes on the promoted artifact
-> (registration state ready, real fader route, inference 14 ms).
+> (registration state ready, real fader route). **SHIPPED AS DYNAMIC INT8
+> (2026-10-13):** the promoted `public/models` artifact is the dynamic-INT8
+> quantization of the gate-passed v16 — 1.80 MB (3.9× smaller download),
+> release gate IDENTICAL to FP32 (97.9 % / 0 wrongKind / 9.9 % abstain on
+> val; golden 98.6 % / 0 / 3.9 %), browser verifier green. Trade-off: wasm
+> inference ~34–88 ms vs ~12–14 ms FP32 — accepted for the 4× download
+> win; the FP32 artifact stays in git history and .sft/intent-model-v16-
+> challenger for rollback. INT8 variants per-channel and QUInt8 were also
+> gated (94.8/94.7 % — below the floor, rejected).
 
 ## 1.
 

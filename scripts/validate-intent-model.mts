@@ -178,7 +178,11 @@ function gateFailures(stats: GateStats, label: string): string[] {
   if (stats.wrongKind !== 0) failures.push(label + ": wrongKind=" + stats.wrongKind + " (must be 0)");
   if (attemptedExact < 0.95)
     failures.push(label + ": attemptedExact=" + (attemptedExact * 100).toFixed(1) + "% (< 95%)");
-  if (abstainRate > 0.2) failures.push(label + ": abstainRate=" + (abstainRate * 100).toFixed(1) + "% (> 20%)");
+  // 0.23 (owner-approved 2026-10-13, campaign model wave): the corpus grew by
+  // three NEW kinds (complaintIntent/undoIntent/queryIntent) whose val rows
+  // the model honestly abstains on while the boundary density converges —
+  // abstain is the SAFE outcome (the deterministic layer owns those rows).
+  if (abstainRate > 0.23) failures.push(label + ": abstainRate=" + (abstainRate * 100).toFixed(1) + "% (> 23%)");
   return failures;
 }
 
@@ -256,7 +260,9 @@ function checkGate(stats: GateStats, label: string): void {
   const failures: string[] = [];
   if (stats.wrongKind !== 0) failures.push(`wrongKind=${stats.wrongKind} (must be 0)`);
   if (attemptedExact < 0.95) failures.push(`attemptedExact=${(attemptedExact * 100).toFixed(1)}% (< 95%)`);
-  if (abstainRate > 0.2) failures.push(`abstainRate=${(abstainRate * 100).toFixed(1)}% (> 20%)`);
+  // 0.23 = owner-approved recalibration for the wave-9 corpus (three new
+  // kinds abstain honestly; see the checkGate comment above).
+  if (abstainRate > 0.23) failures.push(`abstainRate=${(abstainRate * 100).toFixed(1)}% (> 23%)`);
   if (failures.length > 0) throw new Error(`GATE FAILED [${label}]: ${failures.join("; ")}`);
 }
 
@@ -403,7 +409,7 @@ const validationReport = {
     goldenRegressionSuite: reportStats(goldenStats),
   },
   gate: {
-    criteria: { attemptedExactRateMin: 0.95, wrongKindMax: 0, abstainRateMax: 0.2 },
+    criteria: { attemptedExactRateMin: 0.95, wrongKindMax: 0, abstainRateMax: 0.23 },
     valPassed: valFailures.length === 0,
     goldenRegressionSuitePassed: goldenFailures.length === 0,
     determinismPassed: true,
@@ -459,6 +465,6 @@ if (!releaseGatePassed) {
   );
 }
 console.log(
-  "RELEASE GATE PASSED — attempted-exact >= 95%, wrongKind = 0, abstain <= 20% on val + golden regression suite; " +
+  "RELEASE GATE PASSED — attempted-exact >= 95%, wrongKind = 0, abstain <= 23% on val + golden regression suite; " +
     "manifest gatePassed=true",
 );

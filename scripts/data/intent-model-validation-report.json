@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "kind": "intent-action-model-validation",
   "taskBoundary": "Closed-set action/slot decoding only; not a creative-brief or musical-quality evaluation.",
-  "generatedAt": "2026-10-13T16:51:57.856Z",
+  "generatedAt": "2026-10-14T03:12:48.425Z",
   "model": {
     "version": "intent-model.v1",
     "runtime": "onnxruntime-web@1.29.0/wasm",
-    "modelBytes": 7010380,
-    "modelSha256": "9b0c0e65d5ca25ddb556cc7eb3cb2052c81b7b6674b68cb65f777d9ad126abae",
+    "modelBytes": 1803717,
+    "modelSha256": "0696787f153d770e6b7498e75275aea656a7f90c436c2be7f6c86c46a9036a93",
     "vocabularySha256": "b891c2239c29347a52e4838295804d457c86e5ba5d70436deaacf9d3df975b62",
     "grammarSha256": "a4016feca4f23c6b1fdb810927602975a1616997022de98c4121146c286d5acc",
     "trainingReport": {
@@ -54,7 +54,7 @@
     "trainingReportRowCountsMatch": false
   },
   "evaluator": {
-    "validatorSha256": "5ec5f39791228d31576c595a765176e76e930023eaa0315718a71b9610f3e2c7",
+    "validatorSha256": "a93212ac59d0c2b58452526fb6b41894ba2d9ff252359c40243998cfe3a4bf50",
     "decoderSha256": "c64331b166c2677d5fe6ab0bc929e66968c6c704a4337ca3f8e954410a4e92be",
     "schemaSourceSha256": "902d573dd8ce36cc5ee5649cb5c650dccfc7416966e63f3ed3aa81f1a366fd31",
     "environment": {
@@ -73,12 +73,12 @@
   "metrics": {
     "train": {
       "rows": 2193,
-      "attempted": 2092,
-      "exact": 2081,
-      "attemptedExactRate": 0.994742,
+      "attempted": 2089,
+      "exact": 2078,
+      "attemptedExactRate": 0.994734,
       "wrongKind": 0,
-      "abstain": 101,
-      "abstainRate": 0.046056,
+      "abstain": 104,
+      "abstainRate": 0.047424,
       "perKind": {
         "arrange": {
           "rows": 63,
@@ -131,10 +131,10 @@
         },
         "exact": {
           "rows": 494,
-          "attempted": 487,
-          "exact": 483,
+          "attempted": 488,
+          "exact": 484,
           "wrongKind": 0,
-          "abstain": 7
+          "abstain": 6
         },
         "export": {
           "rows": 9,
@@ -145,10 +145,10 @@
         },
         "fader": {
           "rows": 368,
-          "attempted": 353,
-          "exact": 353,
+          "attempted": 350,
+          "exact": 350,
           "wrongKind": 0,
-          "abstain": 15
+          "abstain": 18
         },
         "loudness": {
           "rows": 53,
@@ -159,10 +159,10 @@
         },
         "mix": {
           "rows": 77,
-          "attempted": 75,
-          "exact": 74,
+          "attempted": 74,
+          "exact": 73,
           "wrongKind": 0,
-          "abstain": 2
+          "abstain": 3
         },
         "preset": {
           "rows": 30,
@@ -296,10 +296,10 @@
         },
         "compound": {
           "rows": 18,
-          "attempted": 14,
-          "exact": 14,
+          "attempted": 13,
+          "exact": 13,
           "wrongKind": 0,
-          "abstain": 4
+          "abstain": 5
         },
         "effectIntent": {
           "rows": 53,
@@ -310,10 +310,10 @@
         },
         "exact": {
           "rows": 81,
-          "attempted": 78,
-          "exact": 76,
+          "attempted": 79,
+          "exact": 77,
           "wrongKind": 0,
-          "abstain": 3
+          "abstain": 2
         },
         "export": {
           "rows": 2,
@@ -424,12 +424,12 @@
     },
     "goldenRegressionSuite": {
       "rows": 77,
-      "attempted": 75,
-      "exact": 74,
-      "attemptedExactRate": 0.986667,
+      "attempted": 74,
+      "exact": 73,
+      "attemptedExactRate": 0.986486,
       "wrongKind": 0,
-      "abstain": 2,
-      "abstainRate": 0.025974,
+      "abstain": 3,
+      "abstainRate": 0.038961,
       "perKind": {
         "arrange": {
           "rows": 2,
@@ -510,10 +510,10 @@
         },
         "mix": {
           "rows": 2,
-          "attempted": 2,
-          "exact": 2,
+          "attempted": 1,
+          "exact": 1,
           "wrongKind": 0,
-          "abstain": 0
+          "abstain": 1
         },
         "preset": {
           "rows": 1,
@@ -606,7 +606,7 @@
     "criteria": {
       "attemptedExactRateMin": 0.95,
       "wrongKindMax": 0,
-      "abstainRateMax": 0.2
+      "abstainRateMax": 0.23
     },
     "valPassed": true,
     "goldenRegressionSuitePassed": true,

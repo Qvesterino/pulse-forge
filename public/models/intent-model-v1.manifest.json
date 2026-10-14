@@ -9,8 +9,8 @@
   },
   "model": {
     "url": "/models/intent-model-v1.onnx",
-    "bytes": 7010380,
-    "sha256": "9b0c0e65d5ca25ddb556cc7eb3cb2052c81b7b6674b68cb65f777d9ad126abae"
+    "bytes": 1803717,
+    "sha256": "0696787f153d770e6b7498e75275aea656a7f90c436c2be7f6c86c46a9036a93"
   },
   "prompt": {
     "system": "You map a music-production instruction to one canonical action JSON object. Output only the JSON.",
@@ -953,6 +953,11 @@
     },
     "gate": "scripts/validate-intent-model.mts — attempted-exact >= 0.95, wrongKind = 0",
     "validationReportPath": "scripts/data/intent-model-validation-report.json",
-    "validationReportSha256": "850a236cc3b6fcf8631e3f4bd3bd2ec4af487a9af67464a1ddfb0aea2c390d78"
+    "validationReportSha256": "6bfbb7d5857cb4f4cd6bc410cd9181913150601b81476e31e3b7c34d7ee2e34e"
+  },
+  "quantization": {
+    "kind": "dynamic-int8",
+    "weightType": "int8",
+    "sourceModelSha256": "SEE public manifest history — quantized from the gate-passed v16 float artifact"
   }
 }
