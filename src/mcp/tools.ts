@@ -13,6 +13,8 @@ import { presetsForEffect } from "../effects/presets";
 import { planMasterSettings, planReferenceMastering, resolveMasterAssistantStepValue } from "./master-assistant";
 import { profileFor, resolveDeliveryTarget, verdictAgainst, worstStatus } from "./master-profiles";
 import { stemMasteringPlan, stemRoleOf, type StemRole } from "./stem-mastering";
+import { iterateTowardTarget, isConverged, type IterateMeasurement } from "./master-iterate";
+import { analyzeMasterPcm } from "../mastering/analysis";
 import { addStemTracksCommand } from "../commands/stemTracks";
 import { collectDevices, diffSnapshots, snapshotSummary, type AbSnapshot } from "./master-ab";
 
@@ -1423,7 +1425,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       properties: {
         op: {
           type: "string",
-          enum: ["add", "preset", "trim", "assist", "land", "platform", "stems", "ab", "remove", "status"],
+          enum: ["add", "preset", "trim", "assist", "iterate", "land", "platform", "stems", "ab", "remove", "status"],
         },
         trackId: { type: "string", description: "Exact track id — overrides family when present" },
         family: {
@@ -1621,6 +1623,8 @@ export interface McpToolContext {
     metronome?: boolean;
     seek?: (tick: number) => void;
   };
+  /** THE AI's EARS (closed-loop): renders the current doc pre-master → stereo PCM. Populated by the transport bridge. */
+  renderMix?: () => Promise<{ channels: Float32Array[]; sampleRate: number } | null>;
   /** Present when the KYX window can render/downloads (browser relay). */
   export?: (
     request: McpExportRequest,
@@ -2865,7 +2869,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
     case "kyx_routing":
       return executeRoutingTool(ctx, record);
     case "kyx_master":
-      return executeMasterTool(ctx, record);
+      return await executeMasterTool(ctx, record);
     case "kyx_unsuno":
       return executeUnsunoTool(ctx, record);
     case "kyx_takes":
@@ -5437,7 +5441,7 @@ async function executeUnsunoTool(ctx: McpToolContext, record: Record<string, unk
   return text("kyx_unsuno action must be one of: transcribe | restyle | regen | similarity.");
 }
 
-function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+async function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>): Promise<McpToolResult> {
   const op = String(record.op ?? "status");
   let doc = ctx.getDoc();
   if (op === "status") {
@@ -5775,6 +5779,89 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
       return { text: `restored '${name}' on ${applied.join(", ")}${skippedReadback} — one undo step`, mutated: true };
     }
     return mcpError("UNKNOWN_REQUEST", `unknown op:ab action: ${action} (save | list | compare | restore)`);
+  }
+
+  if (op === "iterate") {
+    // CLOSED-LOOP TONAL ITERATOR: render → measure → adjust → re-render.
+    // Bounded at 3 iterations; ctx.renderMix is the AI's ears.
+    if (!ctx.renderMix) {
+      return {
+        text: "iterate needs ctx.renderMix (the transport bridge must provide the render callback)",
+        mutated: false,
+      };
+    }
+    const targetLufs = typeof record.targetLufs === "number" ? record.targetLufs : -14;
+    const targetHf = typeof record.targetHfShare === "number" ? record.targetHfShare : 0.2;
+    const targetLow = typeof record.targetLowEndShare === "number" ? record.targetLowEndShare : 0.25;
+    const targetCrest = typeof record.targetCrestDb === "number" ? record.targetCrestDb : 11;
+    const targetCorr = typeof record.targetCorrelation === "number" ? record.targetCorrelation : null;
+    const lines: string[] = [];
+    let next = doc;
+    let converged = false;
+    for (let iteration = 0; iteration < 3; iteration++) {
+      const rendered = await ctx.renderMix();
+      if (!rendered) {
+        lines.push(`render failed at iteration ${iteration + 1}`);
+        break;
+      }
+      const analysis = analyzeMasterPcm(rendered.channels, rendered.sampleRate, {
+        id: "iterate",
+        label: "Iterate",
+        targetLufs,
+        maxTruePeakDb: -1,
+      } as never);
+      const mh = analysis.mixHealth;
+      const bandSharesDb: Record<string, number> = {};
+      if (mh.bandShares) {
+        for (const [band, share] of Object.entries(mh.bandShares)) {
+          if (typeof share === "number") bandSharesDb[band] = 10 * Math.log10(Math.max(share, 1e-6));
+        }
+      }
+      const measurement: IterateMeasurement = {
+        lufs: mh.integratedLufs,
+        crestDb: mh.crestDb,
+        correlation: mh.stereoCorrelation,
+        bandSharesDb,
+        target: {
+          lufs: targetLufs,
+          crestDb: targetCrest,
+          correlation: targetCorr,
+          hfShare: targetHf,
+          lowEndShare: targetLow,
+        },
+      };
+      if (isConverged(measurement)) {
+        lines.push(`iteration ${iteration + 1}: CONVERGED (LUFS ${mh.integratedLufs?.toFixed(1) ?? "?"})`);
+        converged = true;
+        break;
+      }
+      const steps = iterateTowardTarget(measurement);
+      if (steps.length === 0) {
+        lines.push(`iteration ${iteration + 1}: converged (no adjustments needed)`);
+        converged = true;
+        break;
+      }
+      for (const step of steps) {
+        for (const track of next.tracks) {
+          const instance = track.effects.find((fx) => fx.type === step.device);
+          if (!instance) continue;
+          const current = instance.params[step.param] ?? 0;
+          const adjusted = Math.max(0, current + step.delta);
+          next = setEffectParam(next, track.id, instance.id, step.param, adjusted).execute(next);
+          lines.push(
+            `iter ${iteration + 1}: ${track.name} · ${step.device}.${step.param} ${current.toFixed(2)} → ${adjusted.toFixed(2)} — ${step.why}`,
+          );
+        }
+      }
+    }
+    if (next === doc) {
+      return { text: `iterate: ${lines.join("\n") || "already converged"}`, mutated: false };
+    }
+    ctx.execute(snapshot("mcpMasterIterate", `MCP: iterate (${converged ? "converged" : "capped at 3"})`, doc, next));
+    return {
+      text: `iterate ${converged ? "CONVERGED" : "CAPPED at 3"} — ${lines.length} adjustment(s), one undo step:\n${lines.join("\n")}`,
+      mutated: true,
+    };
   }
 
   if (op === "assist") {
