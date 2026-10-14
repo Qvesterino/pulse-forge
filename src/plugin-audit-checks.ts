@@ -67,6 +67,50 @@ const BAR_SYNCED_EFFECTS = new Set<EffectType>([
   "granularFreeze",
   "stutter",
 ]);
+/**
+ * Effects whose parameters act on LEVEL OVER TIME (a detector, a threshold, a
+ * hold/release clock). The shared test tone is continuous after its opening
+ * kick, so it never falls below any of their thresholds: the device never
+ * engages, and every threshold/range/hold/release parameter reads as `delta: 0`
+ * — a bit-identical render that looks exactly like an unwired parameter.
+ *
+ * This is the same failure mode this file already documents for the sidechain
+ * family: "without a modulator feed the vocoder runs its degraded 1:1 carrier
+ * passthrough and every sidechain ducking knob is legitimately inert"
+ * (buildModulatorBuffer). That fix was applied to the modulator input and never
+ * to the main sweep signal, so the whole dynamics family kept reporting false
+ * dead parameters.
+ *
+ * MEASURED, not assumed — scripts/probe-worklet-param-wiring.mjs renders the
+ * gate both ways: against a continuous tone, seven of its eight parameters move
+ * 0%; against this burst stimulus they move 0.5%..41%.
+ */
+const DYNAMICS_STIMULUS_TYPES = new Set<string>(["gate", "compressor", "limiter", "duckDelay", "transient"]);
+
+/**
+ * Rhythmic bursts with gaps long enough for a 20 ms hold and an 80 ms release
+ * to actually close a gate. Measured against the shipped defaults: a 220 ms
+ * gap leaves the one-pole envelope at ~-30 dB, still above a -36 dB threshold,
+ * so a correctly-open gate reads as inert. The gap here is 1.7 s.
+ */
+function buildDynamicsBufferInto(ctx: BaseAudioContext, seconds: number): AudioBuffer {
+  const buffer = ctx.createBuffer(2, Math.floor(SR * seconds), SR);
+  const l = buffer.getChannelData(0);
+  const r = buffer.getChannelData(1);
+  const period = 2.0;
+  const on = 0.3;
+  for (let i = 0; i < l.length; i++) {
+    const t = i / SR;
+    const phase = t % period;
+    const active = phase < on;
+    // A little tone under the burst so the spectrum still has content.
+    const tone = 0.25 * Math.sin(2 * Math.PI * 220 * t);
+    l[i] = active ? 0.45 * Math.sin(2 * Math.PI * 180 * t) + tone : 0.0004 * Math.sin(2 * Math.PI * 900 * t);
+    r[i] = active ? 0.45 * Math.sin(2 * Math.PI * 180 * t) + tone * 1.01 : 0.0004 * Math.sin(2 * Math.PI * 900 * t);
+  }
+  return buffer;
+}
+
 const signalSecondsFor = (type: EffectType) => (BAR_SYNCED_EFFECTS.has(type) ? 4.4 : SIGNAL_SECONDS);
 
 /* ---------------- report shapes ---------------- */
@@ -81,6 +125,13 @@ export interface ParamAudit {
   bestExtreme: "min" | "max";
   metric: string;
   delta: number;
+  /**
+   * Which stimulus produced that delta. A parameter that only moves under the
+   * dynamics stimulus IS wired — it just cannot be excited by a tone that never
+   * falls below its threshold. Recorded so the report explains itself instead
+   * of quietly promoting a "dead" parameter to "responsive".
+   */
+  stimulus?: string;
 }
 
 export interface SweepResult {
@@ -383,14 +434,27 @@ async function renderDry(signal: AudioBuffer): Promise<AudioBuffer> {
 
 async function sweepEffect(type: EffectType, signal: AudioBuffer, dry: AudioBuffer): Promise<SweepResult> {
   const paramsDef: ParamDef[] = EFFECT_META[type].params;
-  if (Math.abs(signalSecondsFor(type) - signal.duration) > 1e-6) {
-    const longCtx = new OfflineAudioContext(2, Math.floor(SR * signalSecondsFor(type)), SR);
-    signal = buildTestBufferInto(longCtx, signalSecondsFor(type));
+  const seconds = signalSecondsFor(type);
+  if (Math.abs(seconds - signal.duration) > 1e-6) {
+    const longCtx = new OfflineAudioContext(2, Math.floor(SR * seconds), SR);
+    signal = buildTestBufferInto(longCtx, seconds);
     dry = await renderDry(signal);
   }
   const baseline = await renderEffect(type, defaultParamsOf(type), signal);
   const base = metricsOf(baseline);
   const bypassDelta = deltaVs(metricsOf(dry), base).delta;
+
+  // A second stimulus for level-over-time effects. Sweeping only the tone
+  // reports their threshold/range/hold/release parameters as bit-identical
+  // renders, which is indistinguishable from an unwired parameter — the sweep
+  // then says "dead" about wiring that works. Both stimuli run and the best
+  // delta wins, so this can only ever turn a false negative into a true
+  // positive, never the other way round. The winner is recorded per parameter.
+  const dynamicsContext = new OfflineAudioContext(2, Math.floor(SR * seconds), SR);
+  const dynamicsSignal = DYNAMICS_STIMULUS_TYPES.has(type) ? buildDynamicsBufferInto(dynamicsContext, seconds) : null;
+  const dynamicsBase = dynamicsSignal
+    ? metricsOf(await renderEffect(type, defaultParamsOf(type), dynamicsSignal))
+    : null;
 
   const params: ParamAudit[] = [];
   const deadParams: string[] = [];
@@ -411,6 +475,7 @@ async function sweepEffect(type: EffectType, signal: AudioBuffer, dry: AudioBuff
     let bestDelta = 0;
     let bestMetric = "";
     let bestExtreme: "min" | "max" = "max";
+    let bestStimulus = "tone";
     for (const extreme of ["min", "max"] as const) {
       const value = p[extreme];
       const finKey = extreme === "min" ? "minFinite" : "maxFinite";
@@ -421,16 +486,30 @@ async function sweepEffect(type: EffectType, signal: AudioBuffer, dry: AudioBuff
       entry[peakKey] = m.peak;
       if (!entry[finKey] || m.peak > RUNAWAY_PEAK) unstableParams.push(`${p.id}@${value}`);
       const d = deltaVs(base, m);
-      if (d.delta > bestDelta) {
-        bestDelta = d.delta;
-        bestMetric = d.metric;
+      let delta = d.delta;
+      let metric = d.metric;
+      let stimulus = "tone";
+      if (dynamicsSignal !== null && dynamicsBase !== null) {
+        const dynRendered = await renderEffect(type, { ...defaultParamsOf(type), [p.id]: value }, dynamicsSignal);
+        const dynDelta = deltaVs(dynamicsBase, metricsOf(dynRendered)).delta;
+        if (dynDelta > delta) {
+          delta = dynDelta;
+          metric = deltaVs(dynamicsBase, metricsOf(dynRendered)).metric;
+          stimulus = "dynamics";
+        }
+      }
+      if (delta > bestDelta) {
+        bestDelta = delta;
+        bestMetric = metric;
         bestExtreme = extreme;
+        bestStimulus = stimulus;
       }
     }
     entry.responsive = bestDelta > RESPONSIVE_EPS;
     entry.bestExtreme = bestExtreme;
     entry.metric = bestMetric;
     entry.delta = bestDelta;
+    entry.stimulus = bestStimulus;
     if (!entry.responsive) deadParams.push(p.id);
     params.push(entry);
   }
