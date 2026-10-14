@@ -242,11 +242,17 @@ export function parseNamedTrackFaderIntent(text: string, doc: ProjectDocument): 
   });
   // P2-D remainder: return BUSES are faders too ("reverb return to -6 dB").
   // Matched the same phrase-bounded way against doc.returns; routed through
-  // returnIds (setReturnGain fold — same clamp as track faders).
-  const namedReturns = doc.returns.filter((item) => {
-    const name = ` ${item.name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim()} `;
-    return name.trim().length >= 3 && lower.includes(name);
-  });
+  // returnIds (setReturnGain fold — same clamp as track faders). GATED on
+  // the literal word "return": "set reverb to 25%" is the FX MIX (an
+  // effectIntent ask — the SFT golden pins it); only "…return…" names the
+  // bus fader.
+  const namesReturn = /\breturn\b/i.test(lower);
+  const namedReturns = namesReturn
+    ? doc.returns.filter((item) => {
+        const name = ` ${item.name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim()} `;
+        return name.trim().length >= 3 && lower.includes(name);
+      })
+    : [];
   if (named.length === 0 && namedReturns.length === 0) return null;
   const direction: "down" | "up" | "set" = isSet ? "set" : down ? "down" : "up";
   const amount: FaderAmount = AMOUNT_FULL.test(lower)
