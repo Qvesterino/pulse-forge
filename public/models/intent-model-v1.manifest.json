@@ -9,8 +9,8 @@
   },
   "model": {
     "url": "/models/intent-model-v1.onnx",
-    "bytes": 1803717,
-    "sha256": "0696787f153d770e6b7498e75275aea656a7f90c436c2be7f6c86c46a9036a93"
+    "bytes": 2601522,
+    "sha256": "378dc41a78fc526e461a2f23fd43a9d66ad84e8ae9311e2cd8f1fefca3fd78b1"
   },
   "prompt": {
     "system": "You map a music-production instruction to one canonical action JSON object. Output only the JSON.",
@@ -22,8 +22,8 @@
   },
   "features": {
     "version": "intent-features.v2",
-    "vocabSha256": "b891c2239c29347a52e4838295804d457c86e5ba5d70436deaacf9d3df975b62",
-    "vocabSize": 4096,
+    "vocabSha256": "4923582e6f2bc473130110f08111c55726d22a90a10f837133867235d9b1ad2c",
+    "vocabSize": 6144,
     "url": "/models/intent-model-v1.vocab.json",
     "inputName": "features",
     "outputNames": [
@@ -35,6 +35,11 @@
       "head_undoSteps",
       "head_querySubject",
       "head_queryTarget",
+      "head_paramEffect",
+      "head_paramRole",
+      "head_paramMode",
+      "head_paramValue",
+      "head_paramPercent",
       "head_arrangeOp",
       "head_arrangeRole",
       "head_arrangeBars",
@@ -111,7 +116,8 @@
           "presetUnknown",
           "complaintIntent",
           "undoIntent",
-          "queryIntent"
+          "queryIntent",
+          "paramIntent"
         ]
       },
       {
@@ -213,6 +219,67 @@
         ]
       },
       {
+        "name": "paramEffect",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "bitcrusher",
+          "chorus",
+          "compressor",
+          "delay",
+          "distortion",
+          "eq",
+          "flanger",
+          "phaser",
+          "pump",
+          "reverb",
+          "saturation",
+          "tremolo"
+        ]
+      },
+      {
+        "name": "paramRole",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "mix",
+          "time",
+          "tone",
+          "drive",
+          "width"
+        ]
+      },
+      {
+        "name": "paramMode",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "set",
+          "more",
+          "less"
+        ]
+      },
+      {
+        "name": "paramValue",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "4",
+          "250",
+          "375",
+          "500",
+          "5200",
+          "8000"
+        ]
+      },
+      {
+        "name": "paramPercent",
+        "kind": "softmax",
+        "classes": [
+          "__absent__"
+        ]
+      },
+      {
         "name": "arrangeOp",
         "kind": "softmax",
         "classes": [
@@ -252,6 +319,7 @@
           "4",
           "6",
           "8",
+          "12",
           "16"
         ]
       },
@@ -420,6 +488,7 @@
           "50",
           "55",
           "60",
+          "70",
           "80"
         ]
       },
@@ -938,26 +1007,21 @@
   },
   "report": {
     "gatePassed": true,
-    "trainRows": 2169,
-    "valRows": 362,
+    "trainRows": 2244,
+    "valRows": 374,
     "goldenRows": 77,
-    "valHeadAccuracyMean": 0.9936,
+    "valHeadAccuracyMean": 0.9949,
     "trainingDataContentHashPinned": true,
     "trainingInputs": {
-      "datasetVersion": 16,
-      "datasetManifestSha256": "b8f8ec37be9cab852c5bde63e213cfb8158bc66b101bb1be2cacefbed30a2242",
-      "trainSha256": "e56c895cda835251bf887a40d694e4c967acf4805f9cfb63db7b3254cda3877e",
-      "valSha256": "aa5c07ccb5a95062c9e31d905d9c9a18603e68e16479c135f5de4dd79aa19d5b",
-      "goldenSha256": "e64e8fc16d8cf3fe1af1b7bd8ea08bcd836d3ae7620618372db76d5dc8acf36e",
-      "trainerSha256": "d420b8983bf8f630b92eee846440e2b9c62e9817b3a5b4c582e9ab6145a908fc"
+      "datasetVersion": 17,
+      "datasetManifestSha256": "da65909a0e217db5303d3e455c726e94189814f21a6c2fa5be8edcb20f69bab1",
+      "trainSha256": "5fbc32cefcd7399c42f38bfe193c3e808ba0912c30800e64c73b8898c4a574b6",
+      "valSha256": "df64f4940f5f95aa03f371328153059296ba5a6067003787858d3b020ba1a85d",
+      "goldenSha256": "15c60f78ee0c571430b446940fd1cd65f5ed86c75b82ea6edefa004a68e91158",
+      "trainerSha256": "8eaa69877b716c11af932421148ae9f5ff500933d9d2c3aad618641cfd1e5a2f"
     },
     "gate": "scripts/validate-intent-model.mts — attempted-exact >= 0.95, wrongKind = 0",
     "validationReportPath": "scripts/data/intent-model-validation-report.json",
-    "validationReportSha256": "f5a55ee3f1ceb176da3592b37f96985ecca81bec5266947c8b459a11aff13e5a"
-  },
-  "quantization": {
-    "kind": "dynamic-int8",
-    "weightType": "int8",
-    "sourceModelSha256": "SEE public manifest history — quantized from the gate-passed v16 float artifact"
+    "validationReportSha256": "9f7940227a9bf805a71025166d2b7b8cb8638c217c6ad6ead082b17f8a8bfe8b"
   }
 }
