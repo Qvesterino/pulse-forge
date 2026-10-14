@@ -153,6 +153,7 @@ import {
   planMixProfile,
   sendReadback,
 } from "../intent/mix";
+import { applyParamIntent, paramReadback } from "../intent/param-intent";
 import { applyLoudnessIntent, measurePreviewLoudness } from "../intent/loudness";
 import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
 import {
@@ -4260,6 +4261,18 @@ export function IntentPanel() {
         selection.retainTracks(services.store.getDoc().tracks.map((t) => t.id));
         const readback = exactReadback(doc, services.store.getDoc(), route.plan);
         setStatus(`⚡ ${route.plan.label}${readback ? ` — ${readback}` : ""}${checkpointNote}`);
+      } else if (route.kind === "paramIntent") {
+        // Param wave P1: a named KNOB ("dlhší chvost na reverbe", "set delay
+        // time to 375 ms") — add-if-missing + clamp + one undo via the mix layer.
+        stopAudition();
+        try {
+          const command = applyParamIntent(doc, route.intent);
+          services.store.execute(command);
+          const readback = paramReadback(doc, services.store.getDoc(), route.intent);
+          setStatus(`⚡ ${route.intent.detected.join(" · ")}${readback ? ` — ${readback}` : ""} (one undo step)`);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
       } else if (route.kind === "effectIntent") {
         // D1 v2a: targeted effect × target × direction
         stopAudition();

@@ -12,6 +12,7 @@ import {
 } from "./arrangeWords";
 import { parseIntentText, type ParsedIntent } from "./text-parser";
 import { parseEffectIntent, parseSendIntent, parseBypassIntent } from "./mix";
+import { parseParamIntent, type ParamIntent } from "./param-intent";
 import { parseLoudnessIntent } from "./loudness";
 import {
   parseFaderIntent,
@@ -339,6 +340,7 @@ export type RoutedIntent =
   | { kind: "clarify"; reason: string; suggestions: string[] }
   | { kind: "tempo"; intent: TempoIntent }
   | { kind: "effectIntent"; intent: EffectIntent }
+  | { kind: "paramIntent"; intent: ParamIntent }
   | { kind: "loudness"; parse: { direction: "louder" | "quieter"; targetDb?: number; detected: string[] } }
   | { kind: "production"; intent: ProductionIntent }
   | { kind: "mix"; overrides: MixOverrides; detected: string[] }
@@ -666,6 +668,14 @@ export function routeIntentText(
   const bypassIntent = parseBypassIntent(text);
   if (bypassIntent) {
     return { kind: "bypassIntent", intent: bypassIntent };
+  }
+  // PARAM-LEVEL (param wave P1): a NAMED KNOB beats the primary-knob path —
+  // "set delay time to 375 ms", "dlhší chvost na reverbe" address the exact
+  // param instead of turning the effect's primary knob. Runs BEFORE
+  // effectIntent so the old namesForeignKnob decline becomes a parse.
+  const paramIntent = parseParamIntent(text);
+  if (paramIntent) {
+    return { kind: "paramIntent", intent: paramIntent };
   }
   const effectIntent = parseEffectIntent(text);
   if (effectIntent) {

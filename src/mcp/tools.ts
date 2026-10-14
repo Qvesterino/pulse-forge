@@ -1,6 +1,7 @@
 import type { ProjectDocument } from "../project-model/types";
 import { isForeignWork, labelsRevertedBy } from "./attribution";
 import { setMasterConfig } from "../commands/master";
+import { slipAudioClip, stretchAudioClip } from "../commands/audioClips";
 import { hasMatchEqReference, referenceLoudnessTrim } from "../intent/match-eq";
 import { topIntentMisses } from "../intent/failure-log";
 import { planBlindPairGains, recordBlindAbTrial, resetBlindAbTrials, summarizeBlindAb } from "./blind-ab";
@@ -29,6 +30,7 @@ import {
   planMixProfile,
   type MixOverrides,
 } from "../intent/mix";
+import { applyParamIntent } from "../intent/param-intent";
 import { transcribeTrack } from "../reference/transcribe";
 import { unsunoCommand } from "../reference/unsuno";
 import { restyleCommand } from "../reference/restyle";
@@ -116,6 +118,7 @@ import {
   setEffectParam,
   setStepMeta,
   setStepVelocityCommand,
+  duplicateTrack,
   setTrackParams,
   snapshot,
   toggleEffectBypass,
@@ -609,7 +612,8 @@ export const MCP_TOOLS: McpToolDef[] = [
     description:
       "Track CRUD + absolute mixer setters: add a drum or instrument " +
       "track, remove/rename by family or exact trackId (group tracks are " +
-      "not addressable here — removing the last track is declined), or set " +
+      "not addressable here — removing the last track is declined; " +
+      "duplicate clones one track with its FX and routing), or set " +
       "mixer values with verify-by-read: setGain (absolute gainDb −60..+3.5 " +
       "or linear gain 0..1.5), setPan (−1..1), setMute/setSolo (value " +
       "boolean). set* ops apply to every track the family resolves to.",
@@ -623,6 +627,7 @@ export const MCP_TOOLS: McpToolDef[] = [
             "addInstrument",
             "loadPreset",
             "listPresets",
+            "duplicate",
             "remove",
             "rename",
             "setGain",
@@ -894,7 +899,9 @@ export const MCP_TOOLS: McpToolDef[] = [
       "summary), audioList the track-lane waveforms in detail, or edit — " +
       "scene ops move/resize/duplicate/delete target the clip COVERING an " +
       "anchor bar (delete D4-gated); audio ops audioMove/audioSplit/" +
-      "audioUpdate (gain, fadeIn, fadeOut, reverse, loop)/audioDelete (D4) " +
+      "audioUpdate (gain, fadeIn, fadeOut, reverse, loop)/audioStretch (rate " +
+      "0.25..4, optional bars)/audioSlip (offsetSec — which part of the " +
+      "source plays; take-locked clips refuse)/audioDelete (D4) " +
       "address a track (trackId or family) + the anchor bar its clip " +
       "covers. Values are native (gain linear, fades in seconds).",
     inputSchema: {
@@ -912,6 +919,8 @@ export const MCP_TOOLS: McpToolDef[] = [
             "audioMove",
             "audioSplit",
             "audioUpdate",
+            "audioStretch",
+            "audioSlip",
             "audioDelete",
           ],
         },
@@ -926,6 +935,17 @@ export const MCP_TOOLS: McpToolDef[] = [
         },
         gain: { type: "number", minimum: 0, maximum: 2, description: "For audioUpdate — linear clip gain" },
         fadeIn: { type: "number", minimum: 0, description: "For audioUpdate — fade-in seconds" },
+        rate: {
+          type: "number",
+          minimum: 0.25,
+          maximum: 4,
+          description: "For audioStretch — playback speed factor (2 = twice as fast)",
+        },
+        offsetSec: {
+          type: "number",
+          minimum: 0,
+          description: "For audioSlip — seconds into the source (which part plays)",
+        },
         fadeOut: { type: "number", minimum: 0, description: "For audioUpdate — fade-out seconds" },
         reverse: { type: "boolean", description: "For audioUpdate — play the clip backwards" },
         loop: { type: "boolean", description: "For audioUpdate — loop the trimmed content over the clip length" },
@@ -1519,6 +1539,11 @@ const REQUEST_ID_PROPERTY: Record<string, unknown> = {
 };
 for (const def of MCP_TOOLS) {
   def.inputSchema.properties.requestId = { ...REQUEST_ID_PROPERTY };
+  def.inputSchema.properties.dryRun = {
+    type: "boolean",
+    description:
+      "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+  };
 }
 
 /** The kyx_export request: full-mix bounce or a stems zip, with render options. */
@@ -1716,6 +1741,10 @@ export interface McpToolResult {
    * `isError` result carries one; the text stays the human-readable
    * explanation with the actionable detail. */
   errorCode?: McpErrorCode;
+  /** P2-C dry-run: true when this result previews a run against a sandbox
+   * document — the live store was never touched (`mutated` is false and the
+   * text names the commands that WOULD have applied). */
+  dryRun?: boolean;
 }
 
 /**
@@ -2025,6 +2054,60 @@ export function resetMcpIdempotencyLedger(): void {
   idempotencyLedger.clear();
 }
 
+/** P2-C: tools whose side effects are NOT document mutations — a dry-run
+ * cannot intercept them (transport drives the live clock; export/gallery
+ * write files and network state), so they refuse instead of pretending. */
+const NO_DRYRUN_TOOLS: ReadonlySet<string> = new Set([
+  "kyx_transport",
+  "kyx_export",
+  "kyx_publish_gallery",
+  "kyx_audio_preview",
+]);
+
+/**
+ * P2-C sandbox context: a wrapper whose `execute` advances a LOCAL document
+ * chain instead of the live store. Every handler keeps its real logic —
+ * validation, target resolution and command construction all run — while
+ * the mutations land on the throwaway chain. Undo/redo and the label list
+ * are tracked locally so `kyx_undo` previews work too.
+ */
+function dryRunContext(ctx: McpToolContext): { ctx: McpToolContext; applied: () => string[] } {
+  let current = ctx.getDoc();
+  const labels: string[] = [];
+  const undoStack: Array<{ undo: () => ProjectDocument; redo: () => ProjectDocument }> = [];
+  const redoStack: Array<{ undo: () => ProjectDocument; redo: () => ProjectDocument }> = [];
+  return {
+    ctx: {
+      ...ctx,
+      getDoc: () => current,
+      execute: (command) => {
+        const prev = current;
+        current = command.execute(current);
+        labels.push(command.label);
+        undoStack.push({ undo: () => command.undo(prev), redo: () => command.execute(current) });
+        redoStack.length = 0;
+      },
+      undo: () => {
+        const entry = undoStack.pop();
+        if (entry) {
+          current = entry.undo();
+          redoStack.push(entry);
+        }
+      },
+      redo: () => {
+        const entry = redoStack.pop();
+        if (entry) {
+          current = entry.redo();
+          undoStack.push(entry);
+        }
+      },
+      undoStackLength: () => undoStack.length,
+      historyLabels: () => [...labels],
+    },
+    applied: () => labels,
+  };
+}
+
 export async function executeMcpTool(ctx: McpToolContext, name: string, args: unknown): Promise<McpToolResult> {
   const envelope = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
   const requestId = typeof envelope.requestId === "string" ? envelope.requestId.trim().slice(0, 128) : "";
@@ -2042,6 +2125,36 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
     }
   }
   const result = await executeMcpToolDispatch(ctx, name, args);
+  // P2-C DRY-RUN (control-surface audit 2026-10-13, GAP-11): `dryRun: true`
+  // executes the tool's FULL logic against a SANDBOX context — validation,
+  // resolution and command construction run for real, but `ctx.execute`
+  // advances a throwaway document chain, so the live store never mutates.
+  // The result reports what WOULD have applied (the exact command labels
+  // the real run would commit). Runtime/export-side tools are refused: a
+  // dry-run cannot un-play a note or un-write a file.
+  if (envelope.dryRun === true) {
+    if (NO_DRYRUN_TOOLS.has(name)) {
+      return mcpError(
+        "POLICY_REFUSED",
+        `dryRun applies to document mutations — ${name} drives runtime or export state`,
+      );
+    }
+    const dry = dryRunContext(ctx);
+    const preview = await executeMcpToolDispatch(dry.ctx, name, args);
+    const labels = dry.applied();
+    const would =
+      labels.length > 0
+        ? `would apply ${labels.length} command(s): ${labels.join("; ")}`
+        : "no document change would occur";
+    return {
+      ...preview,
+      text: `dry-run — nothing was applied
+${would}
+${preview.text}`,
+      mutated: false,
+      dryRun: true,
+    };
+  }
   // P1-D DOCUMENT/WINDOW ATTRIBUTION (control-surface audit 2026-10-13,
   // GAP-06): every caller — desktop stdio, web relay, QMR — executes
   // against the ONE relay session's document (the hub forwards to a single
@@ -2581,6 +2694,23 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           return mcpError("UNKNOWN_TARGET", `no track matches family "${String(record.family ?? "")}"`);
         ctx.execute(setTrackParams(ctx.getDoc(), ids[0], { name }));
         return { text: `renamed to "${name}"`, mutated: true };
+      }
+      if (op === "duplicate") {
+        // P2-D (parity sweep 2026-10-13): the only capability where NL
+        // exceeded MCP — the exact parser could duplicate tracks, this tool
+        // could not. Exactly one target: a family resolving to several
+        // tracks is declined (duplicates are per-track decisions).
+        const ids = explicitTrackIds(ctx.getDoc(), record);
+        if (typeof ids === "string") return mcpError("UNKNOWN_TARGET", ids);
+        if (ids.length !== 1) {
+          return mcpError(
+            "INVALID_ARGUMENTS",
+            "duplicate needs exactly one track — pass trackId (a family resolving to several tracks is declined)",
+          );
+        }
+        const command = duplicateTrack(ctx.getDoc(), ids[0]);
+        ctx.execute(command);
+        return { text: `${command.label} — one undo step`, mutated: true };
       }
       if (op === "remove") {
         if (!destructiveAllowedWithCheckpoint(ctx, "kyx_tracks")) return destructiveRefusal();
@@ -4402,13 +4532,36 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
         ctx.execute(updateAudioClip(doc, target.id, patch));
         return { text: `updated ${describe()}: ${notes.join(", ")} — one undo step`, mutated: true };
       }
+      if (op === "audioStretch") {
+        // P2-D (parity sweep): stretch was UI-only. rate is the playback
+        // speed factor (2 = twice as fast, half the length feel); bars keeps
+        // the clip's musical length unless the caller names a new one.
+        const rate = Number(record.rate);
+        if (!Number.isFinite(rate) || rate < 0.25 || rate > 4) {
+          return mcpError("INVALID_ARGUMENTS", "audioStretch needs rate (0.25..4 — 2 = twice as fast)");
+        }
+        const bars = Number.isFinite(Number(record.bars)) ? Number(record.bars) : target.lengthBars;
+        ctx.execute(stretchAudioClip(doc, target.id, bars, rate));
+        return { text: `stretched ${describe()} ×${Math.round(rate * 100) / 100} — one undo step`, mutated: true };
+      }
+      if (op === "audioSlip") {
+        // P2-D (parity sweep): slip was UI-only (Alt+drag). offsetSec picks
+        // WHICH part of the source plays — geometry, fades and gain ride
+        // untouched; the command asserts the clip is not take-locked.
+        const offsetSec = Number(record.offsetSec);
+        if (!Number.isFinite(offsetSec) || offsetSec < 0) {
+          return mcpError("INVALID_ARGUMENTS", "audioSlip needs offsetSec (≥0 seconds into the source)");
+        }
+        ctx.execute(slipAudioClip(doc, target.id, offsetSec));
+        return { text: `slipped ${describe()} to source offset ${offsetSec}s — one undo step`, mutated: true };
+      }
       if (op === "audioDelete") {
         if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
         ctx.execute(deleteAudioClip(doc, target.id));
         return { text: `deleted ${describe()} — one undo step`, mutated: true };
       }
       return {
-        text: `unknown op: ${op} (list | audioList | audioMove | audioSplit | audioUpdate | audioDelete | move | resize | duplicate | delete)`,
+        text: `unknown op: ${op} (list | audioList | audioMove | audioSplit | audioUpdate | audioStretch | audioSlip | audioDelete | move | resize | duplicate | delete)`,
         mutated: false,
       };
     } catch (error) {
@@ -4800,35 +4953,48 @@ async function executeBatchTool(ctx: McpToolContext, record: Record<string, unkn
   if (calls.length > 10) {
     return mcpError("INVALID_ARGUMENTS", `batch is capped at 10 calls (got ${calls.length}) — split it`);
   }
+  const atomic = record.atomic === true;
   const framed = ctx.beginUndoFrame != null && ctx.endUndoFrame != null;
   const results: Array<{ tool: string; mutated: boolean; text: string }> = [];
   let mutations = 0;
   let failures = 0;
+  let skipped = 0;
+  let halted = false;
   if (framed) ctx.beginUndoFrame!("mcp-batch");
   try {
     for (const entry of calls) {
+      if (halted) {
+        skipped += 1;
+        continue;
+      }
       const item = (entry != null && typeof entry === "object" ? entry : {}) as { tool?: unknown; args?: unknown };
       const tool = typeof item.tool === "string" ? item.tool : "";
       if (tool === "" || !MCP_TOOLS.some((def) => def.name === tool)) {
         results.push({ tool: tool || "(missing)", mutated: false, text: "unknown tool" });
         failures += 1;
+        if (atomic) halted = true;
         continue;
       }
       if (tool === "kyx_batch") {
         results.push({ tool, mutated: false, text: "refused: nested batches are not supported" });
         failures += 1;
+        if (atomic) halted = true;
         continue;
       }
       if (tool === "kyx_export" || tool === "kyx_audio_preview" || tool === "kyx_loudness") {
         results.push({ tool, mutated: false, text: `refused: ${tool} runs standalone (async, not batchable)` });
         failures += 1;
+        if (atomic) halted = true;
         continue;
       }
       try {
         const result = await executeMcpTool(ctx, tool, item.args ?? {});
         results.push({ tool, mutated: result.mutated, text: result.text });
         if (result.mutated) mutations += 1;
-        if (result.isError === true) failures += 1;
+        if (result.isError === true) {
+          failures += 1;
+          if (atomic) halted = true;
+        }
       } catch (error) {
         results.push({
           tool,
@@ -4836,21 +5002,34 @@ async function executeBatchTool(ctx: McpToolContext, record: Record<string, unkn
           text: `crashed: ${error instanceof Error ? error.message : String(error)}`,
         });
         failures += 1;
+        if (atomic) halted = true;
       }
     }
   } finally {
     if (framed) ctx.endUndoFrame!();
   }
   const summary = [
-    `${calls.length} call(s): ${mutations} mutated, ${failures} failed`,
+    `${calls.length} call(s): ${mutations} mutated, ${failures} failed${skipped > 0 ? `, ${skipped} skipped` : ""}`,
+    atomic
+      ? "atomic mode — stopped at the first failure"
+      : "partial-commit (pass atomic:true to stop at the first failure)",
     framed
       ? "ONE undo step for the whole batch"
       : "no undo-frame support on this host — each call is its own undo step",
   ].join(" · ");
+  if (atomic && failures > 0) {
+    return {
+      text: `batch — ${summary}\n${results.map((r, i) => `${i + 1}. ${r.tool}${r.mutated ? " ✓" : ""}: ${r.text}`).join("\n")}`,
+      mutated: mutations > 0,
+      isError: true,
+      errorCode: "PARTIAL_FAILURE",
+      data: { results, mutations, failures, skipped, singleUndo: framed, atomic: true },
+    };
+  }
   return {
     text: `batch — ${summary}\n${results.map((r, i) => `${i + 1}. ${r.tool}${r.mutated ? " ✓" : ""}: ${r.text}`).join("\n")}`,
     mutated: mutations > 0,
-    data: { results, mutations, failures, singleUndo: framed },
+    data: { results, mutations, failures, skipped, singleUndo: framed, atomic },
   };
 }
 
@@ -6320,6 +6499,8 @@ function intentCommand(doc: ProjectDocument, route: RoutedIntent): Command | nul
       return applyPresetIntentCommand(doc, route.intent);
     case "effectIntent":
       return applyEffectIntent(doc, route.intent);
+    case "paramIntent":
+      return applyParamIntent(doc, route.intent);
     case "sendIntent":
       return applySendIntent(doc, route.intent);
     case "bypassIntent":

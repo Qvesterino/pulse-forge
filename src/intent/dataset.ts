@@ -74,6 +74,16 @@ export function compactIntentResponse(route: RoutedIntent): CompactIntentRespons
       return { kind: "sendIntent", intent: route.intent };
     case "bypassIntent":
       return { kind: "bypassIntent", intent: route.intent };
+    case "paramIntent":
+      return {
+        kind: "paramIntent",
+        effect: route.intent.effectType,
+        role: route.intent.role,
+        targets: route.intent.targets,
+        mode: route.intent.mode,
+        ...(route.intent.value !== undefined ? { value: route.intent.value } : {}),
+        ...(route.intent.percent !== undefined ? { percent: route.intent.percent } : {}),
+      };
     case "effectIntent":
       return { kind: "effectIntent", intent: route.intent };
     case "loudness":
