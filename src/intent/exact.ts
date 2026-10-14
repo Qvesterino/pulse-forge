@@ -36,6 +36,8 @@ export type ExactOp =
   | { kind: "patternLengthDelta"; bars: number }
   /** Project groove swing: "swing 60 percent", "vypni swing" — 0..100 maps to groove.swing 0..1. */
   | { kind: "swing"; percent: number }
+  /** GAP-12 (control-surface audit 2026-10-13): "time signature 3/4". */
+  | { kind: "timeSignature"; numerator: number; denominator: number }
   | { kind: "addTrack"; trackKind: "drum" | "instrument"; instrument: InstrumentKind }
   | { kind: "removeTrack"; target: ExactTarget }
   | { kind: "renameTrack"; target: ExactTarget; name: string }
@@ -381,6 +383,20 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
     if (target) ops.push({ kind: "gainDbAbsolute", target, absDb: Number(gainAbs[2]) });
   }
 
+  // Time signature: "time signature 3/4", "set time signature to 6/8",
+  // "meter 7/8". Explicit phrase + N/D only — a bare "3/4" stays with
+  // swing/tempo asks. Bounds mirror the command.
+  const timeSigM =
+    /\b(?:time signature|meter)\b[^0-9]{0,16}(\d{1,2})\s*\/(\d{1,2})\b/i.exec(lower) ||
+    /(\d{1,2})\s*\/(\d{1,2})\b\s*(?:time signature|meter)\b/i.exec(lower);
+  if (timeSigM) {
+    const numerator = Number(timeSigM[1]);
+    const denominator = Number(timeSigM[2]);
+    if (numerator >= 1 && numerator <= 16 && [2, 4, 8, 16].includes(denominator)) {
+      ops.push({ kind: "timeSignature", numerator, denominator });
+    }
+  }
+
   // Groove swing — NUMERIC only ("swing 60 percent", "swing na 65",
   // "60 % swing", "vypni swing" → 0). Bare "swing it" stays with the groove
   // verb in the production layer; this parser claims only explicit values.
@@ -505,6 +521,7 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
       if (op.kind === "gainDbAbsolute") return `${op.target} fader na ${op.absDb} dB`;
       if (op.kind === "swing") return `swing ${op.percent} %`;
       if (op.kind === "patternLengthDelta") return `length ${op.bars > 0 ? "+" : ""}${op.bars} bars`;
+      if (op.kind === "timeSignature") return `time signature ${op.numerator}/${op.denominator}`;
       return `length ${op.steps}`;
     })
     .join(", ");

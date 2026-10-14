@@ -975,7 +975,18 @@ export const MCP_TOOL_DEFS = [
       properties: {
         op: {
           type: "string",
-          enum: ["setTempo", "setKey", "setPatternLength", "transposeAll"],
+          enum: ["setTempo", "setKey", "setPatternLength", "transposeAll", "setTimeSignature"],
+        },
+        numerator: {
+          type: "integer",
+          minimum: 1,
+          maximum: 16,
+          description: "setTimeSignature — numerator",
+        },
+        denominator: {
+          type: "integer",
+          enum: [2, 4, 8, 16],
+          description: "setTimeSignature — beat unit (denominator)",
         },
         bpm: {
           type: "integer",
@@ -1238,6 +1249,7 @@ export const MCP_TOOL_DEFS = [
             "audioUpdate",
             "audioStretch",
             "audioSlip",
+            "audioCrossfade",
             "audioDelete",
           ],
         },
@@ -1287,6 +1299,11 @@ export const MCP_TOOL_DEFS = [
           type: "number",
           minimum: 0,
           description: "For audioSlip — seconds into the source (which part plays)",
+        },
+        curve: {
+          type: "string",
+          enum: ["linear", "equal"],
+          description: "For audioCrossfade — fade curve (default linear)",
         },
         fadeOut: {
           type: "number",

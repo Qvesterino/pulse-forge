@@ -18,7 +18,7 @@
  * reports. Never throws.
  */
 import type { Command } from "../commands/types";
-import { setBpm, setMasterConfig, setPadParams, setTrackParams, snapshot } from "../commands/commands";
+import { setBpm, setMasterConfig, setPadParams, setReturnGain, setTrackParams, snapshot } from "../commands/commands";
 import { parsePercent, parsePercentAllowingZero } from "./percent";
 import { intentCarriesGenreSignal } from "./exact";
 import { inferPadRole } from "../ai/pad-roles";
@@ -54,6 +54,12 @@ export interface FaderIntent {
    * undo step — and named in the label by their document names.
    */
   trackIds?: string[];
+  /**
+   * P2-D remainder (parity sweep): return-bus faders ("reverb return to
+   * -6 dB"). Same route-time resolution contract as trackIds — the ids are
+   * matched against the live `doc.returns` and folded through setReturnGain.
+   */
+  returnIds?: string[];
   /**
    * "down"/"up" move the fader RELATIVE; "set" is ABSOLUTE — percent IS the
    * gain as a fraction of the fader's own range (0..1.5, so 50% = 0.75).
@@ -215,9 +221,13 @@ export function parseNamedTrackFaderIntent(text: string, doc: ProjectDocument): 
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")} `;
   if (/\blufs\b/.test(lower)) return null;
+  // ABSOLUTE SET on a named track/return ("set reverb return to 50%") —
+  // the same set-verb gate as parseFaderIntent; direction "set" makes
+  // percent the absolute fraction of the fader range.
+  const isSet = /\bset\b|\bnastav\b/i.test(lower);
   const down = FADER_DOWN.test(lower);
   const up = !down && (FADER_UP.test(lower) || SK_ADD_FADER.test(lower));
-  if (!down && !up) return null;
+  if (!down && !up && !isSet) return null; // no stem and no absolute set ask
   if (down && FADER_UP_DIRECTIONAL.test(lower)) return null; // conflicting directions decline
   const named = doc.tracks.filter((track) => {
     if (track.kind === "group") return false;
@@ -230,7 +240,15 @@ export function parseNamedTrackFaderIntent(text: string, doc: ProjectDocument): 
     // floor keeps two-letter names ("To") from hijacking every sentence.
     return name.trim().length >= 3 && lower.includes(name);
   });
-  if (named.length === 0) return null;
+  // P2-D remainder: return BUSES are faders too ("reverb return to -6 dB").
+  // Matched the same phrase-bounded way against doc.returns; routed through
+  // returnIds (setReturnGain fold — same clamp as track faders).
+  const namedReturns = doc.returns.filter((item) => {
+    const name = ` ${item.name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim()} `;
+    return name.trim().length >= 3 && lower.includes(name);
+  });
+  if (named.length === 0 && namedReturns.length === 0) return null;
+  const direction: "down" | "up" | "set" = isSet ? "set" : down ? "down" : "up";
   const amount: FaderAmount = AMOUNT_FULL.test(lower)
     ? "full"
     : AMOUNT_BIG.test(lower)
@@ -238,11 +256,14 @@ export function parseNamedTrackFaderIntent(text: string, doc: ProjectDocument): 
       : AMOUNT_SUBTLE.test(lower)
         ? "subtle"
         : "normal";
-  const percent = parsePercent(text) ?? dBPercent(text, down ? "down" : "up");
+  const percent = isSet
+    ? parsePercentAllowingZero(text)
+    : (parsePercent(text) ?? dBPercent(text, down ? "down" : "up"));
   return {
     targets: [],
     trackIds: named.map((track) => track.id),
-    direction: down ? "down" : "up",
+    returnIds: namedReturns.map((item) => item.id),
+    direction,
     ...(amount !== "normal" ? { amount } : {}),
     ...(percent != null ? { percent } : {}),
   };
@@ -523,10 +544,21 @@ function foldFaderIntent(cursor: ProjectDocument, intent: FaderIntent): FaderFol
     faders += 1;
   }
 
+  for (const returnId of intent.returnIds ?? []) {
+    // Return-bus faders ride setReturnGain (0..1.5, same clamp as tracks).
+    const ret = next.returns.find((item) => item.id === returnId);
+    if (!ret) continue;
+    const gain = targetGain(ret.gain);
+    if (gain === ret.gain) continue;
+    next = setReturnGain(next, returnId, gain).execute(next);
+    faders += 1;
+  }
+
   const label = [
     ...intent.targets,
     ...(intent.pads ?? []),
     ...(intent.trackIds ?? []).map((id) => cursor.tracks.find((track) => track.id === id)?.name ?? id),
+    ...(intent.returnIds ?? []).map((id) => cursor.returns.find((item) => item.id === id)?.name ?? id),
   ].join(" + ");
   const sizeNote = isSet
     ? `=${intent.percent ?? 0}%`
@@ -606,6 +638,14 @@ export function faderReadback(before: ProjectDocument, after: ProjectDocument, i
     const gainAfter = readGainOf(after, trackId);
     if (gainBefore == null || gainAfter == null) continue;
     push(trackName(before, trackId), gainBefore, gainAfter);
+  }
+
+  for (const returnId of intent.returnIds ?? []) {
+    const gainBefore = before.returns.find((item) => item.id === returnId)?.gain;
+    const gainAfter = after.returns.find((item) => item.id === returnId)?.gain;
+    if (gainBefore == null || gainAfter == null) continue;
+    const returnName = before.returns.find((item) => item.id === returnId)?.name ?? returnId;
+    push(returnName, gainBefore, gainAfter);
   }
 
   if ((intent.pads?.length ?? 0) > 0) {

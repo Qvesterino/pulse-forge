@@ -203,6 +203,7 @@ export function markerReadback(after: ProjectDocument, intent: MarkerIntent): st
 
 import type { DrumTrack } from "../project-model/types";
 import { resolveSceneTarget, type ArrangeRole } from "./arrangeWords";
+import { setSceneIntensity } from "../commands/clipPlayback";
 import { TARGET_WORDS } from "./mix";
 import { setStepMeta } from "../commands/commands";
 
@@ -494,4 +495,56 @@ export function parseQueryIntent(text: string): QueryIntent | null {
     }
   }
   return null;
+}
+
+// ── SCENE INTENSITY ("intensity in the drop to 80%", "tinge the chorus down to 40%") ──
+
+export interface SceneIntensityIntent {
+  /** Any scene-word clause that resolved a scene — kept for the label. */
+  sceneName: string;
+  percent: number;
+}
+
+const INTENSITY_PCT = /(\d{1,3})\s*(?:%|percent\w*|percent)/i;
+const INTENSITY_SCENE =
+  /(?:intensity|energ\w*|energi\w*)[^.]{0,40}?(?:in|of|on|v|na|v\s+the)\s+(?:the\s+)?([a-zà-ſ]+)/i;
+
+/**
+ * P2-D remainder (parity sweep): scene intensity had an MCP op
+ * (kyx_sections intensity) but no NL route. Explicit phrasing only — the
+ * word "intensity"/"energy" AND a percent AND a scene that resolves. A bare
+ * "more energy" stays a production/generation ask.
+ */
+export function parseSceneIntensityIntent(text: string, doc: ProjectDocument): SceneIntensityIntent | null {
+  const lower = text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  if (!/(intensity|energ\w*|energi\w*)/i.test(lower)) return null;
+  const pct = INTENSITY_PCT.exec(text);
+  if (pct == null) return null;
+  const percent = Math.max(0, Math.min(100, Number(pct[1])));
+  const sceneMatch = INTENSITY_SCENE.exec(lower);
+  const clause = sceneMatch != null ? sceneMatch[1]! : lower;
+  const scene = resolveSceneTarget(doc, clause, [
+    "intro",
+    "build",
+    "chorus",
+    "verse",
+    "bridge",
+    "drop",
+    "break",
+    "outro",
+    "fill",
+  ]);
+  if (scene == null) return null;
+  return { sceneName: scene.name, percent };
+}
+
+/** Apply the intensity ask — ONE undoable command on the resolved scene. */
+export function applySceneIntensityIntent(
+  doc: ProjectDocument,
+  intent: SceneIntensityIntent,
+  resolve: (doc: ProjectDocument) => import("../project-model/types").Scene | null,
+): Command | null {
+  const scene = resolve(doc);
+  if (scene == null) return null;
+  return setSceneIntensity(doc, scene.id, intent.percent / 100);
 }

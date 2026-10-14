@@ -190,7 +190,7 @@ Add stable error codes to `McpToolResult` (`tools.ts:1675-1688`) so agents branc
 
 Atomic-or-explicit semantics for `kyx_batch` (currently partial-commit by design, `tools.ts:4711-4712`); dry-run/preview mode across mutating tools. **Prereq:** P1-B. **Complexity:** M.
 
-### P2-D · Add the genuinely missing capabilities · **PARTIALLY IMPLEMENTED 2026-10-14** (track-duplicate, audioStretch, audioSlip landed; crossfade + scene-intensity NL + return-gain NL remain recorded; GAP-12/13/14 stay open)
+### P2-D · Add the genuinely missing capabilities · **IMPLEMENTED 2026-10-14** (track-duplicate, audioStretch, audioSlip, audioCrossfade, GAP-12 time signature closed with command+MCP+NL, return-gain NL, scene-intensity NL; GAP-13 automation modes and GAP-14 save-as/close remain open — feature-sized, owner-gated)
 
 Time signature command (GAP-12), automation read/write modes (GAP-13), save-as (GAP-14), slip UI caller (GAP-15). Each is small; they are listed for completeness, not urgency. **Complexity:** S each.
 

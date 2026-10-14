@@ -42,6 +42,7 @@ import {
   parseCheckpointIntent,
   parseGrooveIntent,
   parseMarkerIntent,
+  parseSceneIntensityIntent,
   parseQueryIntent,
   parseSectionGrooveIntent,
   parseUndoIntent,
@@ -337,6 +338,7 @@ export type RoutedIntent =
     }
   | { kind: "soundSwapIntent"; intent: SoundSwapIntent }
   | { kind: "select"; target: ExactTarget }
+  | { kind: "sceneIntensity"; sceneName: string; percent: number }
   | { kind: "preset"; intent: PresetIntent }
   | { kind: "presetUnknown"; name: string; suggestions: string[] }
   | { kind: "sendIntent"; intent: SendIntent }
@@ -769,6 +771,12 @@ export function routeIntentText(
         suggestions: ["na bas / 808", "na akordy", "na lead", "na bicie", "on the bass", "on the lead"],
       };
     }
+  }
+  // SCENE INTENSITY — explicit "intensity/energy … N%" phrasing naming a
+  // scene (P2-D remainder: kyx_sections intensity had no NL route).
+  const sceneIntensity = parseSceneIntensityIntent(text, doc);
+  if (sceneIntensity) {
+    return { kind: "sceneIntensity", sceneName: sceneIntensity.sceneName, percent: sceneIntensity.percent };
   }
   const sendIntent = parseSendIntent(text);
   if (sendIntent) {

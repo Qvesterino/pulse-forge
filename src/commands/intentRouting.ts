@@ -21,7 +21,7 @@ import { snapshot } from "./core";
 import { trackEffectsOf } from "./docOps";
 import { addEffect, createDrumTrack, createInstrumentTrack, deleteTrack, duplicateTrack } from "./tracks";
 import { setBpm, setPadParams, setTrackParams } from "./project";
-import { setProjectKey } from "./metadata";
+import { setProjectKey, setTimeSignature } from "./metadata";
 import { setPatternLength } from "./patterns";
 import { setGroove } from "./groove";
 import { setMasterConfig } from "./master";
@@ -115,6 +115,12 @@ export function applyExactIntentCommand(doc: ProjectDocument, plan: ExactIntentP
     }
     if (op.kind === "patternLength") {
       next = setPatternLength(next, next.activePatternId, op.steps).execute(next);
+      continue;
+    }
+    if (op.kind === "timeSignature") {
+      // GAP-12: the transport re-reads barTicks from the doc on every
+      // change (services onDocChanged), so the scheduler adapts live.
+      next = setTimeSignature(next, op.numerator, op.denominator).execute(next);
       continue;
     }
     if (op.kind === "swing") {
@@ -290,6 +296,17 @@ export function exactReadback(before: ProjectDocument, after: ProjectDocument, p
       const b = Math.round((before.groove?.swing ?? 0) * 100);
       const a = Math.round((after.groove?.swing ?? 0) * 100);
       if (b !== a) entries.push(`swing ${b}%→${a}%`);
+    } else if (op.kind === "timeSignature") {
+      // GAP-12 read-back: the doc values moved (they ARE the state).
+      if (
+        before.timeSignature.numerator !== after.timeSignature.numerator ||
+        before.timeSignature.denominator !== after.timeSignature.denominator
+      ) {
+        entries.push(
+          `time signature ${before.timeSignature.numerator}/${before.timeSignature.denominator}→` +
+            `${after.timeSignature.numerator}/${after.timeSignature.denominator} ✓`,
+        );
+      }
     } else if (op.kind === "transpose") {
       // Verified against the ACTIVE pattern's notes: the entry fires only
       // when a resolved track's pitch actually moved by the requested amount.

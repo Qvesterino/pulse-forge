@@ -2,6 +2,7 @@ import type { ProjectDocument } from "../project-model/types";
 import { isForeignWork, labelsRevertedBy } from "./attribution";
 import { setMasterConfig } from "../commands/master";
 import { slipAudioClip, stretchAudioClip } from "../commands/audioClips";
+import { crossfadeAudioClips } from "../commands/clipEditing";
 import { hasMatchEqReference, referenceLoudnessTrim } from "../intent/match-eq";
 import { topIntentMisses } from "../intent/failure-log";
 import { planBlindPairGains, recordBlindAbTrial, resetBlindAbTrials, summarizeBlindAb } from "./blind-ab";
@@ -125,6 +126,7 @@ import {
   splitAudioClipAtTick,
   updateAudioClip,
   addEffectToTracks,
+  setTimeSignature,
 } from "../commands/commands";
 // F2 eager diet: intent graph loads with the MCP surface, not at boot.
 import { applyExactIntentCommand, applyProductionIntentCommand } from "../commands/intentRouting";
@@ -759,7 +761,13 @@ export const MCP_TOOLS: McpToolDef[] = [
     inputSchema: {
       type: "object",
       properties: {
-        op: { type: "string", enum: ["setTempo", "setKey", "setPatternLength", "transposeAll"] },
+        op: { type: "string", enum: ["setTempo", "setKey", "setPatternLength", "transposeAll", "setTimeSignature"] },
+        numerator: { type: "integer", minimum: 1, maximum: 16, description: "setTimeSignature — numerator" },
+        denominator: {
+          type: "integer",
+          enum: [2, 4, 8, 16],
+          description: "setTimeSignature — beat unit (denominator)",
+        },
         bpm: { type: "integer", minimum: 20, maximum: 300, description: "setTempo" },
         key: { type: "string", description: 'setKey — e.g. "C Major", "F# Minor", "Bb Minor"' },
         steps: { type: "integer", minimum: 16, maximum: 256, description: "setPatternLength (16 per bar)" },
@@ -921,6 +929,7 @@ export const MCP_TOOLS: McpToolDef[] = [
             "audioUpdate",
             "audioStretch",
             "audioSlip",
+            "audioCrossfade",
             "audioDelete",
           ],
         },
@@ -945,6 +954,11 @@ export const MCP_TOOLS: McpToolDef[] = [
           type: "number",
           minimum: 0,
           description: "For audioSlip — seconds into the source (which part plays)",
+        },
+        curve: {
+          type: "string",
+          enum: ["linear", "equal"],
+          description: "For audioCrossfade — fade curve (default linear)",
         },
         fadeOut: { type: "number", minimum: 0, description: "For audioUpdate — fade-out seconds" },
         reverse: { type: "boolean", description: "For audioUpdate — play the clip backwards" },
@@ -3045,6 +3059,18 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         label: "MCP music",
         ops: ops as never[],
       });
+      if (op === "setTimeSignature") {
+        // GAP-12 (control-surface audit 2026-10-13): the transport re-reads
+        // barTicks from the doc on every change, so the grid adapts live.
+        const numerator = Math.round(Number(record.numerator));
+        const denominator = Math.round(Number(record.denominator));
+        if (!Number.isInteger(numerator) || numerator < 1 || numerator > 16 || ![2, 4, 8, 16].includes(denominator)) {
+          return mcpError("INVALID_ARGUMENTS", "setTimeSignature needs numerator 1..16 and denominator 2|4|8|16");
+        }
+        const command = setTimeSignature(ctx.getDoc(), numerator, denominator);
+        ctx.execute(command);
+        return { text: `time signature ${numerator}/${denominator} — one undo step`, mutated: true };
+      }
       if (op === "setTempo") {
         const bpm = typeof record.bpm === "number" ? Math.round(record.bpm) : NaN;
         if (!Number.isFinite(bpm)) return { text: "setTempo needs bpm (20..300)", mutated: false };
@@ -4558,20 +4584,41 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
         ctx.execute(slipAudioClip(doc, target.id, offsetSec));
         return { text: `slipped ${describe()} to source offset ${offsetSec}s — one undo step`, mutated: true };
       }
+      if (op === "audioCrossfade") {
+        // P2-D remainder (parity sweep): crossfade was UI-only
+        // (rangeCrossfade). The target is the clip covering the anchor bar;
+        // the partner is the PREVIOUS clip on the same lane. The command is
+        // direction-safe and throws on non-overlap — surfaced honestly.
+        const earlier = (doc.arrangement.audioClips ?? [])
+          .filter((c) => c.trackId === target.trackId && c.startBar < target.startBar)
+          .sort((a, b) => b.startBar - a.startBar)[0];
+        if (!earlier) {
+          return mcpError(
+            "UNKNOWN_TARGET",
+            `no earlier clip on ${ownerNameOf(doc, target.trackId)} to crossfade into — both clips must overlap`,
+          );
+        }
+        const curve = record.curve === "equal" ? { curve: "equal" as const } : {};
+        ctx.execute(crossfadeAudioClips(doc, earlier.id, target.id, curve));
+        return {
+          text: `crossfaded ${describe()} into the clip at bar ${target.startBar + 1} — one undo step`,
+          mutated: true,
+        };
+      }
       if (op === "audioDelete") {
         if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
         ctx.execute(deleteAudioClip(doc, target.id));
         return { text: `deleted ${describe()} — one undo step`, mutated: true };
       }
       return {
-        text: `unknown op: ${op} (list | audioList | audioMove | audioSplit | audioUpdate | audioStretch | audioSlip | audioDelete | move | resize | duplicate | delete)`,
+        text: `unknown op: ${op} (list | audioList | audioMove | audioSplit | audioUpdate | audioStretch | audioSlip | audioCrossfade | audioDelete | move | resize | duplicate | delete)`,
         mutated: false,
       };
     } catch (error) {
-      return {
-        text: `audio clip op failed: ${error instanceof Error ? error.message : String(error)}`,
-        mutated: false,
-      };
+      return mcpError(
+        "EXECUTION_FAILED",
+        `audio clip op failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 

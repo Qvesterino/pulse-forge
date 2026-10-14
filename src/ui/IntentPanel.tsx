@@ -44,7 +44,7 @@ import {
   resolveSessionReference,
   type SessionGeneration,
 } from "../intent/session-context";
-import { setMasterConfig, duplicateTimeRange } from "../commands/commands";
+import { setMasterConfig, duplicateTimeRange, setSceneIntensity } from "../commands/commands";
 import { applyExactIntentCommand, applyProductionIntentCommand, exactReadback } from "../commands/intentRouting";
 import { applyGenerationResultCommand, applyGenerationResultWithFxCommand } from "../commands/aiPattern";
 import {
@@ -4036,7 +4036,7 @@ export function IntentPanel() {
               return (
                 (["bass", "808", "logdrum"].includes(inst) && named === "bass") ||
                 (inst === "keys" && named === "chords") ||
-                new RegExp(`${named}`, "i").test(t.name)
+                new RegExp(`${named}`, "i").test(t.name)
               );
             }
             return true;
@@ -4231,6 +4231,16 @@ export function IntentPanel() {
         }
         selection.setTracks(ids, "replace");
         setStatus(`⚡ selected: ${route.target}`);
+      } else if (route.kind === "sceneIntensity") {
+        // P2-D remainder: kyx_sections intensity had no NL route.
+        stopAudition();
+        const scene = doc.scenes.find((candidate) => candidate.name === route.sceneName);
+        if (!scene) {
+          setError(`no scene "${route.sceneName}"`);
+          return;
+        }
+        services.store.execute(setSceneIntensity(doc, scene.id, route.percent / 100));
+        setStatus(`⚡ ${route.sceneName} intensity → ${route.percent}%${checkpointNote}`);
       } else if (route.kind === "preset") {
         // "load the Warm Sub preset on the bass" — canonical
         // applyInstrumentPreset folded over the target family, one undo.
