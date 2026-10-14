@@ -652,6 +652,8 @@
 
 .channel-buttons {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 5px;
 }
 
@@ -663,8 +665,14 @@
 
 .freeze-controls {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin-top: 4px;
+}
+
+.channel-buttons > .freeze-controls {
+  flex: 1 0 100%;
+  min-width: 0;
 }
 
 .freeze-controls .btn-small {

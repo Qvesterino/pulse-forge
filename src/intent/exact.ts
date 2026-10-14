@@ -177,6 +177,9 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
   // "bpm 138") are GENRE-GATED (see intentCarriesGenreSignal).
   const tempo =
     /\btempo\s*(?:to|=|:)?\s*(\d{1,3})\b/.exec(lower) ??
+    /\b(?:set|lock|fix|hold)\s+(?:the\s+)?(?:project|session)\s+(?:at|to)\s+(\d{2,3})\s+(?:beats?\s+per\s+minute|bpm)\b/.exec(
+      lower,
+    ) ??
     (intentCarriesGenreSignal(text)
       ? null
       : (/\bbpm\s*(?:to|=|:)?\s*(\d{1,3})\b/.exec(lower) ?? /\b(\d{1,3})\s*bpm\b/.exec(lower)));
@@ -204,7 +207,9 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
   // The capture allows hyphens so "hi-hats" resolves as the hats family.
   // "everything/all/všetko" resolves to the MIX family, which the applier
   // expands to EVERY track for mute/solo ("mute everything" is a real ask).
-  const muteMatch = /\b(mute|st\u00eds|vypni|mutn\w*)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
+  const muteMatch = /\b(mute|silence|st\u00eds|vypni|mutn\w*)\s+(?:(?:the|entire|whole|all)\s+)*([a-z-]+)\b/.exec(
+    lower,
+  );
   const unmuteMatch = /\b(unmute|zapni|activate)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
   const activateTrackMatch = /\baktivuj(?:te)?\s+(?:stopu\s+)?([a-z-]+)\b/.exec(lower);
   const soloMatch = /\b(solo|soluj|zosoluj)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
@@ -236,7 +241,11 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
   const pan =
     /pan(?:uj|ujte)?\s+(?:the\s+)?([a-z-]+)\s*(?:to\s*)?(\d{1,3})\s*%?\s*(left|right|lavo|pravo|dolava|doprava)?/.exec(
       lower,
-    ) ?? /pan(?:uj|ujte)?\s+(?:the\s+)?([a-z-]+)\s+(left|right|dolava|doprava)\s*(\d{1,3})?/.exec(lower);
+    ) ??
+    /(?:pan(?:uj|ujte)?|place|put|position)\s+(?:the\s+)?([a-z-]+)\s+(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\s*(?:percent\w*)?\s*(?:(?:to|toward|towards)\s+)?(?:the\s+)?(left|right|lavo|pravo|dolava|doprava)/.exec(
+      lower,
+    ) ??
+    /pan(?:uj|ujte)?\s+(?:the\s+)?([a-z-]+)\s+(left|right|dolava|doprava)\s*(\d{1,3})?/.exec(lower);
   if (pan) {
     const target = firstTarget(pan[1], true);
     // The second alternative ("pan bass left 30") captures the DIRECTION in
@@ -244,7 +253,43 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
     // [2]. Reading [2] as a number unconditionally made Number("left") = NaN
     // and silently dropped the whole op.
     const directional = ["left", "right", "dolava", "doprava"].includes(String(pan[2]));
-    const pct = Number(directional ? pan[3] : pan[2]);
+    const percentage = directional ? pan[3] : pan[2];
+    const spokenPercent: Readonly<Record<string, number>> = {
+      zero: 0,
+      one: 1,
+      two: 2,
+      three: 3,
+      four: 4,
+      five: 5,
+      six: 6,
+      seven: 7,
+      eight: 8,
+      nine: 9,
+      ten: 10,
+      eleven: 11,
+      twelve: 12,
+      thirteen: 13,
+      fourteen: 14,
+      fifteen: 15,
+      sixteen: 16,
+      seventeen: 17,
+      eighteen: 18,
+      nineteen: 19,
+      twenty: 20,
+      thirty: 30,
+      forty: 40,
+      fifty: 50,
+      sixty: 60,
+      seventy: 70,
+      eighty: 80,
+      ninety: 90,
+    };
+    const pct =
+      percentage == null
+        ? Number.NaN
+        : Number.isFinite(Number(percentage))
+          ? Number(percentage)
+          : spokenPercent[percentage];
     const dir = directional ? pan[2] : pan[3];
     // "pan the mix" has no lane (the mix is not a pan target) — declining at
     // parse keeps the applier from producing a silent no-op command.
@@ -487,6 +532,23 @@ export function parseTransportIntent(text: string): TransportAction | null {
       plain,
     );
   if (commandObject) return commandObject[1]!.toLowerCase() as "play" | "pause" | "stop";
+  const pressCommand =
+    /^\s*(?:please\s+)?press\s+(play|pause|stop)\s+(?:on|for)\s+(?:the\s+)?(?:session|project|transport|loop|playback)\s*(?:please)?\s*[.!]?\s*$/i.exec(
+      plain,
+    );
+  if (pressCommand) return pressCommand[1]!.toLowerCase() as "play" | "pause" | "stop";
+  const clickCommand =
+    /^\s*(?:please\s+)?(?:switch|turn)\s+(?:the\s+)?click\s+(on|off)(?:\s+for\s+(?:the\s+)?take)?\s*(?:please)?\s*[.!]?\s*$/i.exec(
+      plain,
+    );
+  if (clickCommand) return clickCommand[1]!.toLowerCase() === "on" ? "metronomeOn" : "metronomeOff";
+  if (
+    /^\s*(?:please\s+)?(?:start|enable|switch on|turn on)\s+(?:the\s+)?(?:click|metronome)\s+before\s+recording\s*[.!]?\s*$/i.test(
+      plain,
+    )
+  ) {
+    return "metronomeOn";
+  }
   if (/^\s*(?:please\s+)?count us in with (?:the )?metronome\s*[.!]?\s*$/i.test(plain)) return "metronomeOn";
   if (/^\s*vypni klik metronomu\s*[.!]?\s*$/i.test(plain)) return "metronomeOff";
   if (

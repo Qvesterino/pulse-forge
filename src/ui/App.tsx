@@ -1772,11 +1772,13 @@ export function App({
                     </Suspense>
                   </div>
                 )}
-                <ResizeGrip
-                  region="dockSplitRatio"
-                  ariaLabel="Resize dock split"
-                  title="Drag to change the split · double-click to reset · ←/→ when focused"
-                />
+                {dock.slotB !== null && (
+                  <ResizeGrip
+                    region="dockSplitRatio"
+                    ariaLabel="Resize dock split"
+                    title="Drag to change the split · double-click to reset · ←/→ when focused"
+                  />
+                )}
                 {!sheetCollapsed && dock.slotB !== null && (
                   <div
                     className="dock-slot"

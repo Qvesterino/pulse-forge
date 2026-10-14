@@ -34,6 +34,30 @@ describe("complaint parsing", () => {
     expect(parseComplaintIntent("I can't feel the kick.")).toMatchObject({ kind: "noPunch", family: "kick" });
     expect(parseComplaintIntent("The bass is boomy.")).toMatchObject({ kind: "muddy", family: "bass" });
     expect(parseComplaintIntent("The bass feels woolly.")).toMatchObject({ kind: "muddy", family: "bass" });
+    expect(parseComplaintIntent("There is a cloud sitting over the low end.")).toMatchObject({
+      kind: "muddy",
+      family: "bass",
+    });
+    expect(parseComplaintIntent("The hats sting every time they land.")).toMatchObject({
+      kind: "harsh",
+      family: "hats",
+    });
+    expect(parseComplaintIntent("The chord layer feels too faint to anchor the phrase.")).toMatchObject({
+      kind: "thin",
+      family: "chords",
+    });
+    expect(parseComplaintIntent("The sub has a cloudy, congested haze.")).toMatchObject({
+      kind: "muddy",
+      family: "bass",
+    });
+    expect(parseComplaintIntent("The kick has plenty of volume but no real thump.")).toMatchObject({
+      kind: "noPunch",
+      family: "kick",
+    });
+    expect(parseComplaintIntent("The kick has no weight on small speakers.")).toMatchObject({
+      kind: "noPunch",
+      family: "kick",
+    });
     expect(parseComplaintIntent("kopak nema silu")).toMatchObject({ kind: "noPunch", family: "kick" });
     expect(parseComplaintIntent("chorus je muddy")?.role).toBe("chorus");
   });

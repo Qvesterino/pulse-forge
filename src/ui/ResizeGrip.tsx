@@ -131,10 +131,14 @@ export function ResizeGrip({ region, ariaLabel, title, axis = "x", keyboardStep 
     // is the invariant that keeps keyboard and mouse agreeing.
     if (event.key === "ArrowLeft") {
       event.preventDefault();
-      commit(clampRegion(readRegion(region) + regionStep, boundsFor(region).min, boundsFor(region).max, axisRatio(region)));
+      commit(
+        clampRegion(readRegion(region) + regionStep, boundsFor(region).min, boundsFor(region).max, axisRatio(region)),
+      );
     } else if (event.key === "ArrowRight") {
       event.preventDefault();
-      commit(clampRegion(readRegion(region) - regionStep, boundsFor(region).min, boundsFor(region).max, axisRatio(region)));
+      commit(
+        clampRegion(readRegion(region) - regionStep, boundsFor(region).min, boundsFor(region).max, axisRatio(region)),
+      );
     } else if (event.key === "Enter") {
       event.preventDefault();
       commit(defaultsFor(region));
@@ -146,7 +150,9 @@ export function ResizeGrip({ region, ariaLabel, title, axis = "x", keyboardStep 
       type="button"
       className={`resize-grip resize-grip--${axis}${className ? ` ${className}` : ""}`}
       aria-label={ariaLabel}
-      aria-valuenow={Math.round(value)}
+      aria-valuemin={Math.round(boundsFor(region).min * (axisRatio(region) ? 100 : 1))}
+      aria-valuemax={Math.round(boundsFor(region).max * (axisRatio(region) ? 100 : 1))}
+      aria-valuenow={Math.round(value * (axisRatio(region) ? 100 : 1))}
       role="separator"
       aria-orientation="vertical"
       title={title}

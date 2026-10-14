@@ -1,5 +1,22 @@
 /* Shared finishing for high-use dock controls and analysis surfaces. */
 
+/* The Mixer has its own two-axis scroll surface. Let it fit the dock slot so
+ * the slot itself does not create a second vertical scrollbar around it. */
+.dock-slot > .mixer {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: 100%;
+}
+
+@media (max-width: 760px) {
+  /* The phone dock is a content-sized fixed sheet rather than a flex-height
+   * dock. Keep the Mixer at its intrinsic height so the sheet can scroll it. */
+  .dock-slot > .mixer {
+    flex: 1 0 auto;
+    max-height: none;
+  }
+}
+
 :where(
     .sequencer,
     .inspector,

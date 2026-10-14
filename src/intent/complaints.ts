@@ -32,17 +32,17 @@ const COMPLAINT_WORDS: ReadonlyArray<readonly [RegExp, ComplaintKind]> = [
   // SK synonym wave (2026-10-12): deaccented stems, each mapping to an
   // EXISTING kind — no new diagnosis plumbing, only more ways to say it.
   [/\b(?:empty|void|prazdn\w*)\b|\bnic\s+sa\s+nedeje/i, "empty"],
-  [/\b(?:thin|weak|tenk\w*|chud\w*|slab\w*)\b/i, "thin"],
+  [/\b(?:thin|weak|faint|tenk\w*|chud\w*|slab\w*)\b/i, "thin"],
   [
-    /\bmuddy\b|\bboomy\b|\bwoolly\b|\bblat[oi]?\b|\bblat[ai]st\w*|\bbahnist\w*|\bkaln\w*|\bzamuten\w*|\bdut\w*|\bhukot|\bzahuhl\w*/i,
+    /\bmuddy\b|\bcloud(?:y)?\b|\bcongested\b|\bboomy\b|\bwoolly\b|\bblat[oi]?\b|\bblat[ai]st\w*|\bbahnist\w*|\bkaln\w*|\bzamuten\w*|\bdut\w*|\bhukot|\bzahuhl\w*/i,
     "muddy",
   ],
   [
-    /\bharsh\b|\bpiercing\b|\bshrill\b|\bsharp\b|\bbrittle\b|\bostr\w*|\bdraz\w*|\bpicha\b|\bkrici\b|\bskrece\b|\bbodav/i,
+    /\bharsh\b|\bpiercing\b|\bshrill\b|\bsharp\b|\bbrittle\b|\bsting(?:s|ing)?\b|\bostr\w*|\bdraz\w*|\bpicha\b|\bkrici\b|\bskrece\b|\bbodav/i,
     "harsh",
   ],
   [
-    /\bno\s+punch\b|\blacks?\s+(?:enough\s+)?punch\b|\bpunchless\b|\b(?:could use|needs?)\s+(?:more|some)\s+(?:impact|punch)\b|\bcan't\s+feel\s+(?:the\s+)?(?:kick|bass|drums?)\b|\bcannot\s+feel\s+(?:the\s+)?(?:kick|bass|drums?)\b|\bbez\s+razanc\w*|\bno\s+knock\b|\bmakk\w*\s+drums\b|\bmrtv\w*|\bbez\s+uder\w*|\bchyba\s+uder\w*|\b(?:nema\s+silu|straca\s+uder)\b/i,
+    /\bno\s+punch\b|\blacks?\s+(?:enough\s+)?punch\b|\bpunchless\b|\b(?:could use|needs?)\s+(?:more|some)\s+(?:impact|punch)\b|\bcan't\s+feel\s+(?:the\s+)?(?:kick|bass|drums?)\b|\bcannot\s+feel\s+(?:the\s+)?(?:kick|bass|drums?)\b|\bbez\s+razanc\w*|\bno\s+knock\b|\bno\s+(?:real\s+)?(?:thump|impact|weight)\b|\blacks?\s+weight\b|\bmakk\w*\s+drums\b|\bmrtv\w*|\bbez\s+uder\w*|\bchyba\s+uder\w*|\b(?:nema\s+silu|straca\s+uder)\b/i,
     "noPunch",
   ],
 ];
@@ -94,6 +94,7 @@ export function parseComplaintIntent(text: string): ComplaintIntent | null {
   const family =
     PAD_FAMILY_WORDS.find(([re]) => re.test(plain))?.[1] ??
     (/\b(?:singer|singer's|voice|voice's|vocalist)\b/.test(plain) ? "vocal" : null) ??
+    (/\b(?:sub(?:woofer)?|low\s+end)\b/.test(plain) ? "bass" : null) ??
     TARGET_WORDS.find(([re]) => re.test(plain))?.[1] ??
     null;
   // a complaint must point at SOMETHING — bare "muddy" alone is too vague

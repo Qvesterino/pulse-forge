@@ -82,6 +82,10 @@ const MIX_NOUN_VERB =
   /\breverb|\bdelay\b|\bcompress(?:ion|or)?\b|\bsaturat|\bpunch(?:ier|y)?\b|\bsidechain\b|\bpump\b|\bdry\b|\bdrier\b|\bwet\b|\bwetter\b|\beq\b|\bmix\b|\bdozvuk|\bozven|\bkompres|\bsaturac|\bpump|\bsuch/;
 const COMPARATIVE =
   /\bdarker\b|\bbrighter\b|\bwarmer\b|\bcolder\b|\btmavsi|\bsvetlejsi|\bteplejsi|\bstudenlejsi|\brazantnejsi/;
+const HYPOTHETICAL_ACTION_QUESTION =
+  /^\s*(?:(?:would|could|might)\s+(?:(?!you\b)(?:(?:a|an|the|this|that)\s+|[a-z]+ing\b|we\b))|should\s+(?:we|i|you)\b|what\s+if\b|maybe\b)[\s\S]*\b(?:help|make|improve|work|sound|feel|add|remove|delete|change|raise|lower|increase|decrease|mute|unmute|pan|move|set|turn|bypass|apply|insert)\b[\s\S]*\?\s*$/i;
+const NEGATED_MUTATION_COMMAND =
+  /^\s*(?:please\s+)?(?:do\s+not|don't|dont|never)\b[\s\S]*\b(?:mute|unmute|solo|delete|remove|add|raise|lower|turn|change|set|increase|decrease|move|pan|bypass|apply|insert|undo|redo|start|stop|record)\b/i;
 
 export function isMixIntentText(text: string): boolean {
   // Same normalization parseMixIntent applies — the guard must never be
@@ -356,6 +360,117 @@ export type RoutedIntent =
     }
   | { kind: "pattern"; input: ParsedIntent["input"]; detected: string[] };
 
+function clarifyAmbiguousCommand(text: string): RoutedIntent | null {
+  const lower = ` ${deaccent(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9%\s'-]/g, " ")
+    .replace(/\s+/g, " ")} `;
+  const clarify = (reason: string, suggestions: string[]): RoutedIntent => ({ kind: "clarify", reason, suggestions });
+  const targets = [
+    /\b(?:bass|808|sub)\b/,
+    /\b(?:drums?|kick|snare|clap|hats?)\b/,
+    /\b(?:lead|synth)\b/,
+    /\b(?:chords?|keys|pads?)\b/,
+    /\b(?:vocals?|voice|vox)\b/,
+    /\bmaster\b/,
+  ].filter((pattern) => pattern.test(lower));
+
+  if (
+    /\b(?:set|put)\b.{0,36}\b(?:master|bass|lead|drums?|chords?|vocal|snare|kick)\b.{0,48}\b(?:\d{1,3}|zero|one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\s*(?:%|percent)?\b.{0,28}\b(?:and|or)\b.{0,18}\b(?:\d{1,3}|zero|one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\s*(?:%|percent)\b.{0,32}\b(?:at the same time|at once|simultaneously|both)\b/.test(
+      lower,
+    )
+  ) {
+    return clarify("conflicting-values", ["state one target value", "split the changes into separate commands"]);
+  }
+  if (
+    targets.length === 1 &&
+    /\b(?:but|and|while)\b/.test(lower) &&
+    ((/\b(?:mute|muted)\b/.test(lower) && /\b(?:audible|playing|unmuted)\b/.test(lower)) ||
+      (/\bunmute\b/.test(lower) && /\bmuted\b/.test(lower)))
+  ) {
+    return clarify("conflicting-actions", ["mute the track", "keep the track audible"]);
+  }
+  if (
+    targets.length === 1 &&
+    /\bpan\b/.test(lower) &&
+    /\bleft\b/.test(lower) &&
+    /\bright\b/.test(lower) &&
+    /\b(?:and|but|at once|simultaneously)\b/.test(lower)
+  ) {
+    return clarify("conflicting-pan-directions", ["choose left or right"]);
+  }
+  if (
+    targets.length === 1 &&
+    /\b(?:louder|raise|increase|turn up|boost|lift|bring up)\b/.test(lower) &&
+    /\b(?:quieter|lower|reduce|decrease|less|turn down|pull down|drop)\b/.test(lower) &&
+    /\b(?:and|but|while)\b/.test(lower)
+  ) {
+    return clarify("conflicting-level-directions", ["choose louder or quieter"]);
+  }
+  if (
+    /\b(?:set|put)\b[\s\S]*\b(?:right|correct|appropriate|sensible|reasonable)\s+level\b/.test(lower) &&
+    !/\d/.test(lower)
+  ) {
+    return clarify("missing-level-value", ["give a percentage or dB value"]);
+  }
+  if (/\b(?:move|pan)\b.{0,24}\b(?:it|that|this|the other layer)\b[\s\S]*\b(?:left|right)\b/.test(lower)) {
+    return clarify("missing-pan-target", ["name the track or layer"]);
+  }
+  if (/\b(?:set|put|place)\s+(?:it|that|this)\b[\s\S]*\b\d{1,3}\s*(?:%|percent)\b/.test(lower)) {
+    return clarify("missing-level-target", ["name the track or layer"]);
+  }
+  if (/\b(?:lower|raise|turn down|turn up|pull back)\b[\s\S]{0,24}\b(?:it|that|this)\b/.test(lower)) {
+    return clarify("missing-fader-target", ["name the track or layer"]);
+  }
+  if (
+    /\b(?:make|bring|turn|raise|lower|lift)\b[\s\S]*\bthe other (?:layer|one)\b[\s\S]*\b(?:prominent|louder|quieter|forward|back|down|up)\b/.test(
+      lower,
+    )
+  ) {
+    return clarify("missing-layer-target", ["name the track or layer"]);
+  }
+  if (/\b(?:add|apply|more|increase)\b[\s\S]*\bthat effect\b/.test(lower)) {
+    return clarify("missing-effect-target", ["name the effect and track"]);
+  }
+  if (/\b(?:pan|move)\b[\s\S]*\b(?:somewhere|somewhere over)\b[\s\S]*\b(?:left|right)\b/.test(lower)) {
+    return clarify("missing-pan-amount", ["give a pan amount or percentage"]);
+  }
+  if (
+    /\btempo\b[\s\S]*\b(?:comfortable|appropriate|right|good|usual|normal|default)\s+(?:speed|pace)\b/.test(lower) &&
+    !/\d/.test(lower)
+  ) {
+    return clarify("missing-tempo-value", ["give a BPM value", "say faster or slower"]);
+  }
+  if (/\bsend\b[\s\S]*\b(?:sensible|reasonable|appropriate)\s+amount\b/.test(lower)) {
+    return clarify("missing-send-value", ["name the effect and track, then give a level", "say more or less send"]);
+  }
+  if (
+    /\bset\b[\s\S]*\b(?:reverb|delay|echo|chorus|compress(?:ion|or)?|saturation|flanger|phaser)\b[\s\S]*\b(?:sensible|reasonable|appropriate|good|right)\s+amount\b/.test(
+      lower,
+    ) &&
+    !/\d/.test(lower)
+  ) {
+    return clarify("missing-effect-value", ["give a percentage", "say more or less"]);
+  }
+  if (
+    /\b(?:raise|lower|increase|decrease|turn up|turn down)\b[\s\S]{0,40}\b(?:reverb|delay|echo|chorus)\s+return\b/.test(
+      lower,
+    )
+  ) {
+    return clarify("ambiguous-send-return", ["change the track's send level", "change the effect return channel"]);
+  }
+  if (/\b(?:could you|can you|please)\s+pull\s+(?:it|that|this)\s+back\b/.test(lower)) {
+    return clarify("missing-fader-target", ["name the track or effect to pull back"]);
+  }
+  if (
+    /\b(?:intro|verse|chorus|drop|bridge|outro)\b[\s\S]*\b(?:short|long)\s+length\b/.test(lower) &&
+    !/\d/.test(lower)
+  ) {
+    return clarify("missing-section-length", ["give a bar count", "say shorter or longer"]);
+  }
+  return null;
+}
+
 /**
  * UNIFIED INTENT BAR router (INTENT_ENGINE.md D3): one text input, five
  * executors. Priority:
@@ -398,6 +513,26 @@ export function routeIntentText(
     selectedRange?: { fromTick: number; toTick: number } | null;
   } = {},
 ): RoutedIntent {
+  if (NEGATED_MUTATION_COMMAND.test(text)) {
+    return {
+      kind: "clarify",
+      reason: "negated-mutation-command",
+      suggestions: ["state the change you want", "leave the project unchanged"],
+    };
+  }
+  const ambiguousCommand = clarifyAmbiguousCommand(text);
+  if (ambiguousCommand) return ambiguousCommand;
+  // A hypothetical or conditional question is not consent to mutate the
+  // project (Would lowering the snare help? Should we add a bridge?). Catch
+  // it before greedy effect/arrangement scanners. Polite direct commands
+  // such as Could you lower the snare? remain eligible for normal routing.
+  if (HYPOTHETICAL_ACTION_QUESTION.test(text)) {
+    return {
+      kind: "clarify",
+      reason: "hypothetical-action-question",
+      suggestions: ["apply a specific change", "compare a preview first"],
+    };
+  }
   // TRANSPORT — bare-word runtime commands ("stop", "play", "pauza",
   // "metronome on"). Anchored to the WHOLE text: "stop the beat" is a
   // generation prompt, never a transport command. Transport is runtime
@@ -429,6 +564,16 @@ export function routeIntentText(
   const studioGenreSignal = Boolean(
     studioPattern.input.genre || studioPattern.detected.some((chip) => chip.startsWith("♪")),
   );
+  // An explicit creation verb plus a musical artifact noun means the user is
+  // describing a new beat. Mixer vocabulary inside that brief must not be
+  // mistaken for an edit to the current project.
+  if (
+    /^\s*(?:please\s+)?(?:generate|create|compose|write|make\s+me)\b[\s\S]*\b(?:beat|track|song|groove|instrumental)\b/i.test(
+      text,
+    )
+  ) {
+    return { kind: "pattern", input: studioPattern.input, detected: studioPattern.detected };
+  }
   // SESSION CONTROL — undo/redo and read-only queries are the most-said
   // producer asks; they must not be gated on anything (a question is always
   // a question). Undo is bounded by the store; queries never mutate.
@@ -441,7 +586,11 @@ export function routeIntentText(
     return { kind: "checkpointIntent", intent: checkpointIntent };
   }
   const queryIntent = parseQueryIntent(text);
-  if (queryIntent) {
+  const descriptiveTrackBrief =
+    studioGenreSignal &&
+    /^\s*give\s+(?:me\s+)?(?:the\s+)?track\b/.test(deaccent(text).toLowerCase()) &&
+    /\b(?:atmosphere|vibe|sound|style|beat|groove)\b/.test(deaccent(text).toLowerCase());
+  if (queryIntent && !descriptiveTrackBrief) {
     return { kind: "queryIntent", intent: queryIntent };
   }
   // A sequencer selection is an explicit musical context. Reuse Assist's
@@ -621,6 +770,10 @@ export function routeIntentText(
       };
     }
   }
+  const sendIntent = parseSendIntent(text);
+  if (sendIntent) {
+    return { kind: "sendIntent", intent: sendIntent };
+  }
   const fader = parseFaderIntent(text);
   if (fader) {
     return { kind: "fader", intent: fader };
@@ -649,7 +802,11 @@ export function routeIntentText(
     return { kind: "loudness", parse: loudness };
   }
   const tempo = parseTempoIntent(text);
-  if (tempo) {
+  const creativeBriefWithMoodTempo =
+    /^\s*(?:make\s+me|create|generate|compose|write)\s+(?:a|an|the)?[\s\S]{0,100}\b(?:beat|track|song|groove|instrumental)\b/i.test(
+      text,
+    ) && !/\b(?:set|lock|fix|hold|change)\s+(?:the\s+)?tempo\b/i.test(text);
+  if (tempo && !creativeBriefWithMoodTempo) {
     return { kind: "tempo", intent: tempo };
   }
   const popVibe = parsePopIntent(text);
@@ -661,10 +818,6 @@ export function routeIntentText(
   // MUST parse before the effectIntent: its greedy effect×target read would
   // otherwise claim "more reverb send on the lead" as a return-MIX knob ask
   // — a completely different parameter from the send level.
-  const sendIntent = parseSendIntent(text);
-  if (sendIntent) {
-    return { kind: "sendIntent", intent: sendIntent };
-  }
   const bypassIntent = parseBypassIntent(text);
   if (bypassIntent) {
     return { kind: "bypassIntent", intent: bypassIntent };
@@ -678,7 +831,15 @@ export function routeIntentText(
     return { kind: "paramIntent", intent: paramIntent };
   }
   const effectIntent = parseEffectIntent(text);
-  if (effectIntent) {
+  const normalizedEffectText = deaccent(text).toLowerCase();
+  const hasExplicitEffectVerb =
+    /\b(?:add|apply|insert|remove|take out|less|more|reduce|ease off|pull|turn down|bypass|disable|increase|decrease|set)\b.{0,32}\b(?:reverb|delay|echo|chorus|compress(?:ion|or)?|saturat\w*|sidechain|pump|eq)\b/.test(
+      normalizedEffectText,
+    ) ||
+    /\b(?:reverb|delay|echo|chorus|compress(?:ion|or)?|saturat\w*|sidechain|pump|eq)\b.{0,32}\b(?:less|more|reduce|ease off|pull back|turn down|bypass|disable|increase|decrease)\b/.test(
+      normalizedEffectText,
+    );
+  if (effectIntent && (!studioGenreSignal || hasExplicitEffectVerb)) {
     return { kind: "effectIntent", intent: effectIntent };
   }
   // Genre signal flips production words into generation-time FX ("wobbly

@@ -28,6 +28,37 @@
   }
 }
 
+/* At phone widths the device actions otherwise consume the entire header
+   and reduce the selected track name to a sliver. Give context its own row,
+   then let the two compact selectors share the next row evenly. */
+@container bottom-dock-slot (max-width: 420px) {
+  .devices-panel > .panel-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 6px;
+  }
+
+  .devices-panel > .panel-header .panel-header-id {
+    width: 100%;
+  }
+
+  .devices-panel > .panel-header .panel-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+    width: 100%;
+    margin-left: 0;
+    gap: 6px;
+  }
+
+  .devices-panel > .panel-header .devices-add-effect,
+  .devices-panel > .panel-header .devices-add-chain {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .source-profile-tab {
     transition: none;

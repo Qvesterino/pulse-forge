@@ -99,7 +99,10 @@ const VERBS = {
   duplicate: /\b(duplicate|double|copy|zdvoj(?:n[aá]sob)?|duplikuj|skopir(?:uj)?|opakuj)\b/,
   move: /\b(move|shift|push|posun|presun)/,
   fade: /\bfades?\b/,
-  arrange: /\b(arrange|usporiadaj|usporiad|into a song|do pesnicky|do piesne)/,
+  // Keep the exact English verb separate from the noun "arrangement" so a
+  // mix-position phrase such as "less forward in the arrangement" cannot
+  // trigger auto-arrange. Slovak stems intentionally remain open for inflection.
+  arrange: /\barrange\b|\busporiadaj|\busporiad|\binto a song\b|\bdo pesnicky\b|\bdo piesne\b/,
 };
 
 const clipPattern = /\b(\d{1,3})\s*(?:bar|bars|takt|takty|taktov)/;

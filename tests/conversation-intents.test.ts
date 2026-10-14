@@ -83,11 +83,16 @@ describe("parseFaderIntent", () => {
       ["keep the drums in the background", "drums", "down"],
       ["let the lead recede behind the chords", "lead", "down"],
       ["let the lead sit behind everything else", "lead", "down"],
+      ["Let the bass sit beneath the kick.", "bass", "down"],
       ["move the chords further into the background", "chords", "down"],
+      ["Make the lead less forward in the arrangement.", "lead", "down"],
       ["drop the bass level just a little", "bass", "down"],
       ["keep the drums more subdued", "drums", "down"],
       ["ease back the bass presence", "bass", "down"],
+      ["the 808 is overpowering the hook; ease the bass back", "bass", "down"],
+      ["the bass is crowding the kick; tuck the bass underneath it", "bass", "down"],
       ["bring the drum bus forward", "drums", "up"],
+      ["Bring the chord bed closer to the front.", "chords", "up"],
       ["the lead is too forward in the mix", "lead", "down"],
       ["nech su bicie menej vyrazne", "drums", "down"],
       ["lead nech ustupi do pozadia", "lead", "down"],
@@ -95,6 +100,16 @@ describe("parseFaderIntent", () => {
     ] as const) {
       expect(parseFaderIntent(text), text).toMatchObject({ targets: [target], direction });
     }
+    expect(parseFaderIntent("let the snare sit further behind the kick")).toMatchObject({
+      targets: [],
+      pads: ["snare"],
+      direction: "down",
+    });
+    expect(parseFaderIntent("Lift only the tom accents a little.")).toMatchObject({
+      targets: [],
+      pads: ["tom"],
+      direction: "up",
+    });
     expect(parseFaderIntent("take the bass up")).toMatchObject({ targets: ["bass"], direction: "up" });
   });
 

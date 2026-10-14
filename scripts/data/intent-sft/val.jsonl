@@ -233,133 +233,135 @@
 {"instruction":"shorten the drop to 1 bar","lang":"en","response":{"kind":"arrange","ops":[{"op":"resize","sceneId":"scene-test-0011","role":"drop","name":"Drop","bars":1}]},"index":1782}
 {"instruction":"loudness na -11","lang":"en","response":{"kind":"loudness","parse":{"direction":"louder","targetDb":-11,"detected":["loudness -11 LUFS"]}},"index":1790}
 {"instruction":"quiet down the hats","lang":"en","response":{"kind":"fader","intent":{"targets":[],"pads":["hat"],"direction":"down","amount":"normal"}},"index":1797}
-{"instruction":"select the chords track","lang":"en","response":{"kind":"select","target":"chords"},"index":1810}
-{"instruction":"bypass delay on the lead","lang":"en","response":{"kind":"bypassIntent","intent":{"effectType":"delay","target":"lead","bypassed":true}},"index":1817}
-{"instruction":"bring the bass down","lang":"en","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"down","amount":"normal"}},"index":1824}
-{"instruction":"rename bass to sub bass","lang":"en","response":{"kind":"exact","ops":[{"kind":"renameTrack","target":"bass","name":"sub bass"}]},"index":1832}
-{"instruction":"add a phaser to the lead","lang":"en","response":{"kind":"effectIntent","intent":{"effectType":"phaser","targets":["lead"],"direction":"more","amount":"medium","detected":["more phaser","→ lead"]}},"index":1843}
-{"instruction":"turn off reverb on the vocal","lang":"en","response":{"kind":"bypassIntent","intent":{"effectType":"reverb","target":"vocal","bypassed":true}},"index":1852}
-{"instruction":"stop the loop","lang":"en","response":{"kind":"transport","action":"stop"},"index":1859}
-{"instruction":"less punch in the mix","lang":"en","response":{"kind":"mix","overrides":{"punch":"more"},"detected":["more punch"]},"index":1867}
-{"instruction":"make the mix -13 lufs","lang":"en","response":{"kind":"loudness","parse":{"direction":"louder","targetDb":-13,"detected":["loudness -13 LUFS"]}},"index":1882}
-{"instruction":"use the House Chords preset on the chords","lang":"en","response":{"kind":"preset","preset":{"id":"factory.analog.house.chords","name":"House Chords"},"target":"chords","matchedBy":"exact"},"index":1893}
-{"instruction":"add tremolo to the build","lang":"en","response":{"kind":"effectIntent","intent":{"effectType":"tremolo","targets":["drums","bass","chords"],"direction":"more","amount":"medium","detected":["more tremolo","→ drums+bass+chords"]}},"index":1903}
-{"instruction":"add reverb send to the vocal","lang":"en","response":{"kind":"sendIntent","intent":{"effectType":"reverb","target":"vocal","direction":"more"}},"index":1915}
+{"instruction":"select drums","lang":"en","response":{"kind":"select","target":"drums"},"index":1810}
+{"instruction":"more reverb on the hats","lang":"en","response":{"kind":"effectIntent","intent":{"effectType":"reverb","targets":["drums"],"direction":"more","amount":"medium","detected":["more reverb","→ drums"]}},"index":1817}
+{"instruction":"turn the drums up","lang":"en","response":{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"up","amount":"normal"}},"index":1824}
+{"instruction":"add another drum track","lang":"en","response":{"kind":"exact","ops":[{"kind":"addTrack","trackKind":"drum","instrument":"analog"}]},"index":1831}
+{"instruction":"add chorus to the keys","lang":"en","response":{"kind":"arrange","ops":[{"op":"addRole","role":"chorus","beforeSceneId":null}]},"index":1843}
+{"instruction":"send more reverb to the vocal","lang":"en","response":{"kind":"sendIntent","intent":{"effectType":"reverb","target":"vocal","direction":"more"}},"index":1852}
+{"instruction":"loudness target -7","lang":"en","response":{"kind":"loudness","parse":{"direction":"louder","targetDb":-7,"detected":["loudness -7 LUFS"]}},"index":1859}
+{"instruction":"darker tone","lang":"en","response":{"kind":"mix","overrides":{"tone":"dark"},"detected":["darker tone"]},"index":1867}
+{"instruction":"-8 lufs","lang":"en","response":{"kind":"loudness","parse":{"direction":"louder","targetDb":-8,"detected":["loudness -8 LUFS"]}},"index":1880}
+{"instruction":"load the Warm Pad preset on the lead","lang":"en","response":{"kind":"preset","preset":{"id":"factory.texture.techno.warmpad","name":"Warm Pad"},"target":"lead","matchedBy":"exact"},"index":1892}
+{"instruction":"add chorus to the intro","lang":"en","response":{"kind":"arrange","ops":[{"op":"addRole","role":"intro","beforeSceneId":null}]},"index":1903}
+{"instruction":"unmute the clap","lang":"en","response":{"kind":"exact","ops":[{"kind":"mute","target":"snare","value":false}]},"index":1911}
 {"instruction":"select lead","lang":"en","response":{"kind":"select","target":"lead"},"index":1932}
-{"instruction":"set tempo to 140 and mute the drums","lang":"en","response":{"kind":"compound","parts":[{"kind":"tempo","intent":{"direction":"set","bpm":140}},{"kind":"exact","plan":{"label":"mute drums","ops":[{"kind":"mute","target":"drums","value":true}]}}]},"index":1946}
-{"instruction":"the drums sound thin","lang":"en","response":{"kind":"complaintIntent","complaint":"thin","family":"drums"},"index":1956}
-{"instruction":"the verse is too thin","lang":"en","response":{"kind":"complaintIntent","complaint":"thin","role":"verse"},"index":1963}
-{"instruction":"the build has no punch","lang":"en","response":{"kind":"complaintIntent","complaint":"noPunch","role":"build"},"index":1970}
-{"instruction":"turn down the drums and turn up the bass","lang":"en","response":{"kind":"compound","parts":[{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"down","amount":"normal"}},{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"up","amount":"normal"}}]},"index":1978}
-{"instruction":"what fx are on the bass","lang":"en","response":{"kind":"queryIntent","subject":"fxChain","target":"bass"},"index":1988}
-{"instruction":"raise the vocal","lang":"en","response":{"kind":"clarify","reason":"which fader?","suggestions":["raise the drums","raise the bass","raise the chords","raise the lead","raise the master"]},"index":1996}
-{"instruction":"more delay send on the vocal and raise the drums","lang":"en","response":{"kind":"compound","parts":[{"kind":"send","intent":{"effectType":"delay","target":"vocal","direction":"more"}},{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"up","amount":"normal"}}]},"index":2004}
-{"instruction":"the hats feel empty","lang":"en","response":{"kind":"complaintIntent","complaint":"empty","family":"hats"},"index":2011}
-{"instruction":"the snare sounds thin","lang":"en","response":{"kind":"complaintIntent","complaint":"thin","family":"snare"},"index":2018}
-{"instruction":"the lead sounds muddy","lang":"en","response":{"kind":"complaintIntent","complaint":"muddy","family":"lead"},"index":2025}
-{"instruction":"the kick is harsh","lang":"en","response":{"kind":"complaintIntent","complaint":"harsh","family":"kick"},"index":2034}
-{"instruction":"the hats have no punch","lang":"en","response":{"kind":"complaintIntent","complaint":"noPunch","family":"hats"},"index":2041}
-{"instruction":"which markers are set?","lang":"en","response":{"kind":"queryIntent","subject":"markers"},"index":2049}
-{"instruction":"what did you just do?","lang":"en","response":{"kind":"queryIntent","subject":"lastAction"},"index":2056}
-{"instruction":"undo 3 steps","lang":"en","response":{"kind":"undoIntent","action":"undo","steps":3},"index":2063}
-{"instruction":"turn up the bass and turn down the drums","lang":"en","response":{"kind":"compound","parts":[{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"up","amount":"normal"}},{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"down","amount":"normal"}}]},"index":2071}
-{"instruction":"soloo the chords","lang":"en","response":{"kind":"clarify","reason":"did you mean \"solo the chords\"?","suggestions":["solo the chords"]},"index":2080}
-{"instruction":"make the whole mix warmer","lang":"en","response":{"kind":"mix","overrides":{"tone":"warm"},"detected":["warmer tone"]},"index":2088}
-{"instruction":"the snare feels empty","lang":"en","response":{"kind":"complaintIntent","complaint":"empty","family":"snare"},"index":2095}
-{"instruction":"set the bass to 55% and lower the lead","lang":"en","response":{"kind":"compound","parts":[{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"set","percent":55}},{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"down","amount":"normal"}}]},"index":2102}
-{"instruction":"tell me the beat's bpm","lang":"en","response":{"kind":"queryIntent","subject":"tempo"},"index":2109}
-{"instruction":"which effects are on the chords?","lang":"en","response":{"kind":"queryIntent","subject":"fxChain","target":"chords"},"index":2116}
-{"instruction":"undo 2 steps","lang":"en","response":{"kind":"undoIntent","action":"undo","steps":2},"index":2123}
-{"instruction":"redo 4 steps","lang":"en","response":{"kind":"undoIntent","action":"redo","steps":4},"index":2133}
-{"instruction":"undo six steps","lang":"en","response":{"kind":"undoIntent","action":"undo","steps":6},"index":2140}
-{"instruction":"undo 8 steps","lang":"en","response":{"kind":"undoIntent","action":"undo","steps":8},"index":2147}
-{"instruction":"redo nine steps","lang":"en","response":{"kind":"undoIntent","action":"redo","steps":9},"index":2154}
-{"instruction":"zvýš basu","lang":"sk","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"up","amount":"normal"}},"index":2163}
-{"instruction":"zníž lead","lang":"sk","response":{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"down","amount":"normal"}},"index":2171}
-{"instruction":"zníž chords trochu","lang":"sk","response":{"kind":"fader","intent":{"targets":["chords"],"pads":[],"direction":"down","amount":"subtle"}},"index":2178}
-{"instruction":"zníž master o dosť","lang":"sk","response":{"kind":"fader","intent":{"targets":["master"],"pads":[],"direction":"down","amount":"big"}},"index":2185}
-{"instruction":"haty hlasnejšie","lang":"sk","response":{"kind":"fader","intent":{"targets":[],"pads":["hat"],"direction":"up","amount":"normal"}},"index":2192}
-{"instruction":"nastav master na 50 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["master"],"pads":[],"direction":"set","percent":50}},"index":2201}
-{"instruction":"nastav lead na 0 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"set","percent":0}},"index":2209}
-{"instruction":"nastav bicie na 50 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"set","percent":50}},"index":2216}
-{"instruction":"zvýš basu o 20 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"up","amount":"normal","percent":20}},"index":2224}
-{"instruction":"zníž bicie o 20 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"down","amount":"normal","percent":20}},"index":2231}
-{"instruction":"zvýš lead o 10 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"up","amount":"normal","percent":10}},"index":2238}
-{"instruction":"vypni chords","lang":"sk","response":{"kind":"exact","ops":[{"kind":"mute","target":"chords","value":true}]},"index":2246}
-{"instruction":"pan lead 20 lavo","lang":"sk","response":{"kind":"exact","ops":[{"kind":"pan","target":"lead","value":0.2}]},"index":2254}
-{"instruction":"tempo hore","lang":"sk","response":{"kind":"tempo","intent":{"direction":"up"}},"index":2262}
-{"instruction":"viac reverbu na basi","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"reverb","targets":["bass"],"direction":"more","amount":"medium","detected":["more reverb","→ bass"]}},"index":2271}
-{"instruction":"nastav reverb na basi na 50 %","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"reverb","targets":["bass"],"direction":"set","amount":"medium","percent":50,"detected":["set reverb → 50%","→ bass"]}},"index":2278}
-{"instruction":"nastav delay na leade na 10 %","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"delay","targets":["lead"],"direction":"set","amount":"medium","percent":10,"detected":["set delay → 10%","→ lead"]}},"index":2285}
-{"instruction":"nastav delay na basi na 75 %","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"delay","targets":["bass"],"direction":"set","amount":"medium","percent":75,"detected":["set delay → 75%","→ bass"]}},"index":2292}
-{"instruction":"nastav chorus na leade na 25 %","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"chorus","targets":["lead","drums","bass","chords"],"direction":"set","amount":"medium","percent":25,"detected":["set chorus → 25%","→ lead+drums+bass+chords"]}},"index":2299}
-{"instruction":"obri dozvuk","lang":"sk","response":{"kind":"mix","overrides":{"reverb":"huge"},"detected":["huge reverb"]},"index":2307}
-{"instruction":"sprav bicie teplejšiu","lang":"sk","response":{"kind":"production","intent":{"targets":["drums"],"goals":[{"concept":"warmer","amount":0.7}],"sourceText":"sprav bicie teplejšiu"}},"index":2322}
-{"instruction":"viac energie v refrene","lang":"sk","response":{"kind":"revise","attribute":"energy","direction":"more","targetRole":null},"index":2331}
-{"instruction":"hustejšie v refrene","lang":"sk","response":{"kind":"revise","attribute":"density","direction":"more","targetRole":null},"index":2339}
-{"instruction":"skráť intro na 1 takty","lang":"sk","response":{"kind":"arrange","ops":[{"op":"resize","sceneId":"scene-test-000z","role":"intro","name":"Intro","bars":1}]},"index":2346}
-{"instruction":"nastav basu na 90 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"set","percent":90}},"index":2355}
-{"instruction":"nastav kick na 70 %","lang":"sk","response":{"kind":"fader","intent":{"targets":[],"pads":["kick"],"direction":"set","percent":70}},"index":2362}
-{"instruction":"nastav bicie na 30 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"set","percent":30}},"index":2369}
-{"instruction":"zníž basu o 50 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"down","amount":"normal","percent":50}},"index":2376}
-{"instruction":"zvýš bicie o 50 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"up","amount":"normal","percent":50}},"index":2383}
-{"instruction":"stíš basu","lang":"sk","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"down","amount":"normal"}},"index":2390}
-{"instruction":"zníž bicie o 1 db","lang":"sk","response":{"kind":"exact","ops":[{"kind":"gainDb","target":"drums","deltaDb":-1}]},"index":2397}
-{"instruction":"zvýš basu o 2 db","lang":"sk","response":{"kind":"exact","ops":[{"kind":"gainDb","target":"bass","deltaDb":2}]},"index":2404}
-{"instruction":"zvýš mix o 3 db","lang":"sk","response":{"kind":"exact","ops":[{"kind":"gainDb","target":"mix","deltaDb":3}]},"index":2411}
-{"instruction":"sprav bicie svetlejšie","lang":"sk","response":{"kind":"production","intent":{"targets":["drums"],"goals":[{"concept":"brighter","amount":0.7}],"sourceText":"sprav bicie svetlejšie"}},"index":2420}
-{"instruction":"vypni bicie a zvýš basu","lang":"sk","response":{"kind":"compound","parts":[{"kind":"exact","plan":{"label":"mute drums","ops":[{"kind":"mute","target":"drums","value":true}]}},{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"up","amount":"normal"}}]},"index":2427}
-{"instruction":"mokrejší mix","lang":"sk","response":{"kind":"mix","overrides":{"reverb":"more"},"detected":["more reverb"]},"index":2434}
-{"instruction":"sprav akordy teplejšie","lang":"sk","response":{"kind":"production","intent":{"targets":["chords"],"goals":[{"concept":"warmer","amount":0.7}],"sourceText":"sprav akordy teplejšie"}},"index":2441}
-{"instruction":"prosim hraj","lang":"sk","response":{"kind":"transport","action":"play"},"index":2448}
-{"instruction":"jasnejšie bicie","lang":"sk","response":{"kind":"production","intent":{"targets":["drums"],"goals":[{"concept":"brighter","amount":0.7}],"sourceText":"jasnejšie bicie"}},"index":2457}
-{"instruction":"hlasnejšie v mixe","lang":"sk","response":{"kind":"loudness","parse":{"direction":"louder","detected":["louder"]}},"index":2467}
-{"instruction":"zníž lead a stíš master","lang":"sk","response":{"kind":"compound","parts":[{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"down","amount":"normal"}},{"kind":"fader","intent":{"targets":["master"],"pads":[],"direction":"down","amount":"normal"}}]},"index":2474}
-{"instruction":"načítaj preset deep house bass na basu","lang":"sk","response":{"kind":"preset","preset":{"id":"factory.bass.house.deep","name":"Deep House Bass"},"target":"bass","matchedBy":"exact"},"index":2481}
-{"instruction":"skráti chorus na 2 takty","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"chorus","targets":["drums","bass","chords","lead"],"direction":"more","amount":"medium","detected":["more chorus","→ drums+bass+chords+lead"]}},"index":2488}
-{"instruction":"viac reverbu v mixi","lang":"sk","response":{"kind":"mix","overrides":{"reverb":"more"},"detected":["more reverb"]},"index":2496}
-{"instruction":"bypass reverb na drums prosím","lang":"sk","response":{"kind":"bypassIntent","intent":{"effectType":"reverb","target":"drums","bypassed":true}},"index":2504}
-{"instruction":"viac delay send na vokál","lang":"sk","response":{"kind":"sendIntent","intent":{"effectType":"delay","target":"vocal","direction":"more"}},"index":2515}
-{"instruction":"pridaj drum track","lang":"sk","response":{"kind":"exact","ops":[{"kind":"addTrack","trackKind":"drum","instrument":"analog"}]},"index":2523}
-{"instruction":"master na -9 lufs","lang":"sk","response":{"kind":"loudness","parse":{"direction":"louder","targetDb":-9,"detected":["loudness -9 LUFS"]}},"index":2531}
-{"instruction":"hlasitosť na -16","lang":"sk","response":{"kind":"loudness","parse":{"direction":"louder","targetDb":-16,"detected":["loudness -16 LUFS"]}},"index":2540}
-{"instruction":"hlasnejší lead","lang":"sk","response":{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"up","amount":"normal"}},"index":2550}
-{"instruction":"tempo na 96","lang":"sk","response":{"kind":"tempo","intent":{"direction":"set","bpm":96}},"index":2559}
-{"instruction":"duplicituj chorus","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"chorus","targets":["drums","bass","chords","lead"],"direction":"more","amount":"medium","detected":["more chorus","→ drums+bass+chords+lead"]}},"index":2568}
-{"instruction":"stopni","lang":"sk","response":{"kind":"transport","action":"stop"},"index":2576}
-{"instruction":"panuj kick doprava 40","lang":"sk","response":{"kind":"exact","ops":[{"kind":"pan","target":"kick","value":0.4}]},"index":2584}
-{"instruction":"urob to hlasnejsie","lang":"sk","response":{"kind":"loudness","parse":{"direction":"louder","detected":["louder"]}},"index":2591}
-{"instruction":"refren energetickejsie","lang":"sk","response":{"kind":"revise","attribute":"energy","direction":"more","targetRole":"chorus"},"index":2598}
-{"instruction":"nic sa nedeje v drope","lang":"sk","response":{"kind":"complaintIntent","complaint":"empty","role":"drop"},"index":2605}
-{"instruction":"nastav bicie na 80% a stis lead","lang":"sk","response":{"kind":"compound","parts":[{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"set","percent":80}},{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"down","amount":"normal"}}]},"index":2613}
-{"instruction":"viac delay send na vokal","lang":"sk","response":{"kind":"sendIntent","intent":{"effectType":"delay","target":"vocal","direction":"more"}},"index":2622}
-{"instruction":"nastav spev na 70% a zniz bicie","lang":"sk","response":{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"set","percent":70}},"index":2629}
-{"instruction":"refren posobi prazdno","lang":"sk","response":{"kind":"complaintIntent","complaint":"empty","role":"chorus"},"index":2637}
-{"instruction":"drop je bez uderu","lang":"sk","response":{"kind":"complaintIntent","complaint":"noPunch","role":"drop"},"index":2644}
-{"instruction":"chorus je dute","lang":"sk","response":{"kind":"complaintIntent","complaint":"muddy","role":"chorus"},"index":2651}
-{"instruction":"hats posobia prazdno","lang":"sk","response":{"kind":"complaintIntent","complaint":"empty","family":"hats"},"index":2658}
-{"instruction":"snare znie slabo","lang":"sk","response":{"kind":"complaintIntent","complaint":"thin","family":"snare"},"index":2665}
-{"instruction":"vokal je blatisty","lang":"sk","response":{"kind":"complaintIntent","complaint":"muddy","family":"vocal"},"index":2672}
-{"instruction":"vokal je drazdivy","lang":"sk","response":{"kind":"complaintIntent","complaint":"harsh","family":"vocal"},"index":2679}
-{"instruction":"clap je bez uderu","lang":"sk","response":{"kind":"complaintIntent","complaint":"noPunch","family":"clap"},"index":2686}
-{"instruction":"zoznam trackov v projekte","lang":"sk","response":{"kind":"queryIntent","subject":"tracks"},"index":2693}
-{"instruction":"ukaz efekty na bicich","lang":"sk","response":{"kind":"queryIntent","subject":"fxChain","target":"drums"},"index":2700}
-{"instruction":"krok dozadu","lang":"sk","response":{"kind":"undoIntent","action":"undo","steps":1},"index":2707}
-{"instruction":"zvys bicie a stis basu","lang":"sk","response":{"kind":"compound","parts":[{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"up","amount":"normal"}},{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"down","amount":"normal"}}]},"index":2714}
-{"instruction":"zvys lead a stis akordy","lang":"sk","response":{"kind":"compound","parts":[{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"up","amount":"normal"}},{"kind":"fader","intent":{"targets":["chords"],"pads":[],"direction":"down","amount":"normal"}}]},"index":2721}
-{"instruction":"daj base teplejsi zvuk","lang":"sk","response":{"kind":"production","intent":{"targets":["bass"],"goals":[{"concept":"warmer","amount":0.7}],"sourceText":"daj base teplejsi zvuk"}},"index":2728}
-{"instruction":"akordy posobia prazdno","lang":"sk","response":{"kind":"complaintIntent","complaint":"empty","family":"chords"},"index":2735}
-{"instruction":"perc posobi prazdno","lang":"sk","response":{"kind":"complaintIntent","complaint":"empty","family":"perc"},"index":2742}
-{"instruction":"set the chords to 40% a zniz bicie","lang":"sk","response":{"kind":"compound","parts":[{"kind":"fader","intent":{"targets":["chords"],"pads":[],"direction":"set","percent":40}},{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"down","amount":"normal"}}]},"index":2749}
-{"instruction":"kde su markery skladby?","lang":"sk","response":{"kind":"queryIntent","subject":"markers"},"index":2756}
-{"instruction":"zopakuj 1 krok","lang":"sk","response":{"kind":"undoIntent","action":"redo","steps":1},"index":2763}
-{"instruction":"zopakuj tri kroky","lang":"sk","response":{"kind":"undoIntent","action":"redo","steps":3},"index":2772}
-{"instruction":"zopakuj pat krokov","lang":"sk","response":{"kind":"undoIntent","action":"redo","steps":5},"index":2780}
-{"instruction":"zopakuj 7 krokov","lang":"sk","response":{"kind":"undoIntent","action":"redo","steps":7},"index":2787}
-{"instruction":"vrat devat krokov","lang":"sk","response":{"kind":"undoIntent","action":"undo","steps":9},"index":2794}
-{"lang":"en","instruction":"take the last edit back","response":{"kind":"undoIntent","action":"undo","steps":1},"source":"reviewed-residual","index":2801}
-{"lang":"en","instruction":"roll back the latest change I made","response":{"kind":"undoIntent","action":"undo","steps":1},"source":"reviewed-residual","index":2808}
-{"lang":"en","instruction":"repeat the change I backed out a moment ago","response":{"kind":"undoIntent","action":"redo","steps":1},"source":"reviewed-residual","index":2815}
-{"lang":"en","instruction":"the lead disappears under the chords","response":{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"up","amount":"normal"}},"source":"reviewed-residual","index":2822}
-{"lang":"sk","instruction":"lead zanika pod akordmi","response":{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"up","amount":"normal"}},"source":"reviewed-residual","index":2829}
-{"lang":"en","instruction":"the drop feels hollow","response":{"kind":"complaintIntent","complaint":"empty","role":"drop"},"source":"reviewed-residual","index":2836}
+{"instruction":"add more compression","lang":"en","response":{"kind":"clarify","reason":"na ktorý track má smerovať compressor?","suggestions":["more compressor on the drums","more compressor on the bass","more compressor on the chords","more compressor on the lead"]},"index":1947}
+{"instruction":"the bass is muddy","lang":"en","response":{"kind":"complaintIntent","complaint":"muddy","family":"bass"},"index":1957}
+{"instruction":"the snare is weak","lang":"en","response":{"kind":"complaintIntent","complaint":"thin","family":"snare"},"index":1964}
+{"instruction":"the bass sounds thin","lang":"en","response":{"kind":"complaintIntent","complaint":"thin","family":"bass"},"index":1971}
+{"instruction":"pann the hi-hats left 20","lang":"en","response":{"kind":"clarify","reason":"did you mean \"pan the hi-hats left 20\"?","suggestions":["pan the hi-hats left 20"]},"index":1982}
+{"instruction":"lower the bass and raise the lead","lang":"en","response":{"kind":"compound","parts":[{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"down","amount":"normal"}},{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"up","amount":"normal"}}]},"index":1989}
+{"instruction":"mute the lead and raise the pads","lang":"en","response":{"kind":"exact","ops":[{"kind":"mute","target":"lead","value":true}]},"index":1997}
+{"instruction":"what is the current bpm","lang":"en","response":{"kind":"queryIntent","subject":"tempo"},"index":2005}
+{"instruction":"the kick sounds thin","lang":"en","response":{"kind":"complaintIntent","complaint":"thin","family":"kick"},"index":2012}
+{"instruction":"the tom sounds thin","lang":"en","response":{"kind":"complaintIntent","complaint":"thin","family":"tom"},"index":2019}
+{"instruction":"the bass sounds harsh","lang":"en","response":{"kind":"complaintIntent","complaint":"harsh","family":"bass"},"index":2028}
+{"instruction":"the snare has no punch","lang":"en","response":{"kind":"complaintIntent","complaint":"noPunch","family":"snare"},"index":2035}
+{"instruction":"what is the song tempo?","lang":"en","response":{"kind":"queryIntent","subject":"tempo"},"index":2042}
+{"instruction":"what groove is active?","lang":"en","response":{"kind":"queryIntent","subject":"groove"},"index":2050}
+{"instruction":"please undo the last action","lang":"en","response":{"kind":"undoIntent","action":"undo","steps":1},"index":2057}
+{"instruction":"redo the last action","lang":"en","response":{"kind":"undoIntent","action":"redo","steps":1},"index":2064}
+{"instruction":"set the drums to 70% and lower the lead","lang":"en","response":{"kind":"compound","parts":[{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"set","percent":70}},{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"down","amount":"normal"}}]},"index":2072}
+{"instruction":"pann the drums right 20","lang":"en","response":{"kind":"clarify","reason":"did you mean \"pan the drums right 20\"?","suggestions":["pan the drums right 20"]},"index":2081}
+{"instruction":"the drums are empty","lang":"en","response":{"kind":"complaintIntent","complaint":"empty","family":"drums"},"index":2089}
+{"instruction":"the hats are empty","lang":"en","response":{"kind":"complaintIntent","complaint":"empty","family":"hats"},"index":2096}
+{"instruction":"set the lead to 35% and turn down the master","lang":"en","response":{"kind":"compound","parts":[{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"set","percent":35}},{"kind":"fader","intent":{"targets":["master"],"pads":[],"direction":"down","amount":"normal"}}]},"index":2103}
+{"instruction":"how many tracks are in the session?","lang":"en","response":{"kind":"queryIntent","subject":"tracks"},"index":2110}
+{"instruction":"which action did you just perform?","lang":"en","response":{"kind":"queryIntent","subject":"lastAction"},"index":2117}
+{"instruction":"redo two steps","lang":"en","response":{"kind":"undoIntent","action":"redo","steps":2},"index":2125}
+{"instruction":"undo 5 steps","lang":"en","response":{"kind":"undoIntent","action":"undo","steps":5},"index":2134}
+{"instruction":"redo six steps","lang":"en","response":{"kind":"undoIntent","action":"redo","steps":6},"index":2141}
+{"instruction":"redo 8 steps","lang":"en","response":{"kind":"undoIntent","action":"redo","steps":8},"index":2148}
+{"instruction":"undo ten steps","lang":"en","response":{"kind":"undoIntent","action":"undo","steps":10},"index":2155}
+{"instruction":"tuck the bass underneath the kick","lang":"en","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"down","amount":"normal"}},"index":2162}
+{"instruction":"switch the click on for the take","lang":"en","response":{"kind":"transport","action":"metronomeOn"},"index":2169}
+{"instruction":"zníž basu úplne","lang":"sk","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"down","amount":"full"}},"index":2178}
+{"instruction":"zvýš bicie trochu","lang":"sk","response":{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"up","amount":"subtle"}},"index":2186}
+{"instruction":"zníž chords","lang":"sk","response":{"kind":"fader","intent":{"targets":["chords"],"pads":[],"direction":"down","amount":"normal"}},"index":2193}
+{"instruction":"zníž master trochu","lang":"sk","response":{"kind":"fader","intent":{"targets":["master"],"pads":[],"direction":"down","amount":"subtle"}},"index":2200}
+{"instruction":"snare hlasnejší","lang":"sk","response":{"kind":"fader","intent":{"targets":[],"pads":["snare"],"direction":"up","amount":"normal"}},"index":2207}
+{"instruction":"nastav master na 25 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["master"],"pads":[],"direction":"set","percent":25}},"index":2216}
+{"instruction":"nastav kick na 100 %","lang":"sk","response":{"kind":"fader","intent":{"targets":[],"pads":["kick"],"direction":"set","percent":100}},"index":2224}
+{"instruction":"nastav bicie na 25 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"set","percent":25}},"index":2231}
+{"instruction":"zníž basu o 20 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"down","amount":"normal","percent":20}},"index":2239}
+{"instruction":"zvýš bicie o 10 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"up","amount":"normal","percent":10}},"index":2246}
+{"instruction":"zníž lead o 10 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"down","amount":"normal","percent":10}},"index":2253}
+{"instruction":"vypni lead","lang":"sk","response":{"kind":"exact","ops":[{"kind":"mute","target":"lead","value":true}]},"index":2261}
+{"instruction":"pan basu 30 pravo","lang":"sk","response":{"kind":"exact","ops":[{"kind":"pan","target":"bass","value":0.3}]},"index":2269}
+{"instruction":"tempo dole","lang":"sk","response":{"kind":"tempo","intent":{"direction":"down"}},"index":2277}
+{"instruction":"menej reverbu na leade","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"reverb","targets":["lead"],"direction":"less","amount":"medium","detected":["less reverb","→ lead"]}},"index":2286}
+{"instruction":"nastav reverb na leade na 50 %","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"reverb","targets":["lead"],"direction":"set","amount":"medium","percent":50,"detected":["set reverb → 50%","→ lead"]}},"index":2293}
+{"instruction":"menej delay na basi","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"delay","targets":["bass"],"direction":"remove","amount":"medium","detected":["remove delay","→ bass"]}},"index":2300}
+{"instruction":"nastav delay na leade na 75 %","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"delay","targets":["lead"],"direction":"set","amount":"medium","percent":75,"detected":["set delay → 75%","→ lead"]}},"index":2307}
+{"instruction":"nastav chorus na basi na 10 %","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"chorus","targets":["bass","drums","chords","lead"],"direction":"set","amount":"medium","percent":10,"detected":["set chorus → 10%","→ bass+drums+chords+lead"]}},"index":2314}
+{"instruction":"menej dozvuku","lang":"sk","response":{"kind":"mix","overrides":{"reverb":"less"},"detected":["drier"]},"index":2322}
+{"instruction":"sprav bicie hlbšiu","lang":"sk","response":{"kind":"production","intent":{"targets":["drums"],"goals":[{"concept":"deeper","amount":0.7}],"sourceText":"sprav bicie hlbšiu"}},"index":2336}
+{"instruction":"viac energie v moste","lang":"sk","response":{"kind":"revise","attribute":"energy","direction":"more","targetRole":null},"index":2346}
+{"instruction":"hustejšie v moste","lang":"sk","response":{"kind":"revise","attribute":"density","direction":"more","targetRole":null},"index":2354}
+{"instruction":"usporiadaj do pesničky","lang":"sk","response":{"kind":"arrange","ops":[{"op":"autoArrange"}]},"index":2361}
+{"instruction":"nastav basu na 70 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"set","percent":70}},"index":2370}
+{"instruction":"nastav kick na 30 %","lang":"sk","response":{"kind":"fader","intent":{"targets":[],"pads":["kick"],"direction":"set","percent":30}},"index":2377}
+{"instruction":"nastav bicie na 15 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"set","percent":15}},"index":2384}
+{"instruction":"zvýš basu o 30 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"up","amount":"normal","percent":30}},"index":2391}
+{"instruction":"zníž bicie o 50 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"down","amount":"normal","percent":50}},"index":2398}
+{"instruction":"zvýš lead o 50 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"up","amount":"normal","percent":50}},"index":2405}
+{"instruction":"zníž basu o 3 db","lang":"sk","response":{"kind":"exact","ops":[{"kind":"gainDb","target":"bass","deltaDb":-3}]},"index":2412}
+{"instruction":"zvýš basu o 1 db","lang":"sk","response":{"kind":"exact","ops":[{"kind":"gainDb","target":"bass","deltaDb":1}]},"index":2419}
+{"instruction":"zvýš mix o 2 db","lang":"sk","response":{"kind":"exact","ops":[{"kind":"gainDb","target":"mix","deltaDb":2}]},"index":2426}
+{"instruction":"menej ozveny","lang":"sk","response":{"kind":"mix","overrides":{"reverb":"less"},"detected":["drier"]},"index":2433}
+{"instruction":"viac reverbu na leade a tempo na 128","lang":"sk","response":{"kind":"compound","parts":[{"kind":"effect","intent":{"effectType":"reverb","targets":["lead"],"direction":"more","amount":"medium","detected":["more reverb","→ lead"]}},{"kind":"tempo","intent":{"direction":"set","bpm":128}}]},"index":2442}
+{"instruction":"pridaj verse za intro","lang":"sk","response":{"kind":"arrange","ops":[{"op":"addRole","role":"verse","beforeSceneId":"scene-test-0011"}]},"index":2449}
+{"instruction":"sprav lead jasnejší","lang":"sk","response":{"kind":"production","intent":{"targets":["lead"],"goals":[{"concept":"brighter","amount":0.7}],"sourceText":"sprav lead jasnejší"}},"index":2456}
+{"instruction":"vypni cyklus","lang":"sk","response":{"kind":"transport","action":"loopOff"},"index":2463}
+{"instruction":"hlbší kick","lang":"sk","response":{"kind":"production","intent":{"targets":["kick"],"goals":[{"concept":"deeper","amount":0.7}],"sourceText":"hlbší kick","padTargets":["kick"]}},"index":2471}
+{"instruction":"menej delayu na trubky","lang":"sk","response":{"kind":"clarify","reason":"na ktorý track má smerovať delay?","suggestions":["less delay on the drums","less delay on the bass","less delay on the chords","less delay on the lead"]},"index":2481}
+{"instruction":"sólo na base a zvýš tempo na 140","lang":"sk","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"up","amount":"normal"}},"index":2489}
+{"instruction":"načítaj preset warm pad na akordy","lang":"sk","response":{"kind":"preset","preset":{"id":"factory.texture.techno.warmpad","name":"Warm Pad"},"target":"chords","matchedBy":"exact"},"index":2496}
+{"instruction":"menej delayu na leade a stíš bicie","lang":"sk","response":{"kind":"compound","parts":[{"kind":"effect","intent":{"effectType":"delay","targets":["lead"],"direction":"remove","amount":"medium","detected":["remove delay","→ lead"]}},{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"down","amount":"normal"}}]},"index":2503}
+{"instruction":"menej dozvuku v mixi","lang":"sk","response":{"kind":"mix","overrides":{"reverb":"less"},"detected":["drier"]},"index":2511}
+{"instruction":"nastav delay na bass to 25%","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"delay","targets":["bass"],"direction":"set","amount":"medium","percent":25,"detected":["set delay → 25%","→ bass"]}},"index":2519}
+{"instruction":"spomaľ na 90","lang":"sk","response":{"kind":"tempo","intent":{"direction":"down"}},"index":2530}
+{"instruction":"basu o 15 percent hlasiejšie","lang":"sk","response":{"kind":"loudness","parse":{"direction":"louder","detected":["louder"]}},"index":2538}
+{"instruction":"zapni chorus na leade","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"chorus","targets":["lead","drums","bass","chords"],"direction":"more","amount":"medium","detected":["more chorus","→ lead+drums+bass+chords"]}},"index":2545}
+{"instruction":"hlasitosť na -7","lang":"sk","response":{"kind":"loudness","parse":{"direction":"louder","targetDb":-7,"detected":["loudness -7 LUFS"]}},"index":2554}
+{"instruction":"pridaj saturáciu na chorus","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"saturation","targets":["drums","bass","chords","lead"],"direction":"more","amount":"medium","detected":["more saturation","→ drums+bass+chords+lead"]}},"index":2564}
+{"instruction":"bicie o 25 percent hlasiejšie","lang":"sk","response":{"kind":"loudness","parse":{"direction":"louder","detected":["louder"]}},"index":2573}
+{"instruction":"zdvojnásob drop","lang":"sk","response":{"kind":"arrange","ops":[{"op":"duplicate","sceneId":"scene-test-0011","role":"drop","name":"Drop"}]},"index":2581}
+{"instruction":"pridaj intro sekciu","lang":"sk","response":{"kind":"arrange","ops":[{"op":"addRole","role":"intro","beforeSceneId":null}]},"index":2590}
+{"instruction":"mutni lead","lang":"sk","response":{"kind":"exact","ops":[{"kind":"mute","target":"lead","value":true}]},"index":2599}
+{"instruction":"basu o oktavu dole","lang":"sk","response":{"kind":"exact","ops":[{"kind":"transpose","target":"bass","semitones":-12}]},"index":2606}
+{"instruction":"energetickejsie","lang":"sk","response":{"kind":"revise","attribute":"energy","direction":"more","targetRole":null},"index":2613}
+{"instruction":"bicie su blatiste","lang":"sk","response":{"kind":"complaintIntent","complaint":"muddy","family":"drums"},"index":2620}
+{"instruction":"mute the hats a zvys snare","lang":"sk","response":{"kind":"compound","parts":[{"kind":"exact","plan":{"label":"mute hats","ops":[{"kind":"mute","target":"hats","value":true}]}},{"kind":"fader","intent":{"targets":[],"pads":["snare"],"direction":"up","amount":"normal"}}]},"index":2628}
+{"instruction":"daj delay na spev","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"delay","targets":["vocal"],"direction":"more","amount":"medium","detected":["more delay","→ vocal"]}},"index":2637}
+{"instruction":"mute the lead a zvys pady","lang":"sk","response":{"kind":"exact","ops":[{"kind":"mute","target":"lead","value":true}]},"index":2644}
+{"instruction":"ake fx su na basu","lang":"sk","response":{"kind":"queryIntent","subject":"fxChain","target":"bass"},"index":2652}
+{"instruction":"snare je slabý","lang":"sk","response":{"kind":"complaintIntent","complaint":"thin","family":"snare"},"index":2659}
+{"instruction":"vokal je slaby","lang":"sk","response":{"kind":"complaintIntent","complaint":"thin","family":"vocal"},"index":2666}
+{"instruction":"chorus posobi prazdno","lang":"sk","response":{"kind":"complaintIntent","complaint":"empty","role":"chorus"},"index":2673}
+{"instruction":"akordy zneju slabo","lang":"sk","response":{"kind":"complaintIntent","complaint":"thin","family":"chords"},"index":2680}
+{"instruction":"hats zneju blatisto","lang":"sk","response":{"kind":"complaintIntent","complaint":"muddy","family":"hats"},"index":2687}
+{"instruction":"hats su ostre","lang":"sk","response":{"kind":"complaintIntent","complaint":"harsh","family":"hats"},"index":2694}
+{"instruction":"kopak je bez razancie","lang":"sk","response":{"kind":"complaintIntent","complaint":"noPunch","family":"kick"},"index":2701}
+{"instruction":"povedz aktualne bpm","lang":"sk","response":{"kind":"queryIntent","subject":"tempo"},"index":2708}
+{"instruction":"ake efekty su na base?","lang":"sk","response":{"kind":"queryIntent","subject":"fxChain","target":"bass"},"index":2715}
+{"instruction":"vrat to spat","lang":"sk","response":{"kind":"undoIntent","action":"undo","steps":1},"index":2722}
+{"instruction":"urob znova","lang":"sk","response":{"kind":"undoIntent","action":"redo","steps":1},"index":2729}
+{"instruction":"zvys akordy o 10 % a stis basu o 5 %","lang":"sk","response":{"kind":"compound","parts":[{"kind":"fader","intent":{"targets":["chords"],"pads":[],"direction":"up","amount":"normal","percent":10}},{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"down","amount":"normal","percent":5}}]},"index":2736}
+{"instruction":"teplejsia basa","lang":"sk","response":{"kind":"production","intent":{"targets":["bass"],"goals":[{"concept":"warmer","amount":0.7}],"sourceText":"teplejsia basa"}},"index":2743}
+{"instruction":"bicie su prazdne","lang":"sk","response":{"kind":"complaintIntent","complaint":"empty","family":"drums"},"index":2750}
+{"instruction":"hats su prazdne","lang":"sk","response":{"kind":"complaintIntent","complaint":"empty","family":"hats"},"index":2757}
+{"instruction":"stis akordy a set the bass to 55%","lang":"sk","response":{"kind":"compound","parts":[{"kind":"fader","intent":{"targets":["chords"],"pads":[],"direction":"down","amount":"normal"}},{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"set","percent":55}}]},"index":2764}
+{"instruction":"kolko trackov hra v session?","lang":"sk","response":{"kind":"queryIntent","subject":"tracks"},"index":2771}
+{"instruction":"vrat 1 krok","lang":"sk","response":{"kind":"undoIntent","action":"undo","steps":1},"index":2778}
+{"instruction":"vrat tri kroky","lang":"sk","response":{"kind":"undoIntent","action":"undo","steps":3},"index":2787}
+{"instruction":"vrat pat krokov","lang":"sk","response":{"kind":"undoIntent","action":"undo","steps":5},"index":2795}
+{"instruction":"vrat 7 krokov","lang":"sk","response":{"kind":"undoIntent","action":"undo","steps":7},"index":2802}
+{"instruction":"zopakuj osem krokov","lang":"sk","response":{"kind":"undoIntent","action":"redo","steps":8},"index":2809}
+{"instruction":"zopakuj 10 krokov","lang":"sk","response":{"kind":"undoIntent","action":"redo","steps":10},"index":2816}
+{"lang":"sk","instruction":"zopakuj predchadzajucu upravu","response":{"kind":"undoIntent","action":"redo","steps":1},"source":"reviewed-residual","index":2823}
+{"lang":"en","instruction":"restore the change that I reverted","response":{"kind":"undoIntent","action":"redo","steps":1},"source":"reviewed-residual","index":2830}
+{"lang":"en","instruction":"the drums are overwhelming the vocals","response":{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"down","amount":"normal"}},"source":"reviewed-residual","index":2837}
+{"lang":"sk","instruction":"lead zanika pod akordmi","response":{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"up","amount":"normal"}},"source":"reviewed-residual","index":2844}
+{"lang":"sk","instruction":"lead reze do usi","response":{"kind":"complaintIntent","complaint":"harsh","family":"lead"},"source":"reviewed-residual","index":2851}

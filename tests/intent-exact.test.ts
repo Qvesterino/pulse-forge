@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
-import { parseExactIntent } from "../src/intent/exact";
+import { parseExactIntent, parseTransportIntent } from "../src/intent/exact";
 import { applyExactIntentCommand } from "../src/commands/intentRouting";
 import type { InstrumentTrack, ProjectDocument } from "../src/project-model/types";
 
@@ -72,6 +72,8 @@ describe("parseExactIntent", () => {
   it("tempo: 'set tempo to 142' and '138 bpm'", () => {
     expect(parseExactIntent("set tempo to 142")!.ops).toEqual([{ kind: "tempo", bpm: 142 }]);
     expect(parseExactIntent("138 bpm")!.ops).toEqual([{ kind: "tempo", bpm: 138 }]);
+    expect(parseExactIntent("Lock the project at 132 beats per minute")?.ops).toEqual([{ kind: "tempo", bpm: 132 }]);
+    expect(parseExactIntent("Set the session to 124 beats per minute")?.ops).toEqual([{ kind: "tempo", bpm: 124 }]);
   });
 
   it("tempo clamps to the legal range", () => {
@@ -95,6 +97,9 @@ describe("parseExactIntent", () => {
     const unmute = parseExactIntent("unmute the bass")!;
     expect(unmute.ops).toEqual([{ kind: "mute", target: "bass", value: false }]);
     expect(parseExactIntent("aktivuj stopu leadu")?.ops).toEqual([{ kind: "mute", target: "lead", value: false }]);
+    expect(parseExactIntent("Silence the entire drum bus")?.ops).toEqual([
+      { kind: "mute", target: "drums", value: true },
+    ]);
   });
 
   it("pan with side and percentage", () => {
@@ -102,6 +107,18 @@ describe("parseExactIntent", () => {
     expect(right.ops).toEqual([{ kind: "pan", target: "drums", value: 0.8 }]);
     const left = parseExactIntent("pan the lead 30 left")!;
     expect(left.ops).toEqual([{ kind: "pan", target: "lead", value: -0.3 }]);
+    expect(parseExactIntent("Pan the bass twenty percent to the left")?.ops).toEqual([
+      { kind: "pan", target: "bass", value: -0.2 },
+    ]);
+    expect(parseExactIntent("Place the lead thirty percent to the right")?.ops).toEqual([
+      { kind: "pan", target: "lead", value: 0.3 },
+    ]);
+  });
+
+  it("transport recognizes clear session and metronome phrasings", () => {
+    expect(parseTransportIntent("Press play on the session")).toBe("play");
+    expect(parseTransportIntent("Switch the click on for the take")).toBe("metronomeOn");
+    expect(parseTransportIntent("Start the click before recording")).toBe("metronomeOn");
   });
 
   it("gain dB delta: 'lower drums by 2 dB'", () => {

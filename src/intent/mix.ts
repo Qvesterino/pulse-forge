@@ -711,7 +711,7 @@ const EFFECT_WORDS: ReadonlyArray<readonly [RegExp, EffectType]> = [
   // PREFIX stems (no trailing \b) — SK/EN inflections ride on the stem
   // ("reverbu", "delayu", "chorusu"…). Anchor \b at the start only.
   [/\breverb|\bdozvuk|\bozven/, "reverb"],
-  [/\bdelay|\bdekou/, "delay"],
+  [/\bdelay|\becho|\bdekou/, "delay"],
   [/\bdistort|\bsaturat|\bsaturac|\bdriv/, "saturation"],
   [/\bchorus|\bkorus/, "chorus"],
   [/\bflanger/, "flanger"],
@@ -861,7 +861,7 @@ export function parseEffectIntent(text: string): EffectIntent | null {
   ) {
     direction = "remove";
   } else if (
-    /\bless\b|\bmenej|\bease off\b|\bdial back\b|\bback off\b|\breduce\b|\breducing\b|\bturn(?:ing)? down\b|\bcut back\b/.test(
+    /\bless\b|\bmenej|\bease off\b|\bdial back\b|\bback off\b|\bpull\b.{0,36}\bback\b|\breduce\b|\breducing\b|\bturn(?:ing)? down\b|\bcut back\b/.test(
       lower,
     )
   ) {
@@ -874,6 +874,10 @@ export function parseEffectIntent(text: string): EffectIntent | null {
   }
   // scene-role targets expand to their instrumentation
   for (const [role, expanded] of Object.entries(ROLE_TARGETS)) {
+    // "remove the chorus from the drums" names the effect, not the song's
+    // chorus section. An explicit track family takes precedence when the
+    // noun is shared by an effect and a scene role.
+    if (role === effectType && targets.size > 0) continue;
     if (new RegExp(`\\b${role}\\b`).test(lower)) {
       for (const target of expanded) targets.add(target);
     }
@@ -917,7 +921,7 @@ export function parseEffectIntent(text: string): EffectIntent | null {
   }
 
   let amount: EffectIntent["amount"] = "medium";
-  if (/\bsubtle\b|\btrochu\b|\bmalicko/.test(lower)) amount = "subtle";
+  if (/\bsubtle\b|\bslightly\b|\ba little\b|\ba bit\b|\btrochu\b|\bmalicko/.test(lower)) amount = "subtle";
   else if (/\bhuge\b|\ba lot\b|\bobri\b|\bvela\b|\bvelmi/.test(lower)) amount = "huge";
 
   // Explicit numbers beat vibe words ("o 20 %" wins over "trochu").

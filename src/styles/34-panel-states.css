@@ -1,5 +1,50 @@
 /* High-use panel states: dense MIDI routing and export feedback. */
 
+.inspector {
+  container-name: inspector-panel;
+  container-type: inline-size;
+}
+
+/* The standard preset row needs about 175px before the name can shrink. A
+   narrow side Inspector must keep the preset title visible instead of
+   collapsing it to zero width beside its metadata. */
+@container inspector-panel (max-width: 260px) {
+  .inspector .preset-row {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) 16px;
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      "preview name favorite"
+      "preview tags favorite";
+    align-items: center;
+    gap: 2px 6px;
+    padding: 5px 6px;
+  }
+
+  .inspector .preset-preview {
+    grid-area: preview;
+  }
+
+  .inspector .preset-name {
+    grid-area: name;
+    width: 100%;
+    font-size: 11px;
+  }
+
+  .inspector .preset-tags {
+    grid-area: tags;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 8px;
+    text-overflow: ellipsis;
+  }
+
+  .inspector .preset-fav {
+    grid-area: favorite;
+    justify-self: end;
+  }
+}
+
 .midi-panel {
   container-name: midi-panel;
   container-type: inline-size;

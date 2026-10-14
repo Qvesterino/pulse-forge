@@ -61,3 +61,40 @@
     min-height: 90px;
   }
 }
+
+/* At phone widths the Inspector is a row below the editor. That same layout
+ * at 800px made the editor only 24px high when the Inspector and tall dock
+ * were both open. Keep a compact side Inspector through the tablet band so
+ * the Sequencer retains the full workspace height. Bound the dock only while
+ * that side panel is open; collapsing it restores the user's full dock size. */
+@media (min-width: 761px) and (max-width: 860px) {
+  .workspace:not(.inspector-collapsed) {
+    grid-template-columns:
+      minmax(0, 1fr)
+      clamp(210px, min(var(--inspector-width, 230px), calc(100vw - 550px)), 230px);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .workspace:not(.inspector-collapsed) ~ .bottom-panels:not(.sheet-collapsed) {
+    height: min(calc(var(--dock-height, 300px) + var(--dock-chrome-h, 46px)), 38vh);
+  }
+
+  .workspace:not(.inspector-collapsed) > .workspace-main {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .workspace:not(.inspector-collapsed) > .inspector {
+    grid-column: 2;
+    grid-row: 1;
+    max-height: none;
+    overflow-y: auto;
+    border-top: 0;
+    border-left: 1px solid var(--border);
+  }
+
+  .workspace:not(.inspector-collapsed) > .resize-grip--x {
+    display: grid;
+    right: calc(clamp(210px, min(var(--inspector-width, 230px), calc(100vw - 550px)), 230px) - 4px);
+  }
+}

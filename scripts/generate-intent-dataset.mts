@@ -26,7 +26,7 @@ import { validateModelAction } from "../src/intent/model-schema";
 import { canonicalModelJson } from "../src/intent/model-decoder";
 import type { ProjectDocument } from "../src/project-model/types";
 
-const DATASET_VERSION = 16;
+const DATASET_VERSION = 17;
 const OUT_DIR = path.join(process.cwd(), "scripts", "data", "intent-sft");
 const MINED_CORPUS_PATH = path.join(process.cwd(), "scripts", "data", "intent-mined-corpus.json");
 const unsupportedPairs = new Map<string, string[]>();
@@ -2597,6 +2597,29 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
       sk.push(`${skAction} ${count} ${skNoun}`, `${skAction} ${slovakCounts[index]} ${skNoun}`);
     }
   }
+
+  // ── EN browser-intent holdout v2 siblings: broaden wording families while
+  // keeping the private holdout prompts out of the training corpus. Every
+  // row still has to resolve through the deterministic teacher below. ──────
+  en.push(
+    "roll back the most recent project edit",
+    "revert the latest project change",
+    "reapply the latest tweak",
+    "put back my last edit",
+    "tuck the bass underneath the kick",
+    "let the snare sit further behind the kick",
+    "ease the 808 back a little",
+    "the sub feels congested",
+    "the kick could use more impact",
+    "pan the bass twenty percent to the right",
+    "press play on the session",
+    "switch the click on for the take",
+    "mute the lead but keep it audible",
+    "pan the lead fully left and fully right at once",
+    "set the bass to 40 percent and 75 percent at the same time",
+    "move the other layer further right",
+    "add a little more of that effect",
+  );
 
   return [
     { lang: "en", instructions: en },

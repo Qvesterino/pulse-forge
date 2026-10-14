@@ -535,34 +535,187 @@ scripts/check-bundle-size.mjs` zlyhal na širšom aktuálnom výstupe: DAW JS
   na zdieľané statické/dynamické importy a chunky nad 500 KB. Typecheck a testy
   sa v tejto vizuálnej QA iterácii nespúšťali.
 
+### DICE a split dock — 2026-10-14
+
+- Hustý DICE stav sa skontroloval pri 1440 × 900, 800 × 900 a 390 × 844.
+  Automatické otvorenie už nevyhradí 470 px iba panelu: nových 360 px ponechá
+  pri 1440 px 400 px workspace a pri 800 px 358 px. DICE obsah zostáva
+  doscrollovateľný; ručné zväčšenie docku je naďalej dostupné. Mobilný sheet má
+  400 px a dokument zostáva presne 390 px široký.
+- Split DICE + MOD pôvodne stratil približne polovicu šírky: `.dock-chrome`
+  zaberala prvý flex stĺpec a panelové sloty sa začínali až pri x ≈ 690 px.
+  Grid teraz dáva chrome celý horný riadok a slotom celý riadok pod ním. Pri
+  1440 px sú sloty 716 px + 8 px grip + 716 px; pri 390 px sa skladajú pod
+  seba v scrollovateľnom sheete bez horizontálneho overflow.
+- Pomer splitu sa teraz aplikuje z layout store cez `--dock-split-ratio`.
+  Kontrola ovládania odhalila, že všeobecný clamp zaokrúhľoval zlomky na celé
+  čísla a klik na grip bez ťahania zapisoval nulový počiatočný stav. Clamp
+  zachováva zlomkové pomery, no pixelové šírky stále zaokrúhľuje; klik bez
+  pohybu nič nemení. Klávesová šípka mení pomer 0,50 → 0,52 a Enter ho vráti
+  na 0,50; 32 px ťah zmenil pomer na 0,54.
+- Snímky: `output/playwright/premium-live-dice-mod-split-fixed-1440x900.png`,
+  `output/playwright/premium-live-dice-mod-split-final-390x844.png` a
+  `output/playwright/premium-live-dice-auto-height-{1440x900,800x900,390x844}.png`.
+  DICE preview zostal v neaplikovanom stave; tlačidlo APPLY sa nestlačilo.
+- Cielený Prettier aj `git diff --check`: **PASS**. `npx vite build`:
+  **PASS za 43,05 s**; ostali upozornenia na zmiešané statické/dynamické importy
+  a chunky nad 500 KB. `npm run typecheck` má tri existujúce chyby v testoch:
+  nepoužitý `ACTION_SCHEMA_VERSION` v
+  `tests/intent-action-schema-version.test.ts:6`, nepoužitý
+  `DEFAULT_TOLERANCES` v `tests/master-iterate.test.ts:2` a neexistujúca
+  vlastnosť `Track.instrument` v `tests/mcp-p2d-ops.test.ts:60`. Repo-wide
+  `npm run format:check` zlyhá na `src/intent/model-decoder.ts`,
+  `tests/intent-action-schema-version.test.ts` a
+  `tests/probe-split-undo.test.ts`; moje dotknuté súbory prešli cielenou
+  kontrolou. Automatické testy sa nepridávali ani nespúšťali.
+
+### Devices, Inspector a Reference — 2026-10-14
+
+- V Devices sa pri 390 px názov stopy stlačil na 22 px, keď dve voľby akcií
+  obsadili takmer celú hlavičku. Úzka hlavička teraz dáva názvu vlastný riadok
+  a voľbám rovnocenné stĺpce. Pri 800 a 1440 px zostáva hlavička v jednom
+  38 px riadku. Pri jednom ovládacom prvku sa mriežka roztiahne na celú šírku.
+- Screenshoty Device editoru: `output/playwright/premium-live-devices-header-1440x900.png`
+  a `output/playwright/premium-live-devices-header-390x844.png`. Projektový
+  FX chain sa počas tohto prechodu neupravoval.
+- Mixer pri 800 × 900 odhalil dva layoutové problémy. FREEZE/BOUNCE pretŕčali
+  z kanálového pásu širokého 190 px; `03-mixer.css` teraz zalamuje akcie do
+  samostatného riadka. Jeho `scrollWidth` klesol z 242 na 188 px. Pravidlo
+  `.dock-slot > .mixer` teraz nechá Mixer vyplniť slot a scrollovať vertikálne
+  vnútri seba: slot má 301 px a nemá druhý vnorený vertikálny scrollbar.
+  Horizontálny scroll zostáva pre širokú banku kanálov.
+- Snímky Mixera: `output/playwright/premium-mixer-responsive-800x900.png` a
+  `output/playwright/premium-mixer-channel-controls-800x900-fixed.png`.
+  House Beat má return efekty Reverb/Delay/NY Comp, ale na tracku Drums nebol
+  vložený plný insert chain. Ten stav ostáva na samostatné QA; počas kontroly
+  sa do projektu žiadny efekt nepridával.
+- Na 390 px sa prvý scroll fix najprv zmrštil na 25 px; mobile sheet má
+  intrinsic/content výšku namiesto desktopovej flex výšky. `32-dock-panel-finishing.css`
+  teraz zachová intrinsic Mixer výšku pod 760 px. Slot má 1 034 px obsahu,
+  sheet ho vertikálne posúva a dokument zostáva na 390 px bez overflowu.
+  Mobilný screenshot: `output/playwright/premium-mixer-mobile-390x844-fixed.png`.
+- Inspector sa otvoril pri 1440 px a zbalil pri 800 px. V užšom režime sa
+  pri zbalenom docku rozdelí pracovnú plochu na 421 px editor a 306 px
+  Inspector. Pri 390 px má Inspector 253 px, editor zostáva nad ním a stránka
+  má presne 390 px. Zbalená lišta Inspectoru má na tablete 32 px.
+- V šírke 1024 px sa v Inspectore zobrazili režimy SIMPLE/ADVANCED. ADVANCED
+  odhalil, že preset názov mal nulovú šírku a list získal 15 px horizontálneho
+  overflow. `34-panel-states.css` teraz rozkladá preset riadok podľa lokálnej
+  šírky Inspectoru: názov ostáva čitateľný, tagy sú druhým riadkom a list nemá
+  horizontálny overflow. Pri 1024 px názov dostal 97 px; pri 1440/800/390 px
+  sa layout prispôsobil skutočnej šírke kontajnera.
+- Snímky Inspectoru: `output/playwright/premium-live-inspector-advanced-1024x768-fixed.png`,
+  `output/playwright/premium-live-inspector-advanced-1440x900.png`,
+  `output/playwright/premium-live-inspector-advanced-800x900.png` a
+  `output/playwright/premium-live-inspector-advanced-390x844.png`.
+- Súbeh vysokého docku a Inspectoru pri 800 px odhalil kritický kolaps:
+  editor mal 24 px. V `25-short-viewport.css` je pre pásmo 761–860 px
+  Inspector bočným stĺpcom a grip na jeho šírku je aktívny. Ak je Inspector
+  otvorený, dock sa obmedzí na 38 vh; po jeho zbalení sa vráti uložená výška
+  docku. Pri 800 × 900 má editor výšku 416 px, Inspector šírku 230 px a dock 342 px;
+  Sequencer je viditeľný. Pri 761 × 900 má editor 416 px a dokument nemá
+  horizontálny overflow. Pri 760 px sa zachová mobilné stohovanie; editor má
+  488 px a Sequencer 149 px, s vertikálnym scrollom workspace.
+- Tabletové snímky: `output/playwright/premium-tablet-side-inspector-800x900.png`
+  a `output/playwright/premium-tablet-side-inspector-761x900.png`. Zbalenie
+  Inspectoru pri 761 px obnovilo celý 508 px dock; jeho uložená výška sa
+  nezmenila. Pri 390 px zostáva Inspector stohovaný pod editorom.
+- Po zbalení docku pri 390 px zostane 34 px tabuľkový riadok. Jeho obsah má
+  678 px a posúva sa horizontálne vnútri riadku; posledný REF tab sa dostal do
+  viewportu pri `scrollLeft=288` bez horizontálneho overflow dokumentu.
+- Zbalený dock sa overil aj pri 1024 × 768: zostáva 30 px lišta nad
+  31 px statusbarom, Inspector rail má 28 px a stránka má presne 1024 px.
+  Snímka: `output/playwright/premium-live-dock-collapsed-1024x768.png`.
+- Reference Map dostal skúšobný súbor `public/samples/factory.fx.vinyl.wav`.
+  Výsledky (83.36 BPM, A# minor, nízka istota a clipping varovania) aj husté
+  ovládanie sa skontrolovali pri 1440, 800 a 390 px. Panel sa zvislo posúva,
+  vnútorný horizontálny overflow sa nenašiel a šírka dokumentu sa zhodovala s
+  viewportom. `Apply to project`, export a Build Project sa nespúšťali.
+- Snímky analyzovaného Reference Mapu: `output/playwright/premium-live-reference-analysis-1440x900.png`,
+  `output/playwright/premium-live-reference-analysis-800x900.png` a
+  `output/playwright/premium-live-reference-analysis-390x844.png`.
+- Cielený Prettier aj `git diff --check`: **PASS**. `npx vite build`:
+  **PASS za 39,70 s**; zostali štandardné upozornenia na zmiešané statické /
+  dynamické importy a chunky nad 500 KB. Automatické testy sa nespúšťali.
+
+### Arrangement — plný stav a Capture Setup — 2026-10-14
+
+- House Beat ukazuje scénu Groove, Pattern A, MIDI lanes pre 808 a Chords a
+  hustý toolbar aranžmánu. Pri 1440, 800 a 390 px sa kontroloval aktívny panel;
+  horizontálny overflow dokumentu ani panelových ovládacích prvkov sa nenašiel.
+- Capture Setup sa rozbalil bez nahrávania. Pri 1440 px má šírku 753 px a
+  výšku 109 px; pri 800 px 732 × 109 px; na mobile sa skladá do 307 × 245 px
+  a zvyšok konfigurácie zostáva pod vertikálnym scrollom dock sheetu.
+- Časová os si zachováva vlastný horizontálny posun (`.arr-lane-scroll`, 621 px
+  obsahu v 319 px mobilnom viewport-e); šírka stránky zostáva presne 390 px.
+  V projekte nebol spustený záznam ani upravená audio/MIDI udalosť.
+- Screenshoty: `output/playwright/premium-live-arrangement-1440x900.png`,
+  `output/playwright/premium-live-arrangement-800x900.png`,
+  `output/playwright/premium-live-arrangement-390x844.png` a Capture Setup pri
+  `1440x900`, `800x900` a `390x844` v rovnomennom `premium-live-arrangement-capture-open-*`.
+
+### MASTER, INTENT a EXP — responzívne disclosure a pripravený stav — 2026-10-14
+
+- Mastering DELIVERY & MONITORING NOTES sa otvorili bez spustenia analýzy. Pri
+  1440/800/390 px mali šírku 1377/737/342 px a výšku 124/152/268 px; dlhé
+  poznámky sa zalomia a sheet sa na mobile zvislo posúva. Dokument pri každej
+  šírke zachoval presnú šírku viewportu.
+- Snímky poznámok: `output/playwright/premium-mastering-notes-1440x900.png`,
+  `output/playwright/premium-mastering-notes-800x900.png` a
+  `output/playwright/premium-mastering-notes-390x844.png`.
+- INTENT sa kontroloval s predvyplneným promptom bez odoslania. Pri 390 px sa
+  jeho obsah zmestí do 380 px sheetu a ďalšie akcie sú dostupné zvislým
+  scrollom; nebola spustená generácia. Snímky pri `1440x900`, `800x900` a
+  `390x844` sú v `premium-intent-empty-*`.
+- EXP sa otvoril v pripravenom stave bez exportu. Pri 800 a 1440 px má panel
+  462 px výšku; pri 390 px má 721 px obsahu pod 464 px sheetom. Obe časti sú
+  zvislo rolovateľné a dokument nemá horizontálny overflow.
+  Snímka: `output/playwright/premium-export-default-390x844.png`.
+
 ### Zostáva
 
-- Dokončiť panelový prechod v plných a hustých stavoch: Sequencer/Inspector,
-  Mixer/Devices, Arrangement, MOD, DICE, INTENT, EXP, MASTER, zapnuté MIDI a
-  Reference po načítaní analyzovanej stopy. Sekvenčná vlna teraz zasahuje aj
-  DICE a Mastering, ale zmenené stavy ešte treba skontrolovať naživo; ostatné
-  panely potrebujú vlastnú plnú/hustú kontrolu. Prázdne stavy INTENT, MIDI a
-  Reference už majú zachytenú hierarchiu.
-- Preveriť collapsed Inspector/dock, Mastering notes disclosure a ostatné
-  overlaye pri desktopovej aj úzkej šírke.
+- Dokončiť husté stavy Sequencer/Inspector, Mixer s plným FX chainom, INTENT,
+  EXP, MASTER a zapnuté MIDI. Arrangement má scénu a Capture Setup, no stále
+  treba overiť audio/MIDI klipy a take lanes; Reference má analyzovaný stav pri
+  troch šírkach, no stale/error stav a výsledkové detaily zostávajú otvorené.
+  Prázdne stavy INTENT a MIDI už majú zachytenú hierarchiu.
+- Mastering notes disclosure už prešiel 3 šírkami. Zostávajú ostatné overlaye
+  a stale/error stavy; tabletový súbeh Inspectoru a docku je upravený.
 - Overiť selected/hover/focus a disabled kontrast na reálnych ovládacích
-  prvkoch; vizuálne zjednotiť iba tie panely, kde chýba stav alebo rytmus.
-- Po oprave aktuálnych TypeScript a formátovacích blockerov zopakovať celý typecheck, format check,
-  produkčný build a cielené panelové testy.
+  prvkoch; resize gripy už majú live pointer/keyboard kontrolu, ostatné panely
+  potrebujú vlastnú kontrolu stavov a rytmu.
+- Po oprave troch existujúcich TypeScript a troch formátovacích blockerov zopakovať
+  celý typecheck, format check a produkčný build; potom pokračovať v cielenom
+  panelovom QA.
 
 ### Panelová matica dokončenia
 
-| Plocha                | Zapracované                                                                            | Zostávajúci dôkaz pred uzavretím                                                     |
-| --------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Shell / TopBar / dock | Kompaktný layout, tab hierarchia a 2 px rail/grip focus                                | Zbalený Inspector/dock pri 1024/800/390 px a live screenshot                         |
-| Sequencer / Inspector | Typografia, 24 px ruler ovládanie, amber select/focus                                  | Hustý pattern, SIMPLE/ADVANCED, collapse rail a live screenshot                      |
-| Mixer / Devices       | Hierarchia, responzívne makrá, čitateľnejšie source/kit voľby                          | Plný FX chain, scroll, hover/focus a mobilný panel                                   |
-| Arrangement           | Statusy, capture setup disclosure a tri toolbar skupiny                                | Hustý song/MIDI/audio stav, otvorený setup, zvolené take controls a výška timeline   |
-| MOD / DICE            | Základné sekčné karty; DICE popisky a responzívne gridy                                | Naplnené automation/LFO, DICE histórie/locky v split docku                           |
-| INTENT / EXP          | Prompt a hlavné akcie, master hierarchia, export progress                              | Kandidáti, chyby, determinate/indeterminate export, disabled a úzke šírky            |
-| MASTER                | Report/nálezy, notes disclosure, busy/completed, 5 kariet a vycentrovaný 3-col layout  | Stale stav, split dock a ďalšie breakpoint/state kombinácie                          |
-| MIDI / Reference      | MIDI-off a responsive routing; Reference empty state, controls a pressed tempo reading | MIDI zapnuté s pripojeným zariadením pri úzkom docku; Reference dense analysis state |
+| Plocha                | Zapracované                                                                                                                                      | Zostávajúci dôkaz pred uzavretím                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| Shell / TopBar / dock | Kompaktný layout, tab hierarchia a 2 px rail/grip focus; split grid + pomer; zbalený Inspector/dock 800/390/1024; tabletový Inspector+dock súbeh | Selected/focus kontrast a ďalšie breakpoint/state kombinácie                     |
+| Sequencer / Inspector | Typografia, 24 px ruler, amber select/focus; 808 SIMPLE/ADVANCED pri 4 šírkach; preset názvy v 230 px sidebar                                    | P-lock/long pattern scroll, ďalšie stavy a live screenshot                       |
+| Mixer / Devices       | Hierarchia, responzívne makrá, source/kit voľby; Devices hlavička pri 3 šírkach                                                                  | Plný FX chain, scroll, hover/focus a mobilný panel s vybraným efektom            |
+| Arrangement           | Groove scene, MIDI lanes, Capture Setup a tri toolbar skupiny pri 1440/800/390                                                                   | Audio/MIDI klipy, take lanes, capture state a výška timeline                     |
+| MOD / DICE            | Sekčné karty, DICE hustý stav, responzívny split, výška a resize správanie                                                                       | Naplnené LFO/automation a husté DICE history/locks pri split docku               |
+| INTENT / EXP          | Prompt a pripravený INTENT pri 3 šírkach; default EXP pri 3 šírkach, mobile scroll                                                               | Kandidáti/chyby; determinate/indeterminate export, disabled a úzke šírky         |
+| MASTER                | Report/nálezy, notes disclosure pri 3 šírkach, busy/completed, 5 kariet a vycentrovaný 3-col layout                                              | Stale stav, split dock a ďalšie breakpoint/state kombinácie                      |
+| MIDI / Reference      | MIDI-off a responsive routing; Reference empty aj analyzovaný stav pri 3 šírkach                                                                 | MIDI zapnuté s pripojeným zariadením; Reference stale/error a výsledkové detaily |
 
 Tabuľka oddeľuje implementované zmeny od dôkazu, ktorý ešte treba získať.
 Starší screenshot ani úspešný bundler nenahrádza kontrolu aktívneho panelového
 stavu.
+
+### Build po Inspector úprave — 2026-10-14
+
+- `npx vite build`: **PASS za 32,96 s** po zmene lokálneho layoutu preset riadka v Inspectore.
+- Zostali upozornenia na moduly so statickým aj dynamickým importom a chunky
+  väčšie ako 500 KB; build budgety prešli. Automatické testy sa nespúšťali.
+
+### Build po tabletovom a Mixer layoute — 2026-10-14
+
+- `npx vite build`: **PASS za 23,67 s** po tabletovom Inspector layoute,
+  Mixer akciách a desktopovej/mobilnej scroll výnimke. Zostali štandardné
+  upozornenia na zmiešané statické/dynamické importy a chunky nad 500 KB;
+  build budgety prešli. Automatické testy sa nespúšťali.
+- Cielený Prettier a `git diff --check`: **PASS** po všetkých uvedených
+  CSS a dokumentačných úpravách.

@@ -68,6 +68,140 @@ describe("mix profile planner (D1)", () => {
   });
 });
 
+describe("hypothetical edit questions", () => {
+  it("asks before turning a question about a possible change into an edit", () => {
+    const doc = testDoc();
+    expect(routeIntentText("Would lowering the snare help the chorus?", doc)).toMatchObject({
+      kind: "clarify",
+      reason: "hypothetical-action-question",
+    });
+    expect(routeIntentText("Could a wider bass make this feel more spacious?", doc)).toMatchObject({
+      kind: "clarify",
+      reason: "hypothetical-action-question",
+    });
+    expect(routeIntentText("Should we add a bridge after the break?", doc)).toMatchObject({
+      kind: "clarify",
+      reason: "hypothetical-action-question",
+    });
+    expect(routeIntentText("What if I raise the bass before the drop?", doc)).toMatchObject({
+      kind: "clarify",
+      reason: "hypothetical-action-question",
+    });
+    expect(routeIntentText("Could we add a bridge after the verse?", doc)).toMatchObject({
+      kind: "clarify",
+      reason: "hypothetical-action-question",
+    });
+  });
+
+  it("still routes polite, direct requests as commands", () => {
+    const route = routeIntentText("Could you lower the snare?", testDoc());
+    expect(route.kind).toBe("fader");
+  });
+});
+
+describe("ambiguous and contradictory commands", () => {
+  it("asks before applying contradictory values or directions", () => {
+    const doc = testDoc();
+    for (const text of [
+      "Set the master to 45 percent and 80 percent at the same time.",
+      "Make the bass louder and quieter by the same amount.",
+      "Pan the lead fully left and fully right at once.",
+      "Mute the lead but keep it audible.",
+      "Make the lead louder but reduce its level.",
+      "Set the kick to twenty and ninety percent at once.",
+      "Keep the drums muted while making them audible.",
+    ]) {
+      expect(routeIntentText(text, doc).kind, text).toBe("clarify");
+    }
+  });
+
+  it("declines negated edits and ambiguous sends instead of executing guesses", () => {
+    const doc = testDoc();
+    expect(routeIntentText("Do not mute the drums.", doc)).toMatchObject({
+      kind: "clarify",
+      reason: "negated-mutation-command",
+    });
+    expect(routeIntentText("Don't remove the reverb.", doc).kind).toBe("clarify");
+    expect(routeIntentText("Raise the lead delay return.", doc)).toMatchObject({
+      kind: "clarify",
+      reason: "ambiguous-send-return",
+    });
+    expect(routeIntentText("Give the send a sensible amount.", doc)).toMatchObject({
+      kind: "clarify",
+      reason: "missing-send-value",
+    });
+    expect(routeIntentText("Could you pull it back a little?", doc)).toMatchObject({
+      kind: "clarify",
+      reason: "missing-fader-target",
+    });
+  });
+
+  it("asks for a value when a requested adjustment has no usable amount", () => {
+    const doc = testDoc();
+    for (const text of [
+      "Set the snare to the right level.",
+      "Move the chords somewhere over to the left.",
+      "Set the tempo to a more comfortable speed.",
+      "Set the tempo to my usual speed.",
+      "Set the tempo to a normal pace.",
+      "Make the intro a short length.",
+      "Put the drums at a sensible level.",
+      "Give the send a reasonable amount.",
+      "Set the reverb to a sensible amount.",
+      "Set it to 55 percent.",
+      "Lower that by 3 dB.",
+      "Pan the bass somewhere on the left.",
+    ]) {
+      expect(routeIntentText(text, doc).kind, text).toBe("clarify");
+    }
+  });
+
+  it("clarifies missing references instead of guessing a target", () => {
+    const doc = testDoc();
+    for (const text of [
+      "Move it further to the left.",
+      "Make the other layer more prominent.",
+      "Add a little more of that effect.",
+    ]) {
+      expect(routeIntentText(text, doc).kind, text).toBe("clarify");
+    }
+  });
+
+  it("keeps a generation brief from treating a chorus section as a chorus effect", () => {
+    expect(routeIntentText("Generate a moody breakbeat that slowly opens into a bright chorus.", testDoc()).kind).toBe(
+      "pattern",
+    );
+    expect(routeIntentText("Make me a nocturnal, film-like beat with a slow pulse.", testDoc()).kind).toBe("pattern");
+    expect(routeIntentText("Make the lead less forward in the arrangement.", testDoc())).toMatchObject({
+      kind: "fader",
+      intent: { targets: ["lead"], direction: "down" },
+    });
+  });
+
+  it("keeps descriptive track briefs and effect idioms on their intended routes", () => {
+    const doc = testDoc();
+    expect(routeIntentText("Give the track a dusty late-night garage atmosphere.", doc).kind).toBe("pattern");
+    expect(routeIntentText("Pull the plate reverb back on the chords.", doc)).toMatchObject({
+      kind: "effectIntent",
+      intent: { effectType: "reverb", direction: "less", targets: ["chords"] },
+    });
+    expect(routeIntentText("Put more echo on the lead channel.", doc)).toMatchObject({
+      kind: "effectIntent",
+      intent: { effectType: "delay", direction: "more", targets: ["lead"] },
+    });
+    expect(routeIntentText("Add a little echo to the lead.", doc)).toMatchObject({
+      kind: "effectIntent",
+      intent: { effectType: "delay", direction: "more", amount: "subtle", targets: ["lead"] },
+    });
+    expect(routeIntentText("Remove the chorus from the drums.", doc)).toMatchObject({
+      kind: "effectIntent",
+      intent: { effectType: "chorus", direction: "remove", targets: ["drums"] },
+    });
+    expect(routeIntentText("Generate a track with more reverb in its chorus.", doc).kind).toBe("pattern");
+    expect(routeIntentText("Unmute the drums but leave them muted.", doc).kind).toBe("clarify");
+  });
+});
+
 describe("selected-step producer routing", () => {
   it("shares the fail-closed Assist language only while a sequencer selection is active", () => {
     const doc = testDoc();

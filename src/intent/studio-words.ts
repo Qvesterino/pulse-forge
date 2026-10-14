@@ -367,10 +367,10 @@ const NUMBER_TOKEN =
   /\b(\d{1,2}|one|a|an|jeden|jedna|jedno|two|dva|dve|three|tri|four|styri|five|pat|six|sest|seven|sedem|eight|osem|nine|devat|ten|desat)\b/i;
 
 const UNDO_PREFIX =
-  /^(?:please\s+)?(?:undo|revert|reverse|roll\s+back|take\s+back|vrat(?:\s+to)?|vratni|spat(?:\s+to)?|krok\s+(?:spat|dozadu)|step\s+back|go\s+back)\b\s*(.*)$/i;
+  /^(?:please\s+)?(?:undo|revert|reverse|cancel|put\s+(?:the\s+)?(?:session|project)\s+back|roll\s+(?:(?:the\s+)?project\s+)?back|take\s+back|vrat(?:\s+to)?|vratni|spat(?:\s+to)?|krok\s+(?:spat|dozadu)|step\s+back|go\s+back)\b\s*(.*)$/i;
 const REDO_PREFIX = /^(?:please\s+)?(?:redo|zopakuj|dopredu|urob\s+znova)\b\s*(.*)$/i;
 const REDO_REPHRASE =
-  /^(?:please\s+)?(?:(?:reapply|apply|repeat|do)\s+(?:(?:that|the|my|your|last|previous|latest|undone|reverted)\s+){0,2}(?:change|edit|adjustment|tweak|action)(?:\s+(?:again|once\s+more|znova|opat))?|bring\s+back\s+(?:(?:that|the|my|your|last|previous|latest)\s+){0,2}(?:change|edit|adjustment|tweak|action))$/i;
+  /^(?:please\s+)?(?:(?:reapply|apply|repeat|do)\s+(?:(?:that|the|my|your|last|previous|latest|undone|reverted|most\s+recently\s+undone)\s+){0,2}(?:change|edit|adjustment|tweak|action|operation|revision|step)(?:\s+(?:again|once\s+more|znova|opat))?|(?:bring|put)\s+back\s+(?:(?:that|the|my|your|last|previous|latest)\s+){0,2}(?:change|edit|adjustment|tweak|action|operation|revision|step)(?:\s+i\s+(?:just\s+)?(?:undid|reverted))?|reinstate\s+(?:my\s+)?most\s+recently\s+undone\s+(?:step|change|edit))$/i;
 
 function undoStepsFromTail(tail: string): number | null {
   const normalized = tail
@@ -395,7 +395,7 @@ function undoStepsFromTail(tail: string): number | null {
   const remainder = normalized
     .replace(NUMBER_TOKEN, " ")
     .replace(
-      /\b(?:the|my|that|this|what|i|most|recently|last|previous|posledn\w*|predchadzajuc\w*|action|akci\w*|change|changed|edit\w*|tweak\w*|step|steps|krok\w*|zmen\w*|to|o|spat|znova)\b/gi,
+      /\b(?:the|my|that|this|what|i|most|recent|recently|latest|last|previous|project|session|by|performed|revision\w*|operation\w*|posledn\w*|predchadzajuc\w*|action|akci\w*|change\w*|edit\w*|tweak\w*|step|steps|krok\w*|zmen\w*|to|o|spat|znova)\b/gi,
       " ",
     )
     .replace(/\s+/g, " ")
@@ -470,7 +470,7 @@ export function parseQueryIntent(text: string): QueryIntent | null {
     .replace(/[\u0300-\u036f]/g, "");
   const isQuestion =
     /\?\s*$/.test(plain) ||
-    /^\s*(?:what|which|how many|list|show|tell|identify|report|give|count|name|ako|aky|ake|aka|akej|v akom|kolko|zoznam|ukaz|povedz|co)\b/i.test(
+    /^\s*(?:what|which|how many|list|show|tell|read|identify|report|give|count|name|ako|aky|ake|aka|akej|v akom|kolko|zoznam|ukaz|povedz|co)\b/i.test(
       plain,
     );
   if (!isQuestion) return null;

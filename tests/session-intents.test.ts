@@ -58,7 +58,16 @@ describe("undo/redo intents", () => {
     expect(parseUndoIntent("apply the bass again")).toBeNull();
     expect(parseUndoIntent("revert one action")).toEqual({ kind: "undo", steps: 1 });
     expect(parseUndoIntent("reverse what I changed most recently")).toEqual({ kind: "undo", steps: 1 });
+    expect(parseUndoIntent("Roll the project back by one edit")).toEqual({ kind: "undo", steps: 1 });
+    expect(parseUndoIntent("Reverse the most recent change")).toEqual({ kind: "undo", steps: 1 });
+    expect(parseUndoIntent("Put back the adjustment I just undid")).toEqual({ kind: "redo", steps: 1 });
+    expect(parseUndoIntent("Bring back the last edit I reverted")).toEqual({ kind: "redo", steps: 1 });
+    expect(parseUndoIntent("Put the session back by one revision.")).toEqual({ kind: "undo", steps: 1 });
+    expect(parseUndoIntent("Cancel the last operation I performed.")).toEqual({ kind: "undo", steps: 1 });
+    expect(parseUndoIntent("Reinstate my most recently undone step.")).toEqual({ kind: "redo", steps: 1 });
+    expect(parseUndoIntent("Repeat the last operation once more.")).toEqual({ kind: "redo", steps: 1 });
     expect(parseUndoIntent("go back two steps")).toEqual({ kind: "undo", steps: 2 });
+    expect(parseUndoIntent("Go back three changes.")).toEqual({ kind: "undo", steps: 3 });
     expect(parseUndoIntent("undo ten steps")).toEqual({ kind: "undo", steps: 10 });
     expect(parseUndoIntent("undo 10 steps")).toEqual({ kind: "undo", steps: 10 });
     expect(parseUndoIntent("zopakuj sedem krokov")).toEqual({ kind: "redo", steps: 7 });
@@ -114,6 +123,7 @@ describe("query intents", () => {
       target: "bass",
     });
     expect(parseQueryIntent("Report the latest project change")).toEqual({ subject: "lastAction" });
+    expect(parseQueryIntent("Read me the session BPM as it stands.")).toEqual({ subject: "tempo" });
     expect(parseQueryIntent("How many channels are populated?")).toEqual({ subject: "tracks" });
     expect(parseQueryIntent("kolko kanalov sme pouzili")).toEqual({ subject: "tracks" });
     expect(parseQueryIntent("what did I change immediately before this?")).toEqual({ subject: "lastAction" });

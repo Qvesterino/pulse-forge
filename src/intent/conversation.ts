@@ -71,9 +71,9 @@ export interface FaderIntent {
 
 /** ALL SK stems DE-ACCENTED — the parser strips diacritics before matching. */
 const FADER_DOWN =
-  /\bzniz|\bstis|\bstiah\w*|\bnizs|\btahaj dole|\bdaj dole|\btichs|\bdole\b|\bturn down\b|\bpull down\b|\bbring down\b|\blower\b|\bdial down\b|\bquieter\b|\bquiet down\b|\b(?:take|bring|pull|turn|dial|drop)\b.{0,36}\bdown\b|\bdrop\b.{0,24}\b(?:level|volume|fader)\b|\b(?:less|fewer|menej)\b.{0,28}\b(?:room|space|presence|dominant|prominent|forward|pronounced|vyrazn\w*|vystupujuc\w*)\b|\b(?:too|overly|prilis)\b.{0,20}\b(?:dominant|forward|prominent|vyrazn\w*)\b|\bmore\b.{0,20}\bsubdued\b|\b(?:in|into|do|v)\s+(?:the\s+)?(?:background|pozadi|uzadia)\b|\b(?:recede|recedes|receding|ease back|sit back|sit behind|ustup\w*|zazit do pozadia)\b/;
+  /\bzniz|\bstis|\bstiah\w*|\bnizs|\btahaj dole|\bdaj dole|\btichs|\bdole\b|\bturn down\b|\bpull down\b|\bbring down\b|\blower\b|\bdial down\b|\bquieter\b|\bquiet down\b|\b(?:take|bring|pull|turn|dial|drop)\b.{0,36}\bdown\b|\bdrop\b.{0,24}\b(?:level|volume|fader)\b|\b(?:less|fewer|menej)\b.{0,28}\b(?:room|space|presence|dominant|prominent|forward|pronounced|vyrazn\w*|vystupujuc\w*)\b|\b(?:too|overly|prilis)\b.{0,20}\b(?:dominant|forward|prominent|vyrazn\w*)\b|\bmore\b.{0,20}\bsubdued\b|\b(?:in|into|do|v)\s+(?:the\s+)?(?:background|pozadi|uzadia)\b|\b(?:recede|recedes|receding|ease back|sit back|sit behind|ustup\w*|zazit do pozadia)\b|\bease\b.{0,36}\bback\b|\bsit\b.{0,24}\b(?:behind|beneath|under(?:neath)?)\b|\btuck\b.{0,36}\b(?:under(?:neath)?|back|down)\b/;
 const FADER_UP =
-  /\bzvis\b|\bzvys|\bvyss\b|\btazs\w*|\bpotiahni hore|\btahaj hore|\bdaj hore|\bhlasnej|\bhlasit|\bhore\b|\bturn up\b|\bbring up\b|\braise\b|\bpush up\b|\blouder\b|\b(?:bring|turn|push|move)\b.{0,36}\bup\b|\btake\b.{0,36}\bup\b(?!\s+(?:less|fewer)\b)|\b(?:bring|move|push)\b.{0,28}\bforward\b/;
+  /\bzvis\b|\bzvys|\bvyss\b|\btazs\w*|\bpotiahni hore|\btahaj hore|\bdaj hore|\bhlasnej|\bhlasit|\bhore\b|\bturn up\b|\bbring up\b|\braise\b|\blift\b|\bpush up\b|\blouder\b|\b(?:bring|turn|push|move)\b.{0,36}\bup\b|\btake\b.{0,36}\bup\b(?!\s+(?:less|fewer)\b)|\b(?:bring|move|push)\b.{0,28}\bforward\b|\bcloser\b.{0,24}\b(?:front|foreground)\b/;
 const SK_ADD_FADER = /\bpridaj\s+(?:(?:hlasitos\w*|volume)\s+)?(?:bas\w*|lead\w*|master\w*|bic\w*)\b/;
 /** UP stems that unambiguously name a direction (loud-words excluded). */
 const FADER_UP_DIRECTIONAL =
@@ -96,7 +96,7 @@ const FADER_TARGETS: ReadonlyArray<readonly [RegExp, FaderTarget]> = [
 
 /** Track mentions inside a comparison describe a reference, not an edit target. */
 const FADER_REFERENCE_CLAUSE =
-  /\b(?:behind|ahead of|in front of|compared with|compared to|than|za|pred|oproti)\b.{0,48}/g;
+  /\b(?:behind|beneath|under(?:neath)?|ahead of|in front of|compared with|compared to|than|za|pred|oproti)\b.{0,48}/g;
 
 const FADER_PADS: ReadonlyArray<readonly [RegExp, FaderPadFamily]> = [
   [/\bkick\w*/, "kick"],
@@ -140,6 +140,11 @@ export function parseFaderIntent(text: string): FaderIntent | null {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")} `;
+  // A semicolon can separate context from a direct final command. Resolve
+  // targets from that command so a reference mentioned earlier does not get
+  // treated as another fader target.
+  const finalClause = lower.split(";").at(-1)?.trim();
+  const commandText = finalClause && (FADER_DOWN.test(finalClause) || FADER_UP.test(finalClause)) ? finalClause : lower;
   // LUFS is an absolute mastering target, never a track-fader unit. Let the
   // loudness route handle it instead of applying a generic relative nudge.
   if (/\blufs\b/.test(lower)) return null;
@@ -164,28 +169,28 @@ export function parseFaderIntent(text: string): FaderIntent | null {
     // "set X to N%" without a fader family → not a fader ask (tempo/effects
     // own their own set-modes); fall through below for the relative stems.
   }
-  const down = FADER_DOWN.test(lower);
-  const up = !down && (FADER_UP.test(lower) || SK_ADD_FADER.test(lower));
+  const down = FADER_DOWN.test(commandText);
+  const up = !down && (FADER_UP.test(commandText) || SK_ADD_FADER.test(commandText));
   if (!down && !up) return null;
   // CONFLICTING directions ("zníž basu a zvýš lead") must not silently take
   // the down-priority and move BOTH targets the same way — decline instead.
   // The loud-words ("hlasnejšie"/"hlasitosť") are excluded from the conflict
   // check: "zníž hlasitosť basu" names the volume NOUN, not an up-direction.
-  if (down && FADER_UP_DIRECTIONAL.test(lower)) return null;
-  const targetText = lower.replace(FADER_REFERENCE_CLAUSE, " ");
+  if (down && FADER_UP_DIRECTIONAL.test(commandText)) return null;
+  const targetText = commandText.replace(FADER_REFERENCE_CLAUSE, " ");
   const targets = FADER_TARGETS.filter(([pattern]) => pattern.test(targetText)).map(([, target]) => target);
   const pads = FADER_PADS.filter(([pattern]) => pattern.test(targetText)).map(([, family]) => family);
   if (targets.length === 0 && pads.length === 0) return null; // "zniz" alone is ambiguous
-  const amount: FaderAmount = AMOUNT_FULL.test(lower)
+  const amount: FaderAmount = AMOUNT_FULL.test(commandText)
     ? "full"
-    : AMOUNT_BIG.test(lower)
+    : AMOUNT_BIG.test(commandText)
       ? "big"
-      : AMOUNT_SUBTLE.test(lower)
+      : AMOUNT_SUBTLE.test(commandText)
         ? "subtle"
         : "normal";
   // Explicit numbers beat vibe words ("o 10 %" wins over "trochu"); a
   // stated dB magnitude converts to the same relative percent.
-  const percent = parsePercent(text) ?? dBPercent(text, down ? "down" : "up");
+  const percent = parsePercent(commandText) ?? dBPercent(commandText, down ? "down" : "up");
   return { targets, pads, direction: down ? "down" : "up", amount, ...(percent != null ? { percent } : {}) };
 }
 

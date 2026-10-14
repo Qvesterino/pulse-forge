@@ -456,3 +456,122 @@
 [2m10:38:22[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
 [2m10:39:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/ResizeGrip.tsx[22m
 [2m10:40:04[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/ResizeGrip.tsx[22m
+[2m10:42:29[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/ResizeGrip.tsx[22m
+[2m10:46:43[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m10:46:43[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/ResizeGrip.tsx[22m
+[2m10:47:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m10:47:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m10:47:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m10:47:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m10:47:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m10:47:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m10:48:06[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m10:48:07[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m10:48:07[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m10:48:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m10:48:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m10:48:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m10:48:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m10:49:07[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m10:49:07[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m10:49:07[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m10:50:13[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m10:52:02[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m10:52:02[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m10:52:02[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m10:53:12[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m10:54:34[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m10:54:34[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m10:54:34[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m10:55:42[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m10:55:42[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m10:55:42[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m10:56:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m10:56:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m10:56:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m10:56:49[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m10:56:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m10:56:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m10:57:18[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m10:57:18[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m10:57:18[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m10:59:08[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m10:59:08[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m10:59:08[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m10:59:17[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m10:59:17[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m10:59:17[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:00:07[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m11:00:07[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:00:07[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:02:08[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m11:05:21[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m11:05:21[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:05:21[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:08:08[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m11:09:03[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m11:10:22[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m11:10:23[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:10:23[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:10:35[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m11:10:35[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:10:35[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:10:49[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m11:10:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:10:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:11:17[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m11:11:17[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:11:17[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:11:32[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/ContextMenu.tsx, /src/ui/AssistPanel.tsx, /src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx, /src/ui/ReferenceMapPanel.tsx, /src/ui/ArrangementPanel.tsx[22m
+[2m11:11:32[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/ContextMenu.tsx[22m Could not Fast Refresh ("deriveContext" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:11:32[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:11:32[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:11:32[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:11:32[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/ArrangementPanel.tsx[22m Could not Fast Refresh ("warpPinTickFromClientX" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:11:32[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:11:38[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m11:11:39[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:11:39[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:11:45[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m11:11:45[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:11:45[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:12:26[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m11:13:06[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m11:13:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m11:13:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:13:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:13:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m11:13:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:13:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:14:13[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m11:14:57[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/ContextMenu.tsx, /src/ui/AssistPanel.tsx, /src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m11:14:57[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/ContextMenu.tsx[22m Could not Fast Refresh ("deriveContext" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:14:57[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:14:57[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:14:57[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:15:06[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m11:15:06[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:15:06[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:15:12[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m11:15:12[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:15:12[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:15:33[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles/index.css[22m
+[2m11:19:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m11:19:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:19:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:19:33[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m11:19:33[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:19:33[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:19:42[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m11:19:42[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:19:42[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:22:23[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx[22m
+[2m11:22:23[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:22:23[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:22:29[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/ContextMenu.tsx, /src/ui/AssistPanel.tsx, /src/ui/App.tsx, /src/ui/QmrChipMount.tsx, /src/ui/IntentPanel.tsx, /src/ui/ReferenceMapPanel.tsx, /src/ui/ArrangementPanel.tsx[22m
+[2m11:22:29[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/ContextMenu.tsx[22m Could not Fast Refresh ("deriveContext" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:22:29[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:22:29[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/QmrChipMount.tsx[22m Could not Fast Refresh ("createQmrCommandHandler" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:22:29[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
+[2m11:22:29[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/ui/ArrangementPanel.tsx[22m Could not Fast Refresh ("warpPinTickFromClientX" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:22:29[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m
