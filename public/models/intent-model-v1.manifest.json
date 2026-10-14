@@ -953,7 +953,7 @@
     },
     "gate": "scripts/validate-intent-model.mts — attempted-exact >= 0.95, wrongKind = 0",
     "validationReportPath": "scripts/data/intent-model-validation-report.json",
-    "validationReportSha256": "6bfbb7d5857cb4f4cd6bc410cd9181913150601b81476e31e3b7c34d7ee2e34e"
+    "validationReportSha256": "f5a55ee3f1ceb176da3592b37f96985ecca81bec5266947c8b459a11aff13e5a"
   },
   "quantization": {
     "kind": "dynamic-int8",
