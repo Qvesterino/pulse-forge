@@ -22,7 +22,7 @@ import type { McpToolContext } from "./tools";
 
 /** Known automation surfaces. `local` = unattributed (headless tests and
  * the human working the UI directly — UI edits carry no prefix). */
-export type McpAgentId = "desktop-stdio" | "web-relay" | "qmr" | "local";
+export type McpAgentId = "desktop-stdio" | "web-relay" | "qmr" | "headless" | "local";
 
 export const AGENT_LABEL_PREFIX = /^\[([a-z-]+)\] /;
 

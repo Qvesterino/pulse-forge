@@ -202,7 +202,7 @@ Time signature command (GAP-12), automation read/write modes (GAP-13), save-as (
 
 Only safe once P1-B (idempotency) and P1-D (isolation) land. Includes retry policy, cancellation propagation, and stale-selection detection. **Complexity:** L.
 
-### P3-H · Headless evaluation · **ADR 0046 PROPOSED 2026-10-14** (`docs/adr/0046-headless-mcp-evaluation.md`, option B: test-only headless host over an in-memory ProjectStore; owner-gated)
+### P3-H · Headless evaluation · **ADR 0046 ACCEPTED (test-only) + IMPLEMENTED 2026-10-14** (`src/mcp/headless-host.ts` + 8-spec acceptance suite; caught two live-contract defects during the build; productization remains owner-gated)
 
 Headless is currently **zero-capability by design** (`desktop/mcp-host-manager.cjs:225,233`). If CI-driven agent evaluation is wanted, that is a new capability with its own ADR — not a bug fix. **Complexity:** L.
 

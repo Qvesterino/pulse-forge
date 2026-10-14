@@ -1902,10 +1902,10 @@ function resolveMcpScene(doc: ProjectDocument, record: Record<string, unknown>):
 function transportLaunchScene(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
   const transport = ctx.transport;
   if (transport.seek == null) {
-    return {
-      text: "scene launch is not available over this MCP transport (no seek-capable transport bound)",
-      mutated: false,
-    };
+    return mcpError(
+      "UNAVAILABLE_ON_TRANSPORT",
+      "scene launch is not available over this MCP transport (no seek-capable transport bound)",
+    );
   }
   const scene = resolveMcpScene(ctx.getDoc(), record);
   if (typeof scene === "string") return { text: scene, mutated: false };
@@ -1932,7 +1932,10 @@ function transportLaunchScene(ctx: McpToolContext, record: Record<string, unknow
 function transportSeek(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
   const transport = ctx.transport;
   if (transport.seek == null) {
-    return { text: "seek is not available over this MCP transport (no seek-capable transport bound)", mutated: false };
+    return mcpError(
+      "UNAVAILABLE_ON_TRANSPORT",
+      "seek is not available over this MCP transport (no seek-capable transport bound)",
+    );
   }
   const rawBar = Number(record.bar);
   if (!Number.isFinite(rawBar) || Math.round(rawBar) < 1) {
@@ -2583,9 +2586,13 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         // automation), so it IS undoable, one snapshot per call.
         const scene = resolveMcpScene(ctx.getDoc(), record);
         if (typeof scene === "string") return { text: scene, mutated: false };
-        const value = typeof record.value === "number" ? record.value : NaN;
+        // Schema-handler parity fix (P2-D remainder): the schema advertises
+        // `intensity` — a caller following tools/list sent exactly that and
+        // got "needs value". Accept both names.
+        const rawIntensity = typeof record.intensity === "number" ? record.intensity : record.value;
+        const value = typeof rawIntensity === "number" ? rawIntensity : NaN;
         if (!Number.isFinite(value) || value < 0 || value > 1) {
-          return { text: "intensity needs value 0..1 (e.g. 0.85 for the drop)", mutated: false };
+          return mcpError("INVALID_ARGUMENTS", "intensity needs value 0..1 (e.g. 0.85 for the drop)");
         }
         ctx.execute(setSceneIntensity(ctx.getDoc(), scene.id, value));
         return {
@@ -3119,10 +3126,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
     case "kyx_export": {
       const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
       if (ctx.export == null) {
-        return {
-          text: "export is not available over this MCP transport — use the KYX export panel",
-          mutated: false,
-        };
+        return mcpError(
+          "UNAVAILABLE_ON_TRANSPORT",
+          "export is not available over this MCP transport — use the KYX export panel",
+        );
       }
       const format = exportFormatOf(record);
       const request: McpExportRequest = {

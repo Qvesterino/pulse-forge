@@ -1,6 +1,11 @@
 # ADR 0046: Headless MCP evaluation
 
-- **Status:** Proposed (owner-gated — see §Consequences)
+- **Status:** Accepted (test-only scope) — **implemented 2026-10-14**:
+  `src/mcp/headless-host.ts` + `tests/mcp-headless-acceptance.test.ts` pin
+  the acceptance contract. NO shipping surface imports the host. Remaining
+  owner-gated: productizing the harness (a shipped library or an
+  evaluation CLI) and extending coverage beyond the representative
+  families.
 - **Date:** 2026-10-14
 - **Context source:** control-surface audit 2026-10-13, GAP-07 + roadmap P3-H
 
