@@ -425,7 +425,7 @@ describe("pattern commands", () => {
     expect(store.doc.patterns[0].rows[kick.id]).toHaveLength(16);
   });
 
-  it("setPatternLength shrink clamps long notes instead of deleting them", () => {
+  it("setPatternLength shrink preserves sparse MIDI notes beyond the step grid", () => {
     const doc = createDefaultProject();
     const store = new ProjectStore(doc);
     const bass = store.doc.tracks.find(
@@ -439,17 +439,16 @@ describe("pattern commands", () => {
     expect(store.doc.patterns[0].notes[bass.id]).toHaveLength(before + 2);
     store.execute(setPatternLength(store.doc, store.doc.activePatternId, 16));
     const notes = store.doc.patterns[0].notes[bass.id];
-    // Long pad survives, clamped to the new end; the out-of-range note is dropped.
-    expect(notes).toHaveLength(before + 1);
+    expect(notes).toHaveLength(before + 2);
     const pad = notes.find((n) => n.pitch === 48)!;
-    expect(pad.start + pad.duration).toBeLessThanOrEqual(16 * 120);
-    expect(pad.duration).toBe(16 * 120);
-    expect(notes.some((n) => n.pitch === 50)).toBe(false);
+    expect(pad.duration).toBe(64 * 120);
+    expect(pad.start + pad.duration).toBeGreaterThan(16 * 120);
+    expect(notes.find((n) => n.pitch === 50)).toMatchObject({ start: 60 * 120, duration: 120 });
     store.undo();
     expect(store.doc.patterns[0].notes[bass.id]).toHaveLength(before + 2);
   });
 
-  it("moveNote clamps duration so long pads stay inside the pattern", () => {
+  it("moveNote preserves a note's duration across the bounded step-grid end", () => {
     const doc = createDefaultProject();
     const store = new ProjectStore(doc);
     const bass = store.doc.tracks.find(
@@ -460,7 +459,7 @@ describe("pattern commands", () => {
     store.execute(moveNote(store.doc, bass.id, noteId, { start: 1500 }));
     const moved = store.doc.patterns[0].notes[bass.id].find((n) => n.id === noteId)!;
     expect(moved.start).toBe(1500);
-    expect(moved.start + moved.duration).toBeLessThanOrEqual(16 * 120);
+    expect(moved.duration).toBe(960);
     store.undo();
     const restored = store.doc.patterns[0].notes[bass.id].find((n) => n.id === noteId)!;
     expect(restored).toMatchObject({ start: 0, duration: 960 });

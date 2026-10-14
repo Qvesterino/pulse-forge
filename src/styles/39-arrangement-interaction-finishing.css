@@ -142,6 +142,18 @@
   outline-offset: -2px;
 }
 
+.scene-strip .scene-strip-pair:focus-visible,
+.scene-strip .scene-strip-cc-item:focus-within {
+  position: relative;
+  z-index: 3;
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: -2px;
+}
+
+.scene-strip .scene-strip-pair:focus-visible {
+  border-color: var(--accent);
+}
+
 .arr-panel .arr-midi-clip:focus-visible {
   z-index: 3;
   outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);

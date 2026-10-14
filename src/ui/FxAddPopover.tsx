@@ -157,6 +157,7 @@ export function FxAddPopover({
         <button
           type="button"
           className={`fx-add-tile${category === null ? " active" : ""}`}
+          aria-pressed={category === null}
           onClick={() => setCategory(null)}
         >
           ALL
@@ -166,6 +167,7 @@ export function FxAddPopover({
             key={tile.key}
             type="button"
             className={`fx-add-tile${category === tile.key ? " active" : ""}`}
+            aria-pressed={category === tile.key}
             title={tile.caption}
             onClick={() => setCategory(category === tile.key ? null : tile.key)}
           >

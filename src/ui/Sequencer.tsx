@@ -1,5 +1,9 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useActivePatternId, usePatterns, useServices, useTracks } from "./context";
+import {
+  MIDI_CLIP_EDITOR_NAVIGATION_EVENT,
+  type MidiClipEditorNavigationRequest,
+} from "./arrangement/midiClipEditorNavigation";
 import { fireGestureHint } from "./gestureHints";
 import { useLayout } from "./layout";
 import { STEP_TICKS } from "../project-model/types";
@@ -577,6 +581,35 @@ export function Sequencer({
   // region (transport.setLoop in ticks — the topbar fields show the values).
   const rulerRef = useRef<HTMLDivElement | null>(null);
   const rulerDragRef = useRef<{ startStep: number; lastStep: number } | null>(null);
+  useEffect(() => {
+    const openClipEditor = (event: Event) => {
+      const request = (event as CustomEvent<MidiClipEditorNavigationRequest>).detail;
+      if (
+        !request ||
+        typeof request.trackId !== "string" ||
+        typeof request.patternId !== "string" ||
+        !Number.isFinite(request.startTick)
+      )
+        return;
+
+      const targetIndex = flatItems.findIndex((item) => item.type === "pianoRoll" && item.track.id === request.trackId);
+      if (targetIndex < 0) return;
+
+      const scroller = scrollRef.current;
+      if (scroller) {
+        const rowTop = (rulerRef.current?.offsetHeight ?? 0) + (cumulativeHeights[targetIndex] ?? 0);
+        const visibleOffset = Math.max(0, (scroller.clientHeight - ROW_HEIGHT) / 2);
+        const nextScrollTop = Math.max(0, rowTop - visibleOffset);
+        scroller.scrollTop = nextScrollTop;
+        setScrollTop(nextScrollTop);
+      }
+      setPianoFullTrack(request.trackId);
+    };
+
+    window.addEventListener(MIDI_CLIP_EDITOR_NAVIGATION_EVENT, openClipEditor);
+    return () => window.removeEventListener(MIDI_CLIP_EDITOR_NAVIGATION_EVENT, openClipEditor);
+  }, [flatItems, cumulativeHeights]);
+
   const rulerStepFromEvent = useCallback(
     (clientX: number): number | null => {
       const ruler = rulerRef.current;

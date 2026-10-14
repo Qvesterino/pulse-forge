@@ -13,6 +13,7 @@ import {
 import { nudgeClips } from "../../commands/clipEditing";
 import type { MidiClip, NoteEvent, ProjectDocument, Track } from "../../project-model/types";
 import { BAR_TICKS, STEP_TICKS } from "../../project-model/types";
+import { midiPhraseLengthTicks } from "../../project-model/midiTime";
 import { snapBarsFor, snapTick, type SnapGridId } from "../snap";
 import {
   clearTimelineGroupDragPreview,
@@ -31,7 +32,8 @@ interface MidiClipLanesProps {
   playheadTick: number;
   onExecute: (command: Command) => boolean;
   onSelect: (clipId: string) => void;
-  onEditSource: (trackId: string, patternId: string) => void;
+  onEditSource: (clip: MidiClip) => void;
+  onMakeUniqueAndEdit: (clipId: string) => void;
 }
 
 interface ClipDrag {
@@ -100,6 +102,7 @@ export function MidiClipLanes({
   onExecute,
   onSelect,
   onEditSource,
+  onMakeUniqueAndEdit,
 }: MidiClipLanesProps) {
   const instruments = tracks.filter((track) => track.kind === "instrument");
   const dragRef = useRef<ClipDrag | null>(null);
@@ -253,6 +256,8 @@ export function MidiClipLanes({
       {instruments.map((track) => {
         const clips = clipsByTrack.get(track.id) ?? [];
         const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId) ?? doc.patterns[0];
+        const patternNotes = pattern?.notes?.[track.id] ?? EMPTY_NOTES;
+        const defaultClipLength = pattern ? midiPhraseLengthTicks(pattern.stepCount, patternNotes) : STEP_TICKS * 64;
         return (
           <div className="arr-midi-lane-row" key={track.id} aria-label={`${track.name} MIDI lane`}>
             <div className="arr-midi-lane-label">
@@ -270,7 +275,7 @@ export function MidiClipLanes({
                       track.id,
                       pattern.id,
                       Math.max(0, snapToGrid(playheadTick, snapGrid, false)),
-                      pattern.stepCount * STEP_TICKS,
+                      defaultClipLength,
                     ),
                   );
                 }}
@@ -289,7 +294,7 @@ export function MidiClipLanes({
                   snapGrid,
                   event.shiftKey,
                 );
-                onExecute(addMidiClip(doc, track.id, pattern.id, Math.max(0, tick), pattern.stepCount * STEP_TICKS));
+                onExecute(addMidiClip(doc, track.id, pattern.id, Math.max(0, tick), defaultClipLength));
               }}
             >
               {clips.map((clip) => {
@@ -301,7 +306,8 @@ export function MidiClipLanes({
                 const startTick = groupStartTick ?? activeDrag?.nextStartTick ?? clip.startTick;
                 const lengthTicks = activeDrag?.nextLengthTicks ?? clip.lengthTicks;
                 const source = doc.patterns.find((candidate) => candidate.id === clip.patternId);
-                const patternTicks = source ? source.stepCount * STEP_TICKS : 0;
+                const sourceNotes = source?.notes?.[track.id] ?? EMPTY_NOTES;
+                const patternTicks = source ? midiPhraseLengthTicks(source.stepCount, sourceNotes) : 0;
                 const phase = clip.phaseOffsetTicks ?? 0;
                 return (
                   <button
@@ -321,7 +327,7 @@ export function MidiClipLanes({
                     onDoubleClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      onEditSource(track.id, clip.patternId);
+                      onEditSource(clip);
                     }}
                     onContextMenu={(event) => {
                       event.preventDefault();
@@ -332,7 +338,7 @@ export function MidiClipLanes({
                   >
                     <span className="arr-midi-clip-name">{source?.name ?? "MIDI"}</span>
                     <MidiClipNoteMarks
-                      notes={source?.notes?.[track.id] ?? EMPTY_NOTES}
+                      notes={sourceNotes}
                       patternTicks={patternTicks}
                       phase={phase}
                       lengthTicks={lengthTicks}
@@ -347,8 +353,9 @@ export function MidiClipLanes({
       {menu && menuClip && (
         <div className="arr-midi-clip-menu" style={{ left: menu.x, top: menu.y }} role="menu">
           {[
-            ["Edit source pattern", () => onEditSource(menuClip.trackId, menuClip.patternId)],
+            ["Edit source pattern", () => onEditSource(menuClip)],
             ["Duplicate", () => onExecute(duplicateMidiClip(doc, menu.clipId))],
+            ["Make unique & edit", () => onMakeUniqueAndEdit(menu.clipId)],
             ["Make unique", () => onExecute(makeMidiClipUnique(doc, menu.clipId))],
             [
               "Mute / unmute",

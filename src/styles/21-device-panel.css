@@ -86,6 +86,19 @@
   background: var(--device-family-color, var(--text-faint));
   opacity: 0.6;
 }
+.device-chain-item::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  bottom: 1px;
+  left: 6px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
 .device-chain-item.is-instrument::before {
   background: var(--accent);
 }
@@ -131,6 +144,9 @@
     0 1px 6px color-mix(in srgb, var(--device-family-color, var(--accent)) 18%, transparent);
 }
 .device-chain-item.active::before {
+  opacity: 1;
+}
+.device-chain-item.active::after {
   opacity: 1;
 }
 .device-chain-item:focus-visible {
@@ -688,6 +704,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .device-chain-item,
+  .device-chain-item::after,
   .device-editor .fx-device-buttons .btn-small {
     transition: none;
   }

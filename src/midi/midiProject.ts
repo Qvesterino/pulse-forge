@@ -17,6 +17,7 @@ import {
   createInstrumentTrackModel,
   createPatternForDoc,
   normalizeProject,
+  MAX_ARRANGEMENT_CLIP_TICKS,
 } from "../project-model/schema";
 import {
   BAR_TICKS,
@@ -103,8 +104,6 @@ export function importMidiCommand(doc: ProjectDocument, midi: Uint8Array, fileLa
   }
   const neededSteps = Math.ceil(maxTick / STEP_TICKS);
   const stepCount = Math.max(16, Math.min(MAX_PATTERN_STEPS, Math.ceil(neededSteps / 16) * 16));
-  const patternTicks = stepCount * STEP_TICKS;
-
   const raw: ProjectDocument = { ...doc, tracks: [...doc.tracks] };
   const trackNames: string[] = [];
 
@@ -158,7 +157,7 @@ export function importMidiCommand(doc: ProjectDocument, midi: Uint8Array, fileLa
     }
   }
 
-  // Melodic notes → piano-roll events, clipped to the pattern window.
+  // Melodic notes stay sparse and can extend past the bounded step grid.
   let noteCount = 0;
   let dropped = 0;
   for (const plan of instrumentPlans) {
@@ -168,7 +167,7 @@ export function importMidiCommand(doc: ProjectDocument, midi: Uint8Array, fileLa
     for (const note of plan.notes) {
       const start = scaleTicks(note.startTick, parsed.division);
       const end = scaleTicks(note.endTick, parsed.division);
-      if (start < 0 || start >= patternTicks) {
+      if (start < 0 || start >= MAX_ARRANGEMENT_CLIP_TICKS) {
         dropped++;
         continue;
       }
@@ -176,7 +175,7 @@ export function importMidiCommand(doc: ProjectDocument, midi: Uint8Array, fileLa
         id: `midi-${plan.trackId}-${noteCount}`,
         pitch: Math.max(0, Math.min(127, note.pitch)),
         start,
-        duration: Math.max(1, Math.min(end, patternTicks) - start),
+        duration: Math.max(1, Math.min(end, MAX_ARRANGEMENT_CLIP_TICKS) - start),
         velocity: note.velocity,
       });
       noteCount++;

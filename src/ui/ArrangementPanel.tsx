@@ -16,6 +16,7 @@ import {
 import { ScenesPanel } from "./arrangement/ScenesPanel";
 import { ArrangementViewControls } from "./arrangement/ArrangementViewControls";
 import { MidiClipLanes } from "./arrangement/MidiClipLanes";
+import { requestMidiClipEditorNavigation } from "./arrangement/midiClipEditorNavigation";
 import { AutomationClipLanes } from "./arrangement/AutomationClipLanes";
 import {
   clearTimelineGroupDragPreview,
@@ -82,6 +83,7 @@ import {
   sliceToPads,
 } from "../commands/commands";
 import { generatePatternCommand } from "../commands/aiPattern";
+import { makeMidiClipUnique } from "../commands/midiClips";
 import { MAX_ARRANGEMENT_CLIP_BARS, sceneRoleOf } from "../project-model/schema";
 import { applySmartComp, planBars, planSmartComp, type SmartCompPlan } from "../commands/smart-comp";
 import { sectionFxChips } from "../intent/song";
@@ -1843,6 +1845,36 @@ export function ArrangementPanel() {
       setActionError(error instanceof Error ? error.message : "Operation failed");
       return false;
     }
+  };
+
+  const openMidiClipSource = (clip: MidiClip): void => {
+    const currentDoc = services.store.getDoc();
+    const currentClip = currentDoc.arrangement.midiClips?.find((candidate) => candidate.id === clip.id) ?? clip;
+    if (!currentDoc.tracks.some((track) => track.id === currentClip.trackId && track.kind === "instrument")) return;
+    if (!currentDoc.patterns.some((pattern) => pattern.id === currentClip.patternId)) return;
+
+    setSelectedClipId(null);
+    setSelectedAudioClipId(null);
+    selectionStore.setClips([]);
+    selectionStore.setTracks([currentClip.trackId]);
+    selectionStore.clearNotes();
+    selectionStore.setStepSelection(null);
+    selectionStore.clearTimeRange();
+    if (
+      currentDoc.activePatternId !== currentClip.patternId &&
+      !execute(setActivePattern(currentDoc, currentClip.patternId))
+    )
+      return;
+
+    services.playback.seek(currentClip.startTick);
+    requestMidiClipEditorNavigation(currentClip);
+  };
+
+  const makeMidiClipUniqueAndEdit = (clipId: string): void => {
+    const currentDoc = services.store.getDoc();
+    if (!execute(makeMidiClipUnique(currentDoc, clipId))) return;
+    const uniqueClip = services.store.getDoc().arrangement.midiClips?.find((clip) => clip.id === clipId);
+    if (uniqueClip) openMidiClipSource(uniqueClip);
   };
 
   const compAudioRange = (groupId: string, sourceTakeId: string, startTick: number, endTick: number): void => {
@@ -5200,19 +5232,8 @@ export function ArrangementPanel() {
               setSelectedAudioClipId(null);
               selectionStore.setClips([id]);
             }}
-            onEditSource={(trackId, patternId) => {
-              const currentDoc = services.store.getDoc();
-              if (!currentDoc.tracks.some((track) => track.id === trackId && track.kind === "instrument")) return;
-              if (!currentDoc.patterns.some((pattern) => pattern.id === patternId)) return;
-              setSelectedClipId(null);
-              setSelectedAudioClipId(null);
-              selectionStore.setClips([]);
-              selectionStore.setTracks([trackId]);
-              selectionStore.clearNotes();
-              selectionStore.setStepSelection(null);
-              selectionStore.clearTimeRange();
-              if (currentDoc.activePatternId !== patternId) execute(setActivePattern(currentDoc, patternId));
-            }}
+            onEditSource={openMidiClipSource}
+            onMakeUniqueAndEdit={makeMidiClipUniqueAndEdit}
           />
           <AutomationClipLanes
             doc={services.store.getDoc()}

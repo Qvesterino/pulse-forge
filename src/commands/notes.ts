@@ -1,6 +1,7 @@
 import type { Command } from "./types";
 import type { InstrumentTrack, NoteEvent, ProjectDocument } from "../project-model/types";
 import { STEP_TICKS } from "../project-model/types";
+import { MAX_ARRANGEMENT_CLIP_TICKS } from "../project-model/schema";
 import {
   applyScaleOption,
   arpeggiateNotes,
@@ -24,6 +25,8 @@ import {
   type MidiCreativeOperation,
 } from "../midi/creative";
 import { clamp, uid } from "../shared/ids";
+import { midiPhraseLengthTicks } from "../project-model/midiTime";
+import { snapshot } from "./core";
 
 /**
  * Note events: the piano-roll note commands plus the MIDI-creative
@@ -52,6 +55,43 @@ function withTrackNotes(
       p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [trackId]: notes } } : p,
     ),
   };
+}
+
+/**
+ * When a note edit grows an instrument's sparse phrase, grow MIDI clips that
+ * share that source in the same undoable command. This keeps a newly
+ * lengthened 808 audible in the arrangement without changing step arrays.
+ */
+function extendMidiClipsForLongerPhrase(
+  doc: ProjectDocument,
+  trackId: string,
+  patternId: string,
+  command: Command,
+): Command {
+  const previousPattern = doc.patterns.find((pattern) => pattern.id === patternId);
+  if (!previousPattern) return command;
+  const previousNotes = previousPattern.notes?.[trackId] ?? [];
+  const previousPhraseTicks = midiPhraseLengthTicks(previousPattern.stepCount, previousNotes);
+  const nextDoc = command.execute(doc);
+  const nextPattern = nextDoc.patterns.find((pattern) => pattern.id === patternId);
+  if (!nextPattern) return command;
+  const nextNotes = nextPattern.notes?.[trackId] ?? [];
+  const nextPhraseTicks = midiPhraseLengthTicks(nextPattern.stepCount, nextNotes);
+  if (nextPhraseTicks <= previousPhraseTicks) return command;
+
+  let clipsChanged = false;
+  const midiClips = (nextDoc.arrangement.midiClips ?? []).map((clip) => {
+    if (clip.patternId !== patternId || clip.trackId !== trackId || clip.lengthTicks >= nextPhraseTicks) return clip;
+    const lengthTicks = Math.min(nextPhraseTicks, MAX_ARRANGEMENT_CLIP_TICKS - clip.startTick);
+    if (lengthTicks <= clip.lengthTicks) return clip;
+    clipsChanged = true;
+    return { ...clip, lengthTicks };
+  });
+  if (!clipsChanged) return command;
+  return snapshot(command.type, command.label, doc, {
+    ...nextDoc,
+    arrangement: { ...nextDoc.arrangement, midiClips },
+  });
 }
 
 export function activeTrackNotes(doc: ProjectDocument, trackId: string): NoteEvent[] {
@@ -83,26 +123,24 @@ export function addNote(
       d,
       trackId,
       (notes) => {
-        // Same apply-time pattern-bounds clamp as moveNote: normalize drops
-        // overflowing notes on save, so a long note added near the end must
-        // shorten FL-style instead of silently disappearing later.
-        const pattern = d.patterns.find((p) => p.id === patternId);
-        const patternTicks = pattern ? pattern.stepCount * STEP_TICKS : null;
-        const fitted =
-          patternTicks !== null
-            ? { ...sanitized, start: Math.min(sanitized.start, Math.max(0, patternTicks - 1)) }
-            : sanitized;
-        const maxDur = patternTicks !== null ? Math.max(1, patternTicks - fitted.start) : fitted.duration;
+        // Clamp at the musical-time safety ceiling; note duration is
+        // independent from the bounded step grid.
+        const fitted = {
+          ...sanitized,
+          start: Math.min(sanitized.start, Math.max(0, MAX_ARRANGEMENT_CLIP_TICKS - 1)),
+        };
+        const maxDur = Math.max(1, MAX_ARRANGEMENT_CLIP_TICKS - fitted.start);
         return [...notes, { ...fitted, duration: Math.min(fitted.duration, maxDur) }];
       },
       patternId,
     );
-  return {
+  const command: Command = {
     type: "addNote",
     label: `Add note`,
     execute: (d) => apply(d),
     undo: (d) => withTrackNotes(d, trackId, (notes) => notes.filter((n) => n.id !== id), patternId),
   };
+  return extendMidiClipsForLongerPhrase(_doc, trackId, patternId, command);
 }
 
 export function moveNote(
@@ -124,10 +162,9 @@ export function moveNote(
       d,
       trackId,
       (notes) => {
-        // PatternTicks is resolved from the doc AT APPLY time (undo/collab
-        // may run against a doc whose pattern length changed since factory).
-        const pattern = d.patterns.find((p) => p.id === patternId);
-        const patternTicks = pattern ? pattern.stepCount * STEP_TICKS : null;
+        // Apply-time validation keeps edits safe after undo/collaboration
+        // changes, while the sparse note horizon remains independent of the
+        // bounded step grid.
         return notes.map((n) => {
           if (n.id !== noteId) return n;
           const next = { ...n, ...patch };
@@ -135,25 +172,22 @@ export function moveNote(
           // Pitch out of [0, 127] renders pinned to the wrong row — clamp at
           // the boundary like every other field (nudgeNotes does the same).
           if (next.pitch !== undefined) next.pitch = clamp(Math.round(next.pitch), 0, 127);
-          if (patternTicks !== null) {
-            // Keep the whole note inside the pattern: normalizeProject drops
-            // overflowing notes, so moving a long pad right shortens it
-            // FL-style instead of deleting it on the next save.
-            if (next.start > patternTicks - 1) next.start = Math.max(0, patternTicks - 1);
-            const maxDur = Math.max(1, patternTicks - next.start);
-            if (next.duration > maxDur) next.duration = maxDur;
-          }
+          // Keep sparse notes inside the arrangement safety range; the step
+          // arrays remain bounded independently of note duration.
+          next.duration = Math.max(1, Math.min(MAX_ARRANGEMENT_CLIP_TICKS, Math.round(next.duration)));
+          next.start = Math.min(next.start, Math.max(0, MAX_ARRANGEMENT_CLIP_TICKS - next.duration));
           return next;
         });
       },
       patternId,
     );
-  return {
+  const command: Command = {
     type: "moveNote",
     label: "Move note",
     execute: (d) => apply(d, delta),
     undo: (d) => apply(d, { pitch: prev.pitch, start: prev.start, duration: prev.duration }),
   };
+  return extendMidiClipsForLongerPhrase(doc, trackId, patternId, command);
 }
 
 export function resizeNote(doc: ProjectDocument, trackId: string, noteId: string, duration: number): Command {
@@ -169,29 +203,25 @@ export function resizeNote(doc: ProjectDocument, trackId: string, noteId: string
       d,
       trackId,
       (notes) => {
-        // Clamp at APPLY time (mirrors moveNote): patternTicks is re-read
-        // from the live doc — a resize committed after a collab peer (or
-        // history jump) shrank the pattern used to overflow it, and
-        // normalize then silently DELETED the note. Non-finite junk is a
-        // no-op rather than a poison write.
+        // Clamp at APPLY time and reject non-finite values, so collaboration
+        // or undo cannot write an invalid sparse note into the project.
         if (!Number.isFinite(dur)) return notes;
-        const pattern = d.patterns.find((p) => p.id === patternId);
-        const patternTicks = pattern ? pattern.stepCount * STEP_TICKS : null;
         return notes.map((n) => {
           if (n.id !== noteId) return n;
           let nextDur = Math.max(1, Math.round(dur));
-          if (patternTicks !== null) nextDur = Math.min(nextDur, Math.max(1, patternTicks - n.start));
+          nextDur = Math.min(nextDur, Math.max(1, MAX_ARRANGEMENT_CLIP_TICKS - n.start));
           return nextDur === n.duration ? n : { ...n, duration: nextDur };
         });
       },
       patternId,
     );
-  return {
+  const command: Command = {
     type: "resizeNote",
     label: "Resize note",
     execute: (d) => apply(d, duration),
     undo: (d) => apply(d, prev.duration),
   };
+  return extendMidiClipsForLongerPhrase(doc, trackId, patternId, command);
 }
 
 export function setNoteVelocity(doc: ProjectDocument, trackId: string, noteId: string, velocity: number): Command {
@@ -277,15 +307,12 @@ export function quantizeNotes(
     // the way to the grid (50% = "quick quantize 50%", keeps the groove feel)
     const start = qStart + (n.start - qStart) * (1 - s);
     let duration = n.duration * (1 - s) + Math.max(gridTicks, qDur) * s;
-    // A full-bar note can blend to duration > patternTicks (strength < 1
-    // mixes in `gridTicks`); the start clamp below would then go negative →
-    // start 0 with an overflowing end → normalize DELETES the note. Cap the
-    // duration to the pattern first so quantize never destroys content.
-    const patternTicks = pattern.stepCount * STEP_TICKS;
-    if (duration > patternTicks) duration = patternTicks;
+    // Keep quantize inside the arrangement tick ceiling without constraining
+    // note lengths to the bounded step grid.
+    duration = Math.min(duration, MAX_ARRANGEMENT_CLIP_TICKS);
     return {
       ...n,
-      start: Math.max(0, Math.min(patternTicks - duration, Math.round(start))),
+      start: Math.max(0, Math.min(MAX_ARRANGEMENT_CLIP_TICKS - duration, Math.round(start))),
       duration: Math.max(1, Math.round(duration)),
     };
   });
@@ -306,25 +333,15 @@ export function duplicateNotes(doc: ProjectDocument, trackId: string, noteIds?: 
   const targetIds = noteIds && noteIds.length > 0 ? new Set(noteIds) : null;
   const toDup = targetIds ? all.filter((n) => targetIds.has(n.id)) : all;
   if (toDup.length === 0) throw new Error("Select at least one note to duplicate");
-  const patternTicks = pattern.stepCount * STEP_TICKS;
   const minStart = Math.min(...toDup.map((n) => n.start));
   const maxEnd = Math.max(...toDup.map((n) => n.start + n.duration));
   const width = maxEnd - minStart;
-  // Defect R9.D1 (reliability ratchet audit): the copy's `start` is wrapped
-  // via `% patternTicks` but the original `duration` was preserved. A long
-  // selection whose wrapped start lands near the end of the pattern produced
-  // a copy that extended past `patternTicks` — violating the
-  // `n.start + n.duration <= patternTicks` invariant enforced by
-  // `normalizeProject` in `src/project-model/schema.ts`. The duplicate was
-  // silently dropped on the next save/load. Clamp the copy's duration to
-  // what remains in the pattern; skip the copy if the wrap leaves no room
-  // (a 0-tick note would be filtered anyway, and silently dropping it is
-  // preferable to producing a note that does not represent the user's
-  // intent).
+  // Duplicate forward in musical time. Wrapping a long note back into the
+  // step grid would retrigger it at the wrong place and truncate its tail.
   const copies: NoteEvent[] = [];
   for (const n of toDup) {
-    const rawStart = (n.start + width) % patternTicks;
-    const remaining = patternTicks - rawStart;
+    const rawStart = n.start + width;
+    const remaining = MAX_ARRANGEMENT_CLIP_TICKS - rawStart;
     if (remaining < 1) continue;
     copies.push({
       ...n,
@@ -448,14 +465,13 @@ export function nudgeNotes(
 
   const pattern = doc.patterns.find((p) => p.id === doc.activePatternId);
   if (!pattern) throw new Error("Active pattern not found");
-  const patternTicks = pattern.stepCount * STEP_TICKS;
   const all = activeTrackNotes(doc, trackId);
   const targetIds = new Set(noteIds);
   const before = all.filter((n) => targetIds.has(n.id));
   if (before.length === 0) throw new Error("Select notes to nudge");
   const after = all.map((n) => {
     if (!targetIds.has(n.id)) return n;
-    const newStart = clamp(Math.round(n.start + deltaTicks), 0, Math.max(0, patternTicks - n.duration));
+    const newStart = clamp(Math.round(n.start + deltaTicks), 0, Math.max(0, MAX_ARRANGEMENT_CLIP_TICKS - n.duration));
     const newPitch = clamp(Math.round(n.pitch + deltaPitch), 0, 127);
     return { ...n, start: newStart, pitch: newPitch };
   });

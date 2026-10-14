@@ -6,7 +6,6 @@
  */
 import type { Command } from "./types";
 import type { NoteEvent, ProjectDocument } from "../project-model/types";
-import { STEP_TICKS } from "../project-model/types";
 import {
   createPatternForDoc,
   normalizeProject,
@@ -198,7 +197,6 @@ export function setPatternLength(doc: ProjectDocument, patternId: string, stepCo
   if (!Number.isFinite(stepCount)) throw new Error(`Pattern length must be a finite number`);
   // Same hard ceiling normalize enforces on load (Audit 08 D6).
   const safeCount = Math.min(128, Math.max(1, Math.floor(stepCount)));
-  const patternTicks = safeCount * STEP_TICKS;
   const next: ProjectDocument = {
     ...doc,
     patterns: doc.patterns.map((p) =>
@@ -212,20 +210,9 @@ export function setPatternLength(doc: ProjectDocument, patternId: string, stepCo
                 new Array<number>(safeCount).fill(0).map((_, i) => row[i] ?? 0),
               ]),
             ),
-            notes: Object.fromEntries(
-              Object.entries(p.notes ?? {}).map(([trackId, notes]) => [
-                trackId,
-                notes.flatMap((n) => {
-                  // Shrinking floors, not cliffs (FL keeps long pads): a note
-                  // crossing the new end is clamped to fit (min 1 tick, so the
-                  // normalize invariant holds); only notes starting at/after
-                  // the new end are dropped.
-                  if (n.start >= patternTicks) return [];
-                  if (n.duration <= patternTicks - n.start) return [n];
-                  return [{ ...n, duration: Math.max(1, patternTicks - n.start) }];
-                }),
-              ]),
-            ),
+            // Sparse MIDI notes have their own phrase horizon; changing the
+            // bounded step-grid length must not shorten or delete them.
+            notes: p.notes,
             // Prune meta beyond the new length — otherwise shrink→grow
             // resurrects stale probability/ratchet/p-locks on zeroed steps.
             stepMeta: Object.fromEntries(

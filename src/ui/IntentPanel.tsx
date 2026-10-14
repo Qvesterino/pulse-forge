@@ -163,7 +163,13 @@ import {
   suggestSectionRevivals,
   type SongSectionSuggestion,
 } from "../intent/song-audio-review";
-import { routeIntentText, REVISE_DELTA, type ReviseAttribute, type RoutedIntent } from "../intent/route";
+import {
+  routeIntentText,
+  REVISE_DELTA,
+  type IntentClarificationChoice,
+  type ReviseAttribute,
+  type RoutedIntent,
+} from "../intent/route";
 import { destructiveCheckpointName, routeIsDestructive } from "../intent/route-guard";
 import { restoreIntentCheckpoint, saveIntentCheckpoint } from "../intent/checkpoints";
 import { snapshot } from "../commands/core";
@@ -3602,7 +3608,12 @@ export function IntentPanel() {
   const [rangeConsolidating, setRangeConsolidating] = useState(false);
   // `prompt` rides along for MINING only (which ask produced these chips) —
   // the diagnosis path leaves it unset; picked chips log against it.
-  const [clarify, setClarify] = useState<{ reason: string; suggestions: string[]; prompt?: string } | null>(null);
+  const [clarify, setClarify] = useState<{
+    reason: string;
+    suggestions: string[];
+    choices?: IntentClarificationChoice[];
+    prompt?: string;
+  } | null>(null);
   const loudnessBusyRef = useRef(false);
   // VOICE CAPTURE (pipeline [A], docs/LOCAL-INTENT-MODEL.md §6): the mic tap
   // fills the intent BAR — the transcript is text the user sees and edits
@@ -4533,7 +4544,12 @@ export function IntentPanel() {
         // MINING: a clarify is a real sentence both layers failed on — the
         // #1 corpus signal for the next round.
         stopAudition();
-        setClarify({ reason: route.reason, suggestions: route.suggestions, prompt: source });
+        setClarify({
+          reason: route.reason,
+          suggestions: route.suggestions,
+          ...(route.choices ? { choices: route.choices } : {}),
+          prompt: source,
+        });
         logIntentMiningEvent({ prompt: source, outcome: "clarify", reason: route.reason });
         setStatus(route.reason);
       } else {
@@ -5118,15 +5134,18 @@ export function IntentPanel() {
           </div>
         </div>
       )}
-      {clarify && clarify.suggestions.length > 0 && (
+      {clarify && (clarify.choices?.length || clarify.suggestions.length) > 0 && (
         <div className="intent-history" aria-label="Nearest interpretations">
           <span className="intent-history-label">INTENT?</span>
-          {clarify.suggestions.map((suggestion) => (
+          {(clarify.choices?.length
+            ? clarify.choices.map((choice) => ({ label: choice.label, choice }))
+            : clarify.suggestions.map((suggestion) => ({ label: suggestion, choice: undefined }))
+          ).map(({ label, choice }) => (
             <button
-              key={suggestion}
+              key={label}
               type="button"
               className="intent-history-chip"
-              title="Apply this interpretation"
+              title={choice ? "Apply this validated interpretation" : "Apply this interpretation"}
               onClick={() => {
                 // MINING: the chip the user picked reveals what the failed
                 // ask actually meant — the strongest label in the whole log
@@ -5134,13 +5153,14 @@ export function IntentPanel() {
                   prompt: clarify.prompt ?? "(diagnóza)",
                   outcome: "clarify-picked",
                   reason: clarify.reason,
-                  pickedSuggestion: suggestion,
+                  pickedSuggestion: label,
                 });
-                replacePrompt(suggestion, true);
-                void routeAndExecute(suggestion);
+                replacePrompt(label, true);
+                if (choice) preRoutedRef.current = choice.route;
+                void routeAndExecute(label);
               }}
             >
-              {suggestion.length > 42 ? suggestion.slice(0, 40) + "…" : suggestion}
+              {label.length > 42 ? label.slice(0, 40) + "…" : label}
             </button>
           ))}
         </div>

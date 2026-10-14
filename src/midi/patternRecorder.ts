@@ -2,6 +2,7 @@ import { addNote, prepareRecordPattern, setStepVelocityCommand } from "../comman
 import type { Command } from "../commands/types";
 import { STEP_TICKS } from "../project-model/types";
 import type { ProjectDocument } from "../project-model/types";
+import { MAX_ARRANGEMENT_CLIP_TICKS } from "../project-model/schema";
 
 export type RecordQuantize = "off" | "16th" | "8th";
 export type RecordMode = "overdub" | "replace";
@@ -181,7 +182,7 @@ export class PatternRecorder {
     // Wrap into the pattern: a take across the loop end lands back at the top.
     const start = ((this.quantizeTick(rawStart) % patternTicks) + patternTicks) % patternTicks;
     const rawDuration = Math.round(rawEnd - rawStart);
-    const duration = Math.min(Math.max(STEP_TICKS, rawDuration), patternTicks - start);
+    const duration = Math.min(Math.max(STEP_TICKS, rawDuration), MAX_ARRANGEMENT_CLIP_TICKS - start);
     if (duration < 1) return;
     this.deps.execute(addNote(doc, trackId, { pitch, start, duration, velocity }));
   }

@@ -304,6 +304,14 @@
   color: var(--accent);
 }
 
+.scene-strip-track.selected {
+  padding-left: 5px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+  color: var(--accent);
+}
+
 .scene-strip-kind {
   font: 700 9px var(--mono);
   letter-spacing: 0.6px;
@@ -448,6 +456,12 @@
   white-space: nowrap;
 }
 
+.scene-strip-cc-item:not(.muted) {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border-soft));
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg-panel-2));
+  color: var(--text);
+}
+
 .scene-strip-cc-item input {
   accent-color: var(--accent);
   margin: 0;
@@ -492,13 +506,32 @@
     0 0 16px rgba(245, 158, 11, 0.18);
 }
 .channel-color {
-  width: 18px;
-  height: 18px;
-  border: none;
-  border-radius: 3px;
-  padding: 0;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  padding: 2px;
   margin-left: 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-raise);
   cursor: pointer;
+}
+
+.channel-color:hover {
+  border-color: var(--accent);
+}
+
+.channel-color:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  .channel-color {
+    flex-basis: 28px;
+    width: 28px;
+    height: 28px;
+  }
 }
 .fader-menu {
   position: fixed;
@@ -956,15 +989,16 @@
 }
 
 .fx-add-tile {
-  height: 22px;
+  height: 24px;
+  min-height: 24px;
   padding: 0 9px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--text-dim);
   font-family: inherit;
-  font-size: 9px;
-  letter-spacing: 0.7px;
+  font-size: 10px;
+  letter-spacing: 0.5px;
   cursor: pointer;
 }
 
@@ -976,6 +1010,28 @@
 .fx-add-tile.active {
   border-color: var(--accent);
   color: var(--accent);
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--accent) 84%, #fff);
+}
+
+.fx-add-popover :is(.fx-add-close, .fx-add-goal, .fx-add-tile, .fx-add-device):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, #fff);
+  outline-offset: -2px;
+}
+
+@container (max-width: 560px) {
+  .fx-add-popover .fx-add-close {
+    display: grid;
+    width: var(--touch-target-large);
+    min-width: var(--touch-target-large);
+    height: var(--touch-target-large);
+    min-height: var(--touch-target-large);
+    padding: 0;
+    place-items: center;
+  }
+
+  .fx-add-popover :is(.fx-add-goal, .fx-add-device) {
+    min-height: var(--touch-target-large);
+  }
 }
 
 .fx-add-grid {

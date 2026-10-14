@@ -5,6 +5,7 @@ import {
   deleteMidiClip,
   deletePattern,
   deleteTrack,
+  addNote,
   makeMidiClipUnique,
   moveMidiClip,
   resizeMidiClip,
@@ -14,7 +15,7 @@ import {
   trimMidiClipStart,
 } from "../src/commands/commands";
 import { projectToYDoc, yDocToProject } from "../src/collab/YDocAdapter";
-import { midiClipEventsInWindow } from "../src/project-model/events";
+import { midiClipEventsInWindow, noteEventsInWindow } from "../src/project-model/events";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { migrateProject, normalizeProject } from "../src/project-model/schema";
 import { BAR_TICKS, STEP_TICKS } from "../src/project-model/types";
@@ -58,6 +59,34 @@ describe("independent MIDI arrangement clips", () => {
       [trackId, BAR_TICKS * 2, 240],
     ]);
     expect(midiClipEventsInWindow(next, { ...clip, muted: true }, 0, BAR_TICKS * 8)).toEqual([]);
+  });
+
+  it("keeps a 12-bar 808 sustain beyond the step grid and grows its MIDI clip undoably", () => {
+    const { doc, trackId, patternId } = projectWithMelody();
+    const withClip = addMidiClip(doc, trackId, patternId, 0, BAR_TICKS).execute(doc);
+    const command = addNote(withClip, trackId, {
+      pitch: 36,
+      start: 0,
+      duration: BAR_TICKS * 12,
+      velocity: 0.9,
+    });
+    const extended = command.execute(withClip);
+    const clip = extended.arrangement.midiClips![0]!;
+    const pattern = extended.patterns.find((candidate) => candidate.id === patternId)!;
+    const longNote = pattern.notes[trackId].find((note) => note.pitch === 36 && note.duration === BAR_TICKS * 12)!;
+
+    expect(longNote.duration).toBe(BAR_TICKS * 12);
+    expect(clip.lengthTicks).toBe(BAR_TICKS * 12);
+    expect(midiClipEventsInWindow(extended, clip, 0, clip.lengthTicks)).toContainEqual(
+      expect.objectContaining({ tick: 0, note: expect.objectContaining({ pitch: 36, duration: BAR_TICKS * 12 }) }),
+    );
+    expect(
+      noteEventsInWindow(pattern, 0, 0, BAR_TICKS * 12).filter((event) => event.note.id === longNote.id),
+    ).toHaveLength(1);
+    expect(
+      noteEventsInWindow(pattern, 0, BAR_TICKS * 12, BAR_TICKS * 13).filter((event) => event.note.id === longNote.id),
+    ).toHaveLength(1);
+    expect(command.undo(extended).arrangement.midiClips![0]!.lengthTicks).toBe(BAR_TICKS);
   });
 
   it("keeps duration when moving near the end cap and preserves phase through trim and split", () => {
@@ -109,7 +138,20 @@ describe("independent MIDI arrangement clips", () => {
     const { doc, trackId, patternId } = projectWithMelody();
     const withClip = addMidiClip(doc, trackId, patternId, BAR_TICKS * 3, BAR_TICKS * 5).execute(doc);
     const legacy = { ...withClip, schemaVersion: 25, arrangement: { ...withClip.arrangement, midiClips: undefined } };
-    expect(migrateProject(legacy).schemaVersion).toBe(27);
+    expect(migrateProject(legacy).schemaVersion).toBe(28);
+    const longNote = { id: "legacy-long-note", pitch: 36, start: 0, duration: BAR_TICKS * 12, velocity: 0.9 };
+    const v27 = {
+      ...withClip,
+      schemaVersion: 27,
+      patterns: withClip.patterns.map((pattern) =>
+        pattern.id === patternId
+          ? { ...pattern, notes: { ...pattern.notes, [trackId]: [...pattern.notes[trackId], longNote] } }
+          : pattern,
+      ),
+    };
+    expect(migrateProject(v27).patterns.find((pattern) => pattern.id === patternId)?.notes[trackId]).toContainEqual(
+      longNote,
+    );
     const yDoc = new Y.Doc();
     const yMap = yDoc.getMap("project");
     projectToYDoc(withClip, yMap);

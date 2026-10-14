@@ -11,7 +11,14 @@ import {
   type SelectedTimeRangeOperation,
 } from "./arrangeWords";
 import { parseIntentText, type ParsedIntent } from "./text-parser";
-import { parseEffectIntent, parseSendIntent, parseBypassIntent } from "./mix";
+import {
+  canApplySendIntent,
+  effectWordIn,
+  parseEffectIntent,
+  parseSendIntent,
+  parseBypassIntent,
+  TARGET_WORDS,
+} from "./mix";
 import { parseParamIntent, type ParamIntent } from "./param-intent";
 import { parseLoudnessIntent } from "./loudness";
 import {
@@ -343,7 +350,12 @@ export type RoutedIntent =
   | { kind: "presetUnknown"; name: string; suggestions: string[] }
   | { kind: "sendIntent"; intent: SendIntent }
   | { kind: "bypassIntent"; intent: BypassIntent }
-  | { kind: "clarify"; reason: string; suggestions: string[] }
+  | {
+      kind: "clarify";
+      reason: string;
+      suggestions: string[];
+      choices?: IntentClarificationChoice[];
+    }
   | { kind: "tempo"; intent: TempoIntent }
   | { kind: "effectIntent"; intent: EffectIntent }
   | { kind: "paramIntent"; intent: ParamIntent }
@@ -362,12 +374,63 @@ export type RoutedIntent =
     }
   | { kind: "pattern"; input: ParsedIntent["input"]; detected: string[] };
 
-function clarifyAmbiguousCommand(text: string): RoutedIntent | null {
+export type IntentClarificationChoice = {
+  label: string;
+  route: { kind: "sendIntent"; intent: SendIntent } | { kind: "fader"; intent: FaderIntent };
+};
+
+function ambiguousSendReturnChoices(text: string, doc: ProjectDocument): IntentClarificationChoice[] {
   const lower = ` ${deaccent(text)
     .toLowerCase()
     .replace(/[^a-z0-9%\s'-]/g, " ")
     .replace(/\s+/g, " ")} `;
-  const clarify = (reason: string, suggestions: string[]): RoutedIntent => ({ kind: "clarify", reason, suggestions });
+  const effectType = effectWordIn(lower);
+  const target = TARGET_WORDS.find(([pattern]) => pattern.test(lower))?.[1];
+  const parsedFader = parseFaderIntent(text);
+  if (!effectType || !target) return [];
+
+  const isUp = parsedFader?.direction === "up" || /\b(?:raise|increase|turn up)\b/.test(lower);
+  const direction = isUp ? "up" : "down";
+  const matchingReturns = doc.returns.filter((item) => item.effects.some((effect) => effect.type === effectType));
+  const choices: IntentClarificationChoice[] = [];
+  const sendText = `${isUp ? "more" : "less"} ${effectType} send on ${target}`;
+  const sendIntent = parseSendIntent(sendText);
+  const explicitMagnitude = /\b(?:by|to|at|o)\s+\d/.test(lower);
+  if (sendIntent && parsedFader?.percent == null && !explicitMagnitude && canApplySendIntent(doc, sendIntent)) {
+    choices.push({
+      label: `${isUp ? "Increase" : "Reduce"} ${effectType} send on ${target}`,
+      route: { kind: "sendIntent", intent: sendIntent },
+    });
+  }
+  if (matchingReturns.length > 0) {
+    const returnLabel = matchingReturns.length === 1 ? matchingReturns[0]!.name : `${effectType} returns`;
+    choices.push({
+      label: `${isUp ? "Raise" : "Lower"} ${returnLabel} return level`,
+      route: {
+        kind: "fader",
+        intent: {
+          targets: [],
+          returnIds: matchingReturns.map((item) => item.id),
+          direction,
+          ...(parsedFader?.amount ? { amount: parsedFader.amount } : {}),
+          ...(parsedFader?.percent != null ? { percent: parsedFader.percent } : {}),
+        },
+      },
+    });
+  }
+  return choices;
+}
+
+function clarifyAmbiguousCommand(text: string, doc: ProjectDocument): RoutedIntent | null {
+  const lower = ` ${deaccent(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9%\s'-]/g, " ")
+    .replace(/\s+/g, " ")} `;
+  const clarify = (reason: string, suggestions: string[]): Extract<RoutedIntent, { kind: "clarify" }> => ({
+    kind: "clarify",
+    reason,
+    suggestions,
+  });
   const targets = [
     /\b(?:bass|808|sub)\b/,
     /\b(?:drums?|kick|snare|clap|hats?)\b/,
@@ -461,7 +524,10 @@ function clarifyAmbiguousCommand(text: string): RoutedIntent | null {
       lower,
     )
   ) {
-    return clarify("ambiguous-send-return", ["change the track's send level", "change the effect return channel"]);
+    return {
+      ...clarify("ambiguous-send-return", ["change the track's send level", "change the effect return channel"]),
+      choices: ambiguousSendReturnChoices(text, doc),
+    };
   }
   if (/\b(?:could you|can you|please)\s+pull\s+(?:it|that|this)\s+back\b/.test(lower)) {
     return clarify("missing-fader-target", ["name the track or effect to pull back"]);
@@ -524,7 +590,7 @@ export function routeIntentText(
       suggestions: ["state the change you want", "leave the project unchanged"],
     };
   }
-  const ambiguousCommand = clarifyAmbiguousCommand(text);
+  const ambiguousCommand = clarifyAmbiguousCommand(text, doc);
   if (ambiguousCommand) return ambiguousCommand;
   // A hypothetical or conditional question is not consent to mutate the
   // project (Would lowering the snare help? Should we add a bridge?). Catch

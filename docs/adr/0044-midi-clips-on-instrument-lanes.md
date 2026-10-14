@@ -28,10 +28,11 @@ model and runtime. It does not copy FL source code or assets.
    a pattern. Geometry is in musical ticks (PPQ 480), bounded to the existing
    8192-bar arrangement safety limit.
 3. A clip plays only the note list `pattern.notes[trackId]`. Notes remain
-   pattern-relative and sparse; the source pattern's length determines the
-   repeat period, while clip length determines the visible/playable window.
-   Note ends are cut at the clip end. This permits multi-minute lanes without
-   unbounded pattern arrays and reuses the existing Piano Roll.
+   pattern-relative and sparse; clip length determines the visible/playable
+   window. Note ends are cut at the clip end. ADR 0047 refines the per-track
+   phrase repeat period when a note extends beyond the bounded step grid.
+   This permits multi-minute lanes without unbounded pattern arrays and reuses
+   the existing Piano Roll.
 4. Pattern clips use shared-source semantics: moving, trimming, resizing or
    duplicating a clip never changes note content. Duplicates reference the
    same pattern/track pair. A dedicated “Make unique” command clones the

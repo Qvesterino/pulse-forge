@@ -497,6 +497,29 @@ function trackIdsForTarget(doc: ProjectDocument, target: MixTarget): string[] {
     .map((entry) => entry.id);
 }
 
+/** True when a send intent resolves to a real return, target tracks, and a state change. */
+export function canApplySendIntent(doc: ProjectDocument, intent: SendIntent): boolean {
+  const returns = doc.returns.filter((r) => r.effects.some((fx) => fx.type === intent.effectType));
+  const trackIds = trackIdsForTarget(doc, intent.target);
+  if (returns.length === 0 || trackIds.length === 0) return false;
+
+  return returns.some((ret) =>
+    trackIds.some((trackId) => {
+      const track = doc.tracks.find((candidate) => candidate.id === trackId);
+      const current = track?.sends?.[ret.id] ?? 0;
+      const level =
+        intent.direction === "set"
+          ? Math.min(1.5, Math.max(0, ((intent.percent ?? 0) / 100) * 1.5))
+          : intent.direction === "more"
+            ? Math.min(1.5, current + SEND_STEP)
+            : intent.direction === "less"
+              ? Math.max(0, current - SEND_STEP)
+              : 0;
+      return Math.round(level * 1000) / 1000 !== current;
+    }),
+  );
+}
+
 /**
  * Apply a mix profile as ONE undoable command: add missing effects, clamp +
  * set params, wire sidechains. Following the arrangeWords etiquette, the

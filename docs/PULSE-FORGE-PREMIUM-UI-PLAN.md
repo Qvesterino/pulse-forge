@@ -7,19 +7,18 @@
 
 ## Aktuálne overenie
 
-- Posledný plný `npm run build` z 2026-10-15 po úprave Mixer Master prepínačov
-  prešiel TypeScriptom, Vite, PWA a všetkými bundle gates: DAW JS **4964/5186 KB**, optional
-  runtimes **647/650 KB**, stem runtime **404/430 KB**, core worklety
-  **150/150 KB** a studio boot path **2176/2200 KB**. Zostali existujúce Vite
-  upozornenia na zmiešané importy a veľké chunky.
-- Tento build je aktuálny zdroj pravdy pre bundle limity a nahrádza priebežné
-  **FAIL** merania 5358–5368 KB DAW JS / 153 KB core workletov zaznamenané v
-  starších iteráciách nižšie.
-- `npm run format:check` z 2026-10-15 prešiel pre celé `src` aj `tests`;
-  cielený Prettier pre brief a posledné finishing stylesheets tiež prešiel.
-  `git diff --check` je čistý. Tento celorepo výsledok prekonáva staršiu
-  poznámku o blokujúcom formátovacom rozdiele v priebežných logoch nižšie.
-- Automatické testy sa v poslednej CSS-only iterácii nespúšťali.
+- `npm run build` z 2026-10-15 zastaví TypeScript validácia v
+  `tests/master-iterate.test.ts`: chýbajú typy `ProjectDocument` a
+  `McpToolContext`, test vytvára neúplný `Command` a obsahuje nepoužitý import.
+  Automatické testy sa nespúšťali.
+- Samostatný `npx vite build --logLevel error` a všetky bundle budgety po track
+  color picker úprave prešli: DAW JS **4973/5186 KB**, optional runtimes
+  **647/650 KB**, stem runtime **404/430 KB**, core worklety **150/150 KB** a
+  boot path **2180/2200 KB**.
+- `npm run format:check`, cielený Prettier pre brief a Mixer stylesheets aj
+  `git diff --check` prešli. Staršie záznamy nižšie zachovávajú priebežné
+  merania a historické brány.
+- Automatické testy sa v posledných UI iteráciách nespúšťali.
 - Zostávajúce overenie sa týka predovšetkým čerstvých focus/hover a hustých
   split stavov. MIDI/audio capture s fyzickým zariadením je samostatná
   hardvérová kontrola.
@@ -813,17 +812,17 @@ scripts/check-bundle-size.mjs` zlyhal na širšom aktuálnom výstupe: DAW JS
 
 ### Panelová matica dokončenia
 
-| Plocha                | Zapracované                                                                                                                                                                                                                                                                                                                                                                                                                              | Zostávajúci dôkaz pred uzavretím                                                                   |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Shell / TopBar / dock | Kompaktný layout, tab hierarchia a 2 px rail/grip focus; split grid + pomer; viewport dock cap od 34–38 vh živý pri 1440/1280/1024; 44 px collapse/expand Inspector targety do 860 px a pre coarse pointer; Browser Strip 44 px coarse-pointer target + 2 px focus ring; mobilný play/record/stop majú 44 px ciele                                                                                                                       | Čerstvé screenshoty mobilného transportu, collapsed states a focusu v split docku                  |
-| Shared controls       | 2 px amber `:focus-visible` pre tlačidlá, chipy, segmented, role=slider, kroky/pady a natívne fields; zdieľaný matný disabled treatment pokrýva aj custom Arrangement, Landing, Brief, Theme, Reference a menu akcie; selected disabled stavy si zachovávajú tlmenú amber stopu; range/checkbox/radio ostávajú tlmené; system `prefers-reduced-motion` overený live                                                                      | Živá kontrola outline clippingu, kontrastu disabled prvkov a selected variantov                    |
-| Sequencer / Inspector | Typografia, 24 px ruler, amber select/focus; selected trace track tabov; mobile scrollable track tabs s aktívnou stopou; SIMPLE/ADVANCED selected state; 808 pri 4 šírkach; responzívny P-lock; 128-step windowing pri 3 šírkach; step-amount drag aktualizuje šírku bez animačného oneskorenia                                                                                                                                          | Ďalšie track varianty a živá kontrola keyboard kontrastu/select focusu                             |
-| Mixer / Devices       | Hierarchia, responzívne makrá, source/kit voľby; 2 px selected strip a chain focus; názvy chain prvkov majú na desktope 10 px, na mobile 12 px; disabled button/select labels s plnou opacitou; range/checkbox/radio ostávajú tlmené; päťefektový chain pri 1440/800/390; GROW/REZONANS vnútorné mriežky; zdieľaný mobilný Scene Strip; selected Tape Sat chain pri 390 px; 5-FX Reverb selected + amber focus pri 390 px                | Živý hover a selected/focus kontrast v split docku a pri 800/1440 px                               |
-| Arrangement           | Groove scene, MIDI lanes, audio bounce clip, Capture Setup a toolbar pri 1440/800/390; amber trace pre edit/loop/capture/take selection; 44 px mobile ciele pre capture/edit/zoom/SNAP/GEN/take-lane, Scene launcher/strip a MIDI lane `+`; selected MIDI clip s focus ringom pri 1440/800/390; armed UI bez spustenia nahrávania pri 390                                                                                                | Reálny audio capture s fyzickým vstupom; zariadenie nie je v tomto workspace dostupné              |
-| MOD / DICE            | Sekčné karty, DICE 3-roll history a locky pri 1440/800/390; MOD 4-section auto-fit; groove/intensity/scene subheadings používajú spoločnú 12 px úroveň; vybrané/fokusované stavy a DICE aria-pressed                                                                                                                                                                                                                                     | Naplnené LFO/automation; živá kontrola nového MOD gridu a MOD/DICE selected/disabled v split docku |
-| INTENT / EXP          | Prompt, 5 návrhov, responzívny iterátor, 44 px tlačidlá pri 390 px; spoločný busy signál a čitateľné disabled akcie INTENT; EXP cancel/progress pri 3 šírkach a dokončený WAV + report pri 1440/390                                                                                                                                                                                                                                      | Live kontrola INTENT busy/disabled a EXP determinate progress, vrátane ďalších úzkych šírok        |
-| MASTER                | Report/nálezy, notes disclosure, busy/completed/stale, 5 kariet a 3+2 mriežka pri 390/800/1440; mastering controls adaptujú aj podľa šírky split dock slotu; mobilné report selecty, Analyze, delivery voľby aj Export Master majú 44 px ciele; custom disabled stavy používajú matný povrch, offset akcie majú 10 px text, meracie štítky 10 px, verdict korelácie 9 px a programatické jump focus ciele zdieľajú kontrastný amber ring | —                                                                                                  |
-| MIDI / Reference      | MIDI-off a responsive routing; INPUT OFF/ON bez externého zariadenia pri 390 px; 44 px mobilné INPUT/CREATIVITY akcie, MIDI selecty aj P.BEND, vrátane 64 × 44 px textovej editácie; 42 CREATIVITY ovládacích prvkov pri 390 px; CC/Drum titles a scroll slot; Reference empty/analyzed pri 3 šírkach; empty-file alert; MATCH stale guard a scrollovateľný report                                                                       | MIDI s fyzicky pripojeným zariadením; armed MIDI/audio capture a viac-kanálové zariadenie          |
+| Plocha                | Zapracované                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Zostávajúci dôkaz pred uzavretím                                                                   |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Shell / TopBar / dock | Kompaktný layout, tab hierarchia a 2 px rail/grip focus; split grid + pomer; viewport dock cap od 34–38 vh živý pri 1440/1280/1024; 44 px collapse/expand Inspector targety do 860 px a pre coarse pointer; Browser Strip 44 px coarse-pointer target + 2 px focus ring; mobilný play/record/stop majú 44 px ciele                                                                                                                                                      | Čerstvé screenshoty mobilného transportu, collapsed states a focusu v split docku                  |
+| Shared controls       | 2 px amber `:focus-visible` pre tlačidlá, chipy, segmented, role=slider, kroky/pady a natívne fields; zdieľaný matný disabled treatment pokrýva aj custom Arrangement, Landing, Brief, Theme, Reference a menu akcie; selected disabled stavy si zachovávajú tlmenú amber stopu; range/checkbox/radio ostávajú tlmené; system `prefers-reduced-motion` overený live                                                                                                     | Živá kontrola outline clippingu, kontrastu disabled prvkov a selected variantov                    |
+| Sequencer / Inspector | Typografia, 24 px ruler, amber select/focus; selected trace track tabov; mobile scrollable track tabs s aktívnou stopou; SIMPLE/ADVANCED selected state; 808 pri 4 šírkach; responzívny P-lock; 128-step windowing pri 3 šírkach; step-amount drag aktualizuje šírku bez animačného oneskorenia                                                                                                                                                                         | Ďalšie track varianty a živá kontrola keyboard kontrastu/select focusu                             |
+| Mixer / Devices       | Hierarchia, responzívne makrá, source/kit voľby; 2 px selected strip a chain focus; amber selected underline device-chain modulu; názvy chain prvkov majú na desktope 10 px, na mobile 12 px; disabled button/select labels s plnou opacitou; range/checkbox/radio ostávajú tlmené; päťefektový chain pri 1440/800/390; GROW/REZONANS vnútorné mriežky; zdieľaný mobilný Scene Strip; selected Tape Sat chain pri 390 px; 5-FX Reverb selected + amber focus pri 390 px | Živý hover a selected/focus kontrast v split docku a pri 800/1440 px                               |
+| Arrangement           | Groove scene, MIDI lanes, audio bounce clip, Capture Setup a toolbar pri 1440/800/390; amber trace pre edit/loop/capture/take selection; 44 px mobile ciele pre capture/edit/zoom/SNAP/GEN/take-lane, Scene launcher/strip a MIDI lane `+`; selected MIDI clip s focus ringom pri 1440/800/390; armed UI bez spustenia nahrávania pri 390                                                                                                                               | Reálny audio capture s fyzickým vstupom; zariadenie nie je v tomto workspace dostupné              |
+| MOD / DICE            | Sekčné karty, DICE 3-roll history a locky pri 1440/800/390; MOD 4-section auto-fit; groove/intensity/scene subheadings používajú spoločnú 12 px úroveň; vybrané/fokusované stavy a DICE aria-pressed                                                                                                                                                                                                                                                                    | Naplnené LFO/automation; živá kontrola nového MOD gridu a MOD/DICE selected/disabled v split docku |
+| INTENT / EXP          | Prompt, 5 návrhov, responzívny iterátor, 44 px tlačidlá pri 390 px; spoločný busy signál a čitateľné disabled akcie INTENT; EXP cancel/progress pri 3 šírkach a dokončený WAV + report pri 1440/390                                                                                                                                                                                                                                                                     | Live kontrola INTENT busy/disabled a EXP determinate progress, vrátane ďalších úzkych šírok        |
+| MASTER                | Report/nálezy, notes disclosure, busy/completed/stale, 5 kariet a 3+2 mriežka pri 390/800/1440; mastering controls adaptujú aj podľa šírky split dock slotu; mobilné report selecty, Analyze, delivery voľby aj Export Master majú 44 px ciele; custom disabled stavy používajú matný povrch, offset akcie majú 10 px text, meracie štítky 10 px, verdict korelácie 9 px a programatické jump focus ciele zdieľajú kontrastný amber ring                                | —                                                                                                  |
+| MIDI / Reference      | MIDI-off a responsive routing; INPUT OFF/ON bez externého zariadenia pri 390 px; 44 px mobilné INPUT/CREATIVITY akcie, MIDI selecty aj P.BEND, vrátane 64 × 44 px textovej editácie; 42 CREATIVITY ovládacích prvkov pri 390 px; CC/Drum titles a scroll slot; Reference empty/analyzed pri 3 šírkach; empty-file alert; MATCH stale guard a scrollovateľný report                                                                                                      | MIDI s fyzicky pripojeným zariadením; armed MIDI/audio capture a viac-kanálové zariadenie          |
 
 Tabuľka oddeľuje implementované zmeny od dôkazu, ktorý ešte treba získať.
 Starší screenshot ani úspešný bundler nenahrádza kontrolu aktívneho panelového
@@ -2079,6 +2078,22 @@ stavu.
 - Upravené: `src/styles/21-device-panel.css`. Hustý päťefektový chain ešte
   potrebuje živú kontrolu pri desktopovej aj úzkej šírke panelu.
 
+### Devices — samostatná amber stopa pre vybraný chain prvok — 2026-10-15
+
+- Aktívny modul používal iba farbu efektovej kategórie na okraji, pozadí a
+  indikátore. Nová tenká amber spodná stopa označuje výber podľa stavovej
+  matice KYX, zatiaľ čo ľavá kategóriová koľajnica a bodka zachovávajú svoju
+  identifikačnú úlohu.
+- Stopa nepreberá hover stav, neblokuje drag/click a vypína svoj prechod pri
+  `prefers-reduced-motion`.
+- Upravené: `src/styles/21-device-panel.css`. Živý split/desktop screenshot
+  selected + focus stavu zostáva otvorený.
+- `npx vite build --logLevel error` a bundle kontrola: **PASS** (DAW JS
+  **4972/5186 KB**, studio boot path **2179/2200 KB**). `git diff --check`:
+  **PASS**. Cielený Prettier: **PASS**; celorepo `npm run format:check`
+  momentálne hlási dva nesúvisiace súbory. Plný `npm run build` zostáva
+  blokovaný `tests/master-iterate.test.ts`; automatické testy sa nespúšťajú.
+
 ### Sequencer — spoločný rytmus interakčných prechodov — 2026-10-14
 
 - Source audit našiel na step bunke 80 ms hover prechod vedľa 120 ms stavu
@@ -2304,3 +2319,55 @@ stavu.
   **404/430 KB**, core worklety **150/150 KB** a boot path **2176/2200 KB**.
   Cielený Prettier a `git diff --check`: **PASS**. Automatické testy sa
   nespúšťali.
+
+### Mixer — FX category filtre a keyboard focus — 2026-10-15
+
+- FX kategórie v Add Effect popoveri boli samostatné tlačidlá mimo `.btn`,
+  preto nedostávali spoločný keyboard focus ring a mali iba 9 px text / 22 px
+  výšku.
+- Filter tiles teraz používajú 10 px text, 24 px kompaktnú výšku, inset amber
+  focus ring a amber spodnú stopu vo vybranom stave. Všetky vlastné FX popover
+  tlačidlá majú jednotný 2 px inset focus ring; `aria-pressed` oznamuje aktívnu
+  kategóriu.
+- Pri rack slote do 560 px má CLOSE tlačidlo, intent návrh a effect cards
+  minimálne 44 px výšku. Efektový výber a jeho logika sa nemenia.
+- Upravené: `src/styles/03-mixer.css` a `src/ui/FxAddPopover.tsx`. Vizuálny
+  screenshot focusu a aktívneho filtra zostáva otvorený.
+- `npm run build`: **PASS** cez TypeScript, Vite, PWA a všetky bundle gates;
+  DAW JS **4964/5186 KB**, optional runtimes **647/650 KB**, stem runtime
+  **404/430 KB**, core worklety **150/150 KB** a boot path **2176/2200 KB**.
+  `npm run format:check`, cielený Prettier a `git diff --check`: **PASS**.
+  Automatické testy sa nespúšťali.
+
+### Mixer — track color picker target a keyboard focus — 2026-10-15
+
+- Track color input mal 18 × 18 px bez vlastného hover ani `:focus-visible`
+  stavu. Teraz má 24 × 24 px na desktopoch a 28 × 28 px pri coarse pointeri,
+  tichý raised okraj a amber focus ring.
+- Track farba aj existujúci double-click reset zostávajú bez zmeny. Čerstvý
+  screenshot channel headera v úzkom stripe ešte treba skontrolovať.
+- `npx vite build --logLevel error`, bundle budgety a `npm run format:check`:
+  **PASS** (DAW JS **4973/5186 KB**, boot path **2180/2200 KB**).
+  Cielený Prettier a `git diff --check`: **PASS**. Plný build zostáva
+  blokovaný `tests/master-iterate.test.ts`; automatické testy sa nespúšťajú.
+
+### Mixer / Arrangement — Scene Strip armed a focus stavy — 2026-10-15
+
+- Source audit ukázal, že povolené MIDI CC remapy mali oproti vypnutým iba
+  tlmenie opacity, takže armed stav nebol v hustej lište dostatočne čitateľný.
+  Dostal jemné amber pozadie a okraj, ktoré nadväzujú na aktívny stav KYX bez
+  zmeny správania checkboxov.
+- Oba pair selecty a CC remap položka teraz majú viditeľný 2 px amber focus
+  ring. Pri CC položke ring obopína celý label, nie len malý natívny checkbox.
+- Názov tracku v riadku Scene Stripu teraz odráža globálny výber tracku cez
+  `aria-pressed` a jemnú amber ľavú stopu. Akcia už preto neskončí v tichom
+  stave bez vizuálnej spätnej väzby.
+- Upravené: `src/styles/03-mixer.css` a
+  `src/styles/39-arrangement-interaction-finishing.css` a
+  `src/ui/SceneStrip.tsx`. Čerstvý screenshot
+  armed/focus stavu Scene Stripu ešte treba skontrolovať v Mixeri aj Arrangement.
+- `npx vite build` a samostatná bundle kontrola: **PASS** (DAW JS **4970/5186
+  KB**, studio boot path **2178/2200 KB**). `npm run format:check`, cielený
+  Prettier a `git diff --check`: **PASS**. `npm run build` zostáva blokovaný
+  TypeScript chybami v `tests/master-iterate.test.ts`; automatické
+  testy sa nespúšťają.

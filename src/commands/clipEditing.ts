@@ -630,6 +630,15 @@ export function crossfadeAudioClips(
   // the clip that starts first on the timeline.
   const [earlier, later] = second.startBar < first.startBar ? [second, first] : [first, second];
   if (earlier.trackId !== later.trackId) throw new Error("Crossfade requires both clips on the same track");
+  // A crossfade is NOT a mix parameter — it is a two-clip edit: it rewrites the
+  // fade of a clip the user never selected, over the span where the two clips
+  // overlap. D8's contract deliberately leaves `fadeIn`/`fadeOut` OUT of the
+  // refusing verbs so a plain fade stays editable on a locked clip, but a
+  // crossfade is exactly the kind of edit locking is meant to protect. Owner
+  // decision (2026-10-14): refuse crossfade through a locked clip, keep the
+  // standalone fade allowed.
+  assertClipEditable(earlier, "crossfade");
+  assertClipEditable(later, "crossfade");
   const eStart = earlier.startBar * BAR_TICKS;
   const eEnd = eStart + earlier.lengthBars * BAR_TICKS;
   const lStart = later.startBar * BAR_TICKS;

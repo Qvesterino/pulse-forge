@@ -1,5 +1,13 @@
 import { useMemo, useState } from "react";
-import { useActivePatternId, useMacros, useScenes, useSelectionStore, useServices, useTracks } from "./context";
+import {
+  useActivePatternId,
+  useMacros,
+  useScenes,
+  useSelection,
+  useSelectionStore,
+  useServices,
+  useTracks,
+} from "./context";
 import {
   applyKorenScenePair,
   applyTwistScenePair,
@@ -59,6 +67,7 @@ export function SceneStrip({ sceneId }: { sceneId?: string }) {
   const scenes = useScenes();
   const activePatternId = useActivePatternId();
   const macros = useMacros();
+  const selection = useSelection();
   const selectionStore = useSelectionStore();
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -198,7 +207,8 @@ export function SceneStrip({ sceneId }: { sceneId?: string }) {
                 <div className="scene-strip-row" key={row.key}>
                   <button
                     type="button"
-                    className="scene-strip-track"
+                    className={`scene-strip-track${selection.trackIds.includes(row.trackId) ? " selected" : ""}`}
+                    aria-pressed={selection.trackIds.includes(row.trackId)}
                     title={`Select ${row.trackName}`}
                     onClick={() =>
                       selectionStore.setTracks(

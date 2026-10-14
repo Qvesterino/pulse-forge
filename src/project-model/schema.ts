@@ -52,7 +52,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 27;
+export const SCHEMA_VERSION = 28;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -2832,7 +2832,8 @@ function normalizePatternsDomain(s: NormalizeState): void {
         patternsChanged = true;
       }
     }
-    // Filter notes to existing tracks and adjust to safe stepCount
+    // Notes are sparse and may extend beyond the bounded step grid; keep them
+    // within the same finite musical-time ceiling as arrangement clips.
     const notesByTrack: Record<string, typeof p.notes extends Record<string, infer V> ? V : never> = {};
     let notesChanged = false;
     for (const [trackId, noteList] of Object.entries(p.notes ?? {})) {
@@ -2840,7 +2841,7 @@ function normalizePatternsDomain(s: NormalizeState): void {
         notesChanged = true;
         continue;
       }
-      const patternTicks = safeStepCount * (PPQ / 4);
+      const maxNoteEndTick = MAX_ARRANGEMENT_CLIP_TICKS;
       // Defect A03.D1 (sequencer integrity audit): a note with
       // duration <= 0 would fire its noteOn() with a non-positive
       // durationSec, which the instrument runtimes interpret as
@@ -2861,7 +2862,7 @@ function normalizePatternsDomain(s: NormalizeState): void {
           n.start < 0 ||
           !Number.isFinite(n.duration) ||
           n.duration <= 0 ||
-          n.start + n.duration > patternTicks
+          n.start + n.duration > maxNoteEndTick
         ) {
           hasInvalid = true;
           break;
@@ -2876,7 +2877,7 @@ function normalizePatternsDomain(s: NormalizeState): void {
             n.start >= 0 &&
             Number.isFinite(n.duration) &&
             n.duration > 0 &&
-            n.start + n.duration <= patternTicks,
+            n.start + n.duration <= maxNoteEndTick,
         );
         if (filtered.length !== noteList.length) notesChanged = true;
         notesByTrack[trackId] = filtered as never;
@@ -3003,6 +3004,8 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // ids armed while the scene is active; absent = all armed, [] = none).
   // v26 adds optional per-instrument MIDI arrangement clips; absent = none.
   // v27 adds independent song-timeline automation clips; absent = none.
+  // v28 lets sparse MIDI notes extend to the arrangement safety limit without
+  // growing the bounded step arrays; older projects remain unchanged.
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

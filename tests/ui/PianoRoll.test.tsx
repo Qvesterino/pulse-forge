@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen } from "@testing-library/react";
+import type { Command } from "../../src/commands/types";
 import { PianoRollTrack } from "../../src/ui/PianoRoll";
 import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
-import { STEP_TICKS, type NoteEvent } from "../../src/project-model/types";
+import { BAR_TICKS, STEP_TICKS, type NoteEvent } from "../../src/project-model/types";
 
 const domRect = (left: number, top: number, width: number, height: number) =>
   ({
@@ -67,6 +68,21 @@ describe("PianoRollTrack", () => {
     dragNote(noteEl, gridEl, 40, "up");
     // Grid is 160px wide, house patterns have 16 steps → 40px = +4 steps.
     expect(services.store.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("places a multi-bar note from the note length control", () => {
+    const { container, services, track, pattern } = renderRoll();
+    fireEvent.change(screen.getByLabelText("New note length"), { target: { value: String(BAR_TICKS * 12) } });
+    const grid = container.querySelector(".pianoroll-grid") as HTMLElement;
+    fireEvent.pointerDown(grid, { button: 0, clientX: 5, clientY: 10, pointerId: 1 });
+
+    const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as Command | undefined;
+    if (!command) throw new Error("Creating a note should execute a command");
+    const next = command.execute(services.store.doc);
+    const note = next.patterns
+      .find((candidate) => candidate.id === pattern.id)
+      ?.notes?.[track.id]?.find((candidate) => candidate.duration === BAR_TICKS * 12);
+    expect(note?.duration).toBe(BAR_TICKS * 12);
   });
 
   it("aborts a note move on pointercancel without committing", () => {
@@ -141,7 +157,9 @@ describe("PianoRollTrack", () => {
       // The menu offers Delete / Duplicate / Slide.
       expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
       fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
-      const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+      const calls = (services.store.execute as unknown as { mock: { calls: Array<[Command]> } }).mock.calls;
+      const command = calls.at(-1)?.[0];
+      if (!command) throw new Error("placing a note should execute a command");
       expect(command?.type).toBe("deleteNote");
     } finally {
       vi.useRealTimers();

@@ -1112,6 +1112,11 @@ Tri triedy intentov podľa `docs/KYX_PRODUCTION_INTENT_ENGINE_MASTER.md` §4:
   routes on clarification/no-op cases. This set is synthetic and development-
   inspected; it is diagnostic, not independent user evidence. See
   `docs/INTENT-ENGINE-BROWSER-ROADMAP.md` for full slices and caveats.
+- **Executable clarification choices:** ambiguous send-vs-return requests
+  expose typed choices resolved against the current project. A send choice is
+  offered only when its target and matching return can change; a return choice
+  carries the matching return IDs. Nothing mutates until selection, then the
+  chosen route uses the normal command and undo path.
 - **Poradie v paneli (overené v kóde):** deterministická `routeIntentText`
   sa počíta PRVÁ a vchádza do `tryModelRoute(instruction, doc,
 deterministicRoute)`; creative-brief route model NEPIE (early return).

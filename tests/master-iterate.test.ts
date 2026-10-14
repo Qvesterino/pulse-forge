@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import type { Command } from "../src/commands/types";
 import { iterateTowardTarget, isConverged } from "../src/mcp/master-iterate";
 import type { IterateMeasurement } from "../src/mcp/master-iterate";
+import type { McpToolContext } from "../src/mcp/tools";
 
 /**
  * CLOSED-LOOP TONAL ITERATOR pins. Each iteration produces bounded
@@ -73,7 +75,6 @@ describe("kyx_master op:iterate — the closed loop over MCP", () => {
     const { createProjectFromTemplate } = await import("../src/project-model/templates");
     const { addEffectToTracks } = await import("../src/commands/commands");
     const { executeMcpTool } = await import("../src/mcp/tools");
-    const type = await import("../src/mcp/tools");
 
     const store = new ProjectStore(createProjectFromTemplate("house"));
     store.execute(addEffectToTracks(store.doc, [store.doc.tracks[0].id], "zenit"));
@@ -82,7 +83,7 @@ describe("kyx_master op:iterate — the closed loop over MCP", () => {
     let lufs = -16;
     const ctx = {
       getDoc: () => store.doc,
-      execute: (cmd: { execute: (d: ProjectDocument) => ProjectDocument }) => {
+      execute: (cmd: Command) => {
         store.execute(cmd);
         lufs += 0.8;
       },

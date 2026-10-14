@@ -1,7 +1,9 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { usePatterns, useServices, useTracks } from "./context";
+import { useArrangement, usePatterns, useScenes, useServices, useTracks } from "./context";
 import type { InstrumentTrack, NoteEvent, Pattern, ProjectDocument } from "../project-model/types";
-import { STEP_TICKS, pitchName } from "../project-model/types";
+import { BAR_TICKS, STEP_TICKS, pitchName } from "../project-model/types";
+import { midiPhraseLengthTicks } from "../project-model/midiTime";
+import { MAX_ARRANGEMENT_CLIP_TICKS } from "../project-model/schema";
 import {
   addNote,
   applyMidiCreativeTool,
@@ -32,6 +34,22 @@ const PITCH_MAX = 84;
 const PITCH_COUNT = PITCH_MAX - PITCH_MIN + 1;
 const ROW_HEIGHT = 14;
 const BLACK_KEYS = new Set([1, 3, 6, 8, 10]);
+const MAX_PIANO_ROLL_STEPS = Math.floor(MAX_ARRANGEMENT_CLIP_TICKS / STEP_TICKS);
+const MIN_PIANO_ROLL_STEP_PX = 24;
+const NOTE_LENGTH_OPTIONS = [
+  { label: "1/16", ticks: STEP_TICKS },
+  { label: "1/8", ticks: STEP_TICKS * 2 },
+  { label: "1/4", ticks: STEP_TICKS * 4 },
+  { label: "1/2", ticks: STEP_TICKS * 8 },
+  { label: "1 BAR", ticks: BAR_TICKS },
+  { label: "2 BARS", ticks: BAR_TICKS * 2 },
+  { label: "4 BARS", ticks: BAR_TICKS * 4 },
+  { label: "8 BARS", ticks: BAR_TICKS * 8 },
+  { label: "12 BARS", ticks: BAR_TICKS * 12 },
+  { label: "16 BARS", ticks: BAR_TICKS * 16 },
+  { label: "32 BARS", ticks: BAR_TICKS * 32 },
+  { label: "64 BARS", ticks: BAR_TICKS * 64 },
+] as const;
 
 export interface SelectedNotes {
   trackId: string;
@@ -96,6 +114,7 @@ const PianoRollNote = memo(
   function PianoRollNote({
     note,
     stepCount,
+    maxStepCount,
     selected,
     outOfScale,
     dragPreview,
@@ -103,6 +122,7 @@ const PianoRollNote = memo(
   }: {
     note: NoteEvent;
     stepCount: number;
+    maxStepCount: number;
     selected: boolean;
     outOfScale: boolean;
     dragPreview: NoteDragPreview | null;
@@ -112,7 +132,7 @@ const PianoRollNote = memo(
     let durSteps = note.duration / STEP_TICKS;
     let top = (PITCH_MAX - note.pitch) * ROW_HEIGHT;
     if (dragPreview?.mode === "move") {
-      startSteps = clamp(startSteps + dragPreview.dSteps, 0, stepCount - durSteps);
+      startSteps = clamp(startSteps + dragPreview.dSteps, 0, maxStepCount - durSteps);
       top = (PITCH_MAX - note.pitch - dragPreview.dPitch) * ROW_HEIGHT;
     } else if (dragPreview?.mode === "resize") {
       durSteps = Math.max(1, dragPreview.durSteps);
@@ -139,6 +159,7 @@ const PianoRollNote = memo(
   (a, b) =>
     a.note === b.note &&
     a.stepCount === b.stepCount &&
+    a.maxStepCount === b.maxStepCount &&
     a.selected === b.selected &&
     a.outOfScale === b.outOfScale &&
     a.dragPreview?.mode === b.dragPreview?.mode &&
@@ -267,6 +288,27 @@ const GhostNote = memo(
   (a, b) => a.note === b.note && a.stepCount === b.stepCount && a.variant === b.variant,
 );
 
+const SharedSourceBadge = memo(function SharedSourceBadge({ patternId }: { patternId: string }) {
+  const scenes = useScenes();
+  const arrangement = useArrangement();
+  const placementCount = useMemo(() => {
+    const sourceSceneIds = new Set(scenes.filter((scene) => scene.patternId === patternId).map((scene) => scene.id));
+    const midiPlacements = (arrangement.midiClips ?? []).filter((clip) => clip.patternId === patternId).length;
+    const scenePlacements = arrangement.clips.filter((clip) => sourceSceneIds.has(clip.sceneId)).length;
+    return midiPlacements + scenePlacements;
+  }, [arrangement, patternId, scenes]);
+
+  if (placementCount <= 1) return null;
+  return (
+    <span
+      className="pr-source-shared"
+      title={`This source pattern is used by ${placementCount} arrangement clips. Choose “Make unique & edit” on a MIDI clip to edit it independently.`}
+    >
+      SHARED SOURCE · {placementCount} CLIPS
+    </span>
+  );
+});
+
 export function PianoRollTrack({
   track,
   pattern,
@@ -297,6 +339,7 @@ export function PianoRollTrack({
   const doc = services.store.getDoc();
   const gridRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const velocityScrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   // Window fallback for gestures whose captured element unmounts mid-drag
   // (undo/collab delete of the dragged note): the element's own pointerup
@@ -305,12 +348,13 @@ export function PianoRollTrack({
   const [drag, setDrag] = useState<DragState | null>(null);
   const notes = pattern.notes?.[track.id] ?? [];
   const patternTicks = STEP_TICKS * pattern.stepCount;
+  const notePhraseTicks = midiPhraseLengthTicks(pattern.stepCount, notes);
   // Pitch-window virtualization (quality backlog B5): the roll is 854 px
   // tall inside a ~180 px scroller, so most notes are off-screen at any
   // moment. Measure the scroller on scroll/resize and render only the rows
   // in view (± margin). jsdom and first paint have no layout — null view =
   // render everything (tests, SSR, and drag correctness fall through).
-  const [prView, setPrView] = useState<{ top: number; h: number } | null>(null);
+  const [prView, setPrView] = useState<{ top: number; h: number; left: number; width: number } | null>(null);
   const prMeasureRaf = useRef<number | null>(null);
   const measurePrViewport = () => {
     if (prMeasureRaf.current !== null) cancelAnimationFrame(prMeasureRaf.current);
@@ -318,23 +362,63 @@ export function PianoRollTrack({
       prMeasureRaf.current = null;
       const el = scrollRef.current;
       if (!el) return;
+      const next = { top: el.scrollTop, h: el.clientHeight, left: el.scrollLeft, width: el.clientWidth };
       setPrView((prev) =>
-        prev && prev.top === el.scrollTop && prev.h === el.clientHeight
+        prev && prev.top === next.top && prev.h === next.h && prev.left === next.left && prev.width === next.width
           ? prev
-          : { top: el.scrollTop, h: el.clientHeight },
+          : next,
       );
     });
   };
   useEffect(() => {
     measurePrViewport();
+    const el = scrollRef.current;
+    const observer = el && typeof ResizeObserver !== "undefined" ? new ResizeObserver(measurePrViewport) : null;
+    if (el && observer) observer.observe(el);
     const onResize = () => measurePrViewport();
     window.addEventListener("resize", onResize);
     return () => {
       window.removeEventListener("resize", onResize);
+      observer?.disconnect();
       if (prMeasureRaf.current !== null) cancelAnimationFrame(prMeasureRaf.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const syncVelocityScroll = () => {
+    const roll = scrollRef.current;
+    const velocity = velocityScrollRef.current;
+    if (roll && velocity && Math.abs(roll.scrollLeft - velocity.scrollLeft) > 1) velocity.scrollLeft = roll.scrollLeft;
+    measurePrViewport();
+  };
+  const syncRollScroll = () => {
+    const roll = scrollRef.current;
+    const velocity = velocityScrollRef.current;
+    if (roll && velocity && Math.abs(roll.scrollLeft - velocity.scrollLeft) > 1) roll.scrollLeft = velocity.scrollLeft;
+  };
+  const dragPreviewEndTicks =
+    drag?.mode === "resize"
+      ? drag.baseStart + drag.durSteps * STEP_TICKS
+      : drag?.mode === "move"
+        ? Math.max(
+            0,
+            drag.baseStart + drag.dSteps * STEP_TICKS + (notes.find((note) => note.id === drag.noteId)?.duration ?? 0),
+          )
+        : 0;
+  const editorStepCount = Math.min(
+    MAX_PIANO_ROLL_STEPS,
+    Math.max(pattern.stepCount, Math.ceil(Math.max(notePhraseTicks, dragPreviewEndTicks) / STEP_TICKS)),
+  );
+  const viewportWidth = prView?.width || 800;
+  const stepWidth = Math.max(MIN_PIANO_ROLL_STEP_PX, Math.min(64, viewportWidth / Math.max(1, pattern.stepCount)));
+  const gridWidthPx = Math.max(viewportWidth, editorStepCount * stepWidth);
+  const visibleStepRange = useMemo(() => {
+    if (!prView || prView.width <= 0)
+      return { from: 0, to: Math.min(editorStepCount, Math.max(128, pattern.stepCount)) };
+    return {
+      from: Math.max(0, Math.floor(prView.left / stepWidth) - 4),
+      to: Math.min(editorStepCount, Math.ceil((prView.left + prView.width) / stepWidth) + 4),
+    };
+  }, [editorStepCount, pattern.stepCount, prView, stepWidth]);
   // Ghost notes from other patterns (30% opacity, non-interactive) — memoized
   // so drag re-renders reuse the same note objects and skip the diff.
   const ghostNotes: NoteEvent[] = useMemo(() => {
@@ -384,24 +468,39 @@ export function PianoRollTrack({
     return ids;
   }, [drag, noteMenu, velDrag, selectedNote, track.id]);
   const visibleNotes = useMemo(() => {
-    if (!prView || prView.h <= 0) return notes;
+    if (!prView || prView.h <= 0 || prView.width <= 0) return notes;
     const topRow = Math.floor(prView.top / ROW_HEIGHT) - 8;
     const bottomRow = Math.ceil((prView.top + prView.h) / ROW_HEIGHT) + 8;
     const minPitch = PITCH_MAX - bottomRow;
     const maxPitch = PITCH_MAX - topRow;
-    const out = notes.filter((n) => (n.pitch >= minPitch && n.pitch <= maxPitch) || alwaysKeepIds.has(n.id));
+    const fromTick = Math.max(0, (prView.left / stepWidth) * STEP_TICKS);
+    const toTick = ((prView.left + prView.width) / stepWidth) * STEP_TICKS;
+    const out = notes.filter(
+      (note) =>
+        alwaysKeepIds.has(note.id) ||
+        (note.pitch >= minPitch &&
+          note.pitch <= maxPitch &&
+          note.start + note.duration > fromTick &&
+          note.start < toTick),
+    );
     return out.length === notes.length ? notes : out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notes, prView, alwaysKeepIds]);
-  const visibleIn = (n: { pitch: number; id: string }): boolean =>
+  }, [notes, prView, stepWidth, alwaysKeepIds]);
+  const visibleIn = (n: NoteEvent): boolean =>
     !prView ||
     prView.h <= 0 ||
+    prView.width <= 0 ||
     (() => {
       const topRow = Math.floor(prView.top / ROW_HEIGHT) - 8;
       const bottomRow = Math.ceil((prView.top + prView.h) / ROW_HEIGHT) + 8;
       const minPitch = PITCH_MAX - bottomRow;
       const maxPitch = PITCH_MAX - topRow;
-      return (n.pitch >= minPitch && n.pitch <= maxPitch) || alwaysKeepIds.has(n.id);
+      const fromTick = Math.max(0, (prView.left / stepWidth) * STEP_TICKS);
+      const toTick = ((prView.left + prView.width) / stepWidth) * STEP_TICKS;
+      return (
+        alwaysKeepIds.has(n.id) ||
+        (n.pitch >= minPitch && n.pitch <= maxPitch && n.start + n.duration > fromTick && n.start < toTick)
+      );
     })();
   // FL Chord Stamp menu (Shift+C) — shape picker anchored at cursor
   const [chordMenu, setChordMenu] = useState<{ x: number; y: number } | null>(null);
@@ -413,6 +512,7 @@ export function PianoRollTrack({
   // Hum-to-melody panel (toolbar HUM) — record a hummed take into note drafts.
   const [humOpen, setHumOpen] = useState(false);
   const [entrySteps, setEntrySteps] = useState(2);
+  const [drawDurationTicks, setDrawDurationTicks] = useState<number>(STEP_TICKS);
   const [cursor, setCursor] = useState({ pitch: 60, step: 0 });
   // Chord-snap: notes land on tones of the chord-track chord under them.
   const [chordSnap, setChordSnap] = useState(false);
@@ -520,7 +620,7 @@ export function PianoRollTrack({
     const grid = gridRef.current;
     if (!grid) return { stepF: 0, pitch: PITCH_MIN };
     const rect = grid.getBoundingClientRect();
-    const x = clamp(event.clientX - rect.left, 0, rect.width);
+    const x = Math.max(0, event.clientX - rect.left);
     const y = clamp(event.clientY - rect.top, 0, rect.height);
     let pitch = PITCH_MAX - Math.floor(y / ROW_HEIGHT);
     if (scaleSnap && projectKey) {
@@ -533,7 +633,7 @@ export function PianoRollTrack({
       if (chord) pitch = nearestChordPitch(pitch, chord);
     }
     return {
-      stepF: (x / rect.width) * pattern.stepCount,
+      stepF: x / stepWidth,
       pitch,
     };
   };
@@ -797,7 +897,12 @@ export function PianoRollTrack({
       return;
     }
     if (current.mode === "move" && (current.dSteps !== 0 || current.dPitch !== 0)) {
-      const newStart = clamp(current.baseStart + current.dSteps * STEP_TICKS, 0, patternTicks - STEP_TICKS);
+      const noteDuration = notes.find((note) => note.id === current.noteId)?.duration ?? STEP_TICKS;
+      const newStart = clamp(
+        current.baseStart + current.dSteps * STEP_TICKS,
+        0,
+        Math.max(0, MAX_ARRANGEMENT_CLIP_TICKS - noteDuration),
+      );
       let newPitch = clamp(current.basePitch + current.dPitch, PITCH_MIN, PITCH_MAX);
       if (scaleSnap && projectKey) {
         newPitch = snapToScale(newPitch, projectKey);
@@ -812,7 +917,7 @@ export function PianoRollTrack({
       );
     }
     if (current.mode === "resize" && current.durSteps !== current.baseDurSteps) {
-      const maxDur = Math.round((patternTicks - current.baseStart) / STEP_TICKS);
+      const maxDur = Math.floor((MAX_ARRANGEMENT_CLIP_TICKS - current.baseStart) / STEP_TICKS);
       executeUserEdit(
         services.store,
         resizeNote(services.store.doc, track.id, current.noteId, clamp(current.durSteps, 1, maxDur) * STEP_TICKS),
@@ -886,10 +991,10 @@ export function PianoRollTrack({
       return;
     }
     const { stepF, pitch } = posFromEvent(event);
-    const start = clamp(Math.floor(stepF), 0, pattern.stepCount - 1) * STEP_TICKS;
+    const start = clamp(Math.floor(stepF), 0, MAX_PIANO_ROLL_STEPS - 1) * STEP_TICKS;
     executeUserEdit(
       services.store,
-      addNote(services.store.doc, track.id, { pitch, start, duration: STEP_TICKS, velocity: 0.9 }),
+      addNote(services.store.doc, track.id, { pitch, start, duration: drawDurationTicks, velocity: 0.9 }),
     );
     onSelectNote(null);
   };
@@ -926,7 +1031,7 @@ export function PianoRollTrack({
 
   const previewKey = (pitch: number) => services.engine.previewNote(track.id, pitch);
 
-  const stepPct = (step: number) => (step / pattern.stepCount) * 100;
+  const stepPct = (step: number) => (step / editorStepCount) * 100;
 
   // ── Presence cursors ──────────────────────────────────────────────────
   const remoteCursors = useRemoteCursors();
@@ -936,7 +1041,7 @@ export function PianoRollTrack({
   const publishHover = (event: React.PointerEvent) => {
     if (event.pointerType !== "mouse") return;
     const { stepF, pitch } = posFromEvent(event);
-    const step = clamp(Math.floor(stepF), 0, pattern.stepCount - 1);
+    const step = clamp(Math.floor(stepF), 0, editorStepCount - 1);
     const key = `${step}:${pitch}`;
     if (lastHoverRef.current === key) return;
     lastHoverRef.current = key;
@@ -1068,14 +1173,11 @@ export function PianoRollTrack({
   };
   const pasteNotesClipboard = () => {
     if (!noteClipboard || noteClipboard.length === 0) return;
-    // Clamp into the pattern at paste time. Copies taken from a longer (or
-    // later-switched) pattern could land past `patternTicks`, where they
-    // never sound and only normalizeProject's silent drop removed them —
-    // content that vanished on the next unrelated edit. Same clamp the model
-    // enforces elsewhere (moveNote's apply-time fit), applied visibly here.
+    // Clamp copied notes to the arrangement ceiling, independent of the
+    // bounded step-grid length.
     const newNotes = noteClipboard.map((n) => {
-      const duration = Math.max(1, Math.min(n.duration, patternTicks));
-      const start = Math.max(0, Math.min(n.start, patternTicks - duration));
+      const duration = Math.max(1, Math.min(n.duration, MAX_ARRANGEMENT_CLIP_TICKS));
+      const start = Math.max(0, Math.min(n.start, MAX_ARRANGEMENT_CLIP_TICKS - duration));
       return { ...n, id: uid("note"), start, duration };
     });
     const prev = [...notes];
@@ -1259,9 +1361,12 @@ export function PianoRollTrack({
         for (let i = 0; i < sel.length; i++) {
           const cur = map.get(sel[i].id)!;
           const nextStart =
-            i + 1 < sel.length ? sel[i + 1].start : Math.min(patternTicks, cur.start + cur.duration + STEP_TICKS * 2);
+            i + 1 < sel.length
+              ? sel[i + 1].start
+              : Math.min(MAX_ARRANGEMENT_CLIP_TICKS, cur.start + cur.duration + STEP_TICKS * 2);
           cur.duration = Math.max(STEP_TICKS, nextStart - cur.start);
-          if (cur.start + cur.duration > patternTicks) cur.duration = patternTicks - cur.start;
+          if (cur.start + cur.duration > MAX_ARRANGEMENT_CLIP_TICKS)
+            cur.duration = MAX_ARRANGEMENT_CLIP_TICKS - cur.start;
         }
         const next = notes.map((n) => map.get(n.id) ?? n);
         executeUserEdit(services.store, {
@@ -1325,6 +1430,15 @@ export function PianoRollTrack({
     <div className={"pianoroll-wrap" + (fullscreen ? " pr-fullscreen" : "")}>
       <div className="pianoroll-toolbar" role="toolbar" aria-label="Piano roll tools">
         <span className="pr-toolbar-count">{selLabel}</span>
+        <SharedSourceBadge patternId={pattern.id} />
+        {editorStepCount > pattern.stepCount && (
+          <span
+            className="pr-source-shared"
+            title="Sparse MIDI notes extend beyond the bounded step grid. The step arrays stay unchanged."
+          >
+            NOTE PHRASE · {Math.ceil(editorStepCount / 16)} BARS
+          </span>
+        )}
         {onToggleFullscreen && (
           <button
             type="button"
@@ -1338,6 +1452,27 @@ export function PianoRollTrack({
           </button>
         )}
         <div className="pr-toolbar-group">
+          <label
+            className="slider-label"
+            htmlFor={`pr-note-length-${track.id}`}
+            title="Length of the next note placed in the grid"
+          >
+            LEN
+          </label>
+          <select
+            id={`pr-note-length-${track.id}`}
+            className="pr-step-dur"
+            aria-label="New note length"
+            title="New note length — choose a phrase length before placing a note"
+            value={drawDurationTicks}
+            onChange={(event) => setDrawDurationTicks(Number(event.target.value))}
+          >
+            {NOTE_LENGTH_OPTIONS.map((option) => (
+              <option key={option.ticks} value={option.ticks}>
+                {option.label}
+              </option>
+            ))}
+          </select>
           <button
             type="button"
             className={`btn btn-small pr-step-toggle${stepEntry ? " active-solo" : ""}`}
@@ -1820,7 +1955,7 @@ export function PianoRollTrack({
         <div
           className="pianoroll-scroll"
           ref={scrollRef}
-          onScroll={measurePrViewport}
+          onScroll={syncVelocityScroll}
           onPointerDown={(event) => {
             if (event.target === event.currentTarget) onSelectNote(null);
           }}
@@ -1828,7 +1963,7 @@ export function PianoRollTrack({
           <div
             className="pianoroll-grid"
             ref={gridRef}
-            style={{ height: PITCH_COUNT * ROW_HEIGHT }}
+            style={{ height: PITCH_COUNT * ROW_HEIGHT, width: gridWidthPx }}
             onPointerDown={onGridPointerDown}
             onPointerMove={(event) => {
               onGridPointerMove(event);
@@ -1853,24 +1988,33 @@ export function PianoRollTrack({
                   />
                 );
               })}
-            {Array.from({ length: pattern.stepCount }, (_, i) =>
+            {Array.from(
+              { length: Math.max(0, visibleStepRange.to - visibleStepRange.from) },
+              (_, offset) => visibleStepRange.from + offset,
+            ).map((i) =>
               i % 4 === 0 ? <div key={i} className="pr-beatline" style={{ left: `${stepPct(i)}%` }} /> : null,
             )}
             {/* Bar lines + numbers for multi-bar patterns (FL orientation for long pads) */}
-            {pattern.stepCount > 16 &&
-              Array.from({ length: Math.floor(pattern.stepCount / 16) + 1 }, (_, b) => {
-                const step = b * 16;
-                if (step > pattern.stepCount) return null;
+            {editorStepCount > 16 &&
+              Array.from(
+                {
+                  length:
+                    Math.ceil(visibleStepRange.to / 16) - Math.max(0, Math.floor(visibleStepRange.from / 16) - 1) + 1,
+                },
+                (_, offset) => Math.max(0, Math.floor(visibleStepRange.from / 16) - 1) + offset,
+              ).map((bar) => {
+                const step = bar * 16;
+                if (step > editorStepCount) return null;
                 return (
-                  <div key={`bar-${b}`} className="pr-barline" style={{ left: `${stepPct(step)}%` }}>
-                    {step < pattern.stepCount && <span className="pr-barnum">{b + 1}</span>}
+                  <div key={`bar-${bar}`} className="pr-barline" style={{ left: `${stepPct(step)}%` }}>
+                    {step < editorStepCount && <span className="pr-barnum">{bar + 1}</span>}
                   </div>
                 );
               })}
             {playheadStep >= 0 && playheadStep < pattern.stepCount && (
               <div
                 className="pr-playhead"
-                style={{ left: `${stepPct(playheadStep)}%`, width: `${100 / pattern.stepCount}%` }}
+                style={{ left: `${stepPct(playheadStep)}%`, width: `${100 / editorStepCount}%` }}
               />
             )}
             {/* Step-entry cursor — pitch row × entry-length column */}
@@ -1882,7 +2026,7 @@ export function PianoRollTrack({
                 style={{
                   top: (PITCH_MAX - cursor.pitch) * ROW_HEIGHT,
                   left: `${stepPct(cursor.step)}%`,
-                  width: `${(entrySteps / pattern.stepCount) * 100}%`,
+                  width: `${(entrySteps / editorStepCount) * 100}%`,
                   height: ROW_HEIGHT,
                 }}
                 aria-hidden="true"
@@ -1894,7 +2038,7 @@ export function PianoRollTrack({
                 key={`remote-${user.id}`}
                 className="pr-remote-cursor"
                 style={{
-                  left: `${stepPct(Math.min(cursor.stepIndex!, pattern.stepCount - 1))}%`,
+                  left: `${stepPct(Math.min(cursor.stepIndex!, editorStepCount - 1))}%`,
                   top: (PITCH_MAX - cursor.pitch!) * ROW_HEIGHT,
                   background: user.color,
                   borderColor: user.color,
@@ -1905,11 +2049,11 @@ export function PianoRollTrack({
             ))}
             {/* Ghost notes from other patterns — 30% opaque, non-interactive */}
             {ghostNotes.filter(visibleIn).map((note) => (
-              <GhostNote key={note.id} note={note} stepCount={pattern.stepCount} variant="ghost" />
+              <GhostNote key={note.id} note={note} stepCount={editorStepCount} variant="ghost" />
             ))}
             {/* Ghost notes per track — same pattern, other instrument tracks (20% opacity) */}
             {ghostTrackNotes.filter(visibleIn).map((note) => (
-              <GhostNote key={note.id} note={note} stepCount={pattern.stepCount} variant="ghost-track" />
+              <GhostNote key={note.id} note={note} stepCount={editorStepCount} variant="ghost-track" />
             ))}
             {visibleNotes.map((note) => {
               const noteDrag = drag && drag.noteId === note.id && drag.mode !== "noteVelocity" ? drag : null;
@@ -1918,7 +2062,8 @@ export function PianoRollTrack({
                 <PianoRollNote
                   key={note.id}
                   note={note}
-                  stepCount={pattern.stepCount}
+                  stepCount={editorStepCount}
+                  maxStepCount={MAX_PIANO_ROLL_STEPS}
                   selected={selected}
                   outOfScale={isScaleActive && !isInScale(note.pitch, projectKey!)}
                   dragPreview={
@@ -1939,8 +2084,8 @@ export function PianoRollTrack({
               <div
                 className="pr-marquee"
                 style={{
-                  left: `${(Math.min(marquee.startStep, marquee.endStep) / pattern.stepCount) * 100}%`,
-                  width: `${(Math.abs(marquee.endStep - marquee.startStep) / pattern.stepCount) * 100}%`,
+                  left: `${(Math.min(marquee.startStep, marquee.endStep) / editorStepCount) * 100}%`,
+                  width: `${(Math.abs(marquee.endStep - marquee.startStep) / editorStepCount) * 100}%`,
                   top: `${(PITCH_MAX - Math.max(marquee.startPitch, marquee.endPitch)) * ROW_HEIGHT}px`,
                   height: `${Math.abs(marquee.endPitch - marquee.startPitch) * ROW_HEIGHT + ROW_HEIGHT}px`,
                 }}
@@ -1949,20 +2094,26 @@ export function PianoRollTrack({
           </div>
         </div>
       </div>
-      <div className="pr-velocity-lane" aria-label="Velocity lane" style={{ height: `${48 * velZoom}px` }}>
-        <div className="pr-velocity-bg" />
-        {notes.map((note) => {
-          const selected = selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id);
-          return (
-            <VelocityBar
-              key={note.id}
-              note={note}
-              patternTicks={patternTicks}
-              selected={selected}
-              handlers={velHandlersRef.current}
-            />
-          );
-        })}
+      <div className="pr-velocity-scroll" ref={velocityScrollRef} onScroll={syncRollScroll}>
+        <div
+          className="pr-velocity-lane"
+          aria-label="Velocity lane"
+          style={{ height: `${48 * velZoom}px`, width: gridWidthPx }}
+        >
+          <div className="pr-velocity-bg" style={{ backgroundSize: `${stepWidth}px 100%` }} />
+          {notes.map((note) => {
+            const selected = selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id);
+            return (
+              <VelocityBar
+                key={note.id}
+                note={note}
+                patternTicks={editorStepCount * STEP_TICKS}
+                selected={selected}
+                handlers={velHandlersRef.current}
+              />
+            );
+          })}
+        </div>
       </div>
       {chordMenu && (
         <div

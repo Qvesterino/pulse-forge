@@ -516,6 +516,17 @@
   min-width: 70px;
 }
 
+.pr-source-shared {
+  padding: 2px 5px;
+  border: 1px solid rgba(255, 184, 74, 0.38);
+  border-radius: 3px;
+  color: var(--accent-warm, #ffb84a);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.35px;
+  white-space: nowrap;
+}
+
 .pr-toolbar-group {
   display: flex;
   gap: 4px;
@@ -530,6 +541,13 @@
   border: 1px solid var(--border-soft);
   border-radius: 4px;
   overflow: hidden;
+}
+
+.pr-velocity-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 
 .pr-velocity-bg {
@@ -622,7 +640,7 @@
 .pianoroll-scroll {
   flex: 1;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
   max-height: 180px;
   background: var(--bg);
 }

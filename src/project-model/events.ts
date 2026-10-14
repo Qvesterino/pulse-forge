@@ -10,6 +10,7 @@ import type {
 import { BAR_TICKS, STEP_TICKS } from "./types";
 import { drumHitsInWindow, type DrumHit } from "./groove";
 import { valueAt } from "./automation";
+import { midiPhraseLengthTicks } from "./midiTime";
 
 /** Resolve the absolute tick origin shared by live and offline pattern events. */
 export function patternBaseTickForClip(clip: Pick<ArrangementClip, "startBar" | "phaseOffsetTicks">): number {
@@ -80,11 +81,11 @@ export function noteEventsInWindow(
   toTick: number,
   onlyTrackId?: string,
 ): ScheduledNote[] {
-  const patternTicks = pattern.stepCount * STEP_TICKS;
-  if (patternTicks <= 0 || toTick <= fromTick) return [];
+  if (toTick <= fromTick) return [];
   const events: ScheduledNote[] = [];
   for (const [trackId, notes] of Object.entries(pattern.notes ?? {})) {
     if (onlyTrackId !== undefined && trackId !== onlyTrackId) continue;
+    const patternTicks = midiPhraseLengthTicks(pattern.stepCount, notes);
     // Sorted by start within the track so "previous note" is deterministic
     let sorted = sortedNotesCache.get(notes);
     if (!sorted) {

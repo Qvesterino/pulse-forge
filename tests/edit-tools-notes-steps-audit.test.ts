@@ -19,12 +19,12 @@ import type { DrumTrack, InstrumentTrack, ProjectDocument } from "../src/project
  * EDIT TOOLS AUDIT — notes (piano-roll) & step-grid (drums) command layer
  * (DAW_EDIT_TOOLS_INTERACTION_AUDIT.md, second pass). Invariants:
  *
- *  N1 addNote sanitizes fields (finite, bounded, pattern-bounds fitted)
+ *  N1 addNote sanitizes fields (finite, bounded by musical-time safety cap)
  *  N2 velocity writes can never be NaN or out of [0, 1]
  *  N3 step rows can never carry NaN/over-unity velocities
  *  N4 stepIndex out of range is a safe skip, never a sparse-row poison
  *  N5 quantize with junk strength stays bounded
- *  N6 setPatternLength shrink clamps/drops notes per contract
+ *  N6 setPatternLength shrink preserves sparse notes beyond the step grid
  *  N7 every edit undoes to the exact previous pattern
  *  N8 combined stress sequence keeps the pattern internally valid
  *
@@ -77,7 +77,7 @@ describe("N1 addNote sanitization", () => {
     expect(note.velocity).toBe(1);
   });
 
-  it("a long note added near the pattern end is fitted FL-style, not dropped on save", () => {
+  it("a long note can extend past the pattern grid without being shortened", () => {
     const { doc, trackId } = docWithTrack();
     const patternTicks = doc.patterns.find((p) => p.id === doc.activePatternId)!.stepCount * STEP_TICKS;
     const next = addNote(doc, trackId, {
@@ -87,8 +87,9 @@ describe("N1 addNote sanitization", () => {
       velocity: 0.8,
     }).execute(doc);
     const note = addedNote(doc, next, trackId);
-    expect(note.start).toBeLessThan(patternTicks);
-    expect(note.start + note.duration).toBeLessThanOrEqual(patternTicks);
+    expect(note.start).toBe(patternTicks - 5);
+    expect(note.duration).toBe(patternTicks);
+    expect(note.start + note.duration).toBeGreaterThan(patternTicks);
   });
 });
 
@@ -158,12 +159,15 @@ describe("N5 quantize bounds", () => {
 });
 
 describe("N6 pattern length shrink", () => {
-  it("notes crossing the new end are clamped, notes past it dropped", () => {
+  it("keeps long sparse notes when the step grid shrinks", () => {
     const { doc, trackId } = docWithTrack();
+    const originalNotes = [
+      ...((doc.patterns.find((pattern) => pattern.id === doc.activePatternId)?.notes ?? {})[trackId] ?? []),
+    ];
     const longTicks = 400 * STEP_TICKS;
-    let working = addNote(doc, trackId, { pitch: 60, start: 0, duration: longTicks, velocity: 0.8 }).execute(doc);
+    let working = addNote(doc, trackId, { pitch: 126, start: 0, duration: longTicks, velocity: 0.8 }).execute(doc);
     working = addNote(working, trackId, {
-      pitch: 62,
+      pitch: 127,
       start: 450 * STEP_TICKS,
       duration: 8,
       velocity: 0.8,
@@ -173,11 +177,15 @@ describe("N6 pattern length shrink", () => {
     const patternTicks = pattern.stepCount * STEP_TICKS;
     expect(patternTicks).toBe(64 * STEP_TICKS);
     const notes = (pattern.notes ?? {})[trackId] ?? [];
-    for (const note of notes) {
-      expect(note.start).toBeLessThan(patternTicks);
-      expect(note.start + note.duration).toBeLessThanOrEqual(patternTicks);
-      expect(note.duration).toBeGreaterThanOrEqual(1);
-    }
+    expect(notes).toHaveLength(originalNotes.length + 2);
+    for (const original of originalNotes) expect(notes.find((note) => note.id === original.id)).toEqual(original);
+    expect(notes.find((note) => note.pitch === 126)).toMatchObject({ start: 0, duration: longTicks });
+    expect(notes.find((note) => note.pitch === 127)).toMatchObject({ start: 450 * STEP_TICKS, duration: 8 });
+    expect(
+      notes
+        .filter((note) => note.pitch === 126 || note.pitch === 127)
+        .every((note) => note.start + note.duration > patternTicks),
+    ).toBe(true);
   });
 });
 

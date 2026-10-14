@@ -10,6 +10,7 @@ import {
 } from "../src/commands/arrangement";
 import { setArrangementClipLoop, setArrangementClipScene, setSceneIntensityCurve } from "../src/commands/clipPlayback";
 import { groupClips, ungroupClips, setClipsLocked } from "../src/commands/clipGroups";
+import { updateAudioClip } from "../src/commands/clipEditing";
 import {
   duplicateAudioClip,
   slipAudioClip,
@@ -416,17 +417,30 @@ describe("wave 19 — audio-clip verbs that no audit wave had opened", () => {
     expect(() => crossfadeAudioClips(doc, "a1", "a2")).toThrow(/overlap/i);
   });
 
-  it("MEASURED, NOT CHANGED: crossfade writes fades on a LOCKED clip (backlog item 2)", () => {
-    // The lock contract (D8) names move/resize/trim/split/slip/stretch/delete.
-    // Fades are deliberately NOT in that list, so crossfade is unguarded by
-    // design. This spec pins the CURRENT behaviour so that a future decision
-    // to close it is a deliberate, visible change rather than a silent drift.
+  it("crossfade refuses a LOCKED clip, while a STANDALONE fade stays allowed (owner decision)", () => {
+    // 2026-10-14 owner decision, replacing the previous "by design" reading.
+    // A crossfade is a two-clip edit that rewrites the fade of a clip the user
+    // never selected, so locking must stop it - but a plain fade is a mix
+    // parameter and stays editable on a locked clip. BOTH halves are asserted
+    // here: the first alone would happily pass if fades were guarded too.
     const wide = overlapping(fixture());
     const locked = setClipsLocked(wide, ["a1", "a2"], true).execute(wide) as ProjectDocument;
-    const next = crossfadeAudioClips(locked, "a1", "a2").execute(locked);
-    expect(audio(next, "a1").fadeOut).toBeGreaterThan(0);
-    expect(audio(next, "a2").fadeIn).toBeGreaterThan(0);
-    // ...while verbs that ARE in the contract still refuse the same clips.
+
+    expect(() => crossfadeAudioClips(locked, "a1", "a2")).toThrow(/locked/i);
+    // The refused command must leave the document untouched.
+    expect(locked.arrangement.audioClips!.every((c) => c.fadeIn === 0 && c.fadeOut === 0)).toBe(true);
+
+    // A STANDALONE fade is still allowed on a locked clip.
+    const faded = updateAudioClip(locked, "a1", { fadeOut: 1.5 }).execute(locked);
+    expect(faded.arrangement.audioClips!.find((c) => c.id === "a1")!.fadeOut).toBe(1.5);
+
+    // With only ONE side locked it still refuses - the verb edits both clips.
+    const oneLocked = setClipsLocked(wide, ["a2"], true).execute(wide) as ProjectDocument;
+    expect(() => crossfadeAudioClips(oneLocked, "a1", "a2")).toThrow(/locked/i);
+
+    // CONTROL: the same crossfade on unlocked clips still works...
+    expect(() => crossfadeAudioClips(wide, "a1", "a2")).not.toThrow();
+    // ...and the other guarded verbs keep refusing the same clips.
     expect(() => slipAudioClip(locked, "a1", 0.5)).toThrow(/locked/i);
     expect(() => stretchAudioClip(locked, "a1", 8, 0.5)).toThrow(/locked/i);
   });
