@@ -1779,9 +1779,12 @@ export type McpErrorCode =
   | "POLICY_REFUSED";
 
 /** The single shaped constructor for error results — every `isError`
- * result goes through here so the code set stays exhaustive. */
-function mcpError(code: McpErrorCode, text: string): McpToolResult {
-  return { text, mutated: false, isError: true, errorCode: code };
+ * result goes through here so the code set stays exhaustive. `overrides`
+ * carries the rare fields an error may need beyond the defaults (a
+ * partially-applied atomic batch reports `mutated: true` with its
+ * per-call ledger in `data`). */
+function mcpError(code: McpErrorCode, text: string, overrides?: Partial<McpToolResult>): McpToolResult {
+  return { text, mutated: false, isError: true, errorCode: code, ...overrides };
 }
 
 const TICKS_PER_BAR = 4 * 480;
@@ -2124,7 +2127,6 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
       idempotencyLedger.delete(requestId); // stale project scope — re-bind below
     }
   }
-  const result = await executeMcpToolDispatch(ctx, name, args);
   // P2-C DRY-RUN (control-surface audit 2026-10-13, GAP-11): `dryRun: true`
   // executes the tool's FULL logic against a SANDBOX context — validation,
   // resolution and command construction run for real, but `ctx.execute`
@@ -2155,6 +2157,7 @@ ${preview.text}`,
       dryRun: true,
     };
   }
+  const result = await executeMcpToolDispatch(ctx, name, args);
   // P1-D DOCUMENT/WINDOW ATTRIBUTION (control-surface audit 2026-10-13,
   // GAP-06): every caller — desktop stdio, web relay, QMR — executes
   // against the ONE relay session's document (the hub forwards to a single
@@ -5017,17 +5020,15 @@ async function executeBatchTool(ctx: McpToolContext, record: Record<string, unkn
       ? "ONE undo step for the whole batch"
       : "no undo-frame support on this host — each call is its own undo step",
   ].join(" · ");
+  const text = `batch — ${summary}\n${results.map((r, i) => `${i + 1}. ${r.tool}${r.mutated ? " ✓" : ""}: ${r.text}`).join("\n")}`;
   if (atomic && failures > 0) {
-    return {
-      text: `batch — ${summary}\n${results.map((r, i) => `${i + 1}. ${r.tool}${r.mutated ? " ✓" : ""}: ${r.text}`).join("\n")}`,
+    return mcpError("PARTIAL_FAILURE", text, {
       mutated: mutations > 0,
-      isError: true,
-      errorCode: "PARTIAL_FAILURE",
       data: { results, mutations, failures, skipped, singleUndo: framed, atomic: true },
-    };
+    });
   }
   return {
-    text: `batch — ${summary}\n${results.map((r, i) => `${i + 1}. ${r.tool}${r.mutated ? " ✓" : ""}: ${r.text}`).join("\n")}`,
+    text,
     mutated: mutations > 0,
     data: { results, mutations, failures, skipped, singleUndo: framed, atomic },
   };

@@ -25,6 +25,11 @@ const MCP_TOOL_DEFS = [
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+        },
       },
       required: ["instruction"],
     },
@@ -67,6 +72,11 @@ const MCP_TOOL_DEFS = [
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+        },
       },
       required: ["subject"],
     },
@@ -97,6 +107,11 @@ const MCP_TOOL_DEFS = [
           maxLength: 128,
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
         },
       },
       required: ["action"],
@@ -165,6 +180,11 @@ const MCP_TOOL_DEFS = [
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+        },
       },
       required: ["action"],
     },
@@ -201,6 +221,11 @@ const MCP_TOOL_DEFS = [
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+        },
       },
       required: ["format"],
     },
@@ -223,6 +248,11 @@ const MCP_TOOL_DEFS = [
           maxLength: 128,
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
         },
       },
     },
@@ -320,6 +350,11 @@ const MCP_TOOL_DEFS = [
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+        },
       },
       required: ["genre"],
     },
@@ -351,6 +386,11 @@ const MCP_TOOL_DEFS = [
           maxLength: 128,
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
         },
       },
       required: ["direction"],
@@ -420,6 +460,11 @@ const MCP_TOOL_DEFS = [
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+        },
       },
       required: ["effect", "action"],
     },
@@ -472,6 +517,11 @@ const MCP_TOOL_DEFS = [
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+        },
       },
       required: ["op", "role"],
     },
@@ -501,6 +551,11 @@ const MCP_TOOL_DEFS = [
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+        },
       },
       required: ["op", "bar"],
     },
@@ -508,7 +563,7 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_tracks",
     description:
-      "Track CRUD + absolute mixer setters: add a drum or instrument track, remove/rename by family or exact trackId (group tracks are not addressable here — removing the last track is declined), or set mixer values with verify-by-read: setGain (absolute gainDb −60..+3.5 or linear gain 0..1.5), setPan (−1..1), setMute/setSolo (value boolean). set* ops apply to every track the family resolves to.",
+      "Track CRUD + absolute mixer setters: add a drum or instrument track, remove/rename by family or exact trackId (group tracks are not addressable here — removing the last track is declined; duplicate clones one track with its FX and routing), or set mixer values with verify-by-read: setGain (absolute gainDb −60..+3.5 or linear gain 0..1.5), setPan (−1..1), setMute/setSolo (value boolean). set* ops apply to every track the family resolves to.",
     inputSchema: {
       type: "object",
       properties: {
@@ -519,6 +574,7 @@ const MCP_TOOL_DEFS = [
             "addInstrument",
             "loadPreset",
             "listPresets",
+            "duplicate",
             "remove",
             "rename",
             "setGain",
@@ -581,6 +637,11 @@ const MCP_TOOL_DEFS = [
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+        },
       },
       required: ["op"],
     },
@@ -605,6 +666,11 @@ const MCP_TOOL_DEFS = [
           maxLength: 128,
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
         },
       },
       required: ["op"],
@@ -645,6 +711,11 @@ const MCP_TOOL_DEFS = [
           maxLength: 128,
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
         },
       },
       required: ["op", "family"],
@@ -724,6 +795,11 @@ const MCP_TOOL_DEFS = [
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+        },
       },
       required: ["op"],
     },
@@ -771,6 +847,11 @@ const MCP_TOOL_DEFS = [
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+        },
       },
       required: ["op"],
     },
@@ -795,6 +876,11 @@ const MCP_TOOL_DEFS = [
           maxLength: 128,
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
         },
       },
       required: ["subject"],
@@ -843,6 +929,11 @@ const MCP_TOOL_DEFS = [
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+        },
       },
       required: ["op"],
     },
@@ -864,6 +955,11 @@ const MCP_TOOL_DEFS = [
           maxLength: 128,
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
         },
       },
       required: [],
@@ -950,6 +1046,11 @@ const MCP_TOOL_DEFS = [
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+        },
       },
       required: ["op"],
     },
@@ -957,7 +1058,7 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_clips",
     description:
-      "Arrangement AND audio clips: list scene clips (with ids + an audio summary), audioList the track-lane waveforms in detail, or edit — scene ops move/resize/duplicate/delete target the clip COVERING an anchor bar (delete D4-gated); audio ops audioMove/audioSplit/audioUpdate (gain, fadeIn, fadeOut, reverse, loop)/audioDelete (D4) address a track (trackId or family) + the anchor bar its clip covers. Values are native (gain linear, fades in seconds).",
+      "Arrangement AND audio clips: list scene clips (with ids + an audio summary), audioList the track-lane waveforms in detail, or edit — scene ops move/resize/duplicate/delete target the clip COVERING an anchor bar (delete D4-gated); audio ops audioMove/audioSplit/audioUpdate (gain, fadeIn, fadeOut, reverse, loop)/audioStretch (rate 0.25..4, optional bars)/audioSlip (offsetSec — which part of the source plays; take-locked clips refuse)/audioDelete (D4) address a track (trackId or family) + the anchor bar its clip covers. Values are native (gain linear, fades in seconds).",
     inputSchema: {
       type: "object",
       properties: {
@@ -973,6 +1074,8 @@ const MCP_TOOL_DEFS = [
             "audioMove",
             "audioSplit",
             "audioUpdate",
+            "audioStretch",
+            "audioSlip",
             "audioDelete",
           ],
         },
@@ -1012,6 +1115,17 @@ const MCP_TOOL_DEFS = [
           minimum: 0,
           description: "For audioUpdate — fade-in seconds",
         },
+        rate: {
+          type: "number",
+          minimum: 0.25,
+          maximum: 4,
+          description: "For audioStretch — playback speed factor (2 = twice as fast)",
+        },
+        offsetSec: {
+          type: "number",
+          minimum: 0,
+          description: "For audioSlip — seconds into the source (which part plays)",
+        },
         fadeOut: {
           type: "number",
           minimum: 0,
@@ -1030,6 +1144,11 @@ const MCP_TOOL_DEFS = [
           maxLength: 128,
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
         },
       },
       required: ["op"],
@@ -1066,6 +1185,11 @@ const MCP_TOOL_DEFS = [
           maxLength: 128,
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
         },
       },
       required: ["calls"],
@@ -1120,6 +1244,11 @@ const MCP_TOOL_DEFS = [
           maxLength: 128,
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
         },
       },
       required: ["op"],
@@ -1189,6 +1318,11 @@ const MCP_TOOL_DEFS = [
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+        },
       },
       required: ["name", "sfzBase64", "trackId", "samples"],
     },
@@ -1224,6 +1358,11 @@ const MCP_TOOL_DEFS = [
           maxLength: 128,
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
         },
       },
       required: ["title"],
@@ -1262,6 +1401,11 @@ const MCP_TOOL_DEFS = [
           maxLength: 128,
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
         },
       },
     },
@@ -1307,6 +1451,11 @@ const MCP_TOOL_DEFS = [
           maxLength: 128,
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
         },
       },
     },
@@ -1382,6 +1531,11 @@ const MCP_TOOL_DEFS = [
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+        },
       },
       required: ["idea"],
     },
@@ -1406,6 +1560,11 @@ const MCP_TOOL_DEFS = [
           maxLength: 128,
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
         },
       },
       required: ["op"],
@@ -1469,6 +1628,11 @@ const MCP_TOOL_DEFS = [
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+        },
       },
       required: ["genre"],
     },
@@ -1515,6 +1679,11 @@ const MCP_TOOL_DEFS = [
           maxLength: 128,
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
         },
       },
       required: ["genre"],
@@ -1574,6 +1743,11 @@ const MCP_TOOL_DEFS = [
           maxLength: 128,
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
         },
       },
       required: ["genre"],
@@ -1646,6 +1820,11 @@ const MCP_TOOL_DEFS = [
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+        },
       },
       required: ["op"],
     },
@@ -1681,6 +1860,11 @@ const MCP_TOOL_DEFS = [
           maxLength: 128,
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
         },
       },
       required: ["action"],
@@ -1803,6 +1987,11 @@ const MCP_TOOL_DEFS = [
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
         },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+        },
       },
       required: ["op"],
     },
@@ -1831,6 +2020,11 @@ const MCP_TOOL_DEFS = [
           maxLength: 128,
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
         },
       },
       required: ["op"],
@@ -1878,6 +2072,11 @@ const MCP_TOOL_DEFS = [
           maxLength: 128,
           description:
             "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
         },
       },
       required: ["op"],
