@@ -534,11 +534,19 @@ test.describe("20 — audio-edit render verification", () => {
       const mergedRender = await render(consolidated);
       // Audible across the WHOLE merged span, not just where one input was.
       out.mergedEarlyMid = amplitudeAt(mergedRender, 330, 1.5);
-      out.mergedLateMid = amplitudeAt(mergedRender, 12);
+      out.mergedLateMid = amplitudeAt(mergedRender, 330, 12);
       // The untouched pair renders the same tone over the same span, which is
       // what makes the merged render comparable rather than merely non-silent.
       out.pairEarlyMid = amplitudeAt(pairRender, 330, 1.5);
       out.pairLateMid = amplitudeAt(pairRender, 330, 12);
+      // Diagnostic sweep: where exactly does the merged clip stop sounding, and
+      // how long is each render? Speculating about the cause was not converging,
+      // so this measures. The sweep times are printed in the failure message.
+      const SWEEP = [0.5, 3, 6, 7, 7.5, 8, 9, 10, 12];
+      out.mergedDurationSec = mergedRender.duration;
+      out.pairDurationSec = pairRender.duration;
+      out.mergedSweep = SWEEP.map((t) => amplitudeAt(mergedRender, 330, t));
+      out.pairSweep = SWEEP.map((t) => amplitudeAt(pairRender, 330, t));
 
       // ── LIVE vs OFFLINE, on the crossfaded pair and the consolidated clip ──
       const overlapA = addAudioClip(bare, track.id, "w20.low", 0, 6).execute(bare);
@@ -584,7 +592,11 @@ test.describe("20 — audio-edit render verification", () => {
     expect(report.pairLateMid as number, "the second input never sounded").toBeGreaterThan(0.05);
     // ...and so does the merged clip.
     expect(report.mergedEarlyMid as number, "the consolidated clip is silent at the start").toBeGreaterThan(0.05);
-    expect(report.mergedLateMid as number, "the consolidated clip is silent at the end").toBeGreaterThan(0.05);
+    expect(
+      report.mergedLateMid as number,
+      `merged silent at 12 s | mergedDur=${report.mergedDurationSec} pairDur=${report.pairDurationSec} ` +
+        `mergedSweep=${JSON.stringify(report.mergedSweep)} pairSweep=${JSON.stringify(report.pairSweep)}`,
+    ).toBeGreaterThan(0.05);
 
     // ── LIVE vs OFFLINE ───────────────────────────────────────────────────
     // The live path must reproduce the crossfade, including both tones and the
