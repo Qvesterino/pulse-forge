@@ -1,7 +1,7 @@
 # DAW AGENT CONTROL ROADMAP — KYX
 
 **Audit date:** 2026-10-13 · **Target:** KYX (`pulse-forge`) · **Revision:** `31cc20ad`
-**Status:** P0-A, P0-B, P0-C, **P1-A**, **P1-B**, P1-C, **P1-D (S-scope; UNKNOWN resolved)** and P1-E **IMPLEMENTED + VERIFIED 2026-10-13** — see `IMPL-2026-10-13-P0-P1.md` in this directory for changed files, test evidence and residual risks. All other items remain proposals.
+**Status:** P0-A, P0-B, P0-C, **P1-A**, **P1-B**, P1-C, **P1-D (S-scope; UNKNOWN resolved)**, P1-E and **P2-B** **IMPLEMENTED + VERIFIED 2026-10-13** — see `IMPL-2026-10-13-P0-P1.md` in this directory for changed files, test evidence and residual risks. All other items remain proposals.
 
 Complexity is expressed as **relative size** (S / M / L), not calendar time — this audit has no basis for time estimates and inventing them would be false precision.
 
@@ -140,7 +140,7 @@ P0-A must land before anything else: every other intent-layer fix is unverifiabl
 held one boolean and `server/collab-server.mjs` one `mcpRelaySocket`; desktop is separately
 single-window by architecture. That answer was not a design preference — it was a **P1
 defect**: a second window silently stole the relay, and because the hub accepted
-`mcp-result` frames from *any* socket, the displaced window's answers could resolve the live
+`mcp-result` frames from _any_ socket, the displaced window's answers could resolve the live
 window's tool calls. An agent's edit could land in a different project and report success.
 
 **Repair (wire-level ownership).** Each relay connection carries an identity; the hub honours
@@ -182,7 +182,7 @@ closed later (landed).
 
 Reconcile the 46 VERIFIED commands in `DAW_COMMAND_SURFACE_MATRIX.md` against the 37 MCP tools; publish a per-capability UI/Intent/MCP reachability table. Close `kyx_intent`'s natural-language gaps via P1-A. **Prereq:** P0-A, P1-A. **Complexity:** M.
 
-### P2-B · Typed error contract
+### P2-B · Typed error contract · **IMPLEMENTED 2026-10-13** (eight-code closed set + mcpError gate; SERVER_INSTRUCTIONS legend deferred to the next mirror touch — evidence in `IMPL-2026-10-13-P0-P1.md`)
 
 Add stable error codes to `McpToolResult` (`tools.ts:1675-1688`) so agents branch on codes instead of substrings. **Prereq:** none. **Complexity:** M.
 

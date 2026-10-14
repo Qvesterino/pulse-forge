@@ -1710,19 +1710,60 @@ export interface McpToolResult {
    * the one channel every transport forwards verbatim. */
   docId?: string;
   docName?: string;
+  /** P2-B typed error contract (control-surface audit 2026-10-13, GAP-08):
+   * a stable code from the closed {@link McpErrorCode} set, so an agent can
+   * branch on WHAT failed instead of substring-matching the text. Every
+   * `isError` result carries one; the text stays the human-readable
+   * explanation with the actionable detail. */
+  errorCode?: McpErrorCode;
+}
+
+/**
+ * P2-B — the CLOSED error-code set (control-surface audit 2026-10-13,
+ * GAP-08). Eight codes, one per distinct agent-recovery action:
+ *
+ *   UNKNOWN_TOOL            the tool name itself does not exist — list
+ *                           tools again, fix the call
+ *   UNKNOWN_REQUEST         the tool exists but the op/action/genre/family
+ *                           it names does not — fix the arguments
+ *   INVALID_ARGUMENTS       missing, malformed or out-of-range arguments
+ *   UNKNOWN_TARGET          a named id/target resolves to nothing in this
+ *                           project — pick a target from a read tool
+ *   EXECUTION_FAILED        the operation itself failed (command threw,
+ *                           render failed) — the text carries the reason
+ *   PARTIAL_FAILURE         a compound op stopped mid-form; the text says
+ *                           what landed
+ *   UNAVAILABLE_ON_TRANSPORT the tool needs a capability this session does
+ *                           not have (live engine, export bridge, renderer)
+ *   POLICY_REFUSED          a gate declined it (destructive ops locked, mic
+ *                           take recording, active-comp protection) — ask
+ *                           the user, do not retry blind
+ */
+export type McpErrorCode =
+  | "UNKNOWN_TOOL"
+  | "UNKNOWN_REQUEST"
+  | "INVALID_ARGUMENTS"
+  | "UNKNOWN_TARGET"
+  | "EXECUTION_FAILED"
+  | "PARTIAL_FAILURE"
+  | "UNAVAILABLE_ON_TRANSPORT"
+  | "POLICY_REFUSED";
+
+/** The single shaped constructor for error results — every `isError`
+ * result goes through here so the code set stays exhaustive. */
+function mcpError(code: McpErrorCode, text: string): McpToolResult {
+  return { text, mutated: false, isError: true, errorCode: code };
 }
 
 const TICKS_PER_BAR = 4 * 480;
 
 /** D4 escalation gate — every destructive op routes through this refusal. */
 function destructiveRefusal(): McpToolResult {
-  return {
-    text:
-      "declined: destructive MCP ops are locked — the user must allow them " +
+  return mcpError(
+    "POLICY_REFUSED",
+    "declined: destructive MCP ops are locked — the user must allow them " +
       "in the KYX MCP chip (undoable edits still work)",
-    mutated: false,
-    isError: true,
-  };
+  );
 }
 
 /** Shared transport dispatch (kyx_transport + intent-routed transport
@@ -2108,13 +2149,11 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         reverted.some((label) => isForeignWork(label, ctx.agentId))
       ) {
         const top = reverted[0];
-        return {
-          text:
-            `declined: the top of history is foreign work (${top}) — ` +
+        return mcpError(
+          "POLICY_REFUSED",
+          `declined: the top of history is foreign work (${top}) — ` +
             "pass allowForeign: true to revert it anyway (the human may have made these edits)",
-          mutated: false,
-          isError: true,
-        };
+        );
       }
       let done = 0;
       let failure: string | null = null;
@@ -2286,16 +2325,15 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
             parts.push(`${track.name}: ${chain}`);
           }
           if (moved === 0) {
-            return { text: `reorder failed — ${parts.join("; ")}`, mutated: false, isError: true };
+            return mcpError("EXECUTION_FAILED", `reorder failed — ${parts.join("; ")}`);
           }
           ctx.execute(snapshot("mcpFxReorder", `MCP: reorder ${effect}#${reorderIndex}`, before, next));
           return { text: `reorder ${effect}#${reorderIndex}: ${parts.join("; ")} — one undo step`, mutated: true };
         } catch (error) {
-          return {
-            text: `fx op failed: ${error instanceof Error ? error.message : String(error)}`,
-            mutated: false,
-            isError: true,
-          };
+          return mcpError(
+            "EXECUTION_FAILED",
+            `fx op failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
       }
       const perInstance = record.instance != null && action !== "more" && action !== "less";
@@ -2362,11 +2400,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           ctx.execute(snapshot("mcpFxInstance", `MCP: ${action} ${effect}#${instanceWanted}`, before, next));
           return { text: `${parts.join("; ")} — one undo step`, mutated: true };
         } catch (error) {
-          return {
-            text: `fx op failed: ${error instanceof Error ? error.message : String(error)}`,
-            mutated: false,
-            isError: true,
-          };
+          return mcpError(
+            "EXECUTION_FAILED",
+            `fx op failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
       }
       try {
@@ -2405,11 +2442,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       } catch (error) {
         // The intent appliers throw on no-target / no-change — over MCP that
         // must surface as an honest failure result, never a relay hang.
-        return {
-          text: `fx op failed: ${error instanceof Error ? error.message : String(error)}`,
-          mutated: false,
-          isError: true,
-        };
+        return mcpError("EXECUTION_FAILED", `fx op failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
     case "kyx_sections": {
@@ -2439,11 +2472,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         // Arrange primitives throw on invariant violations (e.g. a resize
         // that would overlap the neighbouring clip) — honest failure over
         // MCP, never a thrown crash into the relay.
-        return {
-          text: `section op failed: ${error instanceof Error ? error.message : String(error)}`,
-          mutated: false,
-          isError: true,
-        };
+        return mcpError(
+          "EXECUTION_FAILED",
+          `section op failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
     case "kyx_markers": {
@@ -2514,11 +2546,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
             },
           };
         } catch (error) {
-          return {
-            text: `preset failed: ${error instanceof Error ? error.message : String(error)}`,
-            mutated: false,
-            isError: true,
-          };
+          return mcpError(
+            "EXECUTION_FAILED",
+            `preset failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
       }
       if (op === "listPresets") {
@@ -2545,20 +2576,20 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       if (op === "rename") {
         const name = typeof record.name === "string" ? record.name.trim().slice(0, 40) : "";
         const ids = explicitTrackIds(ctx.getDoc(), record);
-        if (typeof ids === "string") return { text: ids, mutated: false };
+        if (typeof ids === "string") return mcpError("UNKNOWN_TARGET", ids);
         if (ids.length === 0)
-          return { text: `no track matches family "${String(record.family ?? "")}"`, mutated: false };
+          return mcpError("UNKNOWN_TARGET", `no track matches family "${String(record.family ?? "")}"`);
         ctx.execute(setTrackParams(ctx.getDoc(), ids[0], { name }));
         return { text: `renamed to "${name}"`, mutated: true };
       }
       if (op === "remove") {
         if (!destructiveAllowedWithCheckpoint(ctx, "kyx_tracks")) return destructiveRefusal();
         const ids = explicitTrackIds(ctx.getDoc(), record);
-        if (typeof ids === "string") return { text: ids, mutated: false };
+        if (typeof ids === "string") return mcpError("UNKNOWN_TARGET", ids);
         if (ids.length === 0)
-          return { text: `no track matches family "${String(record.family ?? "")}"`, mutated: false };
+          return mcpError("UNKNOWN_TARGET", `no track matches family "${String(record.family ?? "")}"`);
         if (ctx.getDoc().tracks.length - ids.length < 1) {
-          return { text: "declined: cannot remove the last track", mutated: false };
+          return mcpError("POLICY_REFUSED", "declined: cannot remove the last track");
         }
         // ONE snapshot for the whole removal — N separate deleteTrack
         // commands would leave N undo steps for a single MCP call.
@@ -2575,9 +2606,9 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         // Structured absolute mixer setters — the read-back reports every
         // landed value so the AI can verify the fader really moved.
         const ids = explicitTrackIds(ctx.getDoc(), record);
-        if (typeof ids === "string") return { text: ids, mutated: false };
+        if (typeof ids === "string") return mcpError("UNKNOWN_TARGET", ids);
         if (ids.length === 0)
-          return { text: `no track matches family "${String(record.family ?? "")}"`, mutated: false };
+          return mcpError("UNKNOWN_TARGET", `no track matches family "${String(record.family ?? "")}"`);
         const before = ctx.getDoc();
         let next = before;
         const parts: string[] = [];
@@ -2630,7 +2661,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         ctx.execute(snapshot("mcpMixer", `MCP: ${op} on ${ids.length} track(s)`, before, next));
         return { text: `${parts.join("; ")}${ids.length > 1 ? " (one undo step)" : ""}`, mutated: true };
       }
-      return { text: `unknown track op: ${op}`, mutated: false };
+      return mcpError("UNKNOWN_REQUEST", `unknown track op: ${op}`);
     }
     case "kyx_pattern": {
       const op = String(record.op ?? "list");
@@ -2689,19 +2720,14 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       return executeBatchTool(ctx, record);
     case "kyx_meter": {
       if (ctx.meters == null) {
-        return {
-          text: "metering is not available over this MCP transport (no live engine bound) — start KYX with an audio context",
-          mutated: false,
-          isError: true,
-        };
+        return mcpError(
+          "UNAVAILABLE_ON_TRANSPORT",
+          "metering is not available over this MCP transport (no live engine bound) — start KYX with an audio context",
+        );
       }
       const snapshotMeters = ctx.meters();
       if (snapshotMeters == null) {
-        return {
-          text: "engine is not running (no audio context) — nothing to meter yet",
-          mutated: false,
-          isError: true,
-        };
+        return mcpError("UNAVAILABLE_ON_TRANSPORT", "engine is not running (no audio context) — nothing to meter yet");
       }
       const scope = String(record.scope ?? "all");
       const db = (value: number): string => (Number.isFinite(value) ? `${value.toFixed(1)} dBFS` : "-inf");
@@ -2733,8 +2759,8 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       const family = typeof record.family === "string" ? record.family : "bass";
       // agents may target by explicit trackId; family is the friendly default
       const ids = explicitTrackIds(ctx.getDoc(), { ...(record as Record<string, unknown>), family });
-      if (typeof ids === "string") return { text: ids, mutated: false };
-      if (ids.length === 0) return { text: `no track matches family "${family}"`, mutated: false };
+      if (typeof ids === "string") return mcpError("UNKNOWN_TARGET", ids);
+      if (ids.length === 0) return mcpError("UNKNOWN_TARGET", `no track matches family "${family}"`);
       const trackId = ids[0];
       const track = ctx.getDoc().tracks.find((t) => t.id === trackId);
       const notesOf = (): { id: string; pitch: number; start: number; duration: number; velocity: number }[] =>
@@ -2989,24 +3015,19 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           mutated,
         };
       } catch (error) {
-        return {
-          text: `export failed: ${error instanceof Error ? error.message : String(error)}`,
-          mutated: false,
-          isError: true,
-        };
+        return mcpError("EXECUTION_FAILED", `export failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
     case "kyx_audio_preview": {
       const rawBars = record.bars;
       if (rawBars != null && (!Number.isInteger(rawBars) || Number(rawBars) < 1 || Number(rawBars) > 4)) {
-        return { text: "audio preview bars must be an integer from 1 to 4", mutated: false, isError: true };
+        return mcpError("INVALID_ARGUMENTS", "audio preview bars must be an integer from 1 to 4");
       }
       if (ctx.audioPreview == null) {
-        return {
-          text: "audio preview is not available over this MCP transport — use the KYX export panel",
-          mutated: false,
-          isError: true,
-        };
+        return mcpError(
+          "UNAVAILABLE_ON_TRANSPORT",
+          "audio preview is not available over this MCP transport — use the KYX export panel",
+        );
       }
       const bars = rawBars == null ? 2 : Number(rawBars);
       try {
@@ -3024,11 +3045,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           },
         };
       } catch (error) {
-        return {
-          text: `audio preview failed: ${error instanceof Error ? error.message : String(error)}`,
-          mutated: false,
-          isError: true,
-        };
+        return mcpError(
+          "EXECUTION_FAILED",
+          `audio preview failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
     case "kyx_loudness": {
@@ -3036,20 +3056,15 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       const op = String(record.op ?? "measure");
       if (op === "measure") {
         if (ctx.measureLoudness == null) {
-          return {
-            text: "loudness measurement is not available over this MCP transport (no render context bound)",
-            mutated: false,
-            isError: true,
-          };
+          return mcpError(
+            "UNAVAILABLE_ON_TRANSPORT",
+            "loudness measurement is not available over this MCP transport (no render context bound)",
+          );
         }
         try {
           const reading = await ctx.measureLoudness();
           if (!reading.measured) {
-            return {
-              text: "could not measure loudness — the render was too quiet or empty",
-              mutated: false,
-              isError: true,
-            };
+            return mcpError("EXECUTION_FAILED", "could not measure loudness — the render was too quiet or empty");
           }
           return {
             text: `current mix: ${reading.integrated.toFixed(1)} LUFS integrated (render-backed BS.1770)`,
@@ -3057,26 +3072,24 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
             data: { integratedLufs: reading.integrated },
           };
         } catch (error) {
-          return {
-            text: `loudness render failed: ${error instanceof Error ? error.message : String(error)}`,
-            mutated: false,
-            isError: true,
-          };
+          return mcpError(
+            "EXECUTION_FAILED",
+            `loudness render failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
       }
       if (ctx.applyLoudness == null) {
-        return {
-          text: "the loudness loop is not available over this MCP transport (no render context bound)",
-          mutated: false,
-          isError: true,
-        };
+        return mcpError(
+          "UNAVAILABLE_ON_TRANSPORT",
+          "the loudness loop is not available over this MCP transport (no render context bound)",
+        );
       }
       const direction = record.direction === "quieter" ? ("quieter" as const) : ("louder" as const);
       const targetDb =
         typeof record.targetDb === "number" && Number.isFinite(record.targetDb) ? record.targetDb : undefined;
       try {
         const outcome = await ctx.applyLoudness({ direction, ...(targetDb !== undefined ? { targetDb } : {}) });
-        if (!outcome.ok) return { text: outcome.error, mutated: false, isError: true };
+        if (!outcome.ok) return mcpError("EXECUTION_FAILED", outcome.error ?? "the operation failed without a reason");
         // The hook returns the UNEXECUTED command so the mutation still flows
         // through this context's executor (same store, same undo semantics).
         ctx.execute(outcome.command);
@@ -3092,11 +3105,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           },
         };
       } catch (error) {
-        return {
-          text: `loudness loop failed: ${error instanceof Error ? error.message : String(error)}`,
-          mutated: false,
-          isError: true,
-        };
+        return mcpError(
+          "EXECUTION_FAILED",
+          `loudness loop failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
     case "kyx_import_sfz": {
@@ -3130,14 +3142,13 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       try {
         result = await ctx.importSamples({ name, sfzBase64, trackId, samples });
       } catch (error) {
-        return {
-          text: `SFZ import failed: ${error instanceof Error ? error.message : String(error)}`,
-          mutated: false,
-          isError: true,
-        };
+        return mcpError(
+          "EXECUTION_FAILED",
+          `SFZ import failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
       if (!result.ok) {
-        return { text: `SFZ import failed: ${result.error}`, mutated: false, isError: true };
+        return mcpError("EXECUTION_FAILED", `SFZ import failed: ${result.error}`);
       }
       const r = result.report;
       return {
@@ -3153,15 +3164,14 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
     case "kyx_publish_gallery": {
       const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
       if (ctx.shareToGallery == null) {
-        return {
-          text: "gallery publishing is not available over this MCP transport — publish from a live KYX session (web or desktop)",
-          mutated: false,
-          isError: true,
-        };
+        return mcpError(
+          "UNAVAILABLE_ON_TRANSPORT",
+          "gallery publishing is not available over this MCP transport — publish from a live KYX session (web or desktop)",
+        );
       }
       const title = typeof record.title === "string" ? record.title.trim() : "";
       if (!title || title.length > 64) {
-        return { text: "title is required (max 64 chars)", mutated: false, isError: true };
+        return mcpError("INVALID_ARGUMENTS", "title is required (max 64 chars)");
       }
       const author =
         typeof record.author === "string" && record.author.trim() ? record.author.trim().slice(0, 32) : "KYX agent";
@@ -3178,11 +3188,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           data: { galleryId: id, origin: "agent", agent },
         };
       } catch (error) {
-        return {
-          text: `gallery publish failed: ${error instanceof Error ? error.message : String(error)}`,
-          mutated: false,
-          isError: true,
-        };
+        return mcpError(
+          "EXECUTION_FAILED",
+          `gallery publish failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
     case "kyx_arrange": {
@@ -3192,17 +3201,15 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
       const genre = String(record.genre ?? "");
       if (!MIX_GENRES.includes(genre as (typeof MIX_GENRES)[number])) {
-        return { text: `unknown genre "${genre}" - one of: ${MIX_GENRES.join(", ")}`, mutated: false, isError: true };
+        return mcpError("UNKNOWN_REQUEST", `unknown genre "${genre}" - one of: ${MIX_GENRES.join(", ")}`);
       }
       const doc = ctx.getDoc();
       if (doc.arrangement.clips.length > 0) {
-        return {
-          text:
-            "arrangement already has clips - kyx_song builds a WHOLE track; " +
+        return mcpError(
+          "POLICY_REFUSED",
+          "arrangement already has clips - kyx_song builds a WHOLE track; " +
             "use kyx_sections / kyx_clips for surgical edits, or clear the arrangement first",
-          mutated: false,
-          isError: true,
-        };
+        );
       }
       const spec = normalizeIntent({
         genre: genre as never,
@@ -3267,11 +3274,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           mutated: true,
         };
       } catch (error) {
-        return {
-          text: `song build failed: ${error instanceof Error ? error.message : String(error)}`,
-          mutated: false,
-          isError: true,
-        };
+        return mcpError(
+          "EXECUTION_FAILED",
+          `song build failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
     case "kyx_render_summary": {
@@ -3280,22 +3286,20 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       // never vibes. Render-bound transport only; refusal is honest elsewhere.
       const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
       if (ctx.renderSummary == null) {
-        return {
-          text: "render summary is not available over this MCP transport (no render context bound) — use kyx_meter for live levels",
-          mutated: false,
-          isError: true,
-        };
+        return mcpError(
+          "UNAVAILABLE_ON_TRANSPORT",
+          "render summary is not available over this MCP transport (no render context bound) — use kyx_meter for live levels",
+        );
       }
       const scope = record.scope === "master" || record.scope === "tracks" ? record.scope : "all";
       try {
         const data = await ctx.renderSummary({ scope });
         return { text: formatRenderSummary(data), mutated: false, data };
       } catch (error) {
-        return {
-          text: `render summary failed: ${error instanceof Error ? error.message : String(error)}`,
-          mutated: false,
-          isError: true,
-        };
+        return mcpError(
+          "EXECUTION_FAILED",
+          `render summary failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
     case "kyx_diagnose_mix": {
@@ -3304,11 +3308,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       // diagnose → fix → re-diagnose without a human ear in the middle.
       const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
       if (ctx.diagnoseMix == null) {
-        return {
-          text: "mix diagnosis is not available over this MCP transport (no render context bound) — use kyx_render_summary for numbers only",
-          mutated: false,
-          isError: true,
-        };
+        return mcpError(
+          "UNAVAILABLE_ON_TRANSPORT",
+          "mix diagnosis is not available over this MCP transport (no render context bound) — use kyx_render_summary for numbers only",
+        );
       }
       const scope = record.scope === "master" || record.scope === "tracks" ? record.scope : "all";
       try {
@@ -3318,11 +3321,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         const data = await ctx.diagnoseMix({ scope });
         return { text: formatMixDiagnosis(data), mutated: false, data };
       } catch (error) {
-        return {
-          text: `mix diagnosis failed: ${error instanceof Error ? error.message : String(error)}`,
-          mutated: false,
-          isError: true,
-        };
+        return mcpError(
+          "EXECUTION_FAILED",
+          `mix diagnosis failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
     case "kyx_mix_idea": {
@@ -3332,11 +3334,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
       const idea = typeof record.idea === "string" ? record.idea : "";
       if (idea.trim().length < 3) {
-        return {
-          text: 'kyx_mix_idea needs an idea — e.g. idea: "warm it up and glue the drums"',
-          mutated: false,
-          isError: true,
-        };
+        return mcpError("INVALID_ARGUMENTS", 'kyx_mix_idea needs an idea — e.g. idea: "warm it up and glue the drums"');
       }
       const target = typeof record.target === "string" ? record.target.trim() : undefined;
       const apply = record.apply === true;
@@ -3344,22 +3342,20 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         // PREVIEW MODE: render the before/after pair, measure both, arm the
         // studio chip — still a pure read over the project.
         if (ctx.mixPreview == null) {
-          return {
-            text: "mix preview is not available over this MCP transport (no render context bound) — use apply:true for the plan-and-apply loop",
-            mutated: false,
-            isError: true,
-          };
+          return mcpError(
+            "UNAVAILABLE_ON_TRANSPORT",
+            "mix preview is not available over this MCP transport (no render context bound) — use apply:true for the plan-and-apply loop",
+          );
         }
         try {
           const { formatMixPreview } = await import("./mix-preview");
           const outcome = await ctx.mixPreview({ idea, ...(target ? { target } : {}) });
           return { text: formatMixPreview(outcome), mutated: false };
         } catch (error) {
-          return {
-            text: `mix preview failed: ${error instanceof Error ? error.message : String(error)}`,
-            mutated: false,
-            isError: true,
-          };
+          return mcpError(
+            "EXECUTION_FAILED",
+            `mix preview failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
       }
       try {
@@ -3373,11 +3369,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         }
         return { text: formatMixIdea(plan, apply), mutated: apply };
       } catch (error) {
-        return {
-          text: `mix idea failed: ${error instanceof Error ? error.message : String(error)}`,
-          mutated: false,
-          isError: true,
-        };
+        return mcpError(
+          "EXECUTION_FAILED",
+          `mix idea failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
     case "kyx_blind_ab": {
@@ -3397,10 +3392,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       }
       if (op === "record") {
         if (record.xWas !== "A" && record.xWas !== "B") {
-          return { text: "trial needs xWas: A|B (which side was X)", mutated: false, isError: true };
+          return mcpError("INVALID_ARGUMENTS", "trial needs xWas: A|B (which side was X)");
         }
         if (record.answer !== "A" && record.answer !== "B") {
-          return { text: "trial needs answer: A|B (what the listener picked)", mutated: false, isError: true };
+          return mcpError("INVALID_ARGUMENTS", "trial needs answer: A|B (what the listener picked)");
         }
         const entry = recordBlindAbTrial({
           lane: String(record.lane ?? "default"),
@@ -3431,10 +3426,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         resetBlindAbTrials();
         return { text: "blind A/B trial log cleared", mutated: false };
       }
-      return { text: `unknown blind_ab op: ${op} (plan | record | verdict | reset)`, mutated: false, isError: true };
+      return mcpError("UNKNOWN_REQUEST", `unknown blind_ab op: ${op} (plan | record | verdict | reset)`);
     }
     default:
-      return { text: `unknown tool: ${name}`, mutated: false, isError: true };
+      return mcpError("UNKNOWN_TOOL", `unknown tool: ${name}`);
   }
 }
 
@@ -3530,7 +3525,7 @@ export function readMcpResource(ctx: McpToolContext, uri: string): McpToolResult
     case "kyx://vocab":
       return { text: MCP_VOCAB_TEXT, mutated: false };
     default:
-      return { text: `unknown resource: ${uri} — see resources/list`, mutated: false, isError: true };
+      return mcpError("UNKNOWN_REQUEST", `unknown resource: ${uri} — see resources/list`);
   }
 }
 
@@ -3561,7 +3556,7 @@ const MIX_GENRES = [
 function executeMixTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
   const genre = String(record.genre ?? "");
   if (!MIX_GENRES.includes(genre as (typeof MIX_GENRES)[number])) {
-    return { text: `unknown genre "${genre}" - one of: ${MIX_GENRES.join(", ")}`, mutated: false, isError: true };
+    return mcpError("UNKNOWN_REQUEST", `unknown genre "${genre}" - one of: ${MIX_GENRES.join(", ")}`);
   }
   const spec = normalizeIntent({
     genre: genre as never,
@@ -3593,7 +3588,7 @@ function executeMixTool(ctx: McpToolContext, record: Record<string, unknown>): M
     if (/changed nothing/i.test(message)) {
       return { text: "mix already matches the profile - changed nothing", mutated: false };
     }
-    return { text: `mix failed: ${message}`, mutated: false, isError: true };
+    return mcpError("EXECUTION_FAILED", `mix failed: ${message}`);
   }
   return {
     text: `mix applied (${profile.decisions.length} decisions): ${profile.summary.join(" | ")} - one undo step`,
@@ -3604,17 +3599,15 @@ function executeMixTool(ctx: McpToolContext, record: Record<string, unknown>): M
 async function executeArrangeTool(ctx: McpToolContext, record: Record<string, unknown>): Promise<McpToolResult> {
   const genre = String(record.genre ?? "");
   if (!MIX_GENRES.includes(genre as (typeof MIX_GENRES)[number])) {
-    return { text: `unknown genre "${genre}" - one of: ${MIX_GENRES.join(", ")}`, mutated: false, isError: true };
+    return mcpError("UNKNOWN_REQUEST", `unknown genre "${genre}" - one of: ${MIX_GENRES.join(", ")}`);
   }
   const doc = ctx.getDoc();
   if (doc.arrangement.clips.length > 0) {
-    return {
-      text:
-        "arrangement already has clips - kyx_arrange lays out a WHOLE form; " +
+    return mcpError(
+      "POLICY_REFUSED",
+      "arrangement already has clips - kyx_arrange lays out a WHOLE form; " +
         "use kyx_sections / kyx_clips for surgical edits, or clear the arrangement first",
-      mutated: false,
-      isError: true,
-    };
+    );
   }
   const spec = normalizeIntent({
     genre: genre as never,
@@ -3639,7 +3632,7 @@ async function executeArrangeTool(ctx: McpToolContext, record: Record<string, un
   for (const section of planned) {
     next = createScene(next, section.label).execute(next);
     const scene = next.scenes[next.scenes.length - 1];
-    if (!scene) return { text: "scene creation failed mid-form", mutated: false, isError: true };
+    if (!scene) return mcpError("PARTIAL_FAILURE", "scene creation failed mid-form");
     next = setSceneRole(next, scene.id, section.role).execute(next);
     next = setSceneIntensity(next, scene.id, section.intensity).execute(next);
     next = addArrangementClip(next, scene.id, (bar - 1) * 4, section.bars).execute(next);
@@ -3890,19 +3883,14 @@ async function executeCheckpointTool(ctx: McpToolContext, record: Record<string,
     };
   }
   if (name === "") {
-    return {
-      text: `checkpoint ${op} needs a name — kyx_checkpoint {op: list} shows them`,
-      mutated: false,
-      isError: true,
-    };
+    return mcpError("INVALID_ARGUMENTS", `checkpoint ${op} needs a name — kyx_checkpoint {op: list} shows them`);
   }
   const cp = checkpoints.get(name);
   if (!cp) {
-    return {
-      text: `no checkpoint "${name}" — kyx_checkpoint {op: list} shows: ${[...checkpoints.keys()].join(", ") || "none"}`,
-      mutated: false,
-      isError: true,
-    };
+    return mcpError(
+      "UNKNOWN_TARGET",
+      `no checkpoint "${name}" — kyx_checkpoint {op: list} shows: ${[...checkpoints.keys()].join(", ") || "none"}`,
+    );
   }
   if (op === "delete") {
     checkpoints.delete(name);
@@ -3966,7 +3954,7 @@ async function executeCheckpointTool(ctx: McpToolContext, record: Record<string,
       mutated: true,
     };
   }
-  return { text: `unknown checkpoint op: ${op}`, mutated: false, isError: true };
+  return mcpError("UNKNOWN_REQUEST", `unknown checkpoint op: ${op}`);
 }
 
 /** "wav" | "mp3" from the tool record — anything else falls back to wav. */
@@ -4350,7 +4338,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
     if (trackId !== "") ownerId = trackId;
     else if (family !== "") {
       const ids = tracksInFamily(doc, family);
-      if (ids.length === 0) return { text: `no track matches family "${family}"`, mutated: false };
+      if (ids.length === 0) return mcpError("UNKNOWN_TARGET", `no track matches family "${family}"`);
       ownerId = ids[0];
     } else {
       return { text: `audio ops need trackId or family (op ${op})`, mutated: false };
@@ -4482,11 +4470,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
   } catch (error) {
     // Arrangement commands throw on invariants (overlap, bounds) — honest
     // failure over MCP, never a thrown crash into the relay.
-    return {
-      text: `clip op failed: ${error instanceof Error ? error.message : String(error)}`,
-      mutated: false,
-      isError: true,
-    };
+    return mcpError("EXECUTION_FAILED", `clip op failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -4568,8 +4552,9 @@ function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>
     }
     if (op === "addToGroup") {
       const ids = explicitTrackIds(doc, record);
-      if (typeof ids === "string") return { text: ids, mutated: false };
-      if (ids.length === 0) return { text: `no track matches family "${String(record.family ?? "")}"`, mutated: false };
+      if (typeof ids === "string") return mcpError("UNKNOWN_TARGET", ids);
+      if (ids.length === 0)
+        return mcpError("UNKNOWN_TARGET", `no track matches family "${String(record.family ?? "")}"`);
       const groupId = resolveGroup();
       if (groupId == null) {
         return {
@@ -4588,8 +4573,9 @@ function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>
     }
     if (op === "removeFromGroup") {
       const ids = explicitTrackIds(doc, record);
-      if (typeof ids === "string") return { text: ids, mutated: false };
-      if (ids.length === 0) return { text: `no track matches family "${String(record.family ?? "")}"`, mutated: false };
+      if (typeof ids === "string") return mcpError("UNKNOWN_TARGET", ids);
+      if (ids.length === 0)
+        return mcpError("UNKNOWN_TARGET", `no track matches family "${String(record.family ?? "")}"`);
       let next = doc;
       const parts: string[] = [];
       let changed = false;
@@ -4627,11 +4613,10 @@ function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>
           mutated: true,
         };
       } catch (error) {
-        return {
-          text: `routing op failed: ${error instanceof Error ? error.message : String(error)}`,
-          mutated: false,
-          isError: true,
-        };
+        return mcpError(
+          "EXECUTION_FAILED",
+          `routing op failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
     if (op === "setSend" || op === "setReturnGain" || op === "createReturn") {
@@ -4644,11 +4629,10 @@ function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>
           const created = ctx.getDoc().returns[ctx.getDoc().returns.length - 1];
           return { text: `created return bus "${created.name}" (id=${created.id}) — one undo step`, mutated: true };
         } catch (error) {
-          return {
-            text: `routing op failed: ${error instanceof Error ? error.message : String(error)}`,
-            mutated: false,
-            isError: true,
-          };
+          return mcpError(
+            "EXECUTION_FAILED",
+            `routing op failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
       }
       const levelField = op === "setSend" ? "level" : "gain";
@@ -4673,9 +4657,9 @@ function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>
       try {
         if (op === "setSend") {
           const ids = explicitTrackIds(ctx.getDoc(), record);
-          if (typeof ids === "string") return { text: ids, mutated: false };
+          if (typeof ids === "string") return mcpError("UNKNOWN_TARGET", ids);
           if (ids.length === 0)
-            return { text: `no track matches family "${String(record.family ?? "")}"`, mutated: false };
+            return mcpError("UNKNOWN_TARGET", `no track matches family "${String(record.family ?? "")}"`);
           let next = ctx.getDoc();
           const parts: string[] = [];
           for (const id of ids) {
@@ -4690,11 +4674,10 @@ function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>
         const ret = ctx.getDoc().returns.find((r) => r.id === returnId)!;
         return { text: `${ret.name}: return gain ${ret.gain.toFixed(2)} — one undo step`, mutated: true };
       } catch (error) {
-        return {
-          text: `routing op failed: ${error instanceof Error ? error.message : String(error)}`,
-          mutated: false,
-          isError: true,
-        };
+        return mcpError(
+          "EXECUTION_FAILED",
+          `routing op failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
     return {
@@ -4702,11 +4685,7 @@ function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>
       mutated: false,
     };
   } catch (error) {
-    return {
-      text: `routing op failed: ${error instanceof Error ? error.message : String(error)}`,
-      mutated: false,
-      isError: true,
-    };
+    return mcpError("EXECUTION_FAILED", `routing op failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -4772,11 +4751,7 @@ function executeTakesTool(ctx: McpToolContext, record: Record<string, unknown>):
         mutated: true,
       };
     } catch (error) {
-      return {
-        text: `take op failed: ${error instanceof Error ? error.message : String(error)}`,
-        mutated: false,
-        isError: true,
-      };
+      return mcpError("EXECUTION_FAILED", `take op failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -4789,11 +4764,7 @@ function executeTakesTool(ctx: McpToolContext, record: Record<string, unknown>):
     const group = groups.find((item) => item.id === groupId);
     if (!group) return { text: `no take group "${groupId}"`, mutated: false };
     if (group.activeTakeId === takeId) {
-      return {
-        text: "refused: that take is the ACTIVE comp — activate another take first",
-        mutated: false,
-        isError: true,
-      };
+      return mcpError("POLICY_REFUSED", "refused: that take is the ACTIVE comp — activate another take first");
     }
     const doomed = (doc.arrangement.audioClips ?? []).filter(
       (clip) => clip.takeGroupId === groupId && clip.takeId === takeId,
@@ -4824,10 +4795,10 @@ function executeTakesTool(ctx: McpToolContext, record: Record<string, unknown>):
 async function executeBatchTool(ctx: McpToolContext, record: Record<string, unknown>): Promise<McpToolResult> {
   const calls = Array.isArray(record.calls) ? record.calls : null;
   if (calls == null || calls.length === 0) {
-    return { text: "batch needs calls: [{tool, args}…] (1..10)", mutated: false, isError: true };
+    return mcpError("INVALID_ARGUMENTS", "batch needs calls: [{tool, args}…] (1..10)");
   }
   if (calls.length > 10) {
-    return { text: `batch is capped at 10 calls (got ${calls.length}) — split it`, mutated: false, isError: true };
+    return mcpError("INVALID_ARGUMENTS", `batch is capped at 10 calls (got ${calls.length}) — split it`);
   }
   const framed = ctx.beginUndoFrame != null && ctx.endUndoFrame != null;
   const results: Array<{ tool: string; mutated: boolean; text: string }> = [];
@@ -4957,13 +4928,13 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
   if (trackId !== "") {
     const track = doc.tracks.find((t) => t.id === trackId);
     if (track == null)
-      return { text: `no track with id "${trackId}" — list ids via kyx_state subject:tracks`, mutated: false };
+      return mcpError("UNKNOWN_TARGET", `no track with id "${trackId}" — list ids via kyx_state subject:tracks`);
     targets = [track];
   } else if (family !== "") {
     targets = tracksInFamily(doc, family)
       .map((id) => doc.tracks.find((t) => t.id === id))
       .filter((t): t is Track => t != null);
-    if (targets.length === 0) return { text: `no track matches family "${family}"`, mutated: false };
+    if (targets.length === 0) return mcpError("UNKNOWN_TARGET", `no track matches family "${family}"`);
   } else {
     return { text: "no target — pass trackId (from kyx_state tracks) or family", mutated: false };
   }
@@ -5455,7 +5426,7 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
           .find((t) => t.id === id)!
           .effects.filter((fx) => fx.type === "zenit")
           .at(-1);
-        if (!created) return { text: `insert of ZENIT failed on ${track.name}`, mutated: false, isError: true };
+        if (!created) return mcpError("EXECUTION_FAILED", `insert of ZENIT failed on ${track.name}`);
         fxId = created.id;
       }
       for (const [paramId, value] of Object.entries(shape.params))
@@ -5569,7 +5540,7 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
       const skippedReadback = skipped.length > 0 ? `; skipped missing ${skipped.join(", ")}` : "";
       return { text: `restored '${name}' on ${applied.join(", ")}${skippedReadback} — one undo step`, mutated: true };
     }
-    return { text: `unknown op:ab action: ${action} (save | list | compare | restore)`, mutated: false, isError: true };
+    return mcpError("UNKNOWN_REQUEST", `unknown op:ab action: ${action} (save | list | compare | restore)`);
   }
 
   if (op === "assist") {
@@ -5660,11 +5631,7 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
     let appliedCount = 0;
     for (const step of plan) {
       if (step.device === "master")
-        return {
-          text: "track-scoped kyx_master assist cannot change the final project limiter",
-          mutated: false,
-          isError: true,
-        };
+        return mcpError("POLICY_REFUSED", "track-scoped kyx_master assist cannot change the final project limiter");
       for (const id of ids) {
         const track = next.tracks.find((t) => t.id === id)!;
         let fxId = pickZenitInstance(next, id, record);
@@ -5701,8 +5668,7 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
             .find((t) => t.id === id)!
             .effects.filter((fx) => fx.type === wantedType)
             .at(-1);
-          if (!created)
-            return { text: `insert of ${step.device} failed on ${track.name}`, mutated: false, isError: true };
+          if (!created) return mcpError("EXECUTION_FAILED", `insert of ${step.device} failed on ${track.name}`);
           fxId = created.id;
         }
         if (existing?.bypassed) next = toggleEffectBypass(next, id, fxId).execute(next);
@@ -5774,7 +5740,7 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
     return { text: `ZENIT removed from ${targets.map((t) => t.trackName).join(", ")} — one undo step`, mutated: true };
   }
 
-  return { text: `unknown kyx_master op: ${op}`, mutated: false, isError: true };
+  return mcpError("UNKNOWN_REQUEST", `unknown kyx_master op: ${op}`);
 }
 
 /** Scoped groove part builder for the kyx_groove tool. */
@@ -6116,7 +6082,7 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
   const op = String(record.op ?? "");
   const family = String(record.family ?? "");
   if (!["kick", "snare", "clap", "hat", "perc", "tom"].includes(family)) {
-    return { text: `unknown pad family "${family}"`, mutated: false, isError: true };
+    return mcpError("UNKNOWN_REQUEST", `unknown pad family "${family}"`);
   }
   const drums = doc.tracks.filter((track): track is DrumTrack => track.kind === "drum");
   if (drums.length === 0) return { text: "no drum tracks in the project", mutated: false };
@@ -6127,7 +6093,7 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
       if (inferPadRole(pad.name, index) === family) targets.push({ padId: pad.id, name: pad.name });
     });
   }
-  if (targets.length === 0) return { text: `no pad matches family "${family}"`, mutated: false, isError: true };
+  if (targets.length === 0) return mcpError("UNKNOWN_TARGET", `no pad matches family "${family}"`);
 
   const stepCount = pattern.stepCount;
   const requested = Array.isArray(record.steps)
@@ -6326,7 +6292,7 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
   } catch (error) {
     // The intent appliers throw on no-target / already-matches — surface as
     // an honest failure instead of letting it kill the relay round-trip.
-    return { text: `intent failed: ${error instanceof Error ? error.message : String(error)}`, mutated: false };
+    return mcpError("EXECUTION_FAILED", `intent failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
