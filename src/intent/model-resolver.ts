@@ -2,7 +2,7 @@ import type { ProjectDocument } from "../project-model/types";
 import { isCreativeBriefRoute } from "./model-fallback-policy";
 import type { RoutedIntent } from "./route";
 import { routeIntentText } from "./route";
-import { validateModelAction } from "./model-schema";
+import { migrateModelAction, validateModelAction } from "./model-schema";
 import { resolvePresetByName } from "./preset-intent";
 import type { PresetTargetFamily, PresetIntent } from "./preset-intent";
 import { resolveClipRef, resolveSceneTarget, type ArrangeOp, type ClipArrangeOp } from "./arrangeWords";
@@ -12,6 +12,7 @@ import type { ExactOp, ExactTarget } from "./exact";
 import type { InstrumentKind, MusicalKey } from "../project-model/types";
 import type { ProductionIntent } from "./production";
 import type { ComplaintIntent } from "./complaints";
+import { paramIntentFromModel } from "./param-intent";
 import type { QueryIntent, UndoIntent } from "./studio-words";
 
 /**
@@ -284,9 +285,14 @@ function compoundFrom(doc: ProjectDocument, m: ModelAction, instruction: string)
       wrapperKey != null ? { kind: rawRecord.kind, ...(rawRecord[wrapperKey] as ModelAction) } : rawRecord;
     const kind = PART_KIND_ALIAS[String(record.kind ?? "")] ?? String(record.kind ?? "");
     if (!COMPOUNDABLE.has(String(record.kind ?? "")) && !COMPOUNDABLE.has(kind)) return null;
-    const validation = validateModelAction({ ...record, kind });
+    // P3-D: the envelope is version-checked/migrated before validation —
+    // a future-versioned action refuses here instead of failing slot checks
+    // with a misleading "unknown field" error.
+    const migrated = migrateModelAction({ ...record, kind });
+    if ("refusal" in migrated) return null;
+    const validation = validateModelAction(migrated.action);
     if (!validation.valid) return null;
-    const adapted = adaptRecord(doc, { ...record, kind }, instruction, kind);
+    const adapted = adaptRecord(doc, migrated.action as ModelAction, instruction, kind);
     if (adapted == null) return null;
     // wrap the flat route into the compound part of the same name
     if (adapted.kind === "fader") parts.push({ kind: "fader", intent: adapted.intent });
@@ -383,6 +389,18 @@ function adaptRecord(
           steps: Math.max(1, Math.min(10, Number(record.steps ?? 1))),
         },
       };
+    case "paramIntent": {
+      const targets = Array.isArray(record.targets) ? record.targets.map(String) : [];
+      const intent = paramIntentFromModel(
+        String(record.effect ?? ""),
+        String(record.role ?? ""),
+        targets,
+        (record.mode as "set" | "more" | "less") ?? "more",
+        typeof record.value === "number" ? record.value : undefined,
+        typeof record.percent === "number" ? record.percent : undefined,
+      );
+      return intent ? { kind: "paramIntent", intent } : null;
+    }
     case "queryIntent":
       return {
         kind: "queryIntent",
@@ -465,8 +483,10 @@ export async function tryModelRoute(
       parsed = { kind: record.kind, ...(record[nestedKey] as ModelAction) };
     }
   }
-  const validation = validateModelAction(parsed);
+  const migrated = migrateModelAction(parsed);
+  if ("refusal" in migrated) return null;
+  const validation = validateModelAction(migrated.action);
   if (!validation.valid) return null;
-  const record = parsed as ModelAction;
+  const record = migrated.action as ModelAction;
   return adaptRecord(doc, record, instruction, String(record.kind));
 }

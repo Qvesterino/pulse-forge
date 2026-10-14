@@ -35,6 +35,7 @@ export const VOCAB = {
     "select",
     "preset",
     "effectIntent",
+    "paramIntent",
     "sendIntent",
     "bypassIntent",
     "mix",
@@ -91,6 +92,7 @@ export const VOCAB = {
     "eq",
   ] as const,
   effectDirection: ["more", "less", "remove", "set"] as const,
+  paramRole: ["mix", "time", "tone", "drive", "width"] as const,
   sendDirection: ["more", "less", "set", "remove"] as const,
   productionTarget: ["drums", "bass", "lead", "chords", "kick", "snare", "hats"] as const,
   productionConcept: [
@@ -248,6 +250,54 @@ const EA = (name: string, values: readonly string[], required = false): Slot => 
 });
 const OA = (name: string, slots: Slot[], required = true): Slot => ({ name, type: "objArray", slots, required });
 
+/**
+ * P3-D (control-surface audit 2026-10-13): the version of THIS build's
+ * action schema. The grammar pin (grammarSha256 in the model manifest)
+ * already refuses an artifact trained against a different VOCABULARY; this
+ * version governs the ACTION-ENVELOPE contract on top of it — which wrapper
+ * keys exist, how kinds are named, what a migration must fill. Bump it when
+ * a change reshapes the action envelope, and extend
+ * {@link migrateModelAction} to carry older envelopes forward.
+ *
+ * Deliberately NOT part of `toGbnfGrammar()`: the grammar pins the
+ * vocabulary the v16 model was TRAINED on — injecting a version field there
+ * would invalidate the deployed artifact. The version travels at the
+ * envelope level, beside the action, never inside the constrained grammar.
+ */
+export const ACTION_SCHEMA_VERSION = 1;
+
+/**
+ * P3-D migration hook: carry an older/foreign action envelope forward to
+ * {@link ACTION_SCHEMA_VERSION}. v1 is the current contract — the migration
+ * is a pass-through that stamps unknown envelopes honestly so callers can
+ * branch. An action claiming a FUTURE version is refused (the loading code
+ * rejects what it cannot migrate — project-model invariant #6 applied to
+ * model actions). Returns the action and the version it was judged against.
+ */
+export function migrateModelAction(
+  action: unknown,
+): { action: Record<string, unknown>; version: number } | { refusal: string } {
+  if (action == null || typeof action !== "object") {
+    return { refusal: "action must be an object" };
+  }
+  const record = action as Record<string, unknown>;
+  const raw = record.actionSchemaVersion;
+  if (raw === undefined) {
+    // Envelopes from before the version contract are v1 by definition —
+    // the v16 artifact and every deployed model emit unversioned actions.
+    return { action: record, version: 1 };
+  }
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 1) {
+    return { refusal: `actionSchemaVersion must be a positive integer, got: ${String(raw)}` };
+  }
+  if (raw > ACTION_SCHEMA_VERSION) {
+    return {
+      refusal: `action schema version ${raw} is newer than this build understands (${ACTION_SCHEMA_VERSION}) — update KYX`,
+    };
+  }
+  return { action: record, version: raw };
+}
+
 /** The full model-facing action schema — one spec per kind. */
 export const MODEL_ACTIONS: Record<string, ActionSpec> = {
   // Listening loop (Phase C): the producer's complaint travels as three
@@ -307,6 +357,19 @@ export const MODEL_ACTIONS: Record<string, ActionSpec> = {
       E("effectType", VOCAB.effectType),
       EA("targets", VOCAB.mixTarget),
       E("direction", VOCAB.effectDirection),
+      I("percent", 0, 100),
+    ],
+  },
+  // Param wave P2: a NAMED KNOB (non-primary) — role is the closed enum,
+  // the engine maps role -> paramId per effect. mode set carries an absolute
+  // raw value; more/less carry the vibe ladder or an explicit percent.
+  paramIntent: {
+    slots: [
+      E("effect", VOCAB.effectType),
+      E("role", VOCAB.paramRole),
+      EA("targets", VOCAB.mixTarget),
+      E("mode", ["set", "more", "less"]),
+      I("value", 0, 100000, false),
       I("percent", 0, 100),
     ],
   },
