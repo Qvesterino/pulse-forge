@@ -122,7 +122,7 @@ export function ResizeGrip({ region, ariaLabel, title, axis = "x", keyboardStep 
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
     const step = event.shiftKey ? keyboardStep * 3 : keyboardStep;
-    const regionStep = axisRatio(region) ? step / spanFor(region) : step;
+    const regionStep = region === "dockSplitRatio" ? (event.shiftKey ? 0.06 : 0.02) : step;
     // ArrowLeft means "move the boundary LEFT". For the right-hand inspector
     // that GROWS the column; for the split, slot A is on the left so it also
     // grows. Both regions therefore share one rule — mirroring the drag, which
