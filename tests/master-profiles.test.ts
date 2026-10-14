@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MASTER_PROFILES, profileFor, verdictAgainst, worstStatus } from "../src/mcp/master-profiles";
+import { MASTER_PROFILES, codecLossVerdict, profileFor, verdictAgainst, worstStatus } from "../src/mcp/master-profiles";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { executeMcpTool, type McpToolContext } from "../src/mcp/tools";
@@ -450,5 +450,33 @@ describe("kyx_master op:land — the closed loudness loop", () => {
     expect(report.text).toContain("Phase issues");
     expect(report.text).toContain("Mono fold-down loses depth");
     expect(report.text).toContain("Left/right balance off by more than 6 dB");
+  });
+});
+
+describe("codec loss verdict", () => {
+  it("clean codec pass (LUFS stable, no TP overshoot)", () => {
+    const v = codecLossVerdict({ preLufs: -14, postLufs: -14.1, preTruePeakDb: -1, postTruePeakDb: -0.9 });
+    expect(v.every((line) => line.status === "pass")).toBe(true);
+  });
+
+  it("hot master → codec TP overshoot fails; mild overshoot warns", () => {
+    const fail = codecLossVerdict({ preLufs: -14, postLufs: -14, preTruePeakDb: -1, postTruePeakDb: 0.5 });
+    expect(fail.find((l) => l.status === "fail")).toBeDefined();
+    const warn = codecLossVerdict({ preLufs: -14, postLufs: -14, preTruePeakDb: -1, postTruePeakDb: -0.5 });
+    expect(warn.find((l) => l.status === "warn")).toBeDefined();
+  });
+
+  it("HF cutoff detected; deterministic", () => {
+    const v = codecLossVerdict({
+      preLufs: -14,
+      postLufs: -14,
+      preTruePeakDb: -1.2,
+      postTruePeakDb: -1.0,
+      preHfShare: 0.15,
+      postHfShare: 0.05,
+    });
+    expect(v.find((l) => l.line.includes("high-band"))).toBeDefined();
+    const input = { preLufs: -14, postLufs: -14, preTruePeakDb: -1, postTruePeakDb: -0.9 };
+    expect(codecLossVerdict(input)).toEqual(codecLossVerdict(input));
   });
 });
