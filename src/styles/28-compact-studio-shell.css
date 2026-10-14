@@ -93,6 +93,133 @@
   letter-spacing: 1.8px;
 }
 
+/* Tablet shell: keep identity and project controls on the first row, with the
+   complete transport on its own scroll-safe row. This prevents the flexible
+   project field from being pushed beyond the viewport by the fixed transport. */
+@media (max-width: 1100px) {
+  .topbar {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-rows: minmax(30px, max-content) minmax(34px, max-content);
+    align-items: center;
+    gap: 4px 6px;
+    padding: calc(4px + env(safe-area-inset-top, 0px)) 10px 4px;
+  }
+
+  .topbar > .brand {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .topbar > .btn-projects {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .topbar > .project-name {
+    grid-column: 3;
+    grid-row: 1;
+    width: 100%;
+    max-width: none;
+    min-width: 72px;
+    margin-left: 0;
+  }
+
+  .topbar > .topbar-right {
+    grid-column: 4;
+    grid-row: 1;
+    gap: 4px;
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .topbar > .transport-cluster {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    justify-content: flex-start;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .topbar > .transport-cluster::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (max-width: 860px) {
+  .topbar {
+    column-gap: 5px;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .topbar .brand-name {
+    display: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .topbar {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    column-gap: 4px;
+  }
+
+  .btn-projects-compact {
+    width: 34px;
+    min-width: 34px;
+    padding: 0;
+    font-size: 15px;
+  }
+
+  .topbar > .project-name {
+    min-width: 48px;
+    padding-right: 5px;
+    padding-left: 5px;
+    font-size: 12px;
+  }
+
+  .topbar > .topbar-right {
+    gap: 4px;
+  }
+
+  .topbar-right > .save-status:not(.save-error) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 9px;
+    min-width: 9px;
+    height: 9px;
+    overflow: hidden;
+    font-size: 0;
+    letter-spacing: 0;
+  }
+
+  .topbar-right > .save-status:not(.save-error)::before {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    content: "";
+  }
+
+  .topbar-right > .save-error {
+    max-width: 72px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .topbar > .transport-cluster {
+    gap: 5px;
+    padding-right: 5px;
+    padding-left: 5px;
+  }
+}
+
 @media (min-width: 861px) {
   .workspace.inspector-collapsed {
     grid-template-columns: auto minmax(0, 1fr) 28px;

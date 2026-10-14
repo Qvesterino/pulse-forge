@@ -1,0 +1,1387 @@
+- generic [ref=f5e2]:
+  - dialog "Onboarding tour" [ref=f5e274]:
+    - generic [ref=f5e275]:
+      - generic [ref=f5e276]: KYX
+      - button "Skip tour" [ref=f5e277] [cursor=pointer]: SKIP
+    - heading "1/4 — MAKE SOUND" [level=3] [ref=f5e278]
+    - paragraph [ref=f5e279]: Click any pad in the rack on the left. Each pad is one drum sound — kick, snare, hats.
+    - generic [ref=f5e280]:
+      - generic [ref=f5e281]: Try it, then click NEXT
+      - button "NEXT" [ref=f5e287] [cursor=pointer]
+  - generic [ref=f5e288]:
+    - banner [ref=f5e289]:
+      - link "KX" [ref=f5e291] [cursor=pointer]:
+        - /url: /?landing
+      - button "Back to project browser" [ref=f5e293] [cursor=pointer]: PROJECTS
+      - generic [ref=f5e294]:
+        - button "PATTERN" [ref=f5e295] [cursor=pointer]
+        - button "Record MIDI to pattern" [ref=f5e296] [cursor=pointer]: ⏺
+        - button "▶" [ref=f5e297] [cursor=pointer]
+        - button "■" [ref=f5e298] [cursor=pointer]
+        - button "Count-in off" [ref=f5e299] [cursor=pointer]: C·
+        - button "Pre-roll off" [ref=f5e300] [cursor=pointer]: PR
+        - button "Metronome off" [ref=f5e301] [cursor=pointer]: CLICK
+        - button "Undo" [disabled] [ref=f5e302]: ↶
+        - button "Redo" [disabled] [ref=f5e303]: ↷
+        - generic [ref=f5e304]: 1.1.1
+        - button "Toggle loop region" [ref=f5e305] [cursor=pointer]: LOOP
+        - spinbutton "BPM" [ref=f5e306]:
+          - generic [ref=f5e308]: "124.0"
+        - button "Tap tempo" [ref=f5e309] [cursor=pointer]: TAP
+      - textbox "Project name" [ref=f5e310]: House Beat
+      - generic [ref=f5e311]:
+        - generic "All changes saved. Autosave is on." [ref=f5e312]: SAVED
+        - button "Open command palette" [ref=f5e313] [cursor=pointer]: ⌘K
+        - button "Show keyboard shortcuts" [ref=f5e314] [cursor=pointer]: "?"
+        - button "More topbar controls (7 hidden)" [ref=f5e316] [cursor=pointer]: ⋯
+    - main [ref=f5e317]:
+      - generic [ref=f5e318]:
+        - region "Drum Rack" [ref=f5e319]:
+          - generic [ref=f5e320]:
+            - tablist "Tracks" [ref=f5e321]:
+              - tab "Drums (Drum track)" [selected] [ref=f5e322] [cursor=pointer]:
+                - generic [ref=f5e323]: DR
+                - text: Drums
+              - tab "808 (808 track)" [ref=f5e324] [cursor=pointer]:
+                - generic [ref=f5e325]: "808"
+                - text: "808"
+              - tab "Chords (analog track)" [ref=f5e326] [cursor=pointer]:
+                - generic [ref=f5e327]: AN
+                - text: Chords
+              - combobox "Add track" [ref=f5e328]:
+                - option "+ TRACK" [selected]
+                - option "Drum Rack"
+                - option "MRT2 Generative"
+                - option "Sampler"
+                - option "Analog Synth"
+                - option "Bass Synth"
+                - option "808 Synth"
+                - option "Texture Synth"
+                - option "Wavetable Synth"
+                - option "Granular Synth"
+                - option "Keys Synth"
+                - option "Pluck Synth"
+                - option "Flute"
+                - option "Log Drum"
+                - option "Spectral Pad"
+                - option "Vocal Chop"
+                - option "Drum Synth"
+                - option "KOPA Kick Designer"
+                - option "Group"
+            - group "Note Repeat" [ref=f5e330]:
+              - generic [ref=f5e331]: NOTE REPEAT
+              - generic [ref=f5e332]:
+                - generic [ref=f5e333]: RATE
+                - combobox "Note repeat rate" [ref=f5e334]:
+                  - option "off" [selected]
+                  - option "1/4"
+                  - option "1/8"
+                  - option "1/16"
+                  - option "1/8T"
+                  - option "1/16T"
+              - generic [ref=f5e335]:
+                - generic [ref=f5e336]: VELO
+                - combobox "Note repeat velocity falloff" [disabled] [ref=f5e337]:
+                  - option "constant"
+                  - option "decay" [selected]
+                  - option "rise"
+              - button "16 LVL" [ref=f5e338] [cursor=pointer]
+              - button "KIT" [ref=f5e339] [cursor=pointer]
+              - button "KEYS" [ref=f5e340] [cursor=pointer]
+          - button "1 Kick Deep" [ref=f5e341] [cursor=pointer]:
+            - generic [ref=f5e342]: "1"
+            - generic [ref=f5e343]: Kick Deep
+          - button "2 Kick Punch" [ref=f5e344] [cursor=pointer]:
+            - generic [ref=f5e345]: "2"
+            - generic [ref=f5e346]: Kick Punch
+          - button "3 Kick Techno" [ref=f5e347] [cursor=pointer]:
+            - generic [ref=f5e348]: "3"
+            - generic [ref=f5e349]: Kick Techno
+          - button "4 Rim" [ref=f5e350] [cursor=pointer]:
+            - generic [ref=f5e351]: "4"
+            - generic [ref=f5e352]: Rim
+          - button "5 Snare" [ref=f5e353] [cursor=pointer]:
+            - generic [ref=f5e354]: "5"
+            - generic [ref=f5e355]: Snare
+          - button "6 Snare Tight" [ref=f5e356] [cursor=pointer]:
+            - generic [ref=f5e357]: "6"
+            - generic [ref=f5e358]: Snare Tight
+          - button "7 Clap" [ref=f5e359] [cursor=pointer]:
+            - generic [ref=f5e360]: "7"
+            - generic [ref=f5e361]: Clap
+          - button "8 Shaker" [ref=f5e362] [cursor=pointer]:
+            - generic [ref=f5e363]: "8"
+            - generic [ref=f5e364]: Shaker
+          - button "9 Hat Closed" [ref=f5e365] [cursor=pointer]:
+            - generic [ref=f5e366]: "9"
+            - generic [ref=f5e367]: Hat Closed
+          - button "10 Hat Soft" [ref=f5e368] [cursor=pointer]:
+            - generic [ref=f5e369]: "10"
+            - generic [ref=f5e370]: Hat Soft
+          - button "11 Hat Open" [ref=f5e371] [cursor=pointer]:
+            - generic [ref=f5e372]: "11"
+            - generic [ref=f5e373]: Hat Open
+          - button "12 Ride" [ref=f5e374] [cursor=pointer]:
+            - generic [ref=f5e375]: "12"
+            - generic [ref=f5e376]: Ride
+          - button "13 Tom Low" [ref=f5e377] [cursor=pointer]:
+            - generic [ref=f5e378]: "13"
+            - generic [ref=f5e379]: Tom Low
+          - button "14 Tom High" [ref=f5e380] [cursor=pointer]:
+            - generic [ref=f5e381]: "14"
+            - generic [ref=f5e382]: Tom High
+          - button "15 Tick" [ref=f5e383] [cursor=pointer]:
+            - generic [ref=f5e384]: "15"
+            - generic [ref=f5e385]: Tick
+          - button "16 Blip" [ref=f5e386] [cursor=pointer]:
+            - generic [ref=f5e387]: "16"
+            - generic [ref=f5e388]: Blip
+        - region "Patterns" [ref=f5e389]:
+          - tablist "Pattern selector" [ref=f5e390]:
+            - tab "Pattern A" [selected] [ref=f5e391] [cursor=pointer]
+          - generic "Groove" [ref=f5e392]:
+            - spinbutton "SWING" [ref=f5e393]:
+              - generic [ref=f5e395]: 0%
+            - spinbutton "TIMING" [ref=f5e396]:
+              - generic [ref=f5e398]: 0%
+            - spinbutton "VELOCITY" [ref=f5e399]:
+              - generic [ref=f5e401]: 0%
+          - generic [ref=f5e402]:
+            - group "Pattern" [ref=f5e403]:
+              - generic [ref=f5e404]: PATTERN
+              - button "ADD" [ref=f5e405] [cursor=pointer]
+              - button "DUP" [ref=f5e406] [cursor=pointer]
+            - group "Generate" [ref=f5e407]:
+              - generic [ref=f5e408]: GENERATE
+              - button "MUT" [ref=f5e409] [cursor=pointer]
+              - button "FILL" [ref=f5e410] [cursor=pointer]
+              - button "GEN" [ref=f5e411] [cursor=pointer]
+              - button ".MID" [ref=f5e412] [cursor=pointer]
+              - button "🎲 DICE" [ref=f5e413] [cursor=pointer]
+            - group "Clipboard" [ref=f5e414]:
+              - generic [ref=f5e415]: CLIPBOARD
+              - button "COPY" [ref=f5e416] [cursor=pointer]
+              - button "PASTE" [disabled] [ref=f5e417]
+            - group "Destructive" [ref=f5e418]:
+              - button "CLEAR" [ref=f5e419] [cursor=pointer]
+              - button "DEL" [disabled] [ref=f5e420]
+            - combobox "Pattern length" [ref=f5e421]:
+              - option "16 · 1 bar" [selected]
+              - option "32 · 2 bars"
+              - option "64 · 4 bars"
+              - option "128 · 8 bars"
+              - option "256 · 16 bars"
+            - combobox "Quantize grid" [ref=f5e422]:
+              - option "1/8"
+              - option "1/16" [selected]
+              - option "1/32"
+          - generic "Scene launcher" [ref=f5e423]:
+            - generic "Groove · Pattern A · click SELECT, use LAUNCH to play" [ref=f5e425]:
+              - button "Select scene Groove" [pressed] [ref=f5e426] [cursor=pointer]:
+                - generic [ref=f5e427]: Groove
+              - generic [ref=f5e429]: CURRENT
+              - generic [ref=f5e431]:
+                - button "Launch scene Groove" [ref=f5e432] [cursor=pointer]: ▶
+                - button "Vary scene Groove" [ref=f5e433] [cursor=pointer]: ⟳
+                - button "Edit scene Groove" [ref=f5e434] [cursor=pointer]: ✎
+        - region "Step Sequencer" [ref=f5e435]:
+          - generic [ref=f5e436]:
+            - row "Step ruler — click to seek, drag to set the loop region" [ref=f5e437]:
+              - generic [ref=f5e438]:
+                - generic "Pattern A · 16 steps" [ref=f5e439]: Pattern A · 16
+                - button "Enter Beat Focus" [ref=f5e440] [cursor=pointer]: FOCUS
+                - button "Toggle gesture cheat sheet" [ref=f5e441] [cursor=pointer]: "?"
+              - generic "Step 1, beat 1" [ref=f5e442]: "1"
+              - generic "Step 2" [ref=f5e443]: ·
+              - generic "Step 3" [ref=f5e444]: ·
+              - generic "Step 4" [ref=f5e445]: ·
+              - generic "Step 5, beat 2" [ref=f5e446]: "2"
+              - generic "Step 6" [ref=f5e447]: ·
+              - generic "Step 7" [ref=f5e448]: ·
+              - generic "Step 8" [ref=f5e449]: ·
+              - generic "Step 9, beat 3" [ref=f5e450]: "3"
+              - generic "Step 10" [ref=f5e451]: ·
+              - generic "Step 11" [ref=f5e452]: ·
+              - generic "Step 12" [ref=f5e453]: ·
+              - generic "Step 13, beat 4" [ref=f5e454]: "4"
+              - generic "Step 14" [ref=f5e455]: ·
+              - generic "Step 15" [ref=f5e456]: ·
+              - generic "Step 16" [ref=f5e457]: ·
+            - generic [ref=f5e458]:
+              - generic [ref=f5e461]:
+                - button "Drums track" [pressed] [ref=f5e462] [cursor=pointer]:
+                  - generic [ref=f5e463]: DR
+                  - text: Drums
+                - button "Mute Drums" [ref=f5e464] [cursor=pointer]: M
+                - button "Solo Drums" [ref=f5e465] [cursor=pointer]: S
+              - generic [ref=f5e468]:
+                - generic [ref=f5e469]:
+                  - button "Kick Deep" [ref=f5e470] [cursor=pointer]
+                  - button "M" [ref=f5e471] [cursor=pointer]
+                  - button "S" [ref=f5e472] [cursor=pointer]
+                - generic [ref=f5e473]:
+                  - button "Step 1, velocity 95%" [pressed] [ref=f5e474] [cursor=pointer]
+                  - button "Step 2, empty" [ref=f5e476] [cursor=pointer]
+                  - button "Step 3, empty" [ref=f5e478] [cursor=pointer]
+                  - button "Step 4, empty" [ref=f5e480] [cursor=pointer]
+                  - button "Step 5, velocity 95%" [pressed] [ref=f5e482] [cursor=pointer]
+                  - button "Step 6, empty" [ref=f5e484] [cursor=pointer]
+                  - button "Step 7, empty" [ref=f5e486] [cursor=pointer]
+                  - button "Step 8, empty" [ref=f5e488] [cursor=pointer]
+                  - button "Step 9, velocity 95%" [pressed] [ref=f5e490] [cursor=pointer]
+                  - button "Step 10, empty" [ref=f5e492] [cursor=pointer]
+                  - button "Step 11, empty" [ref=f5e494] [cursor=pointer]
+                  - button "Step 12, empty" [ref=f5e496] [cursor=pointer]
+                  - button "Step 13, velocity 95%" [pressed] [ref=f5e498] [cursor=pointer]
+                  - button "Step 14, empty" [ref=f5e500] [cursor=pointer]
+                  - button "Step 15, empty" [ref=f5e502] [cursor=pointer]
+                  - button "Step 16, empty" [ref=f5e504] [cursor=pointer]
+              - generic [ref=f5e507]:
+                - generic [ref=f5e508]:
+                  - button "Kick Punch" [ref=f5e509] [cursor=pointer]
+                  - button "M" [ref=f5e510] [cursor=pointer]
+                  - button "S" [ref=f5e511] [cursor=pointer]
+                - generic [ref=f5e512]:
+                  - button "Step 1, empty" [ref=f5e513] [cursor=pointer]
+                  - button "Step 2, empty" [ref=f5e515] [cursor=pointer]
+                  - button "Step 3, empty" [ref=f5e517] [cursor=pointer]
+                  - button "Step 4, empty" [ref=f5e519] [cursor=pointer]
+                  - button "Step 5, empty" [ref=f5e521] [cursor=pointer]
+                  - button "Step 6, empty" [ref=f5e523] [cursor=pointer]
+                  - button "Step 7, empty" [ref=f5e525] [cursor=pointer]
+                  - button "Step 8, empty" [ref=f5e527] [cursor=pointer]
+                  - button "Step 9, empty" [ref=f5e529] [cursor=pointer]
+                  - button "Step 10, empty" [ref=f5e531] [cursor=pointer]
+                  - button "Step 11, empty" [ref=f5e533] [cursor=pointer]
+                  - button "Step 12, empty" [ref=f5e535] [cursor=pointer]
+                  - button "Step 13, empty" [ref=f5e537] [cursor=pointer]
+                  - button "Step 14, empty" [ref=f5e539] [cursor=pointer]
+                  - button "Step 15, empty" [ref=f5e541] [cursor=pointer]
+                  - button "Step 16, empty" [ref=f5e543] [cursor=pointer]
+              - generic [ref=f5e546]:
+                - generic [ref=f5e547]:
+                  - button "Kick Techno" [ref=f5e548] [cursor=pointer]
+                  - button "M" [ref=f5e549] [cursor=pointer]
+                  - button "S" [ref=f5e550] [cursor=pointer]
+                - generic [ref=f5e551]:
+                  - button "Step 1, empty" [ref=f5e552] [cursor=pointer]
+                  - button "Step 2, empty" [ref=f5e554] [cursor=pointer]
+                  - button "Step 3, empty" [ref=f5e556] [cursor=pointer]
+                  - button "Step 4, empty" [ref=f5e558] [cursor=pointer]
+                  - button "Step 5, empty" [ref=f5e560] [cursor=pointer]
+                  - button "Step 6, empty" [ref=f5e562] [cursor=pointer]
+                  - button "Step 7, empty" [ref=f5e564] [cursor=pointer]
+                  - button "Step 8, empty" [ref=f5e566] [cursor=pointer]
+                  - button "Step 9, empty" [ref=f5e568] [cursor=pointer]
+                  - button "Step 10, empty" [ref=f5e570] [cursor=pointer]
+                  - button "Step 11, empty" [ref=f5e572] [cursor=pointer]
+                  - button "Step 12, empty" [ref=f5e574] [cursor=pointer]
+                  - button "Step 13, empty" [ref=f5e576] [cursor=pointer]
+                  - button "Step 14, empty" [ref=f5e578] [cursor=pointer]
+                  - button "Step 15, empty" [ref=f5e580] [cursor=pointer]
+                  - button "Step 16, empty" [ref=f5e582] [cursor=pointer]
+              - generic [ref=f5e585]:
+                - generic [ref=f5e586]:
+                  - button "Rim" [ref=f5e587] [cursor=pointer]
+                  - button "M" [ref=f5e588] [cursor=pointer]
+                  - button "S" [ref=f5e589] [cursor=pointer]
+                - generic [ref=f5e590]:
+                  - button "Step 1, empty" [ref=f5e591] [cursor=pointer]
+                  - button "Step 2, empty" [ref=f5e593] [cursor=pointer]
+                  - button "Step 3, empty" [ref=f5e595] [cursor=pointer]
+                  - button "Step 4, empty" [ref=f5e597] [cursor=pointer]
+                  - button "Step 5, empty" [ref=f5e599] [cursor=pointer]
+                  - button "Step 6, empty" [ref=f5e601] [cursor=pointer]
+                  - button "Step 7, empty" [ref=f5e603] [cursor=pointer]
+                  - button "Step 8, empty" [ref=f5e605] [cursor=pointer]
+                  - button "Step 9, empty" [ref=f5e607] [cursor=pointer]
+                  - button "Step 10, empty" [ref=f5e609] [cursor=pointer]
+                  - button "Step 11, empty" [ref=f5e611] [cursor=pointer]
+                  - button "Step 12, empty" [ref=f5e613] [cursor=pointer]
+                  - button "Step 13, empty" [ref=f5e615] [cursor=pointer]
+                  - button "Step 14, empty" [ref=f5e617] [cursor=pointer]
+                  - button "Step 15, empty" [ref=f5e619] [cursor=pointer]
+                  - button "Step 16, empty" [ref=f5e621] [cursor=pointer]
+              - generic [ref=f5e624]:
+                - generic [ref=f5e625]:
+                  - button "Snare" [ref=f5e626] [cursor=pointer]
+                  - button "M" [ref=f5e627] [cursor=pointer]
+                  - button "S" [ref=f5e628] [cursor=pointer]
+                - generic [ref=f5e629]:
+                  - button "Step 1, empty" [ref=f5e630] [cursor=pointer]
+                  - button "Step 2, empty" [ref=f5e632] [cursor=pointer]
+                  - button "Step 3, empty" [ref=f5e634] [cursor=pointer]
+                  - button "Step 4, empty" [ref=f5e636] [cursor=pointer]
+                  - button "Step 5, empty" [ref=f5e638] [cursor=pointer]
+                  - button "Step 6, empty" [ref=f5e640] [cursor=pointer]
+                  - button "Step 7, empty" [ref=f5e642] [cursor=pointer]
+                  - button "Step 8, empty" [ref=f5e644] [cursor=pointer]
+                  - button "Step 9, empty" [ref=f5e646] [cursor=pointer]
+                  - button "Step 10, empty" [ref=f5e648] [cursor=pointer]
+                  - button "Step 11, empty" [ref=f5e650] [cursor=pointer]
+                  - button "Step 12, empty" [ref=f5e652] [cursor=pointer]
+                  - button "Step 13, empty" [ref=f5e654] [cursor=pointer]
+                  - button "Step 14, empty" [ref=f5e656] [cursor=pointer]
+                  - button "Step 15, empty" [ref=f5e658] [cursor=pointer]
+                  - button "Step 16, empty" [ref=f5e660] [cursor=pointer]
+              - generic [ref=f5e663]:
+                - generic [ref=f5e664]:
+                  - button "Snare Tight" [ref=f5e665] [cursor=pointer]
+                  - button "M" [ref=f5e666] [cursor=pointer]
+                  - button "S" [ref=f5e667] [cursor=pointer]
+                - generic [ref=f5e668]:
+                  - button "Step 1, empty" [ref=f5e669] [cursor=pointer]
+                  - button "Step 2, empty" [ref=f5e671] [cursor=pointer]
+                  - button "Step 3, empty" [ref=f5e673] [cursor=pointer]
+                  - button "Step 4, empty" [ref=f5e675] [cursor=pointer]
+                  - button "Step 5, empty" [ref=f5e677] [cursor=pointer]
+                  - button "Step 6, empty" [ref=f5e679] [cursor=pointer]
+                  - button "Step 7, empty" [ref=f5e681] [cursor=pointer]
+                  - button "Step 8, empty" [ref=f5e683] [cursor=pointer]
+                  - button "Step 9, empty" [ref=f5e685] [cursor=pointer]
+                  - button "Step 10, empty" [ref=f5e687] [cursor=pointer]
+                  - button "Step 11, empty" [ref=f5e689] [cursor=pointer]
+                  - button "Step 12, empty" [ref=f5e691] [cursor=pointer]
+                  - button "Step 13, empty" [ref=f5e693] [cursor=pointer]
+                  - button "Step 14, empty" [ref=f5e695] [cursor=pointer]
+                  - button "Step 15, empty" [ref=f5e697] [cursor=pointer]
+                  - button "Step 16, empty" [ref=f5e699] [cursor=pointer]
+              - generic [ref=f5e702]:
+                - generic [ref=f5e703]:
+                  - button "Clap" [ref=f5e704] [cursor=pointer]
+                  - button "M" [ref=f5e705] [cursor=pointer]
+                  - button "S" [ref=f5e706] [cursor=pointer]
+                - generic [ref=f5e707]:
+                  - button "Step 1, empty" [ref=f5e708] [cursor=pointer]
+                  - button "Step 2, empty" [ref=f5e710] [cursor=pointer]
+                  - button "Step 3, empty" [ref=f5e712] [cursor=pointer]
+                  - button "Step 4, empty" [ref=f5e714] [cursor=pointer]
+                  - button "Step 5, velocity 70%" [pressed] [ref=f5e716] [cursor=pointer]
+                  - button "Step 6, empty" [ref=f5e718] [cursor=pointer]
+                  - button "Step 7, empty" [ref=f5e720] [cursor=pointer]
+                  - button "Step 8, empty" [ref=f5e722] [cursor=pointer]
+                  - button "Step 9, empty" [ref=f5e724] [cursor=pointer]
+                  - button "Step 10, empty" [ref=f5e726] [cursor=pointer]
+                  - button "Step 11, empty" [ref=f5e728] [cursor=pointer]
+                  - button "Step 12, empty" [ref=f5e730] [cursor=pointer]
+                  - button "Step 13, velocity 75%" [pressed] [ref=f5e732] [cursor=pointer]
+                  - button "Step 14, empty" [ref=f5e734] [cursor=pointer]
+                  - button "Step 15, empty" [ref=f5e736] [cursor=pointer]
+                  - button "Step 16, empty" [ref=f5e738] [cursor=pointer]
+              - generic [ref=f5e741]:
+                - generic [ref=f5e742]:
+                  - button "Shaker" [ref=f5e743] [cursor=pointer]
+                  - button "M" [ref=f5e744] [cursor=pointer]
+                  - button "S" [ref=f5e745] [cursor=pointer]
+                - generic [ref=f5e746]:
+                  - button "Step 1, empty" [ref=f5e747] [cursor=pointer]
+                  - button "Step 2, empty" [ref=f5e749] [cursor=pointer]
+                  - button "Step 3, empty" [ref=f5e751] [cursor=pointer]
+                  - button "Step 4, empty" [ref=f5e753] [cursor=pointer]
+                  - button "Step 5, empty" [ref=f5e755] [cursor=pointer]
+                  - button "Step 6, empty" [ref=f5e757] [cursor=pointer]
+                  - button "Step 7, empty" [ref=f5e759] [cursor=pointer]
+                  - button "Step 8, empty" [ref=f5e761] [cursor=pointer]
+                  - button "Step 9, empty" [ref=f5e763] [cursor=pointer]
+                  - button "Step 10, empty" [ref=f5e765] [cursor=pointer]
+                  - button "Step 11, empty" [ref=f5e767] [cursor=pointer]
+                  - button "Step 12, empty" [ref=f5e769] [cursor=pointer]
+                  - button "Step 13, empty" [ref=f5e771] [cursor=pointer]
+                  - button "Step 14, empty" [ref=f5e773] [cursor=pointer]
+                  - button "Step 15, empty" [ref=f5e775] [cursor=pointer]
+                  - button "Step 16, empty" [ref=f5e777] [cursor=pointer]
+              - generic [ref=f5e780]:
+                - generic [ref=f5e781]:
+                  - button "Hat Closed" [ref=f5e782] [cursor=pointer]
+                  - button "M" [ref=f5e783] [cursor=pointer]
+                  - button "S" [ref=f5e784] [cursor=pointer]
+                - generic [ref=f5e785]:
+                  - button "Step 1, empty" [ref=f5e786] [cursor=pointer]
+                  - button "Step 2, empty" [ref=f5e788] [cursor=pointer]
+                  - button "Step 3, velocity 50%" [pressed] [ref=f5e790] [cursor=pointer]
+                  - button "Step 4, empty" [ref=f5e792] [cursor=pointer]
+                  - button "Step 5, empty" [ref=f5e794] [cursor=pointer]
+                  - button "Step 6, empty" [ref=f5e796] [cursor=pointer]
+                  - button "Step 7, velocity 50%" [pressed] [ref=f5e798] [cursor=pointer]
+                  - button "Step 8, empty" [ref=f5e800] [cursor=pointer]
+                  - button "Step 9, empty" [ref=f5e802] [cursor=pointer]
+                  - button "Step 10, empty" [ref=f5e804] [cursor=pointer]
+                  - button "Step 11, velocity 50%" [pressed] [ref=f5e806] [cursor=pointer]
+                  - button "Step 12, empty" [ref=f5e808] [cursor=pointer]
+                  - button "Step 13, empty" [ref=f5e810] [cursor=pointer]
+                  - button "Step 14, empty" [ref=f5e812] [cursor=pointer]
+                  - button "Step 15, velocity 55%" [pressed] [ref=f5e814] [cursor=pointer]
+                  - button "Step 16, empty" [ref=f5e816] [cursor=pointer]
+              - generic [ref=f5e819]:
+                - generic [ref=f5e820]:
+                  - button "Hat Soft" [ref=f5e821] [cursor=pointer]
+                  - button "M" [ref=f5e822] [cursor=pointer]
+                  - button "S" [ref=f5e823] [cursor=pointer]
+                - generic [ref=f5e824]:
+                  - button "Step 1, empty" [ref=f5e825] [cursor=pointer]
+                  - button "Step 2, empty" [ref=f5e827] [cursor=pointer]
+                  - button "Step 3, empty" [ref=f5e829] [cursor=pointer]
+                  - button "Step 4, empty" [ref=f5e831] [cursor=pointer]
+                  - button "Step 5, empty" [ref=f5e833] [cursor=pointer]
+                  - button "Step 6, empty" [ref=f5e835] [cursor=pointer]
+                  - button "Step 7, empty" [ref=f5e837] [cursor=pointer]
+                  - button "Step 8, empty" [ref=f5e839] [cursor=pointer]
+                  - button "Step 9, empty" [ref=f5e841] [cursor=pointer]
+                  - button "Step 10, empty" [ref=f5e843] [cursor=pointer]
+                  - button "Step 11, empty" [ref=f5e845] [cursor=pointer]
+                  - button "Step 12, empty" [ref=f5e847] [cursor=pointer]
+                  - button "Step 13, empty" [ref=f5e849] [cursor=pointer]
+                  - button "Step 14, empty" [ref=f5e851] [cursor=pointer]
+                  - button "Step 15, empty" [ref=f5e853] [cursor=pointer]
+                  - button "Step 16, empty" [ref=f5e855] [cursor=pointer]
+              - generic [ref=f5e858]:
+                - generic [ref=f5e859]:
+                  - button "Hat Open" [ref=f5e860] [cursor=pointer]
+                  - button "M" [ref=f5e861] [cursor=pointer]
+                  - button "S" [ref=f5e862] [cursor=pointer]
+                - generic [ref=f5e863]:
+                  - button "Step 1, empty" [ref=f5e864] [cursor=pointer]
+                  - button "Step 2, empty" [ref=f5e866] [cursor=pointer]
+                  - button "Step 3, empty" [ref=f5e868] [cursor=pointer]
+                  - button "Step 4, empty" [ref=f5e870] [cursor=pointer]
+                  - button "Step 5, empty" [ref=f5e872] [cursor=pointer]
+                  - button "Step 6, empty" [ref=f5e874] [cursor=pointer]
+                  - button "Step 7, empty" [ref=f5e876] [cursor=pointer]
+                  - button "Step 8, empty" [ref=f5e878] [cursor=pointer]
+                  - button "Step 9, empty" [ref=f5e880] [cursor=pointer]
+                  - button "Step 10, empty" [ref=f5e882] [cursor=pointer]
+                  - button "Step 11, empty" [ref=f5e884] [cursor=pointer]
+                  - button "Step 12, empty" [ref=f5e886] [cursor=pointer]
+                  - button "Step 13, empty" [ref=f5e888] [cursor=pointer]
+                  - button "Step 14, empty" [ref=f5e890] [cursor=pointer]
+                  - button "Step 15, velocity 40%" [pressed] [ref=f5e892] [cursor=pointer]
+                  - button "Step 16, empty" [ref=f5e894] [cursor=pointer]
+              - generic [ref=f5e897]:
+                - generic [ref=f5e898]:
+                  - button "Ride" [ref=f5e899] [cursor=pointer]
+                  - button "M" [ref=f5e900] [cursor=pointer]
+                  - button "S" [ref=f5e901] [cursor=pointer]
+                - generic [ref=f5e902]:
+                  - button "Step 1, empty" [ref=f5e903] [cursor=pointer]
+                  - button "Step 2, empty" [ref=f5e905] [cursor=pointer]
+                  - button "Step 3, empty" [ref=f5e907] [cursor=pointer]
+                  - button "Step 4, empty" [ref=f5e909] [cursor=pointer]
+                  - button "Step 5, empty" [ref=f5e911] [cursor=pointer]
+                  - button "Step 6, empty" [ref=f5e913] [cursor=pointer]
+                  - button "Step 7, empty" [ref=f5e915] [cursor=pointer]
+                  - button "Step 8, empty" [ref=f5e917] [cursor=pointer]
+                  - button "Step 9, empty" [ref=f5e919] [cursor=pointer]
+                  - button "Step 10, empty" [ref=f5e921] [cursor=pointer]
+                  - button "Step 11, empty" [ref=f5e923] [cursor=pointer]
+                  - button "Step 12, empty" [ref=f5e925] [cursor=pointer]
+                  - button "Step 13, empty" [ref=f5e927] [cursor=pointer]
+                  - button "Step 14, empty" [ref=f5e929] [cursor=pointer]
+                  - button "Step 15, empty" [ref=f5e931] [cursor=pointer]
+                  - button "Step 16, empty" [ref=f5e933] [cursor=pointer]
+              - generic [ref=f5e936]:
+                - generic [ref=f5e937]:
+                  - button "Tom Low" [ref=f5e938] [cursor=pointer]
+                  - button "M" [ref=f5e939] [cursor=pointer]
+                  - button "S" [ref=f5e940] [cursor=pointer]
+                - generic [ref=f5e941]:
+                  - button "Step 1, empty" [ref=f5e942] [cursor=pointer]
+                  - button "Step 2, empty" [ref=f5e944] [cursor=pointer]
+                  - button "Step 3, empty" [ref=f5e946] [cursor=pointer]
+                  - button "Step 4, empty" [ref=f5e948] [cursor=pointer]
+                  - button "Step 5, empty" [ref=f5e950] [cursor=pointer]
+                  - button "Step 6, empty" [ref=f5e952] [cursor=pointer]
+                  - button "Step 7, empty" [ref=f5e954] [cursor=pointer]
+                  - button "Step 8, empty" [ref=f5e956] [cursor=pointer]
+                  - button "Step 9, empty" [ref=f5e958] [cursor=pointer]
+                  - button "Step 10, empty" [ref=f5e960] [cursor=pointer]
+                  - button "Step 11, empty" [ref=f5e962] [cursor=pointer]
+                  - button "Step 12, empty" [ref=f5e964] [cursor=pointer]
+                  - button "Step 13, empty" [ref=f5e966] [cursor=pointer]
+                  - button "Step 14, empty" [ref=f5e968] [cursor=pointer]
+                  - button "Step 15, empty" [ref=f5e970] [cursor=pointer]
+                  - button "Step 16, empty" [ref=f5e972] [cursor=pointer]
+              - generic [ref=f5e975]:
+                - generic [ref=f5e976]:
+                  - button "Tom High" [ref=f5e977] [cursor=pointer]
+                  - button "M" [ref=f5e978] [cursor=pointer]
+                  - button "S" [ref=f5e979] [cursor=pointer]
+                - generic [ref=f5e980]:
+                  - button "Step 1, empty" [ref=f5e981] [cursor=pointer]
+                  - button "Step 2, empty" [ref=f5e983] [cursor=pointer]
+                  - button "Step 3, empty" [ref=f5e985] [cursor=pointer]
+                  - button "Step 4, empty" [ref=f5e987] [cursor=pointer]
+                  - button "Step 5, empty" [ref=f5e989] [cursor=pointer]
+                  - button "Step 6, empty" [ref=f5e991] [cursor=pointer]
+                  - button "Step 7, empty" [ref=f5e993] [cursor=pointer]
+                  - button "Step 8, empty" [ref=f5e995] [cursor=pointer]
+                  - button "Step 9, empty" [ref=f5e997] [cursor=pointer]
+                  - button "Step 10, empty" [ref=f5e999] [cursor=pointer]
+                  - button "Step 11, empty" [ref=f5e1001] [cursor=pointer]
+                  - button "Step 12, empty" [ref=f5e1003] [cursor=pointer]
+                  - button "Step 13, empty" [ref=f5e1005] [cursor=pointer]
+                  - button "Step 14, empty" [ref=f5e1007] [cursor=pointer]
+                  - button "Step 15, empty" [ref=f5e1009] [cursor=pointer]
+                  - button "Step 16, empty" [ref=f5e1011] [cursor=pointer]
+              - generic [ref=f5e1014]:
+                - generic [ref=f5e1015]:
+                  - button "Tick" [ref=f5e1016] [cursor=pointer]
+                  - button "M" [ref=f5e1017] [cursor=pointer]
+                  - button "S" [ref=f5e1018] [cursor=pointer]
+                - generic [ref=f5e1019]:
+                  - button "Step 1, empty" [ref=f5e1020] [cursor=pointer]
+                  - button "Step 2, empty" [ref=f5e1022] [cursor=pointer]
+                  - button "Step 3, empty" [ref=f5e1024] [cursor=pointer]
+                  - button "Step 4, empty" [ref=f5e1026] [cursor=pointer]
+                  - button "Step 5, empty" [ref=f5e1028] [cursor=pointer]
+                  - button "Step 6, empty" [ref=f5e1030] [cursor=pointer]
+                  - button "Step 7, empty" [ref=f5e1032] [cursor=pointer]
+                  - button "Step 8, empty" [ref=f5e1034] [cursor=pointer]
+                  - button "Step 9, empty" [ref=f5e1036] [cursor=pointer]
+                  - button "Step 10, empty" [ref=f5e1038] [cursor=pointer]
+                  - button "Step 11, empty" [ref=f5e1040] [cursor=pointer]
+                  - button "Step 12, empty" [ref=f5e1042] [cursor=pointer]
+                  - button "Step 13, empty" [ref=f5e1044] [cursor=pointer]
+                  - button "Step 14, empty" [ref=f5e1046] [cursor=pointer]
+                  - button "Step 15, empty" [ref=f5e1048] [cursor=pointer]
+                  - button "Step 16, empty" [ref=f5e1050] [cursor=pointer]
+              - generic [ref=f5e1053]:
+                - generic [ref=f5e1054]:
+                  - button "Blip" [ref=f5e1055] [cursor=pointer]
+                  - button "M" [ref=f5e1056] [cursor=pointer]
+                  - button "S" [ref=f5e1057] [cursor=pointer]
+                - generic [ref=f5e1058]:
+                  - button "Step 1, empty" [ref=f5e1059] [cursor=pointer]
+                  - button "Step 2, empty" [ref=f5e1061] [cursor=pointer]
+                  - button "Step 3, empty" [ref=f5e1063] [cursor=pointer]
+                  - button "Step 4, empty" [ref=f5e1065] [cursor=pointer]
+                  - button "Step 5, empty" [ref=f5e1067] [cursor=pointer]
+                  - button "Step 6, empty" [ref=f5e1069] [cursor=pointer]
+                  - button "Step 7, empty" [ref=f5e1071] [cursor=pointer]
+                  - button "Step 8, empty" [ref=f5e1073] [cursor=pointer]
+                  - button "Step 9, empty" [ref=f5e1075] [cursor=pointer]
+                  - button "Step 10, empty" [ref=f5e1077] [cursor=pointer]
+                  - button "Step 11, empty" [ref=f5e1079] [cursor=pointer]
+                  - button "Step 12, empty" [ref=f5e1081] [cursor=pointer]
+                  - button "Step 13, empty" [ref=f5e1083] [cursor=pointer]
+                  - button "Step 14, empty" [ref=f5e1085] [cursor=pointer]
+                  - button "Step 15, empty" [ref=f5e1087] [cursor=pointer]
+                  - button "Step 16, empty" [ref=f5e1089] [cursor=pointer]
+              - generic [ref=f5e1093]:
+                - button "808 track" [ref=f5e1094] [cursor=pointer]:
+                  - generic [ref=f5e1095]: "808"
+                  - text: "808"
+                - button "Mute 808" [ref=f5e1096] [cursor=pointer]: M
+                - button "Solo 808" [ref=f5e1097] [cursor=pointer]: S
+              - generic [ref=f5e1100]:
+                - toolbar "Piano roll tools" [ref=f5e1101]:
+                  - generic [ref=f5e1102]: 4 NOTES
+                  - button "Fullscreen piano roll" [ref=f5e1103] [cursor=pointer]: ⤢
+                  - generic [ref=f5e1104]:
+                    - button "STEP" [ref=f5e1105] [cursor=pointer]
+                    - button "QUANT" [ref=f5e1106] [cursor=pointer]
+                    - button "RND" [disabled] [ref=f5e1107]
+                    - button "HUMAN" [disabled] [ref=f5e1108]
+                    - button "HUM" [ref=f5e1109] [cursor=pointer]
+                    - button "DUP" [ref=f5e1110] [cursor=pointer]
+                    - button "SPLIT" [disabled] [ref=f5e1111]
+                    - button "GLUE" [disabled] [ref=f5e1112]
+                    - button "DEL" [disabled] [ref=f5e1113]
+                  - generic [ref=f5e1114]:
+                    - button "REV" [ref=f5e1115] [cursor=pointer]
+                    - button "HUM" [ref=f5e1116] [cursor=pointer]
+                    - button "CHORD" [ref=f5e1117] [cursor=pointer]
+                    - button "STRUM" [ref=f5e1118] [cursor=pointer]
+                    - button "V-" [disabled] [ref=f5e1119]
+                    - button "V+" [disabled] [ref=f5e1120]
+                  - generic [ref=f5e1121]:
+                    - button "INV" [disabled] [ref=f5e1122]
+                    - button "MIR" [disabled] [ref=f5e1123]
+                    - button "RETRO" [disabled] [ref=f5e1124]
+                    - button "CLUS" [disabled] [ref=f5e1125]
+                  - generic [ref=f5e1126]:
+                    - button "◀" [disabled] [ref=f5e1127]
+                    - button "▶" [disabled] [ref=f5e1128]
+                    - button "▲" [disabled] [ref=f5e1129]
+                    - button "▼" [disabled] [ref=f5e1130]
+                    - button "ARP" [ref=f5e1131] [cursor=pointer]
+                    - button "RPT" [ref=f5e1132] [cursor=pointer]
+                  - generic [ref=f5e1133]:
+                    - button "COPY" [disabled] [ref=f5e1134]
+                    - button "PASTE" [disabled] [ref=f5e1135]
+                  - generic [ref=f5e1136]:
+                    - generic "Velocity lane zoom — per-velocity colors" [ref=f5e1137]: V-ZOOM
+                    - button "−" [ref=f5e1138] [cursor=pointer]
+                    - generic [ref=f5e1139]: 100%
+                    - button "+" [ref=f5e1140] [cursor=pointer]
+                - generic [ref=f5e1141]:
+                  - generic [ref=f5e1142]:
+                    - button "C6" [ref=f5e1143] [cursor=pointer]
+                    - button "Preview B5" [ref=f5e1144] [cursor=pointer]
+                    - button "Preview A#5" [ref=f5e1145] [cursor=pointer]
+                    - button "Preview A5" [ref=f5e1146] [cursor=pointer]
+                    - button "Preview G#5" [ref=f5e1147] [cursor=pointer]
+                    - button "Preview G5" [ref=f5e1148] [cursor=pointer]
+                    - button "Preview F#5" [ref=f5e1149] [cursor=pointer]
+                    - button "Preview F5" [ref=f5e1150] [cursor=pointer]
+                    - button "Preview E5" [ref=f5e1151] [cursor=pointer]
+                    - button "Preview D#5" [ref=f5e1152] [cursor=pointer]
+                    - button "Preview D5" [ref=f5e1153] [cursor=pointer]
+                    - button "Preview C#5" [ref=f5e1154] [cursor=pointer]
+                    - button "C5" [ref=f5e1155] [cursor=pointer]
+                    - button "Preview B4" [ref=f5e1156] [cursor=pointer]
+                    - button "Preview A#4" [ref=f5e1157] [cursor=pointer]
+                    - button "Preview A4" [ref=f5e1158] [cursor=pointer]
+                    - button "Preview G#4" [ref=f5e1159] [cursor=pointer]
+                    - button "Preview G4" [ref=f5e1160] [cursor=pointer]
+                    - button "Preview F#4" [ref=f5e1161] [cursor=pointer]
+                    - button "Preview F4" [ref=f5e1162] [cursor=pointer]
+                    - button "Preview E4" [ref=f5e1163] [cursor=pointer]
+                    - button "Preview D#4" [ref=f5e1164] [cursor=pointer]
+                    - button "Preview D4" [ref=f5e1165] [cursor=pointer]
+                    - button "Preview C#4" [ref=f5e1166] [cursor=pointer]
+                    - button "C4" [ref=f5e1167] [cursor=pointer]
+                    - button "Preview B3" [ref=f5e1168] [cursor=pointer]
+                    - button "Preview A#3" [ref=f5e1169] [cursor=pointer]
+                    - button "Preview A3" [ref=f5e1170] [cursor=pointer]
+                    - button "Preview G#3" [ref=f5e1171] [cursor=pointer]
+                    - button "Preview G3" [ref=f5e1172] [cursor=pointer]
+                    - button "Preview F#3" [ref=f5e1173] [cursor=pointer]
+                    - button "Preview F3" [ref=f5e1174] [cursor=pointer]
+                    - button "Preview E3" [ref=f5e1175] [cursor=pointer]
+                    - button "Preview D#3" [ref=f5e1176] [cursor=pointer]
+                    - button "Preview D3" [ref=f5e1177] [cursor=pointer]
+                    - button "Preview C#3" [ref=f5e1178] [cursor=pointer]
+                    - button "C3" [ref=f5e1179] [cursor=pointer]
+                    - button "Preview B2" [ref=f5e1180] [cursor=pointer]
+                    - button "Preview A#2" [ref=f5e1181] [cursor=pointer]
+                    - button "Preview A2" [ref=f5e1182] [cursor=pointer]
+                    - button "Preview G#2" [ref=f5e1183] [cursor=pointer]
+                    - button "Preview G2" [ref=f5e1184] [cursor=pointer]
+                    - button "Preview F#2" [ref=f5e1185] [cursor=pointer]
+                    - button "Preview F2" [ref=f5e1186] [cursor=pointer]
+                    - button "Preview E2" [ref=f5e1187] [cursor=pointer]
+                    - button "Preview D#2" [ref=f5e1188] [cursor=pointer]
+                    - button "Preview D2" [ref=f5e1189] [cursor=pointer]
+                    - button "Preview C#2" [ref=f5e1190] [cursor=pointer]
+                    - button "C2" [ref=f5e1191] [cursor=pointer]
+                    - button "Preview B1" [ref=f5e1192] [cursor=pointer]
+                    - button "Preview A#1" [ref=f5e1193] [cursor=pointer]
+                    - button "Preview A1" [ref=f5e1194] [cursor=pointer]
+                    - button "Preview G#1" [ref=f5e1195] [cursor=pointer]
+                    - button "Preview G1" [ref=f5e1196] [cursor=pointer]
+                    - button "Preview F#1" [ref=f5e1197] [cursor=pointer]
+                    - button "Preview F1" [ref=f5e1198] [cursor=pointer]
+                    - button "Preview E1" [ref=f5e1199] [cursor=pointer]
+                    - button "Preview D#1" [ref=f5e1200] [cursor=pointer]
+                    - button "Preview D1" [ref=f5e1201] [cursor=pointer]
+                    - button "Preview C#1" [ref=f5e1202] [cursor=pointer]
+                    - button "C1" [ref=f5e1203] [cursor=pointer]
+                  - generic [ref=f5e1205]:
+                    - generic "Ghost D#4 — from another track in same pattern"
+                    - generic "Ghost G4 — from another track in same pattern"
+                    - generic "Ghost D#4 — from another track in same pattern"
+                    - generic "Ghost G4 — from another track in same pattern"
+                - generic "Velocity lane" [ref=f5e1206]:
+                  - generic "E1 vel 90% — drag vertically" [ref=f5e1207]
+                  - generic "E1 vel 70% — drag vertically" [ref=f5e1208]
+                  - generic "G1 vel 90% — drag vertically" [ref=f5e1209]
+                  - generic "E1 vel 80% — drag vertically" [ref=f5e1210]
+              - generic [ref=f5e1213]:
+                - button "Chords track" [ref=f5e1214] [cursor=pointer]:
+                  - generic [ref=f5e1215]: AN
+                  - text: Chords
+                - button "Mute Chords" [ref=f5e1216] [cursor=pointer]: M
+                - button "Solo Chords" [ref=f5e1217] [cursor=pointer]: S
+              - generic [ref=f5e1220]:
+                - toolbar "Piano roll tools" [ref=f5e1221]:
+                  - generic [ref=f5e1222]: 6 NOTES
+                  - button "Fullscreen piano roll" [ref=f5e1223] [cursor=pointer]: ⤢
+                  - generic [ref=f5e1224]:
+                    - button "STEP" [ref=f5e1225] [cursor=pointer]
+                    - button "QUANT" [ref=f5e1226] [cursor=pointer]
+                    - button "RND" [disabled] [ref=f5e1227]
+                    - button "HUMAN" [disabled] [ref=f5e1228]
+                    - button "HUM" [ref=f5e1229] [cursor=pointer]
+                    - button "DUP" [ref=f5e1230] [cursor=pointer]
+                    - button "SPLIT" [disabled] [ref=f5e1231]
+                    - button "GLUE" [disabled] [ref=f5e1232]
+                    - button "DEL" [disabled] [ref=f5e1233]
+                  - generic [ref=f5e1234]:
+                    - button "REV" [ref=f5e1235] [cursor=pointer]
+                    - button "HUM" [ref=f5e1236] [cursor=pointer]
+                    - button "CHORD" [ref=f5e1237] [cursor=pointer]
+                    - button "STRUM" [ref=f5e1238] [cursor=pointer]
+                    - button "V-" [disabled] [ref=f5e1239]
+                    - button "V+" [disabled] [ref=f5e1240]
+                  - generic [ref=f5e1241]:
+                    - button "INV" [disabled] [ref=f5e1242]
+                    - button "MIR" [disabled] [ref=f5e1243]
+                    - button "RETRO" [disabled] [ref=f5e1244]
+                    - button "CLUS" [disabled] [ref=f5e1245]
+                  - generic [ref=f5e1246]:
+                    - button "◀" [disabled] [ref=f5e1247]
+                    - button "▶" [disabled] [ref=f5e1248]
+                    - button "▲" [disabled] [ref=f5e1249]
+                    - button "▼" [disabled] [ref=f5e1250]
+                    - button "ARP" [ref=f5e1251] [cursor=pointer]
+                    - button "RPT" [ref=f5e1252] [cursor=pointer]
+                  - generic [ref=f5e1253]:
+                    - button "COPY" [disabled] [ref=f5e1254]
+                    - button "PASTE" [disabled] [ref=f5e1255]
+                  - generic [ref=f5e1256]:
+                    - generic "Velocity lane zoom — per-velocity colors" [ref=f5e1257]: V-ZOOM
+                    - button "−" [ref=f5e1258] [cursor=pointer]
+                    - generic [ref=f5e1259]: 100%
+                    - button "+" [ref=f5e1260] [cursor=pointer]
+                - generic [ref=f5e1261]:
+                  - generic [ref=f5e1262]:
+                    - button "C6" [ref=f5e1263] [cursor=pointer]
+                    - button "Preview B5" [ref=f5e1264] [cursor=pointer]
+                    - button "Preview A#5" [ref=f5e1265] [cursor=pointer]
+                    - button "Preview A5" [ref=f5e1266] [cursor=pointer]
+                    - button "Preview G#5" [ref=f5e1267] [cursor=pointer]
+                    - button "Preview G5" [ref=f5e1268] [cursor=pointer]
+                    - button "Preview F#5" [ref=f5e1269] [cursor=pointer]
+                    - button "Preview F5" [ref=f5e1270] [cursor=pointer]
+                    - button "Preview E5" [ref=f5e1271] [cursor=pointer]
+                    - button "Preview D#5" [ref=f5e1272] [cursor=pointer]
+                    - button "Preview D5" [ref=f5e1273] [cursor=pointer]
+                    - button "Preview C#5" [ref=f5e1274] [cursor=pointer]
+                    - button "C5" [ref=f5e1275] [cursor=pointer]
+                    - button "Preview B4" [ref=f5e1276] [cursor=pointer]
+                    - button "Preview A#4" [ref=f5e1277] [cursor=pointer]
+                    - button "Preview A4" [ref=f5e1278] [cursor=pointer]
+                    - button "Preview G#4" [ref=f5e1279] [cursor=pointer]
+                    - button "Preview G4" [ref=f5e1280] [cursor=pointer]
+                    - button "Preview F#4" [ref=f5e1281] [cursor=pointer]
+                    - button "Preview F4" [ref=f5e1282] [cursor=pointer]
+                    - button "Preview E4" [ref=f5e1283] [cursor=pointer]
+                    - button "Preview D#4" [ref=f5e1284] [cursor=pointer]
+                    - button "Preview D4" [ref=f5e1285] [cursor=pointer]
+                    - button "Preview C#4" [ref=f5e1286] [cursor=pointer]
+                    - button "C4" [ref=f5e1287] [cursor=pointer]
+                    - button "Preview B3" [ref=f5e1288] [cursor=pointer]
+                    - button "Preview A#3" [ref=f5e1289] [cursor=pointer]
+                    - button "Preview A3" [ref=f5e1290] [cursor=pointer]
+                    - button "Preview G#3" [ref=f5e1291] [cursor=pointer]
+                    - button "Preview G3" [ref=f5e1292] [cursor=pointer]
+                    - button "Preview F#3" [ref=f5e1293] [cursor=pointer]
+                    - button "Preview F3" [ref=f5e1294] [cursor=pointer]
+                    - button "Preview E3" [ref=f5e1295] [cursor=pointer]
+                    - button "Preview D#3" [ref=f5e1296] [cursor=pointer]
+                    - button "Preview D3" [ref=f5e1297] [cursor=pointer]
+                    - button "Preview C#3" [ref=f5e1298] [cursor=pointer]
+                    - button "C3" [ref=f5e1299] [cursor=pointer]
+                    - button "Preview B2" [ref=f5e1300] [cursor=pointer]
+                    - button "Preview A#2" [ref=f5e1301] [cursor=pointer]
+                    - button "Preview A2" [ref=f5e1302] [cursor=pointer]
+                    - button "Preview G#2" [ref=f5e1303] [cursor=pointer]
+                    - button "Preview G2" [ref=f5e1304] [cursor=pointer]
+                    - button "Preview F#2" [ref=f5e1305] [cursor=pointer]
+                    - button "Preview F2" [ref=f5e1306] [cursor=pointer]
+                    - button "Preview E2" [ref=f5e1307] [cursor=pointer]
+                    - button "Preview D#2" [ref=f5e1308] [cursor=pointer]
+                    - button "Preview D2" [ref=f5e1309] [cursor=pointer]
+                    - button "Preview C#2" [ref=f5e1310] [cursor=pointer]
+                    - button "C2" [ref=f5e1311] [cursor=pointer]
+                    - button "Preview B1" [ref=f5e1312] [cursor=pointer]
+                    - button "Preview A#1" [ref=f5e1313] [cursor=pointer]
+                    - button "Preview A1" [ref=f5e1314] [cursor=pointer]
+                    - button "Preview G#1" [ref=f5e1315] [cursor=pointer]
+                    - button "Preview G1" [ref=f5e1316] [cursor=pointer]
+                    - button "Preview F#1" [ref=f5e1317] [cursor=pointer]
+                    - button "Preview F1" [ref=f5e1318] [cursor=pointer]
+                    - button "Preview E1" [ref=f5e1319] [cursor=pointer]
+                    - button "Preview D#1" [ref=f5e1320] [cursor=pointer]
+                    - button "Preview D1" [ref=f5e1321] [cursor=pointer]
+                    - button "Preview C#1" [ref=f5e1322] [cursor=pointer]
+                    - button "C1" [ref=f5e1323] [cursor=pointer]
+                  - generic [ref=f5e1325]:
+                    - generic "D#4 — top third = move, right edge = resize, middle+Alt = duplicate, middle+Ctrl = velocity — S strum, Alt+S slide, L legato, Ctrl+B duplicate — hold on touch for the note menu" [ref=f5e1326]
+                    - generic "G4 — top third = move, right edge = resize, middle+Alt = duplicate, middle+Ctrl = velocity — S strum, Alt+S slide, L legato, Ctrl+B duplicate — hold on touch for the note menu" [ref=f5e1327]
+                    - generic "D#4 — top third = move, right edge = resize, middle+Alt = duplicate, middle+Ctrl = velocity — S strum, Alt+S slide, L legato, Ctrl+B duplicate — hold on touch for the note menu" [ref=f5e1328]
+                    - generic "G4 — top third = move, right edge = resize, middle+Alt = duplicate, middle+Ctrl = velocity — S strum, Alt+S slide, L legato, Ctrl+B duplicate — hold on touch for the note menu" [ref=f5e1329]
+                - generic "Velocity lane" [ref=f5e1330]:
+                  - generic "C4 vel 50% — drag vertically" [ref=f5e1331]
+                  - generic "D#4 vel 42% — drag vertically" [ref=f5e1332]
+                  - generic "G4 vel 40% — drag vertically" [ref=f5e1333]
+                  - generic "C4 vel 50% — drag vertically" [ref=f5e1334]
+                  - generic "D#4 vel 42% — drag vertically" [ref=f5e1335]
+                  - generic "G4 vel 40% — drag vertically" [ref=f5e1336]
+      - complementary "Inspector" [ref=f5e1337]:
+        - generic [ref=f5e1338]:
+          - button "SLICE LAB" [ref=f5e1339] [cursor=pointer]
+          - button "DEVICES" [ref=f5e1340] [cursor=pointer]
+          - button "Collapse inspector" [ref=f5e1341] [cursor=pointer]: ▸
+        - heading "PAD — Kick Deep" [level=2] [ref=f5e1342]
+        - generic [ref=f5e1343]:
+          - button "SAMPLE" [ref=f5e1344] [cursor=pointer]
+          - button "SYNTH" [ref=f5e1345] [cursor=pointer]
+        - heading "SAMPLE" [level=3] [ref=f5e1346]
+        - generic [ref=f5e1347]:
+          - button "Drop audio files here or click to browse" [ref=f5e1348] [cursor=pointer]:
+            - generic [ref=f5e1349]: Drop audio or click
+            - generic [ref=f5e1350]: WAV · MP3 · OGG · FLAC · AIFF · M4A · OPUS · AAC · WEBM
+          - button "FREESOUND · CC0" [ref=f5e1352] [cursor=pointer]
+          - textbox "Search samples" [ref=f5e1353]:
+            - /placeholder: Search sounds…
+          - generic [ref=f5e1354]:
+            - button "ALL" [ref=f5e1355] [cursor=pointer]
+            - button "KICK" [ref=f5e1356] [cursor=pointer]
+            - button "SNARE" [ref=f5e1357] [cursor=pointer]
+            - button "CLAP" [ref=f5e1358] [cursor=pointer]
+            - button "HAT" [ref=f5e1359] [cursor=pointer]
+            - button "CYMBAL" [ref=f5e1360] [cursor=pointer]
+            - button "CRASH" [ref=f5e1361] [cursor=pointer]
+            - button "BRUSH" [ref=f5e1362] [cursor=pointer]
+            - button "PERCUSSION" [ref=f5e1363] [cursor=pointer]
+            - button "TOM" [ref=f5e1364] [cursor=pointer]
+            - button "RIM" [ref=f5e1365] [cursor=pointer]
+            - button "LEAD" [ref=f5e1366] [cursor=pointer]
+            - button "FX" [ref=f5e1367] [cursor=pointer]
+            - button "FIELD" [ref=f5e1368] [cursor=pointer]
+          - generic [ref=f5e1369]:
+            - button "DARK" [ref=f5e1370] [cursor=pointer]
+            - button "BRIGHT" [ref=f5e1371] [cursor=pointer]
+            - button "WARM" [ref=f5e1372] [cursor=pointer]
+            - button "AGGRESSIVE" [ref=f5e1373] [cursor=pointer]
+            - button "CLEAN" [ref=f5e1374] [cursor=pointer]
+            - button "DEEP" [ref=f5e1375] [cursor=pointer]
+            - button "ATMOSPHERE" [ref=f5e1376] [cursor=pointer]
+          - generic [ref=f5e1377]:
+            - button "— none —" [ref=f5e1379] [cursor=pointer]
+            - generic [ref=f5e1380]: LIBRARY
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1381]:
+              - button "Preview Kick Deep" [ref=f5e1382] [cursor=pointer]: ▶
+              - button "Kick Deep" [ref=f5e1383] [cursor=pointer]
+              - button "Favorite Kick Deep" [ref=f5e1384] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1385]:
+              - button "Preview Kick Punch" [ref=f5e1386] [cursor=pointer]: ▶
+              - button "Kick Punch" [ref=f5e1387] [cursor=pointer]
+              - button "Favorite Kick Punch" [ref=f5e1388] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1389]:
+              - button "Preview Kick Techno" [ref=f5e1390] [cursor=pointer]: ▶
+              - button "Kick Techno" [ref=f5e1391] [cursor=pointer]
+              - button "Favorite Kick Techno" [ref=f5e1392] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1393]:
+              - button "Preview Kick Sub 808" [ref=f5e1394] [cursor=pointer]: ▶
+              - button "Kick Sub 808" [ref=f5e1395] [cursor=pointer]
+              - button "Favorite Kick Sub 808" [ref=f5e1396] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1397]:
+              - button "Preview Kick Trap" [ref=f5e1398] [cursor=pointer]: ▶
+              - button "Kick Trap" [ref=f5e1399] [cursor=pointer]
+              - button "Favorite Kick Trap" [ref=f5e1400] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1401]:
+              - button "Preview Kick Soft" [ref=f5e1402] [cursor=pointer]: ▶
+              - button "Kick Soft" [ref=f5e1403] [cursor=pointer]
+              - button "Favorite Kick Soft" [ref=f5e1404] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1405]:
+              - button "Preview Kick 808 Drive" [ref=f5e1406] [cursor=pointer]: ▶
+              - button "Kick 808 Drive" [ref=f5e1407] [cursor=pointer]
+              - button "Favorite Kick 808 Drive" [ref=f5e1408] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1409]:
+              - button "Preview Kick 808 Pure" [ref=f5e1410] [cursor=pointer]: ▶
+              - button "Kick 808 Pure" [ref=f5e1411] [cursor=pointer]
+              - button "Favorite Kick 808 Pure" [ref=f5e1412] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1413]:
+              - button "Preview Kick Drill" [ref=f5e1414] [cursor=pointer]: ▶
+              - button "Kick Drill" [ref=f5e1415] [cursor=pointer]
+              - button "Favorite Kick Drill" [ref=f5e1416] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1417]:
+              - button "Preview Kick Phonk" [ref=f5e1418] [cursor=pointer]: ▶
+              - button "Kick Phonk" [ref=f5e1419] [cursor=pointer]
+              - button "Favorite Kick Phonk" [ref=f5e1420] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1421]:
+              - button "Preview Kick Jersey" [ref=f5e1422] [cursor=pointer]: ▶
+              - button "Kick Jersey" [ref=f5e1423] [cursor=pointer]
+              - button "Favorite Kick Jersey" [ref=f5e1424] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1425]:
+              - button "Preview Kick DnB" [ref=f5e1426] [cursor=pointer]: ▶
+              - button "Kick DnB" [ref=f5e1427] [cursor=pointer]
+              - button "Favorite Kick DnB" [ref=f5e1428] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1429]:
+              - button "Preview Kick Lo-Fi" [ref=f5e1430] [cursor=pointer]: ▶
+              - button "Kick Lo-Fi" [ref=f5e1431] [cursor=pointer]
+              - button "Favorite Kick Lo-Fi" [ref=f5e1432] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1433]:
+              - button "Preview Kick Knock" [ref=f5e1434] [cursor=pointer]: ▶
+              - button "Kick Knock" [ref=f5e1435] [cursor=pointer]
+              - button "Favorite Kick Knock" [ref=f5e1436] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1437]:
+              - button "Preview Kick 909" [ref=f5e1438] [cursor=pointer]: ▶
+              - button "Kick 909" [ref=f5e1439] [cursor=pointer]
+              - button "Favorite Kick 909" [ref=f5e1440] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1441]:
+              - button "Preview Snare Main" [ref=f5e1442] [cursor=pointer]: ▶
+              - button "Snare Main" [ref=f5e1443] [cursor=pointer]
+              - button "Favorite Snare Main" [ref=f5e1444] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1445]:
+              - button "Preview Snare Tight" [ref=f5e1446] [cursor=pointer]: ▶
+              - button "Snare Tight" [ref=f5e1447] [cursor=pointer]
+              - button "Favorite Snare Tight" [ref=f5e1448] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1449]:
+              - button "Preview Snare Punch" [ref=f5e1450] [cursor=pointer]: ▶
+              - button "Snare Punch" [ref=f5e1451] [cursor=pointer]
+              - button "Favorite Snare Punch" [ref=f5e1452] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1453]:
+              - button "Preview Snare Trap" [ref=f5e1454] [cursor=pointer]: ▶
+              - button "Snare Trap" [ref=f5e1455] [cursor=pointer]
+              - button "Favorite Snare Trap" [ref=f5e1456] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1457]:
+              - button "Preview Snare Drill" [ref=f5e1458] [cursor=pointer]: ▶
+              - button "Snare Drill" [ref=f5e1459] [cursor=pointer]
+              - button "Favorite Snare Drill" [ref=f5e1460] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1461]:
+              - button "Preview Snare Phonk" [ref=f5e1462] [cursor=pointer]: ▶
+              - button "Snare Phonk" [ref=f5e1463] [cursor=pointer]
+              - button "Favorite Snare Phonk" [ref=f5e1464] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1465]:
+              - button "Preview Snare Jersey" [ref=f5e1466] [cursor=pointer]: ▶
+              - button "Snare Jersey" [ref=f5e1467] [cursor=pointer]
+              - button "Favorite Snare Jersey" [ref=f5e1468] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1469]:
+              - button "Preview Snare DnB" [ref=f5e1470] [cursor=pointer]: ▶
+              - button "Snare DnB" [ref=f5e1471] [cursor=pointer]
+              - button "Favorite Snare DnB" [ref=f5e1472] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1473]:
+              - button "Preview Snare Lo-Fi" [ref=f5e1474] [cursor=pointer]: ▶
+              - button "Snare Lo-Fi" [ref=f5e1475] [cursor=pointer]
+              - button "Favorite Snare Lo-Fi" [ref=f5e1476] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1477]:
+              - button "Preview Snare Room" [ref=f5e1478] [cursor=pointer]: ▶
+              - button "Snare Room" [ref=f5e1479] [cursor=pointer]
+              - button "Favorite Snare Room" [ref=f5e1480] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1481]:
+              - button "Preview Clap Main" [ref=f5e1482] [cursor=pointer]: ▶
+              - button "Clap Main" [ref=f5e1483] [cursor=pointer]
+              - button "Favorite Clap Main" [ref=f5e1484] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1485]:
+              - button "Preview Clap Soft" [ref=f5e1486] [cursor=pointer]: ▶
+              - button "Clap Soft" [ref=f5e1487] [cursor=pointer]
+              - button "Favorite Clap Soft" [ref=f5e1488] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1489]:
+              - button "Preview Clap DnB" [ref=f5e1490] [cursor=pointer]: ▶
+              - button "Clap DnB" [ref=f5e1491] [cursor=pointer]
+              - button "Favorite Clap DnB" [ref=f5e1492] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1493]:
+              - button "Preview Clap Traditional" [ref=f5e1494] [cursor=pointer]: ▶
+              - button "Clap Traditional" [ref=f5e1495] [cursor=pointer]
+              - button "Favorite Clap Traditional" [ref=f5e1496] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1497]:
+              - button "Preview Hat Closed" [ref=f5e1498] [cursor=pointer]: ▶
+              - button "Hat Closed" [ref=f5e1499] [cursor=pointer]
+              - button "Favorite Hat Closed" [ref=f5e1500] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1501]:
+              - button "Preview Hat Closed Soft" [ref=f5e1502] [cursor=pointer]: ▶
+              - button "Hat Closed Soft" [ref=f5e1503] [cursor=pointer]
+              - button "Favorite Hat Closed Soft" [ref=f5e1504] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1505]:
+              - button "Preview Hat Open" [ref=f5e1506] [cursor=pointer]: ▶
+              - button "Hat Open" [ref=f5e1507] [cursor=pointer]
+              - button "Favorite Hat Open" [ref=f5e1508] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1509]:
+              - button "Preview Hat Open Short" [ref=f5e1510] [cursor=pointer]: ▶
+              - button "Hat Open Short" [ref=f5e1511] [cursor=pointer]
+              - button "Favorite Hat Open Short" [ref=f5e1512] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1513]:
+              - button "Preview Hat Pedal" [ref=f5e1514] [cursor=pointer]: ▶
+              - button "Hat Pedal" [ref=f5e1515] [cursor=pointer]
+              - button "Favorite Hat Pedal" [ref=f5e1516] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1517]:
+              - button "Preview Hat Drill" [ref=f5e1518] [cursor=pointer]: ▶
+              - button "Hat Drill" [ref=f5e1519] [cursor=pointer]
+              - button "Favorite Hat Drill" [ref=f5e1520] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1521]:
+              - button "Preview Hat Phonk" [ref=f5e1522] [cursor=pointer]: ▶
+              - button "Hat Phonk" [ref=f5e1523] [cursor=pointer]
+              - button "Favorite Hat Phonk" [ref=f5e1524] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1525]:
+              - button "Preview Hat Jersey" [ref=f5e1526] [cursor=pointer]: ▶
+              - button "Hat Jersey" [ref=f5e1527] [cursor=pointer]
+              - button "Favorite Hat Jersey" [ref=f5e1528] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1529]:
+              - button "Preview Hat DnB" [ref=f5e1530] [cursor=pointer]: ▶
+              - button "Hat DnB" [ref=f5e1531] [cursor=pointer]
+              - button "Favorite Hat DnB" [ref=f5e1532] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1533]:
+              - button "Preview Hat Open Cup" [ref=f5e1534] [cursor=pointer]: ▶
+              - button "Hat Open Cup" [ref=f5e1535] [cursor=pointer]
+              - button "Favorite Hat Open Cup" [ref=f5e1536] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1537]:
+              - button "Preview Hat Wash" [ref=f5e1538] [cursor=pointer]: ▶
+              - button "Hat Wash" [ref=f5e1539] [cursor=pointer]
+              - button "Favorite Hat Wash" [ref=f5e1540] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1541]:
+              - button "Preview Ride Ping" [ref=f5e1542] [cursor=pointer]: ▶
+              - button "Ride Ping" [ref=f5e1543] [cursor=pointer]
+              - button "Favorite Ride Ping" [ref=f5e1544] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1545]:
+              - button "Preview Ride Bell" [ref=f5e1546] [cursor=pointer]: ▶
+              - button "Ride Bell" [ref=f5e1547] [cursor=pointer]
+              - button "Favorite Ride Bell" [ref=f5e1548] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1549]:
+              - button "Preview Splash" [ref=f5e1550] [cursor=pointer]: ▶
+              - button "Splash" [ref=f5e1551] [cursor=pointer]
+              - button "Favorite Splash" [ref=f5e1552] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1553]:
+              - button "Preview China Cymbal" [ref=f5e1554] [cursor=pointer]: ▶
+              - button "China Cymbal" [ref=f5e1555] [cursor=pointer]
+              - button "Favorite China Cymbal" [ref=f5e1556] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1557]:
+              - button "Preview Jazz Ride Wash" [ref=f5e1558] [cursor=pointer]: ▶
+              - button "Jazz Ride Wash" [ref=f5e1559] [cursor=pointer]
+              - button "Favorite Jazz Ride Wash" [ref=f5e1560] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1561]:
+              - button "Preview Ride Ding" [ref=f5e1562] [cursor=pointer]: ▶
+              - button "Ride Ding" [ref=f5e1563] [cursor=pointer]
+              - button "Favorite Ride Ding" [ref=f5e1564] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1565]:
+              - button "Preview Brush Tip" [ref=f5e1566] [cursor=pointer]: ▶
+              - button "Brush Tip" [ref=f5e1567] [cursor=pointer]
+              - button "Favorite Brush Tip" [ref=f5e1568] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1569]:
+              - button "Preview Brush Swirl" [ref=f5e1570] [cursor=pointer]: ▶
+              - button "Brush Swirl" [ref=f5e1571] [cursor=pointer]
+              - button "Favorite Brush Swirl" [ref=f5e1572] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1573]:
+              - button "Preview Ghost Note" [ref=f5e1574] [cursor=pointer]: ▶
+              - button "Ghost Note" [ref=f5e1575] [cursor=pointer]
+              - button "Favorite Ghost Note" [ref=f5e1576] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1577]:
+              - button "Preview Shaker Fast" [ref=f5e1578] [cursor=pointer]: ▶
+              - button "Shaker Fast" [ref=f5e1579] [cursor=pointer]
+              - button "Favorite Shaker Fast" [ref=f5e1580] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1581]:
+              - button "Preview Crash Roll" [ref=f5e1582] [cursor=pointer]: ▶
+              - button "Crash Roll" [ref=f5e1583] [cursor=pointer]
+              - button "Favorite Crash Roll" [ref=f5e1584] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1585]:
+              - button "Preview Crash" [ref=f5e1586] [cursor=pointer]: ▶
+              - button "Crash" [ref=f5e1587] [cursor=pointer]
+              - button "Favorite Crash" [ref=f5e1588] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1589]:
+              - button "Preview Crash Dark" [ref=f5e1590] [cursor=pointer]: ▶
+              - button "Crash Dark" [ref=f5e1591] [cursor=pointer]
+              - button "Favorite Crash Dark" [ref=f5e1592] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1593]:
+              - button "Preview Crash Short" [ref=f5e1594] [cursor=pointer]: ▶
+              - button "Crash Short" [ref=f5e1595] [cursor=pointer]
+              - button "Favorite Crash Short" [ref=f5e1596] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1597]:
+              - button "Preview Crash Trash" [ref=f5e1598] [cursor=pointer]: ▶
+              - button "Crash Trash" [ref=f5e1599] [cursor=pointer]
+              - button "Favorite Crash Trash" [ref=f5e1600] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1601]:
+              - button "Preview Tom Low" [ref=f5e1602] [cursor=pointer]: ▶
+              - button "Tom Low" [ref=f5e1603] [cursor=pointer]
+              - button "Favorite Tom Low" [ref=f5e1604] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1605]:
+              - button "Preview Tom Mid" [ref=f5e1606] [cursor=pointer]: ▶
+              - button "Tom Mid" [ref=f5e1607] [cursor=pointer]
+              - button "Favorite Tom Mid" [ref=f5e1608] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1609]:
+              - button "Preview Tom High" [ref=f5e1610] [cursor=pointer]: ▶
+              - button "Tom High" [ref=f5e1611] [cursor=pointer]
+              - button "Favorite Tom High" [ref=f5e1612] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1613]:
+              - button "Preview Tom Perc" [ref=f5e1614] [cursor=pointer]: ▶
+              - button "Tom Perc" [ref=f5e1615] [cursor=pointer]
+              - button "Favorite Tom Perc" [ref=f5e1616] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1617]:
+              - button "Preview Rim Chip" [ref=f5e1618] [cursor=pointer]: ▶
+              - button "Rim Chip" [ref=f5e1619] [cursor=pointer]
+              - button "Favorite Rim Chip" [ref=f5e1620] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1621]:
+              - button "Preview Rim Hard" [ref=f5e1622] [cursor=pointer]: ▶
+              - button "Rim Hard" [ref=f5e1623] [cursor=pointer]
+              - button "Favorite Rim Hard" [ref=f5e1624] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1625]:
+              - button "Preview Rim Snap" [ref=f5e1626] [cursor=pointer]: ▶
+              - button "Rim Snap" [ref=f5e1627] [cursor=pointer]
+              - button "Favorite Rim Snap" [ref=f5e1628] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1629]:
+              - button "Preview Shaker Soft" [ref=f5e1630] [cursor=pointer]: ▶
+              - button "Shaker Soft" [ref=f5e1631] [cursor=pointer]
+              - button "Favorite Shaker Soft" [ref=f5e1632] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1633]:
+              - button "Preview Perc Tick" [ref=f5e1634] [cursor=pointer]: ▶
+              - button "Perc Tick" [ref=f5e1635] [cursor=pointer]
+              - button "Favorite Perc Tick" [ref=f5e1636] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1637]:
+              - button "Preview Perc Blip" [ref=f5e1638] [cursor=pointer]: ▶
+              - button "Perc Blip" [ref=f5e1639] [cursor=pointer]
+              - button "Favorite Perc Blip" [ref=f5e1640] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1641]:
+              - button "Preview Cowbell" [ref=f5e1642] [cursor=pointer]: ▶
+              - button "Cowbell" [ref=f5e1643] [cursor=pointer]
+              - button "Favorite Cowbell" [ref=f5e1644] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1645]:
+              - button "Preview Cowbell Dark" [ref=f5e1646] [cursor=pointer]: ▶
+              - button "Cowbell Dark" [ref=f5e1647] [cursor=pointer]
+              - button "Favorite Cowbell Dark" [ref=f5e1648] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1649]:
+              - button "Preview Cowbell Scream" [ref=f5e1650] [cursor=pointer]: ▶
+              - button "Cowbell Scream" [ref=f5e1651] [cursor=pointer]
+              - button "Favorite Cowbell Scream" [ref=f5e1652] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1653]:
+              - button "Preview Cowbell Drill" [ref=f5e1654] [cursor=pointer]: ▶
+              - button "Cowbell Drill" [ref=f5e1655] [cursor=pointer]
+              - button "Favorite Cowbell Drill" [ref=f5e1656] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1657]:
+              - button "Preview Cowbell Bright" [ref=f5e1658] [cursor=pointer]: ▶
+              - button "Cowbell Bright" [ref=f5e1659] [cursor=pointer]
+              - button "Favorite Cowbell Bright" [ref=f5e1660] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1661]:
+              - button "Preview Conga" [ref=f5e1662] [cursor=pointer]: ▶
+              - button "Conga" [ref=f5e1663] [cursor=pointer]
+              - button "Favorite Conga" [ref=f5e1664] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1665]:
+              - button "Preview Tambourine" [ref=f5e1666] [cursor=pointer]: ▶
+              - button "Tambourine" [ref=f5e1667] [cursor=pointer]
+              - button "Favorite Tambourine" [ref=f5e1668] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1669]:
+              - button "Preview Conga High" [ref=f5e1670] [cursor=pointer]: ▶
+              - button "Conga High" [ref=f5e1671] [cursor=pointer]
+              - button "Favorite Conga High" [ref=f5e1672] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1673]:
+              - button "Preview Bongos" [ref=f5e1674] [cursor=pointer]: ▶
+              - button "Bongos" [ref=f5e1675] [cursor=pointer]
+              - button "Favorite Bongos" [ref=f5e1676] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1677]:
+              - button "Preview Timbale" [ref=f5e1678] [cursor=pointer]: ▶
+              - button "Timbale" [ref=f5e1679] [cursor=pointer]
+              - button "Favorite Timbale" [ref=f5e1680] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1681]:
+              - button "Preview Tabla" [ref=f5e1682] [cursor=pointer]: ▶
+              - button "Tabla" [ref=f5e1683] [cursor=pointer]
+              - button "Favorite Tabla" [ref=f5e1684] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1685]:
+              - button "Preview Cajón" [ref=f5e1686] [cursor=pointer]: ▶
+              - button "Cajón" [ref=f5e1687] [cursor=pointer]
+              - button "Favorite Cajón" [ref=f5e1688] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1689]:
+              - button "Preview Agogô" [ref=f5e1690] [cursor=pointer]: ▶
+              - button "Agogô" [ref=f5e1691] [cursor=pointer]
+              - button "Favorite Agogô" [ref=f5e1692] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1693]:
+              - button "Preview Woodblock" [ref=f5e1694] [cursor=pointer]: ▶
+              - button "Woodblock" [ref=f5e1695] [cursor=pointer]
+              - button "Favorite Woodblock" [ref=f5e1696] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1697]:
+              - button "Preview Clave" [ref=f5e1698] [cursor=pointer]: ▶
+              - button "Clave" [ref=f5e1699] [cursor=pointer]
+              - button "Favorite Clave" [ref=f5e1700] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1701]:
+              - button "Preview Snap Stack" [ref=f5e1702] [cursor=pointer]: ▶
+              - button "Snap Stack" [ref=f5e1703] [cursor=pointer]
+              - button "Favorite Snap Stack" [ref=f5e1704] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1705]:
+              - button "Preview Shaker Long" [ref=f5e1706] [cursor=pointer]: ▶
+              - button "Shaker Long" [ref=f5e1707] [cursor=pointer]
+              - button "Favorite Shaker Long" [ref=f5e1708] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1709]:
+              - button "Preview Saw Lead" [ref=f5e1710] [cursor=pointer]: ▶
+              - button "Saw Lead" [ref=f5e1711] [cursor=pointer]
+              - button "Favorite Saw Lead" [ref=f5e1712] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1713]:
+              - button "Preview Supersaw Lead" [ref=f5e1714] [cursor=pointer]: ▶
+              - button "Supersaw Lead" [ref=f5e1715] [cursor=pointer]
+              - button "Favorite Supersaw Lead" [ref=f5e1716] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1717]:
+              - button "Preview Square Lead" [ref=f5e1718] [cursor=pointer]: ▶
+              - button "Square Lead" [ref=f5e1719] [cursor=pointer]
+              - button "Favorite Square Lead" [ref=f5e1720] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1721]:
+              - button "Preview Lead Pluck Bright" [ref=f5e1722] [cursor=pointer]: ▶
+              - button "Lead Pluck Bright" [ref=f5e1723] [cursor=pointer]
+              - button "Favorite Lead Pluck Bright" [ref=f5e1724] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1725]:
+              - button "Preview Lead Pluck Dark" [ref=f5e1726] [cursor=pointer]: ▶
+              - button "Lead Pluck Dark" [ref=f5e1727] [cursor=pointer]
+              - button "Favorite Lead Pluck Dark" [ref=f5e1728] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1729]:
+              - button "Preview Riser" [ref=f5e1730] [cursor=pointer]: ▶
+              - button "Riser" [ref=f5e1731] [cursor=pointer]
+              - button "Favorite Riser" [ref=f5e1732] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1733]:
+              - button "Preview Downlifter" [ref=f5e1734] [cursor=pointer]: ▶
+              - button "Downlifter" [ref=f5e1735] [cursor=pointer]
+              - button "Favorite Downlifter" [ref=f5e1736] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1737]:
+              - button "Preview Impact" [ref=f5e1738] [cursor=pointer]: ▶
+              - button "Impact" [ref=f5e1739] [cursor=pointer]
+              - button "Favorite Impact" [ref=f5e1740] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1741]:
+              - button "Preview Sweep" [ref=f5e1742] [cursor=pointer]: ▶
+              - button "Sweep" [ref=f5e1743] [cursor=pointer]
+              - button "Favorite Sweep" [ref=f5e1744] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1745]:
+              - button "Preview Reverse Rise" [ref=f5e1746] [cursor=pointer]: ▶
+              - button "Reverse Rise" [ref=f5e1747] [cursor=pointer]
+              - button "Favorite Reverse Rise" [ref=f5e1748] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1749]:
+              - button "Preview White Noise" [ref=f5e1750] [cursor=pointer]: ▶
+              - button "White Noise" [ref=f5e1751] [cursor=pointer]
+              - button "Favorite White Noise" [ref=f5e1752] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1753]:
+              - button "Preview Sub Drop" [ref=f5e1754] [cursor=pointer]: ▶
+              - button "Sub Drop" [ref=f5e1755] [cursor=pointer]
+              - button "Favorite Sub Drop" [ref=f5e1756] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1757]:
+              - button "Preview Vinyl Crackle" [ref=f5e1758] [cursor=pointer]: ▶
+              - button "Vinyl Crackle" [ref=f5e1759] [cursor=pointer]
+              - button "Favorite Vinyl Crackle" [ref=f5e1760] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1761]:
+              - button "Preview Impact Cinematic" [ref=f5e1762] [cursor=pointer]: ▶
+              - button "Impact Cinematic" [ref=f5e1763] [cursor=pointer]
+              - button "Favorite Impact Cinematic" [ref=f5e1764] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1765]:
+              - button "Preview Short Riser" [ref=f5e1766] [cursor=pointer]: ▶
+              - button "Short Riser" [ref=f5e1767] [cursor=pointer]
+              - button "Favorite Short Riser" [ref=f5e1768] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1769]:
+              - button "Preview Noise Down" [ref=f5e1770] [cursor=pointer]: ▶
+              - button "Noise Down" [ref=f5e1771] [cursor=pointer]
+              - button "Favorite Noise Down" [ref=f5e1772] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1773]:
+              - button "Preview Kick Pop" [ref=f5e1774] [cursor=pointer]: ▶
+              - button "Kick Pop" [ref=f5e1775] [cursor=pointer]
+              - button "Favorite Kick Pop" [ref=f5e1776] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1777]:
+              - button "Preview Clap Pop" [ref=f5e1778] [cursor=pointer]: ▶
+              - button "Clap Pop" [ref=f5e1779] [cursor=pointer]
+              - button "Favorite Clap Pop" [ref=f5e1780] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1781]:
+              - button "Preview Crash Pop" [ref=f5e1782] [cursor=pointer]: ▶
+              - button "Crash Pop" [ref=f5e1783] [cursor=pointer]
+              - button "Favorite Crash Pop" [ref=f5e1784] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1785]:
+              - button "Preview Tom Floor" [ref=f5e1786] [cursor=pointer]: ▶
+              - button "Tom Floor" [ref=f5e1787] [cursor=pointer]
+              - button "Favorite Tom Floor" [ref=f5e1788] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1789]:
+              - button "Preview Rim Pop" [ref=f5e1790] [cursor=pointer]: ▶
+              - button "Rim Pop" [ref=f5e1791] [cursor=pointer]
+              - button "Favorite Rim Pop" [ref=f5e1792] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1793]:
+              - button "Preview Shaker Pop" [ref=f5e1794] [cursor=pointer]: ▶
+              - button "Shaker Pop" [ref=f5e1795] [cursor=pointer]
+              - button "Favorite Shaker Pop" [ref=f5e1796] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1797]:
+              - button "Preview Room Tone" [ref=f5e1798] [cursor=pointer]: ▶
+              - button "Room Tone" [ref=f5e1799] [cursor=pointer]
+              - button "Favorite Room Tone" [ref=f5e1800] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1801]:
+              - button "Preview Fridge Hum" [ref=f5e1802] [cursor=pointer]: ▶
+              - button "Fridge Hum" [ref=f5e1803] [cursor=pointer]
+              - button "Favorite Fridge Hum" [ref=f5e1804] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1805]:
+              - button "Preview Mains Buzz" [ref=f5e1806] [cursor=pointer]: ▶
+              - button "Mains Buzz" [ref=f5e1807] [cursor=pointer]
+              - button "Favorite Mains Buzz" [ref=f5e1808] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1809]:
+              - button "Preview Distant Street" [ref=f5e1810] [cursor=pointer]: ▶
+              - button "Distant Street" [ref=f5e1811] [cursor=pointer]
+              - button "Favorite Distant Street" [ref=f5e1812] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1813]:
+              - button "Preview Gravel Steps" [ref=f5e1814] [cursor=pointer]: ▶
+              - button "Gravel Steps" [ref=f5e1815] [cursor=pointer]
+              - button "Favorite Gravel Steps" [ref=f5e1816] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1817]:
+              - button "Preview Paper Turn" [ref=f5e1818] [cursor=pointer]: ▶
+              - button "Paper Turn" [ref=f5e1819] [cursor=pointer]
+              - button "Favorite Paper Turn" [ref=f5e1820] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1821]:
+              - button "Preview Cloth Rustle" [ref=f5e1822] [cursor=pointer]: ▶
+              - button "Cloth Rustle" [ref=f5e1823] [cursor=pointer]
+              - button "Favorite Cloth Rustle" [ref=f5e1824] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1825]:
+              - button "Preview Switch Click" [ref=f5e1826] [cursor=pointer]: ▶
+              - button "Switch Click" [ref=f5e1827] [cursor=pointer]
+              - button "Favorite Switch Click" [ref=f5e1828] [cursor=pointer]: ♡
+            - generic "Drag onto a drum row or an instrument track to assign · click ▶ to preview" [ref=f5e1829]:
+              - button "Preview Match Strike" [ref=f5e1830] [cursor=pointer]: ▶
+              - button "Match Strike" [ref=f5e1831] [cursor=pointer]
+              - button "Favorite Match Strike" [ref=f5e1832] [cursor=pointer]: ♡
+        - generic "Gain — drag to change, scroll to adjust (Ctrl = fine), right-click for exact values, double-click to reset" [ref=f5e1833]:
+          - generic [ref=f5e1834]:
+            - generic [ref=f5e1835]: Gain
+            - generic [ref=f5e1836]: 0.0 dB
+          - slider "Gain" [ref=f5e1837]
+        - generic "Pan — drag to change, scroll to adjust (Ctrl = fine), right-click for exact values, double-click to reset" [ref=f5e1840]:
+          - generic [ref=f5e1841]:
+            - generic [ref=f5e1842]: Pan
+            - generic [ref=f5e1843]: C
+          - slider "Pan" [ref=f5e1844]
+        - generic "Pitch — drag to change, scroll to adjust (Ctrl = fine), right-click for exact values, double-click to reset" [ref=f5e1847]:
+          - generic [ref=f5e1848]:
+            - generic [ref=f5e1849]: Pitch
+            - generic [ref=f5e1850]: 0.0 st
+          - slider "Pitch" [ref=f5e1851]
+        - generic [ref=f5e1854]:
+          - heading "PAD LFO" [level=3] [ref=f5e1855]
+          - generic [ref=f5e1856]:
+            - button "PITCH" [ref=f5e1857] [cursor=pointer]
+            - button "GAIN" [ref=f5e1858] [cursor=pointer]
+            - button "FILTER" [ref=f5e1859] [cursor=pointer]
+        - generic [ref=f5e1860]:
+          - button "MUTE" [ref=f5e1861] [cursor=pointer]
+          - button "SOLO" [ref=f5e1862] [cursor=pointer]
+        - heading "TRACK — Drums" [level=2] [ref=f5e1863]
+        - generic "Volume — drag to change, scroll to adjust (Ctrl = fine), right-click for exact values, double-click to reset" [ref=f5e1864]:
+          - generic [ref=f5e1865]:
+            - generic [ref=f5e1866]: Volume
+            - generic [ref=f5e1867]: "-0.9 dB"
+          - slider "Volume" [ref=f5e1868]
+        - generic "Pan — drag to change, scroll to adjust (Ctrl = fine), right-click for exact values, double-click to reset" [ref=f5e1871]:
+          - generic [ref=f5e1872]:
+            - generic [ref=f5e1873]: Pan
+            - generic [ref=f5e1874]: C
+          - slider "Pan" [ref=f5e1875]
+    - generic [ref=f5e1878]:
+      - generic [ref=f5e1879]:
+        - button "Resize bottom panel dock" [ref=f5e1880]
+        - tablist "Bottom dock panels" [ref=f5e1884]:
+          - tab "Toggle mixer panel" [ref=f5e1885] [cursor=pointer]:
+            - generic [ref=f5e1887]: MIX
+          - tab "Toggle track device chain" [ref=f5e1888] [cursor=pointer]:
+            - generic [ref=f5e1890]: DEV
+          - tab "Toggle TSAR engine panel" [ref=f5e1891] [cursor=pointer]:
+            - generic [ref=f5e1893]: TSAR
+          - tab "Toggle arrangement and scenes" [ref=f5e1894] [cursor=pointer]:
+            - generic [ref=f5e1896]: ARR
+          - tab "Toggle modulation panel" [ref=f5e1897] [cursor=pointer]:
+            - generic [ref=f5e1899]: MOD
+          - tab "Toggle dice panel" [ref=f5e1900] [cursor=pointer]:
+            - generic [ref=f5e1902]: DICE
+          - tab "Toggle intent panel" [selected] [ref=f5e1903] [cursor=pointer]:
+            - generic [ref=f5e1905]: INTENT
+          - tab "Toggle export panel" [ref=f5e1906] [cursor=pointer]:
+            - generic [ref=f5e1908]: EXP
+          - tab "Toggle mastering panel" [ref=f5e1909] [cursor=pointer]:
+            - generic [ref=f5e1911]: MASTER
+          - tab "Toggle MIDI input panel" [ref=f5e1912] [cursor=pointer]:
+            - generic [ref=f5e1914]: MIDI
+          - tab "Toggle reference map panel" [ref=f5e1915] [cursor=pointer]:
+            - generic [ref=f5e1917]: REF
+          - button "Close all dock panels" [ref=f5e1919] [cursor=pointer]: ▾
+      - tabpanel "Toggle intent panel" [ref=f5e1920]:
+        - generic [ref=f5e1921]: Loading panel…
+    - contentinfo [ref=f5e1922]:
+      - generic [ref=f5e1923]: SPACE play · CTRL+K commands · ALT+1–8 panels · ? help · Ctrl+Z undo · 1–9 tracks · pad keys QWERTYUIASDFGHJK
+      - button "LINK" [ref=f5e1924] [cursor=pointer]
+      - button "Studio I/O — audio device settings" [ref=f5e1925] [cursor=pointer]
+      - generic [ref=f5e1926]: "Master output level: left -120.0 dB peak, right -120.0 dB peak, hold -120.0 dB."
+      - status [ref=f5e1927]
+      - generic "Performance — active voices and audio dropouts" [ref=f5e1928]:
+        - generic [ref=f5e1929]:
+          - text: VOICES
+          - generic [ref=f5e1930]: "0"
+        - generic [ref=f5e1931]:
+          - text: DROP
+          - generic [ref=f5e1932]: "0"
+    - status:
+      - generic: 1/5
+      - generic: Press SPACE — this template already makes sound.
+      - button "Dismiss onboarding" [ref=f5e1933] [cursor=pointer]: ×
+    - button "Open QMR panel" [ref=f5e1934] [cursor=pointer]

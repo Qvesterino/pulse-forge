@@ -306,7 +306,7 @@ export function PatternBar({
           </button>
           <button
             type="button"
-            className="btn btn-small"
+            className="btn btn-small btn-primary"
             title="Generate a new pattern from genre groove (Markov chain)"
             onClick={() => setGenerateOpen(true)}
           >

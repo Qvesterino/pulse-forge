@@ -43,6 +43,7 @@ type TopbarAction = {
   title: string;
   priority: number;
   active?: boolean;
+  disabled?: boolean;
   className?: string;
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
 };
@@ -120,7 +121,7 @@ export function TopBar({
   const topbarRef = useRef<HTMLElement>(null);
   const overflowButtonRef = useRef<HTMLButtonElement>(null);
   const overflowMenuRef = useRef<HTMLDivElement>(null);
-  const [topbarWidth, setTopbarWidth] = useState(1800);
+  const [topbarWidth, setTopbarWidth] = useState(() => (typeof window === "undefined" ? 1200 : window.innerWidth));
   const [overflowOpen, setOverflowOpen] = useState(false);
   // Song-mode guard: pattern mode loops the active pattern, but SONG plays the
   // arrangement — audio only sounds where a clip sits under the playhead.
@@ -466,10 +467,77 @@ export function TopBar({
   // PANEL toggles no longer live here: the bottom dock owns its own tab row
   // (DockChrome, ROADMAP-UI-2027 V1) — where the panel is, is where you
   // switch it, FL-Studio style.
-  const toolLimit = topbarWidth < 1120 ? 2 : 3;
-  const visibleToolActions = selectTopbarActions(toolActions, toolLimit);
+  const compactTransport = topbarWidth < 620;
+  const toolLimit = compactTransport ? 0 : topbarWidth < 1120 ? 2 : 3;
+  const visibleToolActions = compactTransport ? [] : selectTopbarActions(toolActions, toolLimit);
   const overflowToolActions = toolActions.filter((action) => !visibleToolActions.includes(action));
-  const overflowActionCount = overflowToolActions.length;
+  const overflowTransportActions: TopbarAction[] = compactTransport
+    ? [
+        {
+          id: "count-in",
+          label: `COUNT-IN ${countIn || "OFF"}`,
+          ariaLabel: `Cycle count-in (${countIn || "off"})`,
+          title: "Cycle count-in: off, one bar, two bars",
+          priority: 0,
+          active: countIn > 0,
+          onClick: () => cycleCountIn(),
+        },
+        {
+          id: "pre-roll",
+          label: `PRE-ROLL ${preRoll > 0 ? "ON" : "OFF"}`,
+          ariaLabel: preRoll > 0 ? "Turn pre-roll off" : "Turn pre-roll on",
+          title: "Toggle one extra click bar before count-in",
+          priority: 0,
+          active: preRoll > 0,
+          onClick: () => togglePreRoll(),
+        },
+        {
+          id: "metronome",
+          label: `METRONOME ${metronome ? "ON" : "OFF"}`,
+          ariaLabel: metronome ? "Turn metronome off" : "Turn metronome on",
+          title: "Toggle the metronome during playback",
+          priority: 0,
+          active: metronome,
+          onClick: () => toggleMetronome(),
+        },
+        {
+          id: "loop",
+          label: `LOOP ${loopEnabled ? "ON" : "OFF"}`,
+          ariaLabel: loopEnabled ? "Turn loop off" : "Turn loop on",
+          title: "Toggle the loop region",
+          priority: 0,
+          active: loopEnabled,
+          onClick: () => toggleLoop(),
+        },
+        {
+          id: "undo",
+          label: "UNDO",
+          ariaLabel: "Undo",
+          title: "Undo (Ctrl+Z)",
+          priority: 0,
+          disabled: !canUndo,
+          onClick: () => services.store.undo(),
+        },
+        {
+          id: "redo",
+          label: "REDO",
+          ariaLabel: "Redo",
+          title: "Redo (Ctrl+Shift+Z)",
+          priority: 0,
+          disabled: !canRedo,
+          onClick: () => services.store.redo(),
+        },
+        {
+          id: "tap-tempo",
+          label: "TAP TEMPO",
+          ariaLabel: "Tap tempo",
+          title: "Tap twice or more to set the project tempo",
+          priority: 0,
+          onClick: () => tapTempo(),
+        },
+      ]
+    : [];
+  const overflowActionCount = overflowToolActions.length + overflowTransportActions.length;
   const hasOverflowActions = overflowActionCount > 0;
   // Transport terms scale with available room: full words only on wide topbars.
   // The long COUNT-IN/PRE-ROLL labels would otherwise squeeze the project name
@@ -540,12 +608,12 @@ export function TopBar({
 
         <button
           type="button"
-          className="btn btn-ghost btn-projects"
+          className={`btn btn-ghost btn-projects${topbarWidth < 720 ? " btn-projects-compact" : ""}`}
           onClick={onOpenBrowser}
           title="Back to project browser"
           aria-label="Back to project browser"
         >
-          PROJECTS
+          {topbarWidth < 720 ? "←" : "PROJECTS"}
         </button>
 
         <div className="transport-cluster">
@@ -648,69 +716,81 @@ export function TopBar({
           <button type="button" className="btn btn-stop" onClick={() => services.playback.stop()} title="Stop">
             ■
           </button>
-          <button
-            type="button"
-            className={`btn btn-countin${countIn > 0 ? " active" : ""}`}
-            onClick={cycleCountIn}
-            title="Count-in: metronome clicks 1–2 bars before playback starts (FL/Cubase pre-roll)"
-            aria-label={`Count-in ${countIn > 0 ? `${countIn} bar${countIn > 1 ? "s" : ""}` : "off"}`}
-          >
-            {wideTransport ? "COUNT-IN" : "C·"}
-            {countIn > 0 ? ` ${countIn}` : ""}
-          </button>
-          <button
-            type="button"
-            className={`btn btn-preroll${preRoll > 0 ? " active" : ""}`}
-            onClick={togglePreRoll}
-            title="Pre-roll: one extra click bar before the count-in (clicks only, content starts on time)"
-            aria-label={preRoll > 0 ? "Pre-roll on" : "Pre-roll off"}
-            aria-pressed={preRoll > 0}
-          >
-            {wideTransport ? "PRE-ROLL" : "PR"}
-          </button>
-          <button
-            type="button"
-            className={`btn btn-metronome${metronome ? " active" : ""}`}
-            onClick={toggleMetronome}
-            title="Metronome: click every beat during playback"
-            aria-label={metronome ? "Metronome on" : "Metronome off"}
-            aria-pressed={metronome}
-          >
-            CLICK
-          </button>
-          <button
-            type="button"
-            className="btn btn-history"
-            disabled={!canUndo}
-            onClick={() => services.store.undo()}
-            title="Undo (Ctrl+Z)"
-            aria-label="Undo"
-            aria-keyshortcuts="Control+Z"
-          >
-            ↶
-          </button>
-          <button
-            type="button"
-            className="btn btn-history"
-            disabled={!canRedo}
-            onClick={() => services.store.redo()}
-            title="Redo (Ctrl+Shift+Z)"
-            aria-label="Redo"
-            aria-keyshortcuts="Control+Shift+Z"
-          >
-            ↷
-          </button>
-          <span className="position-display">{position}</span>
-          <button
-            type="button"
-            className={`btn btn-loop${loopEnabled ? " active" : ""}`}
-            onClick={toggleLoop}
-            title="Toggle loop region (L). IN/OUT locators also define a single-pass punch range when LOOP is off."
-            aria-label="Toggle loop region"
-            aria-pressed={loopEnabled}
-          >
-            LOOP
-          </button>
+          {!compactTransport && (
+            <button
+              type="button"
+              className={`btn btn-countin${countIn > 0 ? " active" : ""}`}
+              onClick={cycleCountIn}
+              title="Count-in: metronome clicks 1–2 bars before playback starts (FL/Cubase pre-roll)"
+              aria-label={`Count-in ${countIn > 0 ? `${countIn} bar${countIn > 1 ? "s" : ""}` : "off"}`}
+            >
+              {wideTransport ? "COUNT-IN" : "C·"}
+              {countIn > 0 ? ` ${countIn}` : ""}
+            </button>
+          )}
+          {!compactTransport && (
+            <button
+              type="button"
+              className={`btn btn-preroll${preRoll > 0 ? " active" : ""}`}
+              onClick={togglePreRoll}
+              title="Pre-roll: one extra click bar before the count-in (clicks only, content starts on time)"
+              aria-label={preRoll > 0 ? "Pre-roll on" : "Pre-roll off"}
+              aria-pressed={preRoll > 0}
+            >
+              {wideTransport ? "PRE-ROLL" : "PR"}
+            </button>
+          )}
+          {!compactTransport && (
+            <button
+              type="button"
+              className={`btn btn-metronome${metronome ? " active" : ""}`}
+              onClick={toggleMetronome}
+              title="Metronome: click every beat during playback"
+              aria-label={metronome ? "Metronome on" : "Metronome off"}
+              aria-pressed={metronome}
+            >
+              CLICK
+            </button>
+          )}
+          {!compactTransport && (
+            <button
+              type="button"
+              className="btn btn-history"
+              disabled={!canUndo}
+              onClick={() => services.store.undo()}
+              title="Undo (Ctrl+Z)"
+              aria-label="Undo"
+              aria-keyshortcuts="Control+Z"
+            >
+              ↶
+            </button>
+          )}
+          {!compactTransport && (
+            <button
+              type="button"
+              className="btn btn-history"
+              disabled={!canRedo}
+              onClick={() => services.store.redo()}
+              title="Redo (Ctrl+Shift+Z)"
+              aria-label="Redo"
+              aria-keyshortcuts="Control+Shift+Z"
+            >
+              ↷
+            </button>
+          )}
+          {!compactTransport && <span className="position-display">{position}</span>}
+          {!compactTransport && (
+            <button
+              type="button"
+              className={`btn btn-loop${loopEnabled ? " active" : ""}`}
+              onClick={toggleLoop}
+              title="Toggle loop region (L). IN/OUT locators also define a single-pass punch range when LOOP is off."
+              aria-label="Toggle loop region"
+              aria-pressed={loopEnabled}
+            >
+              LOOP
+            </button>
+          )}
           {(loopEnabled || loopEnd > loopStart) && (
             <>
               <DragNumber
@@ -748,15 +828,17 @@ export function TopBar({
             format={(v) => v.toFixed(1)}
             onCommit={(bpm) => services.store.execute(setBpm(doc, bpm))}
           />
-          <button
-            type="button"
-            className="btn btn-tap"
-            onClick={tapTempo}
-            title="Tap tempo: tap in time (2+ taps) to set the BPM"
-            aria-label="Tap tempo"
-          >
-            TAP
-          </button>
+          {!compactTransport && (
+            <button
+              type="button"
+              className="btn btn-tap"
+              onClick={tapTempo}
+              title="Tap tempo: tap in time (2+ taps) to set the BPM"
+              aria-label="Tap tempo"
+            >
+              TAP
+            </button>
+          )}
         </div>
 
         <input
@@ -814,7 +896,7 @@ export function TopBar({
               <button
                 ref={overflowButtonRef}
                 type="button"
-                className={`btn btn-ghost topbar-overflow-trigger${overflowOpen ? " active" : ""}`}
+                className={`btn btn-ghost topbar-overflow-trigger${overflowOpen || overflowToolActions.some((action) => action.active) || overflowTransportActions.some((action) => action.active) ? " active" : ""}`}
                 onClick={() => setOverflowOpen((open) => !open)}
                 title="More topbar controls"
                 aria-label={`More topbar controls (${overflowActionCount} hidden)`}
@@ -844,6 +926,27 @@ export function TopBar({
                           title={action.title}
                           aria-label={action.ariaLabel}
                           aria-pressed={action.active}
+                          disabled={action.disabled}
+                          role="menuitem"
+                        >
+                          {action.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {overflowTransportActions.length > 0 && (
+                    <div className="topbar-overflow-section">
+                      <div className="topbar-overflow-heading">TRANSPORT</div>
+                      {overflowTransportActions.map((action) => (
+                        <button
+                          key={action.id}
+                          type="button"
+                          className={`topbar-overflow-item${action.active ? " active" : ""}`}
+                          onClick={(event) => invokeOverflowAction(action, event)}
+                          title={action.title}
+                          aria-label={action.ariaLabel}
+                          aria-pressed={action.active}
+                          disabled={action.disabled}
                           role="menuitem"
                         >
                           {action.label}

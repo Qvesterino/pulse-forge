@@ -224,6 +224,37 @@ describe("TopBar", () => {
     }
   });
 
+  it("keeps the core transport visible and moves secondary controls into overflow on a narrow screen", async () => {
+    const originalWidth = window.innerWidth;
+    const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 400 });
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const rect = originalGetBoundingClientRect.call(this);
+      if (this.classList.contains("topbar")) return { ...rect, width: 400, left: 0, right: 400 } as DOMRect;
+      return rect;
+    });
+    const user = userEvent.setup();
+
+    try {
+      const { services } = renderWithContext(<TopBar {...topBarProps({ onOpenPalette: vi.fn() })} />);
+
+      expect(screen.getByLabelText("Record MIDI to pattern")).toBeInTheDocument();
+      expect(screen.getByTitle("Play / Pause (Space)")).toBeInTheDocument();
+      expect(screen.getByTitle("Stop")).toBeInTheDocument();
+      expect(screen.getByLabelText("BPM")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Count-in off" })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /More topbar controls/ }));
+      await user.click(screen.getByRole("menuitem", { name: "Cycle count-in (off)" }));
+      expect(services.transport.setCountIn).toHaveBeenCalledWith(1);
+    } finally {
+      rectSpy.mockRestore();
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth });
+    }
+  });
+
   it("calls onToggleHelp when ? clicked", async () => {
     const user = userEvent.setup();
     const onToggleHelp = vi.fn();

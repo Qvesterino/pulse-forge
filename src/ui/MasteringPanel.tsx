@@ -182,26 +182,34 @@ export function MasteringPanel() {
           <h2>Mastering — {doc.name}</h2>
           <p>Check the full mix, review the real signal path, then shape the final stereo output.</p>
         </div>
-        <p className="mastering-profile-note">
-          {profile.intendedUse} {profile.note} Delivery profiles set measurement targets only; they do not change the
-          sound or certify that a master meets every destination requirement.
-          {profileSource && (
-            <span className="mastering-profile-source" data-review-due={profileSourceReviewDue}>
-              {" "}
-              <a href={profileSource.url} target="_blank" rel="noopener noreferrer">
-                {profileSource.label}
-              </a>{" "}
-              · checked {profileSource.checkedAt}.
-              {profileSourceReviewDue && " Source review is due before relying on this target."}
-            </span>
-          )}
-          <MasterProfileFileGuidance profile={profile} />
-        </p>
-        <p className="mastering-monitor-note" role="note">
-          Master A/B and reference audition play through the active browser output. Open Studio I/O in the top bar to
-          choose an output where supported and view browser-reported latency. KYX does not measure hardware round-trip
-          latency or calibrate monitor response; check the result on a known monitor or headphone chain.
-        </p>
+        <details className="mastering-intro-notes" data-review-due={profileSourceReviewDue}>
+          <summary>
+            DELIVERY &amp; MONITORING NOTES
+            {profileSourceReviewDue && <span className="mastering-intro-review-due">REVIEW DUE</span>}
+          </summary>
+          <div className="mastering-intro-note-content">
+            <p className="mastering-profile-note">
+              {profile.intendedUse} {profile.note} Delivery profiles set measurement targets only; they do not change
+              the sound or certify that a master meets every destination requirement.
+              {profileSource && (
+                <span className="mastering-profile-source" data-review-due={profileSourceReviewDue}>
+                  {" "}
+                  <a href={profileSource.url} target="_blank" rel="noopener noreferrer">
+                    {profileSource.label}
+                  </a>{" "}
+                  · checked {profileSource.checkedAt}.
+                  {profileSourceReviewDue && " Source review is due before relying on this target."}
+                </span>
+              )}
+              <MasterProfileFileGuidance profile={profile} />
+            </p>
+            <p className="mastering-monitor-note" role="note">
+              Master A/B and reference audition play through the active browser output. Open Studio I/O in the top bar to
+              choose an output where supported and view browser-reported latency. KYX does not measure hardware
+              round-trip latency or calibrate monitor response; check the result on a known monitor or headphone chain.
+            </p>
+          </div>
+        </details>
       </header>
       <section className="mastering-overview" aria-label="Mastering analysis overview">
         <div className="mastering-overview-heading">
