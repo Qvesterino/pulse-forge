@@ -1456,66 +1456,6 @@ export function ExportPanel({
               type="button"
               className="btn btn-export"
               disabled={busy}
-              title="Copy a link that opens this project in the full studio"
-              onClick={() => void copyShareLink()}
-            >
-              COPY SHARE LINK
-            </button>
-            <button
-              type="button"
-              className="btn btn-export"
-              disabled={busy}
-              title="Copy an iframe embed with a playable beat player"
-              onClick={() => void copyEmbedCode()}
-            >
-              COPY EMBED CODE
-            </button>
-            <PublishToGalleryButton />
-            {isMountedInEcosystem() && (
-              <button
-                type="button"
-                className="btn btn-export"
-                disabled={busy}
-                title="Render this beat and hand it to Audio Canvas (SIQ) — its analysis and beat-reactive visuals run on your audio"
-                onClick={() => void sendToQvesterVisualizer()}
-              >
-                ✦ SEND TO QVESTER VISUALIZER
-              </button>
-            )}
-            <button
-              type="button"
-              className="btn btn-export btn-export-scorepack"
-              disabled={busy}
-              title="Export a .scorepack ZIP: master + stems + cues + JSON manifests"
-              onClick={() => void exportScorepack()}
-            >
-              EXPORT SCOREPACK
-            </button>
-            <label
-              className="export-policy"
-              title="Track stems are rendered as time-aligned 32-bit-float WAVs to preserve headroom; long sessions can make the transfer large."
-            >
-              <input
-                type="checkbox"
-                checked={includeTrackStems}
-                disabled={busy}
-                onChange={(event) => setIncludeTrackStems(event.target.checked)}
-              />
-              INCLUDE TRACK STEMS
-            </label>
-            <button
-              type="button"
-              className="btn btn-export btn-export-scorepack"
-              disabled={busy}
-              title="Create a ZYVO transfer with a 48 kHz 32-bit-float master, optional aligned stems, arrangement metadata, and the original KYX project."
-              onClick={() => void exportZyvoTransfer()}
-            >
-              EXPORT TO ZYVO
-            </button>
-            <button
-              type="button"
-              className="btn btn-export"
-              disabled={busy}
               title={
                 mode === "song" && (doc.arrangement.clips.length > 0 || (doc.arrangement.midiClips?.length ?? 0) > 0)
                   ? "Download the whole Song arrangement as a .mid file, including independent instrument lanes and tempo changes"
@@ -1527,15 +1467,80 @@ export function ExportPanel({
                 ? "EXPORT MIDI (SONG)"
                 : "EXPORT MIDI (PATTERN)"}
             </button>
-            <button
-              type="button"
-              className="btn btn-export"
-              disabled={busy}
-              title="Download project as JSON file for backup or sharing"
-              onClick={() => exportProject(doc)}
-            >
-              EXPORT JSON
-            </button>
+            <details className="export-more-options">
+              <summary className="export-more-summary">MORE OPTIONS · LINKS · BUNDLES · BACKUP</summary>
+              <div className="export-more-actions">
+                <button
+                  type="button"
+                  className="btn btn-export"
+                  disabled={busy}
+                  title="Copy a link that opens this project in the full studio"
+                  onClick={() => void copyShareLink()}
+                >
+                  COPY SHARE LINK
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-export"
+                  disabled={busy}
+                  title="Copy an iframe embed with a playable beat player"
+                  onClick={() => void copyEmbedCode()}
+                >
+                  COPY EMBED CODE
+                </button>
+                <PublishToGalleryButton />
+                {isMountedInEcosystem() && (
+                  <button
+                    type="button"
+                    className="btn btn-export"
+                    disabled={busy}
+                    title="Render this beat and hand it to Audio Canvas (SIQ) — its analysis and beat-reactive visuals run on your audio"
+                    onClick={() => void sendToQvesterVisualizer()}
+                  >
+                    ✦ SEND TO QVESTER VISUALIZER
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-export btn-export-scorepack"
+                  disabled={busy}
+                  title="Export a .scorepack ZIP: master + stems + cues + JSON manifests"
+                  onClick={() => void exportScorepack()}
+                >
+                  EXPORT SCOREPACK
+                </button>
+                <label
+                  className="export-policy"
+                  title="Track stems are rendered as time-aligned 32-bit-float WAVs to preserve headroom; long sessions can make the transfer large."
+                >
+                  <input
+                    type="checkbox"
+                    checked={includeTrackStems}
+                    disabled={busy}
+                    onChange={(event) => setIncludeTrackStems(event.target.checked)}
+                  />
+                  INCLUDE TRACK STEMS
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-export btn-export-scorepack"
+                  disabled={busy}
+                  title="Create a ZYVO transfer with a 48 kHz 32-bit-float master, optional aligned stems, arrangement metadata, and the original KYX project."
+                  onClick={() => void exportZyvoTransfer()}
+                >
+                  EXPORT TO ZYVO
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-export"
+                  disabled={busy}
+                  title="Download project as JSON file for backup or sharing"
+                  onClick={() => exportProject(doc)}
+                >
+                  EXPORT JSON
+                </button>
+              </div>
+            </details>
           </>
         )}
       </div>

@@ -1217,7 +1217,10 @@ function StepEditor({
       executeUserEdit(services.store, setStepMeta(doc, pattern.id, padId, stepIndex, change));
     }
   };
-  const setLock = (key: "pitch" | "gain" | "pan" | "cutoff" | "sampleStart" | "length", value: number | undefined) => {
+  const setLock = (
+    key: "pitch" | "gain" | "pan" | "cutoff" | "sampleStart" | "length" | "fadeIn" | "fadeOut",
+    value: number | undefined,
+  ) => {
     if (isInSelection && stepSelection) {
       executeUserEdit(
         services.store,
@@ -1444,6 +1447,48 @@ function StepEditor({
             title={meta.locks?.length !== undefined ? "Clear length lock" : "No length lock"}
             disabled={meta.locks?.length === undefined}
             onClick={() => setLock("length", undefined)}
+          >
+            ✕
+          </button>
+        </div>
+        <div className="step-editor-lock-row">
+          <DragNumber
+            label="FADE IN"
+            value={meta.locks?.fadeIn ?? 0}
+            min={0}
+            max={1}
+            defaultValue={0}
+            sensitivity={0.01}
+            format={(v) => `${Math.round(v * 100)}%${meta.locks?.fadeIn === undefined ? " · —" : ""}`}
+            onCommit={(fadeIn) => setLock("fadeIn", fadeIn)}
+          />
+          <button
+            type="button"
+            className="btn btn-small btn-lock-clear"
+            title={meta.locks?.fadeIn !== undefined ? "Clear fade-in lock" : "No fade-in lock"}
+            disabled={meta.locks?.fadeIn === undefined}
+            onClick={() => setLock("fadeIn", undefined)}
+          >
+            ✕
+          </button>
+        </div>
+        <div className="step-editor-lock-row">
+          <DragNumber
+            label="FADE OUT"
+            value={meta.locks?.fadeOut ?? 0}
+            min={0}
+            max={1}
+            defaultValue={0}
+            sensitivity={0.01}
+            format={(v) => `${Math.round(v * 100)}%${meta.locks?.fadeOut === undefined ? " · —" : ""}`}
+            onCommit={(fadeOut) => setLock("fadeOut", fadeOut)}
+          />
+          <button
+            type="button"
+            className="btn btn-small btn-lock-clear"
+            title={meta.locks?.fadeOut !== undefined ? "Clear fade-out lock" : "No fade-out lock"}
+            disabled={meta.locks?.fadeOut === undefined}
+            onClick={() => setLock("fadeOut", undefined)}
           >
             ✕
           </button>
@@ -1784,6 +1829,8 @@ const StepCell = memo(function StepCell({
   if (meta?.locks?.cutoff !== undefined) lockHints.push(`cutoff ${Math.round(meta.locks.cutoff)} Hz`);
   if (meta?.locks?.sampleStart !== undefined) lockHints.push(`start ${Math.round(meta.locks.sampleStart * 100)}%`);
   if (meta?.locks?.length !== undefined) lockHints.push(`length ${Math.round(meta.locks.length * 100)}%`);
+  if (meta?.locks?.fadeIn !== undefined) lockHints.push(`fade in ${Math.round(meta.locks.fadeIn * 100)}%`);
+  if (meta?.locks?.fadeOut !== undefined) lockHints.push(`fade out ${Math.round(meta.locks.fadeOut * 100)}%`);
   if (meta?.amount !== undefined && meta.amount < 1) lockHints.push(`amount ${Math.round(meta.amount * 100)}%`);
   const fullLabel = `${stepLabel}${lockHints.length > 0 ? `, p-locks: ${lockHints.join(", ")}` : ""}`;
   const amount = meta?.amount ?? 1;

@@ -95,7 +95,7 @@ export function createTsarFallbackRuntime(ctx: BaseAudioContext, track: Instrume
       filter.frequency.setValueAtTime(Math.min(18000, params.srcACutoff ?? 12000), when);
       filter.Q.value = Math.max(0.0001, (params.srcAQ ?? 0.8) * 0.2);
       const level = (params.srcALevel ?? 0.8) * (params.level ?? 0.8);
-      const attack = Math.max(0.001, params.srcAAtk ?? 0.005);
+      const attack = Math.min(4, Math.max(0.001, params.srcAAtk ?? 0.005));
       gain.gain.setValueAtTime(0.0001, when);
       gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, level * velocity), when + attack);
       gain.connect(filter).connect(output);
@@ -139,6 +139,11 @@ interface SlotUpload {
   sample: { slot: 0 | 1; pcm: Float32Array; rootHz: number };
 }
 
+interface TsarUploads {
+  wavetables: SlotUpload["wavetable"][];
+  samples: SlotUpload["sample"][];
+}
+
 /** Flatten a mip level's frames (Float32Array[]) into one contiguous buffer. */
 function flattenFrames(frames: Float32Array[], frameSize: number): Float32Array {
   const flat = new Float32Array(frames.length * frameSize);
@@ -177,8 +182,21 @@ export function createTsarRuntime(options: TsarRuntimeOptions): TsarRuntime {
   };
 
   const uploadAll = () =>
-    [uploadFor(0, currentTrack.sampleId), uploadFor(1, currentTrack.sampleIdB ?? null)].filter(
-      (u): u is SlotUpload => u !== null,
+    ([0, 1] as const).reduce<TsarUploads>(
+      (uploads, slot) => {
+        const upload = uploadFor(slot, slot === 0 ? currentTrack.sampleId : (currentTrack.sampleIdB ?? null));
+        const factory = FACTORY_WAVETABLES[0]!;
+        uploads.wavetables.push(
+          upload?.wavetable ?? {
+            slot,
+            frames: flattenFrames(factory.frames, FRAME_SIZE),
+            frameCount: factory.frames.length,
+          },
+        );
+        if (upload) uploads.samples.push(upload.sample);
+        return uploads;
+      },
+      { wavetables: [], samples: [] },
     );
 
   /** Param snapshot the engine pushed at build time. */
@@ -194,8 +212,8 @@ export function createTsarRuntime(options: TsarRuntimeOptions): TsarRuntime {
     connectNode(
       options.createNode({
         params: paramsSnapshot(),
-        wavetables: uploads.map((u) => u.wavetable),
-        samples: uploads.map((u) => u.sample),
+        wavetables: uploads.wavetables,
+        samples: uploads.samples,
         bpm: pendingBpm ?? undefined,
       }),
     );
@@ -234,7 +252,16 @@ export function createTsarRuntime(options: TsarRuntimeOptions): TsarRuntime {
       if (upload) {
         node.port.postMessage({ type: "wavetable", ...upload.wavetable });
         node.port.postMessage({ type: "sample", ...upload.sample });
-      } else node.port.postMessage({ type: "clearSource", slot: 0 });
+      } else {
+        node.port.postMessage({ type: "clearSource", slot: 0 });
+        const factory = FACTORY_WAVETABLES[0]!;
+        node.port.postMessage({
+          type: "wavetable",
+          slot: 0,
+          frames: flattenFrames(factory.frames, FRAME_SIZE),
+          frameCount: factory.frames.length,
+        });
+      }
     },
     setSampleB(id) {
       currentTrack = { ...currentTrack, sampleIdB: id };
@@ -243,7 +270,16 @@ export function createTsarRuntime(options: TsarRuntimeOptions): TsarRuntime {
       if (upload) {
         node.port.postMessage({ type: "wavetable", ...upload.wavetable });
         node.port.postMessage({ type: "sample", ...upload.sample });
-      } else node.port.postMessage({ type: "clearSource", slot: 1 });
+      } else {
+        node.port.postMessage({ type: "clearSource", slot: 1 });
+        const factory = FACTORY_WAVETABLES[0]!;
+        node.port.postMessage({
+          type: "wavetable",
+          slot: 1,
+          frames: flattenFrames(factory.frames, FRAME_SIZE),
+          frameCount: factory.frames.length,
+        });
+      }
     },
     setVelocityLayers() {
       // Keyzones / round-robin are sampler features, not TSAR.
@@ -297,8 +333,8 @@ export function createTsarRuntime(options: TsarRuntimeOptions): TsarRuntime {
         options.createNode({
           params: paramsSnapshot(),
           events: pendingEvents.slice(),
-          wavetables: uploads.map((u) => u.wavetable),
-          samples: uploads.map((u) => u.sample),
+          wavetables: uploads.wavetables,
+          samples: uploads.samples,
           bpm: pendingBpm ?? undefined,
         }),
       );

@@ -1,6 +1,7 @@
 # KYX Web and Studio support matrix
 
-**Status:** working qualification record, updated 2026-10-12  
+**Status:** working qualification record, updated 2026-10-15
+
 **Product scope:** [ADR 0014 — full-DAW scope](./adr/0014-full-daw-scope.md)  
 **Execution plan:** [full-DAW roadmap](./ROADMAP-FULL-DAW.md)
 
@@ -16,6 +17,7 @@ interface, channel map, sample rate and buffer recorded in its evidence.
 | --------------------- | ------------------------------------------------------------------------------------ |
 | **Implemented**       | The product path exists; the cited boundary still applies.                           |
 | **Software verified** | Automated or repeatable software checks passed; no physical device claim is implied. |
+| **Hardware smoke**    | A bounded stream opened on a named physical device; this is preliminary evidence, not qualification. |
 | **Hardware verified** | A named physical configuration passed the procedure and has a retained test record.  |
 | **Not shipped**       | There is no user-available product implementation for this capability.               |
 | **Open**              | Evidence or a product decision is still required before a support claim can be made. |
@@ -37,9 +39,10 @@ interface, channel map, sample rate and buffer recorded in its evidence.
 | One selected browser input stream                | Implemented               | Capture can request 1–8 channels and route channels to separate arrangement tracks. Browser/device channel mapping is unverified.                          |
 | Loop and punch passes, alternate takes, comping  | Software verified         | Synthetic/browser-path capture, edit, save/reopen and export checks exist; real recorded material is not certified.                                        |
 | Multiple independent input streams at once       | Not shipped               | One capture stream is active at a time; separately armed device streams remain a roadmap item.                                                             |
-| Physical connector mapping and analog loopback   | Open                      | No reference interface test record is available.                                                                                                           |
-| Windows shared-mode duplex and software loopback | Software checks only      | Current default-endpoint probe runs are documented in [the audio spike](./WINDOWS-AUDIO-SPIKE-2026-09.md); they do not measure DAC/ADC round-trip latency. |
-| UA Volt 276 reference setup                      | Open                      | The Volt 276 was not connected during this session, so its driver, channel map, physical latency and hardware soak were not tested.                        |
+| Physical connector mapping and analog loopback   | Open                      | No connector-to-channel map, analog loopback or DAC/ADC round-trip measurement is recorded yet.                                                            |
+| Windows shared-mode duplex                      | Hardware smoke            | Bounded 10- and 30-second capture/silent-render runs passed on the active Volt 276 endpoints. This does not measure physical round-trip latency. |
+| Windows software loopback                       | Software verified         | Default-endpoint digital loopback checks and their boundaries are documented in [the audio spike](./WINDOWS-AUDIO-SPIKE-2026-09.md). They do not measure DAC/ADC latency. |
+| UA Volt 276 reference setup                      | Open                      | Volt endpoints are active and bounded shared-mode streams passed. Host/driver/channel-map qualification, physical latency and sustained hardware soak remain open. |
 | ASIO discovery                                   | Implemented               | Windows desktop discovery/probe only; see [ADR 0017](./adr/0017-smpte-asio-discovery.md).                                                                  |
 | ASIO audio streaming                             | Software fixture verified | A fixture-driver soak passed; real hardware drivers have not passed the release qualification gate. See ADR 0017/0018.                                     |
 

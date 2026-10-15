@@ -29,6 +29,8 @@ import type { InstrumentRuntime } from "./types";
 import type { InstrumentTrack } from "../project-model/types";
 import type { KopaEvent } from "../kopa/dsp/kopaProcessor";
 
+const MAX_FALLBACK_VOICES = 16;
+
 function clampParam(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -130,18 +132,18 @@ export interface KopaFallbackOptions {
 export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: InstrumentTrack): KopaRuntime {
   const output = ctx.createGain();
   let params: Record<string, number> = { ...track.params };
-  const voices = new Map<number, { osc: OscillatorNode[]; gain: GainNode }>();
+  const voices = new Map<number, { pitch: number; sources: AudioScheduledSourceNode[]; gain: GainNode }>();
   let voiceId = 0;
 
   const stopVoice = (id: number, when: number) => {
     const voice = voices.get(id);
     if (!voice) return;
     voices.delete(id);
-    const release = 0.02;
+    const release = 0.002;
     try {
       voice.gain.gain.cancelScheduledValues(when);
       voice.gain.gain.setTargetAtTime(0, when, release);
-      for (const osc of voice.osc) osc.stop(when + release * 4 + 0.05);
+      for (const source of voice.sources) source.stop(when + release * 4 + 0.005);
     } catch {
       /* already stopped */
     }
@@ -150,6 +152,13 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
   return {
     output,
     noteOn(pitch, velocity, when) {
+      const vel = Number.isFinite(velocity) ? clampParam(velocity, 0, 1) : 1;
+      // A zero-velocity note-on is silent and must not allocate or steal voices.
+      if (vel === 0) return;
+      if (voices.size >= MAX_FALLBACK_VOICES) {
+        const oldest = voices.keys().next().value;
+        if (oldest !== undefined) stopVoice(oldest, when);
+      }
       const keyTrack = (params.keyTrack ?? 1) >= 0.5;
       const base = keyTrack ? 440 * Math.pow(2, (pitch - 69) / 12) : 65.40639132514966;
       const bodyF = base * Math.pow(2, (params.bodyTune ?? 0) / 12);
@@ -157,7 +166,6 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
       const pitchTime = Math.max(0.005, (params.pitchTime ?? 40) / 1000);
       const pitchCurve = Math.round(clampParam(params.pitchCurve ?? 0, 0, 3));
       const level = Math.pow(10, (params.level ?? -6) / 20);
-      const vel = Number.isFinite(velocity) && velocity > 0 ? clampParam(velocity, 0, 1) : 1;
       const drive = clampParam(params.drive ?? 0.25, 0, 1);
       const driveType = Math.round(clampParam(params.driveType ?? 0, 0, 3));
       const punch = clampParam(params.punch ?? 0.2, 0, 1);
@@ -179,8 +187,12 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
       const id = voiceId++;
       const gain = ctx.createGain();
       gain.connect(output);
-      gain.gain.setValueAtTime(0.0001, when);
-      gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.9 * vel * level), when + 0.002);
+      if (vel === 0) {
+        gain.gain.setValueAtTime(0, when);
+      } else {
+        gain.gain.setValueAtTime(0.0001, when);
+        gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.9 * vel * level), when + 0.002);
+      }
       const voiceInput = ctx.createGain();
       if (drive > 0 || punch > 0) {
         const shaper = ctx.createWaveShaper();
@@ -190,7 +202,8 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
       } else {
         voiceInput.connect(gain);
       }
-      const oscs: OscillatorNode[] = [];
+      const sources: AudioScheduledSourceNode[] = [];
+      const individuallyStoppedSources = new Set<AudioScheduledSourceNode>();
       // Body with pitch ramp.
       const body = ctx.createOscillator();
       body.type = bodyWave === 0 ? "sine" : bodyWave === 1 ? "triangle" : "sawtooth";
@@ -201,7 +214,7 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
       bodyGain.gain.setTargetAtTime(0, when, Math.max(0.01, bodyDecay * 0.33));
       body.connect(bodyGain).connect(voiceInput);
       body.start(when);
-      oscs.push(body);
+      sources.push(body);
       if (bodyHollow > 0.001) {
         const hollow = ctx.createOscillator();
         hollow.type = "sine";
@@ -213,7 +226,7 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
         hollowGain.gain.setTargetAtTime(0, when, Math.max(0.01, bodyDecay * 0.33));
         hollow.connect(hollowGain).connect(voiceInput);
         hollow.start(when);
-        oscs.push(hollow);
+        sources.push(hollow);
       }
       // Match the KOPA kick-harmonic layer: partials follow the body's pitch sweep,
       // all share its phase, and the fundamental itself is never re-added.
@@ -254,7 +267,7 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
             partialGain.gain.value = weight / weightSum;
             harmonic.connect(partialGain).connect(harmonicBus);
             harmonic.start(when);
-            oscs.push(harmonic);
+            sources.push(harmonic);
           }
         }
       }
@@ -273,7 +286,7 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
         subGain.gain.setTargetAtTime(0, when, Math.max(0.01, subDecay * 0.33));
         sub.connect(subGain).connect(voiceInput);
         sub.start(when);
-        oscs.push(sub);
+        sources.push(sub);
       }
       // Tail.
       const tailLevel = params.tailLevel ?? 0.25;
@@ -288,7 +301,7 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
         tailGain.gain.setTargetAtTime(0, when, Math.max(0.01, tailDecay * 0.33));
         tail.connect(tailGain).connect(voiceInput);
         tail.start(when);
-        oscs.push(tail);
+        sources.push(tail);
       }
       // Click.
       const clickLevel = params.clickLevel ?? 0.35;
@@ -330,15 +343,33 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
         if (clickType === 2) source.connect(clickGain);
         clickGain.connect(voiceInput);
         source.start(when);
-        if (clickType === 2) source.stop(when + clickDecay * 4 + 0.05);
+        sources.push(source);
+        if (clickType === 2) {
+          // Keep this short oscillator from inheriting the body/tail cleanup
+          // deadline below. A later stop() would replace this earlier one.
+          source.stop(when + clickDecay * 4 + 0.05);
+          individuallyStoppedSources.add(source);
+        }
       }
-      const voice = { osc: oscs, gain };
-      let pendingEnds = oscs.length;
-      for (const osc of oscs) {
-        osc.onended = () => {
+      const voice = { pitch, sources, gain };
+      let pendingEnds = sources.length;
+      const cleanupVoice = () => {
+        if (voices.get(id) === voice) voices.delete(id);
+        try {
+          gain.disconnect();
+        } catch {
+          /* already disconnected */
+        }
+      };
+      for (const source of sources) {
+        source.onended = () => {
           pendingEnds--;
-          if (pendingEnds <= 0 && voices.get(id) === voice) voices.delete(id);
+          if (pendingEnds <= 0) cleanupVoice();
         };
+      }
+      voices.set(id, voice);
+      for (const source of sources) {
+        if (individuallyStoppedSources.has(source)) continue;
         try {
           const maxDecay = Math.max(
             bodyDecay,
@@ -350,17 +381,18 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
           // The fallback is one-shot even when a host omits noteOff. Release
           // every oscillator after its longest audible envelope has fallen
           // below the worklet's voice-retirement threshold.
-          osc.stop(when + Math.max(0.03, maxDecay * 4) + 0.05);
+          source.stop(when + Math.max(0.03, maxDecay * 4) + 0.005);
         } catch {
           /* a source already stopped by a host noteOff */
         }
       }
-      voices.set(id, voice);
     },
-    noteOff(_pitch, when) {
+    noteOff(pitch, when) {
       if ((params.triggerMode ?? 1) < 0.5) return;
-      // GATED mode: MIDI noteOff is an explicit choke for the sounding kick.
-      for (const [id] of [...voices]) stopVoice(id, when);
+      // Match worklet note-off routing: choke only voices for this MIDI note.
+      for (const [id, voice] of [...voices]) {
+        if (voice.pitch === pitch) stopVoice(id, when);
+      }
     },
     setParameter(id, value) {
       if (Number.isFinite(value)) params = { ...params, [id]: value };

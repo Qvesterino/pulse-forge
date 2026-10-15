@@ -111,6 +111,65 @@ function buildDynamicsBufferInto(ctx: BaseAudioContext, seconds: number): AudioB
   return buffer;
 }
 
+/** Deterministic mono-bass stimulus for controls that need a stable root. */
+function buildKorenProbeBufferInto(ctx: BaseAudioContext, seconds: number, f0: number, burst: boolean): AudioBuffer {
+  const buffer = ctx.createBuffer(2, Math.floor(SR * seconds), SR);
+  const l = buffer.getChannelData(0);
+  const r = buffer.getChannelData(1);
+  for (let i = 0; i < l.length; i++) {
+    const t = i / SR;
+    const phase = (2 * Math.PI * f0 * i) / SR;
+    const pulse = t % 0.4;
+    const env =
+      !burst || pulse < 0.2 ? (burst ? Math.min(1, pulse / 0.008) * Math.min(1, (0.2 - pulse) / 0.01) : 1) : 0;
+    const sample = 0.5 * env * Math.sin(phase);
+    l[i] = sample;
+    r[i] = sample;
+  }
+  return buffer;
+}
+
+/** A gated pitched key gives KOREŇ's PUMP/DUCK modes a real detector input. */
+function buildKorenKeyBufferInto(ctx: BaseAudioContext, seconds: number): AudioBuffer {
+  const buffer = ctx.createBuffer(1, Math.floor(SR * seconds), SR);
+  const channel = buffer.getChannelData(0);
+  for (let i = 0; i < channel.length; i++) {
+    const t = i / SR;
+    const pulse = t % 0.4;
+    channel[i] = pulse < 0.16 ? 0.8 * Math.sin((2 * Math.PI * 60 * i) / SR) : 0;
+  }
+  return buffer;
+}
+
+function korenProbeFor(paramId: string): { params: Record<string, number>; f0: number; burst: boolean } {
+  const params: Record<string, number> = {
+    ...defaultParamsOf("bassHarmonic"),
+    drive: 0.9,
+    mix: 1,
+    subAnchor: 0,
+    focusHz: 90,
+    harmonics: 0,
+    range: 4,
+    width: 1,
+  };
+  let f0 = 55;
+  let burst = false;
+  if (paramId === "focusHz") f0 = 120; // min is out of range; max tracks this root
+  if (paramId === "subAnchor" || paramId === "lowCut") params.subAnchor = 0.7;
+  if (paramId === "phase") {
+    // PHASE reshapes a dense phone-band stack at constant spectrum/RMS; with
+    // only the second partial active, there is no meaningful crest change.
+    params.presence = 1;
+    params.width = 0;
+  }
+  if (paramId === "attack" || paramId === "release" || paramId === "sustain" || paramId === "retrig") burst = true;
+  // Use one declared, neutral target value as the baseline while retaining
+  // companion settings that make the selected DSP path audible.
+  const def = EFFECT_META.bassHarmonic.params.find((param) => param.id === paramId);
+  if (def) params[paramId] = def.default;
+  return { params, f0, burst };
+}
+
 const signalSecondsFor = (type: EffectType) => (BAR_SYNCED_EFFECTS.has(type) ? 4.4 : SIGNAL_SECONDS);
 
 /* ---------------- report shapes ---------------- */
@@ -215,6 +274,7 @@ export interface PluginAuditReport {
 interface Metrics {
   peak: number;
   rms: number;
+  crest: number;
   side: number;
   centroid: number;
   /** Block-RMS max/min ratio — sees AM-class effects (pump/tremolo/gate)
@@ -258,6 +318,7 @@ function metricsOf(buffer: AudioBuffer): Metrics {
   return {
     peak,
     rms: Math.sqrt(sum / n),
+    crest: peak / Math.max(Math.sqrt(sum / n), 1e-6),
     side: Math.sqrt(sideSum / n),
     centroid: spectralCentroid(l, start),
     dyn: bRmsMax / Math.max(bRmsMin, 1e-4),
@@ -328,11 +389,13 @@ function maxDiff(a: AudioBuffer, b: AudioBuffer): number {
 /** The strongest normalized change a render shows against a baseline. */
 function deltaVs(base: Metrics, m: Metrics): { delta: number; metric: string } {
   const relRms = Math.abs(m.rms - base.rms) / Math.max(base.rms, 1e-6);
+  const relCrest = Math.abs(m.crest - base.crest) / Math.max(base.crest, 0.2);
   const relSide = Math.abs(m.side - base.side) / Math.max(base.side, base.rms * 0.1, 1e-6);
   const relCentroid = Math.abs(m.centroid - base.centroid) / Math.max(base.centroid, 200);
   const relDyn = Math.abs(m.dyn - base.dyn) / Math.max(base.dyn, 0.2);
   const candidates: [string, number][] = [
     ["rms", relRms],
+    ["crest", relCrest],
     ["side", relSide],
     ["centroid", relCentroid],
     ["dyn", relDyn],
@@ -416,6 +479,12 @@ async function renderEffect(
     rt.setSidechainInput?.(mod);
     mod.start(0);
   }
+  if (type === "bassHarmonic" && (params.keyMode ?? 0) > 0) {
+    const key = ctx.createBufferSource();
+    key.buffer = buildKorenKeyBufferInto(ctx, signal.duration);
+    rt.setSidechainInput?.(key);
+    key.start(0);
+  }
   const out = await ctx.startRendering();
   rt.dispose();
   return out;
@@ -476,16 +545,28 @@ async function sweepEffect(type: EffectType, signal: AudioBuffer, dry: AudioBuff
     let bestMetric = "";
     let bestExtreme: "min" | "max" = "max";
     let bestStimulus = "tone";
+    const korenProbe = type === "bassHarmonic" ? korenProbeFor(p.id) : null;
+    const paramSignal = korenProbe
+      ? buildKorenProbeBufferInto(
+          new OfflineAudioContext(2, Math.floor(SR * seconds), SR),
+          seconds,
+          korenProbe.f0,
+          korenProbe.burst,
+        )
+      : signal;
+    const paramDefaults = korenProbe?.params ?? defaultParamsOf(type);
+    const paramBaseline = korenProbe ? await renderEffect(type, paramDefaults, paramSignal) : baseline;
+    const paramBaseMetrics = metricsOf(paramBaseline);
     for (const extreme of ["min", "max"] as const) {
       const value = p[extreme];
       const finKey = extreme === "min" ? "minFinite" : "maxFinite";
       const peakKey = extreme === "min" ? "minPeak" : "maxPeak";
-      const rendered = await renderEffect(type, { ...defaultParamsOf(type), [p.id]: value }, signal);
+      const rendered = await renderEffect(type, { ...paramDefaults, [p.id]: value }, paramSignal);
       entry[finKey] = finiteEverywhere(rendered);
       const m = metricsOf(rendered);
       entry[peakKey] = m.peak;
       if (!entry[finKey] || m.peak > RUNAWAY_PEAK) unstableParams.push(`${p.id}@${value}`);
-      const d = deltaVs(base, m);
+      const d = deltaVs(paramBaseMetrics, m);
       let delta = d.delta;
       let metric = d.metric;
       let stimulus = "tone";
@@ -776,6 +857,351 @@ async function auditInstrument(kind: (typeof INSTRUMENT_ORDER)[number], bank: Sa
   /** Instruments whose DSP consumes the track sample — audition with one. */
   const SAMPLE_DRIVEN_INSTRUMENTS = new Set(["sampler", "granular", "vocalchop", "clav", "texture"]);
 
+  type ProbeEvent =
+    | { type: "noteOn"; pitch: number; velocity: number; when: number }
+    | { type: "noteOff"; pitch: number; when: number }
+    | { type: "pressure"; pitch: number; value: number; when: number };
+  interface InstrumentProbePlan {
+    duration: number;
+    sampleId: string | null;
+    sampleIdB?: string | null;
+    events: ProbeEvent[];
+  }
+  const tsarProbeFor = (paramId: string): { params: Record<string, number>; plan: InstrumentProbePlan } => {
+    const params: Record<string, number> = {
+      ...defaultInstrumentParams("tsar"),
+      srcAEngine: 1,
+      srcALevel: 0.8,
+      srcAUnison: 1,
+      srcASpread: 0,
+      srcAAtk: 0.005,
+      srcADec: 0.6,
+      srcASus: 0.7,
+      srcARel: 0.4,
+      srcAFilter: 0,
+      srcACutoff: 18000,
+      srcAQ: 0.8,
+      srcBEngine: 1,
+      srcBLevel: 0.8,
+      srcBUnison: 1,
+      srcBSpread: 0,
+      srcBAtk: 0.005,
+      srcBDec: 0.6,
+      srcBSus: 0.7,
+      srcBRel: 0.4,
+      srcBFilter: 0,
+      srcBCutoff: 18000,
+      srcBQ: 0.8,
+      morph: 0.5,
+      sub: 0,
+      noise: 0,
+      velocity: 0.7,
+      drift: 0.15,
+      width: 0.5,
+      level: 0.8,
+      arpOn: 0,
+    };
+    let duration = 2;
+    let events: ProbeEvent[] = [
+      { type: "noteOn", pitch: 60, velocity: 0.85, when: 0.05 },
+      { type: "noteOff", pitch: 60, when: 1.5 },
+    ];
+
+    if (paramId.startsWith("srcA")) {
+      params.srcBLevel = 0;
+      params.morph = 0;
+      params.srcAEngine = paramId === "srcARoot" ? 0 : 1;
+      if (["srcAUnison", "srcASpread"].includes(paramId)) {
+        params.srcAUnison = 4;
+        params.srcASpread = 50;
+      }
+      if (["srcAFilter", "srcAQ", "srcAFilterEnv"].includes(paramId)) params.srcACutoff = 1200;
+      if (paramId === "srcAFilter") params.srcAQ = 4;
+      if (paramId === "srcAQ") params.srcAQ = 0.8;
+      if (paramId === "srcADec" || paramId === "srcASus") params.srcASus = paramId === "srcASus" ? 0.7 : 0.2;
+      if (["srcAAtk", "srcADec", "srcASus"].includes(paramId)) {
+        duration = paramId === "srcAAtk" ? 6 : 5;
+        events = [
+          { type: "noteOn", pitch: 60, velocity: 0.85, when: 0.05 },
+          { type: "noteOff", pitch: 60, when: duration - 0.4 },
+        ];
+      }
+      if (paramId === "srcARel") {
+        duration = 14;
+        events = [
+          { type: "noteOn", pitch: 60, velocity: 0.85, when: 0.05 },
+          { type: "noteOff", pitch: 60, when: 1 },
+        ];
+      }
+    } else if (paramId.startsWith("srcB")) {
+      params.srcAEngine = 1;
+      params.srcALevel = 0;
+      params.morph = 1;
+      params.srcBEngine = paramId === "srcBRoot" ? 0 : 1;
+      if (["srcBUnison", "srcBSpread"].includes(paramId)) {
+        params.srcBUnison = 4;
+        params.srcBSpread = 50;
+      }
+      if (["srcBFilter", "srcBQ", "srcBFilterEnv"].includes(paramId)) params.srcBCutoff = 1200;
+      if (paramId === "srcBFilter") params.srcBQ = 4;
+      if (paramId === "srcBQ") params.srcBQ = 0.8;
+      if (paramId === "srcBDec" || paramId === "srcBSus") params.srcBSus = paramId === "srcBSus" ? 0.7 : 0.2;
+      if (["srcBAtk", "srcBDec", "srcBSus"].includes(paramId)) {
+        duration = paramId === "srcBAtk" ? 6 : 5;
+        events = [
+          { type: "noteOn", pitch: 60, velocity: 0.85, when: 0.05 },
+          { type: "noteOff", pitch: 60, when: duration - 0.4 },
+        ];
+      }
+      if (paramId === "srcBRel") {
+        duration = 14;
+        events = [
+          { type: "noteOn", pitch: 60, velocity: 0.85, when: 0.05 },
+          { type: "noteOff", pitch: 60, when: 1 },
+        ];
+      }
+    }
+
+    if (paramId === "morph") {
+      params.srcBEngine = 1;
+      params.srcBLevel = 0.8;
+    }
+    if (paramId === "sub" || paramId === "subOct") params.sub = 0.8;
+    if (paramId === "noiseColor") params.noise = 0.8;
+    if (paramId === "drift") {
+      duration = 3;
+      events = [
+        { type: "noteOn", pitch: 60, velocity: 0.85, when: 0.05 },
+        { type: "noteOff", pitch: 60, when: 2.5 },
+      ];
+    }
+    if (paramId === "velocity") events[0] = { type: "noteOn", pitch: 60, velocity: 0.15, when: 0.05 };
+    if (paramId === "glide") {
+      events = [
+        { type: "noteOn", pitch: 48, velocity: 0.85, when: 0.05 },
+        { type: "noteOff", pitch: 48, when: 0.2 },
+        { type: "noteOn", pitch: 72, velocity: 0.85, when: 0.35 },
+        { type: "noteOff", pitch: 72, when: 1.5 },
+      ];
+    }
+
+    const modMatch = /^mod([1-4])(Src|Dst|Amt)$/.exec(paramId);
+    if (modMatch) {
+      const slot = Number(modMatch[1]);
+      params[`mod${slot}Src`] = 1;
+      params[`mod${slot}Dst`] = 5;
+      params[`mod${slot}Amt`] = 0.8;
+      if (modMatch[2] === "Src") {
+        events.push({ type: "pressure", pitch: 60, value: 0, when: 0.4 });
+        events.push({ type: "pressure", pitch: 60, value: 1, when: 0.8 });
+      }
+    }
+    if (["lfoRate", "lfoShape", "lfoSync"].includes(paramId)) {
+      params.mod1Src = 1;
+      params.mod1Dst = 5;
+      params.mod1Amt = 0.8;
+      params.srcASus = 1;
+      events[0] = { type: "noteOn", pitch: 60, velocity: 0.85, when: 0.05 };
+      events[1] = { type: "noteOff", pitch: 60, when: 1.8 };
+    }
+    if (paramId === "width") params.srcAPan = 0.8;
+    if (["arpOn", "arpMode", "arpRate", "arpOctaves", "arpGate", "arpSwing"].includes(paramId)) {
+      params.arpOn = 1;
+      params.arpOctaves = 3;
+      duration = 2.5;
+      events = [
+        { type: "noteOn", pitch: 60, velocity: 0.85, when: 0.05 },
+        { type: "noteOn", pitch: 64, velocity: 0.75, when: 0.07 },
+        { type: "noteOn", pitch: 67, velocity: 0.65, when: 0.09 },
+        { type: "noteOff", pitch: 60, when: 2.1 },
+        { type: "noteOff", pitch: 64, when: 2.1 },
+        { type: "noteOff", pitch: 67, when: 2.1 },
+      ];
+    }
+
+    const declared = paramsDef.find((param) => param.id === paramId);
+    if (declared) params[paramId] = declared.default;
+    return {
+      params,
+      plan: {
+        duration,
+        sampleId: ["srcAMorph", "srcAScan"].includes(paramId) ? null : "factory.tonal.pluck",
+        sampleIdB: ["srcBMorph", "srcBScan"].includes(paramId) ? null : "factory.tonal.rhodes",
+        events,
+      },
+    };
+  };
+
+  const probeParamsFor = (paramId: string): Record<string, number> => {
+    const probe = { ...defaultInstrumentParams(kind) };
+    if (kind !== "kopa") return probe;
+
+    // A KOPA parameter is an independent sound-design surface. Isolate its
+    // layer for the probe so a louder body cannot mask the transient/tail,
+    // and use ONE SHOT so the audit's MIDI noteOff does not truncate the
+    // decay parameter being measured.
+    probe.triggerMode = paramId === "triggerMode" ? (probe.triggerMode ?? 1) : 0;
+    const clickParams = new Set(["clickType", "clickTone", "clickDecay", "clickLevel"]);
+    const harmonicParams = new Set([
+      "harmonicLevel",
+      "harmonicTone",
+      "harmonicRange",
+      "harmonicDecay",
+      "harmonicCharacter",
+    ]);
+    const bodyParams = new Set([
+      "pitchAmount",
+      "pitchTime",
+      "pitchCurve",
+      "keyTrack",
+      "bodyTune",
+      "bodyDecay",
+      "bodyHollow",
+      "bodyWave",
+    ]);
+    const tailParams = new Set(["tailDecay", "tailLevel", "tailTune"]);
+    const subParams = new Set(["subLevel", "subTune"]);
+    const modAParams = new Set(["modASrc", "modADst", "modAAmt"]);
+    const modBParams = new Set(["modBSrc", "modBDst", "modBAmt"]);
+
+    if (clickParams.has(paramId)) {
+      Object.assign(probe, {
+        bodyDecay: 0.03,
+        tailLevel: 0,
+        subLevel: 0,
+        harmonicLevel: 0,
+        drive: 0,
+        punch: 0,
+        // Keep the click measurable inside a short attack window. The normal
+        // default is intentionally much shorter and can decay before a
+        // layer-isolated metric has enough samples to distinguish its type.
+        clickDecay: 20,
+        clickLevel: 1,
+      });
+      if (paramId === "clickTone") probe.clickType = 2;
+    } else if (harmonicParams.has(paramId)) {
+      Object.assign(probe, {
+        bodyDecay: 0.03,
+        tailLevel: 0,
+        subLevel: 0,
+        harmonicLevel: 1,
+        harmonicDecay: 2,
+        drive: 0,
+        punch: 0,
+        clickLevel: 0,
+      });
+    } else if (bodyParams.has(paramId)) {
+      Object.assign(probe, {
+        bodyDecay: 2,
+        tailLevel: 0,
+        subLevel: 0,
+        harmonicLevel: 0,
+        drive: 0,
+        punch: 0,
+        clickLevel: 0,
+      });
+    } else if (tailParams.has(paramId)) {
+      Object.assign(probe, {
+        bodyDecay: 0.03,
+        tailLevel: 1,
+        subLevel: 0,
+        harmonicLevel: 0,
+        drive: 0,
+        punch: 0,
+        clickLevel: 0,
+      });
+    } else if (subParams.has(paramId)) {
+      Object.assign(probe, {
+        bodyDecay: 0.03,
+        tailLevel: 0,
+        subLevel: 1,
+        harmonicLevel: 0,
+        drive: 0,
+        punch: 0,
+        clickLevel: 0,
+      });
+    } else if (modAParams.has(paramId)) {
+      Object.assign(probe, {
+        bodyDecay: 2,
+        tailLevel: 0,
+        subLevel: 0,
+        harmonicLevel: 0,
+        drive: 0,
+        punch: 0,
+        clickLevel: 0,
+        modASrc: 0,
+        modADst: 3,
+        modAAmt: 1,
+      });
+    } else if (modBParams.has(paramId)) {
+      Object.assign(probe, {
+        bodyDecay: 2,
+        tailLevel: 0,
+        subLevel: 0,
+        harmonicLevel: 0,
+        drive: 0,
+        punch: 0,
+        clickLevel: 0,
+        modBSrc: 0,
+        modBDst: 3,
+        modBAmt: 1,
+      });
+    } else if (paramId === "modLfoRate") {
+      Object.assign(probe, {
+        bodyDecay: 2,
+        tailLevel: 0,
+        subLevel: 0,
+        harmonicLevel: 0,
+        drive: 0,
+        punch: 0,
+        clickLevel: 0,
+        modASrc: 1,
+        modADst: 3,
+        modAAmt: 1,
+      });
+    }
+
+    // The swept control itself is always measured against its real declared
+    // default; companion overrides only make its sound role observable.
+    const declared = paramsDef.find((param) => param.id === paramId);
+    if (declared) probe[paramId] = declared.default;
+    return probe;
+  };
+
+  const transientCentroidOf = (buffer: AudioBuffer) =>
+    spectralCentroid(buffer.getChannelData(0), Math.floor(0.05 * SR));
+  const earlyTransientOf = (buffer: AudioBuffer) => {
+    const data = buffer.getChannelData(0);
+    const from = Math.floor(0.05 * SR);
+    const to = Math.min(data.length, from + Math.floor(0.001 * SR));
+    let peak = 0;
+    let sum = 0;
+    for (let i = from; i < to; i++) {
+      const sample = data[i]!;
+      peak = Math.max(peak, Math.abs(sample));
+      sum += sample * sample;
+    }
+    return { peak, rms: Math.sqrt(sum / Math.max(1, to - from)) };
+  };
+  const waveformDelta = (baseBuffer: AudioBuffer, rendered: AudioBuffer): number => {
+    const count = Math.min(baseBuffer.length, rendered.length);
+    const from = Math.floor(count / 8);
+    let diff = 0;
+    let baseEnergy = 0;
+    let samples = 0;
+    for (let channel = 0; channel < Math.min(baseBuffer.numberOfChannels, rendered.numberOfChannels); channel++) {
+      const baseData = baseBuffer.getChannelData(channel);
+      const renderedData = rendered.getChannelData(channel);
+      for (let i = from; i < count; i++) {
+        const delta = renderedData[i]! - baseData[i]!;
+        diff += delta * delta;
+        baseEnergy += baseData[i]! * baseData[i]!;
+        samples++;
+      }
+    }
+    return Math.sqrt(diff / Math.max(1, samples)) / Math.max(Math.sqrt(baseEnergy / Math.max(1, samples)), 1e-6);
+  };
+
   // Window energies (Phase 3b): steady-state RMS is blind to envelope and
   // transient shaping (decay/release/click/breath/vibrato …). Three windows
   // around a note ON at 0.05 s (0.35 s hold — short, so even one-shot
@@ -795,8 +1221,9 @@ async function auditInstrument(kind: (typeof INSTRUMENT_ORDER)[number], bank: Sa
     return { attack: win(0.05, 0.15), sustain: win(0.2, 0.35), tail: win(0.42, 0.7) };
   };
 
-  const render = async (params: Record<string, number>): Promise<AudioBuffer> => {
-    const ctx = new OfflineAudioContext(2, SR * 2, SR);
+  const render = async (params: Record<string, number>, plan?: InstrumentProbePlan): Promise<AudioBuffer> => {
+    const duration = plan?.duration ?? 2;
+    const ctx = new OfflineAudioContext(2, Math.floor(SR * duration), SR);
     await loadAllWorklets(ctx);
     const track: InstrumentTrack = {
       id: `audit-${kind}`,
@@ -807,21 +1234,35 @@ async function auditInstrument(kind: (typeof INSTRUMENT_ORDER)[number], bank: Sa
       pan: 0,
       mute: false,
       solo: false,
-      // Sample-driven instruments audition with a real sample; synth
-      // instruments audition WITHOUT one so sample-derived state (wavetable
-      // table extraction) cannot mask the synth's own parameters.
-      sampleId: SAMPLE_DRIVEN_INSTRUMENTS.has(kind) ? "factory.tonal.pluck" : null,
+      // Sample-driven instruments audition with a real sample; TSAR's blank
+      // default-audibility check remains source-independent, while each TSAR
+      // parameter probe supplies explicit A/B assets below.
+      sampleId: plan?.sampleId ?? (SAMPLE_DRIVEN_INSTRUMENTS.has(kind) ? "factory.tonal.pluck" : null),
+      ...(plan?.sampleIdB !== undefined ? { sampleIdB: plan.sampleIdB } : {}),
       params,
       effects: [],
       sends: {},
     };
     const rt = def.factory(ctx, track, { bpm: 124, getSample: (id) => bank.get(id) });
     rt.output.connect(ctx.destination);
-    rt.noteOn(45, 0.9, 0.05, 0.35);
-    // Percussive one-shots (808/logdrum/drumsynth family) decay naturally —
-    // an explicit noteOff would choke their decay tail through the percussive
-    // stop gate and hide every envelope/tail parameter.
-    if (!["808", "logdrum", "drumsynth", "bass808"].includes(kind)) rt.noteOff?.(45, 0.4);
+    if (plan) {
+      for (const event of plan.events) {
+        if (event.type === "noteOn") rt.noteOn(event.pitch, event.velocity, event.when, 0.35);
+        else if (event.type === "noteOff") rt.noteOff?.(event.pitch, event.when);
+        else rt.polyPressure?.(event.pitch, event.value, event.when);
+      }
+    } else {
+      rt.noteOn(45, 0.9, 0.05, 0.35);
+      // Percussive one-shots (808/logdrum/drumsynth family) decay naturally —
+      // an explicit noteOff would choke their decay tail through the percussive
+      // stop gate and hide every envelope/tail parameter.
+      const oneShotKopa = kind === "kopa" && (params.triggerMode ?? 0) < 0.5;
+      if (!oneShotKopa && !["808", "logdrum", "drumsynth", "bass808"].includes(kind)) rt.noteOff?.(45, 0.4);
+    }
+    // Event-queue instruments (TSAR/KOPA) must seed their processorOptions
+    // before Chromium starts an offline render; port messages are not pumped
+    // while OfflineAudioContext is rendering (NEW-EFFECT-CHECKLIST §5).
+    rt.prepareOfflineRender?.();
     const buffer = await ctx.startRendering();
     rt.dispose();
     return buffer;
@@ -830,17 +1271,24 @@ async function auditInstrument(kind: (typeof INSTRUMENT_ORDER)[number], bank: Sa
   const defaults = defaultInstrumentParams(kind);
   const baseBuffer = await render(defaults);
   const base = metricsOf(baseBuffer);
-  const baseWindows = windowsOf(baseBuffer);
   const defaultAudible = base.peak > 0.01 && finiteEverywhere(baseBuffer);
   const transientWired: string[] = [];
 
   for (const p of paramsDef) {
     const deltas: number[] = [];
     let windowWired = false;
+    const tsarProbe = kind === "tsar" ? tsarProbeFor(p.id) : null;
+    const probeDefaults = tsarProbe?.params ?? probeParamsFor(p.id);
+    const probePlan = tsarProbe?.plan;
+    const probeBaseBuffer = await render(probeDefaults, probePlan);
+    const probeBaseMetrics = metricsOf(probeBaseBuffer);
+    const probeBaseWindows = windowsOf(probeBaseBuffer);
+    const probeBaseTransientCentroid = kind === "kopa" ? transientCentroidOf(probeBaseBuffer) : 0;
+    const probeBaseEarlyTransient = kind === "kopa" ? earlyTransientOf(probeBaseBuffer) : { peak: 0, rms: 0 };
     for (const value of [p.min, p.max]) {
       let rendered: AudioBuffer;
       try {
-        rendered = await render({ ...defaults, [p.id]: value });
+        rendered = await render({ ...probeDefaults, [p.id]: value }, probePlan);
       } catch (error) {
         unstableParams.push(`${p.id}@${value} (threw: ${String(error).slice(0, 120)})`);
         continue;
@@ -849,11 +1297,33 @@ async function auditInstrument(kind: (typeof INSTRUMENT_ORDER)[number], bank: Sa
         unstableParams.push(`${p.id}@${value}`);
         continue;
       }
-      deltas.push(deltaVs(base, metricsOf(rendered)).delta);
+      const featureDelta = deltaVs(probeBaseMetrics, metricsOf(rendered));
+      if (kind === "tsar") {
+        const shapeDelta = waveformDelta(probeBaseBuffer, rendered);
+        if (shapeDelta > featureDelta.delta) {
+          featureDelta.delta = shapeDelta;
+          featureDelta.metric = "waveform";
+        }
+      }
+      deltas.push(featureDelta.delta);
       const windows = windowsOf(rendered);
-      const attackDelta = Math.abs(windows.attack - baseWindows.attack) / Math.max(baseWindows.attack, 1e-6);
-      const tailDelta = Math.abs(windows.tail - baseWindows.tail) / Math.max(baseWindows.tail, 1e-6);
+      const attackDelta = Math.abs(windows.attack - probeBaseWindows.attack) / Math.max(probeBaseWindows.attack, 1e-6);
+      const tailDelta = Math.abs(windows.tail - probeBaseWindows.tail) / Math.max(probeBaseWindows.tail, 1e-6);
       if (attackDelta > RESPONSIVE_EPS || tailDelta > RESPONSIVE_EPS) windowWired = true;
+      if (kind === "kopa") {
+        const transientCentroid = transientCentroidOf(rendered);
+        const earlyTransient = earlyTransientOf(rendered);
+        if (
+          Math.abs(transientCentroid - probeBaseTransientCentroid) / Math.max(probeBaseTransientCentroid, 200) >
+            RESPONSIVE_EPS ||
+          Math.abs(earlyTransient.peak - probeBaseEarlyTransient.peak) / Math.max(probeBaseEarlyTransient.peak, 0.02) >
+            RESPONSIVE_EPS ||
+          Math.abs(earlyTransient.rms - probeBaseEarlyTransient.rms) / Math.max(probeBaseEarlyTransient.rms, 0.01) >
+            RESPONSIVE_EPS
+        ) {
+          windowWired = true;
+        }
+      }
     }
     if (deltas.length && Math.max(...deltas) > RESPONSIVE_EPS) wiredParams++;
     else if (windowWired) {

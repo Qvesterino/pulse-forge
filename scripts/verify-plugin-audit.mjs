@@ -10,6 +10,7 @@
  *
  * Usage: node scripts/verify-plugin-audit.mjs  (PORT=5221 override)
  *        KYX_AUDIT_ONLY=delay,chorus node scripts/verify-plugin-audit.mjs
+ *        KYX_AUDIT_INSTRUMENTS=kopa node scripts/verify-plugin-audit.mjs
  */
 import { createServer } from "vite";
 import { chromium } from "playwright";
@@ -20,15 +21,19 @@ import fs from "node:fs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = Number(process.env.PORT) || 5221;
 
-const only = (process.env.KYX_AUDIT_ONLY ?? "")
+const onlyEffects = (process.env.KYX_AUDIT_ONLY ?? "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
-const outPath = path.join(
-  root,
-  "docs",
-  only.length > 0 ? `plugin-audit-2026-09-27-${only.join("_")}.report.json` : "plugin-audit-2026-09-27.report.json",
-);
+const onlyInstruments = (process.env.KYX_AUDIT_INSTRUMENTS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+const auditSuffix = [
+  ...(onlyEffects.length > 0 ? [`effects-${onlyEffects.join("_")}`] : []),
+  ...(onlyInstruments.length > 0 ? [`instruments-${onlyInstruments.join("_")}`] : []),
+].join("-");
+const outPath = path.join(root, "docs", `plugin-audit-2026-09-27${auditSuffix ? `-${auditSuffix}` : ""}.report.json`);
 
 const server = await createServer({
   root,
@@ -121,8 +126,8 @@ try {
     return reg.EFFECT_ORDER;
   });
   const wantedEffects =
-    only.length > 0
-      ? effectTypes.filter((t) => only.includes(t))
+    onlyEffects.length > 0 || onlyInstruments.length > 0
+      ? effectTypes.filter((t) => onlyEffects.includes(t))
       : effectTypes.filter((t) => !report.effects.some((e) => e.type === t));
   for (const type of wantedEffects) {
     console.log(`[audit] effect ${type}`);
@@ -174,7 +179,11 @@ try {
     return reg.INSTRUMENT_ORDER;
   });
   const wantedInstruments =
-    only.length > 0 ? [] : instrumentKinds.filter((k) => !report.instruments.some((i) => i.kind === k));
+    onlyInstruments.length > 0
+      ? instrumentKinds.filter((k) => onlyInstruments.includes(k))
+      : onlyEffects.length > 0
+        ? []
+        : instrumentKinds.filter((k) => !report.instruments.some((i) => i.kind === k));
   for (const kind of wantedInstruments) {
     console.log(`[audit] instrument ${kind}`);
     try {
@@ -207,7 +216,7 @@ try {
   }
 
   // Phase 3: interactions.
-  if (only.length === 0 && !report.interactions) {
+  if (onlyEffects.length === 0 && onlyInstruments.length === 0 && !report.interactions) {
     console.log("[audit] interactions");
     try {
       report.interactions = await evaluateResilient(page, async () => {

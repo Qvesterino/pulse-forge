@@ -1,9 +1,10 @@
 # Windows audio-backend preflight and stream smoke — 2026-09-26
 
-**Status:** preliminary 10-second WASAPI stream smokes; not a latency benchmark,
-stable-recording certification, guitar test, ASIO test, or backend selection.
-The latest recheck used MMCSS but ran on system-default endpoints without the
-reference Volt interface; historical Volt capture runs did not use MMCSS.
+**Status:** preliminary 10–30-second WASAPI stream smokes; not a latency
+benchmark, stable-recording certification, guitar test, ASIO test, or backend
+selection. The 2026-10-12 recheck used MMCSS on system-default endpoints. The
+2026-10-15 Volt endpoint smoke is recorded below; it still does not establish
+physical routing, analog latency or sustained hardware stability.
 **Host (original Volt session):** Windows 11 Home 25H2, build 26200.9550, x64.
 **Probe:** `native/windows-audio-probe`, built from the current source with MSVC
 18.7.8 and Windows SDK 10.0.26100.
@@ -36,10 +37,36 @@ The single-stream capture and render tests reported 0.000 ms WASAPI stream
 latency; that value is not a round-trip measurement. The concurrent smoke also
 reported 0.000 ms for both streams. Software loopback QPC estimates vary by
 render endpoint and include that endpoint's shared-engine/driver path; they do
-not include the DAC, analog cable or ADC. No Volt stream test, physical
+not include the DAC, analog cable or ADC. No Volt stream test was run during
+this 2026-10-12 recheck. The later Volt smoke is recorded below; no physical
 channel-map verification, physical round-trip latency measurement, or 30-minute
-soak was run. No PCM file was written or transmitted. The September Volt
-results below remain the only Volt stream evidence and are still preliminary.
+soak has been run. No PCM file was written or transmitted.
+
+## Volt shared-mode smoke — 2026-10-15
+
+The Volt 276 was powered on and Windows reported both exact endpoints active on
+Windows 11 Home, version 10.0.26300 (build 26300). The native probe opened
+capture and render concurrently in shared WASAPI mode. Both used 48 kHz,
+stereo, 32-bit float, a 480-frame / 10 ms requested period and a 1,056-frame /
+22 ms endpoint buffer. The capture service thread used the MMCSS `Audio` task.
+The capture packet contents were discarded; render queued silence. No tone,
+recording file, software loopback, physical cable loopback or ASIO stream was
+used.
+
+| Test | Endpoint | Result |
+| --- | --- | --- |
+| 10-second shared capture | `INPUT 1/2 (2- Volt 276)` | 10.01 s; 1,000 packets / 480,000 frames; one first-packet discontinuity and zero later discontinuities, silent packets, timestamp errors, device-position gaps or event timeouts; exit 0. First frame arrived 94.622 ms after the `Start` call and 1.842 ms after `Start` returned. |
+| 10-second shared render | `MONITOR L/R (2- Volt 276)` | 10.00 s; 1,001 events / 481,536 frames queued; zero event timeouts; exit 0. Silence only. |
+| 30-second shared capture | `INPUT 1/2 (2- Volt 276)` | 30.01 s; 3,000 packets / 1,440,000 frames; one first-packet discontinuity and zero later discontinuities, silent packets, timestamp errors, device-position gaps or event timeouts; exit 0. First frame arrived 89.276 ms after the `Start` call and 2.044 ms after `Start` returned. |
+| 30-second shared render | `MONITOR L/R (2- Volt 276)` | 30.00 s; 3,001 events / 1,441,536 frames queued (30.03 s); zero event timeouts; exit 0. Silence only. |
+
+The probe reported 0.000 ms WASAPI stream latency; this is not a DAC/ADC
+round-trip measurement. These runs show that bounded shared-mode streams opened
+and ran concurrently on the named Volt endpoints, with no later capture
+discontinuities in the 30-second run. They do not verify which physical jacks
+feed the input/output channels, audio quality, analog monitoring latency,
+recovery after device loss, or long-session dropout behavior. Treat this as a
+hardware smoke only, not a support qualification.
 
 ## Reference endpoints detected in the original 2026-09 session
 

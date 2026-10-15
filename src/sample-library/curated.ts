@@ -1,6 +1,6 @@
 import { decodeAudioData } from "../services/audio-decode";
 import { assetUrl } from "../shared/assetUrls";
-import { applyRoundRobinVariants, type SampleBank } from "./factory";
+import { applyRoundRobinVariants, RR_VARIATIONS, type SampleBank } from "./factory";
 
 /**
  * Curated factory sound layer (VISION §5 "factory content is part of the
@@ -26,12 +26,11 @@ export interface CuratedSample {
 }
 
 /**
- * Full-kit curation (factory-content pass 2026-09): every factory asset gets
- * a curated file — the three mallet slots joined when the sound-library gate
- * closed the last loudness inconsistency (they measured ~10 dB above the
- * mastered kit as synthesis-only). The curated layer carries the mastering
- * glue and the per-category loudness balance (see
- * scripts/render-curated-seeds.mjs), locked by tests/sound-library-gate.
+ * Curated coverage for WAV-backed factory slots (factory-content pass
+ * 2026-09). Procedural-only brush/field textures and two specialized
+ * percussion voices intentionally remain synthesized. The curated layer
+ * carries mastering glue and per-category loudness balance (see
+ * scripts/render-curated-seeds.mjs).
  */
 
 export const CURATED_SAMPLES: CuratedSample[] = [
@@ -223,6 +222,8 @@ function applyGain(buffer: AudioBuffer, gain: number): AudioBuffer {
 export async function loadCuratedLayer(
   bank: SampleBank,
   options: {
+    /** Optional asset allow-list for focused audits; omitted means the full curated layer. */
+    ids?: readonly string[];
     fetchImpl?: typeof fetch;
     decode?: (data: ArrayBuffer) => Promise<AudioBuffer>;
     signal?: AbortSignal;
@@ -232,10 +233,17 @@ export async function loadCuratedLayer(
     options.fetchImpl ?? ((input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init));
   const decode = options.decode ?? defaultDecode;
   const result: CuratedLoadResult = { loaded: 0, failed: [], skipped: [] };
-  if (CURATED_SAMPLES.length === 0) return result;
+  const requestedIds = options.ids ? new Set(options.ids) : undefined;
+  if (requestedIds) {
+    for (const [baseId, variations] of Object.entries(RR_VARIATIONS)) {
+      if (variations.some((_, index) => requestedIds.has(`${baseId}.rr${index + 2}`))) requestedIds.add(baseId);
+    }
+  }
+  const samples = requestedIds ? CURATED_SAMPLES.filter((sample) => requestedIds.has(sample.id)) : CURATED_SAMPLES;
+  if (samples.length === 0) return result;
 
   let totalBytes = 0;
-  const queue = [...CURATED_SAMPLES];
+  const queue = [...samples];
   const worker = async () => {
     while (queue.length > 0) {
       if (options.signal?.aborted) return;
@@ -276,7 +284,7 @@ export async function loadCuratedLayer(
       }
     }
   };
-  await Promise.all(Array.from({ length: Math.min(MAX_PARALLEL, CURATED_SAMPLES.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(MAX_PARALLEL, samples.length) }, worker));
   return result;
 }
 

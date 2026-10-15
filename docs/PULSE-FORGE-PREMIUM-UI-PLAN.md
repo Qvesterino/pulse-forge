@@ -523,6 +523,39 @@ pozastaviť; vyhneme sa vrstveniu zmien naslepo.
   `http://127.0.0.1:5173/` v Codex paneli zostala vo fronte. Čerstvé viewport
   zábery preto ostávajú podmienkou ďalšieho vizuálneho zásahu.
 
+#### Ďalší produktový míľnik: denný produkčný tok — 2026-10-15
+
+Ďalšiu UX fázu viesť cez to, ako človek KYX používa pri bežnej práci: od
+otvorenia projektu po hotový export. Každá úprava má odstrániť konkrétne
+váhanie, zbytočný presun alebo nejasný stav; zamerať sa na tieto kroky:
+
+1. **Začať bez hľadania:** Project Browser jasne odlišuje pokračovanie,
+   vytvorenie projektu a štartovací template; prvá hlavná akcia je zrejmá.
+2. **Rýchlo vytvoriť a usporiadať nápad:** Pattern → Arrangement má zrozumiteľný
+   prechod, zachováva názov a kontext výberu a ponúkne prirodzený ďalší krok.
+3. **Mixovať bez straty orientácie:** aktuálna stopa, jej hlasitosť, mute/solo,
+   výstup a otvorený device chain zostávajú čitateľné aj pri zbalenom alebo
+   split docku.
+4. **Exportovať s dôverou:** uloženie, export, priebeh, zrušenie a chyba majú
+   jednoznačný stav a použiteľnú obnovu; používateľ vie, ktorý súbor vznikne.
+
+Najprv zachytiť existujúci tok na jednom stabilnom projekte a zmerať počet
+krokov, nejasných rozhodnutí, návratov a chýb. Potom riešiť tri najväčšie
+prekážky, nie pridávať nové úrovne UI bez dôkazu. Pri každom kroku rozlíšiť
+bežnú a pokročilú cestu; pokročilé ovládanie ostáva dostupné, no neprekrýva
+základnú úlohu.
+
+**Akceptácia:** nový používateľ dokončí cestu template → prvý pattern →
+arrangement → základný mix → WAV bez čítania manuálu; skúsený používateľ vie
+rovnaké kroky vykonať klávesnicou alebo priamymi ovládacími prvkami. Každý
+stav uloženia a exportu je z obrazovky rozpoznateľný, nič sa nestratí po
+zrušení alebo chybe a tok funguje pri 1440 × 900, 1024 × 768 a 390 × 844.
+Pred určením časových limitov najprv odmerať súčasný baseline na rovnakom toku.
+
+Potom ako inováciu preveriť **osobný denný workspace**: obľúbené panely,
+preferovaný dock layout a rýchle skratky podľa roly. Rozšíriť ho iba vtedy,
+ak baseline ukáže, že každodenné prestavovanie štúdia skutočne spomaľuje prácu.
+
 ## Priebežný stav implementácie
 
 ### Zapracované 2026-10-14
@@ -3752,3 +3785,20 @@ error` a `node scripts/check-bundle-size.mjs` prešli s DAW JS **5015/5186 KB**
   bundle gate: DAW JS **5018/5186 KB**, optional runtimes **647/650 KB**, boot
   path **2198/2200 KB**. `git diff --check`: **PASS**. Živý screenshot
   dialógov zatiaľ nie je dostupný.
+
+### UX polish 42 — hierarchia exportu pre denný tok — 2026-10-15
+
+- EXPORT MASTER, STEMS, ALL TRACKS a MIDI zostávajú priamo dostupné. Zdieľanie,
+  publikovanie, Scorepack, Zyvo transfer a JSON záloha sú zoskupené pod natívnym
+  rozbaľovacím ovládaním `MORE OPTIONS · LINKS · BUNDLES · BACKUP`.
+- Akcie si zachovávajú pôvodné handlery, disabled stavy a tooltips. Disclosure
+  má viditeľný keyboard focus; pri úzkom paneli summary, tlačidlá a voľba
+  track stems dostávajú 44 px touch target.
+- Cielený Prettier a `git diff --check`: **PASS**. `npx vite build --logLevel
+error`: **PASS**. Bundle gate: **FAIL** — studio boot path je
+  **2201/2200 KB** v aktuálnom worktree; ostatné vykázané limity prešli. Táto
+  kontrola zahŕňa aj ďalšie rozpracované zmeny v worktree, preto z nej nemožno
+  samostatne určiť vplyv tohto UI rezu.
+- Živý screenshot nového disclosure stále chýba: pripojený browser nemá
+  otvorenú kartu KYX. Pred ďalším vizuálnym dolaďovaním ho treba skontrolovať
+  na desktopovej, split a mobilnej šírke.

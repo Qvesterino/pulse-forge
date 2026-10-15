@@ -647,6 +647,11 @@ export const stringsParams: ParamDef[] = [
   { id: "level", label: "LEVEL", min: -24, max: 6, default: -9, unit: "dB", format: formatDb },
 ];
 
+const NOTE_GATE_OPTIONS = [
+  { value: 0, label: "ONE SHOT" },
+  { value: 1, label: "GATED" },
+];
+
 export const bellParams: ParamDef[] = [
   { id: "ratio", label: "RATIO", min: 1.5, max: 7.5, default: 3.46, format: (v) => v.toFixed(2) },
   { id: "decay", label: "DECAY", min: 0.15, max: 6, default: 2.2, unit: "s", format: formatSec },
@@ -654,6 +659,9 @@ export const bellParams: ParamDef[] = [
   { id: "strike", label: "STRIKE", min: 0, max: 1, default: 0.4, format: formatPct },
   { id: "tone", label: "TONE", min: 400, max: 12000, default: 6500, unit: "Hz", format: formatHz, taper: "log" },
   { id: "attack", label: "ATTACK", min: 0.001, max: 0.5, default: 0.002, unit: "s", format: formatMs },
+  { id: "gate", label: "MODE", min: 0, max: 1, default: 0, options: NOTE_GATE_OPTIONS },
+  { id: "sustain", label: "SUSTAIN", min: 0, max: 1, default: 0.25, format: formatPct },
+  { id: "release", label: "RELEASE", min: 0.01, max: 2, default: 0.18, unit: "s", format: formatMs },
   { id: "level", label: "LEVEL", min: -24, max: 6, default: -10, unit: "dB", format: formatDb },
 ];
 
@@ -843,6 +851,7 @@ export const vocalchopParams: ParamDef[] = [
 
 export const drumsynthParams: ParamDef[] = [
   { id: "type", label: "TYPE", min: 0, max: 12, default: 0, options: DRUM_TYPE_OPTIONS },
+  { id: "gate", label: "MODE", min: 0, max: 1, default: 0, options: NOTE_GATE_OPTIONS },
   {
     id: "tune",
     label: "TUNE",
@@ -854,6 +863,7 @@ export const drumsynthParams: ParamDef[] = [
   },
   { id: "tone", label: "TONE", min: 0, max: 1, default: 0.4, format: formatPct },
   { id: "decay", label: "DECAY", min: 0.05, max: 2, default: 0.4, unit: "s", format: formatSec },
+  { id: "release", label: "RELEASE", min: 0.005, max: 0.5, default: 0.04, unit: "s", format: formatMs },
   { id: "snap", label: "SNAP", min: 0, max: 1, default: 0.4, format: formatPct },
   { id: "body", label: "BODY", min: 0, max: 1, default: 0.6, format: formatPct },
   { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.2, format: formatPct },

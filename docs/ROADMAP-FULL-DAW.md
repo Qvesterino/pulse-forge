@@ -78,7 +78,7 @@ ceiling to represent a whole song. Stage 2 will put sparse, editable MIDI clips
 on instrument lanes and requires a separate storage/runtime ADR before changing
 the project schema.
 
-### Current execution queue (2026-10-12)
+### Current execution queue (2026-10-15)
 
 The next implementation work is software-first, with hardware qualification as
 its own evidence lane:
@@ -101,11 +101,12 @@ its own evidence lane:
    at 48 kHz, with bounded lag and successful post-crash recovery. This verifies
    the browser software path only. Keep physical routing, real takes, latency
    and the longer hardware soak open.
-4. **Prepare the reference-device session.** The UA Volt 276 was not connected
-   during this session. When it is connected, record the host, driver,
-   endpoints and channel map; run shared duplex and known-signal routing checks;
-   measure physical round-trip latency; and assess ASIO only after the SDK and
-   licensing route is clear.
+4. **Qualify the reference device.** The UA Volt 276 is now active. A bounded
+   10- and 30-second shared-mode capture plus silent-render smoke passed on its
+   named endpoints with MMCSS. Record the driver and physical channel map, then
+   measure analog round-trip latency and run a sustained device-loss/recovery
+   soak. Assess real ASIO streaming only after the SDK and licensing route is
+   clear.
 5. **Decide before building a native backend.** Use the measurements to write
    a dedicated audio I/O ADR covering API choice, realtime boundary, licensing, failure/recovery
    behavior and Web fallback. Then implement and certify one physical
@@ -132,6 +133,17 @@ session, so none of these results qualify the reference interface or
 measure physical round-trip latency. A bounded rerunnable wrapper is at
 `native/windows-audio-probe/run-shared-duplex.ps1`. See the [current audio-spike
 recheck](./WINDOWS-AUDIO-SPIKE-2026-09.md#current-execution-recheck--2026-10-12).
+
+**Execution checkpoint (2026-10-15):** Windows 11 Home build 26300 reported
+the active Volt capture endpoint `INPUT 1/2 (2- Volt 276)` and render endpoint
+`MONITOR L/R (2- Volt 276)`. Bounded 10- and 30-second shared-WASAPI capture
+and silent-render runs completed concurrently at 48 kHz stereo float32 with a
+480-frame period; MMCSS used the `Audio` task. Capture had one first-packet
+discontinuity and none later in either run, with zero silent packets, timestamp
+errors, device-position gaps or timeouts. Render queued silence without
+timeouts. This is endpoint smoke evidence only: physical jack mapping, analog
+round-trip latency, real ASIO, device-loss recovery and sustained hardware
+stability remain open. Details are in the [Volt smoke record](./WINDOWS-AUDIO-SPIKE-2026-09.md#volt-shared-mode-smoke--2026-10-15).
 
 ## Phase 0 — make the target and baseline truthful
 
@@ -194,11 +206,16 @@ live and offline export. Publish the verified Web capability table.
       or physical round-trip latency. Current default endpoints yielded
       preliminary 20.7 ms (MSI) and 126.3 ms (Realtek) estimates; one Realtek
       smoke failed its discontinuity/position-continuity gate.
-- [ ] Rerun shared capture on the exact endpoint with MMCSS and corrected
-      diagnostics; investigate later discontinuities, timestamp errors and
-      device-position gaps. Measure physical round-trip latency and test the
-      registered ASIO driver. Use exclusive mode only for a concrete unmet
-      requirement and preserve its explicit acknowledgement.
+- [x] Run bounded shared-mode capture and silent render concurrently on exact
+      Volt endpoints with MMCSS and corrected diagnostics. The 10- and
+      30-second runs completed with no later capture discontinuities, timestamp
+      errors, device-position gaps or event timeouts; see the retained
+      [Volt smoke](./WINDOWS-AUDIO-SPIKE-2026-09.md#volt-shared-mode-smoke--2026-10-15).
+- [ ] Verify the physical input/output jack map, measure analog round-trip
+      latency, and qualify sustained capture plus device-loss recovery. Test
+      real ASIO only after confirming the driver architecture and licensing
+      route. Use exclusive mode only for a concrete unmet requirement and
+      preserve its explicit acknowledgement.
 - [ ] Write a dedicated audio I/O ADR after a measured technical spike compares Web Audio,
       WASAPI shared low-period/`IAudioClient3`, WASAPI exclusive and ASIO.
 - [ ] Define a typed audio-device backend contract: enumerate/select device,

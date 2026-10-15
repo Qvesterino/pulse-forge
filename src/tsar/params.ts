@@ -76,7 +76,7 @@ export const tsarParams: ParamDef[] = [
     format: (v) => `${Math.round(v)}×`,
   },
   { id: "srcASpread", label: "A SPREAD", min: 0, max: 50, default: 0, unit: "ct", format: (v) => `${v.toFixed(0)} ct` },
-  { id: "srcAAtk", label: "A ATTACK", min: 0, max: 4, default: 0.005, unit: "s", taper: "log" },
+  { id: "srcAAtk", label: "A ATTACK", min: 0.001, max: 4, default: 0.005, unit: "s", taper: "log" },
   { id: "srcADec", label: "A DECAY", min: 0.01, max: 8, default: 0.6, unit: "s", taper: "log" },
   { id: "srcASus", label: "A SUSTAIN", min: 0, max: 1, default: 0.7, format: pct },
   { id: "srcARel", label: "A RELEASE", min: 0.01, max: 12, default: 0.4, unit: "s", taper: "log" },
@@ -122,7 +122,7 @@ export const tsarParams: ParamDef[] = [
     format: (v) => `${Math.round(v)}×`,
   },
   { id: "srcBSpread", label: "B SPREAD", min: 0, max: 50, default: 0, unit: "ct", format: (v) => `${v.toFixed(0)} ct` },
-  { id: "srcBAtk", label: "B ATTACK", min: 0, max: 4, default: 0.005, unit: "s", taper: "log" },
+  { id: "srcBAtk", label: "B ATTACK", min: 0.001, max: 4, default: 0.005, unit: "s", taper: "log" },
   { id: "srcBDec", label: "B DECAY", min: 0.01, max: 8, default: 0.6, unit: "s", taper: "log" },
   { id: "srcBSus", label: "B SUSTAIN", min: 0, max: 1, default: 0.7, format: pct },
   { id: "srcBRel", label: "B RELEASE", min: 0.01, max: 12, default: 0.4, unit: "s", taper: "log" },
@@ -157,7 +157,17 @@ export const tsarParams: ParamDef[] = [
   { id: "noiseColor", label: "N COLOR", min: 0, max: 1, default: 0.5, format: pct },
 
   // ── Voice ───────────────────────────────────────────────────────────────
-  { id: "glide", label: "GLIDE", min: 0, max: 2, default: 0, unit: "s", taper: "log" },
+  {
+    id: "glide",
+    label: "GLIDE",
+    min: 0.001,
+    max: 2,
+    default: 0.001,
+    unit: "s",
+    taper: "log",
+    format: (value) =>
+      value <= 0.001 ? "OFF" : value < 0.01 ? `${Math.round(value * 1000)} ms` : `${value.toFixed(2)} s`,
+  },
   { id: "velocity", label: "VELOCITY", min: 0, max: 1, default: 0.7, format: pct },
   { id: "drift", label: "DRIFT", min: 0, max: 1, default: 0.15, format: pct },
 

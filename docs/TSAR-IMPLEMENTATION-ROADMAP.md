@@ -1,10 +1,22 @@
 # TSAR — implementačná roadmapa
 
-**Stav:** návrh ďalších implementačných fáz · **Aktualizované:** 2026-10-08
+**Stav:** R1 correctness slice implementovaný; R1 zostáva otvorená do priameho live/offline A/B a zvukového review presetov · **Aktualizované:** 2026-10-15
 
 - **Východiskový stav:** T0–T7 sú dodané; ich realizáciu a zistenia zachytáva [TSAR-ROADMAP.md](TSAR-ROADMAP.md).
 - **Produktový zámer:** [TSAR-PRODUCT-DIRECTION.md](TSAR-PRODUCT-DIRECTION.md)
 - **Architektúra:** [ADR 0023](adr/0023-tsar-hybrid-engine.md)
+
+## R1 correctness slice — 2026-10-15
+
+- Wavetable scan teraz mení pozíciu/morph pre Source A aj B; prázdny wavetable slot dostane továrenský „Sine Grow“ zdroj, aby nový patch aj po vymazaní samplu zostal počuteľný.
+- `noteOff` nechá nakonfigurovanú ADSR release obálku zaznieť pred umlčaním gain gate.
+- Attack A/B a GLIDE používajú kladné dolné hranice pre log taper; DSP normalizuje staré uložené nuly a GLIDE 1 ms zachováva pôvodný stav OFF. Patche sa načítajú bez neplatného log mapovania.
+- `tests/tsar/engine.test.ts`: 21/21 prešlo, vrátane release času, scan oboch slotov a kompatibility nulových legacy hodnôt attack/glide.
+- Browser parameter audit: 69/69 kontrolovaných parametrov malo účinok; default patch bol počuteľný a bez nestability.
+- Factory preset audit v Chromium: 48/48 presetov prešlo finite/unclipped a loudness-map bránou. Je to technický gate, nie estetický alebo blind A/B review.
+- TSAR E2E v Chromium: 2/2 prešli vrátane lazy worklet load a počuteľného offline renderu cez engine exporteru. WebKit prípady boli skipnuté, pretože jeho test prostredie nemá potrebný Web Audio offline runtime.
+
+R1 ešte nie je uzavretá: zostáva zdokumentovať priamu, level-matched live playback ↔ offline export zhodu na rovnakom patchi a udalostiach a vypočuť presety v mixe.
 
 ## Cieľ
 

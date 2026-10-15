@@ -19,11 +19,13 @@ type Started = { at: number };
 function fakeContext(): {
   ctx: BaseAudioContext;
   started: Started[];
+  stopped: number[];
   connections: Array<[number, number]>;
   gains: { value: number; setValueAtTime: (v: number, t: number) => void }[];
 } {
   let nodeId = 0;
   const started: Started[] = [];
+  const stopped: number[] = [];
   const connections: Array<[number, number]> = [];
   const gains: { value: number; setValueAtTime: (v: number, t: number) => void }[] = [];
 
@@ -74,7 +76,7 @@ function fakeContext(): {
       node.detune = mkParam(0);
       node.type = "sine";
       node.start = (when = 0) => started.push({ at: when });
-      node.stop = () => {};
+      node.stop = (when = 0) => stopped.push(when);
       return node;
     },
     createBuffer(channels: number, length: number) {
@@ -91,7 +93,7 @@ function fakeContext(): {
       const node = mkNode();
       node.buffer = null;
       node.start = (when = 0) => started.push({ at: when });
-      node.stop = () => {};
+      node.stop = (when = 0) => stopped.push(when);
       return node;
     },
     createBiquadFilter() {
@@ -108,7 +110,7 @@ function fakeContext(): {
       return node;
     },
   };
-  return { ctx: ctx as unknown as BaseAudioContext, started, connections, gains };
+  return { ctx: ctx as unknown as BaseAudioContext, started, stopped, connections, gains };
 }
 
 const track: InstrumentTrack = {
@@ -136,6 +138,71 @@ describe("KOPA native fallback runtime", () => {
     expect(connections.length).toBeGreaterThan(0);
     // The fallback output is a real GainNode the engine can connect.
     expect(runtime.output).toBeDefined();
+  });
+
+  it("applies velocity once at the complete voice output and treats zero as silence", () => {
+    const { ctx, gains } = fakeContext();
+    const runtime = createKopaFallbackRuntime(ctx, track);
+    const level = Math.pow(10, -6 / 20);
+    runtime.noteOn(36, 0.5, 0.01, 0.1);
+    expect(gains[1]!.value).toBeCloseTo(0.9 * 0.5 * level, 6);
+
+    const silentContext = fakeContext();
+    const silentRuntime = createKopaFallbackRuntime(silentContext.ctx, track);
+    silentRuntime.noteOn(36, 0, 0.01, 0.1);
+    expect(silentContext.started).toHaveLength(0);
+    expect(silentContext.gains).toHaveLength(1); // only the runtime output node
+  });
+
+  it("keeps the sine click's short stop time instead of replacing it with voice cleanup", () => {
+    const { ctx, started, stopped } = fakeContext();
+    const runtime = createKopaFallbackRuntime(ctx, track);
+    runtime.setParameter("clickType", 2);
+    runtime.setParameter("clickDecay", 3);
+    runtime.noteOn(36, 1, 0.01, 0.1);
+
+    // The sine click is explicitly stopped after its own envelope; each
+    // remaining source gets the longer one-shot voice-retirement deadline.
+    expect(stopped).toHaveLength(started.length);
+    expect(stopped[0]).toBeCloseTo(0.072, 6);
+  });
+
+  it("a gated noteOff only chokes matching pitches", () => {
+    const { ctx, gains } = fakeContext();
+    const runtime = createKopaFallbackRuntime(ctx, track);
+    runtime.noteOn(36, 1, 0.01, 0.1);
+    const firstVoiceGain = gains[1]!;
+    const nextGainIndex = gains.length;
+    runtime.noteOn(38, 1, 0.02, 0.1);
+    const secondVoiceGain = gains[nextGainIndex]!;
+
+    runtime.noteOff!(36, 0.1);
+    expect(firstVoiceGain.value).toBe(0);
+    expect(secondVoiceGain.value).toBeGreaterThan(0);
+  });
+
+  it("ONE SHOT ignores noteOff", () => {
+    const { ctx, gains } = fakeContext();
+    const runtime = createKopaFallbackRuntime(ctx, { ...track, params: { triggerMode: 0 } });
+    runtime.noteOn(36, 1, 0.01, 0.5);
+    const voiceGain = gains[1]!;
+
+    runtime.noteOff!(36, 0.1);
+    expect(voiceGain.value).toBeGreaterThan(0);
+  });
+
+  it("bounds native fallback polyphony to the worklet's 16 voices", () => {
+    const { ctx, gains } = fakeContext();
+    const runtime = createKopaFallbackRuntime(ctx, track);
+    runtime.noteOn(36, 1, 0.01, 0.5);
+    const oldestVoiceGain = gains[1]!;
+    for (let pitch = 37; pitch <= 52; pitch++) runtime.noteOn(pitch, 0.8, 0.02, 0.5);
+
+    const gainBeforeSeventeenth = gains.length;
+    runtime.noteOn(53, 0.8, 0.03, 0.5);
+    expect(oldestVoiceGain.value).toBe(0);
+    // At least the 17th main voice gain is allocated after the 16 active ones.
+    expect(gains.length).toBeGreaterThan(gainBeforeSeventeenth);
   });
 
   it("noteOff stops the voice; panic clears everything; dispose disconnects", () => {

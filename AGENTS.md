@@ -171,6 +171,26 @@ These are the rules every coding agent must follow. They are encoded in `ARCHITE
 
 Owner gates still open (release-blocking, not feature-blocking): manual Firefox/Safari/iOS Safari smoke, `release:deployed-smoke` with a real `KYX_DEPLOY_URL`. See `RELEASE_READINESS_REPORT.md`.
 
+### 6.1 Seam coverage — "green" is not "it works"
+
+> Full ledger + evidence: `docs/audits/2026-10-15-seam-coverage/SEAM-COVERAGE.md`.
+> Machine-readable: `tests/seam-manifest.json`. Gate: `node scripts/check-seam-coverage.mjs`.
+
+**A test can assert a behavior and still be green while the behavior is broken** — when the defect lives in a *seam* the test never entered. Five corrections in three days (2026-10-13 → 15) were exactly this: the EQ curve at 16/16 green while a click with no drag wrote −1.09 dB; the reaction bridge at 19/19 green while its caller fed it nothing; the model grammar "pinned" while the shipped artifact no longer loaded.
+
+So when you write a test for a **user-facing seam** — a gesture, a dispatch, a runtime artifact — it must:
+
+1. **ENTER** the real entry point. A test of `hitEqBand` is not a test of `onPointerDown`; a test of a row-shaping function is not a test of what feeds it; a source-text `includes()` check is not a test of behavior.
+2. **ASSERT THE NEGATIVE** — prove the no-op. "Writes nothing on click-without-drag", "refuses without the destructive flag", "a stale pointerup does not commit". A happy-path-only seam test cannot catch the bug class that actually ships. `tests/eq-curve-gesture.test.tsx` is the reference: 8 of 12 specs are negative assertions.
+3. **Not confuse traversal with assertion.** A test that walks the path and asserts nothing *else* proves the path exists, not that it works.
+
+Two supporting rules that follow:
+
+- **Naming a seam is part of shipping it.** Add new user-facing seams to `tests/seam-manifest.json` in the same commit as the feature. A seam nobody lists is a seam nobody checks. Statuses: `COVERED` (all three declarations present) · `COVERED_NO_NEGATIVE` (enters the seam, no-op case missing) · `OPEN` (no seam-entering spec).
+- **Honest `OPEN` beats a false `COVERED`.** The gate fails only on a false claim; `OPEN` and `COVERED_NO_NEGATIVE` pass. A gate that demands new work gets disabled; a gate that catches lying stays.
+
+The gate checks **declarations, not behavior** — it cannot tell a real no-op assertion from a decorative one. Only a mutation can. Before trusting a new seam test, break the production code deliberately and confirm the named spec goes red. `eq-curve-gesture.test.tsx` did exactly this: restoring the old code turned precisely 2 specs red, which is what makes "12/12 green" mean something there.
+
 ### Playwright E2E
 
 ```bash

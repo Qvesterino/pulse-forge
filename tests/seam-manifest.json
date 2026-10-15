@@ -1,0 +1,127 @@
+{
+  "$comment": "SEAM MANIFEST — which user-facing seams have a test that ENTERS the seam, not just the inner unit. A seam is COVERED only when the spec (a) exists, (b) contains seamEvent — the gesture/call proving it enters, and (c) contains negativeSpec — the no-op/refusal assertion. Statuses: COVERED (all three verified) · COVERED_NO_NEGATIVE (enters the seam, negative case MISSING — an honest admission) · OPEN (no seam-entering spec). The gate fails only on a FALSE claim, never on an honest admission. Evidence: docs/audits/2026-10-15-seam-coverage/SEAM-COVERAGE.md",
+  "negationPattern": "\\b(nothing|not |never|no |cannot|can not|instead of|refuse|refuses|unchanged|ignores?|cancelled?|cancel|without|absent|zero|0 |stays?|leaves?|fails? to|does not|won't)\\b",
+  "seams": [
+    {
+      "id": "eq-curve-gesture",
+      "status": "COVERED",
+      "entryPoint": "src/ui/EqCurveCanvas.tsx:248 onPointerDown",
+      "spec": "tests/eq-curve-gesture.test.tsx",
+      "seamEvent": "pointerDown",
+      "negativeSpec": "writes nothing",
+      "note": "8-9 of 12 specs are negative assertions. Added by e25d7cad after the shipped defect — the reference example."
+    },
+    {
+      "id": "step-sequencer-paint",
+      "status": "COVERED",
+      "entryPoint": "src/ui/StepGridEditor.tsx:78 onPointerDown",
+      "spec": "tests/ui/Sequencer.test.tsx",
+      "seamEvent": "pointerDown",
+      "negativeSpec": "instead of painting",
+      "note": "Vertical drags stay on velocity editing instead of painting."
+    },
+    {
+      "id": "piano-roll-move-create",
+      "status": "COVERED",
+      "entryPoint": "src/ui/PianoRoll.tsx:1984 onGridPointerDown",
+      "spec": "tests/ui/PianoRoll.test.tsx",
+      "seamEvent": "pointerDown",
+      "negativeSpec": "does not commit",
+      "note": "pointercancel abort and stale-pointerup cases are the ones that matter here."
+    },
+    {
+      "id": "piano-roll-resize",
+      "status": "OPEN",
+      "entryPoint": "src/ui/PianoRoll.tsx:692 right-edge resize",
+      "note": "No spec mentions resize or the right edge. Move is covered; resize is not."
+    },
+    {
+      "id": "arrangement-clip-move",
+      "status": "COVERED_NO_NEGATIVE",
+      "entryPoint": "src/ui/ArrangementPanel.tsx clip body onPointerDown",
+      "spec": "tests/ui/arrangement-drag-commit.test.tsx",
+      "seamEvent": "pointerDown",
+      "note": "Enters the seam and asserts the commit count, but has NO no-move / cancel case. This is the exact shape that hid the EQ bug. Honest admission, not a false claim."
+    },
+    {
+      "id": "arrangement-trim",
+      "status": "COVERED",
+      "entryPoint": "src/ui/ArrangementPanel.tsx left-trim zone",
+      "spec": "tests/ui/arrangement-trim-gesture.test.tsx",
+      "seamEvent": "ointer",
+      "negativeSpec": "instead of trimming",
+      "note": "ONLY the third spec enters the seam, and it does so with raw new PointerEvent(...) dispatch rather than fireEvent. The other two specs call the pure helper trimLeftEdge(doc, x) directly — a filename reading 'gesture' is not evidence of a gesture test."
+    },
+    {
+      "id": "arrangement-split",
+      "status": "COVERED",
+      "entryPoint": "cut tool onPointerDown",
+      "spec": "tests/ui/editor-hardening-interactions.test.tsx",
+      "seamEvent": "pointerDown",
+      "negativeSpec": "does not split",
+      "note": "Select tool keeps dragging — pointerdown does not split."
+    },
+    {
+      "id": "arrangement-fade-handles",
+      "status": "OPEN",
+      "entryPoint": "src/ui/ArrangementPanel.tsx fade handle hit zones",
+      "note": "No pointerDown anywhere near a fade handle. clip-fade-bounds-invariant.test.ts is helper-only (no render, no dispatch). Note the intent layer gained a fade verb (P0-C) while the UI gesture is still uncovered."
+    },
+    {
+      "id": "mixer-fader",
+      "status": "COVERED_NO_NEGATIVE",
+      "entryPoint": "src/ui/controls.tsx:459 Slider handlePointerDown",
+      "spec": "tests/ui/slider-taper.test.tsx",
+      "seamEvent": "pointerDown",
+      "note": "Inherited from the shared Slider, not driven through the Mixer strip. Asserts the taper curve (log vs linear), not a no-op gesture, and uses one fixed clientX with no pointerMove — a move-sensitive defect would escape. Honest admission."
+    },
+    {
+      "id": "mixer-mute-solo",
+      "status": "OPEN",
+      "entryPoint": "src/ui/Mixer.tsx:604 Mute / :615 Solo",
+      "note": "No spec clicks these buttons. mixer-batch.test.ts is command-level only."
+    },
+    {
+      "id": "automation-point-drag",
+      "status": "OPEN",
+      "entryPoint": "src/ui/ModPanel.tsx:885 onCanvasPointerDown",
+      "note": "LARGEST GAP. Zero pointerDown dispatches anywhere near the auto-canvas; ModPanel.test.tsx has fireEvent calls but no pointer event at all. The gesture most analogous to the EQ defect that shipped broken."
+    },
+    {
+      "id": "reaction-ledger-panel-wiring",
+      "status": "OPEN",
+      "entryPoint": "src/ui/IntentPanel.tsx:4720 noteIntentProposal",
+      "note": "reaction-bridge.test.ts calls the function directly and guards the panel call site with a SOURCE-TEXT substring check — a text guard cannot prove behavior. tests/ui/IntentPanel.test.tsx clicks DO IT (traverses the seam) but never installs a ledger, so the call no-ops: traversal without assertion."
+    },
+    {
+      "id": "model-artifact-vs-schema",
+      "status": "COVERED",
+      "entryPoint": "shipped public/models/intent-model-v1.manifest.json vs live grammar",
+      "spec": "tests/intent-model-artifact.test.ts",
+      "seamEvent": "intent-model-v1.manifest.json",
+      "negativeSpec": "drift guard",
+      "note": "Compares the shipped manifest against the live grammar + hashes. This is the b7c1919c class of check, done right."
+    },
+    {
+      "id": "model-loader-path-vs-disk",
+      "status": "OPEN",
+      "entryPoint": "src/intent/model-loader.ts:73 MANIFEST_PATH",
+      "note": "No spec asserts the loader's URL resolves to a file that exists. If MANIFEST_PATH drifts from the committed filename the artifact test stays green and the app 404s."
+    },
+    {
+      "id": "mcp-dispatch",
+      "status": "COVERED",
+      "entryPoint": "src/mcp/tools.ts:2197 executeMcpTool",
+      "spec": "tests/mcp-*.test.ts",
+      "seamEvent": "executeMcpTool",
+      "negativeSpec": "refuses",
+      "note": "550 call sites across 37-41 spec files; the destructive-gate refusal specs are the negative case."
+    },
+    {
+      "id": "mcp-to-real-projectstore",
+      "status": "OPEN",
+      "entryPoint": "src/mcp/tools.ts -> ProjectStore",
+      "note": "Dispatch to command is covered, but every ctx in the suite is a hand-rolled fake; dispatch -> REAL store -> undo depth is not asserted anywhere in the committed suite."
+    }
+  ]
+}

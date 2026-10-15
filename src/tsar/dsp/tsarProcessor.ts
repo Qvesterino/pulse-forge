@@ -93,6 +93,9 @@ interface Voice {
   /** Unison read positions, normalized 0..1 per source copy. */
   posA: Float32Array;
   posB: Float32Array;
+  /** Per-voice wavetable scan phases; source SCAN is a smooth morph-rate control. */
+  scanPhaseA: number;
+  scanPhaseB: number;
   subPhase: number;
   lfoPhase: number;
   driftPhase: number;
@@ -198,6 +201,8 @@ export class TsarProcessor {
       age: 0,
       posA: new Float32Array(UNISON_MAX),
       posB: new Float32Array(UNISON_MAX),
+      scanPhaseA: 0,
+      scanPhaseB: 0,
       subPhase: 0,
       lfoPhase: (index * GOLDEN) % 1,
       driftPhase: (index * DRIFT_GOLDEN) % 1,
@@ -214,12 +219,19 @@ export class TsarProcessor {
   /** Set many params at once (defaults + document overrides). */
   applyParams(values: Record<string, number>): void {
     for (const [key, value] of Object.entries(values)) {
-      if (Number.isFinite(value)) this.params[key] = value;
+      if (Number.isFinite(value)) this.params[key] = this.normalizeParam(key, value);
     }
   }
 
   setParam(name: string, value: number): void {
-    if (Number.isFinite(value)) this.params[name] = value;
+    if (Number.isFinite(value)) this.params[name] = this.normalizeParam(name, value);
+  }
+
+  /** Keep logarithmic attack controls in-range, including older saved zero values. */
+  private normalizeParam(name: string, value: number): number {
+    if (name === "srcAAtk" || name === "srcBAtk") return clamp(value, 0.001, 4);
+    if (name === "glide") return clamp(value, 0.001, 2);
+    return value;
   }
 
   /** Upload a wavetable for one slot (frames flattened, each FRAME_SIZE). */
@@ -382,13 +394,15 @@ export class TsarProcessor {
     voice.targetF0 = midiToHz(pitch);
     // Glide: start from the previous pitch if a glide is configured.
     const glide = this.params.glide ?? 0;
-    voice.f0 = glide > 0 ? voice.f0 : voice.targetF0;
+    voice.f0 = glide > 0.001 ? voice.f0 : voice.targetF0;
     voice.vel = clamp(velocity, 0, 1);
     voice.pressure = 0;
     voice.age = ++this.voiceCounter;
     voice.envA = { stage: 1, value: 0 };
     voice.envB = { stage: 1, value: 0 };
     voice.gain = 0;
+    voice.scanPhaseA = 0;
+    voice.scanPhaseB = 0;
     voice.svfA1 = 0;
     voice.svfA2 = 0;
     voice.svfB1 = 0;
@@ -613,7 +627,8 @@ export class TsarProcessor {
     const drive = this.params.drive ?? 0;
     const width = clamp(this.params.width ?? 0.5, 0, 1);
     const level = this.params.level ?? 0.8;
-    const glide = this.params.glide ?? 0;
+    const glideValue = this.params.glide ?? 0;
+    const glide = glideValue > 0.001 ? glideValue : 0;
     const velAmount = this.params.velocity ?? 0.7;
     const drift = clamp(this.params.drift ?? 0, 0, 1);
 
@@ -720,6 +735,14 @@ export class TsarProcessor {
         voice.lfoPhase += lfoRate / sr;
         if (voice.lfoPhase >= 1) voice.lfoPhase -= 1;
         const lfo = this.lfoValue(lfoShape, voice.lfoPhase);
+        const scanRateA = clamp(this.params.srcAScan ?? 0, 0, 8);
+        const scanRateB = clamp(this.params.srcBScan ?? 0, 0, 8);
+        voice.scanPhaseA += scanRateA / sr;
+        voice.scanPhaseB += scanRateB / sr;
+        if (voice.scanPhaseA >= 1) voice.scanPhaseA -= Math.floor(voice.scanPhaseA);
+        if (voice.scanPhaseB >= 1) voice.scanPhaseB -= Math.floor(voice.scanPhaseB);
+        const scanMorphA = scanRateA > 0 ? Math.sin(2 * Math.PI * voice.scanPhaseA) * 0.5 : 0;
+        const scanMorphB = scanRateB > 0 ? Math.sin(2 * Math.PI * voice.scanPhaseB) * 0.5 : 0;
         voice.driftPhase += (0.12 + (voice.index % 5) * 0.031) / sr;
         if (voice.driftPhase >= 1) voice.driftPhase -= 1;
         const driftCents = Math.sin(2 * Math.PI * voice.driftPhase) * drift * 8;
@@ -768,8 +791,8 @@ export class TsarProcessor {
             voice,
             0,
             engineA,
-            clamp((this.params.srcAMorph ?? 0) + modAMorph, 0, 1),
-            this.params.srcAScan ?? 0,
+            clamp((this.params.srcAMorph ?? 0) + modAMorph + scanMorphA, 0, 1),
+            scanRateA,
             detuneA,
             voiceHz,
           ) *
@@ -780,8 +803,8 @@ export class TsarProcessor {
             voice,
             1,
             engineB,
-            clamp((this.params.srcBMorph ?? 0) + modBMorph, 0, 1),
-            this.params.srcBScan ?? 0,
+            clamp((this.params.srcBMorph ?? 0) + modBMorph + scanMorphB, 0, 1),
+            scanRateB,
             detuneB,
             voiceHz,
           ) *
@@ -828,14 +851,18 @@ export class TsarProcessor {
           noise = white * coeff * noiseLevel * envA;
         }
 
-        const gainTarget = voice.gate ? 1 : 0;
+        const bCanSound = levelB > 0;
+        // noteOff closes the MIDI gate but the ADSR release must remain
+        // audible. The short gain ramp is only the final cleanup after every
+        // audible envelope has reached its off stage.
+        const releasing = voice.envA.stage === 3 || (bCanSound && voice.envB.stage === 3);
+        const gainTarget = voice.gate || releasing ? 1 : 0;
         voice.gain += (gainTarget - voice.gain) * gainCoeff;
         // Voice death: gate closed, gain ramped out, and every envelope that
         // can still be HEARD has finished. Source B's envelope only matters
         // while B has level — otherwise a long B release keeps a silent voice
         // occupying one of the 16 slots (measured during T1: active count
         // stayed 1 for >1 s after an inaudible B release).
-        const bCanSound = levelB > 0;
         if (!voice.gate && voice.gain < 1e-3 && voice.envA.stage === 0 && (!bCanSound || voice.envB.stage === 0)) {
           voice.active = false;
           continue;

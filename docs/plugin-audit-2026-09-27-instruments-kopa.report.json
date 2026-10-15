@@ -1,0 +1,24 @@
+{
+  "effects": [],
+  "instruments": [
+    {
+      "kind": "kopa",
+      "name": "KOPA",
+      "defaultAudible": true,
+      "defaultPeak": 0.04326644539833069,
+      "unstableParams": [],
+      "deadParams": [],
+      "wiredParams": 35,
+      "totalParams": 35,
+      "transientWired": [
+        "clickType",
+        "clickTone",
+        "clickDecay",
+        "clickLevel"
+      ]
+    }
+  ],
+  "interactions": null,
+  "startedAt": "2026-10-15T14:03:14.318Z",
+  "finishedAt": "2026-10-15T14:12:05.495Z"
+}

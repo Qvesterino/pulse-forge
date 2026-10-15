@@ -26,6 +26,96 @@
     min-height: var(--touch-target-large);
     align-items: center;
   }
+
+  .export-panel > .export-buttons > .export-more-options > .export-more-summary {
+    min-height: var(--touch-target-large);
+  }
+
+  .export-panel .export-more-actions > .btn,
+  .export-panel .export-more-actions > .export-policy {
+    min-height: var(--touch-target-large);
+  }
+
+  .export-panel .export-more-actions > .btn {
+    height: var(--touch-target-large);
+  }
+}
+
+/* Keep less common delivery actions discoverable without giving them the
+   same visual weight as the master, stems, tracks and MIDI actions. */
+.export-buttons > .export-more-options {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.export-more-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-1) 72%, transparent);
+  color: var(--text-dim);
+  cursor: pointer;
+  font: 700 var(--fs-compact)/1.3 var(--mono);
+  letter-spacing: 0.055em;
+  list-style: none;
+  user-select: none;
+}
+
+.export-more-summary::-webkit-details-marker {
+  display: none;
+}
+
+.export-more-summary::after {
+  content: "+";
+  margin-left: auto;
+  color: var(--accent);
+  font-size: var(--fs-md);
+}
+
+.export-more-options[open] > .export-more-summary::after {
+  content: "−";
+}
+
+.export-more-summary:hover {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--hairline));
+  color: var(--text);
+}
+
+.export-more-summary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 76%, #fff);
+  outline-offset: 2px;
+}
+
+.export-more-options[open] > .export-more-actions {
+  padding-top: 10px;
+}
+
+.export-more-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.export-more-actions > .btn-export:not(.btn-export-scorepack) {
+  border-color: var(--hairline);
+  color: var(--text-dim);
+}
+
+.export-more-actions > .btn-export-scorepack {
+  border-color: var(--hairline);
+  background: var(--surface-1);
+  color: var(--text-dim);
+}
+
+.export-more-actions > .btn-export:not(:disabled):hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
 }
 
 .export-mix-health {

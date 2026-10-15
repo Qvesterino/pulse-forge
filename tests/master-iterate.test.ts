@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { Command } from "../src/commands/types";
 import { iterateTowardTarget, isConverged } from "../src/mcp/master-iterate";
 import type { IterateMeasurement } from "../src/mcp/master-iterate";
-import type { McpToolContext } from "../src/mcp/tools";
 
 /**
  * CLOSED-LOOP TONAL ITERATOR pins. Each iteration produces bounded
@@ -79,7 +78,7 @@ describe("kyx_master op:iterate — wiring pin", () => {
     store.execute(addEffectToTracks(store.doc, [store.doc.tracks[0].id], "zenit"));
     const ctx = {
       getDoc: () => store.doc,
-      execute: (cmd) => store.execute(cmd),
+      execute: (cmd: Command) => store.execute(cmd),
       undo: () => store.undo(),
       redo: () => store.redo(),
       undoStackLength: () => store.undoStackLength,

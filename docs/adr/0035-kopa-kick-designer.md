@@ -96,7 +96,9 @@ running indefinitely.
   `startRendering`) and the KOPA `processorOptions.events` seed are pinned.
 - `tests/kopa/fallback.test.ts`: native fallback builds a live graph; the
   live bridge posts noteOn/noteOff/param; the offline bridge buffers until
-  `prepareOfflineRender`.
+  `prepareOfflineRender`; velocity is applied once at the complete voice
+  output (including a silent velocity-zero event), and fallback noteOff only
+  chokes voices matching the requested pitch.
 - `tests/kopa-presets.test.ts`: 16 unique in-range presets, all audible
   (peak floor + headroom), catalog routes them to `drums`.
 - `tests/instrument-graph-reachability.test.ts` covers the fallback graph

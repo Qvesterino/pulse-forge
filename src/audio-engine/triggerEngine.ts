@@ -4,7 +4,7 @@ import type { SampleBank } from "../sample-library/factory";
 import type { InstrumentRuntime } from "../instruments/types";
 import { connectAudioClipSourceChannel } from "./audioClipChannels";
 import { timeStretch } from "./time-stretch";
-import { DECLICK_TAIL_SEC, resolveSlicePlayback, declickFadeOut } from "./declick";
+import { DECLICK_TAIL_SEC, resolveSlicePlayback, declickFadeOut, fitSliceFades } from "./declick";
 import { audioClipPlayWindow, buildWarpSegments, type WarpSegment, type WarpManager } from "./warpManager";
 
 export interface TriggerVoice {
@@ -808,6 +808,16 @@ export class TriggerEngine {
         const newStart = Math.max(0, slice.end - newDur);
         slice = { ...slice, start: newStart, duration: newDur, offset: slice.end };
       }
+    }
+    if (locks?.fadeIn !== undefined || locks?.fadeOut !== undefined) {
+      const fadeIn = Number.isFinite(locks.fadeIn) ? Math.min(1, Math.max(0, locks.fadeIn!)) : 0;
+      const fadeOut = Number.isFinite(locks.fadeOut) ? Math.min(1, Math.max(0, locks.fadeOut!)) : 0;
+      const fitted = fitSliceFades(
+        locks.fadeIn !== undefined ? slice.duration * fadeIn : slice.fadeIn,
+        locks.fadeOut !== undefined ? slice.duration * fadeOut : slice.fadeOut,
+        slice.duration,
+      );
+      slice = { ...slice, ...fitted };
     }
     const effectivePitch = locks?.pitch !== undefined ? locks.pitch : pad.pitch;
     const rateMagnitude = Math.pow(2, (Number.isFinite(effectivePitch) ? effectivePitch : 0) / 12);

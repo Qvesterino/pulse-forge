@@ -93,11 +93,11 @@ const RESUME_TIMEOUT_MS = 10_000;
 const STORAGE_ESTIMATE_TIMEOUT_MS = 1_500;
 const moduleLoads = new WeakMap<BaseAudioContext, Promise<void>>();
 
-// One live audio-input capture per tab. ArrangementPanel takes and ExportPanel
-// resamples each construct their own recorder instance; without this claim
-// both would open parallel getUserMedia streams from the same input and
-// interleave monitoring/capture. Claimed from synchronous start() entry until
-// the instance returns to "idle" (every path that sets idle releases it).
+// One non-cancelled audio-input start/capture per tab. ArrangementPanel takes
+// and ExportPanel resamples each construct their own recorder instance; without
+// this claim both could open parallel getUserMedia streams and interleave
+// monitoring/capture. A cancelled permission request releases the claim so
+// the UI can retry; its start token rejects a late stream before graph setup.
 let activeCapture: PcmMicRecorder | null = null;
 
 /** Audit 14 D2: true while an input take is live - used by the SW-update banner
@@ -173,9 +173,10 @@ export class PcmMicRecorder {
   onStorageWarning: ((message: string) => void) | null = null;
 
   private state_: PcmRecorderState = "idle";
-  // `cancel()` can return while getUserMedia is still awaiting a permission
-  // prompt. Keep that attempt exclusive until its async start path unwinds;
-  // otherwise its late cleanup can disconnect a newer take's graph.
+  // `cancel()` cannot dismiss a browser permission prompt. Prevent this same
+  // instance from being restarted until its pending start unwinds; another
+  // recorder may take over, and the cancelled attempt checks its token before
+  // wiring any audio nodes when getUserMedia eventually resolves.
   private startInFlight = false;
   private startToken = 0;
   private startedAt = 0;
@@ -683,9 +684,10 @@ export class PcmMicRecorder {
       this.startToken++;
       this.cleanupWiring();
       this.state_ = "idle";
-      // The permission request cannot be cancelled. Keep the tab-wide claim
-      // until start() unwinds and can stop any stream that resolves late; a
-      // different recorder must not open a second input in that window.
+      // The browser permission request itself cannot be cancelled. Release the
+      // tab-wide claim now so the user can retry; start() will reject a late
+      // stream before creating its graph, then cleanup will stop that stream.
+      this.releaseCaptureClaim();
       return;
     }
     await this.finishCapture();

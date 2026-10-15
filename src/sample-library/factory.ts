@@ -5050,9 +5050,17 @@ export function applyRoundRobinVariants(bank: SampleBank, baseId: string): void 
   });
 }
 
-export async function generateFactoryBank(): Promise<SampleBank> {
+export async function generateFactoryBank(ids?: readonly string[]): Promise<SampleBank> {
   const bank = new SampleBank();
-  const assets: FactoryAsset[] = FACTORY_ASSETS;
+  const requestedIds = ids ? new Set(ids) : undefined;
+  if (requestedIds) {
+    for (const [baseId, variations] of Object.entries(RR_VARIATIONS)) {
+      if (variations.some((_, index) => requestedIds.has(`${baseId}.rr${index + 2}`))) requestedIds.add(baseId);
+    }
+  }
+  const assets: FactoryAsset[] = requestedIds
+    ? FACTORY_ASSETS.filter((asset) => requestedIds.has(asset.id))
+    : FACTORY_ASSETS;
   // Bounded render pool (quality backlog B7): 69 concurrent
   // OfflineAudioContexts spiked memory and serialized inside the browser
   // anyway — a small worker pool (same shape as the curated layer) keeps
@@ -5069,6 +5077,7 @@ export async function generateFactoryBank(): Promise<SampleBank> {
   };
   await Promise.all(Array.from({ length: Math.min(FACTORY_RENDER_PARALLEL, assets.length) }, worker));
   for (const baseId of Object.keys(RR_VARIATIONS)) {
+    if (requestedIds && !requestedIds.has(baseId)) continue;
     const base = bank.get(baseId);
     if (!base) throw new Error(`No base buffer for RR variation of ${baseId}`);
     applyRoundRobinVariants(bank, baseId);

@@ -76,6 +76,8 @@
       this.events.splice(insertAt, 0, item);
     }
     noteOn(pitch, velocity) {
+      const noteVelocity = Number.isFinite(velocity) ? clamp(velocity, 0, 1) : 1;
+      if (noteVelocity === 0) return;
       let voice = this.voices.find((candidate) => !candidate.active);
       if (!voice) {
         voice = this.voices.reduce((oldest, candidate) => candidate.age < oldest.age ? candidate : oldest);
@@ -90,7 +92,7 @@
       voice.bodyPhase = 0;
       voice.tailPhase = 0;
       voice.subPhase = 0;
-      voice.velocity = clamp(Number.isFinite(velocity) && velocity > 0 ? velocity : 1, 0, 1);
+      voice.velocity = noteVelocity;
       voice.clickEnv = 1;
       voice.bodyEnv = 1;
       voice.tailEnv = 1;

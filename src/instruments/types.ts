@@ -3,6 +3,8 @@ import type { ParamDef } from "../effects/types";
 
 export interface InstrumentRuntime {
   output: AudioNode;
+  /** Seed event-queue runtimes before an OfflineAudioContext starts rendering. */
+  prepareOfflineRender?(): void;
   noteOn(
     pitch: number,
     velocity: number,

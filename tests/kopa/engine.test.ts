@@ -104,8 +104,45 @@ describe("KopaProcessor — voice basics", () => {
     expect(peak(quiet.left)).toBe(0);
   });
 
+  it("velocity scales the complete hit linearly and MIDI velocity zero is silent", () => {
+    const renderVelocity = (velocity: number) => {
+      const processor = makeProcessor();
+      processor.postEvent(noteOn(36, velocity));
+      return render(processor, 0.45).left;
+    };
+    const full = renderVelocity(1);
+    const half = renderVelocity(0.5);
+    const soft = renderVelocity(0.2);
+    const silent = renderVelocity(0);
+
+    let halfError = 0;
+    let softError = 0;
+    for (let i = 0; i < full.length; i++) {
+      halfError = Math.max(halfError, Math.abs(half[i]! - full[i]! * 0.5));
+      softError = Math.max(softError, Math.abs(soft[i]! - full[i]! * 0.2));
+    }
+    expect(halfError).toBeLessThan(1e-6);
+    expect(softError).toBeLessThan(1e-6);
+    expect(peak(silent)).toBe(0);
+  });
+
+  it("an invalid velocity uses the documented full-velocity default", () => {
+    const renderVelocity = (velocity: number) => {
+      const processor = makeProcessor();
+      processor.postEvent(noteOn(36, velocity));
+      return render(processor, 0.3).left;
+    };
+    expect(renderVelocity(Number.NaN)).toEqual(renderVelocity(1));
+  });
+
   it("a one-shot decays to silence on its own (no stuck voice)", () => {
-    const processor = makeProcessor({ bodyDecay: 0.1, tailDecay: 0.05, tailLevel: 0, clickLevel: 0 });
+    const processor = makeProcessor({
+      triggerMode: 0,
+      bodyDecay: 0.1,
+      tailDecay: 0.05,
+      tailLevel: 0,
+      clickLevel: 0,
+    });
     processor.postEvent(noteOn());
     const { left } = render(processor, 1.5);
     expect(rms(left.subarray(Math.ceil(1.2 * SR)))).toBeLessThan(1e-4);
@@ -117,6 +154,16 @@ describe("KopaProcessor — voice basics", () => {
     processor.postEvent({ type: "noteOff", pitch: 36, when: 0.05 });
     const { left } = render(processor, 0.6);
     expect(rms(left.subarray(Math.ceil(0.5 * SR)))).toBeLessThan(1e-3);
+  });
+
+  it("ONE SHOT ignores noteOff and preserves the designed tail", () => {
+    const make = (withNoteOff: boolean) => {
+      const processor = makeProcessor({ triggerMode: 0, bodyDecay: 0.8, tailDecay: 1.2, tailLevel: 0.7 });
+      processor.postEvent(noteOn(36, 1, 0));
+      if (withNoteOff) processor.postEvent({ type: "noteOff", pitch: 36, when: 0.05 });
+      return render(processor, 0.5).left;
+    };
+    expect(make(true)).toEqual(make(false));
   });
 
   it("panic silences everything immediately", () => {

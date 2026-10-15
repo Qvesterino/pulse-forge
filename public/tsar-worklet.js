@@ -108,6 +108,8 @@
         age: 0,
         posA: new Float32Array(UNISON_MAX),
         posB: new Float32Array(UNISON_MAX),
+        scanPhaseA: 0,
+        scanPhaseB: 0,
         subPhase: 0,
         lfoPhase: index * GOLDEN % 1,
         driftPhase: index * DRIFT_GOLDEN % 1,
@@ -123,11 +125,17 @@
     /** Set many params at once (defaults + document overrides). */
     applyParams(values) {
       for (const [key, value] of Object.entries(values)) {
-        if (Number.isFinite(value)) this.params[key] = value;
+        if (Number.isFinite(value)) this.params[key] = this.normalizeParam(key, value);
       }
     }
     setParam(name, value) {
-      if (Number.isFinite(value)) this.params[name] = value;
+      if (Number.isFinite(value)) this.params[name] = this.normalizeParam(name, value);
+    }
+    /** Keep logarithmic attack controls in-range, including older saved zero values. */
+    normalizeParam(name, value) {
+      if (name === "srcAAtk" || name === "srcBAtk") return clamp(value, 1e-3, 4);
+      if (name === "glide") return clamp(value, 1e-3, 2);
+      return value;
     }
     /** Upload a wavetable for one slot (frames flattened, each FRAME_SIZE). */
     setWavetable(slot, flatFrames, frameCount) {
@@ -267,13 +275,15 @@
       voice.pitch = pitch;
       voice.targetF0 = midiToHz(pitch);
       const glide = this.params.glide ?? 0;
-      voice.f0 = glide > 0 ? voice.f0 : voice.targetF0;
+      voice.f0 = glide > 1e-3 ? voice.f0 : voice.targetF0;
       voice.vel = clamp(velocity, 0, 1);
       voice.pressure = 0;
       voice.age = ++this.voiceCounter;
       voice.envA = { stage: 1, value: 0 };
       voice.envB = { stage: 1, value: 0 };
       voice.gain = 0;
+      voice.scanPhaseA = 0;
+      voice.scanPhaseB = 0;
       voice.svfA1 = 0;
       voice.svfA2 = 0;
       voice.svfB1 = 0;
@@ -467,7 +477,8 @@
       const drive = this.params.drive ?? 0;
       const width = clamp(this.params.width ?? 0.5, 0, 1);
       const level = this.params.level ?? 0.8;
-      const glide = this.params.glide ?? 0;
+      const glideValue = this.params.glide ?? 0;
+      const glide = glideValue > 1e-3 ? glideValue : 0;
       const velAmount = this.params.velocity ?? 0.7;
       const drift = clamp(this.params.drift ?? 0, 0, 1);
       const engineA = clamp(Math.round(this.params.srcAEngine ?? 1), 0, 2);
@@ -552,6 +563,14 @@
           voice.lfoPhase += lfoRate / sr;
           if (voice.lfoPhase >= 1) voice.lfoPhase -= 1;
           const lfo = this.lfoValue(lfoShape, voice.lfoPhase);
+          const scanRateA = clamp(this.params.srcAScan ?? 0, 0, 8);
+          const scanRateB = clamp(this.params.srcBScan ?? 0, 0, 8);
+          voice.scanPhaseA += scanRateA / sr;
+          voice.scanPhaseB += scanRateB / sr;
+          if (voice.scanPhaseA >= 1) voice.scanPhaseA -= Math.floor(voice.scanPhaseA);
+          if (voice.scanPhaseB >= 1) voice.scanPhaseB -= Math.floor(voice.scanPhaseB);
+          const scanMorphA = scanRateA > 0 ? Math.sin(2 * Math.PI * voice.scanPhaseA) * 0.5 : 0;
+          const scanMorphB = scanRateB > 0 ? Math.sin(2 * Math.PI * voice.scanPhaseB) * 0.5 : 0;
           voice.driftPhase += (0.12 + voice.index % 5 * 0.031) / sr;
           if (voice.driftPhase >= 1) voice.driftPhase -= 1;
           const driftCents = Math.sin(2 * Math.PI * voice.driftPhase) * drift * 8;
@@ -596,8 +615,8 @@
             voice,
             0,
             engineA,
-            clamp((this.params.srcAMorph ?? 0) + modAMorph, 0, 1),
-            this.params.srcAScan ?? 0,
+            clamp((this.params.srcAMorph ?? 0) + modAMorph + scanMorphA, 0, 1),
+            scanRateA,
             detuneA,
             voiceHz
           ) * envA * levelA;
@@ -605,8 +624,8 @@
             voice,
             1,
             engineB,
-            clamp((this.params.srcBMorph ?? 0) + modBMorph, 0, 1),
-            this.params.srcBScan ?? 0,
+            clamp((this.params.srcBMorph ?? 0) + modBMorph + scanMorphB, 0, 1),
+            scanRateB,
             detuneB,
             voiceHz
           ) * envB * levelB;
@@ -647,9 +666,10 @@
             const coeff = 0.02 + noiseColor * 0.6;
             noise = white * coeff * noiseLevel * envA;
           }
-          const gainTarget = voice.gate ? 1 : 0;
-          voice.gain += (gainTarget - voice.gain) * gainCoeff;
           const bCanSound = levelB > 0;
+          const releasing = voice.envA.stage === 3 || bCanSound && voice.envB.stage === 3;
+          const gainTarget = voice.gate || releasing ? 1 : 0;
+          voice.gain += (gainTarget - voice.gain) * gainCoeff;
           if (!voice.gate && voice.gain < 1e-3 && voice.envA.stage === 0 && (!bCanSound || voice.envB.stage === 0)) {
             voice.active = false;
             continue;

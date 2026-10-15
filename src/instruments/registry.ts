@@ -4397,10 +4397,10 @@ const bell: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, _durationSec) {
+      noteOn(pitch, velocity, when, durationSec) {
         const freq = midiToFreq(pitch);
         const decay = Math.max(0.15, p.decay ?? 2.2);
-        const stopTime = when + decay * 1.4 + 0.3;
+        const gated = (p.gate ?? 0) > 0.5;
         const level = velocity * dbToLin(p.level ?? -10);
         const ratio = Math.max(1.5, Math.min(7.5, p.ratio ?? 3.46));
         // Velocity → effective ratio (audit-13 wave: harder strikes excite
@@ -4409,14 +4409,29 @@ const bell: InstrumentDefinition = {
         const strike = Math.max(0, Math.min(1, p.strike ?? 0.4));
         const tone = Math.max(400, Math.min(12000, p.tone ?? 6500));
         const attack = Math.max(0.001, p.attack ?? 0.002);
+        const sustain = Math.max(0, Math.min(1, p.sustain ?? 0.25));
+        const release = Math.max(0.01, Math.min(2, p.release ?? 0.18));
+        const hold = Math.max(Number.isFinite(durationSec) ? durationSec : 0.02, attack + 0.01);
+        const off = when + hold;
+        const stopTime = gated ? off + release * 3 + 0.1 : when + decay * 1.4 + 0.3;
 
         const amp = ctx.createGain();
-        // Bell body: instant strike, exponential ring, never fully zero while
-        // the partials decay.
         amp.gain.setValueAtTime(0.0001, when);
         amp.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + attack);
-        amp.gain.exponentialRampToValueAtTime(0.0002, when + decay * 0.85);
-        amp.gain.setTargetAtTime(0.0001, when + decay * 0.85, decay / 6);
+        if (gated) {
+          // GATED turns the bell into a playable voice: note length holds the
+          // post-decay sustain, then RELEASE fades it smoothly at note-off.
+          const decayEnd = Math.min(off, when + attack + decay * 0.85);
+          if (decayEnd > when + attack + 0.001) {
+            amp.gain.exponentialRampToValueAtTime(Math.max(level * sustain, 0.0002), decayEnd);
+          }
+          amp.gain.setTargetAtTime(0.0001, off, release / 4);
+        } else {
+          // ONE SHOT keeps the original bell ring regardless of piano-roll
+          // duration, matching a struck sample/instrument.
+          amp.gain.exponentialRampToValueAtTime(0.0002, when + decay * 0.85);
+          amp.gain.setTargetAtTime(0.0001, when + decay * 0.85, decay / 6);
+        }
 
         // Strike transient: filtered noise thump at the contact.
         let strikeSrc: AudioBufferSourceNode | null = null;
@@ -4485,12 +4500,22 @@ const bell: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
+            amp.gain.setTargetAtTime(0.0001, t, gated ? release / 4 : 0.002);
+            const stopAfter = gated ? release * 3 + 0.05 : 0.05;
+            for (const source of [carrier, modulator, shimmerOsc]) {
+              try {
+                source.stop(t + stopAfter);
+              } catch {
+                /* already stopped */
+              }
+            }
           },
           (now) => {
             amp.gain.cancelScheduledValues(now);
             amp.gain.setTargetAtTime(0.0001, now, 0.01);
           },
         );
+        (voice as Voice & { gated?: boolean }).gated = gated;
         const clock = ctx.createOscillator();
         clock.type = "sine";
         clock.frequency.value = 440;
@@ -4520,7 +4545,9 @@ const bell: InstrumentDefinition = {
         };
       },
       noteOff(pitch, when) {
-        for (const v of findByPitch(pitch)) v.stop(when);
+        for (const voice of findByPitch(pitch)) {
+          if ((voice as Voice & { gated?: boolean }).gated) voice.stop(when);
+        }
       },
       setParameter(id, value) {
         if (Number.isFinite(value)) p[id] = value;
@@ -5995,8 +6022,8 @@ const vocalchop: InstrumentDefinition = {
 // perc/cowbell); TONE/SNAP/BODY are normalized macros re-interpreted per
 // model (documented inline), so one knob row drives all seven voices.
 // Notes transpose every model (2^(pitch/12)), DECAY scales ring time and
-// DRIVE runs a shared tanh shaper after the voice. One-shot: gates are
-// ignored, voices ring out and clean up after themselves.
+// DRIVE runs a shared tanh shaper after the voice. ONE SHOT preserves the
+// natural ring; GATED scales the body from piano-roll length and fades at note-off.
 
 const HAT_RATIOS = [2, 3, 4.16, 5.43, 6.79, 8.21];
 
@@ -6015,22 +6042,33 @@ const drumsynth: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, _durationSec, _slideFrom) {
+      noteOn(pitch, velocity, when, durationSec, _slideFrom) {
         const type = Math.max(0, Math.min(12, Math.round(p.type ?? 0)));
         const tune = Math.max(-12, Math.min(12, p.tune ?? 0));
         // All models transpose from C4 — po = pitch offset in semitones
         const po = Math.pow(2, (pitch - 60 + tune) / 12);
         const tone = Math.max(0, Math.min(1, p.tone ?? 0.4));
-        const decay = Math.max(0.05, p.decay ?? 0.4);
+        const naturalDecay = Math.max(0.05, p.decay ?? 0.4);
+        const gated = (p.gate ?? 0) > 0.5;
+        const hold = Math.max(Number.isFinite(durationSec) ? durationSec : 0.02, 0.02);
+        const off = when + hold;
+        const release = Math.max(0.005, Math.min(0.5, p.release ?? 0.04));
+        // In GATED mode a longer note lengthens the per-model decay body;
+        // note-off then applies the separate RELEASE fade.
+        const decay = gated ? Math.max(naturalDecay, hold * 2) : naturalDecay;
         const snap = Math.max(0, Math.min(1, p.snap ?? 0.4));
         const body = Math.max(0, Math.min(1, p.body ?? 0.6));
         const drive = Math.max(0, Math.min(1, p.drive ?? 0.2));
         const level = velocity * dbToLin(p.level ?? -6);
-        const stopTime = when + decay * 2 + 0.4;
+        const stopTime = gated ? off + release * 3 + 0.15 : when + decay * 2 + 0.4;
 
         // Shared voice chain: voice nodes -> noteGain -> [shaper] -> level -> output
         const noteGain = ctx.createGain();
         noteGain.gain.value = 1;
+        if (gated) {
+          noteGain.gain.setValueAtTime(1, when);
+          noteGain.gain.setTargetAtTime(0.0001, off, release / 4);
+        }
         const levelGain = ctx.createGain();
         levelGain.gain.value = level;
         let tail: AudioNode = noteGain;
@@ -6362,23 +6400,27 @@ const drumsynth: InstrumentDefinition = {
           ringTime = decay * 0.5 + 0.05;
         }
 
+        // Keep the voice manager live through the earlier of the natural tail
+        // and the scheduled gate release, then let the clock reclaim its nodes.
+        if (gated) ringTime = Math.min(ringTime, hold + release * 3 + 0.1);
         const voice = register(
           pitch,
           when + ringTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             noteGain.gain.cancelScheduledValues(t);
-            noteGain.gain.setTargetAtTime(0.0001, t, 0.008);
+            noteGain.gain.setTargetAtTime(0.0001, t, gated ? release / 4 : 0.008);
+            const stopAfter = gated ? release * 3 + 0.05 : 0.05;
             for (const osc of oscs) {
               try {
-                osc.stop(t + 0.05);
+                osc.stop(t + stopAfter);
               } catch {
                 /* already stopped */
               }
             }
             for (const src of srcs) {
               try {
-                src.stop(t + 0.05);
+                src.stop(t + stopAfter);
               } catch {
                 /* already stopped */
               }
@@ -6404,11 +6446,12 @@ const drumsynth: InstrumentDefinition = {
             }
           },
         );
+        (voice as Voice & { gated?: boolean }).gated = gated;
         // Hat choke (classic drum machine behaviour): a closed hat cuts a
         // ringing open hat dead, and consecutive open hats choke each other.
         // Closed hats don't register — nothing rings long enough to matter.
         if (type === 2 || type === 3) {
-          openHatVoice?.stop(when);
+          openHatVoice?.silence(when);
           openHatVoice = null;
           if (type === 3) openHatVoice = voice;
         }
@@ -6460,7 +6503,9 @@ const drumsynth: InstrumentDefinition = {
         p[id] = value;
       },
       noteOff(pitch, when) {
-        for (const v of findByPitch(pitch)) v.stop(when);
+        for (const voice of findByPitch(pitch)) {
+          if ((voice as Voice & { gated?: boolean }).gated) voice.stop(when);
+        }
       },
       panic() {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);

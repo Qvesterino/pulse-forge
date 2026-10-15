@@ -97,6 +97,21 @@ function goertzelAt(signal: Float32Array, hz: number): number {
   return Math.sqrt(s1 * s1 + s2 * s2 - coeff * s1 * s2) / n;
 }
 
+function goertzelAtRate(signal: Float32Array, hz: number, sampleRate: number, fromFrac = 0.6): number {
+  const from = Math.floor(signal.length * fromFrac);
+  const n = signal.length - from;
+  const coeff = 2 * Math.cos((2 * Math.PI * hz) / sampleRate);
+  let s0 = 0;
+  let s1 = 0;
+  let s2 = 0;
+  for (let i = from; i < signal.length; i++) {
+    s0 = signal[i]! + coeff * s1 - s2;
+    s2 = s1;
+    s1 = s0;
+  }
+  return Math.sqrt(Math.max(0, s1 * s1 + s2 * s2 - coeff * s1 * s2)) / Math.max(1, n);
+}
+
 function sineAt(hz: number, amp = 0.5): (i: number) => number {
   return (i) => amp * Math.sin((2 * Math.PI * hz * i) / SR);
 }
@@ -121,6 +136,48 @@ function renderProcessorStereo(
     outR.set(out[1]!.subarray(0, len), offset);
   }
   return { L: outL, R: outR };
+}
+
+/** Render a stereo corpus source, optionally at another host sample rate. */
+function renderProcessorCorpus(
+  cls: any,
+  params: Record<string, Float32Array>,
+  seconds: number,
+  sampleAt: (i: number, sampleRate: number) => [number, number],
+  sampleRate = SR,
+): { L: Float32Array; R: Float32Array; proc: any } {
+  const host = globalThis as unknown as { sampleRate: number };
+  const previousRate = host.sampleRate;
+  host.sampleRate = sampleRate;
+  try {
+    const proc = new cls();
+    const total = Math.ceil(seconds * sampleRate);
+    const outL = new Float32Array(total);
+    const outR = new Float32Array(total);
+    for (let offset = 0; offset < total; offset += BLOCK) {
+      const len = Math.min(BLOCK, total - offset);
+      const inputL = new Float32Array(len);
+      const inputR = new Float32Array(len);
+      for (let i = 0; i < len; i++) {
+        const frame = sampleAt(offset + i, sampleRate);
+        inputL[i] = frame[0];
+        inputR[i] = frame[1];
+      }
+      const out = [new Float32Array(len), new Float32Array(len)];
+      proc.process([[inputL, inputR]], [out], params);
+      outL.set(out[0]!.subarray(0, len), offset);
+      outR.set(out[1]!.subarray(0, len), offset);
+    }
+    return { L: outL, R: outR, proc };
+  } finally {
+    host.sampleRate = previousRate;
+  }
+}
+
+function peakOf(signal: Float32Array): number {
+  let peak = 0;
+  for (const sample of signal) peak = Math.max(peak, Math.abs(sample));
+  return peak;
 }
 
 /** Render with per-block automated focusHz and/or hintHz (a-rate style values per sample). */
@@ -425,6 +482,102 @@ describe("GROW wave-2 DSP (YIN tracker, phase coherence, deficit, CHARACTER)", (
     // Both curves still generate the fundamental's 2nd (audible effect).
     expect(goertzelAt(sat, 110)).toBeGreaterThan(0.05);
     expect(goertzelAt(fold, 110)).toBeGreaterThan(0.05);
+  });
+});
+
+describe("GROW tracker corpus and sample-rate safety", () => {
+  const isolated = (cls: any) =>
+    paramsOf(cls, { drive: 0.9, mix: 1, subAnchor: 0, focusHz: 90, harmonics: 0, range: 1, retrig: 0 });
+
+  it("does not invent a pitch from silence or deterministic noise", () => {
+    const cls = registered.get("bass-harmonic-processor");
+    const silence = renderProcessorCorpus(cls, isolated(cls), 0.8, () => [0, 0]);
+    const noise = renderProcessorCorpus(cls, isolated(cls), 0.8, (i) => {
+      const bits = (Math.imul(i + 1, 1664525) + 1013904223) >>> 0;
+      const sample = ((bits / 0xffffffff) * 2 - 1) * 0.5;
+      return [sample, sample];
+    });
+    for (const result of [silence, noise]) {
+      expect(peakOf(result.L)).toBeLessThan(1e-5);
+      expect(result.proc.port.posted.at(-1)!.f0).toBe(0);
+    }
+  });
+
+  it("rejects perfectly out-of-phase stereo bass instead of tracking the side signal", () => {
+    const cls = registered.get("bass-harmonic-processor");
+    const result = renderProcessorCorpus(cls, isolated(cls), 0.8, (i, rate) => {
+      const sample = 0.5 * Math.sin((2 * Math.PI * 55 * i) / rate);
+      return [sample, -sample];
+    });
+    expect(peakOf(result.L)).toBeLessThan(1e-5);
+    expect(peakOf(result.R)).toBeLessThan(1e-5);
+    expect(result.proc.port.posted.at(-1)!.f0).toBe(0);
+  });
+
+  it("settles back on the 808 root after a short kick transient", () => {
+    const cls = registered.get("bass-harmonic-processor");
+    const result = renderProcessorCorpus(cls, isolated(cls), 0.9, (i, rate) => {
+      const t = i / rate;
+      const bass = 0.45 * Math.sin(2 * Math.PI * 55 * t);
+      const kick = t < 0.12 ? 0.65 * Math.exp(-t / 0.025) * Math.sin(2 * Math.PI * 95 * t) : 0;
+      return [bass + kick, bass + kick];
+    });
+    const settled = result.proc.port.posted.at(-1)!;
+    expect(settled.f0).toBeGreaterThan(54);
+    expect(settled.f0).toBeLessThan(56);
+  });
+
+  it("releases a stale root and generated harmonics after the bass stops", () => {
+    const cls = registered.get("bass-harmonic-processor");
+    const result = renderProcessorCorpus(cls, isolated(cls), 0.8, (i, rate) => {
+      const t = i / rate;
+      const sample = t < 0.25 ? 0.5 * Math.sin((2 * Math.PI * 55 * i) / rate) : 0;
+      return [sample, sample];
+    });
+    const settled = result.proc.port.posted.at(-1)!;
+    const from = Math.floor(0.65 * SR);
+    const tail = result.L.subarray(from);
+    const tailRms = Math.sqrt(tail.reduce((sum, sample) => sum + sample * sample, 0) / tail.length);
+    expect(settled.f0).toBe(0);
+    expect(settled.clarity).toBe(0);
+    expect(tailRms).toBeLessThan(0.002);
+  });
+
+  it("fades partials before Nyquist at an 8 kHz host sample rate", () => {
+    const cls = registered.get("bass-harmonic-processor");
+    const result = renderProcessorCorpus(
+      cls,
+      paramsOf(cls, { drive: 0.9, mix: 1, subAnchor: 0, focusHz: 220, range: 4, hintHz: 440 }),
+      0.75,
+      (i, rate) => {
+        const sample = 0.5 * Math.sin((2 * Math.PI * 440 * i) / rate);
+        return [sample, sample];
+      },
+      8000,
+    );
+    for (const sample of result.L) expect(Number.isFinite(sample)).toBe(true);
+    expect(result.proc.port.posted.at(-1)!.f0).toBeCloseTo(440, 0);
+    // The 10th partial (4.4 kHz) would fold to 3.6 kHz at 8 kHz. The
+    // 0.42–0.48× Nyquist fade must remove that aliased component.
+    expect(goertzelAtRate(result.L, 3600, 8000)).toBeLessThan(0.001);
+  });
+
+  it.each([44100, 48000, 96000])("tracks 55 Hz safely at %i Hz", (rate) => {
+    const cls = registered.get("bass-harmonic-processor");
+    const result = renderProcessorCorpus(
+      cls,
+      isolated(cls),
+      0.65,
+      (i, sampleRate) => {
+        const sample = 0.5 * Math.sin((2 * Math.PI * 55 * i) / sampleRate);
+        return [sample, sample];
+      },
+      rate,
+    );
+    for (const sample of result.L) expect(Number.isFinite(sample)).toBe(true);
+    const tracked = result.proc.port.posted.at(-1)!.f0;
+    expect(tracked).toBeGreaterThan(54);
+    expect(tracked).toBeLessThan(56);
   });
 });
 

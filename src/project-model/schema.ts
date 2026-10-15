@@ -53,7 +53,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 31;
+export const SCHEMA_VERSION = 32;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -2888,7 +2888,17 @@ function normalizePatternsDomain(s: NormalizeState): void {
           if (rawLocks !== undefined && isObject(rawLocks)) {
             const cleanedLocks: NonNullable<StepMeta["locks"]> = {};
             let locksChanged = false;
-            const ALLOWED_LOCKS = new Set(["pitch", "gain", "pan", "cutoff", "sampleStart", "length"]);
+            const ALLOWED_LOCKS = new Set([
+              "pitch",
+              "gain",
+              "pan",
+              "cutoff",
+              "sampleStart",
+              "length",
+              "fadeIn",
+              "fadeOut",
+              "ratio",
+            ]);
             const def = {
               pitch: { min: -24, max: 24 },
               gain: { min: 0, max: 2 },
@@ -2896,6 +2906,9 @@ function normalizePatternsDomain(s: NormalizeState): void {
               cutoff: { min: 80, max: 16000 },
               sampleStart: { min: 0, max: 1 },
               length: { min: 0.1, max: 2 },
+              fadeIn: { min: 0, max: 1 },
+              fadeOut: { min: 0, max: 1 },
+              ratio: { min: 1, max: 7 },
             } as const;
             for (const [k, v] of Object.entries(rawLocks)) {
               if (!ALLOWED_LOCKS.has(k)) {
@@ -3116,6 +3129,9 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // v31 adds the optional per-scene `modulators` (lfoId → { steps?, seed? }:
   // the step / random-S&H modulation pattern a scene plays; absent fields
   // keep the modulator's own pattern).
+  // v32 adds optional per-step sample fade-in / fade-out locks and preserves
+  // the existing ratio p-lock during normalization. Older projects remain
+  // unchanged and continue using the pad's fade settings when no fade is set.
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

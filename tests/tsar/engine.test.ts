@@ -166,6 +166,47 @@ describe("TsarProcessor — voice basics", () => {
     expect(processor.activeVoiceCount).toBe(0);
   });
 
+  it("keeps the source envelope audible for its configured release time", () => {
+    const tailLevel = (release: number) => {
+      const processor = makeProcessor({ srcASus: 1, srcARel: release });
+      processor.postEvent({ type: "noteOn", pitch: 60, velocity: 1, when: 0.01 });
+      processor.postEvent({ type: "noteOff", pitch: 60, when: 0.2 });
+      const { left } = render(processor, 2);
+      return rms(left.subarray(Math.ceil(0.25 * SR), Math.ceil(0.8 * SR)));
+    };
+
+    const short = tailLevel(0.03);
+    const long = tailLevel(0.4);
+    expect(short).toBeGreaterThan(0);
+    expect(long).toBeGreaterThan(short * 4);
+  });
+
+  it("normalizes legacy zero and out-of-range attack values to the logarithmic control bounds", () => {
+    const renderAttack = (setAttack: (processor: TsarProcessor) => void) => {
+      const processor = makeProcessor({ srcASus: 1 });
+      setAttack(processor);
+      processor.postEvent({ type: "noteOn", pitch: 60, velocity: 1, when: 0 });
+      return render(processor, 0.3).left;
+    };
+
+    const atMinimum = renderAttack((processor) => processor.setParam("srcAAtk", 0.001));
+    const legacyZero = renderAttack((processor) => processor.setParam("srcAAtk", 0));
+    const aboveMaximum = renderAttack((processor) => processor.setParam("srcAAtk", 8));
+    const atMaximum = renderAttack((processor) => processor.setParam("srcAAtk", 4));
+    expect(legacyZero).toEqual(atMinimum);
+    expect(aboveMaximum).toEqual(atMaximum);
+  });
+
+  it("keeps the logarithmic GLIDE control's minimum identical to the legacy OFF value", () => {
+    const renderAtGlide = (glide: number) => {
+      const processor = makeProcessor({ glide });
+      processor.postEvent({ type: "noteOn", pitch: 69, velocity: 1, when: 0 });
+      return render(processor, 0.2).left;
+    };
+
+    expect(renderAtGlide(0.001)).toEqual(renderAtGlide(0));
+  });
+
   it("plays at the note's pitch (zero-crossing check at A4)", () => {
     const processor = makeProcessor();
     processor.postEvent({ type: "noteOn", pitch: 69, velocity: 1, when: 0 });
@@ -226,6 +267,34 @@ describe("TsarProcessor — sources and morph", () => {
     expect(measureBrightness(1), "7-harmonic frame must be brighter than the 1-harmonic frame").toBeGreaterThan(
       measureBrightness(0) * 1.5,
     );
+  });
+
+  it("source SCAN sweeps wavetable frames for both slots", () => {
+    const renderScan = (slot: 0 | 1, scan: number) => {
+      const processor =
+        slot === 0
+          ? makeProcessor({ srcAScan: scan })
+          : makeProcessor({ srcAEngine: 1, srcALevel: 0, srcBEngine: 1, srcBLevel: 1, srcBScan: scan, morph: 1 });
+      if (slot === 1) {
+        const table = sineTable(4);
+        processor.setWavetable(1, table.frames, table.frameCount);
+      }
+      processor.postEvent({ type: "noteOn", pitch: 60, velocity: 1, when: 0 });
+      return render(processor, 0.8).left;
+    };
+    const relativeDifference = (a: Float32Array, b: Float32Array) => {
+      let diff = 0;
+      let energy = 0;
+      for (let i = Math.floor(0.1 * SR); i < a.length; i++) {
+        diff += (a[i]! - b[i]!) ** 2;
+        energy += a[i]! * a[i]!;
+      }
+      return Math.sqrt(diff / energy);
+    };
+
+    for (const slot of [0, 1] as const) {
+      expect(relativeDifference(renderScan(slot, 0), renderScan(slot, 8)), `slot ${slot}`).toBeGreaterThan(0.05);
+    }
   });
 
   it("Source B is silent at level 0 and audible at level 1 (dual-source)", () => {

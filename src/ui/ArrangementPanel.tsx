@@ -893,6 +893,21 @@ export function ArrangementPanel() {
     };
   }, []);
 
+  const cancelRecStart = () => {
+    if (recState !== "starting") return;
+    const recorder = recRef.current;
+    recStartAttemptRef.current++;
+    recStartPendingRef.current = false;
+    if (recorder) {
+      if (recRef.current === recorder) recRef.current = null;
+      recorder.onError = null;
+      recorder.onPunchOut = null;
+      void recorder.cancel();
+    }
+    setRecState("idle");
+    setRecError(null);
+  };
+
   const startRec = async () => {
     if (!armedTrackId || recState !== "idle" || recRef.current || recStartPendingRef.current) return;
     recStartPendingRef.current = true;
@@ -3825,6 +3840,16 @@ export function ArrangementPanel() {
                 <button type="button" className="btn btn-small btn-rec btn-rec-stop" onClick={() => void stopRec()}>
                   ■ STOP {recSeconds.toFixed(0)}s
                 </button>
+              ) : recState === "starting" ? (
+                <button
+                  type="button"
+                  className="btn btn-small btn-rec btn-rec-stop"
+                  aria-label="Cancel audio input startup"
+                  title="Cancel opening the selected audio input"
+                  onClick={cancelRecStart}
+                >
+                  × CANCEL
+                </button>
               ) : (
                 <button
                   type="button"
@@ -3833,7 +3858,7 @@ export function ArrangementPanel() {
                   disabled={!armedTrackId || recState !== "idle" || (punchCapture && services.transport.playing)}
                   onClick={() => void startRec()}
                 >
-                  {recState === "starting" ? "◌ INPUT…" : "● REC"}
+                  ● REC
                 </button>
               )}
               {recState === "starting" && <span className="arr-rec-saving">opening audio input…</span>}

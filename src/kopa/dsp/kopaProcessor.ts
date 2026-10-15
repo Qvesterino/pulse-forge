@@ -171,6 +171,9 @@ export class KopaProcessor {
   }
 
   private noteOn(pitch: number, velocity: number): void {
+    const noteVelocity = Number.isFinite(velocity) ? clamp(velocity, 0, 1) : 1;
+    // A zero-velocity note-on is silent and must not occupy or steal a voice.
+    if (noteVelocity === 0) return;
     let voice = this.voices.find((candidate) => !candidate.active);
     if (!voice) {
       // Oldest-steal: the lowest note-order age is the longest-running voice.
@@ -187,9 +190,9 @@ export class KopaProcessor {
     voice.tailPhase = 0;
     voice.subPhase = 0;
     // Keep velocity separate from envelopes so it scales every layer exactly
-    // once. A zero/invalid velocity keeps the engine's historical default of
-    // one; the event driver uses noteOff for note termination.
-    voice.velocity = clamp(Number.isFinite(velocity) && velocity > 0 ? velocity : 1, 0, 1);
+    // once. MIDI note-on velocity 0 is valid silence; only a missing/invalid
+    // value falls back to the instrument's full-velocity default.
+    voice.velocity = noteVelocity;
     voice.clickEnv = 1;
     voice.bodyEnv = 1;
     voice.tailEnv = 1;

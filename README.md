@@ -663,6 +663,7 @@ A few clear directions visible in those documents, but **not commitments**:
 - **Scene Mode as a first-class identity** — wall-clock composition, intensity as the primary editable signal, sample-exact tempo seams (largely landed in 2026-09 per `SCENE-MODE-ROADMAP.md`).
 - **Vocal chops, spectral pads, log drums, FM** — recent instrument additions already shipped; further sound-design work tracked in `INSTRUMENT-ROADMAP.md`.
 - **Full-DAW expansion** — accepted in ADR 0014 and tracked in `docs/ROADMAP-FULL-DAW.md`; this includes real-instrument recording, multitrack/takes, native Studio audio I/O, supported plug-ins and quality-gated AI production. These are not all shipped today.
+- **Sound quality program** — shared quality gates and delivery order for TSAR, KOPA, KOREŇ, the sound library and AI sound design are tracked in [`docs/SOUND-QUALITY-ROADMAP.md`](docs/SOUND-QUALITY-ROADMAP.md), alongside their detailed area roadmaps.
 
 ---
 

@@ -123,7 +123,7 @@ async function renderThrough(type: EffectType, paramsOverride: Record<string, nu
  * preference score: each audition must produce finite, audible, headroom-
  * controlled audio without a sustained full-scale run.
  */
-export async function auditFactoryPresetAudio(bank: SampleBank): Promise<CheckResult> {
+export async function auditFactoryPresetAudio(bank: SampleBank, instrumentFilter?: string): Promise<CheckResult> {
   const failures: string[] = [];
   const loudnessDrift: string[] = [];
   let rendered = 0;
@@ -131,7 +131,10 @@ export async function auditFactoryPresetAudio(bank: SampleBank): Promise<CheckRe
   // The bank comes from the lazy loader — the audit warms it first so pack
   // presets (piano + VSCO) are auditioned exactly as before the seam.
   await warmFactoryPresets();
-  const FACTORY_PRESETS = factoryPresets();
+  const allPresets = factoryPresets();
+  const FACTORY_PRESETS = instrumentFilter
+    ? allPresets.filter((preset) => preset.instrument === instrumentFilter)
+    : allPresets;
   for (const preset of FACTORY_PRESETS) {
     const track: InstrumentTrack = {
       id: `factory-preview-${preset.id}`,
@@ -204,8 +207,8 @@ export async function auditFactoryPresetAudio(bank: SampleBank): Promise<CheckRe
     ok: failures.length === 0 && loudnessDrift.length === 0 && rendered === FACTORY_PRESETS.length,
     message:
       failures.length === 0 && loudnessDrift.length === 0
-        ? `passed=${rendered}/${FACTORY_PRESETS.length}`
-        : `passed=${rendered}/${FACTORY_PRESETS.length}` +
+        ? `passed=${rendered}/${FACTORY_PRESETS.length}${instrumentFilter ? ` instrument=${instrumentFilter}` : ""}`
+        : `passed=${rendered}/${FACTORY_PRESETS.length}${instrumentFilter ? ` instrument=${instrumentFilter}` : ""}` +
           `${failures.length ? ` failures=${failures.slice(0, 8).join(" | ")}` : ""}` +
           `${loudnessDrift.length ? ` drift=${loudnessDrift.slice(0, 6).join(" | ")}` : ""}`,
   };

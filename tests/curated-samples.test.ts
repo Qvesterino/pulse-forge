@@ -93,6 +93,29 @@ describe("loadCuratedLayer — same-id override with synthesized fallback", () =
     expect(stored.getChannelData(0)[0]).toBeCloseTo(expected, 6);
   });
 
+  it("loads the base asset when a filtered audit requests one of its round-robin variants", async () => {
+    const bank = new SampleBank();
+    const baseId = "factory.snare.main";
+    const requestedUrls: string[] = [];
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await loadCuratedLayer(bank, {
+        ids: [`${baseId}.rr2`],
+        fetchImpl: (async (input: RequestInfo | URL) => {
+          requestedUrls.push(String(input));
+          return okResponse(new ArrayBuffer(16));
+        }) as typeof fetch,
+        decode: decodeOk,
+      });
+    } finally {
+      warning.mockRestore();
+    }
+
+    expect(requestedUrls).toHaveLength(1);
+    expect(requestedUrls[0]).toContain("factory.snare.main.wav");
+    expect(bank.has(baseId)).toBe(true);
+  });
+
   it("ensureCuratedLayer memoizes per bank — a second await does not refetch", async () => {
     const bank = new SampleBank();
     const fetchImpl = makeFetch({ [CURATED_SAMPLES[0].file]: "ok" });
@@ -145,12 +168,28 @@ describe("loadCuratedLayer — same-id override with synthesized fallback", () =
 });
 
 describe("curated coverage — full-kit contract", () => {
-  it("CURATED_SAMPLES covers EVERY factory asset exactly once (full-kit contract)", async () => {
+  it("CURATED_SAMPLES covers every WAV-backed asset and leaves only intentional synth-only voices", async () => {
     const { FACTORY_ASSETS } = await import("../src/sample-library/manifest");
     const ids = CURATED_SAMPLES.map((sample) => sample.id);
+    const synthOnlyIds = [
+      "factory.brush.swirl",
+      "factory.brush.tip",
+      "factory.field.fridge",
+      "factory.field.gravel",
+      "factory.field.mains",
+      "factory.field.match",
+      "factory.field.paper",
+      "factory.field.roomtone",
+      "factory.field.rustle",
+      "factory.field.street",
+      "factory.field.switch",
+      "factory.ride.ding",
+      "factory.snare.ghost",
+    ];
     expect(new Set(ids).size).toBe(ids.length);
     const assetIds = FACTORY_ASSETS.map((asset) => asset.id).sort();
-    expect([...ids].sort()).toEqual(assetIds);
+    expect(synthOnlyIds.every((id) => assetIds.includes(id))).toBe(true);
+    expect([...ids].sort()).toEqual(assetIds.filter((id) => !synthOnlyIds.includes(id)).sort());
   });
 
   it("every curated file exists on disk", async () => {

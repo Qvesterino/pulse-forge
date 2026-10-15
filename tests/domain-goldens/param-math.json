@@ -288,6 +288,9 @@
             "strike": 0.4,
             "tone": 6500,
             "attack": 0.002,
+            "gate": 0,
+            "sustain": 0.25,
+            "release": 0.18,
             "level": -10
           }
         },
@@ -487,9 +490,11 @@
           "kind": "drumsynth",
           "defaults": {
             "type": 0,
+            "gate": 0,
             "tune": 0,
             "tone": 0.4,
             "decay": 0.4,
+            "release": 0.04,
             "snap": 0.4,
             "body": 0.6,
             "drive": 0.2,
@@ -540,7 +545,7 @@
             "subOct": -1,
             "noise": 0,
             "noiseColor": 0.5,
-            "glide": 0,
+            "glide": 0.001,
             "velocity": 0.7,
             "drift": 0.15,
             "mod1Src": -1,

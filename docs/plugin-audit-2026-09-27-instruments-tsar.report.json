@@ -1,0 +1,19 @@
+{
+  "effects": [],
+  "instruments": [
+    {
+      "kind": "tsar",
+      "name": "TSAR",
+      "defaultAudible": true,
+      "defaultPeak": 0.33708029985427856,
+      "unstableParams": [],
+      "deadParams": [],
+      "wiredParams": 69,
+      "totalParams": 69,
+      "transientWired": []
+    }
+  ],
+  "interactions": null,
+  "startedAt": "2026-10-15T14:22:39.176Z",
+  "finishedAt": "2026-10-15T14:34:53.727Z"
+}
