@@ -240,3 +240,96 @@ describe("APEX true-peak ceiling (ceilingMode, sinc detector)", () => {
     for (const v of hot.lastL) expect(Number.isFinite(v)).toBe(true);
   });
 });
+
+describe("ZENIT limiter stage — the worklet is TRUE-PEAK aware (post-correction proof)", () => {
+  /** Independent 8× sinc true-peak estimator (same construction as the APEKS pin). */
+  function sincTP8(data: Float32Array): number {
+    const L = 8;
+    const TAPS = 32;
+    const sinc = (x: number) => (Math.abs(x) < 1e-9 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x));
+    const proto = new Float64Array(TAPS);
+    let sum = 0;
+    for (let m = 0; m < TAPS; m++) {
+      const c = (m - (TAPS - 1) / 2) / L;
+      const w = 0.42 - 0.5 * Math.cos((2 * Math.PI * m) / (TAPS - 1)) + 0.08 * Math.cos((4 * Math.PI * m) / (TAPS - 1));
+      proto[m] = sinc(c) * w;
+      sum += proto[m];
+    }
+    for (let m = 0; m < TAPS; m++) proto[m] /= sum;
+    const phases: Float64Array[] = [];
+    for (let p = 0; p < L; p++) {
+      const taps: number[] = [];
+      let ps = 0;
+      for (let m = p; m < TAPS; m += L) {
+        taps.push(proto[m]);
+        ps += proto[m];
+      }
+      for (let i = 0; i < taps.length; i++) taps[i] /= ps;
+      phases.push(Float64Array.from(taps));
+    }
+    const hist = new Float32Array(TAPS);
+    let peak = 0;
+    for (let i = 0; i < data.length; i++) {
+      for (let j = TAPS - 1; j > 0; j--) hist[j] = hist[j - 1];
+      hist[0] = data[i];
+      for (const taps of phases) {
+        let acc = 0;
+        for (let k = 0; k < taps.length; k++) acc += taps[k] * hist[k];
+        peak = Math.max(peak, Math.abs(acc));
+      }
+    }
+    return peak;
+  }
+
+  /** ISP-rich flat-topped clipped noise (same class as the APEKS discriminator). */
+  const ispNoise = (i: number): number => {
+    const n = Math.max(-1, Math.min(1, ((Math.sin(i * 12.9898) * 43758.5453) % 1) * 2.2));
+    return n * 1.2;
+  };
+
+  it("the look-ahead limiter holds the RECONSTRUCTED ceiling on ISP-rich input (post-TP correction works)", async () => {
+    // Import the REAL limiter processor (registers "limiter-processor").
+    (globalThis as unknown as { sampleRate: number }).sampleRate = 48000;
+    (globalThis as unknown as { AudioWorkletProcessor: unknown }).AudioWorkletProcessor = class {
+      port = { postMessage() {}, onmessage: null };
+    };
+    const registered = new Map<string, any>();
+    (globalThis as unknown as { registerProcessor: unknown }).registerProcessor = (n: string, c: new () => any) =>
+      registered.set(n, c);
+    await import("../src/audio-worklets/limiter-processor.js");
+    const cls = registered.get("limiter-processor");
+
+    const proc = new cls();
+    const descriptors = cls.parameterDescriptors as { name: string; defaultValue: number }[];
+    const params: Record<string, Float32Array> = {};
+    for (const d of descriptors) {
+      // Ceiling -6, threshold -6, 2× oversample for the TP path, everything else default.
+      const override =
+        d.name === "ceiling" ? -6 : d.name === "threshold" ? -6 : d.name === "oversample" ? 2 : d.defaultValue;
+      params[d.name] = Float32Array.from([override]);
+    }
+
+    // Run enough blocks for lookahead (5 ms) + post-delay (32 samples) + settle.
+    const tail: Float32Array[] = [];
+    for (let b = 0; b < 24; b++) {
+      const inp = [
+        Float32Array.from({ length: BLOCK }, (_, i) => ispNoise(b * BLOCK + i)),
+        Float32Array.from({ length: BLOCK }, (_, i) => ispNoise(b * BLOCK + i)),
+      ];
+      const out = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+      proc.process([inp], [out], params);
+      if (b >= 12) tail.push(out[0]!); // settled tail only
+    }
+    const settled = new Float32Array(tail.length * BLOCK);
+    for (let b = 0; b < tail.length; b++) settled.set(tail[b]!, b * BLOCK);
+
+    const ceilLin = Math.pow(10, -6 / 20);
+    const samplePeak = Math.max(...Array.from(settled).map(Math.abs));
+    const truePeak = sincTP8(settled);
+    // The limiter's OWN post-TP correction (0.1 dB margin) must hold:
+    // reconstructed peak within ceiling + margin + estimator tolerance.
+    expect(samplePeak).toBeLessThanOrEqual(ceilLin * 1.02);
+    expect(truePeak).toBeLessThanOrEqual(ceilLin * 1.15); // 0.1 dB margin + tolerance
+    expect(truePeak).toBeGreaterThan(ceilLin * 0.3); // it processed, not silenced
+  });
+});
