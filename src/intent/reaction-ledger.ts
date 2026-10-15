@@ -187,9 +187,7 @@ export function sanitizeReactionPack(value: unknown): ReactionPackV1 | null {
   if (value == null || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
   if (!Array.isArray(raw.entries)) return null;
-  const entries = raw.entries
-    .map(sanitizeReactionEntry)
-    .filter((entry): entry is ReactionEntry => entry !== null);
+  const entries = raw.entries.map(sanitizeReactionEntry).filter((entry): entry is ReactionEntry => entry !== null);
   const exportedAt = Number(raw.exportedAt);
   return {
     schemaVersion: REACTION_LEDGER_VERSION,
@@ -200,7 +198,9 @@ export function sanitizeReactionPack(value: unknown): ReactionPackV1 | null {
 
 /** Stable hash of a compact projection — reused for before/after pairing. */
 export function hashReactionState(value: unknown): string {
-  return hashString(JSON.stringify(value) ?? "").toString(16).padStart(8, "0");
+  return hashString(JSON.stringify(value) ?? "")
+    .toString(16)
+    .padStart(8, "0");
 }
 
 /**

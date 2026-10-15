@@ -512,9 +512,7 @@ export async function openProject(
   //   transport moved → the proposal was heard and kept
   // Everything is opt-out via `pf:reaction-ledger`, and every callback is a
   // no-op while the flag is off — a disabled ledger must cost zero cycles.
-  const reactionLedger = isReactionLedgerEnabled()
-    ? new ReactionLedger({ storage: reactionStorage })
-    : null;
+  const reactionLedger = isReactionLedgerEnabled() ? new ReactionLedger({ storage: reactionStorage }) : null;
   if (reactionLedger) {
     void reactionLedger.hydrate();
     setActiveReactionLedger(reactionLedger);
@@ -525,6 +523,11 @@ export async function openProject(
       const touched = trackIdsChangedBetween(previousDoc, doc);
       if (touched.length > 0) reactionLedger.noteUserEdit(touched);
     };
+    // NOTE: the early "the transport moved on, so it was kept" settle is NOT
+    // wired here. Inside `openProject` the transport only exists on the
+    // returned Services object, so polling it would mean restructuring the
+    // boot path - out of scope for F1. The 90 s window still resolves every
+    // proposal, so no signal is lost, only settled later.
   }
   collab?.connect();
 

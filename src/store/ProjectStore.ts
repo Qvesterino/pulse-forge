@@ -466,4 +466,3 @@ export class ProjectStore {
     for (const listener of this.listeners) listener();
   }
 }
-
