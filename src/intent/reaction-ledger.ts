@@ -107,6 +107,8 @@ const ACTION_SUBJECTS = [
   "tempo",
   "pattern",
   "clip",
+  /** Scene structure — "make the bridge 8 bars" is about the arrangement, not a value. */
+  "scene",
   "marker",
   "automation",
   "preset",
