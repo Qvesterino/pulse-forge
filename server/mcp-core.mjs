@@ -1729,6 +1729,9 @@ export const MCP_TOOL_DEFS = [
             type: "string",
           },
         },
+        reactions: {
+          type: ["object", "null"],
+        },
       },
       required: ["scope", "strips", "findings", "suggestedActions"],
     },

@@ -162,12 +162,8 @@ import {
   setAttentiveModeEnabled,
 } from "../intent/attentive-mode";
 import { noteIntentProposal } from "../intent/reaction-bridge";
-import {
-  activeReactionLedger,
-  isReactionLedgerEnabled,
-  setReactionLedgerEnabled,
-  type ReactionSummary,
-} from "../intent/reaction-ledger";
+import { activeReactionLedger, isReactionLedgerEnabled, setReactionLedgerEnabled } from "../intent/reaction-ledger";
+import { buildReactionReport, topRejections, type ReactionReport } from "../intent/reaction-learning";
 import { applyLoudnessIntent, measurePreviewLoudness } from "../intent/loudness";
 import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
 import {
@@ -697,20 +693,26 @@ export function IntentPanel() {
   // every dispatch (below). `ProjectStore` has no subscription, so an undo
   // that happens between two intents shows its count on the next intent —
   // the numbers are correct, just not pushed.
-  const [reaction, setReaction] = useState<{ enabled: boolean; summary: ReactionSummary | null }>(() => {
+  const [reaction, setReaction] = useState<{ enabled: boolean; report: ReactionReport | null }>(() => {
     const enabled = isReactionLedgerEnabled();
     const ledger = enabled ? activeReactionLedger() : null;
-    return { enabled, summary: ledger ? ledger.summary() : null };
+    return { enabled, report: ledger ? buildReactionReport(ledger.entries()) : null };
   });
   const refreshReaction = () => {
     const enabled = isReactionLedgerEnabled();
     const ledger = enabled ? activeReactionLedger() : null;
-    setReaction({ enabled, summary: ledger ? ledger.summary() : null });
+    setReaction({ enabled, report: ledger ? buildReactionReport(ledger.entries()) : null });
   };
   const toggleReactionLedger = () => {
     setReactionLedgerEnabled(!reaction.enabled);
     refreshReaction();
   };
+  // F2: the two descriptors this owner rejects most, for the chip tooltip.
+  // Weight-only — the bias guard reorders, it never forbids a class of action.
+  const topReactions = (report: ReactionReport | null) =>
+    report
+      ? topRejections(report, 2).map((stat) => ({ action: stat.action, undone: stat.undone, decided: stat.decided }))
+      : [];
   const exportReactionPack = () => {
     const ledger = activeReactionLedger();
     if (!ledger) return;
@@ -4742,12 +4744,18 @@ export function IntentPanel() {
           type="button"
           className="intent-model-chip"
           data-state={
-            reaction.enabled ? (reaction.summary && reaction.summary.pending > 0 ? "loading" : "ready") : "off"
+            reaction.enabled ? (reaction.report && reaction.report.totals.pending > 0 ? "loading" : "ready") : "off"
           }
           onClick={toggleReactionLedger}
           title={
             reaction.enabled
-              ? `Reaction ledger: zapísané ${reaction.summary?.kept ?? 0} · vrátené ${reaction.summary?.undone ?? 0} · doladené ${reaction.summary?.tweaked ?? 0}. Klikni pre vypnutie.`
+              ? [
+                  `Reaction ledger: ${reaction.report?.totals.decided ?? 0} rozhodnutých · ${reaction.report?.totals.undone ?? 0} vrátených · ${reaction.report?.totals.tweaked ?? 0} doladených. Klikni pre vypnutie.`,
+                  ...topReactions(reaction.report).map(
+                    (stat) => `najmä odmietané: ${stat.action} (${stat.undone}/${stat.decided})`,
+                  ),
+                  "Reakcie radia ponuky, nikdy nevytvárajú akcie mimo schémy.",
+                ].join("\n")
               : "Reaction ledger: KYX si zapisuje, čo s tvojimi návrhmi robíš (necháš / vrátiš / doladíš). Zatiaľ vypnuté. Klikni pre zapnutie."
           }
           aria-label={`Reaction ledger: ${reaction.enabled ? "on" : "off"}`}
@@ -4763,7 +4771,7 @@ export function IntentPanel() {
             title="Stiahni záznam reakcií ako JSON — lokálne, nič neopustí počítač kým to nevyexportuješ."
             aria-label="Export reaction ledger"
           >
-            ⬇{reaction.summary ? reaction.summary.kept + reaction.summary.undone + reaction.summary.tweaked : 0}
+            ⬇{reaction.report?.totals.decided ?? 0}
           </button>
         )}
         {desktopMcp && (
