@@ -25,6 +25,7 @@ import { DragNumber } from "./controls";
 const GenerateDialog = lazy(() => import("./GenerateDialog").then((m) => ({ default: m.GenerateDialog })));
 import { SceneLauncher } from "./SceneLauncher";
 import { useCurrentItemId } from "./playhead";
+import { ACTIVE_PATTERN_PANEL_ID, patternTabDomId } from "./patternDomIds";
 
 /** Byte ceiling for .mid imports — mirrors MAX_PROJECT_IMPORT_BYTES. Kept
  * local (not in the lazy midi chunk) so checking it never pulls the chunk. */
@@ -62,6 +63,7 @@ export function PatternBar({
   // scene, which changes only when the playhead crosses a clip.
   const currentClipId = useCurrentItemId(services.store.doc.arrangement.clips, services.transport);
   const chipsRef = useRef<HTMLDivElement>(null);
+  const tabRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const dragRef = useRef<DragState | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [generateOpen, setGenerateOpen] = useState(false);
@@ -157,9 +159,31 @@ export function PatternBar({
 
   const dragToIndex = drag ? getDropIndex(drag.currentX) : -1;
 
+  const handlePatternTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
+    if (editingId !== null) return;
+
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % patterns.length;
+    else if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + patterns.length) % patterns.length;
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = patterns.length - 1;
+    if (nextIndex === null) return;
+
+    const nextPattern = patterns[nextIndex];
+    if (!nextPattern) return;
+    event.preventDefault();
+    services.store.execute(setActivePattern(doc, nextPattern.id));
+    tabRefs.current.get(nextPattern.id)?.focus();
+  };
+
   return (
     <section className="pattern-bar" aria-label="Patterns">
-      <div className="pattern-chips" role="tablist" aria-label="Pattern selector" ref={chipsRef}>
+      <div
+        className="pattern-chips"
+        role={editingId === null ? "tablist" : "group"}
+        aria-label="Pattern selector"
+        ref={chipsRef}
+      >
         {patterns.map((pattern, index) => {
           const isActive = pattern.id === activePatternId;
           const isDragging = drag?.patternId === pattern.id;
@@ -167,10 +191,11 @@ export function PatternBar({
             return (
               <input
                 key={pattern.id}
+                id={patternTabDomId(pattern.id)}
                 className="pattern-rename"
                 value={draft}
                 autoFocus
-                aria-label="Pattern name"
+                aria-label={`Rename pattern ${pattern.name}`}
                 onChange={(event) => setDraft(event.target.value)}
                 onBlur={commitRename}
                 onKeyDown={(event) => {
@@ -184,8 +209,15 @@ export function PatternBar({
             <button
               key={pattern.id}
               type="button"
-              role="tab"
-              aria-selected={isActive}
+              id={patternTabDomId(pattern.id)}
+              role={editingId === null ? "tab" : undefined}
+              aria-selected={editingId === null ? isActive : undefined}
+              aria-controls={editingId === null ? ACTIVE_PATTERN_PANEL_ID : undefined}
+              tabIndex={editingId === null ? (isActive ? 0 : -1) : 0}
+              ref={(element) => {
+                if (element) tabRefs.current.set(pattern.id, element);
+                else tabRefs.current.delete(pattern.id);
+              }}
               className={`pattern-chip${isActive ? " active" : ""}${isDragging ? " dragging" : ""}`}
               title={`${pattern.name} (${pattern.stepCount} steps = ${pattern.stepCount / 16} bar${pattern.stepCount === 16 ? "" : "s"}) — click to select, double-click or F2 to rename, drag to reorder`}
               onClick={() => {
@@ -200,7 +232,9 @@ export function PatternBar({
                 if (event.key === "F2") {
                   event.preventDefault();
                   beginRename(pattern.id, pattern.name);
+                  return;
                 }
+                handlePatternTabKeyDown(event, index);
               }}
             >
               {pattern.name}

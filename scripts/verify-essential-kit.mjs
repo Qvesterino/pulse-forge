@@ -232,8 +232,76 @@ try {
         ? `LOW SHELF bottom ${reach.bottom} vs strip edge ${reach.edge}, ${reach.overflow}px overflow`
         : "LOW SHELF not found",
     );
-    await multiview.screenshot({ path: ".artifacts/kit-multiview-debug.png" }).catch(() => {});
-  }
+    // THE DRAGGABLE CURVE — a band grabbed on the curve must write the same
+  // param the knob under it writes, in ONE undo step, and release must return
+  // it. This is the gesture contract the canvas documents; nothing else in the
+  // gate proves it.
+  const curve = `${eqCol} canvas.kit-eq-curve`;
+  const curveBox = await page.$eval(curve, (c) => {
+    const r = c.getBoundingClientRect();
+    return { x: r.x, y: r.y, w: r.width, h: r.height };
+  });
+
+  // HIGH MID sits at 2500 Hz; on a 20 Hz–20 kHz log axis that is ~57% across.
+  const xAt = (frac) => curveBox.x + curveBox.w * frac;
+  const highMidX = xAt(0.566);
+  const midY = curveBox.y + curveBox.h / 2; // the 0 dB line — where a flat HIGH MID sits
+
+  await page.mouse.move(highMidX, midY);
+  const hovering = await page.$eval(curve, (c) => c.className.includes("is-hovering")).catch(() => false);
+  check("the curve reports a grabbable point under the pointer", hovering);
+
+  await page.mouse.down();
+  await page.mouse.move(highMidX, midY - curveBox.h * 0.28, { steps: 10 });
+  const paintedDuringDrag = await page.$eval(curve, (c) => c.className.includes("is-dragging")).catch(() => false);
+  check("dragging the curve takes the pointer", paintedDuringDrag);
+
+  // While the pointer is still down the document must NOT have been written:
+  // per-frame writes would flood undo with one step per move.
+  const highMidDuringDrag = await page
+    .$eval(`${eqCol} .slider-track[aria-label*="HIGH MID"]`, (el) => el.getAttribute("aria-valuenow"))
+    .catch(() => null);
+  check(
+    "the knob under the curve has not been written mid-drag",
+    highMidDuringDrag === "0",
+    `HIGH MID reads ${highMidDuringDrag} dB while the pointer is still down`,
+  );
+
+  await page.mouse.up();
+  await page.waitForTimeout(1500);
+  const highMidAfter = await page
+    .$eval(`${eqCol} .slider-track[aria-label*="HIGH MID"]`, (el) => el.getAttribute("aria-valuenow"))
+    .catch(() => null);
+  check(
+    "releasing commits the dragged gain to the document",
+    highMidAfter !== null && Number(highMidAfter) > 1,
+    `HIGH MID ${highMidAfter} dB`,
+  );
+
+  // ONE undo must return the whole gesture, not one frame of it.
+  await page.keyboard.press("Control+z");
+  await page.waitForTimeout(1200);
+  const highMidUndone = await page
+    .$eval(`${eqCol} .slider-track[aria-label*="HIGH MID"]`, (el) => el.getAttribute("aria-valuenow"))
+    .catch(() => null);
+  check(
+    "one undo reverts the whole curve gesture",
+    Number(highMidUndone) === 0,
+    `HIGH MID ${highMidUndone} dB after a single Ctrl+Z`,
+  );
+
+  // A press that does not move must not write anything.
+  await page.mouse.move(highMidX, midY);
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(800);
+  const afterClick = await page
+    .$eval(`${eqCol} .slider-track[aria-label*="HIGH MID"]`, (el) => el.getAttribute("aria-valuenow"))
+    .catch(() => null);
+  check("a click that does not move writes nothing", Number(afterClick) === 0, `HIGH MID ${afterClick} dB`);
+
+  await multiview.screenshot({ path: ".artifacts/kit-multiview-debug.png" }).catch(() => {});
+}
 
   // THE REAL GATE: dragging a multiview knob must change the DOCUMENT, not just
   // the rendered value. Read the reverb column's DECAY before and after a real

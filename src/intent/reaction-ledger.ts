@@ -75,7 +75,14 @@ export interface ReactionSummary {
 /* sanitising — the privacy boundary lives here, not at the call sites   */
 /* ------------------------------------------------------------------ */
 
-const ROUTE_KIND_RE = /^[a-z0-9]{1,48}$/;
+/**
+ * Route kinds are the existing intent vocabulary and are camelCase
+ * ("paramIntent", "effectIntent"), so the shape is a lowercase lead followed by
+ * alphanumerics. That admits the real kinds and still refuses prose: no spaces,
+ * no non-ASCII, no punctuation - "lower the vocal reverb mix" cannot be a
+ * route kind.
+ */
+const ROUTE_KIND_RE = /^[a-z][A-Za-z0-9]{0,47}$/;
 const ID_RE = /^[A-Za-z0-9._:-]{1,64}$/;
 const HASH_RE = /^[a-f0-9]{1,16}$/;
 const MAX_TRACK_IDS = 16;
@@ -194,6 +201,33 @@ export function sanitizeReactionPack(value: unknown): ReactionPackV1 | null {
 /** Stable hash of a compact projection — reused for before/after pairing. */
 export function hashReactionState(value: unknown): string {
   return hashString(JSON.stringify(value) ?? "").toString(16).padStart(8, "0");
+}
+
+/**
+ * Ids of tracks whose state differs between two documents.
+ *
+ * Used to answer "did the human touch a track this proposal was about?". It
+ * compares a JSON projection of each track rather than the objects themselves
+ * so an equal-but-rebuilt track does not read as a change. O(tracks), and only
+ * ever called from the human-edit path — never per frame.
+ */
+export function trackIdsChangedBetween(
+  previous: { tracks?: readonly unknown[] } | null | undefined,
+  next: { tracks?: readonly unknown[] } | null | undefined,
+): string[] {
+  const before = new Map<string, string>();
+  for (const track of previous?.tracks ?? []) {
+    const id = (track as { id?: unknown }).id;
+    if (typeof id === "string") before.set(id, JSON.stringify(track) ?? "");
+  }
+  const changed: string[] = [];
+  for (const track of next?.tracks ?? []) {
+    const id = (track as { id?: unknown }).id;
+    if (typeof id !== "string") continue;
+    const now = JSON.stringify(track) ?? "";
+    if (before.get(id) !== now) changed.push(id);
+  }
+  return changed;
 }
 
 /* ------------------------------------------------------------------ */

@@ -1095,7 +1095,12 @@ export function App({
       }
 
       // Tab-to-Transient (PT/FL) — Tab / Shift+Tab jumps playhead to next/prev transient in selected audioClip
-      if (event.key === "Tab" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      const tabNavigationTarget =
+        target?.isContentEditable ||
+        target?.closest(
+          "button, a[href], area[href], input, select, textarea, summary, audio[controls], video[controls], iframe, [tabindex], [contenteditable]",
+        );
+      if (event.key === "Tab" && !event.ctrlKey && !event.metaKey && !event.altKey && !tabNavigationTarget) {
         const clips = doc.arrangement.audioClips ?? [];
         if (clips.length > 0) {
           const pos = services.transport.position;

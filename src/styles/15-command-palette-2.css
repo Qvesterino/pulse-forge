@@ -1854,6 +1854,25 @@
   border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
   border-radius: 3px;
   background: color-mix(in srgb, var(--bg) 70%, transparent);
+  cursor: default;
+  touch-action: none;
+}
+
+/* The curve is only grabbable where a band actually is, so the cursor says so
+   rather than promising a drag that will not happen. */
+.kit-eq-curve.is-hovering {
+  cursor: ns-resize;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.kit-eq-curve.is-dragging {
+  cursor: ns-resize;
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--border));
+}
+
+.kit-eq-curve:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* One control per row inside a column: a 2-column grid at this width would

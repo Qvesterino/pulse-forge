@@ -68,7 +68,12 @@ function KitDeviceColumn({
         <span className="kit-multiview-name">{def.name}</span>
         <span className="kit-multiview-slot">{slot.label}</span>
       </div>
-      {fx.type === "eq" && <EqCurveCanvas params={fx.params} />}
+      {/* The curve commits through the SAME onChange the knobs use, so a band
+          dragged here lands in the document as one undoable edit and the knob
+          under it reflects it on release. */}
+      {fx.type === "eq" && (
+        <EqCurveCanvas params={fx.params} onCommit={(paramId, gainDb) => onChange(fx.id, paramId, gainDb)} />
+      )}
       {params.length > 0 ? (
         <EffectParameterGrid
           family={spec.family}

@@ -698,3 +698,27 @@ sanitizer, scheduler handing the window scene to the modulator sweep, bridge
 substituting pinned steps live + through the offline window hook) and the
 scene-strip suite (PIN writes the command with the captured pattern, the
 pinned row renders the detail + clear).
+
+## Addendum 21 (2026-10-12) — in-strip step editor
+
+Drawing the pinned modulation pattern no longer detours through MOD. The
+scene strip's pinned STEP row now renders a compact `StepGridEditor`
+(shared component, `height` prop added for the dense strip row — MOD keeps
+64 px): drag paints the scene-pinned steps, a single commit fires on
+pointer-up, and the 8/16/32 tools resize through the same one-undo command
+(`setSceneModulatorPattern`). PIN still captures the current doc pattern;
+from there everything is drawn in place, row by row, scene by scene.
+
+The same wave hardened the shared editor with the ref-authority pattern the
+Slider already documents (audit 16): pointerdown/move are CONTINUOUS events,
+so their setState can flush after a fast pointerup — a quick click used to
+commit the pre-stroke array. `paint` now computes the next array EAGERLY,
+stores it in `liveRef`, and `commit` reads the ref (state stays the render
+source). Pinned by the strip suite's fast-flick case (down + up in ONE
+flush still commits the painted value) plus the existing StepGridEditor
+contract tests (single commit per stroke, pointer-cancel commits).
+
+Validation: `tests/ui/SceneStrip.test.tsx` (pinned row renders the grid,
+paint commits the drawn value through the command, the flick regression,
+8/16/32 resize) and `tests/ui/StepGridEditor.test.tsx` / `EffectRack` (the
+shared component's contract unchanged for both hosts).

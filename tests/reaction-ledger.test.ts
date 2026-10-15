@@ -193,9 +193,9 @@ describe("reaction ledger — privacy boundary", () => {
     const serialised = JSON.stringify(pack);
     expect(serialised).not.toMatch(/sing|softer|warm/i);
     expect(serialised).not.toMatch(/passwd/);
-    // Path-shaped ids are dropped; real ids survive.
+    // The path-shaped id is dropped; the well-formed ones survive.
     expect(storage).toBeDefined();
-    expect(pack.entries[0].trackIds).toEqual(["track-1"]);
+    expect(pack.entries[0].trackIds).toEqual(["track-1", "track-2"]);
   });
 
   it("track NAMES never reach the ledger — only ids", () => {

@@ -13,15 +13,23 @@ export function StepGridEditor({
   max = 1,
   onCommit,
   ariaLabel = "Step sequence",
+  height = 64,
 }: {
   steps: readonly number[];
   min?: number;
   max?: number;
   onCommit: (steps: number[]) => void;
   ariaLabel?: string;
+  /** Grid height in px (the dense scene-strip rows run shorter than MOD). */
+  height?: number;
 }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [live, setLive] = useState<number[] | null>(null);
+  // Ref-authority during the stroke: pointerdown/move are CONTINUOUS events,
+  // so their setState may not be flushed before a fast pointerup commits —
+  // the same batching hazard the Slider documents (audit 16). The ref is
+  // where the pointer is right now; state stays the render source.
+  const liveRef = useRef<number[] | null>(null);
   const dragRef = useRef<{ column: number } | null>(null);
   const current = live ?? steps;
   const bipolar = min < 0;
@@ -36,21 +44,21 @@ export function StepGridEditor({
     const column = Math.min(current.length - 1, Math.floor((x / rect.width) * current.length));
     const value = Math.round((max - (y / rect.height) * range) * 100) / 100;
     dragRef.current = { column };
-    setLive((prev) => {
-      const next = [...(prev ?? steps)];
-      next[column] = value;
-      return next;
-    });
+    // Compute eagerly: a setLive updater runs at FLUSH time, so a fast
+    // pointerup in the same batch would read a null ref and drop the stroke.
+    const next = [...(liveRef.current ?? steps)];
+    next[column] = value;
+    liveRef.current = next;
+    setLive(next);
   };
 
   const commit = (): void => {
-    const finalSteps = current.slice();
+    const finalSteps = (liveRef.current ?? steps).slice();
     dragRef.current = null;
+    liveRef.current = null;
     setLive(null);
     onCommit(finalSteps);
   };
-
-  const height = 64;
 
   /** Map a value to the SVG y-coordinate inside a [0..range] viewBox (top = max, bottom = min). */
   const valueY = (value: number): number => max - value;

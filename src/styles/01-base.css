@@ -909,7 +909,8 @@ button {
   right: 0;
   background: var(--pad-color, var(--accent));
   opacity: 0.9;
-  transition: height 0.08s linear;
+  /* RackStrip already decays this reading on its animation-frame loop. A CSS
+     transition would add a second lag to the musical level feedback. */
   border-radius: 2px;
 }
 

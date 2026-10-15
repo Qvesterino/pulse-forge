@@ -68,6 +68,13 @@ import { ArrangementCaptureController } from "./arrangement/capture";
 import { GhostPreviewPlayer } from "./audio-engine/GhostPreviewPlayer";
 import { NoteRepeatController } from "./audio-engine/NoteRepeat";
 import { createLocalStyleObserver } from "./intent/style-observation";
+import {
+  ReactionLedger,
+  isReactionLedgerEnabled,
+  setActiveReactionLedger,
+  trackIdsChangedBetween,
+} from "./intent/reaction-ledger";
+import { reactionStorage } from "./persistence/ReactionRepository";
 
 /**
  * Long-lived services shared across projects: the audio engine (one shared
@@ -497,6 +504,28 @@ export async function openProject(
   }
   const styleObserver = createLocalStyleObserver();
   store.onUserPatternEdit = (doc, previousDoc) => styleObserver.observe(doc, previousDoc);
+
+  // Reaction Ledger (F1) — what the human DID with what the machine proposed.
+  // Three seams, deliberately generic so this wiring owns no intent vocabulary:
+  //   undo committed  → the proposal was rejected (subject to the mash guard)
+  //   human edit      → a kept proposal was corrected
+  //   transport moved → the proposal was heard and kept
+  // Everything is opt-out via `pf:reaction-ledger`, and every callback is a
+  // no-op while the flag is off — a disabled ledger must cost zero cycles.
+  const reactionLedger = isReactionLedgerEnabled()
+    ? new ReactionLedger({ storage: reactionStorage })
+    : null;
+  if (reactionLedger) {
+    void reactionLedger.hydrate();
+    setActiveReactionLedger(reactionLedger);
+    store.onUndoCommitted = (depthAfterPop) => {
+      reactionLedger.noteUndo(depthAfterPop);
+    };
+    store.onUserEdit = (doc, previousDoc) => {
+      const touched = trackIdsChangedBetween(previousDoc, doc);
+      if (touched.length > 0) reactionLedger.noteUserEdit(touched);
+    };
+  }
   collab?.connect();
 
   // Snapshot safety net — "restore to yesterday". One snapshot at session

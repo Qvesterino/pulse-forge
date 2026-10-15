@@ -182,7 +182,7 @@
   background: linear-gradient(180deg, rgba(238, 242, 246, 0.045), transparent 70%), var(--bg-panel);
 }
 
-.track-tab[aria-selected="true"] {
+.track-tab[data-current-track="true"] {
   position: relative;
   color: var(--kyx-silver-bright);
   border-color: color-mix(in srgb, var(--kyx-silver-mid) 68%, var(--accent));
@@ -209,7 +209,7 @@
     inset 0 -1px 0 rgba(18, 22, 27, 0.28);
 }
 
-.track-tab[aria-selected="true"]::after {
+.track-tab[data-current-track="true"]::after {
   content: "";
   position: absolute;
   right: 8px;

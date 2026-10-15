@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   EQ_CURVE_MAX_DB,
-  EQ_CURVE_MAX_HZ,
   EQ_CURVE_MIN_DB,
-  EQ_CURVE_MIN_HZ,
   eqBands,
   eqCurve,
   eqHzToX,
@@ -59,6 +57,9 @@ export function EqCurveCanvas({ params, onCommit, width = 236, height = 46 }: Eq
   // can run pointerup before the last move is rendered — exactly the race
   // `Slider` documents for its own dragValueRef.
   const dragRef = useRef<DragState | null>(null);
+  /** Whether the current gesture actually changed the value — a plain click
+   * must not write, or it pushes a no-op undo step. */
+  const movedRef = useRef(false);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
 
@@ -206,8 +207,6 @@ export function EqCurveCanvas({ params, onCommit, width = 236, height = 46 }: Eq
     }
     event.preventDefault();
   };
-
-  const movedRef = useRef(false);
 
   const onPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const local = toLocal(event);

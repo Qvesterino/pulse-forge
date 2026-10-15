@@ -439,6 +439,24 @@
   line-height: 1;
 }
 
+/* In-strip step-pattern editor (the pinned step modulator's grid). */
+.scene-strip-step-editor {
+  display: inline-flex;
+  width: 190px;
+  min-width: 150px;
+}
+
+.scene-strip-step-editor .mod-step-grid-wrap {
+  width: 100%;
+  gap: 3px;
+}
+
+.scene-strip-step-editor .mod-step-grid-tools .btn-small {
+  padding: 0 5px;
+  font-size: 9px;
+  line-height: 14px;
+}
+
 /* Scene CC remap allow-list (Scene.ccRemaps) — armed mappings are bright,
    disarmed ones dim. */
 .scene-strip-cc {

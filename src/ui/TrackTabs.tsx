@@ -62,7 +62,7 @@ export function TrackTabs({
   const tracks = useTracks();
   const doc = services.store.getDoc();
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
-  const selectedTabRef = useRef<HTMLButtonElement | null>(null);
+  const activeTrackButtonRef = useRef<HTMLButtonElement | null>(null);
   // Sample drop hover (V4) — which tab is currently under a KYX sample drag.
   const [sampleOver, setSampleOver] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -83,11 +83,11 @@ export function TrackTabs({
   };
 
   useEffect(() => {
-    selectedTabRef.current?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    activeTrackButtonRef.current?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [selectedTrackId]);
 
   return (
-    <div className="track-tabs" role="tablist" aria-label="Tracks">
+    <div className="track-tabs" role="group" aria-label="Tracks">
       {tracks.map((track, idx) => {
         const isSelected = selection.trackIds.includes(track.id) || track.id === selectedTrackId;
         const isCurrentTrack = track.id === selectedTrackId;
@@ -114,13 +114,14 @@ export function TrackTabs({
           <button
             key={track.id}
             type="button"
-            ref={track.id === selectedTrackId ? selectedTabRef : undefined}
-            role="tab"
-            aria-selected={isCurrentTrack}
-            aria-label={`${track.name} (${track.kind === "drum" ? "Drum track" : track.kind === "group" ? "Group track" : track.kind === "generative" ? "Generative track" : `${track.instrument} track`})${track.mute ? ", muted" : ""}${track.solo ? ", soloed" : ""}${isSecondaryMultiSelection ? ", included in the multi-track selection" : ""}`}
+            ref={track.id === selectedTrackId ? activeTrackButtonRef : undefined}
+            aria-pressed={isSelected}
+            aria-current={isCurrentTrack ? "true" : undefined}
+            aria-label={`${track.name} (${track.kind === "drum" ? "Drum track" : track.kind === "group" ? "Group track" : track.kind === "generative" ? "Generative track" : `${track.instrument} track`})${track.mute ? ", muted" : ""}${track.solo ? ", soloed" : ""}${isCurrentTrack ? ", active track" : isSecondaryMultiSelection ? ", included in the multi-track selection" : ""}`}
+            data-current-track={isCurrentTrack || undefined}
             data-multi-selected={isSecondaryMultiSelection || undefined}
             className={`track-tab${isSelected ? " active" : ""}${sampleOver === track.id ? " drop-target" : ""}`}
-            title={`${track.name} — select track (${idx < 9 ? `${idx + 1}, ` : ""}Tab cycles), F2 to rename — Ctrl+click add, Shift+click range${track.kind === "instrument" ? " · drop a sample to load it" : ""}`}
+            title={`${track.name} — select track (${idx < 9 ? `${idx + 1}, ` : ""}F2 to rename) — Ctrl+click add, Shift+click range${track.kind === "instrument" ? " · drop a sample to load it" : ""}`}
             onClick={(e) => onSelectTrack(track.id, e)}
             onDoubleClick={() => beginRename(track.id, track.name)}
             onKeyDown={(event) => {

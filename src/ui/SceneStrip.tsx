@@ -29,6 +29,7 @@ import { KOREN_SCENE_PACK, findKorenScenePair } from "../effects/koren-scene-pac
 import { lfoKind, resolveLfoTarget, stepsOf } from "../project-model/modulators";
 import { Slider } from "./controls";
 import { NumericDraftInput } from "./NumericDraftInput";
+import { StepGridEditor } from "./StepGridEditor";
 import { formatMacroValue } from "./MacroPerformanceBar";
 
 const COLLAPSE_KEY = "pf-scene-strip-collapsed";
@@ -445,14 +446,33 @@ export function SceneStrip({ sceneId }: { sceneId?: string }) {
                   <span
                     key={row.id}
                     className={`scene-strip-modulator${isPinned ? " pinned" : ""}`}
-                    title={`${row.label} ${row.title} — pin the CURRENT ${
-                      row.kind === "step" ? "step pattern" : "random stream"
-                    } to this scene`}
+                    title={
+                      isPinned
+                        ? `${row.label} ${row.title} — pinned to this scene; ${
+                            row.kind === "step" ? "draw the grid to reshape it" : "the scene draws from its own seed"
+                          } (× clears)`
+                        : `${row.label} ${row.title} — pin the CURRENT ${
+                            row.kind === "step" ? "step pattern" : "random stream"
+                          } to this scene, then draw it here`
+                    }
                   >
                     <span className="scene-strip-modulator-label">{row.label}</span>
                     {isPinned ? (
                       <>
                         <span className="scene-strip-modulator-detail">{detail}</span>
+                        {row.kind === "step" && pinned?.steps && scene && (
+                          <span className="scene-strip-step-editor">
+                            <StepGridEditor
+                              steps={pinned.steps}
+                              height={38}
+                              ariaLabel={`Scene ${row.label} step pattern`}
+                              onCommit={(steps) => {
+                                if (scene)
+                                  services.store.execute(setSceneModulatorPattern(doc, scene.id, row.id, { steps }));
+                              }}
+                            />
+                          </span>
+                        )}
                         <button
                           type="button"
                           className="scene-strip-macro-clear"

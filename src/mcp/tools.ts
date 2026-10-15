@@ -1,9 +1,10 @@
 import type { ProjectDocument } from "../project-model/types";
 import { isForeignWork, labelsRevertedBy } from "./attribution";
 import { setMasterConfig } from "../commands/master";
-import { slipAudioClip, stretchAudioClip, duplicateAudioClip, setAudioClipsMute } from "../commands/audioClips";
+import { slipAudioClip, stretchAudioClip, setAudioClipsMute } from "../commands/audioClips";
 import {
   crossfadeAudioClips,
+  duplicateAudioClip,
   nudgeClips,
   sliceAudioClipToArrangement,
   stripSilenceAudioClip,
@@ -917,14 +918,20 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "kyx_clips",
     description:
       "Arrangement AND audio clips: list scene clips (with ids + an audio " +
-      "summary), audioList the track-lane waveforms in detail, or edit — " +
-      "scene ops move/resize/duplicate/delete target the clip COVERING an " +
-      "anchor bar (delete D4-gated); audio ops audioMove/audioSplit/" +
-      "audioUpdate (gain, fadeIn, fadeOut, reverse, loop)/audioStretch (rate " +
-      "0.25..4, optional bars)/audioSlip (offsetSec — which part of the " +
-      "source plays; take-locked clips refuse)/audioDelete (D4) " +
-      "address a track (trackId or family) + the anchor bar its clip " +
-      "covers. Values are native (gain linear, fades in seconds).",
+      "summary), audioList the track-lane waveforms in detail, or edit. " +
+      "Scene ops target the clip COVERING an anchor bar: move/resize/" +
+      "split/duplicate/delete, plus moveRipple/resizeRipple/deleteRipple " +
+      "which close the gap after the edit the way the UI's RIPPLE toggle " +
+      "does, and copy/cut/paste for the clipboard (cut and delete are " +
+      "D4-gated; the MCP clipboard is per-session, never persisted). " +
+      "Audio ops address a track (trackId or family) + the anchor bar its " +
+      "clip covers: audioMove/audioSplit/audioUpdate (gain, fadeIn, " +
+      "fadeOut, reverse, loop)/audioStretch (rate 0.25..4, optional " +
+      "bars)/audioSlip (offsetSec - which part of the source plays)/" +
+      "audioDuplicate/audioMute/audioNudge (whole bars)/audioSlice (" +
+      "sliceTimesSec)/audioStrip (segments to keep)/audioConsolidate " +
+      "(bufferId + range)/audioCrossfade/audioDelete (D4). " +
+      "Values are native (gain linear, fades in seconds).",
     inputSchema: {
       type: "object",
       properties: {
@@ -943,7 +950,20 @@ export const MCP_TOOLS: McpToolDef[] = [
             "audioStretch",
             "audioSlip",
             "audioCrossfade",
+            "audioDuplicate",
+            "audioMute",
+            "audioNudge",
+            "audioSlice",
+            "audioStrip",
+            "audioConsolidate",
             "audioDelete",
+            "split",
+            "moveRipple",
+            "resizeRipple",
+            "deleteRipple",
+            "copy",
+            "cut",
+            "paste",
           ],
         },
         bar: { type: "integer", minimum: 1, description: "1-based anchor bar — the clip covering it is the target" },
@@ -976,6 +996,35 @@ export const MCP_TOOLS: McpToolDef[] = [
         fadeOut: { type: "number", minimum: 0, description: "For audioUpdate — fade-out seconds" },
         reverse: { type: "boolean", description: "For audioUpdate — play the clip backwards" },
         loop: { type: "boolean", description: "For audioUpdate — loop the trimmed content over the clip length" },
+        muted: { type: "boolean", description: "For audioMute — true mutes, false unmutes (default true)" },
+        sliceTimesSec: {
+          type: "array",
+          items: { type: "number", minimum: 0 },
+          description:
+            "For audioSlice — wall seconds from the clip's first audible moment; the clip is kept and segments are laid out after it",
+        },
+        segments: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              startSec: { type: "number", minimum: 0 },
+              endSec: { type: "number", minimum: 0 },
+            },
+            required: ["startSec", "endSec"],
+          },
+          description: "For audioStrip — the ranges to KEEP; the clip is replaced by them",
+        },
+        sourceDurationSec: {
+          type: "number",
+          minimum: 0,
+          description: "For audioStrip — decoded source duration, bounds the audible window (optional)",
+        },
+        bufferId: {
+          type: "string",
+          description:
+            "For audioConsolidate — the rendered bounce buffer the merged clip points at (the tool cannot render it itself)",
+        },
       },
       required: ["op"],
     },
@@ -4468,64 +4517,74 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
 
   // ── CLIPBOARD (P2 parity, owner-approved 2026-10-14) ─────────────────
   // Handled before target resolution: `paste` has no source clip to address.
-  if (op === "copy" || op === "cut" || op === "paste") {
-    if (op === "paste") {
-      if (!mcpClipClipboard) return { text: "clipboard is empty — copy or cut first", mutated: false };
-      // Paste at the playhead unless a bar is named; the UI pastes at the
-      // playhead, so an agent that passes no bar lands where a user would.
-      const rawPasteBar = Number(record.bar);
-      const playhead = typeof ctx.transport.position === "number" ? ctx.transport.position : 0;
-      const atTick = Number.isFinite(rawPasteBar) && rawPasteBar >= 1 ? (rawPasteBar - 1) * TICKS_PER_BAR : playhead;
-      ctx.execute(pasteClips(doc, mcpClipClipboard, atTick));
-      const where =
-        Number.isFinite(rawPasteBar) && rawPasteBar >= 1 ? `bar ${Math.round(rawPasteBar)}` : "the playhead";
-      return { text: `pasted ${clipboardSummary(mcpClipClipboard)} at ${where} — one undo step`, mutated: true };
-    }
-
-    // copy / cut both need a source clip: the arrangement clip covering the
-    // anchor bar, else the audio clip on a named track at that bar.
-    const rawBar = typeof record.bar === "number" ? record.bar : 1;
-    if (!Number.isFinite(rawBar) || rawBar < 1) {
-      return { text: `${op} needs a 1-based anchor bar`, mutated: false };
-    }
-    const sceneClip = clipCoveringBar(doc, Math.round(rawBar));
-    let targets: string[] = sceneClip ? [sceneClip.id] : [];
-    if (targets.length === 0) {
-      // No scene clip there — try the audio lane, using the SAME addressing the
-      // audio* ops use (trackId or family + anchor bar).
-      const trackId = typeof record.trackId === "string" ? record.trackId.trim() : "";
-      const family = typeof record.family === "string" ? record.family.trim() : "";
-      if (trackId !== "" || family !== "") {
-        let ownerId: string | null = trackId !== "" ? trackId : null;
-        if (ownerId === null) {
-          const ids = tracksInFamily(doc, family);
-          if (ids.length === 0) return mcpError("UNKNOWN_TARGET", `no track matches family "${family}"`);
-          ownerId = ids[0]!;
-        }
-        const anchor = Math.round(rawBar) - 1;
-        const audio = doc.arrangement.audioClips ?? [];
-        const audioTarget = audio.find(
-          (clip) => clip.trackId === ownerId && anchor >= clip.startBar && anchor < clip.startBar + clip.lengthBars,
-        );
-        if (audioTarget) targets = [audioTarget.id];
+  try {
+    if (op === "copy" || op === "cut" || op === "paste") {
+      if (op === "paste") {
+        if (!mcpClipClipboard) return { text: "clipboard is empty — copy or cut first", mutated: false };
+        // Paste at the playhead unless a bar is named; the UI pastes at the
+        // playhead, so an agent that passes no bar lands where a user would.
+        const rawPasteBar = Number(record.bar);
+        const playhead = typeof ctx.transport.position === "number" ? ctx.transport.position : 0;
+        const atTick = Number.isFinite(rawPasteBar) && rawPasteBar >= 1 ? (rawPasteBar - 1) * TICKS_PER_BAR : playhead;
+        ctx.execute(pasteClips(doc, mcpClipClipboard, atTick));
+        const where =
+          Number.isFinite(rawPasteBar) && rawPasteBar >= 1 ? `bar ${Math.round(rawPasteBar)}` : "the playhead";
+        return { text: `pasted ${clipboardSummary(mcpClipClipboard)} at ${where} — one undo step`, mutated: true };
       }
+
+      // copy / cut both need a source clip: the arrangement clip covering the
+      // anchor bar, else the audio clip on a named track at that bar.
+      const rawBar = typeof record.bar === "number" ? record.bar : 1;
+      if (!Number.isFinite(rawBar) || rawBar < 1) {
+        return { text: `${op} needs a 1-based anchor bar`, mutated: false };
+      }
+      const sceneClip = clipCoveringBar(doc, Math.round(rawBar));
+      let targets: string[] = sceneClip ? [sceneClip.id] : [];
+      if (targets.length === 0) {
+        // No scene clip there — try the audio lane, using the SAME addressing the
+        // audio* ops use (trackId or family + anchor bar).
+        const trackId = typeof record.trackId === "string" ? record.trackId.trim() : "";
+        const family = typeof record.family === "string" ? record.family.trim() : "";
+        if (trackId !== "" || family !== "") {
+          let ownerId: string | null = trackId !== "" ? trackId : null;
+          if (ownerId === null) {
+            const ids = tracksInFamily(doc, family);
+            if (ids.length === 0) return mcpError("UNKNOWN_TARGET", `no track matches family "${family}"`);
+            ownerId = ids[0]!;
+          }
+          const anchor = Math.round(rawBar) - 1;
+          const audio = doc.arrangement.audioClips ?? [];
+          const audioTarget = audio.find(
+            (clip) => clip.trackId === ownerId && anchor >= clip.startBar && anchor < clip.startBar + clip.lengthBars,
+          );
+          if (audioTarget) targets = [audioTarget.id];
+        }
+      }
+      if (targets.length === 0) {
+        return {
+          text: `no clip covers bar ${Math.round(rawBar)} — read the layout via op:list`,
+          mutated: false,
+        };
+      }
+      const built = buildClipClipboard(doc, targets);
+      if (!built) return { text: "nothing copyable at that address", mutated: false };
+      mcpClipClipboard = built;
+      if (op === "copy") {
+        return { text: `copied ${clipboardSummary(built)} — paste with op:paste`, mutated: false };
+      }
+      // CUT is a delete: it must ride the D4 gate like every other removal.
+      if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
+      ctx.execute(cutClips(doc, targets));
+      return { text: `cut ${clipboardSummary(built)} - one undo step`, mutated: true };
     }
-    if (targets.length === 0) {
-      return {
-        text: `no clip covers bar ${Math.round(rawBar)} — read the layout via op:list`,
-        mutated: false,
-      };
-    }
-    const built = buildClipClipboard(doc, targets);
-    if (!built) return { text: "nothing copyable at that address", mutated: false };
-    mcpClipClipboard = built;
-    if (op === "copy") {
-      return { text: `copied ${clipboardSummary(built)} — paste with op:paste`, mutated: false };
-    }
-    // CUT is a delete: it must ride the D4 gate like every other removal.
-    if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
-    ctx.execute(cutClips(doc, targets));
-    return { text: `cut ${clipboardSummary(built)} — one undo step`, mutated: true };
+  } catch (error) {
+    // Clipboard commands throw on real invariants (a paste that would overlap a
+    // scene clip, or a clipboard captured in another project). Over MCP that is an
+    // honest failure, never a thrown crash into the relay.
+    return mcpError(
+      "EXECUTION_FAILED",
+      `clipboard op failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 
   if (op === "list") {
@@ -4711,10 +4770,6 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
         ctx.execute(deleteAudioClip(doc, target.id));
         return { text: `deleted ${describe()} — one undo step`, mutated: true };
       }
-      return {
-        text: `unknown op: ${op} (list | audioList | audioMove | audioSplit | audioUpdate | audioStretch | audioSlip | audioDuplicate | audioMute | audioNudge | audioSlice | audioStrip | audioConsolidate | audioCrossfade | audioDelete | move | resize | split | duplicate | delete | moveRipple | resizeRipple | deleteRipple | copy | cut | paste)`,
-        mutated: false,
-      };
       if (op === "audioDuplicate") {
         // P2 parity (owner-approved 2026-10-14): duplicate was UI-only. The
         // audio lane LAYERS by contract, so the copy lands exactly after its
@@ -4747,8 +4802,12 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
         // SlicerX-style: the clip is KEPT and the segments are laid out as a
         // row after it (measured in wave 20 §J). Slice points are wall seconds
         // from the clip's first audible moment.
-        const times = Array.isArray(record.sliceTimesSec)
-          ? record.sliceTimesSec.filter((v): v is number => typeof v === "number" && Number.isFinite(v))
+        // `record` values arrive as `unknown` from the relay, so narrow explicitly
+        // rather than casting — a cast here would let a string through to the
+        // command and fail deep inside it instead of at the boundary.
+        const rawTimes = record.sliceTimesSec;
+        const times: number[] = Array.isArray(rawTimes)
+          ? rawTimes.filter((v: unknown): v is number => typeof v === "number" && Number.isFinite(v))
           : [];
         if (times.length === 0) {
           return mcpError("INVALID_ARGUMENTS", "audioSlice needs sliceTimesSec: an array of seconds inside the clip");
@@ -4813,6 +4872,10 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
           mutated: true,
         };
       }
+      return {
+        text: `unknown op: ${op} (list | audioList | audioMove | audioSplit | audioUpdate | audioStretch | audioSlip | audioDuplicate | audioMute | audioNudge | audioSlice | audioStrip | audioConsolidate | audioCrossfade | audioDelete | move | resize | split | duplicate | delete | moveRipple | resizeRipple | deleteRipple | copy | cut | paste)`,
+        mutated: false,
+      };
     } catch (error) {
       return mcpError(
         "EXECUTION_FAILED",

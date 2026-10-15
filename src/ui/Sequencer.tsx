@@ -40,6 +40,7 @@ import { humanizeVelocities, randomizeVelocities } from "../shared/velocityFx";
 import { SequencerCheatSheet } from "./SequencerCheatSheet";
 import type { RemoteCursor } from "../collab/CollaborationProvider";
 import { executeUserEdit } from "../commands/types";
+import { ACTIVE_PATTERN_PANEL_ID, patternTabDomId } from "./patternDomIds";
 
 export interface StepSelection {
   padIds: string[];
@@ -815,9 +816,15 @@ export function Sequencer({
   return (
     <section
       className={`sequencer${beatFocus ? " beat-focus" : ""}`}
-      aria-label={beatFocus ? "Step Sequencer — Beat Focus" : "Step Sequencer"}
+      id={ACTIVE_PATTERN_PANEL_ID}
+      role="tabpanel"
+      aria-labelledby={`${patternTabDomId(pattern.id)} sequencer-panel-label`}
+      tabIndex={0}
       onPointerLeave={() => publishCursor(null)}
     >
+      <span id="sequencer-panel-label" className="sr-only">
+        {beatFocus ? "Step Sequencer — Beat Focus" : "Step Sequencer"}
+      </span>
       {stepEditor && (
         <StepEditor
           padId={stepEditor.padId}

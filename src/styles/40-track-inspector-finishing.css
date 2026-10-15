@@ -8,11 +8,11 @@
     box-shadow var(--motion-state) var(--motion-ease);
 }
 
-.track-tabs .track-tab:not([aria-selected="true"]):hover {
+.track-tabs .track-tab:not([data-current-track="true"]):hover {
   border-color: color-mix(in srgb, var(--accent) 35%, var(--hairline));
 }
 
-.track-tabs .track-tab[aria-selected="true"] {
+.track-tabs .track-tab[data-current-track="true"] {
   border-color: color-mix(in srgb, var(--accent) 58%, var(--hairline));
   background: linear-gradient(
     180deg,

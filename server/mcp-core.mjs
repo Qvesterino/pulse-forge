@@ -1231,7 +1231,7 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_clips",
     description:
-      "Arrangement AND audio clips: list scene clips (with ids + an audio summary), audioList the track-lane waveforms in detail, or edit — scene ops move/resize/duplicate/delete target the clip COVERING an anchor bar (delete D4-gated); audio ops audioMove/audioSplit/audioUpdate (gain, fadeIn, fadeOut, reverse, loop)/audioStretch (rate 0.25..4, optional bars)/audioSlip (offsetSec — which part of the source plays; take-locked clips refuse)/audioDelete (D4) address a track (trackId or family) + the anchor bar its clip covers. Values are native (gain linear, fades in seconds).",
+      "Arrangement AND audio clips: list scene clips (with ids + an audio summary), audioList the track-lane waveforms in detail, or edit. Scene ops target the clip COVERING an anchor bar: move/resize/split/duplicate/delete, plus moveRipple/resizeRipple/deleteRipple which close the gap after the edit the way the UI's RIPPLE toggle does, and copy/cut/paste for the clipboard (cut and delete are D4-gated; the MCP clipboard is per-session, never persisted). Audio ops address a track (trackId or family) + the anchor bar its clip covers: audioMove/audioSplit/audioUpdate (gain, fadeIn, fadeOut, reverse, loop)/audioStretch (rate 0.25..4, optional bars)/audioSlip (offsetSec - which part of the source plays)/audioDuplicate/audioMute/audioNudge (whole bars)/audioSlice (sliceTimesSec)/audioStrip (segments to keep)/audioConsolidate (bufferId + range)/audioCrossfade/audioDelete (D4). Values are native (gain linear, fades in seconds).",
     inputSchema: {
       type: "object",
       properties: {
@@ -1250,7 +1250,20 @@ export const MCP_TOOL_DEFS = [
             "audioStretch",
             "audioSlip",
             "audioCrossfade",
+            "audioDuplicate",
+            "audioMute",
+            "audioNudge",
+            "audioSlice",
+            "audioStrip",
+            "audioConsolidate",
             "audioDelete",
+            "split",
+            "moveRipple",
+            "resizeRipple",
+            "deleteRipple",
+            "copy",
+            "cut",
+            "paste",
           ],
         },
         bar: {
@@ -1317,6 +1330,47 @@ export const MCP_TOOL_DEFS = [
         loop: {
           type: "boolean",
           description: "For audioUpdate — loop the trimmed content over the clip length",
+        },
+        muted: {
+          type: "boolean",
+          description: "For audioMute — true mutes, false unmutes (default true)",
+        },
+        sliceTimesSec: {
+          type: "array",
+          items: {
+            type: "number",
+            minimum: 0,
+          },
+          description:
+            "For audioSlice — wall seconds from the clip's first audible moment; the clip is kept and segments are laid out after it",
+        },
+        segments: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              startSec: {
+                type: "number",
+                minimum: 0,
+              },
+              endSec: {
+                type: "number",
+                minimum: 0,
+              },
+            },
+            required: ["startSec", "endSec"],
+          },
+          description: "For audioStrip — the ranges to KEEP; the clip is replaced by them",
+        },
+        sourceDurationSec: {
+          type: "number",
+          minimum: 0,
+          description: "For audioStrip — decoded source duration, bounds the audible window (optional)",
+        },
+        bufferId: {
+          type: "string",
+          description:
+            "For audioConsolidate — the rendered bounce buffer the merged clip points at (the tool cannot render it itself)",
         },
         requestId: {
           type: "string",

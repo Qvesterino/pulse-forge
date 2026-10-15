@@ -7,30 +7,28 @@
 
 ## Aktuálne overenie
 
-- Posledný dokončený `npm run typecheck` bol po MIDI tab úprave a pred dock/
-  Source profil zmenami. Hlásil jedinú existujúcu chybu mimo UI:
-  `src/effects/eqCurve.ts(279,41): TS2345` — objekt `{ re, im }` sa odovzdáva
-  parametru typu `number`; MIDI panel nemal novú diagnostiku.
-- `npm run build` stihol vytvoriť všetky prebuild worklety, potom ho zastavila
-  tá istá typecheck chyba. Samostatný `npx vite build --logLevel error` a bundle
-  kontrola prešli po MIDI úprave a pred dock/Source profil úpravami: DAW JS
-  **4990/5186 KB**,
-  optional runtimes **647/650 KB**, stem runtime **404/430 KB**, optional codecs
-  **168/170 KB**, core worklety **150/150 KB** a boot path **2188/2200 KB**.
-- Posledný Vite build po dock, Source profil a DICE úpravách trval 3 min 30 s a
-  zlyhal v nesúvisiacej MCP integrácii: `src/mcp/tools.ts` importuje
-  `duplicateAudioClip`, ktorý nie je exportovaný z
-  `src/commands/audioClips.ts`. Predchádzajúci parse blocker v MCP súbore už
-  zmizol. Bundle hodnoty vyššie pochádzajú z posledného úspešného buildu pred
-  týmito úpravami; nové UI zmeny zatiaľ nemajú bundle meranie.
-- Cielený Prettier aj `git diff --check` prešli pre MIDI, dock, Source profily
-  a DICE.
-  Repo-wide
-  `npm run format:check` zlyhá iba na `src/mcp/tools.ts`; tento súbor sa v tejto
-  UI zmene neupravoval. Automatické testy sa nespúšťali.
-  Staršie záznamy nižšie zachovávajú výsledky svojich historických brán.
-- Zostáva vizuálne prejsť husté split/focus stavy. MIDI/audio capture s
-  fyzickým zariadením je samostatná hardvérová kontrola.
+- Pred vznikom aktuálnej MCP syntax chyby prešiel inkrementálny
+  `npm run typecheck` po TrackTabs úprave. Čerstvý
+  `npm run typecheck:clean` dnes zlyháva pri parsovaní zdieľaného
+  `src/mcp/tools.ts:4579` (`'try' expected`); rovnaká chyba zastaví Vite vo
+  full `npm run build`. Čistá repo-wide TypeScript brána je momentálne
+  blokovaná.
+- Samostatný `npx vite build --logLevel error` prešiel po aktuálnych UI zmenách,
+  pred touto MCP syntax chybou. Vytvorený bundle prešiel budget kontrolou:
+  DAW JS **5005/5186 KB**, optional runtimes **647/650 KB**, stem runtime
+  **404/430 KB**, optional codecs **168/170 KB**, core worklety **150/150 KB**
+  a boot path **2193/2200 KB**.
+- Cielený Prettier aj `git diff --check` pre aktuálne UI súbory prešli.
+  Repo-wide `npm run format:check` hlási osem nesúvisiacich problémov:
+  `src/intent/reaction-ledger.ts`, `src/mcp/tools.ts` (syntax),
+  `src/persistence/ReactionRepository.ts`, `src/services.ts`,
+  `src/store/ProjectStore.ts`, `src/ui/EqCurveCanvas.tsx`,
+  `tests/effects-eq-curve-drag.test.ts` a `tests/reaction-ledger.test.ts`.
+  Automatické testy sa nespúšťali.
+- `open_in_codex` zaradil browser panel do fronty, ale in-app Browser stále
+  hlási prázdny zoznam tabov (`[]`); po aktuálnej keyboard/ARIA úprave preto
+  nevznikol čerstvý screenshot. Husté split/focus stavy a MIDI/audio capture s
+  fyzickým zariadením zostávajú otvorené kontroly.
 
 ### Proporcie sequencera a mobilný dock — audit 2026-10-15
 
@@ -854,19 +852,20 @@ scripts/check-bundle-size.mjs` zlyhal na širšom aktuálnom výstupe: DAW JS
 - Motion tokeny pokrývajú spoločné ovládacie prechody a `prefers-reduced-motion`
   ruší animácie aj transitions. Posledný audit zladil hover/selected prechody
   Mixeru, dock chrome, Arrangementu, MODu, track tabs a device voľby na
-  `--motion-fast`, `--motion-state` a `--motion-ease`. Zostáva auditovať staršie
-  lokálne CSS prechody; priame drag hodnoty a audio/measurement meter fill sa
-  majú aktualizovať bez oneskorenia a zachovať si krátky signálový timing.
+  `--motion-fast`, `--motion-state` a `--motion-ease`. Source audit 2026-10-15
+  našiel v `pad-meter-fill` druhú 80 ms interpoláciu navyše k 60 fps decay v
+  `RackStrip`; CSS transition bola odstránená, takže level feedback používa len
+  existujúci RAF decay. `meter-hold` si ponecháva samostatný 200 ms opacity
+  release pre peak-hold indikátor. Live meter timing ešte treba skontrolovať.
 - Cielený Prettier a `git diff --check` pre aktuálnu UI vlnu prechádzajú.
-  `npm run typecheck` teraz zlyháva na jednej diagnostike v `eqCurve.ts`;
-  podrobnosti sú v aktuálnom overení vyššie.
-- Repo-wide `npm run format:check` zlyháva iba na
-  `src/mcp/tools.ts`, ktorý nepatrí do tejto UI vlny.
-- `npx vite build --logLevel error` a všetky bundle gates prechádzajú: DAW JS
-  **4988/5186 KB**, opt-in stem runtime **404/430 KB**, core worklety
-  **150/150 KB**, generative player worklet **3/4 KB** a boot path
-  **2187/2200 KB**. `npm run build` ostáva blokovaný aktuálnou TypeScript
-  diagnostikou.
+  Čerstvý `npm run typecheck:clean` zastaví syntax v `src/mcp/tools.ts`; podrobnosti
+  o aktuálnom build/format stave sú v Aktuálnom overení vyššie.
+- Repo-wide `npm run format:check` hlási osem problémov vo viacerých
+  nesúvisiacich súboroch; úplný zoznam je v Aktuálnom overení.
+- Posledný samostatný Vite build a bundle budget prešli pred MCP syntax chybou:
+  DAW JS **5005/5186 KB**, opt-in stem runtime **404/430 KB**, core worklety
+  **150/150 KB**, generative player worklet **3/4 KB** a boot path **2193/2200 KB**.
+  Aktuálny plný build ostáva blokovaný parserom v `src/mcp/tools.ts`.
 
 ### Panelová matica dokončenia
 
@@ -2699,3 +2698,54 @@ stavu.
   `git diff --check` prešli. Vite build po zmene skončil po 3 min 30 s na
   nesúvisiacom MCP import/export nesúlade (`duplicateAudioClip`). Živú kontrolu
   fokusovania a preview zostáva doplniť.
+
+### Pattern selector — keyboard tabs a Sequencer panel — 2026-10-15
+
+- Pattern taby nad pracovnou plochou nemali roving focus ani klávesnicové
+  prepínanie a neodkazovali na Sequencer. Pri inline premenovaní sa do
+  `tablist` vkladal textový input, ktorý nie je tab.
+- Šípky, Home a End teraz menia aktívny pattern aj focus. Tablist súvisí so
+  Sequencerom cez `aria-controls`/`aria-labelledby`; ID sú tvorené jednou
+  zdieľanou funkciou. Počas premenovania sa prepínač mení na pomenovanú group,
+  aby textbox nebol v ARIA tabliste.
+- `Sequencer` dostal `tabpanel` priamo na svoj koreňový `<section>`, bez ďalšieho
+  layout obalu; tým zostali zachované priame `.workspace-main > .sequencer`
+  pravidlá a ich výška/scroll.
+- Upravené: `src/ui/PatternBar.tsx`, `src/ui/Sequencer.tsx` a nový
+  `src/ui/patternDomIds.ts`. Cielený Prettier a `git diff --check` prešli.
+  Následný Vite build a bundle gate prešli: DAW JS **5003/5186 KB**, boot path
+  **2192/2200 KB**. V tom historickom behu typecheck hlásil iba
+  `tests/scene-packs.test.ts`; neskoršie overenie po odstránení tejto chyby
+  prešlo, no aktuálny clean typecheck dnes zastavuje `src/mcp/tools.ts` (pozri
+  Aktuálne overenie).
+
+### Track selector — multi-select semantics a natívny Tab — 2026-10-15
+
+- Track strip kombinoval multi-selection s `tablist` rolou a vkladal do nej aj
+  rename input a Add Track select. Nahradil som ho pomenovanou groupou natívnych
+  výberových tlačidiel: `aria-pressed` vyjadruje členstvo vo výbere a
+  `aria-current` odlišuje aktívnu stopu. Silver/amber vzhľad aktívnej stopy aj
+  sekundárna ľavá stopa multi-selection ostávajú zachované.
+- Globálna skratka Tab-to-Transient už nepreberá Tab, keď je fokus na tlačidle,
+  linku, poli alebo inom fokusovateľnom prvku; Shift+Tab a štandardné
+  prechádzanie fokusom zostávajú natívne. Ak je aktívny nefocusovateľný cieľ
+  (spravidla `body`) a projekt obsahuje audio klipy, Tab zostáva rezervovaný
+  existujúcej skratke na prechod medzi transientmi.
+- Upravené: `src/ui/TrackTabs.tsx`, `src/ui/App.tsx`,
+  `src/styles/27-silver-glass-pulse.css` a
+  `src/styles/40-track-inspector-finishing.css`.
+- Pred súčasnou MCP syntax chybou prešiel incremental typecheck aj samostatný
+  Vite build s touto UI zmenou; bundle budget, cielený Prettier a
+  `git diff --check` tiež prešli. Aktuálny clean typecheck a plný build blokuje
+  `src/mcp/tools.ts`, mimo tejto UI zmeny. Živý keyboard/multi-select screenshot
+  zostáva otvorený, keďže Browser panel nemá dostupnú kartu.
+
+### Rack meter — bez druhej výstupnej interpolácie — 2026-10-15
+
+- `RackStrip` už aktualizuje pad peak a jeho decay cez `requestAnimationFrame`;
+  `.pad-meter-fill` navyše animoval každú výšku 80 ms CSS transitionom, čím
+  pridával oneskorenie do aktivity padov.
+- Odstránil som druhú interpoláciu. Meter naďalej plynulo klesá cez existujúci
+  RAF decay; skutočný audio `Meter` aj peak-hold release ostávajú samostatné.
+- Upravené: `src/styles/01-base.css`. Ide o source audit; živý záber meter
+  timing zatiaľ chýba, preto to nepovažujem za vizuálne uzavreté.

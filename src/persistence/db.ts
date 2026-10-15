@@ -1,5 +1,5 @@
 export const DB_NAME = "pulse-forge";
-export const DB_VERSION = 15;
+export const DB_VERSION = 16;
 export const STORE_PROJECTS = "projects";
 export const STORE_META = "meta";
 export const STORE_PRESETS = "presets";
@@ -35,6 +35,8 @@ export const STORE_PERSONAL_MODELS = "personal-models";
 export const STORE_PRODUCER_MEMORY_EVENTS = "producer-memory-events";
 /** Local-only snapshots for continuing an earlier generation branch. */
 export const STORE_PRODUCER_LINEAGE = "producer-lineage";
+/** Reaction Ledger (F1): how the human answered each machine proposal. Local-only. */
+export const STORE_REACTIONS = "reactions";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -89,6 +91,10 @@ export function openDb(): Promise<IDBDatabase> {
         lineage.createIndex("by-project-key", "projectKey", { unique: false });
         lineage.createIndex("by-created-at", "createdAt", { unique: false });
         lineage.createIndex("by-content-hash", "contentHash", { unique: false });
+      }
+      if (!db.objectStoreNames.contains(STORE_REACTIONS)) {
+        const reactions = db.createObjectStore(STORE_REACTIONS, { keyPath: "id" });
+        reactions.createIndex("by-created-at", "createdAt", { unique: false });
       }
     };
     // Another tab still holds an older DB version — the open stays pending

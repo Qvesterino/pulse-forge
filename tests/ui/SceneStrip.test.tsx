@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { act } from "react";
 import { SceneStrip } from "../../src/ui/SceneStrip";
 import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
@@ -8,6 +9,7 @@ import { TWIST_SCENE_PACK } from "../../src/effects/skrutka-scene-pack";
 import { KOREN_SCENE_PACK } from "../../src/effects/koren-scene-pack";
 import { applyTwistScenePair } from "../../src/commands/twistScene";
 import { applyKorenScenePair } from "../../src/commands/korenScene";
+import { setSceneModulatorPattern } from "../../src/commands/scenes";
 import type { Command } from "../../src/commands/types";
 import type { EffectInstance, ProjectDocument } from "../../src/project-model/types";
 
@@ -294,5 +296,60 @@ describe("SceneStrip", () => {
     fireEvent.click(screen.getByTitle("Clear the scene pin — the modulator returns to its own pattern"));
     const cleared = lastCommand(services2.store.execute).execute(after);
     expect(cleared.scenes.find((candidate) => candidate.id === scene.id)!.modulators).toBeUndefined();
+  });
+
+  it("draws the pinned step pattern in the strip and resizes it", () => {
+    const doc = JSON.parse(JSON.stringify(withSceneFx().doc)) as ProjectDocument;
+    const trackId = doc.tracks.find((track) => track.kind === "drum")!.id;
+    doc.lfos.push({
+      id: "lfo-draw",
+      trackId,
+      param: "gain",
+      amount: 0.5,
+      kind: "step",
+      division: 2,
+      steps: [0, 0],
+    });
+    const scene = doc.scenes.find((candidate) => candidate.patternId === doc.activePatternId) ?? doc.scenes[0]!;
+    const pinnedDoc = setSceneModulatorPattern(doc, scene.id, "lfo-draw", { steps: [0.25, -0.25] }).execute(doc);
+    const services = mockServices(pinnedDoc);
+    renderWithContext(<SceneStrip />, { services });
+
+    const grid = screen.getByRole("slider", { name: /Scene STEP 1 step pattern, 2 steps/ });
+    // jsdom rects are zero — give the grid a real box so painting resolves.
+    vi.spyOn(grid, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 200,
+      height: 38,
+    } as DOMRect);
+    act(() => {
+      fireEvent.pointerDown(grid, { pointerId: 1, clientX: 0, clientY: 0, button: 0, buttons: 1 });
+    });
+    act(() => {
+      fireEvent.pointerUp(grid, { pointerId: 1, clientX: 0, clientY: 0 });
+    });
+    const after = lastCommand(services.store.execute).execute(pinnedDoc);
+    const steps = after.scenes.find((candidate) => candidate.id === scene.id)!.modulators!["lfo-draw"]!.steps!;
+    expect(steps[0]).toBe(1); // top of the grid = +1
+    expect(steps[1]).toBe(-0.25);
+
+    // Fast-flick regression: down + up in ONE flush (continuous setState not
+    // yet rendered) still commits the painted value — ref authority.
+    act(() => {
+      fireEvent.pointerDown(grid, { pointerId: 1, clientX: 100, clientY: 0, button: 0, buttons: 1 });
+      fireEvent.pointerUp(grid, { pointerId: 1, clientX: 100, clientY: 0 });
+    });
+    const flicked = lastCommand(services.store.execute).execute(pinnedDoc);
+    expect(
+      flicked.scenes.find((candidate) => candidate.id === scene.id)!.modulators!["lfo-draw"]!.steps![1],
+    ).toBe(1);
+
+    // Length tool: the 8/16/32 buttons resize through the same command.
+    fireEvent.click(screen.getByRole("button", { name: "8" }));
+    const resized = lastCommand(services.store.execute).execute(pinnedDoc);
+    expect(resized.scenes.find((candidate) => candidate.id === scene.id)!.modulators!["lfo-draw"]!.steps).toHaveLength(
+      8,
+    );
   });
 });
