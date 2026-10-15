@@ -658,3 +658,43 @@ Any) showing the effective listen values. Validation: `tests/scene-packs
 `tests/midi/MidiInput.test.ts` (own CC silent while re-pointed, re-pointed
 CC lands, channel re-point filters) and the strip suite (fields write the
 command, stored overrides render).
+
+## Addendum 20 (2026-10-12) — per-scene modulator patterns
+
+The performance layer gains its fourth dimension: a scene pins the
+MODULATION PATTERN. `Scene.modulators` (lfoId → { steps?, seed? };
+SCHEMA_VERSION 31, sanitized — steps ≤ 64 bipolar values, seed ≤ 64 chars,
+empty entries and the empty record collapse away): while the scene is
+active the step modulator plays the pinned `steps` and the random S&H
+modulator draws from the pinned `seed`; absent fields keep the modulator's
+own pattern.
+
+The modulator math was already pure (`modulatorEventsInRange` /
+`modulatorPointValue` take an `Lfo`), so the implementation patches the
+EFFECTIVE Lfo before every call — one resolution point, no new DSP. The
+scene context rides two existing wires:
+
+- live: `scheduleWindow` now tracks the window's scene across BOTH mode
+  branches and passes `scenePerformanceOf(windowScene)` to the tail
+  `applyModulators(from, to, whenFor, scene)` — the same performance context
+  every other dimension uses;
+- offline: `scheduleModulatorsOffline` windows carry `scene?` and the
+  renderer attaches each window's scene performance (`window.sceneId` /
+  pattern fallback), so an export hears the same scene arc as playback.
+
+`setSceneModulatorPattern` (ONE undoable command) sets/clears one field at a
+time with bipolar clamping and NO canonicalization — pinning the CURRENT
+pattern is the point, so the pin must survive later doc edits; the strip's
+× clears (the macro-pin pattern).
+
+UI: the scene strip gains a modulator row per schedulable LFO (STEP n /
+S&H n with the target in the title): PIN captures the current pattern (a
+step modulator pins `stepsOf(lfo)`; a random one pins its seed, or a
+deterministic scene-scoped seed `${lfoId}:scene:${sceneId}` when the
+modulator had none — stable across peers and reloads), the pinned row shows
+`STEPS ×n` / `SEED xxxxxx…` plus the clear ×. Validation:
+`tests/scene-packs.test.ts` (command set/clear/clamp/validate/undo,
+sanitizer, scheduler handing the window scene to the modulator sweep, bridge
+substituting pinned steps live + through the offline window hook) and the
+scene-strip suite (PIN writes the command with the captured pattern, the
+pinned row renders the detail + clear).

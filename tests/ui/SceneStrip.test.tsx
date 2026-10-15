@@ -264,4 +264,35 @@ describe("SceneStrip", () => {
       "cc-repoint-ui": { ccNumber: 20, channel: 5 },
     });
   });
+
+  it("pins a modulator pattern to the scene and clears it", () => {
+    const doc = JSON.parse(JSON.stringify(withSceneFx().doc)) as ProjectDocument;
+    const trackId = doc.tracks.find((track) => track.kind === "drum")!.id;
+    doc.lfos.push({
+      id: "lfo-ui",
+      trackId,
+      param: "gain",
+      amount: 0.5,
+      kind: "step",
+      division: 2,
+      steps: [0.5, -0.5],
+    });
+    const scene = doc.scenes.find((candidate) => candidate.patternId === doc.activePatternId) ?? doc.scenes[0]!;
+    const services = mockServices(doc);
+    const { unmount } = renderWithContext(<SceneStrip />, { services });
+
+    fireEvent.click(screen.getByRole("button", { name: "PIN" }));
+    const after = lastCommand(services.store.execute).execute(doc);
+    expect(after.scenes.find((candidate) => candidate.id === scene.id)!.modulators).toEqual({
+      "lfo-ui": { steps: [0.5, -0.5] },
+    });
+    unmount();
+
+    const services2 = mockServices(after);
+    renderWithContext(<SceneStrip />, { services: services2 });
+    expect(screen.getByText("STEPS ×2")).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("Clear the scene pin — the modulator returns to its own pattern"));
+    const cleared = lastCommand(services2.store.execute).execute(after);
+    expect(cleared.scenes.find((candidate) => candidate.id === scene.id)!.modulators).toBeUndefined();
+  });
 });

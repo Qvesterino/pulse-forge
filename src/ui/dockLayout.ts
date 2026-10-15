@@ -34,14 +34,20 @@ const DOCK_CHROME_RESERVE = 44;
 
 /**
  * Keep the support dock proportional to the viewport, while letting it grow
- * from 34vh on short windows to 38vh on a standard 900px-high workspace.
- * Above that point the 38vh ceiling remains until the hard 560px panel limit
+ * from 26vh on short windows to 30vh on a standard 900px-high workspace.
+ * Above that point the 30vh ceiling remains until the hard 560px panel limit
  * naturally takes over. The 44px reserve covers the mobile dock chrome too.
+ *
+ * MEASURED 2026-10-15 (scripts/ui-proportion.mjs, 1440x900): the previous
+ * 34vh..38vh band produced a 298px dock — 33.0% of the viewport against 22.2%
+ * for the step sequencer. The auxiliary panel was half again the height of the
+ * instrument the product is named for. 30vh puts the ceiling at ~226px at this
+ * viewport, handing ~72px back to the grid.
  */
 export function maxDockHeightForViewport(viewportHeight: number): number {
   const height = Number.isFinite(viewportHeight) ? Math.max(0, viewportHeight) : 800;
   const growth = Math.min(1, Math.max(0, (height - 820) / 80));
-  const dockRatio = 0.34 + 0.04 * growth;
+  const dockRatio = 0.26 + 0.04 * growth;
   return Math.min(DOCK_MAX_HEIGHT, Math.floor(height * dockRatio) - DOCK_CHROME_RESERVE);
 }
 

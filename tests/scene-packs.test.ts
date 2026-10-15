@@ -2,7 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import { testDoc } from "./fixtures/doc";
 import { defaultParamsOf } from "../src/effects/registry";
 import { normalizeProject } from "../src/project-model/schema";
-import { setSceneCcOverride, setSceneCcRemap, setSceneMacro, setScenePack } from "../src/commands/scenes";
+import {
+  setSceneCcOverride,
+  setSceneCcRemap,
+  setSceneMacro,
+  setSceneModulatorPattern,
+  setScenePack,
+} from "../src/commands/scenes";
+import type { ScenePerformance } from "../src/project-model/scene-performance";
 import { AutomationBridge } from "../src/audio-engine/automationBridge";
 import { DeviceLookup } from "../src/audio-engine/deviceLookup";
 import type { TrackOrGroupView } from "../src/audio-engine/deviceLookup";
@@ -91,9 +98,10 @@ function bridgeHarness(doc: ProjectDocument) {
   };
   runtimes.set("sc-fx-twist", twistRuntime);
   runtimes.set("sc-fx-grow", fxRuntime(writes));
+  const modGain = param(1);
   const view = {
     fx: { runtimes },
-    modAutoGain: { gain: param(1) },
+    modAutoGain: { gain: modGain },
     modAutoPan: { pan: param(0) },
     modMacroGain: { gain: param(1) },
     modMacroPan: { pan: param(0) },
@@ -119,7 +127,7 @@ function bridgeHarness(doc: ProjectDocument) {
     },
     lookup,
   );
-  return { bridge, writes, twistWrites, twistRuntime, track };
+  return { bridge, writes, twistWrites, twistRuntime, track, modGain };
 }
 
 describe("per-scene packs — model + command", () => {
@@ -278,6 +286,44 @@ describe("per-scene packs — model + command", () => {
     (hostile.scenes[0] as unknown as { ccOverrides: unknown }).ccOverrides = 4;
     expect(normalizeProject(hostile).scenes[0]!.ccOverrides).toBeUndefined();
   });
+
+  it("pins a modulator pattern per scene with clear + undo + clamping", () => {
+    const { doc, trackId } = docWithSceneFx();
+    const scene = doc.scenes[0]!;
+    doc.lfos.push({ id: "lfo-s", trackId, param: "gain", amount: 0.5, kind: "step", division: 2, steps: [0.5, -0.5] });
+    const a = setSceneModulatorPattern(doc, scene.id, "lfo-s", { steps: [1, -1, 0] }).execute(doc);
+    expect(a.scenes[0]!.modulators).toEqual({ "lfo-s": { steps: [1, -1, 0] } });
+    const b = setSceneModulatorPattern(a, scene.id, "lfo-s", { seed: "s1" }).execute(a);
+    expect(b.scenes[0]!.modulators).toEqual({ "lfo-s": { steps: [1, -1, 0], seed: "s1" } });
+    const c = setSceneModulatorPattern(b, scene.id, "lfo-s", { steps: null }).execute(b);
+    expect(c.scenes[0]!.modulators).toEqual({ "lfo-s": { seed: "s1" } });
+    const d = setSceneModulatorPattern(c, scene.id, "lfo-s", { seed: null }).execute(c);
+    expect(d.scenes[0]!.modulators).toBeUndefined();
+    expect(setSceneModulatorPattern(c, scene.id, "lfo-s", { seed: null }).undo(d).scenes[0]!.modulators).toEqual({
+      "lfo-s": { seed: "s1" },
+    });
+    // Bipolar clamping + validation.
+    const clamped = setSceneModulatorPattern(doc, scene.id, "lfo-s", { steps: [2, -5] }).execute(doc);
+    expect(clamped.scenes[0]!.modulators!["lfo-s"]!.steps).toEqual([1, -1]);
+    expect(() => setSceneModulatorPattern(doc, scene.id, "lfo-s", { steps: [] })).toThrow(/Invalid step pattern/);
+    expect(() => setSceneModulatorPattern(doc, scene.id, "nope", { seed: "x" })).toThrow(/Modulator nope not found/);
+  });
+
+  it("sanitizes scene.modulators through normalizeProject", () => {
+    const { doc } = docWithSceneFx();
+    const dirty = JSON.parse(JSON.stringify(doc)) as ProjectDocument;
+    (dirty.scenes[0] as unknown as { modulators: unknown }).modulators = {
+      lfoA: { steps: [0.5, 2, Number.NaN, -3], seed: "ok" },
+      lfoB: { steps: [] },
+      lfoC: "x",
+      "": { seed: "y" },
+      lfoD: { seed: "z".repeat(80) },
+    };
+    expect(normalizeProject(dirty).scenes[0]!.modulators).toEqual({ lfoA: { steps: [0.5, 1, -1], seed: "ok" } });
+    const hostile = JSON.parse(JSON.stringify(doc)) as ProjectDocument;
+    (hostile.scenes[0] as unknown as { modulators: unknown }).modulators = ["nope"];
+    expect(normalizeProject(hostile).scenes[0]!.modulators).toBeUndefined();
+  });
 });
 
 describe("per-scene packs — scheduler hands the scene selection to the engine", () => {
@@ -294,6 +340,7 @@ describe("per-scene packs — scheduler hands the scene selection to the engine"
       macros: { [doc.macros[0]!.id]: 0.9 },
       ccRemaps: ["cc-seam"],
       ccOverrides: { "cc-seam": { ccNumber: 20, channel: 5 } },
+      modulators: { "lfo-seam": { steps: [1, 0, -1] } },
     };
     return {
       ...doc,
@@ -321,6 +368,7 @@ describe("per-scene packs — scheduler hands the scene selection to the engine"
         ccOverrides?: Record<string, { ccNumber?: number; channel?: number }> | null;
       }>
     > = [];
+    const modulatorScenes: Array<{ from: number; scene?: ScenePerformance | null }> = [];
     let audioTime = 10;
     const transport = new Transport({ now: () => audioTime }, doc.bpm);
     const scheduler = new Scheduler({
@@ -333,6 +381,7 @@ describe("per-scene packs — scheduler hands the scene selection to the engine"
       applyAutomation: () => {},
       applyPatternLaunch: () => {},
       applySceneTempo: () => {},
+      applyModulators: (from, _to, _whenFor, scene) => modulatorScenes.push({ from, scene: scene ?? null }),
       setSceneIntensity: () => {},
       scheduleSceneIntensity: (points) => scheduled.push(points),
     });
@@ -365,6 +414,11 @@ describe("per-scene packs — scheduler hands the scene selection to the engine"
         expect(point.ccOverrides).toBeUndefined();
       }
     }
+    // The modulator sweep gets the window's scene context — scene B's pinned
+    // modulation pattern shows up on windows at/after the seam.
+    const afterSeam = modulatorScenes.filter((call) => call.from >= seamTick);
+    expect(afterSeam.length).toBeGreaterThan(0);
+    expect(afterSeam.some((call) => call.scene?.modulators)).toBe(true);
   });
 });
 
@@ -533,5 +587,33 @@ describe("per-scene packs — bridge override", () => {
       (tick) => tick / 1000,
     );
     expect(bridge.sceneCcOverride("m2")).toEqual({ ccNumber: 1 });
+  });
+
+  it("substitutes the scene's pinned step pattern in the modulator sweep", () => {
+    const { doc, trackId } = docWithSceneFx();
+    doc.lfos.push({
+      id: "lfo-step",
+      trackId,
+      param: "gain",
+      amount: 1,
+      kind: "step",
+      division: 4,
+      steps: [0, 0, 0, 0],
+    });
+    const { bridge, modGain } = bridgeHarness(doc);
+    // Doc pattern is all zeros → the channel multiplier stays at base 1.
+    bridge.applyModulators(0, 960, (tick) => tick / 1000);
+    expect(modGain.value).toBeCloseTo(1, 9);
+    // The scene pins a +0.5 pattern → every hold writes 1.5.
+    bridge.applyModulators(0, 960, (tick) => tick / 1000, {
+      modulators: { "lfo-step": { steps: [0.5, 0.5, 0.5, 0.5] } },
+    });
+    expect(modGain.value).toBeCloseTo(1.5, 9);
+    // Offline windows carry the same scene context.
+    bridge.scheduleModulatorsOffline(
+      [{ from: 0, to: 960, scene: { modulators: { "lfo-step": { steps: [-0.5, -0.5, -0.5, -0.5] } } } }],
+      (tick) => tick / 1000,
+    );
+    expect(modGain.value).toBeCloseTo(0.5, 9);
   });
 });

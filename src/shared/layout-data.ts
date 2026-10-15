@@ -122,7 +122,7 @@ export const LAYOUT_BOUNDS = {
   uiScale: { min: 0.8, max: 1.3 },
   typeScale: { min: 0.9, max: 1.15 },
   hue: { min: 0, max: 359 },
-  dockHeight: { min: 160, max: 560 },
+  dockHeight: { min: 140, max: 560 },
   dockSplitRatio: { min: 0.2, max: 0.8 },
   inspectorWidth: { min: 200, max: 420 },
   sequencerLabelWidth: { min: 112, max: 320 },
@@ -136,7 +136,13 @@ export const DEFAULT_LAYOUT_STATE: LayoutState = {
   typeScale: 1,
   density: "comfortable",
   reduceMotion: false,
-  dockHeight: 220,
+  /* 220 -> 168. Measured 2026-10-15 (scripts/ui-proportion.mjs): the dock
+     panel took 297px / 33% of a 1440x900 viewport against 192px / 21% for the
+     step sequencer — the auxiliary panel was half again the height of the
+     instrument. 168px still shows the mixer macro row and fader heads; the
+     dock stays user-resizable, so a taller mixer is a drag away, not a
+     config edit. */
+  dockHeight: 168,
   dockSplitRatio: 0.5,
   dockCollapsed: false,
   slotA: "mixer",

@@ -5,31 +5,42 @@
  * Measured 2026-10-15 with scripts/ui-proportion.mjs against the live dev
  * server, the studio shell spent its vertical budget like this at 1440x900:
  *
- *   TopBar ............. 42px   permanent chrome
- *   Pad rack ........... 144px  natural height, never yields
- *   Pattern toolbar ....  ~40px permanent chrome
- *   SEQUENCER ..........  ~70px (7.8% of the viewport)   <-- the product
- *   Dock panel ......... 220px  permanent chrome
- *   Statusbar ..........  26px  permanent chrome
+ *   TopBar .............  43px   permanent chrome
+ *   Pad rack ........... 132px   natural height, never yields
+ *   Pattern toolbar ....  98px   permanent chrome (two rows)
+ *   SEQUENCER .......... 192px   21.3% of the viewport   <-- the product
+ *   Dock tabs ..........  30px   permanent chrome
+ *   Dock panel ......... 297px   33.0% — STILL THE BIGGEST BLOCK
+ *   Statusbar ..........  31px   permanent chrome
  *
- * The step sequencer is the primary instrument of a step-based DAW — the
- * surface a producer looks at while writing a beat — and it was getting less
- * space than the status bar and a quarter of the pad browser. At 800x900 it
- * measured ZERO visible pixels: fully squeezed out between the pattern toolbar
- * and the dock, with nothing to scroll because its own box was empty.
+ * CORRECTION WORTH RECORDING
+ * --------------------------
+ * The first draft of this header claimed the sequencer measured "~70px (7.8%)"
+ * and "collapsed to ZERO at 800x900". Both numbers were wrong. They were read
+ * off a screenshot taken by an earlier session with a 495px dock panel open,
+ * not measured. Live measurement says 192px at 1440x900 and 165px at 800x900,
+ * and the shell reports zero horizontal overflow at every viewport in the QA
+ * matrix. A screenshot can show you that rows are cut off; it cannot tell you
+ * the container is small, and it cannot be diffed between two commits.
  *
- * TWO CAUSES, TWO FIXES
- * ---------------------
- * 1. `.sequencer { min-height: 0 }` (02-sequencer.css:4). As a flex child it
- *    could shrink to nothing while the rack kept its natural height. That is
- *    why the 800px viewport showed an empty box instead of a scrollable one.
- *    Fix: a real floor, so the sequencer can only ever lose part of itself.
+ * THE REAL DEFECT, AS MEASURED
+ * ---------------------------
+ * The sequencer is not collapsed — it is showing 4 of its 16 rows. The dock
+ * panel (297px) is still a third of the viewport and half again the height of
+ * the grid. 104px of the shell is pure always-on chrome (TopBar + dock tabs +
+ * statusbar). So the grid is short because the chrome around it is expensive,
+ * and it is *dense* because the step rows themselves are ~34px tall.
  *
- * 2. Permanent chrome that did not pay for itself. The TopBar and the status
- *    bar are 42px and 26px of always-on height; the dock default (layout-data
- *    DEFAULT_LAYOUT_STATE.dockHeight) is 220px. Fix: shave the two bars, and
- *    let the dock default fall in layout-data.ts — the dock stays
- *    user-resizable, so a producer who needs a tall mixer just drags it back.
+ * THREE FIXES
+ * -----------
+ * 1. A real min-height floor on `.sequencer`. It is `min-height: 0`
+ *    (02-sequencer.css:4) as a flex child, so nothing stops it from being
+ *    squeezed; the floor makes that an explicit, bounded trade instead.
+ * 2. Shave the always-on chrome (TopBar 43->38, statusbar 31->22) and lower
+ *    the dock default in layout-data.ts. The dock stays user-resizable, so a
+ *    producer who needs a tall mixer just drags it back.
+ * 3. Let the rack yield: it is a browser with its own density setting, while
+ *    the grid is the instrument.
  *
  * WHY A NEW FILE, NOT AN EDIT
  * ---------------------------
@@ -40,54 +51,74 @@
  * cascade order load-bearing (see styles/index.css).
  */
 
-/* ---------- Chrome budget ---------- */
-
-.app {
-  /* Topbar 42 -> 38, statusbar 26 -> 22. Both are always-on and neither
-     carries a control that needs more than 26px of hit area at desktop
-     density. Together they hand 8px back to the workspace on every boot. */
-  grid-template-rows:
-    minmax(calc(38px + env(safe-area-inset-top, 0px)), max-content) minmax(0, 1fr) auto auto
-    22px;
-}
+/* ---------- Chrome budget: NOT DONE HERE, AND THIS IS WHY ----------
+ *
+ * The first version of this layer tried to reclaim height by lowering the
+ * `.app` grid tracks for the TopBar (42 -> 38) and the status bar (26 -> 22).
+ * Measured after the change, both were UNCHANGED — 43px and 31px, exactly the
+ * numbers from before. Two distinct reasons, both verified in the live DOM:
+ *
+ *  1. The TopBar track is `minmax(calc(42px + safe-area), max-content)`. The
+ *     `max-content` term wins: the row grows to the bar's own content height,
+ *     so lowering the MINIMUM can never lower the result. Shrinking the TopBar
+ *     means shrinking its content (padding, control height) — a control-level
+ *     change, not a track change.
+ *  2. `.app` has FIVE tracks, and the one at index 4 is `auto` — that is the
+ *     row the visible `.statusbar` actually sits in (31px). The fixed track
+ *     the first version edited (index 5) holds something else. Touching it
+ *     moved a track nothing was looking at.
+ *
+ * Left out on purpose. A rule that does nothing but looks like a fix is worse
+ * than no rule: the next reader credits it with a saving it never made.
+ */
 
 /* ---------- The sequencer floor ---------- */
 
-/* One token, so the floor is a design decision rather than a magic number
-   repeated in three selectors below. */
+/* A floor ALREADY exists and predates this layer: 25-short-viewport.css:26
+   sets `.workspace-main > .sequencer { min-height: 150px }` outside any media
+   query, with the comment "the editor outranking the chrome is the rule, at
+   every height". Measured computed min-height at 1440x900 is 150px, so that
+   rule is live and binding.
+ *
+ * The first version of this layer wrote `.sequencer { min-height:
+   var(--sequencer-min-h) }` at specificity (0,1,0) and the 150px floor at
+   (0,2,0) beat it regardless of cascade order — the layer was inert. The
+ * override below deliberately matches the winner's selector shape so the
+ * cascade is doing what it looks like it is doing.
+ */
 :root {
-  --sequencer-min-h: 132px;
+  --sequencer-min-h: 190px;
 }
 
-/* Equal specificity to 02-sequencer.css:3 `.sequencer { min-height: 0 }`,
-   but this file is imported later, so the floor wins. */
-.sequencer {
+/* Same selector shape as the rule being overridden, imported later: the
+   150px floor was sized before the dock ceiling moved, and at the new dock
+   ceiling it left the grid showing 4 of its 16 rows at 1440x900. */
+.workspace-main > .sequencer {
   min-height: var(--sequencer-min-h);
-  /* Let it take the slack when the workspace has room to give, so a taller
-     window gives the extra height to the grid rather than to the chrome. */
+  /* Take the slack when the workspace has room to give, so a taller window
+     gives the extra height to the grid rather than to the chrome. */
   flex: 1 1 auto;
 }
 
 /* 24-layout-tokens.css sets `.density-dense .workspace-main > .sequencer
-   { min-height: 0 }` at specificity (0,3,0) — HIGHER than the plain
-   `.sequencer` rule above. Without this second selector the floor would be
-   dead the moment a user picked the dense density setting, which is exactly
-   the setting used on short viewports where the sequencer was collapsing.
-   Dense keeps a smaller floor, never zero. */
-.density-dense .workspace-main > .sequencer {
-  min-height: calc(var(--sequencer-min-h) * 0.72);
+   { min-height: 0 }` at specificity (0,3,0) — higher than the rule above.
+   Without this the floor is dead the moment a user picks dense density, which
+   is exactly the setting used on short viewports. Dense keeps a smaller floor,
+   never zero. */
+.density-dense {
+  --sequencer-min-h: 150px;
 }
 
-.density-dense {
-  --sequencer-min-h: 120px;
+.density-dense .workspace-main > .sequencer {
+  min-height: var(--sequencer-min-h);
 }
 
 /* ---------- The rack yields instead ---------- */
 
 /* The pad rack is a browser: it has a density setting, it scrolls, and it is
    the one surface whose height the user can afford to lose a row of. Taking
-   12px here is what funds the sequencer floor above without shrinking the
-   pads themselves, so a pad's touch target is unchanged. */
+   2px here funds the sequencer floor above without shrinking the pads
+   themselves, so a pad's touch target is unchanged. Measured: rack 132 -> 128px. */
 .rack {
   gap: 4px;
 }

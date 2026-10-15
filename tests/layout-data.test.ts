@@ -297,7 +297,12 @@ describe("layout-data · resolveLayoutState prefers the new key", () => {
   });
 
   it("names the storage keys so the applier and this test cannot drift", () => {
-    expect(LAYOUT_STORAGE_KEY).toBe("pf-layout-v1");
+    // v2 (proportion pass, 2026-10-15): the v1 key stored a 220px dock
+    // default. KYX has no shipped user base, so the honest migration is a new
+    // key rather than a carry-forward that would re-import the exact height
+    // the change retires. This pin exists so the applier and the key cannot
+    // drift apart again — bump it in the same commit as any future bump.
+    expect(LAYOUT_STORAGE_KEY).toBe("pf-layout-v2");
     expect(LEGACY_THEME_KEY).toBe("pf-theme-v1");
     expect(LEGACY_DOCK_KEY).toBe("pf-dock-v1");
   });

@@ -100,7 +100,9 @@ function table(rows, vw, vh) {
   lines.push(`  ${pad("region", 18)}${rpad("px", 6)}${rpad("%vh", 7)}`);
   for (const r of rows) {
     const px = r.px;
-    lines.push(`  ${pad(r.label + (r.weight ? " *" : ""), 18)}${rpad(px, 6)}${rpad(px == null ? "-" : ((px / vh) * 100).toFixed(1) + "%", 7)}`);
+    lines.push(
+      `  ${pad(r.label + (r.weight ? " *" : ""), 18)}${rpad(px, 6)}${rpad(px == null ? "-" : ((px / vh) * 100).toFixed(1) + "%", 7)}`,
+    );
   }
   return lines.join("\n");
 }
@@ -185,7 +187,9 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 900 
 
     const m = await measure(page);
     if (m.topbar == null) {
-      throw new Error(`studio shell absent at ${vp.w}x${vp.h} — measurement aborted, not reported as a collapsed sequencer`);
+      throw new Error(
+        `studio shell absent at ${vp.w}x${vp.h} — measurement aborted, not reported as a collapsed sequencer`,
+      );
     }
     const rows = REGIONS.map((r) => ({ label: r.label, px: m[r.key]?.h ?? null, weight: r.weight }));
     report.push({ vp, m, text: table(rows, vp.w, vp.h) });
