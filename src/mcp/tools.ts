@@ -6169,8 +6169,21 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
       return { text: `iterate: ${lines.join("\n") || "already converged"}`, mutated: false };
     }
     ctx.execute(snapshot("mcpMasterIterate", `MCP: iterate (${converged ? "converged" : "capped at 3"})`, doc, next));
+    // Structured iteration data for the light-show UI: each line parsed into
+    // { iteration, device, param, from, to } for the convergence renderer.
+    const iterationSteps = lines.map((line) => {
+      const iterMatch = /iter (\d+):/.exec(line);
+      const paramMatch = /([\w.]+) ([-\d.]+) → ([-\d.]+)/.exec(line);
+      return {
+        iteration: iterMatch ? Number(iterMatch[1]) : 0,
+        deviceParam: paramMatch ? paramMatch[1] : line.slice(0, 30),
+        from: paramMatch ? Number(paramMatch[2]) : 0,
+        to: paramMatch ? Number(paramMatch[3]) : 0,
+      };
+    });
     return {
       text: `iterate ${converged ? "CONVERGED" : "CAPPED at 3"} — ${lines.length} adjustment(s), one undo step:\n${lines.join("\n")}`,
+      data: { iterations: iterationSteps, converged },
       mutated: true,
     };
   }
