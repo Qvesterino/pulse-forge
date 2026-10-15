@@ -2,7 +2,8 @@
 
 The editor for melodic instrument tracks: pitches on the left, time steps
 along the top. Click empty space to insert a note; drag to move it; drag its
-right edge to resize.
+right edge to resize. The `LEN` control sets the next note's length and follows
+the last note you click or resize. Choose a value in `LEN` to override it.
 
 ## Editing
 

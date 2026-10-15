@@ -596,6 +596,7 @@ export function PianoRollTrack({
       const patternTicks = stepCount * STEP_TICKS;
       const start = Math.max(0, Math.min(cur.step * STEP_TICKS, patternTicks - STEP_TICKS));
       const duration = Math.max(STEP_TICKS, Math.min(entrySteps * STEP_TICKS, patternTicks - start));
+      setDrawDurationTicks(duration);
       executeUserEdit(
         services.store,
         addNote(doc, track.id, {
@@ -658,6 +659,9 @@ export function PianoRollTrack({
   const beginNoteDrag = (event: React.PointerEvent, note: NoteEvent) => {
     if (event.button !== 0) return;
     event.stopPropagation();
+    // FL-style sticky note length: touching an existing note makes its exact
+    // duration the default for the next note drawn in the grid.
+    setDrawDurationTicks(note.duration);
     // Touch/pen: hold a note to open the action menu (delete / duplicate /
     // slide). Without this the only note deletion on touch is impossible —
     // mobile browsers never produce a right-click.
@@ -933,12 +937,13 @@ export function PianoRollTrack({
         moveNote(services.store.doc, track.id, current.noteId, { start: newStart, pitch: newPitch }),
       );
     }
-    if (current.mode === "resize" && current.durSteps !== current.baseDurSteps) {
+    if (current.mode === "resize") {
       const maxDur = Math.floor((MAX_ARRANGEMENT_CLIP_TICKS - current.baseStart) / STEP_TICKS);
-      executeUserEdit(
-        services.store,
-        resizeNote(services.store.doc, track.id, current.noteId, clamp(current.durSteps, 1, maxDur) * STEP_TICKS),
-      );
+      const durationTicks = clamp(current.durSteps, 1, maxDur) * STEP_TICKS;
+      setDrawDurationTicks(durationTicks);
+      if (current.durSteps !== current.baseDurSteps) {
+        executeUserEdit(services.store, resizeNote(services.store.doc, track.id, current.noteId, durationTicks));
+      }
     }
     // The duplicate + move were one gesture — collapse their undo entries.
     // A no-op move (note vanished mid-drag) leaves grew===1, and endUndoFrame
@@ -1480,10 +1485,18 @@ export function PianoRollTrack({
             id={`pr-note-length-${track.id}`}
             className="pr-step-dur"
             aria-label="New note length"
-            title="New note length — choose a phrase length before placing a note"
+            title="New note length — follows the last note you click or resize; choose here to override"
             value={drawDurationTicks}
             onChange={(event) => setDrawDurationTicks(Number(event.target.value))}
           >
+            {!NOTE_LENGTH_OPTIONS.some((option) => option.ticks === drawDurationTicks) && (
+              <option value={drawDurationTicks}>
+                CUSTOM ·{" "}
+                {drawDurationTicks % STEP_TICKS === 0
+                  ? `${drawDurationTicks / STEP_TICKS} STEPS`
+                  : `${drawDurationTicks} TICKS`}
+              </option>
+            )}
             {NOTE_LENGTH_OPTIONS.map((option) => (
               <option key={option.ticks} value={option.ticks}>
                 {option.label}
