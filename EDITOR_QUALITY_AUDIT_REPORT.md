@@ -3626,22 +3626,22 @@ built.
 
 ### P1 - correctness / data integrity
 
-| #   | Item                                                                                                                        | Impact                                                                                                                                 | Effort                                                           |
-| --- | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| 1   | **Take-lane click suppression is a timing bet** (wave 1 #10) - a bare boolean + `setTimeout(0)`, no pointer/target identity | A comp-range drag can be swallowed by the following click, discarding the range the user just drew                                     | S - needs the identity token, then a Playwright repro to confirm |
-| 2   | **`crossfadeAudioClips` writes fades on a locked clip**                                                                     | The lock contract names move/resize/trim/split/slip/stretch/delete; fades are deliberately outside it. **Product decision, not a bug** | S - one `assertClipEditable` if the answer is "yes"              |
-| 3   | **Toolbar `DUP`/`DEL` act on the active clip; keyboard acts on the whole selection** (wave 10)                              | With a 2-clip selection the toolbar removes one. Both self-consistent - it is a convention                                             | S - align them or label them                                     |
-| 4   | **Waveform canvas does not re-render on resize** (wave 2)                                                                   | Drawn window stays correct, resolution goes soft                                                                                       | S - DPR-aware redraw on **zoom only**, never per resize frame    |
-| 5   | **`wfAchievableCents` exists but nothing in the UI calls it** (wave 17)                                                     | Below 0.5 Hz the wow&flutter readout overstates what the buffer can deliver                                                            | XS                                                               |
+| #   | Item                                                                                                                        | Impact                                                                                                         | Effort                                                           |
+| --- | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| 1   | **Take-lane click suppression is a timing bet** (wave 1 #10) - a bare boolean + `setTimeout(0)`, no pointer/target identity | A comp-range drag can be swallowed by the following click, discarding the range the user just drew             | S - needs the identity token, then a Playwright repro to confirm |
+| 2   | **`crossfadeAudioClips` wrote fades on a locked clip**                                                                      | RESOLVED 2026-10-14 — owner decision: crossfade refuses a locked clip, a standalone fade stays allowed. See §L | was S                                                            |
+| 3   | **Toolbar `DUP`/`DEL` act on the active clip; keyboard acts on the whole selection** (wave 10)                              | With a 2-clip selection the toolbar removes one. Both self-consistent - it is a convention                     | S - align them or label them                                     |
+| 4   | **Waveform canvas does not re-render on resize** (wave 2)                                                                   | Drawn window stays correct, resolution goes soft                                                               | S - DPR-aware redraw on **zoom only**, never per resize frame    |
+| 5   | **`wfAchievableCents` exists but nothing in the UI calls it** (wave 17)                                                     | Below 0.5 Hz the wow&flutter readout overstates what the buffer can deliver                                    | XS                                                               |
 
 ### P2 - missing capability (MCP parity, §B2)
 
-| #   | Item                                                                                                                                                                 | Impact                                                                                               | Effort |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------ |
-| 6   | No `splitArrangementClipAtTick` on MCP                                                                                                                               | An agent cannot split a scene clip - the one verb wave 1 verified as deliberately unsnapped          | S      |
-| 7   | No ripple variants on MCP                                                                                                                                            | An agent's delete never closes the gap the UI's `RIPPLE` toggle produces. Silent semantic divergence | M      |
-| 8   | No clipboard ops on MCP                                                                                                                                              | No copy/cut/paste for an agent                                                                       | M      |
-| 9   | Audio verbs absent on MCP — **2 of the 9 landed** (`audioSlip`, `audioStretch`, §B3); consolidate, strip silence, slice, crossfade, duplicate, mute and nudge remain | See §B2 / §B3                                                                                        | M      |
+| #   | Item                                                                                                                                                                 | Impact                                                                                              | Effort |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ------ |
+| 6   | **CLOSED** - `split` on MCP (scene clips split on the bar grid, as wave 1 verified is deliberate)                                                                    | An agent can now split a scene clip, matching the CUT tool                                          | M      |
+| 7   | **CLOSED** - `moveRipple` / `resizeRipple` / `deleteRipple` on MCP                                                                                                   | An agent's ripple edit now closes the gap exactly like the UI toggle; `deleteRipple` stays D4-gated | M      |
+| 8   | **CLOSED** - `copy` / `cut` / `paste` on MCP (module-scoped, never persisted; `cut` is D4-gated)                                                                     | An agent can use the clipboard; a cross-project paste is refused, not silently accepted             | M      |
+| 9   | **CLOSED** - `audioDuplicate` / `audioMute` / `audioNudge` / `audioSlice` / `audioStrip` / `audioConsolidate` joined `audioStretch` / `audioSlip` / `audioCrossfade` | No edit verb is UI-only any more                                                                    | M      |
 
 ### P3 - hardening / unverified
 
@@ -3938,3 +3938,88 @@ so the probe measured 12 Hz starting at `undefined` and returned 0. A diagnostic
 over the same render showed a healthy 0.1147 at that instant and exposed the typo. The
 failure message now carries the sweep, because a lone "silent at 12 s" was plausible
 enough to be believed and was not.
+
+---
+
+# Wave 22 - 2026-10-14 - the owner decisions, executed
+
+Four decisions came back on 2026-10-14. This wave executes them; nothing here is a
+reinterpretation of the instruction.
+
+## §L - Crossfade vs the lock: split the contract (backlog item 2 CLOSED)
+
+Wave 20 measured the asymmetry and left it as an owner question: `crossfadeAudioClips`
+wrote fades on a locked clip while `slipAudioClip` and `stretchAudioClip` refused the
+same clip. The decision was **do not let a crossfade through a locked clip, but keep a
+standalone fade allowed**.
+
+The reasoning is in the code, because it is the part that is easy to undo by accident:
+
+> A crossfade is not a mix parameter - it is a two-clip edit: it rewrites the fade of a
+> clip the user never selected, over the span where the two clips overlap. D8's contract
+> deliberately leaves `fadeIn`/`fadeOut` OUT of the refusing verbs so a plain fade stays
+> editable on a locked clip, but a crossfade is exactly the kind of edit locking is
+> meant to protect.
+
+`assertClipEditable` now runs on **both** clips, after the direction-safe swap so the
+message names the real earlier clip. Regression coverage asserts **both halves** - a
+crossfade throws on a locked clip, and `updateAudioClip(..., { fadeOut })` still lands
+on that same locked clip. Asserting only the first half would have passed happily if
+fades had been guarded too.
+
+## §M - P2 parity closed: no edit verb is UI-only (backlog items 6-9 CLOSED)
+
+The owner closed the scope to "build the missing ops". Nine new ops on `kyx_clips`:
+
+| Lane      | Ops                                                                                         |
+| --------- | ------------------------------------------------------------------------------------------- |
+| Scene     | `split`, `moveRipple`, `resizeRipple`, `deleteRipple`                                       |
+| Clipboard | `copy`, `cut`, `paste`                                                                      |
+| Audio     | `audioDuplicate`, `audioMute`, `audioNudge`, `audioSlice`, `audioStrip`, `audioConsolidate` |
+
+Three decisions inside that batch, each forced by a real constraint rather than taste:
+
+- **`split` splits on the BAR GRID**, not sample-precisely. Wave 1 verified that
+  asymmetry is deliberate - audio clips are sample-precise, scene clips are not - so
+  the MCP op uses the same primitive the grid cut tool does rather than inventing a
+  finer one the UI does not have.
+- **The MCP clipboard is module scope, never persisted.** An agent's copy must survive
+  to a later paste, but a `ProjectDocument` has no field for it, and dragging clips
+  between documents is exactly what the `projectId` on `ClipClipboard` exists to stop.
+  `cut` rides the D4 gate because it removes; `deleteRipple` does too.
+- **`audioConsolidate` needs a `bufferId`.** The merged clip points at a rendered bounce
+  buffer, and the tool cannot render that itself - so it asks for one rather than
+  pretending to bounce.
+
+### A real bug this wave introduced, and then fixed
+
+The clipboard ops were first placed outside the `try`/`catch` that every other verb in
+the tool sits behind. A paste that would overlap a scene clip therefore **threw a raw
+exception out of `executeMcpTool` into the relay** - exactly what the surrounding code
+comments warn against ("never a thrown crash into the relay"). The new spec caught it
+because a cross-project paste failed with a raw `Error` instead of an `McpToolResult`.
+The block is now wrapped, and the refusal surfaces as a normal `EXECUTION_FAILED`.
+
+### Falsification
+
+| #   | Mutation                               | Result                                                                        |
+| --- | -------------------------------------- | ----------------------------------------------------------------------------- |
+| F4  | Remove the D4 gate from `deleteRipple` | **caught** - the gate spec went red, `mutated` true against an expected false |
+
+Reverted, re-run green.
+
+## Wave 22 gates
+
+| gate                                                                                                                                              | result                                                                                                                                                  |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/mcp-p2-parity-ops.test.ts` (new, 12 specs)                                                                                                 | **12 passed**                                                                                                                                           |
+| `mcp-mirror-sync` + `mcp-edit-parity` + `editor-uncovered-verbs` + `mcp-undo-harness-fidelity` + `clip-lock-verbs` + `audio-fade-curve-crossfade` | **74 passed** across 6 files                                                                                                                            |
+| `npm run gen:mcp-mirrors`                                                                                                                         | regenerated; the mirrors carry the new op enum, schema and description                                                                                  |
+| `npx prettier --check` on every touched file                                                                                                      | clean                                                                                                                                                   |
+| `npx tsc --noEmit`                                                                                                                                | **this wave's files clean**; the one remaining repo error is `src/services.ts(535)` (`'this' implicitly has type 'any'`), owned by a concurrent session |
+
+**Also decided and recorded, no code change:** `stretchAudioClip` resampling (220 Hz ->
+110 Hz at rate 0.5) is intended. The verb is SPEED, not time-stretch; for
+pitch-preserving tempo-fitting, `fitAudioClipTempo` writes `stretchMode: "stretch"` and
+takes the phase-preserving path. The docstring now says so, because the measured
+behaviour was not written down anywhere.

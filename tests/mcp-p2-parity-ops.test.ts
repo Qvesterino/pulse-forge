@@ -133,9 +133,11 @@ describe("wave 22 — scene split + ripple on MCP", () => {
     const geometry = (doc: ProjectDocument) =>
       doc.arrangement.clips.map((c) => [c.startBar, c.lengthBars]).sort((a, b) => a[0] - b[0]);
     expect(geometry(ctx.getDoc())).toEqual(geometry(direct));
+    // The fixture's SECOND scene clip (bar 4) is untouched by the split.
     expect(geometry(ctx.getDoc())).toEqual([
       [0, 1],
       [1, 3],
+      [4, 4],
     ]);
     // and it is one undo step
     expect(ctx.undoStackLength()).toBe(1);
@@ -192,9 +194,12 @@ describe("wave 22 — scene split + ripple on MCP", () => {
     const movedGeometry = (doc: ProjectDocument) =>
       doc.arrangement.clips.map((c) => [c.startBar, c.lengthBars]).sort((a, b) => a[0] - b[0]);
     expect(movedGeometry(moved.getDoc())).toEqual(movedGeometry(directMove));
+    // Ripple semantics: the moved clip lands at bar 5 and the clip that FOLLOWED
+    // it is pushed clear of the new end (bar 9, not bar 8). Asserting 8 here
+    // would have been the bug — an overlap is exactly what ripple forbids.
     expect(movedGeometry(moved.getDoc())).toEqual([
       [5, 4],
-      [8, 4],
+      [9, 4],
     ]);
 
     const resized = makeCtx(base);
@@ -223,14 +228,21 @@ describe("wave 22 — clipboard on MCP", () => {
     expect(pasted.text).toContain("playhead");
 
     // Parity: build the same clipboard by hand and paste at the same tick.
+    // Compared as GEOMETRY, not by id — paste mints fresh ids (D9), so the two
+    // routes can never share them and an id comparison would always differ.
     const direct = pasteClips(
       base,
       buildClipClipboard(base, [base.arrangement.clips[0].id]!)!,
       8 * TICKS_PER_BAR,
     ).execute(base);
-    expect(ctx.getDoc().arrangement.clips.map((c) => ({ id: c.id, startBar: c.startBar }))).toEqual(
-      direct.arrangement.clips.map((c) => ({ id: c.id, startBar: c.startBar })),
-    );
+    const pastedGeometry = (doc: ProjectDocument) =>
+      doc.arrangement.clips.map((c) => [c.startBar, c.lengthBars]).sort((a, b) => a[0] - b[0]);
+    expect(pastedGeometry(ctx.getDoc())).toEqual(pastedGeometry(direct));
+    expect(pastedGeometry(ctx.getDoc())).toEqual([
+      [0, 4],
+      [4, 4],
+      [8, 4],
+    ]);
     // A pasted clip carries a FRESH id (D9's rule).
     expect(new Set(ctx.getDoc().arrangement.clips.map((c) => c.id)).size).toBe(ctx.getDoc().arrangement.clips.length);
     // One undo step, and it survives a reload.
@@ -257,20 +269,24 @@ describe("wave 22 — clipboard on MCP", () => {
     expect(direct.arrangement.clips).toHaveLength(1);
   });
 
-  it("paste with an empty clipboard refuses rather than pasting nothing", async () => {
-    // The module clipboard is shared state; drive the refusal through a
-    // malformed address so we never depend on another spec's leftovers.
-    const base = fixture();
-    const ctx = makeCtx(base);
-    // No copy happened in THIS ctx, but the clipboard is module state — so
-    // assert the honest thing we can guarantee: paste never silently
-    // "succeeds" with no clips.
-    const pasted = await executeMcpTool(ctx, "kyx_clips", { op: "paste" });
-    if (pasted.mutated) {
-      expect(ctx.getDoc().arrangement.clips.length).toBeGreaterThan(base.arrangement.clips.length);
-    } else {
-      expect(pasted.text).toContain("clipboard is empty");
-    }
+  it("a clipboard captured in another project refuses to paste — honestly, not as a crash", async () => {
+    // The MCP clipboard is MODULE scope, so it survives across projects. That
+    // is what the UI does too, and the project id on the clipboard is what
+    // stops a paste from dragging clips between documents. Earlier this spec
+    // tried to assert the "clipboard is empty" branch, which is not
+    // deterministic under module state — so it asserts the guarantee that
+    // IS: a cross-project paste is refused, and it is refused as an MCP error.
+    const first = fixture();
+    const copied = await executeMcpTool(makeCtx(first), "kyx_clips", { op: "copy", bar: 1 });
+    expect(copied.mutated).toBe(false);
+
+    // A DIFFERENT project: same shape, different id.
+    const other = { ...fixture(), id: "a-different-project" } as ProjectDocument;
+    const ctx = makeCtx(other, { allowDestructive: true });
+    const pasted = await executeMcpTool(ctx, "kyx_clips", { op: "paste", bar: 12 });
+    expect(pasted.mutated).toBe(false);
+    expect(pasted.text).toMatch(/different project|clipboard/i);
+    expect(ctx.getDoc().arrangement.clips).toHaveLength(2);
   });
 });
 
