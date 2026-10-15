@@ -341,9 +341,7 @@ describe("SceneStrip", () => {
       fireEvent.pointerUp(grid, { pointerId: 1, clientX: 100, clientY: 0 });
     });
     const flicked = lastCommand(services.store.execute).execute(pinnedDoc);
-    expect(
-      flicked.scenes.find((candidate) => candidate.id === scene.id)!.modulators!["lfo-draw"]!.steps![1],
-    ).toBe(1);
+    expect(flicked.scenes.find((candidate) => candidate.id === scene.id)!.modulators!["lfo-draw"]!.steps![1]).toBe(1);
 
     // Length tool: the 8/16/32 buttons resize through the same command.
     fireEvent.click(screen.getByRole("button", { name: "8" }));

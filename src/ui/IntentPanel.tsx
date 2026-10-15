@@ -155,6 +155,7 @@ import {
 } from "../intent/mix";
 import { applyParamIntent, paramReadback } from "../intent/param-intent";
 import { measureParamVerification } from "../intent/param-readback";
+import { noteIntentProposal } from "../intent/reaction-bridge";
 import { applyLoudnessIntent, measurePreviewLoudness } from "../intent/loudness";
 import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
 import {
@@ -3855,6 +3856,9 @@ export function IntentPanel() {
           selectedRange: routeSelection.timeRange,
         });
       preRoutedRef.current = null;
+      // Reaction ledger F1: every mutating intent route registers a proposal
+      // (keep/undo/tweak windows resolve via the store hooks in services).
+      noteIntentProposal(route, doc, doc, services.store.undoStackLength + 1);
       if (route.kind === "revise" && rejectUnresolvedBriefConflicts()) return;
       if (lastGeneration() && resolveProducerFollowUp(source, lastGeneration()?.intent ?? null)) {
         const followUp = resolveProducerFollowUp(source, lastGeneration()?.intent ?? null)!;
