@@ -14,10 +14,10 @@
   letter-spacing: 0.06em;
   cursor: pointer;
   transition:
-    border-color 140ms ease,
-    background-color 140ms ease,
-    color 140ms ease,
-    box-shadow 140ms ease;
+    border-color var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-state) var(--motion-ease);
 }
 
 .arr-panel .arr-ripple-toggle:hover:not(:disabled) {
@@ -55,9 +55,9 @@
 
 .arr-panel .arr-swap-bar button {
   transition:
-    border-color 140ms ease,
-    background-color 140ms ease,
-    color 140ms ease;
+    border-color var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
 }
 
 .arr-panel .arr-swap-bar button:focus-visible {
@@ -83,10 +83,10 @@
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   transition:
-    border-color 140ms ease,
-    background-color 140ms ease,
-    color 140ms ease,
-    box-shadow 140ms ease;
+    border-color var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-state) var(--motion-ease);
 }
 
 .arr-panel .arr-audio-take-lane-select:hover:not([aria-pressed="true"]) {
@@ -118,8 +118,8 @@
 
 .arr-panel .arr-audio-take-lane-segment {
   transition:
-    background-color 140ms ease,
-    border-color 140ms ease;
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
 }
 
 .arr-panel .scene-launcher-panel :is(.scene-select-control, .scene-action, .scene-edit-input):focus-visible {

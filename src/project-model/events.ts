@@ -2,6 +2,7 @@ import type {
   ArrangementAutomationClip,
   ArrangementClip,
   AutomationPoint,
+  AutomationTarget,
   MidiClip,
   NoteEvent,
   Pattern,
@@ -11,6 +12,7 @@ import { BAR_TICKS, STEP_TICKS } from "./types";
 import { drumHitsInWindow, type DrumHit } from "./groove";
 import { valueAt } from "./automation";
 import { midiPhraseLengthTicks } from "./midiTime";
+import { automationTargetKey, automationTargetsOfClip } from "./targets";
 
 /** Resolve the absolute tick origin shared by live and offline pattern events. */
 export function patternBaseTickForClip(clip: Pick<ArrangementClip, "startBar" | "phaseOffsetTicks">): number {
@@ -172,6 +174,7 @@ export function automationClipEventsInWindow(
   fromTick: number,
   toTick: number,
   fallback = 0,
+  stepped = false,
 ): AutomationPoint[] {
   if (clip.muted || clip.points.length === 0 || toTick <= fromTick) return [];
   const clipEnd = clip.startTick + clip.lengthTicks;
@@ -181,13 +184,24 @@ export function automationClipEventsInWindow(
   const phase = Number.isFinite(clip.phaseOffsetTicks) ? (clip.phaseOffsetTicks ?? 0) : 0;
   const localAt = (tick: number) => phase + tick - clip.startTick;
   const points = [...clip.points].sort((a, b) => a.tick - b.tick);
+  const valueAtClip = (tick: number) => {
+    if (!stepped) return valueAt(points, localAt(tick), fallback);
+    let value = fallback;
+    for (const point of points) {
+      if (point.tick > localAt(tick)) break;
+      value = point.value;
+    }
+    return Math.round(value);
+  };
   const events: AutomationPoint[] = [
-    { tick: from, value: valueAt(points, localAt(from), fallback) },
-    { tick: to, value: valueAt(points, localAt(to), fallback) },
+    { tick: from, value: valueAtClip(from) },
+    { tick: to, value: valueAtClip(to) },
   ];
   for (const point of points) {
     const absoluteTick = clip.startTick + point.tick - phase;
-    if (absoluteTick > from && absoluteTick < to) events.push({ tick: absoluteTick, value: point.value });
+    if (absoluteTick > from && absoluteTick < to) {
+      events.push({ tick: absoluteTick, value: stepped ? Math.round(point.value) : point.value });
+    }
   }
   events.sort((a, b) => a.tick - b.tick);
   return events.filter((event, index) => index === 0 || event.tick !== events[index - 1].tick);
@@ -195,6 +209,7 @@ export function automationClipEventsInWindow(
 
 export interface ArrangementAutomationSegment {
   clip: ArrangementAutomationClip;
+  target: AutomationTarget;
   fromTick: number;
   toTick: number;
 }
@@ -215,18 +230,20 @@ export function arrangementAutomationSegmentsInWindow(
   const to = Math.max(from, toTick);
   if (to <= from) return [];
 
-  const byTarget = new Map<string, ArrangementAutomationClip[]>();
+  const byTarget = new Map<string, { target: AutomationTarget; clips: ArrangementAutomationClip[] }>();
   for (const clip of clips) {
     if (clip.muted || !Number.isFinite(clip.startTick) || !Number.isFinite(clip.lengthTicks) || clip.lengthTicks <= 0)
       continue;
-    const key = `${clip.target.kind}|${clip.target.trackId}|${clip.target.fxId ?? ""}|${clip.target.paramId ?? ""}`;
-    const group = byTarget.get(key);
-    if (group) group.push(clip);
-    else byTarget.set(key, [clip]);
+    for (const target of automationTargetsOfClip(clip)) {
+      const key = automationTargetKey(target);
+      const group = byTarget.get(key);
+      if (group) group.clips.push(clip);
+      else byTarget.set(key, { target, clips: [clip] });
+    }
   }
 
   const segments: ArrangementAutomationSegment[] = [];
-  for (const group of byTarget.values()) {
+  for (const { target, clips: group } of byTarget.values()) {
     const candidates = group.filter((clip) => clip.startTick < to && clip.startTick + clip.lengthTicks > from);
     if (candidates.length === 0) continue;
     const precedence = [...candidates].sort(
@@ -246,17 +263,25 @@ export function arrangementAutomationSegmentsInWindow(
       const winner = precedence.find((clip) => clip.startTick <= start && clip.startTick + clip.lengthTicks >= end);
       if (!winner) continue;
       const previous = segments[segments.length - 1];
-      if (previous?.clip.id === winner.id && previous.toTick === start) {
+      if (
+        previous?.clip.id === winner.id &&
+        automationTargetKey(previous.target) === automationTargetKey(target) &&
+        previous.toTick === start
+      ) {
         previous.toTick = end;
       } else {
-        segments.push({ clip: winner, fromTick: start, toTick: end });
+        segments.push({ clip: winner, target, fromTick: start, toTick: end });
       }
     }
   }
   return segments.sort(
     (a, b) =>
       a.fromTick - b.fromTick ||
-      (a.clip.target.trackId < b.clip.target.trackId ? -1 : a.clip.target.trackId > b.clip.target.trackId ? 1 : 0) ||
+      (automationTargetKey(a.target) < automationTargetKey(b.target)
+        ? -1
+        : automationTargetKey(a.target) > automationTargetKey(b.target)
+          ? 1
+          : 0) ||
       (a.clip.id < b.clip.id ? -1 : a.clip.id > b.clip.id ? 1 : 0),
   );
 }

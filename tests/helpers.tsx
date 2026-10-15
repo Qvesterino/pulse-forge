@@ -87,6 +87,13 @@ export function mockServices(doc?: ProjectDocument): Services {
           correlation: 1,
         })),
         getMasterPeakHoldDb: vi.fn(() => -60),
+        // Concurrent limiter-delta-audition feature: the mock reports the
+        // healthy path (monitor listen available → toggle latched = true).
+        setMasterLimiterDeltaListen: vi.fn(() => true),
+        // Concurrent master-stage degradation feature: the mixer's
+        // MasterProcessingControls reads this on every render; the mock
+        // reports no degraded stages (healthy chain).
+        getDegradedMasterStages: vi.fn(() => []),
         getTrackLevel: vi.fn(() => 0),
         getTrackMeterSnapshot: vi.fn(() => ({ level: 0, peakDb: -120, clipping: false })),
         getReturnLevel: vi.fn(() => 0),
@@ -240,6 +247,10 @@ export function mockServices(doc?: ProjectDocument): Services {
         correlation: 1,
       })),
       getMasterPeakHoldDb: vi.fn(() => -60),
+      // Concurrent limiter-delta-audition feature: the mock reports the
+      // healthy path (monitor listen available → toggle latched = true).
+      setMasterLimiterDeltaListen: vi.fn(() => true),
+      getDegradedMasterStages: vi.fn(() => []),
       getTrackLevel: vi.fn(() => 0),
       getTrackMeterSnapshot: vi.fn(() => ({ level: 0, peakDb: -120, clipping: false })),
       getReturnLevel: vi.fn(() => 0),

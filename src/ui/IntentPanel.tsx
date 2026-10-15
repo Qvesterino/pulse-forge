@@ -1157,7 +1157,7 @@ export function IntentPanel() {
     }
   };
 
-  const generate = async (requestedText = text) => {
+  const generate = async (requestedText = text, options: { allowRouteBusy?: boolean } = {}) => {
     const promptText = requestedText.trim();
     const promptParsed = promptText === text.trim() ? parsed : promptText ? parseIntentText(promptText) : null;
     const promptCorrections = promptText === text.trim() ? briefFixes : {};
@@ -1177,7 +1177,15 @@ export function IntentPanel() {
             defaultRoles: ["drums", "bass"],
             corrections: promptCorrections,
           });
-    if ((!promptText && !activeProjectBrief) || busy) return;
+    if (
+      (!promptText && !activeProjectBrief) ||
+      busy ||
+      songBusy ||
+      theatreBusy ||
+      mutateBusy ||
+      (routeBusy && !options.allowRouteBusy)
+    )
+      return;
     if (promptBriefContract.conflicts.length > 0) {
       setError(BRIEF_CONFLICT_BLOCK_MESSAGE);
       return;
@@ -3102,7 +3110,7 @@ export function IntentPanel() {
       : "DNA AUDIO TIP"
     : "DNA FORM TIP";
   const generateSong = async () => {
-    if ((!text.trim() && !activeProjectBrief) || songBusy || busy) return;
+    if ((!text.trim() && !activeProjectBrief) || songBusy || busy || theatreBusy || mutateBusy || routeBusy) return;
     if (rejectUnresolvedBriefConflicts()) return;
     setSongBusy(true);
     try {
@@ -3197,7 +3205,7 @@ export function IntentPanel() {
     return take;
   };
   const hireTheBand = async () => {
-    if ((!text.trim() && !activeProjectBrief) || busy || songBusy || theatreBusy) return;
+    if ((!text.trim() && !activeProjectBrief) || busy || songBusy || theatreBusy || mutateBusy || routeBusy) return;
     if (rejectUnresolvedBriefConflicts()) return;
     stopAudition();
     setSongPlaying(false);
@@ -3349,7 +3357,7 @@ export function IntentPanel() {
   const [mutateBusy, setMutateBusy] = useState(false);
   const mutateSiblingRef = useRef(0);
   const mutate = () => {
-    if (busy || songBusy || mutateBusy) return;
+    if (busy || songBusy || theatreBusy || mutateBusy || routeBusy) return;
     setMutateBusy(true);
     setError(null);
     try {
@@ -3623,7 +3631,7 @@ export function IntentPanel() {
 
   const applySelectedStepPromptPreview = () => {
     const preview = selectedStepPreview;
-    if (!preview) return;
+    if (!preview || busy || routeBusy || songBusy || theatreBusy || mutateBusy) return;
     const currentDoc = services.store.getDoc();
     const currentPattern = currentDoc.patterns.find((candidate) => candidate.id === preview.pattern.id);
     const currentDrumTrack = currentDoc.tracks.find(
@@ -3678,7 +3686,7 @@ export function IntentPanel() {
 
   const applySelectedArrangementPromptPreview = async () => {
     const preview = selectedArrangementPreview;
-    if (!preview) return;
+    if (!preview || busy || routeBusy || songBusy || theatreBusy || mutateBusy || rangeConsolidating) return;
     const currentDoc = services.store.getDoc();
     if (preview.kind === "clip") {
       const currentClipSelection = selection.getState().clipIds;
@@ -3828,7 +3836,7 @@ export function IntentPanel() {
   // suggested phrasing in the same tick (React state would still be stale).
   const routeAndExecute = async (override?: string) => {
     const source = (override ?? text).trim();
-    if (!source || routeBusy) return;
+    if (!source || routeBusy || busy || songBusy || theatreBusy || mutateBusy) return;
     setRouteBusy(true);
     setSelectedStepPreview(null);
     setSelectedArrangementPreview(null);
@@ -3857,7 +3865,7 @@ export function IntentPanel() {
         };
         oneShotPatchRef.current = merged;
         setStatus(`🎛 session follow-up — ${followUp.reroll ? "reroll" : "modifikátor live"}`);
-        await generate();
+        await generate(source, { allowRouteBusy: true });
         return;
       }
       // DESTRUCTIVE-INTENT CHECKPOINT (signal-flow audit re-run): removeTrack
@@ -5056,7 +5064,12 @@ export function IntentPanel() {
             <div>+ {selectedStepPreview.plan.changes.length - 8} more cell changes</div>
           )}
           <div className="intent-actions">
-            <button type="button" className="btn intent-route-btn" onClick={applySelectedStepPromptPreview}>
+            <button
+              type="button"
+              className="btn intent-route-btn"
+              disabled={busy || routeBusy || songBusy || theatreBusy || mutateBusy}
+              onClick={applySelectedStepPromptPreview}
+            >
               APPLY · ONE UNDO STEP
             </button>
             <button
@@ -5111,7 +5124,7 @@ export function IntentPanel() {
             <button
               type="button"
               className="btn intent-route-btn"
-              disabled={rangeConsolidating}
+              disabled={rangeConsolidating || busy || routeBusy || songBusy || theatreBusy || mutateBusy}
               onClick={() => void applySelectedArrangementPromptPreview()}
             >
               {rangeConsolidating ? "RENDERING PRINT…" : "APPLY "}{" "}
@@ -5145,6 +5158,7 @@ export function IntentPanel() {
               key={label}
               type="button"
               className="intent-history-chip"
+              disabled={routeBusy || busy || songBusy || theatreBusy || mutateBusy}
               title={choice ? "Apply this validated interpretation" : "Apply this interpretation"}
               onClick={() => {
                 // MINING: the chip the user picked reveals what the failed
@@ -5165,7 +5179,7 @@ export function IntentPanel() {
           ))}
         </div>
       )}
-      <StatusLine message={status} busy={busy || routeBusy || theatreBusy || mutateBusy} />
+      <StatusLine message={status} busy={busy || routeBusy || songBusy || theatreBusy || mutateBusy} />
       {songBusy && songProgress && (
         <div
           className="intent-song-progress"
@@ -5224,7 +5238,7 @@ export function IntentPanel() {
         <button
           type="button"
           className="btn intent-route-btn"
-          disabled={!text.trim() || routeBusy}
+          disabled={!text.trim() || routeBusy || busy || songBusy || theatreBusy || mutateBusy}
           onClick={() => void routeAndExecute()}
           title="Smart route: arrange words → arrangement · mix words → mix · everything else → generate candidates"
         >
@@ -5233,7 +5247,7 @@ export function IntentPanel() {
         <button
           type="button"
           className="btn intent-generate-btn"
-          disabled={(!text.trim() && !activeProjectBrief) || busy || songBusy}
+          disabled={(!text.trim() && !activeProjectBrief) || busy || routeBusy || songBusy || theatreBusy || mutateBusy}
           onClick={() => void generate()}
           title={activeProjectBrief && !text.trim() ? "Generate from the saved project brief" : undefined}
         >
@@ -5242,7 +5256,7 @@ export function IntentPanel() {
         <button
           type="button"
           className="btn intent-song-btn"
-          disabled={(!text.trim() && !activeProjectBrief) || busy || songBusy}
+          disabled={(!text.trim() && !activeProjectBrief) || busy || routeBusy || songBusy || theatreBusy || mutateBusy}
           onClick={() => void generateSong()}
           title="Build a full arranged song from this intent (intro → build → drop → break → drop → outro)"
         >
@@ -5251,7 +5265,7 @@ export function IntentPanel() {
         <button
           type="button"
           className="btn intent-theatre-btn"
-          disabled={(!text.trim() && !activeProjectBrief) || busy || songBusy || theatreBusy}
+          disabled={(!text.trim() && !activeProjectBrief) || busy || routeBusy || songBusy || theatreBusy || mutateBusy}
           onClick={() => void hireTheBand()}
           title="Session Theatre: traja AI producenti nahrajú tú istú pesničku každý po svojom, ty si potom slepo vyberieš víťaza"
         >
@@ -5260,7 +5274,7 @@ export function IntentPanel() {
         <button
           type="button"
           className="btn intent-mutate-btn"
-          disabled={busy || songBusy || mutateBusy}
+          disabled={busy || routeBusy || songBusy || theatreBusy || mutateBusy}
           onClick={() => mutate()}
           title="Remix-DNA mutate: fork the current beat into a child project — same seed family, small variation, fresh undo history"
         >

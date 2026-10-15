@@ -168,7 +168,11 @@ export function pasteClips(doc: ProjectDocument, clipboard: ClipClipboard, playh
   if (invalidMidi) {
     throw new Error("Cannot paste — the MIDI clip's instrument track or source pattern no longer exists");
   }
-  const invalidAutomation = clipboard.automationClips.find((clip) => !isAutomationTargetValid(doc, clip.target));
+  const invalidAutomation = clipboard.automationClips.find(
+    (clip) =>
+      !isAutomationTargetValid(doc, clip.target) ||
+      clip.linkedTargets?.some((target) => !isAutomationTargetValid(doc, target)),
+  );
   if (invalidAutomation) {
     throw new Error("Cannot paste — an automation clip's target no longer exists");
   }

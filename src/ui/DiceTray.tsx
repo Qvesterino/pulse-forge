@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useActivePatternId, usePatterns, useServices, useTracks } from "./context";
 import { useDice } from "./DiceContext";
 import { PanelHeader } from "./PanelChrome";
@@ -46,6 +46,9 @@ function MiniPreview({ rows, activePads }: { rows: number[][]; activePads: numbe
 
 export function DiceTray() {
   const services = useServices();
+  const historyTabListId = useId();
+  const historyPanelId = `${historyTabListId}-panel`;
+  const historyTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   // Fine-grained selectors (GOAL 04): DiceTray reads tracks (drum track
   // lookup, melodic track name), patterns (active pattern), and the active
   // pattern id. Subscribing to the whole doc re-renders this panel on every
@@ -104,6 +107,22 @@ export function DiceTray() {
 
   const styles = getStyleNamesForGenre(session.intent.genre);
   const seed = preview.seed;
+
+  const handleHistoryTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
+    const historyLength = session.seedChain.length;
+    if (historyLength === 0) return;
+
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % historyLength;
+    else if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + historyLength) % historyLength;
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = historyLength - 1;
+    if (nextIndex === null) return;
+
+    event.preventDefault();
+    jump(nextIndex);
+    historyTabRefs.current[nextIndex]?.focus();
+  };
 
   // Derive preview rows for mini grid. There is no drum track in a
   // fresh/instrument-only project — getDrumTrack throws, so gate on it.
@@ -504,15 +523,22 @@ export function DiceTray() {
         <span className="dice-history-label">
           HISTORY {session.cursor + 1}/{session.seedChain.length}
         </span>
-        <div className="dice-history-strip" role="tablist" aria-label="Dice history">
+        <div id={historyTabListId} className="dice-history-strip" role="tablist" aria-label="Dice history">
           {session.seedChain.map((s, i) => (
             <button
               key={`${s}-${i}`}
               type="button"
+              id={`${historyTabListId}-tab-${i}`}
               role="tab"
               aria-selected={i === session.cursor}
+              aria-controls={historyPanelId}
+              tabIndex={i === session.cursor ? 0 : -1}
+              ref={(element) => {
+                historyTabRefs.current[i] = element;
+              }}
               className={`dice-history-dot${i === session.cursor ? " active" : ""}${session.favorites.has(i) ? " fav" : ""}`}
               onClick={() => jump(i)}
+              onKeyDown={(event) => handleHistoryTabKeyDown(event, i)}
               title={`${s}${session.favorites.has(i) ? " ★" : ""} — click to jump`}
             >
               {session.favorites.has(i) ? "★" : "●"}
@@ -550,7 +576,13 @@ export function DiceTray() {
       </div>
 
       {/* Preview + Apply */}
-      <div className="dice-preview">
+      <div
+        className="dice-preview"
+        id={historyPanelId}
+        role="tabpanel"
+        aria-labelledby={`${historyTabListId}-tab-${session.cursor}`}
+        tabIndex={0}
+      >
         <div className="dice-preview-header">
           <span>PREVIEW</span>
           <span className="dice-preview-meta">

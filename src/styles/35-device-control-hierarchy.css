@@ -6,9 +6,9 @@
   font-size: 10px;
   letter-spacing: 0.05em;
   transition:
-    color 120ms ease,
-    border-color 120ms ease,
-    background-color 120ms ease;
+    color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease);
 }
 
 .source-profile-tab:focus-visible,
@@ -52,7 +52,8 @@
   }
 
   .devices-panel > .panel-header .devices-add-effect,
-  .devices-panel > .panel-header .devices-add-chain {
+  .devices-panel > .panel-header .devices-add-chain,
+  .devices-panel > .panel-header .fx-add-trigger {
     width: 100%;
     max-width: none;
     min-width: 0;

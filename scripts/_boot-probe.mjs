@@ -22,6 +22,9 @@ await page.addInitScript(() => {
 
 console.log("goto", URL);
 await page.goto(URL, { waitUntil: "domcontentloaded" });
+await page.locator("button.pb-template-start").first().waitFor({ state: "visible", timeout: 60_000 });
+console.log("project browser up; clicking HOUSE template");
+await page.locator("button.pb-template-start").first().click();
 
 // Poll the boot screen text so we see WHERE it settles.
 for (let i = 0; i < 24; i++) {

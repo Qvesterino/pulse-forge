@@ -13,6 +13,7 @@ import {
 import { computeSceneIntensity } from "../project-model/intensity";
 import { scenePerformanceOf, type ScenePerformance } from "../project-model/scene-performance";
 import { audioClipsForPlayback } from "../project-model/audio-takes";
+import { automationClipForTarget, automationTargetsOfClip } from "../project-model/targets";
 import { markerCueTrackId } from "../project-model/markers";
 import type { Transport } from "../transport/Transport";
 import type { SchedulerDriver } from "./schedulerDriver";
@@ -66,7 +67,13 @@ export interface SchedulerDeps {
    * `whenFor` maps an absolute tick to a precise AudioContext time so event
    * boundaries land sample-aligned.
    */
-  applyModulators?(fromTick: number, toTick: number, whenFor: (tick: number) => number): void;
+  /** Apply the schedulable (step / random) track modulators over a window. */
+  applyModulators?(
+    fromTick: number,
+    toTick: number,
+    whenFor: (tick: number) => number,
+    scene?: import("../project-model/scene-performance").ScenePerformance | null,
+  ): void;
   /** Poll envFollower modulators targeting FX/inst params (control rate ~25 ms). */
   applyEnvFollowers?(): void;
   /** Apply a single per-scene automation lane within a song window. */
@@ -95,7 +102,10 @@ export interface SchedulerDeps {
   /** Update the live scene intensity signal (0..1) plus the active scene's performance context. */
   setSceneIntensity?(intensity: number, scene?: ScenePerformance | null): void;
   /** Schedule future scene-intensity changes inside the look-ahead window. */
-  scheduleSceneIntensity?(points: Array<{ tick: number; value: number } & ScenePerformance>, timeAt: (tick: number) => number): void;
+  scheduleSceneIntensity?(
+    points: Array<{ tick: number; value: number } & ScenePerformance>,
+    timeAt: (tick: number) => number,
+  ): void;
   /** Apply the active scene's tempo (null = follow the project tempo). */
   applySceneTempo?(bpm: number | null): void;
   /** The transport's tempo actually changed (flip commit) — tempo-synced engine runtimes follow. */
@@ -794,6 +804,10 @@ export class Scheduler {
     if (contentWindowStart >= windowEnd) return;
 
     let automationCtx: { base: number; patternTicks: number } | null = null;
+    // The scene the window's content plays under (pattern: the active
+    // scene; song: the clip's scene). Feeds the scene-performance context
+    // for the modulator sweep at the tail of this method.
+    let windowScene: ProjectDocument["scenes"][number] | null = null;
 
     if (mode === "pattern") {
       let currentDoc = doc;
@@ -880,6 +894,7 @@ export class Scheduler {
       const activeScene =
         currentDoc.scenes.find((s) => s.id === currentDoc.activePatternId) ??
         currentDoc.scenes.find((s) => s.patternId === currentDoc.activePatternId);
+      windowScene = activeScene ?? null;
       this.deps.setSceneIntensity?.(
         activeScene ? Math.max(0, Math.min(1, activeScene.intensity)) : 0.7,
         scenePerformanceOf(activeScene),
@@ -938,6 +953,7 @@ export class Scheduler {
           break;
         }
       }
+      windowScene = activeScene;
       // Live/export parity: when the exact point scheduler is wired, IT owns
       // this window (boundary ticks land sample-exact via scheduleSceneIntensity
       // below). The immediate control-rate write would re-trigger the macro
@@ -1135,9 +1151,10 @@ export class Scheduler {
             ? new Set(
                 (doc.arrangement.automationClips ?? [])
                   .filter((clip) => !clip.muted)
-                  .map(
-                    (clip) =>
-                      `${clip.target.kind}|${clip.target.trackId}|${clip.target.fxId ?? ""}|${clip.target.paramId ?? ""}`,
+                  .flatMap((clip) =>
+                    automationTargetsOfClip(clip).map(
+                      (target) => `${target.kind}|${target.trackId}|${target.fxId ?? ""}|${target.paramId ?? ""}`,
+                    ),
                   ),
               )
             : undefined,
@@ -1154,7 +1171,7 @@ export class Scheduler {
         windowEnd,
       )) {
         this.deps.applyArrangementAutomationClip(
-          segment.clip,
+          automationClipForTarget(doc, segment.clip, segment.target),
           segment.fromTick,
           segment.toTick,
           scheduleOffsetSec,
@@ -1165,11 +1182,18 @@ export class Scheduler {
 
     // Track modulators share the window — boundaries map through the transport
     // clock the same way marker cues do, so live and offline grids agree.
+    // The window's scene rides along: a scene can pin a modulation pattern
+    // (steps / seed) that substitutes the modulator's own for this window.
     if (this.deps.applyModulators) {
       const transport = this.deps.getTransport();
       const offsetSec = this.scheduleOffsetSec() + 0.005;
       const timeAtMod = this.songTimeAt ?? ((tick: number) => transport.timeAtTick(tick));
-      this.deps.applyModulators(contentWindowStart, windowEnd, (tick) => timeAtMod(tick) + offsetSec);
+      this.deps.applyModulators(
+        contentWindowStart,
+        windowEnd,
+        (tick) => timeAtMod(tick) + offsetSec,
+        scenePerformanceOf(windowScene),
+      );
     }
 
     // Poll envFollower modulators targeting FX/inst params (control rate).

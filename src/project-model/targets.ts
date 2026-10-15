@@ -1,5 +1,6 @@
 import {
   MASTER_EFFECT_OWNER_ID,
+  type ArrangementAutomationClip,
   type AutomationTarget,
   type EffectInstance,
   type ProjectDocument,
@@ -205,6 +206,59 @@ export function targetParamDef(doc: ProjectDocument, target: AutomationTarget): 
   const effect = owner.effects.find((fx) => fx.id === target.fxId);
   if (!effect) return null;
   return effectTargetParamDefs(effect).find((def) => def.id === target.paramId) ?? null;
+}
+
+/** Primary target followed by valid additional destinations, without duplicates. */
+export function automationTargetsOfClip(
+  clip: Pick<ArrangementAutomationClip, "target" | "linkedTargets">,
+): AutomationTarget[] {
+  const targets = [clip.target, ...(clip.linkedTargets ?? [])];
+  const seen = new Set<string>();
+  return targets.filter((target) => {
+    const key = automationTargetKey(target);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function automationTargetKey(target: AutomationTarget): string {
+  return `${target.kind}|${target.trackId}|${target.fxId ?? ""}|${target.paramId ?? ""}`;
+}
+
+/** Map a value from the clip's primary target range into a linked target range. */
+export function mapAutomationValueBetweenTargets(
+  doc: ProjectDocument,
+  from: AutomationTarget,
+  to: AutomationTarget,
+  value: number,
+): number {
+  if (automationTargetKey(from) === automationTargetKey(to)) return clampTargetValue(doc, to, value);
+  const source = targetParamDef(doc, from);
+  const destination = targetParamDef(doc, to);
+  if (!source || !destination) return clampTargetValue(doc, to, value);
+  const sourceSpan = source.max - source.min;
+  const normalized = sourceSpan > 0 ? Math.max(0, Math.min(1, (value - source.min) / sourceSpan)) : 0;
+  const mapped = destination.min + normalized * (destination.max - destination.min);
+  const discrete = destination.kind === "toggle" || destination.kind === "enum" || destination.kind === "discrete";
+  return clampTargetValue(doc, to, discrete ? Math.round(mapped) : mapped);
+}
+
+/** Return a runtime/view copy of a clip whose curve is expressed in target units. */
+export function automationClipForTarget(
+  doc: ProjectDocument,
+  clip: ArrangementAutomationClip,
+  target: AutomationTarget,
+): ArrangementAutomationClip {
+  if (automationTargetKey(clip.target) === automationTargetKey(target)) return clip;
+  return {
+    ...clip,
+    target: { ...target },
+    points: clip.points.map((point) => ({
+      ...point,
+      value: mapAutomationValueBetweenTargets(doc, clip.target, target, point.value),
+    })),
+  };
 }
 
 /**

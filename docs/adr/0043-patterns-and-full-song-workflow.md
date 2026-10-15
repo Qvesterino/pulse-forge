@@ -69,7 +69,7 @@ to make a conventional three-minute track.
 | Melodic phrase and 808 note length | The Piano roll edits notes independently by channel; note ends can be dragged and note lengths follow snap. The notes need not stop at the Step Sequencer grid. | KYX Piano Roll supports note-end resizing and explicit note lengths through 64 bars; sparse notes can extend beyond the 8-bar step grid.        | Keep long notes horizontally editable, stop retriggering under a sustain, and verify save/playback/export over a 90-bar song.           |
 | Full-song timeline                 | The Playlist lays out pattern, audio and automation clips against a bar ruler with snap and zoom; clips can be moved and duplicated.                            | KYX supports scene, audio, MIDI and automation clips on a song timeline, with multi-minute Auto Arrange, live song playback and offline export. | Long-song save/playback/export still needs the explicit 90+ bar acceptance pass.                                                        |
 | Arrangement clip editing           | Playlist grouping moves and edits selected clips as a unit; copy/paste and snap work on timeline content.                                                       | KYX copy/cut/paste includes all four clip kinds; arrow nudges and drag gestures move cross-lane groups with a shared preview and one undo step. | Scene-lane collisions or locked members can block the complete group; continue the long-song acceptance pass and refine group feedback. |
-| Automation in the arrangement      | Automation Clips have editable curves and can link to one or more parameters; overlapping clips can be focused and edited.                                      | KYX v28 has single-target clips with point editing, mute, lock, shared clipboard, and deterministic latest-start overlap priority.              | Add multi-target links and an explicit focus affordance for choosing the overlap winner.                                                |
+| Automation in the arrangement      | Automation Clips have editable curves and can link to one or more parameters; overlapping clips can be focused and edited.                                      | KYX v30 maps one curve to multiple validated targets, resolves overlaps per target, and shows the active winner with context-menu focus.        | Keep checking live/offline parity and make overlap choices easy to discover.                                                            |
 | Pattern vs song playback           | FL exposes Pattern Mode for auditioning the active pattern and Song Mode for Playlist playback.                                                                 | KYX has `pattern` and `song` transport modes; song rendering follows the arrangement extent.                                                    | Expose the relationship in the editor and verify the same end point for live playback and offline export.                               |
 
 These findings use Image-Line's official [Channel Rack / Step Sequencer](https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/channelrack.htm), [Piano roll](https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/pianoroll.htm), [Playlist](https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/playlist.htm), [Automation Clips](https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/playlist_automationclip.htm), and [composition workflow](https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/basics_workflow.htm) documentation as behavioral references. The Playlist manual describes multi-clip group operations; the Automation Clips manual covers curve editing and focus behavior. These are workflow observations, not a claim that KYX currently has full FL Studio feature parity.
@@ -105,8 +105,19 @@ These findings use Image-Line's official [Channel Rack / Step Sequencer](https:/
 - The current 256-step Pattern Bar choice is removed or changed until the model
   ceiling changes through an explicit, measured decision.
 - Stage 2's MIDI clip shape is specified in ADR 0044. ADR 0047 extends the
-  sparse note-time bound in schema v28 without adding persisted fields; the
-  long-song save/reopen, playback and export acceptance gates remain open.
+  sparse note-time bound in schema v28 without adding persisted fields. A
+  93-bar save/reopen and offline-export test now passes with a 12-bar 808
+  sustain, and the scheduler's controlled-clock path now runs through all 93
+  bars. An opt-in Chromium AudioContext soak reaches the final-bar MIDI clip
+  during the 180-second song; muting a future clip suppresses its event, and
+  move, resize and trim gestures change the future scheduled note boundaries
+  while playback continues. A repeatable opt-in benchmark opens an arrangement
+  with 300 MIDI clips, checks bounded viewport rendering, and measures scrolling
+  to the end. A 93-bar sustain also round-trips through the YDoc adapter, and a
+  filtered 808 stem keeps only that instrument's late MIDI events. Cross-browser
+  UI gesture coverage now passes in Chromium and Firefox. Full live-audio parity
+  outside Chromium, multi-peer collaboration and rendered stem audio parity
+  remain open.
 - Product copy may describe multi-minute creation only after the corresponding
   save/reopen, playback and export gates pass.
 

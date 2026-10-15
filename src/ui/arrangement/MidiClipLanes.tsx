@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { Command } from "../../commands/types";
 import {
   addMidiClip,
@@ -111,14 +111,19 @@ export function MidiClipLanes({
   const [menu, setMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
   const laneWidth = totalBars * barWidth;
   const menuClip = menu ? midiClips.find((clip) => clip.id === menu.clipId) : undefined;
-  const patternPlacementCounts = new Map<string, number>();
-  const addPatternPlacement = (patternId: string | undefined) => {
-    if (!patternId) return;
-    patternPlacementCounts.set(patternId, (patternPlacementCounts.get(patternId) ?? 0) + 1);
-  };
-  const patternIdBySceneId = new Map(doc.scenes.map((scene) => [scene.id, scene.patternId]));
-  for (const clip of doc.arrangement.clips) addPatternPlacement(patternIdBySceneId.get(clip.sceneId));
-  for (const clip of midiClips) addPatternPlacement(clip.patternId);
+  const patternPlacementCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    const addPatternPlacement = (patternId: string | undefined) => {
+      if (!patternId) return;
+      counts.set(patternId, (counts.get(patternId) ?? 0) + 1);
+    };
+    const patternIdBySceneId = new Map(doc.scenes.map((scene) => [scene.id, scene.patternId]));
+    for (const clip of doc.arrangement.clips) addPatternPlacement(patternIdBySceneId.get(clip.sceneId));
+    // `midiClips` is viewport-filtered by ArrangementPanel; count the full
+    // document so the shared-source warning stays stable while scrolling.
+    for (const clip of doc.arrangement.midiClips ?? []) addPatternPlacement(clip.patternId);
+    return counts;
+  }, [doc.arrangement.clips, doc.arrangement.midiClips, doc.scenes]);
   const clipsByTrack = new Map<string, MidiClip[]>();
   for (const clip of midiClips) {
     const clips = clipsByTrack.get(clip.trackId) ?? [];

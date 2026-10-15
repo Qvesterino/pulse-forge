@@ -175,14 +175,14 @@
     0 1px 3px rgba(0, 0, 0, 0.28);
 }
 
-/* Selected tabs catch the silver light; the amber underline keeps the active
-   location easy to scan in both the track rack and bottom dock. */
+/* Selected tabs catch the silver light; the amber underline marks the active
+   track while a quieter left trace distinguishes the rest of a multi-selection. */
 .track-tab {
   border-color: rgba(217, 224, 232, 0.13);
   background: linear-gradient(180deg, rgba(238, 242, 246, 0.045), transparent 70%), var(--bg-panel);
 }
 
-.track-tab.active {
+.track-tab[aria-selected="true"] {
   position: relative;
   color: var(--kyx-silver-bright);
   border-color: color-mix(in srgb, var(--kyx-silver-mid) 68%, var(--accent));
@@ -196,7 +196,20 @@
     0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
-.track-tab.active::after {
+.track-tab.active[data-multi-selected] {
+  position: relative;
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--kyx-silver-mid) 42%, var(--border));
+  background:
+    linear-gradient(180deg, rgba(238, 242, 246, 0.1), rgba(238, 242, 246, 0.035) 58%, var(--accent-soft)),
+    var(--bg-panel-2);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 2px 0 0 color-mix(in srgb, var(--kyx-pulse) 72%, transparent),
+    inset 0 -1px 0 rgba(18, 22, 27, 0.28);
+}
+
+.track-tab[aria-selected="true"]::after {
   content: "";
   position: absolute;
   right: 8px;

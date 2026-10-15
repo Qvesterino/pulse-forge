@@ -21,6 +21,14 @@ export interface SceneCcOverride {
   channel?: number;
 }
 
+/** Per-scene pattern swap for one schedulable (step / random) modulator. */
+export interface SceneModulatorPattern {
+  /** Replacement step pattern (step kind; bipolar −1..1 entries). */
+  steps?: number[];
+  /** Replacement random seed (random/S&H kind). */
+  seed?: string;
+}
+
 export interface ScenePerformance {
   /** fxId → scene-pack pair id (TWIST/GROW). */
   packs?: Record<string, string> | null;
@@ -30,6 +38,8 @@ export interface ScenePerformance {
   ccRemaps?: string[] | null;
   /** mappingId → channel/CC re-point overrides. */
   ccOverrides?: Record<string, SceneCcOverride> | null;
+  /** lfoId → pinned modulation pattern (steps / seed). */
+  modulators?: Record<string, SceneModulatorPattern> | null;
 }
 
 /** Normalize a scene's performance context (null when the scene carries none). */
@@ -40,5 +50,6 @@ export function scenePerformanceOf(scene: Scene | null | undefined): ScenePerfor
   if (scene.macros && Object.keys(scene.macros).length > 0) performance.sceneMacros = scene.macros;
   if (scene.ccRemaps && scene.ccRemaps.length > 0) performance.ccRemaps = scene.ccRemaps;
   if (scene.ccOverrides && Object.keys(scene.ccOverrides).length > 0) performance.ccOverrides = scene.ccOverrides;
+  if (scene.modulators && Object.keys(scene.modulators).length > 0) performance.modulators = scene.modulators;
   return Object.keys(performance).length > 0 ? performance : null;
 }

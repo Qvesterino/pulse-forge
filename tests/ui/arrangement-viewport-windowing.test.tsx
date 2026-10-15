@@ -2,12 +2,20 @@ import { describe, expect, it, vi } from "vitest";
 import { createElement, type ReactElement } from "react";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { ArrangementPanel } from "../../src/ui/ArrangementPanel";
+import { AutomationClipLanes } from "../../src/ui/arrangement/AutomationClipLanes";
 import { ProjectStore } from "../../src/store/ProjectStore";
 import { SelectionStore } from "../../src/store/SelectionStore";
 import { SelectionContext, ServicesContext } from "../../src/ui/context";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
+import { automationTargetKey } from "../../src/project-model/targets";
+import type { Command } from "../../src/commands/types";
+import {
+  BAR_TICKS,
+  type ArrangementAutomationClip,
+  type AutomationTarget,
+  type ProjectDocument,
+} from "../../src/project-model/types";
 import { mockServices } from "../helpers";
-import type { ProjectDocument } from "../../src/project-model/types";
 import type { Services } from "../../src/services";
 
 /**
@@ -191,3 +199,79 @@ describe("arrangement lane renders the visible window, not the whole song", () =
     expect(dragged?.startBar ?? -1).toBeGreaterThan(10);
   });
 });
+
+describe("arrangement automation link and overlap affordances", () => {
+  it("lets a clip link to another existing automation target", () => {
+    const doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find((candidate) => candidate.kind === "instrument");
+    if (!track || track.kind !== "instrument") throw new Error("house template needs an instrument track");
+    const gain: AutomationTarget = { kind: "trackGain", trackId: track.id };
+    const pan: AutomationTarget = { kind: "trackPan", trackId: track.id };
+    const clip: ArrangementAutomationClip = {
+      id: "auto-gain",
+      target: gain,
+      startTick: 0,
+      lengthTicks: BAR_TICKS,
+      points: [
+        { tick: 0, value: 0 },
+        { tick: BAR_TICKS, value: 1.5 },
+      ],
+    };
+    doc.automation = [{ id: "pan-lane", target: pan, points: [] }];
+    const executed: Command[] = [];
+    render(
+      AutomationClipLanesComponent(doc, [clip], 0, (command) => {
+        executed.push(command);
+        return true;
+      }),
+    );
+    fireEvent.contextMenu(document.querySelector(".arr-auto-clip") as HTMLElement, { clientX: 20, clientY: 20 });
+    const select = document.querySelector<HTMLSelectElement>('[aria-label="Link automation clip target"]')!;
+    fireEvent.change(select, { target: { value: automationTargetKey(pan) } });
+
+    expect(executed).toHaveLength(1);
+    expect(executed[0]!.type).toBe("linkAutomationClipTarget");
+    expect(
+      executed[0]!.execute({ ...doc, arrangement: { ...doc.arrangement, automationClips: [clip] } }).arrangement
+        .automationClips![0]!.linkedTargets,
+    ).toEqual([pan]);
+  });
+
+  it("marks the playhead winner and lets a shadowed clip receive edit focus", () => {
+    const doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find((candidate) => candidate.kind === "instrument");
+    if (!track || track.kind !== "instrument") throw new Error("house template needs an instrument track");
+    const target: AutomationTarget = { kind: "trackGain", trackId: track.id };
+    const clips: ArrangementAutomationClip[] = [
+      { id: "early", target, startTick: 0, lengthTicks: 100, points: [{ tick: 0, value: 0 }] },
+      { id: "winner", target, startTick: 40, lengthTicks: 60, points: [{ tick: 0, value: 1 }] },
+    ];
+    const onSelect = vi.fn();
+    render(AutomationClipLanesComponent(doc, clips, 50, () => true, onSelect));
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>(".arr-auto-clip"));
+    expect(buttons.map((button) => button.textContent)).toEqual(["OVERLAP", "WINNER"]);
+    fireEvent.contextMenu(buttons[0]!, { clientX: 20, clientY: 20 });
+    expect(onSelect).toHaveBeenCalledWith("early");
+  });
+});
+
+function AutomationClipLanesComponent(
+  doc: ProjectDocument,
+  clips: ArrangementAutomationClip[],
+  playheadTick: number,
+  onExecute: (command: Command) => boolean,
+  onSelect = vi.fn(),
+) {
+  doc.arrangement.automationClips = clips;
+  return createElement(AutomationClipLanes, {
+    doc,
+    automationClips: clips,
+    selectedClipId: null,
+    totalBars: 16,
+    barWidth: 30,
+    snapGrid: "1",
+    playheadTick,
+    onExecute,
+    onSelect,
+  });
+}

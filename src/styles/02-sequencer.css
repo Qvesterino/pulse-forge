@@ -981,10 +981,9 @@
 }
 
 .pattern-bar > .scene-launcher {
-  /* Compact chips flow inline after the actions; flex-wrap gives them their
-     own row only when the window is genuinely too narrow. */
+  /* Keep scene selection beside the active pattern. Flex wrap gives it a
+     dedicated row only when the workspace cannot fit the control cluster. */
   flex: 0 1 auto;
-  order: 4;
   width: auto;
 }
 

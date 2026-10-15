@@ -215,3 +215,119 @@ export function eqCurve(
   }
   return out;
 }
+
+/**
+ * The four gain bands the multiview curve exposes as draggable points.
+ *
+ * These are exactly the EQ params listed in `EDITOR_OVERRIDES.primaryParamIds`,
+ * so a point on the curve and a knob under it are the same control — dragging
+ * either one moves the other. That correspondence is the whole contract; a
+ * curve with its own set of bands would let the two surfaces disagree.
+ */
+export interface EqBand {
+  /** The effect param this point writes, e.g. "lowMidGain". */
+  paramId: string;
+  /** Centre frequency of the band, for hit-testing. */
+  freqHz: number;
+  /** Current gain in dB. */
+  gainDb: number;
+  min: number;
+  max: number;
+  label: string;
+}
+
+export const EQ_BAND_DEFS: readonly Pick<EqBand, "paramId" | "freqHz" | "label">[] = [
+  { paramId: "lowShelfGain", freqHz: 120, label: "LOW SHELF" },
+  { paramId: "lowMidGain", freqHz: 400, label: "LOW MID" },
+  { paramId: "highMidGain", freqHz: 2500, label: "HIGH MID" },
+  { paramId: "highShelfGain", freqHz: 6000, label: "HIGH SHELF" },
+];
+
+/** Shelve the current params into the drawable bands. */
+export function eqBands(params: Record<string, number>): EqBand[] {
+  return EQ_BAND_DEFS.map((def) => {
+    const gainDb = num(params, def.paramId, 0);
+    return { ...def, gainDb, min: -15, max: 15 };
+  });
+}
+
+/**
+ * Magnitude of ONE band in isolation, at one frequency. This is what a hit-test
+ * compares against: the full cascade at the pointer is not a usable distance,
+ * because two neighbouring bands overlap and the curve would always look closest
+ * to the sum.
+ */
+export function eqBandResponseDbAt(
+  band: Pick<EqBand, "paramId">,
+  params: Record<string, number>,
+  hz: number,
+  sr = EQ_CURVE_SAMPLE_RATE,
+): number {
+  const w = (2 * Math.PI * Math.max(1, hz)) / sr;
+  const freq = num(params, `${band.paramId.replace("Gain", "Freq")}`, 1000);
+  const q = decrampedQ(num(params, band.paramId.replace("Gain", "Q"), 1), freq, sr);
+  const gain = num(params, band.paramId, 0);
+
+  if (band.paramId.endsWith("ShelfGain")) {
+    // Parallel shelf: 1 + g·(1 − LP), the same shape the cascade uses.
+    const g = Math.pow(10, gain / 20) - 1;
+    const shelfLp = protoMag(lpProto(freq, sr), w);
+    return 20 * Math.log10(Math.max(1e-6, Math.hypot(1 + g * (1 - shelfLp.re), g * shelfLp.im)));
+  }
+  // Peaking bell. `protoMag` returns a complex pair, so take its modulus —
+  // passing the pair itself to Math.max is what turns the whole hit-test into
+  // NaN and makes every band ungrabbable.
+  const bell = protoMag(peakProto(freq, gain, q, sr), w);
+  return 20 * Math.log10(Math.max(1e-6, Math.hypot(bell.re, bell.im)));
+}
+
+/**
+ * Which band, if any, the pointer is grabbing.
+ *
+ * Distance is measured in dB against the pointer's own row, but only for bands
+ * whose centre is close in frequency: a pointer near 1 kHz is not "on" a 6 kHz
+ * shelf no matter how their gains happen to line up. `hz` and `db` are the
+ * pointer's position; `hzTolerance` and `dbTolerance` are the grab radius.
+ */
+export function hitEqBand(
+  params: Record<string, number>,
+  hz: number,
+  db: number,
+  options: { hzTolerance?: number; dbTolerance?: number } = {},
+): EqBand | null {
+  const hzTolerance = options.hzTolerance ?? 1.6;
+  const dbTolerance = options.dbTolerance ?? 6;
+  let best: { band: EqBand; score: number } | null = null;
+  for (const band of eqBands(params)) {
+    if (Math.abs(Math.log(hz / band.freqHz)) > Math.log(hzTolerance)) continue;
+    const response = eqBandResponseDbAt(band, params, band.freqHz);
+    const score = Math.abs(response - db);
+    if (score <= dbTolerance && (!best || score < best.score)) best = { band, score };
+  }
+  return best?.band ?? null;
+}
+
+/**
+ * Pointer position (in the canvas' own pixels) to the dB value it stands for,
+ * and the frequency under it. The inverse of the plot's own xOf/yOf, kept here
+ * so the maths that decides what a drag means cannot drift from the maths that
+ * draws the line.
+ */
+export function eqPointToDb(y: number, height: number, rangeDb = EQ_CURVE_MAX_DB): number {
+  if (height <= 0) return 0;
+  const clamped = Math.max(0, Math.min(height, y));
+  return (1 - (clamped / height) * 2) * rangeDb;
+}
+
+export function eqXToHz(x: number, width: number): number {
+  if (width <= 0) return EQ_CURVE_MIN_HZ;
+  const t = Math.max(0, Math.min(1, x / width));
+  return Math.exp(Math.log(EQ_CURVE_MIN_HZ) + t * (Math.log(EQ_CURVE_MAX_HZ) - Math.log(EQ_CURVE_MIN_HZ)));
+}
+
+export function eqHzToX(hz: number, width: number): number {
+  const t =
+    (Math.log(Math.max(EQ_CURVE_MIN_HZ, Math.min(EQ_CURVE_MAX_HZ, hz))) - Math.log(EQ_CURVE_MIN_HZ)) /
+    (Math.log(EQ_CURVE_MAX_HZ) - Math.log(EQ_CURVE_MIN_HZ));
+  return t * width;
+}

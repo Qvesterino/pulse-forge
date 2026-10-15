@@ -51,3 +51,6 @@
 @import "./48-midi-mobile-layout.css";
 @import "./49-export-mix-health-finishing.css";
 @import "./50-motion-accessibility.css";
+/* BASELINE-MEASUREMENT: 51 deliberately not imported while measuring the
+   pre-change shell budget. Restore this import when done. */
+/* @import "./51-shell-proportion.css"; */

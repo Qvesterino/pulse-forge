@@ -72,6 +72,10 @@ export function FxAddPopover({
     return () => window.removeEventListener("keydown", onKey, true);
   }, [onClose]);
 
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
   const trimmed = query.trim();
   const lower = trimmed.toLowerCase();
 

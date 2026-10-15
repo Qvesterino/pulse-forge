@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { testDoc } from "./fixtures/doc";
 import { defaultParamsOf } from "../src/effects/registry";
 import { normalizeProject } from "../src/project-model/schema";
-import { setSceneCcRemap, setSceneMacro, setScenePack } from "../src/commands/scenes";
+import { setSceneCcOverride, setSceneCcRemap, setSceneMacro, setScenePack } from "../src/commands/scenes";
 import { AutomationBridge } from "../src/audio-engine/automationBridge";
 import { DeviceLookup } from "../src/audio-engine/deviceLookup";
 import type { TrackOrGroupView } from "../src/audio-engine/deviceLookup";
@@ -231,6 +231,53 @@ describe("per-scene packs — model + command", () => {
     (junkOnly.scenes[0] as unknown as { ccRemaps: unknown }).ccRemaps = [5, ""];
     expect(normalizeProject(junkOnly).scenes[0]!.ccRemaps).toBeUndefined();
   });
+
+  it("re-points a CC mapping per scene with canonicalizing merge", () => {
+    const { doc, trackId } = docWithSceneFx();
+    const scene = doc.scenes[0]!;
+    doc.macros[0]!.mappings.push({
+      id: "cc-r",
+      trackId,
+      param: "gain",
+      amount: 0.5,
+      source: "midiCC",
+      ccNumber: 74,
+      channel: 1,
+    });
+    const a = setSceneCcOverride(doc, scene.id, "cc-r", { ccNumber: 20 }).execute(doc);
+    expect(a.scenes[0]!.ccOverrides).toEqual({ "cc-r": { ccNumber: 20 } });
+    const b = setSceneCcOverride(a, scene.id, "cc-r", { channel: 5 }).execute(a);
+    expect(b.scenes[0]!.ccOverrides).toEqual({ "cc-r": { ccNumber: 20, channel: 5 } });
+    // Typing the mapping's own value back clears that field (canonicalize).
+    const c = setSceneCcOverride(b, scene.id, "cc-r", { ccNumber: 74 }).execute(b);
+    expect(c.scenes[0]!.ccOverrides).toEqual({ "cc-r": { channel: 5 } });
+    // Clearing the last re-pointed field drops the entry → absent.
+    const d = setSceneCcOverride(c, scene.id, "cc-r", { channel: 1 }).execute(c);
+    expect(d.scenes[0]!.ccOverrides).toBeUndefined();
+    // One undo step restores the previous entry.
+    expect(setSceneCcOverride(c, scene.id, "cc-r", { channel: 1 }).undo(d).scenes[0]!.ccOverrides).toEqual({
+      "cc-r": { channel: 5 },
+    });
+    expect(() => setSceneCcOverride(doc, scene.id, "cc-r", { ccNumber: 200 })).toThrow(/Invalid CC number/);
+    expect(() => setSceneCcOverride(doc, scene.id, "cc-r", { channel: 0 })).toThrow(/Invalid MIDI channel/);
+  });
+
+  it("sanitizes scene.ccOverrides through normalizeProject", () => {
+    const { doc } = docWithSceneFx();
+    const dirty = JSON.parse(JSON.stringify(doc)) as ProjectDocument;
+    (dirty.scenes[0] as unknown as { ccOverrides: unknown }).ccOverrides = {
+      m1: { ccNumber: 20, channel: 5 },
+      m2: { ccNumber: 999 },
+      m3: { channel: 0 },
+      m4: "x",
+      "": { ccNumber: 1 },
+      junk: {},
+    };
+    expect(normalizeProject(dirty).scenes[0]!.ccOverrides).toEqual({ m1: { ccNumber: 20, channel: 5 } });
+    const hostile = JSON.parse(JSON.stringify(doc)) as ProjectDocument;
+    (hostile.scenes[0] as unknown as { ccOverrides: unknown }).ccOverrides = 4;
+    expect(normalizeProject(hostile).scenes[0]!.ccOverrides).toBeUndefined();
+  });
 });
 
 describe("per-scene packs — scheduler hands the scene selection to the engine", () => {
@@ -246,6 +293,7 @@ describe("per-scene packs — scheduler hands the scene selection to the engine"
       packs: { [growId]: "drill-phone-growl" },
       macros: { [doc.macros[0]!.id]: 0.9 },
       ccRemaps: ["cc-seam"],
+      ccOverrides: { "cc-seam": { ccNumber: 20, channel: 5 } },
     };
     return {
       ...doc,
@@ -270,6 +318,7 @@ describe("per-scene packs — scheduler hands the scene selection to the engine"
         packs?: Record<string, string> | null;
         sceneMacros?: Record<string, number> | null;
         ccRemaps?: string[] | null;
+        ccOverrides?: Record<string, { ccNumber?: number; channel?: number }> | null;
       }>
     > = [];
     let audioTime = 10;
@@ -304,6 +353,7 @@ describe("per-scene packs — scheduler hands the scene selection to the engine"
       expect(seam[0]!.packs).toEqual(sceneB.packs);
       expect(seam[0]!.sceneMacros).toEqual(sceneB.macros);
       expect(seam[0]!.ccRemaps).toEqual(sceneB.ccRemaps);
+      expect(seam[0]!.ccOverrides).toEqual(sceneB.ccOverrides);
     }
     // Inside scene A (no packs/macros/cc remaps) the points carry none.
     const insideA = scheduled.find((points) => points.some((point) => point.tick < seamTick));
@@ -312,6 +362,7 @@ describe("per-scene packs — scheduler hands the scene selection to the engine"
         expect(point.packs).toBeUndefined();
         expect(point.sceneMacros).toBeUndefined();
         expect(point.ccRemaps).toBeUndefined();
+        expect(point.ccOverrides).toBeUndefined();
       }
     }
   });
@@ -467,5 +518,20 @@ describe("per-scene packs — bridge override", () => {
     bridge.scheduleSceneIntensity([{ tick: 0, value: 0.7, ccRemaps: ["m1"] }], (tick) => tick / 1000);
     expect(bridge.sceneAllowsMidiMapping("m1")).toBe(true);
     expect(bridge.sceneAllowsMidiMapping("m2")).toBe(false);
+  });
+
+  it("exposes scene CC re-points and clears them on stop", () => {
+    const { doc } = docWithSceneFx();
+    const { bridge } = bridgeHarness(doc);
+    expect(bridge.sceneCcOverride("m1")).toBeNull();
+    bridge.setSceneIntensity(0.7, { ccOverrides: { m1: { ccNumber: 20, channel: 5 } } });
+    expect(bridge.sceneCcOverride("m1")).toEqual({ ccNumber: 20, channel: 5 });
+    bridge.automationReset();
+    expect(bridge.sceneCcOverride("m1")).toBeNull();
+    bridge.scheduleSceneIntensity(
+      [{ tick: 0, value: 0.7, ccOverrides: { m2: { ccNumber: 1 } } }],
+      (tick) => tick / 1000,
+    );
+    expect(bridge.sceneCcOverride("m2")).toEqual({ ccNumber: 1 });
   });
 });

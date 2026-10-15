@@ -3,6 +3,8 @@ import { fireEvent, screen, within } from "@testing-library/react";
 import { Sequencer } from "../../src/ui/Sequencer";
 import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
+import { BAR_TICKS } from "../../src/project-model/types";
+import { MIDI_CLIP_EDITOR_NAVIGATION_EVENT } from "../../src/ui/arrangement/midiClipEditorNavigation";
 
 const defaultProps = {
   selectedPadId: "",
@@ -61,6 +63,44 @@ describe("Sequencer", () => {
     expect(container.querySelector(".sequencer.beat-focus")).toBeNull();
     expect(screen.getByRole("button", { name: "Enter Beat Focus" })).toBeInTheDocument();
   });
+
+  it("opens the matching Piano Roll at a trimmed MIDI clip's source phase", () => {
+    const source = createProjectFromTemplate("house");
+    const track = source.tracks.find((candidate) => candidate.kind === "instrument");
+    const pattern = source.patterns.find((candidate) => candidate.id === source.activePatternId);
+    if (!track || track.kind !== "instrument" || !pattern) throw new Error("house template fixture is incomplete");
+    const longPhrase = {
+      ...pattern,
+      stepCount: 128,
+      notes: {
+        ...pattern.notes,
+        [track.id]: [{ id: "long-note", pitch: 36, start: 0, duration: BAR_TICKS * 12, velocity: 0.9 }],
+      },
+    };
+    const doc = {
+      ...source,
+      patterns: source.patterns.map((candidate) => (candidate.id === pattern.id ? longPhrase : candidate)),
+    };
+    const { container } = renderWithContext(<Sequencer {...defaultProps} />, { services: mockServices(doc) });
+
+    fireEvent(
+      window,
+      new CustomEvent(MIDI_CLIP_EDITOR_NAVIGATION_EVENT, {
+        detail: {
+          clipId: "trimmed-clip",
+          trackId: track.id,
+          patternId: pattern.id,
+          startTick: BAR_TICKS * 20,
+          phaseOffsetTicks: BAR_TICKS * 5,
+        },
+      }),
+    );
+
+    expect(container.querySelector(".pianoroll-wrap.pr-fullscreen")).toBeInTheDocument();
+    const roll = container.querySelector(".pianoroll-scroll") as HTMLDivElement;
+    expect(roll.scrollLeft).toBeGreaterThan(0);
+  });
+
   it("keeps Space free for transport: a focused step ignores it, Enter still toggles", () => {
     const { services, container } = renderWithContext(<Sequencer {...defaultProps} />);
     const step = container.querySelector('button[data-step="0"]') as HTMLElement;

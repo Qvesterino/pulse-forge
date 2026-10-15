@@ -2212,11 +2212,23 @@ export class AudioEngine {
     this.automation.applyArrangementAutomationClip(clip, fromTick, toTick, scheduleOffsetSec, timeAt);
   }
 
-  applyModulators(fromTick: number, toTick: number, whenFor: (tick: number) => number): void {
-    this.automation.applyModulators(fromTick, toTick, whenFor);
+  applyModulators(
+    fromTick: number,
+    toTick: number,
+    whenFor: (tick: number) => number,
+    scene?: import("../project-model/scene-performance").ScenePerformance | null,
+  ): void {
+    this.automation.applyModulators(fromTick, toTick, whenFor, scene);
   }
 
-  scheduleModulatorsOffline(windows: { from: number; to: number }[], timeAt: (tick: number) => number): void {
+  scheduleModulatorsOffline(
+    windows: {
+      from: number;
+      to: number;
+      scene?: import("../project-model/scene-performance").ScenePerformance | null;
+    }[],
+    timeAt: (tick: number) => number,
+  ): void {
     this.automation.scheduleModulatorsOffline(windows, timeAt);
   }
 

@@ -3,11 +3,12 @@ import { ProjectStore } from "../src/store/ProjectStore";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { addArrangementClip } from "../src/commands/arrangement";
 import { addAudioClip } from "../src/commands/audioClips";
+import { addAutomationClip, linkAutomationClipTarget } from "../src/commands/automationClips";
 import { createScene, deleteScene } from "../src/commands/scenes";
 import { buildClipClipboard, cutClips, pasteClips } from "../src/commands/clipClipboard";
 import { deleteArrangementClip } from "../src/commands/arrangement";
 import { normalizeProject } from "../src/project-model/schema";
-import { BAR_TICKS, type ProjectDocument } from "../src/project-model/types";
+import { BAR_TICKS, type AutomationTarget, type ProjectDocument } from "../src/project-model/types";
 
 /**
  * §30 CLIPBOARD INTEGRITY — "clipboard payloads must not depend on transient
@@ -189,5 +190,29 @@ describe("§30 clipboard — repeated use", () => {
     const pasted = pasteClips(emptied, payload, 8 * BAR_TICKS).execute(emptied);
     expect(pasted.arrangement.clips).toHaveLength(1);
     expect(pasted.arrangement.clips[0]!.id).not.toBe(clipId);
+  });
+});
+
+describe("§30 clipboard — linked automation targets", () => {
+  it("copies linked automation targets with the curve and preserves them after paste and reload", () => {
+    const { doc } = sceneDoc();
+    const track = doc.tracks.find((candidate) => candidate.kind === "instrument");
+    if (!track || track.kind !== "instrument") throw new Error("house template needs an instrument track");
+    const gain: AutomationTarget = { kind: "trackGain", trackId: track.id };
+    const pan: AutomationTarget = { kind: "trackPan", trackId: track.id };
+    const added = addAutomationClip(doc, gain, 0, BAR_TICKS, [
+      { tick: 0, value: 0 },
+      { tick: BAR_TICKS, value: 1.5 },
+    ]).execute(doc);
+    const sourceId = added.arrangement.automationClips![0]!.id;
+    const linked = linkAutomationClipTarget(added, sourceId, pan).execute(added);
+    const payload = buildClipClipboard(linked, [sourceId])!;
+    const pasted = pasteClips(linked, payload, 2 * BAR_TICKS).execute(linked);
+    const pastedClip = pasted.arrangement.automationClips!.find((clip) => clip.id !== sourceId)!;
+
+    expect(pastedClip.linkedTargets).toEqual([pan]);
+    expect(
+      normalizeProject(pasted).arrangement.automationClips!.find((clip) => clip.id === pastedClip.id)?.linkedTargets,
+    ).toEqual([pan]);
   });
 });

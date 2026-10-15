@@ -3,9 +3,10 @@ import {
   buildSceneIntensityPoints,
   buildTempoMap,
   expandAutomationAcrossWindows,
+  scheduleArrangementAutomationClips,
   scheduleSceneAutomation,
 } from "../src/rendering/renderer";
-import type { AutomationPoint, Pattern, ProjectDocument } from "../src/project-model/types";
+import type { ArrangementAutomationClip, AutomationPoint, Pattern, ProjectDocument } from "../src/project-model/types";
 import { BAR_TICKS, STEP_TICKS } from "../src/project-model/types";
 import { createDefaultProject } from "../src/project-model/schema";
 
@@ -196,6 +197,68 @@ describe("expandAutomationAcrossWindows", () => {
     const pattern = makePattern(0);
     const points: AutomationPoint[] = [{ tick: 0, value: 0 }];
     expect(expandAutomationAcrossWindows(points, [{ pattern, base: 0, from: 0, to: 100 }])).toEqual([]);
+  });
+});
+
+describe("scheduleArrangementAutomationClips — linked targets", () => {
+  it("maps a linked curve and resolves an overlap independently for each destination", () => {
+    const doc = createDefaultProject();
+    const track = doc.tracks.find((candidate) => candidate.kind !== "group");
+    if (!track) throw new Error("default project fixture needs a playable track");
+    const gain = { kind: "trackGain" as const, trackId: track.id };
+    const pan = { kind: "trackPan" as const, trackId: track.id };
+    const linked: ArrangementAutomationClip = {
+      id: "linked-gain-pan",
+      target: gain,
+      linkedTargets: [pan],
+      startTick: 0,
+      lengthTicks: 200,
+      points: [
+        { tick: 0, value: 0 },
+        { tick: 200, value: 1.5 },
+      ],
+    };
+    const panOverride: ArrangementAutomationClip = {
+      id: "pan-only-overlap",
+      target: pan,
+      startTick: 50,
+      lengthTicks: 100,
+      points: [
+        { tick: 0, value: 1 },
+        { tick: 100, value: -1 },
+      ],
+    };
+    const scheduleAutomationTarget = vi.fn();
+    const timeAt = (tick: number) => tick / 100;
+
+    scheduleArrangementAutomationClips(
+      {
+        ...doc,
+        arrangement: { ...doc.arrangement, automationClips: [linked, panOverride] },
+      },
+      200,
+      timeAt,
+      { scheduleAutomationTarget },
+    );
+
+    const calls = scheduleAutomationTarget.mock.calls as [
+      { kind: string; trackId: string },
+      { tick: number; value: number }[],
+      typeof timeAt,
+    ][];
+    const gainCall = calls.find(([target]) => target.kind === "trackGain");
+    const panCall = calls.find(([target]) => target.kind === "trackPan");
+    expect(gainCall?.[1]).toEqual([
+      { tick: 0, value: 0 },
+      { tick: 200, value: 1.5 },
+    ]);
+    expect(panCall?.[1]).toEqual([
+      { tick: 0, value: -1 },
+      { tick: 50, value: 1 },
+      { tick: 150, value: 0.5 },
+      { tick: 200, value: 1 },
+    ]);
+    expect(calls.every(([, , mapTime]) => mapTime === timeAt)).toBe(true);
   });
 });
 

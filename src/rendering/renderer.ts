@@ -26,7 +26,7 @@ import { computeSceneIntensity } from "../project-model/intensity";
 import { scenePerformanceOf, type ScenePerformance } from "../project-model/scene-performance";
 import { ensureWorkletsForDoc } from "../audio-worklets/loader";
 import { audioClipsForPlayback } from "../project-model/audio-takes";
-import { targetParamDef } from "../project-model/targets";
+import { automationClipForTarget, automationTargetsOfClip, targetParamDef } from "../project-model/targets";
 
 export type ExportQuality = "live" | "studio";
 
@@ -607,9 +607,19 @@ export async function renderProject(
   // shape through each owning clip's window via the same tempo map.
   scheduleSceneAutomation(doc, windows, timeAt, engine);
   // Schedulable track modulators (random S&H / step) share the same window
-  // sweep so offline exports match live playback deterministically.
+  // sweep so offline exports match live playback deterministically; each
+  // window carries its scene's performance context (pinned step patterns /
+  // seeds) so the export hears the same scene arc as playback.
   engine.scheduleModulatorsOffline(
-    windows.map((w) => ({ from: w.from, to: w.to })),
+    windows.map((w) => ({
+      from: w.from,
+      to: w.to,
+      scene: scenePerformanceOf(
+        w.sceneId
+          ? doc.scenes.find((candidate) => candidate.id === w.sceneId)
+          : doc.scenes.find((candidate) => candidate.patternId === w.pattern.id),
+      ),
+    })),
     timeAt,
   );
   // AudioClips — schedule each clip's buffer segment through its track FX.
@@ -936,7 +946,9 @@ function scheduleAutomation(
 ): void {
   const automationClips = mode === "song" ? (doc.arrangement.automationClips ?? []) : [];
   const automationClipTargets = new Set(
-    automationClips.filter((clip) => !clip.muted).map((clip) => automationTargetKey(clip.target)),
+    automationClips
+      .filter((clip) => !clip.muted)
+      .flatMap((clip) => automationTargetsOfClip(clip).map(automationTargetKey)),
   );
   for (const lane of doc.automation) {
     if (mode === "song" && automationClipTargets.has(automationTargetKey(lane.target))) continue;
@@ -946,20 +958,32 @@ function scheduleAutomation(
     if (expanded.length === 0) continue;
     engine.scheduleAutomationTarget(lane.target, expanded, timeAt);
   }
+  if (automationClips.length > 0) scheduleArrangementAutomationClips(doc, totalTicks, timeAt, engine);
+}
+
+/** Resolve and schedule arrangement automation independently for each target. */
+export function scheduleArrangementAutomationClips(
+  doc: ProjectDocument,
+  totalTicks: number,
+  timeAt: (tick: number) => number,
+  engine: Pick<AudioEngine, "scheduleAutomationTarget">,
+): void {
   const clipEventsByTarget = new Map<string, { target: AutomationTarget; points: Map<number, number> }>();
-  for (const segment of arrangementAutomationSegmentsInWindow(automationClips, 0, totalTicks)) {
-    const { clip } = segment;
+  for (const segment of arrangementAutomationSegmentsInWindow(doc.arrangement.automationClips ?? [], 0, totalTicks)) {
+    const clip = automationClipForTarget(doc, segment.clip, segment.target);
+    const targetKind = targetParamDef(doc, segment.target)?.kind;
     const events = automationClipEventsInWindow(
       clip,
       segment.fromTick,
       segment.toTick,
       targetDefault(doc, clip.target),
+      targetKind === "toggle" || targetKind === "enum" || targetKind === "discrete",
     );
     if (events.length === 0) continue;
-    const key = automationTargetKey(clip.target);
+    const key = automationTargetKey(segment.target);
     let resolved = clipEventsByTarget.get(key);
     if (!resolved) {
-      resolved = { target: clip.target, points: new Map() };
+      resolved = { target: segment.target, points: new Map() };
       clipEventsByTarget.set(key, resolved);
     }
     // Segment order is chronological, so the later segment wins at shared

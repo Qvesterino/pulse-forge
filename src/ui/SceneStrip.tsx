@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   useActivePatternId,
+  useDoc,
   useMacros,
   useScenes,
   useSelection,
@@ -16,6 +17,7 @@ import {
   setSceneCcRemap,
   setSceneIntensity,
   setSceneMacro,
+  setSceneModulatorPattern,
   setScenePack,
   twistMorphIntensityBound,
 } from "../commands/commands";
@@ -24,6 +26,7 @@ import { readTwistCurvesState } from "../effects/skrutka-curves";
 import { TWIST_SCENE_PACK, findTwistScenePair } from "../effects/skrutka-scene-pack";
 import { readKorenSceneState } from "../effects/koren-scene";
 import { KOREN_SCENE_PACK, findKorenScenePair } from "../effects/koren-scene-pack";
+import { lfoKind, resolveLfoTarget, stepsOf } from "../project-model/modulators";
 import { Slider } from "./controls";
 import { NumericDraftInput } from "./NumericDraftInput";
 import { formatMacroValue } from "./MacroPerformanceBar";
@@ -41,6 +44,13 @@ interface SceneFxRow {
   pairId: string | null;
   /** The effect already rides the scene intensity. */
   bound: boolean;
+}
+
+interface ModulatorRow {
+  id: string;
+  kind: "step" | "random";
+  label: string;
+  title: string;
 }
 
 /**
@@ -78,7 +88,7 @@ export function SceneStrip({ sceneId }: { sceneId?: string }) {
       return false;
     }
   });
-  const doc = services.store.getDoc();
+  const doc = useDoc();
 
   const scene = useMemo(() => {
     if (sceneId) {
@@ -98,6 +108,23 @@ export function SceneStrip({ sceneId }: { sceneId?: string }) {
     }
     return out;
   }, [macros]);
+
+  const modulatorRows = useMemo(() => {
+    const out: ModulatorRow[] = [];
+    const lfos = doc.lfos ?? [];
+    lfos.forEach((lfo, index) => {
+      const kind = lfoKind(lfo);
+      if (kind !== "step" && kind !== "random") return;
+      const target = resolveLfoTarget(lfo);
+      out.push({
+        id: lfo.id,
+        kind,
+        label: `${kind === "step" ? "STEP" : "S&H"} ${index + 1}`,
+        title: `→ ${target.kind}${target.paramId ? ` ${target.paramId}` : ""} on track ${target.trackId}`,
+      });
+    });
+    return out;
+  }, [doc.lfos]);
 
   const rows = useMemo(() => {
     const out: SceneFxRow[] = [];
@@ -327,7 +354,8 @@ export function SceneStrip({ sceneId }: { sceneId?: string }) {
                 const activeForScene = !allowList || allowList.includes(mapping.id);
                 const override = scene?.ccOverrides?.[mapping.id];
                 const effectiveCc = typeof override?.ccNumber === "number" ? override.ccNumber : mapping.ccNumber;
-                const effectiveChannel = typeof override?.channel === "number" ? override.channel : (mapping.channel ?? 0);
+                const effectiveChannel =
+                  typeof override?.channel === "number" ? override.channel : (mapping.channel ?? 0);
                 const label = `${mapping.macroName} ← CC${mapping.ccNumber}${
                   mapping.channel !== undefined ? ` ch${mapping.channel}` : ""
                 }`;
@@ -391,12 +419,81 @@ export function SceneStrip({ sceneId }: { sceneId?: string }) {
                         onCommit={(channel) => {
                           if (scene)
                             services.store.execute(
-                              setSceneCcOverride(doc, scene.id, mapping.id, { channel: channel === 0 ? null : channel }),
+                              setSceneCcOverride(doc, scene.id, mapping.id, {
+                                channel: channel === 0 ? null : channel,
+                              }),
                             );
                         }}
                       />
                     </label>
                   </div>
+                );
+              })}
+            </div>
+          )}
+          {modulatorRows.length > 0 && (
+            <div className="scene-strip-modulators" role="group" aria-label="Scene modulator patterns">
+              {modulatorRows.map((row) => {
+                const pinned = scene?.modulators?.[row.id];
+                const isPinned = !!pinned && (pinned.steps !== undefined || pinned.seed !== undefined);
+                const detail = pinned?.steps
+                  ? `STEPS ×${pinned.steps.length}`
+                  : pinned?.seed
+                    ? `SEED ${pinned.seed.slice(0, 6)}…`
+                    : "";
+                return (
+                  <span
+                    key={row.id}
+                    className={`scene-strip-modulator${isPinned ? " pinned" : ""}`}
+                    title={`${row.label} ${row.title} — pin the CURRENT ${
+                      row.kind === "step" ? "step pattern" : "random stream"
+                    } to this scene`}
+                  >
+                    <span className="scene-strip-modulator-label">{row.label}</span>
+                    {isPinned ? (
+                      <>
+                        <span className="scene-strip-modulator-detail">{detail}</span>
+                        <button
+                          type="button"
+                          className="scene-strip-macro-clear"
+                          title="Clear the scene pin — the modulator returns to its own pattern"
+                          onClick={() => {
+                            if (scene)
+                              services.store.execute(
+                                setSceneModulatorPattern(doc, scene.id, row.id, { steps: null, seed: null }),
+                              );
+                          }}
+                        >
+                          ×
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="scene-strip-pin"
+                        disabled={!scene}
+                        title={`Pin the current ${row.kind === "step" ? "step pattern" : "random stream"} to this scene`}
+                        onClick={() => {
+                          if (!scene) return;
+                          const lfo = doc.lfos.find((candidate) => candidate.id === row.id);
+                          if (!lfo) return;
+                          if (row.kind === "step") {
+                            services.store.execute(
+                              setSceneModulatorPattern(doc, scene.id, row.id, { steps: [...stepsOf(lfo)] }),
+                            );
+                          } else {
+                            const seed =
+                              typeof lfo.seed === "string" && lfo.seed.length > 0
+                                ? lfo.seed
+                                : `${lfo.id}:scene:${scene.id}`;
+                            services.store.execute(setSceneModulatorPattern(doc, scene.id, row.id, { seed }));
+                          }
+                        }}
+                      >
+                        PIN
+                      </button>
+                    )}
+                  </span>
                 );
               })}
             </div>

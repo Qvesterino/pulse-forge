@@ -572,7 +572,7 @@ export async function openProject(
     recordCapturedEvent: (event) => capture.recordEvent(event),
     applyAutomation: (fromTick, toTick, relOf, scheduleOffsetSec, timeAt, suppressedTargets) =>
       engine.applyAutomation(fromTick, toTick, relOf, scheduleOffsetSec, timeAt, suppressedTargets),
-    applyModulators: (fromTick, toTick, whenFor) => engine.applyModulators(fromTick, toTick, whenFor),
+    applyModulators: (fromTick, toTick, whenFor, scene) => engine.applyModulators(fromTick, toTick, whenFor, scene),
     applyEnvFollowers: () => engine.applyEnvFollowersToParams(),
     applySceneAutomationLane: (lane, fromTick, toTick, sceneStartTick, scheduleOffsetSec, timeAt) =>
       engine.applySceneAutomationLane(lane, fromTick, toTick, sceneStartTick, scheduleOffsetSec, timeAt),

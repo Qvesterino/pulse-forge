@@ -2,10 +2,10 @@
    area without changing its established compact geometry. */
 .track-tabs .track-tab {
   transition:
-    border-color 140ms ease,
-    background-color 140ms ease,
-    color 140ms ease,
-    box-shadow 140ms ease;
+    border-color var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-state) var(--motion-ease);
 }
 
 .track-tabs .track-tab:not([aria-selected="true"]):hover {
@@ -68,6 +68,13 @@
   .track-tabs > .track-tab-rename,
   .track-tabs > .track-add {
     flex: 0 0 auto;
+  }
+
+  /* The horizontal strip clips vertical overflow. Keep each keyboard ring
+     inside its control so the focused tab, rename field, or Add Track select
+     stays visible without adding height to the rack header. */
+  .track-tabs > :is(.track-tab, .track-tab-rename, .track-add):focus-visible {
+    outline-offset: -2px;
   }
 
   .track-tabs::-webkit-scrollbar {

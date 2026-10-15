@@ -6,6 +6,7 @@ import {
   addAutomationClipPoint,
   deleteAutomationClip,
   duplicateAutomationClip,
+  linkAutomationClipTarget,
   moveAutomationClipPoint,
   moveAutomationClip,
   removeAutomationClipPoint,
@@ -13,11 +14,20 @@ import {
   setAutomationClipLocked,
   setAutomationClipMuted,
   trimAutomationClipStart,
+  unlinkAutomationClipTarget,
 } from "../../commands/automationClips";
+import { arrangementAutomationSegmentsInWindow } from "../../project-model/events";
 import { nudgeClips } from "../../commands/clipEditing";
 import { valueAt } from "../../project-model/automation";
 import type { ArrangementAutomationClip, AutomationTarget, ProjectDocument } from "../../project-model/types";
 import { BAR_TICKS, STEP_TICKS } from "../../project-model/types";
+import {
+  automationClipForTarget,
+  automationTargetKey,
+  automationTargetsOfClip,
+  mapAutomationValueBetweenTargets,
+  targetParamDef,
+} from "../../project-model/targets";
 import { snapBarsFor, snapTick, type SnapGridId } from "../snap";
 import {
   clearTimelineGroupDragPreview,
@@ -54,14 +64,11 @@ interface DragState {
 
 interface PointDragState {
   clipId: string;
+  target: AutomationTarget;
   pointIndex: number;
   pointerId: number;
   visibleTick: number;
   value: number;
-}
-
-function targetKey(target: AutomationTarget): string {
-  return `${target.kind}|${target.trackId}|${target.fxId ?? ""}|${target.paramId ?? ""}`;
 }
 
 function snapped(tick: number, grid: SnapGridId, free: boolean): number {
@@ -83,9 +90,13 @@ function targetName(doc: ProjectDocument, target: AutomationTarget): string {
   return `${owner} · ${target.paramId ?? target.kind}`;
 }
 
-function valueRange(clip: ArrangementAutomationClip): { min: number; max: number } {
-  if (clip.target.kind === "trackGain") return { min: 0, max: 1.5 };
-  if (clip.target.kind === "trackPan") return { min: -1, max: 1 };
+function valueRange(
+  doc: ProjectDocument,
+  target: AutomationTarget,
+  clip: ArrangementAutomationClip,
+): { min: number; max: number } {
+  const def = targetParamDef(doc, target);
+  if (def && (target.kind === "trackGain" || target.kind === "trackPan")) return { min: def.min, max: def.max };
   let min = Number.POSITIVE_INFINITY;
   let max = Number.NEGATIVE_INFINITY;
   for (const point of clip.points) {
@@ -95,30 +106,50 @@ function valueRange(clip: ArrangementAutomationClip): { min: number; max: number
   }
   if (!Number.isFinite(min) || !Number.isFinite(max)) return { min: 0, max: 1 };
   const padding = max > min ? (max - min) * 0.08 : Math.max(1, Math.abs(min) * 0.25);
-  return { min: min - padding, max: max + padding };
+  return {
+    min: Math.max(def?.min ?? Number.NEGATIVE_INFINITY, min - padding),
+    max: Math.min(def?.max ?? Number.POSITIVE_INFINITY, max + padding),
+  };
 }
 
-function curvePath(clip: ArrangementAutomationClip): string {
+function curvePath(clip: ArrangementAutomationClip, range: { min: number; max: number }, stepped = false): string {
   if (clip.points.length === 0) return "";
-  const { min, max } = valueRange(clip);
+  const { min, max } = range;
   const span = max - min || 1;
   const phase = clip.phaseOffsetTicks ?? 0;
   const points = [...clip.points].sort((a, b) => a.tick - b.tick);
+  const valueAtCurve = (tick: number) => {
+    if (!stepped) return valueAt(points, tick, 0);
+    let value = 0;
+    for (const point of points) {
+      if (point.tick > tick) break;
+      value = point.value;
+    }
+    return Math.round(value);
+  };
   const visible = [
-    { tick: phase, value: valueAt(points, phase, 0) },
-    ...points.filter((point) => point.tick > phase && point.tick < phase + clip.lengthTicks),
+    { tick: phase, value: valueAtCurve(phase) },
+    ...points
+      .filter((point) => point.tick > phase && point.tick < phase + clip.lengthTicks)
+      .map((point) => ({ ...point, value: stepped ? Math.round(point.value) : point.value })),
     {
       tick: phase + clip.lengthTicks,
-      value: valueAt(points, phase + clip.lengthTicks, 0),
+      value: valueAtCurve(phase + clip.lengthTicks),
     },
   ];
-  return visible
-    .map((point, index) => {
-      const x = ((point.tick - phase) / clip.lengthTicks) * 100;
-      const y = 23 - ((point.value - min) / span) * 21;
-      return `${index === 0 ? "M" : "L"}${x.toFixed(2)} ${Math.max(1, Math.min(23, y)).toFixed(2)}`;
-    })
-    .join(" ");
+  const xy = (point: { tick: number; value: number }) => {
+    const x = ((point.tick - phase) / clip.lengthTicks) * 100;
+    const y = 23 - ((point.value - min) / span) * 21;
+    return { x: x.toFixed(2), y: Math.max(1, Math.min(23, y)).toFixed(2) };
+  };
+  const first = xy(visible[0]!);
+  let path = `M${first.x} ${first.y}`;
+  for (let index = 1; index < visible.length; index++) {
+    const previous = xy(visible[index - 1]!);
+    const current = xy(visible[index]!);
+    path += stepped ? ` L${current.x} ${previous.y} L${current.x} ${current.y}` : ` L${current.x} ${current.y}`;
+  }
+  return path;
 }
 
 export function AutomationClipLanes({
@@ -140,14 +171,30 @@ export function AutomationClipLanes({
   const [menu, setMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
   const laneWidth = totalBars * barWidth;
   const targets = new Map<string, AutomationTarget>();
-  for (const lane of doc.automation) targets.set(targetKey(lane.target), lane.target);
-  for (const clip of doc.arrangement.automationClips ?? []) targets.set(targetKey(clip.target), clip.target);
+  for (const lane of doc.automation) targets.set(automationTargetKey(lane.target), lane.target);
+  for (const clip of doc.arrangement.automationClips ?? []) {
+    for (const target of automationTargetsOfClip(clip)) targets.set(automationTargetKey(target), target);
+  }
   const clipsByTarget = new Map<string, ArrangementAutomationClip[]>();
   for (const clip of automationClips) {
-    const key = targetKey(clip.target);
-    const clips = clipsByTarget.get(key) ?? [];
-    clips.push(clip);
-    clipsByTarget.set(key, clips);
+    for (const target of automationTargetsOfClip(clip)) {
+      const key = automationTargetKey(target);
+      const clips = clipsByTarget.get(key) ?? [];
+      clips.push(clip);
+      clipsByTarget.set(key, clips);
+    }
+  }
+  const playheadWinners = arrangementAutomationSegmentsInWindow(automationClips, playheadTick, playheadTick + 1);
+  const winnerClipByTarget = new Map(
+    playheadWinners.map((segment) => [automationTargetKey(segment.target), segment.clip.id]),
+  );
+  const activeClipCountByTarget = new Map<string, number>();
+  for (const clip of automationClips) {
+    if (clip.muted || playheadTick < clip.startTick || playheadTick >= clip.startTick + clip.lengthTicks) continue;
+    for (const target of automationTargetsOfClip(clip)) {
+      const key = automationTargetKey(target);
+      activeClipCountByTarget.set(key, (activeClipCountByTarget.get(key) ?? 0) + 1);
+    }
   }
 
   useEffect(() => {
@@ -160,7 +207,9 @@ export function AutomationClipLanes({
   }, [menu]);
 
   const addForTarget = (target: AutomationTarget, startTick: number) => {
-    const lane = doc.automation.find((candidate) => targetKey(candidate.target) === targetKey(target));
+    const lane = doc.automation.find(
+      (candidate) => automationTargetKey(candidate.target) === automationTargetKey(target),
+    );
     if (lane) {
       onExecute(addAutomationClipFromLane(doc, lane.id, startTick));
       return;
@@ -168,8 +217,11 @@ export function AutomationClipLanes({
     const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId) ?? doc.patterns[0];
     if (!pattern) return;
     const length = Math.max(STEP_TICKS, pattern.stepCount * STEP_TICKS);
-    const existing = doc.arrangement.automationClips?.find((clip) => targetKey(clip.target) === targetKey(target));
-    const value = existing?.points[0]?.value ?? (target.kind === "trackGain" ? 1 : 0);
+    const existing = doc.arrangement.automationClips?.find((clip) =>
+      automationTargetsOfClip(clip).some((candidate) => automationTargetKey(candidate) === automationTargetKey(target)),
+    );
+    const mappedExisting = existing ? automationClipForTarget(doc, existing, target) : undefined;
+    const value = mappedExisting?.points[0]?.value ?? targetParamDef(doc, target)?.default ?? 0;
     onExecute(
       addAutomationClip(doc, target, startTick, length, [
         { tick: 0, value },
@@ -302,21 +354,24 @@ export function AutomationClipLanes({
   const pointValueAtEvent = (
     event: React.PointerEvent<SVGCircleElement>,
     clip: ArrangementAutomationClip,
+    target: AutomationTarget,
   ): { visibleTick: number; value: number } => {
     const rect = event.currentTarget.ownerSVGElement?.getBoundingClientRect();
     if (!rect) return { visibleTick: 0, value: 0 };
     const rawTick = ((event.clientX - rect.left) / Math.max(1, rect.width)) * clip.lengthTicks;
     const absoluteTick = snapped(clip.startTick + rawTick, snapGrid, event.shiftKey);
     const visibleTick = Math.max(0, Math.min(clip.lengthTicks, absoluteTick - clip.startTick));
-    const range = valueRange(clip);
-    const value = range.max - ((event.clientY - rect.top) / Math.max(1, rect.height)) * (range.max - range.min);
-    return { visibleTick, value };
+    const mapped = automationClipForTarget(doc, clip, target);
+    const range = valueRange(doc, target, mapped);
+    const targetValue = range.max - ((event.clientY - rect.top) / Math.max(1, rect.height)) * (range.max - range.min);
+    return { visibleTick, value: mapAutomationValueBetweenTargets(doc, target, clip.target, targetValue) };
   };
 
   const beginPointDrag = (
     event: React.PointerEvent<SVGCircleElement>,
     clip: ArrangementAutomationClip,
     pointIndex: number,
+    target: AutomationTarget,
   ) => {
     event.stopPropagation();
     onSelect(clip.id);
@@ -324,7 +379,7 @@ export function AutomationClipLanes({
     const point = clip.points[pointIndex];
     if (!point) return;
     const visibleTick = point.tick - (clip.phaseOffsetTicks ?? 0);
-    const next = { clipId: clip.id, pointIndex, pointerId: event.pointerId, visibleTick, value: point.value };
+    const next = { clipId: clip.id, target, pointIndex, pointerId: event.pointerId, visibleTick, value: point.value };
     pointDragRef.current = next;
     setPointPreview(next);
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -335,7 +390,7 @@ export function AutomationClipLanes({
     if (!current || current.pointerId !== event.pointerId) return;
     const clip = doc.arrangement.automationClips?.find((candidate) => candidate.id === current.clipId);
     if (!clip) return;
-    const position = pointValueAtEvent(event, clip);
+    const position = pointValueAtEvent(event, clip, current.target);
     const next = { ...current, ...position };
     pointDragRef.current = next;
     setPointPreview(next);
@@ -353,7 +408,7 @@ export function AutomationClipLanes({
       /* Pointer capture may already have ended. */
     }
     if (!clip) return;
-    const position = pointValueAtEvent(event, clip);
+    const position = pointValueAtEvent(event, clip, current.target);
     onExecute(moveAutomationClipPoint(doc, clip.id, current.pointIndex, position.visibleTick, position.value));
   };
 
@@ -407,31 +462,41 @@ export function AutomationClipLanes({
                 const lengthTicks = active?.nextLengthTicks ?? clip.lengthTicks;
                 const selected = selectedClipId === clip.id;
                 const muted = clip.muted === true;
-                const range = valueRange(clip);
+                const primaryTarget = automationTargetKey(clip.target) === key;
+                const visualClip = automationClipForTarget(doc, clip, target);
+                const range = valueRange(doc, target, visualClip);
+                const targetKind = targetParamDef(doc, target)?.kind;
+                const stepped = targetKind === "toggle" || targetKind === "enum" || targetKind === "discrete";
                 const phase = clip.phaseOffsetTicks ?? 0;
                 const displayClip =
                   pointPreview?.clipId === clip.id
                     ? {
-                        ...clip,
-                        points: clip.points
+                        ...visualClip,
+                        points: visualClip.points
                           .map((point, index) =>
                             index === pointPreview.pointIndex
-                              ? { tick: phase + pointPreview.visibleTick, value: pointPreview.value }
+                              ? {
+                                  tick: phase + pointPreview.visibleTick,
+                                  value: mapAutomationValueBetweenTargets(doc, clip.target, target, pointPreview.value),
+                                }
                               : point,
                           )
                           .sort((a, b) => a.tick - b.tick),
                       }
-                    : clip;
+                    : visualClip;
+                const overlapping = (activeClipCountByTarget.get(key) ?? 0) > 1 && !muted;
+                const isWinner = winnerClipByTarget.get(key) === clip.id;
                 return (
                   <button
                     type="button"
                     key={clip.id}
-                    className={`arr-auto-clip${selected ? " selected" : ""}${muted ? " muted" : ""}${clip.locked ? " locked" : ""}${doc.arrangement.clipGroups?.some((group) => group.clipIds.includes(clip.id)) ? " grouped" : ""}`}
+                    className={`arr-auto-clip${selected ? " selected" : ""}${muted ? " muted" : ""}${clip.locked ? " locked" : ""}${doc.arrangement.clipGroups?.some((group) => group.clipIds.includes(clip.id)) ? " grouped" : ""}${overlapping ? (isWinner ? " overlap-winner" : " overlap-shadowed") : ""}`}
                     style={{
                       left: `${(startTick / BAR_TICKS) * barWidth}px`,
                       width: `${Math.max(8, (lengthTicks / BAR_TICKS) * barWidth)}px`,
+                      zIndex: selected ? 3 : isWinner ? 2 : undefined,
                     }}
-                    title={`${targetName(doc, target)} · ${lengthTicks} ticks${clip.locked ? " · locked" : ""}`}
+                    title={`${targetName(doc, target)} · ${lengthTicks} ticks${primaryTarget ? " · primary curve" : " · linked curve"}${overlapping ? (isWinner ? " · playback winner at playhead" : " · overlapped by another clip at playhead") : ""}${clip.locked ? " · locked" : ""}`}
                     onPointerDown={(event) => beginDrag(event, clip)}
                     onPointerMove={updateDrag}
                     onPointerUp={finishDrag}
@@ -442,7 +507,14 @@ export function AutomationClipLanes({
                       const localTick = ((event.clientX - rect.left) / Math.max(1, rect.width)) * lengthTicks;
                       const value =
                         range.max - ((event.clientY - rect.top) / Math.max(1, rect.height)) * (range.max - range.min);
-                      onExecute(addAutomationClipPoint(doc, clip.id, localTick, value));
+                      onExecute(
+                        addAutomationClipPoint(
+                          doc,
+                          clip.id,
+                          localTick,
+                          mapAutomationValueBetweenTargets(doc, target, clip.target, value),
+                        ),
+                      );
                     }}
                     onContextMenu={(event) => {
                       event.preventDefault();
@@ -452,17 +524,15 @@ export function AutomationClipLanes({
                     }}
                   >
                     <svg className="arr-auto-curve" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true">
-                      <path d={curvePath(displayClip)} />
+                      <path d={curvePath(displayClip, range, stepped)} />
                       {clip.points.map((point, pointIndex) => {
                         const visibleTick =
                           pointPreview?.clipId === clip.id && pointPreview.pointIndex === pointIndex
                             ? pointPreview.visibleTick
-                            : point.tick - phase;
+                            : (displayClip.points[pointIndex]?.tick ?? point.tick) - phase;
                         if (visibleTick < 0 || visibleTick > clip.lengthTicks) return null;
-                        const value =
-                          pointPreview?.clipId === clip.id && pointPreview.pointIndex === pointIndex
-                            ? pointPreview.value
-                            : point.value;
+                        const pointValue = displayClip.points[pointIndex]?.value ?? point.value;
+                        const value = stepped ? Math.round(pointValue) : pointValue;
                         const y = 23 - ((value - range.min) / (range.max - range.min || 1)) * 21;
                         return (
                           <circle
@@ -472,7 +542,7 @@ export function AutomationClipLanes({
                             cy={Math.max(1, Math.min(23, y))}
                             r="2.5"
                             aria-label={`Automation point ${pointIndex + 1}`}
-                            onPointerDown={(event) => beginPointDrag(event, clip, pointIndex)}
+                            onPointerDown={(event) => beginPointDrag(event, clip, pointIndex, target)}
                             onPointerMove={updatePointDrag}
                             onPointerUp={finishPointDrag}
                             onPointerCancel={() => {
@@ -491,7 +561,17 @@ export function AutomationClipLanes({
                         );
                       })}
                     </svg>
-                    <span>{clip.points.length > 2 ? "AUTO" : "AUTO · flat"}</span>
+                    <span>
+                      {overlapping
+                        ? isWinner
+                          ? "WINNER"
+                          : "OVERLAP"
+                        : primaryTarget
+                          ? clip.points.length > 2
+                            ? "AUTO"
+                            : "AUTO · flat"
+                          : "LINKED"}
+                    </span>
                   </button>
                 );
               })}
@@ -505,6 +585,44 @@ export function AutomationClipLanes({
           if (!clip) return null;
           return (
             <div className="arr-auto-clip-menu" style={{ left: menu.x, top: menu.y }} role="menu">
+              <label className="arr-auto-clip-link">
+                Link target
+                <select
+                  aria-label="Link automation clip target"
+                  defaultValue=""
+                  disabled={clip.locked}
+                  onChange={(event) => {
+                    const target = targets.get(event.currentTarget.value);
+                    if (target) onExecute(linkAutomationClipTarget(doc, clip.id, target));
+                    event.currentTarget.value = "";
+                  }}
+                >
+                  <option value="">Choose target…</option>
+                  {[...targets.entries()]
+                    .filter(
+                      ([key]) => !automationTargetsOfClip(clip).some((target) => automationTargetKey(target) === key),
+                    )
+                    .map(([key, target]) => (
+                      <option key={key} value={key}>
+                        {targetName(doc, target)}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              {(clip.linkedTargets ?? []).map((target) => (
+                <button
+                  key={automationTargetKey(target)}
+                  type="button"
+                  role="menuitem"
+                  disabled={clip.locked}
+                  onClick={() => {
+                    onExecute(unlinkAutomationClipTarget(doc, clip.id, target));
+                    setMenu(null);
+                  }}
+                >
+                  Unlink {targetName(doc, target)}
+                </button>
+              ))}
               <button
                 type="button"
                 role="menuitem"

@@ -49,6 +49,12 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
     {
+      // Focused second-engine coverage for arrangement pointer gestures.
+      name: "firefox-midi-arrangement",
+      use: { ...devices["Desktop Firefox"] },
+      testMatch: /27-midi-arrangement-browser\.spec\.ts/,
+    },
+    {
       // Keep a focused external-mastering acceptance set in Firefox without
       // duplicating the full Chromium E2E matrix. It covers delivery, FLAC
       // decoding, long offline renders, storage failures, source analysis and render cancellation on another audio engine.

@@ -135,8 +135,8 @@
   background: transparent;
   font-size: 9px;
   transition:
-    color 0.12s,
-    border-color 0.12s;
+    color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
 }
 .dock-close-all:hover:not(:disabled) {
   color: var(--text);
@@ -202,17 +202,51 @@
   background: var(--border);
   border-radius: 5px;
 }
-
 /* Mobile sheet: the tab row rides the top of the fixed sheet and stays
    reachable when collapsed (the sheet-handle is gone — the tab row IS the
-   handle now). */
+   handle now). Keep the complete chrome group pinned while tall panels scroll. */
 @media (max-width: 760px) {
-  .dock-tabs {
+  .dock-chrome {
     position: sticky;
     top: 0;
-    z-index: 2;
+    z-index: 3;
     background: var(--bg-panel);
   }
+
+  .dock-tabs {
+    background: var(--bg-panel);
+  }
+
+  .dock-tabs.has-more-left::before,
+  .dock-tabs.has-more-right::after {
+    position: sticky;
+    z-index: 3;
+    display: flex;
+    flex: 0 0 18px;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    color: var(--text-faint);
+    font-family: var(--mono);
+    font-size: 15px;
+    line-height: 1;
+    pointer-events: none;
+  }
+
+  .dock-tabs.has-more-left::before {
+    content: "‹";
+    left: 0;
+    margin-right: -18px;
+    background: linear-gradient(90deg, var(--bg-panel) 42%, transparent);
+  }
+
+  .dock-tabs.has-more-right::after {
+    content: "›";
+    right: 0;
+    margin-left: -18px;
+    background: linear-gradient(270deg, var(--bg-panel) 42%, transparent);
+  }
+
   .bottom-panels.sheet-collapsed > :not(.dock-chrome) {
     display: none;
   }

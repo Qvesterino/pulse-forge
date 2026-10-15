@@ -351,4 +351,57 @@ describe("MidiInput — scene CC remap gate", () => {
       vi.useRealTimers();
     }
   });
+
+  it("honors scene CC re-points (number + channel) while a scene plays", () => {
+    vi.useFakeTimers();
+    try {
+      const doc = createProjectFromTemplate("house");
+      const macro = doc.macros[0]!;
+      macro.mappings.push({
+        id: "cc-repoint",
+        trackId: doc.tracks[0]!.id,
+        param: "gain",
+        amount: 0.5,
+        source: "midiCC",
+        ccNumber: 74,
+        channel: 1,
+      });
+      const execute = vi.fn();
+      const override = vi.fn(() => ({ ccNumber: 20 }) as { ccNumber?: number; channel?: number } | null);
+      const midi = new MidiInput();
+      const priv = midi as unknown as Record<string, unknown>;
+      priv.engine = {
+        sceneAllowsMidiMapping: () => true,
+        sceneCcOverride: override,
+        applyMidiCc: vi.fn(),
+      };
+      priv.getDoc = () => doc;
+      priv.store = { execute };
+      const sendCc = (
+        midi as unknown as {
+          handleCC: (cc: number, value: number, channel: number, config: unknown) => void;
+        }
+      ).handleCC.bind(midi);
+
+      // The mapping's own CC 74 is silent while re-pointed to CC 20 …
+      sendCc(74, 127, 1, ccConfig());
+      vi.advanceTimersByTime(50);
+      expect(execute).not.toHaveBeenCalled();
+      // … and the re-pointed number lands.
+      sendCc(20, 127, 1, ccConfig());
+      vi.advanceTimersByTime(50);
+      expect(execute).toHaveBeenCalledTimes(1);
+
+      // Channel re-point: CC 74 now listens on channel 5 only.
+      override.mockReturnValue({ channel: 5 });
+      sendCc(74, 127, 1, ccConfig());
+      vi.advanceTimersByTime(50);
+      expect(execute).toHaveBeenCalledTimes(1);
+      sendCc(74, 127, 5, ccConfig());
+      vi.advanceTimersByTime(50);
+      expect(execute).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

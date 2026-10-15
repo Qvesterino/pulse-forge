@@ -38,6 +38,11 @@ model and runtime. It does not copy FL source code or assets.
    same pattern/track pair. A dedicated “Make unique” command clones the
    source pattern with fresh note ids and repoints only that clip before
    clip-scoped editing.
+   Double-clicking a MIDI clip selects its instrument and source pattern,
+   seeks the transport to the clip's arrangement start, and opens the Piano
+   Roll at the clip's pattern-relative `phaseOffsetTicks`. Shared placements
+   are labeled in the lane and editor; “Make unique & edit” isolates the
+   placement before opening it.
 5. Scene clips and MIDI clips are additive. A MIDI clip can intentionally
    play over a scene clip; users can mute either clip or remove the scene
    instance when they want only the per-instrument arrangement. MIDI clips on
@@ -65,9 +70,25 @@ model and runtime. It does not copy FL source code or assets.
 - Live and offline note event windows agree at clip boundaries, pattern-loop
   boundaries, tempo changes and note ends; no event escapes a muted or trimmed
   MIDI clip.
-- A 90-bar project survives JSON save/reopen and Yjs round-trip, plays and
-  exports through the same end tick, and filtered stems include only their
-  selected instrument lanes.
+- A 93-bar project with a 12-bar 808 note survives IndexedDB save/reopen and
+  offline WAV export through the final bar in Chromium (180 seconds at 124 BPM;
+  `tests/e2e/13-audio-consolidation.spec.ts`). `tests/scheduler.test.ts` also
+  advances the live scheduler's controlled audio clock across all 93 bars and
+  checks the 12-bar sustain and final-bar clip. An opt-in Chromium soak in the
+  same E2E file runs the MIDI-only project through a real AudioContext for the
+  full 180-second song, confirms the late 808 source events, and verifies that
+  muting prevents a future event, moving changes its start, resizing extends
+  the note gate by one bar, and trimming prevents a cut-off note from starting
+  inside the shortened clip. A separate test round-trips the 93-bar MIDI
+  arrangement and 12-bar note through the YDoc adapter; a stem test verifies
+  that the filtered 808 project schedules only its selected instrument's
+  events. Firefox live-audio parity, multi-peer Yjs collaboration and rendered
+  stem-audio parity remain open gates. The same move/resize/trim and
+  double-click-to-Piano-Roll UI gestures pass in Chromium and Firefox; full
+  live-audio playback is still Chromium-only.
+  An
+  opt-in 300-clip Chromium benchmark checks bounded rendering and end-of-song
+  scroll response; its machine-specific timings are recorded in ADR 0047.
 - The arrangement virtualizes lane content to the viewport; note and clip
   counts do not create work proportional to the whole song on every frame.
 

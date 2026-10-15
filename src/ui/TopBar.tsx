@@ -2,15 +2,7 @@ import { ErrorBoundary } from "./ErrorBoundary";
 import { AudioStatusChips } from "./AudioStatusChips";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { MouseEvent } from "react";
-import {
-  useActivePatternId,
-  useArrangement,
-  useCanRedo,
-  useCanUndo,
-  useLastSavedAt,
-  useSaveStatus,
-  useServices,
-} from "./context";
+import { useActivePatternId, useCanRedo, useCanUndo, useLastSavedAt, useSaveStatus, useServices } from "./context";
 import { useTransportPosition } from "./playhead";
 import { DragNumber } from "./controls";
 import { setBpm, setProjectName } from "../commands/commands";
@@ -19,6 +11,7 @@ import { subscribePlayActivity, getLastPlayActivity } from "./playActivity";
 import { pitchName } from "../project-model/types";
 import { barAtTick, beatAtTick } from "../project-model/schema";
 import { STEP_TICKS } from "../project-model/types";
+import { timelineItemsOf } from "../project-model/timeline";
 import type { PlayMode } from "../project-model/types";
 import type { Services } from "../services";
 import { matchShortcut } from "./shortcuts";
@@ -91,11 +84,9 @@ export function TopBar({
   onToggleHistory: () => void;
 }) {
   const services = useServices();
-  // Fine-grained selectors (GOAL 04): TopBar reads only the arrangement
-  // (clip count badge) and the active pattern id (assist commands) from the
-  // document. The full doc is still needed for the project name and BPM
-  // scalars — those are plain getter reads, not subscriptions.
-  const arrangement = useArrangement();
+  // Fine-grained selectors (GOAL 04): TopBar subscribes to the active pattern
+  // id used by assist commands. The full doc is still needed for project name,
+  // BPM and arrangement-content checks — those are plain getter reads.
   const activePatternId = useActivePatternId();
   const doc = services.store.getDoc();
   const saveStatus = useSaveStatus();
@@ -255,16 +246,19 @@ export function TopBar({
 
   const togglePlayMode = () => {
     if (playMode === "pattern") {
+      const currentDoc = services.store.getDoc();
       // barAtTick is 1-indexed, clips are 0-indexed bars.
-      const playheadBar = barAtTick(Math.max(0, services.transport.position), doc);
+      const playheadBar = barAtTick(Math.max(0, services.transport.position), currentDoc);
       const barIndex = playheadBar - 1;
-      const clips = arrangement.clips;
-      if (clips.length === 0) {
+      const timelineItems = timelineItemsOf(currentDoc);
+      if (timelineItems.length === 0) {
         showModeHint({
-          text: "ARRANGEMENT EMPTY — drag scenes into the timeline or hit AUTO ARRANGE",
+          text: "ARRANGEMENT EMPTY — add a clip to the timeline or hit AUTO ARRANGE",
           offerRewind: false,
         });
-      } else if (!clips.some((c) => barIndex >= c.startBar && barIndex < c.startBar + c.lengthBars)) {
+      } else if (
+        !timelineItems.some((clip) => barIndex >= clip.startBar && barIndex < clip.startBar + clip.lengthBars)
+      ) {
         showModeHint({
           text: `NO CLIP AT BAR ${playheadBar} — song mode only plays where a clip sits`,
           offerRewind: true,

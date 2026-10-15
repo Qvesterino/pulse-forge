@@ -20,10 +20,13 @@ runtime; it does not copy FL Studio code or assets.
 
 1. Bump the project schema from v26 to v27. Add optional
    `Arrangement.automationClips`; absence in older projects means no clips.
-2. A clip stores a target, absolute tick start, visible tick length, sorted
-   target-unit curve points, and optional source phase, mute and lock flags.
-   The existing 8192-bar geometry ceiling applies; malformed targets, points
-   and flags are normalized on load.
+2. A clip stores a primary target, optional linked targets, absolute tick
+   start, visible tick length, sorted curve points in the primary target's
+   units, and optional source phase, mute and lock flags. Linked targets map
+   the curve linearly through normalized 0..1 space between each target's
+   legal parameter range; discrete targets round to the nearest legal step.
+   The existing 8192-bar geometry ceiling applies;
+   malformed targets, points and flags are normalized on load.
 3. MOD's “ARR” action copies the selected lane to the arrangement at the
    playhead, using the active pattern length as its initial duration. The
    arrangement lane can also place clips from its target row. Double-clicking
@@ -47,35 +50,41 @@ runtime; it does not copy FL Studio code or assets.
    for transport looping and export. Stem rendering filters clips by target
    track. Stop/reset includes targets referenced only by arrangement clips.
 7. Yjs stores clips as id-addressed entities with separately synchronized
-   targets and curve points. Deleting a target track, return or effect removes
-   its arrangement clips, linked markers and clip-group references in the same
-   undoable command.
+   targets, linked targets and curve points. Deleting a target track, return
+   or effect removes clips whose primary target was deleted and strips only
+   the removed destination from surviving linked clips, with linked markers
+   and clip-group references handled by the same undoable command.
 
 ## Consequences and follow-up
 
-- Automation clips are target-bound, single-target clips in v1. FL-style links
-  from one clip to multiple parameters are not represented yet.
+- A single curve can drive multiple parameters. Its points stay in the primary
+  target's units; each linked lane previews and edits the same normalized
+  curve in its own target range, with discrete values snapped to steps.
 - The editor supports curve preview and direct point editing. Project-scoped
   timeline copy/cut/paste carries scene, audio, MIDI and automation clips as
   one selection, preserving their relative positions, MIDI sources, automation
   targets and curve phase. Paste refuses to silently retarget a missing MIDI
   source or automation target.
 - The overlap winner is deterministic and resumes the earlier curve when it
-  ends. A later editor affordance for choosing/focusing a winner can expose
-  this behavior more directly.
+  ends. At the playhead, arrangement lanes mark the active winner and dim
+  shadowed clips; selecting a clip raises it visually for editing without
+  changing playback precedence.
 - Projects keep existing pattern and scene automation untouched. Old files
   load with no arrangement automation clips and continue to play as before.
 
 ## Verification gates
 
-- v26 documents migrate without content changes; malformed v27 automation
-  clips normalize idempotently and stay within tick and point bounds.
+- v26 documents migrate without content changes; v29 documents retain their
+  single-target automation clips; malformed v30 targets normalize
+  idempotently and stay within tick and point bounds.
 - Trim/split preserve source phase; add/move/resize/duplicate/point/mute/lock/
   delete commands preserve undo and redo.
 - Overlapping clips targeting one parameter resolve to the same winner in
   live playback and offline export; an earlier clip resumes when the winner
   ends.
+- Linked-target range mapping is consistent in the editor, live scheduler and
+  offline render; conflicts are resolved independently per target.
 - Live and offline events agree at clip start/end, interior curve points,
   tempo seams and mute boundaries. Song end includes the last automation clip.
-- Yjs round-trip preserves target, curve, phase and clip flags. Track/effect
-  deletion removes dependent automation clips without losing undo state.
+- Yjs round-trip preserves primary/linked targets, curve, phase and clip flags.
+  Track/effect deletion removes dependent links without losing undo state.

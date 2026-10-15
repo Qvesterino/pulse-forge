@@ -1,8 +1,14 @@
 import type { ProjectDocument } from "../project-model/types";
 import { isForeignWork, labelsRevertedBy } from "./attribution";
 import { setMasterConfig } from "../commands/master";
-import { slipAudioClip, stretchAudioClip } from "../commands/audioClips";
-import { crossfadeAudioClips } from "../commands/clipEditing";
+import { slipAudioClip, stretchAudioClip, duplicateAudioClip, setAudioClipsMute } from "../commands/audioClips";
+import {
+  crossfadeAudioClips,
+  nudgeClips,
+  sliceAudioClipToArrangement,
+  stripSilenceAudioClip,
+  consolidateAudioClips,
+} from "../commands/clipEditing";
 import { buildClipClipboard, cutClips, pasteClips, type ClipClipboard } from "../commands/clipClipboard";
 import { hasMatchEqReference, referenceLoudnessTrim } from "../intent/match-eq";
 import { topIntentMisses } from "../intent/failure-log";
@@ -4434,6 +4440,17 @@ function clipCoveringBar(doc: ProjectDocument, bar: number) {
  * project — pasting into one project must never paste from another. */
 let mcpClipClipboard: ClipClipboard | null = null;
 
+/** Human-readable clipboard contents, so a copy/paste result says WHAT moved
+ * rather than only that something did. */
+function clipboardSummary(clipboard: ClipClipboard): string {
+  const parts: string[] = [];
+  if (clipboard.arrangementClips.length > 0) parts.push(`${clipboard.arrangementClips.length} scene clip(s)`);
+  if (clipboard.audioClips.length > 0) parts.push(`${clipboard.audioClips.length} audio clip(s)`);
+  if (clipboard.midiClips.length > 0) parts.push(`${clipboard.midiClips.length} MIDI clip(s)`);
+  if (clipboard.automationClips.length > 0) parts.push(`${clipboard.automationClips.length} automation clip(s)`);
+  return parts.length > 0 ? parts.join(", ") : "empty clipboard";
+}
+
 /** kyx_clips - structured arrangement-clip edits over the same commands the
  * NL arrange layer uses; delete rides the D4 gate. */
 function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
@@ -4460,7 +4477,8 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
       const playhead = typeof ctx.transport.position === "number" ? ctx.transport.position : 0;
       const atTick = Number.isFinite(rawPasteBar) && rawPasteBar >= 1 ? (rawPasteBar - 1) * TICKS_PER_BAR : playhead;
       ctx.execute(pasteClips(doc, mcpClipClipboard, atTick));
-      const where = Number.isFinite(rawPasteBar) && rawPasteBar >= 1 ? `bar ${Math.round(rawPasteBar)}` : "the playhead";
+      const where =
+        Number.isFinite(rawPasteBar) && rawPasteBar >= 1 ? `bar ${Math.round(rawPasteBar)}` : "the playhead";
       return { text: `pasted ${clipboardSummary(mcpClipClipboard)} at ${where} — one undo step`, mutated: true };
     }
 
@@ -4694,9 +4712,107 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
         return { text: `deleted ${describe()} — one undo step`, mutated: true };
       }
       return {
-        text: `unknown op: ${op} (list | audioList | audioMove | audioSplit | audioUpdate | audioStretch | audioSlip | audioCrossfade | audioDelete | move | resize | duplicate | delete)`,
+        text: `unknown op: ${op} (list | audioList | audioMove | audioSplit | audioUpdate | audioStretch | audioSlip | audioDuplicate | audioMute | audioNudge | audioSlice | audioStrip | audioConsolidate | audioCrossfade | audioDelete | move | resize | split | duplicate | delete | moveRipple | resizeRipple | deleteRipple | copy | cut | paste)`,
         mutated: false,
       };
+      if (op === "audioDuplicate") {
+        // P2 parity (owner-approved 2026-10-14): duplicate was UI-only. The
+        // audio lane LAYERS by contract, so the copy lands exactly after its
+        // source and may overlap neighbours - same as any moved clip.
+        ctx.execute(duplicateAudioClip(doc, target.id));
+        return { text: `duplicated ${describe()} - copy placed after the source, one undo step`, mutated: true };
+      }
+      if (op === "audioMute") {
+        // Clip-level mute: the clip is skipped by playback entirely. Absent
+        // means audible, so this writes `muted: true` and the command skips a
+        // no-op re-mute so the undo stack never grows a dead step.
+        const muted = record.muted !== false;
+        ctx.execute(setAudioClipsMute(doc, [target.id], muted));
+        return { text: `${muted ? "muted" : "unmuted"} ${describe()} - one undo step`, mutated: true };
+      }
+      if (op === "audioNudge") {
+        // Keyboard `,` / `.` : shift the clip by whole bars without moving the
+        // pointer. deltaBars may be negative.
+        const deltaBars = Number(record.bars);
+        if (!Number.isFinite(deltaBars) || deltaBars === 0) {
+          return mcpError("INVALID_ARGUMENTS", "audioNudge needs bars - a non-zero whole-bar delta");
+        }
+        ctx.execute(nudgeClips(doc, [target.id], Math.round(deltaBars)));
+        return {
+          text: `nudged ${describe()} by ${Math.round(deltaBars) > 0 ? "+" : ""}${Math.round(deltaBars)} bar(s) - one undo step`,
+          mutated: true,
+        };
+      }
+      if (op === "audioSlice") {
+        // SlicerX-style: the clip is KEPT and the segments are laid out as a
+        // row after it (measured in wave 20 §J). Slice points are wall seconds
+        // from the clip's first audible moment.
+        const times = Array.isArray(record.sliceTimesSec)
+          ? record.sliceTimesSec.filter((v): v is number => typeof v === "number" && Number.isFinite(v))
+          : [];
+        if (times.length === 0) {
+          return mcpError("INVALID_ARGUMENTS", "audioSlice needs sliceTimesSec: an array of seconds inside the clip");
+        }
+        ctx.execute(sliceAudioClipToArrangement(doc, target.id, times));
+        return { text: `sliced ${describe()} at ${times.length} point(s) - one undo step`, mutated: true };
+      }
+      if (op === "audioStrip") {
+        // Strip silence: the clip is REPLACED by its audible segments, so this
+        // is a delete-and-write and the command asserts the clip is editable.
+        const segments = Array.isArray(record.segments)
+          ? record.segments
+              .filter(
+                (v): v is { startSec: number; endSec: number } =>
+                  typeof v === "object" &&
+                  v !== null &&
+                  Number.isFinite((v as { startSec?: number }).startSec) &&
+                  Number.isFinite((v as { endSec?: number }).endSec),
+              )
+              .map((v) => ({ startSec: v.startSec, endSec: v.endSec }))
+          : [];
+        if (segments.length === 0) {
+          return mcpError(
+            "INVALID_ARGUMENTS",
+            "audioStrip needs segments: [{startSec, endSec}, ...] - the ranges to KEEP",
+          );
+        }
+        const sourceDurationSec =
+          typeof record.sourceDurationSec === "number" && Number.isFinite(record.sourceDurationSec)
+            ? record.sourceDurationSec
+            : undefined;
+        ctx.execute(stripSilenceAudioClip(doc, target.id, segments, sourceDurationSec));
+        return { text: `stripped silence from ${describe()} - ${segments.length} segment(s) kept`, mutated: true };
+      }
+      if (op === "audioConsolidate") {
+        // Consolidate merges N clips into ONE new clip pointing at a rendered
+        // bounce buffer. It needs both the partner range and a bufferId - the
+        // tool cannot render the bounce itself, so the caller supplies it.
+        const bufferId = typeof record.bufferId === "string" ? record.bufferId.trim() : "";
+        if (bufferId === "") {
+          return mcpError(
+            "INVALID_ARGUMENTS",
+            "audioConsolidate needs bufferId - the rendered bounce buffer the merged clip will point at",
+          );
+        }
+        const rangeBars = Math.max(1, Math.round(Number(record.bars) || 4));
+        const first = target.startBar;
+        const selected = (doc.arrangement.audioClips ?? [])
+          .filter(
+            (clip) => clip.trackId === target.trackId && clip.startBar >= first && clip.startBar < first + rangeBars,
+          )
+          .map((clip) => clip.id);
+        if (selected.length < 2) {
+          return mcpError(
+            "INVALID_ARGUMENTS",
+            `audioConsolidate needs at least 2 clips on ${ownerNameOf(doc, target.trackId)} in the range - found ${selected.length}; widen bars`,
+          );
+        }
+        ctx.execute(consolidateAudioClips(doc, selected, bufferId));
+        return {
+          text: `consolidated ${selected.length} clip(s) on ${ownerNameOf(doc, target.trackId)} into buffer ${bufferId} - one undo step`,
+          mutated: true,
+        };
+      }
     } catch (error) {
       return mcpError(
         "EXECUTION_FAILED",

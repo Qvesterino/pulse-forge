@@ -91,9 +91,9 @@
   }
 }
 
-/* On taller phones, preserve drum-pad names and use the familiar 4×4
-   performance layout instead of squeezing sixteen pads into eight narrow
-   columns. Short viewports keep the single-row rack owned by ADR 0036. */
+/* On taller phones, preserve drum-pad names and keep MPC 16 LEVELS in its
+   familiar 4×4 layout. Eight columns turn pad names into narrow slivers. Short
+   viewports keep the single-row rack owned by ADR 0036. */
 @media (max-width: 520px) and (min-height: 821px) {
   .rack {
     grid-template-columns: repeat(4, minmax(0, 1fr));

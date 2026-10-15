@@ -103,3 +103,33 @@
   line-height: 1.1;
   letter-spacing: 1.2px;
 }
+
+/* ---------- Mobile dock / editor boundary ---------- */
+
+@media (max-width: 760px) {
+  /* Keep the toolbar on a predictable two-row surface at phone widths. Its
+     secondary actions remain reachable through its own vertical scroll, and
+     the Sequencer gets first claim on extra height when the Inspector folds. */
+  .workspace-main > .pattern-bar {
+    max-height: 108px;
+  }
+
+  /* The mobile app grid reserves a 31px status row and a 22px bottom gutter.
+     The older 83px dock offset left another 30px unused and covered one row
+     of the sequencer. Keep the sheet clear of both real shell rows. */
+  .bottom-panels {
+    bottom: calc(53px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* The tab strip remains mounted when the sheet is collapsed. Reserve its
+     footprint so neither the Inspector scroll area nor its reopen rail sits
+     beneath the fixed tab row. Keep the editor's share of the workspace by
+     reducing the Inspector's own scroll viewport by the same amount. */
+  .workspace.dock-sheet-collapsed {
+    padding-bottom: var(--dock-chrome-h, 46px);
+  }
+
+  .workspace.dock-sheet-collapsed:not(.inspector-collapsed) > .inspector {
+    max-height: max(0px, calc(30vh - var(--dock-chrome-h, 46px)));
+  }
+}

@@ -419,9 +419,10 @@ export function App({
     return () => window.removeEventListener("resize", onResize);
   }, []);
   const [dock, setDock] = useDockLayout(viewportMax);
-  /** Dense panels get enough room for their primary controls on open, while
-      the sequencer keeps priority. Extra panel content remains scrollable and
-      users can drag the dock taller when they want to focus on it. */
+  /** Dense panels get enough room for their primary controls on desktop open,
+      while the sequencer keeps priority. On phones, opening a dock tab leaves
+      its current height alone so the sheet does not jump over the editor;
+      users can drag it taller when they want to focus on the panel. */
   const PANEL_OPEN_HEIGHT: Partial<Record<BottomPanel, number>> = {
     dice: 360,
     mixer: 320,
@@ -434,7 +435,9 @@ export function App({
   };
   const bumpPanelHeight = (state: DockState, panel: BottomPanel): DockState => {
     const want = PANEL_OPEN_HEIGHT[panel];
-    if (want && state.height < want) return { ...state, height: clampDockHeight(want, viewportMax) };
+    if (want && window.innerWidth > 760 && state.height < want) {
+      return { ...state, height: clampDockHeight(want, viewportMax) };
+    }
     return state;
   };
   const setBottomPanel = (panel: BottomPanel) => {
@@ -1676,7 +1679,12 @@ export function App({
                 historyOpen={historyOpen}
                 onToggleHistory={() => setHistoryOpen((v) => !v)}
               />
-              <main className={`workspace${inspectorCollapsed ? " inspector-collapsed" : ""}`}>
+              <main
+                className={
+                  `workspace${inspectorCollapsed ? " inspector-collapsed" : ""}` +
+                  (sheetCollapsed ? " dock-sheet-collapsed" : "")
+                }
+              >
                 {/* Left sounds strip (V4) — always one glance away; the
                     selection (pad → instrument) is its assign target. */}
                 <ErrorBoundary panel="browser-strip">
@@ -1764,7 +1772,7 @@ export function App({
                 {!sheetCollapsed && dock.slotA !== null && (
                   <div
                     className="dock-slot"
-                    role="tabpanel"
+                    role="region"
                     id={`dock-panel-${dock.slotA}`}
                     aria-labelledby={`dock-tab-${dock.slotA}`}
                   >
@@ -1783,7 +1791,7 @@ export function App({
                 {!sheetCollapsed && dock.slotB !== null && (
                   <div
                     className="dock-slot"
-                    role="tabpanel"
+                    role="region"
                     id={`dock-panel-${dock.slotB}`}
                     aria-labelledby={`dock-tab-${dock.slotB}`}
                   >

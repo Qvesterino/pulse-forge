@@ -32,6 +32,21 @@ import { trackEffectsOf, unlinkMarkersOfClips, withTrackEffects } from "./docOps
 import { snapshot } from "./core";
 import { clipGroupsWithoutIds } from "./clipGroups";
 
+function stripAutomationClipTargets(
+  clips: ProjectDocument["arrangement"]["automationClips"],
+  shouldRemove: (target: AutomationTarget) => boolean,
+): ProjectDocument["arrangement"]["automationClips"] {
+  return clips?.flatMap((clip) => {
+    if (shouldRemove(clip.target)) return [];
+    const linkedTargets = (clip.linkedTargets ?? []).filter((target) => !shouldRemove(target));
+    if (linkedTargets.length === (clip.linkedTargets ?? []).length) return [clip];
+    const next = { ...clip };
+    if (linkedTargets.length > 0) next.linkedTargets = linkedTargets;
+    else delete next.linkedTargets;
+    return [next];
+  });
+}
+
 /**
  * Tracks and the effect-instance lifecycle that belongs to them.
  *
@@ -213,7 +228,10 @@ export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
   // as the automation lanes above).
   const audioClips = doc.arrangement.audioClips?.filter((clip) => clip.trackId !== trackId);
   const midiClips = doc.arrangement.midiClips?.filter((clip) => clip.trackId !== trackId);
-  const automationClips = doc.arrangement.automationClips?.filter((clip) => clip.target.trackId !== trackId);
+  const automationClips = stripAutomationClipTargets(
+    doc.arrangement.automationClips,
+    (target) => target.trackId === trackId,
+  );
   // Markers linked to the track's audio or MIDI clips are cross-references held by
   // other entities — clear them here, inside the command, not in the
   // post-apply normalize (same contract as the sidechain/MIDI cleanup below).
@@ -602,7 +620,10 @@ export function deleteReturnTrack(doc: ProjectDocument, returnId: string): Comma
   const automation = doc.automation?.filter((lane) => lane.target.trackId !== returnId);
   const lfos = doc.lfos?.filter((lfo) => lfo.trackId !== returnId && lfo.target?.trackId !== returnId);
   const sceneAutomation = doc.sceneAutomation?.filter((lane) => lane.target.trackId !== returnId);
-  const automationClips = doc.arrangement.automationClips?.filter((clip) => clip.target.trackId !== returnId);
+  const automationClips = stripAutomationClipTargets(
+    doc.arrangement.automationClips,
+    (target) => target.trackId === returnId,
+  );
   const removedAutomationClipIds = (doc.arrangement.automationClips ?? [])
     .filter((clip) => clip.target.trackId === returnId)
     .map((clip) => clip.id);
@@ -979,7 +1000,9 @@ export function stripDanglingEffectReferences(doc: ProjectDocument, removed: Set
     target?.fxId ? `${String(target.trackId)}|${String(target.fxId)}` : "";
   const automation = doc.automation?.filter((lane) => !removed.has(keyOf(lane.target)));
   const sceneAutomation = doc.sceneAutomation?.filter((lane) => !removed.has(keyOf(lane.target)));
-  const automationClips = doc.arrangement.automationClips?.filter((clip) => !removed.has(keyOf(clip.target)));
+  const automationClips = stripAutomationClipTargets(doc.arrangement.automationClips, (target) =>
+    removed.has(keyOf(target)),
+  );
   const lfos = doc.lfos?.filter((lfo) => !removed.has(keyOf(lfo.target)));
   const macros = doc.macros?.map((macro) => ({
     ...macro,

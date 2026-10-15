@@ -27,8 +27,8 @@
 
 .mod-panel :is(.lfo-row, .macro-card) {
   transition:
-    border-color 140ms ease,
-    background-color 140ms ease;
+    border-color var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease);
 }
 
 .mod-panel :is(.lfo-row, .macro-card):hover {

@@ -83,6 +83,7 @@ export {
   setSceneCcOverride,
   setSceneCcRemap,
   setSceneMacro,
+  setSceneModulatorPattern,
   setScenePack,
   setScenePattern,
   setSceneRole,

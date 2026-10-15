@@ -743,6 +743,14 @@ export interface Scene {
    * Absent fields keep the mapping's own values.
    */
   ccOverrides?: Record<string, { ccNumber?: number; channel?: number }>;
+  /**
+   * Per-scene modulator patterns: lfoId → { steps?, seed? }. While this
+   * scene is active the step modulator plays the pinned `steps` pattern and
+   * the random S&H modulator draws from the pinned `seed` — intro/build/drop
+   * scenes switch the modulation pattern automatically, live and in
+   * exports. Absent fields keep the modulator's own pattern.
+   */
+  modulators?: Record<string, { steps?: number[]; seed?: string }>;
 }
 
 export interface IntensityPoint {
@@ -813,7 +821,10 @@ export interface MidiClip {
 /** Standalone song-timeline automation, independent of pattern and scene loops. */
 export interface ArrangementAutomationClip {
   id: ID;
+  /** Primary target defines the units stored in points. */
   target: AutomationTarget;
+  /** Additional targets driven by the same normalized curve. */
+  linkedTargets?: AutomationTarget[];
   /** Absolute project tick; integer PPQ ticks. */
   startTick: number;
   /** Visible and active duration in project ticks. */

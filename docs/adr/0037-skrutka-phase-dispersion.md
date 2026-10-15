@@ -623,3 +623,38 @@ Validation: `tests/ui/SkrutkaPanel.test.tsx` pins live meter values and the
 missing-source state, `tests/ui/ui-small-logic.test.ts` pins every conditional
 hint, and `tests/skrutka.test.ts` rejects an out-of-range KEY gain telemetry
 frame without replacing the last valid frame.
+
+## Addendum 19 (2026-10-12) — scene CC re-points + scene-performance consolidation
+
+The CC dimension now covers WHERE a mapping listens, not just WHETHER it is
+armed. `Scene.ccOverrides` (mappingId → { ccNumber (0..127), channel
+(1..16) }; SCHEMA_VERSION 29, sanitized — invalid entries drop, the record
+collapses to absent) re-points a `source:"midiCC"` mapping while the scene
+plays: the same mapping can sit on CC74 ch1 in the intro and listen on CC20
+ch5 in the drop, so one hardware knob hands over to another — or a free knob
+takes over a mapping whose usual CC is occupied.
+
+`setSceneCcOverride` (ONE undoable command) merges a patch and
+CANONICALIZES: a field equal to the mapping's own value is dropped, the last
+field clears the entry, the last entry clears the record — typing the base
+value back IS the clear gesture (no separate clear button). `MidiInput
+.handleCC` resolves `engine.sceneCcOverride(id)` before matching, then the
+arming gate, then sweeps the macro.
+
+The same wave CONSOLIDATED the per-scene plumbing: the scheduler, the
+offline renderer and the live bridge now share one shape —
+`src/project-model/scene-performance.ts` (`ScenePerformance` +
+`scenePerformanceOf(scene)`) — `SceneIntensityPoint extends ScenePerformance`
+and the live call is `setSceneIntensity(value, scene)` instead of a growing
+positional tail (packs, macros, ccRemaps, ccOverrides). One definition of
+"what a scene carries into performance"; every consumer (pattern call,
+window points, export points) sees the same arc.
+
+UI: each scene-strip CC row gains compact `CC` / `CH` number fields
+(NumericDraftInput — one command per blurred edit, Escape reverts, 0 in CH =
+Any) showing the effective listen values. Validation: `tests/scene-packs
+.test.ts` (merge/canonicalize/validate/undo, sanitizer, seam points carrying
+`ccOverrides`, bridge getter + stop clear + scheduling heuristic),
+`tests/midi/MidiInput.test.ts` (own CC silent while re-pointed, re-pointed
+CC lands, channel re-point filters) and the strip suite (fields write the
+command, stored overrides render).

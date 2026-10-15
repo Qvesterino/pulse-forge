@@ -1,4 +1,11 @@
-import type { AutomationPoint, AutomationTarget, Lfo, ProjectDocument, SceneAutomation } from "../project-model/types";
+import type {
+  ArrangementAutomationClip,
+  AutomationPoint,
+  AutomationTarget,
+  Lfo,
+  ProjectDocument,
+  SceneAutomation,
+} from "../project-model/types";
 import {
   lfoKind,
   lfoWave,
@@ -6,7 +13,8 @@ import {
   modulatorPointValue,
   resolveLfoTarget,
 } from "../project-model/modulators";
-import { clampTargetValue, targetParamDef } from "../project-model/targets";
+import { automationTargetsOfClip, clampTargetValue, targetParamDef } from "../project-model/targets";
+import { automationClipEventsInWindow } from "../project-model/events";
 import { interpolateAutomationPoints, valueAt } from "../project-model/automation";
 import type { SceneCcOverride, ScenePerformance } from "../project-model/scene-performance";
 import { isWorkletReady } from "../audio-worklets/loader";
@@ -713,17 +721,10 @@ export class AutomationBridge {
     const macrosChanged = JSON.stringify(nextMacros ?? null) !== JSON.stringify(this.currentSceneMacros ?? null);
     const nextCcPins = Array.isArray(scene?.ccRemaps) ? scene.ccRemaps : null;
     const ccChanged = JSON.stringify(nextCcPins ?? null) !== JSON.stringify(this.currentSceneCcPins ?? null);
-    const nextCcOverrides =
-      scene?.ccOverrides && Object.keys(scene.ccOverrides).length > 0 ? scene.ccOverrides : null;
+    const nextCcOverrides = scene?.ccOverrides && Object.keys(scene.ccOverrides).length > 0 ? scene.ccOverrides : null;
     const overridesChanged =
       JSON.stringify(nextCcOverrides ?? null) !== JSON.stringify(this.currentSceneCcOverrides ?? null);
-    if (
-      next === this.currentSceneIntensity &&
-      !packsChanged &&
-      !macrosChanged &&
-      !ccChanged &&
-      !overridesChanged
-    ) {
+    if (next === this.currentSceneIntensity && !packsChanged && !macrosChanged && !ccChanged && !overridesChanged) {
       return;
     }
     this.currentSceneIntensity = next;
@@ -802,8 +803,7 @@ export class AutomationBridge {
     }
     const firstOverrides = ordered[0]?.ccOverrides ?? null;
     if (JSON.stringify(firstOverrides ?? null) !== JSON.stringify(this.currentSceneCcOverrides ?? null)) {
-      this.currentSceneCcOverrides =
-        firstOverrides && Object.keys(firstOverrides).length > 0 ? firstOverrides : null;
+      this.currentSceneCcOverrides = firstOverrides && Object.keys(firstOverrides).length > 0 ? firstOverrides : null;
     }
     let previousEntries = new Map<string, ScenePackEntry>();
     for (const point of ordered) {
@@ -937,18 +937,33 @@ export class AutomationBridge {
   }
 
   applyArrangementAutomationClip(
-    clip: {
-      id: string;
-      target: AutomationTarget;
-      points: AutomationPoint[];
-      startTick: number;
-      phaseOffsetTicks?: number;
-    },
+    clip: ArrangementAutomationClip,
     fromTick: number,
     toTick: number,
     scheduleOffsetSec = 0,
     timeAt?: (tick: number) => number,
   ): void {
+    const doc = this.deps.doc();
+    const kind = doc ? targetParamDef(doc, clip.target)?.kind : undefined;
+    if (kind === "toggle" || kind === "enum" || kind === "discrete") {
+      const ctx = this.deps.ctx();
+      if (!ctx || !doc) return;
+      const events = automationClipEventsInWindow(
+        clip,
+        fromTick,
+        toTick,
+        targetParamDef(doc, clip.target)?.default ?? 0,
+        true,
+      );
+      const offset = Number.isFinite(scheduleOffsetSec) ? scheduleOffsetSec : 0;
+      for (const event of events) {
+        const when = timeAt ? timeAt(event.tick) : ctx.currentTime;
+        if (Number.isFinite(when)) {
+          this.writeAutomationTargetAt(clip.target, event.value, Math.max(ctx.currentTime, when + offset));
+        }
+      }
+      return;
+    }
     const origin = clip.startTick - (Number.isFinite(clip.phaseOffsetTicks) ? (clip.phaseOffsetTicks ?? 0) : 0);
     this.applySceneAutomationLane(clip, fromTick, toTick, origin, scheduleOffsetSec, timeAt);
   }
@@ -991,12 +1006,32 @@ export class AutomationBridge {
    * routine serves live playback (whenFor anchored to the transport) and
    * offline rendering (timeAt absolute), which keeps parity by construction.
    */
-  applyModulators(fromTick: number, toTick: number, whenFor: (tick: number) => number): void {
+  applyModulators(
+    fromTick: number,
+    toTick: number,
+    whenFor: (tick: number) => number,
+    scene?: ScenePerformance | null,
+  ): void {
     const ctx = this.deps.ctx();
     const doc = this.deps.doc();
     if (!ctx || !doc) return;
     const from = Math.max(0, fromTick);
     const to = Math.max(from, toTick);
+
+    // Scene modulator patterns (Scene.modulators): while the scene plays,
+    // its pinned steps / seed SUBSTITUTE the modulator's own pattern. The
+    // math is pure (`modulatorEventsInRange` / `modulatorPointValue`), so
+    // patching the effective Lfo before every call is exact — live and
+    // offline resolve the scene arc identically.
+    const patches = scene?.modulators ?? null;
+    const effectiveFor = (lfo: Lfo): Lfo => {
+      const patch = patches?.[lfo.id];
+      if (!patch) return lfo;
+      const next = { ...lfo };
+      if (Array.isArray(patch.steps) && patch.steps.length > 0) next.steps = patch.steps;
+      if (typeof patch.seed === "string" && patch.seed.length > 0) next.seed = patch.seed;
+      return next;
+    };
 
     interface ModGroup {
       target: AutomationTarget;
@@ -1013,7 +1048,7 @@ export class AutomationBridge {
         group = { target, members: [] };
         groups.set(key, group);
       }
-      group.members.push(lfo);
+      group.members.push(effectiveFor(lfo));
     }
     if (groups.size === 0) return;
 
@@ -1112,8 +1147,11 @@ export class AutomationBridge {
   }
 
   /** Offline hook — renderer sweeps every window with absolute time mapping. */
-  scheduleModulatorsOffline(windows: { from: number; to: number }[], timeAt: (tick: number) => number): void {
-    for (const win of windows) this.applyModulators(win.from, win.to, timeAt);
+  scheduleModulatorsOffline(
+    windows: { from: number; to: number; scene?: ScenePerformance | null }[],
+    timeAt: (tick: number) => number,
+  ): void {
+    for (const win of windows) this.applyModulators(win.from, win.to, timeAt, win.scene ?? null);
   }
 
   /**
@@ -1330,8 +1368,10 @@ export class AutomationBridge {
       }
     }
     for (const clip of this.deps.doc()?.arrangement.automationClips ?? []) {
-      if (clip.target.kind === "fxParam" || clip.target.kind === "instParam") {
-        deviceTargets.set(JSON.stringify(clip.target), clip.target);
+      for (const target of automationTargetsOfClip(clip)) {
+        if (target.kind === "fxParam" || target.kind === "instParam") {
+          deviceTargets.set(JSON.stringify(target), target);
+        }
       }
     }
     for (const target of deviceTargets.values()) {

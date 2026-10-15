@@ -224,4 +224,44 @@ describe("SceneStrip", () => {
     renderWithContext(<SceneStrip />, { services: services2 });
     expect((screen.getByLabelText(`${macro.name} ← CC74 armed in this scene`) as HTMLInputElement).checked).toBe(false);
   });
+
+  it("re-points CC number and channel per scene", () => {
+    const doc = JSON.parse(JSON.stringify(withSceneFx().doc)) as ProjectDocument;
+    const trackId = doc.tracks.find((track) => track.kind === "drum")!.id;
+    const macro = doc.macros[0]!;
+    macro.mappings.push({
+      id: "cc-repoint-ui",
+      trackId,
+      param: "gain",
+      amount: 0.5,
+      source: "midiCC",
+      ccNumber: 74,
+      channel: 1,
+    });
+    const scene = doc.scenes.find((candidate) => candidate.patternId === doc.activePatternId) ?? doc.scenes[0]!;
+    const label = `${macro.name} ← CC74 ch1`;
+    const services = mockServices(doc);
+    const { unmount } = renderWithContext(<SceneStrip />, { services });
+
+    const ccField = screen.getByLabelText(`CC number for ${label} in this scene`) as HTMLInputElement;
+    expect(ccField.value).toBe("74");
+    fireEvent.change(ccField, { target: { value: "20" } });
+    fireEvent.blur(ccField);
+    const after = lastCommand(services.store.execute).execute(doc);
+    expect(after.scenes.find((candidate) => candidate.id === scene.id)!.ccOverrides).toEqual({
+      "cc-repoint-ui": { ccNumber: 20 },
+    });
+    unmount();
+
+    const services2 = mockServices(after);
+    renderWithContext(<SceneStrip />, { services: services2 });
+    const chField = screen.getByLabelText(`Channel for ${label} in this scene`) as HTMLInputElement;
+    expect(chField.value).toBe("1");
+    fireEvent.change(chField, { target: { value: "5" } });
+    fireEvent.blur(chField);
+    const after2 = lastCommand(services2.store.execute).execute(after);
+    expect(after2.scenes.find((candidate) => candidate.id === scene.id)!.ccOverrides).toEqual({
+      "cc-repoint-ui": { ccNumber: 20, channel: 5 },
+    });
+  });
 });

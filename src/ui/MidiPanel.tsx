@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useActivePatternId, usePatterns, useReturns, useServices, useTracks } from "./context";
 import {
   addMidiCcMapping,
@@ -44,6 +45,10 @@ export function MidiPanel({
   onClearSelection: () => void;
 }) {
   const services = useServices();
+  const tabListId = useId();
+  const inputPanelId = `${tabListId}-panel-input`;
+  const creativityPanelId = `${tabListId}-panel-creativity`;
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   // Fine-grained selectors (GOAL 04): MidiPanel reads tracks + returns (for
   // midi-target dropdowns) and the root-level optional midi config. The full
   // doc is still needed for command arguments (targetOwner, setDrumNoteMapping).
@@ -69,10 +74,26 @@ export function MidiPanel({
   const [addCc, setAddCc] = useState(1);
   const [latencyOpen, setLatencyOpen] = useState(false);
   const [tab, setTab] = useState<"input" | "creativity">("input");
+  const midiTabs = ["input", "creativity"] as const;
   const midiTargetTracks = [...tracks, ...returns];
   const activeAddTrackId = targetOwner(doc, addTrackId)?.id ?? midiTargetTracks[0]?.id ?? "";
 
   const toggle = () => services.store.execute(setMidiConfig(doc, { enabled: !midi.enabled }));
+
+  const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % midiTabs.length;
+    else if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + midiTabs.length) % midiTabs.length;
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = midiTabs.length - 1;
+    if (nextIndex === null) return;
+
+    const nextTab = midiTabs[nextIndex];
+    if (!nextTab) return;
+    event.preventDefault();
+    setTab(nextTab);
+    tabRefs.current[nextIndex]?.focus();
+  };
 
   const submitAddMapping = () => {
     const target: AutomationTarget = {
@@ -93,272 +114,304 @@ export function MidiPanel({
     <section className="midi-panel" aria-label="MIDI input configuration">
       <div className="midi-panel-header">
         <h2 className="panel-title">MIDI</h2>
-        <div className="midi-tabs" role="tablist" aria-label="MIDI panel tabs">
+        <div id={tabListId} className="midi-tabs" role="tablist" aria-label="MIDI panel tabs">
           <button
             type="button"
+            id={`${tabListId}-tab-input`}
             className={`btn btn-small${tab === "input" ? " active-solo" : ""}`}
             role="tab"
             aria-selected={tab === "input"}
+            aria-controls={inputPanelId}
+            tabIndex={tab === "input" ? 0 : -1}
+            ref={(element) => {
+              tabRefs.current[0] = element;
+            }}
             onClick={() => setTab("input")}
+            onKeyDown={(event) => handleTabKeyDown(event, 0)}
           >
             INPUT
           </button>
           <button
             type="button"
+            id={`${tabListId}-tab-creativity`}
             className={`btn btn-small${tab === "creativity" ? " active-solo" : ""}`}
             role="tab"
             aria-selected={tab === "creativity"}
+            aria-controls={creativityPanelId}
+            tabIndex={tab === "creativity" ? 0 : -1}
+            ref={(element) => {
+              tabRefs.current[1] = element;
+            }}
             onClick={() => setTab("creativity")}
+            onKeyDown={(event) => handleTabKeyDown(event, 1)}
           >
             CREATIVITY
           </button>
         </div>
       </div>
 
-      {tab === "input" && (
-        <>
-          <div className="midi-row">
-            <button
-              type="button"
-              className={`btn btn-small${midi.enabled ? " active-solo" : ""}`}
-              onClick={toggle}
-              aria-pressed={midi.enabled}
-            >
-              {midi.enabled ? "MIDI ON" : "MIDI OFF"}
-            </button>
-            <button type="button" className="btn btn-small" onClick={() => setLatencyOpen(true)}>
-              CALIBRATE LATENCY
-            </button>
-          </div>
-
-          {!midi.enabled && (
-            <div className="midi-off-state" role="note">
-              <span className="midi-off-state-mark" aria-hidden="true">
-                MIDI
-              </span>
-              <div>
-                <strong>Input is off</strong>
-                <p>Turn MIDI on to choose a controller, route channels, and configure CC or drum-note mappings.</p>
-              </div>
+      <div
+        className="midi-tabpanel"
+        id={inputPanelId}
+        role="tabpanel"
+        aria-labelledby={`${tabListId}-tab-input`}
+        tabIndex={0}
+        hidden={tab !== "input"}
+      >
+        {tab === "input" && (
+          <>
+            <div className="midi-row">
+              <button
+                type="button"
+                className={`btn btn-small${midi.enabled ? " active-solo" : ""}`}
+                onClick={toggle}
+                aria-pressed={midi.enabled}
+              >
+                {midi.enabled ? "MIDI ON" : "MIDI OFF"}
+              </button>
+              <button type="button" className="btn btn-small" onClick={() => setLatencyOpen(true)}>
+                CALIBRATE LATENCY
+              </button>
             </div>
-          )}
 
-          {midi.enabled && (
-            <>
-              <div className="midi-routing-grid">
-                <div className="midi-row">
-                  <label className="midi-label">DEVICE</label>
-                  <select
-                    className="midi-select"
-                    value={midi.deviceId}
-                    aria-label="MIDI input device"
-                    onChange={(e) => services.store.execute(setMidiConfig(doc, { deviceId: e.target.value }))}
-                  >
-                    <option value="">All devices</option>
-                    {devices.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="midi-row">
-                  <label className="midi-label">DRUM CH</label>
-                  <select
-                    className="midi-select"
-                    value={midi.drumChannel}
-                    aria-label="Drum MIDI channel"
-                    onChange={(e) =>
-                      services.store.execute(setMidiConfig(doc, { drumChannel: Number(e.target.value) }))
-                    }
-                  >
-                    <option value={0}>All</option>
-                    {Array.from({ length: 16 }, (_, i) => (
-                      <option key={i + 1} value={i + 1}>
-                        {i + 1}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="midi-row">
-                  <label className="midi-label">INST CH</label>
-                  <select
-                    className="midi-select"
-                    value={midi.instrumentChannel}
-                    aria-label="Instrument MIDI channel"
-                    onChange={(e) =>
-                      services.store.execute(setMidiConfig(doc, { instrumentChannel: Number(e.target.value) }))
-                    }
-                  >
-                    <option value={0}>All</option>
-                    {Array.from({ length: 16 }, (_, i) => (
-                      <option key={i + 1} value={i + 1}>
-                        {i + 1}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="midi-row">
-                  <label className="midi-label">P.BEND</label>
-                  <DragNumber
-                    label="RANGE"
-                    value={midi.pitchBendRange}
-                    min={1}
-                    max={24}
-                    defaultValue={2}
-                    sensitivity={0.4}
-                    format={(v) => `${Math.round(v)} st`}
-                    onCommit={(v) => services.store.execute(setMidiConfig(doc, { pitchBendRange: Math.round(v) }))}
-                  />
+            {!midi.enabled && (
+              <div className="midi-off-state" role="note">
+                <span className="midi-off-state-mark" aria-hidden="true">
+                  MIDI
+                </span>
+                <div>
+                  <strong>Input is off</strong>
+                  <p>Turn MIDI on to choose a controller, route channels, and configure CC or drum-note mappings.</p>
                 </div>
               </div>
+            )}
 
-              <div className="midi-mapping-grid">
-                <div className="midi-cc-section">
-                  <h3 className="panel-title">CC MAPPINGS</h3>
-                  {midi.ccMappings.length === 0 && <div className="midi-empty">No CC mappings. Add one below.</div>}
-                  {midi.ccMappings.map((m) => (
-                    <MidiCcRow key={m.id} mapping={m} doc={doc} />
-                  ))}
-                  <div className="midi-add-row">
+            {midi.enabled && (
+              <>
+                <div className="midi-routing-grid">
+                  <div className="midi-row">
+                    <label className="midi-label">DEVICE</label>
                     <select
-                      className="midi-select midi-select-small"
-                      value={activeAddTrackId}
-                      aria-label="CC target track"
-                      onChange={(e) => {
-                        setAddTrackId(e.target.value);
-                        setAddTarget({ kind: "trackGain" });
-                      }}
+                      className="midi-select"
+                      value={midi.deviceId}
+                      aria-label="MIDI input device"
+                      onChange={(e) => services.store.execute(setMidiConfig(doc, { deviceId: e.target.value }))}
                     >
-                      {midiTargetTracks.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
+                      <option value="">All devices</option>
+                      {devices.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  <div className="midi-row">
+                    <label className="midi-label">DRUM CH</label>
                     <select
-                      className="midi-select midi-select-small"
-                      value={`${addTarget.kind}:${addTarget.fxId ?? ""}:${addTarget.paramId ?? ""}`}
-                      aria-label="CC target parameter"
-                      onChange={(e) => {
-                        const [kind, fxId, paramId] = e.target.value.split(":");
-                        setAddTarget({ kind, fxId: fxId || undefined, paramId: paramId || undefined });
-                      }}
+                      className="midi-select"
+                      value={midi.drumChannel}
+                      aria-label="Drum MIDI channel"
+                      onChange={(e) =>
+                        services.store.execute(setMidiConfig(doc, { drumChannel: Number(e.target.value) }))
+                      }
                     >
-                      {midiTargetOptions(doc, activeAddTrackId).map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
+                      <option value={0}>All</option>
+                      {Array.from({ length: 16 }, (_, i) => (
+                        <option key={i + 1} value={i + 1}>
+                          {i + 1}
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  <div className="midi-row">
+                    <label className="midi-label">INST CH</label>
                     <select
-                      className="midi-select midi-select-tiny"
-                      value={addCc}
-                      aria-label="CC number"
-                      onChange={(e) => setAddCc(Number(e.target.value))}
+                      className="midi-select"
+                      value={midi.instrumentChannel}
+                      aria-label="Instrument MIDI channel"
+                      onChange={(e) =>
+                        services.store.execute(setMidiConfig(doc, { instrumentChannel: Number(e.target.value) }))
+                      }
                     >
-                      {Array.from({ length: 128 }, (_, i) => (
-                        <option key={i} value={i}>
-                          {i}
+                      <option value={0}>All</option>
+                      {Array.from({ length: 16 }, (_, i) => (
+                        <option key={i + 1} value={i + 1}>
+                          {i + 1}
                         </option>
                       ))}
                     </select>
-                    <button
-                      type="button"
-                      className="btn btn-small"
-                      onClick={submitAddMapping}
-                      aria-label="Add MIDI mapping"
-                      title="Add mapping"
-                    >
-                      +
-                    </button>
+                  </div>
+
+                  <div className="midi-row">
+                    <label className="midi-label">P.BEND</label>
+                    <DragNumber
+                      label="RANGE"
+                      value={midi.pitchBendRange}
+                      min={1}
+                      max={24}
+                      defaultValue={2}
+                      sensitivity={0.4}
+                      format={(v) => `${Math.round(v)} st`}
+                      onCommit={(v) => services.store.execute(setMidiConfig(doc, { pitchBendRange: Math.round(v) }))}
+                    />
                   </div>
                 </div>
 
-                <div className="midi-drum-section">
-                  <div className="midi-drum-header">
-                    <h3 className="panel-title">DRUM NOTE MAP</h3>
-                    {midi.drumNoteMap.length > 0 && (
-                      <button
-                        type="button"
-                        className="btn btn-small"
-                        onClick={() => services.store.execute(resetDrumNoteMapping(doc))}
-                      >
-                        RESET
-                      </button>
-                    )}
-                  </div>
-                  {midi.drumNoteMap.map((m) => (
-                    <div key={m.midiNote} className="midi-drum-row">
-                      <span className="midi-drum-note">Note {m.midiNote}</span>
+                <div className="midi-mapping-grid">
+                  <div className="midi-cc-section">
+                    <h3 className="panel-title">CC MAPPINGS</h3>
+                    {midi.ccMappings.length === 0 && <div className="midi-empty">No CC mappings. Add one below.</div>}
+                    {midi.ccMappings.map((m) => (
+                      <MidiCcRow key={m.id} mapping={m} doc={doc} />
+                    ))}
+                    <div className="midi-add-row">
                       <select
                         className="midi-select midi-select-small"
-                        value={m.padId}
-                        aria-label={`Pad for note ${m.midiNote}`}
-                        onChange={(e) => services.store.execute(setDrumNoteMapping(doc, m.midiNote, e.target.value))}
+                        value={activeAddTrackId}
+                        aria-label="CC target track"
+                        onChange={(e) => {
+                          setAddTrackId(e.target.value);
+                          setAddTarget({ kind: "trackGain" });
+                        }}
                       >
-                        {tracks
-                          .filter((t) => t.kind === "drum")
-                          .flatMap((t) =>
-                            t.pads.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name}
-                              </option>
-                            )),
-                          )}
+                        {midiTargetTracks.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        className="midi-select midi-select-small"
+                        value={`${addTarget.kind}:${addTarget.fxId ?? ""}:${addTarget.paramId ?? ""}`}
+                        aria-label="CC target parameter"
+                        onChange={(e) => {
+                          const [kind, fxId, paramId] = e.target.value.split(":");
+                          setAddTarget({ kind, fxId: fxId || undefined, paramId: paramId || undefined });
+                        }}
+                      >
+                        {midiTargetOptions(doc, activeAddTrackId).map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        className="midi-select midi-select-tiny"
+                        value={addCc}
+                        aria-label="CC number"
+                        onChange={(e) => setAddCc(Number(e.target.value))}
+                      >
+                        {Array.from({ length: 128 }, (_, i) => (
+                          <option key={i} value={i}>
+                            {i}
+                          </option>
+                        ))}
                       </select>
                       <button
                         type="button"
-                        className="btn btn-small btn-danger"
-                        onClick={() => {
-                          const midi_ = doc.midi ?? { drumNoteMap: [] };
-                          const filtered = midi_.drumNoteMap.filter((d) => d.midiNote !== m.midiNote);
-                          services.store.execute(setMidiConfig(doc, { drumNoteMap: filtered }));
-                        }}
+                        className="btn btn-small"
+                        onClick={submitAddMapping}
+                        aria-label="Add MIDI mapping"
+                        title="Add mapping"
                       >
-                        ×
+                        +
                       </button>
                     </div>
-                  ))}
-                  <div className="midi-add-row">
-                    <select
-                      className="midi-select midi-select-tiny"
-                      value=""
-                      aria-label="Add drum note mapping"
-                      onChange={(e) => {
-                        const note = Number(e.target.value);
-                        if (note >= 0)
-                          services.store.execute(
-                            setDrumNoteMapping(doc, note, tracks.find((t) => t.kind === "drum")?.pads[0]?.id ?? ""),
-                          );
-                      }}
-                    >
-                      <option value="">+ MAP</option>
-                      {GM_DRUM_MAP.filter((g) => !midi.drumNoteMap.some((d) => d.midiNote === g.note)).map((g) => (
-                        <option key={g.note} value={g.note}>
-                          {g.note} — {g.name}
-                        </option>
-                      ))}
-                    </select>
+                  </div>
+
+                  <div className="midi-drum-section">
+                    <div className="midi-drum-header">
+                      <h3 className="panel-title">DRUM NOTE MAP</h3>
+                      {midi.drumNoteMap.length > 0 && (
+                        <button
+                          type="button"
+                          className="btn btn-small"
+                          onClick={() => services.store.execute(resetDrumNoteMapping(doc))}
+                        >
+                          RESET
+                        </button>
+                      )}
+                    </div>
+                    {midi.drumNoteMap.map((m) => (
+                      <div key={m.midiNote} className="midi-drum-row">
+                        <span className="midi-drum-note">Note {m.midiNote}</span>
+                        <select
+                          className="midi-select midi-select-small"
+                          value={m.padId}
+                          aria-label={`Pad for note ${m.midiNote}`}
+                          onChange={(e) => services.store.execute(setDrumNoteMapping(doc, m.midiNote, e.target.value))}
+                        >
+                          {tracks
+                            .filter((t) => t.kind === "drum")
+                            .flatMap((t) =>
+                              t.pads.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name}
+                                </option>
+                              )),
+                            )}
+                        </select>
+                        <button
+                          type="button"
+                          className="btn btn-small btn-danger"
+                          onClick={() => {
+                            const midi_ = doc.midi ?? { drumNoteMap: [] };
+                            const filtered = midi_.drumNoteMap.filter((d) => d.midiNote !== m.midiNote);
+                            services.store.execute(setMidiConfig(doc, { drumNoteMap: filtered }));
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    <div className="midi-add-row">
+                      <select
+                        className="midi-select midi-select-tiny"
+                        value=""
+                        aria-label="Add drum note mapping"
+                        onChange={(e) => {
+                          const note = Number(e.target.value);
+                          if (note >= 0)
+                            services.store.execute(
+                              setDrumNoteMapping(doc, note, tracks.find((t) => t.kind === "drum")?.pads[0]?.id ?? ""),
+                            );
+                        }}
+                      >
+                        <option value="">+ MAP</option>
+                        {GM_DRUM_MAP.filter((g) => !midi.drumNoteMap.some((d) => d.midiNote === g.note)).map((g) => (
+                          <option key={g.note} value={g.note}>
+                            {g.note} — {g.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </>
-          )}
-        </>
-      )}
-      {tab === "creativity" && (
-        <MidiCreativityPanel
-          selectedTrackId={selectedTrackId}
-          selectedNote={selectedNote}
-          scaleSnap={scaleSnap}
-          onToggleScaleSnap={onToggleScaleSnap}
-          onClearSelection={onClearSelection}
-        />
-      )}
+              </>
+            )}
+          </>
+        )}
+      </div>
+      <div
+        className="midi-tabpanel"
+        id={creativityPanelId}
+        role="tabpanel"
+        aria-labelledby={`${tabListId}-tab-creativity`}
+        tabIndex={0}
+        hidden={tab !== "creativity"}
+      >
+        {tab === "creativity" && (
+          <MidiCreativityPanel
+            selectedTrackId={selectedTrackId}
+            selectedNote={selectedNote}
+            scaleSnap={scaleSnap}
+            onToggleScaleSnap={onToggleScaleSnap}
+            onClearSelection={onClearSelection}
+          />
+        )}
+      </div>
       <LatencyCalibrationWizard open={latencyOpen} onClose={() => setLatencyOpen(false)} />
     </section>
   );

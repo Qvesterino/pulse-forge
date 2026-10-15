@@ -52,11 +52,40 @@ source code or assets.
 - Piano Roll can place a 12-bar note directly, resize it, scroll to its end,
   and undo the edit; step arrays remain at or below 128 entries.
 - Extending a note grows referencing MIDI clips as one undoable document edit.
-- A 90-bar arrangement survives save/reopen, live playback and offline export
-  to the same musical end. UI work remains bounded to the visible timeline.
+- A 93-bar arrangement at 124 BPM (180 seconds) with a 12-bar 808 note from
+  bar 80 survives IndexedDB save/reopen and offline WAV export through the
+  final bar. Verified in Chromium by
+  `tests/e2e/13-audio-consolidation.spec.ts`; the late-sustain RMS check confirms
+  sound remains present in bar 91. A controlled-clock Scheduler test advances
+  the full 93-bar live scheduling path at 25 ms intervals and checks the
+  12-bar sustain plus a clip at the final bar. An opt-in Chromium E2E soak also
+  plays the MIDI-only arrangement through a real AudioContext for 181 seconds
+  and verifies the 808 source starts at the 12-bar-spaced clips in bars 81 and
+  93; muting suppresses a future event, moving shifts its source event,
+  resizing extends the note gate by one bar, and trimming prevents a note from
+  starting after its onset was trimmed away.
+- A model-level YDoc round-trip preserves a 12-bar note and 93-bar arrangement.
+  A filtered-stem event test retains the late 808 sustain and final-bar event
+  while excluding the other instrument. Multi-peer collaboration and rendered
+  stem-audio parity still need end-to-end coverage.
+- An opt-in Chromium E2E benchmark builds a 100-bar arrangement with 300 MIDI
+  clips, verifies that the initial and end viewports stay bounded, and records
+  panel mount and end-scroll timings. The latest local run rendered 129 clips
+  initially and 105 near the end; mount took 1,452 ms and scrolling to the last
+  bar took 244 ms. The test asserts mount under 2,500 ms and scroll under 1,000
+  ms. These are single-machine diagnostic thresholds, not cross-browser
+  performance guarantees.
 
-The first three gates have targeted unit coverage. The 90-bar persistence,
-live playback and offline-export acceptance pass remains open.
+The first three gates have targeted unit coverage. Long-song persistence,
+offline export, full-duration controlled-clock scheduling and live mute during
+the opt-in Chromium AudioContext soak pass with mute, move, resize and trim
+gestures during playback. The 300-clip Chromium viewport benchmark passes its
+diagnostic thresholds. Duplicate UI is covered as a single undo action; split
+UI, multi-peer collaboration and rendered filtered-stem audio parity remain
+open. Move, resize, trim and double-click-to-Piano-Roll UI gestures pass the
+focused Chromium and Firefox E2E; Firefox live-audio parity remains unmeasured,
+and Windows WebKit cannot boot the studio because its bundled engine has no
+Web Audio implementation.
 
 ## References
 

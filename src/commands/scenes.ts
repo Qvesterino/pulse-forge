@@ -266,7 +266,9 @@ export function setSceneCcOverride(
 ): Command {
   const scene = doc.scenes.find((candidate) => candidate.id === sceneId);
   if (!scene) throw new Error(`Scene ${sceneId} not found`);
-  const mapping = doc.macros.flatMap((macro) => macro.mappings).find((m) => m.id === mappingId && m.source === "midiCC");
+  const mapping = doc.macros
+    .flatMap((macro) => macro.mappings)
+    .find((m) => m.id === mappingId && m.source === "midiCC");
   if (!mapping) throw new Error(`Mapping ${mappingId} is not a MIDI CC mapping`);
   if (patch.ccNumber != null) {
     if (!Number.isInteger(patch.ccNumber) || patch.ccNumber < 0 || patch.ccNumber > 127) {
@@ -296,11 +298,58 @@ export function setSceneCcOverride(
   const next = Object.keys(overrides).length > 0 ? overrides : undefined;
   const apply = (d: ProjectDocument): ProjectDocument => ({
     ...d,
-    scenes: d.scenes.map((candidate) =>
-      candidate.id === sceneId ? { ...candidate, ccOverrides: next } : candidate,
-    ),
+    scenes: d.scenes.map((candidate) => (candidate.id === sceneId ? { ...candidate, ccOverrides: next } : candidate)),
   });
   return snapshot("setSceneCcOverride", `Scene CC re-point in ${scene.name}`, doc, apply(doc));
+}
+
+/**
+ * Per-scene modulator pattern (v31): while this scene is active the step
+ * modulator plays the pinned `steps` pattern and the random S&H modulator
+ * draws from the pinned `seed`. `patch` carries only the fields being
+ * changed; `null` clears a field back to the modulator's own pattern, and
+ * clearing the last field drops the entry (the strip's × gesture — no
+ * canonicalization, because pinning the CURRENT pattern is the whole point:
+ * later doc edits must not silently move the pin).
+ */
+export function setSceneModulatorPattern(
+  doc: ProjectDocument,
+  sceneId: string,
+  lfoId: string,
+  patch: { steps?: number[] | null; seed?: string | null },
+): Command {
+  const scene = doc.scenes.find((candidate) => candidate.id === sceneId);
+  if (!scene) throw new Error(`Scene ${sceneId} not found`);
+  if (!doc.lfos.some((lfo) => lfo.id === lfoId)) throw new Error(`Modulator ${lfoId} not found`);
+  if (patch.steps != null) {
+    if (!Array.isArray(patch.steps) || patch.steps.length === 0 || patch.steps.length > 64) {
+      throw new Error("Invalid step pattern");
+    }
+    if (patch.steps.some((step) => typeof step !== "number" || !Number.isFinite(step))) {
+      throw new Error("Invalid step pattern");
+    }
+  }
+  if (patch.seed != null && (typeof patch.seed !== "string" || patch.seed.length === 0 || patch.seed.length > 64)) {
+    throw new Error("Invalid modulator seed");
+  }
+  const entry: { steps?: number[]; seed?: string } = { ...(scene.modulators?.[lfoId] ?? {}) };
+  if (patch.steps !== undefined) {
+    if (patch.steps === null) delete entry.steps;
+    else entry.steps = patch.steps.map((step) => Math.min(1, Math.max(-1, step)));
+  }
+  if (patch.seed !== undefined) {
+    if (patch.seed === null) delete entry.seed;
+    else entry.seed = patch.seed;
+  }
+  const modulators = { ...(scene.modulators ?? {}) };
+  if (entry.steps !== undefined || entry.seed !== undefined) modulators[lfoId] = entry;
+  else delete modulators[lfoId];
+  const next = Object.keys(modulators).length > 0 ? modulators : undefined;
+  const apply = (d: ProjectDocument): ProjectDocument => ({
+    ...d,
+    scenes: d.scenes.map((candidate) => (candidate.id === sceneId ? { ...candidate, modulators: next } : candidate)),
+  });
+  return snapshot("setSceneModulatorPattern", `Scene modulator pattern in ${scene.name}`, doc, apply(doc));
 }
 
 export function deleteScene(doc: ProjectDocument, sceneId: string): Command {

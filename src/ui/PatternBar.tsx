@@ -227,6 +227,12 @@ export function PatternBar({
         )}
       </div>
 
+      <SceneLauncher
+        variant="bar"
+        currentClipId={currentClipId}
+        onRenameScene={(scene, name) => services.store.execute(renameScene(doc, scene.id, name))}
+      />
+
       <div className="pattern-groove" aria-label="Groove">
         <DragNumber
           label="SWING"
@@ -438,12 +444,6 @@ export function PatternBar({
           {midiStatus}
         </div>
       )}
-
-      <SceneLauncher
-        variant="bar"
-        currentClipId={currentClipId}
-        onRenameScene={(scene, name) => services.store.execute(renameScene(doc, scene.id, name))}
-      />
 
       <Suspense fallback={null}>
         <GenerateDialog open={generateOpen} onClose={() => setGenerateOpen(false)} />

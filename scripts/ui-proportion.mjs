@@ -112,8 +112,18 @@ const outDir = resolve("output/playwright");
 if (SHOTS) mkdirSync(outDir, { recursive: true });
 
 const report = [];
-for (const vp of VIEWPORTS) {
-  const context = await browser.newContext({ viewport: { width: vp.w, height: vp.h } });
+// ONE boot, then resize between viewports.
+//
+// The first version created a fresh context per viewport, which meant five
+// full boots of a ~180 KB AudioEngine against a dev server that parallel agent
+// sessions were also hammering. Three of the five never reached the studio at
+// all and reported `null` for every region — a measurement failure that looks
+// exactly like a collapsed sequencer. Booting once and driving the viewport
+// removes that failure mode, runs ~5x faster, and measures the same thing:
+// every breakpoint in this shell is CSS (media + container queries), all of
+// which respond to a resize.
+const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+{
   const page = await context.newPage();
 
   // Skip the landing page: this measures the studio shell, not onboarding.
@@ -130,22 +140,21 @@ for (const vp of VIEWPORTS) {
   // Fresh browser profiles have no saved project, so the project browser is
   // showing templates. `.pb-template-start` is the House template, pinned by
   // ProjectBrowser.tsx as the first-run entry.
-  const startCard = page.locator("button.pb-template-start").first();
-  const continueCard = page.locator("button.pb-continue-card").first();
-  const ready = startCard.or(continueCard).first();
-  await ready.waitFor({ state: "visible", timeout: 120_000 });
-  if (await continueCard.isVisible().catch(() => false)) {
-    await continueCard.click();
-  } else {
-    await startCard.click();
-  }
+  //
+  // A stored project from an earlier run wins when it exists, so the continue
+  // card is preferred. Do NOT collapse this into `a.or(b)` for the click: the
+  // union locator also decides which element was clicked, and with no
+  // continue card present the first version of this script waited out its
+  // full budget on a studio that was actually up in five seconds.
+  const continueCard = page.locator("button.pb-continue-card");
+  const templateCard = page.locator("button.pb-template-start");
+  await continueCard.or(templateCard).first().waitFor({ state: "visible", timeout: 60_000 });
+  const resume = (await continueCard.count()) > 0 && (await continueCard.isVisible());
+  await (resume ? continueCard : templateCard).first().click();
+  console.log(`booted once: ${resume ? "resumed last project" : "opened House template"}`);
 
   // `main.tsx` lazy-imports the studio (`./ui/App`) only once a project is
-  // opened, and that chunk reaches 70+ panels. On a cold vite dev server the
-  // on-demand transform of that graph takes MINUTES on the first request and
-  // every later request is served from the transform cache — so the first run
-  // of this script is slow and every run after it is fast. Waiting less than
-  // this reports a cold transform as a product bug.
+  // opened. The budget stays generous for a cold vite dev server.
   await page
     .locator(".topbar, .crash-screen, .boot-error")
     .first()
@@ -154,22 +163,39 @@ for (const vp of VIEWPORTS) {
 
   // A boot that settled on an error screen is a real result, not a timeout to
   // hide behind — surface it instead of measuring an empty document.
-  const crashed = await page.locator(".crash-screen, .boot-error").first();
+  const crashed = page.locator(".crash-screen, .boot-error").first();
   if ((await crashed.count()) > 0) {
     const text = (await crashed.innerText()).replace(/\s+/g, " ").slice(0, 200);
-    throw new Error(`studio boot did not settle at ${vp.w}x${vp.h}: ${text}`);
+    throw new Error(`studio boot did not settle: ${text}`);
   }
 
-  const m = await measure(page);
-  const rows = REGIONS.map((r) => ({ label: r.label, px: m[r.key]?.h ?? null, weight: r.weight }));
-  report.push({ vp, m, text: table(rows, vp.w, vp.h) });
-
-  if (SHOTS) {
-    await page.screenshot({ path: resolve(outDir, `proportion-${vp.w}x${vp.h}.png`) });
+  // The first-run tour overlays the shell and would shift every measurement.
+  // It is a dismissible overlay, not part of the layout under test, so close
+  // it before measuring — the QA matrix in the plan doc requires the same.
+  const skipTour = page.locator("button:has-text('SKIP')").first();
+  if ((await skipTour.count()) > 0 && (await skipTour.isVisible().catch(() => false))) {
+    await skipTour.click().catch(() => {});
+    await page.waitForTimeout(400);
   }
-  await context.close();
+
+  for (const vp of VIEWPORTS) {
+    await page.setViewportSize({ width: vp.w, height: vp.h });
+    // Let media/container queries settle before reading boxes.
+    await page.waitForTimeout(900);
+
+    const m = await measure(page);
+    if (m.topbar == null) {
+      throw new Error(`studio shell absent at ${vp.w}x${vp.h} — measurement aborted, not reported as a collapsed sequencer`);
+    }
+    const rows = REGIONS.map((r) => ({ label: r.label, px: m[r.key]?.h ?? null, weight: r.weight }));
+    report.push({ vp, m, text: table(rows, vp.w, vp.h) });
+
+    if (SHOTS) {
+      await page.screenshot({ path: resolve(outDir, `proportion-${vp.w}x${vp.h}.png`) });
+    }
+  }
 }
-
+await context.close();
 await browser.close();
 
 const overflow = report.filter((r) => r.m.docWidth > r.m.vw);

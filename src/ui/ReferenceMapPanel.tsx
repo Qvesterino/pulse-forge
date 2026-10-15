@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useServices } from "./context";
 import {
   PITCH_CLASSES,
@@ -129,7 +129,9 @@ function applyReading(bpm: number | null, reading: Correction["reading"]): numbe
 
 export function ReferenceMapPanel() {
   const services = useServices();
+  const tabListId = useId();
   const [tab, setTab] = useState<TabId>("map");
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [analysis, setAnalysis] = useState<Analyzed | null>(null);
   const [analysisVersion, setAnalysisVersion] = useState(0);
   const [stage, setStage] = useState<ReferenceStage | null>(null);
@@ -1182,14 +1184,36 @@ export function ReferenceMapPanel() {
             )}
           </section>
 
-          <nav className="reference-tabs" role="tablist">
-            {TABS.map((t) => (
+          <nav className="reference-tabs" role="tablist" aria-label="Reference analysis views">
+            {TABS.map((t, index) => (
               <button
                 key={t.id}
                 type="button"
+                id={`${tabListId}-tab-${t.id}`}
                 role="tab"
                 aria-selected={tab === t.id}
+                aria-controls={`${tabListId}-tabpanel`}
+                tabIndex={tab === t.id ? 0 : -1}
+                ref={(element) => {
+                  tabRefs.current[index] = element;
+                }}
                 onClick={() => setTab(t.id)}
+                onKeyDown={(event) => {
+                  const currentIndex = TABS.findIndex((candidate) => candidate.id === t.id);
+                  let nextIndex: number | null = null;
+
+                  if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % TABS.length;
+                  else if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + TABS.length) % TABS.length;
+                  else if (event.key === "Home") nextIndex = 0;
+                  else if (event.key === "End") nextIndex = TABS.length - 1;
+                  if (nextIndex === null) return;
+
+                  const nextTab = TABS[nextIndex];
+                  if (!nextTab) return;
+                  event.preventDefault();
+                  setTab(nextTab.id);
+                  tabRefs.current[nextIndex]?.focus();
+                }}
                 data-testid={`reference-tab-${t.id}`}
               >
                 {t.label}
@@ -1197,7 +1221,14 @@ export function ReferenceMapPanel() {
             ))}
           </nav>
 
-          <div className="reference-tabpanel" role="tabpanel" data-testid={`reference-panel-${tab}`}>
+          <div
+            className="reference-tabpanel"
+            id={`${tabListId}-tabpanel`}
+            role="tabpanel"
+            aria-labelledby={`${tabListId}-tab-${tab}`}
+            tabIndex={0}
+            data-testid={`reference-panel-${tab}`}
+          >
             {tab === "map" && <MapTab analysis={analysis} />}
             {tab === "rhythm" && <RhythmTab map={analysis.map} half={halfCandidate} double={doubleCandidate} />}
             {tab === "harmony" && <HarmonyTab map={analysis.map} candidates={keyCandidates} />}

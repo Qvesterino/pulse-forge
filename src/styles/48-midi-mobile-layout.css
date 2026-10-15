@@ -1,3 +1,16 @@
+/* Each MIDI mode is a real tab panel. Keep its input rows on the same vertical
+   rhythm the panel had before the ARIA wrapper was added. */
+.midi-tabpanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.midi-tabpanel[hidden] {
+  display: none;
+}
+
 /* In a narrow dock, let the slot own vertical scrolling. The MIDI panel's
    fixed-height nested scroller otherwise traps the mobile sheet's content. */
 @container bottom-dock-slot (max-width: 560px) {
@@ -15,7 +28,7 @@
   }
 
   .midi-panel-header .midi-tabs > .btn,
-  .midi-panel > .midi-row > .btn {
+  .midi-panel > .midi-tabpanel > .midi-row > .btn {
     min-height: var(--touch-target-large);
     font-size: 12px;
   }

@@ -50,6 +50,21 @@ export class ProjectStore {
   onDocChanged: ((doc: ProjectDocument) => void) | null = null;
   /** Explicit local edits from a human music editor; generated/system commands never call this. */
   onUserPatternEdit: ((doc: ProjectDocument, previousDoc: ProjectDocument) => void) | null = null;
+  /**
+   * Fired after an undo actually reverted a history entry, with the depth the
+   * stack settled at. The Reaction Ledger needs this to tell WHICH proposal the
+   * human rejected — "an undo happened" is not a reaction to anything.
+   * Deliberately NOT fired on the rethrow path: a failed undo changed nothing,
+   * so nothing was rejected.
+   */
+  onUndoCommitted: ((depthAfterPop: number) => void) | null = null;
+  /**
+   * Any explicit human editor edit (the `executeUserEdit` boundary), with the
+   * documents either side. Generic on purpose: `onUserPatternEdit` is scoped to
+   * patterns, and the Reaction Ledger needs to know that the human touched
+   * SOMETHING without this store having to know what it is.
+   */
+  onUserEdit: ((doc: ProjectDocument, previousDoc: ProjectDocument) => void) | null = null;
 
   private static readonly HISTORY_LIMIT = 64;
 
@@ -232,7 +247,10 @@ export class ProjectStore {
       this.historyDocs[this.historyDocs.length - 1] = this.doc_;
       if (inFrame) this.frameCommands!.push(command);
       this.afterMutation();
-      if (userAuthored) this.notifyUserPatternEdit(previousDoc);
+      if (userAuthored) {
+        this.notifyUserPatternEdit(previousDoc);
+        this.notifyUserEdit(previousDoc);
+      }
       return;
     }
     const applied = command.execute(this.doc_);
@@ -256,7 +274,10 @@ export class ProjectStore {
     this.redoStack = [];
     if (inFrame) this.frameCommands!.push(command);
     this.afterMutation();
-    if (userAuthored) this.notifyUserPatternEdit(previousDoc);
+    if (userAuthored) {
+      this.notifyUserPatternEdit(previousDoc);
+      this.notifyUserEdit(previousDoc);
+    }
   }
 
   private notifyUserPatternEdit(previousDoc: ProjectDocument): void {
@@ -265,6 +286,15 @@ export class ProjectStore {
     } catch (error) {
       // Taste learning is best-effort and must never make an edit fail.
       console.warn("[style-learning] could not observe local pattern edit:", error);
+    }
+  }
+
+  private notifyUserEdit(previousDoc: ProjectDocument): void {
+    try {
+      this.onUserEdit?.(this.doc_, previousDoc);
+    } catch (error) {
+      // Same contract: an observer must never make a human edit fail.
+      console.warn("[reaction-ledger] could not observe user edit:", error);
     }
   }
 
@@ -355,6 +385,11 @@ export class ProjectStore {
     // Snapshot index pairing shifted — drop the cache.
     this.diffCache.clear();
     this.afterMutation();
+    try {
+      this.onUndoCommitted?.(this.undoStack.length);
+    } catch {
+      // A reaction observer must never break the undo it is observing.
+    }
   }
 
   redo(): void {
@@ -431,3 +466,4 @@ export class ProjectStore {
     for (const listener of this.listeners) listener();
   }
 }
+

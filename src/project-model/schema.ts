@@ -46,13 +46,14 @@ import { clampFxOutputTrimDb } from "../effects/presetLoudness";
 import { isMasterProfileId } from "../mastering/profiles";
 import {
   canonicalizeDeprecatedTarget,
+  automationTargetKey,
   clampTargetValue,
   isAutomationTargetValid,
   targetOwner,
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 29;
+export const SCHEMA_VERSION = 31;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -1798,12 +1799,24 @@ function normalizeArrangementDomain(s: NormalizeState): void {
                 }))
                 .sort((a, b) => a.tick - b.tick)
             : [];
+          const linkedTargets: AutomationTarget[] = [];
+          const linkedTargetKeys = new Set([automationTargetKey(clip.target!)]);
+          if (Array.isArray(clip.linkedTargets)) {
+            for (const target of clip.linkedTargets) {
+              if (!target || !isAutomationTargetValid(doc, target)) continue;
+              const key = automationTargetKey(target);
+              if (linkedTargetKeys.has(key)) continue;
+              linkedTargetKeys.add(key);
+              linkedTargets.push({ ...target });
+            }
+          }
           return {
             id: clip.id!,
             target: { ...clip.target! },
             startTick,
             lengthTicks,
             points,
+            ...(linkedTargets.length > 0 ? { linkedTargets } : {}),
             ...(phaseOffsetTicks > 0 ? { phaseOffsetTicks } : {}),
             ...(clip.muted === true ? { muted: true } : {}),
             ...(clip.locked === true ? { locked: true } : {}),
@@ -2335,8 +2348,49 @@ function normalizeSceneDetailsDomain(s: NormalizeState): void {
     s.changed = true;
   }
 
+  // Scene modulator patterns (v31): lfoId → { steps (≤64 bipolar values),
+  // seed (≤64 chars) }. Entries with neither field drop; the record
+  // collapses to absent when empty. Unknown lfo ids stay inert.
+  let modulatorsChanged = false;
+  const modulatorScenes = ccOverrideScenes.map((scene) => {
+    if (scene.modulators === undefined) return scene;
+    const raw = scene.modulators as unknown;
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+      modulatorsChanged = true;
+      return { ...scene, modulators: undefined };
+    }
+    const clean: Record<string, { steps?: number[]; seed?: string }> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>).slice(0, 32)) {
+      if (key.length === 0 || key.length > 64) continue;
+      if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
+      const entry = value as Record<string, unknown>;
+      const next: { steps?: number[]; seed?: string } = {};
+      if (Array.isArray(entry.steps)) {
+        const steps = entry.steps
+          .slice(0, 64)
+          .filter((step): step is number => typeof step === "number" && Number.isFinite(step))
+          .map((step) => Math.min(1, Math.max(-1, step)));
+        if (steps.length > 0) next.steps = steps;
+      }
+      if (typeof entry.seed === "string" && entry.seed.length > 0 && entry.seed.length <= 64) {
+        next.seed = entry.seed;
+      }
+      if (next.steps !== undefined || next.seed !== undefined) clean[key] = next;
+    }
+    const next = Object.keys(clean).length > 0 ? clean : undefined;
+    if (JSON.stringify(next) !== JSON.stringify(scene.modulators)) {
+      modulatorsChanged = true;
+      return { ...scene, modulators: next };
+    }
+    return scene;
+  });
+  if (modulatorsChanged) {
+    s.doc = { ...s.doc, scenes: modulatorScenes };
+    s.changed = true;
+  }
+
   if (scenesChanged) {
-    s.doc = { ...s.doc, scenes: ccOverrideScenes };
+    s.doc = { ...s.doc, scenes: modulatorScenes };
     s.changed = true;
   }
 }
@@ -3058,6 +3112,10 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // v29 adds the optional per-scene `ccOverrides` (mappingId → { ccNumber,
   // channel }: the channel/CC re-point a source:"midiCC" mapping listens on
   // while the scene is active; absent fields keep the mapping's own).
+  // v30 adds optional automation clip linkedTargets; absent = single target.
+  // v31 adds the optional per-scene `modulators` (lfoId → { steps?, seed? }:
+  // the step / random-S&H modulation pattern a scene plays; absent fields
+  // keep the modulator's own pattern).
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import { createDefaultProject } from "../src/project-model/schema";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import {
+  addMidiClip,
+  addNote,
   addArrangementClip,
   addToGroup,
   createGroupTrack,
@@ -11,6 +13,8 @@ import {
   setReturnGain,
   setTrackSend,
 } from "../src/commands/commands";
+import { createInstrumentTrackModel } from "../src/project-model/schema";
+import { midiClipEventsInWindow } from "../src/project-model/events";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { buildStemProject, nonEmptyStemGroups, STEM_GROUPS } from "../src/rendering/stems";
 import { computeRenderTicks } from "../src/rendering/renderer";
@@ -57,6 +61,47 @@ describe("stem groups", () => {
     expect(stem.tracks.some((t) => t.id === drumId)).toBe(true);
     expect(stem.tracks.some((t) => t.id === groupId)).toBe(true);
     expect(stem.tracks.some((t) => t.kind === "group")).toBe(true);
+  });
+
+  it("keeps only the selected instrument's 93-bar MIDI events in a filtered stem", () => {
+    const base = createProjectFromTemplate("empty");
+    const bass808 = createInstrumentTrackModel("808", 1);
+    const lead = createInstrumentTrackModel("analog", 1);
+    const patternId = base.activePatternId;
+    const withTracks = { ...base, tracks: [...base.tracks, bass808, lead] };
+    const withBassNote = addNote(withTracks, bass808.id, {
+      pitch: 36,
+      start: 0,
+      duration: BAR_TICKS * 12,
+      velocity: 0.9,
+    }).execute(withTracks);
+    const withLeadNote = addNote(withBassNote, lead.id, {
+      pitch: 72,
+      start: 0,
+      duration: BAR_TICKS,
+      velocity: 0.7,
+    }).execute(withBassNote);
+    const withBassSustain = addMidiClip(withLeadNote, bass808.id, patternId, BAR_TICKS * 80, BAR_TICKS * 12).execute(
+      withLeadNote,
+    );
+    const withFinalBassClip = addMidiClip(withBassSustain, bass808.id, patternId, BAR_TICKS * 92, BAR_TICKS).execute(
+      withBassSustain,
+    );
+    const song = addMidiClip(withFinalBassClip, lead.id, patternId, BAR_TICKS * 92, BAR_TICKS).execute(
+      withFinalBassClip,
+    );
+    const stem = buildStemProject(song, (track) => track.kind === "instrument" && track.id === bass808.id);
+    const scheduled = (stem.arrangement.midiClips ?? []).flatMap((clip) =>
+      midiClipEventsInWindow(stem, clip, clip.startTick, clip.startTick + clip.lengthTicks),
+    );
+
+    expect(computeRenderTicks(stem, "song")).toBe(BAR_TICKS * 93);
+    expect(stem.tracks.some((track) => track.id === bass808.id)).toBe(true);
+    expect(stem.tracks.some((track) => track.id === lead.id)).toBe(false);
+    expect(scheduled.map((event) => [event.trackId, event.tick, event.note.duration])).toEqual([
+      [bass808.id, BAR_TICKS * 80, BAR_TICKS * 12],
+      [bass808.id, BAR_TICKS * 92, BAR_TICKS],
+    ]);
   });
 });
 

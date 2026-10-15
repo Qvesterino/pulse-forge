@@ -15,6 +15,7 @@ import type {
   AudioClip,
   AutomationLane,
   AutomationPoint,
+  AutomationTarget,
   DrumPad,
   EffectInstance,
   FrozenState,
@@ -325,12 +326,14 @@ function yMapToMidiClip(m: unknown): MidiClip {
 
 function yMapToAutomationClip(m: unknown): ArrangementAutomationClip {
   const map = m as Y.Map<unknown>;
+  const linkedTargets = map.get("linkedTargets");
   return {
     id: map.get("id") as string,
     target: yMapToObj(map.get("target") as Y.Map<unknown>) as unknown as ArrangementAutomationClip["target"],
     startTick: map.get("startTick") as number,
     lengthTicks: map.get("lengthTicks") as number,
     points: yArrToList(map.get("points") as Y.Array<unknown>).map(yPointToAutomation),
+    ...(Array.isArray(linkedTargets) ? { linkedTargets: linkedTargets as AutomationTarget[] } : {}),
     ...(map.has("phaseOffsetTicks") ? { phaseOffsetTicks: map.get("phaseOffsetTicks") as number } : {}),
     ...(map.has("muted") ? { muted: map.get("muted") as boolean } : {}),
     ...(map.has("locked") ? { locked: map.get("locked") as boolean } : {}),
@@ -1197,6 +1200,11 @@ function syncAutomationClipEntity(target: Y.Map<unknown>, clip: ArrangementAutom
   setOrDelete(target, "phaseOffsetTicks", clip.phaseOffsetTicks);
   setOrDelete(target, "muted", clip.muted);
   setOrDelete(target, "locked", clip.locked);
+  setOrDelete(
+    target,
+    "linkedTargets",
+    clip.linkedTargets?.map((linkedTarget) => ({ ...linkedTarget })),
+  );
   syncPlainFields(ensureChildMap(target, "target"), clip.target as unknown as Record<string, unknown>);
   syncPoints(ensureChildArray(target, "points"), clip.points);
 }
@@ -1209,6 +1217,11 @@ function automationClipToYMap(clip: ArrangementAutomationClip): Y.Map<unknown> {
   if (clip.phaseOffsetTicks !== undefined) map.set("phaseOffsetTicks", clip.phaseOffsetTicks);
   if (clip.muted !== undefined) map.set("muted", clip.muted);
   if (clip.locked !== undefined) map.set("locked", clip.locked);
+  if (clip.linkedTargets !== undefined)
+    map.set(
+      "linkedTargets",
+      clip.linkedTargets.map((target) => ({ ...target })),
+    );
   const target = new Y.Map<unknown>();
   map.set("target", target);
   for (const [key, value] of Object.entries(clip.target)) target.set(key, value);

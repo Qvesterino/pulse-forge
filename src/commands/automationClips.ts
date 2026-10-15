@@ -6,7 +6,12 @@ import type {
 } from "../project-model/types";
 import { STEP_TICKS } from "../project-model/types";
 import { insertPointSorted } from "../project-model/automation";
-import { clampTargetValue, isAutomationTargetValid, targetParamDef } from "../project-model/targets";
+import {
+  automationTargetKey,
+  clampTargetValue,
+  isAutomationTargetValid,
+  targetParamDef,
+} from "../project-model/targets";
 import { MAX_ARRANGEMENT_CLIP_TICKS } from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { clipGroupsWithoutIds } from "./clipGroups";
@@ -75,6 +80,33 @@ export function addAutomationClip(
     },
   };
   return snapshot("addAutomationClip", "Add arrangement automation clip", doc, next);
+}
+
+export function linkAutomationClipTarget(doc: ProjectDocument, clipId: string, target: AutomationTarget): Command {
+  const clip = clipOf(doc, clipId);
+  editable(clip);
+  if (!isAutomationTargetValid(doc, target)) throw new Error("Invalid linked automation target");
+  const key = automationTargetKey(target);
+  if ([clip.target, ...(clip.linkedTargets ?? [])].some((candidate) => automationTargetKey(candidate) === key)) {
+    return snapshot("linkAutomationClipTarget", "Link automation target", doc, doc);
+  }
+  const linkedTargets = [...(clip.linkedTargets ?? []), { ...target }];
+  return snapshot("linkAutomationClipTarget", "Link automation target", doc, withClip(doc, { ...clip, linkedTargets }));
+}
+
+export function unlinkAutomationClipTarget(doc: ProjectDocument, clipId: string, target: AutomationTarget): Command {
+  const clip = clipOf(doc, clipId);
+  editable(clip);
+  if (automationTargetKey(clip.target) === automationTargetKey(target)) {
+    throw new Error("The primary automation target cannot be unlinked");
+  }
+  const linkedTargets = (clip.linkedTargets ?? []).filter(
+    (candidate) => automationTargetKey(candidate) !== automationTargetKey(target),
+  );
+  const nextClip = { ...clip };
+  if (linkedTargets.length > 0) nextClip.linkedTargets = linkedTargets;
+  else delete nextClip.linkedTargets;
+  return snapshot("unlinkAutomationClipTarget", "Unlink automation target", doc, withClip(doc, nextClip));
 }
 
 /** Copy a MOD lane to the song timeline at the active pattern's phrase length. */

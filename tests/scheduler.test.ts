@@ -11,7 +11,7 @@ import { createProjectFromTemplate } from "../src/project-model/templates";
 import { getDrumTrack, BAR_TICKS, PPQ, STEP_TICKS } from "../src/project-model/types";
 import { Scheduler } from "../src/scheduler/Scheduler";
 import { Transport } from "../src/transport/Transport";
-import type { DrumPad, Pattern, ProjectDocument } from "../src/project-model/types";
+import type { ArrangementAutomationClip, DrumPad, Pattern, ProjectDocument } from "../src/project-model/types";
 import { setStepVelocity } from "../src/project-model/transform";
 import { addAudioTakeClip, addMidiClip, addNote, clearPattern, setPatternLength } from "../src/commands/commands";
 import { createLiveAudioTakeAuditionProject } from "../src/rendering/take-audition";
@@ -83,6 +83,11 @@ function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern",
   const clickEvents: { when: number; downbeat: boolean }[] = [];
   const automationCalls: { from: number; to: number; relOf: (tick: number) => number }[] = [];
   const automationOffsets: number[] = [];
+  const arrangementAutomationCalls: Array<{
+    clip: ArrangementAutomationClip;
+    fromTick: number;
+    toTick: number;
+  }> = [];
   const launches: string[] = [];
   const audioClipEvents: Array<{ bufferId: string; when: number; durationSec: number; resumeOffsetSec?: number }> = [];
   let currentDoc = doc;
@@ -107,6 +112,9 @@ function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern",
       automationCalls.push({ from, to, relOf });
       automationOffsets.push(offset ?? 0);
     },
+    applyArrangementAutomationClip: (clip, fromTick, toTick) => {
+      arrangementAutomationCalls.push({ clip, fromTick, toTick });
+    },
     applyPatternLaunch: (patternId: string) => {
       launches.push(patternId);
       const next = currentDoc.patterns.find((p) => p.id === patternId);
@@ -122,6 +130,7 @@ function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern",
     clickEvents,
     automationCalls,
     automationOffsets,
+    arrangementAutomationCalls,
     launches,
     audioClipEvents,
     transport,
@@ -422,7 +431,7 @@ describe("scheduler", () => {
     scheduler.stop();
   });
 
-  it("reaches and schedules a MIDI clip in bar 93 during Song playback", () => {
+  it("plays a 93-bar Song with a sustained 12-bar 808 and schedules the final-bar MIDI clip", () => {
     const base = { ...createDefaultProject(), bpm: 124 };
     const bass = base.tracks.find(
       (track): track is import("../src/project-model/types").InstrumentTrack =>
@@ -434,29 +443,40 @@ describe("scheduler", () => {
     const withSustain = addNote(blank, bass.id, {
       pitch: 36,
       start: 0,
-      duration: 4 * BAR_TICKS,
+      duration: 12 * BAR_TICKS,
       velocity: 0.9,
     }).execute(blank);
-    const lateStartTick = 89 * BAR_TICKS;
-    const withClip = addMidiClip(withSustain, bass.id, pattern.id, lateStartTick, 4 * BAR_TICKS).execute(withSustain);
-    const song = { ...withClip, arrangement: { ...withClip.arrangement, clips: [] } };
+    const sustainStartTick = 80 * BAR_TICKS;
+    const sustainEndTick = 92 * BAR_TICKS;
+    const withSustainClip = addMidiClip(withSustain, bass.id, pattern.id, sustainStartTick, 12 * BAR_TICKS).execute(
+      withSustain,
+    );
+    const withFinalClip = addMidiClip(withSustainClip, bass.id, pattern.id, sustainEndTick, BAR_TICKS).execute(
+      withSustainClip,
+    );
+    const song = { ...withFinalClip, arrangement: { ...withFinalClip.arrangement, clips: [] } };
     const { noteEvents, transport, scheduler, advance } = makeHarness(song, "song");
 
     transport.play(0, { leadIn: false });
     scheduler.start();
-    const lateStartSeconds = (89 * 4 * 60) / base.bpm;
-    // Advance the fake audio clock through the full song rather than waiting
-    // three real minutes. The scheduler must catch the late arrangement span.
-    advance(lateStartSeconds);
-    scheduler["tick"]();
+    // Drive the real live Scheduler cadence against a controlled audio clock
+    // through the complete three-minute musical duration, without a wall-clock
+    // three-minute test. This catches missed windows as well as late clips.
+    const songSeconds = (93 * 4 * 60) / base.bpm;
+    const stepSeconds = 0.025;
+    for (let step = 0; step < Math.ceil((songSeconds + 0.25) / stepSeconds); step++) {
+      advance(stepSeconds);
+      scheduler["tick"]();
+    }
 
-    expect(transport.position).toBeCloseTo(lateStartTick, 5);
-    const lateBassEvent = noteEvents.find(
-      (event) =>
-        event.trackId === bass.id && event.pitch === 36 && Math.abs(event.when - (10 + lateStartSeconds)) < 0.001,
-    );
-    expect(lateBassEvent).toBeDefined();
-    expect(lateBassEvent?.durationSec).toBeCloseTo((4 * BAR_TICKS * 60) / (base.bpm * PPQ), 6);
+    expect(transport.position).toBeGreaterThanOrEqual(93 * BAR_TICKS);
+    const bassEvents = noteEvents.filter((event) => event.trackId === bass.id && event.pitch === 36);
+    expect(bassEvents).toHaveLength(2);
+    expect(bassEvents[0]?.when).toBeCloseTo(10 + (80 * 4 * 60) / base.bpm, 3);
+    expect(bassEvents[0]?.durationSec).toBeCloseTo((12 * BAR_TICKS * 60) / (base.bpm * PPQ), 6);
+    expect(bassEvents[1]?.when).toBeCloseTo(10 + (92 * 4 * 60) / base.bpm, 3);
+    // The same shared source is cut at the last clip's one-bar boundary.
+    expect(bassEvents[1]?.durationSec).toBeCloseTo((BAR_TICKS * 60) / (base.bpm * PPQ), 6);
     scheduler.stop();
   });
 
@@ -634,6 +654,42 @@ describe("scheduler", () => {
       expect(call.to).toBeGreaterThan(call.from);
     }
     scheduler.stop();
+  });
+
+  it("schedules a linked arrangement curve to each live target", () => {
+    const base = createProjectFromTemplate("house");
+    const track = base.tracks.find((candidate) => candidate.kind === "instrument");
+    if (!track || track.kind !== "instrument") throw new Error("house template needs an instrument track");
+    const gain = { kind: "trackGain" as const, trackId: track.id };
+    const pan = { kind: "trackPan" as const, trackId: track.id };
+    const linked: ArrangementAutomationClip = {
+      id: "live-gain-pan",
+      target: gain,
+      linkedTargets: [pan],
+      startTick: 0,
+      lengthTicks: BAR_TICKS * 4,
+      points: [
+        { tick: 0, value: 0 },
+        { tick: BAR_TICKS * 4, value: 1.5 },
+      ],
+    };
+    const doc: ProjectDocument = {
+      ...base,
+      arrangement: { ...base.arrangement, automationClips: [linked] },
+    };
+    const harness = makeHarness(doc, "song");
+    harness.transport.play(0);
+    harness.scheduler.start();
+    harness.advance(0.025);
+    harness.scheduler["tick"]();
+
+    const panCall = harness.arrangementAutomationCalls.find((call) => call.clip.target.kind === "trackPan");
+    expect(new Set(harness.arrangementAutomationCalls.map((call) => call.clip.target.kind))).toEqual(
+      new Set(["trackGain", "trackPan"]),
+    );
+    expect(panCall?.clip.points.map((point) => point.value)).toEqual([-1, 1]);
+    expect(panCall?.fromTick).toBe(0);
+    harness.scheduler.stop();
   });
 
   it("track mute silences the whole track; track solo silences the others", () => {

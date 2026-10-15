@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useServices, useTracks } from "./context";
 import type { EffectType, Track } from "../project-model/types";
 import type { EffectGainReductionReading } from "../effects/types";
@@ -117,6 +117,11 @@ export function EffectRack({
   // the old header select offered, now described and searchable.
   const [addOpen, setAddOpen] = useState(false);
   const [goalNote, setGoalNote] = useState<string | null>(null);
+  const devicesAddTriggerRef = useRef<HTMLButtonElement>(null);
+  const closeDevicesAdd = () => {
+    setAddOpen(false);
+    devicesAddTriggerRef.current?.focus();
+  };
   // Wave B — role-aware landings: what this track IS decides how a device
   // lands (vinyl on the 808 = tape-ish dust, on the kit = sizzle).
   const role = roleOfTrack(track);
@@ -342,61 +347,26 @@ export function EffectRack({
           hint={isMaster ? "Final mix inserts before the safety limiter and output meters." : undefined}
           actions={
             <>
-              <select
-                className="devices-add-effect"
-                value=""
+              <button
+                ref={devicesAddTriggerRef}
+                type="button"
+                className="btn fx-add-trigger"
                 title={
                   selectedFx
                     ? `Insert effect after ${EFFECT_DEFS[selectedFx.type].name}`
                     : activeDeviceId === "instrument"
-                      ? `Insert effect after ${instrumentLabel}`
-                      : "Add effect to this track"
+                      ? `Insert effect after the ${instrumentLabel} instrument`
+                      : "Add an effect to this track"
                 }
-                aria-label={
-                  selectedFx
-                    ? "Insert effect after the selected device"
-                    : activeDeviceId === "instrument"
-                      ? "Insert effect after the instrument"
-                      : "Add effect to the track"
-                }
-                onChange={(event) => {
-                  const type = event.target.value as EffectType;
-                  if (!type) return;
-                  const selectedIndex = track.effects.findIndex((fx) => fx.id === activeDeviceId);
-                  const insertionIndex =
-                    selectedIndex >= 0 ? selectedIndex + 1 : activeDeviceId === "instrument" ? 0 : track.effects.length;
-                  const command = addLanded(type, insertionIndex);
-                  services.store.execute(command);
-                  setSelectedDeviceId(command.effectId);
+                aria-haspopup="dialog"
+                aria-expanded={addOpen}
+                onClick={() => {
+                  if (!addOpen) setGoalNote(null);
+                  setAddOpen((open) => !open);
                 }}
               >
-                <option value="">+ FX</option>
-                {CORE_EFFECT_GROUPS.map((group) => (
-                  <optgroup key={group.key} label={group.label}>
-                    {group.types.map((type) => (
-                      <option key={type} value={type}>
-                        {EFFECT_DEFS[type].name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-                <optgroup label="FLAGSHIP PLUGINS">
-                  {FLAGSHIP_EFFECT_ORDER.map((type) => (
-                    <option key={type} value={type}>
-                      {EFFECT_DEFS[type].name}
-                    </option>
-                  ))}
-                </optgroup>
-                {ADDITIONAL_EFFECT_GROUPS.map((group) => (
-                  <optgroup key={`${group.key}-more`} label={group.label}>
-                    {group.types.map((type) => (
-                      <option key={type} value={type}>
-                        {EFFECT_DEFS[type].name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+                ✚ ADD FX
+              </button>
               {!isMaster && (
                 <select
                   className="devices-add-chain"
@@ -429,6 +399,45 @@ export function EffectRack({
             </>
           }
         />
+        {addOpen && (
+          <FxAddPopover
+            trackLabel={track.name}
+            devices={addableDevices}
+            role={role}
+            onPick={(type) => {
+              const selectedIndex = track.effects.findIndex((fx) => fx.id === activeDeviceId);
+              const insertionIndex =
+                selectedIndex >= 0 ? selectedIndex + 1 : activeDeviceId === "instrument" ? 0 : track.effects.length;
+              const command = addLanded(type, insertionIndex);
+              services.store.execute(command);
+              setSelectedDeviceId(command.effectId);
+              setGoalNote(null);
+              closeDevicesAdd();
+            }}
+            onGoal={(goalText) => {
+              const intent = parseProductionIntent(goalText);
+              if (!intent) return;
+              try {
+                services.store.execute(applyProductionIntentToTrackCommand(doc, track.id, intent));
+                setGoalNote(null);
+                closeDevicesAdd();
+              } catch (err) {
+                setGoalNote(err instanceof Error ? err.message : String(err));
+              }
+            }}
+            onAssistant={(assistantIntent) => {
+              try {
+                services.store.execute(applyEffectIntentOnTrack(doc, track.id, assistantIntent));
+                setGoalNote(null);
+                closeDevicesAdd();
+              } catch (err) {
+                setGoalNote(err instanceof Error ? err.message : String(err));
+              }
+            }}
+            onClose={closeDevicesAdd}
+          />
+        )}
+        {goalNote && <div className="fx-goal-note">{goalNote}</div>}
         <div className="devices-toolbar">
           <div className="devices-chain" role="group" aria-label="Track device chain. Drag modules to reorder them.">
             {hasInstrument && (

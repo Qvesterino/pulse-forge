@@ -90,6 +90,9 @@ export function TrackTabs({
     <div className="track-tabs" role="tablist" aria-label="Tracks">
       {tracks.map((track, idx) => {
         const isSelected = selection.trackIds.includes(track.id) || track.id === selectedTrackId;
+        const isCurrentTrack = track.id === selectedTrackId;
+        const isSecondaryMultiSelection =
+          !isCurrentTrack && selection.trackIds.length > 1 && selection.trackIds.includes(track.id);
         if (editingTrackId === track.id) {
           return (
             <input
@@ -113,8 +116,9 @@ export function TrackTabs({
             type="button"
             ref={track.id === selectedTrackId ? selectedTabRef : undefined}
             role="tab"
-            aria-selected={isSelected}
-            aria-label={`${track.name} (${track.kind === "drum" ? "Drum track" : track.kind === "group" ? "Group track" : track.kind === "generative" ? "Generative track" : `${track.instrument} track`})${track.mute ? ", muted" : ""}${track.solo ? ", soloed" : ""}`}
+            aria-selected={isCurrentTrack}
+            aria-label={`${track.name} (${track.kind === "drum" ? "Drum track" : track.kind === "group" ? "Group track" : track.kind === "generative" ? "Generative track" : `${track.instrument} track`})${track.mute ? ", muted" : ""}${track.solo ? ", soloed" : ""}${isSecondaryMultiSelection ? ", included in the multi-track selection" : ""}`}
+            data-multi-selected={isSecondaryMultiSelection || undefined}
             className={`track-tab${isSelected ? " active" : ""}${sampleOver === track.id ? " drop-target" : ""}`}
             title={`${track.name} — select track (${idx < 9 ? `${idx + 1}, ` : ""}Tab cycles), F2 to rename — Ctrl+click add, Shift+click range${track.kind === "instrument" ? " · drop a sample to load it" : ""}`}
             onClick={(e) => onSelectTrack(track.id, e)}

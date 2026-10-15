@@ -318,6 +318,8 @@ export function PianoRollTrack({
   scaleSnap,
   fullscreen = false,
   onToggleFullscreen,
+  focusTick = null,
+  focusRevision = 0,
 }: {
   track: InstrumentTrack;
   pattern: Pattern;
@@ -328,6 +330,10 @@ export function PianoRollTrack({
   /** Fullscreen presentation for touch/narrow screens (mobile layout V2). */
   fullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  /** Scroll to a clip's source phase when opened from the arrangement. */
+  focusTick?: number | null;
+  /** Makes repeated requests for the same tick focus the editor again. */
+  focusRevision?: number;
 }) {
   const services = useServices();
   // Fine-grained selectors (GOAL 04): PianoRoll is the deepest re-render
@@ -395,6 +401,17 @@ export function PianoRollTrack({
     const velocity = velocityScrollRef.current;
     if (roll && velocity && Math.abs(roll.scrollLeft - velocity.scrollLeft) > 1) roll.scrollLeft = velocity.scrollLeft;
   };
+  useEffect(() => {
+    if (focusTick === null || !Number.isFinite(focusTick)) return;
+    const roll = scrollRef.current;
+    if (!roll) return;
+    const viewportWidth = roll.clientWidth || 800;
+    const stepWidth = Math.max(MIN_PIANO_ROLL_STEP_PX, Math.min(64, viewportWidth / Math.max(1, pattern.stepCount)));
+    const focusX = (Math.max(0, focusTick) / STEP_TICKS) * stepWidth;
+    const contextWidth = Math.min(viewportWidth * 0.15, stepWidth * 4);
+    roll.scrollLeft = Math.max(0, focusX - contextWidth);
+    syncVelocityScroll();
+  }, [focusRevision, focusTick, pattern.stepCount]);
   const dragPreviewEndTicks =
     drag?.mode === "resize"
       ? drag.baseStart + drag.durSteps * STEP_TICKS

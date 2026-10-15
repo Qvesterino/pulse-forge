@@ -212,6 +212,13 @@ export function Sequencer({
   const publishCursor = usePublishCursor();
   // Fullscreen piano roll on touch/narrow screens — which track is expanded.
   const [pianoFullTrack, setPianoFullTrack] = useState<string | null>(null);
+  const [pianoRollFocus, setPianoRollFocus] = useState<{
+    trackId: string;
+    patternId: string;
+    sourceTick: number;
+    revision: number;
+  } | null>(null);
+  const pianoRollFocusRevision = useRef(0);
   const [beatFocus, setBeatFocus] = useState(false);
   // Gesture cheat sheet — the sequencer's hidden drags/keys, on demand.
   const [cheatOpen, setCheatOpen] = useState(false);
@@ -588,7 +595,8 @@ export function Sequencer({
         !request ||
         typeof request.trackId !== "string" ||
         typeof request.patternId !== "string" ||
-        !Number.isFinite(request.startTick)
+        !Number.isFinite(request.startTick) ||
+        !Number.isFinite(request.phaseOffsetTicks)
       )
         return;
 
@@ -604,6 +612,12 @@ export function Sequencer({
         setScrollTop(nextScrollTop);
       }
       setPianoFullTrack(request.trackId);
+      setPianoRollFocus({
+        trackId: request.trackId,
+        patternId: request.patternId,
+        sourceTick: Math.max(0, request.phaseOffsetTicks),
+        revision: ++pianoRollFocusRevision.current,
+      });
     };
 
     window.addEventListener(MIDI_CLIP_EDITOR_NAVIGATION_EVENT, openClipEditor);
@@ -1014,6 +1028,13 @@ export function Sequencer({
                 remoteCursors={remoteCursors}
                 pianoFullTrack={pianoFullTrack}
                 onTogglePianoFull={setPianoFullTrack}
+                pianoRollFocus={
+                  item.type === "pianoRoll" &&
+                  item.track.id === pianoRollFocus?.trackId &&
+                  pattern.id === pianoRollFocus.patternId
+                    ? pianoRollFocus
+                    : null
+                }
                 colWindow={colWindow}
                 effMinCol={effMinCol}
               />
@@ -1048,6 +1069,7 @@ function VirtualRow({
   remoteCursors,
   pianoFullTrack,
   onTogglePianoFull,
+  pianoRollFocus,
   colWindow,
   effMinCol,
 }: {
@@ -1078,6 +1100,7 @@ function VirtualRow({
   remoteCursors: RemoteCursor[];
   pianoFullTrack: string | null;
   onTogglePianoFull: (trackId: string | null) => void;
+  pianoRollFocus: { sourceTick: number; revision: number } | null;
   colWindow: { from: number; to: number } | null;
   effMinCol: number;
 }) {
@@ -1134,6 +1157,8 @@ function VirtualRow({
         scaleSnap={scaleSnap}
         fullscreen={pianoFullTrack === item.track.id}
         onToggleFullscreen={() => onTogglePianoFull(pianoFullTrack === item.track.id ? null : item.track.id)}
+        focusTick={pianoRollFocus?.sourceTick ?? null}
+        focusRevision={pianoRollFocus?.revision ?? 0}
       />
     );
   }

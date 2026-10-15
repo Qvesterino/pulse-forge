@@ -16,6 +16,7 @@ import {
 } from "../src/commands/commands";
 import { projectToYDoc, yDocToProject } from "../src/collab/YDocAdapter";
 import { midiClipEventsInWindow, noteEventsInWindow } from "../src/project-model/events";
+import { computeRenderTicks } from "../src/rendering/renderer";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { migrateProject, normalizeProject, SCHEMA_VERSION } from "../src/project-model/schema";
 import { BAR_TICKS, STEP_TICKS } from "../src/project-model/types";
@@ -156,6 +157,31 @@ describe("independent MIDI arrangement clips", () => {
     const yMap = yDoc.getMap("project");
     projectToYDoc(withClip, yMap);
     expect(yDocToProject(yMap).arrangement.midiClips).toEqual(withClip.arrangement.midiClips);
+  });
+
+  it("round-trips a 93-bar song with a 12-bar sustain through Yjs", () => {
+    const { doc, trackId, patternId } = projectWithMelody();
+    const withSustain = addNote(doc, trackId, {
+      pitch: 36,
+      start: 0,
+      duration: BAR_TICKS * 12,
+      velocity: 0.9,
+    }).execute(doc);
+    const withSustainClip = addMidiClip(withSustain, trackId, patternId, BAR_TICKS * 80, BAR_TICKS * 12).execute(
+      withSustain,
+    );
+    const song = addMidiClip(withSustainClip, trackId, patternId, BAR_TICKS * 92, BAR_TICKS).execute(withSustainClip);
+    const yDoc = new Y.Doc();
+    const yMap = yDoc.getMap("project");
+
+    projectToYDoc(song, yMap);
+    const reopened = yDocToProject(yMap);
+
+    expect(computeRenderTicks(reopened, "song")).toBe(BAR_TICKS * 93);
+    expect(reopened.arrangement.midiClips).toEqual(song.arrangement.midiClips);
+    expect(reopened.patterns.find((candidate) => candidate.id === patternId)?.notes[trackId]).toContainEqual(
+      expect.objectContaining({ pitch: 36, start: 0, duration: BAR_TICKS * 12 }),
+    );
   });
 
   it("deletes a clip as an undoable document change", () => {

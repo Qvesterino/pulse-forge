@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import type { BottomPanel, DockState } from "./dockLayout";
 
 /**
@@ -89,12 +89,21 @@ export function DockChrome({
 }: DockChromeProps) {
   const anyOpen = dock.slotA !== null || dock.slotB !== null;
   const tabsRef = useRef<HTMLDivElement>(null);
+  const [tabScrollEdges, setTabScrollEdges] = useState({ left: false, right: false });
   useEffect(() => {
     const tabs = tabsRef.current;
+    if (!tabs) return;
     const selectedPanel = dock.slotB ?? dock.slotA;
-    if (!tabs || !selectedPanel || typeof ResizeObserver === "undefined") return;
+
+    const updateScrollEdges = () => {
+      const maxScroll = Math.max(0, tabs.scrollWidth - tabs.clientWidth);
+      const left = tabs.scrollLeft > 1;
+      const right = tabs.scrollLeft < maxScroll - 1;
+      setTabScrollEdges((current) => (current.left === left && current.right === right ? current : { left, right }));
+    };
 
     const revealSelectedTab = () => {
+      if (!selectedPanel) return;
       const selectedTab = tabs.querySelector<HTMLButtonElement>(`[data-dock-tab="${selectedPanel}"]`);
       if (selectedTab && typeof selectedTab.scrollIntoView === "function") {
         selectedTab.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -102,9 +111,21 @@ export function DockChrome({
     };
 
     revealSelectedTab();
-    const observer = new ResizeObserver(revealSelectedTab);
-    observer.observe(tabs);
-    return () => observer.disconnect();
+    updateScrollEdges();
+    tabs.addEventListener("scroll", updateScrollEdges, { passive: true });
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => {
+            updateScrollEdges();
+            revealSelectedTab();
+          });
+    observer?.observe(tabs);
+    tabs.querySelectorAll(".dock-tab").forEach((tab) => observer?.observe(tab));
+    return () => {
+      tabs.removeEventListener("scroll", updateScrollEdges);
+      observer?.disconnect();
+    };
   }, [dock.slotA, dock.slotB]);
 
   const onGripKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -134,7 +155,14 @@ export function DockChrome({
         <span aria-hidden="true" />
         <span aria-hidden="true" />
       </button>
-      <div className="dock-tabs" role="tablist" aria-label="Bottom dock panels" ref={tabsRef}>
+      <div
+        className={
+          "dock-tabs" + (tabScrollEdges.left ? " has-more-left" : "") + (tabScrollEdges.right ? " has-more-right" : "")
+        }
+        role="group"
+        aria-label="Bottom dock panels"
+        ref={tabsRef}
+      >
         {DOCK_TABS.map((tab) => {
           const inA = dock.slotA === tab.id;
           const inB = dock.slotB === tab.id;
@@ -144,10 +172,9 @@ export function DockChrome({
               key={tab.id}
               type="button"
               id={`dock-tab-${tab.id}`}
-              role="tab"
               aria-label={tab.ariaLabel}
-              aria-selected={open}
-              aria-controls={`dock-panel-${tab.id}`}
+              aria-expanded={open}
+              aria-controls={open ? `dock-panel-${tab.id}` : undefined}
               data-dock-tab={tab.id}
               className={"dock-tab" + (open ? " active" : "") + (inB ? " in-split" : "")}
               onClick={(event) => onToggle(tab.id, event.ctrlKey || event.metaKey)}

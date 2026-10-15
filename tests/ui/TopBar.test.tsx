@@ -6,7 +6,8 @@ import userEvent from "@testing-library/user-event";
 import { TopBar } from "../../src/ui/TopBar";
 import { renderWithContext } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
-import { BAR_TICKS } from "../../src/project-model/types";
+import { BAR_TICKS, type ProjectDocument } from "../../src/project-model/types";
+import { addMidiClip } from "../../src/commands/commands";
 
 function topBarProps(overrides?: Partial<React.ComponentProps<typeof TopBar>>) {
   return {
@@ -103,6 +104,26 @@ describe("TopBar", () => {
     renderWithContext(<TopBar {...topBarProps()} />, { services });
     await user.click(screen.getByText("PATTERN"));
     expect(screen.getByText(/ARRANGEMENT EMPTY/)).toBeInTheDocument();
+  });
+
+  it("recognizes a MIDI-only arrangement when switching to SONG", async () => {
+    const user = userEvent.setup();
+    const source = createProjectFromTemplate("house");
+    const instrument = source.tracks.find((track) => track.kind === "instrument");
+    if (!instrument || instrument.kind !== "instrument") throw new Error("house template needs an instrument track");
+    const sourcePattern = source.patterns.find((pattern) => pattern.id === source.activePatternId);
+    if (!sourcePattern) throw new Error("house template needs an active pattern");
+    const base: ProjectDocument = { ...source, arrangement: { ...source.arrangement, clips: [], midiClips: [] } };
+    const services = mockServices(base);
+    let currentDoc: ProjectDocument = base;
+    services.store.getDoc = () => currentDoc;
+    (services.transport as unknown as { position: number }).position = BAR_TICKS * 8;
+    renderWithContext(<TopBar {...topBarProps()} />, { services });
+    currentDoc = addMidiClip(base, instrument.id, sourcePattern.id, BAR_TICKS * 8, BAR_TICKS * 4).execute(base);
+
+    await user.click(screen.getByText("PATTERN"));
+
+    expect(screen.queryByText(/ARRANGEMENT EMPTY|NO CLIP AT BAR/)).not.toBeInTheDocument();
   });
 
   it("shows no guard when leaving SONG mode", async () => {
