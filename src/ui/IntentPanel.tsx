@@ -155,8 +155,14 @@ import {
 } from "../intent/mix";
 import { applyParamIntent, paramReadback } from "../intent/param-intent";
 import { measureParamVerification } from "../intent/param-readback";
-import { attentiveStatusLine, findingsFromSectionMeters, isAttentiveModeEnabled } from "../intent/attentive-mode";
+import { attentiveStatusLine, findingsFromSectionMeters, isAttentiveModeEnabled, setAttentiveModeEnabled } from "../intent/attentive-mode";
 import { noteIntentProposal } from "../intent/reaction-bridge";
+import {
+  activeReactionLedger,
+  isReactionLedgerEnabled,
+  setReactionLedgerEnabled,
+  type ReactionSummary,
+} from "../intent/reaction-ledger";
 import { applyLoudnessIntent, measurePreviewLoudness } from "../intent/loudness";
 import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
 import {
@@ -675,6 +681,42 @@ export function IntentPanel() {
       }
       loader.setIntentModelMode("off");
     });
+  };
+
+  // REACTION LEDGER (F1) — the kill switch and the export chip live here,
+  // because this panel is where every machine proposal is born. The ledger
+  // records what the human DOES with a proposal (keeps it, undoes it, tweaks
+  // it) and stays local until the user exports the pack by hand.
+  //
+  // Refresh points are deliberate: mount, the toggle itself, and the end of
+  // every dispatch (below). `ProjectStore` has no subscription, so an undo
+  // that happens between two intents shows its count on the next intent —
+  // the numbers are correct, just not pushed.
+  const [reaction, setReaction] = useState<{ enabled: boolean; summary: ReactionSummary | null }>(() => {
+    const enabled = isReactionLedgerEnabled();
+    const ledger = enabled ? activeReactionLedger() : null;
+    return { enabled, summary: ledger ? ledger.summary() : null };
+  });
+  const refreshReaction = () => {
+    const enabled = isReactionLedgerEnabled();
+    const ledger = enabled ? activeReactionLedger() : null;
+    setReaction({ enabled, summary: ledger ? ledger.summary() : null });
+  };
+  const toggleReactionLedger = () => {
+    setReactionLedgerEnabled(!reaction.enabled);
+    refreshReaction();
+  };
+  const exportReactionPack = () => {
+    const ledger = activeReactionLedger();
+    if (!ledger) return;
+    const blob = new Blob([JSON.stringify(ledger.exportPack(), null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `kyx-reactions-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    // Revoke only after the browser has had the click (codebase convention).
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
   };
 
   // DESKTOP MCP (Phase D2) — opt-in loopback bridge + stdio forwarder in the
@@ -2045,6 +2087,13 @@ export function IntentPanel() {
   // Vocal-ready mode: loop the active pattern with a click so a solo artist
   // can rehearse/record vocals, plus a beat-only bounce (no master chain).
   const [vocalMode, setVocalMode] = useState(false);
+  // F3 pozorný režim (opt-in, default OFF) — merané návrhy počas auditu pesničky.
+  const [attentiveMode, setAttentiveModeState] = useState(isAttentiveModeEnabled());
+  const setAttentiveMode = (enabled: boolean): void => {
+    setAttentiveModeState(enabled);
+    setAttentiveModeEnabled(enabled);
+    if (!enabled) setAttentiveFindings([]);
+  };
   // Producer session (bod 3): decisions HUD + B/C variant chips + follow-up
   // resolve ("ten istý, len pomalšie") before the generic routes.
   const [sessionTick, setSessionTick] = useState(0);
@@ -3859,6 +3908,26 @@ export function IntentPanel() {
     setError(null);
     setJustApplied(false);
     setClarify(null);
+    // Reaction ledger F1: capture the pre-execution document and undo depth
+    // BEFORE the try, and register in the `finally` below. The dispatch chain
+    // spans ~30 branches with many early returns and awaits, so `finally` is
+    // the only exit every path shares — including a throw, and a throw changed
+    // nothing, so the bridge's postcondition drops it.
+    //
+    // SCOPE NOTE (learned the hard way): a `try` block and its `finally` are
+    // SIBLING scopes — nothing declared inside `try` is visible in `finally`.
+    // That is why the route travels through `executedRoute` instead of being
+    // read from the binding the try declared.
+    //
+    // This registration used to sit at the top of the try with `doc, doc` and
+    // `undoStackLength + 1`, which is two silent defects in one line: the same
+    // document twice means beforeHash === afterHash always, and the depth
+    // AFTER apply is never the depth `onUndoCommitted` reports. Both made
+    // every outcome unreachable while the ledger still looked healthy.
+    const docBeforeRoute = doc;
+    const undoDepthBeforeRoute = services.store.undoStackLength;
+    let executedRoute: RoutedIntent | null = null;
+    let delegatedToNestedRoute = false;
     try {
       // Pre-routed entry: the local-model fallback (below) re-enters with an
       // adapted route so the big dispatch chain runs exactly once.
@@ -3871,9 +3940,7 @@ export function IntentPanel() {
           selectedRange: routeSelection.timeRange,
         });
       preRoutedRef.current = null;
-      // Reaction ledger F1: every mutating intent route registers a proposal
-      // (keep/undo/tweak windows resolve via the store hooks in services).
-      noteIntentProposal(route, doc, doc, services.store.undoStackLength + 1);
+      executedRoute = route;
       if (route.kind === "revise" && rejectUnresolvedBriefConflicts()) return;
       if (lastGeneration() && resolveProducerFollowUp(source, lastGeneration()?.intent ?? null)) {
         const followUp = resolveProducerFollowUp(source, lastGeneration()?.intent ?? null)!;
@@ -4611,6 +4678,10 @@ export function IntentPanel() {
         const modelRoute = await tryModelRoute(source, doc, route);
         if (modelRoute) {
           preRoutedRef.current = modelRoute;
+          // The nested call owns the proposal from here: its route is the one
+          // that executes, so THIS invocation must not register a row for a
+          // route that never ran.
+          delegatedToNestedRoute = true;
           // MINING: what the model caught (kind drift monitoring — a kind
           // takeover here that users keep undoing is a wrongKind in hiding)
           logIntentMiningEvent({ prompt: source, outcome: "model-hit", routeKind: modelRoute.kind });
@@ -4638,6 +4709,10 @@ export function IntentPanel() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setRouteBusy(false);
+      if (executedRoute && !delegatedToNestedRoute) {
+        noteIntentProposal(executedRoute, docBeforeRoute, services.store.getDoc(), undoDepthBeforeRoute + 1);
+        refreshReaction();
+      }
     }
   };
 
@@ -4658,6 +4733,38 @@ export function IntentPanel() {
         >
           🤖
         </button>
+        <button
+          type="button"
+          className="intent-model-chip"
+          data-state={
+            reaction.enabled
+              ? reaction.summary && reaction.summary.pending > 0
+                ? "loading"
+                : "ready"
+              : "off"
+          }
+          onClick={toggleReactionLedger}
+          title={
+            reaction.enabled
+              ? `Reaction ledger: zapísané ${reaction.summary?.kept ?? 0} · vrátené ${reaction.summary?.undone ?? 0} · doladené ${reaction.summary?.tweaked ?? 0}. Klikni pre vypnutie.`
+              : "Reaction ledger: KYX si zapisuje, čo s tvojimi návrhmi robíš (necháš / vrátiš / doladíš). Zatiaľ vypnuté. Klikni pre zapnutie."
+          }
+          aria-label={`Reaction ledger: ${reaction.enabled ? "on" : "off"}`}
+        >
+          👂
+        </button>
+        {reaction.enabled && (
+          <button
+            type="button"
+            className="intent-model-chip"
+            data-state="ready"
+            onClick={exportReactionPack}
+            title="Stiahni záznam reakcií ako JSON — lokálne, nič neopustí počítač kým to nevyexportuješ."
+            aria-label="Export reaction ledger"
+          >
+            ⬇{reaction.summary ? reaction.summary.kept + reaction.summary.undone + reaction.summary.tweaked : 0}
+          </button>
+        )}
         {desktopMcp && (
           <button
             type="button"
@@ -5355,6 +5462,14 @@ export function IntentPanel() {
           title="Vocal-ready mode — loop the active pattern with a click so you can rehearse or record vocals"
         >
           {vocalMode ? "🎧 VOCAL ON" : "🎧 VOCAL"}
+        </button>
+        <button
+          type="button"
+          className={attentiveMode ? "btn intent-attentive-btn on" : "btn intent-attentive-btn"}
+          onClick={() => setAttentiveMode(!attentiveMode)}
+          title="Pozorný režim — počas auditu pesničky zmeria sekcie a navrhne opravy tam, kde meranie ukazuje prázdnu sekciu (nikdy nič nepíše ticho)"
+        >
+          {attentiveMode ? "🎧 POZORNÝ ON" : "🎧 POZORNÝ"}
         </button>
         <button
           type="button"
