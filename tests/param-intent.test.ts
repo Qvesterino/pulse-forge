@@ -47,7 +47,13 @@ describe("parseParamIntent — grammar", () => {
     // reverb.mix is the PRIMARY knob — that ask stays with effectIntent.
     expect(parseParamIntent("suchsi dozvuk na leade")).toBeNull();
     // saturation's primary knob is DRIVE, so its mix is a param-role ask.
-    expect(mustParse("suchsia saturacia na leade").role).toBe("mix");
+    const dry = mustParse("suchsia saturacia na leade");
+    expect(dry.role).toBe("mix");
+    // suchší = DRIER — the direction must say LESS (the default ladder would
+    // invert the ask into MORE wet; the measured readback caught it live).
+    expect(dry.mode).toBe("less");
+    expect(mustParse("dry saturation on the lead").mode).toBe("less");
+    expect(mustParse("mokrejsia saturacia na leade").mode).toBe("more");
     expect(mustParse("tmavsi ton reverbu na leade").role).toBe("tone");
   });
 

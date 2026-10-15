@@ -86,7 +86,10 @@ describe("findingsFromSectionMeters", () => {
   });
 
   it("never throws on malformed meters", () => {
-    const junk = [{ role: "x", rmsDbfs: Number.NaN }, { role: "y", rmsDbfs: -Infinity }] as unknown as SongSectionMeter[];
+    const junk = [
+      { role: "x", rmsDbfs: Number.NaN },
+      { role: "y", rmsDbfs: -Infinity },
+    ] as unknown as SongSectionMeter[];
     expect(findingsFromSectionMeters(junk)).toEqual([]);
   });
 });

@@ -70,7 +70,7 @@ const mustParse = (text: string): ParamIntent => parseParamIntent(text) as Param
 describe("measureParamVerification (P3)", () => {
   it("a brighter render verifies a tone-up ask with a percentage line", async () => {
     const doc = testDoc();
-    const intent = mustParse("jasnejsi ton reverbu na 808");
+    const intent = mustParse("jasnejsia saturacia na 808"); // tone tilt on the DRY path measures; reverb tone is honestly unmeasured
     const after = applyParamIntent(doc, intent).execute(doc);
     const verification = await measureParamVerification(doc, after, intent, (renderDoc) =>
       Promise.resolve(renderDoc === doc ? noiseBuffer(11, false) : noiseBuffer(11, true)),
@@ -78,6 +78,23 @@ describe("measureParamVerification (P3)", () => {
     expect(verification.measurable).toBe(true);
     expect(verification.verified).toBe(true);
     expect(verification.line).toMatch(/✓ .*jasnejší o \d+ %/);
+    expect(verification.correction).toBeNull();
+  });
+
+  it("a SET ask's direction follows the knob move (set down verifies darker)", async () => {
+    // "set tone to 800 Hz" moves the knob DOWN — the measurement must expect
+    // a darker landing, not grade it against a literal "more" (the verifier
+    // caught set asks being un-verifyable in the down direction).
+    const doc = testDoc();
+    const intent = mustParse("set saturation tone to 800 hz na 808");
+    expect(intent.mode).toBe("set");
+    const after = applyParamIntent(doc, intent).execute(doc);
+    const verification = await measureParamVerification(doc, after, intent, (renderDoc) =>
+      Promise.resolve(renderDoc === doc ? noiseBuffer(11, true) : noiseBuffer(11, false)),
+    );
+    expect(verification.measurable).toBe(true);
+    expect(verification.verified).toBe(true);
+    expect(verification.line).toMatch(/tmavší/);
     expect(verification.correction).toBeNull();
   });
 
@@ -104,7 +121,7 @@ describe("measureParamVerification (P3)", () => {
 
   it("no audible move on a relative ask yields the correction chip", async () => {
     const doc = testDoc();
-    const intent = mustParse("jasnejsi ton reverbu na 808");
+    const intent = mustParse("jasnejsia saturacia na 808"); // tone tilt on the DRY path measures; reverb tone is honestly unmeasured
     const verification = await measureParamVerification(doc, doc, intent, () =>
       Promise.resolve(noiseBuffer(11, false)),
     );
@@ -124,7 +141,7 @@ describe("measureParamVerification (P3)", () => {
 
   it("a failed render degrades to unmeasured, never throws", async () => {
     const doc = testDoc();
-    const intent = mustParse("jasnejsi ton reverbu na 808");
+    const intent = mustParse("jasnejsia saturacia na 808"); // tone tilt on the DRY path measures; reverb tone is honestly unmeasured
     const verification = await measureParamVerification(doc, doc, intent, () => Promise.resolve(null));
     expect(verification.measurable).toBe(false);
     expect(verification.correction).toBeNull();

@@ -164,6 +164,7 @@
     "video:promo": "remotion render remotion/index.ts PulseForgePromo out/pulse-forge-promo.mp4 --codec=h264 --public-dir=./remotion/public",
     "video:stills": "remotion still remotion/index.ts PulseForgePromo remotion/qa/preview.png --frame=700 --public-dir=./remotion/public",
     "verify:intent-model": "node scripts/verify-intent-model-browser.mts",
+    "verify:param-readback": "node scripts/verify-param-readback-browser.mts",
     "intent:cycle": "vite-node scripts/intent-cycle.mts"
   },
   "dependencies": {

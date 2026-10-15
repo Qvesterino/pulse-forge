@@ -1171,6 +1171,30 @@ deterministicRoute)`; creative-brief route model NEPIE (early return).
   prior-worker má Personal Overlay — ak sú načítané osobné váhy tvarovo
   kompatibilné, `run` odpovedá z nich v plain JS.
 
+#### f) PARAM WAVE — „ktorý gombík a akú hodnotu" (P1–P4, ⟦10-14/15⟧)
+
+- `src/intent/param-intent.ts`: 5 rolí (mix/time/tone/drive/width) × efekt →
+  konkrétny paramId; jednotky (ms/s/Hz/% → param's own unit cez log
+  interpoláciu pre `taper:"log"`), primary-knob shadow (reverb.mix,
+  saturation.drive… ostáva effectIntent vrstve), `paramIntentFromModel` pre
+  dekódovaný model action (P2 — kind head má 26 classes vrátane paramIntent;
+  špeciálne heady paramEffect/paramRole/paramMode/paramValue sú v shipped
+  INT8 artefakte od datasetu v17). Apply = MixDecision[] → applyMixIntent
+  (jeden undo). Meraný readback `src/intent/param-readback.ts` renderuje
+  track pred/po: mix → RMS, width → mid/side, tone → centroid len na
+  SATURÁCII (dry-path tilt); reverb/delay tone, drive a time sú poctivo
+  nemerateľné v1 s vlastným SK statusom.
+- **`npm run verify:param-readback`** (`scripts/verify-param-readback-browser.mts`)
+  — real-audio dôkaz nad reálnym offline rendererom (trap template, factory
+  bank): determinizmus kontrola (0,0000 % drift), mix more/less na RMS
+  (+50 %/−20 %), saturátor tone set → centroid (+66 %), haas width → side
+  (+20 %), wet-path tone + drive/time → poctivo nemerané.
+- Nálezy reálneho audia (10-15): **„suchšia saturácia" smerovala OPACNE**
+  (LESS-zoznam nepoznal suchší → default MORE → readback potvrdil +268 % RMS
+  na suchšiu žiadosť — opravené, regresné testy), set-ask smer sa teraz
+  riadi pohybom gombíka (set down = tmavší ✓), a pridanie efektu + pohyb v
+  jednej žiadosti meria celkovú deltu (dokumentovaná v1 hranica).
+
 ## 6. Kvalita, testy, determinizmus
 
 - **Testy**: `tests/intent-pipeline.test.ts`, `intent-async-pipeline.test.ts`,

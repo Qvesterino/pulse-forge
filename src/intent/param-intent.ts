@@ -258,8 +258,15 @@ export function parseParamIntent(text: string): ParamIntent | null {
     }
   }
 
-  // RELATIVE — more/less × ladder or explicit percent.
-  const less = /\bless\b|\bmenej|\bzniz|\bdown\b|\bdole\b|\bspomals/.test(lower) && role !== "time";
+  // RELATIVE — more/less × ladder or explicit percent. Drier/wetter own the
+  // mix role's direction: without them "suchšia saturácia" fell through to
+  // the default MORE and turned the wet UP (caught by the real-audio
+  // readback — the measured RMS went +268 % on a drier ask).
+  const drier = /\bsuch|\bdrier\b|\bdry\b/.test(lower);
+  const wetter = /\bmokr|\bwetter\b/.test(lower);
+  const less =
+    (/\bless\b|\bmenej|\bzniz|\bdown\b|\bdole\b|\bspomals/.test(lower) && role !== "time") ||
+    (role === "mix" && drier && !wetter);
   const timeShorter = /\bkrats|\bshort/.test(lower);
   const direction: "more" | "less" = role === "time" ? (timeShorter ? "less" : "more") : less ? "less" : "more";
   let amount: ParamIntent["amount"] = "medium";

@@ -6,7 +6,10 @@
  * the measurement shows no move.
  *
  * Role → measurable feature (pure math, no models):
- *   tone  → spectral centroid (brighter = up)
+ *   tone  → spectral centroid (brighter = up) — SATURATION only; the
+ *           reverb/delay output lowpass acts on the wet path, where the
+ *           full-render centroid's direction is source-dependent (verifier
+ *           2026-10-15: 1200→16000 Hz measured −1.8 %) → honestly unmeasured
  *   width → mid/side stereo width
  *   mix   → RMS level
  *   drive/time → NOT measured in v1 (measured honestly as null — the param
@@ -14,9 +17,17 @@
  *
  * Audition-first: a correction is a SUGGESTION string for the panel chip —
  * nothing re-applies silently.
+ *
+ * Known v1 boundary (caught by the real-audio verifier 2026-10-15): when the
+ * intent ADDS the effect (add-if-missing), the BEFORE render has no effect at
+ * all, so the delta conflates "effect appeared" with "knob moved" — a fresh
+ * reverb's tail darkens the centroid whatever the tone knob does. Knob-move
+ * asks on an installed effect (the common case) measure cleanly; an add+set
+ * reports the overall delta honestly without a correction chip.
  */
 import type { ProjectDocument } from "../project-model/types";
 import { extractAudioFeaturesV2, extractStereoAudioFeatures } from "../ai/audio-features";
+import { defaultParamsOf } from "../effects/definitions";
 import type { ParamRole, ParamIntent } from "./param-intent";
 import { trackIdsForMixTarget } from "./param-intent";
 
@@ -87,6 +98,28 @@ function monoOf(buffer: AudioBuffer): Float32Array | null {
 }
 
 /**
+ * For SET asks: did the knob move UP on the first target's resolved track?
+ * Reads the same instance path the knob readback uses; a missing instance
+ * falls back to the effect default. Equal values count as up (the ask made
+ * no downward move).
+ */
+function setAskMovesUp(before: ProjectDocument, after: ProjectDocument, intent: ParamIntent): boolean {
+  const ids = trackIdsForMixTarget(before, intent.targets[0] ?? "");
+  if (ids.length === 0) return true;
+  const trackId = ids[0] as string;
+  const read = (doc: ProjectDocument): number | undefined => {
+    const track = doc.tracks.find((candidate) => candidate.id === trackId);
+    if (!track || !("effects" in track)) return undefined;
+    const instance = track.effects.find((effect) => effect.type === intent.effectType);
+    return instance?.params[intent.paramId];
+  };
+  const beforeValue = read(before) ?? defaultParamsOf(intent.effectType)[intent.paramId] ?? 0;
+  const afterValue = read(after);
+  if (afterValue === undefined) return true;
+  return afterValue >= beforeValue;
+}
+
+/**
  * Measure a param ask's landing. Renders each target track on the BEFORE and
  * AFTER docs through the injected renderer (the panel passes renderTrack
  * with the live bank; tests pass synthetic buffers). NEVER throws — a failed
@@ -98,8 +131,17 @@ export async function measureParamVerification(
   intent: ParamIntent,
   render: RenderTrackFn,
 ): Promise<ParamVerification> {
+  // Wet-path tone (reverb/delay output lowpass) is honestly unmeasured v1:
+  // the real-audio verifier showed the full-render centroid moves the WRONG
+  // way when the LP opens (1200→16000 Hz landed at −1.8 %) — opening the
+  // tail adds mid-heavy energy, so the mix centroid drifts toward the tail
+  // whatever the knob does. The direction is source-dependent; claiming it
+  // would print false corrections. Saturation's tone tilt acts on the dry
+  // path and keeps the centroid trustworthy.
+  const wetPathTone = intent.role === "tone" && (intent.effectType === "reverb" || intent.effectType === "delay");
   const targets: ParamVerificationTarget[] = [];
   for (const target of intent.targets) {
+    if (wetPathTone) break;
     const ids = trackIdsForMixTarget(before, target);
     if (ids.length === 0) continue;
     const trackId = ids[0] as string;
@@ -132,7 +174,10 @@ export async function measureParamVerification(
   }
 
   const measurable = targets.length > 0;
-  const askedUp = intent.mode !== "less";
+  // Relative asks carry their direction; a SET ask's direction is where the
+  // KNOB moved — "set tone to 800 Hz" must verify as a darker landing, not
+  // be un-verifyable because set isn't literally "more".
+  const askedUp = intent.mode === "less" ? false : intent.mode === "more" ? true : setAskMovesUp(before, after, intent);
   const verified =
     measurable && targets.some((entry) => entry.passed && (askedUp ? entry.deltaPct > 0 : entry.deltaPct < 0));
   const correction =
@@ -142,8 +187,9 @@ export async function measureParamVerification(
 
   let line: string;
   if (!measurable) {
-    line =
-      intent.role === "drive" || intent.role === "time"
+    line = wetPathTone
+      ? "tón na wet-ceste (reverb/delay) ešte nemeráme spoľahlivo — gombík sa ale pohol"
+      : intent.role === "drive" || intent.role === "time"
         ? "meranie tejto role ešte nemáme (drive/time v1)"
         : "meranie zlyhalo — renderer nedodal audio";
   } else if (verified) {
