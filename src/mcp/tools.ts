@@ -252,6 +252,8 @@ const OUTPUT_DIAGNOSE_MIX: McpOutputSchema = {
     findings: { type: "array", items: { type: "object" } },
     attributions: { type: "array", items: { type: "string" } },
     suggestedActions: { type: "array", items: { type: "string" } },
+    /** F2: how this owner reacts to machine proposals (local ledger, absent when empty). */
+    reactions: { type: ["object", "null"] },
   },
   required: ["scope", "strips", "findings", "suggestedActions"],
 };
@@ -3549,7 +3551,17 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         // the eager DAW graph — it loads on the first diagnose call.
         const { formatMixDiagnosis } = await import("./mix-diagnosis");
         const data = await ctx.diagnoseMix({ scope });
-        return { text: formatMixDiagnosis(data), mutated: false, data };
+        // F2: the reaction ledger's report rides along with the ears. Silent
+        // when nothing is resolved yet — a diagnose call must not grow a
+        // section just because F1 exists.
+        const { reactionReportForAgent } = await import("./reaction-report");
+        const reactions = reactionReportForAgent();
+        const text = formatMixDiagnosis(data);
+        return {
+          text: reactions ? `${text}\n\n${reactions.text}` : text,
+          mutated: false,
+          data: reactions ? { ...data, reactions: reactions.data } : data,
+        };
       } catch (error) {
         return mcpError(
           "EXECUTION_FAILED",

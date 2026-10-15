@@ -70,6 +70,23 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     transport: services.transport,
     // kyx_meter reads the LIVE engine (null when no audio context is up).
     meters: () => mcpMeterSnapshotFromServices(services),
+    // THE AI's EARS (closed-loop iterate): renders the current doc → stereo
+    // PCM for the measurement pipeline. Same render path as mcpRenderSummary.
+    renderMix: async () => {
+      const d = services.store.getDoc();
+      const { renderProject } = await import("../rendering/renderer");
+      const mode = d.arrangement.clips.length > 0 ? "song" : "pattern";
+      const buffer = await renderProject(d, services.bank, {
+        mode,
+        sampleRate: 44100,
+        tailSeconds: 0.6,
+      });
+      const channels: Float32Array[] = [];
+      for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+        channels.push(new Float32Array(buffer.getChannelData(ch)));
+      }
+      return { channels, sampleRate: buffer.sampleRate };
+    },
     beginUndoFrame: (label) => services.store.beginUndoFrame(label),
     endUndoFrame: () => services.store.endUndoFrame(),
     measureLoudness: () => mcpMeasureLoudness(services),
