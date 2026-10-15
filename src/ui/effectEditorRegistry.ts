@@ -74,7 +74,11 @@ const PORTAL_ACTIVE_PARAMS_BY_MODE: ReadonlyArray<ReadonlySet<string>> = [
 ];
 
 const EDITOR_OVERRIDES: Partial<Record<EffectType, Pick<EffectEditorSpec, "primaryParamIds">>> = {
-  eq: { primaryParamIds: ["hpFreq", "lowShelfGain", "lowMidGain", "highShelfGain"] },
+  // Four GAIN bands, and the four points on the multiview curve. hpFreq used
+  // to hold a slot here, which is a cut-off rather than a band: it has no peak
+  // to grab on the curve, so a draggable curve would have been unable to reach
+  // the very control it is drawn next to. HP and LP stay in the rack editor.
+  eq: { primaryParamIds: ["lowMidGain", "highMidGain", "lowShelfGain", "highShelfGain"] },
   compressor: { primaryParamIds: ["threshold", "ratio", "attack", "release"] },
   // The ESSENTIAL KIT multiview renders `primaryParamIds` for five devices at
   // once, so every kit slot needs a curated first page — a slot without one

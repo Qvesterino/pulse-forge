@@ -3,6 +3,7 @@ import { isForeignWork, labelsRevertedBy } from "./attribution";
 import { setMasterConfig } from "../commands/master";
 import { slipAudioClip, stretchAudioClip } from "../commands/audioClips";
 import { crossfadeAudioClips } from "../commands/clipEditing";
+import { buildClipClipboard, cutClips, pasteClips, type ClipClipboard } from "../commands/clipClipboard";
 import { hasMatchEqReference, referenceLoudnessTrim } from "../intent/match-eq";
 import { topIntentMisses } from "../intent/failure-log";
 import { planBlindPairGains, recordBlindAbTrial, resetBlindAbTrials, summarizeBlindAb } from "./blind-ab";
@@ -92,6 +93,7 @@ import {
   createInstrumentTrack,
   createScene,
   deleteArrangementClip,
+  deleteArrangementClipRipple,
   deleteAutomationPoint,
   deleteNote,
   deleteTrack,
@@ -99,6 +101,9 @@ import {
   moveEffect,
   moveEffectToIndex,
   moveNote,
+  moveArrangementClipRipple,
+  resizeArrangementClipRipple,
+  splitArrangementClipAtTick,
   deleteAudioClip,
   duplicateArrangementClip,
   moveArrangementClip,
@@ -4423,7 +4428,13 @@ function clipCoveringBar(doc: ProjectDocument, bar: number) {
   return doc.arrangement.clips.find((clip) => start >= clip.startBar && start < clip.startBar + clip.lengthBars);
 }
 
-/** kyx_clips — structured arrangement-clip edits over the same commands the
+/** MCP-side clipboard (P2 parity, owner-approved 2026-10-14). Module scope:
+ * an agent's copy must survive to a later paste the way the UI's does, and a
+ * ProjectDocument has no field for it. Deliberately NOT persisted into the
+ * project — pasting into one project must never paste from another. */
+let mcpClipClipboard: ClipClipboard | null = null;
+
+/** kyx_clips - structured arrangement-clip edits over the same commands the
  * NL arrange layer uses; delete rides the D4 gate. */
 function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
   const op = String(record.op ?? "");
@@ -4437,6 +4448,67 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
     loop?: boolean;
   }): string =>
     `"${sceneName(clip.sceneId)}" bars ${clip.startBar + 1}–${clip.startBar + clip.lengthBars}${clip.loop ? " (loop)" : ""}`;
+
+  // ── CLIPBOARD (P2 parity, owner-approved 2026-10-14) ─────────────────
+  // Handled before target resolution: `paste` has no source clip to address.
+  if (op === "copy" || op === "cut" || op === "paste") {
+    if (op === "paste") {
+      if (!mcpClipClipboard) return { text: "clipboard is empty — copy or cut first", mutated: false };
+      // Paste at the playhead unless a bar is named; the UI pastes at the
+      // playhead, so an agent that passes no bar lands where a user would.
+      const rawPasteBar = Number(record.bar);
+      const playhead = typeof ctx.transport.position === "number" ? ctx.transport.position : 0;
+      const atTick = Number.isFinite(rawPasteBar) && rawPasteBar >= 1 ? (rawPasteBar - 1) * TICKS_PER_BAR : playhead;
+      ctx.execute(pasteClips(doc, mcpClipClipboard, atTick));
+      const where = Number.isFinite(rawPasteBar) && rawPasteBar >= 1 ? `bar ${Math.round(rawPasteBar)}` : "the playhead";
+      return { text: `pasted ${clipboardSummary(mcpClipClipboard)} at ${where} — one undo step`, mutated: true };
+    }
+
+    // copy / cut both need a source clip: the arrangement clip covering the
+    // anchor bar, else the audio clip on a named track at that bar.
+    const rawBar = typeof record.bar === "number" ? record.bar : 1;
+    if (!Number.isFinite(rawBar) || rawBar < 1) {
+      return { text: `${op} needs a 1-based anchor bar`, mutated: false };
+    }
+    const sceneClip = clipCoveringBar(doc, Math.round(rawBar));
+    let targets: string[] = sceneClip ? [sceneClip.id] : [];
+    if (targets.length === 0) {
+      // No scene clip there — try the audio lane, using the SAME addressing the
+      // audio* ops use (trackId or family + anchor bar).
+      const trackId = typeof record.trackId === "string" ? record.trackId.trim() : "";
+      const family = typeof record.family === "string" ? record.family.trim() : "";
+      if (trackId !== "" || family !== "") {
+        let ownerId: string | null = trackId !== "" ? trackId : null;
+        if (ownerId === null) {
+          const ids = tracksInFamily(doc, family);
+          if (ids.length === 0) return mcpError("UNKNOWN_TARGET", `no track matches family "${family}"`);
+          ownerId = ids[0]!;
+        }
+        const anchor = Math.round(rawBar) - 1;
+        const audio = doc.arrangement.audioClips ?? [];
+        const audioTarget = audio.find(
+          (clip) => clip.trackId === ownerId && anchor >= clip.startBar && anchor < clip.startBar + clip.lengthBars,
+        );
+        if (audioTarget) targets = [audioTarget.id];
+      }
+    }
+    if (targets.length === 0) {
+      return {
+        text: `no clip covers bar ${Math.round(rawBar)} — read the layout via op:list`,
+        mutated: false,
+      };
+    }
+    const built = buildClipClipboard(doc, targets);
+    if (!built) return { text: "nothing copyable at that address", mutated: false };
+    mcpClipClipboard = built;
+    if (op === "copy") {
+      return { text: `copied ${clipboardSummary(built)} — paste with op:paste`, mutated: false };
+    }
+    // CUT is a delete: it must ride the D4 gate like every other removal.
+    if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
+    ctx.execute(cutClips(doc, targets));
+    return { text: `cut ${clipboardSummary(built)} — one undo step`, mutated: true };
+  }
 
   if (op === "list") {
     const lines: string[] = [];
@@ -4675,12 +4747,60 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
         mutated: true,
       };
     }
+    if (op === "split") {
+      // Scene clips split on their BAR GRID by design (audit wave 1 verified
+      // this is deliberate, not a snapping bug): audio clips split
+      // sample-precise, scene clips split at the bar boundary covering the
+      // anchor. The MCP lane can only name a whole bar, so it is the same
+      // primitive the grid cut tool uses.
+      const tick = (Math.round(rawBar) - 1) * TICKS_PER_BAR;
+      ctx.execute(splitArrangementClipAtTick(doc, clip.id, tick));
+      return { text: `split ${describeClip(clip)} at bar ${Math.round(rawBar)} — one undo step`, mutated: true };
+    }
     if (op === "delete") {
       if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
       ctx.execute(deleteArrangementClip(doc, clip.id));
       return { text: `deleted ${describeClip(clip)} — one undo step`, mutated: true };
     }
-    return { text: `unknown op: ${op} (list | move | resize | duplicate | delete)`, mutated: false };
+    // ── RIPPLE variants (P2 parity, owner-approved 2026-10-14) ─────────────
+    // The UI has a RIPPLE toggle that switches move/resize/delete to their
+    // gap-closing forms. Without these ops an agent's delete NEVER closes a
+    // gap while a user's does — a silent semantic divergence, which is the
+    // exact thing §B2 of the audit warned about.
+    if (op === "moveRipple") {
+      const toBar = Math.round(Number(record.toBar));
+      if (!Number.isFinite(toBar) || toBar < 1) {
+        return { text: "moveRipple needs toBar (1-based destination start bar)", mutated: false };
+      }
+      ctx.execute(moveArrangementClipRipple(doc, clip.id, toBar - 1));
+      return {
+        text: `moved ${describeClip(clip)} → bar ${toBar} (ripple: later clips close the gap) — one undo step`,
+        mutated: true,
+      };
+    }
+    if (op === "resizeRipple") {
+      const bars = Math.round(Number(record.bars));
+      if (!Number.isFinite(bars) || bars < 1 || bars > 64) {
+        return { text: "resizeRipple needs bars 1..64 (new clip length)", mutated: false };
+      }
+      ctx.execute(resizeArrangementClipRipple(doc, clip.id, bars));
+      return {
+        text: `resized ${describeClip(clip)} → ${bars} bar(s) (ripple: later clips close the gap) — one undo step`,
+        mutated: true,
+      };
+    }
+    if (op === "deleteRipple") {
+      if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
+      ctx.execute(deleteArrangementClipRipple(doc, clip.id));
+      return {
+        text: `deleted ${describeClip(clip)} (ripple: later clips close the gap) — one undo step`,
+        mutated: true,
+      };
+    }
+    return {
+      text: `unknown op: ${op} (list | move | resize | split | duplicate | delete | moveRipple | resizeRipple | deleteRipple)`,
+      mutated: false,
+    };
   } catch (error) {
     // Arrangement commands throw on invariants (overlap, bounds) — honest
     // failure over MCP, never a thrown crash into the relay.

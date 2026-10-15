@@ -98,7 +98,21 @@ export interface LayoutState {
   colorOverrides: Record<string, string>;
 }
 
-export const LAYOUT_STORAGE_KEY = "pf-layout-v1";
+/**
+ * Bumped to v2 with the proportion pass of 2026-10-15.
+ *
+ * v1 stored `dockHeight: 220` as its default, which gave the always-on dock
+ * panel more vertical space than the step sequencer — the primary instrument
+ * of a step-based DAW. Measured at 1440x900 with scripts/ui-proportion.mjs:
+ * sequencer ~70px (7.8% of the viewport) against dock 220px (24%).
+ *
+ * KYX has no shipped user base, so the honest migration is a clean one: a new
+ * key resets every stored layout to the new defaults instead of leaving
+ * machines on the old proportion. The two legacy keys below are deliberately
+ * NOT carried into v2 — folding a legacy dock height forward would re-import
+ * exactly the 220px this change exists to retire.
+ */
+export const LAYOUT_STORAGE_KEY = "pf-layout-v2";
 export const LEGACY_THEME_KEY = "pf-theme-v1";
 export const LEGACY_DOCK_KEY = "pf-dock-v1";
 

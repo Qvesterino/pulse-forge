@@ -450,8 +450,15 @@ export class MidiInput {
     // one undo entry.
     for (const macro of doc.macros) {
       for (const m of macro.mappings) {
-        if (m.source !== "midiCC" || m.ccNumber !== cc) continue;
-        if (m.channel !== undefined && m.channel !== channel) continue;
+        if (m.source !== "midiCC") continue;
+        // Scene re-point (Scene.ccOverrides): while a scene with an override
+        // plays, the mapping listens on the overridden channel / CC number
+        // instead of its own. Missing engine method = old behavior.
+        const override = this.engine?.sceneCcOverride?.(m.id) ?? null;
+        const listenCc = typeof override?.ccNumber === "number" ? override.ccNumber : m.ccNumber;
+        if (listenCc !== cc) continue;
+        const listenChannel = typeof override?.channel === "number" ? override.channel : m.channel;
+        if (listenChannel !== undefined && listenChannel !== channel) continue;
         // Scene CC remap gate (Scene.ccRemaps): while a scene with an
         // allow-list plays, only its mapping ids stay armed. Missing engine
         // method (mocks, pre-wire) = old behavior (all armed).

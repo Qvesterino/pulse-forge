@@ -4,6 +4,7 @@ import { planMixProfile, applyMixIntent, genreMasterTiltDb } from "../src/intent
 import { isMixIntentText, parseMixIntent, routeIntentText } from "../src/intent/route";
 import { normalizeIntent } from "../src/intent/normalize";
 import { createScene } from "../src/commands/commands";
+import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { ProjectDocument } from "../src/project-model/types";
 
 const DARK_TECHNO = normalizeIntent({ genre: "techno", mood: "dark", energy: 0.8, seed: "mix" });
@@ -139,6 +140,32 @@ describe("ambiguous and contradictory commands", () => {
       kind: "clarify",
       reason: "missing-fader-target",
     });
+  });
+
+  it("offers project-resolved send and return routes for an ambiguous return request", () => {
+    const doc = createProjectFromTemplate("trap");
+    const delayReturn = doc.returns.find((item) => item.effects.some((effect) => effect.type === "delay"));
+    expect(delayReturn).toBeDefined();
+
+    const route = routeIntentText("Increase the lead delay return.", doc);
+    expect(route).toMatchObject({
+      kind: "clarify",
+      reason: "ambiguous-send-return",
+      choices: [
+        {
+          label: "Increase delay send on lead",
+          route: { kind: "sendIntent", intent: { effectType: "delay", target: "lead", direction: "more" } },
+        },
+        {
+          label: "Raise Delay return level",
+          route: { kind: "fader", intent: { targets: [], returnIds: [delayReturn?.id], direction: "up" } },
+        },
+      ],
+    });
+
+    const noDelayReturn = { ...doc, returns: doc.returns.filter((item) => item.id !== delayReturn?.id) };
+    const unavailableRoute = routeIntentText("Increase the lead delay return.", noDelayReturn);
+    expect(unavailableRoute).toMatchObject({ kind: "clarify", reason: "ambiguous-send-return", choices: [] });
   });
 
   it("asks for a value when a requested adjustment has no usable amount", () => {

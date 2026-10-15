@@ -111,6 +111,14 @@ export function MidiClipLanes({
   const [menu, setMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
   const laneWidth = totalBars * barWidth;
   const menuClip = menu ? midiClips.find((clip) => clip.id === menu.clipId) : undefined;
+  const patternPlacementCounts = new Map<string, number>();
+  const addPatternPlacement = (patternId: string | undefined) => {
+    if (!patternId) return;
+    patternPlacementCounts.set(patternId, (patternPlacementCounts.get(patternId) ?? 0) + 1);
+  };
+  const patternIdBySceneId = new Map(doc.scenes.map((scene) => [scene.id, scene.patternId]));
+  for (const clip of doc.arrangement.clips) addPatternPlacement(patternIdBySceneId.get(clip.sceneId));
+  for (const clip of midiClips) addPatternPlacement(clip.patternId);
   const clipsByTrack = new Map<string, MidiClip[]>();
   for (const clip of midiClips) {
     const clips = clipsByTrack.get(clip.trackId) ?? [];
@@ -306,16 +314,21 @@ export function MidiClipLanes({
                 const startTick = groupStartTick ?? activeDrag?.nextStartTick ?? clip.startTick;
                 const lengthTicks = activeDrag?.nextLengthTicks ?? clip.lengthTicks;
                 const source = doc.patterns.find((candidate) => candidate.id === clip.patternId);
+                const sourcePlacementCount = patternPlacementCounts.get(clip.patternId) ?? 0;
+                const sharedSource = sourcePlacementCount > 1;
                 const sourceNotes = source?.notes?.[track.id] ?? EMPTY_NOTES;
                 const patternTicks = source ? midiPhraseLengthTicks(source.stepCount, sourceNotes) : 0;
                 const phase = clip.phaseOffsetTicks ?? 0;
+                const sharedHint = sharedSource
+                  ? `Shared source pattern: editing it changes all ${sourcePlacementCount} arrangement placements. Use Make unique & edit for an independent variation.`
+                  : "Source pattern: edits apply to this pattern. Right-click for clip actions.";
                 return (
                   <button
                     type="button"
                     key={clip.id}
-                    className={`arr-midi-clip${selectedClipId === clip.id ? " selected" : ""}${clip.muted ? " muted" : ""}${clip.locked ? " locked" : ""}${doc.arrangement.clipGroups?.some((group) => group.clipIds.includes(clip.id)) ? " grouped" : ""}`}
-                    aria-label={`${source?.name ?? "Pattern"} MIDI clip on ${track.name}, bar ${Math.floor(startTick / BAR_TICKS) + 1}`}
-                    title={`${source?.name ?? "Pattern"} · ${track.name} · ${lengthTicks} ticks · double-click to edit source pattern · right-click for clip actions`}
+                    className={`arr-midi-clip${selectedClipId === clip.id ? " selected" : ""}${clip.muted ? " muted" : ""}${clip.locked ? " locked" : ""}${sharedSource ? " shared-source" : ""}${doc.arrangement.clipGroups?.some((group) => group.clipIds.includes(clip.id)) ? " grouped" : ""}`}
+                    aria-label={`${source?.name ?? "Pattern"} MIDI clip on ${track.name}, bar ${Math.floor(startTick / BAR_TICKS) + 1}${sharedSource ? `, shared source pattern used by ${sourcePlacementCount} placements` : ""}`}
+                    title={`${source?.name ?? "Pattern"} · ${track.name} · ${lengthTicks} ticks · ${sharedHint} Double-click to edit source pattern.`}
                     style={{
                       left: (startTick / BAR_TICKS) * barWidth,
                       width: Math.max(10, (lengthTicks / BAR_TICKS) * barWidth - 3),
@@ -337,6 +350,13 @@ export function MidiClipLanes({
                     }}
                   >
                     <span className="arr-midi-clip-name">{source?.name ?? "MIDI"}</span>
+                    {sharedSource && (
+                      <span className="arr-midi-clip-shared-mark" aria-hidden="true">
+                        <svg viewBox="0 0 16 16" focusable="false">
+                          <path d="M6.2 9.8 4.8 11.2a2.1 2.1 0 0 1-3-3l3-3a2.1 2.1 0 0 1 3 0M9.8 6.2l1.4-1.4a2.1 2.1 0 0 1 3 3l-3 3a2.1 2.1 0 0 1-3 0M5.7 10.3l4.6-4.6" />
+                        </svg>
+                      </span>
+                    )}
                     <MidiClipNoteMarks
                       notes={sourceNotes}
                       patternTicks={patternTicks}

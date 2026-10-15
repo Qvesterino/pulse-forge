@@ -735,6 +735,14 @@ export interface Scene {
    * those. Live-only by nature (hardware CC never reaches an export).
    */
   ccRemaps?: string[];
+  /**
+   * Per-scene MIDI-CC re-point: mappingId → { ccNumber?, channel? }. While
+   * this scene is active the mapping LISTENS on the overridden channel / CC
+   * number instead of its own (a scene can move one hardware knob's target,
+   * or hand a free knob to a mapping that normally sits on a taken CC).
+   * Absent fields keep the mapping's own values.
+   */
+  ccOverrides?: Record<string, { ccNumber?: number; channel?: number }>;
 }
 
 export interface IntensityPoint {

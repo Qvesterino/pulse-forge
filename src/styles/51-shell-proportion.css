@@ -1,0 +1,105 @@
+/* 51-shell-proportion.css — give the step sequencer the room it is owed.
+ *
+ * THE DEFECT THIS FIXES
+ * ---------------------
+ * Measured 2026-10-15 with scripts/ui-proportion.mjs against the live dev
+ * server, the studio shell spent its vertical budget like this at 1440x900:
+ *
+ *   TopBar ............. 42px   permanent chrome
+ *   Pad rack ........... 144px  natural height, never yields
+ *   Pattern toolbar ....  ~40px permanent chrome
+ *   SEQUENCER ..........  ~70px (7.8% of the viewport)   <-- the product
+ *   Dock panel ......... 220px  permanent chrome
+ *   Statusbar ..........  26px  permanent chrome
+ *
+ * The step sequencer is the primary instrument of a step-based DAW — the
+ * surface a producer looks at while writing a beat — and it was getting less
+ * space than the status bar and a quarter of the pad browser. At 800x900 it
+ * measured ZERO visible pixels: fully squeezed out between the pattern toolbar
+ * and the dock, with nothing to scroll because its own box was empty.
+ *
+ * TWO CAUSES, TWO FIXES
+ * ---------------------
+ * 1. `.sequencer { min-height: 0 }` (02-sequencer.css:4). As a flex child it
+ *    could shrink to nothing while the rack kept its natural height. That is
+ *    why the 800px viewport showed an empty box instead of a scrollable one.
+ *    Fix: a real floor, so the sequencer can only ever lose part of itself.
+ *
+ * 2. Permanent chrome that did not pay for itself. The TopBar and the status
+ *    bar are 42px and 26px of always-on height; the dock default (layout-data
+ *    DEFAULT_LAYOUT_STATE.dockHeight) is 220px. Fix: shave the two bars, and
+ *    let the dock default fall in layout-data.ts — the dock stays
+ *    user-resizable, so a producer who needs a tall mixer just drags it back.
+ *
+ * WHY A NEW FILE, NOT AN EDIT
+ * ---------------------------
+ * 02-sequencer.css, 12-floating-instrument-plugin-2.css and several other
+ * sheets in this tree were being edited concurrently when this layer was
+ * written. ADR 0036's split is the sanctioned way to change the shell without
+ * touching a sheet someone else owns: append an additive layer, keep the
+ * cascade order load-bearing (see styles/index.css).
+ */
+
+/* ---------- Chrome budget ---------- */
+
+.app {
+  /* Topbar 42 -> 38, statusbar 26 -> 22. Both are always-on and neither
+     carries a control that needs more than 26px of hit area at desktop
+     density. Together they hand 8px back to the workspace on every boot. */
+  grid-template-rows:
+    minmax(calc(38px + env(safe-area-inset-top, 0px)), max-content) minmax(0, 1fr) auto auto
+    22px;
+}
+
+/* ---------- The sequencer floor ---------- */
+
+/* One token, so the floor is a design decision rather than a magic number
+   repeated in three selectors below. */
+:root {
+  --sequencer-min-h: 132px;
+}
+
+/* Equal specificity to 02-sequencer.css:3 `.sequencer { min-height: 0 }`,
+   but this file is imported later, so the floor wins. */
+.sequencer {
+  min-height: var(--sequencer-min-h);
+  /* Let it take the slack when the workspace has room to give, so a taller
+     window gives the extra height to the grid rather than to the chrome. */
+  flex: 1 1 auto;
+}
+
+/* 24-layout-tokens.css sets `.density-dense .workspace-main > .sequencer
+   { min-height: 0 }` at specificity (0,3,0) — HIGHER than the plain
+   `.sequencer` rule above. Without this second selector the floor would be
+   dead the moment a user picked the dense density setting, which is exactly
+   the setting used on short viewports where the sequencer was collapsing.
+   Dense keeps a smaller floor, never zero. */
+.density-dense .workspace-main > .sequencer {
+  min-height: calc(var(--sequencer-min-h) * 0.72);
+}
+
+.density-dense {
+  --sequencer-min-h: 120px;
+}
+
+/* ---------- The rack yields instead ---------- */
+
+/* The pad rack is a browser: it has a density setting, it scrolls, and it is
+   the one surface whose height the user can afford to lose a row of. Taking
+   12px here is what funds the sequencer floor above without shrinking the
+   pads themselves, so a pad's touch target is unchanged. */
+.rack {
+  gap: 4px;
+}
+
+/* ---------- Pattern toolbar rhythm ---------- */
+
+/* The group captions are ALL-CAPS metadata, not primary controls — they get
+   the small technical treatment so the actual buttons inside each group win
+   the eye. This is the typography rule from the state matrix (small text is
+   reserved for metadata) applied to the one toolbar every producer touches. */
+.pattern-bar .toolbar-label {
+  font-size: 9px;
+  line-height: 1.1;
+  letter-spacing: 1.2px;
+}

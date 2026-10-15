@@ -598,6 +598,13 @@ export function previewStretchRate(origRate: number, origLengthBars: number, new
  * Alt+drag clip stretch: length AND rate in ONE undo step (the content keeps
  * filling the clip). Same length/fade clamps as resizeAudioClip plus the
  * 0.25–4 rate gate from updateAudioClip.
+ *
+ * PITCH: `stretchRate` is a RESAMPLE rate, so this verb is SPEED, not
+ * time-stretch — a 220 Hz source played at rate 0.5 arrives at 110 Hz. Measured
+ * in a real render (EDITOR_QUALITY_AUDIT_REPORT.md §I, wave 20). This is
+ * intended (owner decision 2026-10-14): for pitch-preserving tempo-fitting use
+ * `fitAudioClipTempo`, which writes `stretchMode: "stretch"` and takes the
+ * phase-preserving path in the engine.
  */
 export function stretchAudioClip(
   doc: ProjectDocument,

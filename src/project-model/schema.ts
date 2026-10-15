@@ -52,7 +52,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 28;
+export const SCHEMA_VERSION = 29;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -2286,8 +2286,57 @@ function normalizeSceneDetailsDomain(s: NormalizeState): void {
     s.changed = true;
   }
 
+  // Scene CC re-points (v29): mappingId → { ccNumber (0..127), channel
+  // (1..16) }. Entries with neither field (after sanitizing) drop; the
+  // record collapses to absent when empty. Unknown mapping ids stay inert.
+  let ccOverrideChanged = false;
+  const ccOverrideScenes = ccScenes.map((scene) => {
+    if (scene.ccOverrides === undefined) return scene;
+    const raw = scene.ccOverrides as unknown;
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+      ccOverrideChanged = true;
+      return { ...scene, ccOverrides: undefined };
+    }
+    const clean: Record<string, { ccNumber?: number; channel?: number }> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>).slice(0, 64)) {
+      if (key.length === 0 || key.length > 64) continue;
+      if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
+      const entry = value as Record<string, unknown>;
+      const next: { ccNumber?: number; channel?: number } = {};
+      if (
+        typeof entry.ccNumber === "number" &&
+        Number.isFinite(entry.ccNumber) &&
+        Number.isInteger(entry.ccNumber) &&
+        entry.ccNumber >= 0 &&
+        entry.ccNumber <= 127
+      ) {
+        next.ccNumber = entry.ccNumber;
+      }
+      if (
+        typeof entry.channel === "number" &&
+        Number.isFinite(entry.channel) &&
+        Number.isInteger(entry.channel) &&
+        entry.channel >= 1 &&
+        entry.channel <= 16
+      ) {
+        next.channel = entry.channel;
+      }
+      if (next.ccNumber !== undefined || next.channel !== undefined) clean[key] = next;
+    }
+    const next = Object.keys(clean).length > 0 ? clean : undefined;
+    if (JSON.stringify(next) !== JSON.stringify(scene.ccOverrides)) {
+      ccOverrideChanged = true;
+      return { ...scene, ccOverrides: next };
+    }
+    return scene;
+  });
+  if (ccOverrideChanged) {
+    s.doc = { ...s.doc, scenes: ccOverrideScenes };
+    s.changed = true;
+  }
+
   if (scenesChanged) {
-    s.doc = { ...s.doc, scenes: ccScenes };
+    s.doc = { ...s.doc, scenes: ccOverrideScenes };
     s.changed = true;
   }
 }
@@ -3006,6 +3055,9 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // v27 adds independent song-timeline automation clips; absent = none.
   // v28 lets sparse MIDI notes extend to the arrangement safety limit without
   // growing the bounded step arrays; older projects remain unchanged.
+  // v29 adds the optional per-scene `ccOverrides` (mappingId → { ccNumber,
+  // channel }: the channel/CC re-point a source:"midiCC" mapping listens on
+  // while the scene is active; absent fields keep the mapping's own).
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

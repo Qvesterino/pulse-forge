@@ -387,7 +387,7 @@ describe("per-scene packs — bridge override", () => {
   it("hands the override back to the doc on stop (automationReset)", () => {
     const { doc, growId } = docWithSceneFx();
     const { bridge, writes } = bridgeHarness(doc);
-    bridge.setSceneIntensity(0.5, { [growId]: growPair.id });
+    bridge.setSceneIntensity(0.5, { packs: { [growId]: growPair.id } });
     const mid = (growPair.a.drive! + growPair.b.drive!) / 2;
     expect(writes.some((write) => write.id === "drive" && write.when === null && write.value === mid)).toBe(true);
     bridge.automationReset();
@@ -415,7 +415,7 @@ describe("per-scene packs — bridge override", () => {
     const base = defaultParamsOf("bassHarmonic").drive!;
     expect(writes.find((write) => write.id === "drive")?.value).toBeCloseTo(base, 9);
     // Pinned to 1 → bipolar +1 → base + half-span·amount.
-    bridge.setSceneIntensity(0.7, null, { [macroId]: 1 });
+    bridge.setSceneIntensity(0.7, { sceneMacros: { [macroId]: 1 } });
     const last = [...writes].reverse().find((write) => write.id === "drive");
     expect(last?.value).toBeCloseTo(base + 0.5 * (1 / 2), 9);
     expect(last?.when).toBeNull();
@@ -453,11 +453,11 @@ describe("per-scene packs — bridge override", () => {
     const { bridge } = bridgeHarness(doc);
     // No scene pins → every mapping armed (pre-scene behavior).
     expect(bridge.sceneAllowsMidiMapping("m1")).toBe(true);
-    bridge.setSceneIntensity(0.7, null, null, ["m2"]);
+    bridge.setSceneIntensity(0.7, { ccRemaps: ["m2"] });
     expect(bridge.sceneAllowsMidiMapping("m2")).toBe(true);
     expect(bridge.sceneAllowsMidiMapping("m1")).toBe(false);
     // [] = none armed while the scene plays.
-    bridge.setSceneIntensity(0.7, null, null, []);
+    bridge.setSceneIntensity(0.7, { ccRemaps: [] });
     expect(bridge.sceneAllowsMidiMapping("m2")).toBe(false);
     // Stop lifts the gate.
     bridge.automationReset();

@@ -23,6 +23,7 @@ import {
   type ScheduledNote,
 } from "../project-model/events";
 import { computeSceneIntensity } from "../project-model/intensity";
+import { scenePerformanceOf, type ScenePerformance } from "../project-model/scene-performance";
 import { ensureWorkletsForDoc } from "../audio-worklets/loader";
 import { audioClipsForPlayback } from "../project-model/audio-takes";
 import { targetParamDef } from "../project-model/targets";
@@ -679,20 +680,8 @@ export function buildSceneIntensityPoints(
   doc: ProjectDocument,
   windows: ClipWindow[],
   totalTicks: number,
-): Array<{
-  tick: number;
-  value: number;
-  packs?: Record<string, string> | null;
-  sceneMacros?: Record<string, number> | null;
-  ccRemaps?: string[] | null;
-}> {
-  const points: Array<{
-    tick: number;
-    value: number;
-    packs?: Record<string, string> | null;
-    sceneMacros?: Record<string, number> | null;
-    ccRemaps?: string[] | null;
-  }> = [{ tick: 0, value: 0.7 }];
+): Array<{ tick: number; value: number } & ScenePerformance> {
+  const points: Array<{ tick: number; value: number } & ScenePerformance> = [{ tick: 0, value: 0.7 }];
   const sorted = [...windows].sort((a, b) => a.from - b.from);
   for (let index = 0; index < sorted.length; index++) {
     const window = sorted[index];
@@ -706,14 +695,7 @@ export function buildSceneIntensityPoints(
       points.push({ tick: window.from, value: 0.7 }, { tick: window.to, value: 0.7 });
       continue;
     }
-    const packs = scene.packs && Object.keys(scene.packs).length > 0 ? scene.packs : null;
-    const macros = scene.macros && Object.keys(scene.macros).length > 0 ? scene.macros : null;
-    const cc = scene.ccRemaps && scene.ccRemaps.length > 0 ? scene.ccRemaps : null;
-    const withScene = {
-      ...(packs ? { packs } : {}),
-      ...(macros ? { sceneMacros: macros } : {}),
-      ...(cc ? { ccRemaps: cc } : {}),
-    };
+    const withScene = scenePerformanceOf(scene) ?? {};
 
     if (window.sceneId) {
       const sceneBase = window.sceneBase ?? window.base;
@@ -743,15 +725,9 @@ export function buildSceneIntensityPoints(
 
   // At clip boundaries the later point is authoritative (the next scene wins
   // at its exact start). Keep the timeline monotonic and deterministic; the
-  // pack selection and macro pins follow the same rule so a seam swaps them
-  // exactly on the boundary tick.
-  const deduped: Array<{
-    tick: number;
-    value: number;
-    packs?: Record<string, string> | null;
-    sceneMacros?: Record<string, number> | null;
-    ccRemaps?: string[] | null;
-  }> = [];
+  // scene performance context (packs, macro pins, CC arming/re-points)
+  // follows the same rule so a seam swaps them exactly on the boundary tick.
+  const deduped: Array<{ tick: number; value: number } & ScenePerformance> = [];
   for (const point of points.sort((a, b) => a.tick - b.tick)) {
     const previous = deduped[deduped.length - 1];
     if (previous && previous.tick === point.tick) {
@@ -759,6 +735,7 @@ export function buildSceneIntensityPoints(
       previous.packs = point.packs;
       previous.sceneMacros = point.sceneMacros;
       previous.ccRemaps = point.ccRemaps;
+      previous.ccOverrides = point.ccOverrides;
     } else deduped.push(point);
   }
   return deduped;

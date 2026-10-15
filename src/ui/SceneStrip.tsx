@@ -12,6 +12,7 @@ import {
   applyKorenScenePair,
   applyTwistScenePair,
   korenSceneIntensityBound,
+  setSceneCcOverride,
   setSceneCcRemap,
   setSceneIntensity,
   setSceneMacro,
@@ -24,6 +25,7 @@ import { TWIST_SCENE_PACK, findTwistScenePair } from "../effects/skrutka-scene-p
 import { readKorenSceneState } from "../effects/koren-scene";
 import { KOREN_SCENE_PACK, findKorenScenePair } from "../effects/koren-scene-pack";
 import { Slider } from "./controls";
+import { NumericDraftInput } from "./NumericDraftInput";
 import { formatMacroValue } from "./MacroPerformanceBar";
 
 const COLLAPSE_KEY = "pf-scene-strip-collapsed";
@@ -323,31 +325,78 @@ export function SceneStrip({ sceneId }: { sceneId?: string }) {
               {ccMappings.map((mapping) => {
                 const allowList = scene?.ccRemaps;
                 const activeForScene = !allowList || allowList.includes(mapping.id);
+                const override = scene?.ccOverrides?.[mapping.id];
+                const effectiveCc = typeof override?.ccNumber === "number" ? override.ccNumber : mapping.ccNumber;
+                const effectiveChannel = typeof override?.channel === "number" ? override.channel : (mapping.channel ?? 0);
                 const label = `${mapping.macroName} ← CC${mapping.ccNumber}${
                   mapping.channel !== undefined ? ` ch${mapping.channel}` : ""
                 }`;
                 return (
-                  <label
+                  <div
                     key={mapping.id}
                     className={`scene-strip-cc-item${activeForScene ? "" : " muted"}`}
                     title={
                       activeForScene
-                        ? `${label} is armed in this scene — untick to leave it out`
+                        ? `${label} is armed in this scene`
                         : `${label} is disarmed in this scene — tick to arm it`
                     }
                   >
-                    <input
-                      type="checkbox"
-                      checked={activeForScene}
-                      disabled={!scene}
-                      aria-label={`${label} armed in this scene`}
-                      onChange={(event) => {
-                        if (scene)
-                          services.store.execute(setSceneCcRemap(doc, scene.id, mapping.id, event.target.checked));
-                      }}
-                    />
-                    <span>{label}</span>
-                  </label>
+                    <label className="scene-strip-cc-toggle" title={label}>
+                      <input
+                        type="checkbox"
+                        checked={activeForScene}
+                        disabled={!scene}
+                        aria-label={`${label} armed in this scene`}
+                        onChange={(event) => {
+                          if (scene)
+                            services.store.execute(setSceneCcRemap(doc, scene.id, mapping.id, event.target.checked));
+                        }}
+                      />
+                      <span>{label}</span>
+                    </label>
+                    <label
+                      className="scene-strip-cc-field"
+                      title={`CC number this scene listens on (the mapping's own: ${mapping.ccNumber}) — type the mapping's own number back to clear`}
+                    >
+                      <span>CC</span>
+                      <NumericDraftInput
+                        className="scene-strip-cc-number"
+                        value={effectiveCc}
+                        min={0}
+                        max={127}
+                        step={1}
+                        disabled={!scene}
+                        aria-label={`CC number for ${label} in this scene`}
+                        onCommit={(ccNumber) => {
+                          if (scene)
+                            services.store.execute(setSceneCcOverride(doc, scene.id, mapping.id, { ccNumber }));
+                        }}
+                      />
+                    </label>
+                    <label
+                      className="scene-strip-cc-field"
+                      title={`MIDI channel this scene listens on — 0 = any (the mapping's own: ${
+                        mapping.channel ?? "any"
+                      })`}
+                    >
+                      <span>CH</span>
+                      <NumericDraftInput
+                        className="scene-strip-cc-number"
+                        value={effectiveChannel}
+                        min={0}
+                        max={16}
+                        step={1}
+                        disabled={!scene}
+                        aria-label={`Channel for ${label} in this scene`}
+                        onCommit={(channel) => {
+                          if (scene)
+                            services.store.execute(
+                              setSceneCcOverride(doc, scene.id, mapping.id, { channel: channel === 0 ? null : channel }),
+                            );
+                        }}
+                      />
+                    </label>
+                  </div>
                 );
               })}
             </div>

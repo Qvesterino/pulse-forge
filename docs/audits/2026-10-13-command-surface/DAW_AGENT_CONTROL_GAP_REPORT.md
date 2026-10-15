@@ -88,21 +88,27 @@ This is **better than a silent failure** — the clarify chip is the correct fai
 - **Minimal remedy:** add `vocal` (+ `vox`, `vocal(s)` inflections) to `ExactTarget`, `TARGET_RES`, the `gainDb`/`gainDbAbsolute` alternations, and the model target enum; resolve against real track names from the doc rather than a closed vocabulary.
 - **Note:** the more durable fix is target resolution from the **live document** (see BOTTLENECK).
 
-### GAP-04 — No idempotency on the agent-reachable action path 🟠 HIGH · STRONG_EVIDENCE
+### GAP-04 — Idempotency on the agent-reachable action path · ✅ **ORIGINAL FINDING WITHDRAWN 2026-10-15** (auditor error — see correction)
 
-`src/commands/intentRouting.ts` has no idempotency key, nonce, request id, or dedupe (grep for `idempot|nonce|requestId|already applied` → 0 hits).
+> **CORRECTION (2026-10-15).** This finding was **wrong as written** and is withdrawn. The auditor's evidence was a grep scoped to `src/commands/intentRouting.ts`, which contains no ledger **because the ledger lives one layer up**, in the MCP dispatcher. A layer-scoped negative result was generalised to the whole surface — the exact failure mode this audit is supposed to detect. Retracted rather than silently amended.
 
-Relative ops are re-applied against **current** state each time:
+**What actually ships:** an idempotency ledger in `src/mcp/tools.ts:2135-2180` — `idempotencyLedger`, replay on a repeated `requestId`, project-scope binding (`cached.docId === ctx.getDoc().id`), and FIFO refresh on re-bind. Every mutating tool declares the key via `REQUEST_ID_PROPERTY` (`tools.ts:1538-1541`). Added in commit `3b0feb99`.
 
-- `gainDb` reads live gain and multiplies (`intentRouting.ts:147-149`)
-- `patternLengthDelta` reads the active pattern's current `stepCount` (`intentRouting.ts:118-120`)
+**Verified by executed probe (2026-10-15, disposable probe, since deleted)** against a real `house` document — a genuinely **relative** op (`kyx_intent "lower the drums by 2 dB"`), because an absolute setter would mask the effect:
 
-A retried or duplicated agent request therefore **double-applies** ("−2 dB" twice = −4 dB). The MCP `kyx_batch` tool is also **partial-commit, not atomic**: per-call failures are recorded and the loop continues (`src/mcp/tools.ts:4711-4712`, _"Per-call failures never abort the batch"_).
+```
+start=-0.92dB → once=-2.92dB → sameRetry=-2.92dB → distinctA=-4.92dB → distinctB=-6.92dB
+labels=["-2 dB drums","-2 dB drums","-2 dB drums"]  stack=3   (4 calls, 3 mutations)
+```
 
-The only net is the 256-entry undo stack — which **the codebase itself documents as insufficient**: `src/intent/route-guard.ts:10-11` states the bounded stack _"evicts the pre-delete state in a long session"_.
+Both halves of the contract hold:
 
-- **Impact:** the primary blocker to safe unattended agent autonomy. Any retry-on-timeout in an agent harness silently corrupts the mix.
-- **Minimal remedy:** an optional caller-supplied `requestId` on mutating tools, with a bounded recent-request ledger mapping id → resulting undo index; a repeat returns the original result instead of re-executing. Relatively small, high leverage.
+1. **Retry safety** — a repeat with the same `requestId` returns `idempotent replay — requestId was already applied; nothing re-executed` and does **not** re-apply (−2.92 dB stays −2.92 dB).
+2. **No over-blocking** — three _distinct_ ids apply three times, each exactly −2 dB. The ledger deduplicates retries without swallowing legitimate repeats.
+
+Also verified through the **real `ProjectStore`** (not a fake context): `after1 == after2`, `undoStackLength == 1` after a duplicated call.
+
+**Residual note (not a regression):** `kyx_batch` remains **partial-commit by design** — per-call failures are recorded and the loop continues (`src/mcp/tools.ts:4711-4712`). P2-C added batch safeguards and dry-run; atomic all-or-nothing batch semantics remain a deliberate non-goal, so a batch with a mid-list failure leaves the successful prefix applied and reports each call's outcome.
 
 ### GAP-05 — MCP tests stop one layer short of persistence 🟠 HIGH · CONFIRMED · **FIXED 2026-10-13** (`tests/mcp-persistence.test.ts` — real store + real debouncer + real repository over fake-indexeddb)
 

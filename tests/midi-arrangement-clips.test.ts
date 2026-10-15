@@ -17,7 +17,7 @@ import {
 import { projectToYDoc, yDocToProject } from "../src/collab/YDocAdapter";
 import { midiClipEventsInWindow, noteEventsInWindow } from "../src/project-model/events";
 import { createProjectFromTemplate } from "../src/project-model/templates";
-import { migrateProject, normalizeProject } from "../src/project-model/schema";
+import { migrateProject, normalizeProject, SCHEMA_VERSION } from "../src/project-model/schema";
 import { BAR_TICKS, STEP_TICKS } from "../src/project-model/types";
 
 function projectWithMelody() {
@@ -138,7 +138,7 @@ describe("independent MIDI arrangement clips", () => {
     const { doc, trackId, patternId } = projectWithMelody();
     const withClip = addMidiClip(doc, trackId, patternId, BAR_TICKS * 3, BAR_TICKS * 5).execute(doc);
     const legacy = { ...withClip, schemaVersion: 25, arrangement: { ...withClip.arrangement, midiClips: undefined } };
-    expect(migrateProject(legacy).schemaVersion).toBe(28);
+    expect(migrateProject(legacy).schemaVersion).toBe(SCHEMA_VERSION);
     const longNote = { id: "legacy-long-note", pitch: 36, start: 0, duration: BAR_TICKS * 12, velocity: 0.9 };
     const v27 = {
       ...withClip,

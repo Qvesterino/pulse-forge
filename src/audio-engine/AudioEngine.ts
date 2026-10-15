@@ -2170,13 +2170,8 @@ export class AudioEngine {
     this.automation.syncMacros(doc);
   }
 
-  setSceneIntensity(
-    value: number,
-    packs?: Record<string, string> | null,
-    sceneMacros?: Record<string, number> | null,
-    ccPins?: string[] | null,
-  ): void {
-    this.automation.setSceneIntensity(value, packs, sceneMacros, ccPins);
+  setSceneIntensity(value: number, scene?: import("../project-model/scene-performance").ScenePerformance | null): void {
+    this.automation.setSceneIntensity(value, scene);
   }
 
   /** Scene gate for incoming hardware CC (see AutomationBridge). */
@@ -2184,14 +2179,13 @@ export class AudioEngine {
     return this.automation.sceneAllowsMidiMapping(mappingId);
   }
 
+  /** Scene CC re-point for a mapping (see AutomationBridge). */
+  sceneCcOverride(mappingId: string): import("../project-model/scene-performance").SceneCcOverride | null {
+    return this.automation.sceneCcOverride(mappingId);
+  }
+
   scheduleSceneIntensity(
-    points: Array<{
-      tick: number;
-      value: number;
-      packs?: Record<string, string> | null;
-      sceneMacros?: Record<string, number> | null;
-      ccRemaps?: string[] | null;
-    }>,
+    points: import("./automationBridge").SceneIntensityPoint[],
     timeAt: (tick: number) => number,
   ): void {
     this.automation.scheduleSceneIntensity(points, timeAt);

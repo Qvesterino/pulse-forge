@@ -580,8 +580,7 @@ export async function openProject(
       engine.applyArrangementAutomationClip(clip, fromTick, toTick, scheduleOffsetSec, timeAt),
     applyPatternLaunch: (patternId) => store.execute(setActivePattern(store.doc, patternId)),
     triggerMarker: (assetId, when, trackId) => engine.triggerMarker(assetId, when, trackId),
-    setSceneIntensity: (value, packs, sceneMacros, ccPins) =>
-      engine.setSceneIntensity(value, packs, sceneMacros, ccPins),
+    setSceneIntensity: (value, scene) => engine.setSceneIntensity(value, scene),
     scheduleSceneIntensity: (points, timeAt) => engine.scheduleSceneIntensity(points, timeAt),
     // Scene tempo lane: clips whose scene pins a BPM drive the transport
     // (setBpm re-anchors position-preserving); null = project tempo. The

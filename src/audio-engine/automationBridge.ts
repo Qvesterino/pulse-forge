@@ -8,6 +8,7 @@ import {
 } from "../project-model/modulators";
 import { clampTargetValue, targetParamDef } from "../project-model/targets";
 import { interpolateAutomationPoints, valueAt } from "../project-model/automation";
+import type { SceneCcOverride, ScenePerformance } from "../project-model/scene-performance";
 import { isWorkletReady } from "../audio-worklets/loader";
 import { createEnvFollowerNode, type EnvFollowerHandle } from "../audio-worklets/envfollower-node";
 import type { SkrutkaCurveRuntime } from "../audio-worklets/skrutka-node";
@@ -47,24 +48,15 @@ export function automationTargetKey(target: AutomationTarget): string {
 }
 
 /**
- * One scene-intensity point. `packs` carries the per-scene scene-pack
- * selection (fxId → pair id) active at that tick — the scheduler and the
- * offline renderer attach it so the bridge can swap TWIST/GROW pairs exactly
- * at clip boundaries. `sceneMacros` carries the scene's macro pins
- * (macroId → 0..1) which substitute the live macro value in every
- * macro-sourced mapping at that tick.
+ * One scene-intensity point: the value plus the scene's performance context
+ * (packs / macro pins / CC arming / CC re-points) active at that tick — the
+ * scheduler and the offline renderer attach it so the bridge can swap
+ * TWIST/GROW pairs exactly at clip boundaries, pin macro values and gate
+ * incoming hardware CC.
  */
-export interface SceneIntensityPoint {
+export interface SceneIntensityPoint extends ScenePerformance {
   tick: number;
   value: number;
-  packs?: Record<string, string> | null;
-  sceneMacros?: Record<string, number> | null;
-  /**
-   * Scene CC remap allow-list (`Scene.ccRemaps`): source:"midiCC" mapping
-   * ids armed at this point. Consumed as live gate state for incoming CC
-   * (hardware input has no offline timeline).
-   */
-  ccRemaps?: string[] | null;
 }
 
 interface ScenePackEntry {
@@ -223,6 +215,8 @@ export class AutomationBridge {
   private currentSceneMacros: Record<string, number> | null = null;
   /** Live scene CC allow-list (mapping ids), null = every CC mapping armed. */
   private currentSceneCcPins: string[] | null = null;
+  /** Live scene CC re-points (mappingId → { ccNumber?, channel? }), null = none. */
+  private currentSceneCcOverrides: Record<string, SceneCcOverride> | null = null;
 
   constructor(
     private readonly deps: AutomationBridgeDeps,
@@ -706,25 +700,32 @@ export class AutomationBridge {
   }
 
   /**
-   * Update the live scene intensity signal. Idempotent. `packs` carries the
-   * active scene's scene-pack selection, `sceneMacros` its macro pins and
-   * `ccPins` its MIDI-CC remap allow-list (pattern mode calls this per
-   * tick); a changed map re-resolves/recomposes immediately.
+   * Update the live scene intensity signal. Idempotent. `scene` carries the
+   * active scene's performance context (pack selection, macro pins, CC
+   * arming and re-points); pattern mode calls this per tick, a changed
+   * context re-resolves/recomposes immediately.
    */
-  setSceneIntensity(
-    value: number,
-    packs?: Record<string, string> | null,
-    sceneMacros?: Record<string, number> | null,
-    ccPins?: string[] | null,
-  ): void {
+  setSceneIntensity(value: number, scene?: ScenePerformance | null): void {
     const next = Math.max(0, Math.min(1, value));
-    const nextPacks = packs && Object.keys(packs).length > 0 ? packs : null;
+    const nextPacks = scene?.packs && Object.keys(scene.packs).length > 0 ? scene.packs : null;
     const packsChanged = JSON.stringify(nextPacks ?? null) !== JSON.stringify(this.currentScenePacks ?? null);
-    const nextMacros = sceneMacros && Object.keys(sceneMacros).length > 0 ? sceneMacros : null;
+    const nextMacros = scene?.sceneMacros && Object.keys(scene.sceneMacros).length > 0 ? scene.sceneMacros : null;
     const macrosChanged = JSON.stringify(nextMacros ?? null) !== JSON.stringify(this.currentSceneMacros ?? null);
-    const nextCcPins = Array.isArray(ccPins) ? ccPins : null;
+    const nextCcPins = Array.isArray(scene?.ccRemaps) ? scene.ccRemaps : null;
     const ccChanged = JSON.stringify(nextCcPins ?? null) !== JSON.stringify(this.currentSceneCcPins ?? null);
-    if (next === this.currentSceneIntensity && !packsChanged && !macrosChanged && !ccChanged) return;
+    const nextCcOverrides =
+      scene?.ccOverrides && Object.keys(scene.ccOverrides).length > 0 ? scene.ccOverrides : null;
+    const overridesChanged =
+      JSON.stringify(nextCcOverrides ?? null) !== JSON.stringify(this.currentSceneCcOverrides ?? null);
+    if (
+      next === this.currentSceneIntensity &&
+      !packsChanged &&
+      !macrosChanged &&
+      !ccChanged &&
+      !overridesChanged
+    ) {
+      return;
+    }
     this.currentSceneIntensity = next;
     if (packsChanged) {
       this.currentScenePacks = nextPacks;
@@ -732,6 +733,7 @@ export class AutomationBridge {
     }
     if (macrosChanged) this.currentSceneMacros = nextMacros;
     if (ccChanged) this.currentSceneCcPins = nextCcPins;
+    if (overridesChanged) this.currentSceneCcOverrides = nextCcOverrides;
     // The signal is a live modulation source, not merely UI state. Recompose
     // the same macro writer immediately so scheduler intensity changes are
     // audible in realtime and use the exact same mapping semantics as export.
@@ -749,6 +751,14 @@ export class AutomationBridge {
     const pins = this.currentSceneCcPins;
     if (!pins) return true;
     return pins.includes(mappingId);
+  }
+
+  /**
+   * Scene re-point for one CC mapping: the channel / CC number it listens on
+   * while the current scene plays (null = the mapping's own values).
+   */
+  sceneCcOverride(mappingId: string): SceneCcOverride | null {
+    return this.currentSceneCcOverrides?.[mappingId] ?? null;
   }
 
   /**
@@ -789,6 +799,11 @@ export class AutomationBridge {
     const firstCc = ordered[0]?.ccRemaps ?? null;
     if (JSON.stringify(firstCc ?? null) !== JSON.stringify(this.currentSceneCcPins ?? null)) {
       this.currentSceneCcPins = Array.isArray(firstCc) ? firstCc : null;
+    }
+    const firstOverrides = ordered[0]?.ccOverrides ?? null;
+    if (JSON.stringify(firstOverrides ?? null) !== JSON.stringify(this.currentSceneCcOverrides ?? null)) {
+      this.currentSceneCcOverrides =
+        firstOverrides && Object.keys(firstOverrides).length > 0 ? firstOverrides : null;
     }
     let previousEntries = new Map<string, ScenePackEntry>();
     for (const point of ordered) {
@@ -1327,7 +1342,7 @@ export class AutomationBridge {
     // back to the doc so the stopped mix matches the project, not the last
     // clip. syncMacros below then re-composes the doc values (macro pins
     // drop with the same rule — the doc macro values resume).
-    if (this.currentScenePacks || this.currentSceneMacros || this.currentSceneCcPins) {
+    if (this.currentScenePacks || this.currentSceneMacros || this.currentSceneCcPins || this.currentSceneCcOverrides) {
       const stopDoc = this.deps.doc();
       if (this.currentScenePacks && stopDoc) {
         this.restoreScenePackTargets(stopDoc, this.scenePackEntriesFor(stopDoc), null);
@@ -1336,6 +1351,7 @@ export class AutomationBridge {
       this.scenePackEntries = null;
       this.currentSceneMacros = null;
       this.currentSceneCcPins = null;
+      this.currentSceneCcOverrides = null;
     }
     if (this.deps.doc()) {
       // Return and device macros share the same canonical base writer after a

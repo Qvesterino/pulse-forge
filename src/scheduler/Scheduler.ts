@@ -11,6 +11,7 @@ import {
   type ScheduledNote,
 } from "../project-model/events";
 import { computeSceneIntensity } from "../project-model/intensity";
+import { scenePerformanceOf, type ScenePerformance } from "../project-model/scene-performance";
 import { audioClipsForPlayback } from "../project-model/audio-takes";
 import { markerCueTrackId } from "../project-model/markers";
 import type { Transport } from "../transport/Transport";
@@ -91,24 +92,10 @@ export interface SchedulerDeps {
   onSongWindow?(fromTick: number, toTick: number, mode: PlayMode): void;
   /** Trigger a marker cue at the absolute project tick (asset id may be null). */
   triggerMarker?(assetId: string | null, when: number, trackId?: string): void;
-  /** Update the live scene intensity signal (0..1), pack selection, macro pins and CC remaps. */
-  setSceneIntensity?(
-    intensity: number,
-    packs?: Record<string, string> | null,
-    sceneMacros?: Record<string, number> | null,
-    ccPins?: string[] | null,
-  ): void;
+  /** Update the live scene intensity signal (0..1) plus the active scene's performance context. */
+  setSceneIntensity?(intensity: number, scene?: ScenePerformance | null): void;
   /** Schedule future scene-intensity changes inside the look-ahead window. */
-  scheduleSceneIntensity?(
-    points: Array<{
-      tick: number;
-      value: number;
-      packs?: Record<string, string> | null;
-      sceneMacros?: Record<string, number> | null;
-      ccRemaps?: string[] | null;
-    }>,
-    timeAt: (tick: number) => number,
-  ): void;
+  scheduleSceneIntensity?(points: Array<{ tick: number; value: number } & ScenePerformance>, timeAt: (tick: number) => number): void;
   /** Apply the active scene's tempo (null = follow the project tempo). */
   applySceneTempo?(bpm: number | null): void;
   /** The transport's tempo actually changed (flip commit) — tempo-synced engine runtimes follow. */
@@ -895,9 +882,7 @@ export class Scheduler {
         currentDoc.scenes.find((s) => s.patternId === currentDoc.activePatternId);
       this.deps.setSceneIntensity?.(
         activeScene ? Math.max(0, Math.min(1, activeScene.intensity)) : 0.7,
-        activeScene?.packs ?? null,
-        activeScene?.macros ?? null,
-        activeScene?.ccRemaps ?? null,
+        scenePerformanceOf(activeScene),
       );
       // Pattern mode has no arrangement context — follow the project tempo.
       this.applyTempo(null);
@@ -962,12 +947,10 @@ export class Scheduler {
         if (activeScene) {
           this.deps.setSceneIntensity(
             computeSceneIntensity(activeScene, activeClipStart, contentWindowStart),
-            activeScene.packs ?? null,
-            activeScene.macros ?? null,
-            activeScene.ccRemaps ?? null,
+            scenePerformanceOf(activeScene),
           );
         } else {
-          this.deps.setSceneIntensity(0.7, null, null, null);
+          this.deps.setSceneIntensity(0.7, null);
         }
       }
       // Scene tempo (release roadmap 2.2): while inside a clip whose scene
@@ -1337,26 +1320,8 @@ function sceneIntensityPointsForWindow(
   scenesById: Map<string, ProjectDocument["scenes"][number]>,
   fromTick: number,
   toTick: number,
-): Array<{
-  tick: number;
-  value: number;
-  packs?: Record<string, string> | null;
-  sceneMacros?: Record<string, number> | null;
-  ccRemaps?: string[] | null;
-}> {
-  const points: Array<{
-    tick: number;
-    value: number;
-    packs?: Record<string, string> | null;
-    sceneMacros?: Record<string, number> | null;
-    ccRemaps?: string[] | null;
-  }> = [];
-  const packsOf = (scene: ProjectDocument["scenes"][number] | undefined): Record<string, string> | null =>
-    scene?.packs && Object.keys(scene.packs).length > 0 ? scene.packs : null;
-  const macrosOf = (scene: ProjectDocument["scenes"][number] | undefined): Record<string, number> | null =>
-    scene?.macros && Object.keys(scene.macros).length > 0 ? scene.macros : null;
-  const ccOf = (scene: ProjectDocument["scenes"][number] | undefined): string[] | null =>
-    scene?.ccRemaps && scene.ccRemaps.length > 0 ? scene.ccRemaps : null;
+): Array<{ tick: number; value: number } & ScenePerformance> {
+  const points: Array<{ tick: number; value: number } & ScenePerformance> = [];
   let cursor = fromTick;
   for (const clip of clips) {
     const clipStart = clip.startBar * BAR_TICKS;
@@ -1370,14 +1335,7 @@ function sceneIntensityPointsForWindow(
       points.push({ tick: from, value: 0.7 }, { tick: to, value: 0.7 });
     } else {
       const sceneBase = sceneBaseTickForClip(clip);
-      const packs = packsOf(scene);
-      const macros = macrosOf(scene);
-      const cc = ccOf(scene);
-      const withScene = {
-        ...(packs ? { packs } : {}),
-        ...(macros ? { sceneMacros: macros } : {}),
-        ...(cc ? { ccRemaps: cc } : {}),
-      };
+      const withScene = scenePerformanceOf(scene) ?? {};
       points.push({ tick: from, value: computeSceneIntensity(scene, sceneBase, from), ...withScene });
       for (const curvePoint of scene.intensityCurve ?? []) {
         const tick = sceneBase + curvePoint.offset;
@@ -1395,17 +1353,11 @@ function sceneIntensityPointsForWindow(
   // clip seam the LATER point is authoritative (the next scene wins at its
   // exact start). Without this the closing value of the old scene and the
   // opening value of the new one share the tick and live carries a duplicate
-  // the export never writes. The pack selection and macro pins follow the
-  // same rule — the later point's maps (absent in a gap) are the ones the
-  // bridge applies.
+  // the export never writes. The scene performance context (packs, macro
+  // pins, CC arming/re-points) follows the same rule — the later point's is
+  // the one the bridge applies.
   const ordered = points.slice().sort((a, b) => a.tick - b.tick);
-  const deduped: Array<{
-    tick: number;
-    value: number;
-    packs?: Record<string, string> | null;
-    sceneMacros?: Record<string, number> | null;
-    ccRemaps?: string[] | null;
-  }> = [];
+  const deduped: Array<{ tick: number; value: number } & ScenePerformance> = [];
   for (const point of ordered) {
     const previous = deduped[deduped.length - 1];
     if (previous && previous.tick === point.tick) {
@@ -1413,6 +1365,7 @@ function sceneIntensityPointsForWindow(
       previous.packs = point.packs;
       previous.sceneMacros = point.sceneMacros;
       previous.ccRemaps = point.ccRemaps;
+      previous.ccOverrides = point.ccOverrides;
     } else deduped.push(point);
   }
   return deduped;

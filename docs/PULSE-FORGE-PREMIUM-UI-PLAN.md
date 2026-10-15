@@ -7,21 +7,34 @@
 
 ## Aktuálne overenie
 
-- `npm run build` z 2026-10-15 zastaví TypeScript validácia v
-  `tests/master-iterate.test.ts`: chýbajú typy `ProjectDocument` a
-  `McpToolContext`, test vytvára neúplný `Command` a obsahuje nepoužitý import.
-  Automatické testy sa nespúšťali.
-- Samostatný `npx vite build --logLevel error` a všetky bundle budgety po track
-  color picker úprave prešli: DAW JS **4973/5186 KB**, optional runtimes
+- `npm run typecheck` spustený 2026-10-15 skončil jedinou aktuálnou chybou:
+  `src/mcp/tools.ts(6,1): TS6192` — nepoužitá import deklarácia. Starší záznam
+  o ďalších MCP ripple a scene-pack chybách už nepopisuje dnešný výstup.
+  V tomto prechode sa celý `npm run build` nespúšťal.
+- Samostatný `npx vite build --logLevel error` a všetky bundle budgety po
+  Mixer focus úprave prešli: DAW JS **4975/5186 KB**, optional runtimes
   **647/650 KB**, stem runtime **404/430 KB**, core worklety **150/150 KB** a
-  boot path **2180/2200 KB**.
+  boot path **2181/2200 KB**.
 - `npm run format:check`, cielený Prettier pre brief a Mixer stylesheets aj
-  `git diff --check` prešli. Staršie záznamy nižšie zachovávajú priebežné
-  merania a historické brány.
+  `git diff --check` prešli. Automatické testy sa nespúšťali. Staršie záznamy
+  nižšie zachovávajú historické brány.
 - Automatické testy sa v posledných UI iteráciách nespúšťali.
 - Zostávajúce overenie sa týka predovšetkým čerstvých focus/hover a hustých
   split stavov. MIDI/audio capture s fyzickým zariadením je samostatná
   hardvérová kontrola.
+
+### Proporcie sequencera pri otvorenom docku — audit 2026-10-15
+
+- Snímka pri **390 × 844** s otvoreným dock panelom MOD ukazuje sequencer iba
+  v približne 30 px vysokom páse; hlavná pracovná plocha tak stráca svoj
+  primárny rytmický editor. Dôkaz: `output/playwright/premium-live-mod-automation-selected-focus-mobile-390x844.png`.
+- Pri ďalšom layoute má mať sequencer pevné, responzívne minimum a scrollovať
+  sa má obsah workspace, nie nechať samotnú mriežku stlačiť na hlavičku. Dock
+  zostáva resizeovateľný, no nesmie odobrať sequenceru tento základný priestor.
+- Zmenu ešte treba zachytiť po jej zapojení do stylesheet cascade. Akceptačná
+  kontrola: 1440 × 900, 1280 × 800, 1024 × 768, 800 × 900 a 390 × 844; v každom
+  stave zrušiť onboarding overlay a overiť viditeľnú sekvencerovú mriežku,
+  pracovné akcie aj otvorený dock.
 
 Tento dokument premieňa dizajnový audit pracovnej plochy na konkrétny plán
 ďalších iterácií. Je praktickým briefom pre implementáciu; dlhodobý smer a
@@ -2347,9 +2360,22 @@ stavu.
 - Track farba aj existujúci double-click reset zostávajú bez zmeny. Čerstvý
   screenshot channel headera v úzkom stripe ešte treba skontrolovať.
 - `npx vite build --logLevel error`, bundle budgety a `npm run format:check`:
-  **PASS** (DAW JS **4973/5186 KB**, boot path **2180/2200 KB**).
+  **PASS** (DAW JS **4975/5186 KB**, boot path **2181/2200 KB**).
   Cielený Prettier a `git diff --check`: **PASS**. Plný build zostáva
-  blokovaný `tests/master-iterate.test.ts`; automatické testy sa nespúšťajú.
+  blokovaný paralelnými MCP ripple compile chybami; automatické testy sa
+  nespúšťajú.
+
+### Mixer — klávesnicový fokus názvu tracku — 2026-10-15
+
+- Názov tracku rušil predvolený outline pri `:focus` a nechával iba 1 px
+  accent border. Pri keyboard navigácii teraz používa spoločný 2 px amber
+  `:focus-visible` ring; colored strip border zostáva identitou tracku.
+- Upravené: `src/styles/41-native-field-focus.css`. Vizuálna kontrola názvu
+  v selected stripe ešte zostáva otvorená.
+- `npx vite build --logLevel error`, bundle budgety, `npm run format:check`,
+  cielený Prettier a `git diff --check`: **PASS** (DAW JS **4975/5186 KB**,
+  boot path **2181/2200 KB**). Plný build je blokovaný nesúvisiacimi MCP
+  ripple typovými chybami; automatické testy sa nespúšťajú.
 
 ### Mixer / Arrangement — Scene Strip armed a focus stavy — 2026-10-15
 

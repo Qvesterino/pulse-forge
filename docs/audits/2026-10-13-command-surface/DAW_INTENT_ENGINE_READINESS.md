@@ -11,7 +11,11 @@
 > "export my mix as mp3" / "export the project" → `kind:"export"`. The
 > catch-all no longer generates on a model miss — it clarifies. The ⚠️ vocal
 > probe still clarifies (P1-A document-derived target resolution remains the
-> root fix). Unattended autonomy remains blocked on idempotency (GAP-04).
+> root fix). **Corrected 2026-10-15:** unattended autonomy is NOT blocked on
+> idempotency — GAP-04 was withdrawn as an auditor error; the MCP layer ships a
+> verified `requestId` ledger (`src/mcp/tools.ts:2135-2180`). What genuinely
+> remains open is multi-session routing (GAP-06) and the intent-layer
+> vocabulary gap above.
 
 ---
 
@@ -84,6 +88,6 @@ The Intent Engine is **well-architected and correctly layered**, with genuinely 
 - The deterministic vocabulary is closed and has drifted from the command layer (GAP-02, GAP-03).
 - The catch-all's default is `generate`, so every unrecognized verb risks a generative rewrite rather than a question (GAP-01).
 
-**Readiness for supervised use: high. Readiness for unattended agent autonomy: blocked** — primarily by the absence of idempotency (GAP-04), which makes any retry-until-success harness unsafe.
+**Readiness for supervised use: high.** Unattended autonomy is no longer blocked by idempotency (GAP-04 withdrawn 2026-15 — verified ledger). What still gates it: the closed target vocabulary (GAP-03 / P1-A) and single-window session ownership (GAP-06).
 
 **Recommended sequence:** narrow the catch-all → widen export vocabulary → document-derived target resolution → idempotency keys. See `DAW_AGENT_CONTROL_ROADMAP.md`.

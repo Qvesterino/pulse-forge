@@ -7,8 +7,10 @@ import { SelectionStore } from "../../src/store/SelectionStore";
 import { SelectionContext, ServicesContext } from "../../src/ui/context";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { mockServices } from "../helpers";
-import type { ProjectDocument } from "../../src/project-model/types";
+import { BAR_TICKS, type ProjectDocument } from "../../src/project-model/types";
 import type { Services } from "../../src/services";
+import { addMidiClip } from "../../src/commands/midiClips";
+import { MIDI_CLIP_EDITOR_NAVIGATION_EVENT, type MidiClipEditorNavigationRequest } from "../../src/ui/arrangement/midiClipEditorNavigation";
 
 describe("instrument MIDI arrangement lanes", () => {
   afterEach(() => cleanup());
@@ -45,5 +47,98 @@ describe("instrument MIDI arrangement lanes", () => {
       },
     ]);
     expect(screen.getByLabelText(`${track.name} MIDI lane`)).toBeTruthy();
+  });
+
+  it("double-click selects the source pattern and navigates to the MIDI clip start", () => {
+    const source = createProjectFromTemplate("house");
+    const track = source.tracks.find((candidate) => candidate.kind === "instrument");
+    const sourcePattern = source.patterns.find((candidate) => candidate.id === source.activePatternId);
+    const otherPattern = source.patterns.find((candidate) => candidate.id !== source.activePatternId);
+    if (!track || track.kind !== "instrument" || !sourcePattern || !otherPattern)
+      throw new Error("house template needs an instrument and two patterns");
+    const targetPatternId = "midi-clip-navigation-target";
+    const targetPattern = { ...otherPattern, id: targetPatternId, name: "Navigation Target" };
+    const base: ProjectDocument = {
+      ...source,
+      patterns: [...source.patterns, targetPattern],
+      arrangement: { ...source.arrangement, midiClips: [] },
+    };
+    const withClip = addMidiClip(base, track.id, targetPatternId, BAR_TICKS * 6, BAR_TICKS * 2).execute(base);
+    const clip = withClip.arrangement.midiClips![0]!;
+    const project = new ProjectStore(withClip);
+    const selectionStore = new SelectionStore();
+    const services = { ...mockServices(withClip), store: project } as unknown as Services;
+    const navigation: MidiClipEditorNavigationRequest[] = [];
+    const captureNavigation = (event: Event) => {
+      navigation.push((event as CustomEvent<MidiClipEditorNavigationRequest>).detail);
+    };
+    window.addEventListener(MIDI_CLIP_EDITOR_NAVIGATION_EVENT, captureNavigation);
+    try {
+      render(
+        createElement(
+          ServicesContext.Provider,
+          { value: services },
+          createElement(
+            SelectionContext.Provider,
+            { value: selectionStore },
+            createElement(ArrangementPanel) as ReactElement,
+          ),
+        ),
+      );
+
+      act(() => fireEvent.doubleClick(screen.getByRole("button", { name: /Navigation Target MIDI clip/ })));
+
+      expect(project.getDoc().activePatternId).toBe(targetPatternId);
+      expect(services.playback.seek).toHaveBeenCalledWith(BAR_TICKS * 6);
+      expect(navigation).toEqual([
+        { clipId: clip.id, trackId: track.id, patternId: targetPatternId, startTick: BAR_TICKS * 6 },
+      ]);
+    } finally {
+      window.removeEventListener(MIDI_CLIP_EDITOR_NAVIGATION_EVENT, captureNavigation);
+    }
+  });
+
+  it("marks shared MIDI sources and Make unique & edit isolates one placement", () => {
+    const source = createProjectFromTemplate("house");
+    const track = source.tracks.find((candidate) => candidate.kind === "instrument");
+    const pattern = source.patterns.find((candidate) => candidate.id === source.activePatternId);
+    if (!track || track.kind !== "instrument" || !pattern) throw new Error("house template fixture is incomplete");
+    const base: ProjectDocument = { ...source, arrangement: { ...source.arrangement, midiClips: [] } };
+    const first = addMidiClip(base, track.id, pattern.id, 0, BAR_TICKS * 2).execute(base);
+    const firstClip = first.arrangement.midiClips![0]!;
+    const withSecond = addMidiClip(first, track.id, pattern.id, BAR_TICKS * 4, BAR_TICKS * 2).execute(first);
+    const secondClip = withSecond.arrangement.midiClips!.find((clip) => clip.id !== firstClip.id)!;
+    const project = new ProjectStore(withSecond);
+    const selectionStore = new SelectionStore();
+    const services = { ...mockServices(withSecond), store: project } as unknown as Services;
+    const view = render(
+      createElement(
+        ServicesContext.Provider,
+        { value: services },
+        createElement(
+          SelectionContext.Provider,
+          { value: selectionStore },
+          createElement(ArrangementPanel) as ReactElement,
+        ),
+      ),
+    );
+
+    const linkedClips = view.container.querySelectorAll(".arr-midi-clip.shared-source");
+    expect(linkedClips).toHaveLength(2);
+    expect(screen.getByRole("button", { name: /shared source pattern used by 2 placements/ })).toBeTruthy();
+    expect((linkedClips[0] as HTMLButtonElement).title).toContain("editing it changes all 2 arrangement placements");
+
+    const clipButton = screen.getByRole("button", { name: new RegExp(`bar 5, shared source pattern used by 2 placements`) });
+    fireEvent.contextMenu(clipButton, { clientX: 120, clientY: 80 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Make unique & edit" }));
+
+    const nextClips = project.getDoc().arrangement.midiClips!;
+    const unchangedClip = nextClips.find((clip) => clip.id === firstClip.id)!;
+    const uniqueClip = nextClips.find((clip) => clip.id === secondClip.id)!;
+    expect(unchangedClip.patternId).toBe(pattern.id);
+    expect(uniqueClip.patternId).not.toBe(pattern.id);
+    expect(project.getDoc().activePatternId).toBe(uniqueClip.patternId);
+    expect(services.playback.seek).toHaveBeenCalledWith(BAR_TICKS * 4);
+    expect(view.container.querySelectorAll(".arr-midi-clip.shared-source")).toHaveLength(0);
   });
 });

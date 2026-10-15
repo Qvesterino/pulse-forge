@@ -2,6 +2,7 @@
    outline. Docked work surfaces use the shared focus layer in 32. */
 :is(
   .drag-number-input,
+  .channel-name-input,
   .fx-add-select,
   .fx-param-select select,
   .track-tab-rename,

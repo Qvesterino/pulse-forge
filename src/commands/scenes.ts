@@ -250,6 +250,59 @@ export function setSceneCcRemap(doc: ProjectDocument, sceneId: string, mappingId
   );
 }
 
+/**
+ * Per-scene MIDI-CC re-point (v29): while this scene is active the mapping
+ * LISTENS on the overridden channel / CC number instead of its own.
+ * `patch` carries only the fields being changed; `null` clears a field back
+ * to the mapping's own value. Canonicalizing: a field equal to the mapping's
+ * own value is dropped, an empty entry vanishes, an empty record collapses
+ * to absent — typing the base value back IS the clear gesture.
+ */
+export function setSceneCcOverride(
+  doc: ProjectDocument,
+  sceneId: string,
+  mappingId: string,
+  patch: { ccNumber?: number | null; channel?: number | null },
+): Command {
+  const scene = doc.scenes.find((candidate) => candidate.id === sceneId);
+  if (!scene) throw new Error(`Scene ${sceneId} not found`);
+  const mapping = doc.macros.flatMap((macro) => macro.mappings).find((m) => m.id === mappingId && m.source === "midiCC");
+  if (!mapping) throw new Error(`Mapping ${mappingId} is not a MIDI CC mapping`);
+  if (patch.ccNumber != null) {
+    if (!Number.isInteger(patch.ccNumber) || patch.ccNumber < 0 || patch.ccNumber > 127) {
+      throw new Error("Invalid CC number");
+    }
+  }
+  if (patch.channel != null) {
+    if (!Number.isInteger(patch.channel) || patch.channel < 1 || patch.channel > 16) {
+      throw new Error("Invalid MIDI channel");
+    }
+  }
+  const entry: { ccNumber?: number; channel?: number } = { ...(scene.ccOverrides?.[mappingId] ?? {}) };
+  if (patch.ccNumber !== undefined) {
+    if (patch.ccNumber === null) delete entry.ccNumber;
+    else entry.ccNumber = patch.ccNumber;
+  }
+  if (patch.channel !== undefined) {
+    if (patch.channel === null) delete entry.channel;
+    else entry.channel = patch.channel;
+  }
+  // Canonicalize against the mapping's own values.
+  if (entry.ccNumber === mapping.ccNumber) delete entry.ccNumber;
+  if (entry.channel === mapping.channel) delete entry.channel;
+  const overrides = { ...(scene.ccOverrides ?? {}) };
+  if (entry.ccNumber !== undefined || entry.channel !== undefined) overrides[mappingId] = entry;
+  else delete overrides[mappingId];
+  const next = Object.keys(overrides).length > 0 ? overrides : undefined;
+  const apply = (d: ProjectDocument): ProjectDocument => ({
+    ...d,
+    scenes: d.scenes.map((candidate) =>
+      candidate.id === sceneId ? { ...candidate, ccOverrides: next } : candidate,
+    ),
+  });
+  return snapshot("setSceneCcOverride", `Scene CC re-point in ${scene.name}`, doc, apply(doc));
+}
+
 export function deleteScene(doc: ProjectDocument, sceneId: string): Command {
   if (doc.scenes.length <= 1) throw new Error("Cannot delete the last scene");
   const target = doc.scenes.find((s) => s.id === sceneId);

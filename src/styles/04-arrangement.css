@@ -144,6 +144,10 @@
   cursor: not-allowed;
 }
 
+.arr-midi-clip.shared-source {
+  border-left: 3px solid rgba(255, 213, 112, 0.95);
+}
+
 .arr-midi-clip:active {
   cursor: grabbing;
 }
@@ -157,6 +161,31 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   pointer-events: none;
+}
+
+.arr-midi-clip-shared-mark {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  z-index: 2;
+  display: grid;
+  width: 12px;
+  height: 12px;
+  place-items: center;
+  border-radius: 3px;
+  background: rgba(18, 31, 42, 0.88);
+  color: #ffe09a;
+  pointer-events: none;
+}
+
+.arr-midi-clip-shared-mark svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
 }
 
 .arr-midi-note-mark {

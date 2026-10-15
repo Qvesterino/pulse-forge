@@ -46,6 +46,29 @@ vi.mock("../../src/intent/song", async (importOriginal) => {
 });
 
 describe("IntentPanel", () => {
+  it("does not mutate an ambiguous send/return request until a typed choice is selected", async () => {
+    const project = createProjectFromTemplate("trap");
+    const services = mockServices(project);
+    const rendered = renderWithContext(<IntentPanel />, { services });
+    const before = rendered.services.store.getDoc();
+    fireEvent.change(screen.getByLabelText(/Intent description/i), {
+      target: { value: "Increase the lead delay return." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+
+    const sendChoice = await screen.findByRole("button", { name: "Increase delay send on lead" });
+    expect(screen.getByRole("button", { name: "Raise Delay return level" })).toBeInTheDocument();
+    expect(rendered.services.store.execute).not.toHaveBeenCalled();
+
+    fireEvent.click(sendChoice);
+    await waitFor(() => expect(rendered.services.store.execute).toHaveBeenCalledTimes(1));
+    const command = vi.mocked(rendered.services.store.execute).mock.calls[0]?.[0];
+    expect(command?.label).toContain("Send:");
+    const changed = command!.execute(before);
+    expect(changed).not.toEqual(before);
+    expect(command!.undo(changed)).toEqual(before);
+  });
+
   it("routes vocal-space through the shared scoped preview and applies it as one undoable command", async () => {
     const doc = createProjectFromTemplate("house");
     const pattern = getActivePattern(doc);
