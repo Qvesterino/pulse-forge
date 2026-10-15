@@ -150,10 +150,11 @@ function buildZenit(params: Record<string, number>) {
 describe("ZENIT registry hygiene", () => {
   it("registers exactly once across all order surfaces", () => {
     expect(EFFECT_ORDER.filter((t) => t === "zenit")).toHaveLength(1);
-    // ZENIT is a mastering suite, not a daily beatmaking device, so it left the
-    // fifteen-entry first menu layer for the "MORE DYNAMICS" optgroup. The
-    // claim that matters is that it is still offered exactly once and is not
-    // claiming a flagship slot it does not own.
+    // ZENIT is a mastering suite, not a daily beatmaking device, so it is not
+    // one of the fifteen entries that come first in the ADD FX grid — it sits in
+    // the "MORE DYNAMICS" registry group instead. The claim that matters is
+    // that it is still offered exactly once and is not claiming a flagship slot
+    // it does not own.
     const inFirstLayer = CORE_EFFECT_ORDER.filter((t) => t === "zenit").length;
     const inMoreLayer = ADDITIONAL_EFFECT_GROUPS.flatMap((group) => group.types).filter((t) => t === "zenit").length;
     expect(inFirstLayer + inMoreLayer).toBe(1);

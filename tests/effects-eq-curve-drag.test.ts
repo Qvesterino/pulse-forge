@@ -133,4 +133,21 @@ describe("pointer <-> curve coordinate mapping", () => {
     expect(eqXToHz(w * 0.333, w)).toBeCloseTo(200, 0);
     expect(eqXToHz(w * 0.566, w) / 1000).toBeCloseTo(1, 2);
   });
+
+  // The two positions the browser gate probes, pinned so the same wrong
+  // constant cannot come back. HIGH MID lives at 2500 Hz, which is 0.699 of
+  // the way across — the gate once probed 0.566 (1 kHz), grabbed nothing, and
+  // the Ctrl+Z that followed undid the kit load instead of the gesture it
+  // thought it had made. This is the arithmetic half of that; the gesture half
+  // is in tests/eq-curve-gesture.test.tsx.
+  it("places each grabbable band at a known fraction of the axis", () => {
+    const w = 240;
+    const frac = (hz: number) => Math.log(hz / EQ_CURVE_MIN_HZ) / Math.log(EQ_CURVE_MAX_HZ / EQ_CURVE_MIN_HZ);
+    for (const band of EQ_BAND_DEFS) {
+      expect(eqXToHz(w * frac(band.freqHz), w) / band.freqHz).toBeCloseTo(1, 2);
+    }
+    // Spelled out, because the failure mode was a plausible-looking 0.566:
+    expect(frac(2500)).toBeCloseTo(0.699, 3);
+    expect(frac(1000)).toBeCloseTo(0.566, 3);
+  });
 });

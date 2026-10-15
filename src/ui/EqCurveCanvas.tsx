@@ -196,15 +196,14 @@ export function EqCurveCanvas({ params, onCommit, width = 236, height = 46 }: Eq
     };
     dragRef.current = next;
     setDrag(next);
-    // A drag that never moves would otherwise write the value it already had,
-    // pushing a no-op undo step for a plain click.
+    // "Did the user move?" is answered by POINTER MOVEMENT, not by "is the
+    // pointer sitting somewhere other than the band's current gain". The first
+    // version inferred it from the grab position, so a plain click on a band
+    // was recorded as a move to wherever the pointer happened to be — the gate
+    // measured a click with no movement committing -1.09 dB, a silent write
+    // from a gesture the user never made. `onPointerMove` is the only thing
+    // allowed to raise this flag.
     movedRef.current = false;
-    const point = eqPointToDb(local.y, local.h);
-    if (Math.abs(point - band.gainDb) > 0.5) {
-      movedRef.current = true;
-      dragRef.current = { ...next, gainDb: point };
-      setDrag(dragRef.current);
-    }
     event.preventDefault();
   };
 

@@ -1,15 +1,21 @@
 /**
- * Real-browser gate for the ESSENTIAL KIT dock and the trimmed Add Effect menu.
+ * Real-browser gate for the ESSENTIAL KIT dock and the trimmed Add FX order.
  *
  * Unit tests prove the slot table and the command. This proves the SURFACE:
  * that the dock renders in the devices panel, that LOAD KIT inserts the five
  * fundamentals in signal-flow order, that one click is one undo step, that a
- * multiview drag reaches the document, and that the first menu layer is fifteen
- * devices while every effect stays offered exactly once.
+ * multiview drag AND an EQ-curve drag each reach the document as a single undo
+ * step, and that the daily fifteen are the first fifteen the `✚ ADD FX` grid
+ * offers while every effect stays insertable exactly once.
  *
  * Run with vite-node so the effect registry can be imported as the single
- * source of truth for the total — a hardcoded count here would rot the same
- * way the literal totals rotted in zenit-composite.test.ts.
+ * source of truth for the expected order — a hardcoded list here would rot the
+ * same way the literal totals rotted in zenit-composite.test.ts.
+ *
+ * This surface was REBUILT underneath the gate (a `<select>` of optgroups
+ * became `FxAddPopover`, a flat grid with a category filter). The gate was
+ * re-derived from a fresh DOM measurement rather than patched to pass: see the
+ * comment above the menu checks for what the fifteen claim now means.
  *
  * Usage: npx vite-node scripts/verify-essential-kit.mjs
  */
@@ -28,9 +34,15 @@ const URL = process.env.KYX_URL ?? "http://127.0.0.1:5173/";
 const TIMEOUT = Number(process.env.KYX_TIMEOUT ?? 120000);
 
 const results = [];
+// RETURNS `ok`, on purpose. A version of this gate returned nothing, so
+// `if (check(...))` was always false and every conditional block below it — the
+// whole curve-drag section, five checks — was silently skipped while the run
+// still ended "28/28 passed". A gate that skips checks must not be able to
+// report the same score as one that ran them.
 const check = (name, ok, detail = "") => {
   results.push({ name, ok, detail });
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`);
+  return ok;
 };
 
 const browser = await chromium.launch();
@@ -42,23 +54,31 @@ try {
   await page.goto(URL, { waitUntil: "domcontentloaded", timeout: TIMEOUT });
   await page.waitForSelector("text=Open the studio", { timeout: TIMEOUT });
   await page.getByText("Open the studio", { exact: false }).first().click();
-  await page.waitForSelector("text=Pick a template", { timeout: TIMEOUT });
-  await page.getByText("HOUSE", { exact: true }).first().click();
+  await page.waitForSelector(".pb-template", { timeout: TIMEOUT });
+  // The CARD is the button; a text click can land on a child span and, while
+  // the card is `disabled` by `busy`, do nothing at all — leaving the gate to
+  // time out on `.dock-tab` with no hint that the studio never opened.
+  await page.click(".pb-template:has-text('HOUSE')");
   await page.waitForTimeout(15000);
-  const skip = await page.$("text=SKIP");
-  if (skip) {
-    await skip.click();
-    await page.waitForTimeout(3000);
-  }
-  // A killed dev server leaves an unsaved-session recovery banner over the
-  // studio. It is a real surface, so the gate dismisses it the way a user
-  // would instead of assuming the studio shell is broken.
-  const dismiss = await page.$("text=Dismiss");
-  if (dismiss) {
-    await dismiss.click();
-    await page.waitForTimeout(1500);
-    console.log("dismissed an unsaved-session recovery banner");
-  }
+  // Both of these are OPTIONAL surfaces over the studio. Each click may navigate
+  // (a recovery banner can reload the app), which destroys the execution context
+  // mid-`$()` — so neither is allowed to be the thing that fails the gate. The
+  // next `waitForSelector` is the real check that the studio survived.
+  const dismissIfPresent = async (text) => {
+    try {
+      const el = await page.$(`text=${text}`);
+      if (!el) return false;
+      await el.click({ timeout: 5000 });
+      await page.waitForTimeout(2500);
+      console.log(`dismissed an optional "${text}" surface`);
+      return true;
+    } catch (err) {
+      console.log(`optional "${text}" surface: ${String(err.message).split("\n")[0]}`);
+      return false;
+    }
+  };
+  await dismissIfPresent("SKIP");
+  await dismissIfPresent("Dismiss");
 
   // DEV is the devices panel in the bottom dock; the kit lives inside it.
   // A timeout here means the studio shell never appeared; capture what WAS on
@@ -84,60 +104,94 @@ try {
     slotLabels.join(" → "),
   );
 
-  // THE TRIMMED MENU — the +FX select in the dock must open on fifteen devices
-  // in five groups of three, with everything else one layer down.
-  // The registry is the source of truth for "what should be offered"; the DOM
-  // is the source of truth for "what IS offered". Comparing them in both
-  // directions is what catches a device that quietly stopped being insertable.
-  const menu = await page.$eval("select.devices-add-effect", (sel) => {
-    const groups = Array.from(sel.querySelectorAll("optgroup")).map((g) => ({
-      label: g.label,
-      items: Array.from(g.children).map((o) => o.textContent.trim()),
-    }));
-    // The select carries a `value=""` "+ FX" placeholder that is not a device.
-    // Counting it makes the DOM total read one higher than the registry. Note
-    // that a CSS `option[value]` selector does NOT help: it matches an empty
-    // value too, so the filter has to test the property in JS.
+  // THE ADD FX SURFACE — the popover behind `✚ ADD FX` is what a user reaches
+  // for now, so it is what this gate reads.
+  //
+  // WHAT CHANGED, AND WHY THE CLAIM IS NOW ORDER RATHER THAN GROUPING:
+  // this surface used to be a <select> with five `optgroup`s of three, which
+  // made "fifteen devices, three per area" a structural DOM claim. It is now a
+  // FLAT grid of all 57 devices with a category filter on top. Measured:
+  //   - the grid renders 57 devices, unscrolled and fully visible: 21
+  //   - the tiles are per-CATEGORY, not per-core-membership:
+  //     TONE 6, DYNAMICS 9, CHARACTER 17, MOVEMENT 17, SPACE 8
+  //   - the grid scrolls: 697px of content in a 300px viewport
+  // So "three per area" is FALSE for this surface and must not be re-asserted
+  // from the old select. What survives — and is what the trim actually bought —
+  // is ORDER: the fifteen daily devices come first, before the flagship suites
+  // and the long tail. The registry is the source of truth for what SHOULD be
+  // offered; the DOM is the source of truth for what IS offered; comparing them
+  // in both directions is what catches a device that quietly stopped being
+  // insertable.
+  await page.click(".fx-add-trigger");
+  await page.waitForSelector(".fx-add-popover", { timeout: 30000 });
+
+  const menu = await page.evaluate(() => {
+    const grid = document.querySelector(".fx-add-popover .fx-add-grid");
+    if (!grid) return { found: false };
+    const g = grid.getBoundingClientRect();
+    const tiles = Array.from(document.querySelectorAll(".fx-add-tile")).map((t) => t.textContent.trim());
+    const devices = Array.from(grid.querySelectorAll(".fx-add-device")).map((t) => {
+      const r = t.getBoundingClientRect();
+      return {
+        name: t.querySelector(".fx-add-device-name")?.textContent?.trim() ?? "",
+        // "Fully visible" is geometry against the grid's own box, not against
+        // the viewport: the devices panel is nowhere near the bottom of the
+        // screen, so an absolute comparison there says nothing at all.
+        visible: r.top >= g.top - 0.5 && r.bottom <= g.bottom + 0.5,
+      };
+    });
     return {
-      total: sel.options.length,
-      real: Array.from(sel.options).filter((o) => o.value).length,
-      groups,
+      found: true,
+      tiles,
+      names: devices.map((d) => d.name),
+      visibleCount: devices.filter((d) => d.visible).length,
+      firstHidden: devices.find((d) => !d.visible)?.name ?? null,
+      scrollable: grid.scrollHeight - grid.clientHeight,
     };
   });
-  // `^(A|B|C)`, not `^A|B|C$`: the alternation binds looser than the anchors,
-  // so the loose form also matches "MORE DYNAMICS" and silently counts the
-  // second layer as the first.
-  const AREA_LABELS = new Set(["TONE", "DYNAMICS", "CHARACTER", "MOVEMENT", "SPACE"]);
-  const areaGroups = menu.groups.filter((g) => AREA_LABELS.has(g.label));
-  const moreLayer = menu.groups.filter((g) => g.label.startsWith("MORE"));
+  if (!menu.found) throw new Error("the ADD FX popover never opened");
+
+  const expectedOrder = [
+    ...CORE_EFFECT_GROUPS.flatMap((g) => g.types),
+    ...FLAGSHIP_EFFECT_ORDER,
+    ...ADDITIONAL_EFFECT_GROUPS.flatMap((g) => g.types),
+  ].map((type) => EFFECT_META[type]?.name);
 
   check(
-    "the first menu layer is fifteen devices, three per area",
-    areaGroups.length === 5 &&
-      areaGroups.every((g) => g.items.length === 3) &&
-      areaGroups.reduce((n, g) => n + g.items.length, 0) === CORE_EFFECT_ORDER.length,
-    areaGroups.map((g) => `${g.label}(${g.items.length})`).join(" "),
+    "the fifteen daily devices are the FIRST fifteen a user sees",
+    JSON.stringify(menu.names.slice(0, CORE_EFFECT_ORDER.length)) ===
+      JSON.stringify(expectedOrder.slice(0, CORE_EFFECT_ORDER.length)),
+    `${CORE_EFFECT_ORDER.length} core first, then ${FLAGSHIP_EFFECT_ORDER.length} flagship + ${expectedOrder.length - CORE_EFFECT_ORDER.length - FLAGSHIP_EFFECT_ORDER.length} tail`,
   );
   check(
-    "the mastered-away devices are one layer down, not gone",
-    moreLayer.some((g) => g.items.includes("ZENIT")) && moreLayer.some((g) => g.items.includes("PORTAL")),
-    moreLayer.map((g) => `${g.label}(${g.items.length})`).join(" "),
+    "all fifteen are on screen without scrolling",
+    menu.names.slice(0, CORE_EFFECT_ORDER.length).every((n) => menu.names.includes(n)) &&
+      (menu.visibleCount >= CORE_EFFECT_ORDER.length || menu.firstHidden === null),
+    `${menu.visibleCount} of ${menu.names.length} fully visible; grid scrolls ${menu.scrollable}px; first hidden: ${menu.firstHidden ?? "none"}`,
   );
   check(
     "every registered effect is offered exactly once",
-    menu.real === TOTAL_EFFECTS && new Set(menu.groups.flatMap((g) => g.items)).size === TOTAL_EFFECTS,
-    `${menu.real} real options (+${menu.total - menu.real} placeholder) vs ${TOTAL_EFFECTS} in EFFECT_META`,
+    menu.names.length === TOTAL_EFFECTS && new Set(menu.names).size === TOTAL_EFFECTS,
+    `${menu.names.length} tiles vs ${TOTAL_EFFECTS} in EFFECT_META`,
   );
   check(
-    "the menu matches the registry grouping, group for group",
-    JSON.stringify(menu.groups.map((g) => g.items.length)) ===
-      JSON.stringify([
-        ...CORE_EFFECT_GROUPS.map((g) => g.types.length),
-        FLAGSHIP_EFFECT_ORDER.length,
-        ...ADDITIONAL_EFFECT_GROUPS.map((g) => g.types.length),
-      ]),
-    menu.groups.map((g) => `${g.label}(${g.items.length})`).join(" "),
+    "the grid order matches the registry order, device for device",
+    JSON.stringify(menu.names) === JSON.stringify(expectedOrder),
+    menu.names.slice(0, 3).join(" | ") + ` … ${menu.names.slice(-2).join(" | ")}`,
   );
+  check(
+    "the mastered-away devices are still offered, just not first",
+    menu.names.includes("ZENIT") && menu.names.includes("PORTAL"),
+    `ZENIT at ${menu.names.indexOf("ZENIT")}, PORTAL at ${menu.names.indexOf("PORTAL")}`,
+  );
+  check(
+    "the category tiles cover every area the registry groups into",
+    ["ALL", "TONE", "DYNAMICS", "CHARACTER", "MOVEMENT", "SPACE"].every((t) => menu.tiles.includes(t)),
+    menu.tiles.join(" "),
+  );
+
+  await page.click(".fx-add-close");
+  await page.waitForTimeout(800);
 
   const variantCount = await page.$$eval(".essential-kit-variant", (n) => n.length);
   check("every slot offers its characters (5 × 3)", variantCount === 15, `${variantCount} buttons`);
@@ -203,105 +257,153 @@ try {
     // devices panel is nowhere near the bottom of the screen. The claim is
     // REACHABILITY: a slider that is painted but covered by something else, or
     // scrolled out of its own container, looks fine and cannot be used.
+    // REACHABILITY, restated against the thing that actually occluded it. The
+    // first version compared a control's bottom against `.kit-multiview`'s own
+    // box and reported PASS while the EQ curve was completely ungrabbable: the
+    // strip fitted itself perfectly and was simply painted underneath
+    // `footer.statusbar`, 341px of panel content below the fold. Fitting the
+    // wrong box proves nothing. The real questions are (a) is the control clear
+    // of the statusbar, and (b) if it is not, can the user scroll to it.
     const reach = await page.evaluate((sel) => {
-      const track = document.querySelector(sel);
-      if (!track) return { found: false };
-      const scroller = track.closest(".kit-multiview");
-      if (!scroller) return { found: true, inScroller: false };
-      const r = track.getBoundingClientRect();
-      const s = scroller.getBoundingClientRect();
-      // Fully inside the strip: the column was TALLER than the others once it
-      // gained a curve, and a knob painted below the fold looks identical to a
-      // usable one until the user reaches for it. Compared as geometry against
-      // its own container — not against the viewport, and not with
-      // elementFromPoint, whose answer at a 3px-tall track depends on which
-      // sub-pixel the sample lands on.
+      const target = document.querySelector(sel);
+      if (!target) return { found: false };
+      const panel = target.closest(".devices-panel");
+      if (!panel) return { found: true, inPanel: false };
+      const bar = document.querySelector("footer.statusbar");
+      const barTop = bar ? bar.getBoundingClientRect().top : window.innerHeight;
+      const before = target.getBoundingClientRect();
+      const wasObscured = before.bottom > barTop;
+      const canScroll = panel.scrollHeight - panel.clientHeight;
+      // Scroll the way a user would, then re-measure what is actually there.
+      if (wasObscured) panel.scrollTop = panel.scrollHeight;
+      const after = target.getBoundingClientRect();
+      const hit = document.elementFromPoint(after.x + after.width / 2, after.y + after.height / 2);
       return {
         found: true,
-        inScroller: true,
-        inside: r.top >= s.top - 1 && r.bottom <= s.bottom + 1,
-        overflow: scroller.scrollHeight - scroller.clientHeight,
-        bottom: Math.round(r.bottom),
-        edge: Math.round(s.bottom),
+        inPanel: true,
+        wasObscured,
+        canScroll,
+        afterBottom: Math.round(after.bottom),
+        barTop: Math.round(barTop),
+        clearOfStatusbar: after.bottom <= barTop,
+        hitTest: hit ? `${hit.tagName}.${(hit.className || "").toString().split(" ")[0]}` : "nothing",
+        hitIsTarget: hit ? target.contains(hit) : false,
       };
     }, `${eqCol} .slider-track[aria-label*="LOW SHELF"]`);
     check(
       "the EQ column's controls are reachable, not painted but out of reach",
-      reach.found && reach.inScroller && reach.inside && reach.overflow <= 0,
+      reach.found &&
+        reach.inPanel &&
+        reach.clearOfStatusbar &&
+        reach.hitIsTarget &&
+        (reach.canScroll > 0 ? reach.wasObscured : true),
       reach.found
-        ? `LOW SHELF bottom ${reach.bottom} vs strip edge ${reach.edge}, ${reach.overflow}px overflow`
+        ? `started under the statusbar: ${reach.wasObscured}; panel scrolls ${reach.canScroll}px; after scroll bottom ${reach.afterBottom} vs statusbar ${reach.barTop}; pointer hits ${reach.hitTest}`
         : "LOW SHELF not found",
     );
     // THE DRAGGABLE CURVE — a band grabbed on the curve must write the same
-  // param the knob under it writes, in ONE undo step, and release must return
-  // it. This is the gesture contract the canvas documents; nothing else in the
-  // gate proves it.
-  const curve = `${eqCol} canvas.kit-eq-curve`;
-  const curveBox = await page.$eval(curve, (c) => {
-    const r = c.getBoundingClientRect();
-    return { x: r.x, y: r.y, w: r.width, h: r.height };
-  });
+    // param the knob under it writes, in ONE undo step, and release must return
+    // it. This is the gesture contract the canvas documents; nothing else in the
+    // gate proves it.
+    const curve = `${eqCol} canvas.kit-eq-curve`;
+    // The kit dock is the LAST block of a panel taller than its own viewport,
+    // so the curve starts below the fold and the user scrolls to it. The gate
+    // has to scroll too: probing an off-screen point measures the occluder,
+    // not the gesture. (Before the panel could scroll at all, this line found
+    // `footer.statusbar` sitting on top of the canvas and every drag check
+    // below it failed for that reason and no other.)
+    await page.evaluate((sel) => {
+      const c = document.querySelector(sel);
+      if (!c) return;
+      const panel = c.closest(".devices-panel");
+      if (panel) panel.scrollTop = panel.scrollHeight;
+    }, curve);
+    await page.waitForTimeout(600);
+    const curveBox = await page.$eval(curve, (c) => {
+      const r = c.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    });
 
-  // HIGH MID sits at 2500 Hz; on a 20 Hz–20 kHz log axis that is ~57% across.
-  const xAt = (frac) => curveBox.x + curveBox.w * frac;
-  const highMidX = xAt(0.566);
-  const midY = curveBox.y + curveBox.h / 2; // the 0 dB line — where a flat HIGH MID sits
+    // HIGH MID sits at 2500 Hz. On a 20 Hz–20 kHz log axis that is
+    // ln(2500/20) / ln(20000/20) = 0.699 of the way across — this gate used to
+    // assert ~0.566, which is where 1100 Hz lands. Nothing was under the pointer,
+    // the drag never started, and because the FOLLOWING Ctrl+Z then undid the
+    // LOAD KIT instead of the (never-made) gesture, the whole kit disappeared and
+    // six later checks failed as collateral. A wrong constant does not fail
+    // quietly one time; it poisons everything downstream that assumes the step
+    // before it worked.
+    const HIGH_MID_FRAC = Math.log(2500 / 20) / Math.log(20000 / 20);
+    const xAt = (frac) => curveBox.x + curveBox.w * frac;
+    const highMidX = xAt(HIGH_MID_FRAC);
+    const midY = curveBox.y + curveBox.h / 2; // the 0 dB line — where a flat HIGH MID sits
 
-  await page.mouse.move(highMidX, midY);
-  const hovering = await page.$eval(curve, (c) => c.className.includes("is-hovering")).catch(() => false);
-  check("the curve reports a grabbable point under the pointer", hovering);
+    const highMidKnob = () =>
+      page
+        .$eval(`${eqCol} .slider-track[aria-label*="HIGH MID"]`, (el) => el.getAttribute("aria-valuenow"))
+        .catch(() => null);
 
-  await page.mouse.down();
-  await page.mouse.move(highMidX, midY - curveBox.h * 0.28, { steps: 10 });
-  const paintedDuringDrag = await page.$eval(curve, (c) => c.className.includes("is-dragging")).catch(() => false);
-  check("dragging the curve takes the pointer", paintedDuringDrag);
+    await page.mouse.move(highMidX, midY);
+    await page.waitForTimeout(400);
+    const hovering = await page.$eval(curve, (c) => c.className.includes("is-hovering")).catch(() => false);
+    const grabbed = check(
+      "the curve reports a grabbable point under the pointer",
+      hovering,
+      `pointer at ${(HIGH_MID_FRAC * 100).toFixed(1)}% across (2500 Hz on the log axis)`,
+    );
 
-  // While the pointer is still down the document must NOT have been written:
-  // per-frame writes would flood undo with one step per move.
-  const highMidDuringDrag = await page
-    .$eval(`${eqCol} .slider-track[aria-label*="HIGH MID"]`, (el) => el.getAttribute("aria-valuenow"))
-    .catch(() => null);
-  check(
-    "the knob under the curve has not been written mid-drag",
-    highMidDuringDrag === "0",
-    `HIGH MID reads ${highMidDuringDrag} dB while the pointer is still down`,
-  );
+    if (grabbed) {
+      await page.mouse.down();
+      await page.mouse.move(highMidX, midY - curveBox.h * 0.28, { steps: 10 });
+      const paintedDuringDrag = await page.$eval(curve, (c) => c.className.includes("is-dragging")).catch(() => false);
+      const took = check("dragging the curve takes the pointer", paintedDuringDrag);
 
-  await page.mouse.up();
-  await page.waitForTimeout(1500);
-  const highMidAfter = await page
-    .$eval(`${eqCol} .slider-track[aria-label*="HIGH MID"]`, (el) => el.getAttribute("aria-valuenow"))
-    .catch(() => null);
-  check(
-    "releasing commits the dragged gain to the document",
-    highMidAfter !== null && Number(highMidAfter) > 1,
-    `HIGH MID ${highMidAfter} dB`,
-  );
+      // While the pointer is still down the document must NOT have been written:
+      // per-frame writes would flood undo with one step per move.
+      const highMidDuringDrag = await highMidKnob();
+      check(
+        "the knob under the curve has not been written mid-drag",
+        highMidDuringDrag === "0",
+        `HIGH MID reads ${highMidDuringDrag} dB while the pointer is still down`,
+      );
 
-  // ONE undo must return the whole gesture, not one frame of it.
-  await page.keyboard.press("Control+z");
-  await page.waitForTimeout(1200);
-  const highMidUndone = await page
-    .$eval(`${eqCol} .slider-track[aria-label*="HIGH MID"]`, (el) => el.getAttribute("aria-valuenow"))
-    .catch(() => null);
-  check(
-    "one undo reverts the whole curve gesture",
-    Number(highMidUndone) === 0,
-    `HIGH MID ${highMidUndone} dB after a single Ctrl+Z`,
-  );
+      await page.mouse.up();
+      await page.waitForTimeout(1500);
+      const highMidAfter = await highMidKnob();
+      const committed = check(
+        "releasing commits the dragged gain to the document",
+        highMidAfter !== null && Number(highMidAfter) > 1,
+        `HIGH MID ${highMidAfter} dB`,
+      );
 
-  // A press that does not move must not write anything.
-  await page.mouse.move(highMidX, midY);
-  await page.mouse.down();
-  await page.mouse.up();
-  await page.waitForTimeout(800);
-  const afterClick = await page
-    .$eval(`${eqCol} .slider-track[aria-label*="HIGH MID"]`, (el) => el.getAttribute("aria-valuenow"))
-    .catch(() => null);
-  check("a click that does not move writes nothing", Number(afterClick) === 0, `HIGH MID ${afterClick} dB`);
+      // ONE undo must return the whole gesture, not one frame of it — but only
+      // if there WAS a gesture. An unconditional undo here would revert the kit
+      // load and take every later check with it.
+      if (took && committed) {
+        await page.keyboard.press("Control+z");
+        await page.waitForTimeout(1200);
+        const highMidUndone = await highMidKnob();
+        check(
+          "one undo reverts the whole curve gesture",
+          Number(highMidUndone) === 0,
+          `HIGH MID ${highMidUndone} dB after a single Ctrl+Z`,
+        );
 
-  await multiview.screenshot({ path: ".artifacts/kit-multiview-debug.png" }).catch(() => {});
-}
+        // A press that does not move must not write anything.
+        await page.mouse.move(highMidX, midY);
+        await page.mouse.down();
+        await page.mouse.up();
+        await page.waitForTimeout(800);
+        const afterClick = await highMidKnob();
+        check("a click that does not move writes nothing", Number(afterClick) === 0, `HIGH MID ${afterClick} dB`);
+      } else {
+        console.log("skipped the curve undo checks — the gesture never committed");
+      }
+    } else {
+      console.log("skipped the curve drag checks — no point was grabbed");
+    }
+
+    await multiview.screenshot({ path: ".artifacts/kit-multiview-debug.png" }).catch(() => {});
+  }
 
   // THE REAL GATE: dragging a multiview knob must change the DOCUMENT, not just
   // the rendered value. Read the reverb column's DECAY before and after a real

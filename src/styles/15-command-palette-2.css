@@ -1650,7 +1650,20 @@
   font-size: 7px;
 }
 
-/* Module-first kit: five device slots, each with its own character choice. */
+/* Module-first kit: five device slots, each with its own character choice.
+
+   THE HOST PANEL MUST BE ABLE TO SCROLL. Measured 2026-10-15: the DEV panel is
+   `overflow: hidden` (14-command-palette.css:953) and reported 341px of
+   content below its own bottom edge. The kit dock is the LAST block in that
+   panel, so with no way to scroll, its EQ curve and the bottom knob of every
+   column were painted but unreachable — `elementsFromPoint` at the curve
+   returned `FOOTER.statusbar`. This is the panel's rule, kept here next to the
+   block it unblocks rather than edited into a sheet another session owns. */
+.devices-panel {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
 .essential-kit-dock {
   display: flex;
   flex: none;
@@ -1791,20 +1804,33 @@
 }
 
 /* Kit multiview: the five inserted devices side by side, each showing the same
-   MAIN parameter page the single-device editor shows. */
+   MAIN parameter page the single-device editor shows.
+
+   MEASURED DEFECT THIS FIXES (Chromium, 1600x1000, 2026-10-15)
+   ------------------------------------------------------------
+   This strip used to cap itself at `max-height: 232px; overflow-y: auto` so
+   the EQ column's curve would "fit rather than scroll". But the DEV panel that
+   HOSTS it is itself taller than the space above the statusbar:
+
+     EQ curve canvas ....... y 926 .. 972
+     footer.statusbar ....... y 943 .. 974   (later in DOM, so it wins the overlap)
+
+   Measured with `document.elementsFromPoint` at the curve's centre: the top
+   element is `FOOTER.statusbar`, not the canvas. The curve was painted and
+   completely ungrabbable, and so were the Compressor/ Saturation/Delay/Reverb
+   knobs at the same height. A strip that scrolls INSIDE an already-clipped
+   parent just moves the unreachable part somewhere else.
+
+   The fix is to let the panel scroll as one column instead of nesting a
+   second scrollbar inside a clipped one. The kit dock sits at the BOTTOM of
+   the panel, so it is exactly the content that must be reachable by scrolling
+   the panel itself — not by scrolling a box that the panel has already cut off. */
 .kit-multiview {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   align-items: start;
   gap: 4px 6px;
   min-width: 0;
-  /* The EQ column carries a curve on top of its four knobs and is therefore
-     taller than its four siblings. Sized so it FITS rather than scrolls: a
-     knob that is painted but below the fold is a knob the user can see and
-     cannot reach, and a hidden scrollbar is the worst way to say so. */
-  max-height: 232px;
-  overflow-y: auto;
-  overflow-x: hidden;
 }
 
 .kit-multiview-device {
