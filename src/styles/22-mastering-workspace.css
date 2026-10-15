@@ -2924,3 +2924,27 @@
     grid-template-columns: minmax(0, 1fr) minmax(170px, 0.8fr);
   }
 }
+
+/* Delivery target zone overlay — the platform contract drawn INTO the
+   loudness timeline: the pass band glows softly, the hot zone warns,
+   the target line anchors the eye. */
+.mastering-loudness-target-pass {
+  fill: rgba(74, 222, 128, 0.08);
+}
+
+.mastering-loudness-target-hot {
+  fill: rgba(248, 113, 113, 0.07);
+}
+
+.mastering-loudness-target-line {
+  stroke: #4ade80;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+}
+
+.mastering-loudness-target-label {
+  fill: #4ade80;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}

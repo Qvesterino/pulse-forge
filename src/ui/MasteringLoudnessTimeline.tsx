@@ -37,7 +37,14 @@ function formatBucketTime(seconds: number): string {
   return `${Math.floor(totalMinutes / 60)}:${String(totalMinutes % 60).padStart(2, "0")}:${secondPart}`;
 }
 
-export function MasteringLoudnessTimeline({ timeline }: { timeline: LoudnessTimeline | null }) {
+export function MasteringLoudnessTimeline({
+  timeline,
+  targetLufs,
+}: {
+  timeline: LoudnessTimeline | null;
+  /** Delivery target (platform contract) — draws the target zone overlay. */
+  targetLufs?: number | null;
+}) {
   const instanceId = useId().replaceAll(":", "");
   const [showValues, setShowValues] = useState(false);
   const hasValues = Boolean(timeline && timeline.points.length > 0);
@@ -116,6 +123,41 @@ export function MasteringLoudnessTimeline({ timeline }: { timeline: LoudnessTime
             </g>
           );
         })}
+        {typeof targetLufs === "number" && Number.isFinite(targetLufs) && (
+          <g className="mastering-loudness-target-zone" aria-hidden="true">
+            {/* PASS zone: ±1 LU around the delivery target (the platform verdict band). */}
+            <rect
+              className="mastering-loudness-target-pass"
+              x={PLOT_LEFT}
+              width={PLOT_RIGHT - PLOT_LEFT}
+              y={yForLufs(targetLufs + 1)}
+              height={yForLufs(targetLufs - 1) - yForLufs(targetLufs + 1)}
+            />
+            {/* HOT zone: more than 2 LU over target — the verdict fails here. */}
+            <rect
+              className="mastering-loudness-target-hot"
+              x={PLOT_LEFT}
+              width={PLOT_RIGHT - PLOT_LEFT}
+              y={PLOT_TOP}
+              height={Math.max(0, yForLufs(targetLufs + 2) - PLOT_TOP)}
+            />
+            <line
+              className="mastering-loudness-target-line"
+              x1={PLOT_LEFT}
+              x2={PLOT_RIGHT}
+              y1={yForLufs(targetLufs)}
+              y2={yForLufs(targetLufs)}
+            />
+            <text
+              className="mastering-loudness-target-label"
+              x={PLOT_RIGHT - 2}
+              y={yForLufs(targetLufs) - 4}
+              textAnchor="end"
+            >
+              target {targetLufs} LUFS
+            </text>
+          </g>
+        )}
         {timeline.points.map((point, index) => {
           const x = pointX(point.timeSeconds);
           return (

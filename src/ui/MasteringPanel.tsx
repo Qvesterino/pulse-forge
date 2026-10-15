@@ -372,7 +372,7 @@ export function MasteringPanel() {
             </small>
           </div>
         </div>
-        {report && <MasteringLoudnessTimeline timeline={loudnessTimeline} />}
+        {report && <MasteringLoudnessTimeline timeline={loudnessTimeline} targetLufs={profile.targetLufs} />}
         <div className="mastering-overview-action">
           <p aria-live="off">
             {isAnalyzing
