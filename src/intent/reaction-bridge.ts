@@ -66,11 +66,24 @@ export function isMutatingIntentRoute(route: RoutedIntent): boolean {
   return MUTATING_KINDS.has(route.kind);
 }
 
+/**
+ * Register one proposal.
+ *
+ * `undoDepthBeforeApply` — NOT the depth after the command. The ledger matches
+ * an undo by the depth the stack SETTLES at: stack at L, apply pushes one
+ * command (L+1), the human undoes, the store fires `onUndoCommitted(L)`. So
+ * the value that identifies this proposal is L — the depth read BEFORE the
+ * command ran. Passing L+1 (the depth after) can never match, and `undone`
+ * silently becomes unreachable: the ledger looks healthy because every row
+ * still resolves to `kept`.
+ *
+ * Call this AFTER the command has run, with the document from before it.
+ */
 export function noteIntentProposal(
   route: RoutedIntent,
   beforeDoc: ProjectDocument,
   afterDoc: ProjectDocument,
-  undoDepthAfter: number,
+  undoDepthBeforeApply: number,
 ): void {
   const ledger = activeReactionLedger();
   if (!ledger || !isMutatingIntentRoute(route)) return;
@@ -91,7 +104,7 @@ export function noteIntentProposal(
     trackIds,
     beforeHash,
     afterHash,
-    undoDepth: undoDepthAfter,
+    undoDepth: undoDepthBeforeApply,
   });
 }
 

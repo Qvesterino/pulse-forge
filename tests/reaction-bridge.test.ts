@@ -1,8 +1,17 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { routeIntentText, type RoutedIntent } from "../src/intent/route";
 import { describeIntentAction, noteIntentProposal } from "../src/intent/reaction-bridge";
-import { ReactionLedger, sanitizeAction, setActiveReactionLedger } from "../src/intent/reaction-ledger";
+import {
+  ReactionLedger,
+  sanitizeAction,
+  setActiveReactionLedger,
+  trackIdsChangedBetween,
+} from "../src/intent/reaction-ledger";
+import { ProjectStore } from "../src/store/ProjectStore";
+import { applyFaderIntent } from "../src/intent/conversation";
 import type { ProjectDocument } from "../src/project-model/types";
 
 /**
@@ -241,6 +250,101 @@ describe("F1 glue — the before/after pair", () => {
     noteIntentProposal(route({ kind: "fader", intent: { targets: ["bass"], direction: "up" } }), doc, renamed, 1);
     // The user's own words never enter the recorded state.
     expect(ledger.entries()).toEqual([]);
+  });
+});
+
+describe("F1 glue — the undo identity (real store)", () => {
+  function storeWithLedgerHooks() {
+    const store = new ProjectStore(fresh());
+    store.onUndoCommitted = (depthAfterPop) => {
+      ledger.noteUndo(depthAfterPop);
+    };
+    store.onUserEdit = (_doc, previous) => {
+      ledger.noteUserEdit(trackIdsChangedBetween(previous, store.getDoc()));
+    };
+    return store;
+  }
+
+  function raiseTheBass(store: ProjectStore) {
+    const before = store.getDoc();
+    const asked = routeIntentText("zvys bass", before);
+    expect(asked.kind).toBe("fader");
+    if (asked.kind !== "fader") throw new Error("unreachable");
+    const command = applyFaderIntent(before, asked.intent);
+    expect(command).not.toBeNull();
+    return { before, asked, depthBefore: store.undoStackLength, command: command! };
+  }
+
+  it("a human undo resolves the proposal it rejected", () => {
+    const store = storeWithLedgerHooks();
+    const { before, asked, depthBefore, command } = raiseTheBass(store);
+    store.execute(command);
+    noteIntentProposal(asked, before, store.getDoc(), depthBefore);
+    expect(ledger.entries()).toHaveLength(1);
+
+    // Past the mash guard: this is a considered reaction, not a frustrated
+    // keypress. The store fires onUndoCommitted with the depth it settled at,
+    // and the ledger must find the proposal that registered at that depth.
+    clock += 6_000;
+    store.undo();
+
+    const row = ledger.entries()[0];
+    expect(row.outcome).toBe("undone");
+    expect(row.beforeHash).not.toBe(row.afterHash);
+  });
+
+  it("the depth AFTER apply never matches — why the panel had to move", () => {
+    // The panel used to register with `undoStackLength + 1`, read BEFORE the
+    // command ran. That value is the depth the stack grows to; the store
+    // reports the depth it SETTLES at. Nothing ever matches, so every entry
+    // sat "pending" until the 90 s window aged it into "kept" — the ledger
+    // reported a healthy keep-rate for proposals the human had rejected.
+    const store = storeWithLedgerHooks();
+    const { before, asked, depthBefore, command } = raiseTheBass(store);
+    store.execute(command);
+    noteIntentProposal(asked, before, store.getDoc(), depthBefore + 1);
+
+    clock += 6_000;
+    store.undo();
+    expect(ledger.entries()[0].outcome).toBe("pending");
+
+    clock += 91_000;
+    expect(ledger.entries()[0].outcome).toBe("kept");
+  });
+});
+
+describe("F1 glue — the panel wiring", () => {
+  // IntentPanel is a ~5 900-line component with no unit harness, so its call
+  // site has no behavioural pin. This is a TEXT guard and says so: it cannot
+  // prove the panel works, but it does fail on the exact defects this call
+  // site shipped with — the same document twice, the depth read after the
+  // command, and the nested re-entry double-registering.
+  // Resolved from the repo root (vitest's cwd), not import.meta.url: under the
+  // jsdom environment that URL is not a file: URL.
+  const source = readFileSync(resolve(process.cwd(), "src/ui/IntentPanel.tsx"), "utf8");
+
+  it("registers with the pre-apply depth and a separate before-document", () => {
+    expect(source).toContain("const undoDepthBeforeRoute = services.store.undoStackLength;");
+    expect(source).toContain(
+      "noteIntentProposal(executedRoute, docBeforeRoute, services.store.getDoc(), undoDepthBeforeRoute)",
+    );
+  });
+
+  it("never passes the same document twice, nor a depth after the command", () => {
+    // The window must span nested calls: `[^)]*` stops at the first `)` and
+    // would never see a `+ 1` that follows `services.store.getDoc()`.
+    expect(source).not.toMatch(/noteIntentProposal\([\s\S]{0,240}?,\s*doc\s*,\s*doc\b/);
+    expect(source).not.toMatch(/noteIntentProposal\([\s\S]{0,240}?\+\s*1\b/);
+  });
+
+  it("the local-model re-entry hands the proposal to the nested call", () => {
+    expect(source).toMatch(/delegatedToNestedRoute = true;/);
+    expect(source).toMatch(/if \(executedRoute && !delegatedToNestedRoute\)/);
+  });
+
+  it("the kill switch and the export chip are on this surface", () => {
+    expect(source).toContain("toggleReactionLedger");
+    expect(source).toContain("exportReactionPack");
   });
 });
 

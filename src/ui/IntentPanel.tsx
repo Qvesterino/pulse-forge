@@ -155,7 +155,12 @@ import {
 } from "../intent/mix";
 import { applyParamIntent, paramReadback } from "../intent/param-intent";
 import { measureParamVerification } from "../intent/param-readback";
-import { attentiveStatusLine, findingsFromSectionMeters, isAttentiveModeEnabled, setAttentiveModeEnabled } from "../intent/attentive-mode";
+import {
+  attentiveStatusLine,
+  findingsFromSectionMeters,
+  isAttentiveModeEnabled,
+  setAttentiveModeEnabled,
+} from "../intent/attentive-mode";
 import { noteIntentProposal } from "../intent/reaction-bridge";
 import {
   activeReactionLedger,
@@ -4710,7 +4715,7 @@ export function IntentPanel() {
     } finally {
       setRouteBusy(false);
       if (executedRoute && !delegatedToNestedRoute) {
-        noteIntentProposal(executedRoute, docBeforeRoute, services.store.getDoc(), undoDepthBeforeRoute + 1);
+        noteIntentProposal(executedRoute, docBeforeRoute, services.store.getDoc(), undoDepthBeforeRoute);
         refreshReaction();
       }
     }
@@ -4737,11 +4742,7 @@ export function IntentPanel() {
           type="button"
           className="intent-model-chip"
           data-state={
-            reaction.enabled
-              ? reaction.summary && reaction.summary.pending > 0
-                ? "loading"
-                : "ready"
-              : "off"
+            reaction.enabled ? (reaction.summary && reaction.summary.pending > 0 ? "loading" : "ready") : "off"
           }
           onClick={toggleReactionLedger}
           title={
