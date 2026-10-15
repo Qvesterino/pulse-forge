@@ -1,9 +1,60 @@
-/* Core device choices deserve readable labels at the roomy dock widths. */
+/* Parameter names and readouts share one readable hierarchy across generic
+   devices and the flagship editors rendered inside the device surface. */
+
+.device-editor .fx-device-params .slider-label,
+.device-editor .fx-device-content .slider-label {
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+}
+
+.device-editor .fx-device-params .slider-value,
+.device-editor .fx-device-content .slider-value {
+  color: var(--text);
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+/* Compact flagship controls can otherwise press a short label directly
+   against its numeric readout when their header has no spare width. */
+.device-editor .fx-device-content .slider-compact .slider-header {
+  column-gap: var(--space-1);
+}
+
+.device-editor .fx-device-params .fx-param-cell {
+  gap: var(--space-1);
+}
+
+/* ADD FX is the direct path; chain presets remain a neutral shortcut. */
+.devices-panel > .panel-header .devices-add-chain {
+  height: var(--ctrl-h);
+  padding-inline: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raise);
+  color: var(--text-dim);
+  font: 600 var(--fs-sm) var(--mono);
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.devices-panel > .panel-header .devices-add-chain:hover {
+  border-color: var(--kyx-silver-edge);
+  color: var(--text);
+}
+
+.devices-panel > .panel-header .devices-add-chain:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--kyx-pulse) 82%, #fff);
+  outline-offset: 1px;
+}
 
 .source-profile-tab {
   height: 27px;
   padding-inline: 5px;
-  font-size: 10px;
+  font-size: var(--fs-compact);
   letter-spacing: 0.05em;
   transition:
     color var(--motion-fast) var(--motion-ease),
@@ -23,7 +74,7 @@
   .essential-kit-variant {
     height: 25px;
     padding-inline: 4px;
-    font-size: 10px;
+    font-size: var(--fs-compact);
     letter-spacing: 0.02em;
   }
 }
@@ -59,7 +110,7 @@
     min-width: 0;
     height: var(--touch-target-large);
     min-height: var(--touch-target-large);
-    font-size: 12px;
+    font-size: var(--fs-md);
   }
 }
 

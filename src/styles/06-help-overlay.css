@@ -7,21 +7,23 @@
   display: grid;
   place-items: center;
   z-index: 50;
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
 }
 
 .help-card {
   width: min(720px, 92vw);
   max-height: 80vh;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  background: linear-gradient(145deg, rgba(238, 242, 246, 0.075), transparent 42%), var(--bg-panel);
+  border: 1px solid var(--kyx-silver-edge, var(--border));
+  border-radius: 8px;
   padding: 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.075),
+    0 20px 56px rgba(0, 0, 0, 0.56);
   overflow: hidden;
 }
 
@@ -48,9 +50,11 @@
 
 .help-group-title {
   margin: 0 0 2px;
+  padding-left: 7px;
+  border-left: 1px solid var(--kyx-silver-steel, var(--border));
   font-size: 9px;
-  letter-spacing: 1.6px;
-  color: var(--accent);
+  letter-spacing: 1.35px;
+  color: var(--kyx-silver-bright, var(--text-dim));
   font-weight: 700;
 }
 
@@ -74,7 +78,7 @@
 }
 
 .help-row:hover {
-  background: var(--bg-panel-2);
+  background: linear-gradient(90deg, var(--accent-soft), transparent 92%);
 }
 
 .help-label {
@@ -90,8 +94,8 @@
   padding: 1px 6px;
   background: var(--bg-raise);
   border: 1px solid var(--border);
-  border-radius: 2px;
-  color: var(--text-dim);
+  border-radius: 3px;
+  color: var(--kyx-silver-bright, var(--text-dim));
   white-space: nowrap;
 }
 

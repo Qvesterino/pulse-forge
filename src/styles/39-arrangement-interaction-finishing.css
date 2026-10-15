@@ -1,5 +1,68 @@
 /* Arrangement toggles and capture inputs follow the shared KYX interaction
    language while keeping the timeline and recording surface matte. */
+.arr-panel .arr-status-badge {
+  padding: 2px var(--space-1);
+  border: 0;
+  border-radius: 0;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.08em;
+}
+
+.arr-panel .arr-status-quantize {
+  color: var(--text-dim);
+}
+
+.arr-panel .arr-status-quantize strong {
+  color: var(--text);
+}
+
+.arr-panel .arr-status-queued {
+  padding-inline: var(--space-2);
+  border: 1px solid color-mix(in srgb, var(--kyx-pulse) 48%, var(--hairline));
+  border-radius: var(--radius-xs);
+  background: var(--kyx-pulse-soft);
+  color: var(--kyx-pulse);
+}
+
+.arr-panel .arr-section-label {
+  padding: 0;
+  border: 0;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.1em;
+}
+
+.arr-panel .arr-edit-cluster + .arr-edit-cluster {
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--hairline);
+}
+
+.arr-panel .arr-edit-cluster .btn-small:not(.active-solo):not(.btn-primary):not(.btn-danger):not(:disabled) {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-dim);
+}
+
+.arr-panel .arr-edit-cluster .btn-small:not(.active-solo):not(.btn-primary):not(.btn-danger):hover:not(:disabled) {
+  border-color: var(--kyx-silver-edge);
+  background: color-mix(in srgb, var(--surface-2) 78%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.arr-panel .arr-edit-cluster .btn-danger:not(:disabled) {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-dim);
+}
+
+.arr-panel .arr-edit-cluster .btn-danger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--stop) 48%, transparent);
+  background: color-mix(in srgb, var(--stop) 10%, var(--surface-1));
+  color: var(--stop);
+}
+
 .arr-panel .arr-ripple-toggle {
   display: inline-flex;
   align-items: center;
@@ -10,7 +73,7 @@
   border-radius: var(--radius-sm);
   background: var(--surface-1);
   color: var(--text-dim);
-  font: 650 10px var(--mono);
+  font: 650 var(--fs-compact) var(--mono);
   letter-spacing: 0.06em;
   cursor: pointer;
   transition:
@@ -160,6 +223,85 @@
   outline-offset: -2px;
 }
 
+/* The MIDI clip keeps its instrument-blue surface; selection is a silver edge
+   plus one amber trace so it reads without a warm outer halo. */
+.arr-panel .arr-midi-clip.selected {
+  border-color: color-mix(in srgb, var(--kyx-silver-mid) 42%, var(--accent));
+  box-shadow:
+    inset 0 -2px 0 var(--kyx-pulse),
+    0 0 0 1px color-mix(in srgb, var(--kyx-silver-mid) 32%, transparent);
+}
+
+.arr-panel .arr-midi-clip.selected.shared-source {
+  border-left-color: rgba(255, 213, 112, 0.95);
+}
+
+.arr-panel .arr-midi-clip.selected.grouped {
+  box-shadow:
+    inset 0 2px 0 rgba(99, 102, 241, 0.9),
+    inset 0 -2px 0 var(--kyx-pulse),
+    0 0 0 1px color-mix(in srgb, var(--kyx-silver-mid) 32%, transparent);
+}
+
+.arr-panel .arr-midi-clip.selected.locked.grouped {
+  box-shadow:
+    inset 0 2px 0 rgba(99, 102, 241, 0.9),
+    inset 0 -2px 0 var(--kyx-pulse),
+    0 0 0 1px rgba(248, 113, 113, 0.5);
+}
+
+/* Timeline clips keep their role/waveform surfaces. Selection adds the same
+   amber lower trace; grouped and locked indicators stay on their own edges. */
+.arr-panel .arr-clip.selected:not(.grouped) {
+  box-shadow:
+    inset 3px 0 var(--scene-role-color, var(--accent)),
+    inset 0 -2px 0 var(--kyx-pulse),
+    0 0 0 1px color-mix(in srgb, var(--kyx-silver-mid) 42%, transparent);
+}
+
+.arr-panel .arr-clip.selected.grouped {
+  box-shadow:
+    inset 3px 0 var(--scene-role-color, var(--accent)),
+    inset 0 2px 0 rgba(99, 102, 241, 0.9),
+    inset 0 -2px 0 var(--kyx-pulse),
+    0 0 0 1px color-mix(in srgb, var(--kyx-silver-mid) 42%, transparent);
+}
+
+.arr-panel .arr-clip.selected.locked.grouped {
+  box-shadow:
+    inset 3px 0 var(--scene-role-color, var(--accent)),
+    inset 0 2px 0 rgba(99, 102, 241, 0.9),
+    inset 0 -2px 0 var(--kyx-pulse),
+    0 0 0 1px rgba(248, 113, 113, 0.5);
+}
+
+.arr-panel .arr-audio-clip.selected:not(.grouped) {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -2px 0 var(--kyx-pulse),
+    0 0 0 1px color-mix(in srgb, var(--kyx-silver-mid) 42%, transparent),
+    0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.arr-panel .arr-audio-clip.selected.grouped {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 2px 0 rgba(99, 102, 241, 0.9),
+    inset 0 -2px 0 var(--kyx-pulse),
+    0 0 0 1px color-mix(in srgb, var(--kyx-silver-mid) 42%, transparent),
+    0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.arr-panel .arr-audio-clip.selected.locked.grouped {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 2px 0 rgba(99, 102, 241, 0.9),
+    inset 0 -2px 0 var(--kyx-pulse),
+    0 0 0 1px color-mix(in srgb, var(--kyx-silver-mid) 42%, transparent),
+    0 0 0 2px rgba(248, 113, 113, 0.5),
+    0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
 .arr-panel .arr-midi-lane-label button:focus-visible {
   position: relative;
   z-index: 3;
@@ -207,15 +349,21 @@
   .arr-panel .arr-capture-setup > summary,
   .arr-panel .arr-capture-setup-grid .arr-arm-select,
   .arr-panel .arr-input-channel-routing > summary,
-  .arr-panel .arr-edit-toolbar > .btn,
-  .arr-panel .arr-edit-toolbar .arr-zoom-group > .btn,
+  .arr-panel .arr-edit-toolbar .arr-edit-cluster > .btn,
+  .arr-panel .arr-edit-toolbar .arr-edit-cluster .arr-zoom-group > .btn,
+  .arr-panel .arr-edit-toolbar .arr-edit-cluster .arr-arm-select,
   .arr-panel .arr-production-toolbar > .btn,
   .arr-panel .arr-production-toolbar > .arr-arm-select,
   .arr-panel .arr-ripple-row > .arr-ripple-toggle,
   .arr-panel .arr-snap-label > .arr-arm-select,
   .arr-panel .arr-audio-take-lane-select {
     min-height: var(--touch-target-large);
-    font-size: 12px;
+    font-size: var(--fs-md);
+  }
+
+  .arr-panel .arr-edit-toolbar .arr-edit-cluster .arr-clip-secs input {
+    min-height: var(--touch-target-large);
+    font-size: var(--fs-md);
   }
 
   .arr-panel .arr-input-channel-routing > summary {
@@ -226,7 +374,7 @@
     border-radius: var(--radius-sm);
     background: var(--surface-1);
     color: var(--text-dim);
-    font-size: 11px;
+    font-size: var(--fs-sm);
     line-height: 1.35;
   }
 
@@ -275,7 +423,7 @@
     .arr-panel .scene-launcher-footer > .btn {
       height: var(--touch-target-large);
       min-height: var(--touch-target-large);
-      font-size: 12px;
+      font-size: var(--fs-md);
     }
 
     .arr-panel .scene-actions {
@@ -338,7 +486,7 @@
       height: var(--touch-target-large);
       min-height: var(--touch-target-large);
       padding-inline: 4px;
-      font-size: 10px;
+      font-size: var(--fs-compact);
     }
   }
 }
@@ -359,7 +507,7 @@
       border: 1px solid var(--hairline);
       border-radius: var(--radius-sm);
       background: var(--surface-1);
-      font-size: 12px;
+      font-size: var(--fs-md);
     }
 
     .scene-strip-scene {
@@ -466,7 +614,7 @@
       min-width: 0;
       height: var(--touch-target-large);
       min-height: var(--touch-target-large);
-      font-size: 12px;
+      font-size: var(--fs-md);
     }
 
     .scene-strip-macro-clear {

@@ -48,7 +48,7 @@
   width: var(--ctrl-h-sm);
   height: var(--ctrl-h-sm);
   padding: 0;
-  font-size: 13px;
+  font-size: var(--fs-body);
   line-height: 1;
 }
 
@@ -61,7 +61,7 @@
   height: var(--ctrl-h-sm);
   padding: 0 10px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-compact);
   font-weight: 600;
   letter-spacing: 0.8px;
   color: var(--text-dim);
@@ -118,7 +118,7 @@
   height: 20px;
   padding: 0 10px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-compact);
   letter-spacing: 0.8px;
   color: var(--text-faint);
   border-radius: var(--radius-xs);
@@ -137,22 +137,6 @@
   color: var(--accent);
   background: var(--accent-soft);
   box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--accent) 84%, #fff);
-}
-
-/* Dice roll buttons: FULL carries the panel's primary fill; the LIT
-   (dice-active) mode state must stay readable above it — pressed = brighter
-   fill + glow, unpressed primary = deep accent. */
-.btn.dice-big.dice-active {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--accent) 78%, #fff),
-    color-mix(in srgb, var(--accent) 90%, #000)
-  );
-  border-color: color-mix(in srgb, var(--accent) 55%, #fff);
-  color: #141008;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.3),
-    0 0 16px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 /* ---------- Toolbar (the de-soup primitive) ----------
@@ -177,7 +161,7 @@
 }
 .toolbar-label {
   font-family: var(--mono);
-  font-size: 8px;
+  font-size: var(--fs-2xs);
   letter-spacing: 1.2px;
   color: var(--text-faint);
   margin-right: 2px;
@@ -211,14 +195,14 @@
 }
 .panel-kicker {
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 1.6px;
   color: var(--accent);
   flex: none;
 }
 .panel-title-line {
-  font-size: 12px;
+  font-size: var(--fs-md);
   font-weight: 700;
   color: var(--text);
   white-space: nowrap;
@@ -226,7 +210,7 @@
   text-overflow: ellipsis;
 }
 .panel-hint {
-  font-size: 10px;
+  font-size: var(--fs-compact);
   color: var(--text-faint);
   white-space: nowrap;
   overflow: hidden;
@@ -262,7 +246,7 @@
 }
 .panel-section-title {
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 1.4px;
   color: var(--text-dim);
@@ -314,7 +298,7 @@
 }
 .statusbar-hint-label {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-compact);
   letter-spacing: 0.5px;
   color: var(--accent);
   overflow: hidden;
@@ -322,7 +306,7 @@
 }
 .statusbar-hint-value {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-compact);
   color: var(--text);
   background: var(--bg-raise);
   border: 1px solid var(--border);
@@ -417,7 +401,7 @@
 }
 .browser-strip-target {
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: var(--fs-xs);
   color: var(--text-faint);
   white-space: nowrap;
   overflow: hidden;
@@ -434,7 +418,7 @@
   color: var(--text-faint);
   border: 1px solid transparent;
   border-radius: 3px;
-  font-size: 10px;
+  font-size: var(--fs-compact);
 }
 .browser-strip-collapse:hover {
   color: var(--text);
@@ -471,7 +455,7 @@
 }
 .browser-strip-rail-label {
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: var(--fs-xs);
   letter-spacing: 2px;
   writing-mode: vertical-rl;
   transform: rotate(180deg);
@@ -526,12 +510,12 @@
   filter: saturate(0.7);
 }
 .empty-state-title {
-  font-size: 12px;
+  font-size: var(--fs-md);
   font-weight: 600;
   color: var(--text-dim);
 }
 .empty-state-hint {
-  font-size: 11px;
+  font-size: var(--fs-sm);
   line-height: 1.5;
   color: var(--text-faint);
   max-width: 340px;
@@ -541,7 +525,7 @@
   align-items: baseline;
   gap: 6px;
   padding: 10px 8px;
-  font-size: 11px;
+  font-size: var(--fs-sm);
   color: var(--text-faint);
 }
 .sample-empty-icon {
@@ -649,7 +633,7 @@
 }
 .io-field-label {
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: var(--fs-xs);
   letter-spacing: 1.2px;
   color: var(--text-faint);
   width: 52px;
@@ -663,7 +647,7 @@
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--text);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   padding: 0 6px;
 }
 .io-field-slider input[type="range"] {
@@ -672,25 +656,25 @@
 }
 .io-field-value {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-compact);
   color: var(--text);
   min-width: 56px;
   text-align: right;
 }
 .io-note {
-  font-size: 10px;
+  font-size: var(--fs-compact);
   line-height: 1.45;
   color: var(--text-faint);
 }
 .io-error {
-  font-size: 10px;
+  font-size: var(--fs-compact);
   line-height: 1.45;
   color: var(--stop);
 }
 .io-readout {
   margin-left: auto;
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: var(--fs-xs);
   letter-spacing: 0.6px;
   color: var(--text-dim);
   background: var(--bg-raise);
@@ -703,7 +687,7 @@
   flex-wrap: wrap;
   gap: 4px 10px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-compact);
   color: var(--text-dim);
 }
 .io-actions {
@@ -729,7 +713,7 @@
   border-radius: 4px;
 }
 .io-driver-name {
-  font-size: 11px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
@@ -739,7 +723,7 @@
 }
 .io-driver-meta {
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: var(--fs-xs);
   color: var(--text-faint);
   margin-left: auto;
   white-space: nowrap;
@@ -779,7 +763,7 @@
   flex: none;
 }
 .family-tree-title {
-  font-size: 13px;
+  font-size: var(--fs-body);
   color: var(--text);
   min-width: 0;
   white-space: nowrap;
@@ -792,7 +776,7 @@
 .family-tree-meta {
   margin-left: auto;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-compact);
   color: var(--text-faint);
   flex: none;
 }
@@ -860,7 +844,7 @@
     0 0 14px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 .family-tree-node-title {
-  font-size: 11px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
@@ -869,7 +853,7 @@
 }
 .family-tree-node-meta {
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: var(--fs-xs);
   color: var(--text-faint);
   white-space: nowrap;
   overflow: hidden;

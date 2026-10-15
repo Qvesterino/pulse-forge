@@ -86,6 +86,10 @@ export class YDocStore {
   onDocChanged: ((doc: ProjectDocument) => void) | null = null;
   /** Explicit local edits from a human music editor; remote/generated commands never call this. */
   onUserPatternEdit: ((doc: ProjectDocument, previousDoc: ProjectDocument) => void) | null = null;
+  /** Explicit human edits, matching the ProjectStore observer contract. */
+  onUserEdit: ((doc: ProjectDocument, previousDoc: ProjectDocument) => void) | null = null;
+  /** Called after a local undo commits, with the remaining undo depth. */
+  onUndoCommitted: ((depthAfterPop: number) => void) | null = null;
   /**
    * Jam-role gate: returns the local role (or null = ungated). Wired by
    * openProject to the CollabSession — see jamRoles.ts.
@@ -430,6 +434,12 @@ export class YDocStore {
         // Taste learning is best-effort and must never make an edit fail.
         console.warn("[style-learning] could not observe local pattern edit:", error);
       }
+      try {
+        this.onUserEdit?.(this.doc_, previousDoc);
+      } catch (error) {
+        // Reaction observers are best-effort and must never make an edit fail.
+        console.warn("[reaction-ledger] could not observe user edit:", error);
+      }
     }
   }
 
@@ -460,6 +470,11 @@ export class YDocStore {
     this.lastUndoneLabel = (top?.meta.get("label") as string | undefined) ?? null;
     this.undoManager.undo();
     this.afterMutation();
+    try {
+      this.onUndoCommitted?.(this.undoManager.undoStack.length);
+    } catch {
+      // A reaction observer must never break the undo it is observing.
+    }
   }
 
   redo(): void {

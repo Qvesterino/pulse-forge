@@ -60,7 +60,7 @@
   padding: 0 11px;
   flex: 0 0 auto;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-compact);
   font-weight: 600;
   letter-spacing: 1px;
   color: var(--text-faint);
@@ -116,7 +116,7 @@
 }
 .dock-split-badge {
   font-family: var(--mono);
-  font-size: 8px;
+  font-size: var(--fs-2xs);
   letter-spacing: 1.2px;
   color: var(--text-dim);
   border: 1px solid var(--border);
@@ -133,7 +133,7 @@
   border: 1px solid var(--border);
   border-radius: 4px;
   background: transparent;
-  font-size: 9px;
+  font-size: var(--fs-xs);
   transition:
     color var(--motion-fast) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease);
@@ -228,7 +228,7 @@
     width: 18px;
     color: var(--text-faint);
     font-family: var(--mono);
-    font-size: 15px;
+    font-size: var(--fs-xl);
     line-height: 1;
     pointer-events: none;
   }

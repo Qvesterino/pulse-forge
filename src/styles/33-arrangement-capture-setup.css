@@ -21,7 +21,7 @@
   border-radius: var(--radius-sm);
   background: var(--surface-1);
   color: var(--text-dim);
-  font: 700 10px var(--mono);
+  font: 700 var(--fs-compact) var(--mono);
   letter-spacing: 0.06em;
   cursor: pointer;
   list-style: none;
@@ -35,7 +35,7 @@
   margin-left: auto;
   color: var(--accent);
   content: "+";
-  font-size: 14px;
+  font-size: var(--fs-lg);
 }
 
 .arr-capture-setup[open] > summary {
@@ -58,7 +58,7 @@
   overflow: hidden;
   max-width: 90px;
   color: var(--text-faint);
-  font-size: 9px;
+  font-size: var(--fs-xs);
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -93,7 +93,7 @@
 .arr-capture-setup-grid > .arr-input-channel-routing > summary {
   color: var(--text-dim);
   cursor: pointer;
-  font: 700 9px var(--mono);
+  font: 700 var(--fs-xs) var(--mono);
   letter-spacing: 0.06em;
 }
 
@@ -148,6 +148,23 @@
 .arr-edit-toolbar {
   grid-area: edit;
   flex-wrap: wrap;
+  column-gap: var(--space-3);
+  row-gap: var(--space-2);
+}
+
+/* Wider gutters between semantic tool clusters keep the header scannable;
+   each cluster retains the compact spacing of its controls. */
+.arr-edit-cluster {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.arr-edit-toolbar > .arr-smart-comp {
+  flex: 1 1 100%;
 }
 
 .arr-production-toolbar {
@@ -190,5 +207,9 @@
     padding-left: 0;
     border-top: 1px solid var(--border-soft);
     border-left: 0;
+  }
+
+  .arr-edit-toolbar {
+    column-gap: var(--space-2);
   }
 }

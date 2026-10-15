@@ -1,14 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TrackTabs, trackBadge } from "../../src/ui/TrackTabs";
 import { renderWithContext } from "../helpers";
 import type { Track } from "../../src/project-model/types";
 
 describe("TrackTabs", () => {
-  it("renders all track tabs", () => {
+  it("renders track selection buttons in the labelled group", () => {
     renderWithContext(<TrackTabs selectedTrackId="t1" onSelectTrack={vi.fn()} />);
-    expect(screen.getAllByRole("tab").length).toBeGreaterThan(0);
+    const tracks = screen.getByRole("group", { name: "Tracks" });
+    expect(within(tracks).getAllByRole("button").length).toBeGreaterThan(0);
   });
 
   it("marks selected track as active", () => {
@@ -23,8 +24,10 @@ describe("TrackTabs", () => {
       <TrackTabs selectedTrackId={doc.tracks[0].id} onSelectTrack={vi.fn()} />,
       { services },
     );
-    const active = c2.querySelector(".track-tab.active");
+    const active = c2.querySelector<HTMLButtonElement>(".track-tab.active");
     expect(active).toBeTruthy();
+    expect(active?.getAttribute("aria-pressed")).toBe("true");
+    expect(active?.getAttribute("aria-current")).toBe("true");
   });
 
   it("calls onSelectTrack on click", async () => {
@@ -33,6 +36,20 @@ describe("TrackTabs", () => {
     const { services } = renderWithContext(<TrackTabs selectedTrackId="t1" onSelectTrack={onSelect} />);
     const doc = services.store.getDoc();
     await user.click(screen.getByText(doc.tracks[0].name));
+    expect(onSelect.mock.calls[0][0]).toBe(doc.tracks[0].id);
+  });
+
+  it("selects a track with Enter on its native button", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const { services } = renderWithContext(<TrackTabs selectedTrackId="" onSelectTrack={onSelect} />);
+    const doc = services.store.getDoc();
+    const tracks = screen.getByRole("group", { name: "Tracks" });
+    const firstTrack = tracks.querySelector<HTMLButtonElement>(".track-tab");
+
+    firstTrack?.focus();
+    await user.keyboard("{Enter}");
+
     expect(onSelect.mock.calls[0][0]).toBe(doc.tracks[0].id);
   });
 

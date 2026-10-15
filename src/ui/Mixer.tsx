@@ -89,102 +89,107 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
   return (
     <section className="mixer" aria-label="Mixer">
       <div className="mixer-batch-bar" role="toolbar" aria-label="Batch FX">
-        <span className="mixer-batch-label">BATCH FX → {batchCount} TRACKS</span>
-        <select
-          value={batchType}
-          onChange={(e) => setBatchType(e.target.value as EffectType)}
-          aria-label="Batch effect type"
+        <div className="mixer-batch-group mixer-batch-fx-group" role="group" aria-label="Batch effect actions">
+          <span className="mixer-batch-label">BATCH FX → {batchCount} TRACKS</span>
+          <select
+            value={batchType}
+            onChange={(e) => setBatchType(e.target.value as EffectType)}
+            aria-label="Batch effect type"
+          >
+            {Object.keys(EFFECT_DEFS)
+              .sort()
+              .map((k) => (
+                <option key={k} value={k}>
+                  {EFFECT_DEFS[k as EffectType].name}
+                </option>
+              ))}
+          </select>
+          <button
+            type="button"
+            className="btn btn-small btn-primary"
+            title="Add effect to selected tracks (or all if none selected) — 1 click on 5 tracks"
+            onClick={() => {
+              const ids = selectedTracks.length > 0 ? selectedTracks.map((t) => t.id) : tracks.map((t) => t.id);
+              try {
+                services.store.execute(addEffectToTracks(doc, ids.slice(0, 5), batchType));
+                // The rack (device knobs / flagship panel) lives in the FX
+                // dock panel — reveal it, otherwise adding from the Mixer
+                // gives zero visible feedback.
+                onOpenFxPanel?.();
+              } catch (e) {
+                /* toast via error */ void e;
+              }
+            }}
+          >
+            ADD TO {Math.min(5, batchCount)}
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title={`Bypass ${EFFECT_DEFS[batchType].name} on the selected tracks (or all) — one undo step`}
+            onClick={() => {
+              const ids = selectedTracks.length > 0 ? selectedTracks.map((t) => t.id) : tracks.map((t) => t.id);
+              try {
+                services.store.execute(setEffectBypassOnTracks(doc, ids, batchType, true));
+              } catch (e) {
+                void e;
+              }
+            }}
+          >
+            BYPASS
+          </button>
+          <button
+            type="button"
+            className="btn btn-small btn-danger"
+            title={`Remove every ${EFFECT_DEFS[batchType].name} from the selected tracks (or all) — one undo step`}
+            onClick={() => {
+              const ids = selectedTracks.length > 0 ? selectedTracks.map((t) => t.id) : tracks.map((t) => t.id);
+              try {
+                services.store.execute(removeEffectFromTracks(doc, ids, batchType));
+              } catch (e) {
+                void e;
+              }
+            }}
+          >
+            REMOVE
+          </button>
+        </div>
+        <div
+          className="mixer-batch-group mixer-batch-state-group"
+          role="group"
+          aria-label="Track solo and mute actions"
         >
-          {Object.keys(EFFECT_DEFS)
-            .sort()
-            .map((k) => (
-              <option key={k} value={k}>
-                {EFFECT_DEFS[k as EffectType].name}
-              </option>
-            ))}
-        </select>
-        <button
-          type="button"
-          className="btn btn-small"
-          title="Add effect to selected tracks (or all if none selected) — 1 click on 5 tracks"
-          onClick={() => {
-            const ids = selectedTracks.length > 0 ? selectedTracks.map((t) => t.id) : tracks.map((t) => t.id);
-            try {
-              services.store.execute(addEffectToTracks(doc, ids.slice(0, 5), batchType));
-              // The rack (device knobs / flagship panel) lives in the FX
-              // dock panel — reveal it, otherwise adding from the Mixer
-              // gives zero visible feedback.
-              onOpenFxPanel?.();
-            } catch (e) {
-              /* toast via error */ void e;
-            }
-          }}
-        >
-          ADD TO {Math.min(5, batchCount)}
-        </button>
-        <button
-          type="button"
-          className="btn btn-small"
-          title={`Bypass ${EFFECT_DEFS[batchType].name} on the selected tracks (or all) — one undo step`}
-          onClick={() => {
-            const ids = selectedTracks.length > 0 ? selectedTracks.map((t) => t.id) : tracks.map((t) => t.id);
-            try {
-              services.store.execute(setEffectBypassOnTracks(doc, ids, batchType, true));
-            } catch (e) {
-              void e;
-            }
-          }}
-        >
-          BYPASS
-        </button>
-        <button
-          type="button"
-          className="btn btn-small btn-danger"
-          title={`Remove every ${EFFECT_DEFS[batchType].name} from the selected tracks (or all) — one undo step`}
-          onClick={() => {
-            const ids = selectedTracks.length > 0 ? selectedTracks.map((t) => t.id) : tracks.map((t) => t.id);
-            try {
-              services.store.execute(removeEffectFromTracks(doc, ids, batchType));
-            } catch (e) {
-              void e;
-            }
-          }}
-        >
-          REMOVE
-        </button>
-        <span className="mixer-batch-label" aria-hidden="true">
-          ·
-        </span>
-        <button
-          type="button"
-          className="btn btn-small"
-          title="Clear SOLO on every track — one undo step"
-          disabled={soloCount === 0}
-          onClick={() => {
-            try {
-              services.store.execute(clearAllSolos(doc));
-            } catch (e) {
-              void e;
-            }
-          }}
-        >
-          CLEAR SOLO{soloCount > 0 ? ` (${soloCount})` : ""}
-        </button>
-        <button
-          type="button"
-          className="btn btn-small"
-          title="Clear MUTE on every track — one undo step"
-          disabled={muteCount === 0}
-          onClick={() => {
-            try {
-              services.store.execute(clearAllMutes(doc));
-            } catch (e) {
-              void e;
-            }
-          }}
-        >
-          CLEAR MUTE{muteCount > 0 ? ` (${muteCount})` : ""}
-        </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Clear SOLO on every track — one undo step"
+            disabled={soloCount === 0}
+            onClick={() => {
+              try {
+                services.store.execute(clearAllSolos(doc));
+              } catch (e) {
+                void e;
+              }
+            }}
+          >
+            CLEAR SOLO{soloCount > 0 ? ` (${soloCount})` : ""}
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Clear MUTE on every track — one undo step"
+            disabled={muteCount === 0}
+            onClick={() => {
+              try {
+                services.store.execute(clearAllMutes(doc));
+              } catch (e) {
+                void e;
+              }
+            }}
+          >
+            CLEAR MUTE{muteCount > 0 ? ` (${muteCount})` : ""}
+          </button>
+        </div>
         <MacroPerformanceBar />
       </div>
       <SceneStrip />

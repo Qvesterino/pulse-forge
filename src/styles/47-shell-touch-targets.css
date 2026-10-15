@@ -27,7 +27,12 @@
    layout. The desktop mouse rail remains 28px wide; coarse pointers get a
    wider rail so the collapsed state still has a useful target. */
 @media (max-width: 860px) {
-  .inspector-topline {
+  .inspector-panel-header {
+    min-height: var(--touch-target-large);
+  }
+
+  .inspector-panel-header .panel-actions > .btn:not(.inspector-collapse-toggle) {
+    height: var(--touch-target-large);
     min-height: var(--touch-target-large);
   }
 
@@ -131,6 +136,6 @@
   }
 
   .pattern-actions > .pattern-length {
-    font-size: 12px;
+    font-size: var(--fs-md);
   }
 }

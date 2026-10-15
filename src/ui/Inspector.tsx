@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useGenerativeStatus, useServices } from "./context";
 import {
   resetPadSlice,
@@ -50,6 +51,22 @@ const SliceLab = lazy(() => import("./SliceLab").then((m) => ({ default: m.Slice
 // unpitched percussion feeds the drum-pad picker.
 const TONAL_ASSETS = FACTORY_ASSETS.filter((a) => a.category === "Tonal" || a.category === "Bass");
 const DRUM_ASSETS = FACTORY_ASSETS.filter((a) => a.category !== "Tonal" && a.category !== "Bass");
+
+function InspectorPanelHeader({ kicker, title, actions }: { kicker: string; title: string; actions?: ReactNode }) {
+  return (
+    <header className="panel-header inspector-panel-header">
+      <div className="panel-header-id">
+        <span className="panel-kicker">{kicker}</span>
+        <h2 className="panel-title-line">{title}</h2>
+      </div>
+      {actions && (
+        <div className="panel-actions" role="group" aria-label={`${kicker} actions`}>
+          {actions}
+        </div>
+      )}
+    </header>
+  );
+}
 
 /**
  * The first screen should expose musical decisions, not every implementation
@@ -167,8 +184,8 @@ export function Inspector({
   ]);
 
   const trackSection = (
-    <>
-      <h2 className="panel-title">TRACK — {track.name}</h2>
+    <section className="inspector-track-mix" aria-label={`Track mix controls for ${track.name}`}>
+      <h3 className="panel-title">TRACK MIX</h3>
       <Slider
         label="Volume"
         value={track.gain}
@@ -187,7 +204,7 @@ export function Inspector({
         format={(v) => (Math.abs(v) < 0.02 ? "C" : `${v < 0 ? "L" : "R"}${Math.round(Math.abs(v) * 100)}`)}
         onCommit={(pan) => services.store.execute(setTrackParams(doc, track.id, { pan }))}
       />
-    </>
+    </section>
   );
 
   if (track.kind === "instrument") {
@@ -199,22 +216,27 @@ export function Inspector({
       : def.params.filter((param) => simpleIds?.includes(param.id) ?? true);
     return (
       <aside className="inspector" aria-label="Inspector">
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <h2 className="panel-title" style={{ flex: 1 }}>
-            {def.name.toUpperCase()} — {track.name}
-          </h2>
-          {onOpenPlugin && (
-            <button
-              type="button"
-              className="btn btn-small"
-              onClick={onOpenPlugin}
-              title="Open the device chain in the bottom dock"
-            >
-              DEVICES
-            </button>
-          )}
-          {collapseToggle}
-        </div>
+        <InspectorPanelHeader
+          kicker={def.name.toUpperCase()}
+          title={track.name}
+          actions={
+            (onOpenPlugin || collapseToggle) && (
+              <>
+                {onOpenPlugin && (
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    onClick={onOpenPlugin}
+                    title="Open the device chain in the bottom dock"
+                  >
+                    DEVICES
+                  </button>
+                )}
+                {collapseToggle}
+              </>
+            )
+          }
+        />
 
         <div className="inspector-control-mode" role="group" aria-label="Instrument control view">
           <span className="inspector-control-mode-label">CONTROLS</span>
@@ -406,10 +428,7 @@ export function Inspector({
   if (track.kind === "group") {
     return (
       <aside className="inspector" aria-label="Inspector">
-        <div className="inspector-topline">
-          <span className="inspector-topline-label">TRACK</span>
-          {collapseToggle}
-        </div>
+        <InspectorPanelHeader kicker="GROUP TRACK" title={track.name} actions={collapseToggle} />
         {trackSection}
       </aside>
     );
@@ -564,10 +583,7 @@ export function Inspector({
     };
     return (
       <aside className="inspector" aria-label="Inspector">
-        <div className="inspector-topline">
-          <span className="inspector-topline-label">GENERATIVE</span>
-          {collapseToggle}
-        </div>
+        <InspectorPanelHeader kicker="GENERATIVE" title={track.name} actions={collapseToggle} />
         {trackSection}
         <h2 className="panel-title">MRT2 GENERATIVE</h2>
         <p className="inspector-subtitle">
@@ -845,37 +861,41 @@ export function Inspector({
 
   return (
     <aside className="inspector" aria-label="Inspector">
-      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-        <button
-          type="button"
-          className={`btn btn-small${sliceLabOpen ? " active" : ""}`}
-          aria-pressed={sliceLabOpen}
-          title="Chop a loop onto this track's pads"
-          onClick={() => setSliceLabOpen((v) => !v)}
-        >
-          SLICE LAB
-        </button>
-        {onOpenPlugin && (
-          <button
-            type="button"
-            className="btn btn-small"
-            onClick={onOpenPlugin}
-            title="Open the drum device chain in the bottom dock"
-          >
-            DEVICES
-          </button>
-        )}
-        {collapseToggle}
-      </div>
+      <InspectorPanelHeader
+        kicker="PAD"
+        title={pad.name}
+        actions={
+          <>
+            <button
+              type="button"
+              className={`btn btn-small${sliceLabOpen ? " active" : ""}`}
+              aria-pressed={sliceLabOpen}
+              title="Chop a loop onto this track's pads"
+              onClick={() => setSliceLabOpen((v) => !v)}
+            >
+              SLICE LAB
+            </button>
+            {onOpenPlugin && (
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={onOpenPlugin}
+                title="Open the drum device chain in the bottom dock"
+              >
+                DEVICES
+              </button>
+            )}
+            {collapseToggle}
+          </>
+        }
+      />
       {sliceLabOpen && track.kind === "drum" && (
         <Suspense fallback={<p className="inspector-subtitle">SLICE LAB — loading…</p>}>
           <SliceLab track={track} onClose={() => setSliceLabOpen(false)} />
         </Suspense>
       )}
 
-      <h2 className="panel-title">PAD — {pad.name}</h2>
-
-      <div className="pad-source-toggle" style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+      <div className="pad-source-toggle inspector-pad-source-toggle">
         <button
           type="button"
           className={`btn btn-small${!isSynth ? " active" : ""}`}

@@ -1,0 +1,50 @@
+/* Keep the prompt's primary action reachable in the dock's default height. */
+.intent-prompt-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.intent-prompt-actions > .intent-generate-btn {
+  align-self: stretch;
+  min-width: 124px;
+  min-height: 32px;
+  margin-left: auto;
+  padding-inline: 16px;
+  border-color: color-mix(in srgb, var(--accent) 78%, #fff);
+  background: linear-gradient(112deg, color-mix(in srgb, var(--accent) 82%, #fff), var(--accent) 66%);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--on-accent, #17130c);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.intent-prompt-actions > .intent-generate-btn:disabled {
+  border-color: var(--border-soft);
+  background: var(--surface-0);
+  box-shadow: none;
+  color: var(--text-dim);
+}
+
+@container bottom-dock-slot (max-width: 560px) {
+  .intent-prompt-actions > .btn {
+    min-height: var(--touch-target-large);
+  }
+
+  .intent-prompt-actions > .intent-generate-btn {
+    flex: 1 1 auto;
+  }
+}
+
+@container bottom-dock-slot (max-width: 240px) {
+  .intent-prompt-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .intent-prompt-actions > .intent-generate-btn {
+    width: 100%;
+  }
+}

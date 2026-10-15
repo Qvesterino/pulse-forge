@@ -1667,7 +1667,7 @@ export function App({
             <AudioUnlock />
             <JamGate services={services} jamActive={jamActive} />
             <OnboardingTour />
-            <div className="app">
+            <div className={`app${diagnosticsOpen ? " diagnostics-open" : ""}`}>
               <TopBar
                 diagnosticsOpen={diagnosticsOpen}
                 ioOpen={ioOpen}

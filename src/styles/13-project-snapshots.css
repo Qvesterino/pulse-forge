@@ -200,17 +200,39 @@
 .help-header .help-search {
   flex: 1;
   min-width: 140px;
-  background: var(--bg-raise);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg-raise) 88%, var(--kyx-silver-steel, #8491a0));
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
   color: var(--text);
   font-size: 12px;
   padding: 7px 10px;
+  transition:
+    border-color 0.14s ease,
+    background-color 0.14s ease,
+    box-shadow 0.14s ease;
 }
 
 .help-header .help-search:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 65%, var(--kyx-silver-steel, #8491a0));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+@media (max-width: 620px) {
+  .help-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .help-header > .panel-title {
+    grid-column: 1 / -1;
+  }
+
+  .help-header .help-search {
+    min-width: 0;
+    width: 100%;
+  }
 }
 
 .help-bindings {

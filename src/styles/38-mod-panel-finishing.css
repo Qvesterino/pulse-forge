@@ -9,15 +9,18 @@
 }
 
 .mod-panel .mod-lane-row:not(.selected):hover .mod-lane-label {
-  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-color: color-mix(in srgb, var(--kyx-silver-mid) 38%, var(--border));
+  background: color-mix(in srgb, var(--surface-2) 88%, #fff 12%);
   color: var(--text);
 }
 
 .mod-panel .mod-lane-label[aria-current="true"] {
-  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
-  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 12%, var(--surface-1)), var(--surface-1) 82%);
-  box-shadow: inset 2px 0 var(--accent);
-  color: var(--accent);
+  border-color: var(--kyx-silver-edge);
+  background: linear-gradient(105deg, color-mix(in srgb, var(--surface-2) 92%, #fff 8%), var(--surface-1) 82%);
+  box-shadow:
+    inset 2px 0 var(--accent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: var(--text);
 }
 
 .mod-panel :is(.mod-lane-label, .macro-name):focus-visible {
@@ -28,17 +31,21 @@
 .mod-panel :is(.lfo-row, .macro-card) {
   transition:
     border-color var(--motion-fast) var(--motion-ease),
-    background-color var(--motion-fast) var(--motion-ease);
+    background-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
 }
 
 .mod-panel :is(.lfo-row, .macro-card):hover {
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+  border-color: color-mix(in srgb, var(--kyx-silver-mid) 30%, var(--border));
+  background-color: color-mix(in srgb, var(--surface-2) 94%, #fff 6%);
 }
 
 .mod-panel :is(.lfo-row, .macro-card):focus-within {
   border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
-  background-color: color-mix(in srgb, var(--surface-1) 88%, var(--accent-soft));
-  box-shadow: inset 2px 0 color-mix(in srgb, var(--accent) 80%, #fff);
+  background-color: color-mix(in srgb, var(--surface-2) 92%, var(--accent-soft) 8%);
+  box-shadow:
+    inset 2px 0 var(--accent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 /* In compact dock slots, MOD controls need the same reliable touch targets as
@@ -67,14 +74,31 @@
   }
 }
 
-/* DICE keeps the selected mode readable through an edge trace rather than a
-   persistent outer glow. */
+/* DICE uses the same state hierarchy as the main workspace: silver surfaces
+   identify selection, while the amber edge carries the active signal. */
 .dice-tray .btn.active-solo:not(:disabled) {
-  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--accent) 84%, #fff);
+  border-color: var(--kyx-silver-edge);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 84%, #fff 5%), var(--surface-1));
+  color: var(--text);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -2px 0 color-mix(in srgb, var(--accent) 84%, #fff);
 }
 
-.dice-tray .btn.dice-big.dice-active {
+.dice-tray .btn.dice-big.dice-active:not(.btn-primary) {
+  border-color: var(--kyx-silver-edge);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 84%, #fff 5%), var(--surface-1));
+  color: var(--text);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
     inset 0 -2px 0 color-mix(in srgb, var(--accent) 84%, #fff);
+}
+
+.dice-tray .btn.dice-big.btn-primary.dice-active {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff 12%), var(--accent));
+  border-color: color-mix(in srgb, var(--accent) 68%, #fff);
+  color: #141008;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    inset 0 -2px 0 color-mix(in srgb, var(--accent) 68%, #fff);
 }

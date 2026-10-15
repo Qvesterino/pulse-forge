@@ -332,6 +332,35 @@ const results = await page.evaluate(
         }
       }
 
+      // Content-DC removal can push a low-level synthesized noise tail below
+      // the trim floor after the earlier render-tail pass. Re-scan the final
+      // signal so those quiet tails do not lengthen slice/choke behavior.
+      {
+        const POST_DC_TRIM_FLOOR = 1e-3;
+        let lastLoud = 0;
+        for (let ch = 0; ch < mastered.numberOfChannels; ch++) {
+          const data = mastered.getChannelData(ch);
+          for (let i = data.length - 1; i >= lastLoud; i--) {
+            if (Math.abs(data[i]) > POST_DC_TRIM_FLOOR) {
+              lastLoud = Math.max(lastLoud, i);
+              break;
+            }
+          }
+        }
+        const trimmedLength = Math.max(Math.ceil(0.4 * SR), Math.min(mastered.length, lastLoud + GUARD_SAMPLES));
+        if (trimmedLength < mastered.length) {
+          const compact = new AudioBuffer({
+            length: trimmedLength,
+            numberOfChannels: mastered.numberOfChannels,
+            sampleRate: mastered.sampleRate,
+          });
+          for (let ch = 0; ch < mastered.numberOfChannels; ch++) {
+            compact.getChannelData(ch).set(mastered.getChannelData(ch).subarray(0, trimmedLength));
+          }
+          mastered = compact;
+        }
+      }
+
       // Post-master verification read: the limiter ceiling should keep peaks
       // at/below it (within true-peak overshoot) — log, never throw. Measured
       // with the tiled (repeated-hit) convention so the logged momentary is

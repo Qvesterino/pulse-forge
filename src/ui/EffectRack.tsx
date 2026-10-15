@@ -350,7 +350,7 @@ export function EffectRack({
               <button
                 ref={devicesAddTriggerRef}
                 type="button"
-                className="btn fx-add-trigger"
+                className="btn btn-primary fx-add-trigger"
                 title={
                   selectedFx
                     ? `Insert effect after ${EFFECT_DEFS[selectedFx.type].name}`

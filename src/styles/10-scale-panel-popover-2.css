@@ -515,19 +515,8 @@ html {
     box-shadow 120ms ease,
     filter 120ms ease;
 }
-.arr-audio-clip:hover {
+.arr-audio-clip:hover:not(.selected) {
   filter: brightness(1.12);
-}
-.arr-audio-clip.selected {
-  border-color: var(--accent);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 0 0 1px var(--accent),
-    0 0 16px rgba(245, 158, 11, 0.25);
-}
-.arr-audio-clip.selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
 }
 .arr-audio-clip.current {
   border-color: rgba(245, 158, 11, 0.6);

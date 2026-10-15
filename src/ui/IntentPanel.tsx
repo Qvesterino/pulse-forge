@@ -155,6 +155,7 @@ import {
 } from "../intent/mix";
 import { applyParamIntent, paramReadback } from "../intent/param-intent";
 import { measureParamVerification } from "../intent/param-readback";
+import { attentiveStatusLine, findingsFromSectionMeters, isAttentiveModeEnabled } from "../intent/attentive-mode";
 import { noteIntentProposal } from "../intent/reaction-bridge";
 import { applyLoudnessIntent, measurePreviewLoudness } from "../intent/loudness";
 import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
@@ -1893,6 +1894,10 @@ export function IntentPanel() {
   // preview's per-section meters; a chip compiles into the audition-first
   // section proposal flow (never applied automatically).
   const [songSuggestions, setSongSuggestions] = useState<SongSectionSuggestion[]>([]);
+  // F3 attentive mode: measured findings (opt-in) with executable chips.
+  const [attentiveFindings, setAttentiveFindings] = useState<
+    Array<{ role: string; kind: string; evidence: string; chips: Array<{ label: string; instruction: string }> }>
+  >([]);
 
   const applySongSuggestion = (suggestion: SongSectionSuggestion) => {
     const outcome = reviseSection(doc, suggestion.role as never, suggestion.attribute, suggestion.delta);
@@ -2707,6 +2712,16 @@ export function IntentPanel() {
           result.build.resolvedBpm ?? doc.bpm,
         );
         setSongSuggestions(suggestSectionRevivals(sectionMeters));
+        // F3 pozorný režim (opt-in): graded findings + executable chips over
+        // the same meters — silent when off or when the song is balanced.
+        if (isAttentiveModeEnabled()) {
+          const findings = findingsFromSectionMeters(sectionMeters);
+          setAttentiveFindings(findings);
+          const line = attentiveStatusLine(findings);
+          if (line) setStatus(line);
+        } else {
+          setAttentiveFindings([]);
+        }
         // Free verify: measure what the preview actually plays.
         try {
           const channels: Float32Array[] = [];
@@ -4763,7 +4778,7 @@ export function IntentPanel() {
           Napíš alebo nadiktuj brief — generovanie sa sprístupní po zadaní opisu.
         </p>
       )}
-      <div className="intent-voice-row">
+      <div className="intent-prompt-actions" role="group" aria-label="Prompt actions">
         <button
           type="button"
           className={`btn intent-voice-btn${voiceState === "recording" ? " intent-voice-rec" : ""}`}
@@ -4773,6 +4788,15 @@ export function IntentPanel() {
           onClick={() => void toggleVoiceCapture()}
         >
           {voiceState === "recording" ? "⏺ REC" : voiceState === "transcribing" ? "…prepisujem" : "🎙 HOVOR"}
+        </button>
+        <button
+          type="button"
+          className="btn intent-generate-btn"
+          disabled={(!text.trim() && !activeProjectBrief) || busy || routeBusy || songBusy || theatreBusy || mutateBusy}
+          onClick={() => void generate()}
+          title={activeProjectBrief && !text.trim() ? "Generate from the saved project brief" : undefined}
+        >
+          {busy ? "GENERATING…" : "GENERATE"}
         </button>
       </div>
       <div className="intent-history" aria-label="Personal style memory">
@@ -5250,15 +5274,6 @@ export function IntentPanel() {
         </button>
         <button
           type="button"
-          className="btn intent-generate-btn"
-          disabled={(!text.trim() && !activeProjectBrief) || busy || routeBusy || songBusy || theatreBusy || mutateBusy}
-          onClick={() => void generate()}
-          title={activeProjectBrief && !text.trim() ? "Generate from the saved project brief" : undefined}
-        >
-          {busy ? "GENERATING…" : "GENERATE"}
-        </button>
-        <button
-          type="button"
           className="btn intent-song-btn"
           disabled={(!text.trim() && !activeProjectBrief) || busy || routeBusy || songBusy || theatreBusy || mutateBusy}
           onClick={() => void generateSong()}
@@ -5608,6 +5623,23 @@ export function IntentPanel() {
               ⟡ {suggestion.reason} — navrhnúť {suggestion.attribute} +{suggestion.delta}
             </button>
           ))}
+        </div>
+      )}
+      {attentiveFindings.length > 0 && (
+        <div className="intent-detected" aria-label="Attentive mode findings">
+          {attentiveFindings.map((finding) =>
+            finding.chips.map((chip) => (
+              <button
+                key={`${finding.role}:${chip.instruction}`}
+                type="button"
+                className="song-suggestion-chip"
+                title={`${finding.evidence} — spusti náhľad úpravy`}
+                onClick={() => void routeAndExecute(chip.instruction)}
+              >
+                🎧 {chip.label}
+              </button>
+            )),
+          )}
         </div>
       )}
       {!blindPilotCandidateBankHidden && candidates && candidates.length > 1 && (

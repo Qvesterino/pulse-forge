@@ -683,7 +683,9 @@ export class PcmMicRecorder {
       this.startToken++;
       this.cleanupWiring();
       this.state_ = "idle";
-      this.releaseCaptureClaim();
+      // The permission request cannot be cancelled. Keep the tab-wide claim
+      // until start() unwinds and can stop any stream that resolves late; a
+      // different recorder must not open a second input in that window.
       return;
     }
     await this.finishCapture();

@@ -30,17 +30,17 @@
   .midi-panel-header .midi-tabs > .btn,
   .midi-panel > .midi-tabpanel > .midi-row > .btn {
     min-height: var(--touch-target-large);
-    font-size: 12px;
+    font-size: var(--fs-md);
   }
 
   .midi-routing-grid .midi-select {
     height: var(--touch-target-large);
-    font-size: 12px;
+    font-size: var(--fs-md);
   }
 
   .midi-routing-grid .drag-number {
     min-height: var(--touch-target-large);
-    font-size: 12px;
+    font-size: var(--fs-md);
   }
 
   .midi-routing-grid .drag-number-input {
@@ -49,12 +49,12 @@
     height: var(--touch-target-large);
     min-height: var(--touch-target-large);
     box-sizing: border-box;
-    font-size: 14px;
+    font-size: var(--fs-lg);
   }
 
   .midi-add-row .midi-select {
     height: var(--touch-target-large);
-    font-size: 12px;
+    font-size: var(--fs-md);
   }
 
   .midi-creativity .midi-row {
@@ -66,7 +66,7 @@
   .midi-creativity .midi-seed,
   .midi-creativity .drag-number {
     min-height: var(--touch-target-large);
-    font-size: 12px;
+    font-size: var(--fs-md);
   }
 
   .midi-creativity .midi-select {
@@ -80,7 +80,7 @@
   .midi-creativity .drag-number-input {
     height: var(--touch-target-large);
     min-height: var(--touch-target-large);
-    font-size: 14px;
+    font-size: var(--fs-lg);
   }
 
   .midi-creativity .midi-row > .midi-select {

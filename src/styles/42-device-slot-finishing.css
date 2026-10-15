@@ -1,5 +1,13 @@
 /* Dense flagship effect editors should follow their dock slot, not the
    window. This keeps split Devices panels readable on wide monitors. */
+.devices-panel:not(.mastering-device-panel) > .device-surface {
+  /* The Essential Kit selector can be taller than a short bottom dock. Keep
+     the focused editor's scroll viewport alive instead of flex-shrinking it
+     to zero; the Devices panel owns the resulting vertical scroll. */
+  flex: 1 0 220px;
+  min-height: 220px;
+}
+
 @container bottom-dock-slot (max-width: 560px) {
   .koren-panel .koren-head,
   .rezonans-panel .rezonans-head {

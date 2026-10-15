@@ -109,7 +109,7 @@
 .dice-locks-label,
 .dice-history-label {
   color: var(--text-dim);
-  font-size: 10px;
+  font-size: var(--fs-compact);
   font-weight: 700;
   letter-spacing: 0.08em;
 }

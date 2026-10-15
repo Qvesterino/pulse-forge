@@ -6,10 +6,10 @@
   position: relative;
   overflow: auto;
   contain: layout style;
-  background: var(--bg-panel);
+  background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px 10px 10px;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
 }
 
 /* The sequencer's single top chrome row: pattern title + FOCUS toggle live
@@ -17,15 +17,15 @@
 .ruler-label {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
   min-width: 0;
-  padding-right: 6px;
+  padding-right: var(--space-2);
   /* Corner cell: the ruler lives inside the scroll container now, so the
      label pins horizontally while the ticks scroll under it. */
   position: sticky;
   left: 0;
   z-index: 11;
-  background: var(--bg-panel);
+  background: var(--surface-1);
 }
 
 .ruler-label-title {
@@ -36,7 +36,7 @@
   white-space: nowrap;
   color: var(--text-dim);
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 1px;
   text-transform: uppercase;
@@ -47,7 +47,7 @@
   min-width: 0;
   height: 18px;
   padding: 0 7px;
-  font-size: 9px;
+  font-size: var(--fs-xs);
   letter-spacing: 0.5px;
 }
 
@@ -64,7 +64,7 @@
   z-index: 75;
   display: flex;
   flex-direction: column;
-  padding: 12px 16px 16px;
+  padding: var(--space-3) var(--space-4) var(--space-4);
   overflow: auto;
   background: var(--bg);
   border: 0;
@@ -91,13 +91,13 @@
 .sequencer-ruler {
   display: grid;
   align-items: center;
-  gap: 4px;
-  margin-bottom: 4px;
-  padding-bottom: 3px;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
+  padding-bottom: var(--space-1);
   position: sticky;
   top: 0;
   z-index: 10;
-  background: var(--bg-panel);
+  background: var(--surface-1);
   /* Hairline anchor: the sticky bar stays visually separated from the rows
      scrolling underneath it. */
   border-bottom: 1px solid var(--border-soft);
@@ -106,7 +106,7 @@
 
 .ruler-tick {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-compact);
   color: var(--text-faint);
   text-align: center;
   padding: 2px 0;
@@ -125,8 +125,8 @@
 .sequencer-row {
   display: grid;
   grid-template-columns: var(--steps-label, 168px) 1fr;
-  gap: 4px;
-  margin-bottom: 4px;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
 }
 
 /* Row tracking: sweeping the grid highlights the pad row under the cursor. */
@@ -138,8 +138,8 @@
 .track-header-row {
   display: grid;
   grid-template-columns: var(--steps-label, 168px) 1fr;
-  gap: 4px;
-  margin: 4px 0 4px;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 var(--space-1);
 }
 
 .track-header-row:first-of-type {
@@ -160,11 +160,11 @@
   background: var(--bg-raise);
   border: 1px solid var(--border);
   border-radius: 3px;
-  font-size: 10px;
+  font-size: var(--fs-compact);
   font-weight: 700;
   letter-spacing: 1.2px;
   color: var(--text-dim);
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -182,7 +182,7 @@
 .track-header-spacer {
   grid-column: 2 / -1;
   border-top: 1px solid var(--border-soft);
-  margin-top: 12px;
+  margin-top: var(--space-3);
 }
 
 .sequencer-row.selected .row-label {
@@ -204,10 +204,10 @@
   border: 1px solid var(--border);
   border-left: 3px solid var(--pad-color, var(--border));
   border-radius: 4px;
-  font-size: 11px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--text);
-  padding: 5px 8px;
+  padding: 5px var(--space-2);
   text-align: left;
   white-space: nowrap;
   overflow: hidden;
@@ -236,7 +236,7 @@
   border: 1px solid var(--border);
   border-radius: 3px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-compact);
   color: var(--text-faint);
 }
 
@@ -258,14 +258,14 @@
 
 .row-steps {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .step {
   position: relative;
   height: 30px;
   background: var(--bg);
-  border: 1px solid var(--border-soft);
+  border: 1px solid color-mix(in srgb, var(--border-soft) 76%, transparent);
   border-radius: 5px;
   transition:
     background var(--motion-fast) var(--motion-ease),
@@ -279,6 +279,7 @@
 
 .step:hover {
   background: var(--bg-panel-2);
+  border-color: color-mix(in srgb, var(--kyx-silver-mid) 28%, var(--border));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
@@ -314,8 +315,8 @@
   left: calc(var(--steps-label, 168px) + 4px + var(--playhead-frac, 0) * var(--grid-steps-px, 100%));
   background: var(--accent);
   box-shadow:
-    0 0 10px rgba(245, 158, 11, 0.75),
-    0 0 3px rgba(245, 158, 11, 1);
+    0 0 8px color-mix(in srgb, var(--accent) 54%, transparent),
+    0 0 2px color-mix(in srgb, var(--accent) 88%, transparent);
   border-radius: 1px;
   pointer-events: none;
   z-index: 5;
@@ -326,7 +327,7 @@
 }
 
 .step.playhead {
-  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.35);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent);
 }
 
 .step.active.playhead {
@@ -335,14 +336,14 @@
 
 .step.playhead {
   box-shadow:
-    inset 0 0 0 1px rgba(245, 158, 11, 0.55),
-    0 0 6px rgba(245, 158, 11, 0.35);
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 56%, transparent),
+    0 0 6px color-mix(in srgb, var(--accent) 32%, transparent);
 }
 
 .step.active.playhead {
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.5),
-    0 0 8px rgba(245, 158, 11, 0.45);
+    0 0 8px color-mix(in srgb, var(--accent) 44%, transparent);
 }
 
 /* Pulsing playhead indicator for the active step */
@@ -369,18 +370,53 @@
 /* ---------- Inspector ---------- */
 
 .inspector {
-  background: var(--bg-panel);
+  background: var(--surface-1);
   border-left: 1px solid var(--border);
-  padding: 14px;
+  padding: var(--space-4);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
+}
+
+.inspector > .inspector-panel-header {
+  flex-wrap: wrap;
+  padding-bottom: var(--space-1);
+  margin-bottom: 0;
+}
+
+.inspector-panel-header .panel-header-id {
+  flex: 1 1 120px;
+}
+
+.inspector-panel-header .panel-title-line {
+  margin: 0;
+}
+
+.inspector-panel-header .panel-actions {
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.inspector-track-mix {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.inspector-track-mix > .panel-title {
+  margin-bottom: 0;
+}
+
+.inspector-pad-source-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
 }
 
 .panel-title {
   margin: 0;
-  font-size: 10px;
+  font-size: var(--fs-compact);
   font-weight: 700;
   letter-spacing: 1.8px;
   color: var(--text-dim);
@@ -393,19 +429,31 @@
 }
 
 .field-label {
-  font-size: 10px;
+  font-size: var(--fs-compact);
   letter-spacing: 1px;
   color: var(--text-faint);
 }
 
 .inspector select {
-  background: var(--bg-raise);
+  background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text);
   font-family: inherit;
-  font-size: 12px;
-  padding: 6px 8px;
+  font-size: var(--fs-md);
+  padding: 6px var(--space-2);
+}
+
+/* Inspector labels identify editable controls, so they use the readable UI
+   label role while compact labels elsewhere keep the global dense default. */
+.inspector .slider-label {
+  font-size: var(--fs-sm);
+  line-height: 1.25;
+  letter-spacing: 0.08em;
+}
+
+.inspector .slider {
+  gap: var(--space-1);
 }
 
 .inspector select:focus {
@@ -435,14 +483,14 @@
 }
 
 .slider-label {
-  font-size: 10px;
+  font-size: var(--fs-compact);
   letter-spacing: 1.2px;
   color: var(--text-faint);
 }
 
 .slider-value {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   color: var(--text);
 }
 
@@ -494,14 +542,14 @@
 .pianoroll-wrap {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .pianoroll-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 6px;
+  gap: var(--space-2);
+  padding: var(--space-1) 6px;
   background: var(--bg-panel-2);
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -510,7 +558,7 @@
 
 .pr-toolbar-count {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-compact);
   letter-spacing: 0.5px;
   color: var(--accent);
   min-width: 70px;
@@ -522,14 +570,14 @@
   border-radius: 3px;
   color: var(--accent-warm, #ffb84a);
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: var(--fs-xs);
   letter-spacing: 0.35px;
   white-space: nowrap;
 }
 
 .pr-toolbar-group {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
 }
 
@@ -612,14 +660,14 @@
 .pr-key {
   display: flex;
   align-items: center;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   background: linear-gradient(180deg, #2c313c, #23262e);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   border: none;
   border-bottom: 1px solid #12141a;
   color: var(--text-faint);
   font-family: var(--mono);
-  font-size: 8px;
+  font-size: var(--fs-2xs);
   cursor: pointer;
   transition: filter var(--motion-fast) var(--motion-ease);
 }
@@ -676,7 +724,7 @@
   top: 1px;
   left: 4px;
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   line-height: 1;
   letter-spacing: 0.08em;
@@ -689,11 +737,11 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  background: rgba(245, 158, 11, 0.09);
-  border-left: 2px solid rgba(245, 158, 11, 0.85);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--accent) 84%, transparent);
   box-shadow:
-    0 0 10px rgba(245, 158, 11, 0.4),
-    inset 0 0 14px rgba(245, 158, 11, 0.12);
+    0 0 8px color-mix(in srgb, var(--accent) 36%, transparent),
+    inset 0 0 10px color-mix(in srgb, var(--accent) 12%, transparent);
   pointer-events: none;
 }
 
@@ -709,7 +757,7 @@
   border: 1px solid var(--border);
   border-left: 2px solid var(--accent);
   border-radius: 6px;
-  padding: 10px 12px;
+  padding: 10px var(--space-3);
   z-index: 20;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
 }
@@ -718,12 +766,12 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 
 .cheat-sheet-title {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   font-weight: 700;
   letter-spacing: 2px;
   color: var(--accent);
@@ -743,7 +791,7 @@
 
 .cheat-sheet-group-title {
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: var(--fs-xs);
   letter-spacing: 1.5px;
   color: var(--text-faint);
   margin-bottom: 2px;
@@ -759,7 +807,7 @@
 
 .cheat-sheet-keys {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-compact);
   color: var(--text);
   background: var(--bg-raise);
   border: 1px solid var(--border);
@@ -804,7 +852,7 @@
 
 .midi-readout {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-compact);
   letter-spacing: 0.5px;
   color: var(--accent);
   padding: 0 2px;
@@ -838,7 +886,7 @@
   border-radius: 4px;
   color: var(--text-dim);
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-compact);
 }
 
 .pr-note {
@@ -902,24 +950,24 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
 .pattern-chips {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .pattern-chip {
   height: 26px;
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: 13px;
-  font-size: 11px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--text-dim);
 }
@@ -955,20 +1003,20 @@
 
 .pattern-rename {
   height: 26px;
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   background: var(--bg);
   border: 1px solid var(--accent);
   border-radius: 13px;
   color: var(--text);
   font-family: inherit;
-  font-size: 11px;
+  font-size: var(--fs-sm);
   width: 120px;
 }
 
 .pattern-actions {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
 }
 
 /* Group divider: pattern lifecycle | creative tools | clipboard | destructive.
@@ -994,8 +1042,8 @@
   border-radius: 4px;
   color: var(--text);
   font-family: var(--mono);
-  font-size: 11px;
-  padding: 0 4px;
+  font-size: var(--fs-sm);
+  padding: 0 var(--space-1);
 }
 /* ---------- Hum-to-melody panel (piano roll HUM) ---------- */
 .hum-panel {
@@ -1006,13 +1054,13 @@
   width: 240px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
+  gap: var(--space-2);
+  padding: var(--space-3);
 }
 
 .hum-hint {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--fs-sm);
   color: var(--text-dim);
 }
 
@@ -1020,7 +1068,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--fs-sm);
   color: var(--text-dim);
 }
 
@@ -1029,8 +1077,8 @@
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--text);
-  font-size: 11px;
-  padding: 2px 4px;
+  font-size: var(--fs-sm);
+  padding: 2px var(--space-1);
 }
 
 .hum-actions {
@@ -1040,7 +1088,7 @@
 
 .hum-error {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--fs-sm);
   color: var(--stop);
 }
 

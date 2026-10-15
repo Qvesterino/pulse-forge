@@ -1,8 +1,9 @@
 /* KYX visual language — Qvester Signal Glass / Pulse.
  *
- * This is the final, additive skin layer. It gives the studio chrome a satin
- * silver glass finish while leaving the sequencer, arrangement and mixer as
- * matte work surfaces. The amber trace repeats across the transport, selected
+ * This layer defines the shared silver-glass and amber skin while leaving the
+ * sequencer, arrangement and mixer as matte work surfaces. Later finishing
+ * layers may refine geometry and focus, but should preserve these semantic
+ * surfaces and states. The amber trace repeats across the transport, selected
  * track and active step; track colours and transport status colours remain
  * semantic.
  */
@@ -21,13 +22,7 @@
   );
   --kyx-pulse: var(--accent);
   --kyx-pulse-soft: var(--accent-soft);
-}
-
-/* The topbar is the silver chassis: a quiet edge highlight and one warm pulse
-   mark establish the visual signature without adding texture to the canvas. */
-.topbar {
-  isolation: isolate;
-  background:
+  --kyx-shell-surface:
     linear-gradient(
       112deg,
       rgba(238, 242, 246, 0.16) 0%,
@@ -37,10 +32,38 @@
       rgba(238, 242, 246, 0.13) 100%
     ),
     linear-gradient(180deg, #303740 0%, #22272e 48%, #171a1f 100%);
+  --kyx-shell-glint: linear-gradient(
+    90deg,
+    rgba(238, 242, 246, 0.16),
+    rgba(238, 242, 246, 0.52) 16%,
+    rgba(238, 242, 246, 0.08) 52%,
+    rgba(238, 242, 246, 0.24) 100%
+  );
+  --kyx-shell-trace: linear-gradient(
+    90deg,
+    rgba(217, 224, 232, 0.12) 0%,
+    rgba(217, 224, 232, 0.12) 37%,
+    color-mix(in srgb, var(--kyx-pulse) 72%, #fff) 40%,
+    var(--kyx-pulse) 40.6%,
+    rgba(217, 224, 232, 0.16) 43%,
+    rgba(217, 224, 232, 0.08) 100%
+  );
+}
+
+/* The topbar is the silver chassis: a quiet edge highlight and one warm pulse
+   mark establish the visual signature without adding texture to the canvas. */
+.topbar,
+.pb-header {
+  isolation: isolate;
+  background: var(--kyx-shell-surface);
   border-bottom-color: var(--kyx-silver-edge);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
     0 5px 18px rgba(0, 0, 0, 0.38);
+}
+
+.pb-header {
+  position: relative;
 }
 
 .topbar::before {
@@ -50,13 +73,18 @@
   right: 14px;
   left: 14px;
   height: 1px;
-  background: linear-gradient(
-    90deg,
-    rgba(238, 242, 246, 0.16),
-    rgba(238, 242, 246, 0.52) 16%,
-    rgba(238, 242, 246, 0.08) 52%,
-    rgba(238, 242, 246, 0.24) 100%
-  );
+  background: var(--kyx-shell-glint);
+  pointer-events: none;
+}
+
+.pb-header::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 14px;
+  left: 14px;
+  height: 1px;
+  background: var(--kyx-shell-glint);
   pointer-events: none;
 }
 
@@ -67,15 +95,19 @@
   bottom: 0;
   left: 14px;
   height: 1px;
-  background: linear-gradient(
-    90deg,
-    rgba(217, 224, 232, 0.12) 0%,
-    rgba(217, 224, 232, 0.12) 37%,
-    color-mix(in srgb, var(--kyx-pulse) 72%, #fff) 40%,
-    var(--kyx-pulse) 40.6%,
-    rgba(217, 224, 232, 0.16) 43%,
-    rgba(217, 224, 232, 0.08) 100%
-  );
+  background: var(--kyx-shell-trace);
+  opacity: 0.82;
+  pointer-events: none;
+}
+
+.pb-header::after {
+  content: "";
+  position: absolute;
+  right: 14px;
+  bottom: 0;
+  left: 14px;
+  height: 1px;
+  background: var(--kyx-shell-trace);
   opacity: 0.82;
   pointer-events: none;
 }
@@ -323,13 +355,13 @@
     0 0 9px color-mix(in srgb, var(--kyx-pulse) 12%, transparent);
 }
 
-/* Row colour remains the step fill. The same amber pulse appears as a thin
-   leading edge, so the beat stays readable by instrument as well as state. */
+/* Filled cells carry their instrument colour. Reserve the amber trace for the
+   selected step and transport playhead, where it stays distinctive. */
 .step.active {
-  border-top-color: color-mix(in srgb, var(--kyx-pulse) 76%, #fff);
+  border-top-color: color-mix(in srgb, var(--pad-color, var(--accent)) 76%, #fff);
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--kyx-pulse) 38%, #fff),
-    0 0 12px color-mix(in srgb, var(--pad-color, var(--accent)) calc(var(--step-velocity, 0.8) * 32%), transparent);
+    inset 0 1px 0 color-mix(in srgb, var(--pad-color, var(--accent)) 38%, #fff),
+    0 0 8px color-mix(in srgb, var(--pad-color, var(--accent)) calc(var(--step-velocity, 0.8) * 22%), transparent);
 }
 
 .step.playhead {

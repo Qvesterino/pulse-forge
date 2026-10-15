@@ -3872,183 +3872,225 @@ export function ArrangementPanel() {
               )}
             </div>
             <div className="arr-edit-toolbar" role="group" aria-label="Arrangement editing controls">
-              <ArrangementViewControls
-                rulerMode={rulerMode}
-                onToggleRulerMode={() => setRulerMode(rulerMode === "bars" ? "seconds" : "bars")}
-                showIntensity={showIntensity}
-                onToggleIntensity={() => setShowIntensity((value) => !value)}
-                onZoomOut={() => setZoom((value) => Math.max(MIN_ZOOM, value / 1.4))}
-                onFit={() => {
-                  const viewport = scrollRef.current?.clientWidth ?? 800;
-                  setZoom(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, viewport / Math.max(1, totalBars * BASE_BAR_WIDTH))));
-                  if (scrollRef.current) scrollRef.current.scrollLeft = 0;
-                }}
-                onZoomIn={() => setZoom((value) => Math.min(MAX_ZOOM, value * 1.4))}
-              />
-              {selectedClip && (
-                <label className="arr-clip-secs">
-                  SECS
-                  <input
-                    type="number"
-                    min={0.5}
-                    // The field is in seconds; the cap is a bar count, so convert
-                    // it at the clip's own tempo (a bar is 4 beats).
-                    max={Math.round(sceneBarsToSeconds(MAX_ARRANGEMENT_CLIP_BARS, selectedClipBpm))}
-                    step={0.5}
-                    aria-label="Clip length in seconds"
-                    title={`${selectedClip.lengthBars} bars at ${Math.round(selectedClipBpm)} BPM — Enter resizes the clip`}
-                    value={secsDraft ?? selectedClipSeconds.toFixed(2)}
-                    onFocus={() => setSecsDraft(selectedClipSeconds.toFixed(2))}
-                    onChange={(event) => setSecsDraft(event.target.value)}
-                    onBlur={commitClipSecs}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") commitClipSecs();
-                      if (event.key === "Escape") setSecsDraft(null);
-                    }}
-                  />
-                </label>
-              )}
-              <button
-                type="button"
-                className="btn btn-small"
-                disabled={!selectedScene}
-                onClick={() => selectedScene && placeScene(selectedScene.id, appendBar())}
+              <div
+                className="arr-edit-cluster arr-edit-cluster-view"
+                role="group"
+                aria-label="Arrangement view controls"
               >
-                + CLIP
-              </button>
-              <button
-                type="button"
-                className="btn btn-small"
-                disabled={!selectedClipId}
-                onClick={() => selectedClipId && execute(duplicateArrangementClip(services.store.doc, selectedClipId))}
+                <ArrangementViewControls
+                  rulerMode={rulerMode}
+                  onToggleRulerMode={() => setRulerMode(rulerMode === "bars" ? "seconds" : "bars")}
+                  showIntensity={showIntensity}
+                  onToggleIntensity={() => setShowIntensity((value) => !value)}
+                  onZoomOut={() => setZoom((value) => Math.max(MIN_ZOOM, value / 1.4))}
+                  onFit={() => {
+                    const viewport = scrollRef.current?.clientWidth ?? 800;
+                    setZoom(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, viewport / Math.max(1, totalBars * BASE_BAR_WIDTH))));
+                    if (scrollRef.current) scrollRef.current.scrollLeft = 0;
+                  }}
+                  onZoomIn={() => setZoom((value) => Math.min(MAX_ZOOM, value * 1.4))}
+                />
+              </div>
+              <div
+                className="arr-edit-cluster arr-edit-cluster-clips"
+                role="group"
+                aria-label="Arrangement clip actions"
               >
-                DUP
-              </button>
-              <button
-                type="button"
-                className="btn btn-small btn-danger"
-                disabled={!selectedClipId}
-                onClick={() => {
-                  if (!selectedClipId) return;
-                  // The SHARED delete path (context menu / long-press): one
-                  // undoable gesture, the delete toast, ripple-mode support,
-                  // and SelectionStore pruning. This header button used to
-                  // execute deleteArrangementClip directly and cleared only the
-                  // panel-local mirror — selectionStore.clipIds kept the dead
-                  // id (third copy of the same stale-selection hole).
-                  deleteClipsWithToast([selectedClipId]);
-                }}
-              >
-                DEL
-              </button>
-              {!capture.capturing ? (
-                <button type="button" className="btn btn-small" onClick={() => services.capture.start()}>
-                  CAPTURE
-                </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className="btn btn-small active-solo"
-                    onClick={() => {
-                      try {
-                        services.capture.finish();
-                      } catch (error) {
-                        setActionError(error instanceof Error ? error.message : "Capture failed");
-                      }
-                    }}
-                  >
-                    FINISH {capture.launchCount}
-                  </button>
-                  <button type="button" className="btn btn-small btn-danger" onClick={() => services.capture.cancel()}>
-                    CANCEL
-                  </button>
-                </>
-              )}
-              <button
-                type="button"
-                className="btn btn-small"
-                disabled={!selection.timeRange || bouncingZone}
-                title="Bounce the selected zone (selected tracks, with FX/groups/sends) to an editable audio clip via an offline render. Shift the zone, hit bounce, flip it to a pad."
-                onClick={() => void bounceZoneToClip()}
-              >
-                BOUNCE ZONE
-              </button>
-              {selectedAudioTakeGroup && (selectedAudioTakeIds.length > 0 || selectedAudioTakeGroup.compTakeId) && (
-                <label className="arr-arm-gain">
-                  <span>ACTIVE PASS</span>
-                  <select
-                    className="arr-arm-select"
-                    aria-label="Active audio take"
-                    title="Only the active pass plays and exports; alternate passes stay editable and undoable."
-                    value={selectedAudioTakeGroup.activeTakeId}
-                    onChange={(event) => {
-                      const nextTakeId = event.target.value;
-                      execute(setActiveAudioTake(doc, selectedAudioTakeGroup.id, nextTakeId));
-                      const nextClip = (arrangement.audioClips ?? []).find(
-                        (clip) => clip.takeGroupId === selectedAudioTakeGroup.id && clip.takeId === nextTakeId,
-                      );
-                      if (nextClip) setSelectedAudioClipId(nextClip.id);
-                    }}
-                  >
-                    {selectedAudioTakeIds.map((takeId, index) => (
-                      <option key={takeId} value={takeId}>
-                        TAKE {index + 1}
-                      </option>
-                    ))}
-                    {selectedAudioTakeGroup.compTakeId && (
-                      <option value={selectedAudioTakeGroup.compTakeId}>COMP</option>
-                    )}
-                  </select>
-                </label>
-              )}
-              {selectedAudioTakeGroup && (selectedAudioTakeIds.length > 0 || selectedAudioTakeGroup.compTakeId) && (
-                <button
-                  type="button"
-                  className={`btn btn-small${showAudioTakeLanes ? " active-solo" : ""}`}
-                  aria-label={showAudioTakeLanes ? "Hide audio take lanes" : "Show audio take lanes"}
-                  aria-expanded={showAudioTakeLanes}
-                  onClick={() => setShowAudioTakeLanes((visible) => !visible)}
-                >
-                  TAKE LANES {showAudioTakeLanes ? "ON" : "OFF"}
-                </button>
-              )}
-              {selectedAudioTakeGroup &&
-                selectedAudioTakeGroup.activeTakeId !== selectedAudioTakeGroup.compTakeId &&
-                selectedAudioTakeIds.includes(selectedAudioTakeGroup.activeTakeId) && (
-                  <button
-                    type="button"
-                    className="btn btn-small"
-                    aria-label="Comp selected transport range from active take"
-                    title="Replace the current comp inside the transport start/end locators with the active source take. Source takes remain unchanged; the edit is undoable."
-                    onClick={() =>
-                      compAudioRange(
-                        selectedAudioTakeGroup.id,
-                        selectedAudioTakeGroup.activeTakeId,
-                        services.transport.loopStart,
-                        services.transport.loopEnd,
-                      )
-                    }
-                  >
-                    COMP RANGE
-                  </button>
+                {selectedClip && (
+                  <label className="arr-clip-secs">
+                    SECS
+                    <input
+                      type="number"
+                      min={0.5}
+                      // The field is in seconds; the cap is a bar count, so convert
+                      // it at the clip's own tempo (a bar is 4 beats).
+                      max={Math.round(sceneBarsToSeconds(MAX_ARRANGEMENT_CLIP_BARS, selectedClipBpm))}
+                      step={0.5}
+                      aria-label="Clip length in seconds"
+                      title={`${selectedClip.lengthBars} bars at ${Math.round(selectedClipBpm)} BPM — Enter resizes the clip`}
+                      value={secsDraft ?? selectedClipSeconds.toFixed(2)}
+                      onFocus={() => setSecsDraft(selectedClipSeconds.toFixed(2))}
+                      onChange={(event) => setSecsDraft(event.target.value)}
+                      onBlur={commitClipSecs}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") commitClipSecs();
+                        if (event.key === "Escape") setSecsDraft(null);
+                      }}
+                    />
+                  </label>
                 )}
-              {selectedAudioTakeGroup && selectedAudioTakeIds.length >= 2 && (
                 <button
                   type="button"
-                  className={`btn btn-small${smartCompPlan ? " active-solo" : ""}`}
-                  aria-label="Suggest a comp from the best parts of every take"
-                  aria-expanded={smartCompPlan !== null}
-                  title="Measure every take (groove lock, pitch drift, noise floor, clipping) and propose which take should feed each bar. Nothing is edited until you apply the plan."
-                  disabled={smartCompBusy}
+                  className="btn btn-small"
+                  disabled={!selectedScene}
+                  onClick={() => selectedScene && placeScene(selectedScene.id, appendBar())}
+                >
+                  + CLIP
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  disabled={!selectedClipId}
+                  onClick={() =>
+                    selectedClipId && execute(duplicateArrangementClip(services.store.doc, selectedClipId))
+                  }
+                >
+                  DUP
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-small btn-danger"
+                  disabled={!selectedClipId}
                   onClick={() => {
-                    if (smartCompPlan) setSmartCompPlan(null);
-                    else suggestSmartComp(selectedAudioTakeGroup.id);
+                    if (!selectedClipId) return;
+                    // The SHARED delete path (context menu / long-press): one
+                    // undoable gesture, the delete toast, ripple-mode support,
+                    // and SelectionStore pruning. This header button used to
+                    // execute deleteArrangementClip directly and cleared only the
+                    // panel-local mirror — selectionStore.clipIds kept the dead
+                    // id (third copy of the same stale-selection hole).
+                    deleteClipsWithToast([selectedClipId]);
                   }}
                 >
-                  {smartCompBusy ? "ANALYSING…" : "SUGGEST COMP"}
+                  DEL
                 </button>
-              )}
+                {selectedAudioClipId && (
+                  <button
+                    type="button"
+                    className="btn btn-small btn-danger"
+                    onClick={() => {
+                      execute(deleteAudioClip(services.store.doc, selectedAudioClipId));
+                      setSelectedAudioClipId(null);
+                    }}
+                  >
+                    DEL AUDIO
+                  </button>
+                )}
+              </div>
+              <div
+                className="arr-edit-cluster arr-edit-cluster-capture"
+                role="group"
+                aria-label="Arrangement capture actions"
+              >
+                {!capture.capturing ? (
+                  <button type="button" className="btn btn-small" onClick={() => services.capture.start()}>
+                    CAPTURE
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-small active-solo"
+                      onClick={() => {
+                        try {
+                          services.capture.finish();
+                        } catch (error) {
+                          setActionError(error instanceof Error ? error.message : "Capture failed");
+                        }
+                      }}
+                    >
+                      FINISH {capture.launchCount}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-small btn-danger"
+                      onClick={() => services.capture.cancel()}
+                    >
+                      CANCEL
+                    </button>
+                  </>
+                )}
+              </div>
+              <div
+                className="arr-edit-cluster arr-edit-cluster-audio"
+                role="group"
+                aria-label="Arrangement audio and take tools"
+              >
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  disabled={!selection.timeRange || bouncingZone}
+                  title="Bounce the selected zone (selected tracks, with FX/groups/sends) to an editable audio clip via an offline render. Shift the zone, hit bounce, flip it to a pad."
+                  onClick={() => void bounceZoneToClip()}
+                >
+                  BOUNCE ZONE
+                </button>
+                {selectedAudioTakeGroup && (selectedAudioTakeIds.length > 0 || selectedAudioTakeGroup.compTakeId) && (
+                  <label className="arr-arm-gain">
+                    <span>ACTIVE PASS</span>
+                    <select
+                      className="arr-arm-select"
+                      aria-label="Active audio take"
+                      title="Only the active pass plays and exports; alternate passes stay editable and undoable."
+                      value={selectedAudioTakeGroup.activeTakeId}
+                      onChange={(event) => {
+                        const nextTakeId = event.target.value;
+                        execute(setActiveAudioTake(doc, selectedAudioTakeGroup.id, nextTakeId));
+                        const nextClip = (arrangement.audioClips ?? []).find(
+                          (clip) => clip.takeGroupId === selectedAudioTakeGroup.id && clip.takeId === nextTakeId,
+                        );
+                        if (nextClip) setSelectedAudioClipId(nextClip.id);
+                      }}
+                    >
+                      {selectedAudioTakeIds.map((takeId, index) => (
+                        <option key={takeId} value={takeId}>
+                          TAKE {index + 1}
+                        </option>
+                      ))}
+                      {selectedAudioTakeGroup.compTakeId && (
+                        <option value={selectedAudioTakeGroup.compTakeId}>COMP</option>
+                      )}
+                    </select>
+                  </label>
+                )}
+                {selectedAudioTakeGroup && (selectedAudioTakeIds.length > 0 || selectedAudioTakeGroup.compTakeId) && (
+                  <button
+                    type="button"
+                    className={`btn btn-small${showAudioTakeLanes ? " active-solo" : ""}`}
+                    aria-label={showAudioTakeLanes ? "Hide audio take lanes" : "Show audio take lanes"}
+                    aria-expanded={showAudioTakeLanes}
+                    onClick={() => setShowAudioTakeLanes((visible) => !visible)}
+                  >
+                    TAKE LANES {showAudioTakeLanes ? "ON" : "OFF"}
+                  </button>
+                )}
+                {selectedAudioTakeGroup &&
+                  selectedAudioTakeGroup.activeTakeId !== selectedAudioTakeGroup.compTakeId &&
+                  selectedAudioTakeIds.includes(selectedAudioTakeGroup.activeTakeId) && (
+                    <button
+                      type="button"
+                      className="btn btn-small"
+                      aria-label="Comp selected transport range from active take"
+                      title="Replace the current comp inside the transport start/end locators with the active source take. Source takes remain unchanged; the edit is undoable."
+                      onClick={() =>
+                        compAudioRange(
+                          selectedAudioTakeGroup.id,
+                          selectedAudioTakeGroup.activeTakeId,
+                          services.transport.loopStart,
+                          services.transport.loopEnd,
+                        )
+                      }
+                    >
+                      COMP RANGE
+                    </button>
+                  )}
+                {selectedAudioTakeGroup && selectedAudioTakeIds.length >= 2 && (
+                  <button
+                    type="button"
+                    className={`btn btn-small${smartCompPlan ? " active-solo" : ""}`}
+                    aria-label="Suggest a comp from the best parts of every take"
+                    aria-expanded={smartCompPlan !== null}
+                    title="Measure every take (groove lock, pitch drift, noise floor, clipping) and propose which take should feed each bar. Nothing is edited until you apply the plan."
+                    disabled={smartCompBusy}
+                    onClick={() => {
+                      if (smartCompPlan) setSmartCompPlan(null);
+                      else suggestSmartComp(selectedAudioTakeGroup.id);
+                    }}
+                  >
+                    {smartCompBusy ? "ANALYSING…" : "SUGGEST COMP"}
+                  </button>
+                )}
+              </div>
               {smartCompPlan && selectedAudioTakeGroup && (
                 <div className="arr-smart-comp" role="group" aria-label="Smart comp suggestion">
                   <div className="arr-smart-comp-head">
@@ -4110,18 +4152,6 @@ export function ArrangementPanel() {
                   </div>
                 </div>
               )}
-              {selectedAudioClipId && (
-                <button
-                  type="button"
-                  className="btn btn-small btn-danger"
-                  onClick={() => {
-                    execute(deleteAudioClip(services.store.doc, selectedAudioClipId));
-                    setSelectedAudioClipId(null);
-                  }}
-                >
-                  DEL AUDIO
-                </button>
-              )}
             </div>
             <div className="arr-production-toolbar" role="group" aria-label="Song building controls">
               <button type="button" className="btn btn-small" onClick={() => setShowSkeletonPreview((value) => !value)}>
@@ -4141,7 +4171,7 @@ export function ArrangementPanel() {
               </select>
               <button
                 type="button"
-                className="btn btn-small btn-export"
+                className="btn btn-small btn-export btn-primary"
                 title="Replace the current arrangement with all scenes in a full song form sized to SONG LENGTH"
                 onClick={() => {
                   try {

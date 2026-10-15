@@ -51,7 +51,7 @@
  * cascade order load-bearing (see styles/index.css).
  */
 
-/* ---------- Chrome budget: NOT DONE HERE, AND THIS IS WHY ----------
+/* ---------- Chrome budget: size the content before the grid track ----------
  *
  * The first version of this layer tried to reclaim height by lowering the
  * `.app` grid tracks for the TopBar (42 -> 38) and the status bar (26 -> 22).
@@ -63,14 +63,122 @@
  *     so lowering the MINIMUM can never lower the result. Shrinking the TopBar
  *     means shrinking its content (padding, control height) — a control-level
  *     change, not a track change.
- *  2. `.app` has FIVE tracks, and the one at index 4 is `auto` — that is the
- *     row the visible `.statusbar` actually sits in (31px). The fixed track
- *     the first version edited (index 5) holds something else. Touching it
- *     moved a track nothing was looking at.
+ *  2. `.app` has FIVE tracks because Diagnostics is rendered conditionally.
+ *     With Diagnostics closed, the footer auto-places in row 4 and the fixed
+ *     26px row 5 has no child. With Diagnostics open, Diagnostics takes row 4
+ *     and the footer moves into row 5. The closed state therefore reserves a
+ *     full empty row beneath the statusbar.
  *
- * Left out on purpose. A rule that does nothing but looks like a fix is worse
- * than no rule: the next reader credits it with a saving it never made.
+ * The content trim below makes the narrower track real on a fine-pointer
+ * desktop. Touch layouts keep their existing control heights and two-row
+ * transport; they have a different, intentional chrome budget.
  */
+
+/* Diagnostics is the only child that needs the fifth shell row. Keep the
+   footer in the natural fourth row while the panel is closed, and restore the
+   established five-row layout when it opens. This returns the unused 26px to
+   the workspace during normal production. */
+.app:not(.diagnostics-open) {
+  grid-template-rows: minmax(calc(42px + env(safe-area-inset-top, 0px)), max-content) minmax(0, 1fr) auto auto;
+}
+
+.app.diagnostics-open {
+  grid-template-rows: minmax(calc(42px + env(safe-area-inset-top, 0px)), max-content) minmax(0, 1fr) auto auto 26px;
+}
+
+/* On wide desktop the transport plate was the tallest TopBar child: 30px
+   controls + 6px vertical plate padding + 2px border. Trim only that chrome
+   and the project field's vertical inset; the 26px KYX mark, labels and
+   control widths stay intact. Once content fits, the 38px grid minimum can
+   actually reclaim four pixels at the top of the workspace. Tablet and touch
+   breakpoints keep their existing target sizes. */
+@media (min-width: 1101px) and (pointer: fine) {
+  .app:not(.diagnostics-open) {
+    grid-template-rows: minmax(calc(38px + env(safe-area-inset-top, 0px)), max-content) minmax(0, 1fr) auto auto;
+  }
+
+  .app.diagnostics-open {
+    grid-template-rows: minmax(calc(38px + env(safe-area-inset-top, 0px)), max-content) minmax(0, 1fr) auto auto 26px;
+  }
+
+  .topbar > .transport-cluster {
+    padding-block: 2px;
+  }
+
+  .topbar > .transport-cluster > .btn {
+    height: 28px;
+  }
+
+  .topbar > .project-name {
+    padding-block: 3px;
+  }
+}
+
+/* The 761–1199px band has enough room for the core transport, position,
+   project name and status if optional transport actions move into ⋯. Keep
+   these children on one calm line; preserve a horizontal escape hatch for
+   the temporary record-mode selectors. */
+@media (min-width: 761px) and (max-width: 1199px) {
+  .topbar {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+
+  .topbar > .brand,
+  .topbar > .btn-projects {
+    flex: 0 0 auto;
+  }
+
+  .topbar > .transport-cluster {
+    grid-column: auto;
+    grid-row: auto;
+    width: auto;
+    min-width: 0;
+    max-width: min(56vw, 520px);
+    flex: 0 1 auto;
+    gap: 5px;
+    padding-inline: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .topbar > .transport-cluster::-webkit-scrollbar {
+    display: none;
+  }
+
+  .topbar > .project-name {
+    grid-column: auto;
+    grid-row: auto;
+    width: auto;
+    min-width: 72px;
+    flex: 1 1 120px;
+  }
+
+  .topbar > .topbar-right {
+    grid-column: auto;
+    grid-row: auto;
+    flex: 0 1 auto;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1199px) and (pointer: fine) {
+  .topbar {
+    padding-block: 2px;
+  }
+
+  .topbar > .transport-cluster {
+    padding-block: 2px;
+  }
+
+  .topbar > .transport-cluster > .btn {
+    height: 28px;
+  }
+
+  .topbar > .project-name {
+    padding-block: 3px;
+  }
+}
 
 /* ---------- The sequencer floor ---------- */
 
@@ -120,7 +228,7 @@
    2px here funds the sequencer floor above without shrinking the pads
    themselves, so a pad's touch target is unchanged. Measured: rack 132 -> 128px. */
 .rack {
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 /* ---------- Pattern toolbar rhythm ---------- */
@@ -130,7 +238,7 @@
    the eye. This is the typography rule from the state matrix (small text is
    reserved for metadata) applied to the one toolbar every producer touches. */
 .pattern-bar .toolbar-label {
-  font-size: 9px;
+  font-size: var(--fs-xs);
   line-height: 1.1;
   letter-spacing: 1.2px;
 }

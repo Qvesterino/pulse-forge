@@ -461,7 +461,11 @@ export function TopBar({
   // PANEL toggles no longer live here: the bottom dock owns its own tab row
   // (DockChrome, ROADMAP-UI-2027 V1) — where the panel is, is where you
   // switch it, FL-Studio style.
-  const compactTransport = topbarWidth < 620;
+  // Through 1199px keep only the core transport in the header; secondary
+  // transport actions remain available in the existing overflow menu. This
+  // gives the mid-width shell room to stay on one row instead of growing a
+  // second chrome band.
+  const compactTransport = topbarWidth < 1200;
   const toolLimit = compactTransport ? 0 : topbarWidth < 1120 ? 2 : 3;
   const visibleToolActions = compactTransport ? [] : selectTopbarActions(toolActions, toolLimit);
   const overflowToolActions = toolActions.filter((action) => !visibleToolActions.includes(action));
@@ -772,7 +776,7 @@ export function TopBar({
               ↷
             </button>
           )}
-          {!compactTransport && <span className="position-display">{position}</span>}
+          {(!compactTransport || topbarWidth > 760) && <span className="position-display">{position}</span>}
           {!compactTransport && (
             <button
               type="button"

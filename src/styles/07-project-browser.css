@@ -117,7 +117,24 @@
 }
 
 .pb-template-start {
-  border-color: rgba(245, 158, 11, 0.5);
+  border-color: var(--kyx-silver-edge);
+  box-shadow: inset 0 -2px 0 var(--kyx-pulse);
+}
+
+.pb-template.pb-template-start:hover:not(:disabled) {
+  border-color: var(--kyx-silver-mid);
+  box-shadow:
+    inset 0 -2px 0 var(--kyx-pulse),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.pb-continue-card:focus-visible,
+.pb-template:focus-visible,
+.pb-row-name:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid color-mix(in srgb, var(--kyx-pulse) 84%, #fff);
+  outline-offset: 2px;
 }
 
 .pb-template-top {
@@ -170,7 +187,7 @@
 .pb-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  border-top: 1px solid var(--hairline);
 }
 
 .pb-row {
@@ -178,13 +195,21 @@
   grid-template-columns: minmax(180px, 1.4fr) minmax(160px, 1fr) auto;
   align-items: center;
   gap: 14px;
-  padding: 9px 12px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 5px;
+  padding: var(--space-3) var(--space-3);
+  background: transparent;
+  border-bottom: 1px solid var(--hairline);
+  transition: background var(--motion-fast) var(--motion-ease);
+}
+
+.pb-row:hover {
+  background: color-mix(in srgb, var(--surface-1) 72%, transparent);
 }
 
 .pb-row-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   text-align: left;
   font-size: 13px;
   font-weight: 600;
@@ -237,6 +262,36 @@
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.pb-row-actions > .btn-ghost:not(:disabled) {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-dim);
+}
+
+.pb-row-actions > .btn-ghost:hover:not(:disabled) {
+  border-color: var(--kyx-silver-edge);
+  background: color-mix(in srgb, var(--surface-2) 78%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+@media (max-width: 640px) {
+  .pb-body {
+    gap: 22px;
+    padding: var(--space-4) var(--space-4) var(--space-6);
+  }
+
+  .pb-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+
+  .pb-row-actions {
+    flex-wrap: wrap;
+  }
 }
 
 .pb-empty {
