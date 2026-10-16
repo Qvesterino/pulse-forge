@@ -52,7 +52,10 @@ function makeStallHarness(bpm = 120) {
     applyAutomation: () => {},
     applyPatternLaunch: () => {},
   });
-  return { doc, kick, events, clicks, scheduler, transport, at: (t: number) => (audioTime = t), now: () => audioTime };
+  // tick() is private — drive it through the same cast the 54-test
+  // scheduler.test.ts harness uses (line 1507).
+  const tick = () => (scheduler as unknown as { tick: () => void }).tick();
+  return { doc, kick, events, clicks, scheduler, transport, tick, at: (t: number) => (audioTime = t), now: () => audioTime };
 }
 
 // 120 bpm, PPQ 480: 960 ticks per second.
@@ -64,13 +67,13 @@ describe("scheduler blackout handling (audit 03 re-run)", () => {
     const h = makeStallHarness();
     h.transport.play(0);
     h.at(10);
-    h.scheduler.tick(); // window [0, 115.2 ticks) — normal lookahead
+    h.tick(); // window [0, 115.2 ticks) — normal lookahead
     const eventsBefore = h.events.length;
 
     // 1-second main-thread stall: the audio clock runs on while the
     // scheduler cannot (queued ticker messages deliver only after it ends).
     h.at(11);
-    h.scheduler.tick();
+    h.tick();
 
     // Nothing may be scheduled in the past — the backlog is dropped, not burst.
     const past = h.events.slice(eventsBefore).filter((e) => e.when < 11 - 1e-6);
@@ -87,13 +90,13 @@ describe("scheduler blackout handling (audit 03 re-run)", () => {
     const h = makeStallHarness();
     h.transport.play(0);
     h.at(10);
-    h.scheduler.tick();
+    h.tick();
 
     h.at(11);
     // ~24 queued ticker messages deliver back-to-back after the stall ends.
     for (let i = 0; i < 24; i++) {
       h.at(11 + i * 0.001);
-      h.scheduler.tick();
+      h.tick();
     }
     const seen = new Set<string>();
     for (const e of h.events) {
@@ -108,13 +111,13 @@ describe("scheduler blackout handling (audit 03 re-run)", () => {
     const h = makeStallHarness();
     h.transport.play(0);
     h.at(10);
-    h.scheduler.tick(); // window [0, 115.2 ticks) — covers slot 0 (tick 0) only
+    h.tick(); // window [0, 115.2 ticks) — covers slot 0 (tick 0) only
     const eventsBefore = h.events.length;
 
     // 60 ms stall — well inside the 120 ms horizon. The next window
     // [115.2, 172.8) contains slot 1 (tick 120 → when 10.125, still future).
     h.at(10.06);
-    h.scheduler.tick();
+    h.tick();
     const scheduled = h.events.slice(eventsBefore);
     expect(scheduled.length).toBeGreaterThan(0);
     for (const e of scheduled) {
