@@ -49,8 +49,16 @@ type DragState = {
  *    stays on the stored gain until release, which is the same preview/commit
  *    split `Slider` uses: it is a preview of a pending value, not a second
  *    source of truth.
+ *  - A click that does not move writes nothing (see `onPointerDown`).
+ *
+ * HEIGHT IS A LAYOUT BUDGET, NOT A STYLE CHOICE. The DEV panel is 251px tall
+ * and already spends 239px of it on blocks this component does not own, so the
+ * curve is 34px: at the original 46px the EQ column alone measured 219px, taller
+ * than the panel it lives in, and its dots landed under the status bar where
+ * they could be seen but not grabbed. Measured with `getBoundingClientRect` in
+ * Chromium 1600x1000, not read off a screenshot.
  */
-export function EqCurveCanvas({ params, onCommit, width = 236, height = 46 }: EqCurveCanvasProps) {
+export function EqCurveCanvas({ params, onCommit, width = 236, height = 34 }: EqCurveCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // Refs, not state: pointer events are the authority for WHERE the pointer is.
   // React 18 flushes `pointermove` from a Scheduler macrotask, so a fast flick

@@ -1650,20 +1650,38 @@
   font-size: 7px;
 }
 
-/* Module-first kit: five device slots, each with its own character choice.
-
-   THE HOST PANEL MUST BE ABLE TO SCROLL. Measured 2026-10-15: the DEV panel is
-   `overflow: hidden` (14-command-palette.css:953) and reported 341px of
-   content below its own bottom edge. The kit dock is the LAST block in that
-   panel, so with no way to scroll, its EQ curve and the bottom knob of every
-   column were painted but unreachable — `elementsFromPoint` at the curve
-   returned `FOOTER.statusbar`. This is the panel's rule, kept here next to the
-   block it unblocks rather than edited into a sheet another session owns. */
+/* THE DEVICES PANEL SCROLLS — AND IT SHOULD HAVE BEEN DOING THIS ALREADY.
+ *
+ * Measured 2026-10-16, Chromium 1600x1000, by injecting candidate rules at
+ * runtime and reading `scrollHeight - clientHeight` for each. The panel is
+ * 251px; its content is 756px, so 505px does not fit. Attribution, largest
+ * contributor first:
+ *
+ *   505px  as shipped
+ *   299px  + let `.device-surface` shrink again   (-206px)
+ *   171px  + hide `.source-macro-dock`            (-128px)
+ *     -1px  + hide `.kit-multiview`               (-172px)  <- only this fits
+ *     -1px  or: the panel scrolls instead
+ *
+ * Two thirds of the overflow is NOT this module's: `.device-surface` carries
+ * `flex: 1 0 220px; min-height: 220px` from 42-device-slot-finishing.css:3,
+ * which replaced a shrinkable `flex: 1 1 0`. That rule is deliberate and
+ * correct on its own terms — and it explicitly says, in its own comment, that
+ * "the Devices panel owns the resulting vertical scroll". The panel did not
+ * own a scroll, because it was `overflow: hidden`, so that comment was false
+ * and 206px of the editor simply had nowhere to go. This rule is what makes it
+ * true.
+ *
+ * The alternative is to fight for the space: letting `.device-surface` shrink
+ * to zero destroys the FX editor's own scroll viewport, which is exactly what
+ * the 220px floor exists to prevent. A clipped editor is worse than a
+ * scrollbar. */
 .devices-panel {
   overflow-y: auto;
   overflow-x: hidden;
 }
 
+/* Module-first kit: five device slots, each with its own character choice. */
 .essential-kit-dock {
   display: flex;
   flex: none;
@@ -1902,10 +1920,41 @@
 }
 
 /* One control per row inside a column: a 2-column grid at this width would
-   clip every knob to an unreadable sliver. */
+   clip every knob to an unreadable sliver.
+
+   COMPACTION (measured 2026-10-16, Chromium 1600x1000). The DEV panel is 251px
+   tall and its other blocks are not ours: header 41 + toolbar 44 + intent bar
+   26 + source-macro-dock 128 = 239px before the kit dock renders at all. The
+   kit dock therefore has to be the cheap one. Measured unit heights here were
+   a 34px knob row and a 46px curve, which made the EQ column 219px on its own
+   — larger than the panel. Row height and the track inside it are dropped to
+   22px / 12px and the curve to 34px (see EqCurveCanvas's `height` prop), which
+   brings the column to ~140px. `min-height: 0` on the flex column is what lets
+   it shrink at all instead of being floored by its content. */
+.kit-multiview-device {
+  min-height: 0;
+}
+
 .kit-multiview-device .fx-device-params {
   grid-template-columns: minmax(0, 1fr);
-  gap: 3px;
+  gap: 2px;
+}
+
+/* The knob cell is header + track. Measured box model at the dock's density:
+   header 13px + track 12px, so the row is 30px only because the SLIDER carries
+   a 5px gap between them — the cell's own gap was already 1px, which is why
+   tightening `.fx-param-cell` alone changed nothing. 13 + 2 + 12 = 27px. */
+.kit-multiview-device .fx-param-cell {
+  gap: 1px;
+}
+
+.kit-multiview-device .slider {
+  min-height: 22px;
+  gap: 2px;
+}
+
+.kit-multiview-device .slider .slider-track {
+  height: 12px;
 }
 
 .kit-multiview-device .fx-device-params .slider-label {

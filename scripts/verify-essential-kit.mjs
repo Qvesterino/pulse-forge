@@ -274,8 +274,14 @@ try {
       const before = target.getBoundingClientRect();
       const wasObscured = before.bottom > barTop;
       const canScroll = panel.scrollHeight - panel.clientHeight;
-      // Scroll the way a user would, then re-measure what is actually there.
-      if (wasObscured) panel.scrollTop = panel.scrollHeight;
+      // Scroll THE TARGET into view, not to the bottom of the panel. The kit
+      // dock is not the panel's last block — `device-surface` is — so scrolling
+      // to the end pushes the kit dock out through the TOP and the probe then
+      // reports whatever is behind it. At 281px of dock in a 251px viewport the
+      // dock can never be fully visible at any offset, so "reach the control"
+      // and "see the whole dock" are different claims and only the first is
+      // gated.
+      target.scrollIntoView({ block: "nearest" });
       const after = target.getBoundingClientRect();
       const hit = document.elementFromPoint(after.x + after.width / 2, after.y + after.height / 2);
       return {
@@ -314,9 +320,7 @@ try {
     // below it failed for that reason and no other.)
     await page.evaluate((sel) => {
       const c = document.querySelector(sel);
-      if (!c) return;
-      const panel = c.closest(".devices-panel");
-      if (panel) panel.scrollTop = panel.scrollHeight;
+      if (c) c.scrollIntoView({ block: "nearest" });
     }, curve);
     await page.waitForTimeout(600);
     const curveBox = await page.$eval(curve, (c) => {
