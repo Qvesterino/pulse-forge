@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
 import { screen, waitFor } from "@testing-library/react";
 import { App } from "../../src/ui/App";
+import { ServicesContext } from "../../src/ui/context";
 import { mockServices, renderWithContext } from "../helpers";
 
 describe("App (top-level shell)", () => {
@@ -40,5 +42,49 @@ describe("App (top-level shell)", () => {
     // give the boot timeout a chance to elapse
     await new Promise((r) => setTimeout(r, 1100));
     expect(screen.queryByText(/PROGRAM THE BEAT|MAKE SOUND/i)).not.toBeInTheDocument();
+  });
+
+  it("the desktop MCP host owns its unbind — a services swap never stacks IPC listeners", async () => {
+    // Audit 13: the effect binds `kyx:mcp:call` to the CURRENT services. It must
+    // unbind on cleanup — a collab swap re-runs the effect, and a leaked
+    // listener would execute every forwarded tool call twice and could answer
+    // from the stale (closed) project.
+    const listeners = new Set<(call: unknown) => void>();
+    const fakeMcp = {
+      status: vi.fn(async () => ({ enabled: true, running: true, bridgeUrl: null, token: null, clientConfig: null })),
+      enable: vi.fn(async () => undefined),
+      disable: vi.fn(async () => undefined),
+      answer: vi.fn(async () => undefined),
+      onCall: vi.fn((listener: (call: unknown) => void) => {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      }),
+    };
+    (window as unknown as { kyxDesktop?: unknown }).kyxDesktop = { isDesktop: true, mcp: fakeMcp };
+    try {
+      const first = mockServices();
+      const view = renderWithContext(<App services={first} onOpenBrowser={() => {}} onReplaceServices={() => {}} />, {
+        services: first,
+      });
+      await waitFor(() => expect(listeners.size).toBe(1));
+
+      // Collab swap: a NEW services object re-runs the effect.
+      const second = mockServices();
+      view.rerender(
+        createElement(
+          ServicesContext.Provider,
+          { value: second },
+          <App services={second} onOpenBrowser={() => {}} onReplaceServices={() => {}} />,
+        ),
+      );
+      await waitFor(() => expect(listeners.size).toBe(1)); // old unbound, new bound — not 2
+
+      view.unmount();
+      await waitFor(() => expect(listeners.size).toBe(0));
+    } finally {
+      delete (window as unknown as { kyxDesktop?: unknown }).kyxDesktop;
+    }
   });
 });

@@ -371,12 +371,35 @@ export function App({
   // Desktop MCP + web relay load lazily: the MCP surface (31 tools) is an
   // opt-in feature and must not sit in the studio boot graph.
   useEffect(() => {
-    void import("../mcp/desktop-host").then((m) => m.startMcpDesktopHost(services));
+    let stop: (() => void) | null = null;
+    let cancelled = false;
+    void import("../mcp/desktop-host").then((m) => {
+      if (cancelled) return;
+      stop = m.startMcpDesktopHost(services);
+    });
+    // Audit 13: the returned unbind MUST be owned. A services swap (collab
+    // start/leave) re-runs this effect; without the cleanup every swap left
+    // another `kyx:mcp:call` IPC listener bound to the OLD services object —
+    // forwarded tool calls then executed twice and one answer could come from
+    // the stale project. Unmount had the same leak, permanently.
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
   }, [services]);
   // Web MCP (Phase D3): re-arm the persisted /mcp-relay bridge after a
   // project/services swap. Inert unless the user opted in with a token.
   useEffect(() => {
-    void import("../mcp/web-host").then((m) => m.startMcpWebBridgeIfEnabled(services));
+    let stop: (() => void) | null = null;
+    let cancelled = false;
+    void import("../mcp/web-host").then((m) => {
+      if (cancelled) return;
+      stop = m.startMcpWebBridgeIfEnabled(services);
+    });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
   }, [services]);
   // QMR bridge (Qvester ecosystem): expose the KYX capability manifest +
   // the kyx.* command contract on window.qvesterQmr so the QMR
