@@ -27,10 +27,66 @@ import { assetUrl } from "../shared/assetUrls";
  */
 
 const readyContexts = new WeakSet<BaseAudioContext>();
-const failedContexts = new WeakSet<BaseAudioContext>();
 const inflight = new Map<BaseAudioContext, Promise<void>>();
 const readyGenerativePlayers = new WeakSet<BaseAudioContext>();
 const generativePlayerInflight = new Map<BaseAudioContext, Promise<void>>();
+
+/**
+ * Core-module breaker: a single transient fetch blip (boot race, flaky
+ * connection, one dropped request) must not kill worklet DSP for the whole
+ * session — the breaker goes permanent only after this many failed
+ * TRIGGERS. Retries are trigger-driven (project open, document change,
+ * worklet refresh, offline render prep) and deduped by the inflight map,
+ * never a self-sustaining loop: the engine gates its FX-rebuild queues on
+ * `isWorkletReady` (the instrument path has always done this; the lazy path
+ * since the 10-16 audit). A deterministic failure (deployment without the
+ * bundle files) still converges to permanent fallbacks after 3 attempts.
+ */
+const CORE_LOAD_ATTEMPTS = 3;
+const coreFailures = new WeakMap<BaseAudioContext, number>();
+
+function coreLoadExhausted(ctx: BaseAudioContext): boolean {
+  return (coreFailures.get(ctx) ?? 0) >= CORE_LOAD_ATTEMPTS;
+}
+
+/**
+ * Re-arm module loading for a context whose worklet global scope was
+ * rebuilt by a contextlost → contextrestored cycle: clears every readiness
+ * mark and failure count so the next `queueWorkletRefresh` re-runs
+ * `addModule` against the fresh scope. Callers must verify the scope is
+ * actually gone first (`workletScopeAlive`) — re-adding modules to a scope
+ * that kept its registrations throws on the duplicate `registerProcessor`.
+ */
+export function invalidateWorkletReadiness(ctx: BaseAudioContext): void {
+  readyContexts.delete(ctx);
+  readyLazyTypes.delete(ctx);
+  readyInstrumentTypes.delete(ctx);
+  readyGenerativePlayers.delete(ctx);
+  coreFailures.delete(ctx);
+  inflight.delete(ctx);
+  lazyInflight.delete(ctx);
+  instrumentInflight.delete(ctx);
+  generativePlayerInflight.delete(ctx);
+}
+
+/**
+ * True when the context's worklet scope still has the core processors
+ * registered. `contextrestored` may (browser-dependent) hand back a context
+ * whose worklet scope was rebuilt; the readiness marks then lie and every
+ * factory `new AudioWorkletNode` would throw into `syncProject`. Probing is
+ * decisive and cheap — the probe node is never connected. Platforms without
+ * the AudioWorkletNode global (jsdom) report alive; the loaders' own
+ * guards handle those.
+ */
+export function workletScopeAlive(ctx: BaseAudioContext): boolean {
+  if (typeof AudioWorkletNode === "undefined") return true;
+  try {
+    new AudioWorkletNode(ctx, "bitcrusher-processor");
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** Lazy worklet DSP modules (vendored suites + first-party) — per effect type, on demand. */
 export const LAZY_WORKLET_TYPES = [
@@ -140,11 +196,12 @@ export function isWorkletReady(
  * Load the CORE processor modules for the given context (bitcrusher +
  * core-processor). Safe to call multiple times per context; resolves
  * immediately (without loading) when the platform has no AudioWorklet
- * (jsdom) or when a previous load for this context already failed.
+ * (jsdom) or after the core breaker went permanent for this context
+ * (CORE_LOAD_ATTEMPTS failed triggers — see the constant's note).
  */
 export async function loadCoreWorklets(ctx: BaseAudioContext): Promise<void> {
   if (!ctx?.audioWorklet) return; // jsdom and other non-Web-Audio environments
-  if (readyContexts.has(ctx) || failedContexts.has(ctx)) return;
+  if (readyContexts.has(ctx) || coreLoadExhausted(ctx)) return;
   const pending = inflight.get(ctx);
   if (pending) return pending;
 
@@ -163,10 +220,22 @@ export async function loadCoreWorklets(ctx: BaseAudioContext): Promise<void> {
       // mark; without this set the loader could never report a loaded
       // instrument module (measured by the E2E lazy-load check).
       readyInstrumentTypes.set(ctx, new Set());
+      coreFailures.delete(ctx);
     })
     .catch((err) => {
-      failedContexts.add(ctx);
-      console.warn("[audio-worklets] module load failed, using fallback implementations:", err);
+      const attempts = (coreFailures.get(ctx) ?? 0) + 1;
+      coreFailures.set(ctx, attempts);
+      if (attempts >= CORE_LOAD_ATTEMPTS) {
+        console.warn(
+          `[audio-worklets] module load failed ${attempts}× — worklets stay on fallbacks for this context:`,
+          err,
+        );
+      } else {
+        console.warn(
+          `[audio-worklets] module load failed (attempt ${attempts}/${CORE_LOAD_ATTEMPTS}) — will retry on the next trigger:`,
+          err,
+        );
+      }
     })
     .finally(() => {
       inflight.delete(ctx);
@@ -179,7 +248,7 @@ export async function loadCoreWorklets(ctx: BaseAudioContext): Promise<void> {
 export async function loadGenerativePlayerWorklet(ctx: BaseAudioContext): Promise<void> {
   if (!ctx?.audioWorklet) return;
   await loadCoreWorklets(ctx);
-  if (failedContexts.has(ctx) || readyGenerativePlayers.has(ctx)) return;
+  if (coreLoadExhausted(ctx) || readyGenerativePlayers.has(ctx)) return;
   const pending = generativePlayerInflight.get(ctx);
   if (pending) return pending;
 
@@ -208,7 +277,9 @@ export async function loadGenerativePlayerWorklet(ctx: BaseAudioContext): Promis
 export async function loadLazyWorklet(ctx: BaseAudioContext, type: LazyWorkletType): Promise<void> {
   if (!ctx?.audioWorklet) return;
   await loadCoreWorklets(ctx);
-  if (failedContexts.has(ctx)) return;
+  // Under an exhausted core breaker this is a graceful no-op; a core that
+  // merely failed transiently re-runs (and this call awaits that retry).
+  if (coreLoadExhausted(ctx)) return;
   const lazySet = readyLazyTypes.get(ctx);
   if (lazySet?.has(type)) return;
 
@@ -244,7 +315,9 @@ export async function loadLazyWorklet(ctx: BaseAudioContext, type: LazyWorkletTy
 export async function loadInstrumentWorklet(ctx: BaseAudioContext, type: InstrumentWorkletType): Promise<void> {
   if (!ctx?.audioWorklet) return;
   await loadCoreWorklets(ctx);
-  if (failedContexts.has(ctx)) return;
+  // Under an exhausted core breaker this is a graceful no-op; a core that
+  // merely failed transiently re-runs (and this call awaits that retry).
+  if (coreLoadExhausted(ctx)) return;
   const instrumentSet = readyInstrumentTypes.get(ctx);
   if (instrumentSet?.has(type)) return;
 

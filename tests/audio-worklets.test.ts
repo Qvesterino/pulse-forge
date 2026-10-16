@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import {
   ensureWorkletsForDoc,
   INSTRUMENT_WORKLET_TYPES,
+  invalidateWorkletReadiness,
   isWorkletReady,
   LAZY_WORKLET_TYPES,
   loadAllWorklets,
@@ -11,6 +12,7 @@ import {
   loadGenerativePlayerWorklet,
   loadLazyWorklet,
   lazyWorkletTypesInDoc,
+  workletScopeAlive,
 } from "../src/audio-worklets/loader";
 
 function mockCtx(addModule: (url: string) => Promise<void>): BaseAudioContext {
@@ -143,6 +145,187 @@ describe("AudioWorklet loader", () => {
 
   it("resolves silently without audioWorklet (jsdom)", async () => {
     await expect(loadCoreWorklets({} as BaseAudioContext)).resolves.toBeUndefined();
+  });
+});
+
+describe("AudioWorklet loader — transient failure recovery (audit 12 re-run)", () => {
+  it("a single transient core failure recovers on the next trigger", async () => {
+    let fail = true;
+    let calls = 0;
+    const ctx = {
+      audioWorklet: {
+        addModule: async () => {
+          calls++;
+          if (fail) throw new Error("503 service unavailable");
+        },
+      },
+    } as unknown as BaseAudioContext;
+    await loadCoreWorklets(ctx);
+    expect(isWorkletReady("bitcrusher", ctx)).toBe(false);
+    // The network heals; the next trigger (project open / worklet refresh /
+    // doc change) retries instead of the old permanent breaker.
+    fail = false;
+    await loadCoreWorklets(ctx);
+    expect(calls).toBe(4); // 2 modules × 2 attempts
+    expect(isWorkletReady("bitcrusher", ctx)).toBe(true);
+    expect(isWorkletReady("limiter", ctx)).toBe(true);
+  });
+
+  it("the breaker goes permanent only after three failed triggers", async () => {
+    let calls = 0;
+    const ctx = {
+      audioWorklet: {
+        addModule: async () => {
+          calls++;
+          throw new Error("404 not found");
+        },
+      },
+    } as unknown as BaseAudioContext;
+    for (let attempt = 0; attempt < 5; attempt++) await loadCoreWorklets(ctx);
+    // A deterministic failure converges to permanent fallbacks…
+    expect(calls).toBe(6); // 2 modules × 3 attempts, then silent
+    expect(isWorkletReady("bitcrusher", ctx)).toBe(false);
+    // …and exhausted contexts no-op without further fetches.
+    await loadLazyWorklet(ctx, "fxeq");
+    await loadGenerativePlayerWorklet(ctx);
+    expect(calls).toBe(6);
+  });
+
+  it("invalidateWorkletReadiness re-arms a context whose scope was rebuilt", async () => {
+    const addModule = vi.fn(async () => {});
+    const ctx = { audioWorklet: { addModule } } as unknown as BaseAudioContext;
+    await loadCoreWorklets(ctx);
+    await loadLazyWorklet(ctx, "fxeq");
+    expect(isWorkletReady("bitcrusher", ctx)).toBe(true);
+    expect(isWorkletReady("fxeq", ctx)).toBe(true);
+    invalidateWorkletReadiness(ctx);
+    expect(isWorkletReady("bitcrusher", ctx)).toBe(false);
+    expect(isWorkletReady("fxeq", ctx)).toBe(false);
+    // The post-restore refresh re-registers the core…
+    await loadCoreWorklets(ctx);
+    expect(addModule).toHaveBeenCalledTimes(5); // 2 core + 1 lazy + 2 re-core
+    expect(isWorkletReady("bitcrusher", ctx)).toBe(true);
+    // …while lazy marks were cleared too — they reload on demand.
+    expect(isWorkletReady("fxeq", ctx)).toBe(false);
+  });
+
+  it("workletScopeAlive probes the registration and never throws without AudioWorkletNode", () => {
+    // jsdom has no AudioWorkletNode global — assume alive; the loaders'
+    // own guards handle those platforms.
+    expect(workletScopeAlive({} as BaseAudioContext)).toBe(true);
+    const previous = (globalThis as unknown as { AudioWorkletNode?: unknown }).AudioWorkletNode;
+    try {
+      (globalThis as unknown as { AudioWorkletNode: unknown }).AudioWorkletNode = class {
+        constructor() {
+          throw new Error("processor not registered");
+        }
+      };
+      expect(workletScopeAlive({} as BaseAudioContext)).toBe(false);
+      (globalThis as unknown as { AudioWorkletNode: unknown }).AudioWorkletNode = class {
+        disconnect() {}
+      };
+      expect(workletScopeAlive({} as BaseAudioContext)).toBe(true);
+    } finally {
+      if (previous === undefined) delete (globalThis as unknown as { AudioWorkletNode?: unknown }).AudioWorkletNode;
+      else (globalThis as unknown as { AudioWorkletNode: unknown }).AudioWorkletNode = previous;
+    }
+  });
+});
+
+describe("AudioWorklet loader × engine contextrestore integration", () => {
+  // jsdom ships no AudioContext — the engine's live checks are
+  // `ctx instanceof AudioContext`, so the mock must instance-of a faked one.
+  class FakeLiveAudioContext {}
+
+  function liveEngineCtx(addModule: (url: string) => Promise<void>): BaseAudioContext {
+    const param = (initial = 0) => ({
+      value: initial,
+      setTargetAtTime() {},
+      setValueAtTime() {},
+      cancelScheduledValues() {},
+      linearRampToValueAtTime() {},
+    });
+    const node = () => ({
+      gain: param(1),
+      pan: param(0),
+      delayTime: param(0),
+      frequency: param(440),
+      Q: param(1),
+      threshold: param(0),
+      ratio: param(1),
+      attack: param(0),
+      release: param(0),
+      knee: param(0),
+      connect() {
+        return this;
+      },
+      disconnect() {},
+      getFloatTimeDomainData() {},
+      ctxTag: "loader-it",
+    });
+    const ctx = new FakeLiveAudioContext() as unknown as Record<string, unknown>;
+    Object.assign(ctx, {
+      currentTime: 0,
+      sampleRate: 48000,
+      onstatechange: null,
+      oncontextlost: null,
+      oncontextrestored: null,
+      createGain: node,
+      createStereoPanner: node,
+      createAnalyser: node,
+      createDelay: node,
+      createDynamicsCompressor: node,
+      createBiquadFilter: node,
+      createChannelSplitter: node,
+      createChannelMerger: node,
+      createOscillator: node,
+      createWaveShaper: () => ({ oversample: "none", curve: null, connect() {}, disconnect() {} }),
+      audioWorklet: { addModule },
+    });
+    return ctx as unknown as BaseAudioContext;
+  }
+
+  it("oncontextrestored re-arms and re-registers when the scope was rebuilt", async () => {
+    const { AudioEngine } = await import("../src/audio-engine/AudioEngine");
+    const previousAudioContext = (globalThis as unknown as { AudioContext?: unknown }).AudioContext;
+    const previousNode = (globalThis as unknown as { AudioWorkletNode?: unknown }).AudioWorkletNode;
+    (globalThis as unknown as { AudioContext: unknown }).AudioContext = FakeLiveAudioContext;
+    try {
+      const addModule = vi.fn(async () => {});
+      const ctx = liveEngineCtx(addModule);
+      const engine = new AudioEngine();
+      engine.useContext(ctx);
+      // The boot worklet refresh loads the core on the live context. Wait on
+      // READINESS, not call count — the marks land a microtask after the
+      // fetches resolve.
+      await vi.waitFor(() => expect(isWorkletReady("bitcrusher", ctx)).toBe(true));
+      expect(addModule).toHaveBeenCalledTimes(2);
+
+      // contextlost drops the handle; the browser restores it — with a
+      // REBUILT worklet scope (the registration probe fails).
+      (ctx as unknown as { oncontextlost: (e: Event) => void }).oncontextlost?.({ preventDefault() {} } as Event);
+      expect((engine as unknown as { ctx: unknown }).ctx).toBeNull();
+      (globalThis as unknown as { AudioWorkletNode: unknown }).AudioWorkletNode = class {
+        constructor() {
+          throw new Error("processor not registered");
+        }
+      };
+      (ctx as unknown as { oncontextrestored: () => void }).oncontextrestored?.();
+
+      // The stale marks were invalidated, the engine re-adopted the
+      // restored handle, and its worklet refresh re-registered the core on
+      // the fresh scope — without this, every factory `new
+      // AudioWorkletNode` would throw into syncProject forever.
+      expect((engine as unknown as { ctx: unknown }).ctx).toBe(ctx);
+      await vi.waitFor(() => expect(isWorkletReady("bitcrusher", ctx)).toBe(true));
+      expect(addModule).toHaveBeenCalledTimes(4);
+      expect(isWorkletReady("limiter", ctx)).toBe(true);
+    } finally {
+      if (previousAudioContext === undefined) delete (globalThis as unknown as { AudioContext?: unknown }).AudioContext;
+      else (globalThis as unknown as { AudioContext: unknown }).AudioContext = previousAudioContext;
+      if (previousNode === undefined) delete (globalThis as unknown as { AudioWorkletNode?: unknown }).AudioWorkletNode;
+      else (globalThis as unknown as { AudioWorkletNode: unknown }).AudioWorkletNode = previousNode;
+    }
   });
 });
 
