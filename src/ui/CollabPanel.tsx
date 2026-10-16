@@ -65,7 +65,12 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
       // then persist that stale state over the flushed edits.
       const docAfterFlush = services.store.getDoc();
       const next = await openProject(services.core, docAfterFlush, options);
-      if (mounted.current) onReplaceServices(next);
+      // Audit 13 (D1 residual): the hand-over must NOT be tied to this popover
+      // staying mounted. Closing it mid-swap used to skip the install, leaving
+      // the studio on the CLOSED services object — no autosave, no unload
+      // guards, every subsequent edit silently unsaved. The host decides what
+      // to do when the user already left the studio (nothing: it disposes).
+      onReplaceServices(next);
     } catch (err) {
       // Audit 13 D1: closeProject already tore down the old services (autosave
       // guards uninstalled, onDocChanged dead) — leaving the studio mounted on
@@ -73,16 +78,19 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
       // project so the user keeps a working (persisting) studio.
       if (mounted.current) {
         setSwitchError(`Project switch failed: ${err instanceof Error ? err.message : String(err)}`);
-        try {
-          const next = await openProject(services.core, services.store.getDoc());
-          if (mounted.current) onReplaceServices(next);
-          return;
-        } catch (reopenErr) {
-          if (mounted.current)
-            setSwitchError(
-              `Switch failed and reopen failed too — reload the page. (${reopenErr instanceof Error ? reopenErr.message : String(reopenErr)})`,
-            );
-        }
+      }
+      // The recovery reopen runs even when the popover is gone (same D1
+      // residual as the success path); the host disposes it if the user has
+      // already left the studio.
+      try {
+        const next = await openProject(services.core, services.store.getDoc());
+        onReplaceServices(next);
+        return;
+      } catch (reopenErr) {
+        if (mounted.current)
+          setSwitchError(
+            `Switch failed and reopen failed too — reload the page. (${reopenErr instanceof Error ? reopenErr.message : String(reopenErr)})`,
+          );
       }
     } finally {
       switchingRef.current = false;

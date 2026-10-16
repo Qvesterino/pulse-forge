@@ -1,4 +1,4 @@
-import { StrictMode, Suspense, lazy, useCallback, useEffect, useState } from "react";
+import { StrictMode, Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { CoreServices, Services } from "./services";
 import type { ProjectDocument } from "./project-model/types";
@@ -240,6 +240,11 @@ type Screen =
 
 function Boot() {
   const [screen, setScreen] = useState<Screen>({ kind: "booting" });
+  // Latest screen kind for async continuations (the collab swap can resolve
+  // after the user left the studio). Kept in sync at render time; only ever
+  // read from async callbacks, never during render.
+  const screenKindRef = useRef(screen.kind);
+  screenKindRef.current = screen.kind;
   // Flipped by a timer, not by the boot itself: the boot may still be perfectly
   // healthy and just slow. Cleared by unmount only - once boot settles the
   // screen leaves the "booting" branch and this no longer renders.
@@ -354,6 +359,15 @@ function Boot() {
 
   /** Swap the studio's services in place (collab session start/leave). */
   const replaceServices = useCallback((services: Services) => {
+    // Audit 13 (D1 residual): a collab swap resolves asynchronously and its
+    // continuation is independent of the popover that started it. If the user
+    // already left the studio (back to the browser, or opening another
+    // project), installing the late arrival would yank them back into the old
+    // session — release it instead (websocket, unload guards, engine pointer).
+    if (screenKindRef.current !== "studio") {
+      void services.closeProject().catch(() => undefined);
+      return;
+    }
     setScreen({ kind: "studio", services });
   }, []);
 

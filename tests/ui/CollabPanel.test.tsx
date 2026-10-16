@@ -25,8 +25,12 @@ function deferred<T>() {
 
 function renderPanel(services: Services) {
   const onReplace = vi.fn();
-  renderWithContext(<CollabPanel onReplaceServices={onReplace} />, { services });
-  return { onReplace, startButton: () => screen.getByRole("button", { name: /START \/ JOIN SESSION/ }) };
+  const result = renderWithContext(<CollabPanel onReplaceServices={onReplace} />, { services });
+  return {
+    onReplace,
+    unmount: () => result.unmount(),
+    startButton: () => screen.getByRole("button", { name: /START \/ JOIN SESSION/ }),
+  };
 }
 
 describe("CollabPanel project swap race", () => {
@@ -94,5 +98,26 @@ describe("CollabPanel project swap race", () => {
 
     expect(onReplace).toHaveBeenCalledWith(nextServices);
     expect(startButton()).not.toBeDisabled();
+  });
+
+  it("a swap completing after the panel unmounts still hands over the new services (D1 residual)", async () => {
+    const services = mockServices();
+    const closeDeferred = deferred<void>();
+    (services as unknown as { closeProject: Mock }).closeProject = vi.fn(() => closeDeferred.promise);
+    const nextServices = mockServices();
+    (openProject as Mock).mockResolvedValueOnce(nextServices);
+    const { onReplace, startButton, unmount } = renderPanel(services);
+
+    // The popover closes while closeProject/openProject are still in flight —
+    // the swap continuation must NOT be tied to this component staying mounted.
+    // If it is, the studio keeps running on the CLOSED services object (no
+    // autosave, no unload guards) and every edit afterwards is silently unsaved.
+    fireEvent.click(startButton());
+    unmount();
+    await act(async () => {
+      closeDeferred.resolve();
+    });
+
+    expect(onReplace).toHaveBeenCalledWith(nextServices);
   });
 });
