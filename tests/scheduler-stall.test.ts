@@ -55,7 +55,17 @@ function makeStallHarness(bpm = 120) {
   // tick() is private — drive it through the same cast the 54-test
   // scheduler.test.ts harness uses (line 1507).
   const tick = () => (scheduler as unknown as { tick: () => void }).tick();
-  return { doc, kick, events, clicks, scheduler, transport, tick, at: (t: number) => (audioTime = t), now: () => audioTime };
+  return {
+    doc,
+    kick,
+    events,
+    clicks,
+    scheduler,
+    transport,
+    tick,
+    at: (t: number) => (audioTime = t),
+    now: () => audioTime,
+  };
 }
 
 // 120 bpm, PPQ 480: 960 ticks per second.
