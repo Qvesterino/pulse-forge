@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "recordedAgainst": "36d3afbb",
-  "date": "2026-10-06",
+  "recordedAgainst": "620f98e8",
+  "date": "2026-10-16",
   "note": "Owned-red ledger (Chromium TestExpectations model). Every entry needs owner + reason. Ratchet: new reds fail the gate, cured reds demand removal. See scripts/suite-expectations.mjs.",
   "expectations": [
     {
@@ -19,11 +19,32 @@
       "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
     },
     {
+      "id": "tests/bounce.test.ts > consolidateRangeToAudio renders, persists, and applies the range print as one undoable command",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/collab-automation.test.ts > linked arrangement automation targets normalizes, migrates and round-trips linked targets through Yjs",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
       "id": "tests/creative-task-contract.test.ts > creative task contract v1 keeps the creative SFT bootstrap pinned, family-disjoint, and outside both held-out datasets",
       "owner": "intent-model wave",
       "reason": "creative SFT bootstrap pin vs in-flight corpus wave",
       "addedAt": "2026-10-06",
       "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/domain-purity.test.ts > domain purity (GOAL 02) effects/definitions is Node-pure (no React, no audio runtime, no browser globals)",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
     },
     {
       "id": "tests/drum-rr-declick.test.ts > genre feel (humanize defaults) every genre in the feel map gets modest, non-flat humanize",
@@ -33,25 +54,40 @@
       "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
     },
     {
-      "id": "tests/intent-model-loader.test.ts > loader registration + timeouts + breaker a scripted model registers the resolver provider and routes through it",
-      "owner": "intent-model wave",
-      "reason": "pins frozen to artifact/prompt bytes of the locally retrained ONNX + SFT models; re-pin needs manifest regen after the next retrain",
-      "addedAt": "2026-10-06",
-      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+      "id": "tests/editing-timeline-audit.test.ts > note editing — boundary clamps (audit 01) resizeNote clamps to the pattern and never emits an overflowing/zero duration",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
     },
     {
-      "id": "tests/intent-sft-golden.test.ts > intent SFT dataset (LLM-as-sound-engineer distillation) every golden pair re-routes to the EXACT same canonical action",
-      "owner": "intent-model wave",
-      "reason": "pins frozen to artifact/prompt bytes of the locally retrained ONNX + SFT models; re-pin needs manifest regen after the next retrain",
-      "addedAt": "2026-10-06",
-      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+      "id": "tests/groove-dedup.test.ts > compact melodic sequences round-trips every built-in melodic motif without changing its notes",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
     },
     {
-      "id": "tests/intent-wrongkind-wave.test.ts > wrongkind wave — teacher routing SK preset asks accept inflected targets (na leade / na basu)",
+      "id": "tests/intent-e2e-audit.test.ts > E2E absolute-set effect asks set clamps out-of-range percentages (250% → knob max)",
+      "owner": "intent-model artifact pins",
+      "reason": "frozen artifact/prompt bytes; re-pin needs manifest regen after the next retrain",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation: owned by the concurrent wave, re-classify after it lands (suite-expectations ratchet)"
+    },
+    {
+      "id": "tests/intent-e2e-audit.test.ts > E2E absolute-set effect asks set the lead reverb mix to 25% lands the knob at 25% of its range",
+      "owner": "intent-model artifact pins",
+      "reason": "frozen artifact/prompt bytes; re-pin needs manifest regen after the next retrain",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation: owned by the concurrent wave, re-classify after it lands (suite-expectations ratchet)"
+    },
+    {
+      "id": "tests/intent-model-artifact.test.ts > intent model artifact lock model + vocab artifacts match the manifest pins",
       "owner": "intent-model wave",
-      "reason": "pins frozen to artifact/prompt bytes of the locally retrained ONNX + SFT models; re-pin needs manifest regen after the next retrain",
+      "reason": "flaky machine-state: the manifest-pin check flips between runs at the same SHA family (CURED in one F1 run, NEW in the next) — locally fetched ONNX/vocab artifacts vary while the pins stay frozen. flaky: true exempts both directions until the wave owner re-pins.",
       "addedAt": "2026-10-06",
-      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+      "flaky": true,
+      "evidence": "F1 worktree at 36d3afbb: CURED in run A, NEW in run B, identical tree"
     },
     {
       "id": "tests/melodic-embedding-conditioning.test.ts > provider melodic v2 path flag off → straight to v1 (no v2 attempt)",
@@ -80,6 +116,111 @@
       "reason": "file hashes/manifestContent drifted from the dev-time fetch manifest after the pack regen",
       "addedAt": "2026-10-06",
       "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/multivoice-golden.test.ts > multi-voice golden (P2+P3 regression lock) freezes output identity for every genre",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/note-commands.test.ts > duplicateNotes (R9.D1 regression) clamps the duplicate's duration so the copy never exceeds patternTicks",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/note-commands.test.ts > duplicateNotes (R9.D1 regression) survives a normalizeProject round-trip without losing the duplicate",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/persistence-db-shape.test.ts > persistence/db.ts — IndexedDB schema owner (source-grep) audit — every export is accounted for no orphan const / function / class / interface / type outside the known sets",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/persistence/schema-evolution.test.ts > schema evolution — store layout (GOAL 05) upgrade from a v8-shaped layout completes to the full store set (groove-pool incident class)",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/preference-evaluation.test.ts > Producer DNA held-out evaluation compares future preference predictions against the captured global selector",
+      "owner": "Producer DNA wave",
+      "reason": "held-out preference evaluation vs the captured selector — the wave is actively landing (54 in-flight files)",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation: owned by the concurrent wave, re-classify after it lands (suite-expectations ratchet)"
+    },
+    {
+      "id": "tests/preset-loudness-audit.test.ts > preset gain sanity clamp-hits equal the pinned inventory (fix the family/level, don't cap)",
+      "owner": "preset-loudness wave",
+      "reason": "clamp-hits inventory pin drifted with the ZENIT/M2 + mastering presets",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation: owned by the concurrent wave, re-classify after it lands (suite-expectations ratchet)"
+    },
+    {
+      "id": "tests/probe-split-undo.test.ts > probe split undo probe",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/resize-grip.test.tsx > ResizeGrip · drag persists on RELEASE, never per pointermove",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/settings-glass.test.ts > settings glass · cascade order imports last, after every other sheet",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/studio-words.test.ts > groove intent groove routes before the mix comparatives (tighter ≠ darker mix)",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/studio-words.test.ts > groove intent more swing raises swing by one step; undo restores",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/studio-words.test.ts > section groove intents bakes microtiming into ODD steps of the section pattern; even steps untouched",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/studio-words.test.ts > section groove intents more swing in the drop routes sectionGrooveIntent with role",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/studio-words.test.ts > section groove intents set absolute: 'swing 65% in the drop' lands the ×5/3 converted micro",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
     },
     {
       "id": "tests/symbolic-melodic.test.ts > melodic prior sampling in the provider falls back to template melody when multi-voice and the prior are unavailable",
@@ -124,40 +265,151 @@
       "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
     },
     {
-      "id": "tests/intent-model-artifact.test.ts > intent model artifact lock model + vocab artifacts match the manifest pins",
-      "owner": "intent-model wave",
-      "reason": "flaky machine-state: the manifest-pin check flips between runs at the same SHA family (CURED in one F1 run, NEW in the next) — locally fetched ONNX/vocab artifacts vary while the pins stay frozen. flaky: true exempts both directions until the wave owner re-pins.",
-      "addedAt": "2026-10-06",
-      "flaky": true,
-      "evidence": "F1 worktree at 36d3afbb: CURED in run A, NEW in run B, identical tree"
+      "id": "tests/token-editor.test.tsx > TokenEditor · the reset that must exist persists overrides to the layout store, so they survive a reload",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
     },
     {
-      "id": "tests/preset-loudness-audit.test.ts > preset gain sanity > clamp-hits equal the pinned inventory (fix the family/level, don't cap)",
-      "owner": "GROW preset/loudness wave (892801b2)",
-      "reason": "pinned clamp-hits inventory (74 entries) vs regenerated preset-loudness.generated.ts after the GROW PHASE/TILT preset adoption (70 entries); re-pin the inventory when the wave owner blesses the map",
-      "addedAt": "2026-10-11",
-      "evidence": "F1 campaign baseline 2026-10-11, clean worktree at 3beef964: expected Array(74) vs received Array(70); preset-loudness.generated.ts last changed by 892801b2 (2026-10-11), test pin from d4115dcd (2026-10-10)"
+      "id": "tests/ui/DockChrome.test.tsx > DockChrome marks the open panel selected and reflects the split slot",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
     },
     {
-      "id": "tests/intent-master-decisions.test.ts > planMixProfile — master loudness bound (Phase 2 slice 3) > a loud artist lifts the target but never past the trim limit",
-      "owner": "GROW preset/loudness wave (892801b2)",
-      "reason": "master loudness bound expectations (-5 LUFS lift) vs moved artist loudness calibration (-7); measured-loudness GROW work changed planMixProfile targets after the 2026-09-28 pin",
-      "addedAt": "2026-10-11",
-      "evidence": "F1 campaign baseline 2026-10-11, clean worktree at 3beef964: travis-scott expected -5, received -7 at intent-master-decisions.test.ts:124"
+      "id": "tests/ui/DockChrome.test.tsx > DockChrome plain click toggles, Ctrl+click asks for the split slot",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
     },
     {
-      "id": "tests/intent-master-decisions.test.ts > planMixProfile — master loudness bound (Phase 2 slice 3) > the loudest artist still respects the cap (Excision -6 would need 8 dB)",
-      "owner": "GROW preset/loudness wave (892801b2)",
-      "reason": "master loudness cap expectation (-5 LUFS) vs moved calibration (-6); same measured-loudness recalibration as the sibling test",
-      "addedAt": "2026-10-11",
-      "evidence": "F1 campaign baseline 2026-10-11, clean worktree at 3beef964: excision expected -5, received -6 at intent-master-decisions.test.ts:133"
+      "id": "tests/ui/DockChrome.test.tsx > DockChrome renders exactly one tab per registered panel — a new panel can never ship without a tab",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
     },
     {
-      "id": "tests/preference-evaluation.test.ts > Producer DNA held-out evaluation > compares future preference predictions against the captured global selector",
-      "owner": "Producer DNA wave (ADR 0026-0032)",
-      "reason": "caveat wording pin: test matches /prompt\\/session groups are not stored/ but the report now says the holdout is 'chronological, candidate-hash-disjoint ... diagnostic, not a statistically independent user study' — privacy claim still present, reworded; re-pin the string",
-      "addedAt": "2026-10-11",
-      "evidence": "F1 campaign baseline 2026-10-11, clean worktree at 3beef964: caveat regex mismatch at preference-evaluation.test.ts:75"
+      "id": "tests/ui/Inspector.test.tsx > Inspector renders the TRACK header and Volume slider",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/ui/Sequencer.test.tsx > Sequencer has step sequencer aria label",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/ui/Sequencer.test.tsx > Sequencer toggles Beat Focus without changing the pattern editor state",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/ui/TopBar.loop-sync.test.tsx > §5 TopBar loop is not a second source of truth reflects a loop change made outside the button, with the transport stopped",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/ui/TopBar.loop-sync.test.tsx > §5 TopBar loop is not a second source of truth returns to false when the loop is cleared externally",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/ui/TopBar.test.tsx > TopBar calls onToggleHelp when ? clicked",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/ui/TopBar.test.tsx > TopBar cycles count-in, toggles pre-roll and toggles the content metronome",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/ui/TopBar.test.tsx > TopBar sets BPM from two taps without changing the project until the second tap",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/ui/TopBar.test.tsx > TopBar undo button calls store.undo",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/ui/editor-hardening-interactions.test.tsx > alt+click must not plant a hidden duplicate alt+drag materializes exactly one duplicate at the dragged position",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/ui/editor-hardening-interactions.test.tsx > paste clamps into the pattern notes beyond patternTicks land inside it",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/ui/reference-map-panel.test.tsx > ReferenceMapPanel — input guards rejects an unsupported extension before touching the audio context",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/ui/timeline-rec.test.tsx > arrangement REC wiring serializes rapid REC clicks while the audio input is opening",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/ui/ui-responsiveness.test.tsx > audit16 · dock resize does not block the main thread per pointermove flushes the pending write on unmount so a reload keeps the last size",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/ui/ui-responsiveness.test.tsx > audit16 · dock resize does not block the main thread per pointermove persists the final height once the drag settles",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/ux-audit.test.ts > keyboard shortcut table covers every documented verb exactly once",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
+    },
+    {
+      "id": "tests/ux-audit.test.ts > keyboard shortcut table maps every panel shortcut to a real bottom-panel id",
+      "owner": "concurrent UI-redesign + F2/audit-13 landing waves",
+      "reason": "partial test updates landed with the wave (e.g. TopBar.tsx redesign 297 lines with queries the new markup no longer renders); wave still in flight (54 dirty files) — the wave's triage owns the re-pin",
+      "addedAt": "2026-10-16",
+      "evidence": "10-06 evening consolidation baseline at d0cecbb4: green at 36d3afbb, red after the range; solo-reproduced (not load)"
     }
   ]
 }
