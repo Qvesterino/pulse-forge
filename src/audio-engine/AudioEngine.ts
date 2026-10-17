@@ -812,21 +812,13 @@ export class AudioEngine {
     if (typeof ext.oncontextrestored !== "undefined") {
       ext.oncontextrestored = () => {
         // A rebuilt worklet scope (browser-dependent) leaves the loader's
-        // readiness marks lying — probe the scope and re-arm the loader so
-        // the refresh below re-registers on it. Runs before the handle
-        // checks: stale marks on an abandoned context are harmless, and a
-        // context the engine re-adopts needs fresh marks either way. If the
-        // scope survived (the common case) nothing changes — re-running
-        // addModule on it would throw on the duplicate registerProcessor.
+        // readiness marks lying — probe and re-arm BEFORE rebuilding so the
+        // refresh inside useContext re-registers; a surviving scope no-ops
+        // (see workletScopeAlive/invalidateWorkletReadiness in the loader).
         if (!workletScopeAlive(ctx)) invalidateWorkletReadiness(ctx);
         if (this.ctx === ctx || this.ctx === null) {
-          // The browser kept the SAME context alive (see preventDefault
-          // above). `null` means contextlost dropped the handle and nothing
-          // rebuilt yet — re-adopt the restored handle instead of letting
-          // the next ensureContext() allocate a second live context (the
-          // early-return this guard used to have made the documented
-          // same-context rebuild unreachable dead code and stranded the
-          // restored context running).
+          // Re-adopt the restored handle (contextlost dropped it) instead of
+          // letting the next ensureContext() allocate a second live context.
           this.useContext(ctx);
           return;
         }

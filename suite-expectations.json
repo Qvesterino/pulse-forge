@@ -2,19 +2,12 @@
   "version": 1,
   "recordedAgainst": "620f98e8",
   "date": "2026-10-16",
-  "note": "Owned-red ledger (Chromium TestExpectations model). Every entry needs owner + reason. Ratchet: new reds fail the gate, cured reds demand removal. See scripts/suite-expectations.mjs.",
+  "note": "Owned-red ledger (Chromium TestExpectations model). Every entry needs owner + reason. Ratchet: new reds fail the gate, cured reds demand removal. See scripts/suite-expectations.mjs. | 2026-10-16 evening pass: removed 4 entries cured by the concurrent landing waves (asio-host vendor gate, intent-model-artifact pins, model-packs registry ×2 — verified green in the full-suite baseline run) and re-verified the remaining 54 against a fresh full run; the audit-12 re-run's restored-handler comment was tightened to keep the GOAL-04 source-grep pin green.",
   "expectations": [
     {
       "id": "tests/ai-baseline.test.ts > AI baseline harness matches the frozen correctness-1 hashes and metrics",
       "owner": "intent-model wave",
       "reason": "frozen correctness-1 hashes vs locally regenerated baseline vectors",
-      "addedAt": "2026-10-06",
-      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
-    },
-    {
-      "id": "tests/asio-host.test.ts > ASIO SDK vendor gate (scripts/vendor-asio.mjs) records provenance and hashes without committing SDK bytes",
-      "owner": "vendor SDK owner gate (by design)",
-      "reason": "provenance gate needs the locally fetched ASIO SDK bytes; never committed",
       "addedAt": "2026-10-06",
       "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
     },
@@ -82,14 +75,6 @@
       "evidence": "10-06 evening consolidation: owned by the concurrent wave, re-classify after it lands (suite-expectations ratchet)"
     },
     {
-      "id": "tests/intent-model-artifact.test.ts > intent model artifact lock model + vocab artifacts match the manifest pins",
-      "owner": "intent-model wave",
-      "reason": "flaky machine-state: the manifest-pin check flips between runs at the same SHA family (CURED in one F1 run, NEW in the next) — locally fetched ONNX/vocab artifacts vary while the pins stay frozen. flaky: true exempts both directions until the wave owner re-pins.",
-      "addedAt": "2026-10-06",
-      "flaky": true,
-      "evidence": "F1 worktree at 36d3afbb: CURED in run A, NEW in run B, identical tree"
-    },
-    {
       "id": "tests/melodic-embedding-conditioning.test.ts > provider melodic v2 path flag off → straight to v1 (no v2 attempt)",
       "owner": "concurrent symbolic/grooves retrain wave",
       "reason": "melodic v2 path flag routing pinned to the pre-retrain embedding gate",
@@ -100,20 +85,6 @@
       "id": "tests/metric-accent.test.ts > metric accent end to end — the musical claim does not flatten a groove written on the off-beats (house)",
       "owner": "concurrent symbolic/grooves retrain wave",
       "reason": "off-beat groove preservation pin vs in-flight groove generator changes",
-      "addedAt": "2026-10-06",
-      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
-    },
-    {
-      "id": "tests/model-packs.test.ts > model pack registry file hashes mirror the dev-time fetch manifest (single source of truth)",
-      "owner": "ONNX model-pack re-pin",
-      "reason": "file hashes/manifestContent drifted from the dev-time fetch manifest after the pack regen",
-      "addedAt": "2026-10-06",
-      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
-    },
-    {
-      "id": "tests/model-packs.test.ts > model pack registry manifestContent parses and pins the loader contract",
-      "owner": "ONNX model-pack re-pin",
-      "reason": "file hashes/manifestContent drifted from the dev-time fetch manifest after the pack regen",
       "addedAt": "2026-10-06",
       "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
     },
