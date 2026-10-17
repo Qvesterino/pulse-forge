@@ -30,6 +30,9 @@ async function request(user: ReturnType<typeof userEvent.setup>, text: string) {
 
 describe("Effect Intent Assistant UI", () => {
   it("shows a pilot parameter diff and its review warning without mutating the project", async () => {
+    // Timeout headroom only — every assertion is unchanged. Measured ~1.1 s
+    // alone; under the FULL parallel suite the jsdom work (debounced intent
+    // parse + preview planning) can pass the 5 s default.
     const user = userEvent.setup();
     const { services } = setup("eq");
     await request(user, "trochu teplejšie, ale nechaj výšky tak");
@@ -41,7 +44,7 @@ describe("Effect Intent Assistant UI", () => {
     expect(screen.getByText(/Projekt sa zatiaľ nezmenil/)).toBeInTheDocument();
     expect(services.store.execute).not.toHaveBeenCalled();
     expect(services.engine.beginEffectIntentPreview).not.toHaveBeenCalled();
-  });
+  }, 15000);
 
   it("auditions transient values and restores the document values on cancel", async () => {
     const user = userEvent.setup();

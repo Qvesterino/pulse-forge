@@ -8,6 +8,163 @@
 
 ---
 
+# MANDATORY: PROCESS LIFECYCLE & RESOURCE HYGIENE
+
+PRIORITY: CRITICAL
+SCOPE: ALL AGENTS, SUBAGENTS AND DELEGATED TASKS
+
+## 1. PROCESS OWNERSHIP
+
+Every agent is responsible for processes it starts.
+
+Track all spawned processes, including:
+- Node.js runtimes
+- npm / pnpm / yarn commands
+- Vite / Next.js development servers
+- Test runners and watchers
+- Build processes
+- Temporary background services
+
+## 2. IMMEDIATE CLEANUP
+
+After completing verification, testing or building:
+
+- Stop all temporary processes started by the agent.
+- Terminate temporary development servers.
+- Stop test watchers.
+- Stop unnecessary background runtimes.
+- Clean up processes after failures and timeouts.
+- Never leave temporary processes running unnecessarily.
+
+Cleanup must happen even when a task fails.
+
+## 3. STRICT PROCESS ISOLATION
+
+NEVER use:
+
+```
+taskkill /F /IM node.exe
+Stop-Process -Name node
+killall node
+```
+
+These commands are prohibited.
+
+Agents must ONLY terminate processes they own.
+
+Never terminate:
+- Processes started by another agent.
+- Processes belonging to another session.
+- User-managed development servers.
+- Shared infrastructure.
+- Unknown Node.js processes.
+
+## 4. VERIFICATION LIFECYCLE
+
+Required workflow:
+
+```
+START PROCESS
+    ↓
+REGISTER PROCESS OWNERSHIP
+    ↓
+RUN TESTS / BUILD / VERIFICATION
+    ↓
+CAPTURE RESULTS
+    ↓
+STOP OWNED TEMPORARY PROCESSES
+    ↓
+VERIFY PROCESS TERMINATION
+    ↓
+REPORT RESULTS
+```
+
+Prefer synchronous, finite commands.
+
+Avoid persistent watchers unless explicitly required.
+
+## 5. SAFE TERMINATION
+
+Always attempt graceful shutdown first.
+
+Use forced termination only when:
+- The process belongs to the current task.
+- Graceful shutdown has failed.
+- The process ownership is verified.
+
+Never terminate an unknown process.
+
+## 6. SUBAGENT RESPONSIBILITY
+
+Every subagent must clean up its own processes.
+
+The parent agent must verify that delegated tasks
+did not leave unnecessary processes running.
+
+## 7. COMPLETION CONTRACT
+
+A task is not considered complete until:
+
+- Verification has finished.
+- Results have been captured.
+- Owned temporary processes are terminated.
+- No unnecessary background runtimes remain.
+- Existing user processes remain untouched.
+
+PROCESS CLEANUP IS MANDATORY.
+
+## 7.1 SANCTIONED CLEANUP TOOL
+
+Sections 1-7 above are the rule. This subsection is the tool that implements it.
+Do **not** write a project-local kill script, and do **not** maintain a list of
+processes to kill - a duplicated list is a list nobody checks.
+
+`node-gc` is already on `PATH` (single shared implementation at
+`C:\Users\danie\.minimax\bin\node-gc.ps1`):
+
+| Command | Effect |
+|---|---|
+| `node-gc` | reports abandoned test-runtime trees, **kills nothing** |
+| `node-gc -Kill` | terminates them bottom-up (children first, then root) |
+| `node-gc -Root <path>` | restrict the sweep to one project |
+| `npm run clean:procs` | same as `node-gc` (this repo) |
+| `npm run clean:procs:kill` | same as `node-gc -Kill` (this repo) |
+
+Two properties make it safe. **Both must survive any change to it:**
+
+- **Idleness is judged per process tree, not per process.** A tinypool worker
+  that has finished its shard sits at 0 CPU while its parent runner is still
+  working. A per-process test was falsified in practice: on a legitimate
+  40-minute suite it reports a healthy worker as abandoned and destroys the run.
+  A tree is abandoned only when *no* member moves CPU during the sample window.
+- **Orphan status is not used at all.** Measured 2026-10-17 on this machine:
+  0 of 65 leftover `node.exe` processes had a dead parent, because
+  `pwsh → npm → npx → vitest → tinypool` stays alive under the desktop app.
+  "The parent died" is therefore not evidence of anything.
+
+How this tool relates to section 3 (so the two do not look contradictory):
+
+- `node-gc` matches **test runtimes only** (`vitest`, `tinypool`, `jest`).
+  Dev servers, MCP servers and desktop apps are never matched by default -
+  `-IncludeServices` opts in, and only they should need it.
+- **`--watch` is never matched.** A watcher is a deliberate long-lived process,
+  and section 3 forbids killing what you cannot prove you own. If you started a
+  watcher, you stop it yourself - that is section 2, not `node-gc`.
+- The agent runtime is excluded unconditionally: `@oai`, `.minimax`,
+  `mcode-tools`, `OpenAI\Codex`, `Kilo`. `node-gc` cannot kill the agent that is
+  running it.
+- `node-gc` uses `Stop-Process -Id <pid>`, never the prohibited
+  `Stop-Process -Name node`. It always targets a resolved, enumerated PID.
+
+Honest scope limit: `node-gc`'s predicate is *abandonment* (age + whole-tree
+idleness), not *ownership*. That is deliberate - it covers exactly the case this
+rule exists for, where the owning session is gone and ownership can no longer be
+proven from inside a running session. Its threshold is 20 minutes
+(`-MinAgeMinutes`) precisely because the default must be safe. When ownership
+*is* provable, stop the process directly instead.
+
+---
+
 ## 0. Project identity in one paragraph
 
 This is **KYX** (display name; landing page, embed, gallery), internally and on GitHub known as **Pulse Forge** (repo name `pulse-forge`, `package.json#name`). Both names refer to the same product. Use **KYX** in user-facing copy; use **Pulse Forge** in file paths, ADRs and roadmap documents.
@@ -204,6 +361,7 @@ The dev server must be on port 5199 with `--strictPort` (the playwright.config.t
 
 ## 7. Common gotchas (read before opening a PR)
 
+- **Kill the test run you started.** This repo is the worst offender for orphaned Node runtimes: a `vitest run` nobody waits for keeps burning CPU after the session ends. Measured 2026-10-17 on this machine - 48 concurrent `pulse-forge` `node.exe` processes (38 of them tinypool workers) during a burst of parallel runs. Run `node-gc` to see what was abandoned and `node-gc -Kill` to terminate it. Do **not** write your own kill list here; `node-gc` is the single shared implementation and it is deliberately careful - it judges idleness **per process tree** (a finished tinypool shard is idle while its runner still works), it never matches `--watch`, and it ignores the agent runtime's own processes. A run you start must either finish or be killed in the same turn.
 - **Multiple agent sessions share one working tree.** Commit early (untracked files get absorbed by concurrent commits without their dependencies), stage only files you authored, never `git stash pop` here, and run clean verifications in a `git worktree` at HEAD. Full protocol with incident history: `docs/MULTI-AGENT-GUARDRAILS.md`.
 - **A concurrent commit absorbing your work is normal, not an incident.** Stage exactly your own paths, and if a parallel session's `git commit` sweeps them into a commit titled for its own area — that is the expected outcome of a shared index, not a problem. Do **not** amend, rebase, cherry-pick, or rewrite history to relabel it, and do **not** raise it in your final report, apologise for it, or ask whether to clean up provenance. The work is committed and the tree is clean; that is the whole requirement. Only mention it if you could not verify the content actually landed, or if the absorbed commit is about to be reverted. Commit messages describe an area, not a single author — the project has always worked this way.
 - **`useContext(ctx)` is the only path that creates `AudioNode`s.** Creating nodes directly via `ctx.createGain()` etc. without going through `AudioEngine.useContext()` will leave them attached to the wrong context (silent in live, broken in offline). See `ARCHITECTURE.md` §Engine.

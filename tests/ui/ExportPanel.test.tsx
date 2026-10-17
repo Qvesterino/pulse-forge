@@ -11,6 +11,7 @@ import { encodeMp3 } from "../../src/export/mp3";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { projectRevisionIdFor } from "../../src/mastering/report";
 import { COMPRESSED_AUDIO_FORMATS } from "../../src/export/compressed-audio-capabilities";
+import { parseRenderManifestFromWav } from "../../src/export/renderManifest";
 import type { RenderOptions } from "../../src/rendering/renderer";
 import { mockServices, renderWithContext } from "../helpers";
 
@@ -482,6 +483,36 @@ describe("ExportPanel", () => {
     await user.click(screen.getByRole("button", { name: /^EXPORT MASTER/ }));
     const afterReexport = await screen.findByRole("button", { name: /^(AUTO STAGE|STAGED)/ });
     expect(afterReexport).toBeEnabled();
+  });
+
+  it("stamps the exported WAV with a render manifest (iXML) — project, PCM hash and AI receipts", async () => {
+    // Wave 2/C end-to-end: the stamp is asserted on the BYTES the panel hands
+    // to the save boundary, not on the helper functions — that is what makes
+    // the claim "this file can be reproduced" true of the artifact.
+    const user = userEvent.setup();
+    const services = mockServices();
+    renderWithContext(<ExportPanel />, { services });
+    const blobs: Blob[] = [];
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockImplementation((value: Blob | MediaSource) => {
+      if (value instanceof Blob) blobs.push(value);
+      return "blob:test";
+    });
+    try {
+      await user.click(screen.getByRole("button", { name: /^EXPORT MASTER/ }));
+      await waitFor(() => expect(blobs.length).toBeGreaterThan(0));
+      const manifests = [];
+      for (const blob of blobs) {
+        const manifest = parseRenderManifestFromWav(new Uint8Array(await blob.arrayBuffer()));
+        if (manifest) manifests.push(manifest);
+      }
+      expect(manifests).toHaveLength(1);
+      expect(manifests[0]!.project.name).toBe(services.store.getDoc().name);
+      expect(manifests[0]!.scope).toBe("master");
+      // The hash covers the rendered PCM — WebCrypto is present in the runner.
+      expect(manifests[0]!.hash.value).toMatch(/^[0-9a-f]{64}$/);
+    } finally {
+      createObjectURL.mockRestore();
+    }
   });
 
   it("global quality switch defaults to Studio HQ", () => {

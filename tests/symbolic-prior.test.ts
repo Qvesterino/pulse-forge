@@ -173,7 +173,7 @@ describe("semantic conditioning gate", () => {
       { project: doc, mode: "apply" },
       0,
     );
-        // The template fallback is NAMED in failures (the semantic-escape-hatch
+    // The template fallback is NAMED in failures (the semantic-escape-hatch
     // contract): the reason stays diagnosable instead of invisible.
     expect(failures).toEqual(["candidate-0:drums-template-semantic-unavailable"]);
     expect(runPriorGridV3Mock).not.toHaveBeenCalled();

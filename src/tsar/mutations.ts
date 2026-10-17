@@ -121,11 +121,7 @@ function deltaSummary(paramId: string, from: number, to: number): string {
  * Mutate a TSAR patch into `count` (default 6) tournament variants.
  * Deterministic: the same (base, seed) pair yields byte-identical variants.
  */
-export function mutateTsarPatch(
-  base: Record<string, number>,
-  seed: number,
-  count = 6,
-): TsarMutation[] {
+export function mutateTsarPatch(base: Record<string, number>, seed: number, count = 6): TsarMutation[] {
   const draw = lcg(seed);
   const mutations: TsarMutation[] = [];
   for (let index = 0; index < count; index++) {
@@ -160,7 +156,13 @@ export function mutateTsarPatch(
       }))
       .sort((a, b) => b.span - a.span)
       .slice(0, 3)
-      .map((entry) => deltaSummary(entry.id, Number.isFinite(base[entry.id]) ? base[entry.id] : TSAR_PARAM_DEFS[entry.id]!.default, params[entry.id]!));
+      .map((entry) =>
+        deltaSummary(
+          entry.id,
+          Number.isFinite(base[entry.id]) ? base[entry.id] : TSAR_PARAM_DEFS[entry.id]!.default,
+          params[entry.id]!,
+        ),
+      );
     mutations.push({
       id: `m${index + 1}`,
       label: strongest.join(" · "),
@@ -189,7 +191,11 @@ export function mutationReveal(base: Record<string, number>, variant: TsarMutati
       const def = TSAR_PARAM_DEFS[id];
       if (!def) return null;
       const from = Number.isFinite(base[id]) ? base[id] : def.default;
-      return { id, text: deltaSummary(id, from, variant.params[id] ?? from), span: Math.abs((variant.params[id] ?? from) - from) };
+      return {
+        id,
+        text: deltaSummary(id, from, variant.params[id] ?? from),
+        span: Math.abs((variant.params[id] ?? from) - from),
+      };
     })
     .filter((entry): entry is { id: string; text: string; span: number } => entry !== null)
     .sort((a, b) => b.span - a.span)

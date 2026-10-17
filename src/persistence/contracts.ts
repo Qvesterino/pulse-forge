@@ -100,12 +100,16 @@ export interface IUltinaPresetRepository {
 
 /** Frozen (bounced) track audio keyed by buffer id — project binary blobs. */
 export interface IFrozenBufferRepository {
-  save(bufferId: string, data: ArrayBuffer): Promise<void>;
+  /** `signature` (Wave 2/D) is the document signature the buffer was rendered
+   *  from — stored beside the bytes so freeze staleness survives a reload. */
+  save(bufferId: string, data: ArrayBuffer, signature?: string): Promise<void>;
   load(bufferId: string): Promise<ArrayBuffer | undefined>;
   remove(bufferId: string): Promise<void>;
   list(): Promise<FrozenAudioEntry[]>;
   /** Key-only listing for the orphan-GC sweep (never materializes WAV payloads). */
   listIds(): Promise<string[]>;
+  /** Signature-only listing (never materializes WAV payloads). */
+  listSignatures(): Promise<Array<{ id: string; signature: string }>>;
 }
 
 /**

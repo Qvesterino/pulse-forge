@@ -46,6 +46,7 @@ import { ensurePianoPackLoaded, isPianoPackSample } from "./presets/piano-pack";
 import { RecordingRecoveryRepository } from "./persistence/RecordingRecoveryRepository";
 import { ensureCuratedLayer } from "./sample-library/curated-layer";
 import { FrozenBufferRepository, restoreFrozenTracks } from "./persistence/FrozenBufferRepository";
+import { hydrateFreezeSignatures } from "./rendering/freezeSignature";
 import { ensureWorkletsForDoc } from "./audio-worklets/loader";
 import type { YDocStore } from "./collab/YDocStore";
 import type { CollabSession } from "./collab/CollabSession";
@@ -935,6 +936,10 @@ export async function openProject(
   void (async () => {
     try {
       const missing = await restoreFrozenTracks(store.doc, bank, frozenAudio);
+      // Wave 2/D: restore the freeze signatures (signature-only read — never
+      // materializes the audio) so a reloaded project can still say whether a
+      // frozen track has edits since it was rendered.
+      if (!closed) await hydrateFreezeSignatures(frozenAudio);
       // The restore awaits IndexedDB reads + audio decodes; the project may
       // have been closed meanwhile. Re-running unfreeze commands on a dead
       // store and re-pointing the shared engine at THIS (stale) doc would

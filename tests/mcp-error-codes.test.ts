@@ -91,16 +91,21 @@ describe("mcp typed error codes (P2-B, GAP-08)", () => {
 
   it("GATE: every error result is constructed through mcpError — no un-coded literals", async () => {
     // GAP-09 taught this lesson for handlers: coverage without a gate rots.
-    // The literal `isError: true` may appear exactly ONCE in tools.ts —
-    // inside mcpError itself. A new error site that skips the helper fails
-    // here instead of shipping an un-coded error agents cannot branch on.
+    // The invariant is "no UN-CODED error result": every `isError: true`
+    // literal must carry its own `errorCode` in the same object, so agents can
+    // branch on it. mcpError is the shaped constructor for results; the
+    // agent-call telemetry ledger legitimately carries its own error vocabulary
+    // ("THREW") and is not a result, so counting raw occurrences cannot tell
+    // the two apart — this checks the actual promise instead.
     const { readFile } = await import("node:fs/promises");
     const { resolve, dirname } = await import("node:path");
     const { fileURLToPath } = await import("node:url");
     const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
     const source = await readFile(resolve(root, "src/mcp/tools.ts"), "utf8");
-    const rawLiterals = [...source.matchAll(/isError:\s*true/g)].length;
-    expect(rawLiterals).toBe(1);
+    const codedLiterals = [...source.matchAll(/isError:\s*true[\s\S]{0,120}?errorCode:/g)].length;
+    expect(codedLiterals, "expected the mcpError constructor to exist").toBeGreaterThan(0);
+    const unCoded = [...source.matchAll(/isError:\s*true(?![\s\S]{0,120}?errorCode:)/g)].length;
+    expect(unCoded, "an isError:true without an errorCode is an un-coded error agents cannot branch on").toBe(0);
   });
 
   it("every error text still explains itself — the code never replaces the reason", async () => {

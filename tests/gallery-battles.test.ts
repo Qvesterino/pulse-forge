@@ -126,6 +126,10 @@ describe("gallery battles — Elo integrity (no-auth abuse controls)", () => {
   });
 
   it("caps one session at the hourly battle budget with 429", async () => {
+    // Timeout headroom only; every assertion is unchanged. ~61 sequential
+    // HTTP round-trips through the in-process server measure ~0.7 s alone
+    // but pass the 5 s default when the FULL suite runs 1000+ files in
+    // parallel (resource contention, not a hang).
     // The per-IP vote pacing is raised here: this suite exercises the
     // SESSION cap (60/hour), not the pacing limiter.
     const { base } = await boot({ rateLimits: { post: 300, vote: 300 } });
@@ -158,7 +162,7 @@ describe("gallery battles — Elo integrity (no-auth abuse controls)", () => {
     // A DIFFERENT session is untouched by the cap.
     const other = await vote(base, unused[0]![0], unused[0]![1], "a", "cap-other-session");
     expect(other.status).toBe(201);
-  });
+  }, 30000);
 
   it("exports the applied Elo weight so training can weight pairs honestly", async () => {
     const { base } = await boot();
@@ -252,6 +256,8 @@ describe("gallery battles — voting, Elo, reveal", () => {
   });
 
   it("deduplicates one vote per pair per session (409) and validates input", async () => {
+    // Timeout headroom only: several sequential HTTP round-trips per spec;
+    // comfortably fast alone, past the 5 s default under full-suite load.
     const { base } = await boot();
     const one = await publish(base, "Dedupe A");
     const two = await publish(base, "Dedupe B");
@@ -266,7 +272,7 @@ describe("gallery battles — voting, Elo, reveal", () => {
     expect((await vote(base, "nope", two.id, "a", "s3")).status).toBe(400);
     expect((await vote(base, one.id, two.id, "winner takes all", "s3")).status).toBe(400);
     expect((await vote(base, one.id, two.id, "a", "")).status).toBe(400);
-  });
+  }, 15000);
 
   it("orders the leaderboard by Elo and lists only battled beats", async () => {
     const { base } = await boot();

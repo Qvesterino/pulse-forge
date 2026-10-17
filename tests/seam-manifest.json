@@ -158,6 +158,24 @@
       "seamEvent": "cancelJob",
       "negativeSpec": "aborts the owner's signal and settles as cancelled",
       "note": "Wave 1/B: cancellation aborts the owner's signal and settles the job exactly once — the negative assertions pin that a cancelled job cannot be cancelled twice, cannot be revived by a late done(), and that the watchdog fails a lost owner instead of leaving it running."
+    },
+    {
+      "id": "freeze-staleness-badge",
+      "status": "COVERED",
+      "entryPoint": "src/ui/FreezeButton.tsx EDITED SINCE FREEZE + RE-FREEZE",
+      "spec": "tests/ui/FreezeButton.test.tsx",
+      "seamEvent": "EDITED SINCE FREEZE",
+      "negativeSpec": "stays quiet when the frozen buffer matches",
+      "note": "Wave 2/D: the strip is driven through the real component with a remembered signature — a mismatching signature shows the badge and RE-FREEZE, while a matching one AND an unknown one (no signature) both stay quiet, because an unprovable staleness must never be claimed."
+    },
+    {
+      "id": "render-manifest-stamp",
+      "status": "COVERED",
+      "entryPoint": "src/rendering/wav.ts iXML chunk (stamped by src/ui/ExportPanel.tsx)",
+      "spec": "tests/render-manifest.test.ts",
+      "seamEvent": "parseRenderManifestFromWav",
+      "negativeSpec": "keeps the file layout valid without an iXML chunk",
+      "note": "Wave 2/C: the manifest is written into a REAL encoded WAV and read back through the RIFF walker (hostile names/prompts, odd payload pad byte), and a file WITHOUT the chunk still has an exact RIFF size — the no-regression case for every existing exporter. The end-to-end step is pinned too: tests/ui/ExportPanel.test.tsx clicks EXPORT MASTER and parses the manifest out of the blob the panel hands to the save boundary."
     }
   ]
 }

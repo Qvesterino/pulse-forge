@@ -7,6 +7,14 @@ export interface FrozenAudioEntry {
   id: string;
   /** WAV-encoded bytes of the rendered track. */
   data: ArrayBuffer;
+  /**
+   * Wave 2/D: signature of the document the buffer was rendered FROM (see
+   * src/rendering/freezeSignature.ts). Absent on buffers frozen before this
+   * field existed — those honestly report "unknown" staleness instead of
+   * guessing. Stored beside the bytes, not in the document, because it
+   * describes the BUFFER (a side artifact) and needs no schema migration.
+   */
+  signature?: string;
 }
 
 /**
@@ -18,10 +26,12 @@ export interface FrozenAudioEntry {
 export class FrozenBufferRepository {
   constructor(private readonly openDatabase: typeof openDb = openDb) {}
 
-  async save(bufferId: string, data: ArrayBuffer): Promise<void> {
+  async save(bufferId: string, data: ArrayBuffer, signature?: string): Promise<void> {
     try {
       const db = await this.openDatabase();
-      await tx(db, STORE_FROZEN_AUDIO, "readwrite", (s) => s.put({ id: bufferId, data } satisfies FrozenAudioEntry));
+      await tx(db, STORE_FROZEN_AUDIO, "readwrite", (s) =>
+        s.put({ id: bufferId, data, ...(signature ? { signature } : {}) } satisfies FrozenAudioEntry),
+      );
     } catch (error) {
       // A freeze is not complete until its rendered bytes are durable. The
       // old best-effort catch made the UI mark a track frozen even though a
@@ -74,6 +84,34 @@ export class FrozenBufferRepository {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Signature of every stored frozen buffer (Wave 2/D). Reads the record's
+   * `signature` field through a cursor — `list()` would materialize every
+   * rendered track's WAV bytes just to read one string, the same reason
+   * `listIds` exists. Entries without a signature are omitted.
+   */
+  async listSignatures(): Promise<Array<{ id: string; signature: string }>> {
+    const rows: Array<{ id: string; signature: string }> = [];
+    try {
+      const db = await this.openDatabase();
+      await tx<void>(db, STORE_FROZEN_AUDIO, "readonly", (store) => {
+        const request = store.openCursor();
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) return;
+          const value = cursor.value as { id?: unknown; signature?: unknown } | undefined;
+          if (typeof value?.id === "string" && typeof value.signature === "string" && value.signature !== "") {
+            rows.push({ id: value.id, signature: value.signature });
+          }
+          cursor.continue();
+        };
+      });
+    } catch {
+      return [];
+    }
+    return rows;
   }
 }
 

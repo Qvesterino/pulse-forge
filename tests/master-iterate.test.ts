@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { Command } from "../src/commands/types";
 import { iterateTowardTarget, isConverged } from "../src/mcp/master-iterate";
 import type { IterateMeasurement } from "../src/mcp/master-iterate";
+import { ProjectStore } from "../src/store/ProjectStore";
+import { createProjectFromTemplate } from "../src/project-model/templates";
+import { addEffectToTracks } from "../src/commands/commands";
+import { executeMcpTool } from "../src/mcp/tools";
 
 /**
  * CLOSED-LOOP TONAL ITERATOR pins. Each iteration produces bounded
@@ -70,10 +74,11 @@ describe("iterateTowardTarget", () => {
 
 describe("kyx_master op:iterate — wiring pin", () => {
   it("op:iterate without renderMix returns the honest refusal (wiring reaches the executor)", async () => {
-    const { ProjectStore } = await import("../src/store/ProjectStore");
-    const { createProjectFromTemplate } = await import("../src/project-model/templates");
-    const { addEffectToTracks } = await import("../src/commands/commands");
-    const { executeMcpTool } = await import("../src/mcp/tools");
+    // The MCP/Master graph is imported STATICALLY on purpose: dynamic imports
+    // inside the spec put the whole graph's transform+load cost inside this
+    // test's timeout, which measured ~5 s alone and blew past 15 s whenever
+    // the FULL suite saturated the machine. Static imports pay that cost in
+    // the collect phase instead, so the spec body stays milliseconds.
     const store = new ProjectStore(createProjectFromTemplate("house"));
     store.execute(addEffectToTracks(store.doc, [store.doc.tracks[0].id], "zenit"));
     const ctx = {

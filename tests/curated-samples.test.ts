@@ -130,6 +130,9 @@ describe("loadCuratedLayer — same-id override with synthesized fallback", () =
   });
 
   it("curatedReadyWithin resolves after the layer (or the timeout) without hanging", async () => {
+    // Timeout headroom only: this spec deliberately waits ~2 s for the
+    // curated layer inside the test, which crowds the 5 s default when the
+    // FULL suite saturates the machine.
     const bank = new SampleBank();
     // All files 404 → the layer promise resolves immediately with 0 loaded.
     const started = Date.now();
@@ -146,7 +149,7 @@ describe("loadCuratedLayer — same-id override with synthesized fallback", () =
     });
     const slow = curatedReadyWithin(slowBank, 50);
     await expect(slow).resolves.toBeUndefined();
-  });
+  }, 15000);
 
   it("loads curated WAVs through the configured application mount", async () => {
     const requestedUrls: string[] = [];

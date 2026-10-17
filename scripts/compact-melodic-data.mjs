@@ -179,11 +179,18 @@ if (replacements.length === 0) {
   const lineEnd = source.indexOf("\n", lastImport.end);
   const importPosition = lineEnd < 0 ? lastImport.end : lineEnd + 1;
   const newline = source.includes("\r\n") ? "\r\n" : "\n";
-  replacements.push({
-    from: importPosition,
-    to: importPosition,
-    text: `import { decodeMelodicSequences } from "./melodic-codec";${newline}`,
-  });
+  // The decoder import is added ONLY when it is not already there: a file that
+  // already contains compacted sequences (the normal state — raw literals from
+  // a new wave land alongside the existing strings) already carries it, and an
+  // unconditional insert duplicated the declaration, which is an ESM
+  // SyntaxError that bundlers happen to tolerate but node/tsx does not.
+  if (!source.includes('import { decodeMelodicSequences } from "./melodic-codec";')) {
+    replacements.push({
+      from: importPosition,
+      to: importPosition,
+      text: `import { decodeMelodicSequences } from "./melodic-codec";${newline}`,
+    });
+  }
   replacements.sort((a, b) => b.from - a.from || b.to - a.to);
   let output = source;
   for (const replacement of replacements) {

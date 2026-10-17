@@ -2,7 +2,12 @@ import { useMemo, useRef, useState } from "react";
 import { useServices, useTracks } from "./context";
 import { Slider } from "./controls";
 import { tsarParams } from "../tsar/params";
-import { applyInstrumentPatch, applyInstrumentPreset, setInstrumentParam, forgeSampleCommand } from "../commands/commands";
+import {
+  applyInstrumentPatch,
+  applyInstrumentPreset,
+  setInstrumentParam,
+  forgeSampleCommand,
+} from "../commands/commands";
 import { forgePlan } from "../tsar/forge";
 import { mutateTsarPatch, mutationReveal, type TsarMutation } from "../tsar/mutations";
 import { TSAR_FACTORY_PRESETS } from "../presets/tsar-factory";
@@ -135,9 +140,12 @@ export function TsarPanel() {
   // Patch Mutations ladder (Session Theatre for sound design): blind A/B
   // picks over deterministic param-space variants; nothing touches the
   // project until KEEP WINNER dispatches one undoable command.
-  const [mutLadder, setMutLadder] = useState<
-    { pool: TsarMutation[]; champion: TsarMutation; round: number; total: number } | null
-  >(null);
+  const [mutLadder, setMutLadder] = useState<{
+    pool: TsarMutation[];
+    champion: TsarMutation;
+    round: number;
+    total: number;
+  } | null>(null);
   const [mutSeed, setMutSeed] = useState(() => 1_234_567);
 
   if (!track) {
@@ -179,7 +187,10 @@ export function TsarPanel() {
     params,
   });
   const previewMutation = (mutation: TsarMutation) => {
-    services.engine.previewInstrumentPreset(track.id, pseudoPreset(`tsar-mutation-${mutation.id}`, mutation.label, mutation.params));
+    services.engine.previewInstrumentPreset(
+      track.id,
+      pseudoPreset(`tsar-mutation-${mutation.id}`, mutation.label, mutation.params),
+    );
   };
   const previewOriginal = () => {
     services.engine.previewInstrumentPreset(track.id, pseudoPreset("tsar-original", "ORIGINAL", {}));
@@ -204,7 +215,12 @@ export function TsarPanel() {
   const keepMutationWinner = () => {
     if (!mutLadder) return;
     services.store.execute(
-      applyInstrumentPatch(services.store.doc, track.id, mutLadder.champion.params, `mutation winner · seed ${mutSeed}`),
+      applyInstrumentPatch(
+        services.store.doc,
+        track.id,
+        mutLadder.champion.params,
+        `mutation winner · seed ${mutSeed}`,
+      ),
     );
     setMutLadder(null);
   };
@@ -452,7 +468,8 @@ export function TsarPanel() {
           ) : (
             <div className="tsar-forge-controls">
               <span className="tsar-forge-hint">
-                WINNER: {mutLadder.champion.label || mutLadder.champion.id} — {mutationReveal(track.params, mutLadder.champion).join(" · ")}
+                WINNER: {mutLadder.champion.label || mutLadder.champion.id} —{" "}
+                {mutationReveal(track.params, mutLadder.champion).join(" · ")}
               </span>
               <button type="button" className="btn btn-small" onClick={() => previewMutation(mutLadder.champion)}>
                 ▶ WINNER

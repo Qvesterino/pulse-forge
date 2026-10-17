@@ -1,7 +1,6 @@
 import type { MelodicPatternData } from "../types";
 import type { ProductionProfile } from "../../project-model/types";
 import { decodeMelodicSequences } from "./melodic-codec";
-import { decodeMelodicSequences } from "./melodic-codec";
 
 /**
  * Melodic reference patterns per genre.
@@ -362,26 +361,17 @@ const METAL_LEAD: MelodicPatternData = {
 const ROCK_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "9J9z9Jzu9J9zI8zu",
-    "9K9xqV9x9Kzu9J9z",
-  ]),
+  sequences: decodeMelodicSequences(["9J9z9Jzu9J9zI8zu", "9K9xqV9x9Kzu9J9z"]),
 };
 const ROCK_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "crzmsf2a",
-    "b10KznJsAR",
-  ]),
+  sequences: decodeMelodicSequences(["crzmsf2a", "b10KznJsAR"]),
 };
 const ROCK_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 1,
-  sequences: decodeMelodicSequences([
-    "zEI8Shzuigba",
-    "9Kq8yOJGqSihbd",
-  ]),
+  sequences: decodeMelodicSequences(["zEI8Shzuigba", "9Kq8yOJGqSihbd"]),
 };
 
 // JAZZ is the swinging acoustic combo: the bass WALKS quarters through the
@@ -390,26 +380,17 @@ const ROCK_LEAD: MelodicPatternData = {
 const JAZZ_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "b5jBAWS7",
-    "b5AUJtsi",
-  ]),
+  sequences: decodeMelodicSequences(["b5jBAWS7", "b5AUJtsi"]),
 };
 const JAZZ_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "0K9w2azli62a",
-    "9u0Kzl3CjA",
-  ]),
+  sequences: decodeMelodicSequences(["0K9w2azli62a", "9u0Kzl3CjA"]),
 };
 const JAZZ_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 1,
-  sequences: decodeMelodicSequences([
-    "0KzwHjRvzrjH9H",
-    "QLI1yKi-2ab8",
-  ]),
+  sequences: decodeMelodicSequences(["0KzwHjRvzrjH9H", "QLI1yKi-2ab8"]),
 };
 
 // ── Genre tables wave 2 (2026-10-11): full-library coverage ────────────────
@@ -424,26 +405,17 @@ const JAZZ_LEAD: MelodicPatternData = {
 const DRILL_SLIDE_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "eb0KL9",
-    "cM2atT",
-  ]),
+  sequences: decodeMelodicSequences(["eb0KL9", "cM2atT"]),
 };
 const DRILL_SLIDE_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "2a9D3Czr0K",
-    "3C9E2aJx",
-  ]),
+  sequences: decodeMelodicSequences(["2a9D3Czr0K", "3C9E2aJx"]),
 };
 const DRILL_SLIDE_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 1,
-  sequences: decodeMelodicSequences([
-    "3CjP0Kbe",
-    "52zBlh",
-  ]),
+  sequences: decodeMelodicSequences(["3CjP0Kbe", "52zBlh"]),
 };
 
 // PHONK: dusty memphis — the detuned slide bass, ghost minor stabs, a high
@@ -451,26 +423,17 @@ const DRILL_SLIDE_LEAD: MelodicPatternData = {
 const PHONK_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "bi0KbdJM0K",
-    "cLsr2a9O",
-  ]),
+  sequences: decodeMelodicSequences(["bi0KbdJM0K", "cLsr2a9O"]),
 };
 const PHONK_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "0K9x52zn0K",
-    "2ajD52",
-  ]),
+  sequences: decodeMelodicSequences(["0K9x52zn0K", "2ajD52"]),
 };
 const PHONK_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: decodeMelodicSequences([
-    "2aQOB13C",
-    "ig3Cbb2a",
-  ]),
+  sequences: decodeMelodicSequences(["2aQOB13C", "ig3Cbb2a"]),
 };
 
 // JERSEY: the club bounce — an 8th-note bass bounce with the kick, short
@@ -478,26 +441,17 @@ const PHONK_LEAD: MelodicPatternData = {
 const JERSEY_BOUNCE_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "9X0K9QzK9W0KIlzG",
-    "9Y9N0Kr69XzG0K9Q",
-  ]),
+  sequences: decodeMelodicSequences(["9X0K9QzK9W0KIlzG", "9Y9N0Kr69XzG0K9Q"]),
 };
 const JERSEY_BOUNCE_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "9D0Kzr2aqR2a",
-    "2a9Ezr2aI70K",
-  ]),
+  sequences: decodeMelodicSequences(["9D0Kzr2aqR2a", "2a9Ezr2aI70K"]),
 };
 const JERSEY_BOUNCE_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 1,
-  sequences: decodeMelodicSequences([
-    "9QzD2aIhzB2a",
-    "zG0Kilbg3C",
-  ]),
+  sequences: decodeMelodicSequences(["9QzD2aIhzB2a", "zG0Kilbg3C"]),
 };
 
 // HYPERPOP: the maximalist — a busy wide-leaping lead, pumping 8th bass,
@@ -505,26 +459,17 @@ const JERSEY_BOUNCE_LEAD: MelodicPatternData = {
 const HYPERPOP_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "9Y9OzM9Q9YIlzL9Q",
-    "9ZzJ9X9Lr79OzK9Q",
-  ]),
+  sequences: decodeMelodicSequences(["9Y9OzM9Q9YIlzL9Q", "9ZzJ9X9Lr79OzK9Q"]),
 };
 const HYPERPOP_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "b9A-b9JA",
-    "9IzvJC9IqT2a",
-  ]),
+  sequences: decodeMelodicSequences(["b9A-b9JA", "9IzvJC9IqT2a"]),
 };
 const HYPERPOP_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 1,
-  sequences: decodeMelodicSequences([
-    "9XzLR2yXHCzKivbo",
-    "z0HCR09XzJImR0zIiv",
-  ]),
+  sequences: decodeMelodicSequences(["9XzLR2yXHCzKivbo", "z0HCR09XzJImR0zIiv"]),
 };
 
 // UKG: the swung 2-step — a syncopated bass that DODGES the downbeat,
@@ -532,26 +477,17 @@ const HYPERPOP_LEAD: MelodicPatternData = {
 const UKG_TWO_STEP_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "0K9W0KzG9T0KIhzD",
-    "2a9UzF0K9S0Kq_",
-  ]),
+  sequences: decodeMelodicSequences(["0K9W0KzG9T0KIhzD", "2a9UzF0K9S0Kq_"]),
 };
 const UKG_TWO_STEP_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "1s8T2azr3C",
-    "9D3Cib3C",
-  ]),
+  sequences: decodeMelodicSequences(["1s8T2azr3C", "9D3Cib3C"]),
 };
 const UKG_TWO_STEP_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 1,
-  sequences: decodeMelodicSequences([
-    "0KzD0Kik2a9N0K",
-    "QR3CzDii2a",
-  ]),
+  sequences: decodeMelodicSequences(["0KzD0Kik2a9N0K", "QR3CzDii2a"]),
 };
 
 // BOOM BAP: the dusty crate — walking quarters under jazzy 7ths and a
@@ -559,26 +495,17 @@ const UKG_TWO_STEP_LEAD: MelodicPatternData = {
 const BOOMBAP_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "bjB3sujR",
-    "bk0K9IJJB3",
-  ]),
+  sequences: decodeMelodicSequences(["bjB3sujR", "bk0K9IJJB3"]),
 };
 const BOOMBAP_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "0Kal1sA92U",
-    "jF2aal2U",
-  ]),
+  sequences: decodeMelodicSequences(["0Kal1sA92U", "jF2aal2U"]),
 };
 const BOOMBAP_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 1,
-  sequences: decodeMelodicSequences([
-    "2azDjM2a9N",
-    "QQ3CB12a",
-  ]),
+  sequences: decodeMelodicSequences(["2azDjM2a9N", "QQ3CB12a"]),
 };
 
 // AMAPIANO: the log drum — a SPARSE wide-interval bass that dodges the
@@ -587,26 +514,17 @@ const BOOMBAP_LEAD: MelodicPatternData = {
 const AMAPIANO_LOG_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "1saA2aAn1s",
-    "0Kbj2UIZ0KyQ",
-  ]),
+  sequences: decodeMelodicSequences(["1saA2aAn1s", "0Kbj2UIZ0KyQ"]),
 };
 const AMAPIANO_LOG_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "cr0KCh0K",
-    "mv0Kcp",
-  ]),
+  sequences: decodeMelodicSequences(["cr0KCh0K", "mv0Kcp"]),
 };
 const AMAPIANO_LOG_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: decodeMelodicSequences([
-    "3CAd1sRu00",
-    "jH52Jx",
-  ]),
+  sequences: decodeMelodicSequences(["3CAd1sRu00", "jH52Jx"]),
 };
 
 // TRANCE: the rolling floor — a driving 8th bass, sustained supersaw pads,
@@ -614,26 +532,17 @@ const AMAPIANO_LOG_LEAD: MelodicPatternData = {
 const TRANCE_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "9U9L9U9L9U9L9UzF",
-    "9W9N9WIf9W9NzI9L",
-  ]),
+  sequences: decodeMelodicSequences(["9U9L9U9L9U9L9UzF", "9W9N9WIf9W9NzI9L"]),
 };
 const TRANCE_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "dYDN",
-    "pr",
-  ]),
+  sequences: decodeMelodicSequences(["dYDN", "pr"]),
 };
 const TRANCE_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 1,
-  sequences: decodeMelodicSequences([
-    "9SipzKQWzKinzJ9T",
-    "y-HxQ-zGisbk2a",
-  ]),
+  sequences: decodeMelodicSequences(["9SipzKQWzKinzJ9T", "y-HxQ-zGisbk2a"]),
 };
 
 // DETROIT: the machine funk — a sparse syncopated electro bass, jazzy
@@ -641,26 +550,17 @@ const TRANCE_LEAD: MelodicPatternData = {
 const DETROIT_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "9W2a9N0KzI2a",
-    "2a9U9LIi3C",
-  ]),
+  sequences: decodeMelodicSequences(["9W2a9N0KzI2a", "2a9U9LIi3C"]),
 };
 const DETROIT_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "9B3Czr3C",
-    "if2a9B52",
-  ]),
+  sequences: decodeMelodicSequences(["9B3Czr3C", "if2a9B52"]),
 };
 const DETROIT_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 1,
-  sequences: decodeMelodicSequences([
-    "2a9LQQ2aB1",
-    "QR0KIa6u",
-  ]),
+  sequences: decodeMelodicSequences(["2a9LQQ2aB1", "QR0KIa6u"]),
 };
 
 // POST-ROCK: the slow cinema — whole-note bass, pad chords that hold a full
@@ -668,26 +568,17 @@ const DETROIT_LEAD: MelodicPatternData = {
 const POSTROCK_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "gX",
-    "e5DU",
-  ]),
+  sequences: decodeMelodicSequences(["gX", "e5DU"]),
 };
 const POSTROCK_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "gJ",
-    "mrDF",
-  ]),
+  sequences: decodeMelodicSequences(["gJ", "mrDF"]),
 };
 const POSTROCK_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 1,
-  sequences: decodeMelodicSequences([
-    "52DP",
-    "b1AY52",
-  ]),
+  sequences: decodeMelodicSequences(["52DP", "b1AY52"]),
 };
 
 // CHIPTUNE: the pulse machine — bouncy 8th bass, arpeggiated chord chains
@@ -695,26 +586,17 @@ const POSTROCK_LEAD: MelodicPatternData = {
 const CHIPTUNE_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "9XzI9WzG9XIk9WzG",
-    "9Y9Nr69N9YzI9W9N",
-  ]),
+  sequences: decodeMelodicSequences(["9XzI9WzG9XIk9WzG", "9Y9Nr69N9YzI9W9N"]),
 };
 const CHIPTUNE_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: decodeMelodicSequences([
-    "8VhtyNht8VhtyNht8VhtyNhtHnyHht8T",
-    "yL8Rhv8RyL8Rhv8R52",
-  ]),
+  sequences: decodeMelodicSequences(["8VhtyNht8VhtyNht8VhtyNhtHnyHht8T", "yL8Rhv8RyL8Rhv8R52"]),
 };
 const CHIPTUNE_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 1,
-  sequences: decodeMelodicSequences([
-    "9UzJQ_zGImzFitzI",
-    "QfyXIm9WzGiszKQZ9X",
-  ]),
+  sequences: decodeMelodicSequences(["9UzJQ_zGImzFitzI", "QfyXIm9WzGiszKQZ9X"]),
 };
 
 // EURODANCE: the 90s floor — the classic OFF-BEAT octave bass (rests on the
@@ -722,26 +604,17 @@ const CHIPTUNE_LEAD: MelodicPatternData = {
 const EURODANCE_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "0K9W0KzL0K9W0KzK",
-    "0K9X0K9Q0KIm0KzJ",
-  ]),
+  sequences: decodeMelodicSequences(["0K9W0KzL0K9W0KzK", "0K9X0K9Q0KIm0KzJ"]),
 };
 const EURODANCE_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "9G0K9D0Kzw0Kzt0K",
-    "qU3C9G3C",
-  ]),
+  sequences: decodeMelodicSequences(["9G0K9D0Kzw0Kzt0K", "qU3C9G3C"]),
 };
 const EURODANCE_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 1,
-  sequences: decodeMelodicSequences([
-    "9TzISqzFjV9S",
-    "BaQWbj0KB8",
-  ]),
+  sequences: decodeMelodicSequences(["9TzISqzFjV9S", "BaQWbj0KB8"]),
 };
 
 // LATIN: the tumbao — the bass ANTICIPATES the beat (rest-2-2 rest shape),
@@ -749,26 +622,17 @@ const EURODANCE_LEAD: MelodicPatternData = {
 const LATIN_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "0K9TzD0K0KIk9S0K",
-    "0K9U0KzF2ar20K",
-  ]),
+  sequences: decodeMelodicSequences(["0K9TzD0K0KIk9S0K", "0K9U0KzF2ar20K"]),
 };
 const LATIN_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "9D0Kzt0K0Kib0Kzt",
-    "2a9D0Kzr2aid",
-  ]),
+  sequences: decodeMelodicSequences(["9D0Kzt0K0Kib0Kzt", "2a9D0Kzr2aid"]),
 };
 const LATIN_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 1,
-  sequences: decodeMelodicSequences([
-    "0KzDik0Kbd0KzB",
-    "Id2azAii0Kbb",
-  ]),
+  sequences: decodeMelodicSequences(["0KzDik0Kbd0KzB", "Id2azAii0Kbb"]),
 };
 
 // DRONE: one chord, one breath — a whole-note bass, a full-bar pad, a rare
@@ -776,26 +640,17 @@ const LATIN_LEAD: MelodicPatternData = {
 const DRONE_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "gP",
-    "g62a",
-  ]),
+  sequences: decodeMelodicSequences(["gP", "g62a"]),
 };
 const DRONE_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 0,
-  sequences: decodeMelodicSequences([
-    "gD",
-    "FM2a",
-  ]),
+  sequences: decodeMelodicSequences(["gD", "FM2a"]),
 };
 const DRONE_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: decodeMelodicSequences([
-    "7cAN",
-    "52UT",
-  ]),
+  sequences: decodeMelodicSequences(["7cAN", "52UT"]),
 };
 
 export const MELODIC_BY_GENRE: Record<string, MelodicPatternData[]> = {

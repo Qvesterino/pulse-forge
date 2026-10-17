@@ -38,11 +38,7 @@
  * of `notes[]` (the one just added) rather than `[0]`.
  */
 import { describe, expect, it } from "vitest";
-import {
-  createDefaultProject,
-  normalizeProject,
-  MAX_ARRANGEMENT_CLIP_TICKS,
-} from "../src/project-model/schema";
+import { createDefaultProject, normalizeProject, MAX_ARRANGEMENT_CLIP_TICKS } from "../src/project-model/schema";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { addNote, duplicateNotes, glueNotes, nudgeNotes, quantizeNotes, splitNotes } from "../src/commands/commands";
 import { STEP_TICKS, type InstrumentTrack, type NoteEvent } from "../src/project-model/types";

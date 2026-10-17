@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
@@ -118,6 +118,48 @@ describe("intent model artifact lock", () => {
     expect(vocab.heads.map((head) => `head_${head.name}`)).toEqual(manifest.features.outputNames);
     // the native ONNX backend resolves the vocab through the manifest pin
     expect(manifest.features.url).toBe("/models/intent-model-v1.vocab.json");
+  });
+
+  it("loader URL → disk: every manifest path the app fetches exists on disk", () => {
+    // SEAM model-loader-path-vs-disk: the artifact lock above validates the
+    // committed files, but NOTHING proved the loader's MANIFEST_PATH resolves
+    // to one of them — if the constant drifts from the filename, every
+    // artifact assertion stays green while the app 404s on the manifest.
+    const loaderSource = readFileSync(path.join(ROOT, "src", "intent", "model-loader.ts"), "utf8");
+    const matches = [...loaderSource.matchAll(/const MANIFEST_PATH = "([^"]+)";/g)];
+    expect(matches, "MANIFEST_PATH moved or was renamed — update this seam spec with it").toHaveLength(1);
+    const manifestUrl = matches[0]![1]!;
+    // Public-root-absolute, or the fetches break under a nested base path.
+    expect(manifestUrl.startsWith("/")).toBe(true);
+
+    const toPublicFile = (url: string) => path.join(ROOT, "public", url.replace(/^\//, ""));
+    const fetchedManifestPath = toPublicFile(manifestUrl);
+    expect(existsSync(fetchedManifestPath), `${manifestUrl} must exist under public/ — otherwise the loader 404s`).toBe(
+      true,
+    );
+    // And it IS the very manifest the artifact lock validated above.
+    expect(JSON.parse(readFileSync(fetchedManifestPath, "utf8"))).toEqual(manifest);
+
+    // The manifest's own URLs: model.url and features.url are fetched
+    // UNCONDITIONALLY by the worker (model-worker.ts:181, :123); runtime.module
+    // is fetched only when the kind is NOT the in-worker onnx backend
+    // (model-worker.ts:191-198), so under the shipped kind it is latent
+    // metadata — asserted well-formed, not asserted to exist.
+    const loose = manifest as unknown as {
+      runtime: { kind: string; module: string };
+      model: { url: string };
+      features: { url: string };
+    };
+    for (const url of [loose.model.url, loose.features.url]) {
+      expect(existsSync(toPublicFile(url)), `manifest references ${url}, which is not on disk`).toBe(true);
+    }
+    expect(loose.runtime.module.startsWith("/")).toBe(true);
+    if (loose.runtime.kind !== "onnx-intent-v1") {
+      expect(
+        existsSync(toPublicFile(loose.runtime.module)),
+        `a non-onnx runtime is selected, so ${loose.runtime.module} IS fetched and must be on disk`,
+      ).toBe(true);
+    }
   });
 
   it("the release-gate verdict is explicit (loader refuses models without it)", () => {

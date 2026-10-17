@@ -16,6 +16,7 @@ import {
   type WavBextMetadata,
 } from "../rendering/wav";
 import { buildScorepack } from "../export/scorepack";
+import { buildRenderManifest, formatManifestSummary, hashPcmChannels, manifestToIxml } from "../export/renderManifest";
 import { buildZyvoTransfer } from "../export/zyvo-transfer";
 import { exportProject } from "../export/project-io";
 import { canExportVideo, recordVideo } from "../export/video";
@@ -660,8 +661,26 @@ export function ExportPanel({
             : 2,
         ),
       );
+      // Wave 2/C: provenance stamp — project identity, a SHA-256 of the
+      // rendered PCM (so a re-render can be proven bit-identical) and the
+      // AI receipts of everything this project placed on the timeline.
+      const stampChannels: Float32Array[] = [];
+      for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+        stampChannels.push(buffer.getChannelData(channel));
+      }
+      const stampManifest = buildRenderManifest({
+        doc,
+        scope: "master",
+        mode: "song",
+        sampleRate,
+        bitDepth,
+        durationSec: renderedDurationSeconds,
+        renderHash: await hashPcmChannels(stampChannels),
+        assets: await services.userSamples.list().catch(() => []),
+      });
       const wavOptions = {
         bext: bextFor(`${doc.name} — KYX master`, summary, sampleRate, bitDepth),
+        ixml: manifestToIxml(stampManifest),
         ...(masteringMode ? { integerOverflowPolicy: "reject" as const } : {}),
         onProgress: (f: number) => setStatus({ kind: "busy", label: `Encoding WAV… ${Math.round(f * 100)}%` }),
         signal,
@@ -689,7 +708,7 @@ export function ExportPanel({
       downloadBlob(wavBlob, fileName);
       setStatus({
         kind: "done",
-        label: `Master exported (${renderedDurationSeconds.toFixed(1)}s, ${sampleRate} Hz, ${bitDepth}-bit) as ${fileName} — ${encodedDelivery.decode.status === "measured" ? "decoded file measured" : "header checked; audio not measured"}`,
+        label: `Master exported (${renderedDurationSeconds.toFixed(1)}s, ${sampleRate} Hz, ${bitDepth}-bit) as ${fileName} — ${encodedDelivery.decode.status === "measured" ? "decoded file measured" : "header checked; audio not measured"} · stamped: ${formatManifestSummary(stampManifest)}`,
         summary,
       });
     } catch (error) {

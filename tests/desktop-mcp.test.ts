@@ -442,6 +442,8 @@ describe("mcp host manager", () => {
   });
 
   it("renderer answer resolves an in-flight forwarded call (answer → HTTP response)", async () => {
+    // Timeout headroom only: real HTTP + forwarding round-trip measured ~1 s
+    // alone, past the 5 s default when the FULL suite saturates the machine.
     // Fake window whose webContents captures the forwarded payload.
     const sent: Array<{ id: string; name: string; args: unknown }> = [];
     const handlers = new Map<string, (...args: unknown[]) => unknown>();
@@ -485,7 +487,7 @@ describe("mcp host manager", () => {
     const body = JSON.parse(response.body) as { result: { content: Array<{ text: string }>; isError?: boolean } };
     expect(body.result.content[0]?.text).toBe("mute read-back");
     expect(body.result.isError).toBeUndefined();
-  });
+  }, 15000);
 });
 
 describe("desktop mcp stdio forwarder (subprocess)", () => {

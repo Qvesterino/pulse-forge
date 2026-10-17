@@ -399,9 +399,7 @@ describe("consolidateRangeToAudio", () => {
     // The print length is ceil'd to 0.01 bar, then the clip's stored geometry is
     // tick-aligned by addAudioClip (quantizeAudioBar) — the documented storage
     // precision: every snapped 1/8 and 1/16 position survives the round-trip.
-    expect(printClip?.lengthBars).toBe(
-      quantizeAudioBar(Math.ceil((1 + (2 * sourceDoc.bpm) / 240) * 100) / 100),
-    );
+    expect(printClip?.lengthBars).toBe(quantizeAudioBar(Math.ceil((1 + (2 * sourceDoc.bpm) / 240) * 100) / 100));
     expect(command.undo(currentDoc)).toEqual(sourceDoc);
   });
 

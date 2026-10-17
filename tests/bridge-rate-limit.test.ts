@@ -65,6 +65,8 @@ afterEach(() => {
 
 describe("bridge rate limiter", () => {
   it("allows the burst (30) then 429s the overflow", async () => {
+    // Timeout headroom only: 33 sequential real HTTP round-trips; measured
+    // ~1-3 s alone, past the 5 s default when the FULL suite saturates the box.
     let ok = 0;
     let last429 = 0;
     for (let i = 0; i < 33; i++) {
@@ -74,7 +76,7 @@ describe("bridge rate limiter", () => {
     }
     expect(ok).toBe(bridge.RATE_LIMIT_BURST);
     expect(last429).toBe(429);
-  });
+  }, 15000);
 
   it("401 requests do NOT consume tokens (auth gate runs first)", async () => {
     for (let i = 0; i < 5; i++) {

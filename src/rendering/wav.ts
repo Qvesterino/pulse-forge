@@ -141,6 +141,7 @@ function createWavHeader(
   frames: number,
   bitDepth: WavBitDepth,
   bext?: WavBextMetadata,
+  ixml?: string,
 ): { header: Uint8Array; dataSize: number; padByte: number } {
   const bytesPerSample = bitDepth / 8;
   const blockAlign = numChannels * bytesPerSample;
@@ -149,10 +150,15 @@ function createWavHeader(
   const history = bext ? asciiHistory(bext.codingHistory ?? "") : "";
   const bextBody = bext ? BEXT_BASE_BYTES + history.length : 0;
   const bextChunk = bext ? 8 + bextBody + (bextBody % 2) : 0;
+  // Wave 2/C: the provenance manifest rides in an `iXML` chunk (the de-facto
+  // interchange home for session metadata). Absent ixml → zero bytes, so every
+  // existing export stays byte-identical.
+  const ixmlBytes = ixml != null && ixml !== "" ? new TextEncoder().encode(ixml) : null;
+  const ixmlChunk = ixmlBytes ? 8 + ixmlBytes.length + (ixmlBytes.length % 2) : 0;
   // RIFF chunk fields are unsigned 32-bit. Past ~4 GB they wrap and the file
   // is silently corrupt — an explicit failure beats wasting a 20-minute
   // render on a WAV no player will read.
-  if (dataSize > 0xffffffff - (44 + bextChunk)) {
+  if (dataSize > 0xffffffff - (44 + bextChunk + ixmlChunk)) {
     throw new Error(
       `Render too large for WAV export (${(dataSize / 1024 ** 3).toFixed(1)} GB data). Export in segments or lower the sample rate/bit depth.`,
     );
@@ -161,7 +167,7 @@ function createWavHeader(
   // currently unreachable (all sources are stereo), but encodeWav is public
   // API and a future mono/odd-frame call would emit a spec-violating file.
   const padByte = dataSize % 2 === 1 ? 1 : 0;
-  const arrayBuffer = new ArrayBuffer(44 + bextChunk);
+  const arrayBuffer = new ArrayBuffer(44 + bextChunk + ixmlChunk);
   const view = new DataView(arrayBuffer);
 
   const writeString = (offset: number, text: string) => {
@@ -171,7 +177,7 @@ function createWavHeader(
   writeString(0, "RIFF");
   // RIFF sizes count the data chunk WITH its pad byte (spec: chunks are
   // word-aligned); the declared `dataSize` stays the raw sample bytes.
-  view.setUint32(4, 36 + bextChunk + dataSize + padByte, true);
+  view.setUint32(4, 36 + bextChunk + ixmlChunk + dataSize + padByte, true);
   writeString(8, "WAVE");
   writeString(12, "fmt ");
   view.setUint32(16, 16, true);
@@ -191,6 +197,15 @@ function createWavHeader(
     cursor += 8 + bextBody;
     if (bextBody % 2 === 1) cursor += 1; // pad byte stays zero
   }
+  if (ixmlBytes) {
+    // Same reasoning as bext: metadata before the audio, pad byte for the
+    // spec's word alignment when the XML length is odd.
+    writeString(cursor, "iXML");
+    view.setUint32(cursor + 4, ixmlBytes.length, true);
+    new Uint8Array(arrayBuffer, cursor + 8, ixmlBytes.length).set(ixmlBytes);
+    cursor += 8 + ixmlBytes.length;
+    if (ixmlBytes.length % 2 === 1) cursor += 1;
+  }
   writeString(cursor, "data");
   view.setUint32(cursor + 4, dataSize, true);
   return { header: new Uint8Array(arrayBuffer), dataSize, padByte };
@@ -203,8 +218,9 @@ function createWavContainer(
   frames: number,
   bitDepth: WavBitDepth,
   bext?: WavBextMetadata,
+  ixml?: string,
 ): { arrayBuffer: ArrayBuffer; view: DataView; dataSize: number; dataStart: number } {
-  const { header, dataSize, padByte } = createWavHeader(numChannels, sampleRate, frames, bitDepth, bext);
+  const { header, dataSize, padByte } = createWavHeader(numChannels, sampleRate, frames, bitDepth, bext, ixml);
   const arrayBuffer = new ArrayBuffer(header.byteLength + dataSize + padByte);
   new Uint8Array(arrayBuffer).set(header);
   return { arrayBuffer, view: new DataView(arrayBuffer), dataSize, dataStart: header.byteLength };
@@ -245,6 +261,11 @@ function writeSample(
 export interface EncodeWavOptions {
   /** Optional BWF `bext` chunk (EBU Tech 3285) — pro-interchange metadata. */
   bext?: WavBextMetadata;
+  /**
+   * Wave 2/C: optional `iXML` chunk payload — the provenance manifest
+   * (see src/export/renderManifest.ts). Written between `bext` and `data`.
+   */
+  ixml?: string;
   /** Use `reject` for mastering delivery to prevent automatic saturation of integer PCM. */
   integerOverflowPolicy?: IntegerOverflowPolicy;
 }
@@ -253,7 +274,14 @@ export function encodeWav(buffer: AudioBuffer, bitDepth: WavBitDepth, options: E
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
   const frames = buffer.length;
-  const { arrayBuffer, view, dataStart } = createWavContainer(numChannels, sampleRate, frames, bitDepth, options.bext);
+  const { arrayBuffer, view, dataStart } = createWavContainer(
+    numChannels,
+    sampleRate,
+    frames,
+    bitDepth,
+    options.bext,
+    options.ixml,
+  );
   const integerOverflowPolicy = options.integerOverflowPolicy ?? "soft-knee";
 
   const channels: Float32Array[] = [];
@@ -322,7 +350,14 @@ export async function encodeWavAsync(
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
   const frames = buffer.length;
-  const { arrayBuffer, view, dataStart } = createWavContainer(numChannels, sampleRate, frames, bitDepth, options.bext);
+  const { arrayBuffer, view, dataStart } = createWavContainer(
+    numChannels,
+    sampleRate,
+    frames,
+    bitDepth,
+    options.bext,
+    options.ixml,
+  );
   const integerOverflowPolicy = options.integerOverflowPolicy ?? "soft-knee";
 
   const channels: Float32Array[] = [];
@@ -360,7 +395,14 @@ export async function encodeWavBlobAsync(
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
   const frames = buffer.length;
-  const { header, dataSize, padByte } = createWavHeader(numChannels, sampleRate, frames, bitDepth, options.bext);
+  const { header, dataSize, padByte } = createWavHeader(
+    numChannels,
+    sampleRate,
+    frames,
+    bitDepth,
+    options.bext,
+    options.ixml,
+  );
   const bytesPerFrame = numChannels * (bitDepth / 8);
   const integerOverflowPolicy = options.integerOverflowPolicy ?? "soft-knee";
   const channels: Float32Array[] = [];
