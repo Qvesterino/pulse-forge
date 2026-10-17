@@ -1,0 +1,23 @@
+{
+  "name": "kyx-verify",
+  "version": "1.0.0",
+  "description": "Reference verifier for the KYX Reproducibility Protocol — reads the provenance manifest a KYX export stamps into a WAV and reports what can be proven about the file, offline and without the app.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "kyx-verify": "./kyx-verify.mjs"
+  },
+  "main": "./kyx-verify.mjs",
+  "exports": {
+    ".": "./kyx-verify.mjs"
+  },
+  "files": ["kyx-verify.mjs", "README.md"],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": ["kyx", "wav", "reproducibility", "provenance", "ixml", "bwf", "audio"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KyloRennek/pulse-forge"
+  }
+}

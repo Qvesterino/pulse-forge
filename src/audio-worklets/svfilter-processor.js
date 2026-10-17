@@ -99,8 +99,13 @@ function driveStateIsSilent(state) {
 }
 
 class SvFilterProcessor extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options = {}) {
     super();
+    const initialCutoff = options?.processorOptions?.initialCutoff;
+    this.cutoffSmoothed =
+      typeof initialCutoff === "number" && Number.isFinite(initialCutoff)
+        ? Math.max(20, Math.min(20000, initialCutoff))
+        : undefined;
     this.lpL = 0;
     this.bpL = 0;
     this.lpR = 0;
@@ -176,15 +181,11 @@ class SvFilterProcessor extends AudioWorkletProcessor {
     }
 
     // Cutoff GLIDES (~5 ms one-pole) toward the target — an instantaneous
-    // coefficient change per block zippers on automated sweeps. Resonance
-    // follows the same smoothed cutoff; the stability clamp re-runs on the
-    // smoothed pair every block, so the glide can never leave the stable
-    // region (fast jumps are limited exactly like instant ones).
-    // The blend is applied ONCE per block here, so g must cover the whole
-    // block: 1 - exp(-blockLen/(tc*sr)) keeps the time constant at the
-    // intended ~5 ms (a per-sample g applied per block stretched it to ~0.6 s).
-    if (this.cutoffSmoothed === undefined) this.cutoffSmoothed = cutoff;
-    this.cutoffSmoothed += (cutoff - this.cutoffSmoothed) * (1 - Math.exp(-outL.length / (0.005 * sr)));
+    // coefficient change per block zippers on automated sweeps. The smoothed
+    // state advanced above even for silent blocks. Resonance follows the same
+    // smoothed cutoff; the stability clamp re-runs on the smoothed pair every
+    // block, so the glide can never leave the stable region (fast jumps are
+    // limited exactly like instant ones).
     if (cutoff !== this.lastCutoff || res !== this.lastRes) {
       this.lastCutoff = cutoff;
       this.lastRes = res;

@@ -18,6 +18,7 @@ SCOPE: ALL AGENTS, SUBAGENTS AND DELEGATED TASKS
 Every agent is responsible for processes it starts.
 
 Track all spawned processes, including:
+
 - Node.js runtimes
 - npm / pnpm / yarn commands
 - Vite / Next.js development servers
@@ -53,6 +54,7 @@ These commands are prohibited.
 Agents must ONLY terminate processes they own.
 
 Never terminate:
+
 - Processes started by another agent.
 - Processes belonging to another session.
 - User-managed development servers.
@@ -88,6 +90,7 @@ Avoid persistent watchers unless explicitly required.
 Always attempt graceful shutdown first.
 
 Use forced termination only when:
+
 - The process belongs to the current task.
 - Graceful shutdown has failed.
 - The process ownership is verified.
@@ -122,13 +125,13 @@ processes to kill - a duplicated list is a list nobody checks.
 `node-gc` is already on `PATH` (single shared implementation at
 `C:\Users\danie\.minimax\bin\node-gc.ps1`):
 
-| Command | Effect |
-|---|---|
-| `node-gc` | reports abandoned test-runtime trees, **kills nothing** |
-| `node-gc -Kill` | terminates them bottom-up (children first, then root) |
-| `node-gc -Root <path>` | restrict the sweep to one project |
-| `npm run clean:procs` | same as `node-gc` (this repo) |
-| `npm run clean:procs:kill` | same as `node-gc -Kill` (this repo) |
+| Command                    | Effect                                                  |
+| -------------------------- | ------------------------------------------------------- |
+| `node-gc`                  | reports abandoned test-runtime trees, **kills nothing** |
+| `node-gc -Kill`            | terminates them bottom-up (children first, then root)   |
+| `node-gc -Root <path>`     | restrict the sweep to one project                       |
+| `npm run clean:procs`      | same as `node-gc` (this repo)                           |
+| `npm run clean:procs:kill` | same as `node-gc -Kill` (this repo)                     |
 
 Two properties make it safe. **Both must survive any change to it:**
 
@@ -136,7 +139,7 @@ Two properties make it safe. **Both must survive any change to it:**
   that has finished its shard sits at 0 CPU while its parent runner is still
   working. A per-process test was falsified in practice: on a legitimate
   40-minute suite it reports a healthy worker as abandoned and destroys the run.
-  A tree is abandoned only when *no* member moves CPU during the sample window.
+  A tree is abandoned only when _no_ member moves CPU during the sample window.
 - **Orphan status is not used at all.** Measured 2026-10-17 on this machine:
   0 of 65 leftover `node.exe` processes had a dead parent, because
   `pwsh → npm → npx → vitest → tinypool` stays alive under the desktop app.
@@ -156,12 +159,12 @@ How this tool relates to section 3 (so the two do not look contradictory):
 - `node-gc` uses `Stop-Process -Id <pid>`, never the prohibited
   `Stop-Process -Name node`. It always targets a resolved, enumerated PID.
 
-Honest scope limit: `node-gc`'s predicate is *abandonment* (age + whole-tree
-idleness), not *ownership*. That is deliberate - it covers exactly the case this
+Honest scope limit: `node-gc`'s predicate is _abandonment_ (age + whole-tree
+idleness), not _ownership_. That is deliberate - it covers exactly the case this
 rule exists for, where the owning session is gone and ownership can no longer be
 proven from inside a running session. Its threshold is 20 minutes
 (`-MinAgeMinutes`) precisely because the default must be safe. When ownership
-*is* provable, stop the process directly instead.
+_is_ provable, stop the process directly instead.
 
 ---
 
@@ -191,37 +194,37 @@ The project browser (`src/ui/ProjectBrowser.tsx`) is the first screen on every b
 
 ## 2. Repository map (one-liner per directory)
 
-| Path                                         | One-liner                                                                                                                                                                                                    |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `src/audio-engine/`                          | `AudioEngine.ts` (~182 KB) — single source of audio truth; metering, recorder, latency calibration, onset detection, note repeat, IR generator, phase vocoder, time-stretch.                                 |
-| `src/audio-worklets/`                        | AudioWorklet processors: reverb, sidechain, limiter, gate, transient, fxeq, ultina, ozvena, kaskada, wtvoice, granular voice.                                                                                |
-| `src/audio-workers/`                         | Web Workers that wrap heavy CPU work: `ir-generator.ts`, `onset-detector.ts`, `warp-render.ts`.                                                                                                              |
-| `src/scheduler/Scheduler.ts`                 | 25 ms tick / 120 ms lookahead scheduler; the only event driver for live playback.                                                                                                                            |
-| `src/transport/Transport.ts`                 | Musical-time model (PPQ 480, ticks ↔ seconds); play/pause/stop/loop/metronome.                                                                                                                               |
-| `src/project-model/`                         | `schema.ts` (`SCHEMA_VERSION = 6`), `types.ts`, transforms, `groove.ts`, `automation.ts`, `modulators.ts`, scenes, **templates** (12), kit-presets, `markers.ts`.                                            |
-| `src/commands/`                              | Command system; every mutation flows through commands; `yDocBridge.ts` for collab; `layerCommands.ts` for grouped redo.                                                                                      |
-| `src/store/`                                 | `ProjectStore`, `SelectionStore`, `ToolStore` — pure pub/sub state.                                                                                                                                          |
-| `src/instruments/`                           | `registry.ts` — `INSTRUMENT_DEFS` and `INSTRUMENT_ORDER` for 24 instrument kinds. Mod matrix, randomization.                                                                                                 |
-| `src/effects/`                               | `registry.ts` — `EFFECT_DEFS` for 48 core effects + 5 flagship plugin suites. `fxeq-core/`, `ultina-core/`, `ozvena-core/` are vendored cores mirrored from upstream; vendor via `scripts/vendor-*.mjs`.     |
-| `src/sample-library/`                        | `manifest.ts` and `factory.ts` (factory assets + synthesized fallbacks; counts in `docs/CURRENT-STATE.md`), `curated.ts` (curated WAV overrides), `kit-pools.ts`, `velocity-layers.ts`.                      |
-| `src/presets/`                               | `factory.ts` (factory instrument + drum presets; counts in `docs/CURRENT-STATE.md`), `normalization.ts`, `similar.ts`, `audioQuality.ts`.                                                                    |
-| `src/rendering/`                             | `renderer.ts` (`renderProject()` — the offline render entry point), `bounce.ts`, `stems.ts`, `wav.ts` (16/24-bit + 32-bit float RIFF encoder).                                                               |
-| `src/export/`                                | `project-io.ts` (10 MB import cap), `shareCode.ts` (2 M-token / 8 M-char caps), `mp3.ts` (LAME via wasm), `video.ts`, `scorepack.ts`, `zip.ts`, `packCode.ts`, `themeCode.ts`, `kitCode.ts`, `bindsCode.ts`. |
-| `src/persistence/`                           | IndexedDB repositories (project, preset, library, kit, frozen buffers, user samples, ultina + morph presets, groove pool, snapshot), `save-lifecycle.ts`, `autosave-debouncer.ts`.                           |
-| `src/midi/`                                  | Web MIDI input/output/clock; pattern recorder; midiFile/midiProject import-export.                                                                                                                           |
-| `src/collab/`                                | `YDocStore.ts`, `CollaborationProvider.ts`, `CollabSession.ts` (lazy-loaded), `bandmate.ts` (AI Bandmate), `jamRoles.ts`, `transportSync.ts`.                                                                |
-| `src/intent/`                                | Text→beat pipeline: `pipeline.ts`, `plan.ts`, `normalize.ts`, `text-parser.ts`, `candidate-bank.ts`, `providers/{local,symbolic}.ts`.                                                                        |
-| `src/ai/`                                    | Generative engine, feature extractors, ONNX ranker + symbolic priors + their workers, datasets, golden vectors.                                                                                              |
-| `src/generative/`                            | Provider-neutral generative-track runtime, MRT2 browser/Electron adapters, KYX note conditioning, bounded AudioWorklet playback, durable capture and resample.                                               |
-| `src/analysis/`                              | `ultinaAnalysisClient.ts` + `ultinaAnalysisWorker.ts` — VLYX Mix Assist host.                                                                                                                                |
-| `src/services/`                              | `rafLoop.ts` (one-bus rAF shared by meters and animations), `services.ts` (long-lived services wiring).                                                                                                      |
+| Path                                         | One-liner                                                                                                                                                                                                                                                                                                                                                |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/audio-engine/`                          | `AudioEngine.ts` (~182 KB) — single source of audio truth; metering, recorder, latency calibration, onset detection, note repeat, IR generator, phase vocoder, time-stretch.                                                                                                                                                                             |
+| `src/audio-worklets/`                        | AudioWorklet processors: reverb, sidechain, limiter, gate, transient, fxeq, ultina, ozvena, kaskada, wtvoice, granular voice.                                                                                                                                                                                                                            |
+| `src/audio-workers/`                         | Web Workers that wrap heavy CPU work: `ir-generator.ts`, `onset-detector.ts`, `warp-render.ts`.                                                                                                                                                                                                                                                          |
+| `src/scheduler/Scheduler.ts`                 | 25 ms tick / 120 ms lookahead scheduler; the only event driver for live playback.                                                                                                                                                                                                                                                                        |
+| `src/transport/Transport.ts`                 | Musical-time model (PPQ 480, ticks ↔ seconds); play/pause/stop/loop/metronome.                                                                                                                                                                                                                                                                           |
+| `src/project-model/`                         | `schema.ts` (`SCHEMA_VERSION = 6`), `types.ts`, transforms, `groove.ts`, `automation.ts`, `modulators.ts`, scenes, **templates** (12), kit-presets, `markers.ts`.                                                                                                                                                                                        |
+| `src/commands/`                              | Command system; every mutation flows through commands; `yDocBridge.ts` for collab; `layerCommands.ts` for grouped redo.                                                                                                                                                                                                                                  |
+| `src/store/`                                 | `ProjectStore`, `SelectionStore`, `ToolStore` — pure pub/sub state.                                                                                                                                                                                                                                                                                      |
+| `src/instruments/`                           | `registry.ts` — `INSTRUMENT_DEFS` and `INSTRUMENT_ORDER` for 24 instrument kinds. Mod matrix, randomization.                                                                                                                                                                                                                                             |
+| `src/effects/`                               | `registry.ts` — `EFFECT_DEFS` for 48 core effects + 5 flagship plugin suites. `fxeq-core/`, `ultina-core/`, `ozvena-core/` are vendored cores mirrored from upstream; vendor via `scripts/vendor-*.mjs`.                                                                                                                                                 |
+| `src/sample-library/`                        | `manifest.ts` and `factory.ts` (factory assets + synthesized fallbacks; counts in `docs/CURRENT-STATE.md`), `curated.ts` (curated WAV overrides), `kit-pools.ts`, `velocity-layers.ts`.                                                                                                                                                                  |
+| `src/presets/`                               | `factory.ts` (factory instrument + drum presets; counts in `docs/CURRENT-STATE.md`), `normalization.ts`, `similar.ts`, `audioQuality.ts`.                                                                                                                                                                                                                |
+| `src/rendering/`                             | `renderer.ts` (`renderProject()` — the offline render entry point), `bounce.ts`, `stems.ts`, `wav.ts` (16/24-bit + 32-bit float RIFF encoder).                                                                                                                                                                                                           |
+| `src/export/`                                | `project-io.ts` (10 MB import cap), `shareCode.ts` (2 M-token / 8 M-char caps), `mp3.ts` (LAME via wasm), `video.ts`, `scorepack.ts`, `zip.ts`, `packCode.ts`, `themeCode.ts`, `kitCode.ts`, `bindsCode.ts`.                                                                                                                                             |
+| `src/persistence/`                           | IndexedDB repositories (project, preset, library, kit, frozen buffers, user samples, ultina + morph presets, groove pool, snapshot), `save-lifecycle.ts`, `autosave-debouncer.ts`.                                                                                                                                                                       |
+| `src/midi/`                                  | Web MIDI input/output/clock; pattern recorder; midiFile/midiProject import-export.                                                                                                                                                                                                                                                                       |
+| `src/collab/`                                | `YDocStore.ts`, `CollaborationProvider.ts`, `CollabSession.ts` (lazy-loaded), `bandmate.ts` (AI Bandmate), `jamRoles.ts`, `transportSync.ts`.                                                                                                                                                                                                            |
+| `src/intent/`                                | Text→beat pipeline: `pipeline.ts`, `plan.ts`, `normalize.ts`, `text-parser.ts`, `candidate-bank.ts`, `providers/{local,symbolic}.ts`.                                                                                                                                                                                                                    |
+| `src/ai/`                                    | Generative engine, feature extractors, ONNX ranker + symbolic priors + their workers, datasets, golden vectors.                                                                                                                                                                                                                                          |
+| `src/generative/`                            | Provider-neutral generative-track runtime, MRT2 browser/Electron adapters, KYX note conditioning, bounded AudioWorklet playback, durable capture and resample.                                                                                                                                                                                           |
+| `src/analysis/`                              | `ultinaAnalysisClient.ts` + `ultinaAnalysisWorker.ts` — VLYX Mix Assist host.                                                                                                                                                                                                                                                                            |
+| `src/services/`                              | `rafLoop.ts` (one-bus rAF shared by meters and animations), `services.ts` (long-lived services wiring).                                                                                                                                                                                                                                                  |
 | `src/ui/`                                    | ~70 React components — every panel/dialog/editor. `App.tsx` (56 KB), `ArrangementPanel.tsx` (shell, 6 383 lines), `ModPanel.tsx` (70 KB), `Sequencer.tsx` (67 KB), `PianoRoll.tsx` (65 KB). Large panels decompose into `src/ui/intent/` and `src/ui/arrangement/` collaborator modules — the panel stays the shell, collaborators stay inert renderers. |
-| `src/embed/`, `src/gallery/`, `src/landing/` | Route-level apps: `/embed` beat player, `/gallery` community feed, `/landing` first-visit page.                                                                                                              |
-| `server/collab-server.mjs`                   | y-websocket relay + `/api/gallery` JSON store. One process, one port.                                                                                                                                        |
-| `desktop/main.cjs` + `desktop/preload.cjs`   | Thin Electron shell (ADR 0010/0011), MRT2 helper process/IPC; native Objective-C++ adapter and CMake build live under `native/mrt2-host/`.                                                                   |
-| `tests/`                                     | Vitest specs (current count in `docs/CURRENT-STATE.md`), Playwright E2E, golden-vector locks for the vendored plugin cores, intent suite, persistence round-trip.                                            |
-| `docs/adr/`                                  | Architecture decision records 0001–0014. Read the relevant ADR before touching the area.                                                                                                                     |
-| `docs/CURRENT-STATE.md`                      | **Single source of truth** for "how many / what ships today". Update it in the same commit when you change a number.                                                                                         |
+| `src/embed/`, `src/gallery/`, `src/landing/` | Route-level apps: `/embed` beat player, `/gallery` community feed, `/landing` first-visit page.                                                                                                                                                                                                                                                          |
+| `server/collab-server.mjs`                   | y-websocket relay + `/api/gallery` JSON store. One process, one port.                                                                                                                                                                                                                                                                                    |
+| `desktop/main.cjs` + `desktop/preload.cjs`   | Thin Electron shell (ADR 0010/0011), MRT2 helper process/IPC; native Objective-C++ adapter and CMake build live under `native/mrt2-host/`.                                                                                                                                                                                                               |
+| `tests/`                                     | Vitest specs (current count in `docs/CURRENT-STATE.md`), Playwright E2E, golden-vector locks for the vendored plugin cores, intent suite, persistence round-trip.                                                                                                                                                                                        |
+| `docs/adr/`                                  | Architecture decision records 0001–0014. Read the relevant ADR before touching the area.                                                                                                                                                                                                                                                                 |
+| `docs/CURRENT-STATE.md`                      | **Single source of truth** for "how many / what ships today". Update it in the same commit when you change a number.                                                                                                                                                                                                                                     |
 
 ---
 
@@ -312,22 +315,24 @@ These are the rules every coding agent must follow. They are encoded in `ARCHITE
 > parameter goes silently dead (audit 2026-09-27) and the QA obligations
 > that catch them.
 
-| Gate                       | Command                                | Expected result                                                                                                                                                                                                                          |
-| -------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Strict typecheck           | `npm run typecheck`                    | EXIT 0 (clean `tsc --noEmit`)                                                                                                                                                                                                            |
-| Full Vitest suite          | `npm run test`                         | See `docs/CURRENT-STATE.md` for the current file count; all tests pass, with intentional skips reported by Vitest                                                                                                                        |
-| Suite expectations ratchet | `npm run test:expectations`            | EXIT 0 — the failure set EXACTLY matches `suite-expectations.json` (new reds AND cured reds both fail; every entry needs owner + reason; `flaky: true` exempts both ways)                                                                |
-| Derivable-artifact drift   | `npm run drift:check`                  | EXIT 0 — regenerated MCP mirrors, domain goldens and the CURRENT-STATE counts match HEAD (stale artifact = drift, exit 1; intentional changes go through `npm run drift:bless` + review; dirty-before paths are skipped, never restored) |
-| Format check               | `npm run format:check`                 | `All matched files use Prettier code style!`                                                                                                                                                                                             |
-| Real-browser audio         | `npm run test:browser`                 | all checks pass in Chromium, Firefox and Edge (historical baseline 226/226)                                                                                                                                                              |
-| Factory preset QA          | `npm run test:browser:factory-presets` | all factory presets audible (298 today; the script enumerates dynamically)                                                                                                                                                               |
-| Targeted plugin hardening  | (per plugin, under `tests/`)           | PASS for PRISM, VLYX, VØID                                                                                                                                                                                                               |
-| 300 s plugin soaks         | (per plugin, under `tests/`)           | heap growth ≤ 6 MB, drift ≤ 0.003 dB, zero non-finite samples                                                                                                                                                                            |
-| Production build           | `npm run build`                        | exit 0, bundle budgets respected                                                                                                                                                                                                         |
-| Engine graph census        | `npx vitest run tests/engine-graph-census.test.ts` | exit 0 — per-track/group/effect node budgets hold (100 dry tracks + 8 groups ≤ 1000 nodes; one analyser per strip; no PDC delay on dry chains; no group id in `trackNodes`) — see ADR 0048 |
-| Intent lexicon gate        | `npx vitest run tests/intent-routing-lexicon.test.ts` | exit 0 — no phrase table shadows a token with a second target, cross-lane overlaps are exactly the documented dual effects, and the precedence corpus (grime, ukg, metal/grunge/thrash, breakbeat/big beat, bare swing) parses as pinned |
-| Arrangement DOM census     | `npx vitest run tests/ui/arrangement-dom-census.test.tsx` | exit 0 — the rendered grid follows the viewport, not the project length; 520 clips ≤ 9000 elements |
-| Vulnerability audit        | `npm audit --omit=dev`                 | 0 vulnerabilities                                                                                                                                                                                                                        |
+| Gate                       | Command                                                   | Expected result                                                                                                                                                                                                                          |
+| -------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Strict typecheck           | `npm run typecheck`                                       | EXIT 0 (clean `tsc --noEmit`)                                                                                                                                                                                                            |
+| Full Vitest suite          | `npm run test`                                            | See `docs/CURRENT-STATE.md` for the current file count; all tests pass, with intentional skips reported by Vitest                                                                                                                        |
+| Suite expectations ratchet | `npm run test:expectations`                               | EXIT 0 — the failure set EXACTLY matches `suite-expectations.json` (new reds AND cured reds both fail; every entry needs owner + reason; `flaky: true` exempts both ways)                                                                |
+| Derivable-artifact drift   | `npm run drift:check`                                     | EXIT 0 — regenerated MCP mirrors, domain goldens and the CURRENT-STATE counts match HEAD (stale artifact = drift, exit 1; intentional changes go through `npm run drift:bless` + review; dirty-before paths are skipped, never restored) |
+| Format check               | `npm run format:check`                                    | `All matched files use Prettier code style!`                                                                                                                                                                                             |
+| Real-browser audio         | `npm run test:browser`                                    | all checks pass in Chromium, Firefox and Edge (historical baseline 226/226)                                                                                                                                                              |
+| Factory preset QA          | `npm run test:browser:factory-presets`                    | all factory presets audible (298 today; the script enumerates dynamically)                                                                                                                                                               |
+| Targeted plugin hardening  | (per plugin, under `tests/`)                              | PASS for PRISM, VLYX, VØID                                                                                                                                                                                                               |
+| 300 s plugin soaks         | (per plugin, under `tests/`)                              | heap growth ≤ 6 MB, drift ≤ 0.003 dB, zero non-finite samples                                                                                                                                                                            |
+| Production build           | `npm run build`                                           | exit 0, bundle budgets respected                                                                                                                                                                                                         |
+| Engine graph census        | `npx vitest run tests/engine-graph-census.test.ts`        | exit 0 — per-track/group/effect node budgets hold (100 dry tracks + 8 groups ≤ 1000 nodes; one analyser per strip; no PDC delay on dry chains; no group id in `trackNodes`) — see ADR 0048                                               |
+| Engine graph reachability  | `npx vitest run tests/engine-graph-reachability.test.ts`  | exit 0 — every strip output reaches `ctx.destination`, every analyser outside `MasterChain.build` is fed by a sink-reaching node, and the only build-ahead nodes are the master's optional stages                                        |
+| Golden doctor              | `npx vitest run tests/golden-doctor.test.ts`              | exit 0 — committed multi-voice summaries match live generation and every frozen artifact matches its hash; `npm run goldens:doctor` prints the semantic diff for a re-pin, `-- --bless` refreshes the summaries                          |
+| Intent lexicon gate        | `npx vitest run tests/intent-routing-lexicon.test.ts`     | exit 0 — no phrase table shadows a token with a second target, cross-lane overlaps are exactly the documented dual effects, and the precedence corpus (grime, ukg, metal/grunge/thrash, breakbeat/big beat, bare swing) parses as pinned |
+| Arrangement DOM census     | `npx vitest run tests/ui/arrangement-dom-census.test.tsx` | exit 0 — the rendered grid follows the viewport, not the project length; 520 clips ≤ 9000 elements                                                                                                                                       |
+| Vulnerability audit        | `npm audit --omit=dev`                                    | 0 vulnerabilities                                                                                                                                                                                                                        |
 
 Owner gates still open (release-blocking, not feature-blocking): manual Firefox/Safari/iOS Safari smoke, `release:deployed-smoke` with a real `KYX_DEPLOY_URL`. See `RELEASE_READINESS_REPORT.md`.
 
@@ -336,13 +341,13 @@ Owner gates still open (release-blocking, not feature-blocking): manual Firefox/
 > Full ledger + evidence: `docs/audits/2026-10-15-seam-coverage/SEAM-COVERAGE.md`.
 > Machine-readable: `tests/seam-manifest.json`. Gate: `node scripts/check-seam-coverage.mjs`.
 
-**A test can assert a behavior and still be green while the behavior is broken** — when the defect lives in a *seam* the test never entered. Five corrections in three days (2026-10-13 → 15) were exactly this: the EQ curve at 16/16 green while a click with no drag wrote −1.09 dB; the reaction bridge at 19/19 green while its caller fed it nothing; the model grammar "pinned" while the shipped artifact no longer loaded.
+**A test can assert a behavior and still be green while the behavior is broken** — when the defect lives in a _seam_ the test never entered. Five corrections in three days (2026-10-13 → 15) were exactly this: the EQ curve at 16/16 green while a click with no drag wrote −1.09 dB; the reaction bridge at 19/19 green while its caller fed it nothing; the model grammar "pinned" while the shipped artifact no longer loaded.
 
 So when you write a test for a **user-facing seam** — a gesture, a dispatch, a runtime artifact — it must:
 
 1. **ENTER** the real entry point. A test of `hitEqBand` is not a test of `onPointerDown`; a test of a row-shaping function is not a test of what feeds it; a source-text `includes()` check is not a test of behavior.
 2. **ASSERT THE NEGATIVE** — prove the no-op. "Writes nothing on click-without-drag", "refuses without the destructive flag", "a stale pointerup does not commit". A happy-path-only seam test cannot catch the bug class that actually ships. `tests/eq-curve-gesture.test.tsx` is the reference: 8 of 12 specs are negative assertions.
-3. **Not confuse traversal with assertion.** A test that walks the path and asserts nothing *else* proves the path exists, not that it works.
+3. **Not confuse traversal with assertion.** A test that walks the path and asserts nothing _else_ proves the path exists, not that it works.
 
 Two supporting rules that follow:
 
@@ -407,6 +412,10 @@ npm run build:core-worklets
 # Derivable artifacts (MCP mirrors, domain goldens, CURRENT-STATE counts)
 npm run drift:check                          # verify artifacts match their generators
 npm run drift:bless                          # regenerate in place for an intentional change
+
+# Frozen goldens (semantic diff before a re-pin)
+npm run goldens:doctor                       # hash status + semantic diff for every frozen case
+npm run goldens:doctor -- --bless            # refresh the voice summaries (review the printed diff)
 
 npm run build:fxeq
 npm run build:ultina

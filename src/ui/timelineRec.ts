@@ -265,7 +265,16 @@ export function recordedLoopPasses(
   return passes;
 }
 
-/** Place every captured loop pass as a selectable, non-destructive alternate in one undo step. */
+/**
+ * Place every captured loop pass as a selectable, non-destructive alternate in
+ * one undo step.
+ *
+ * `alignShiftsSec` (optional) is index-aligned with `passes`: a positive value
+ * skips that much of the pass's head so a phrase that started late lands on the
+ * entry it was recorded for (vocal-first alignment). A length mismatch is
+ * ignored rather than guessed at — an unaligned take is honest, a wrongly
+ * aligned one is not.
+ */
 export function addRecordedLoopTakeClips(
   doc: ProjectDocument,
   groupId: string,
@@ -276,15 +285,17 @@ export function addRecordedLoopTakeClips(
   totalFrames: number,
   passes: readonly RecordedLoopPass[],
   patch: Partial<Omit<AudioClip, "id" | "trackId" | "bufferId" | "startBar" | "lengthBars">> = {},
+  alignShiftsSec: readonly number[] = [],
 ): Command {
   if (passes.length === 0) throw new Error("No complete loop passes were captured");
   if (!Number.isInteger(sampleRate) || sampleRate <= 0 || !Number.isSafeInteger(totalFrames) || totalFrames <= 0) {
     throw new Error("Invalid loop recording format");
   }
+  const shifts = alignShiftsSec.length === passes.length ? alignShiftsSec : [];
   const exactStartBar = Number.isFinite(startBar) ? Math.max(0, startBar) : 0;
   let next = doc;
   let activeTakeId = "";
-  for (const pass of passes) {
+  for (const [index, pass] of passes.entries()) {
     if (
       !Number.isSafeInteger(pass.startFrame) ||
       !Number.isSafeInteger(pass.endFrame) ||
@@ -297,10 +308,11 @@ export function addRecordedLoopTakeClips(
     }
     const lengthBars = pass.lengthBars;
     if (lengthBars < 0.25) continue;
+    const passShift = shifts[index] ?? 0;
     const previousIds = new Set((next.arrangement.audioClips ?? []).map((clip) => clip.id));
     next = addAudioTakeClip(next, groupId, pass.takeId, trackId, bufferId, exactStartBar, lengthBars, {
       ...patch,
-      offsetSec: pass.startFrame / sampleRate,
+      offsetSec: Math.max(0, pass.startFrame / sampleRate + (Number.isFinite(passShift) ? passShift : 0)),
       trimEnd: (totalFrames - pass.endFrame) / sampleRate,
     }).execute(next);
     const addedClip = (next.arrangement.audioClips ?? []).find((clip) => !previousIds.has(clip.id));
@@ -327,6 +339,7 @@ export function addRecordedLoopSession(
   session: RecordingSession,
   bufferId: string,
   patch: Partial<Omit<AudioClip, "id" | "trackId" | "bufferId" | "startBar" | "lengthBars">> = {},
+  alignShiftsSec: readonly number[] = [],
 ): Command {
   if (!session.loopCapture || !session.takeGroupId) throw new Error("Loop recording metadata is incomplete");
   const passes = recordedLoopPasses(
@@ -346,5 +359,6 @@ export function addRecordedLoopSession(
     session.totalFrames,
     passes,
     patch,
+    alignShiftsSec,
   );
 }

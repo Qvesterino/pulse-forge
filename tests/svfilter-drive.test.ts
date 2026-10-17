@@ -142,6 +142,28 @@ describe("SVF drive (raw worklet DSP)", () => {
     }
   });
 
+  it("tracks cutoff automation during silence so a new note does not inherit a stale filter state", () => {
+    const quiet = new Float32Array(128);
+    const note = Float32Array.from({ length: 128 }, (_, i) => 0.5 * Math.sin((2 * Math.PI * 1000 * i) / 44100));
+    const settled = new Processor();
+    const stale = new Processor();
+
+    for (let block = 0; block < 32; block++) {
+      processBlock(settled, [quiet], { cutoff: 700 });
+      processBlock(stale, [quiet], { cutoff: 700 });
+    }
+    for (let block = 0; block < 64; block++) {
+      processBlock(settled, [quiet], { cutoff: 5000 });
+      processBlock(stale, [quiet], { cutoff: 700 });
+    }
+
+    const settledOutput = processBlock(settled, [note], { cutoff: 5000 })[0];
+    const freshOutput = processBlock(new Processor(), [note], { cutoff: 5000 })[0];
+    const staleOutput = processBlock(stale, [note], { cutoff: 5000 })[0];
+    expect(settledOutput).toEqual(freshOutput);
+    expect(staleOutput).not.toEqual(freshOutput);
+  });
+
   it("drive 0 passes the filter deterministically and unchanged between runs", () => {
     const input = sine(8000, 0.5);
     const a = renderThrough({ drive: 0 }, input);

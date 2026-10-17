@@ -44,14 +44,18 @@ try {
         exitCode = 1;
         continue;
       }
-      const results = await page.evaluate(async () => {
-        const { runNoteExpressionAudioChecks } = await import("/src/testing/noteExpressionAudioChecks.ts");
+      const results = await page.evaluate(async (parityOnly) => {
         const { SampleBank } = await import("/src/sample-library/factory.ts");
-        const { auditNoteExpressionLiveOfflineParity } = await import("/src/testing/live-offline-parity.ts");
+        const { auditNoteExpressionLiveOfflineParity, auditWorkletReleaseResponseParity } =
+          await import("/src/testing/live-offline-parity.ts");
+        const bank = new SampleBank();
+        if (parityOnly) return [await auditNoteExpressionLiveOfflineParity(bank)];
+        const { runNoteExpressionAudioChecks } = await import("/src/testing/noteExpressionAudioChecks.ts");
         const offline = await runNoteExpressionAudioChecks();
-        const parity = await auditNoteExpressionLiveOfflineParity(new SampleBank());
-        return [...offline, parity];
-      });
+        const parity = await auditNoteExpressionLiveOfflineParity(bank);
+        const workletReleaseParity = await auditWorkletReleaseResponseParity(bank);
+        return [...offline, parity, workletReleaseParity];
+      }, process.argv.includes("--parity-only"));
 
       let failed = 0;
       for (const result of results) {

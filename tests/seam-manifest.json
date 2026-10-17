@@ -228,6 +228,15 @@
       "note": "Wave A: entered through the REAL panel (type the brief, press DO IT). The default must yield a multi-candidate auditionable bank with ONE explained winner and NO single-result fallback; the negative spec spies the budget to the lean value and pins the honest constrained-device outcome (USE RESULT, nothing to audition) — proving the budget reaches the request instead of being decoration."
     },
     {
+      "id": "vocal-phrase-align",
+      "status": "COVERED",
+      "entryPoint": "src/ui/ArrangementPanel.tsx (REC stop + clip menu) → src/audio-engine/vocal-alignment.ts",
+      "spec": "tests/ui/timeline-rec.test.tsx",
+      "seamEvent": "aligns a late phrase onto its entry",
+      "negativeSpec": "ignores a mismatched shift list",
+      "note": "Vocal-first loop, the one step that did not exist: a phrase that entered a latency-scale step late gets its leading silence skipped so it lands on the entry it was recorded for — measured from the take's own signal, applied inside the SAME placement command (one undo), and reported ('aligned onto its entry (+40 ms)'). NEGATIVEs are the product rules: a deliberate late entry (outside the bounded search window) is never auto-touched, a low-confidence rise is never acted on, and a shift list that does not line up with the loop passes is ignored rather than guessed at. The measurement is best-effort by construction — a buffer without channel data must never take the placement down with it."
+    },
+    {
       "id": "trust-report",
       "status": "COVERED",
       "entryPoint": "src/ui/TrustReportButton.tsx + ActivityCenter TRUST REPORT → src/services/trustReport.ts",
@@ -387,7 +396,7 @@
       "spec": "tests/ui/io-panel.test.tsx",
       "seamEvent": "shows native Windows endpoint discovery as read-only metadata",
       "negativeSpec": "expect(screen.queryByRole(\"option\", { name: \"UA Volt Capture\" })).not.toBeInTheDocument()",
-      "note": "The actual I/O panel displays validated native endpoint names, flow, state and console-default status while keeping browser selectors separate until native stream routing is implemented."
+      "note": "The actual I/O panel displays validated native endpoint names, flow, state, console-default status, current engine mix format and queried shared-period range while keeping browser selectors separate until native stream routing is implemented."
     },
     {
       "id": "desktop-pcm-playback",

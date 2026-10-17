@@ -2,10 +2,28 @@
 
 #include <windows.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace kyx::windows_audio {
+
+struct SharedPeriods {
+  UINT32 defaultFrames = 0;
+  UINT32 fundamentalFrames = 0;
+  UINT32 minFrames = 0;
+  UINT32 maxFrames = 0;
+};
+
+struct EndpointMixFormat {
+  UINT16 channels = 0;
+  UINT32 sampleRateHz = 0;
+  UINT16 bitsPerSample = 0;
+  UINT16 validBitsPerSample = 0;
+  bool floatingPoint = false;
+  UINT32 channelMask = 0;
+  std::optional<SharedPeriods> sharedPeriods;
+};
 
 struct EndpointRecord {
   std::wstring id;
@@ -13,6 +31,7 @@ struct EndpointRecord {
   std::wstring flow;
   std::wstring state;
   bool isDefaultConsole = false;
+  std::optional<EndpointMixFormat> mixFormat;
 };
 
 inline bool toUtf8(const std::wstring &input, std::string *output) {
@@ -91,7 +110,7 @@ serializeEndpointListJson(const std::vector<EndpointRecord> &endpoints,
   if (!output)
     return false;
   output->clear();
-  *output = "{\"schemaVersion\":1,\"endpoints\":[";
+  *output = "{\"schemaVersion\":2,\"endpoints\":[";
   for (std::size_t index = 0; index < endpoints.size(); ++index) {
     if (index > 0)
       *output += ',';
@@ -108,6 +127,30 @@ serializeEndpointListJson(const std::vector<EndpointRecord> &endpoints,
     *output += ",\"state\":";
     if (!appendJsonString(endpoint.state, output))
       return false;
+    *output += ",\"mixFormat\":";
+    if (!endpoint.mixFormat) {
+      *output += "null";
+    } else {
+      const EndpointMixFormat &format = *endpoint.mixFormat;
+      *output += "{\"channels\":" + std::to_string(format.channels) +
+                 ",\"sampleRateHz\":" + std::to_string(format.sampleRateHz) +
+                 ",\"bitsPerSample\":" + std::to_string(format.bitsPerSample) +
+                 ",\"validBitsPerSample\":" + std::to_string(format.validBitsPerSample) +
+                 ",\"floatingPoint\":" +
+                 std::string(format.floatingPoint ? "true" : "false") +
+                 ",\"channelMask\":" + std::to_string(format.channelMask) +
+                 ",\"sharedPeriods\":";
+      if (!format.sharedPeriods) {
+        *output += "null";
+      } else {
+        const SharedPeriods &periods = *format.sharedPeriods;
+        *output += "{\"defaultFrames\":" + std::to_string(periods.defaultFrames) +
+                   ",\"fundamentalFrames\":" + std::to_string(periods.fundamentalFrames) +
+                   ",\"minFrames\":" + std::to_string(periods.minFrames) +
+                   ",\"maxFrames\":" + std::to_string(periods.maxFrames) + "}";
+      }
+      *output += "}";
+    }
     *output += ",\"isDefaultConsole\":";
     *output += endpoint.isDefaultConsole ? "true}" : "false}";
   }

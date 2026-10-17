@@ -64,7 +64,7 @@ interface RunEvent {
 /** Render the processor: messages before t=0 up front, others mid-render. */
 function run(
   params: Record<string, number>,
-  notes: Array<{ pitch: number; velocity: number; when: number; dur: number }>,
+  notes: Array<{ pitch: number; velocity: number; when: number; dur: number; releaseVelocity?: number }>,
   duration: number,
   midEvents: RunEvent[] = [],
 ): { outL: Float32Array; outR: Float32Array } {
@@ -83,6 +83,7 @@ function run(
       velocity: n.velocity,
       when: n.when,
       dur: n.dur,
+      releaseVelocity: n.releaseVelocity,
       seed: 12345 + n.pitch,
     });
     proc.handleMessage({ type: "noteOff", pitch: n.pitch, when: n.when + n.dur });
@@ -122,6 +123,12 @@ function diff(a: Float32Array, b: Float32Array, from = 0, to = a.length): number
   return d;
 }
 
+function rms(data: Float32Array, from: number, to: number): number {
+  let sum = 0;
+  for (let i = from; i < to; i++) sum += data[i]! * data[i]!;
+  return Math.sqrt(sum / Math.max(1, to - from));
+}
+
 describe("granular voice worklet engine", () => {
   it("renders audible, bounded grains and releases after noteOff", () => {
     const { outL } = run({}, [{ pitch: 60, velocity: 0.9, when: 0.05, dur: 0.4 }], 1.2);
@@ -129,6 +136,21 @@ describe("granular voice worklet engine", () => {
     expect(peak(outL)).toBeLessThanOrEqual(2);
     // released: tail decays to (near) silence
     expect(peak(outL, Math.floor(1.05 * SR))).toBeLessThan(0.02);
+  });
+
+  it("applies release velocity to the held granular voice without changing its attack", () => {
+    const note = { pitch: 60, velocity: 0.9, when: 0.05, dur: 0.25 };
+    const baseline = run({}, [note], 0.9);
+    const neutral = run({}, [{ ...note, releaseVelocity: 0.5 }], 0.9);
+    const short = run({}, [{ ...note, releaseVelocity: 0 }], 0.9);
+    const long = run({}, [{ ...note, releaseVelocity: 1 }], 0.9);
+    const noteOffFrame = Math.floor((note.when + note.dur) * SR);
+
+    expect(diff(neutral.outL, baseline.outL)).toBe(0);
+    expect(diff(short.outL, long.outL, 0, noteOffFrame)).toBe(0);
+    expect(rms(long.outL, Math.floor(0.32 * SR), Math.floor(0.5 * SR))).toBeGreaterThan(
+      rms(short.outL, Math.floor(0.32 * SR), Math.floor(0.5 * SR)) * 1.5,
+    );
   });
 
   it("is deterministic — identical message sequences render bit-identically", () => {

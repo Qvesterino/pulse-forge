@@ -84,6 +84,24 @@ same project value.
   exponential portamento ramp, caps at note-off, and keeps the original key
   available for note-off. The existing portamento flag still starts its own
   sliding attack.
+- The live wavetable and granular AudioWorklet bridges previously dropped
+  `releaseVelocity` while forwarding note-on events, even though their native
+  offline graphs consumed it. Both bridges now send the normalized value with
+  each sample-timed note-on; each worklet stores it on that voice and derives
+  the release time constant when the matching note-off arrives. Raw processor
+  audio specs prove that neutral 0.5 is sample-identical to the default,
+  release values 0 and 1 leave pre-note-off audio unchanged and change the
+  post-note-off tail by more than 1.5×. Bridge specs assert the serialized
+  per-note value. A browser release-response audit now verifies the live
+  runtime output is an `AudioWorkletNode` for both instruments, then compares
+  the 0→1 release response with the offline native voice renderer. At 44.1 kHz,
+  Chromium measured wavetable live/offline tail ratios of 3.37×/3.71× and
+  granular ratios of 2.38×/2.80×; Firefox measured 3.37×/3.72× and
+  2.38×/2.80×. Pre-note-off body ratios stayed within 1% of unity. Both
+  browsers meet the audit's >1.5× audibility and 35% cross-render agreement
+  limits. This is release-response parity, not a waveform null: offline
+  `AudioWorklet` message queues cannot deliver these note events during render,
+  so export uses the native voice renderer.
 - `tests/note-expression.test.ts` covers clamping, Yjs round-trip,
   undo/redo and default-value no-op.
 - `tests/per-note-filter-modulation.test.ts` checks that neutral Mod X/Y keeps
@@ -120,11 +138,26 @@ same project value.
   no-expression case. The focused command is
   `npm run test:browser:note-expression`; `npm run
 test:browser:note-expression:all` runs it in Chromium, Firefox and WebKit.
-  On 2026-10-17 Chromium and Firefox each passed 80/80: the 79 OfflineAudioContext
-  render checks plus one live/offline aggregate covering four cases (combined
-  Analog pitch/pan/filter/release, Analog Mod X/Y, and held slides on 808 and
-  Acid). The parity gate requires alignment within 512 samples and a null at or
-  below -40 dB, or correlation ≥0.99 when the realtime path is nondeterministic.
+  The verifier has 81 checks: 79 OfflineAudioContext render checks, a
+  four-case live/offline parity aggregate, and the worklet release-response
+  audit. On 2026-10-17 Firefox passed the full 81/81 run; its separate parity
+  rerun passed 4/4. Chromium's latest parity-only run correctly rejected the
+  Analog Mod X/Y case: live/offline null was −1.9 dB, live-repeat null −0.8 dB,
+  live/reference RMS 0.875×, live/offline spectral cosine 0.8118 and
+  live-repeat cosine 0.8453, while the offline repeat control was −76.3 dB
+  with spectral cosine 1.0000. The live captures therefore
+  disagree materially even though offline rendering is deterministic. The
+  note-expression-only phase-insensitive fallback now requires a clean offline
+  control plus ≥0.98 spectral cosine and 0.90–1.10 RMS across live/offline,
+  offline-repeat and live-repeat pairs; synthetic checks cover changed pitch,
+  level, missing comparisons and a dirty offline control. It does not relax the
+  general parity corpus. Keep the Chromium aggregate open until the live
+  variation is explained. Its strict waveform path still requires alignment
+  within 512 samples and null ≤−40 dB. The worklet release-response audit
+  passed in Chromium and Firefox. Playwright's Windows WebKit build exposes
+  none of `AudioContext`, `OfflineAudioContext` or `AudioWorkletNode`; the
+  all-engine command reports that browser as blocked and exits nonzero. This
+  is not Safari evidence.
   Playwright's Windows WebKit build exposes none of `AudioContext`,
   `OfflineAudioContext` or `AudioWorkletNode`; the all-engine command reports
   that browser as blocked and exits nonzero. This is not Safari evidence.

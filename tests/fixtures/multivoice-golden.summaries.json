@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "note": "Semantic shape of each frozen multi-voice case (role note counts + progression). Maintained by `npm run goldens:doctor -- --bless`; the doctor diff against this file is what makes a hash re-pin reviewable — refresh it together with the hash when the change is intended.",
+  "cases": [
+    {
+      "caseId": "house",
+      "summary": {
+        "bass": 32,
+        "chord": 60,
+        "lead": 24,
+        "progression": "I-vi-IV-V (pop hook)",
+        "degree": 0
+      }
+    },
+    {
+      "caseId": "techno",
+      "summary": {
+        "bass": 32,
+        "chord": 24,
+        "lead": 24,
+        "progression": "i-♭VI (dark loop)",
+        "degree": 0
+      }
+    },
+    {
+      "caseId": "trap",
+      "summary": {
+        "bass": 32,
+        "chord": 48,
+        "lead": 24,
+        "progression": "i-VI-III-VII (emotional trap loop)",
+        "degree": 0
+      }
+    },
+    {
+      "caseId": "ambient",
+      "summary": {
+        "bass": 32,
+        "chord": 32,
+        "lead": 24,
+        "progression": "Imaj7-IVmaj7 (lounge flow)",
+        "degree": 0
+      }
+    },
+    {
+      "caseId": "drill",
+      "summary": {
+        "bass": 32,
+        "chord": 24,
+        "lead": 24,
+        "progression": "i-VI (slide bed)",
+        "degree": 0
+      }
+    },
+    {
+      "caseId": "phonk",
+      "summary": {
+        "bass": 32,
+        "chord": 24,
+        "lead": 24,
+        "progression": "i-VII (cursed loop)",
+        "degree": 0
+      }
+    },
+    {
+      "caseId": "jersey",
+      "summary": {
+        "bass": 32,
+        "chord": 48,
+        "lead": 24,
+        "progression": "I-IV-vi-V (bounce)",
+        "degree": 0
+      }
+    },
+    {
+      "caseId": "dnb",
+      "summary": {
+        "bass": 32,
+        "chord": 36,
+        "lead": 24,
+        "progression": "i-iv-♭VII (roller)",
+        "degree": 0
+      }
+    }
+  ]
+}

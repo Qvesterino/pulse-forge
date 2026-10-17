@@ -33,11 +33,18 @@ periods and format support are capability evidence only; a real stream soak and
 loopback measurement are still required before a device/backend is certified.
 
 The `--list-json` mode is the Studio's read-only endpoint-discovery interface.
-It emits one UTF-8 JSON object with `schemaVersion: 1` and an `endpoints` array;
+It emits one UTF-8 JSON object with `schemaVersion: 2` and an `endpoints` array;
 each record has an opaque endpoint `id`, friendly `name`, `flow` (`capture` or
 `render`), current `state`, and `isDefaultConsole`. It enumerates all endpoint
 states, opens no audio stream, and changes no device settings. Endpoint IDs are
 passed through unchanged and must not be parsed or written to project files.
+For active endpoints, `mixFormat` may include the Windows engine mix format
+(channel count, sample rate, container bit depth, valid-bit depth, float/PCM
+flag and channel mask) plus
+the `IAudioClient3` shared-period range queried for that mix format. Inactive
+endpoints and endpoints that cannot provide that metadata use `null`. These
+values describe the current engine mix; they are not proof that arbitrary
+project formats, period requests or physical channel maps can be opened.
 The list uses Windows' MMDevice endpoint API; Microsoft documents endpoint IDs
 as opaque values returned by `IMMDevice::GetId` ([MMDevice API](https://learn.microsoft.com/en-us/windows/win32/coreaudio/mmdevice-api),
 [`IMMDevice::GetId`](https://learn.microsoft.com/en-us/windows/win32/api/mmdeviceapi/nf-mmdeviceapi-immdevice-getid)).
@@ -85,13 +92,20 @@ round-trip latency:
 ```
 
 Only after the audio owner approves temporarily opening a physical endpoint,
-run a short stream check by supplying its exact friendly name:
+run a short stream check. The friendly-name form is retained for diagnostics,
+but endpoint names can be duplicated. For a device-selection check, prefer
+the opaque ID from `--list-json`:
 
 ```powershell
 $probe = Join-Path $probeBuildDir 'Release/kyx-windows-audio-probe.exe'
 & $probe --stream-test capture shared 'INPUT 1/2 (2- Volt 276)' 10
 & $probe --stream-test render shared 'MONITOR L/R (2- Volt 276)' 10
+& $probe --stream-id-test render shared '<opaque endpoint ID from --list-json>' 10
 ```
+
+The ID form matches the active endpoint ID exactly. It never selects by name
+or falls back to the default endpoint. It still queues silence on render and
+discards capture samples; it is a bounded probe, not the Studio audio backend.
 
 Exclusive mode can interrupt other apps using that endpoint and therefore
 requires a separate explicit command-line acknowledgement:

@@ -21,7 +21,7 @@
  *
  * Messaging (node.port, main thread -> worklet):
  *  {type:"sample", ch0:Float32Array, ch1:Float32Array|null, length, sampleRate}
- *  {type:"noteOn", pitch, velocity, when, seed}   absolute ctx time
+ *  {type:"noteOn", pitch, velocity, when, seed, releaseVelocity?} absolute ctx time
  *  {type:"noteOff", pitch, when}
  *  {type:"panic"}
  *  {type:"param", name, value}                    k-rate, immediate
@@ -32,6 +32,12 @@ const VOICES_MAX = 6;
 const GRAINS_PER_NOTE_MAX = 512;
 const GRAINS_ACTIVE_MAX = 48; // concurrent per voice — rate 60/s × 0.4 s ≈ 24
 const SYNC_BEATS = [0, 2, 1, 0.75, 0.5, 1 / 3, 0.25]; // OFF, 1/2, 1/4, 1/8D, 1/8, 1/8T, 1/16
+
+function noteReleaseSeconds(baseSeconds, value) {
+  const base = Number.isFinite(baseSeconds) ? Math.max(0.005, baseSeconds) : 0.4;
+  const releaseVelocity = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0.5;
+  return Math.max(0.005, base * (0.25 + releaseVelocity * 1.5));
+}
 
 function mulberry32(seed) {
   let a = seed >>> 0;
@@ -85,6 +91,8 @@ class GrainVoice {
     this.offFrame = 0;
     this.env = 0;
     this.stage = "attack";
+    this.releaseVelocity = 0.5;
+    this.releaseSeconds = Math.max(0.005, params.release ?? 0.4);
     this.peak = 0;
     this.rand = () => 0;
     this.spawned = 0;
@@ -99,6 +107,8 @@ class GrainVoice {
     this.dead = false;
     this.pitch = msg.pitch;
     this.vel = Math.max(0, Math.min(1, msg.velocity));
+    this.releaseVelocity = Number.isFinite(msg.releaseVelocity) ? Math.max(0, Math.min(1, msg.releaseVelocity)) : 0.5;
+    this.releaseSeconds = noteReleaseSeconds(this.p.release ?? 0.4, this.releaseVelocity);
     this.startFrame = Math.round(msg.when * sr);
     const size = Math.min(0.4, Math.max(0.02, this.p.size ?? 0.09));
     const hold = Math.max(msg.dur ?? 0.5, size + 0.02);
@@ -116,6 +126,7 @@ class GrainVoice {
     this.gate = false;
     this.offFrame = Math.min(this.offFrame, nowFrame);
     this.stage = "release";
+    this.releaseSeconds = noteReleaseSeconds(this.p.release ?? 0.4, this.releaseVelocity);
     void sr;
   }
 
@@ -348,7 +359,7 @@ class GrainVoiceProcessor extends AudioWorkletProcessor {
           v.env += (v.peak - v.env) * (1 - Math.exp(-1 / (tau * sr)));
           if (v.env > v.peak * 0.985) v.stage = "sustain";
         } else if (v.stage === "release") {
-          const tau = Math.max(0.005, p.release ?? 0.4) / 3;
+          const tau = v.releaseSeconds / 3;
           v.env += (0 - v.env) * (1 - Math.exp(-1 / (tau * sr)));
         }
         if (!v.gate && frame >= v.offFrame) v.stage = "release";

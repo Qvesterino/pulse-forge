@@ -34,6 +34,8 @@ import {
 import { audioClipsForPlayback } from "../../src/project-model/audio-takes";
 import { createLiveAudioTakeAuditionProject } from "../../src/rendering/take-audition";
 import { loadRecordingInputDeviceId, saveRecordingInputDeviceId } from "../../src/audio-engine/recordingInput";
+import { ProjectStore } from "../../src/store/ProjectStore";
+import type { Services } from "../../src/services";
 
 vi.mock("../../src/rendering/renderer", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/rendering/renderer")>();
@@ -227,6 +229,48 @@ describe("recording placement math", () => {
     expect(placed.arrangement.takeGroups?.[0]?.activeTakeId).toBe("recording-42-pass-3");
     expect(audioClipsForPlayback(placed.arrangement).map((clip) => clip.offsetSec)).toEqual([4]);
     expect(command.undo(placed)).toEqual(doc);
+  });
+
+  it("applies per-pass phrase alignment to the take offsets, and ignores a mismatched shift list", () => {
+    const doc = createDefaultProject();
+    const passes = recordedLoopPasses(288_000, 48_000, [0, 96_000, 192_000], 120, "recording-42");
+
+    // Vocal-first alignment: each pass skips its OWN measured late head, inside
+    // the same placement command — one undo removes take and correction.
+    const command = addRecordedLoopTakeClips(
+      doc,
+      "loop-group",
+      doc.tracks[0].id,
+      "recording-audio",
+      1,
+      48_000,
+      288_000,
+      passes,
+      {},
+      [0.04, 0, 0.08],
+    );
+    const placed = command.execute(doc);
+    expect(placed.arrangement.audioClips?.map((clip) => clip.offsetSec).sort((a, b) => a - b)).toEqual([0.04, 2, 4.08]);
+    expect(command.undo(placed)).toEqual(doc);
+
+    // A shift list that does not line up with the passes is IGNORED rather than
+    // guessed at: an unaligned take is honest, a wrongly aligned one is not.
+    const mismatched = addRecordedLoopTakeClips(
+      doc,
+      "loop-group-2",
+      doc.tracks[0].id,
+      "recording-audio",
+      1,
+      48_000,
+      288_000,
+      passes,
+      {},
+      [0.1],
+    );
+    const placedMismatch = mismatched.execute(doc);
+    expect(placedMismatch.arrangement.audioClips?.map((clip) => clip.offsetSec).sort((a, b) => a - b)).toEqual([
+      0, 2, 4,
+    ]);
   });
 
   it("validates saved channel destinations against the restored buffer and project", () => {
@@ -1078,6 +1122,68 @@ describe("arrangement REC wiring", () => {
       expect(services.recordingRecovery.finalize).toHaveBeenCalledOnce();
       expect(services.bank.add).toHaveBeenCalledOnce();
       expect(services.store.execute).toHaveBeenCalledOnce();
+    } finally {
+      recorderMock.implementation = null;
+    }
+  });
+  it("aligns a late phrase onto its entry at record stop — inside the placed take, and says so", async () => {
+    // VOCAL-FIRST LOOP, end to end: a singer enters 40 ms late; the take is
+    // placed with its leading silence skipped so the phrase lands on the entry,
+    // the correction rides in the SAME command (one undo), and the user is told
+    // what happened rather than left to notice by ear.
+    const doc = createDocWithTracks();
+    let metadata: any;
+    const sampleRate = 48_000;
+    const phrase = new Float32Array(sampleRate);
+    const onset = Math.round(0.04 * sampleRate);
+    for (let index = onset; index < phrase.length; index += 1) {
+      phrase[index] = Math.sin((2 * Math.PI * 220 * (index - onset)) / sampleRate) * 0.5;
+    }
+    recorderMock.implementation = class {
+      elapsedSeconds = 1;
+      onError = null;
+      setMonitoring() {}
+      async start(getMetadata: () => unknown) {
+        metadata = getMetadata();
+      }
+      async stop() {
+        return {
+          session: {
+            id: "recording.align",
+            ...metadata,
+            projectId: doc.id,
+            trackId: doc.tracks[0].id,
+          },
+          buffer: {
+            duration: 1,
+            sampleRate,
+            numberOfChannels: 1,
+            getChannelData: () => phrase,
+          } as unknown as AudioBuffer,
+        };
+      }
+      cancel() {}
+    };
+
+    try {
+      const store = new ProjectStore(doc);
+      const services = { ...mockServices(doc), store } as unknown as Services;
+      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
+
+      renderWithContext(<ArrangementPanel />, { services });
+      fireEvent.change(screen.getByLabelText("Arm track for recording"), {
+        target: { value: doc.tracks[0].id },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "● REC" }));
+      fireEvent.click(await screen.findByRole("button", { name: /STOP/ }));
+
+      expect(await screen.findByText(/aligned onto its entry/i)).toBeInTheDocument();
+      const clips = store.doc.arrangement.audioClips ?? [];
+      expect(clips).toHaveLength(1);
+      const leadInSec = Number.isFinite(metadata?.leadInSec) ? metadata.leadInSec : 0;
+      const shift = clips[0]!.offsetSec - leadInSec;
+      expect(shift).toBeGreaterThan(0.035);
+      expect(shift).toBeLessThanOrEqual(0.04);
     } finally {
       recorderMock.implementation = null;
     }

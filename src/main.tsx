@@ -85,13 +85,27 @@ declare global {
         /** Native Windows endpoint metadata; it does not select devices or start streams. */
         listWindowsEndpoints: () => Promise<{
           status: "ok" | "unsupported" | "no-probe" | "timeout" | "invalid-output" | "error";
-          schemaVersion?: 1;
+          schemaVersion?: 2;
           endpoints: Array<{
             id: string;
             name: string;
             flow: "capture" | "render";
             state: "active" | "disabled" | "not-present" | "unplugged" | "unknown";
             isDefaultConsole: boolean;
+            mixFormat: {
+              channels: number;
+              sampleRateHz: number;
+              bitsPerSample: number;
+              validBitsPerSample: number;
+              floatingPoint: boolean;
+              channelMask: number;
+              sharedPeriods: {
+                defaultFrames: number;
+                fundamentalFrames: number;
+                minFrames: number;
+                maxFrames: number;
+              } | null;
+            } | null;
           }>;
           message?: string;
         }>;

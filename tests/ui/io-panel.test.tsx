@@ -159,7 +159,7 @@ describe("Studio I/O panel", () => {
     const audio = {
       listWindowsEndpoints: vi.fn().mockResolvedValue({
         status: "ok",
-        schemaVersion: 1,
+        schemaVersion: 2,
         endpoints: [
           {
             id: "opaque-input-id",
@@ -167,6 +167,15 @@ describe("Studio I/O panel", () => {
             flow: "capture",
             state: "active",
             isDefaultConsole: true,
+            mixFormat: {
+              channels: 2,
+              sampleRateHz: 48000,
+              bitsPerSample: 32,
+              validBitsPerSample: 32,
+              floatingPoint: true,
+              channelMask: 3,
+              sharedPeriods: { defaultFrames: 480, fundamentalFrames: 480, minFrames: 480, maxFrames: 1440 },
+            },
           },
           {
             id: "opaque-output-id",
@@ -174,6 +183,7 @@ describe("Studio I/O panel", () => {
             flow: "render",
             state: "unplugged",
             isDefaultConsole: false,
+            mixFormat: null,
           },
         ],
       }),
@@ -182,7 +192,10 @@ describe("Studio I/O panel", () => {
     try {
       await renderPanel();
       await waitFor(() => expect(screen.getByText("UA Volt Capture")).toBeInTheDocument());
-      expect(screen.getByText("capture · active · console default")).toBeInTheDocument();
+      expect(
+        screen.getByText(/capture · active · console default · engine mix: 2 ch \/ 48 kHz \/ 32-bit float/),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/shared period 480–1440 frames \(default 480\)/)).toBeInTheDocument();
       expect(screen.getByText("render · unplugged")).toBeInTheDocument();
       expect(screen.getByText(/native Windows streaming is not shipped/i)).toBeInTheDocument();
       expect(screen.queryByRole("option", { name: "UA Volt Capture" })).not.toBeInTheDocument();

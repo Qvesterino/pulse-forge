@@ -6,6 +6,24 @@
  */
 const { contextBridge, ipcRenderer } = require("electron");
 
+// The native-audio transport probe uses a dedicated MessagePort. Forward only
+// the port object from this main-process-owned channel into the app origin;
+// PCM never rides through ordinary invoke payloads or React state.
+ipcRenderer.on("kyx:audio:bridge-port", (event, metadata) => {
+  const port = event.ports?.[0];
+  const requestId = metadata && metadata.requestId;
+  if (!port || typeof requestId !== "string" || requestId.length > 96) {
+    port?.close?.();
+    return;
+  }
+  try {
+    window.postMessage({ type: "kyx:audio:bridge-port", requestId, port }, "*", [port]);
+  } catch (error) {
+    console.error("Could not forward the Windows audio MessagePort to the app page", error);
+    port.close();
+  }
+});
+
 contextBridge.exposeInMainWorld("kyxDesktop", {
   isDesktop: true,
   mrt2: {

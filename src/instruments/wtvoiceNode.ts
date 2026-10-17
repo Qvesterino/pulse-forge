@@ -48,8 +48,8 @@ export function createWtVoiceRuntime(
 
   const runtime: InstrumentRuntime = {
     output: node,
-    noteOn(pitch, velocity, when) {
-      port.postMessage({ type: "noteOn", pitch, velocity, when });
+    noteOn(pitch, velocity, when, _durationSec, _slideFrom, expression) {
+      port.postMessage({ type: "noteOn", pitch, velocity, when, releaseVelocity: expression?.releaseVelocity });
     },
     noteOff(pitch, when) {
       port.postMessage({ type: "noteOff", pitch, when });

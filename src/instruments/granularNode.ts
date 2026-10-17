@@ -77,7 +77,7 @@ export function createGrainVoiceRuntime(
 
   const runtime: InstrumentRuntime = {
     output: node,
-    noteOn(pitch, velocity, when, durationSec) {
+    noteOn(pitch, velocity, when, durationSec, _slideFrom, expression) {
       // Same PRNG seed contract as the fallback cloud: trackId:pitch.
       port.postMessage({
         type: "noteOn",
@@ -85,6 +85,7 @@ export function createGrainVoiceRuntime(
         velocity,
         when,
         dur: durationSec ?? 0.5,
+        releaseVelocity: expression?.releaseVelocity,
         seed: hashString(`${currentTrack.id}:${pitch}`),
       });
     },

@@ -7,6 +7,7 @@
 #include <ksmedia.h>
 #include <wrl/client.h>
 #include "capture-start-time.h"
+#include "endpoint-selection.h"
 #include "endpoint-json.h"
 #include "loopback-correlation.h"
 #include "shared-period-selection.h"
@@ -48,6 +49,53 @@ std::wstring endpointId(IMMDevice* device) {
   std::wstring id(rawId);
   CoTaskMemFree(rawId);
   return id;
+}
+
+std::optional<kyx::windows_audio::EndpointMixFormat>
+endpointMixFormat(IMMDevice* device) {
+  if (!device)
+    return std::nullopt;
+
+  ComPtr<IAudioClient3> client;
+  if (FAILED(device->Activate(__uuidof(IAudioClient3), CLSCTX_ALL, nullptr,
+                              reinterpret_cast<void**>(client.GetAddressOf()))))
+    return std::nullopt;
+
+  WAVEFORMATEX* rawFormat = nullptr;
+  if (FAILED(client->GetMixFormat(&rawFormat)) || !rawFormat)
+    return std::nullopt;
+
+  kyx::windows_audio::EndpointMixFormat result;
+  result.channels = rawFormat->nChannels;
+  result.sampleRateHz = rawFormat->nSamplesPerSec;
+  result.bitsPerSample = rawFormat->wBitsPerSample;
+  result.validBitsPerSample = rawFormat->wBitsPerSample;
+  if (rawFormat->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) {
+    result.floatingPoint = true;
+  } else if (rawFormat->wFormatTag == WAVE_FORMAT_EXTENSIBLE &&
+             rawFormat->cbSize >= sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX)) {
+    const auto* extensible = reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(rawFormat);
+    result.floatingPoint = IsEqualGUID(extensible->SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
+    result.channelMask = extensible->dwChannelMask;
+    if (extensible->Samples.wValidBitsPerSample > 0)
+      result.validBitsPerSample = extensible->Samples.wValidBitsPerSample;
+  }
+
+  UINT32 defaultFrames = 0;
+  UINT32 fundamentalFrames = 0;
+  UINT32 minFrames = 0;
+  UINT32 maxFrames = 0;
+  if (SUCCEEDED(client->GetSharedModeEnginePeriod(rawFormat, &defaultFrames,
+                                                  &fundamentalFrames, &minFrames,
+                                                  &maxFrames)) &&
+      defaultFrames > 0 && fundamentalFrames > 0 && minFrames > 0 &&
+      maxFrames >= minFrames) {
+    result.sharedPeriods = kyx::windows_audio::SharedPeriods{
+        defaultFrames, fundamentalFrames, minFrames, maxFrames};
+  }
+
+  CoTaskMemFree(rawFormat);
+  return result;
 }
 
 const wchar_t *endpointStateName(DWORD state) {
@@ -138,10 +186,13 @@ bool listEndpointsAsJson(IMMDeviceEnumerator *enumerator) {
       DWORD state = 0;
       const HRESULT stateHr = device->GetState(&state);
       const bool isDefaultConsole = id == defaultId;
+      auto mixFormat = stateHr == S_OK && state == DEVICE_STATE_ACTIVE
+                           ? endpointMixFormat(device.Get())
+                           : std::nullopt;
       endpoints.push_back(
           {std::move(id), endpointName(device.Get()), flowName(flow),
            stateHr == S_OK ? endpointStateName(state) : L"unknown",
-           isDefaultConsole});
+           isDefaultConsole, std::move(mixFormat)});
     }
   }
 
@@ -1088,7 +1139,7 @@ bool runLoopbackTest(IMMDeviceEnumerator* enumerator, const std::wstring& exactN
 }
 
 bool runStreamTest(IMMDeviceEnumerator* enumerator, EDataFlow flow, AUDCLNT_SHAREMODE mode,
-                   const std::wstring& exactName, UINT32 seconds) {
+                   const std::wstring& selector, bool selectById, UINT32 seconds) {
   ComPtr<IMMDeviceCollection> devices;
   HRESULT hr = enumerator->EnumAudioEndpoints(flow, DEVICE_STATE_ACTIVE, devices.GetAddressOf());
   if (FAILED(hr)) {
@@ -1102,16 +1153,27 @@ bool runStreamTest(IMMDeviceEnumerator* enumerator, EDataFlow flow, AUDCLNT_SHAR
   ComPtr<IMMDevice> selected;
   for (UINT index = 0; index < count; ++index) {
     ComPtr<IMMDevice> candidate;
-    if (SUCCEEDED(devices->Item(index, candidate.GetAddressOf())) && endpointName(candidate.Get()) == exactName) {
+    if (FAILED(devices->Item(index, candidate.GetAddressOf())) || !candidate)
+      continue;
+    const bool matches = selectById
+                             ? kyx::windows_audio::endpointMatchesSelector(
+                                   true, selector, endpointId(candidate.Get()), L"")
+                             : kyx::windows_audio::endpointMatchesSelector(
+                                   false, selector, L"", endpointName(candidate.Get()));
+    if (matches) {
       if (selected) {
-        std::wcerr << L"Endpoint name is ambiguous; use a unique active endpoint name\n";
+        std::wcerr << (selectById ? L"Endpoint ID is unexpectedly ambiguous\n"
+                                  : L"Endpoint name is ambiguous; use an opaque endpoint ID\n");
         return false;
       }
       selected = candidate;
     }
   }
   if (!selected) {
-    std::wcerr << L"No active " << flowName(flow) << L" endpoint exactly named '" << exactName << L"'\n";
+    if (selectById)
+      std::wcerr << L"No active " << flowName(flow) << L" endpoint has the exact opaque ID requested\n";
+    else
+      std::wcerr << L"No active " << flowName(flow) << L" endpoint exactly named '" << selector << L"'\n";
     return false;
   }
 
@@ -1204,7 +1266,11 @@ void printUsage() {
       << L"  kyx-windows-audio-probe.exe --stream-test capture|render "
          L"shared|exclusive \"exact endpoint name\" [seconds] "
          L"[--exclusive-confirmed]\n"
+      << L"  kyx-windows-audio-probe.exe --stream-id-test capture|render "
+         L"shared|exclusive \"opaque endpoint ID\" [seconds] "
+         L"[--exclusive-confirmed]\n"
       << L"  Duration is 10 seconds by default and is capped at 30 seconds.\n"
+      << L"  ID selection never falls back to a name or default endpoint.\n"
       << L"  Exclusive mode requires --exclusive-confirmed because it can "
          L"interrupt other apps' audio.\n"
       << L"  Capture packets are discarded; render mode queues silence only. "
@@ -1219,11 +1285,12 @@ void printUsage() {
 struct StreamTestOptions {
   EDataFlow flow = eAll;
   AUDCLNT_SHAREMODE mode = static_cast<AUDCLNT_SHAREMODE>(-1);
-  std::wstring exactName;
+  std::wstring selector;
+  bool selectById = false;
   UINT32 seconds = 10;
 };
 
-bool parseStreamTestOptions(int argc, wchar_t** argv, StreamTestOptions* options) {
+bool parseStreamTestOptions(int argc, wchar_t** argv, bool selectById, StreamTestOptions* options) {
   if (argc < 5 || argc > 7 || !options) return false;
   const std::wstring flowArg = argv[2];
   const std::wstring modeArg = argv[3];
@@ -1231,7 +1298,10 @@ bool parseStreamTestOptions(int argc, wchar_t** argv, StreamTestOptions* options
   options->mode = modeArg == L"shared" ? AUDCLNT_SHAREMODE_SHARED
                   : modeArg == L"exclusive" ? AUDCLNT_SHAREMODE_EXCLUSIVE
                                              : static_cast<AUDCLNT_SHAREMODE>(-1);
-  options->exactName = argv[4];
+  options->selector = argv[4];
+  options->selectById = selectById;
+  if (options->selector.empty() || options->selector.size() > (selectById ? 2048 : 512))
+    return false;
 
   bool exclusiveConfirmed = false;
   if (argc >= 6) {
@@ -1252,7 +1322,7 @@ bool parseStreamTestOptions(int argc, wchar_t** argv, StreamTestOptions* options
 
   return (options->flow == eCapture || options->flow == eRender) &&
          (options->mode == AUDCLNT_SHAREMODE_SHARED || options->mode == AUDCLNT_SHAREMODE_EXCLUSIVE) &&
-         !options->exactName.empty() &&
+         !options->selector.empty() &&
          (options->mode == AUDCLNT_SHAREMODE_SHARED ? !exclusiveConfirmed
                                                      : exclusiveConfirmed);
 }
@@ -1282,7 +1352,9 @@ int wmain(int argc, wchar_t** argv) {
     printUsage();
     return 0;
   }
-  const bool streamMode = argc > 1 && std::wstring(argv[1]) == L"--stream-test";
+  const bool streamByName = argc > 1 && std::wstring(argv[1]) == L"--stream-test";
+  const bool streamById = argc > 1 && std::wstring(argv[1]) == L"--stream-id-test";
+  const bool streamMode = streamByName || streamById;
   const bool loopbackMode = argc > 1 && std::wstring(argv[1]) == L"--loopback-test";
   const bool endpointJsonMode =
       argc > 1 && std::wstring(argv[1]) == L"--list-json";
@@ -1291,7 +1363,7 @@ int wmain(int argc, wchar_t** argv) {
   if (!endpointJsonMode)
     std::wcout << L"KYX Windows audio capability probe\n";
   if (streamMode) {
-    if (!parseStreamTestOptions(argc, argv, &streamOptions)) {
+    if (!parseStreamTestOptions(argc, argv, streamById, &streamOptions)) {
       std::wcerr << L"Invalid stream-test arguments\n";
       printUsage();
       return 2;
@@ -1339,8 +1411,8 @@ int wmain(int argc, wchar_t** argv) {
       exitCode = listEndpointsAsJson(enumerator.Get()) ? 0 : 1;
     } else if (streamMode) {
       exitCode = runStreamTest(enumerator.Get(), streamOptions.flow,
-                               streamOptions.mode, streamOptions.exactName,
-                               streamOptions.seconds)
+                               streamOptions.mode, streamOptions.selector,
+                               streamOptions.selectById, streamOptions.seconds)
                      ? 0
                      : 1;
     } else if (loopbackMode) {

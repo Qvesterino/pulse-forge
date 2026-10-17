@@ -20,7 +20,7 @@
  *
  * Messaging (node.port, main thread -> worklet):
  *  {type:"tables", levels:[Float32Array[]], ks:number[]}  mipmapped table
- *  {type:"noteOn", pitch, velocity, when}                 absolute ctx time
+ *  {type:"noteOn", pitch, velocity, when, releaseVelocity?} absolute ctx time
  *  {type:"noteOff", pitch, when}
  *  {type:"pressure", pitch, value}                        MPE poly aftertouch
  *  {type:"panic"}
@@ -48,6 +48,12 @@ function svfCoeffs(f, q, sr) {
 const UNISON_MAX = 8;
 const VOICES_MAX = 8;
 const GOLDEN = 2.399963; // golden-angle spread for per-voice phase decorrelation
+
+function noteReleaseSeconds(baseSeconds, value) {
+  const base = Number.isFinite(baseSeconds) ? Math.max(0.005, baseSeconds) : 0.25;
+  const releaseVelocity = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0.5;
+  return Math.max(0.005, base * (0.25 + releaseVelocity * 1.5));
+}
 
 class WtTables {
   constructor() {
@@ -91,6 +97,8 @@ class WtVoice {
     this.pitch = 60;
     this.f0 = 261.63;
     this.vel = 0;
+    this.releaseVelocity = 0.5;
+    this.releaseSeconds = Math.max(0.005, params.release ?? 0.25);
     this.pressure = 0;
     this.levelIndex = 0;
     this.morphBase = params.morph;
@@ -115,13 +123,15 @@ class WtVoice {
     this.copyCount = 0;
   }
 
-  noteOn(pitch, velocity) {
+  noteOn(pitch, velocity, releaseVelocity) {
     this.active = true;
     this.gate = true;
     this.dead = false;
     this.pitch = pitch;
     this.f0 = 440 * Math.pow(2, (pitch - 69) / 12);
     this.vel = velocity;
+    this.releaseVelocity = Number.isFinite(releaseVelocity) ? Math.max(0, Math.min(1, releaseVelocity)) : 0.5;
+    this.releaseSeconds = noteReleaseSeconds(this.p.release ?? 0.25, this.releaseVelocity);
     this.pressure = 0;
     this.env = 0;
     this.stage = "attack";
@@ -163,6 +173,7 @@ class WtVoice {
   release() {
     this.gate = false;
     this.stage = "release";
+    this.releaseSeconds = noteReleaseSeconds(this.p.release ?? 0.25, this.releaseVelocity);
   }
 }
 
@@ -228,6 +239,9 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
           kind: "on",
           pitch: msg.pitch,
           velocity: Number.isFinite(msg.velocity) ? Math.max(0, Math.min(1, msg.velocity)) : 0.8,
+          releaseVelocity: Number.isFinite(msg.releaseVelocity)
+            ? Math.max(0, Math.min(1, msg.releaseVelocity))
+            : undefined,
         });
         this.events.sort((a, b) => a.when - b.when);
         break;
@@ -282,7 +296,7 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
         this.voices.push(voice);
       }
     }
-    voice.noteOn(ev.pitch, ev.velocity);
+    voice.noteOn(ev.pitch, ev.velocity, ev.releaseVelocity);
   }
 
   triggerOff(pitch) {
@@ -324,7 +338,6 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
       for (const v of this.voices) {
         if (!v.active) continue;
         // Amp envelope: exponential attack / release (one-pole per sample).
-        const tau = v.stage === "attack" ? Math.max(0.002, p.attack) / 3 : Math.max(0.005, p.release) / 3;
         // Sustain HOLDS the env at 1 — only release targets zero. (A previous
         // draft decayed during sustain, killing every note after ~50 ms.)
         if (v.stage === "attack") {
@@ -332,7 +345,7 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
           v.env += (1 - v.env) * (1 - Math.exp(-dt / tau));
           if (v.env > 0.985) v.stage = "sustain";
         } else if (v.stage === "release") {
-          const tauR = Math.max(0.005, p.release) / 3;
+          const tauR = v.releaseSeconds / 3;
           v.env += (0 - v.env) * (1 - Math.exp(-dt / tauR));
           if (v.env < 0.0004) {
             v.dead = true;

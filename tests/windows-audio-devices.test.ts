@@ -34,15 +34,31 @@ class FakeChild extends EventEmitter {
 }
 
 const payload = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   endpoints: [
-    { id: "opaque-capture-device-id", name: "Volt Capture", flow: "capture", state: "active", isDefaultConsole: true },
+    {
+      id: "opaque-capture-device-id",
+      name: "Volt Capture",
+      flow: "capture",
+      state: "active",
+      isDefaultConsole: true,
+      mixFormat: {
+        channels: 2,
+        sampleRateHz: 48000,
+        bitsPerSample: 32,
+        validBitsPerSample: 32,
+        floatingPoint: true,
+        channelMask: 3,
+        sharedPeriods: { defaultFrames: 480, fundamentalFrames: 480, minFrames: 480, maxFrames: 1440 },
+      },
+    },
     {
       id: "opaque-render-device-id",
       name: "Volt Monitor",
       flow: "render",
       state: "unplugged",
       isDefaultConsole: false,
+      mixFormat: null,
     },
   ],
 };
@@ -79,20 +95,40 @@ describe("Windows endpoint discovery boundary", () => {
   });
 
   it("rejects duplicate IDs, unknown state, oversized records and wrong schema", () => {
-    expect(validateEndpointPayload({ schemaVersion: 2, endpoints: [] })).toBeNull();
+    expect(validateEndpointPayload({ schemaVersion: 1, endpoints: [] })).toBeNull();
     expect(
-      validateEndpointPayload({ schemaVersion: 1, endpoints: [{ ...payload.endpoints[0], state: "default" }] }),
+      validateEndpointPayload({ schemaVersion: 2, endpoints: [{ ...payload.endpoints[0], state: "default" }] }),
     ).toBeNull();
     expect(
       validateEndpointPayload({
-        schemaVersion: 1,
+        schemaVersion: 2,
         endpoints: [payload.endpoints[0], { ...payload.endpoints[0], name: "duplicate" }],
       }),
     ).toBeNull();
     expect(
       validateEndpointPayload({
-        schemaVersion: 1,
+        schemaVersion: 2,
         endpoints: [{ ...payload.endpoints[0], id: "x".repeat(2049) }],
+      }),
+    ).toBeNull();
+    expect(
+      validateEndpointPayload({
+        schemaVersion: 2,
+        endpoints: [{ ...payload.endpoints[0], mixFormat: { ...payload.endpoints[0].mixFormat, channels: 0 } }],
+      }),
+    ).toBeNull();
+    expect(
+      validateEndpointPayload({
+        schemaVersion: 2,
+        endpoints: [
+          {
+            ...payload.endpoints[0],
+            mixFormat: {
+              ...payload.endpoints[0].mixFormat,
+              sharedPeriods: { defaultFrames: 1441, fundamentalFrames: 128, minFrames: 480, maxFrames: 1440 },
+            },
+          },
+        ],
       }),
     ).toBeNull();
   });
@@ -147,7 +183,7 @@ describe("Windows endpoint discovery boundary", () => {
   it("registers one narrow preload-only IPC handler", async () => {
     const handlers = new Map<string, () => Promise<unknown>>();
     const ipc = { handle: (channel: string, handler: () => Promise<unknown>) => handlers.set(channel, handler) };
-    const manager = { list: vi.fn().mockResolvedValue({ status: "ok", schemaVersion: 1, endpoints: [] }) };
+    const manager = { list: vi.fn().mockResolvedValue({ status: "ok", schemaVersion: 2, endpoints: [] }) };
     registerWindowsAudioEndpointHandlers(ipc, { manager });
 
     expect([...handlers.keys()]).toEqual(["kyx:audio:windows-endpoints"]);

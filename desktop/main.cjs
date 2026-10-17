@@ -16,7 +16,18 @@
  *   3. no service worker (the PWA layer is browser-only),
  *   4. `window.kyxDesktop.isDesktop` so the app skips the web landing page.
  */
-const { app, BrowserWindow, protocol, session, dialog, net, Menu, ipcMain } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  protocol,
+  session,
+  dialog,
+  net,
+  Menu,
+  ipcMain,
+  MessageChannelMain,
+  utilityProcess,
+} = require("electron");
 const { autoUpdater } = require("electron-updater");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -32,10 +43,12 @@ const { Mrt2NativeHostManager } = require("./mrt2-host-manager.cjs");
 const { Mrt2WindowsHostManager } = require("./mrt2-windows-host-manager.cjs");
 const { Mrt2Wsl2HostManager } = require("./mrt2-wsl2-host-manager.cjs");
 const { withAudioIsolationHeaders } = require("./audio-isolation.cjs");
+const AUDIO_BRIDGE_SMOKE_WORKLET = require("./audio-bridge-smoke-worklet.cjs");
 
 const DIST_DIR = path.join(__dirname, "..", "dist");
 const APP_URL = "app://bundle/index.html";
 const IS_SMOKE = process.env.KYX_SMOKE === "1";
+if (IS_SMOKE) app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
 let mainWindow = null;
 let quittingAfterMrt2Stop = false;
@@ -318,12 +331,14 @@ async function manualUpdateCheck() {
 
 /**
  * Headless-ish smoke (scripts/desktop-smoke.mjs): boot the packaged build,
- * verify the renderer mounts over app:// and no page/preload errors fire,
- * then exit 0/1 so CI or a human can gate on it.
+ * verify the renderer mounts over app://, no page/preload errors fire, and a
+ * silent AudioWorklet can exchange PCM periods with an isolated utility host.
+ * The latter is a transport smoke only, not a WASAPI or audible-playback test.
  */
 function runSmoke() {
   const win = mainWindow;
   const errors = [];
+  let finished = false;
   const timeout = setTimeout(() => finish("timeout"), 30_000);
   win.webContents.on("console-message", (event) => {
     // Electron ≥32 passes the details as event params; the legacy
@@ -337,7 +352,166 @@ function runSmoke() {
     errors.push(`render-process-gone: ${details.reason}`);
   });
 
-  function finish(why) {
+  async function runAudioBridgeProbe() {
+    const requestId = "desktop-audio-bridge-smoke-v1";
+    const host = utilityProcess.fork(path.join(__dirname, "audio-bridge-smoke-host.cjs"), [], {
+      cwd: __dirname,
+    });
+    let hostExited = false;
+    let utilityPortAttached = false;
+    let utilityReceivedFirstPeriod = false;
+    let probeSettled = false;
+    let resolveProbe;
+    let rejectProbe;
+    const probeResult = new Promise((resolve, reject) => {
+      resolveProbe = resolve;
+      rejectProbe = reject;
+    });
+    const settleProbe = (callback, value) => {
+      if (probeSettled) return;
+      probeSettled = true;
+      callback(value);
+    };
+    host.once("exit", (code) => {
+      hostExited = true;
+      if (!probeSettled) settleProbe(rejectProbe, new Error(`audio utility exited with code ${code}`));
+    });
+    host.on("message", (message) => {
+      if (message?.type === "port-attached") utilityPortAttached = true;
+      if (message?.type === "first-period-received") utilityReceivedFirstPeriod = true;
+      if (message?.type === "probe-result") settleProbe(resolveProbe, message.result);
+      if (message?.type === "probe-error") settleProbe(rejectProbe, new Error(message.message || "PCM probe failed"));
+    });
+
+    const waitForHostExit = (timeoutMs) =>
+      new Promise((resolve) => {
+        const onExit = () => {
+          clearTimeout(timer);
+          resolve(true);
+        };
+        const timer = setTimeout(() => {
+          host.removeListener("exit", onExit);
+          resolve(false);
+        }, timeoutMs);
+        host.once("exit", onExit);
+      });
+
+    const workletSourceLiteral = JSON.stringify(AUDIO_BRIDGE_SMOKE_WORKLET);
+    try {
+      await win.webContents.executeJavaScript(`(() => {
+        const requestId = "${requestId}";
+        window.__kyxAudioBridgeResult = { status: "preparing" };
+        const resources = { context: null, node: null, silent: null };
+        window.__kyxAudioBridgeResources = resources;
+        const fail = (error) => {
+          window.__kyxAudioBridgeResult = { status: "failed", error: error.message || String(error) };
+          resources.node?.disconnect();
+          resources.silent?.disconnect();
+          if (resources.context && resources.context.state !== "closed") void resources.context.close();
+        };
+        const onPort = (event) => {
+          const data = event.data;
+          if (data?.requestId !== requestId || data.type !== "kyx:audio:bridge-port") return;
+          if (event.origin !== location.origin || !resources.node) {
+            data.port?.close?.();
+            fail(new Error("audio bridge port did not arrive from the ready app context"));
+            return;
+          }
+          resources.node.port.postMessage({ type: "attach", port: data.port }, [data.port]);
+        };
+        window.addEventListener("message", onPort);
+        const start = async () => {
+          const context = new AudioContext({ latencyHint: "interactive", sampleRate: 48000 });
+          resources.context = context;
+          const moduleUrl = URL.createObjectURL(new Blob([${workletSourceLiteral}], { type: "text/javascript" }));
+          try {
+            await context.audioWorklet.addModule(moduleUrl);
+          } finally {
+            URL.revokeObjectURL(moduleUrl);
+          }
+          const node = new AudioWorkletNode(context, "kyx-audio-bridge-smoke", {
+            numberOfInputs: 0,
+            numberOfOutputs: 1,
+            outputChannelCount: [2],
+          });
+          const silent = context.createGain();
+          silent.gain.value = 0;
+          node.connect(silent);
+          silent.connect(context.destination);
+          resources.node = node;
+          resources.silent = silent;
+          node.port.onmessage = (messageEvent) => {
+            const message = messageEvent.data;
+            if (message?.type === "result") {
+              window.__kyxAudioBridgeResult = message.result;
+              window.removeEventListener("message", onPort);
+              node.disconnect();
+              silent.disconnect();
+              void context.close();
+            } else if (message?.type === "failed") {
+              fail(new Error(message.message || "AudioWorklet PCM bridge failed"));
+            }
+          };
+          await context.resume();
+          if (context.state !== "running") throw new Error("Silent AudioWorklet probe context did not start");
+          window.__kyxAudioBridgeResult = { status: "ready", sampleRateHz: context.sampleRate };
+        };
+        void start().catch(fail);
+        return true;
+      })()`);
+
+      const setupDeadline = Date.now() + 10_000;
+      let setupResult;
+      while (Date.now() < setupDeadline) {
+        setupResult = await win.webContents.executeJavaScript("window.__kyxAudioBridgeResult");
+        if (setupResult?.status === "ready") break;
+        if (setupResult?.status === "failed") throw new Error(setupResult.error || "AudioWorklet setup failed");
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      if (setupResult?.status !== "ready") throw new Error("AudioWorklet setup timed out");
+
+      const { port1, port2 } = new MessageChannelMain();
+      host.postMessage({ type: "attach" }, [port1]);
+      win.webContents.postMessage("kyx:audio:bridge-port", { requestId }, [port2]);
+      let resultTimeout;
+      let result;
+      try {
+        result = await Promise.race([
+          probeResult,
+          new Promise((_, reject) => {
+            resultTimeout = setTimeout(() => reject(new Error("PCM MessagePort probe result timed out")), 13_000);
+          }),
+        ]);
+      } catch (error) {
+        throw new Error(
+          `${error instanceof Error ? error.message : String(error)}; utilityPortAttached=${utilityPortAttached}; utilityReceivedFirstPeriod=${utilityReceivedFirstPeriod}`,
+        );
+      } finally {
+        clearTimeout(resultTimeout);
+      }
+      if (!result?.ok || result.sent !== 100 || result.received !== 100) {
+        throw new Error("PCM MessagePort probe did not complete every 10 ms block");
+      }
+      return result;
+    } finally {
+      if (!hostExited) {
+        try {
+          host.postMessage({ type: "shutdown" });
+        } catch {
+          /* The utility may already be exiting after a failed probe. */
+        }
+        const stoppedCleanly = await waitForHostExit(1000);
+        if (!stoppedCleanly && !hostExited) {
+          host.kill();
+          await waitForHostExit(500);
+        }
+      }
+    }
+  }
+
+  function finish(why, audioBridge = null) {
+    if (finished) return;
+    finished = true;
     clearTimeout(timeout);
     win.webContents
       .executeJavaScript(
@@ -355,6 +529,7 @@ function runSmoke() {
           state.origin === "app://bundle" &&
           state.crossOriginIsolated &&
           state.sharedArrayBufferAvailable &&
+          audioBridge?.ok === true &&
           errors.length === 0;
         console.log(
           JSON.stringify(
@@ -365,6 +540,7 @@ function runSmoke() {
               rootMounted: state.rootMounted,
               crossOriginIsolated: state.crossOriginIsolated,
               sharedArrayBufferAvailable: state.sharedArrayBufferAvailable,
+              audioBridge,
               errors,
             },
             null,
@@ -381,6 +557,13 @@ function runSmoke() {
 
   win.webContents.once("did-finish-load", () => {
     // Give lazy boot work (services, IndexedDB open) a moment to surface errors.
-    setTimeout(() => finish("loaded"), 3_000);
+    setTimeout(() => {
+      void runAudioBridgeProbe()
+        .then((audioBridge) => finish("loaded", audioBridge))
+        .catch((error) => {
+          errors.push(`audio bridge probe: ${error instanceof Error ? error.message : String(error)}`);
+          finish("audio-bridge-failed", { ok: false });
+        });
+    }, 3_000);
   });
 }

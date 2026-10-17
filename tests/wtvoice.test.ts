@@ -67,7 +67,7 @@ function makeTables(): { levels: Float32Array[][]; ks: number[] } {
 
 function run(
   params: Record<string, number>,
-  notes: Array<{ pitch: number; velocity: number; when: number; dur: number }>,
+  notes: Array<{ pitch: number; velocity: number; when: number; dur: number; releaseVelocity?: number }>,
   duration: number,
   pressure?: { pitch: number; value: number; at: number },
 ): Float32Array {
@@ -81,7 +81,13 @@ function run(
     proc.handleMessage({ type: "param", name, value });
   }
   for (const n of notes) {
-    proc.handleMessage({ type: "noteOn", pitch: n.pitch, velocity: n.velocity, when: n.when });
+    proc.handleMessage({
+      type: "noteOn",
+      pitch: n.pitch,
+      velocity: n.velocity,
+      when: n.when,
+      releaseVelocity: n.releaseVelocity,
+    });
     proc.handleMessage({ type: "noteOff", pitch: n.pitch, when: n.when + n.dur });
   }
   // Pressure is aftertouch — dispatch it mid-render when the voice exists
@@ -166,6 +172,27 @@ describe("wtvoice worklet engine", () => {
     console.log("DBG peak whole:", peak(out).toFixed(4), "peak 0-0.3s:", peak(out, 0, Math.floor(0.3 * SR)).toFixed(4));
     expect(peak(out, 0, Math.floor(0.3 * SR))).toBeGreaterThan(0.01);
     expect(peak(out, Math.floor(1.0 * SR))).toBeLessThan(0.001);
+  });
+
+  it("applies release velocity to the held wavetable voice without changing its attack", () => {
+    const note = { pitch: 60, velocity: 0.9, when: 0.05, dur: 0.25 };
+    const baseline = run({}, [note], 0.9);
+    const neutral = run({}, [{ ...note, releaseVelocity: 0.5 }], 0.9);
+    const short = run({}, [{ ...note, releaseVelocity: 0 }], 0.9);
+    const long = run({}, [{ ...note, releaseVelocity: 1 }], 0.9);
+    const noteOffFrame = Math.floor((note.when + note.dur) * SR);
+    let neutralDifference = 0;
+    let preReleaseDifference = 0;
+    for (let i = 0; i < neutral.length; i++)
+      neutralDifference = Math.max(neutralDifference, Math.abs(neutral[i]! - baseline[i]!));
+    for (let i = 0; i < noteOffFrame; i++)
+      preReleaseDifference = Math.max(preReleaseDifference, Math.abs(short[i]! - long[i]!));
+
+    expect(neutralDifference).toBe(0);
+    expect(preReleaseDifference).toBe(0);
+    expect(rms(long, Math.floor(0.32 * SR), Math.floor(0.5 * SR))).toBeGreaterThan(
+      rms(short, Math.floor(0.32 * SR), Math.floor(0.5 * SR)) * 1.5,
+    );
   });
 
   it("mod matrix: LFO -> cutoff actually modulates the filter", () => {

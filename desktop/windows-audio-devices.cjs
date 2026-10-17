@@ -18,13 +18,13 @@ function defaultEndpointProbePath(resourcesPath) {
 }
 
 function validateEndpointPayload(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value) || value.schemaVersion !== 1) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value) || value.schemaVersion !== 2) return null;
   if (!Array.isArray(value.endpoints) || value.endpoints.length > MAX_ENDPOINTS) return null;
   const seen = new Set();
   const endpoints = [];
   for (const item of value.endpoints) {
     if (!item || typeof item !== "object" || Array.isArray(item)) return null;
-    const { id, name, flow, state, isDefaultConsole } = item;
+    const { id, name, flow, state, isDefaultConsole, mixFormat } = item;
     if (
       typeof id !== "string" ||
       id.trim().length === 0 ||
@@ -34,16 +34,49 @@ function validateEndpointPayload(value) {
       name.length > 512 ||
       !FLOWS.has(flow) ||
       !STATES.has(state) ||
-      typeof isDefaultConsole !== "boolean"
+      typeof isDefaultConsole !== "boolean" ||
+      (mixFormat !== null && !isValidMixFormat(mixFormat))
     ) {
       return null;
     }
     const key = `${flow}\0${id}`;
     if (seen.has(key)) return null;
     seen.add(key);
-    endpoints.push({ id, name, flow, state, isDefaultConsole });
+    endpoints.push({ id, name, flow, state, isDefaultConsole, mixFormat });
   }
-  return { schemaVersion: 1, endpoints };
+  return { schemaVersion: 2, endpoints };
+}
+
+function isBoundedInteger(value, min, max) {
+  return Number.isSafeInteger(value) && value >= min && value <= max;
+}
+
+function isValidMixFormat(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const { channels, sampleRateHz, bitsPerSample, validBitsPerSample, floatingPoint, channelMask, sharedPeriods } =
+    value;
+  if (
+    !isBoundedInteger(channels, 1, 32) ||
+    !isBoundedInteger(sampleRateHz, 8000, 384000) ||
+    ![8, 16, 24, 32, 64].includes(bitsPerSample) ||
+    !isBoundedInteger(validBitsPerSample, 1, bitsPerSample) ||
+    typeof floatingPoint !== "boolean" ||
+    !isBoundedInteger(channelMask, 0, 0xffffffff)
+  ) {
+    return false;
+  }
+  if (floatingPoint && ![32, 64].includes(bitsPerSample)) return false;
+  if (sharedPeriods === null) return true;
+  if (!sharedPeriods || typeof sharedPeriods !== "object" || Array.isArray(sharedPeriods)) return false;
+  const { defaultFrames, fundamentalFrames, minFrames, maxFrames } = sharedPeriods;
+  return (
+    isBoundedInteger(defaultFrames, 1, 1_048_576) &&
+    isBoundedInteger(fundamentalFrames, 1, 1_048_576) &&
+    isBoundedInteger(minFrames, 1, 1_048_576) &&
+    isBoundedInteger(maxFrames, minFrames, 1_048_576) &&
+    defaultFrames >= minFrames &&
+    defaultFrames <= maxFrames
+  );
 }
 
 class WindowsAudioEndpointManager {

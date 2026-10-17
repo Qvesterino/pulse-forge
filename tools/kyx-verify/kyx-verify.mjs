@@ -16,11 +16,13 @@
  *                     re-render (open the project in KYX, export, compare).
  *
  * ZERO DEPENDENCIES on purpose: the protocol is only worth something if an
- * outsider can check a file with `node tools/kyx-verify.mjs file.wav`. The
- * optional `--share-code` check uses the same lz-string package the app uses
- * and degrades HONESTLY ("skipped") when it is not installed — never a fake
- * pass. `tests/kyx-verify.test.ts` pins that this parser and the app's parser
- * agree on the same bytes, so the two implementations cannot drift silently.
+ * outsider can check a file with `npx kyx-verify file.wav`. The optional
+ * `--share-code` check uses the same lz-string package the app uses and
+ * degrades HONESTLY ("skipped") when it is not installed — never a fake pass.
+ *
+ * Conformance is pinned in the KYX repository: `tests/kyx-verify.test.ts`
+ * asserts that this parser and the app's parser agree on the same bytes, and
+ * runs this file as a process with the exit codes below.
  *
  * Exit codes:  0 verified / readable manifest · 1 no usable manifest ·
  *              2 integrity or expectation MISMATCH.
@@ -331,7 +333,7 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   if (!options.file) {
     console.error(
-      "usage: node tools/kyx-verify.mjs <file.wav> [--json] [--expect <sha256>] [--share-code <token>] [--print-ixml]",
+      "usage: npx kyx-verify <file.wav> [--json] [--expect <sha256>] [--share-code <token>] [--print-ixml]",
     );
     process.exit(1);
   }

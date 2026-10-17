@@ -135,20 +135,32 @@ and [recovering from an invalid device](https://learn.microsoft.com/en-us/window
   `SharedArrayBuffer` was available, and no renderer/preload errors fired. A
   focused Electron probe also verified that a buffer created in an isolated
   preload stayed shared with the page through `window.postMessage`.
-  `crossOriginIsolated === true` and a buffer created in an isolated preload
-  stayed shared with the page through `window.postMessage`. Electron's
-  `ipcRenderer.invoke` and main-to-renderer `webContents.postMessage` both
+  Electron's `ipcRenderer.invoke` and main-to-renderer `webContents.postMessage` both
   rejected the buffer with `An object could not be cloned`; the existing
   main-process pipe-to-renderer-ring path is therefore invalid. A native N-API
   marker module, compiled with Electron's Windows delay-load hook, loaded in an
   Electron 44.4.3 runtime and wrote the same ring visible to the page. The
   delay-load hook is required by Electron's [Windows native-module contract](https://www.electronjs.org/docs/latest/tutorial/using-native-node-modules).
-  This makes an in-renderer native audio callback a viable spike direction, not a
-  shipped stream. It requires an explicit security review because the current
-  BrowserWindow is sandboxed and loading a native module from preload requires
-  disabling that renderer sandbox while retaining context isolation and
-  `nodeIntegration: false`. The scratch harness is removed after the spike;
-  external-resource and full-project smoke under COEP remain open.
+  This proved only technical possibility, not a selected product architecture.
+  Loading that addon in renderer preload requires `sandbox: false`; Electron
+  recommends renderer sandboxing and warns about unsandboxed renderers when
+  untrusted content is present ([sandboxing](https://www.electronjs.org/docs/latest/tutorial/sandbox),
+  [security](https://www.electronjs.org/docs/latest/tutorial/security)). The
+  later utility-process probe preserves the current renderer sandbox.
+- **Sandboxed AudioWorklet ↔ utility-process PCM transport (2026-10-17):**
+  Electron's [utility process](https://www.electronjs.org/docs/latest/api/utility-process)
+  and [process model](https://www.electronjs.org/docs/latest/tutorial/process-model)
+  document a separate Node-capable process with MessagePort communication to
+  renderers. The current desktop smoke now exercises that route without
+  disabling the renderer sandbox: an actual silent AudioWorklet sends
+  100 sequential 480-frame stereo Float32 blocks at 48 kHz through a dedicated
+  `MessageChannelMain` pair to a utility process and validates each returned
+  block. Electron 44.4.3 completed 100/100 with p95 and maximum measured
+  AudioWorklet-frame round-trip of 2 ms and no renderer/preload errors. The
+  utility returns synthetic marker blocks; this proves the transport seam only,
+  not WASAPI capture/render, AudioEngine routing, analog latency or a sustained
+  stream. Keep the renderer sandbox enabled and use this as the candidate host
+  boundary for the next native WASAPI implementation.
 - **Implementation checkpoint (2026-10-17):**
   `src/audio-engine/windowsAudioIo.ts` now defines the typed duplex contract
   for endpoint enumeration, exact endpoint/channel selection, format/period
@@ -156,13 +168,22 @@ and [recovering from an invalid device](https://learn.microsoft.com/en-us/window
   and xrun reports. Its seven contract tests reject endpoint/channel
   substitution, invalid IAudioClient3 shared periods and exclusive mode
   without explicit acknowledgement. `native/windows-audio-probe/main.cpp`
-  now supports a metadata-only `--list-json` mode that enumerates all Core
-  Audio endpoint states without opening streams. `desktop/windows-audio-devices.cjs`
-  bounds and validates that response before a narrow preload API exposes it in
-  the Studio I/O panel. Seven IPC-boundary tests, four CTest checks and a live
-  Windows enumeration pass verify the discovery path. It still does not drive
-  native stream selection. This does not add a Windows adapter or change the
-  product support status; native I/O remains not shipped.
+  supports a metadata-only `--list-json` mode that enumerates all Core Audio
+  endpoint states without opening streams. Active endpoints now include their
+  current engine mix format (including container/valid bits) and queried
+  `IAudioClient3` shared-period range when available. Range metadata is not
+  rejected merely because its boundaries are not fundamental-period multiples;
+  alignment is enforced on the requested stream period during negotiation.
+  `desktop/windows-audio-devices.cjs` bounds and validates the
+  v2 response before a narrow preload API exposes it in the Studio I/O panel.
+  The UI labels these as current mix diagnostics, not a full supported-format
+  list. This does not drive native stream selection. This does not add a
+  Windows adapter or change the product support status; native I/O remains not
+  shipped. The diagnostic's explicit bounded stream test now also accepts the
+  exact opaque endpoint ID from enumeration; unit checks prove an ID never
+  falls back to a matching name. The Windows probe's five CTest checks pass,
+  including exact-ID and no-name-fallback selection. The product still has no
+  user-available native stream control.
 - **Browser output lifecycle (2026-10-17):** `IoPanel` subscribes to live
   `AudioEngine` context changes and reapplies the exact saved browser sink to
   each replacement context. Application calls are serialized so a delayed
@@ -172,10 +193,10 @@ and [recovering from an invalid device](https://learn.microsoft.com/en-us/window
   WASAPI selection or acoustic latency evidence.
 - Native Windows I/O remains **not shipped**. The decision records an evidence-
   led direction, not a user-facing support claim.
-- The next engineering step is a measured Electron-to-host PCM bridge spike.
-  No native host is integrated until
-  callback isolation, bounded buffering, duplex clock behavior and
-  shutdown/recovery pass software tests.
+- The next engineering step is to put a WASAPI shared-mode adapter inside the
+  isolated utility process, then verify actual endpoint negotiation, callback
+  isolation, bounded buffering, duplex clocks, device-loss recovery and a
+  hardware loopback. No native host is integrated yet.
 - The Volt reference setup stays **Open** while the device is absent and until
   physical channel mapping, analog latency, recovery and the sustained soak
   have evidence. The current record is in the

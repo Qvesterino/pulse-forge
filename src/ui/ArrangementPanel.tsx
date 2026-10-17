@@ -159,11 +159,19 @@ import {
   addRecordedAudioTakeClip,
   clipLengthBars,
   compensateRecordingStartBar,
+  recordedLoopPasses,
   recordedTakeAlreadyPlaced,
   resolveRecordedAudioDestinations,
   recordedPunchWindow,
   recordingStartBar,
 } from "./timelineRec";
+import {
+  MANUAL_ALIGN_SEARCH_SEC,
+  autoAlignShiftSec,
+  formatShiftMs,
+  measurePhraseOnset,
+  passAlignShifts,
+} from "../audio-engine/vocal-alignment";
 import { useCurrentItemId, usePlayheadBar } from "./playhead";
 import { useLongPress } from "./useLongPress";
 import type { Transport } from "../transport/Transport";
@@ -679,6 +687,8 @@ export function ArrangementPanel() {
   const [micClipped, setMicClipped] = useState(false);
   const [recError, setRecError] = useState<string | null>(null);
   const [recStorageWarning, setRecStorageWarning] = useState<string | null>(null);
+  /** Post-placement informational line (e.g. "phrase aligned +38 ms"). */
+  const [recNotice, setRecNotice] = useState<string | null>(null);
   const recRef = useRef<import("../audio-engine/PcmMicRecorder").PcmMicRecorder | null>(null);
   const recStartPendingRef = useRef(false);
   const recStartAttemptRef = useRef(0);
@@ -913,6 +923,7 @@ export function ArrangementPanel() {
     const attempt = ++recStartAttemptRef.current;
     setRecState("starting");
     setRecError(null);
+    setRecNotice(null);
     setRecStorageWarning(null);
     setLastCaptureInfo(null);
     let recorder: import("../audio-engine/PcmMicRecorder").PcmMicRecorder | null = null;
@@ -1289,17 +1300,70 @@ export function ArrangementPanel() {
         const lengthBars =
           punchWindow?.lengthBars ??
           clipLengthBars(take.buffer.duration - (take.session.leadInSec ?? 0), currentDoc.bpm);
+        // VOCAL-FIRST ALIGNMENT. The device path is already compensated above
+        // (recordingInputOffsetMs); this is the HUMAN path: a phrase that
+        // started a latency-scale step late gets its leading silence skipped,
+        // so it lands on the entry it was recorded for. Bounded on purpose —
+        // a deliberate late entry (pickup, beat 3) is a musical choice, so only
+        // a confident shift within AUTO_ALIGN_MAX_SHIFT_SEC is applied, and it
+        // rides INSIDE the placement command: one undo removes take and
+        // correction together.
+        // The measurement is OPTIONAL — the placement is not. A buffer without
+        // channel data (a stub, a broken decode) gets no alignment instead of
+        // taking the whole take down with it.
+        const alignmentChannels: Float32Array[] = [];
+        try {
+          for (let channel = 0; channel < take.buffer.numberOfChannels; channel += 1) {
+            const data = take.buffer.getChannelData(channel);
+            if (data != null && data.length > 0) alignmentChannels.push(data);
+          }
+        } catch {
+          /* alignment is best-effort by design */
+        }
+        // The same pure derivation the loop builder performs from the session's
+        // own numbers; a length mismatch there is ignored rather than guessed.
+        const loopPasses = take.session.loopCapture
+          ? recordedLoopPasses(
+              take.session.totalFrames,
+              take.session.sampleRate,
+              take.session.takeBoundaries,
+              take.session.bpm,
+              take.session.id,
+            )
+          : [];
+        const alignShifts = take.session.loopCapture
+          ? passAlignShifts(alignmentChannels, take.session.sampleRate, loopPasses)
+          : [];
+        const singleAlignShift = take.session.loopCapture
+          ? 0
+          : autoAlignShiftSec(measurePhraseOnset(alignmentChannels, take.buffer.sampleRate));
+        const appliedShifts = take.session.loopCapture
+          ? alignShifts.filter((shift) => shift > 0)
+          : singleAlignShift > 0
+            ? [singleAlignShift]
+            : [];
+        if (appliedShifts.length > 0) {
+          const average = appliedShifts.reduce((sum, shift) => sum + shift, 0) / appliedShifts.length;
+          setRecNotice(
+            take.session.loopCapture
+              ? `${appliedShifts.length} take pass(es) aligned onto their entry (${formatShiftMs(average)} average).`
+              : `Take placed — the phrase was aligned onto its entry (${formatShiftMs(average)}).`,
+          );
+        } else {
+          setRecNotice(null);
+        }
         const patch = {
           fadeIn: 0.005,
           fadeOut: 0.02,
-          // D1: skip the count-in/pre-roll head captured before content.
-          offsetSec: punchWindow?.offsetSec ?? take.session.leadInSec ?? 0,
+          // D1: skip the count-in/pre-roll head captured before content; then
+          // the measured phrase alignment, if any.
+          offsetSec: Math.max(0, (punchWindow?.offsetSec ?? take.session.leadInSec ?? 0) + singleAlignShift),
         };
         if (take.session.loopCapture && take.session.takeGroupId) {
           if (routing.destinations.length !== 1 || routing.destinations[0]?.trackId !== take.session.trackId) {
             throw new Error("The saved loop take no longer has its original single-track routing");
           }
-          services.store.execute(addRecordedLoopSession(currentDoc, take.session, bufferId, patch));
+          services.store.execute(addRecordedLoopSession(currentDoc, take.session, bufferId, patch, alignShifts));
           setRecordingTakeGroupSelection(take.session.takeGroupId);
         } else if (take.session.takeGroupId && take.session.takeId) {
           if (routing.destinations.length !== 1 || routing.destinations[0]?.trackId !== take.session.trackId) {
@@ -3892,6 +3956,11 @@ export function ArrangementPanel() {
                   {recError}
                 </span>
               )}
+              {recNotice && !recError && (
+                <span className="arr-rec-saving" role="status" aria-live="polite">
+                  {recNotice}
+                </span>
+              )}
               {recStorageWarning && (
                 <span className="arr-rec-warning" role="status" aria-live="polite">
                   {recStorageWarning}
@@ -5785,6 +5854,40 @@ export function ArrangementPanel() {
               title="Detect the loop's tempo and pitch-preserving time-stretch it to the project BPM"
             >
               Fit to project BPM ({doc.bpm})
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const c = audioClips.find((x) => x.id === audioMenu.clipId);
+                const buf = c ? services.bank.get(c.bufferId) : null;
+                const measurement = buf
+                  ? measurePhraseOnset([audioClipChannelData(buf, c?.sourceChannel)], buf.sampleRate, {
+                      searchWindowSec: MANUAL_ALIGN_SEARCH_SEC,
+                    })
+                  : null;
+                // Latency scale only, and only on a measured rise: beyond the
+                // search window the phrase start is a musical choice (a
+                // deliberate late entry), not a correction. The applied shift
+                // is reported and is a normal undoable content slip.
+                const shift = autoAlignShiftSec(measurement, { maxShiftSec: MANUAL_ALIGN_SEARCH_SEC });
+                if (c && shift > 0) {
+                  execute(slipAudioClip(services.store.doc, c.id, Math.max(0, (c.offsetSec ?? 0) + shift)));
+                  setRecNotice(
+                    `Clip aligned onto its phrase start (${formatShiftMs(shift)}) — Ctrl+Z if that entry was deliberate.`,
+                  );
+                } else {
+                  setActionError(
+                    measurement
+                      ? "No confident phrase start in the first 0.5 s — it may be a deliberate late entry; slip-edit the clip if you want it moved."
+                      : "Sample not loaded",
+                  );
+                }
+                setAudioMenu(null);
+              }}
+              title="Skip the measured leading silence so the phrase starts on the clip's own entry (undoable content slip)"
+            >
+              Align to phrase start
             </button>
             <button
               type="button"

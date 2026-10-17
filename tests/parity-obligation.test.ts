@@ -4,6 +4,8 @@ import {
   PARITY_INSTRUMENT_EXCLUSIONS,
   PARITY_ALIGN_TOLERANCE,
   PARITY_NULL_FLOOR_DB,
+  comparePhaseInsensitiveParity,
+  phaseInsensitiveParityAgrees,
   parityFxCorpus,
   parityInstrumentCorpus,
   parityObligationCheck,
@@ -11,6 +13,14 @@ import {
 } from "../src/testing/live-offline-parity";
 import { EFFECT_ORDER } from "../src/effects/registry";
 import { INSTRUMENT_ORDER } from "../src/instruments/registry";
+
+function tone(frequency: number, phase = 0, amplitude = 0.3, sampleRate = 44100): Float32Array {
+  const samples = new Float32Array(sampleRate);
+  for (let i = 0; i < samples.length; i++) {
+    samples[i] = amplitude * Math.sin((2 * Math.PI * frequency * i) / sampleRate + phase);
+  }
+  return samples;
+}
 
 /**
  * Live↔offline parity obligation (release-gate hardening).
@@ -65,5 +75,28 @@ describe("live↔offline parity obligation", () => {
   it("documents its own thresholds (alignment and null floor)", () => {
     expect(PARITY_NULL_FLOOR_DB).toBeLessThan(0);
     expect(PARITY_ALIGN_TOLERANCE).toBeGreaterThan(0);
+  });
+
+  it("accepts a phase-shifted oscillator spectrum without masking changed pitch or level", () => {
+    const reference = tone(220);
+    const phaseShifted = comparePhaseInsensitiveParity(reference, tone(220, 1.25), 0, 44100);
+    expect(phaseShifted.windows).toBeGreaterThanOrEqual(8);
+    expect(phaseShifted.spectralCosine).toBeGreaterThanOrEqual(0.98);
+    expect(phaseShifted.rmsRatio).toBeGreaterThanOrEqual(0.9);
+    expect(phaseShifted.rmsRatio).toBeLessThanOrEqual(1.1);
+
+    const changedPitch = comparePhaseInsensitiveParity(reference, tone(440, 0.5), 0, 44100);
+    expect(changedPitch.spectralCosine).toBeLessThan(0.98);
+
+    const changedLevel = comparePhaseInsensitiveParity(reference, tone(220, 0.5, 0.6), 0, 44100);
+    expect(changedLevel.spectralCosine).toBeGreaterThanOrEqual(0.98);
+    expect(changedLevel.rmsRatio).toBeGreaterThan(1.1);
+    expect(phaseInsensitiveParityAgrees(phaseShifted, phaseShifted, phaseShifted, -76)).toBe(true);
+    expect(phaseInsensitiveParityAgrees(changedPitch, phaseShifted, phaseShifted, -76)).toBe(false);
+    expect(phaseInsensitiveParityAgrees(phaseShifted, phaseShifted, phaseShifted, -30)).toBe(false);
+    expect(phaseInsensitiveParityAgrees(phaseShifted, phaseShifted, { ...phaseShifted, rmsRatio: 0.89 }, -76)).toBe(
+      false,
+    );
+    expect(phaseInsensitiveParityAgrees(phaseShifted, phaseShifted, null, -76)).toBe(false);
   });
 });

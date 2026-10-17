@@ -50,6 +50,15 @@ interface WindowsAudioEndpoint {
   flow: "capture" | "render";
   state: "active" | "disabled" | "not-present" | "unplugged" | "unknown";
   isDefaultConsole: boolean;
+  mixFormat: {
+    channels: number;
+    sampleRateHz: number;
+    bitsPerSample: number;
+    validBitsPerSample: number;
+    floatingPoint: boolean;
+    channelMask: number;
+    sharedPeriods: { defaultFrames: number; fundamentalFrames: number; minFrames: number; maxFrames: number } | null;
+  } | null;
 }
 
 interface WindowsAudioEndpointList {
@@ -461,6 +470,12 @@ export function IoPanel() {
                   <span className="io-driver-meta">
                     {endpoint.flow} · {endpoint.state}
                     {endpoint.isDefaultConsole ? " · console default" : ""}
+                    {endpoint.mixFormat
+                      ? ` · engine mix: ${endpoint.mixFormat.channels} ch / ${Math.round(endpoint.mixFormat.sampleRateHz / 1000)} kHz / ${endpoint.mixFormat.validBitsPerSample === endpoint.mixFormat.bitsPerSample ? `${endpoint.mixFormat.bitsPerSample}-bit` : `${endpoint.mixFormat.validBitsPerSample} valid / ${endpoint.mixFormat.bitsPerSample} container bits`} ${endpoint.mixFormat.floatingPoint ? "float" : "PCM"}`
+                      : ""}
+                    {endpoint.mixFormat?.sharedPeriods
+                      ? ` · shared period ${endpoint.mixFormat.sharedPeriods.minFrames}–${endpoint.mixFormat.sharedPeriods.maxFrames} frames (default ${endpoint.mixFormat.sharedPeriods.defaultFrames})`
+                      : ""}
                   </span>
                 </li>
               ))}
