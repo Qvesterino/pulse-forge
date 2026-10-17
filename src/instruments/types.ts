@@ -13,6 +13,8 @@ export interface InstrumentRuntime {
     slideFrom?: { pitch: number; when: number },
     expression?: NoteExpression,
   ): void;
+  /** Bend the currently held voice without starting a new attack (FL slide-note articulation). */
+  noteSlide?(pitch: number, when: number, durationSec: number): void;
   noteOff?(pitch: number, when: number): void;
   /**
    * MPE poly aftertouch. Convention: pressure 0..1 opens the matching

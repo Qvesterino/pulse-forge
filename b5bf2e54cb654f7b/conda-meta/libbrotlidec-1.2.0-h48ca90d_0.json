@@ -1,0 +1,59 @@
+{
+  "build": "h48ca90d_0",
+  "build_number": 0,
+  "depends": [
+    "libbrotlicommon 1.2.0 h27f1b8e_0",
+    "ucrt >=10.0.20348.0",
+    "vc >=14.3,<15",
+    "vc14_runtime >=14.44.35208"
+  ],
+  "license": "MIT",
+  "license_family": "MIT",
+  "md5": "c83c3e1d119f74fd88353c665c5afafd",
+  "name": "libbrotlidec",
+  "sha256": "07f46b66baebdca2ee649e918fbabbf4bb33a5df160e5f571f88298d11886508",
+  "size": 40395,
+  "subdir": "win-64",
+  "timestamp": 1791933871825,
+  "version": "1.2.0",
+  "fn": "libbrotlidec-1.2.0-h48ca90d_0.conda",
+  "url": "https://repo.anaconda.com/pkgs/main/win-64/libbrotlidec-1.2.0-h48ca90d_0.conda",
+  "channel": "https://repo.anaconda.com/pkgs/main/",
+  "extracted_package_dir": "C:\\Users\\danie\\AppData\\Local\\rattler\\cache\\pkgs\\libbrotlidec-1.2.0-h48ca90d_0",
+  "requested_specs": [],
+  "files": [
+    "Library/lib/brotlidec.lib",
+    "Library/bin/brotlidec.dll",
+    "Library/lib/pkgconfig/libbrotlidec.pc"
+  ],
+  "paths_data": {
+    "paths_version": 1,
+    "paths": [
+      {
+        "_path": "Library/lib/brotlidec.lib",
+        "path_type": "hardlink",
+        "sha256": "cdc16f10b34d8e6de15a31b449cd7c75b55465775aa935cda4e790b78015b1e2",
+        "size_in_bytes": 5110
+      },
+      {
+        "_path": "Library/bin/brotlidec.dll",
+        "path_type": "hardlink",
+        "sha256": "30320ce1f9373c6bef49496d9f2a1405d0f4b7918282ae29dacbdabac6774bf5",
+        "size_in_bytes": 64328
+      },
+      {
+        "_path": "Library/lib/pkgconfig/libbrotlidec.pc",
+        "path_type": "hardlink",
+        "sha256": "2ac025a042401c05166d552adc0f8d7892000796fc67251f400505e5926ad9ea",
+        "sha256_in_prefix": "b9918014227a6b9ef1400bad462cf24b70e8591902913a67434f45b7a5427fb3",
+        "size_in_bytes": 367,
+        "file_mode": "text",
+        "prefix_placeholder": "C:/Users/task_179193364250846/croot/brotli-split_1791933741034/_h_env"
+      }
+    ]
+  },
+  "link": {
+    "source": "C:\\Users\\danie\\AppData\\Local\\rattler\\cache\\pkgs\\libbrotlidec-1.2.0-h48ca90d_0",
+    "type": 3
+  }
+}

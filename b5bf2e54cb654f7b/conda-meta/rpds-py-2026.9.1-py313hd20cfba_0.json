@@ -1,0 +1,120 @@
+{
+  "build": "py313hd20cfba_0",
+  "build_number": 0,
+  "depends": [
+    "python >=3.13,<3.14.0a0",
+    "python_abi 3.13.* *_cp313",
+    "ucrt >=10.0.20348.0",
+    "vc >=14.3,<15",
+    "vc14_runtime >=14.44.35208"
+  ],
+  "license": "MIT",
+  "license_family": "MIT",
+  "md5": "19b6db34d27a4eed439dc7011419fa15",
+  "name": "rpds-py",
+  "sha256": "2e0dcd8d19d2bd6eb43840302761234b101d3bc25afd1008720e3a4e0f5ec2dd",
+  "size": 207294,
+  "subdir": "win-64",
+  "timestamp": 1792173934752,
+  "version": "2026.9.1",
+  "fn": "rpds-py-2026.9.1-py313hd20cfba_0.conda",
+  "url": "https://repo.anaconda.com/pkgs/main/win-64/rpds-py-2026.9.1-py313hd20cfba_0.conda",
+  "channel": "https://repo.anaconda.com/pkgs/main/",
+  "extracted_package_dir": "C:\\Users\\danie\\AppData\\Local\\rattler\\cache\\pkgs\\rpds-py-2026.9.1-py313hd20cfba_0",
+  "requested_specs": [],
+  "files": [
+    "Lib/site-packages/rpds/__pycache__/__init__.cpython-313.pyc",
+    "Lib/site-packages/rpds_py-2026.9.1.dist-info/licenses/LICENSE",
+    "Lib/site-packages/rpds_py-2026.9.1.dist-info/INSTALLER",
+    "Lib/site-packages/rpds_py-2026.9.1.dist-info/METADATA",
+    "Lib/site-packages/rpds_py-2026.9.1.dist-info/RECORD",
+    "Lib/site-packages/rpds_py-2026.9.1.dist-info/REQUESTED",
+    "Lib/site-packages/rpds_py-2026.9.1.dist-info/WHEEL",
+    "Lib/site-packages/rpds_py-2026.9.1.dist-info/direct_url.json",
+    "Lib/site-packages/rpds/__init__.py",
+    "Lib/site-packages/rpds/__init__.pyi",
+    "Lib/site-packages/rpds/py.typed",
+    "Lib/site-packages/rpds/rpds.cp313-win_amd64.pyd"
+  ],
+  "paths_data": {
+    "paths_version": 1,
+    "paths": [
+      {
+        "_path": "Lib/site-packages/rpds/__pycache__/__init__.cpython-313.pyc",
+        "path_type": "hardlink",
+        "sha256": "9dc3d107ebd4da9b09fb31d0c7602d53d70289ea37810a4f6ca7152e42d2de93",
+        "size_in_bytes": 303
+      },
+      {
+        "_path": "Lib/site-packages/rpds_py-2026.9.1.dist-info/licenses/LICENSE",
+        "path_type": "hardlink",
+        "sha256": "314e4e91be3baa93c0fb4bccc9e4e97cd643eb839b065af921782c2175fe9909",
+        "size_in_bytes": 1057
+      },
+      {
+        "_path": "Lib/site-packages/rpds_py-2026.9.1.dist-info/INSTALLER",
+        "path_type": "hardlink",
+        "sha256": "d0edee15f91b406f3f99726e44eb990be6e34fd0345b52b910c568e0eef6a2a8",
+        "size_in_bytes": 5
+      },
+      {
+        "_path": "Lib/site-packages/rpds_py-2026.9.1.dist-info/METADATA",
+        "path_type": "hardlink",
+        "sha256": "5d72dca2e387c8d2b4180b68ee87c15b64751e059100a6db58891ec9995445c3",
+        "size_in_bytes": 4147
+      },
+      {
+        "_path": "Lib/site-packages/rpds_py-2026.9.1.dist-info/RECORD",
+        "path_type": "hardlink",
+        "sha256": "2812fe0648e9630038a538c869657ba05f3edbf98b2ce8b8bfbb05ec763e303d",
+        "size_in_bytes": 948
+      },
+      {
+        "_path": "Lib/site-packages/rpds_py-2026.9.1.dist-info/REQUESTED",
+        "path_type": "hardlink",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_in_bytes": 0
+      },
+      {
+        "_path": "Lib/site-packages/rpds_py-2026.9.1.dist-info/WHEEL",
+        "path_type": "hardlink",
+        "sha256": "b3ec5a173c39b5659248d2a7f83b8a8621d47985f950788472797f8730c9f596",
+        "size_in_bytes": 97
+      },
+      {
+        "_path": "Lib/site-packages/rpds_py-2026.9.1.dist-info/direct_url.json",
+        "path_type": "hardlink",
+        "sha256": "53bea9c1f12d3b03993900553e178b739f6731535a8e516cfb74322674b4ef39",
+        "size_in_bytes": 97
+      },
+      {
+        "_path": "Lib/site-packages/rpds/__init__.py",
+        "path_type": "hardlink",
+        "sha256": "c373205d6ee5a530880b0d0a5dbc36d105f9ef7fe46ec12758878cb0202e82f3",
+        "size_in_bytes": 99
+      },
+      {
+        "_path": "Lib/site-packages/rpds/__init__.pyi",
+        "path_type": "hardlink",
+        "sha256": "6a6ef1ea831afe9bbf92fd4d96896a25b3ebebf52f0afa32c462ab0c648c2849",
+        "size_in_bytes": 2602
+      },
+      {
+        "_path": "Lib/site-packages/rpds/py.typed",
+        "path_type": "hardlink",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_in_bytes": 0
+      },
+      {
+        "_path": "Lib/site-packages/rpds/rpds.cp313-win_amd64.pyd",
+        "path_type": "hardlink",
+        "sha256": "c417a52c4b5860bda0bf36b650b54bd2278cd31f9b9d212d21088d0844448499",
+        "size_in_bytes": 567624
+      }
+    ]
+  },
+  "link": {
+    "source": "C:\\Users\\danie\\AppData\\Local\\rattler\\cache\\pkgs\\rpds-py-2026.9.1-py313hd20cfba_0",
+    "type": 3
+  }
+}

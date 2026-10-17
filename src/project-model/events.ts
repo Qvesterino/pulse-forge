@@ -120,7 +120,11 @@ export function noteEventsInWindow(
           }
           if (tick < fromTick || tick >= fromTick) {
             // Track the last non-slide note (its end is the glide origin)
-            if (!note.slide) lastNonSlide = { pitch: note.pitch, tick: tick + note.duration };
+            if (!note.slide)
+              lastNonSlide = {
+                pitch: note.pitch + (note.expression?.pitchOffsetSemitones ?? 0),
+                tick: tick + note.duration,
+              };
           }
         }
       }

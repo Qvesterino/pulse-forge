@@ -39,6 +39,15 @@
       "negativeSpec": "NEGATIVE: press + release on the right edge with NO move commits nothing"
     },
     {
+      "id": "piano-roll-event-editor",
+      "status": "COVERED",
+      "entryPoint": "src/ui/PianoRoll.tsx integrated event lane pointer handlers",
+      "spec": "tests/ui/piano-roll-event-editor.test.tsx",
+      "seamEvent": "fireEvent.pointerMove(bar",
+      "negativeSpec": "NEGATIVE: pointercancel rolls back the lane preview",
+      "note": "Drives the real 808 Event target selector and lane against a real ProjectStore; covers one undoable pan edit, zero-motion no-op, and pointercancel rollback."
+    },
+    {
       "id": "arrangement-clip-move",
       "status": "COVERED",
       "entryPoint": "src/ui/ArrangementPanel.tsx clip body onPointerDown",
@@ -208,6 +217,15 @@
       "seamEvent": "USE RESULT",
       "negativeSpec": "not an audition",
       "note": "Wave A: entered through the REAL panel (type the brief, press DO IT). The default must yield a multi-candidate auditionable bank with ONE explained winner and NO single-result fallback; the negative spec spies the budget to the lean value and pins the honest constrained-device outcome (USE RESULT, nothing to audition) — proving the budget reaches the request instead of being decoration."
+    },
+    {
+      "id": "rerank-reaction-feed",
+      "status": "COVERED",
+      "entryPoint": "src/intent/reaction-rerank-feedback.ts (npm run rerank:fit) + IntentPanel USE registration",
+      "spec": "tests/rerank-generation-join.test.ts",
+      "seamEvent": "the audio-fit ledger records the SAME id the pipeline stamps on the result",
+      "negativeSpec": "drops the generation when the human reverted the applied candidate",
+      "note": "F2's last line — reactions feed the rerank-weight fit. The join is proven at the SOURCE (real pipeline + real rerank, only the offline renderer faked): the recorded observation and the stamped result share one generationId, a human undo DROPS the generation instead of training toward a rejected pick, and a human pick RE-TARGETS the kept candidate — a change that moves the FITTED WEIGHT, not just a field (tests/reaction-rerank-feedback.test.ts). The panel spec (tests/ui/reaction-candidate-use.test.tsx) pins that USE actually records it, and the kill switch still silences it."
     },
     {
       "id": "reaction-choice-bias",

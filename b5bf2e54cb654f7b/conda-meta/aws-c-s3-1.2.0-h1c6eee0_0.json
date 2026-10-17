@@ -1,0 +1,117 @@
+{
+  "build": "h1c6eee0_0",
+  "build_number": 0,
+  "depends": [
+    "aws-c-auth >=1.0.0,<1.0.1.0a0",
+    "aws-c-cal >=1.0.0,<1.0.1.0a0",
+    "aws-c-common >=1.0.1,<1.0.2.0a0",
+    "aws-c-http >=1.0.0,<1.0.1.0a0",
+    "aws-c-io >=1.0.0,<1.0.1.0a0",
+    "aws-checksums >=1.0.0,<1.0.1.0a0",
+    "ucrt >=10.0.20348.0",
+    "vc >=14.3,<15",
+    "vc14_runtime >=14.44.35208"
+  ],
+  "license": "Apache-2.0",
+  "license_family": "Apache",
+  "md5": "7864d3bac05d6433434e6ac7a21f6e5e",
+  "name": "aws-c-s3",
+  "sha256": "afc82509d3af448dd11b978845ba6f82f2f975b81c6d41529a7a4b469c8c9b13",
+  "size": 155374,
+  "subdir": "win-64",
+  "timestamp": 1791183053838,
+  "version": "1.2.0",
+  "fn": "aws-c-s3-1.2.0-h1c6eee0_0.conda",
+  "url": "https://repo.anaconda.com/pkgs/main/win-64/aws-c-s3-1.2.0-h1c6eee0_0.conda",
+  "channel": "https://repo.anaconda.com/pkgs/main/",
+  "extracted_package_dir": "C:\\Users\\danie\\AppData\\Local\\rattler\\cache\\pkgs\\aws-c-s3-1.2.0-h1c6eee0_0",
+  "requested_specs": [],
+  "files": [
+    "Library/bin/aws-c-s3.dll",
+    "Library/include/aws/s3/exports.h",
+    "Library/include/aws/s3/s3.h",
+    "Library/include/aws/s3/s3_buffer_pool.h",
+    "Library/include/aws/s3/s3_client.h",
+    "Library/include/aws/s3/s3_endpoint_resolver.h",
+    "Library/include/aws/s3/s3express_credentials_provider.h",
+    "Library/lib/cmake/aws-c-s3/shared/aws-c-s3-targets-release.cmake",
+    "Library/lib/cmake/aws-c-s3/shared/aws-c-s3-targets.cmake",
+    "Library/lib/aws-c-s3.lib",
+    "Library/lib/cmake/aws-c-s3/aws-c-s3-config.cmake"
+  ],
+  "paths_data": {
+    "paths_version": 1,
+    "paths": [
+      {
+        "_path": "Library/bin/aws-c-s3.dll",
+        "path_type": "hardlink",
+        "sha256": "27f4af3131128c8c5478f47a3af858daa8057c8a7a9fb20d46ff6581a024b05b",
+        "size_in_bytes": 277320
+      },
+      {
+        "_path": "Library/include/aws/s3/exports.h",
+        "path_type": "hardlink",
+        "sha256": "6db9f52ef6a887d8ff1d436e65e2702f2b8041f43adb531faa82701d426e3c9f",
+        "size_in_bytes": 826
+      },
+      {
+        "_path": "Library/include/aws/s3/s3.h",
+        "path_type": "hardlink",
+        "sha256": "b5726f6f0d644f6f87dda56fd4e785801b564b692ad26825c21c1cf51b2cdce3",
+        "size_in_bytes": 5310
+      },
+      {
+        "_path": "Library/include/aws/s3/s3_buffer_pool.h",
+        "path_type": "hardlink",
+        "sha256": "3a6dd349af0944747864cf6b728321c8c2d8c440462cabf58bf41a1a7f608936",
+        "size_in_bytes": 9512
+      },
+      {
+        "_path": "Library/include/aws/s3/s3_client.h",
+        "path_type": "hardlink",
+        "sha256": "771fefe668305b67dc87a693aa2faf91d98a3a2167094523904a69656f1e0eed",
+        "size_in_bytes": 91006
+      },
+      {
+        "_path": "Library/include/aws/s3/s3_endpoint_resolver.h",
+        "path_type": "hardlink",
+        "sha256": "1ce131444f92c70a3e96bdb430a7e027f6e09962726754c007fa00f52d86291f",
+        "size_in_bytes": 696
+      },
+      {
+        "_path": "Library/include/aws/s3/s3express_credentials_provider.h",
+        "path_type": "hardlink",
+        "sha256": "f799537bd3a21f2fae938477f881a34a7a64c3593dee53bf074a2fc50e98fc34",
+        "size_in_bytes": 3276
+      },
+      {
+        "_path": "Library/lib/cmake/aws-c-s3/shared/aws-c-s3-targets-release.cmake",
+        "path_type": "hardlink",
+        "sha256": "7d333959687721b0de62904e117970de4864a975b3fd88efa7b395755d49ec54",
+        "size_in_bytes": 909
+      },
+      {
+        "_path": "Library/lib/cmake/aws-c-s3/shared/aws-c-s3-targets.cmake",
+        "path_type": "hardlink",
+        "sha256": "3125e3390cf778ad33213fe5d8eb696ebba3a170330bac099719d6172471bb09",
+        "size_in_bytes": 4414
+      },
+      {
+        "_path": "Library/lib/aws-c-s3.lib",
+        "path_type": "hardlink",
+        "sha256": "b6e9777ecc693285f2c428abe1c62042c528dfa960ad18541015bbd2b5ed702c",
+        "size_in_bytes": 98784
+      },
+      {
+        "_path": "Library/lib/cmake/aws-c-s3/aws-c-s3-config.cmake",
+        "path_type": "hardlink",
+        "sha256": "2e84b4b0a1b68465441372c8b35287e0882af8daa5cab2ab9869a3bec7ed6b43",
+        "size_in_bytes": 648
+      }
+    ]
+  },
+  "link": {
+    "source": "C:\\Users\\danie\\AppData\\Local\\rattler\\cache\\pkgs\\aws-c-s3-1.2.0-h1c6eee0_0",
+    "type": 3
+  }
+}

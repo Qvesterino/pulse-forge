@@ -12,6 +12,7 @@
     "ai:performance": "vite-node scripts/ai-performance.mts",
     "taste:benchmark": "vite-node scripts/taste-benchmark.mts",
     "taste:benchmark:bless": "vite-node scripts/taste-benchmark.mts --write",
+    "verify:wav": "node tools/kyx-verify.mjs",
     "audio:fetch": "node scripts/fetch-audio-model.mjs",
     "audit:intent": "vite-node scripts/audit-intent.mts",
     "unsuno:golden": "vite-node scripts/gen-unsuno-golden.mts",

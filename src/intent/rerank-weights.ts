@@ -13,6 +13,7 @@
  * The fit itself is PURE (grid search over per-generation top-1 accuracy), so
  * it is unit-testable without any browser or model.
  */
+import { hashString } from "../shared/rng";
 
 export interface RerankSample {
   /** First-pass (ranker+heuristic) score, 0..1. */
@@ -36,6 +37,30 @@ export interface FittedRerankWeight {
 
 export const RERANK_WEIGHTS_STORAGE_KEY = "pf:rerank-weights";
 export const MAX_RERANK_WEIGHT = 0.6;
+
+/**
+ * How many finalists the sound rerank renders. Lives HERE (not in ranking-v3)
+ * because ranking-v3 imports this module — the reverse would be a cycle — and
+ * because the rerank AND the pipeline that stamps the generation id must read
+ * one definition: two copies of the formula would let the audio-fit ledger and
+ * the reaction join drift apart silently.
+ */
+export const DEFAULT_SOUND_FINALISTS = 3;
+
+/** Finalist count for a given bank size (the formula used by the rerank). */
+export function rerankFinalistCount(bankLength: number, requested?: number): number {
+  return Math.max(2, Math.min(requested ?? DEFAULT_SOUND_FINALISTS, bankLength));
+}
+
+/**
+ * Deterministic identity of one generation's finalist set: the SAME string the
+ * audio-fit ledger records its observation under and the one the reaction
+ * ledger joins against when the human applies a candidate. Derived from
+ * content hashes only — never from user text.
+ */
+export function rerankGenerationId(docId: string, genre: string, finalistContentHashes: readonly string[]): string {
+  return `gen-${hashString(`${docId}|${genre}|${finalistContentHashes.join(",")}`)}`;
+}
 
 /**
  * Grid-search the audio weight maximizing per-generation top-1 accuracy of

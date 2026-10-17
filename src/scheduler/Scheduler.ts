@@ -55,6 +55,8 @@ export interface SchedulerDeps {
     slideFromWhen?: number,
     expression?: NoteExpression,
   ): void;
+  /** FL slide-note event: change the held voice pitch without a new note-on. */
+  noteSlide?(trackId: string, pitch: number, when: number, durationSec: number, expression?: NoteExpression): void;
   applyAutomation(
     fromTick: number,
     toTick: number,
@@ -1288,28 +1290,34 @@ export class Scheduler {
       const noteLocks = (event.note as any).locks as
         Partial<Record<import("../project-model/types").StepLockKey, number>> | undefined;
       const locks = noteLocks ?? metaLocks;
-      this.deps.noteOn(
-        track.id,
-        event.note.pitch,
-        event.note.velocity,
-        when,
-        timeAt(event.tick + event.note.duration) - timeAt(event.tick),
-        slideFrom?.tick,
-        slideFrom?.pitch,
-        locks,
-        slideFromWhen,
-        event.note.expression,
-      );
+      const durationSec = timeAt(event.tick + event.note.duration) - timeAt(event.tick);
+      if (event.note.slideNote) {
+        this.deps.noteSlide?.(track.id, event.note.pitch, when, durationSec, event.note.expression);
+      } else {
+        this.deps.noteOn(
+          track.id,
+          event.note.pitch,
+          event.note.velocity,
+          when,
+          durationSec,
+          slideFrom?.tick,
+          slideFrom?.pitch,
+          locks,
+          slideFromWhen,
+          event.note.expression,
+        );
+      }
       // Passive capture ring (Ableton) — note events with pitch info
-      this.deps.recordCapturedEvent?.({
-        trackId: track.id,
-        pitch: event.note.pitch,
-        velocity: event.note.velocity,
-        tick: event.tick,
-        duration: timeAt(event.tick + event.note.duration) - timeAt(event.tick),
-      });
+      if (!event.note.slideNote)
+        this.deps.recordCapturedEvent?.({
+          trackId: track.id,
+          pitch: event.note.pitch,
+          velocity: event.note.velocity,
+          tick: event.tick,
+          duration: durationSec,
+        });
       // MIDI output for instrument tracks
-      if (this.deps.midiNoteOn && track.midiOutput?.enabled) {
+      if (!event.note.slideNote && this.deps.midiNoteOn && track.midiOutput?.enabled) {
         const ch = (track.midiOutput.channel || 1) - 1;
         this.deps.midiNoteOn(track.id, ch, event.note.pitch, Math.round(event.note.velocity * 127), when);
         if (this.deps.midiNoteOff) {

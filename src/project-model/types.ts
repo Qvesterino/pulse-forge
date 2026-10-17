@@ -514,13 +514,10 @@ export interface NoteEvent {
   velocity: number;
   /** Optional per-note performance values; absent fields keep the instrument defaults. */
   expression?: NoteExpression;
-  /**
-   * FL-style slide note (portamento): when true, this note glides FROM the
-   * previous sounding pitch instead of starting a new attack. Consumed by
-   * instrument runtimes via the optional `slideFrom` noteOn parameter
-   * (pitch + when from the previous note's end).
-   */
+  /** Legacy portamento transition: this note starts a new voice that glides from the previous non-slide note. */
   slide?: boolean;
+  /** FL-style slide note: bends the currently held 808 voice toward this pitch without a new attack. */
+  slideNote?: boolean;
   /** Per-note p-locks — absolute overrides for this hit (mirrors StepMeta.locks, for piano roll). */
   locks?: Partial<Record<StepLockKey, number>>;
 }
@@ -529,7 +526,7 @@ export interface NoteEvent {
 export interface NoteExpression {
   /** -1 = hard left, 0 = center, 1 = hard right. */
   pan?: number;
-  /** Additional per-note low-pass cutoff in Hz; absent means no added filter. */
+  /** Absolute per-note low-pass cutoff in Hz; absent means the instrument's own filter default. */
   filterCutoffHz?: number;
   /** 0..1 mapped to a per-note low-pass Q of 0.1..8.0. */
   filterResonance?: number;

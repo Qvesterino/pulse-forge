@@ -616,6 +616,8 @@ export async function openProject(
       engine.trigger(trackId, pad, when, velocity, locks, sampleId),
     noteOn: (trackId, pitch, velocity, when, durationSec, slideFromTick, slideFromPitch, locks, slideFromWhen) =>
       engine.noteOn(trackId, pitch, velocity, when, durationSec, slideFromTick, slideFromPitch, locks, slideFromWhen),
+    noteSlide: (trackId, pitch, when, durationSec, expression) =>
+      engine.noteSlide(trackId, pitch, when, durationSec, expression),
     triggerAudioClip: (clip, when, durationSec, resumeOffsetSec) =>
       engine.triggerAudioClip(clip, when, durationSec, resumeOffsetSec),
     metronomeClick: (when, downbeat) => engine.click(when, downbeat),

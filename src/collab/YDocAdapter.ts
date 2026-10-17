@@ -278,6 +278,9 @@ function yMapToNote(m: unknown): NoteEvent {
     start: map.get("start") as number,
     duration: map.get("duration") as number,
     velocity: map.get("velocity") as number,
+    ...(map.has("expression") ? { expression: plainValue(map.get("expression")) as NoteEvent["expression"] } : {}),
+    ...(map.has("slide") ? { slide: map.get("slide") as boolean } : {}),
+    ...(map.has("locks") ? { locks: plainValue(map.get("locks")) as NoteEvent["locks"] } : {}),
   };
 }
 
@@ -631,7 +634,7 @@ const PAD_SCALARS = [
   "sliceReverse",
 ];
 const EFFECT_SCALARS = ["type", "bypassed", "sidechainTrackId"];
-const NOTE_SCALARS = ["pitch", "start", "duration", "velocity"];
+const NOTE_SCALARS = ["pitch", "start", "duration", "velocity", "expression", "slide", "locks"];
 const SCENE_SCALARS = ["name", "patternId", "intensity", "loop", "role", "bpm"];
 const CLIP_SCALARS = ["sceneId", "startBar", "lengthBars", "phaseOffsetTicks", "sceneOffsetTicks", "loop"];
 const TRANSITION_SCALARS = ["fromClipId", "toClipId", "type", "lengthBars", "cueAssetId"];
@@ -1158,6 +1161,9 @@ function noteToYMap(n: NoteEvent): Y.Map<unknown> {
   m.set("start", n.start);
   m.set("duration", n.duration);
   m.set("velocity", n.velocity);
+  if (n.expression !== undefined) m.set("expression", n.expression);
+  if (n.slide !== undefined) m.set("slide", n.slide);
+  if (n.locks !== undefined) m.set("locks", n.locks);
   return m;
 }
 

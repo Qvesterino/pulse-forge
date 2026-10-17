@@ -240,6 +240,14 @@ export interface RankerSelectionMeta {
   /** Present only when audio-fit reordering displaced the first-pass winner. */
   audioRerank?: { displacedCandidateIndex: number; selectedCandidateIndex: number; personalized?: boolean };
   /**
+   * Wave B: deterministic identity of the rendered finalist set (see
+   * rerankGenerationId). Present only when the sound rerank ran; the apply
+   * surface carries it into the reaction ledger so `npm run rerank:fit` can
+   * learn from what the human actually kept instead of assuming the engine's
+   * delivered winner was it.
+   */
+  rerankGenerationId?: string;
+  /**
    * Wave E1: WHY this candidate won — derived from measured bank scores,
    * rerank displacement and the personal residual only
    * (src/intent/selection-reasons.ts). Never invented prose.

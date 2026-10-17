@@ -30,6 +30,12 @@ const outDir = path.join(root, "public", "samples");
 const requestedIds = process.env.CURATED_SAMPLE_IDS?.split(",")
   .map((id) => id.trim())
   .filter(Boolean);
+const SPATIAL_FIELD_IDS = new Set([
+  "factory.field.roomtone",
+  "factory.field.street",
+  "factory.field.rustle",
+  "factory.field.match",
+]);
 
 /** Curation targets per asset category (manifest.ts categories). */
 const CATEGORY_TREATMENT = {
@@ -112,7 +118,7 @@ const page = await browser.newPage();
 await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 120_000 });
 
 const results = await page.evaluate(
-  async ({ categoryTreatment, assetTreatmentOverride, requestedIds }) => {
+  async ({ categoryTreatment, assetTreatmentOverride, requestedIds, spatialFieldIds }) => {
     const factory = await import("/src/sample-library/factory.ts");
     const curated = await import("/src/sample-library/curated.ts");
     const manifest = await import("/src/sample-library/manifest.ts");
@@ -121,7 +127,8 @@ const results = await page.evaluate(
     const loudness = await import("/src/audio-engine/kweighting.ts");
 
     const SR = 44100;
-    const bank = await factory.generateFactoryBank();
+    const spatialFieldIdSet = new Set(spatialFieldIds);
+    const bank = await factory.generateFactoryBank(requestedIds ?? undefined);
     const categoryOf = new Map(manifest.FACTORY_ASSETS.map((asset) => [asset.id, asset.category]));
     const selectedIds = requestedIds ? new Set(requestedIds) : null;
     const samples = selectedIds
@@ -218,6 +225,54 @@ const results = await page.evaluate(
         if (Math.abs(residual) < 0.4) break;
         normGain *= Math.pow(10, Math.max(-12, Math.min(12, residual)) / 20);
         mastered = await renderSlot(normGain);
+      }
+
+      // Atmosphere source pass (2026-10-17): give four Field voices a very
+      // restrained, deterministic side signal. Only the delayed side copy is
+      // high-passed; L/R = mid +/- side, so mono fold-down recovers the mid
+      // exactly and sub/body remain centered. This is a baked source texture,
+      // not a wide stereo effect added to every factory sound.
+      let stereoCorrelation = null;
+      if (spatialFieldIdSet.has(sample.id) && mastered.numberOfChannels === 2) {
+        const left = mastered.getChannelData(0);
+        const right = mastered.getChannelData(1);
+        const stereo = new AudioBuffer({ length: mastered.length, numberOfChannels: 2, sampleRate: SR });
+        const outLeft = stereo.getChannelData(0);
+        const outRight = stereo.getChannelData(1);
+        const delaySamples = Math.round(0.008 * SR);
+        const cutoffHz = 650;
+        const rc = 1 / (2 * Math.PI * cutoffHz);
+        const a = rc / (rc + 1 / SR);
+        let y = 0;
+        let xPrev = 0;
+        let peak = 0;
+        for (let i = 0; i < mastered.length; i++) {
+          const mid = (left[i] + right[i]) * 0.5;
+          const delayed = i >= delaySamples ? (left[i - delaySamples] + right[i - delaySamples]) * 0.5 : 0;
+          y = a * (y + delayed - xPrev);
+          xPrev = delayed;
+          const side = y * 0.14;
+          outLeft[i] = mid + side;
+          outRight[i] = mid - side;
+          peak = Math.max(peak, Math.abs(outLeft[i]), Math.abs(outRight[i]));
+        }
+        const peakGuard = Math.min(1, Math.pow(10, treatment.ceiling / 20) / Math.max(peak, 1e-9));
+        if (peakGuard < 1) {
+          for (let i = 0; i < mastered.length; i++) {
+            outLeft[i] *= peakGuard;
+            outRight[i] *= peakGuard;
+          }
+        }
+        let cross = 0;
+        let leftEnergy = 0;
+        let rightEnergy = 0;
+        for (let i = 0; i < mastered.length; i++) {
+          cross += outLeft[i] * outRight[i];
+          leftEnergy += outLeft[i] * outLeft[i];
+          rightEnergy += outRight[i] * outRight[i];
+        }
+        stereoCorrelation = cross / Math.sqrt(Math.max(leftEnergy * rightEnergy, 1e-18));
+        mastered = stereo;
       }
 
       // Leading-silence trim (sound-library audit 2026-09-29): the limiter's
@@ -388,6 +443,7 @@ const results = await page.evaluate(
           momentaryMax: Math.round(after.momentaryMax * 10) / 10,
           normGainDb: Math.round(20 * Math.log10(normGain) * 10) / 10,
           trimDb: Math.round(trimDb * 10) / 10,
+          stereoCorrelation: stereoCorrelation === null ? null : Math.round(stereoCorrelation * 1000) / 1000,
         },
       });
     }
@@ -397,6 +453,7 @@ const results = await page.evaluate(
     categoryTreatment: CATEGORY_TREATMENT,
     assetTreatmentOverride: ASSET_TREATMENT_OVERRIDE,
     requestedIds: requestedIds ?? null,
+    spatialFieldIds: [...SPATIAL_FIELD_IDS],
   },
 );
 
@@ -407,7 +464,8 @@ for (const { file, b64, report } of results) {
   console.log(
     `[curated-seeds] ${file} — ${(bytes.length / 1024).toFixed(1)} kB · ${report.category}` +
       ` · norm ${report.normGainDb > 0 ? "+" : ""}${report.normGainDb} dB · trim ${report.trimDb > 0 ? "+" : ""}${report.trimDb} dB` +
-      ` · peak ${report.peak} dBFS · momentary ${report.momentaryMax} LUFS`,
+      ` · peak ${report.peak} dBFS · momentary ${report.momentaryMax} LUFS` +
+      (report.stereoCorrelation === null ? "" : ` · stereo correlation ${report.stereoCorrelation}`),
   );
 }
 

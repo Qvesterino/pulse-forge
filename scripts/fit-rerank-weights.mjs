@@ -160,10 +160,19 @@ const outcome = await page.evaluate(async (favorites) => {
     }
   }
 
-  // LEDGER SOURCE: every-day generations recorded by ranking-v3 at
-  // selection time (delivered winner = implicit kept candidate).
-  const ledgerSamples = audioFitLedgerSamples(readAudioFitLedger());
+  // LEDGER SOURCE: every-day generations recorded by ranking-v3 at selection
+  // time, adjusted by what the human DID with the applied candidate
+  // (reactions feed the fit — F2's last line): an undone apply drops the
+  // generation, a kept/tweaked apply re-targets the ground truth to the
+  // candidate the human actually chose.
+  const { rerankVerdictsFromEntries, reactionAdjustedFitSamples } =
+    await import("/src/intent/reaction-rerank-feedback.ts");
+  const { listStoredReactions } = await import("/src/persistence/ReactionRepository.ts");
+  const verdicts = rerankVerdictsFromEntries(await listStoredReactions());
+  const adjusted = reactionAdjustedFitSamples(readAudioFitLedger(), verdicts);
+  const ledgerSamples = adjusted.samples;
   const ledgerGenerations = new Set(ledgerSamples.map((sample) => sample.generationId)).size;
+  const reactionReport = adjusted.report;
   const combined = [...samples, ...ledgerSamples];
 
   const fittedStar = fitRerankWeight(samples);
@@ -178,6 +187,7 @@ const outcome = await page.evaluate(async (favorites) => {
     sampleCount: samples.length,
     ledgerGenerations,
     ledgerSampleCount: ledgerSamples.length,
+    reactionReport,
   };
 }, entries);
 
@@ -199,14 +209,25 @@ if (outcome.fittedLedger) {
   );
 }
 
+// Reactions feed the fit (F2): say out loud what the human verdicts changed,
+// so a run can never silently learn from different ground truth than last time.
+if (outcome.reactionReport && outcome.reactionReport.generations > 0) {
+  const { generations, dropped, retargeted, untouched } = outcome.reactionReport;
+  console.log(
+    `[rerank:fit] reactions over ${generations} recorded generations: ${dropped} dropped (undone), ` +
+      `${retargeted} re-targeted to the human's pick, ${untouched} untouched`,
+  );
+}
+
 const learned = {
   weight: outcome.fitted.weight,
-  source: "learned-v1 (fit-rerank-weights: ★ rolls + audio-fit ledger)",
+  source: "learned-v1 (fit-rerank-weights: ★ rolls + audio-fit ledger, reaction-adjusted)",
   fittedAt: new Date().toISOString(),
   accuracy: outcome.fitted.accuracy,
   baselineAccuracy: outcome.fitted.baselineAccuracy,
   generations: outcome.fitted.generations,
   samples: outcome.sampleCount + (outcome.ledgerSampleCount ?? 0),
+  ...(outcome.reactionReport ? { reactionAdjustments: outcome.reactionReport } : {}),
 };
 const outDir = path.join(ROOT, "scripts", "data");
 mkdirSync(outDir, { recursive: true });

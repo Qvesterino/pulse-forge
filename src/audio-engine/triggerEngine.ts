@@ -408,6 +408,21 @@ export class TriggerEngine {
     }
   }
 
+  /** Apply a slide-note pitch curve to a held runtime voice without retriggering it. */
+  noteSlide(
+    trackId: string,
+    pitch: number,
+    when: number,
+    durationSec: number,
+    expression?: import("../project-model/types").NoteExpression,
+  ): void {
+    if (this.warp.isFrozen(trackId)) return;
+    const inst = this.deps.instrumentStates.get(trackId);
+    if (!inst?.runtime.noteSlide) return;
+    const adjustedPitch = pitch + (inst.pitchBend ?? 0) + (expression?.pitchOffsetSemitones ?? 0);
+    inst.runtime.noteSlide(adjustedPitch, when, durationSec);
+  }
+
   /**
    * Schedule an AudioClip buffer segment through its track's FX chain.
    * Reuses frozenPlaybackOffset semantics (tick→sec + loop offset not needed

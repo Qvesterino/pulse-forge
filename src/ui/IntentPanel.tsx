@@ -163,7 +163,7 @@ import {
   isAttentiveModeEnabled,
   setAttentiveModeEnabled,
 } from "../intent/attentive-mode";
-import { noteIntentProposal } from "../intent/reaction-bridge";
+import { noteCandidateUse, noteIntentProposal } from "../intent/reaction-bridge";
 import { activeReactionLedger, isReactionLedgerEnabled, setReactionLedgerEnabled } from "../intent/reaction-ledger";
 import { buildReactionReport, topRejections, type ReactionReport } from "../intent/reaction-learning";
 import { applyLoudnessIntent, measurePreviewLoudness } from "../intent/loudness";
@@ -1635,6 +1635,12 @@ export function IntentPanel() {
     const artistSigned = artistMixProfileOf(normalizeIntent({ ...picked.plan.intent }));
     const mixProfile = artistSigned ? planMixProfile(normalizeIntent({ ...picked.plan.intent })) : null;
     const mixWanted = (mixProfile?.decisions.length ?? 0) > 0;
+    // Wave B closure: this is the human's pick — the biggest action in the
+    // panel and the only place the audio-fit fit can learn WHICH candidate was
+    // actually kept (the engine's delivered winner is not the same thing once
+    // the bank is auditioned). The depth is read BEFORE the frame so an undo
+    // can identify this proposal (see reaction-bridge.ts).
+    const undoDepthBeforeUse = services.store.undoStackLength;
     services.store.beginUndoFrame("Generate + artist mix");
     services.store.execute(
       fx
@@ -1645,6 +1651,14 @@ export function IntentPanel() {
       services.store.execute(applyMixIntent(services.store.getDoc(), mixProfile!));
     }
     services.store.endUndoFrame();
+    const appliedCandidateIndex = candidate ? candidate.candidateIndex : (bankResult?.selection?.selectedIndex ?? null);
+    noteCandidateUse(doc, services.store.getDoc(), undoDepthBeforeUse, {
+      ...(bankResult?.selection?.rerankGenerationId !== undefined
+        ? { generationId: bankResult.selection.rerankGenerationId }
+        : {}),
+      ...(appliedCandidateIndex !== null ? { candidateIndex: appliedCandidateIndex } : {}),
+    });
+    refreshReaction();
     const parentContentHash = iterationReferencePattern
       ? contentHash(canonicalizePattern(doc, iterationReferencePattern))
       : null;

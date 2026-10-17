@@ -513,12 +513,42 @@ export function setNotesVelocities(doc: ProjectDocument, trackId: string, veloci
   };
 }
 
+/** Toggle the 808's FL-style slide-note articulation without changing its note-on portamento mode. */
+export function setNotesSlideNote(doc: ProjectDocument, trackId: string, noteIds: string[], enabled: boolean): Command {
+  const patternId = doc.activePatternId;
+  const targetIds = new Set(noteIds);
+  const all = activeTrackNotes(doc, trackId);
+  const previous = new Map(all.filter((note) => targetIds.has(note.id)).map((note) => [note.id, note]));
+  if (previous.size === 0) throw new Error("No matching notes for slide-note update");
+  const next = all.map((note) => {
+    if (!previous.has(note.id)) return note;
+    if (enabled) {
+      const { slide: _legacyPortamento, ...rest } = note;
+      return { ...rest, slideNote: true };
+    }
+    const { slideNote: _slideNote, ...rest } = note;
+    return rest;
+  });
+  return {
+    type: "setNotesSlideNote",
+    label: `${enabled ? "Set" : "Clear"} slide note for ${previous.size} note${previous.size === 1 ? "" : "s"}`,
+    execute: (d) => withTrackNotes(d, trackId, () => next, patternId),
+    undo: (d) =>
+      withTrackNotes(
+        d,
+        trackId,
+        (notes) => notes.map((note) => previous.get(note.id) ?? note),
+        patternId,
+      ),
+  };
+}
+
 export type NoteExpressionKey = keyof NoteExpression;
 
-const NOTE_EXPRESSION_LIMITS: Record<NoteExpressionKey, { min: number; max: number; defaultValue: number }> = {
+const NOTE_EXPRESSION_LIMITS: Record<NoteExpressionKey, { min: number; max: number; defaultValue: number | null }> = {
   pan: { min: -1, max: 1, defaultValue: 0 },
-  filterCutoffHz: { min: 80, max: 16000, defaultValue: 16000 },
-  filterResonance: { min: 0, max: 1, defaultValue: 0.5 },
+  filterCutoffHz: { min: 80, max: 16000, defaultValue: null },
+  filterResonance: { min: 0, max: 1, defaultValue: 0.08 },
   releaseVelocity: { min: 0, max: 1, defaultValue: 0.5 },
   pitchOffsetSemitones: { min: -12, max: 12, defaultValue: 0 },
 };
@@ -528,28 +558,42 @@ export function setNotesExpression(
   doc: ProjectDocument,
   trackId: string,
   target: NoteExpressionKey,
-  values: Record<string, number>,
+  values: Record<string, number | null>,
 ): Command {
   const patternId = doc.activePatternId;
   const all = activeTrackNotes(doc, trackId);
-  const previous = new Map(all.filter((note) => values[note.id] !== undefined).map((note) => [note.id, note.expression]));
+  const previous = new Map(
+    all.filter((note) => values[note.id] !== undefined).map((note) => [note.id, note.expression]),
+  );
   if (previous.size === 0) throw new Error("No matching notes for expression update");
   const limit = NOTE_EXPRESSION_LIMITS[target];
   const updates = Object.fromEntries(
     Object.entries(values)
       .filter(([id]) => previous.has(id))
-      .map(([id, value]) => [id, clamp(Number.isFinite(value) ? value : limit.defaultValue, limit.min, limit.max)]),
-  ) as Record<string, number>;
+      .map(([id, value]) => [
+        id,
+        value === null
+          ? null
+          : clamp(Number.isFinite(value) ? value : (limit.defaultValue ?? limit.min), limit.min, limit.max),
+      ]),
+  ) as Record<string, number | null>;
   for (const [id, value] of Object.entries(updates)) {
-    const oldValue = previous.get(id)?.[target] ?? limit.defaultValue;
-    if (Math.abs(oldValue - value) < 0.0001) delete updates[id];
+    const oldValue = previous.get(id)?.[target];
+    if (
+      (value === null && oldValue === undefined) ||
+      (value !== null &&
+        (oldValue === value || (oldValue === undefined && limit.defaultValue !== null && value === limit.defaultValue)))
+    ) {
+      delete updates[id];
+    }
   }
   if (Object.keys(updates).length === 0) {
     return { type: "setNotesExpression", label: "No expression change", execute: (d) => d, undo: (d) => d };
   }
-  const applyValue = (note: NoteEvent, value: number): NoteEvent => {
+  const applyValue = (note: NoteEvent, value: number | null): NoteEvent => {
     const expression = { ...(note.expression ?? {}) };
-    if (Math.abs(value - limit.defaultValue) < 0.0001) delete expression[target];
+    if (value === null || (limit.defaultValue !== null && Math.abs(value - limit.defaultValue) < 0.0001))
+      delete expression[target];
     else expression[target] = value;
     return Object.keys(expression).length > 0 ? { ...note, expression } : omitExpression(note);
   };

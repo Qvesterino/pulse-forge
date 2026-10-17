@@ -73,6 +73,29 @@ describe("reaction ledger — proposals and their outcomes", () => {
     expect(ledger.summary().pending).toBe(1);
   });
 
+  it("carries the generation identity and the applied candidate (the F2 join)", () => {
+    const { ledger } = makeLedger();
+    const entry = ledger.register({ ...PROPOSAL, generationId: "gen-1234567890", candidateIndex: 2 });
+    expect(entry).toMatchObject({ generationId: "gen-1234567890", candidateIndex: 2 });
+    // And it survives the storage round trip (sanitizeReactionEntry).
+    const restored = sanitizeReactionEntry(JSON.parse(JSON.stringify(entry)));
+    expect(restored).toMatchObject({ generationId: "gen-1234567890", candidateIndex: 2 });
+  });
+
+  it("drops a malformed generation identity instead of half-recording it", () => {
+    const { ledger } = makeLedger();
+    // A prose string is not a generation id, and a negative index is not an
+    // index: both degrade to ABSENT — the reaction is still a usable row.
+    const entry = ledger.register({
+      ...PROPOSAL,
+      generationId: "the user asked for a dark trap beat",
+      candidateIndex: -1,
+    });
+    expect(entry).not.toBeNull();
+    expect(entry!.generationId).toBeUndefined();
+    expect(entry!.candidateIndex).toBeUndefined();
+  });
+
   it("KEEP — the keep window closes with no reaction", () => {
     const { ledger, advance } = makeLedger();
     ledger.register(PROPOSAL);

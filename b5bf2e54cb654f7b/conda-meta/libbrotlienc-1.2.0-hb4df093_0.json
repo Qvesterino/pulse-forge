@@ -1,0 +1,59 @@
+{
+  "build": "hb4df093_0",
+  "build_number": 0,
+  "depends": [
+    "libbrotlicommon 1.2.0 h27f1b8e_0",
+    "ucrt >=10.0.20348.0",
+    "vc >=14.3,<15",
+    "vc14_runtime >=14.44.35208"
+  ],
+  "license": "MIT",
+  "license_family": "MIT",
+  "md5": "6ba7f9a551aebc9a9e17df0634f5c839",
+  "name": "libbrotlienc",
+  "sha256": "c2ebb854bc7a48ec4d48d38fc4b1fdfff5332c490207bd699680dddb3773536f",
+  "size": 259315,
+  "subdir": "win-64",
+  "timestamp": 1791933893932,
+  "version": "1.2.0",
+  "fn": "libbrotlienc-1.2.0-hb4df093_0.conda",
+  "url": "https://repo.anaconda.com/pkgs/main/win-64/libbrotlienc-1.2.0-hb4df093_0.conda",
+  "channel": "https://repo.anaconda.com/pkgs/main/",
+  "extracted_package_dir": "C:\\Users\\danie\\AppData\\Local\\rattler\\cache\\pkgs\\libbrotlienc-1.2.0-hb4df093_0",
+  "requested_specs": [],
+  "files": [
+    "Library/bin/brotlienc.dll",
+    "Library/lib/pkgconfig/libbrotlienc.pc",
+    "Library/lib/brotlienc.lib"
+  ],
+  "paths_data": {
+    "paths_version": 1,
+    "paths": [
+      {
+        "_path": "Library/bin/brotlienc.dll",
+        "path_type": "hardlink",
+        "sha256": "2b8c302ad07b0cfbbbc0fc3ba6d53d7ef88335be3edf6db4d3908bbb35d6bcb4",
+        "size_in_bytes": 691016
+      },
+      {
+        "_path": "Library/lib/pkgconfig/libbrotlienc.pc",
+        "path_type": "hardlink",
+        "sha256": "b5f3f6f18d2fc18a98536c1b160aba6c7a10e2284c514d6e18d8a90fb0e54599",
+        "sha256_in_prefix": "5b3c4273191f719a5a8550b9318177f09ed5d89e57f01124a7d9f9152df7bb16",
+        "size_in_bytes": 367,
+        "file_mode": "text",
+        "prefix_placeholder": "C:/Users/task_179193364250846/croot/brotli-split_1791933741034/_h_env"
+      },
+      {
+        "_path": "Library/lib/brotlienc.lib",
+        "path_type": "hardlink",
+        "sha256": "7d624f40f69fa41fd1db455c2398f31c4365b6ceb34316c3577bf8a5c8ec8c83",
+        "size_in_bytes": 4990
+      }
+    ]
+  },
+  "link": {
+    "source": "C:\\Users\\danie\\AppData\\Local\\rattler\\cache\\pkgs\\libbrotlienc-1.2.0-hb4df093_0",
+    "type": 3
+  }
+}

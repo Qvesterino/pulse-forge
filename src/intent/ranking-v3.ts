@@ -20,7 +20,11 @@ import {
   audioTargetFor,
   type RenderCandidateFn,
 } from "./audio-feedback";
-import { readLearnedRerankWeight } from "./rerank-weights";
+import { readLearnedRerankWeight, rerankFinalistCount, rerankGenerationId } from "./rerank-weights";
+// The finalist default moved to rerank-weights (this module imports it, so the
+// reverse would be a cycle); re-exported here so the established import path
+// keeps working.
+export { DEFAULT_SOUND_FINALISTS } from "./rerank-weights";
 import { recordAudioFitObservation } from "./audio-fit-ledger";
 import { hashString } from "../shared/rng";
 import type { SampleBank } from "../sample-library/factory";
@@ -42,8 +46,6 @@ export interface SoundRerankOptions {
   observations?: readonly PreferenceObservationV1[];
 }
 
-export const DEFAULT_SOUND_FINALISTS = 3;
-
 /** Default renderer: offline audition render; keep stereo available for DNA analysis. */
 const defaultRender: RenderCandidateFn = async (doc: ProjectDocument, bank: SampleBank, pattern) => {
   const { renderAuditionBuffer } = await import("./audition");
@@ -62,7 +64,7 @@ export async function rerankTopBySound(
   options: SoundRerankOptions,
 ): Promise<RankedCandidate[]> {
   try {
-    const finalistCount = Math.max(2, Math.min(options.finalists ?? DEFAULT_SOUND_FINALISTS, bank.length));
+    const finalistCount = rerankFinalistCount(bank.length, options.finalists);
     if (bank.length < 2) return [...bank];
     const finalists = bank.slice(0, finalistCount);
     const render = options.render ?? defaultRender;
@@ -156,7 +158,11 @@ export async function rerankTopBySound(
       const winner = reorderedFinalists[0];
       const winnerPosition = finalists.findIndex((entry) => entry.candidateIndex === winner.candidateIndex);
       recordAudioFitObservation({
-        generationId: `gen-${hashString(`${doc.id}|${genre}|${finalists.map((entry) => entry.contentHash).join(",")}`)}`,
+        generationId: rerankGenerationId(
+          doc.id,
+          genre,
+          finalists.map((entry) => entry.contentHash),
+        ),
         genre,
         selectedIndex: winnerPosition >= 0 ? winnerPosition : 0,
         candidates: finalists.map((entry) => ({

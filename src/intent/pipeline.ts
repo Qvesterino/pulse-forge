@@ -17,6 +17,7 @@ import type {
 } from "./types";
 import { isPreferenceLearningEnabled, preferenceContextForIntent, readPreferenceLedger } from "./preference-ledger";
 import { explainSelection, formatSelectionReasons } from "./selection-reasons";
+import { rerankFinalistCount, rerankGenerationId } from "./rerank-weights";
 
 function resultFromProposal(
   plan: ReturnType<typeof planGeneration>,
@@ -172,7 +173,18 @@ export async function generateAsyncResult(
   }));
   const firstPassSelectedIndex = bank[0]?.candidateIndex;
   let finalBank = bank;
+  // Wave B closure: the SAME generation identity ranking-v3 records its
+  // audio-fit observation under, derived from the same first-pass finalists
+  // through the same helpers — so the apply surface can hand it to the
+  // reaction ledger and `npm run rerank:fit` can join the two without either
+  // side re-deriving the recipe by hand (the drift would be silent).
+  let rerankGeneration: string | undefined;
   if (options.sound) {
+    rerankGeneration = rerankGenerationId(
+      doc.id,
+      plan.intent.genre,
+      bank.slice(0, rerankFinalistCount(bank.length, options.sound.finalists)).map((entry) => entry.contentHash),
+    );
     // Ranking v3: render the top finalists and re-order by the weighted mix
     // of first-pass rank and audio fit. The winner becomes bank[0] and the
     // proposal points at it.
@@ -257,11 +269,17 @@ export async function generateAsyncResult(
     ? {
         ...ranked.ranker,
         selectedIndex: selected.candidateIndex,
+        ...(rerankGeneration !== undefined ? { rerankGenerationId: rerankGeneration } : {}),
         reasons: selectionReasons,
         rationale: selectionRationale,
         ...(audioRerankMeta != null ? { audioRerank: audioRerankMeta } : {}),
       }
-    : { ...ranked.ranker, reasons: selectionReasons, rationale: selectionRationale };
+    : {
+        ...ranked.ranker,
+        ...(rerankGeneration !== undefined ? { rerankGenerationId: rerankGeneration } : {}),
+        reasons: selectionReasons,
+        rationale: selectionRationale,
+      };
   return {
     ...base,
     status,

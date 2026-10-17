@@ -632,6 +632,37 @@
   background: #fff;
   opacity: 0.9;
   box-shadow: 0 0 8px rgba(245, 158, 11, 0.7);
+  z-index: 2;
+}
+
+.pr-expression-bar::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: -2px;
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(12, 14, 20, 0.9);
+  border-radius: 50%;
+  background: inherit;
+  pointer-events: auto;
+}
+
+.pr-expression-bar[data-negative="true"]::after {
+  top: auto;
+  bottom: -4px;
+}
+
+.pr-velocity-lane[data-event-target="pan"]::after,
+.pr-velocity-lane[data-event-target="pitchOffsetSemitones"]::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  right: 0;
+  left: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  pointer-events: none;
 }
 
 .pr-marquee {

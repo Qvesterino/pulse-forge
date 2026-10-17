@@ -1,5 +1,5 @@
 import type { InstrumentDefinition, InstrumentRuntime } from "./types";
-import type { InstrumentKind, InstrumentTrack, NoteExpression, SampleLayer } from "../project-model/types";
+import type { InstrumentKind, InstrumentTrack, SampleLayer } from "../project-model/types";
 import { midiToFreq } from "../project-model/types";
 import { hashString, mulberry32 } from "../shared/rng";
 import { buildWavetableMips, extractWavetable, FACTORY_WAVETABLES, FRAME_SIZE, pickMipLevel } from "./wavetables";
@@ -173,6 +173,7 @@ function addOscDrift(
 interface Voice {
   pitch: number;
   stopAt: number;
+  slideToPitch?(pitch: number, when: number, durationSec: number): boolean;
   stop(when: number): void;
   silence(now: number): void;
 }
@@ -1018,8 +1019,7 @@ const bass808: InstrumentDefinition = {
         const toneFilter = ctx.createBiquadFilter();
         toneFilter.type = "lowpass";
         toneFilter.frequency.value = expression?.filterCutoffHz ?? Math.max(120, toneHz);
-        toneFilter.Q.value =
-          expression?.filterResonance !== undefined ? 0.1 + expression.filterResonance * 7.9 : 0.7;
+        toneFilter.Q.value = expression?.filterResonance !== undefined ? 0.1 + expression.filterResonance * 7.9 : 0.7;
         toneFilter.connect(pre);
         // The shared shaper feeds every live voice's post — no rewiring here.
         // (It used to disconnect() the shaper per note, hard-cutting the
@@ -1028,7 +1028,7 @@ const bass808: InstrumentDefinition = {
         shaper.connect(post);
         const notePanner = expression?.pan !== undefined ? ctx.createStereoPanner() : null;
         if (notePanner) {
-          notePanner.pan.setValueAtTime(Math.max(-1, Math.min(1, expression.pan!)), when);
+          notePanner.pan.setValueAtTime(Math.max(-1, Math.min(1, expression?.pan ?? 0)), when);
           notePanner.connect(output);
         }
         const voiceOutput: AudioNode = notePanner ?? output;
@@ -1192,6 +1192,26 @@ const bass808: InstrumentDefinition = {
         const voice: Voice = {
           pitch,
           stopAt: stopTime,
+          slideToPitch: (targetPitch, slideWhen, slideDurationSec) => {
+            if (current !== voice || !mono || slideWhen >= off) return false;
+            const fromFreq = midiToFreq(voice.pitch);
+            const targetFreq = midiToFreq(targetPitch);
+            const rampEnd = slideWhen + Math.max(0, Number.isFinite(slideDurationSec) ? slideDurationSec : 0);
+            const schedulePitch = (oscillator: OscillatorNode | null, octaveOffset: number) => {
+              if (!oscillator) return;
+              const from = Math.max(20, fromFreq * Math.pow(2, octaveOffset / 12));
+              const target = Math.max(20, targetFreq * Math.pow(2, octaveOffset / 12));
+              oscillator.frequency.cancelScheduledValues(slideWhen);
+              oscillator.frequency.setValueAtTime(from, slideWhen);
+              if (rampEnd > slideWhen + 0.001) oscillator.frequency.exponentialRampToValueAtTime(target, rampEnd);
+              else oscillator.frequency.setValueAtTime(target, slideWhen);
+            };
+            schedulePitch(osc, 0);
+            schedulePitch(subOsc, -12);
+            schedulePitch(gritOsc, 0);
+            voice.pitch = targetPitch;
+            return true;
+          },
           stop: (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
@@ -1314,6 +1334,9 @@ const bass808: InstrumentDefinition = {
       noteOff(_pitch, when) {
         current?.stop(when);
         current = null;
+      },
+      noteSlide(pitch, when, durationSec) {
+        current?.slideToPitch?.(pitch, when, durationSec);
       },
       panic() {
         current?.silence(ctx.currentTime);

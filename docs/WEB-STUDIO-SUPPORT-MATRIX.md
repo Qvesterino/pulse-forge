@@ -51,6 +51,16 @@ The recording procedure and retained evidence checklist are in
 interface passes that procedure, describe recording support as browser
 software-path capability, not certified studio hardware support.
 
+## Composition and note editing
+
+| Capability                                      | Status             | Evidence and boundary                                                                                                                                                                         |
+| ----------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Long MIDI phrases and three-minute songs       | Software verified | ADR 0047 and `docs/CURRENT-STATE.md`: 180-second save/reload/export and 181-second live soak passed; sparse MIDI notes exceed the bounded drum step grid.                                     |
+| Independent MIDI clips per instrument lane     | Implemented        | ADR 0044: clips are independently placed and scheduled on instrument lanes; Firefox live-audio, multi-peer collaboration and filtered-stem parity gates remain open.                          |
+| Per-note velocity and fine pitch event lanes   | Implemented        | Piano Roll Event Editor (schema v33); velocity is existing note data, fine pitch is added before the shared TriggerEngine path. MIDI 1.0 output expression is not yet represented.            |
+| Per-note pan, filter and release controls      | Implemented        | Currently consumed per voice by the built-in 808. Other instrument runtimes do not yet declare or consume these targets; the UI hides them for those tracks.                                   |
+| FL-style slide note and portamento modes       | Open               | Current `NoteEvent.slide` creates a glide into the flagged note. FL distinguishes this transition from a slide note that bends an overlapping held voice; the latter is not yet implemented. |
+
 ## Plug-ins
 
 | Capability                    | Status      | Current boundary                                                                                 |

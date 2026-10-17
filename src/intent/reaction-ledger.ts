@@ -53,6 +53,16 @@ export interface ReactionEntry {
   afterHash: string;
   outcome: ReactionOutcome;
   resolvedAt: number | null;
+  /**
+   * Wave B closure: the generation this proposal APPLIED, when it applied a
+   * generated candidate (see rerankGenerationId). It is a content-derived
+   * hash — the same class of token as beforeHash/afterHash, never user text —
+   * and it is what lets the fit join a human verdict back to the audio-fit
+   * observation instead of assuming the engine's delivered winner was kept.
+   */
+  generationId?: string;
+  /** Bank index of the candidate the human applied, when one was chosen. */
+  candidateIndex?: number;
 }
 
 export interface ReactionPackV1 {
@@ -158,6 +168,16 @@ export function sanitizeHash(value: unknown): string {
   return typeof value === "string" && HASH_RE.test(value) ? value : "";
 }
 
+/** Generation identity: the same token discipline as hashes/ids, or nothing. */
+export function sanitizeGenerationId(value: unknown): string | undefined {
+  return typeof value === "string" && ID_RE.test(value) ? value : undefined;
+}
+
+/** Applied bank candidate index: a small non-negative integer, or nothing. */
+export function sanitizeCandidateIndex(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 999 ? value : undefined;
+}
+
 /** Defensive parse for anything read back from storage. Never throws. */
 export function sanitizeReactionEntry(value: unknown): ReactionEntry | null {
   if (value == null || typeof value !== "object") return null;
@@ -168,6 +188,8 @@ export function sanitizeReactionEntry(value: unknown): ReactionEntry | null {
   const outcome =
     raw.outcome === "kept" || raw.outcome === "undone" || raw.outcome === "tweaked" ? raw.outcome : "pending";
   const resolvedAt = Number(raw.resolvedAt);
+  const generationId = sanitizeGenerationId(raw.generationId);
+  const candidateIndex = sanitizeCandidateIndex(raw.candidateIndex);
   return {
     id: raw.id,
     createdAt,
@@ -182,6 +204,8 @@ export function sanitizeReactionEntry(value: unknown): ReactionEntry | null {
     afterHash: sanitizeHash(raw.afterHash),
     outcome,
     resolvedAt: Number.isFinite(resolvedAt) ? resolvedAt : null,
+    ...(generationId !== undefined ? { generationId } : {}),
+    ...(candidateIndex !== undefined ? { candidateIndex } : {}),
   };
 }
 
@@ -264,8 +288,16 @@ export interface RegisterInput {
   trackIds: unknown;
   beforeHash: unknown;
   afterHash: unknown;
-  /** Undo-stack depth right after the apply — identifies the action later. */
+  /**
+   * Undo-stack depth read BEFORE the apply — the depth the stack SETTLES back
+   * at when the human undoes. Passing the depth after the command (L+1) can
+   * never match and makes `undone` unreachable (see reaction-bridge.ts).
+   */
   undoDepth: number;
+  /** Optional generation identity (content hash) — see ReactionEntry. */
+  generationId?: unknown;
+  /** Optional applied bank candidate index — see ReactionEntry. */
+  candidateIndex?: unknown;
 }
 
 export class ReactionLedger {
@@ -293,6 +325,8 @@ export class ReactionLedger {
   register(input: RegisterInput): ReactionEntry | null {
     const routeKind = sanitizeRouteKind(input.routeKind);
     if (routeKind === "unknown") return null;
+    const generationId = sanitizeGenerationId(input.generationId);
+    const candidateIndex = sanitizeCandidateIndex(input.candidateIndex);
     const entry: ReactionEntry & { undoDepth: number } = {
       id: this.newId(),
       createdAt: this.now(),
@@ -304,6 +338,8 @@ export class ReactionLedger {
       outcome: "pending",
       resolvedAt: null,
       undoDepth: input.undoDepth,
+      ...(generationId !== undefined ? { generationId } : {}),
+      ...(candidateIndex !== undefined ? { candidateIndex } : {}),
     };
     this.pending.push(entry);
     return stripDepth(entry);

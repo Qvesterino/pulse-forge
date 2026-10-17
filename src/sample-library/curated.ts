@@ -27,8 +27,9 @@ export interface CuratedSample {
 
 /**
  * Curated coverage for WAV-backed factory slots (factory-content pass
- * 2026-09). Procedural-only brush/field textures and two specialized
- * percussion voices intentionally remain synthesized. The curated layer
+ * 2026-09). The atmosphere pass adds stereo WAV overrides for Room Tone,
+ * Distant Street, Cloth Rustle, and Match Strike. Five Field sounds, both
+ * Brushes, Ride Ding, and Ghost Note remain procedural. The curated layer
  * carries mastering glue and per-category loudness balance (see
  * scripts/render-curated-seeds.mjs).
  */
@@ -187,6 +188,12 @@ export const CURATED_SAMPLES: CuratedSample[] = [
   { id: "factory.lead.square", file: "factory.lead.square.wav" },
   { id: "factory.lead.pluck.bright", file: "factory.lead.pluck.bright.wav" },
   { id: "factory.lead.pluck.dark", file: "factory.lead.pluck.dark.wav" },
+  // KYX atmosphere source pass (2026-10-17): mono-safe stereo air on four
+  // Field voices; low frequencies stay centered and the mid signal is intact.
+  { id: "factory.field.roomtone", file: "factory.field.roomtone.wav" },
+  { id: "factory.field.street", file: "factory.field.street.wav" },
+  { id: "factory.field.rustle", file: "factory.field.rustle.wav" },
+  { id: "factory.field.match", file: "factory.field.match.wav" },
 ];
 
 /** Concurrency cap for parallel fetch+decode. */

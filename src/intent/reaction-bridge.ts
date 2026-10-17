@@ -85,12 +85,67 @@ export function noteIntentProposal(
   afterDoc: ProjectDocument,
   undoDepthBeforeApply: number,
 ): void {
-  const ledger = activeReactionLedger();
-  if (!ledger || !isMutatingIntentRoute(route)) return;
+  // The kill switch FIRST: a disabled ledger must cost zero cycles, and the
+  // track-id diff below is real work (F1 contract).
+  if (!activeReactionLedger() || !isMutatingIntentRoute(route)) return;
+  registerProposal({
+    routeKind: route.kind,
+    action: describeIntentAction(route),
+    trackIds: affectedTrackIds(route, beforeDoc, afterDoc),
+    beforeDoc,
+    afterDoc,
+    undoDepthBeforeApply,
+  });
+}
 
-  const trackIds = affectedTrackIds(route, beforeDoc, afterDoc);
-  const beforeHash = hashReactionState(proposalState(beforeDoc, trackIds));
-  const afterHash = hashReactionState(proposalState(afterDoc, trackIds));
+/**
+ * Wave B closure: the human APPLIED a generated candidate from the bank (USE /
+ * USE RESULT). This is the single biggest action in the panel and it was not
+ * in the ledger at all — which is why the audio-fit fit could only assume the
+ * engine's delivered winner was what the human kept.
+ *
+ * The `generationId` is the same content-derived token the audio-fit ledger
+ * records its observation under, so `npm run rerank:fit` can join the human's
+ * verdict back to the rendered finalists instead of guessing. The route kind is
+ * `candidateUse` — a bank pick is not one of the parser's routes, and calling
+ * it `production` would launder two different lessons into one bucket.
+ */
+export function noteCandidateUse(
+  beforeDoc: ProjectDocument,
+  afterDoc: ProjectDocument,
+  undoDepthBeforeApply: number,
+  applied: { generationId?: string; candidateIndex?: number } = {},
+): void {
+  if (!activeReactionLedger()) return;
+  registerProposal({
+    routeKind: "candidateUse",
+    action: { verb: "generate", subject: "pattern", relative: false },
+    trackIds: [...new Set(trackIdsChangedBetween(beforeDoc, afterDoc))].sort(),
+    beforeDoc,
+    afterDoc,
+    undoDepthBeforeApply,
+    ...(applied.generationId !== undefined ? { generationId: applied.generationId } : {}),
+    ...(applied.candidateIndex !== undefined ? { candidateIndex: applied.candidateIndex } : {}),
+  });
+}
+
+interface RegisterProposalInput {
+  routeKind: string;
+  action: ReactionActionInput;
+  trackIds: string[];
+  beforeDoc: ProjectDocument;
+  afterDoc: ProjectDocument;
+  undoDepthBeforeApply: number;
+  generationId?: string;
+  candidateIndex?: number;
+}
+
+/** The shared body: build the state pair, enforce the no-op postcondition, register. */
+function registerProposal(input: RegisterProposalInput): void {
+  const ledger = activeReactionLedger();
+  if (!ledger) return;
+  const beforeHash = hashReactionState(proposalState(input.beforeDoc, input.trackIds));
+  const afterHash = hashReactionState(proposalState(input.afterDoc, input.trackIds));
 
   // POSTCONDITION. A route that changed nothing is not a proposal — it is a
   // no-op command, a query, or a re-ask that landed on the current value.
@@ -99,12 +154,14 @@ export function noteIntentProposal(
   if (beforeHash === afterHash) return;
 
   ledger.register({
-    routeKind: route.kind,
-    action: describeIntentAction(route),
-    trackIds,
+    routeKind: input.routeKind,
+    action: input.action,
+    trackIds: input.trackIds,
     beforeHash,
     afterHash,
-    undoDepth: undoDepthBeforeApply,
+    undoDepth: input.undoDepthBeforeApply,
+    ...(input.generationId !== undefined ? { generationId: input.generationId } : {}),
+    ...(input.candidateIndex !== undefined ? { candidateIndex: input.candidateIndex } : {}),
   });
 }
 

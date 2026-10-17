@@ -2162,6 +2162,16 @@ export class AudioEngine {
     );
   }
 
+  noteSlide(
+    trackId: string,
+    pitch: number,
+    when: number,
+    durationSec: number,
+    expression?: import("../project-model/types").NoteExpression,
+  ): void {
+    this.triggerEngine.noteSlide(trackId, pitch, when, durationSec, expression);
+  }
+
   triggerAudioClip(
     clip: import("../project-model/types").AudioClip,
     when: number,

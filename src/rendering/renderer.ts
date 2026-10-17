@@ -791,19 +791,26 @@ function scheduleNotes(
     const noteLocks = (event.note as any).locks as
       Partial<Record<import("../project-model/types").StepLockKey, number>> | undefined;
     const locks = noteLocks ?? metaLocks;
-    engine.noteOn(
-      event.trackId,
-      event.note.pitch,
-      event.note.velocity,
-      timeAt(event.tick),
-      timeAt(event.tick + event.note.duration) - timeAt(event.tick),
-      slideFrom?.tick,
-      slideFrom?.pitch,
-      locks,
-      // Glide origin from the SAME tempo map — the engine's doc.bpm fallback
-      // desyncs slides under scene tempo (parity with the live scheduler).
-      slideFrom ? timeAt(slideFrom.tick) : undefined,
-    );
+    const when = timeAt(event.tick);
+    const durationSec = timeAt(event.tick + event.note.duration) - when;
+    if (event.note.slideNote) {
+      engine.noteSlide(event.trackId, event.note.pitch, when, durationSec, event.note.expression);
+    } else {
+      engine.noteOn(
+        event.trackId,
+        event.note.pitch,
+        event.note.velocity,
+        when,
+        durationSec,
+        slideFrom?.tick,
+        slideFrom?.pitch,
+        locks,
+        // Glide origin from the SAME tempo map — the engine's doc.bpm fallback
+        // desyncs slides under scene tempo (parity with the live scheduler).
+        slideFrom ? timeAt(slideFrom.tick) : undefined,
+        event.note.expression,
+      );
+    }
   }
 }
 
