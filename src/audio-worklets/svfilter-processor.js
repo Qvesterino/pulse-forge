@@ -181,11 +181,14 @@ class SvFilterProcessor extends AudioWorkletProcessor {
     }
 
     // Cutoff GLIDES (~5 ms one-pole) toward the target — an instantaneous
-    // coefficient change per block zippers on automated sweeps. The smoothed
-    // state advanced above even for silent blocks. Resonance follows the same
-    // smoothed cutoff; the stability clamp re-runs on the smoothed pair every
-    // block, so the glide can never leave the stable region (fast jumps are
-    // limited exactly like instant ones).
+    // coefficient change per block zippers on automated sweeps. The processor
+    // starts from the authored cutoff; this state advances only while processing
+    // audio, so silent voice graphs retain the right value without wasted work.
+    // Resonance follows the same smoothed cutoff; the stability clamp re-runs
+    // on the smoothed pair every block, so the glide can never leave the stable
+    // region (fast jumps are limited exactly like instant ones).
+    if (this.cutoffSmoothed === undefined) this.cutoffSmoothed = cutoff;
+    this.cutoffSmoothed += (cutoff - this.cutoffSmoothed) * (1 - Math.exp(-outL.length / (0.005 * sr)));
     if (cutoff !== this.lastCutoff || res !== this.lastRes) {
       this.lastCutoff = cutoff;
       this.lastRes = res;

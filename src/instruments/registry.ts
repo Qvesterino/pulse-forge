@@ -336,6 +336,7 @@ function createVoiceFilter(
       numberOfOutputs: 1,
       outputChannelCount: [2],
       channelCount: 2,
+      processorOptions: { initialCutoff: Math.max(20, Math.min(20000, initialCutoff)) },
     });
     const cutoffParam = node.parameters.get("cutoff")!;
     const resParam = node.parameters.get("resonance")!;

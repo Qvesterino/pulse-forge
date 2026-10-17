@@ -4,7 +4,7 @@
  * extractShareCode/decode paths run for real.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { render } from "@testing-library/react";
 import { compressToEncodedURIComponent } from "lz-string";
 import { GalleryPage } from "../../src/gallery/GalleryPage";
@@ -239,6 +239,92 @@ describe("GalleryPage", () => {
     // Any active chip (toolbar or tag row) toggles the filter off again.
     fireEvent.click(screen.getAllByText(/#phonk/)[0]);
     await waitFor(() => expect(screen.getByText("Garage Skank")).toBeTruthy());
+  });
+
+  it("badges a verifiable render and filters the feed by provenance", async () => {
+    // Three beats: verifiable with AI in the mix, verifiable AND model-free,
+    // and a plain one that makes no claim at all.
+    const hash = "ab".repeat(32);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          items: [
+            {
+              id: "v1",
+              title: "Verified AI",
+              author: "qveen",
+              tags: ["drill"],
+              code: code(),
+              bpm: 145,
+              projectName: "house",
+              createdAt: "2026-09-01T10:00:00.000Z",
+              render: {
+                hash,
+                algorithm: "SHA-256",
+                manifestFormat: "kyx-render-manifest/1",
+                models: ["mrt2/mrt2_small"],
+              },
+            },
+            {
+              id: "v2",
+              title: "Verified Human",
+              author: "matej",
+              tags: ["ukg"],
+              code: code(),
+              bpm: 135,
+              projectName: "house",
+              createdAt: "2026-09-01T11:00:00.000Z",
+              render: { hash, algorithm: "SHA-256", manifestFormat: "kyx-render-manifest/1", models: [] },
+            },
+            {
+              id: "p1",
+              title: "Plain Beat",
+              author: "anon",
+              tags: ["house"],
+              code: code(),
+              bpm: 124,
+              projectName: "house",
+              createdAt: "2026-09-01T12:00:00.000Z",
+            },
+          ],
+        }),
+      ),
+    );
+    render(<GalleryPage />);
+
+    await screen.findByText("Verified AI");
+    // Two verifiable badges, one AI receipt badge, one model-free badge — and
+    // NO badge on the beat that carries no claim.
+    const badges = screen.getAllByLabelText("Render provenance badge");
+    expect(badges).toHaveLength(2);
+    expect(within(badges[0]!).getByText("✓ VERIFIABLE RENDER")).toBeTruthy();
+    expect(screen.getByText("◆ AI×1")).toBeTruthy();
+    expect(within(badges[1]!).getByText("◌ MODEL-FREE")).toBeTruthy();
+    // The badge says EXACTLY how a reader checks it.
+    expect(badges[0]!.querySelector("[title]")?.getAttribute("title")).toContain(
+      `npx kyx-verify <file.wav> --expect ${hash}`,
+    );
+
+    // The provenance chips narrow the feed; the plain beat drops out.
+    const chips = within(screen.getByLabelText("Render provenance"));
+    fireEvent.click(chips.getByText("✓ VERIFIABLE"));
+    await waitFor(() => expect(screen.queryByText("Plain Beat")).toBeNull());
+    expect(screen.getByText("Verified AI")).toBeTruthy();
+    expect(screen.getByText("Verified Human")).toBeTruthy();
+
+    // Model-free is a stricter bucket: the AI beat drops out.
+    fireEvent.click(chips.getByText("◌ MODEL-FREE"));
+    await waitFor(() => expect(screen.queryByText("Verified AI")).toBeNull());
+    expect(screen.getByText("Verified Human")).toBeTruthy();
+  });
+
+  it("shows no provenance chips when no beat in the feed carries a claim", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(feedResponse()));
+    render(<GalleryPage />);
+    await screen.findByText("Midnight 808");
+    expect(screen.queryByLabelText("Render provenance")).toBeNull();
+    expect(screen.queryByLabelText("Render provenance badge")).toBeNull();
   });
 
   it("shows the unreachable-server state with a retry", async () => {

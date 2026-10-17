@@ -14,7 +14,7 @@ import { encodeShareCode } from "../src/export/shareCode";
 import { encodeWav } from "../src/rendering/wav";
 import type { WavBitDepth } from "../src/rendering/wav";
 // @ts-expect-error — the verifier is plain JS by design (zero-dep CLI, no types).
-import * as verifier from "../tools/kyx-verify.mjs";
+import * as verifier from "../tools/kyx-verify/kyx-verify.mjs";
 
 /**
  * KYX REPRODUCIBILITY PROTOCOL — CONFORMANCE.
@@ -198,7 +198,7 @@ describe("protocol conformance — the CLI itself", () => {
     const file = join(dir, "master.wav");
     writeFileSync(file, bytes);
 
-    const output = execFileSync(process.execPath, ["tools/kyx-verify.mjs", file], { encoding: "utf8" });
+    const output = execFileSync(process.execPath, ["tools/kyx-verify/kyx-verify.mjs", file], { encoding: "utf8" });
     expect(output).toContain("KYX REPRODUCIBILITY REPORT");
     expect(output).toContain("VERIFIED");
     expect(output).toContain("ai receipts");
@@ -216,7 +216,7 @@ describe("protocol conformance — the CLI itself", () => {
     let exitCode = 0;
     let output = "";
     try {
-      output = execFileSync(process.execPath, ["tools/kyx-verify.mjs", file, "--json"], { encoding: "utf8" });
+      output = execFileSync(process.execPath, ["tools/kyx-verify/kyx-verify.mjs", file, "--json"], { encoding: "utf8" });
     } catch (error) {
       const failure = error as { status?: number; stdout?: string };
       exitCode = failure.status ?? -1;

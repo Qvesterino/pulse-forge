@@ -1269,6 +1269,9 @@ export function IntentPanel() {
         routeKind: "generation",
         action: "generate:pattern:abs",
         detail: count > 0 ? `${count} candidates` : "single result",
+        // The measured reason, recorded where it exists — the Session Story
+        // prints it or says nothing about why (no filler prose, ever).
+        ...(result.selection?.rationale !== undefined ? { rationale: result.selection.rationale } : {}),
         undoDepthAfter: null,
         ...(result.selection?.rerankGenerationId !== undefined
           ? { generationId: result.selection.rerankGenerationId }

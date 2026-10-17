@@ -9,6 +9,7 @@
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from "lz-string";
 import { validateProjectShape } from "../project-model/schema";
 import type { ProjectDocument } from "../project-model/types";
+import type { GalleryRenderProvenance } from "./galleryProvenance";
 
 export interface GalleryItem {
   id: string;
@@ -23,6 +24,8 @@ export interface GalleryItem {
   plays?: number;
   /** How many published beats call this one their parent. */
   remixCount?: number;
+  /** Render provenance (see galleryProvenance.ts) — absent = no claim made. */
+  render?: GalleryRenderProvenance | null;
   /** Present when this beat was published as a remix of another beat. */
   parentId?: string | null;
   /** Project doc id extracted server-side from the share code. */
@@ -57,6 +60,12 @@ export interface PublishInput {
   /** Agent provenance — only the MCP path sets these. */
   origin?: "human" | "agent";
   agent?: string;
+  /**
+   * Render provenance of the export this beat came from (SHA-256 of the PCM +
+   * AI receipts). Present only when the studio had a render stamp; the badge
+   * and the feed filter are derived from it, never from a stored flag.
+   */
+  render?: GalleryRenderProvenance | null;
 }
 
 const API_KEY = "pf-gallery-api";

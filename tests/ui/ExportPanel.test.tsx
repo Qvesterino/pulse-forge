@@ -552,6 +552,34 @@ describe("ExportPanel", () => {
     }
   }, 40000);
 
+  it("offers a Session Story download beside the Trust Report", async () => {
+    const user = userEvent.setup();
+    const services = mockServices();
+    renderWithContext(<ExportPanel />, { services });
+    const blobs: Blob[] = [];
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockImplementation((value: Blob | MediaSource) => {
+      if (value instanceof Blob) blobs.push(value);
+      return "blob:test";
+    });
+    try {
+      await user.click(screen.getByRole("button", { name: /^EXPORT MASTER/ }));
+      const story = await screen.findByRole("button", { name: "SESSION STORY" }, { timeout: 20000 });
+      await user.click(story);
+      await waitFor(async () => {
+        const texts = await Promise.all(
+          blobs.map(async (blob) => new TextDecoder().decode(new Uint8Array(await blob.arrayBuffer()))),
+        );
+        const zipText = texts.find((text) => text.includes("session-story.md"));
+        expect(zipText).toBeTruthy();
+        expect(zipText).toContain("session-story.json");
+        expect(zipText).toContain("# Session Story");
+        expect(zipText).toContain("kyx-session-story/1");
+      });
+    } finally {
+      createObjectURL.mockRestore();
+    }
+  }, 40000);
+
   it("global quality switch defaults to Studio HQ", () => {
     renderWithContext(<ExportPanel />, { services: mockServices() });
     const quality = screen.getByLabelText("QUALITY") as HTMLSelectElement;

@@ -35,6 +35,9 @@ import { syncedLfoHz } from "../../effects/tempo-sync";
 
 const MAX_VOICES = 16;
 const UNISON_MAX = 8;
+/** Grain cloud bounds (engine 2): per-voice per-slot pool, 4 fields/grain. */
+const GRAIN_MAX = 10;
+const GRAIN_FIELDS = 4;
 /** Wavetable frame size (two periods at the lowest tracked f0). */
 const FRAME_SIZE = 2048;
 /** Fallback table: a 1-harmonic sine, used when a slot has no uploaded table
@@ -96,6 +99,20 @@ interface Voice {
   /** Per-voice wavetable scan phases; source SCAN is a smooth morph-rate control. */
   scanPhaseA: number;
   scanPhaseB: number;
+  /**
+   * Grain cloud (engine 2): bounded per-voice pools, no allocation in the
+   * render path. Four fields per grain — [startPos, age, dur, rate] — plus
+   * live counts, spawn phase accumulators and the per-note LCG that draws
+   * position jitter (seeded at noteOn so live and offline render the SAME
+   * cloud for the same events).
+   */
+  grainStateA: Float32Array;
+  grainStateB: Float32Array;
+  grainCountA: number;
+  grainCountB: number;
+  grainSpawnA: number;
+  grainSpawnB: number;
+  grainLcg: number;
   subPhase: number;
   lfoPhase: number;
   driftPhase: number;
@@ -273,6 +290,13 @@ export class TsarProcessor {
       posB: new Float32Array(UNISON_MAX),
       scanPhaseA: 0,
       scanPhaseB: 0,
+      grainStateA: new Float32Array(GRAIN_MAX * GRAIN_FIELDS),
+      grainStateB: new Float32Array(GRAIN_MAX * GRAIN_FIELDS),
+      grainCountA: 0,
+      grainCountB: 0,
+      grainSpawnA: 0,
+      grainSpawnB: 0,
+      grainLcg: 1,
       subPhase: 0,
       lfoPhase: (index * GOLDEN) % 1,
       driftPhase: (index * DRIFT_GOLDEN) % 1,
@@ -473,6 +497,14 @@ export class TsarProcessor {
     voice.gain = 0;
     voice.scanPhaseA = 0;
     voice.scanPhaseB = 0;
+    // Grain cloud restarts with every note; the jitter LCG is seeded from
+    // the note identity (pitch + age) so the SAME events render the SAME
+    // cloud live and offline (invariant #3, T9 acceptance).
+    voice.grainCountA = 0;
+    voice.grainCountB = 0;
+    voice.grainSpawnA = 0;
+    voice.grainSpawnB = 0;
+    voice.grainLcg = (0x9e3779b9 ^ Math.imul(pitch + 1, 2654435761) ^ Math.imul(voice.age, 40503)) >>> 0;
     voice.svfA1 = 0;
     voice.svfA2 = 0;
     voice.svfB1 = 0;
@@ -633,21 +665,20 @@ export class TsarProcessor {
     const spread = this.params[`${prefix}Spread`] ?? 0;
     const positions = slot === 0 ? voice.posA : voice.posB;
 
+    // GRANULAR (T9): a bounded cloud of overlapping grains over the PCM.
+    // SCAN still sweeps the cloud's read head; JITTER scatters each grain
+    // around it; SIZE/DENSITY set the overlap; grains resample at the
+    // voice's pitch, so pitched material stays pitched. Deterministic (the
+    // per-note jitter LCG, seeded at noteOn) and bounded (GRAIN_MAX per
+    // voice per slot, a per-sample spawn cap, zero allocation).
+    if (engine === 2) return this.grainSample(voice, slot, data, scan, baseHz);
+
     let sum = 0;
     for (let u = 0; u < unison; u++) {
       const spreadOffset = unison === 1 ? 0 : ((u / (unison - 1)) * 2 - 1) * spread;
       const f = baseHz * Math.pow(2, (detuneCents + spreadOffset) / 1200);
       let pos = positions[u]!;
-      if (engine === 2) {
-        // GRANULAR: normalized scan position sweeping slowly; raised-cosine
-        // window makes the loop seam click-free. A texture, not a pitch.
-        pos += scan / this.sampleRate;
-        if (pos >= 1) pos -= 1;
-        if (data.pcm) {
-          const window = 0.5 - 0.5 * Math.cos(2 * Math.PI * pos);
-          sum += readWrapped(data.pcm, pos * (data.pcm.length - 1)) * window;
-        }
-      } else if (engine === 1) {
+      if (engine === 1) {
         sum += this.readWavetable(data, pos, morph);
         pos += f / this.sampleRate;
         if (pos >= 1) pos -= 1;
@@ -663,6 +694,117 @@ export class TsarProcessor {
       positions[u] = pos;
     }
     return sum / Math.sqrt(unison);
+  }
+
+  /**
+   * The engine-2 grain cloud. Spawn cadence is DENSITY grains/second around
+   * the SCAN head; each grain resamples the PCM at the voice's frequency
+   * (rate 1 = recorded root), lives SIZE milliseconds under a Hann window,
+   * and dies. Overlap energy is compensated by the expected grain count
+   * (size·density·Hann mean), so density and size sweeps hold level — the
+   * factory loudness-probe lesson.
+   */
+  private grainSample(
+    voice: Voice,
+    slot: 0 | 1,
+    data: SourceData,
+    scan: number,
+    baseHz: number,
+  ): number {
+    const sr = this.sampleRate;
+    const prefix = slot === 0 ? "srcA" : "srcB";
+    const state = slot === 0 ? voice.grainStateA : voice.grainStateB;
+    const countKey = slot === 0 ? "grainCountA" : "grainCountB";
+    const spawnKey = slot === 0 ? "grainSpawnA" : "grainSpawnB";
+    const slotPos = slot === 0 ? voice.posA : voice.posB;
+    const inner = voice as unknown as Record<string, number>;
+    let count = inner[countKey];
+
+    const pcm = data.pcm;
+    if (!pcm || pcm.length === 0) {
+      inner[countKey] = 0;
+      return 0;
+    }
+
+    const density = clamp(this.params[`${prefix}GrainDensity`] ?? 16, 1, 64);
+    const sizeMs = clamp(this.params[`${prefix}GrainSize`] ?? 60, 5, 300);
+    const jitter = clamp(this.params[`${prefix}GrainJitter`] ?? 0.3, 0, 1);
+    const durSamples = Math.max(64, Math.min(sr * 0.5, (sizeMs / 1000) * sr));
+    const rate = baseHz / data.pcmRootHz;
+    const len = pcm.length;
+
+    // The scan head keeps the OLD sweep semantics (SCAN = positions/s);
+    // grains spawn around it.
+    let head = slotPos[0]!;
+    head += scan / sr;
+    if (head >= 1) head -= Math.floor(head);
+    slotPos[0] = head;
+
+    // Spawns: phase accumulator with a per-sample burst cap so a huge
+    // density can never spin the loop unbounded.
+    let spawnPhase = inner[spawnKey];
+    spawnPhase += density / sr;
+    let spawned = 0;
+    while (spawnPhase >= 1 && spawned < 3) {
+      spawnPhase -= 1;
+      spawned += 1;
+      if (count >= GRAIN_MAX) continue;
+      const jitterOffset = jitter * (this.grainDraw(voice) * 2 - 1) * 0.5;
+      let startPos = head + jitterOffset;
+      startPos -= Math.floor(startPos);
+      if (startPos < 0) startPos += 1;
+      const base = count * GRAIN_FIELDS;
+      state[base] = startPos;
+      state[base + 1] = 0;
+      state[base + 2] = durSamples;
+      state[base + 3] = rate;
+      count += 1;
+    }
+    inner[spawnKey] = spawnPhase;
+
+    let sum = 0;
+    for (let i = count - 1; i >= 0; i--) {
+      const base = i * GRAIN_FIELDS;
+      const age = state[base + 1]! + 1;
+      const dur = state[base + 2]!;
+      if (age >= dur) {
+        // Retire finished grains: swap with the last, shrink the pool.
+        const last = (count - 1) * GRAIN_FIELDS;
+        state[base] = state[last]!;
+        state[base + 1] = state[last + 1]!;
+        state[base + 2] = state[last + 2]!;
+        state[base + 3] = state[last + 3]!;
+        count -= 1;
+        continue;
+      }
+      state[base + 1] = age;
+      const window = 0.5 - 0.5 * Math.cos((2 * Math.PI * age) / dur);
+      const readPos = (state[base]! + (age * state[base + 3]!) / len) * (len - 1);
+      sum += readWrapped(pcm, readPos) * window;
+    }
+    inner[countKey] = count;
+
+    // Overlap compensation: grains/sec × size ≈ overlapping grain voices,
+    // Hann's mean square is 0.5 — divide by the square root of the expected
+    // overlap so density and size sweeps hold level. Random placement can
+    // still CLUSTER grains (the mean is not the peak), so the bus ends in a
+    // soft knee: transparent below 0.9, asymptotic to ±1 — the engine can
+    // never emit runaway samples, and legitimate sums never touch the knee.
+    const overlap = Math.max(1, (durSamples / sr) * density * 0.5);
+    let out = sum / Math.sqrt(overlap);
+    if (out > 0.9 || out < -0.9) {
+      const sign = out < 0 ? -1 : 1;
+      out = sign * (0.9 + Math.tanh(Math.abs(out) - 0.9) * 0.1);
+    }
+    return out;
+  }
+
+  /** Deterministic jitter draw [0,1) from the per-note LCG. */
+  private grainDraw(voice: Voice): number {
+    let state = voice.grainLcg;
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    voice.grainLcg = state;
+    return state / 0x100000000;
   }
 
   /**

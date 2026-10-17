@@ -188,6 +188,17 @@ const GENERATORS: GeneratorSection[] = [
       "tests/domain-goldens/velocity-fx.json",
     ],
   },
+  {
+    // The public status page's STABLE payload: regenerating it re-runs the
+    // cheap claims (seam coverage, spec counts, the taste baseline, the
+    // protocol end-to-end), so a stale row — a claim that stopped holding —
+    // turns this gate red. docs/STATUS.md is deliberately NOT owned here: its
+    // header carries a timestamp and a duration-free table, and a volatile
+    // file cannot be compared with HEAD.
+    name: "status",
+    command: ["npm", "run", "status:report"],
+    ownedPaths: ["docs/status.json"],
+  },
 ];
 
 function runGenerator(command: string[]): { ok: boolean; output: string } {

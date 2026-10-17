@@ -15,11 +15,11 @@ npx kyx-verify beat-master.wav --print-ixml
 
 ## What it reports
 
-| Level           | Needs         | Result                                                                    |
-| --------------- | ------------- | ------------------------------------------------------------------------- |
-| Provenance read | the file      | project, render settings and AI receipts (provider, model, input hashes)   |
-| File integrity  | the file (32f)| `pcm-verified` / `pcm-mismatch` — the manifest's SHA-256 RECOMPUTED from the file's own samples |
-| Reproduction    | KYX + project | re-render with the stamped settings and compare hashes, bit-exact          |
+| Level           | Needs          | Result                                                                                          |
+| --------------- | -------------- | ----------------------------------------------------------------------------------------------- |
+| Provenance read | the file       | project, render settings and AI receipts (provider, model, input hashes)                        |
+| File integrity  | the file (32f) | `pcm-verified` / `pcm-mismatch` — the manifest's SHA-256 RECOMPUTED from the file's own samples |
+| Reproduction    | KYX + project  | re-render with the stamped settings and compare hashes, bit-exact                               |
 
 **A match proves the same PCM was produced — nothing about authorship, ownership
 or licensing.** A mismatch does not prove tampering on its own: the project or
@@ -29,10 +29,10 @@ only the float render can be hashed back.
 
 ## Exit codes
 
-| Code | Meaning                                                                                     |
-| ---- | ------------------------------------------------------------------------------------------- |
-| `0`  | readable manifest; integrity verified, quantized, or a check honestly skipped                |
-| `1`  | no usable manifest, or an export without a render hash                                       |
+| Code | Meaning                                                                                              |
+| ---- | ---------------------------------------------------------------------------------------------------- |
+| `0`  | readable manifest; integrity verified, quantized, or a check honestly skipped                        |
+| `1`  | no usable manifest, or an export without a render hash                                               |
 | `2`  | **mismatch** — modified 32-bit-float audio, a failed `--expect`, or a share code for another project |
 
 ## `--share-code`

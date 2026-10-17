@@ -23,6 +23,13 @@ import {
   type RemixParent,
 } from "./galleryApi";
 import { buildRemix, remixTagsOf } from "./remix";
+import {
+  GALLERY_RENDER_KEY,
+  provenanceModelCount,
+  provenanceVerifyHint,
+  sanitizeGalleryRenderProvenance,
+  type GalleryRenderProvenance,
+} from "./galleryProvenance";
 import { buildFamily } from "./family";
 import { FamilyTreeOverlay } from "./FamilyTreeOverlay";
 import { funnelEvent } from "../services/funnel";
@@ -45,6 +52,9 @@ export function GalleryPage() {
   const [query, setQuery] = useState("");
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [prefilledCode, setPrefilledCode] = useState<string | null>(null);
+  /** Render provenance handed over with the project (see galleryProvenance.ts). */
+  const [pendingProvenance, setPendingProvenance] = useState<GalleryRenderProvenance | null>(null);
+  const [renderFilter, setRenderFilter] = useState<"verifiable" | "ai" | "model-free" | null>(null);
   const [sort, setSort] = useState<GallerySort>("new");
 
   const reload = useCallback(() => {
@@ -58,7 +68,8 @@ export function GalleryPage() {
   useEffect(reload, [reload]);
 
   // Arriving from the studio's PUBLISH button — the encoded project is
-  // handed over via sessionStorage so the URL stays clean.
+  // handed over via sessionStorage so the URL stays clean. The RENDER
+  // provenance rides beside it when the studio had an export stamp.
   useEffect(() => {
     try {
       const code = sessionStorage.getItem(PUBLISH_CODE_KEY);
@@ -66,8 +77,15 @@ export function GalleryPage() {
         sessionStorage.removeItem(PUBLISH_CODE_KEY);
         setPrefilledCode(code);
       }
+      const rawRender = sessionStorage.getItem(GALLERY_RENDER_KEY);
+      if (rawRender) {
+        sessionStorage.removeItem(GALLERY_RENDER_KEY);
+        const provenance = sanitizeGalleryRenderProvenance(JSON.parse(rawRender) as unknown);
+        if (provenance) setPendingProvenance(provenance);
+      }
     } catch {
-      // storage blocked — the paste box still works
+      // storage blocked — the paste box still works, and the beat publishes
+      // without a render claim rather than with a broken one
     }
   }, []);
 
@@ -105,6 +123,11 @@ export function GalleryPage() {
       if (filter && !item.tags.includes(filter)) return false;
       if (genreFilter && item.genre !== genreFilter) return false;
       if (agentOnly && item.origin !== "agent") return false;
+      // Render provenance filters — derived from the item's own render object,
+      // never from a stored flag, so a badge cannot outlive its data.
+      if (renderFilter === "verifiable" && item.render == null) return false;
+      if (renderFilter === "ai" && provenanceModelCount(item.render) === 0) return false;
+      if (renderFilter === "model-free" && (item.render == null || provenanceModelCount(item.render) > 0)) return false;
       if (!q) return true;
       return (
         item.title.toLowerCase().includes(q) ||
@@ -112,7 +135,14 @@ export function GalleryPage() {
         item.tags.some((tag) => tag.includes(q))
       );
     });
-  }, [feed, filter, genreFilter, agentOnly, query]);
+  }, [feed, filter, genreFilter, agentOnly, renderFilter, query]);
+
+  // VERIFIABLE chip row — rendered only when the feed actually carries a
+  // verifiable render (legacy servers never send the field).
+  const verifiableCount = useMemo(
+    () => (feed.kind === "ready" ? feed.items.filter((item) => item.render != null).length : 0),
+    [feed],
+  );
 
   return (
     <div className="gallery-root" aria-label="Beat Gallery">
@@ -131,7 +161,15 @@ export function GalleryPage() {
         </nav>
       </header>
 
-      <PublishForm prefilledCode={prefilledCode} onPublished={reload} />
+      <PublishForm
+        prefilledCode={prefilledCode}
+        provenance={pendingProvenance}
+        onPublished={() => {
+          // The claim belongs to ONE publish: never reuse it for the next beat.
+          setPendingProvenance(null);
+          void reload();
+        }}
+      />
 
       <BattlePanel />
 
@@ -158,6 +196,28 @@ export function GalleryPage() {
           ⚔ TOP BY BATTLES
         </button>
       </div>
+
+      {verifiableCount > 0 && (
+        <div className="gallery-genrerow" aria-label="Render provenance">
+          {(
+            [
+              ["verifiable", "✓ VERIFIABLE", "Beats published with the render hash of the export they came from"],
+              ["model-free", "◌ MODEL-FREE", "Verifiable AND no AI models in the mix"],
+              ["ai", "◆ AI-IN-MIX", "Verifiable with AI-generated material (model receipts attached)"],
+            ] as const
+          ).map(([key, label, title]) => (
+            <button
+              key={key}
+              type="button"
+              className={"gallery-tag" + (renderFilter === key ? " gallery-tag-active" : "")}
+              onClick={() => setRenderFilter(renderFilter === key ? null : key)}
+              title={title}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {agentCount > 0 && (
         <div className="gallery-genrerow" aria-label="Agent-made">
@@ -434,6 +494,26 @@ function GalleryCard({
           ))}
         </div>
       )}
+      {item.render && (
+        <div className="gallery-card-tags" aria-label="Render provenance badge">
+          <span
+            className="gallery-tag gallery-tag-active"
+            title={`This beat carries the SHA-256 of the rendered PCM (${item.render.hash}). Download the master WAV and check it yourself: ${provenanceVerifyHint(item.render)}`}
+          >
+            ✓ VERIFIABLE RENDER
+          </span>
+          <span
+            className="gallery-tag"
+            title={
+              item.render.models.length > 0
+                ? `AI-generated material in the mix — receipts: ${item.render.models.join(", ")}`
+                : "No AI models in the mix (model-free, still verifiable)"
+            }
+          >
+            {item.render.models.length > 0 ? `◆ AI×${item.render.models.length}` : "◌ MODEL-FREE"}
+          </span>
+        </div>
+      )}
       {playing && (
         <div className="gallery-embed">
           <EmbedApp code={item.code} inline />
@@ -581,7 +661,15 @@ function GalleryCard({
   );
 }
 
-function PublishForm({ prefilledCode, onPublished }: { prefilledCode: string | null; onPublished: () => void }) {
+function PublishForm({
+  prefilledCode,
+  provenance,
+  onPublished,
+}: {
+  prefilledCode: string | null;
+  provenance: GalleryRenderProvenance | null;
+  onPublished: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [tags, setTags] = useState("");
@@ -641,6 +729,8 @@ function PublishForm({ prefilledCode, onPublished }: { prefilledCode: string | n
         tags: parseTags(tags),
         code,
         parentId: remixParent?.id ?? null,
+        // The render claim travels with the publish (see galleryProvenance.ts).
+        ...(provenance ? { render: provenance } : {}),
       });
       saveCreatorHandle(author.trim());
       clearRemixParent();
@@ -648,7 +738,9 @@ function PublishForm({ prefilledCode, onPublished }: { prefilledCode: string | n
       setStatus(
         item.parentId
           ? `Remix published! It is chained to "${remixParent?.title}" in the feed. 🔥`
-          : "Published! Your beat is live in the feed. 🔥",
+          : provenance
+            ? "Published with a verifiable render hash! Readers can check the export themselves. 🔥"
+            : "Published! Your beat is live in the feed. 🔥",
       );
       setTitle("");
       setTags("");

@@ -4656,6 +4656,9 @@ export function ArrangementPanel() {
           <div
             className="arr-chord-lane"
             style={{ width: totalBars * barWidth }}
+            // A bare div cannot carry an accessible name (axe: prohibited
+            // attribute) — the lane is a labelled group of chord blocks.
+            role="group"
             aria-label="Chord track"
             title="Chord track — click empty space to add a chord · drag to move · right edge resizes · click a chord to edit it"
             onPointerDown={(event) => {

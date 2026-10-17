@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useDoc } from "../ui/context";
 import { encodeProjectForGallery, PUBLISH_CODE_KEY, setRemixParent } from "./galleryApi";
+import { GALLERY_RENDER_KEY, provenanceFromStamp } from "./galleryProvenance";
+import { lastRenderStamp } from "../export/renderManifest";
 import { funnelEvent } from "../services/funnel";
 
 /**
@@ -32,6 +34,17 @@ export function PublishToGalleryButton() {
       return;
     }
     setError(null);
+    // Render provenance travels beside the code: the SHA-256 of the export's
+    // PCM plus the AI receipts, so the gallery can show a claim a reader can
+    // check. Optional by design — no export stamp, no claim (and a stale one
+    // from a previous publish is cleared rather than reused).
+    const provenance = provenanceFromStamp(lastRenderStamp());
+    try {
+      if (provenance != null) sessionStorage.setItem(GALLERY_RENDER_KEY, JSON.stringify(provenance));
+      else sessionStorage.removeItem(GALLERY_RENDER_KEY);
+    } catch {
+      /* provenance is a bonus; the hand-off below is the essential part */
+    }
     const remixOf = new URLSearchParams(location.search).get("remixOf");
     if (remixOf) setRemixParent({ id: remixOf, title: "your forked beat" });
     window.open("/gallery", "_blank", "noopener");

@@ -39,6 +39,8 @@ import { ensureWorkletsForDoc, isWorkletReady } from "../audio-worklets/loader";
 const SR = 44100;
 /** Seconds of live capture per case (also the offline comparison window). */
 const CASE_SECONDS = 0.45;
+/** Additional scheduling cushion for browser-thread note-event probes. */
+const NOTE_EXPRESSION_EVENT_PREROLL_SEC = 0.12;
 /** Null below this (dB, relative to reference energy) is inaudible. */
 export const PARITY_NULL_FLOOR_DB = -40;
 /**
@@ -176,8 +178,14 @@ interface CaptureResult {
   left: Float32Array;
   /** Audio-clock time of the first captured sample (from capture-start). */
   originTime: number;
+  /** Absolute audio frame of the first captured sample. */
+  originFrame: number;
   /** The context sample rate the live capture actually ran at. */
   sampleRate: number;
+  /** Exact frame target shared with the matching offline render. */
+  requestedFrames: number;
+  /** Smallest future lead, in seconds, when the script scheduled its events. */
+  minimumEventLeadSec: number;
 }
 
 async function loadParityCapture(ctx: BaseAudioContext): Promise<void> {
@@ -190,8 +198,9 @@ async function renderOffline(
   doc: ProjectDocument,
   script: ParityScript,
   sampleRate: number,
+  eventPrerollSec = 0,
 ): Promise<Float32Array | null> {
-  const frames = Math.ceil((CASE_SECONDS + 0.2) * sampleRate);
+  const frames = Math.ceil((CASE_SECONDS + 0.2 + eventPrerollSec) * sampleRate);
   const ctx = new OfflineAudioContext(2, frames, sampleRate);
   // Same loader contract as the renderer: core + exactly the plugin suites
   // this doc uses.
@@ -200,7 +209,7 @@ async function renderOffline(
   engine.attachBank(bank);
   engine.useContext(ctx);
   engine.setProject(doc);
-  script(engine, (offset) => offset);
+  script(engine, (offset) => eventPrerollSec + offset);
   // The export barrier: exact PDC sizing before the (un-abortable) render —
   // the same sequencing the real renderer performs.
   await engine.prepareOfflineRender();
@@ -216,6 +225,7 @@ async function captureLive(
   script: ParityScript,
   leadSec = 0,
   expectedWorklet?: "wtVoice" | "grainVoice",
+  eventPrerollSec = 0,
 ): Promise<CaptureResult | null> {
   const ctx = new AudioContext({ sampleRate: SR });
   try {
@@ -263,8 +273,11 @@ async function captureLive(
     const chunks: Float32Array[] = [];
     let originTime = Number.NaN;
     let captureSampleRate = 0;
+    let captureStartFrame = 0;
     let resolveDone: (() => void) | null = null;
     const done = new Promise<void>((resolve) => (resolveDone = resolve));
+    const requestedFrames = Math.ceil((CASE_SECONDS + 0.2 + eventPrerollSec) * ctx.sampleRate);
+    const scheduledTimes: number[] = [];
     const capture = new AudioWorkletNode(ctx, "capture-processor", {
       numberOfInputs: 1,
       numberOfOutputs: 0,
@@ -272,9 +285,16 @@ async function captureLive(
       channelInterpretation: "speakers",
     });
     capture.port.onmessage = (event: MessageEvent) => {
-      const data = event.data as { type?: string; time?: number; sampleRate?: number; left?: Float32Array } | null;
+      const data = event.data as {
+        type?: string;
+        time?: number;
+        frame?: number;
+        sampleRate?: number;
+        left?: Float32Array;
+      } | null;
       if (data?.type === "capture-start" && typeof data.time === "number") {
         originTime = data.time;
+        if (typeof data.frame === "number" && Number.isSafeInteger(data.frame)) captureStartFrame = data.frame;
         if (typeof data.sampleRate === "number" && data.sampleRate > 0) captureSampleRate = data.sampleRate;
       } else if (data?.type === "chunk" && data.left) chunks.push(data.left);
       else if (data?.type === "capture-done") resolveDone?.();
@@ -282,7 +302,7 @@ async function captureLive(
     const masterTap = engine.getMasterTapNode();
     if (!masterTap) return null;
     masterTap.connect(capture);
-    capture.port.postMessage({ type: "arm", chunkFrames: 4096 });
+    capture.port.postMessage({ type: "arm", chunkFrames: 4096, captureFrames: requestedFrames });
 
     // Wait until the capture has actually started before scheduling, so the
     // first event cannot land in a pre-capture quantum.
@@ -292,11 +312,23 @@ async function captureLive(
     }
     if (Number.isNaN(originTime)) return null;
     if (leadSec > 0) await new Promise((resolve) => setTimeout(resolve, leadSec * 1000));
-    script(engine, (offset) => originTime + leadSec + offset);
+    script(engine, (offset) => {
+      const when = originTime + leadSec + eventPrerollSec + offset;
+      scheduledTimes.push(when);
+      return when;
+    });
+    const minimumEventLeadSec = scheduledTimes.length
+      ? Math.min(...scheduledTimes.map((when) => when - ctx.currentTime))
+      : Number.POSITIVE_INFINITY;
 
-    await new Promise((resolve) => setTimeout(resolve, CASE_SECONDS * 1000 + 150));
-    capture.port.postMessage({ type: "stop" });
-    await Promise.race([done, new Promise((resolve) => setTimeout(resolve, 500))]);
+    const captureCompleted = await Promise.race([
+      done.then(() => true),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 5000)),
+    ]);
+    if (!captureCompleted) {
+      capture.port.postMessage({ type: "stop" });
+      await Promise.race([done, new Promise((resolve) => setTimeout(resolve, 500))]);
+    }
 
     capture.port.onmessage = null;
     try {
@@ -313,7 +345,14 @@ async function captureLive(
       left.set(chunk, offset);
       offset += chunk.length;
     }
-    return { left, originTime, sampleRate: captureSampleRate || ctx.sampleRate };
+    return {
+      left,
+      originTime,
+      originFrame: captureStartFrame,
+      sampleRate: captureSampleRate || ctx.sampleRate,
+      requestedFrames,
+      minimumEventLeadSec,
+    };
   } finally {
     await ctx.close().catch(() => undefined);
   }
@@ -433,9 +472,8 @@ export function comparePhaseInsensitiveParity(
   const hop = size / 2;
   const startAt = Math.floor(0.04 * sr);
   const endAt = Math.min(Math.floor(0.48 * sr), reference.length, capture.length - offset);
-  let dot = 0;
-  let referencePower = 0;
-  let capturePower = 0;
+  const referenceSpectrum = new Float64Array(size / 2);
+  const captureSpectrumSum = new Float64Array(size / 2);
   let referenceEnergy = 0;
   let captureEnergy = 0;
   let windows = 0;
@@ -451,17 +489,26 @@ export function comparePhaseInsensitiveParity(
     }
     if (refWindowEnergy + captureWindowEnergy < 1e-12) continue;
     const refSpectrum = windowSpectrum(reference, start, 0, size);
-    const captureSpectrum = windowSpectrum(capture, start + offset, 0, size);
+    const capturedSpectrum = windowSpectrum(capture, start + offset, 0, size);
     for (let i = 1; i < refSpectrum.length; i++) {
       const a = refSpectrum[i]!;
-      const b = captureSpectrum[i]!;
-      dot += a * b;
-      referencePower += a * a;
-      capturePower += b * b;
+      const b = capturedSpectrum[i]!;
+      referenceSpectrum[i] += a;
+      captureSpectrumSum[i] += b;
     }
     referenceEnergy += refWindowEnergy;
     captureEnergy += captureWindowEnergy;
     windows++;
+  }
+  let dot = 0;
+  let referencePower = 0;
+  let capturePower = 0;
+  for (let i = 1; i < referenceSpectrum.length; i++) {
+    const a = referenceSpectrum[i]!;
+    const b = captureSpectrumSum[i]!;
+    dot += a * b;
+    referencePower += a * a;
+    capturePower += b * b;
   }
   const denom = Math.sqrt(referencePower * capturePower);
   return {
@@ -489,6 +536,36 @@ export function phaseInsensitiveParityAgrees(
       phase.spectralCosine >= PARITY_MIN_SPECTRAL_COSINE &&
       phase.rmsRatio >= PARITY_SPECTRAL_RMS_RATIO_MIN &&
       phase.rmsRatio <= PARITY_SPECTRAL_RMS_RATIO_MAX,
+  );
+}
+
+export function noteExpressionParityAgrees(
+  measurement: Pick<
+    ParityMeasurement,
+    | "alignOffset"
+    | "liveNullDb"
+    | "liveRepeatNullDb"
+    | "liveRepeatAlignOffset"
+    | "phaseInsensitive"
+    | "phaseInsensitiveControl"
+    | "phaseInsensitiveRepeat"
+    | "controlNullDb"
+  >,
+): boolean {
+  const liveWaveformAgrees =
+    Number.isFinite(measurement.liveNullDb) &&
+    measurement.liveNullDb <= PARITY_NULL_FLOOR_DB &&
+    Math.abs(measurement.alignOffset) <= PARITY_ALIGN_TOLERANCE;
+  const liveRepeatWaveformAgrees =
+    Number.isFinite(measurement.liveRepeatNullDb) &&
+    measurement.liveRepeatNullDb <= PARITY_NULL_FLOOR_DB &&
+    Math.abs(measurement.liveRepeatAlignOffset) <= PARITY_ALIGN_TOLERANCE;
+  if (liveWaveformAgrees && liveRepeatWaveformAgrees) return true;
+  return phaseInsensitiveParityAgrees(
+    measurement.phaseInsensitive,
+    measurement.phaseInsensitiveControl,
+    measurement.phaseInsensitiveRepeat,
+    measurement.controlNullDb,
   );
 }
 
@@ -575,30 +652,29 @@ async function nullTestCase(
   label: string,
   onMeasurement?: (measurement: ParityMeasurement) => void,
   phaseInsensitiveFallback = false,
+  eventPrerollSec = 0,
 ): Promise<string | null> {
-  const m = await measureParityCase(bank, doc, script);
+  const m = await measureParityCase(bank, doc, script, 0, eventPrerollSec);
   onMeasurement?.(m);
   if (m.error) return `${label}: ${m.error}`;
   if (Math.abs(m.alignOffset) > PARITY_ALIGN_TOLERANCE) {
     return `${label}: misaligned (offset=${m.alignOffset} samples, tolerance ${PARITY_ALIGN_TOLERANCE})`;
   }
-  if (!Number.isFinite(m.liveNullDb) || m.liveNullDb > PARITY_NULL_FLOOR_DB) {
+  if (phaseInsensitiveFallback && !noteExpressionParityAgrees(m)) {
+    const rmsRatio = m.liveRms / Math.max(1e-12, m.refRms);
+    const phaseInsensitive = m.phaseInsensitive;
+    return `${label}: null ${m.liveNullDb.toFixed(1)} dB corr=${m.correlation.toFixed(
+      4,
+    )} liveRepeat=${Number.isFinite(m.liveRepeatNullDb) ? m.liveRepeatNullDb.toFixed(1) : "n/a"} dB rms=${rmsRatio.toFixed(
+      3,
+    )}× spectrum=${phaseInsensitive?.spectralCosine.toFixed(4) ?? "n/a"} RMS=${phaseInsensitive?.rmsRatio.toFixed(3) ?? "n/a"} windows=${phaseInsensitive?.windows ?? 0} offlineSpectrum=${m.phaseInsensitiveControl?.spectralCosine.toFixed(4) ?? "n/a"} offlineRMS=${m.phaseInsensitiveControl?.rmsRatio.toFixed(3) ?? "n/a"} offlineWindows=${m.phaseInsensitiveControl?.windows ?? 0} liveRepeatSpectrum=${m.phaseInsensitiveRepeat?.spectralCosine.toFixed(4) ?? "n/a"} liveRepeatRMS=${m.phaseInsensitiveRepeat?.rmsRatio.toFixed(3) ?? "n/a"} liveRepeatWindows=${m.phaseInsensitiveRepeat?.windows ?? 0} offset=${m.alignOffset} samples repeatOffset=${m.liveRepeatAlignOffset} samples control=${m.controlNullDb.toFixed(1)} dB (needs clean live↔offline and live↔live waveform comparisons, or deterministic offline control plus ≥${PARITY_MIN_SPECTRAL_COSINE} spectral cosine and RMS ${PARITY_SPECTRAL_RMS_RATIO_MIN}–${PARITY_SPECTRAL_RMS_RATIO_MAX} across live/offline, offline repeat, and live repeat)`;
+  }
+  if (!phaseInsensitiveFallback && (!Number.isFinite(m.liveNullDb) || m.liveNullDb > PARITY_NULL_FLOOR_DB)) {
     // Some oscillator starts are not phase-locked between AudioContexts, so
     // a waveform null alone can reject the same expressive event. This narrow
     // fallback is allowed only for the note-expression audit and only when an
     // offline repeat is deterministic and phase-insensitive spectrum/level
     // agree for live↔offline, offline↔offline, and live↔live.
-    if (
-      phaseInsensitiveFallback &&
-      phaseInsensitiveParityAgrees(
-        m.phaseInsensitive,
-        m.phaseInsensitiveControl,
-        m.phaseInsensitiveRepeat,
-        m.controlNullDb,
-      )
-    ) {
-      return null;
-    }
     if (!phaseInsensitiveFallback && m.realtimeNondeterministic && m.correlation >= PARITY_MIN_CORRELATION) return null;
     const rmsRatio = m.liveRms / Math.max(1e-12, m.refRms);
     const phaseInsensitive = m.phaseInsensitive;
@@ -767,6 +843,7 @@ export async function measureParityCase(
   doc: ProjectDocument,
   script: ParityScript,
   leadSec = 0,
+  eventPrerollSec = 0,
 ): Promise<ParityMeasurement> {
   const empty: ParityMeasurement = {
     alignOffset: 0,
@@ -795,15 +872,37 @@ export async function measureParityCase(
   // runs of the same script). Without the second live capture the gate could
   // not tell a real live↔offline engine divergence from a device-clock
   // artefact, so it is measured on every case.
-  const live = await captureLive(bank, doc, script, leadSec);
+  const live = await captureLive(bank, doc, script, leadSec, undefined, eventPrerollSec);
   if (!live) return { ...empty, error: "live capture produced no frames" };
-  const reference = await renderOffline(bank, doc, script, live.sampleRate);
+  if (live.left.length !== live.requestedFrames) {
+    return {
+      ...empty,
+      error: `live capture ended early: received ${live.left.length} of ${live.requestedFrames} audio frames`,
+    };
+  }
+  if (live.minimumEventLeadSec <= 0) {
+    return { ...empty, error: `live event was scheduled late (${(live.minimumEventLeadSec * 1000).toFixed(1)} ms)` };
+  }
+  const reference = await renderOffline(bank, doc, script, live.sampleRate, eventPrerollSec);
   if (!reference) return { ...empty, error: "offline render produced no buffer" };
-  const control = await renderOffline(bank, doc, script, live.sampleRate);
+  const control = await renderOffline(bank, doc, script, live.sampleRate, eventPrerollSec);
   // Third control: a SECOND realtime capture. If two live runs of the same
   // case disagree by the same order as the live null, the divergence is the
   // realtime clock/jitter, not the engine's live-vs-offline behaviour.
-  const live2 = await captureLive(bank, doc, script, leadSec);
+  const live2 = await captureLive(bank, doc, script, leadSec, undefined, eventPrerollSec);
+  if (!live2) return { ...empty, error: "live repeat capture produced no frames" };
+  if (live2.left.length !== live2.requestedFrames) {
+    return {
+      ...empty,
+      error: `live repeat capture ended early: received ${live2.left.length} of ${live2.requestedFrames} audio frames`,
+    };
+  }
+  if (live2.minimumEventLeadSec <= 0) {
+    return {
+      ...empty,
+      error: `live repeat event was scheduled late (${(live2.minimumEventLeadSec * 1000).toFixed(1)} ms)`,
+    };
+  }
   const liveMatch = compareWithQuantumRetry(reference, live.left, live.sampleRate);
   const controlMatch = control
     ? compareWithQuantumRetry(reference, control, live.sampleRate)
@@ -962,16 +1061,19 @@ export async function auditNoteExpressionLiveOfflineParity(bank: SampleBank): Pr
       }),
   });
 
-  const analogModDoc = instrumentDoc(template, "analog");
-  cases.push({
-    label: "analog: Mod X/Y expression",
-    doc: analogModDoc,
-    script: (engine, at) =>
-      engine.noteOn("parity-inst", 64, 0.8, at(0.05), 0.3, undefined, undefined, undefined, undefined, {
-        modX: 0.78,
-        modY: 0.77,
-      }),
-  });
+  const analogModCases = [
+    { label: "analog: Mod X expression", expression: { modX: 0.78, modY: 0.5 } },
+    { label: "analog: Mod Y expression", expression: { modX: 0.5, modY: 0.77 } },
+    { label: "analog: combined Mod X/Y expression", expression: { modX: 0.78, modY: 0.77 } },
+  ] as const;
+  for (const { label, expression } of analogModCases) {
+    cases.push({
+      label,
+      doc: instrumentDoc(template, "analog"),
+      script: (engine, at) =>
+        engine.noteOn("parity-inst", 64, 0.8, at(0.05), 0.3, undefined, undefined, undefined, undefined, expression),
+    });
+  }
 
   const docWithHeldSlide = (kind: "808" | "acid"): ProjectDocument => {
     const doc = instrumentDoc(template, kind);
@@ -1014,14 +1116,18 @@ export async function auditNoteExpressionLiveOfflineParity(bank: SampleBank): Pr
           measurements.push(
             `${item.label}: waveform=${m.liveNullDb.toFixed(1)}dB/corr=${m.correlation.toFixed(3)}, ` +
               `magnitude=${phase?.spectralCosine.toFixed(4) ?? "n/a"}, ` +
+              `magnitudeRMS=${phase?.rmsRatio.toFixed(3) ?? "n/a"}/windows=${phase?.windows ?? 0}, ` +
               `offlineMagnitude=${offlinePhase?.spectralCosine.toFixed(4) ?? "n/a"}, ` +
+              `offlineRMS=${offlinePhase?.rmsRatio.toFixed(3) ?? "n/a"}/windows=${offlinePhase?.windows ?? 0}, ` +
               `liveRepeatMagnitude=${repeatPhase?.spectralCosine.toFixed(4) ?? "n/a"}, ` +
+              `liveRepeatWindows=${repeatPhase?.windows ?? 0}, ` +
               `RMS=${(m.liveRms / Math.max(1e-12, m.refRms)).toFixed(3)}×, ` +
               `repeat=${m.liveRepeatNullDb.toFixed(1)}dB@${m.liveRepeatAlignOffset} samples ` +
               `repeatRMS=${repeatPhase?.rmsRatio.toFixed(3) ?? "n/a"}×, control=${m.controlNullDb.toFixed(1)}dB`,
           );
         },
         true,
+        NOTE_EXPRESSION_EVENT_PREROLL_SEC,
       );
       if (failure) failures.push(failure);
     } catch (error) {

@@ -4,7 +4,8 @@ import { IntentPanel } from "../../src/ui/IntentPanel";
 import { ProjectStore } from "../../src/store/ProjectStore";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { renderWithContext, mockServices } from "../helpers";
-import { resetTapeForTests } from "../../src/intent/session-tape";
+import { resetTapeForTests, tapeSteps } from "../../src/intent/session-tape";
+import { buildSessionStory } from "../../src/services/sessionStory";
 import type { Services } from "../../src/services";
 
 /**
@@ -75,6 +76,25 @@ describe("session tape in the panel", () => {
     await waitFor(() => expect(jumpTo).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(within(tape).getByTitle(/^applied · fader/).style.textDecoration).toBe("line-through"));
     expect(screen.getByText(/rewound to/i)).toBeTruthy();
+    // The same session, told as a story (Session Story end-to-end): the REAL
+    // tape read into the REAL builder, no synthetic fixtures — the measured
+    // reason survives, and the rewind left a visible branch.
+    const story = buildSessionStory({
+      docName: "House Beat",
+      docId: "doc-1",
+      generatedAt: new Date("2026-10-17T15:00:00.000Z"),
+      contentHash: null,
+      steps: tapeSteps(),
+      reactionEntries: [],
+      reactions: null,
+      ai: null,
+      exportStamp: null,
+    });
+    expect(story.markdown).toContain("# Session Story");
+    expect(story.markdown).toContain("dark trap at 142");
+    expect(story.markdown.split("\n").some((line) => line.startsWith("   Why:"))).toBe(true);
+    expect(story.markdown).toContain("detached — a rewind left this branch");
+    expect(story.markdown).toContain("1 detached by a rewind");
   }, 40000);
 
   it("NEGATIVE: a step that applied nothing refuses with the reason, and never jumps", async () => {

@@ -158,6 +158,38 @@ function cleanTags(value) {
     .slice(0, TAGS_MAX);
 }
 
+export const GALLERY_RENDER_MODELS_MAX = 8;
+const GALLERY_RENDER_MODEL_CHARS = 64;
+
+/**
+ * RENDER PROVENANCE (optional): the SHA-256 of the export's PCM plus the AI
+ * receipts, validated with the same bounds the client uses
+ * (src/gallery/galleryProvenance.ts; tests/gallery-provenance.test.ts pins the
+ * two to agree). Returns null for anything that is not a well-formed claim —
+ * the caller REFUSES the publish rather than storing a claim a reader could
+ * not check. Absent provenance is fine: it means the beat makes no claim.
+ */
+export function sanitizeGalleryRender(value) {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) return null;
+  const hash = typeof value.hash === "string" ? value.hash : "";
+  if (!/^[0-9a-f]{64}$/.test(hash)) return null;
+  if (value.algorithm !== "SHA-256") return null;
+  const manifestFormat = cleanText(value.manifestFormat, 64);
+  if (!manifestFormat) return null;
+  const models = Array.isArray(value.models)
+    ? [
+        ...new Set(
+          value.models.filter(
+            (model) => typeof model === "string" && model.length > 0 && model.length <= GALLERY_RENDER_MODEL_CHARS,
+          ),
+        ),
+      ]
+        .sort()
+        .slice(0, GALLERY_RENDER_MODELS_MAX)
+    : [];
+  return { hash, algorithm: "SHA-256", manifestFormat, models };
+}
+
 /**
  * A share code is only accepted if it actually decodes back into a project
  * JSON shape (lz-string + JSON.parse + a tracks array). Returns lightweight
@@ -363,12 +395,19 @@ class GalleryStore {
     // `agent` carries the display name of the publishing agent/client.
     const origin = input?.origin === "agent" ? "agent" : "human";
     const agent = origin === "agent" ? cleanText(input?.agent, AUTHOR_MAX) || "unknown agent" : null;
+    // RENDER PROVENANCE (optional, see sanitizeGalleryRender): a malformed
+    // claim is refused, an absent one is simply no claim.
+    const render = sanitizeGalleryRender(input?.render);
+    if (input?.render != null && render == null) {
+      return { error: "render provenance is malformed — the beat was not published" };
+    }
     const item = {
       id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
       title,
       author,
       origin,
       agent,
+      render,
       tags: cleanTags(input?.tags),
       code,
       bpm: meta.bpm,

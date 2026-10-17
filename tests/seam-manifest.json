@@ -228,6 +228,60 @@
       "note": "Wave A: entered through the REAL panel (type the brief, press DO IT). The default must yield a multi-candidate auditionable bank with ONE explained winner and NO single-result fallback; the negative spec spies the budget to the lean value and pins the honest constrained-device outcome (USE RESULT, nothing to audition) — proving the budget reaches the request instead of being decoration."
     },
     {
+      "id": "status-report",
+      "status": "COVERED",
+      "entryPoint": "scripts/status-report.mts (npm run status:report; drift section 'status')",
+      "spec": "tests/status-report.test.ts",
+      "seamEvent": "renders a pending manual gate as PENDING",
+      "negativeSpec": "never fabricates a result",
+      "note": "The public proof page: claims, the exact command that checks each one, and the last measured result. A row is PASS only from a real exit code; the owner's manual gates render as pending until the OWNER closes them; the stable JSON payload carries NO timestamp, which is what lets the drift gate compare it with HEAD at all (a volatile status file would be unverifiable by construction)."
+    },
+    {
+      "id": "session-story",
+      "status": "COVERED",
+      "entryPoint": "src/services/sessionStory.ts + SESSION STORY (ExportPanel / ActivityCenter)",
+      "spec": "tests/session-story.test.ts",
+      "seamEvent": "prints steps oldest-first",
+      "negativeSpec": "says so when the session has no steps",
+      "note": "The readable account of a session: every step in order, the MEASURED reason where one exists, what was kept or reverted (joined through the SAME generation identity the rerank fit uses), the AI receipts and the export hash. The load-bearing negative: a step without a measured rationale prints NOTHING about why — a record that editorializes cannot be trusted as a record. The end-to-end runs the real panel gestures and reads the real tape into the real builder (tests/ui/session-tape.test.tsx)."
+    },
+    {
+      "id": "kyx-verify-cli",
+      "status": "COVERED",
+      "entryPoint": "tools/kyx-verify/kyx-verify.mjs (npm run verify:wav; published as the kyx-verify package)",
+      "spec": "tests/kyx-verify.test.ts",
+      "seamEvent": "runs as a process",
+      "negativeSpec": "reports a WAV with no manifest as such",
+      "note": "The protocol's outside half: the zero-dep verifier runs as a real process with the published exit codes, and its parser is pinned field-for-field against the app's own — two implementations, one truth. The package acceptance (npm pack → install → installed bin verifies a stamped file) was run by hand on 2026-10-17; npm run verify:wav:fixture makes it repeatable."
+    },
+    {
+      "id": "verifiable-gallery",
+      "status": "COVERED",
+      "entryPoint": "src/gallery/galleryProvenance.ts + GalleryPage badge/filter + server/collab-server.mjs validation",
+      "spec": "tests/gallery-render-provenance.test.ts",
+      "seamEvent": "REFUSES a malformed claim",
+      "negativeSpec": "a beat without provenance makes no claim",
+      "note": "A published beat can carry the SHA-256 of its export's PCM plus the AI receipts; the badge and the feed filter are DERIVED from that object (no stored flag can outlive its data). The server refuses a malformed claim instead of storing it, and the client and server sanitizers are pinned to AGREE on a table of payloads — two validators with different bounds is how 'verifiable' becomes a lie."
+    },
+    {
+      "id": "compatibility-promise",
+      "status": "COVERED",
+      "entryPoint": "docs/COMPATIBILITY.md + tests/fixtures/compatibility/share-code-v1.json",
+      "spec": "tests/compatibility-golden.test.ts",
+      "seamEvent": "keeps opening",
+      "negativeSpec": "still REFUSES a project from the future",
+      "note": "The user-facing 5-year promise (docs/LONGEVITY.md §0 made public): a committed golden share code from 2026-10-17 must keep decoding, must migrate to the CURRENT schema version, and a project from the future must be refused rather than guessed at. NEVER regenerate the fixture to make this pass."
+    },
+    {
+      "id": "agent-kit",
+      "status": "COVERED",
+      "entryPoint": "docs/AGENT-KIT.md + docs/mcp-manifest.json (npm run gen:agent-kit)",
+      "spec": "tests/agent-kit.test.ts",
+      "seamEvent": "lists exactly the shipped tools",
+      "negativeSpec": "cannot name tools that do not exist",
+      "note": "The ecosystem half: a generated manifest deep-pinned to the live MCP surface, and a document whose every kyx_* mention must be a real tool — a kit that drifts from the surface is worse than no kit."
+    },
+    {
       "id": "vocal-phrase-align",
       "status": "COVERED",
       "entryPoint": "src/ui/ArrangementPanel.tsx (REC stop + clip menu) → src/audio-engine/vocal-alignment.ts",

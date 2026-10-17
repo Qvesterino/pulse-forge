@@ -5,6 +5,7 @@ import {
   PARITY_ALIGN_TOLERANCE,
   PARITY_NULL_FLOOR_DB,
   comparePhaseInsensitiveParity,
+  noteExpressionParityAgrees,
   phaseInsensitiveParityAgrees,
   parityFxCorpus,
   parityInstrumentCorpus,
@@ -18,6 +19,19 @@ function tone(frequency: number, phase = 0, amplitude = 0.3, sampleRate = 44100)
   const samples = new Float32Array(sampleRate);
   for (let i = 0; i < samples.length; i++) {
     samples[i] = amplitude * Math.sin((2 * Math.PI * frequency * i) / sampleRate + phase);
+  }
+  return samples;
+}
+
+function detunedPair(phaseA: number, phaseB: number, sampleRate = 44100): Float32Array {
+  const samples = new Float32Array(sampleRate);
+  const baseFrequency = 329.63;
+  const detunedFrequency = baseFrequency * Math.pow(2, 8 / 1200);
+  for (let i = 0; i < samples.length; i++) {
+    const time = i / sampleRate;
+    samples[i] =
+      0.5 * Math.sin(2 * Math.PI * baseFrequency * time + phaseA) +
+      0.45 * Math.sin(2 * Math.PI * detunedFrequency * time + phaseB);
   }
   return samples;
 }
@@ -99,4 +113,54 @@ describe("live↔offline parity obligation", () => {
     );
     expect(phaseInsensitiveParityAgrees(phaseShifted, phaseShifted, null, -76)).toBe(false);
   });
+
+  it("keeps the spectral comparison stable for a detuned analog oscillator pair", () => {
+    const reference = detunedPair(0, 0);
+    const phaseShiftedPair = detunedPair(1.4, -2.1);
+    const comparison = comparePhaseInsensitiveParity(reference, phaseShiftedPair, 0, 44100);
+    expect(comparison.windows).toBeGreaterThanOrEqual(8);
+    expect(comparison.spectralCosine).toBeGreaterThanOrEqual(0.98);
+    expect(comparison.rmsRatio).toBeGreaterThan(1.1);
+    expect(phaseInsensitiveParityAgrees(comparison, comparison, comparison, -76)).toBe(false);
+  });
+
+  it("rejects a silent or divergent second live capture even when the first live null passes", () => {
+    const agreeingMeasurement = {
+      alignOffset: 0,
+      liveNullDb: -76,
+      liveRepeatNullDb: -74,
+      liveRepeatAlignOffset: 0,
+      phaseInsensitive: null,
+      phaseInsensitiveControl: null,
+      phaseInsensitiveRepeat: null,
+      controlNullDb: -78,
+    };
+    expect(noteExpressionParityAgrees(agreeingMeasurement)).toBe(true);
+    const phaseShifted = comparePhaseInsensitiveParity(tone(220), tone(220, 1.25), 0, 44100);
+    expect(
+      noteExpressionParityAgrees({
+        ...agreeingMeasurement,
+        liveNullDb: -1,
+        liveRepeatNullDb: -1,
+        phaseInsensitive: phaseShifted,
+        phaseInsensitiveControl: phaseShifted,
+        phaseInsensitiveRepeat: phaseShifted,
+        controlNullDb: -76,
+      }),
+    ).toBe(true);
+    expect(
+      noteExpressionParityAgrees({
+        ...agreeingMeasurement,
+        liveRepeatNullDb: 0,
+        phaseInsensitive: toneSpectrum(220),
+        phaseInsensitiveControl: toneSpectrum(220),
+        phaseInsensitiveRepeat: { spectralCosine: 0, rmsRatio: 0, windows: 0 },
+      }),
+    ).toBe(false);
+  });
 });
+
+function toneSpectrum(frequency: number) {
+  const samples = tone(frequency);
+  return comparePhaseInsensitiveParity(samples, samples, 0, 44100);
+}

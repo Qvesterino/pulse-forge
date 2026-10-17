@@ -174,6 +174,10 @@ This is **KYX** (display name; landing page, embed, gallery), internally and on 
 
 A browser-first, local-first digital audio workstation targeting complete music production: composition, real-instrument recording, editing, mixing and AI-assisted production. KYX Web is built on Web Audio + AudioWorklet, TypeScript, React 18 and IndexedDB; KYX Studio is the separate desktop target for tested native audio I/O and third-party plug-in workflows. The current Windows Electron package is still a thin Web Audio shell. See ADR 0014 and `docs/ROADMAP-FULL-DAW.md`; roadmap scope is not a claim that those features already ship.
 
+> **Orientation:** `docs/AGENT-MAP.md` is the task→files→gate map plus the
+> invariant register (every hard-won truth with the test that guards it). Read
+> it after this file; `tests/agent-map.test.ts` keeps it honest.
+
 ---
 
 ## 1. First session in 60 seconds

@@ -9,12 +9,15 @@ import { safeApplyAudioParam } from "./safeAudioParam";
  * callers gate construction behind `isWorkletReady("svFilter", ctx)`.
  */
 export function createSvFilterNode(ctx: BaseAudioContext, instance: { params: Record<string, number> }): EffectRuntime {
+  const cutoff = instance.params.cutoff ?? 2000;
+  const initialCutoff = Number.isFinite(cutoff) ? Math.min(20000, Math.max(20, cutoff)) : 2000;
   const node = new AudioWorkletNode(ctx, "svfilter-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,
     outputChannelCount: [2],
     channelCount: 2,
     channelInterpretation: "speakers",
+    processorOptions: { initialCutoff },
   });
   // Runtime processor-error containment (GOAL 07/LONGEVITY §3): the
   // browser silently kills a throwing processor — surface + count it.

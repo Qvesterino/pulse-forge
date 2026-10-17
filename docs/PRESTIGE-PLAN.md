@@ -17,16 +17,16 @@
 
 ## 1. Where we stand (evidence, not adjectives)
 
-| Capability                                     | Proof that exists today                                                                                    |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Deterministic engine + offline parity          | golden vectors, `tests/golden-doctor.test.ts`, render/offline parity suites                                |
-| Agent trust (risk classes, session checkpoint) | `src/mcp/agentTrust.ts`, `tests/agent-trust.test.ts`, Activity Center panel                                |
+| Capability                                     | Proof that exists today                                                                                 |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Deterministic engine + offline parity          | golden vectors, `tests/golden-doctor.test.ts`, render/offline parity suites                             |
+| Agent trust (risk classes, session checkpoint) | `src/mcp/agentTrust.ts`, `tests/agent-trust.test.ts`, Activity Center panel                             |
 | Reproducible exports + verifier                | `docs/KYX-REPRODUCIBILITY-PROTOCOL.md`, `tools/kyx-verify/`, `npm run verify:wav`, 12 conformance specs |
-| Taste loop closed (reactions → rerank fit)     | `src/intent/reaction-rerank-feedback.ts`, `tests/rerank-generation-join.test.ts`, shadow adjudication      |
-| Measured taste baseline                        | `npm run taste:benchmark`, committed baseline, drift-locked                                                |
-| Durability + honesty artifact                  | Trust Report (`src/services/trustReport.ts`) with `clean`/`partial`/`warnings`/`unknown` levels            |
-| Vocal-first recording loop                     | REC + count-in + device latency + loop take stacking + `vocal-alignment.ts` phrase alignment               |
-| Discipline that makes it believable            | `drift:check`, seam coverage gate, `suite-expectations.json`, bundle budgets                               |
+| Taste loop closed (reactions → rerank fit)     | `src/intent/reaction-rerank-feedback.ts`, `tests/rerank-generation-join.test.ts`, shadow adjudication   |
+| Measured taste baseline                        | `npm run taste:benchmark`, committed baseline, drift-locked                                             |
+| Durability + honesty artifact                  | Trust Report (`src/services/trustReport.ts`) with `clean`/`partial`/`warnings`/`unknown` levels         |
+| Vocal-first recording loop                     | REC + count-in + device latency + loop take stacking + `vocal-alignment.ts` phrase alignment            |
+| Discipline that makes it believable            | `drift:check`, seam coverage gate, `suite-expectations.json`, bundle budgets                            |
 
 **What is NOT proven yet, and blocks any outward claim:**
 
@@ -249,3 +249,55 @@ vectors + a demo project). **No implementation until the owner picks.**
 | 3.2 Mobile install + share target   | L    | 3.1 for the QA pass           |
 | 3.3 i18n skeleton                   | M    | —                             |
 | 3.4 Sound identity                  | —    | owner decision                |
+
+---
+
+## 11. Progress log
+
+- **2026-10-17 — Phase 1 (all four items) implemented; NOT published.**
+  - **1.1** `tools/kyx-verify/` is now a real package (own `package.json`, `bin`,
+    MIT, README with the exit codes); the root `npm run verify:wav` wrapper and the
+    conformance suite point at it. Acceptance was run by hand: `npm pack` → install
+    into a temp prefix → the **installed** `kyx-verify` bin verified a stamped
+    32-bit float master (`VERIFIED`, exit 0, hash recomputed from the file's own
+    samples). `npm run verify:wav:fixture -- <out.wav>` makes that repeatable.
+  - **1.2** Verifiable gallery: the publish payload carries `render` (SHA-256 +
+    AI receipts) handed over from the studio's export stamp; the server **refuses**
+    a malformed claim (400, nothing stored) and caps the receipt list; the card
+    badge and the feed filter are derived from the item's own object (no stored
+    flag), carry the exact `npx kyx-verify … --expect <hash>` command, and the
+    client and server sanitizers are pinned to agree on a table of payloads
+    (`tests/gallery-render-provenance.test.ts`).
+  - **1.3** `docs/COMPATIBILITY.md` (the public half of `LONGEVITY.md §0`) plus a
+    committed golden share code (`tests/fixtures/compatibility/share-code-v1.json`)
+    with three pins: it decodes, it migrates to the CURRENT schema version, and a
+    project from the future is refused.
+  - **1.4** `docs/AGENT-KIT.md` + generated `docs/mcp-manifest.json`
+    (`npm run gen:agent-kit`): the manifest is deep-pinned to the live MCP surface
+    and the kit may not name a tool that does not exist.
+  - Phase 1 evidence: 112/112 in the 12 files the phase touches, `tsc` clean,
+    seam gate green (49 seams, 4 new), and the package acceptance above.
+  - **Still open:** the publication step (npm publish, announcements, listings)
+    waits for the Phase 0 owner gates and the owner's GO at checkpoint 2 (§9).
+
+- **2026-10-17 — Phase 2 (both artifacts) implemented.**
+  - **2.1 Session Story** — the tape's generation step carries the MEASURED
+    rationale (attached where it exists), and `src/services/sessionStory.ts`
+    composes a readable journal: steps oldest-first, the reason only where one
+    was measured, verdicts joined through the SAME generation identity the rerank
+    fit uses, the AI receipts, and the export hash with its verify command.
+    Downloadable beside the Trust Report (ExportPanel) and the agent log
+    (ActivityCenter). The load-bearing negative is pinned: a step without a
+    measured reason prints NOTHING about why.
+  - **2.2 Status report** — `npm run status:report` runs the cheap claims live
+    (seam coverage, spec counts, the taste baseline, and the protocol
+    end-to-end: fixture → `kyx-verify` → VERIFIED) and writes `docs/status.json`
+    (stable, timestamp-free — the payload the drift gate can compare) plus
+    `docs/STATUS.md` (the human page). The owner's manual gates
+    (`docs/status/manual-gates.json`) render as PENDING and never as a pass;
+    commands too slow for a report are LISTED, never implied to have run.
+    A new `drift:check` section (`status`) regenerates the payload and fails on
+    a stale row.
+  - Phase 2 evidence: 91/91 in the 10 files the phase touches, `tsc` clean,
+    seam gate green (51 seams, 2 new), and a live run of the report itself
+    (4 pass · 0 fail · 4 pending).

@@ -12,14 +12,16 @@ type Proc = {
   process(inputs: Float32Array[][], outputs: Float32Array[][], params: Record<string, number[]>): boolean;
 };
 
-let Processor: new () => Proc;
+type ProcessorOptions = { processorOptions?: { initialCutoff?: number } };
+
+let Processor: new (options?: ProcessorOptions) => Proc;
 
 beforeAll(() => {
   (globalThis as unknown as { sampleRate: number }).sampleRate = 44100;
   const file = join(dirname(fileURLToPath(import.meta.url)), "../src/audio-worklets/svfilter-processor.js");
   const src = readFileSync(file, "utf8");
-  let registered: (new () => Proc) | null = null;
-  const registerProcessor = (_name: string, cls: new () => Proc) => {
+  let registered: (new (options?: ProcessorOptions) => Proc) | null = null;
+  const registerProcessor = (_name: string, cls: new (options?: ProcessorOptions) => Proc) => {
     registered = cls;
   };
   class AudioWorkletProcessor {}
@@ -142,23 +144,21 @@ describe("SVF drive (raw worklet DSP)", () => {
     }
   });
 
-  it("tracks cutoff automation during silence so a new note does not inherit a stale filter state", () => {
+  it("starts per-note cutoff smoothing from the filter's authored initial value", () => {
     const quiet = new Float32Array(128);
     const note = Float32Array.from({ length: 128 }, (_, i) => 0.5 * Math.sin((2 * Math.PI * 1000 * i) / 44100));
-    const settled = new Processor();
-    const stale = new Processor();
+    const settled = new Processor({ processorOptions: { initialCutoff: 5000 } });
+    const stale = new Processor({ processorOptions: { initialCutoff: 700 } });
 
     for (let block = 0; block < 32; block++) {
-      processBlock(settled, [quiet], { cutoff: 700 });
-      processBlock(stale, [quiet], { cutoff: 700 });
-    }
-    for (let block = 0; block < 64; block++) {
       processBlock(settled, [quiet], { cutoff: 5000 });
       processBlock(stale, [quiet], { cutoff: 700 });
     }
 
     const settledOutput = processBlock(settled, [note], { cutoff: 5000 })[0];
-    const freshOutput = processBlock(new Processor(), [note], { cutoff: 5000 })[0];
+    const freshOutput = processBlock(new Processor({ processorOptions: { initialCutoff: 5000 } }), [note], {
+      cutoff: 5000,
+    })[0];
     const staleOutput = processBlock(stale, [note], { cutoff: 5000 })[0];
     expect(settledOutput).toEqual(freshOutput);
     expect(staleOutput).not.toEqual(freshOutput);

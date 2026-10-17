@@ -33,6 +33,7 @@ export const SESSION_TAPE_KEY = "pf:session-tape-v1";
 export const SESSION_TAPE_CAP = 40;
 export const SESSION_TAPE_PROMPT_MAX = 240;
 export const SESSION_TAPE_DETAIL_MAX = 120;
+export const SESSION_TAPE_RATIONALE_MAX = 280;
 
 export type TapeOutcome = "applied" | "applied-candidate" | "generated" | "clarify" | "failed";
 
@@ -47,6 +48,12 @@ export interface TapeStep {
   action: string;
   /** Extra honest context ("3 candidates", a clarify reason, an error message). */
   detail?: string;
+  /**
+   * The MEASURED reason the step turned out the way it did (the E1 selection
+   * rationale), recorded at the call site where it exists. The session story
+   * prints it or prints NOTHING about why — never filler prose.
+   */
+  rationale?: string;
   /** Undo-stack length AFTER this step's command; null = nothing applied. */
   undoDepthAfter: number | null;
   generationId?: string;
@@ -62,6 +69,7 @@ export interface RecordTapeStepInput {
   routeKind: string;
   action: string;
   detail?: string;
+  rationale?: string;
   undoDepthAfter: number | null;
   generationId?: string;
   candidateIndex?: number;
@@ -106,6 +114,7 @@ function sanitizeStep(value: unknown): TapeStep | null {
     routeKind: boundedText(raw.routeKind, 48),
     action: boundedText(raw.action, 64),
     ...(raw.detail !== undefined ? { detail: boundedText(raw.detail, SESSION_TAPE_DETAIL_MAX) } : {}),
+    ...(raw.rationale !== undefined ? { rationale: boundedText(raw.rationale, SESSION_TAPE_RATIONALE_MAX) } : {}),
     undoDepthAfter: Number.isFinite(undoDepthAfter) && undoDepthAfter >= 0 ? Math.floor(undoDepthAfter) : null,
     ...(typeof raw.generationId === "string" ? { generationId: boundedText(raw.generationId, 64) } : {}),
     ...(typeof raw.candidateIndex === "number" && Number.isInteger(raw.candidateIndex) && raw.candidateIndex >= 0
@@ -165,6 +174,7 @@ export function recordTapeStep(input: RecordTapeStepInput): TapeStep {
     routeKind: boundedText(input.routeKind, 48),
     action: boundedText(input.action, 64),
     ...(input.detail !== undefined ? { detail: boundedText(input.detail, SESSION_TAPE_DETAIL_MAX) } : {}),
+    ...(input.rationale !== undefined ? { rationale: boundedText(input.rationale, SESSION_TAPE_RATIONALE_MAX) } : {}),
     undoDepthAfter: input.undoDepthAfter,
     ...(input.generationId !== undefined ? { generationId: input.generationId } : {}),
     ...(input.candidateIndex !== undefined ? { candidateIndex: input.candidateIndex } : {}),

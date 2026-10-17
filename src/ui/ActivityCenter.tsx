@@ -12,6 +12,7 @@ import {
 } from "../mcp/agentTrust";
 import { restoreIntentCheckpoint } from "../intent/checkpoints";
 import { downloadTrustReport } from "../services/trustReport";
+import { downloadSessionStory } from "../services/sessionStory";
 
 /**
  * ACTIVITY CENTER (Wave 1 A+B) — one visible place for "what is running" and
@@ -131,6 +132,19 @@ export function ActivityCenter() {
       await downloadTrustReport(services);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Trust report failed.");
+    } finally {
+      setBusy(false);
+    }
+  }, [services]);
+
+  /** The story beside the report: what the session WAS, next to whether it was honest. */
+  const downloadStory = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await downloadSessionStory(services);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Session story failed.");
     } finally {
       setBusy(false);
     }
@@ -289,6 +303,15 @@ export function ActivityCenter() {
               >
                 CLEAR LOG
               </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={busy}
+                title="Download the Session Story (markdown + JSON): every step, what was kept or reverted, the measured reasons and the export hash"
+                onClick={() => void downloadStory()}
+              >
+                STORY
+              </button>
               <button type="button" className="btn" onClick={() => setOpen(false)}>
                 CLOSE
               </button>
@@ -303,6 +326,15 @@ export function ActivityCenter() {
                 onClick={() => void downloadReport()}
               >
                 {busy ? "BUILDING…" : "TRUST REPORT"}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={busy}
+                title="Download the Session Story (markdown + JSON): every step, what was kept or reverted, the measured reasons and the export hash"
+                onClick={() => void downloadStory()}
+              >
+                STORY
               </button>
               <button type="button" className="btn" onClick={() => setOpen(false)}>
                 CLOSE

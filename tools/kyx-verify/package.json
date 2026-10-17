@@ -11,11 +11,22 @@
   "exports": {
     ".": "./kyx-verify.mjs"
   },
-  "files": ["kyx-verify.mjs", "README.md"],
+  "files": [
+    "kyx-verify.mjs",
+    "README.md"
+  ],
   "engines": {
     "node": ">=18"
   },
-  "keywords": ["kyx", "wav", "reproducibility", "provenance", "ixml", "bwf", "audio"],
+  "keywords": [
+    "kyx",
+    "wav",
+    "reproducibility",
+    "provenance",
+    "ixml",
+    "bwf",
+    "audio"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/KyloRennek/pulse-forge"

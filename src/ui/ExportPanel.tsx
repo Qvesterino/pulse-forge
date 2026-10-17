@@ -27,6 +27,7 @@ import {
 } from "../export/renderManifest";
 import { VerifyStampButton } from "./VerifyStampButton";
 import { TrustReportButton } from "./TrustReportButton";
+import { SessionStoryButton } from "./SessionStoryButton";
 import { buildZyvoTransfer } from "../export/zyvo-transfer";
 import { exportProject } from "../export/project-io";
 import { canExportVideo, recordVideo } from "../export/video";
@@ -1740,6 +1741,7 @@ export function ExportPanel({
         <>
           <VerifyStampButton stamp={stamp} />
           <TrustReportButton />
+          <SessionStoryButton />
         </>
       )}
 

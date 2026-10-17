@@ -113,6 +113,11 @@ export function Meter({
       aria-label={point === "pre" ? "Pre-fader level meter" : "Level meter"}
       aria-valuemin={0}
       aria-valuemax={100}
+      // The hot path updates valuenow imperatively (see the rAF tick above),
+      // but the FIRST paint has not run it yet — a meter without valuenow is
+      // invalid, so the initial value is rendered here.
+      aria-valuenow={0}
+      aria-valuetext="0%"
     >
       <div ref={fillRef} className="meter-fill" style={{ height: "0%" }} />
       <div ref={holdRef} className="meter-hold" style={{ bottom: "0%", opacity: 0 }} />

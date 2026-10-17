@@ -6,10 +6,10 @@
  * requirement).
  *
  * Protocol (port):
- *   { type: "arm", chunkFrames?: number } — begin capture
+ *   { type: "arm", chunkFrames?: number, captureFrames?: number } — begin capture
  *   { type: "stop" } — stop capturing; a final partial chunk is flushed
  * Main thread receives:
- *   { type: "capture-start", time, sampleRate } — audio-clock time of the
+ *   { type: "capture-start", time, frame, sampleRate } — audio-clock time of the
  *       FIRST captured quantum; the harness uses it to align the live
  *       capture against the offline render without blind correlation.
  *   { type: "chunk", frames, left, right }  (right === left when mono input)
@@ -29,19 +29,28 @@ class CaptureProcessor extends AudioWorkletProcessor {
     this.left = new Float32Array(this.chunkFrames);
     this.right = new Float32Array(this.chunkFrames);
     this.filled = 0;
+    this.captureFrames = 0;
+    this.capturedFrames = 0;
     this.armed = false;
     this.announced = false;
     this.port.onmessage = (event) => {
       const data = event.data;
       if (!data || typeof data !== "object") return;
       if (data.type === "arm") {
+        const requestedChunk = Number(data.chunkFrames);
+        if (Number.isSafeInteger(requestedChunk) && requestedChunk >= 128 && requestedChunk !== this.chunkFrames) {
+          this.chunkFrames = requestedChunk;
+          this.left = new Float32Array(this.chunkFrames);
+          this.right = new Float32Array(this.chunkFrames);
+        }
+        const frames = Number(data.captureFrames);
         this.filled = 0;
+        this.capturedFrames = 0;
+        this.captureFrames = Number.isSafeInteger(frames) && frames >= 128 ? frames : 0;
         this.armed = true;
         this.announced = false;
       } else if (data.type === "stop") {
-        this.flush();
-        this.armed = false;
-        this.port.postMessage({ type: "capture-done" });
+        this.finish();
       }
     };
   }
@@ -58,24 +67,39 @@ class CaptureProcessor extends AudioWorkletProcessor {
     this.filled = 0;
   }
 
+  finish() {
+    this.flush();
+    this.armed = false;
+    this.port.postMessage({ type: "capture-done", frames: this.capturedFrames });
+  }
+
   process(inputs) {
     if (!this.armed) return true;
     if (!this.announced) {
       this.announced = true;
       // currentTime is the audio-clock time at the start of this quantum —
       // the exact origin of the captured sample stream.
-      this.port.postMessage({ type: "capture-start", time: currentTime, sampleRate: globalThis.sampleRate || 0 });
+      this.port.postMessage({
+        type: "capture-start",
+        time: currentTime,
+        frame: globalThis.currentFrame || 0,
+        sampleRate: globalThis.sampleRate || 0,
+      });
     }
     const input = inputs[0];
     const ch0 = input && input[0] && input[0].length ? input[0] : null;
     const ch1 = input && input.length > 1 && input[1] && input[1].length ? input[1] : null;
     if (!ch0) return true;
-    for (let i = 0; i < ch0.length; i++) {
+    const remaining = this.captureFrames > 0 ? Math.max(0, this.captureFrames - this.capturedFrames) : ch0.length;
+    const count = Math.min(ch0.length, remaining);
+    for (let i = 0; i < count; i++) {
       this.left[this.filled] = ch0[i];
       this.right[this.filled] = ch1 ? ch1[i] : ch0[i];
       this.filled++;
+      this.capturedFrames++;
       if (this.filled >= this.chunkFrames) this.flush();
     }
+    if (this.captureFrames > 0 && this.capturedFrames >= this.captureFrames) this.finish();
     return true;
   }
 }

@@ -958,7 +958,10 @@ export function Sequencer({
           className="sequencer-ruler"
           ref={rulerRef}
           style={{ gridTemplateColumns: `168px repeat(${pattern.stepCount}, minmax(${effMinCol}px, 1fr))` }}
-          role="row"
+          // Not role="row": a lone grid row with no grid/rowgroup parent is an
+          // invalid ARIA structure (axe: required-parent + required-children).
+          // This is a labelled GROUP of ruler controls, which is what it is.
+          role="group"
           aria-label="Step ruler — click to seek, drag to set the loop region"
           onPointerDown={onRulerPointerDown}
           onPointerMove={onRulerPointerMove}

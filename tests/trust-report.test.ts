@@ -116,7 +116,7 @@ describe("buildTrustReport — the artifact", () => {
     expect(report.markdown).toContain("## AI provenance");
     expect(report.markdown).toContain("## What this file contains — and what it never contains");
     expect(report.markdown).toContain("SHORT prompt fragment");
-    expect(report.markdown).toContain("node tools/kyx-verify.mjs");
+    expect(report.markdown).toContain("npx kyx-verify");
     expect(report.markdown).toContain("content `aaaaaaaaaaaa`");
   });
 

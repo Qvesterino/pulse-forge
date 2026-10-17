@@ -5,13 +5,13 @@
 > 32-bit float masters, a hash of the audio itself that **you can recompute
 > from the file**, without the app, a browser, or a network.
 
-The reference verifier is `tools/kyx-verify.mjs` (zero dependencies, Node ≥ 18).
+The reference verifier is the `kyx-verify` package (`tools/kyx-verify/` in this repository; zero dependencies, Node ≥ 18).
 
 ```bash
-node tools/kyx-verify.mjs beat-master.wav
-node tools/kyx-verify.mjs beat-master.wav --json
-node tools/kyx-verify.mjs beat-master.wav --expect <sha256>
-node tools/kyx-verify.mjs beat-master.wav --share-code <token>
+npx kyx-verify beat-master.wav
+npx kyx-verify beat-master.wav --json
+npx kyx-verify beat-master.wav --expect <sha256>
+npx kyx-verify beat-master.wav --share-code <token>
 ```
 
 ## 1. What a match proves — and what it does not
@@ -102,7 +102,7 @@ deterministic-core baseline — and compare the resulting hash with the file's.
 
 ## 6. Reference verifier
 
-`node tools/kyx-verify.mjs <file.wav> [--json] [--expect <sha256>] [--share-code <token>] [--print-ixml]`
+`npx kyx-verify <file.wav> [--json] [--expect <sha256>] [--share-code <token>] [--print-ixml]`
 
 | Exit code | Meaning                                                                                   |
 | --------- | ----------------------------------------------------------------------------------------- |
@@ -121,6 +121,9 @@ installed the check reports `SKIPPED` with the reason — never a pass.
   on valid, truncated and hostile inputs; 32f integrity verifies; a single
   flipped byte is detected; quantized/hash-less files are labelled honestly;
   and the CLI itself runs as a process with the exit codes above.
+- Need a file to try it on, without opening the app?
+  `npm run verify:wav:fixture -- /tmp/stamped.wav` writes one with the app's own
+  encoder, then `npx kyx-verify /tmp/stamped.wav` must report `VERIFIED`.
 - The verifier is a separate, dependency-free implementation on purpose. The
   equivalence test is what keeps the two from drifting; treat a failure there
   as a protocol break, not a test fix.

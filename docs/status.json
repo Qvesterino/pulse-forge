@@ -1,0 +1,92 @@
+{
+  "claims": [
+    {
+      "id": "seam-coverage",
+      "claim": "Every user-facing seam is declared with an entry-point spec and a negative assertion",
+      "command": "node scripts/check-seam-coverage.mjs",
+      "state": "pass",
+      "summary": "1 check(s), 51 seams",
+      "freshness": "drift-checked"
+    },
+    {
+      "id": "spec-counts",
+      "claim": "docs/CURRENT-STATE.md's spec-file count equals the committed tree",
+      "command": "git ls-files tests (spec-file count vs docs/CURRENT-STATE.md)",
+      "state": "pass",
+      "summary": "1056 claimed, 1056 measured",
+      "freshness": "drift-checked"
+    },
+    {
+      "id": "taste-benchmark",
+      "claim": "The deterministic taste benchmark still matches its committed baseline",
+      "command": "npm run taste:benchmark (harness re-run + committed baseline diff)",
+      "state": "pass",
+      "summary": "score 1 · deterministic=true · 0 drift row(s)",
+      "freshness": "drift-checked"
+    },
+    {
+      "id": "protocol-end-to-end",
+      "claim": "A stamped master verifies offline with the published verifier",
+      "command": "npm run verify:wav:fixture -- <tmp>/stamped.wav && node tools/kyx-verify/kyx-verify.mjs <tmp>/stamped.wav",
+      "state": "pass",
+      "summary": "VERIFIED (exit 0, hash recomputed from the file)",
+      "freshness": "drift-checked"
+    }
+  ],
+  "manualGates": [
+    {
+      "id": "browser-smoke-firefox-safari-ios",
+      "claim": "Manual Firefox / Safari / iOS Safari smoke",
+      "command": "docs/KYX-SAFARI-IOS-MANUAL-QA.md",
+      "state": "pending",
+      "note": ""
+    },
+    {
+      "id": "release-preflight",
+      "claim": "Release preflight (explicit production config + shipped artifacts scan)",
+      "command": "npm run release:preflight",
+      "state": "pending",
+      "note": ""
+    },
+    {
+      "id": "release-server-smoke",
+      "claim": "Collab server boots and answers /api/health",
+      "command": "npm run release:server-smoke",
+      "state": "pending",
+      "note": ""
+    },
+    {
+      "id": "release-deployed-smoke",
+      "claim": "Deployed-smoke against a real deployment (needs KYX_DEPLOY_URL)",
+      "command": "npm run release:deployed-smoke",
+      "state": "pending",
+      "note": ""
+    }
+  ],
+  "runByCi": [
+    {
+      "claim": "Strict typecheck",
+      "command": "npm run typecheck"
+    },
+    {
+      "claim": "Full Vitest suite + expectations ledger",
+      "command": "npm run test:expectations"
+    },
+    {
+      "claim": "All derivable artifacts (mirrors, goldens, counts)",
+      "command": "npm run drift:check"
+    },
+    {
+      "claim": "Golden doctor (frozen artifacts match their hashes)",
+      "command": "npm run goldens:doctor"
+    },
+    {
+      "claim": "Production build + bundle budgets",
+      "command": "npm run build"
+    },
+    {
+      "claim": "Real-browser audio verifier",
+      "command": "npm run test:browser"
+    }
+  ]
+}

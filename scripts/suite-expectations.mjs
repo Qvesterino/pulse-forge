@@ -48,7 +48,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(SCRIPT_DIR, "..");
@@ -200,6 +200,75 @@ function gitHeadShort() {
   return res.status === 0 ? res.stdout.trim() : "unknown";
 }
 
+/**
+ * IN-FLIGHT ATTRIBUTION (reporting only — the exit code never changes here).
+ *
+ * Multiple agent sessions share this working tree, so a full-suite run can go
+ * red because ANOTHER session is mid-edit (measured 2026-10-17: 10 new reds,
+ * none from the session that ran the gate, one of them a spec whose transitive
+ * import had a duplicate export at that moment). Without attribution the
+ * triage burns an hour; with it the runner sees "dirty: those files" and knows
+ * whose wave it is. `--bless` still refuses; this only labels.
+ */
+export function gitDirtyPaths() {
+  const res = spawnSync("git", ["status", "--porcelain"], { cwd: REPO_ROOT, encoding: "utf8" });
+  if (res.status !== 0) return new Set();
+  const dirty = new Set();
+  for (const line of res.stdout.split("\n")) {
+    const trimmed = line.replace(/\s+$/, "");
+    if (trimmed.length < 4) continue;
+    let path = trimmed.slice(3).trim();
+    if (path.includes(" -> ")) path = path.split(" -> ").pop().trim();
+    if (path.startsWith('"') && path.endsWith('"')) path = path.slice(1, -1);
+    dirty.add(path.replace(/\\/g, "/"));
+  }
+  return dirty;
+}
+
+/** Repo-relative paths of a spec file's first-level relative imports that exist on disk. */
+export function firstLevelImports(specPath) {
+  const out = new Set();
+  let text;
+  try {
+    text = readFileSync(resolve(REPO_ROOT, specPath), "utf8");
+  } catch {
+    return out;
+  }
+  const re = /(?:from\s+|import\s*\()\s*["']([^"']+)["']/g;
+  let match;
+  while ((match = re.exec(text))) {
+    const specifier = match[1];
+    if (!specifier.startsWith(".")) continue;
+    const base = resolve(REPO_ROOT, dirname(specPath), specifier);
+    const candidates = [
+      base,
+      `${base}.ts`,
+      `${base}.tsx`,
+      `${base}.js`,
+      `${base}.mjs`,
+      resolve(base, "index.ts"),
+    ];
+    const hit = candidates.find((candidate) => existsSync(candidate));
+    if (hit) out.add(relative(REPO_ROOT, hit).replace(/\\/g, "/"));
+  }
+  return out;
+}
+
+/**
+ * Label each new red with the dirty file that most plausibly explains it: the
+ * spec itself, else one of its first-level imports. Pure given the dirty set.
+ */
+export function annotateInFlight(newReds, dirty = gitDirtyPaths()) {
+  return newReds.map((id) => {
+    const file = String(id).split(" > ")[0];
+    if (dirty.has(file)) return { id, inFlight: true, reason: `${file} is dirty` };
+    for (const imported of firstLevelImports(file)) {
+      if (dirty.has(imported)) return { id, inFlight: true, reason: `${imported} (imported) is dirty` };
+    }
+    return { id, inFlight: false, reason: null };
+  });
+}
+
 function loadLedger(path) {
   if (!existsSync(path)) {
     return { version: 1, recordedAgainst: "none", date: "none", note: LEDGER_NOTE, expectations: [] };
@@ -228,7 +297,21 @@ function printVerdict({ parsed, diff, violations, ledger }) {
     console.log(
       `\n✗ NEW REDS (${diff.newReds.length}) — fix, or classify in suite-expectations.json with owner + reason:`,
     );
-    for (const id of diff.newReds) console.log(`    - ${id}`);
+    const annotated = annotateInFlight(diff.newReds);
+    const inFlightCount = annotated.filter((item) => item.inFlight).length;
+    for (const item of annotated) {
+      console.log(`    - ${item.id}${item.inFlight ? `  [IN-FLIGHT: ${item.reason}]` : ""}`);
+    }
+    if (inFlightCount > 0) {
+      const dirty = [...gitDirtyPaths()].filter((path) => /^(src|tests|scripts|desktop|server)\//.test(path));
+      console.log(
+        `\n  ${inFlightCount} of these touch DIRTY files — another session is mid-edit in this shared tree`,
+        `(measured 2026-10-17: a runner's 10 "new reds" were all another wave's).`,
+        `\n  Verify with \`git status --porcelain\` before "fixing" anything. In-flight now (${dirty.length}):`,
+      );
+      for (const path of dirty.slice(0, 20)) console.log(`    ~ ${path}`);
+      if (dirty.length > 20) console.log(`    ~ … +${dirty.length - 20} more`);
+    }
   }
   if (diff.cured.length > 0) {
     bad = true;

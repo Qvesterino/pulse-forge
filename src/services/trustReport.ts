@@ -337,7 +337,7 @@ export function buildTrustReport(input: TrustReportInput): TrustReport {
       : [
           `- File: \`${input.exportStamp.fileName}\` (rendered ${input.exportStamp.renderedAt})`,
           `- Render hash: \`${input.exportStamp.hash ?? "unavailable (insecure context)"}\``,
-          `- Verify it yourself: \`node tools/kyx-verify.mjs <file.wav>\` — the manifest format is documented in docs/KYX-REPRODUCIBILITY-PROTOCOL.md (${KYX_MANIFEST_FORMAT}).`,
+          `- Verify it yourself: \`npx kyx-verify <file.wav>\` — the manifest format is documented in docs/KYX-REPRODUCIBILITY-PROTOCOL.md (${KYX_MANIFEST_FORMAT}).`,
         ].join("\n"),
     "",
     "## What this file contains — and what it never contains",

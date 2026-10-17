@@ -138,29 +138,28 @@ same project value.
   no-expression case. The focused command is
   `npm run test:browser:note-expression`; `npm run
 test:browser:note-expression:all` runs it in Chromium, Firefox and WebKit.
-  The verifier has 81 checks: 79 OfflineAudioContext render checks, a
-  four-case live/offline parity aggregate, and the worklet release-response
-  audit. On 2026-10-17 Firefox passed the full 81/81 run; its separate parity
-  rerun passed 4/4. Chromium's latest parity-only run correctly rejected the
-  Analog Mod X/Y case: live/offline null was −1.9 dB, live-repeat null −0.8 dB,
-  live/reference RMS 0.875×, live/offline spectral cosine 0.8118 and
-  live-repeat cosine 0.8453, while the offline repeat control was −76.3 dB
-  with spectral cosine 1.0000. The live captures therefore
-  disagree materially even though offline rendering is deterministic. The
-  note-expression-only phase-insensitive fallback now requires a clean offline
-  control plus ≥0.98 spectral cosine and 0.90–1.10 RMS across live/offline,
-  offline-repeat and live-repeat pairs; synthetic checks cover changed pitch,
-  level, missing comparisons and a dirty offline control. It does not relax the
-  general parity corpus. Keep the Chromium aggregate open until the live
-  variation is explained. Its strict waveform path still requires alignment
-  within 512 samples and null ≤−40 dB. The worklet release-response audit
-  passed in Chromium and Firefox. Playwright's Windows WebKit build exposes
-  none of `AudioContext`, `OfflineAudioContext` or `AudioWorkletNode`; the
-  all-engine command reports that browser as blocked and exits nonzero. This
-  is not Safari evidence.
-  Playwright's Windows WebKit build exposes none of `AudioContext`,
-  `OfflineAudioContext` or `AudioWorkletNode`; the all-engine command reports
-  that browser as blocked and exits nonzero. This is not Safari evidence.
+  The verifier has 79 OfflineAudioContext render assertions, six live/offline
+  parity cases, and the worklet release-response audit. The 2026-10-17
+  Chromium run passed all six parity cases with audio-frame-counted captures.
+  Analog Mod X remained phase-sensitive at the waveform level (0.8 dB
+  live/offline null, 0.394 correlation, 0.7 dB live-repeat null at 364
+  samples), while the live/offline, offline-repeat and live-repeat magnitude
+  comparisons measured spectral cosine 0.9941/1.0000/0.9949 and RMS
+  1.049/1.000/0.960. The offline repeat null was −323.0 dB. This met the
+  note-expression-only phase-insensitive gate; the other five cases passed the
+  strict waveform null. The capture worklet now stops at the exact requested
+  audio-frame count, including its final partial chunk; its focused processor
+  specs cover exact length and manual-stop compatibility. The parity fallback
+  still requires deterministic offline control, ≥0.98 spectral cosine and
+  0.90–1.10 RMS across all three comparisons, and rejects a divergent or silent
+  repeat capture. Synthetic checks cover changed pitch, level, missing
+  comparisons and a dirty offline control. This exception does not relax the
+  general parity corpus. The six-case corpus has not yet been rerun in
+  Firefox; its earlier four-case run passed 4/4. The worklet release-response
+  audit passed in Chromium and Firefox. Playwright's Windows WebKit build
+  exposes none of `AudioContext`, `OfflineAudioContext` or `AudioWorkletNode`;
+  the all-engine command reports that browser as blocked and exits nonzero.
+  This is not Safari evidence.
 - `tests/per-note-pan.test.ts` now routes overlapping notes independently on
   Texture Synth and Vocal Chop as well as the 16 previously supported voice
   instruments; neutral Texture pan keeps its existing voice panner centered,
@@ -179,11 +178,12 @@ test:browser:note-expression:all` runs it in Chromium, Firefox and WebKit.
   are ignored when no matching held voice exists. Other runtimes' legacy
   portamento paths do not yet imply FL-style no-retrigger slide-note support.
 - The browser verifier now selects Chromium, Firefox, WebKit, or all three.
-  Chromium and Firefox pass the same 79 rendered-audio expression checks and
-  four representative real-time/offline parity cases. The Playwright WebKit
-  build available on this Windows host has no Web Audio API, so Safari remains
-  an open verification target. The parity set is representative, not a
-  full-registry live/offline proof.
+  Chromium's current run passes 79 rendered-audio checks and six representative
+  real-time/offline parity cases. Firefox passes the 79 rendered-audio checks;
+  its recorded live/offline evidence covers the earlier four-case corpus. The
+  Playwright WebKit build available on this Windows host has no Web Audio API,
+  so Safari remains an open verification target. The parity set is
+  representative, not a full-registry live/offline proof.
 - `tests/ui/piano-roll-event-editor.test.tsx` enters the real selector and
   pointer handlers against a real `ProjectStore`, including no-move and
   `pointercancel` negatives; it also edits Mod X from the lane and verifies

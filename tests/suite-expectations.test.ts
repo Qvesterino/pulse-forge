@@ -4,8 +4,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  annotateInFlight,
   diffExpectations,
   ExpectationsError,
+  firstLevelImports,
   ledgerViolations,
   parseVitestJsonReport,
   regenerateLedger,
@@ -258,5 +260,38 @@ describe("CLI contract (exit codes)", () => {
     const ledger = JSON.parse(readFileSync(ledgerPath, "utf8")) as { expectations: LedgerEntry[] };
     const byId = new Map(ledger.expectations.map((e) => [e.id, e]));
     expect(byId.get("tests/a.test.ts > owned red")?.owner).toBe("wave");
+  });
+});
+
+describe("annotateInFlight (attribution, not exemption)", () => {
+  it("labels a red whose spec file itself is dirty", () => {
+    const [item] = annotateInFlight(["tests/ui/Foo.test.tsx > spec"], new Set(["tests/ui/Foo.test.tsx"]));
+    expect(item).toEqual({
+      id: "tests/ui/Foo.test.tsx > spec",
+      inFlight: true,
+      reason: "tests/ui/Foo.test.tsx is dirty",
+    });
+  });
+
+  it("labels a red whose first-level import is dirty (no label on a clean tree)", () => {
+    // This very spec imports ../scripts/suite-expectations.mjs — use a real
+    // import so the resolution is exercised, not mocked.
+    const imports = firstLevelImports("tests/suite-expectations.test.ts");
+    expect(imports.has("scripts/suite-expectations.mjs"), "import resolution broke — the label would be blind").toBe(
+      true,
+    );
+    const [dirtyItem] = annotateInFlight(
+      ["tests/suite-expectations.test.ts > spec"],
+      new Set(["scripts/suite-expectations.mjs"]),
+    );
+    expect(dirtyItem.inFlight).toBe(true);
+    expect(dirtyItem.reason).toContain("(imported) is dirty");
+    const [cleanItem] = annotateInFlight(["tests/suite-expectations.test.ts > spec"], new Set());
+    expect(cleanItem).toEqual({ id: "tests/suite-expectations.test.ts > spec", inFlight: false, reason: null });
+  });
+
+  it("never changes the id — the label is additive", () => {
+    const ids = ["tests/a.test.ts > one", "tests/b.test.tsx > [collection error]"];
+    expect(annotateInFlight(ids, new Set()).map((item) => item.id)).toEqual(ids);
   });
 });

@@ -1,0 +1,33 @@
+{
+  "note": "Manual release gates (AGENTS.md §6). The OWNER closes these by running the command and recording the outcome here; the status report renders them verbatim and NEVER as a pass while they say pending. Update the state to 'pass' or 'fail' with a note (date + evidence) when you run one.",
+  "gates": [
+    {
+      "id": "browser-smoke-firefox-safari-ios",
+      "claim": "Manual Firefox / Safari / iOS Safari smoke",
+      "command": "docs/KYX-SAFARI-IOS-MANUAL-QA.md",
+      "state": "pending",
+      "note": ""
+    },
+    {
+      "id": "release-preflight",
+      "claim": "Release preflight (explicit production config + shipped artifacts scan)",
+      "command": "npm run release:preflight",
+      "state": "pending",
+      "note": ""
+    },
+    {
+      "id": "release-server-smoke",
+      "claim": "Collab server boots and answers /api/health",
+      "command": "npm run release:server-smoke",
+      "state": "pending",
+      "note": ""
+    },
+    {
+      "id": "release-deployed-smoke",
+      "claim": "Deployed-smoke against a real deployment (needs KYX_DEPLOY_URL)",
+      "command": "npm run release:deployed-smoke",
+      "state": "pending",
+      "note": ""
+    }
+  ]
+}
