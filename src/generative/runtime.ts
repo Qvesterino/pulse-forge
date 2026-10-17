@@ -403,6 +403,10 @@ export class GenerativeRuntime {
       if (sourceDoc !== this.options.project()) throw new Error("Project changed during generated capture commit");
       this.options.execute(persisted.command);
     } catch (error) {
+      // Roll back BOTH halves of the commit: the persisted row and the
+      // in-memory bank buffer. Removing only the row left an orphan buffer in
+      // the shared bank — playable now, gone on the next reload.
+      this.options.bank?.remove(persisted.asset.id);
       await this.options.userSamples.remove(persisted.asset.id).catch(() => undefined);
       throw error;
     }
@@ -488,6 +492,9 @@ export class GenerativeRuntime {
       if (sourceDoc !== this.options.project()) throw new Error("Project changed during generative resample commit");
       this.options.execute(persisted.command);
     } catch (error) {
+      // Same double rollback as the capture path: the shared bank must not
+      // keep a buffer whose persisted row is being removed.
+      this.options.bank?.remove(persisted.asset.id);
       await this.options.userSamples.remove(persisted.asset.id).catch(() => undefined);
       throw error;
     }

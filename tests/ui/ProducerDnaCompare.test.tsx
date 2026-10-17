@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createDefaultProject } from "../../src/project-model/schema";
 import { normalizeIntent } from "../../src/intent/normalize";
 import { planGeneration } from "../../src/intent/plan";
@@ -9,6 +9,15 @@ import { ProducerDnaCompare } from "../../src/ui/ProducerDnaCompare";
 import type { GenerationResult, RankedCandidate } from "../../src/intent/types";
 import type { Pattern } from "../../src/project-model/types";
 import { PREFERENCE_LEDGER_KEY } from "../../src/intent/preference-ledger";
+import { clearAllProducerMemory } from "../../src/intent/producer-memory-management";
+
+// The destructive "clear memory" action awaits several IndexedDB operations.
+// Mock the module (keeping the real exports) so the failure path can be driven
+// deterministically — the panel must not stay disabled when a clear fails.
+vi.mock("../../src/intent/producer-memory-management", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/intent/producer-memory-management")>();
+  return { ...actual, clearAllProducerMemory: vi.fn(async () => true) };
+});
 
 function buildFixture(): { result: GenerationResult; project: ReturnType<typeof createDefaultProject> } {
   const project = createDefaultProject();
@@ -222,5 +231,20 @@ describe("ProducerDnaCompare", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "B" })[1]);
     expect(screen.getByRole("button", { name: "Nechal by som A" })).toBeDisabled();
     expect(localStorage.getItem(PREFERENCE_LEDGER_KEY)).toBeNull();
+  });
+
+  it("re-enables the clear control and reports the failure when clearing rejects", async () => {
+    // Regression: `clear()` had no try/finally. When clearAllProducerMemory()
+    // rejected, setMemoryBusy(false) was skipped and the destructive control
+    // (plus import) stayed disabled for the component's whole life.
+    vi.mocked(clearAllProducerMemory).mockRejectedValueOnce(new Error("IndexedDB blocked"));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { project, result } = buildFixture();
+    render(<ProducerDnaCompare project={project} result={result} onAudition={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Vymazať DNA" }));
+
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/Vymazanie zlyhalo/i));
+    expect(screen.getByRole("button", { name: "Vymazať DNA" })).toBeEnabled();
   });
 });

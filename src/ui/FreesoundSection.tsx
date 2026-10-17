@@ -9,6 +9,7 @@ import {
   type FreesoundResult,
 } from "../samples/freesound";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
+import { persistBankBuffer } from "../sample-library/bank-persist";
 
 /**
  * Freesound section in the sample browser: search CC0 one-shots, audition
@@ -65,14 +66,15 @@ export function FreesoundSection({ onImport }: { onImport: (asset: UserSampleAss
     try {
       const id = freesoundSampleId(result);
       // One download: decode a copy into the bank, keep the raw bytes for
-      // IndexedDB persistence (decodeAudioData detaches what it gets).
+      // IndexedDB persistence (decodeAudioData detaches what it gets). Reuse
+      // an already-auditioned buffer rather than decoding again.
       const raw = await fetchFreesoundPreview(result);
-      if (!services.bank.get(id)) {
+      let buffer = services.bank.get(id);
+      if (!buffer) {
         const ctx = services.engine.context;
         if (!ctx) throw new Error("Audio engine not ready");
-        services.bank.add(id, await ctx.decodeAudioData(raw.slice(0)));
+        buffer = await ctx.decodeAudioData(raw.slice(0));
       }
-      const buffer = services.bank.get(id)!;
       // Audit 10 D4: the API name is untrusted — strip control/separator
       // characters so fileName can never carry path-ish or control garbage.
       const safeName =
@@ -90,7 +92,7 @@ export function FreesoundSection({ onImport }: { onImport: (asset: UserSampleAss
         channels: buffer.numberOfChannels,
         createdAt: new Date().toISOString(),
       };
-      await services.userSamples.save(asset, raw);
+      await persistBankBuffer(services.bank, id, buffer, () => services.userSamples.save(asset, raw));
       setImportedIds((prev) => new Set(prev).add(String(result.id)));
       onImport(asset);
     } catch (err) {

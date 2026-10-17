@@ -4,6 +4,13 @@ import { trackPitch, type PitchFrame } from "./pitch-tracker";
 const WORKER_MIN_SECONDS = 2;
 
 /**
+ * Watchdog: a worker killed without firing `error` would leave the caller
+ * pending forever. The pure main-thread tracker is the same deterministic
+ * fallback the `onerror` path uses, and it is cheap enough to run here.
+ */
+const WORKER_TIMEOUT_MS = 30_000;
+
+/**
  * Run hum pitch tracking without blocking the UI for longer takes.
  *
  * The AudioBuffer channel is copied before transfer (transferring the bank's
@@ -32,13 +39,29 @@ export function trackPitchAsync(data: Float32Array, sampleRate: number, signal?:
     }
 
     let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     let removeAbortListener: () => void = () => undefined;
+    const settle = () => {
+      if (timer != null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      removeAbortListener();
+      worker.terminate();
+    };
     const finish = (frames: PitchFrame[]) => {
       if (settled) return;
       settled = true;
-      removeAbortListener();
-      worker.terminate();
+      settle();
       resolve(frames);
+    };
+    const finishWithSyncFallback = () => {
+      try {
+        finish(trackPitch(data, sampleRate));
+      } catch {
+        // The pure tracker should never throw; settle rather than hang.
+        finish([]);
+      }
     };
     worker.onmessage = (event: MessageEvent<{ frames?: unknown }>) => {
       const raw = Array.isArray(event.data?.frames) ? event.data.frames : [];
@@ -54,7 +77,8 @@ export function trackPitchAsync(data: Float32Array, sampleRate: number, signal?:
       );
       finish(frames);
     };
-    worker.onerror = () => finish(trackPitch(data, sampleRate));
+    worker.onerror = () => finishWithSyncFallback();
+    timer = setTimeout(finishWithSyncFallback, WORKER_TIMEOUT_MS);
     if (signal) {
       const onAbort = () => finish([]);
       signal.addEventListener("abort", onAbort, { once: true });
@@ -69,7 +93,7 @@ export function trackPitchAsync(data: Float32Array, sampleRate: number, signal?:
       const copy = new Float32Array(data);
       worker.postMessage({ channelData: copy, sampleRate }, [copy.buffer]);
     } catch {
-      finish(trackPitch(data, sampleRate));
+      finishWithSyncFallback();
     }
   });
 }

@@ -3,6 +3,7 @@ import { readStoragePressure, shouldShowSuspendedChip, startDeviceMonitor } from
 import { useServices } from "./context";
 
 type Notice = { level: "warn" | "info"; message: string; id: number };
+type AudioIssue = "suspended" | "interrupted" | "closed";
 
 const STORAGE_WARN_AT = 0.85;
 
@@ -21,7 +22,7 @@ const STORAGE_WARN_AT = 0.85;
  */
 export function AudioStatusChips() {
   const services = useServices();
-  const [suspended, setSuspended] = useState(false);
+  const [audioIssue, setAudioIssue] = useState<AudioIssue | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [storagePressure, setStoragePressure] = useState<number | null>(null);
   const [storageDismissed, setStorageDismissed] = useState(() => {
@@ -48,7 +49,7 @@ export function AudioStatusChips() {
     const update = () => {
       try {
         const state = services.engine.getLiveAudioState();
-        setSuspended(shouldShowSuspendedChip(state, services.transport.playing));
+        setAudioIssue(shouldShowSuspendedChip(state, services.transport.playing) ? (state as AudioIssue) : null);
       } catch {
         /* engine gone mid-swap */
       }
@@ -87,15 +88,29 @@ export function AudioStatusChips() {
 
   return (
     <>
-      {suspended && (
+      {audioIssue !== null && audioIssue !== "interrupted" && (
         <button
           type="button"
           className="save-status save-error"
-          title="The audio engine is suspended — click to resume (this can happen after sleep or when the browser blocks autoplay)"
+          title={
+            audioIssue === "closed"
+              ? "The audio engine was shut down by the browser or the system (device loss, tab reclaim) — click to rebuild it"
+              : "The audio engine is suspended — click to resume (this can happen after sleep or when the browser blocks autoplay)"
+          }
           onClick={resumeAudio}
         >
-          AUDIO SUSPENDED — CLICK TO RESUME
+          {audioIssue === "closed" ? "AUDIO STOPPED — CLICK TO RESTART" : "AUDIO SUSPENDED — CLICK TO RESUME"}
         </button>
+      )}
+      {audioIssue === "interrupted" && (
+        <span
+          className="save-status save-error"
+          role="status"
+          aria-live="polite"
+          title="The system interrupted audio (a call, another app, screen lock). It resumes automatically when the interruption ends."
+        >
+          AUDIO INTERRUPTED — RESUMES AUTOMATICALLY
+        </span>
       )}
       {notice && (
         <span

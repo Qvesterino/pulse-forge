@@ -51,6 +51,7 @@ import type { PcmMicRecorder } from "../audio-engine/PcmMicRecorder";
 import type { MaterializedPcmTake } from "../audio-engine/pcmRecording";
 import { detectLoopBpm } from "../audio-engine/bpm-detect";
 import { userSampleId, type UserSampleAsset } from "../persistence/UserSampleRepository";
+import { persistBankBuffer } from "../sample-library/bank-persist";
 import { PublishToGalleryButton } from "../gallery/PublishButton";
 import { isMountedInEcosystem, prepareBeatHandoff } from "../interop/qvesterHandoff";
 import { setMasterConfig, chopSampleToPads } from "../commands/commands";
@@ -1075,7 +1076,6 @@ export function ExportPanel({
       }
       const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       const id = userSampleId(`resample-${stamp}`);
-      services.bank.add(id, buffer);
       // Tempo tag for the sample browser — resampled loops fit the same
       // "Fit to project BPM" workflow as imports.
       let bpm: number | undefined;
@@ -1097,12 +1097,17 @@ export function ExportPanel({
         ...(bpm !== undefined ? { bpm } : {}),
       };
       try {
-        if (pcmTake) {
-          await services.recordingRecovery.finalize(pcmTake.session.id, asset);
-          services.userSamples.invalidateCache();
-        } else {
-          await services.userSamples.save(asset, await blob!.arrayBuffer());
-        }
+        // Bank first (playable immediately), durable save second; a save
+        // failure rolls the playable buffer back so a quota/blocked-IDB error
+        // cannot leave a resample that is gone after the next reload.
+        await persistBankBuffer(services.bank, id, buffer, async () => {
+          if (pcmTake) {
+            await services.recordingRecovery.finalize(pcmTake.session.id, asset);
+            services.userSamples.invalidateCache();
+          } else {
+            await services.userSamples.save(asset, await blob!.arrayBuffer());
+          }
+        });
       } catch (err) {
         const detail = err instanceof Error ? err.message : "Saving the take failed";
         setRecError(pcmTake ? `${detail}. The staged PCM remains available for recovery.` : detail);

@@ -1221,6 +1221,8 @@ const reverb: EffectDefinition = {
     mix.wet.connect(preDelay).connect(conv).connect(tone).connect(mix.output);
     const seed = hashString(instance.id);
     let worker: Worker | null = null;
+    // Freshest decay the fallback can use if the worker dies before replying.
+    let fallbackDecay = instance.params.decay ?? 1.8;
     try {
       worker = new Worker(new URL("../audio-workers/ir-generator.ts", import.meta.url), { type: "module" });
       worker.onmessage = (e: MessageEvent<{ left: Float32Array; right: Float32Array; length: number }>) => {
@@ -1230,12 +1232,23 @@ const reverb: EffectDefinition = {
         buffer.copyToChannel(right as Float32Array<ArrayBuffer>, 1);
         conv.buffer = buffer;
       };
+      // An ASYNC module-load failure fires `error` on the Worker object — the
+      // synchronous `new Worker` try/catch never sees it. Without this handler
+      // `worker` stayed non-null, every decay update posted into a dead worker,
+      // `conv.buffer` was never assigned (no wet signal), and the sync fallback
+      // in the `decay` case below was unreachable.
+      worker.onerror = () => {
+        worker?.terminate();
+        worker = null;
+        conv.buffer = makeImpulseResponse(ctx, fallbackDecay, seed);
+      };
     } catch {
       // Worker not available — sync fallback
     }
     const apply = (id: string, v: number, when: number) => {
       switch (id) {
         case "decay":
+          fallbackDecay = v;
           if (worker) worker.postMessage({ decay: v, sampleRate: ctx.sampleRate, seed });
           else conv.buffer = makeImpulseResponse(ctx, v, seed);
           break;

@@ -108,6 +108,35 @@ describe("stt loader", () => {
     expect(third).toBeNull();
     expect(failures).toBe(2); // third call never reached the worker
   });
+
+  it("settles an in-flight transcription when the worker is torn down (no orphaned promise)", async () => {
+    // Turning the STT chip off calls disableStt() -> terminateWorker(). The old
+    // terminateWorker cleared the pending map (and its safety timers) WITHOUT
+    // resolving, so a transcription that was in flight when the user toggled
+    // the chip hung forever. The worker can never answer a terminated request,
+    // so the controlled null is the only correct settlement.
+    setSttModelMode("on");
+    setSttWorkerFactoryForTests(() =>
+      fakeWorker((request, post) => {
+        if (request.type === "load") post({ type: "loaded", id: request.id, version: "test" });
+        // transcribe: deliberately never answers — a hung/GPU-stalled runtime
+      }),
+    );
+    expect(await ensureStt()).toBe(true);
+
+    let settled: string | null | undefined;
+    const pending = transcribeWithStt(new Float32Array(16000), 16000).then((text) => {
+      settled = text;
+      return text;
+    });
+    // Give the postMessage microtask a chance; the request is unanswered.
+    await Promise.resolve();
+    expect(settled).toBeUndefined();
+
+    setSttModelMode("off"); // chip off → disableStt → terminateWorker
+
+    await expect(pending).resolves.toBeNull();
+  });
 });
 
 describe("stt manifest guard", () => {

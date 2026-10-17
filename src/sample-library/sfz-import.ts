@@ -2,6 +2,7 @@ import type { SampleLayer } from "../project-model/types";
 import type { ProjectDocument } from "../project-model/types";
 import type { Command } from "../commands/types";
 import { parseSfz } from "./sfz";
+import { persistBankBuffer } from "./bank-persist";
 import { setVelocityLayersCommand } from "../commands/layerCommands";
 
 /**
@@ -203,7 +204,7 @@ export interface SfzLibraryImportResult {
 export const SFZ_IMPORT_MAX_BYTES = 256 * 1024 * 1024;
 
 export interface SfzLibraryImportSinks {
-  bank: { add(id: string, buffer: AudioBuffer): void };
+  bank: { has(id: string): boolean; add(id: string, buffer: AudioBuffer): void; remove(id: string): void };
   userSamples: {
     save(
       asset: {
@@ -271,20 +272,25 @@ export async function importSfzLibrary(
     const data = bytesByFileName.get(region.fileName);
     if (data == null) throw new Error(`sample bytes missing after plan: ${region.fileName}`);
     const buffer = await sinks.decode(data.slice(0));
-    sinks.bank.add(region.sampleId, buffer);
     const meta = wavMeta(data);
-    await sinks.userSamples.save(
-      {
-        id: region.sampleId,
-        name: region.fileName,
-        fileName: `${region.sampleId}.wav`,
-        category: "Custom",
-        duration: meta.duration,
-        sampleRate: meta.sampleRate,
-        channels: meta.channels,
-        createdAt: new Date().toISOString(),
-      },
-      data,
+    // Bank first (playable immediately), durable save second; the helper rolls
+    // the bank entry back if THIS region fails to persist (quota/blocked IDB),
+    // so a failed import cannot leave a ghost sample. Regions that already
+    // persisted keep their bank entries — they are legitimately in the library.
+    await persistBankBuffer(sinks.bank, region.sampleId, buffer, () =>
+      sinks.userSamples.save(
+        {
+          id: region.sampleId,
+          name: region.fileName,
+          fileName: `${region.sampleId}.wav`,
+          category: "Custom",
+          duration: meta.duration,
+          sampleRate: meta.sampleRate,
+          channels: meta.channels,
+          createdAt: new Date().toISOString(),
+        },
+        data,
+      ),
     );
   }
 

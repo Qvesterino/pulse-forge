@@ -38,6 +38,15 @@ export interface VideoResult {
   bytes: number;
 }
 
+/**
+ * Grace period after `recorder.stop()` for MediaRecorder to finalize. A
+ * recorder that never fires `onstop` (dropped encoder, tab frozen at the wrong
+ * moment) would otherwise wedge the export in "busy" forever — the abort
+ * signal is not consulted past the stop, so the CANCEL button could not
+ * unblock it.
+ */
+const FINALIZE_TIMEOUT_MS = 30_000;
+
 /** MediaRecorder + canvas.captureStream available and a usable codec? */
 export function canExportVideo(): boolean {
   if (typeof MediaRecorder === "undefined" || typeof document === "undefined") return false;
@@ -274,7 +283,20 @@ export async function recordVideo(buffer: AudioBuffer, options: VideoOptions): P
 
     if (options.signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
     recorder.stop();
-    const blob = await finished;
+    // Bound the finalize wait; the finally below tears the stream and the
+    // AudioContext down on every path, including this timeout.
+    let finalizeTimer: ReturnType<typeof setTimeout> | null = null;
+    const blob = await Promise.race([
+      finished,
+      new Promise<never>((_, reject) => {
+        finalizeTimer = setTimeout(
+          () => reject(new Error("Video export timed out while finalizing the recording")),
+          FINALIZE_TIMEOUT_MS,
+        );
+      }),
+    ]).finally(() => {
+      if (finalizeTimer != null) clearTimeout(finalizeTimer);
+    });
     return { blob, ext: mimeType.includes("mp4") ? "mp4" : "webm", bytes: blob.size };
   } finally {
     for (const track of stream?.getTracks() ?? []) track.stop();

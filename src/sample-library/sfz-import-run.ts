@@ -2,6 +2,7 @@ import type { SampleLayer } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
 import type { IUserSampleRepository } from "../persistence/contracts";
 import { planSfzInstrumentImport, wavMeta, type SfzImportFile, type SfzImportPlan } from "../sample-library/sfz-import";
+import { persistBankBuffer } from "./bank-persist";
 
 /**
  * SFZ INSTRUMENT IMPORT RUNNER — drives the user import end-to-end from a
@@ -66,19 +67,22 @@ export async function runSfzInstrumentImport(
     try {
       const decoded = await sinks.decode(data.slice(0));
       const meta = wavMeta(data);
-      sinks.bank.add(region.sampleId, decoded);
-      await sinks.userSamples.save(
-        {
-          id: region.sampleId,
-          name: region.fileName,
-          fileName: `${region.sampleId}.wav`,
-          category: "Custom",
-          duration: meta.duration,
-          sampleRate: meta.sampleRate,
-          channels: meta.channels,
-          createdAt: new Date().toISOString(),
-        },
-        data,
+      // Bank first (playable immediately), durable save second; a save failure
+      // rolls the bank entry back so a quota error cannot leave a ghost sample.
+      await persistBankBuffer(sinks.bank, region.sampleId, decoded, () =>
+        sinks.userSamples.save(
+          {
+            id: region.sampleId,
+            name: region.fileName,
+            fileName: `${region.sampleId}.wav`,
+            category: "Custom",
+            duration: meta.duration,
+            sampleRate: meta.sampleRate,
+            channels: meta.channels,
+            createdAt: new Date().toISOString(),
+          },
+          data,
+        ),
       );
       layers.push(region.layer);
       fallbackSampleId = fallbackSampleId ?? region.sampleId;

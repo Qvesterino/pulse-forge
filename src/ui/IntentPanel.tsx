@@ -841,6 +841,12 @@ export function IntentPanel() {
   // the old project's proposal can never be applied into the new project.
   useEffect(() => {
     abortRef.current?.abort();
+    // A generation aborted by this switch settles through runGeneration's
+    // `finally { if (!controller.signal.aborted) setBusy(false); }` — which is
+    // SKIPPED precisely because the signal is aborted. Without this reset the
+    // DO IT button (and every later generation, gated on `busy`) stayed dead
+    // for the rest of the panel's life whenever the project changed mid-run.
+    setBusy(false);
     stopAudition();
     songTokenRef.current++;
     sectionTokenRef.current++;

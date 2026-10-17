@@ -75,7 +75,10 @@ function request(request: AudioRequest, timeoutMs: number): Promise<AudioRespons
   });
 }
 
-/** Cheap probe: model present only after `npm run audio:fetch`. */
+/** Cheap probe: model present only after `npm run audio:fetch`. A definitive
+ *  404 is remembered (no point re-probing an absent artifact); a TRANSIENT
+ *  failure is not latched, so a moment of bad network does not disable audio
+ *  tagging for the rest of the session (same contract as semantic-client). */
 export async function audioTagAvailable(): Promise<boolean> {
   if (audioTagMode() === "off" || unavailable || workerDisabled) return false;
   try {
@@ -86,7 +89,6 @@ export async function audioTagAvailable(): Promise<boolean> {
     }
     return true;
   } catch {
-    unavailable = true;
     return false;
   }
 }

@@ -387,7 +387,13 @@ class GalleryStore {
     };
     this.items.push(item);
     if (this.items.length > GALLERY_MAX_ITEMS) this.items.splice(0, this.items.length - GALLERY_MAX_ITEMS);
-    this.save();
+    if (!this.save()) {
+      // The write failed (read-only volume, disk full). Answering 201 would be
+      // a durability lie: the beat exists only in this process's memory and
+      // dies with the server. Withdraw it; the route answers 500.
+      this.items = this.items.filter((candidate) => candidate.id !== item.id);
+      return { error: "gallery storage is not writable — the beat was not saved", persistenceFailed: true };
+    }
     return { item };
   }
 
@@ -403,23 +409,35 @@ class GalleryStore {
   report(id, reason) {
     if (!this.find(id)) return { error: "unknown beat" };
     const cleanReason = cleanText(reason, REPORT_REASON_MAX) || "unspecified";
-    this.reports.push({
+    const report = {
       id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
       beatId: id,
       reason: cleanReason,
       createdAt: new Date().toISOString(),
-    });
+    };
+    this.reports.push(report);
     if (this.reports.length > REPORTS_MAX) this.reports.splice(0, this.reports.length - REPORTS_MAX);
-    this.save();
+    if (!this.save()) {
+      // A 202 for a report that was never written is a silent moderation
+      // failure — withdraw it so the route can answer 500.
+      this.reports = this.reports.filter((candidate) => candidate.id !== report.id);
+      return { error: "report could not be stored", persistenceFailed: true };
+    }
     return { accepted: true };
   }
 
+  /** Returns "deleted" | "missing" | "storage-error". */
   remove(id) {
     const index = this.items.findIndex((item) => item.id === id);
-    if (index < 0) return false;
-    this.items.splice(index, 1);
-    this.save();
-    return true;
+    if (index < 0) return "missing";
+    const [removed] = this.items.splice(index, 1);
+    if (!this.save()) {
+      // Put it back: "deleted" while the record is still on disk (and in
+      // memory here) is the same durability lie as a phantom publish.
+      this.items.splice(index, 0, removed);
+      return "storage-error";
+    }
+    return "deleted";
   }
 
   /** Play counters tick often — coalesce disk writes. */
@@ -431,6 +449,7 @@ class GalleryStore {
     }, 3000);
   }
 
+  /** Persist the store. Returns false when the write failed (already logged). */
   save() {
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
@@ -439,8 +458,10 @@ class GalleryStore {
     try {
       mkdirSync(dirname(this.filePath), { recursive: true });
       writeFileSync(this.filePath, JSON.stringify({ items: this.items, reports: this.reports }, null, 2));
+      return true;
     } catch (error) {
       console.warn("[gallery] could not save store:", String(error));
+      return false;
     }
   }
 }
@@ -659,7 +680,12 @@ class BattleStore {
       createdAt: new Date().toISOString(),
     });
     if (this.votes.length > BATTLES_VOTES_MAX) this.votes.splice(0, this.votes.length - BATTLES_VOTES_MAX);
-    this.save();
+    if (!this.save()) {
+      // The in-memory vote stands (this process keeps serving the reveal from
+      // its ratings), but the training log did not reach disk — say so rather
+      // than returning a durable-looking 201.
+      return { error: "vote was counted in memory but could not be persisted", persistenceFailed: true };
+    }
 
     const reveal = (item) => ({
       id: item.id,
@@ -709,6 +735,7 @@ class BattleStore {
     }));
   }
 
+  /** Persist the store. Returns false when the write failed (already logged). */
   save() {
     try {
       mkdirSync(dirname(this.filePath), { recursive: true });
@@ -716,8 +743,10 @@ class BattleStore {
         this.filePath,
         JSON.stringify({ votes: this.votes, ratings: Object.fromEntries(this.ratings) }, null, 2),
       );
+      return true;
     } catch (error) {
       console.warn("[battles] could not save store:", String(error));
+      return false;
     }
   }
 }
@@ -1090,7 +1119,7 @@ export function createCollabServer({
           const parsed = JSON.parse(body || "{}");
           const result = gallery.add(parsed);
           if (result.error) {
-            sendJson(res, 400, { error: result.error });
+            sendJson(res, result.persistenceFailed ? 500 : 400, { error: result.error });
             return;
           }
           sendJson(res, 201, { item: result.item });
@@ -1128,7 +1157,7 @@ export function createCollabServer({
         (parsed) => {
           const result = gallery.report(id, parsed?.reason);
           if (result.error) {
-            sendJson(res, 404, { error: result.error });
+            sendJson(res, result.persistenceFailed ? 500 : 404, { error: result.error });
             return;
           }
           sendJson(res, 202, result);
@@ -1176,6 +1205,10 @@ export function createCollabServer({
           }
           if (result.duplicate) {
             sendJson(res, 409, { error: result.error });
+            return;
+          }
+          if (result.persistenceFailed) {
+            sendJson(res, 500, { error: result.error });
             return;
           }
           if (result.error) {
@@ -1237,8 +1270,13 @@ export function createCollabServer({
         sendJson(res, 401, { error: "moderation authorization required" });
         return;
       }
-      if (!gallery.remove(deleteMatch[1])) {
+      const removed = gallery.remove(deleteMatch[1]);
+      if (removed === "missing") {
         sendJson(res, 404, { error: "unknown beat" });
+        return;
+      }
+      if (removed === "storage-error") {
+        sendJson(res, 500, { error: "gallery storage is not writable — the beat was kept" });
         return;
       }
       sendJson(res, 200, { deleted: true });

@@ -340,6 +340,7 @@ describe("generative runtime", () => {
     providers.register(createMockGenerativeProvider({ providerId: "mrt2", modelId: "mrt2_small" }));
     const saved: string[] = [];
     const removed: string[] = [];
+    const bankRemoved: string[] = [];
     let executeCount = 0;
     const userSamples: IUserSampleRepository = {
       invalidateCache: () => undefined,
@@ -367,6 +368,12 @@ describe("generative runtime", () => {
         transport: new Transport({ now: () => 0 }, doc.bpm),
         project: () => doc,
         providers,
+        // The rollback must clear BOTH halves of the commit: the durable row
+        // and the in-memory bank buffer (a leftover buffer was a ghost sample).
+        bank: {
+          add: (id: string) => saved.push(`bank:${id}`),
+          remove: (id: string) => bankRemoved.push(id),
+        } as never,
         userSamples,
         execute: () => {
           executeCount++;
@@ -376,6 +383,7 @@ describe("generative runtime", () => {
       await expect(runtime.captureTrack(trackId, 0.1)).rejects.toThrow("decode failed");
       expect(saved).toHaveLength(1);
       expect(removed).toEqual(saved);
+      expect(bankRemoved).toEqual(saved);
       expect(executeCount).toBe(0);
       await runtime.dispose();
     } finally {

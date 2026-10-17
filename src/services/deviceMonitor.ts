@@ -69,10 +69,20 @@ export function diffAudioDevices(
   return messages;
 }
 
-/** True when the suspended-state chip should show: the contradictory state
- *  where the user pressed play but audio cannot run. */
+/**
+ * True when the audio-recovery chip should show.
+ *
+ * - "suspended" / "interrupted": the contradictory state where the user pressed
+ *   play but audio cannot run (autoplay policy, sleep wake, an iOS
+ *   interruption). Silence must never be a mystery.
+ * - "closed": the live context is gone (device loss, browser reclaim) —
+ *   actionable regardless of the transport, because the next play would be
+ *   silent until something rebuilds it, and the recovery click does exactly
+ *   that.
+ */
 export function shouldShowSuspendedChip(state: string | null, playing: boolean): boolean {
-  return state === "suspended" && playing;
+  if (state === "closed") return true;
+  return playing && (state === "suspended" || state === "interrupted");
 }
 
 /** Storage pressure fraction, or null when the API is unavailable. */

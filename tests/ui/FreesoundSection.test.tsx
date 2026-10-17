@@ -81,4 +81,27 @@ describe("FreesoundSection", () => {
     // Button flips to imported state.
     await waitFor(() => expect(screen.getByText("✓")).toBeInTheDocument());
   });
+
+  it("rolls the bank buffer back when persistence fails — no ghost sample", async () => {
+    globalThis.fetch = vi.fn(async () => mockSearchResponse() as unknown as Response);
+    const services = mockServices();
+    // The durable write fails (quota/blocked IndexedDB) AFTER the buffer was
+    // made playable in the bank. Without a rollback the sample stays playable
+    // this session but is gone after a reload, with nothing in the library.
+    (services.userSamples.save as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("QuotaExceededError"));
+    const onImport = vi.fn();
+
+    renderWithContext(<FreesoundSection onImport={onImport} />, { services });
+    fireEvent.click(screen.getByText("FREESOUND · CC0"));
+    fireEvent.change(screen.getByLabelText("Search freesound"), { target: { value: "snare" } });
+    fireEvent.click(screen.getByRole("button", { name: "GO" }));
+    await waitFor(() => screen.getByRole("button", { name: "IMPORT" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "IMPORT" }));
+
+    await waitFor(() => expect(screen.getByText(/Import failed/)).toBeInTheDocument());
+    expect(onImport).not.toHaveBeenCalled();
+    expect(services.bank.remove).toHaveBeenCalled();
+    expect(services.bank.size).toBe(0);
+  });
 });

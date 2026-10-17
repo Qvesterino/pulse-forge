@@ -15,7 +15,13 @@ export function AudioUnlock() {
 
   useEffect(() => {
     const unlock = () => {
-      services.engine.ensureContext();
+      // A refused realtime context throws synchronously; an unguarded throw in
+      // a capture-phase pointerdown listener would break every first tap.
+      try {
+        services.engine.ensureContext();
+      } catch {
+        /* the TAP TO ENABLE AUDIO banner stays up and retries */
+      }
     };
     window.addEventListener("pointerdown", unlock, { once: true, capture: true });
 
@@ -44,7 +50,11 @@ export function AudioUnlock() {
       type="button"
       className="audio-unlock"
       onClick={() => {
-        services.engine.ensureContext();
+        try {
+          services.engine.ensureContext();
+        } catch {
+          /* guidance-level failure — the banner stays honest */
+        }
       }}
     >
       🔊 TAP TO ENABLE AUDIO

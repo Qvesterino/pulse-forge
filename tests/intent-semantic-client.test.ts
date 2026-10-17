@@ -1,6 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SemanticResponse } from "../src/ai/semantic/semantic-types";
 
+// Keep the real model-pack plumbing, but drive the availability probe
+// deterministically: the client's semanticAvailable() awaits these.
+vi.mock("../src/ai/packs/registry", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/ai/packs/registry")>();
+  return { ...actual };
+});
+vi.mock("../src/ai/packs/modelPackManager", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/ai/packs/modelPackManager")>();
+  return { ...actual, packFileResponse: vi.fn(async () => null) };
+});
+
 class FakeWorker {
   static instances: FakeWorker[] = [];
 
@@ -92,6 +103,31 @@ describe("semantic worker client failure handling", () => {
     expect(worker.terminated).toBe(true);
     await expect(embedTexts(["after circuit opens"])).resolves.toBeNull();
     expect(FakeWorker.instances).toHaveLength(1);
+  });
+
+  it("does not latch unavailability on a TRANSIENT probe failure (recovers on retry)", async () => {
+    // The old catch set `unavailable = true` for the rest of the session: one
+    // offline blip silently disabled semantic embeddings with no way back. A
+    // definitive 404 still latches (covered by design); a transient failure
+    // must be retried on the next call.
+    const packs = await import("../src/ai/packs/modelPackManager");
+    vi.mocked(packs.packFileResponse).mockRejectedValueOnce(new Error("offline"));
+    const { embedTexts } = await import("../src/ai/semantic/semantic-client");
+
+    // First probe fails transiently → null, no worker.
+    await expect(embedTexts(["first"])).resolves.toBeNull();
+    expect(FakeWorker.instances).toHaveLength(0);
+
+    // Next call re-probes (no latch): the probe succeeds and the worker runs.
+    const second = embedTexts(["second"]);
+    await vi.waitFor(() => expect(FakeWorker.instances).toHaveLength(1));
+    const worker = FakeWorker.instances[0];
+    await vi.waitFor(() => expect(worker.messages).toHaveLength(1));
+    const { requestId } = worker.messages[0] as { requestId: number };
+    worker.emitMessage({ type: "embed", requestId, ok: true, vectors: new Float32Array([1, 0]), rowCount: 1 });
+    const vectors = await second;
+    expect(vectors).toHaveLength(1);
+    expect(Array.from(vectors![0]!)).toEqual([1, 0]);
   });
 
   it("cold-start timeouts resolve to null WITHOUT tripping the circuit breaker", async () => {

@@ -55,6 +55,34 @@ describe("detectTransientsAsync", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("settles with the pure detector when the worker never replies (watchdog)", async () => {
+    // A worker killed without firing `error` (OOM reclaim; the browser does not
+    // guarantee an error event) used to leave this promise pending forever —
+    // ExportPanel's auto-chop stayed wedged on its busy flag. The watchdog
+    // converts the hang into the deterministic sync fallback.
+    vi.useFakeTimers();
+    const terminate = vi.fn();
+    class HangingWorker {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: (() => void) | null = null;
+      terminate = terminate;
+      postMessage() {}
+    }
+    vi.stubGlobal("Worker", HangingWorker);
+    try {
+      const data = new Float32Array(44_100 * 2);
+      data[4_410] = 1;
+      const pending = detectTransientsAsync(data, 44_100);
+      await vi.advanceTimersByTimeAsync(29_000);
+      await vi.advanceTimersByTimeAsync(2_000);
+      await expect(pending).resolves.toEqual(detectTransients(data, 44_100));
+      expect(terminate).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe("nearestOnset", () => {

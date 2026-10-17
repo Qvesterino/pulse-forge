@@ -111,7 +111,16 @@ function spawnWorker(): Worker | null {
 function terminateWorker(): void {
   worker?.terminate();
   worker = null;
-  for (const [, entry] of pending) clearTimeout(entry.timer);
+  // Settle every in-flight request BEFORE dropping it. Clearing the map (and
+  // its safety timers) without resolving left transcribeWithStt /
+  // requestLoad callers pending forever — e.g. toggling the STT chip off
+  // (`disableStt`) while a transcription is in flight hung voice capture. A
+  // terminated worker can never answer, so the only correct settlement is
+  // the controlled null the timeout path already uses.
+  for (const [, entry] of pending) {
+    clearTimeout(entry.timer);
+    entry.resolve(null);
+  }
   pending.clear();
 }
 

@@ -4,8 +4,10 @@ import {
   importSfzLibrary,
   planSfzInstrumentImport,
   SFZ_IMPORT_MAX_BYTES,
+  bytesToBase64,
   type SfzImportFile,
 } from "../src/sample-library/sfz-import";
+import { runSfzInstrumentImport } from "../src/sample-library/sfz-import-run";
 
 /**
  * USER SFZ LIBRARY IMPORT — parser + planner contracts. VSCO2 CE proved the
@@ -135,5 +137,121 @@ describe("importSfzLibrary — size honesty (agent-surface audit 10-06)", () => 
       execute: () => undefined,
     };
     await expect(importSfzLibrary(oversized as never, sinks as never)).rejects.toThrow(/import too large/);
+  });
+});
+
+describe("SFZ import — persistence rollback (ghost-sample guard)", () => {
+  /** A bank stand-in that records exactly what is currently held. */
+  function trackingBank() {
+    const held = new Set<string>();
+    return {
+      held,
+      bank: {
+        has: (id: string) => held.has(id),
+        add: (id: string) => void held.add(id),
+        remove: (id: string) => void held.delete(id),
+      },
+    };
+  }
+
+  const fakeBuffer = () =>
+    ({ duration: 1, sampleRate: 44100, numberOfChannels: 1, length: 44100 }) as unknown as AudioBuffer;
+
+  it("importSfzLibrary removes a failed region's buffer (no ghost sample)", async () => {
+    const { held, bank } = trackingBank();
+    const sinks = {
+      bank,
+      // A durable write failure (quota/blocked IndexedDB) must not leave the
+      // already-playable buffer behind: the region never reaches the library,
+      // so the in-memory bank and the durable store would disagree.
+      userSamples: {
+        save: async () => {
+          throw new Error("QuotaExceededError");
+        },
+      },
+      decode: async () => fakeBuffer(),
+      getDoc: () => ({ id: "x", name: "x", tracks: [], patterns: [], scenes: [], arrangement: { clips: [] } }),
+      execute: () => undefined,
+    };
+    const input = {
+      name: "MyCello",
+      sfzBase64: bytesToBase64(new TextEncoder().encode(SFZ)),
+      trackId: "trk",
+      samples: [
+        { fileName: "susvib_A2_v1.wav", base64: bytesToBase64(new Uint8Array(8)) },
+        { fileName: "susvib_A2_v2.wav", base64: bytesToBase64(new Uint8Array(8)) },
+        { fileName: "susvib_C4_v1.wav", base64: bytesToBase64(new Uint8Array(8)) },
+        { fileName: "susvib_C4_v2.wav", base64: bytesToBase64(new Uint8Array(8)) },
+      ],
+    };
+
+    await expect(importSfzLibrary(input as never, sinks as never)).rejects.toThrow("QuotaExceededError");
+    expect(held.size).toBe(0);
+  });
+
+  it("importSfzLibrary keeps regions that persisted before a later region fails", async () => {
+    // A multi-region import that fails on a LATER region must not remove the
+    // bank buffers of regions whose durable write already committed — that
+    // would orphan their library rows (listed, but unplayable this session).
+    const { held, bank } = trackingBank();
+    let saveCount = 0;
+    const sinks = {
+      bank,
+      userSamples: {
+        save: async () => {
+          saveCount += 1;
+          if (saveCount > 1) throw new Error("QuotaExceededError");
+        },
+      },
+      decode: async () => fakeBuffer(),
+      getDoc: () => ({ id: "x", name: "x", tracks: [], patterns: [], scenes: [], arrangement: { clips: [] } }),
+      execute: () => undefined,
+    };
+    const input = {
+      name: "MyCello",
+      sfzBase64: bytesToBase64(new TextEncoder().encode(SFZ)),
+      trackId: "trk",
+      samples: [
+        { fileName: "susvib_A2_v1.wav", base64: bytesToBase64(new Uint8Array(8)) },
+        { fileName: "susvib_A2_v2.wav", base64: bytesToBase64(new Uint8Array(8)) },
+        { fileName: "susvib_C4_v1.wav", base64: bytesToBase64(new Uint8Array(8)) },
+        { fileName: "susvib_C4_v2.wav", base64: bytesToBase64(new Uint8Array(8)) },
+      ],
+    };
+
+    await expect(importSfzLibrary(input as never, sinks as never)).rejects.toThrow("QuotaExceededError");
+    expect([...held]).toEqual(["user.sfz.mycello.k46z1"]);
+  });
+
+  it("runSfzInstrumentImport removes the buffer for a region whose save fails", async () => {
+    const { held, bank } = trackingBank();
+    const fileLike = (name: string, bytes: Uint8Array) =>
+      ({
+        name,
+        webkitRelativePath: "",
+        arrayBuffer: async () => bytes.buffer.slice(0),
+      }) as unknown as File;
+    const sinks = {
+      bank,
+      userSamples: {
+        save: async () => {
+          throw new Error("QuotaExceededError");
+        },
+      },
+      decode: async () => fakeBuffer(),
+    };
+    const fileList = [
+      fileLike("MyCello.sfz", new TextEncoder().encode(SFZ)),
+      fileLike("susvib_A2_v1.wav", new Uint8Array(8)),
+      fileLike("susvib_A2_v2.wav", new Uint8Array(8)),
+      fileLike("susvib_C4_v1.wav", new Uint8Array(8)),
+      fileLike("susvib_C4_v2.wav", new Uint8Array(8)),
+    ];
+
+    const result = await runSfzInstrumentImport(fileList, sinks as never);
+    expect(result.imported).toBe(0);
+    expect(result.layers).toHaveLength(0);
+    expect(result.failed.length).toBeGreaterThan(0);
+    expect(held.size).toBe(0);
   });
 });

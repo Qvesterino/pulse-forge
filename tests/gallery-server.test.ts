@@ -6,7 +6,7 @@
  * upgrade path still works after the http-server refactor.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
@@ -186,6 +186,29 @@ describe("gallery REST API", () => {
     const feed = await (await fetch(`http://127.0.0.1:${port}/api/gallery`)).json();
     expect(feed.items).toHaveLength(1);
     expect(feed.items[0].title).toBe("persisted");
+  });
+
+  it("answers 500 and keeps the beat out of the feed when the store cannot be written", async () => {
+    // A durable-looking 201 for a beat that only lives in this process's memory
+    // is a lie: a restart would silently lose it. Point the store at a path
+    // whose parent is a regular FILE, so mkdir/write fail on every platform.
+    const dir = mkdtempSync(join(tmpdir(), "pf-gallery-unwritable-"));
+    const blocker = join(dir, "not-a-directory");
+    writeFileSync(blocker, "");
+    const { base } = await boot({ galleryFile: join(blocker, "gallery.json") });
+
+    const post = await fetch(`${base}/api/gallery`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "lost beat", code: shareCode() }),
+    });
+    expect(post.status).toBe(500);
+    const body = (await post.json()) as { error?: string };
+    expect(body.error).toMatch(/not writable/i);
+
+    // The phantom beat must not appear in the feed.
+    const feed = await (await fetch(`${base}/api/gallery`)).json();
+    expect(feed.items).toHaveLength(0);
   });
 
   it("rate limits uploads per IP (10 per minute)", { timeout: 20_000 }, async () => {

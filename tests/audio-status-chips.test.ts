@@ -12,9 +12,9 @@ import {
  * DEVICE MONITOR + audio status chips — the studio's "something is off with
  * sound" surface. The diff must speak only when it matters (a device
  * DISAPPEARED or a new one appeared after the baseline) and stay silent on
- * the first snapshot; the suspended chip fires only for the contradictory
- * "playing but suspended" state; storage pressure reports a clamped
- * fraction or null without the API.
+ * the first snapshot; the audio-recovery chip fires for the contradictory
+ * "playing but suspended/interrupted" states and for a closed context;
+ * storage pressure reports a clamped fraction or null without the API.
  */
 
 function dev(id: string, kind: AudioDeviceInfo["kind"], label: string): AudioDeviceInfo {
@@ -72,12 +72,20 @@ describe("normalizeDevices", () => {
 });
 
 describe("shouldShowSuspendedChip", () => {
-  it("fires only for the contradictory playing-but-suspended state", () => {
+  it("fires for the playing-but-suspended/interrupted states and for a dead context", () => {
     expect(shouldShowSuspendedChip("suspended", true)).toBe(true);
     expect(shouldShowSuspendedChip("suspended", false)).toBe(false);
     expect(shouldShowSuspendedChip("running", true)).toBe(false);
     expect(shouldShowSuspendedChip(null, true)).toBe(false);
-    expect(shouldShowSuspendedChip("interrupted", true)).toBe(false);
+    // iOS interruptions silence playback exactly like a suspension; the old
+    // predicate returned false here, so an interrupted context was silent
+    // with no chip and no explanation.
+    expect(shouldShowSuspendedChip("interrupted", true)).toBe(true);
+    expect(shouldShowSuspendedChip("interrupted", false)).toBe(false);
+    // A closed context is gone entirely — actionable regardless of the
+    // transport, because the recovery click rebuilds it.
+    expect(shouldShowSuspendedChip("closed", true)).toBe(true);
+    expect(shouldShowSuspendedChip("closed", false)).toBe(true);
   });
 });
 

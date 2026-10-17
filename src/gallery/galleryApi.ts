@@ -91,15 +91,36 @@ export function galleryBaseUrl(): string {
 /** Feed ordering: "new" (default, newest first) or "battles" (battle-earned Elo first). */
 export type GallerySort = "new" | "battles";
 
+/** Hard deadline for every gallery request; a hung relay must not wedge the UI. */
+const GALLERY_FETCH_TIMEOUT_MS = 15_000;
+
+/**
+ * Fetch with a deadline. The gallery was calling bare `fetch` everywhere: a
+ * server that accepts the connection but never answers (hung proxy, half-open
+ * socket) left the awaiting UI on its loading state forever — the feed showed
+ * "loading beats…" with no error and no RETRY (that branch only renders in the
+ * error state), and every publish/vote button stayed disabled. The deadline
+ * turns that silent stall into the ordinary rejection the UI already handles.
+ */
+async function galleryFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GALLERY_FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function listBeats(baseUrl: string = galleryBaseUrl(), sort: GallerySort = "new"): Promise<GalleryItem[]> {
-  const res = await fetch(`${baseUrl}/api/gallery${sort === "battles" ? "?sort=battles" : ""}`);
+  const res = await galleryFetch(`${baseUrl}/api/gallery${sort === "battles" ? "?sort=battles" : ""}`);
   if (!res.ok) throw new Error(`Gallery unavailable (${res.status})`);
   const body = (await res.json()) as { items?: GalleryItem[] };
   return Array.isArray(body.items) ? body.items : [];
 }
 
 export async function publishBeat(input: PublishInput, baseUrl: string = galleryBaseUrl()): Promise<GalleryItem> {
-  const res = await fetch(`${baseUrl}/api/gallery`, {
+  const res = await galleryFetch(`${baseUrl}/api/gallery`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -120,7 +141,7 @@ export async function registerPlay(id: string, baseUrl: string = galleryBaseUrl(
   if (playedThisSession.has(id)) return null;
   playedThisSession.add(id);
   try {
-    const res = await fetch(`${baseUrl}/api/gallery/${encodeURIComponent(id)}/play`, { method: "POST" });
+    const res = await galleryFetch(`${baseUrl}/api/gallery/${encodeURIComponent(id)}/play`, { method: "POST" });
     if (!res.ok) return null;
     const body = (await res.json()) as { plays?: number };
     return typeof body.plays === "number" ? body.plays : null;
@@ -188,7 +209,7 @@ export function battleSessionId(): string {
 
 /** A random pair of published beats, fully blind (ids + codes only). Null when the gallery is too small. */
 export async function fetchBattlePair(baseUrl: string = galleryBaseUrl()): Promise<BattleSidePair | null> {
-  const res = await fetch(`${baseUrl}/api/gallery/battles/pair`);
+  const res = await galleryFetch(`${baseUrl}/api/gallery/battles/pair`);
   if (!res.ok) throw new Error(`Battles unavailable (${res.status})`);
   const body = (await res.json()) as { pair?: { a: BattleSide; b: BattleSide } | null };
   return body.pair ?? null;
@@ -206,7 +227,7 @@ export async function submitBattleVote(
   session: string = battleSessionId(),
   baseUrl: string = galleryBaseUrl(),
 ): Promise<BattleVoteResult> {
-  const res = await fetch(`${baseUrl}/api/gallery/battles/vote`, {
+  const res = await galleryFetch(`${baseUrl}/api/gallery/battles/vote`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ a: pair.a.id, b: pair.b.id, winner, session }),
@@ -222,7 +243,7 @@ export async function submitBattleVote(
 
 /** Top beats by battle-earned Elo. */
 export async function fetchBattleLeaderboard(baseUrl: string = galleryBaseUrl()): Promise<BattleLeaderRow[]> {
-  const res = await fetch(`${baseUrl}/api/gallery/battles/leaderboard`);
+  const res = await galleryFetch(`${baseUrl}/api/gallery/battles/leaderboard`);
   if (!res.ok) throw new Error(`Leaderboard unavailable (${res.status})`);
   const body = (await res.json()) as { leaders?: BattleLeaderRow[] };
   return Array.isArray(body.leaders) ? body.leaders : [];
@@ -230,7 +251,7 @@ export async function fetchBattleLeaderboard(baseUrl: string = galleryBaseUrl())
 
 /** Send a privacy-safe moderation report; the server stores no reporter IP. */
 export async function reportBeat(id: string, reason: string, baseUrl: string = galleryBaseUrl()): Promise<void> {
-  const res = await fetch(`${baseUrl}/api/gallery/${encodeURIComponent(id)}/report`, {
+  const res = await galleryFetch(`${baseUrl}/api/gallery/${encodeURIComponent(id)}/report`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ reason }),

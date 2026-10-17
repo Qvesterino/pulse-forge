@@ -563,14 +563,24 @@ export function ProducerDnaCompare({
     )
       return;
     setMemoryBusy(true);
-    const allCleared = await clearAllProducerMemory();
-    setComparisonCount(0);
-    setMessage(
-      allCleared
-        ? "Lokálna Producer DNA pamäť, úpravy aj osobné prior modely boli vymazané. Projekty zostali nedotknuté."
-        : "Vymazanie sa dokončilo len čiastočne; niektorá lokálna databáza alebo pamäť nebola dostupná.",
-    );
-    setMemoryBusy(false);
+    try {
+      const allCleared = await clearAllProducerMemory();
+      setComparisonCount(0);
+      setMessage(
+        allCleared
+          ? "Lokálna Producer DNA pamäť, úpravy aj osobné prior modely boli vymazané. Projekty zostali nedotknuté."
+          : "Vymazanie sa dokončilo len čiastočne; niektorá lokálna databáza alebo pamäť nebola dostupná.",
+      );
+    } catch (error) {
+      // clearAllProducerMemory awaits several IndexedDB operations; any of them
+      // can reject. Without this catch the throw skipped setMemoryBusy(false)
+      // and left the clear/import controls disabled for the component's life.
+      setMessage(
+        `Vymazanie zlyhalo: ${error instanceof Error ? error.message : String(error)}. Skús znova alebo obnov stránku.`,
+      );
+    } finally {
+      setMemoryBusy(false);
+    }
   };
 
   const importPack = async (file: File | undefined) => {

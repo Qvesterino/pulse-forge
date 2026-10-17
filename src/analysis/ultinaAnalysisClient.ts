@@ -21,6 +21,15 @@ export interface UltinaAnalysisTask<T> {
   cancel: () => void;
 }
 
+/**
+ * Watchdog ceiling, mirroring the mastering analysis client's idle bound. The
+ * worker is fast for real material; three minutes means either a pathological
+ * input or a worker that was killed without firing `error` (OOM reclaim) — in
+ * both cases the caller must be settled rather than left pending, because the
+ * panel's busy state clears in a `finally` that a hang never reaches.
+ */
+const ANALYSIS_TIMEOUT_MS = 3 * 60 * 1000;
+
 function copyChannels(channels: Float32Array[]): { channels: Float32Array[]; transfer: Transferable[] } {
   const copies = channels.map((channel) => channel.slice());
   return {
@@ -45,35 +54,49 @@ function startWorkerTask<T>(
       return;
     }
 
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const settle = () => {
+      if (timer != null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      worker?.terminate();
+    };
+    const succeed = (value: T) => {
+      if (settled) return;
+      settled = true;
+      settle();
+      resolve(value);
+    };
+    const fail = (reason: unknown) => {
+      if (settled) return;
+      settled = true;
+      settle();
+      reject(reason);
+    };
+
     try {
       worker = new Worker(new URL("./ultinaAnalysisWorker.ts", import.meta.url), { type: "module" });
       worker.onmessage = (event: MessageEvent<UltinaAnalysisWorkerResponse>) => {
-        if (settled) return;
-        settled = true;
-        worker?.terminate();
         try {
-          resolve(readResponse(event.data));
+          succeed(readResponse(event.data));
         } catch (error) {
-          reject(error);
+          fail(error);
         }
       };
       worker.onerror = (event) => {
-        if (settled) return;
-        settled = true;
-        worker?.terminate();
-        reject(new Error(event.message || "VLYX analysis worker failed."));
+        fail(new Error(event.message || "VLYX analysis worker failed."));
       };
       worker.onmessageerror = () => {
-        if (settled) return;
-        settled = true;
-        worker?.terminate();
-        reject(new Error("VLYX analysis worker returned an unreadable result."));
+        fail(new Error("VLYX analysis worker returned an unreadable result."));
       };
+      timer = setTimeout(
+        () => fail(new Error("VLYX analysis timed out — the worker did not respond.")),
+        ANALYSIS_TIMEOUT_MS,
+      );
       worker.postMessage(request, transfer);
     } catch (error) {
-      settled = true;
-      worker?.terminate();
-      reject(error);
+      fail(error);
     }
   });
 

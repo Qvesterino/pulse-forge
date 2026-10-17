@@ -109,4 +109,21 @@ describe("VLYX analysis worker client", () => {
     const task = startUltinaAnalysis(request);
     await expect(task.promise).rejects.toThrow("worker is unavailable");
   });
+
+  it("rejects instead of hanging when the worker never replies (watchdog)", async () => {
+    // A worker killed without firing `error` left the promise pending forever;
+    // the panel's busy state clears only in its `finally`, so "Analyzing…"
+    // never went away. The watchdog settles the caller.
+    vi.useFakeTimers();
+    try {
+      const task = startUltinaAnalysis(request);
+      const worker = FakeWorker.instances[0];
+      const rejection = expect(task.promise).rejects.toThrow(/timed out/i);
+      await vi.advanceTimersByTimeAsync(3 * 60 * 1000 + 1);
+      await rejection;
+      expect(worker.terminate).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

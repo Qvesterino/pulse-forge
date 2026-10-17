@@ -4,6 +4,17 @@ import { phaseVocoderWarpChannel, warpRateEnvelope, type WarpRateInterval } from
 const WORKER_MIN_SAMPLES = 44100 * 2;
 
 /**
+ * Watchdog ceiling for the background render. Deliberately generous — a long
+ * clip on a slow machine legitimately takes tens of seconds. Unlike the other
+ * worker clients this one REJECTS on timeout instead of running the sync
+ * fallback: the phase vocoder is the expensive path, and if a pathological
+ * input hung the worker, running the identical core on the main thread would
+ * freeze the UI permanently. A rejection releases the caller's in-flight claim
+ * (warpManager) and degrades that clip to repitch.
+ */
+const WORKER_TIMEOUT_MS = 120_000;
+
+/**
  * Render a pitch-preserving warp without blocking the main thread.
  *
  * The channel views are copied before transfer because transferring the
@@ -46,20 +57,38 @@ export function renderWarpPreserveAsync(
     }
 
     let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     let removeAbortListener: () => void = () => undefined;
+    const settle = () => {
+      if (timer != null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      removeAbortListener();
+      worker.terminate();
+    };
     const finish = (result: Float32Array[]) => {
       if (settled) return;
       settled = true;
-      removeAbortListener();
-      worker.terminate();
+      settle();
       resolve(result);
+    };
+    const fail = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      settle();
+      reject(error);
     };
     worker.onmessage = (event: MessageEvent<{ channels?: unknown; error?: unknown }>) => {
       const data = event.data;
       if (data && Array.isArray(data.channels) && data.channels.every((c) => c instanceof Float32Array)) {
         finish(data.channels as Float32Array[]);
       } else {
-        finish(runSync());
+        try {
+          finish(runSync());
+        } catch (error) {
+          fail(error);
+        }
       }
     };
     // Audit 12 D1: a throw inside runSync() must REJECT (settling the
@@ -69,9 +98,13 @@ export function renderWarpPreserveAsync(
       try {
         finish(runSync());
       } catch (error) {
-        reject(error);
+        fail(error);
       }
     };
+    timer = setTimeout(
+      () => fail(new Error("Warp render worker timed out; this clip falls back to repitch")),
+      WORKER_TIMEOUT_MS,
+    );
     if (signal) {
       const onAbort = () => finish([]);
       signal.addEventListener("abort", onAbort, { once: true });
@@ -89,7 +122,11 @@ export function renderWarpPreserveAsync(
         copies.map((c) => c.buffer),
       );
     } catch {
-      finish(runSync());
+      try {
+        finish(runSync());
+      } catch (error) {
+        fail(error);
+      }
     }
   });
 }

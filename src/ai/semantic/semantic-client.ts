@@ -42,7 +42,8 @@ let worker: Worker | null = null;
 let workerFailures = 0;
 let workerDisabled = false;
 let modelLoaded = false;
-let unavailable = false; // manifest probe failed — model not fetched
+/** Manifest probe found NO artifact (404 / missing pack) — model not fetched. */
+let unavailable = false;
 let nextRequestId = 1;
 
 function recordWorkerFailure(active: Worker): void {
@@ -116,8 +117,11 @@ function request(
  * Cheap probe: the model is present when EITHER the pack manager installed
  * the semantic pack (Cache API — the deployed path, see src/ai/packs/) OR
  * `npm run semantic:fetch` populated /models/semantic/manifest.json on the
- * origin (the dev path). Result is remembered for the session — one 404
- * instead of repeated probes.
+ * origin (the dev path). A definitive 404 is remembered for the session — one
+ * probe instead of repeated ones. A TRANSIENT failure (offline blip, cache
+ * read error) is deliberately NOT latched: latching it disabled semantic
+ * embeddings for the rest of the session after a single moment of bad
+ * network, with no path to recover.
  */
 export async function semanticAvailable(): Promise<boolean> {
   if (semanticMode() === "off" || unavailable || workerDisabled) return false;
@@ -128,12 +132,15 @@ export async function semanticAvailable(): Promise<boolean> {
     if (cached) return true;
     const response = await fetch(assetUrl("/models/semantic/manifest.json"));
     if (!response.ok) {
+      // The origin answered and the artifact is not there — retrying cannot
+      // help until the user fetches the model.
       unavailable = true;
       return false;
     }
     return true;
   } catch {
-    unavailable = true;
+    // Network/cache failure: report unavailable for THIS call only, so the
+    // next generation can succeed once connectivity returns.
     return false;
   }
 }

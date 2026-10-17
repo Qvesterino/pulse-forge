@@ -236,7 +236,13 @@ function PcmChip({ services }: { services: Services }) {
 
   useEffect(() => {
     if (!desktop) return;
-    services.engine.ensureContext();
+    try {
+      services.engine.ensureContext();
+    } catch {
+      // Desktop PCM chip is optional telemetry — a refused context must not
+      // throw out of the effect (React would surface it as a crash).
+      return;
+    }
     const ctx = services.engine.getLiveAudioContext();
     if (!ctx) return;
     // The chip and the intent verbs share ONE controller — either surface
@@ -248,7 +254,12 @@ function PcmChip({ services }: { services: Services }) {
   if (!desktop) return null;
 
   const toggle = async (): Promise<void> => {
-    services.engine.ensureContext();
+    try {
+      services.engine.ensureContext();
+    } catch (err) {
+      setLastError(err instanceof Error ? err.message : "Audio context unavailable");
+      return;
+    }
     const ctx = services.engine.getLiveAudioContext();
     if (!ctx) return;
     const controller = getSharedPcmPlayback(() => ctx);

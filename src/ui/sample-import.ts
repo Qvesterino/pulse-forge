@@ -3,6 +3,7 @@ import { userSampleId } from "../persistence/UserSampleRepository";
 import { detectLoopBpm } from "../audio-engine/bpm-detect";
 import type { Services } from "../services";
 import { assertAudioImportSize } from "../audio-import-capabilities";
+import { persistBankBuffer } from "../sample-library/bank-persist";
 
 /**
  * Decode one audio File into a playable, persisted user sample — the exact
@@ -30,9 +31,6 @@ export async function importAudioFile(services: Services, file: File): Promise<U
   const buffer = await ctx.decodeAudioData(raw.slice(0));
   const id = userSampleId(file.name);
 
-  // Add to audio bank (immediately playable)
-  services.bank.add(id, buffer);
-
   // One-time tempo detection for the "Fit to project BPM" workflow.
   // Best-effort: a failed/absent detection just leaves `bpm` unset.
   let bpm: number | undefined;
@@ -43,7 +41,10 @@ export async function importAudioFile(services: Services, file: File): Promise<U
     console.warn("[sample-import] bpm detection failed:", err);
   }
 
-  // Persist metadata + encoded bytes (survives reloads since DB v5)
+  // Persist metadata + encoded bytes (survives reloads since DB v5). The
+  // buffer is added to the audio bank (immediately playable) by the helper,
+  // which rolls it back on persistence failure so the in-memory bank and the
+  // on-disk library cannot disagree.
   const asset: UserSampleAsset = {
     id,
     name: file.name.replace(/\.[^.]+$/, ""),
@@ -55,6 +56,6 @@ export async function importAudioFile(services: Services, file: File): Promise<U
     createdAt: new Date().toISOString(),
     ...(bpm !== undefined ? { bpm } : {}),
   };
-  await services.userSamples.save(asset, raw);
+  await persistBankBuffer(services.bank, id, buffer, () => services.userSamples.save(asset, raw));
   return asset;
 }

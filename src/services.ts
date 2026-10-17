@@ -253,7 +253,17 @@ export class PlaybackController {
     // Preview voices are an audition surface, not part of the timeline. Do
     // not let a preset/sample audition survive into transport playback.
     this.engine.stopPreview?.();
-    this.engine.ensureContext();
+    try {
+      this.engine.ensureContext();
+    } catch (error) {
+      // ensureContext() throws synchronously when the browser refuses a
+      // realtime context (audio device loss, iOS context cap, blocked embed).
+      // The primary play handler must not throw into a click listener; the
+      // AUDIO status chip surfaces the degraded state and the next gesture
+      // retries through this same path.
+      console.warn("[services] playPause could not start an audio context:", error);
+      return;
+    }
     if (this.transport.playing) {
       this.scheduler.stop();
       this.engine.panic();

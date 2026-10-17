@@ -510,149 +510,144 @@ export async function renderProject(
 
   const engine = new AudioEngine();
   engine.attachBank(bank);
-  engine.useContext(ctx);
-  // Render the UNFROZEN document. The offline path never populates
-  // frozenBuffers (restartFrozenSources is live-transport-only), so a frozen
-  // instrument track dropped every note and a frozen drum track rendered
-  // dry — the frozen buffer itself was rendered from the track's real
-  // chain, so live-chain rendering is the correct export content.
-  const renderDoc = unfreezeDoc(doc);
-  if (options.masterProcessing === false) {
-    // Transfer stems are intended to be rebalanced in another DAW; pre-master
-    // clip renders must also avoid baking fixed master filters that are always
-    // wired even when the user's master effects are disabled. Preserve each
-    // source's instrument, channel, group and return processing, but route
-    // around the complete master chain. This uses a fresh document object:
-    // rendering must never mutate the user's live project/settings.
-    engine.setProject({
-      ...renderDoc,
-      master: {
-        ...renderDoc.master,
-        masterGain: 1,
-        loudnessTrimDb: 0,
-        limiterEnabled: false,
-        clipperEnabled: false,
-        tapeEnabled: false,
-        msEnabled: false,
-        msMidGain: 0,
-        msSideGain: 0,
-        glueEnabled: false,
-        bassMonoEnabled: false,
-        tiltDb: 0,
-      },
-    });
-    engine.bypassMasterChainForOfflineRender();
-  } else {
-    engine.setProject(renderDoc);
-    if (options.masterBypassed === true) engine.setMasterBypassed(true, true);
-  }
-
-  // Global Live/Export quality switch (opt-in): push the runtime quality
-  // bumps AFTER the project sync so they win over the document values
-  // without mutating them. Legacy per-plugin flags keep working through the
-  // same resolver.
-  {
-    const resolved = resolveRenderQuality(options);
-    engine.setMasterLimiterOversampling(options.masterProcessing !== false && resolved.limiter);
-    if (resolved.fxeq) {
-      for (const bump of fxeqRenderQualityBumps(doc)) {
-        engine.previewFxParam(bump.trackId, bump.fxId, bump.paramId, bump.value);
-      }
-    }
-    if (resolved.ozvena) {
-      for (const bump of ozvenaRenderQualityBumps(doc)) {
-        engine.previewFxParam(bump.trackId, bump.fxId, bump.paramId, bump.value);
-      }
-    }
-  }
-
-  const timeAt = tempoMap.timeAt;
-  const windows = pendingWindows;
-  // Scene intensity is a modulation source. Schedule its resolved values on
-  // the offline timeline before notes/automation so exports follow the same
-  // scene curve that the live scheduler feeds into the engine.
-  engine.scheduleSceneIntensity(buildSceneIntensityPoints(doc, windows, totalTicks), timeAt);
-
-  for (const window of windows) {
-    // Tempo-synced runtimes (texture SYNC delay, granular rate sync, LFO
-    // syncs) must see this window's scene tempo BEFORE its notes are
-    // scheduled — the live scheduler flips them at the seam boundary, so
-    // per-window parity keeps SYNC'd material aligned with the transport.
-    // `when` schedules the change at the window's own start time: without it
-    // every push wrote at ctx.currentTime (=0 offline) and the LAST window's
-    // BPM won for tempo-synced FX across the whole export.
-    engine.setEffectiveBpm(window.bpm ?? null, timeAt(window.from));
-    scheduleDrums(doc, window, timeAt, engine);
-    scheduleNotes(window, timeAt, engine);
-  }
-  if (options.mode === "song") {
-    for (const clip of doc.arrangement.midiClips ?? []) {
-      const pattern = doc.patterns.find((candidate) => candidate.id === clip.patternId);
-      if (!pattern || clip.muted) continue;
-      const base = clip.startTick - (clip.phaseOffsetTicks ?? 0);
-      const window: ClipWindow = {
-        pattern,
-        base,
-        from: clip.startTick,
-        to: Math.min(totalTicks, clip.startTick + clip.lengthTicks),
-        sceneBase: base,
-        bpm: doc.bpm,
-      };
-      scheduleNotes(window, timeAt, engine, midiClipEventsInWindow(doc, clip, 0, totalTicks));
-    }
-  }
-  scheduleAutomation(doc, windows, timeAt, engine, options.mode, totalTicks);
-  // Scene automation lanes (release roadmap 1.2): live applies these per
-  // window via applySceneAutomationLane; offline schedules the lane's exact
-  // shape through each owning clip's window via the same tempo map.
-  scheduleSceneAutomation(doc, windows, timeAt, engine);
-  // Schedulable track modulators (random S&H / step) share the same window
-  // sweep so offline exports match live playback deterministically; each
-  // window carries its scene's performance context (pinned step patterns /
-  // seeds) so the export hears the same scene arc as playback.
-  engine.scheduleModulatorsOffline(
-    windows.map((w) => ({
-      from: w.from,
-      to: w.to,
-      scene: scenePerformanceOf(
-        w.sceneId
-          ? doc.scenes.find((candidate) => candidate.id === w.sceneId)
-          : doc.scenes.find((candidate) => candidate.patternId === w.pattern.id),
-      ),
-    })),
-    timeAt,
-  );
-  // AudioClips — schedule each clip's buffer segment through its track FX.
-  // Reuses frozenPlaybackOffset tick→sec semantics so live==offline. SONG
-  // MODE ONLY: the live scheduler plays audioClips exclusively in the song
-  // branch, so a pattern-mode export must not include arrangement audio the
-  // user never hears in pattern playback.
-  if (options.mode === "song" && doc.arrangement.audioClips) {
-    for (const clip of audioClipsForPlayback(doc.arrangement)) {
-      const clipStartTick = clip.startBar * BAR_TICKS;
-      const clipEndTick = clipStartTick + clip.lengthBars * BAR_TICKS;
-      // Only schedule if clip overlaps the total render window
-      if (clipEndTick <= 0 || clipStartTick >= totalTicks) continue;
-      const when = timeAt(clipStartTick);
-      // Wall-clock duration through the tempo map (scene BPM aware).
-      const durationSec = timeAt(clipEndTick) - when;
-      // Pitch-preserving warp (stretch + pins): pre-render synchronously with
-      // the same core the live worker uses, so the export is sample-exact
-      // with a warmed live cache.
-      if ((clip.warpMarkers?.length ?? 0) > 0 && clip.stretchMode === "stretch" && !clip.reverse && !clip.loop) {
-        engine.precomputeWarpSync(clip, durationSec);
-      }
-      engine.triggerAudioClip(clip, when, durationSec);
-    }
-  }
-
-  // Release the engine's sample-added subscription: the shared bank outlives
-  // this throwaway engine, and an unconsumed closure would retain every
-  // discarded render engine (one per export/stem/bounce).
   try {
-    // Last cancellation window before the un-abortable render begins —
-    // INSIDE the try: an abort here must still release the bank
-    // subscription above, not leak it into the shared bank.
+    engine.useContext(ctx);
+    // Render the UNFROZEN document. The offline path never populates
+    // frozenBuffers (restartFrozenSources is live-transport-only), so a frozen
+    // instrument track dropped every note and a frozen drum track rendered
+    // dry — the frozen buffer itself was rendered from the track's real
+    // chain, so live-chain rendering is the correct export content.
+    const renderDoc = unfreezeDoc(doc);
+    if (options.masterProcessing === false) {
+      // Transfer stems are intended to be rebalanced in another DAW; pre-master
+      // clip renders must also avoid baking fixed master filters that are always
+      // wired even when the user's master effects are disabled. Preserve each
+      // source's instrument, channel, group and return processing, but route
+      // around the complete master chain. This uses a fresh document object:
+      // rendering must never mutate the user's live project/settings.
+      engine.setProject({
+        ...renderDoc,
+        master: {
+          ...renderDoc.master,
+          masterGain: 1,
+          loudnessTrimDb: 0,
+          limiterEnabled: false,
+          clipperEnabled: false,
+          tapeEnabled: false,
+          msEnabled: false,
+          msMidGain: 0,
+          msSideGain: 0,
+          glueEnabled: false,
+          bassMonoEnabled: false,
+          tiltDb: 0,
+        },
+      });
+      engine.bypassMasterChainForOfflineRender();
+    } else {
+      engine.setProject(renderDoc);
+      if (options.masterBypassed === true) engine.setMasterBypassed(true, true);
+    }
+
+    // Global Live/Export quality switch (opt-in): push the runtime quality
+    // bumps AFTER the project sync so they win over the document values
+    // without mutating them. Legacy per-plugin flags keep working through the
+    // same resolver.
+    {
+      const resolved = resolveRenderQuality(options);
+      engine.setMasterLimiterOversampling(options.masterProcessing !== false && resolved.limiter);
+      if (resolved.fxeq) {
+        for (const bump of fxeqRenderQualityBumps(doc)) {
+          engine.previewFxParam(bump.trackId, bump.fxId, bump.paramId, bump.value);
+        }
+      }
+      if (resolved.ozvena) {
+        for (const bump of ozvenaRenderQualityBumps(doc)) {
+          engine.previewFxParam(bump.trackId, bump.fxId, bump.paramId, bump.value);
+        }
+      }
+    }
+
+    const timeAt = tempoMap.timeAt;
+    const windows = pendingWindows;
+    // Scene intensity is a modulation source. Schedule its resolved values on
+    // the offline timeline before notes/automation so exports follow the same
+    // scene curve that the live scheduler feeds into the engine.
+    engine.scheduleSceneIntensity(buildSceneIntensityPoints(doc, windows, totalTicks), timeAt);
+
+    for (const window of windows) {
+      // Tempo-synced runtimes (texture SYNC delay, granular rate sync, LFO
+      // syncs) must see this window's scene tempo BEFORE its notes are
+      // scheduled — the live scheduler flips them at the seam boundary, so
+      // per-window parity keeps SYNC'd material aligned with the transport.
+      // `when` schedules the change at the window's own start time: without it
+      // every push wrote at ctx.currentTime (=0 offline) and the LAST window's
+      // BPM won for tempo-synced FX across the whole export.
+      engine.setEffectiveBpm(window.bpm ?? null, timeAt(window.from));
+      scheduleDrums(doc, window, timeAt, engine);
+      scheduleNotes(window, timeAt, engine);
+    }
+    if (options.mode === "song") {
+      for (const clip of doc.arrangement.midiClips ?? []) {
+        const pattern = doc.patterns.find((candidate) => candidate.id === clip.patternId);
+        if (!pattern || clip.muted) continue;
+        const base = clip.startTick - (clip.phaseOffsetTicks ?? 0);
+        const window: ClipWindow = {
+          pattern,
+          base,
+          from: clip.startTick,
+          to: Math.min(totalTicks, clip.startTick + clip.lengthTicks),
+          sceneBase: base,
+          bpm: doc.bpm,
+        };
+        scheduleNotes(window, timeAt, engine, midiClipEventsInWindow(doc, clip, 0, totalTicks));
+      }
+    }
+    scheduleAutomation(doc, windows, timeAt, engine, options.mode, totalTicks);
+    // Scene automation lanes (release roadmap 1.2): live applies these per
+    // window via applySceneAutomationLane; offline schedules the lane's exact
+    // shape through each owning clip's window via the same tempo map.
+    scheduleSceneAutomation(doc, windows, timeAt, engine);
+    // Schedulable track modulators (random S&H / step) share the same window
+    // sweep so offline exports match live playback deterministically; each
+    // window carries its scene's performance context (pinned step patterns /
+    // seeds) so the export hears the same scene arc as playback.
+    engine.scheduleModulatorsOffline(
+      windows.map((w) => ({
+        from: w.from,
+        to: w.to,
+        scene: scenePerformanceOf(
+          w.sceneId
+            ? doc.scenes.find((candidate) => candidate.id === w.sceneId)
+            : doc.scenes.find((candidate) => candidate.patternId === w.pattern.id),
+        ),
+      })),
+      timeAt,
+    );
+    // AudioClips — schedule each clip's buffer segment through its track FX.
+    // Reuses frozenPlaybackOffset tick→sec semantics so live==offline. SONG
+    // MODE ONLY: the live scheduler plays audioClips exclusively in the song
+    // branch, so a pattern-mode export must not include arrangement audio the
+    // user never hears in pattern playback.
+    if (options.mode === "song" && doc.arrangement.audioClips) {
+      for (const clip of audioClipsForPlayback(doc.arrangement)) {
+        const clipStartTick = clip.startBar * BAR_TICKS;
+        const clipEndTick = clipStartTick + clip.lengthBars * BAR_TICKS;
+        // Only schedule if clip overlaps the total render window
+        if (clipEndTick <= 0 || clipStartTick >= totalTicks) continue;
+        const when = timeAt(clipStartTick);
+        // Wall-clock duration through the tempo map (scene BPM aware).
+        const durationSec = timeAt(clipEndTick) - when;
+        // Pitch-preserving warp (stretch + pins): pre-render synchronously with
+        // the same core the live worker uses, so the export is sample-exact
+        // with a warmed live cache.
+        if ((clip.warpMarkers?.length ?? 0) > 0 && clip.stretchMode === "stretch" && !clip.reverse && !clip.loop) {
+          engine.precomputeWarpSync(clip, durationSec);
+        }
+        engine.triggerAudioClip(clip, when, durationSec);
+      }
+    }
+
+    // Last cancellation window before the un-abortable render begins.
     throwIfAborted(options.signal);
     // PDC export barrier (Wave 2): wait for the worklet processors' initial
     // latency reports, then size + write the compensation delays exactly
@@ -674,13 +669,30 @@ export async function renderProject(
     // and the UI transitions to "cancelled".
     const rendering = ctx.startRendering();
     if (!options.signal) return rendering;
+    const signal = options.signal;
+    let removeAbortListener: () => void = () => undefined;
     const abortPromise = new Promise<never>((_, reject) => {
       const onAbort = () => reject(new DOMException("Export cancelled", "AbortError"));
-      if (options.signal!.aborted) onAbort();
-      else options.signal!.addEventListener("abort", onAbort, { once: true });
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
+      // `{ once: true }` only detaches when the event actually fires; without
+      // this cleanup a successful render left the listener attached to the
+      // caller-owned AbortController until its next beginExport() replaced it.
+      removeAbortListener = () => signal.removeEventListener("abort", onAbort);
     });
-    return await Promise.race([rendering, abortPromise]);
+    try {
+      return await Promise.race([rendering, abortPromise]);
+    } finally {
+      removeAbortListener();
+    }
   } finally {
+    // Release the engine's sample-added subscription on EVERY path — including
+    // a throw from the project setup above, not just the render/abort tail. The
+    // shared bank outlives this throwaway engine, and an unconsumed closure
+    // would retain every discarded render engine (one per export/stem/bounce).
     engine.detachBank();
   }
 }

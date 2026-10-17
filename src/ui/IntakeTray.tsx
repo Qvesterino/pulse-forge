@@ -47,7 +47,12 @@ export function IntakeTray({
       const res = await fetch(`${galleryBaseUrl()}/api/intake`);
       if (!res.ok) return; // intake endpoint absent (old server) — tray stays quiet
       const body = (await res.json()) as { items?: IntakeItem[] };
-      setItems(Array.isArray(body.items) ? body.items : []);
+      // Suppress anything already imported this session. The DELETE that
+      // retires a consumed item is best-effort: if it fails, the item stays
+      // on the server and the 8 s poll would re-list it, letting a second
+      // click import the same audio again under a fresh id. `seen` is the
+      // session-side dedupe for exactly that window.
+      setItems(Array.isArray(body.items) ? body.items.filter((item) => !seen.current.has(item.id)) : []);
       setError(null);
     } catch {
       /* server down — the tray is best-effort */

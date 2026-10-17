@@ -115,4 +115,28 @@ describe("DropZone", () => {
       expect(accept).toContain(`.${extension}`);
     }
   });
+
+  it("recovers from a throwing batch callback instead of wedging on 'Decoding…'", async () => {
+    // `onBatchImport` is a caller-provided hook (the sampler auto-map). When it
+    // throws, the old handler rejected before setImporting(false) and the zone
+    // was stuck showing "Decoding…" and refusing every later drop through its
+    // re-entrancy guard. This proves the recovery: the error is surfaced, the
+    // loading text clears, and a subsequent drop still imports.
+    const onImport = vi.fn();
+    const onBatchImport = vi.fn(() => {
+      throw new Error("auto-map exploded");
+    });
+    const { container } = renderWithContext(<DropZone onImport={onImport} onBatchImport={onBatchImport} />);
+    const node = container.querySelector(".drop-zone") as HTMLElement;
+
+    dropFiles(node, [makeFile("kick.wav"), makeFile("snare.wav")]);
+    await vi.waitFor(() => expect(onBatchImport).toHaveBeenCalled());
+    await vi.waitFor(() => {
+      expect(screen.queryByText("Decoding…")).toBeNull();
+      expect(screen.getByText(/auto-map exploded/)).toBeInTheDocument();
+    });
+
+    dropFiles(node, [makeFile("hat.wav")]);
+    await vi.waitFor(() => expect(onImport).toHaveBeenCalledTimes(3));
+  });
 });

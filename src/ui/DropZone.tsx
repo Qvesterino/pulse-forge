@@ -75,73 +75,89 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
       setError(null);
       setFitOffer(null);
       setAnalyzeOffer(null);
-      const fileArray = Array.from(files);
-      const importedBatch: UserSampleAsset[] = [];
-      const skipped: string[] = [];
+      // The whole batch lives under try/finally: `onBatchImport` (and the
+      // per-batch auto-map it drives) is a caller-provided callback that can
+      // throw. Without the finally, that throw rejected this async handler
+      // before `setImporting(false)` and the zone showed "Decoding…" forever,
+      // refusing every later drop through the `if (importing) return` guard.
+      try {
+        const fileArray = Array.from(files);
+        const importedBatch: UserSampleAsset[] = [];
+        const skipped: string[] = [];
 
-      for (const file of fileArray) {
-        // Validate file type — SKIP (not abort): dropping 20 WAVs where #3 is
-        // a .txt must not silently discard files 4–20 (Audit 10 D2).
-        const isAccepted = isAudioImportFile(file);
-        if (!isAccepted) {
-          skipped.push(file.name);
-          continue;
-        }
+        for (const file of fileArray) {
+          // Validate file type — SKIP (not abort): dropping 20 WAVs where #3 is
+          // a .txt must not silently discard files 4–20 (Audit 10 D2).
+          const isAccepted = isAudioImportFile(file);
+          if (!isAccepted) {
+            skipped.push(file.name);
+            continue;
+          }
 
-        // Validate size BEFORE reading — decoded PCM multiplies the bytes,
-        // so an oversized file must fail fast instead of OOM-ing the tab.
-        if (file.size > MAX_AUDIO_IMPORT_BYTES) {
-          skipped.push(`${file.name} (over ${Math.floor(MAX_AUDIO_IMPORT_BYTES / 1024 / 1024)} MB)`);
-          continue;
-        }
+          // Validate size BEFORE reading — decoded PCM multiplies the bytes,
+          // so an oversized file must fail fast instead of OOM-ing the tab.
+          if (file.size > MAX_AUDIO_IMPORT_BYTES) {
+            skipped.push(`${file.name} (over ${Math.floor(MAX_AUDIO_IMPORT_BYTES / 1024 / 1024)} MB)`);
+            continue;
+          }
 
-        try {
-          const asset = await importAudioFile(services, file);
-          onImport(asset);
-          importedBatch.push(asset);
-        } catch (err) {
-          // Persistence failures now propagate out of userSamples.save — show
-          // them distinctly from decode failures instead of leaving ghost
-          // samples that are silently silent after reload.
-          const message =
-            err instanceof Error && err.message && !/decode/i.test(err.message)
-              ? err.message
-              : `Failed to decode: ${file.name}`;
-          setError(message);
-          console.error("[DropZone] import error:", err);
+          try {
+            const asset = await importAudioFile(services, file);
+            onImport(asset);
+            importedBatch.push(asset);
+          } catch (err) {
+            // Persistence failures now propagate out of userSamples.save — show
+            // them distinctly from decode failures instead of leaving ghost
+            // samples that are silently silent after reload.
+            const message =
+              err instanceof Error && err.message && !/decode/i.test(err.message)
+                ? err.message
+                : `Failed to decode: ${file.name}`;
+            setError(message);
+            console.error("[DropZone] import error:", err);
+          }
         }
+        if (skipped.length > 0) {
+          // D2: say WHAT was skipped — the old early-return silently discarded
+          // every file after the first bad one.
+          setError(
+            `Skipped ${skipped.length} file${skipped.length === 1 ? "" : "s"} — Unsupported format: ${skipped.slice(0, 3).join(", ")}${
+              skipped.length > 3 ? "…" : ""
+            }`,
+          );
+        }
+        if (onBatchImport && importedBatch.length > 1) {
+          // A caller-provided batch hook (the sampler auto-map) can throw; left
+          // unwrapped it rejected this `void`-invoked handler and surfaced only
+          // as an unhandled rejection. Surface it as the zone's error state.
+          try {
+            onBatchImport(importedBatch);
+          } catch (err) {
+            console.error("[DropZone] batch import callback failed:", err);
+            setError(err instanceof Error ? err.message : "Batch import post-processing failed");
+          }
+        }
+        // Single-loop import with a steady tempo → offer fitted placement.
+        // Batches skip the offer (the browser rows keep their BPM badges).
+        if (importedBatch.length === 1) {
+          const [only] = importedBatch;
+          void only;
+          const doc = services.store.doc;
+          const placement =
+            only.bpm !== undefined
+              ? fittedLoopPlacement(only.duration, only.bpm, doc.bpm, doc.timeSignature.numerator)
+              : null;
+          if (placement) setFitOffer({ asset: only, placement });
+          // UN-SUNO shortcut offer — hand the File AND the bank id to the
+          // Reference Map panel, which owns the analyze pipeline (it may be
+          // closed; the offer then just does nothing until the user opens it).
+          // The sample id lets BUILD PROJECT attach the original as an audio lane.
+          const file = fileArray[0];
+          if (file) setAnalyzeOffer({ file, sampleId: only.id });
+        }
+      } finally {
+        setImporting(false);
       }
-      if (skipped.length > 0) {
-        // D2: say WHAT was skipped — the old early-return silently discarded
-        // every file after the first bad one.
-        setError(
-          `Skipped ${skipped.length} file${skipped.length === 1 ? "" : "s"} — Unsupported format: ${skipped.slice(0, 3).join(", ")}${
-            skipped.length > 3 ? "…" : ""
-          }`,
-        );
-      }
-      if (onBatchImport && importedBatch.length > 1) {
-        onBatchImport(importedBatch);
-      }
-      // Single-loop import with a steady tempo → offer fitted placement.
-      // Batches skip the offer (the browser rows keep their BPM badges).
-      if (importedBatch.length === 1) {
-        const [only] = importedBatch;
-        void only;
-        const doc = services.store.doc;
-        const placement =
-          only.bpm !== undefined
-            ? fittedLoopPlacement(only.duration, only.bpm, doc.bpm, doc.timeSignature.numerator)
-            : null;
-        if (placement) setFitOffer({ asset: only, placement });
-        // UN-SUNO shortcut offer — hand the File AND the bank id to the
-        // Reference Map panel, which owns the analyze pipeline (it may be
-        // closed; the offer then just does nothing until the user opens it).
-        // The sample id lets BUILD PROJECT attach the original as an audio lane.
-        const file = fileArray[0];
-        if (file) setAnalyzeOffer({ file, sampleId: only.id });
-      }
-      setImporting(false);
     },
     [services, onBatchImport, onImport, importing],
   );

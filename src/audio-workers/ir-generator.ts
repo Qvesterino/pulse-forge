@@ -19,8 +19,29 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-self.onmessage = (e: MessageEvent<{ decay: number; sampleRate: number; seed: number }>) => {
-  const { decay, sampleRate, seed } = e.data;
+self.onmessage = (e: MessageEvent<unknown>) => {
+  // AudioWorklet/Worker messages are raw structured clones — never trust the
+  // shape (canonical contract: onset-detector.ts / warp-render.ts). A bad
+  // payload must be dropped, not turned into a giant allocation: decay is
+  // multiplied by sampleRate into the buffer length, so an unclamped value is
+  // an OOM waiting to happen.
+  const data = e.data;
+  if (data == null || typeof data !== "object") return;
+  const { decay, sampleRate, seed } = data as { decay?: unknown; sampleRate?: unknown; seed?: unknown };
+  if (
+    typeof decay !== "number" ||
+    !Number.isFinite(decay) ||
+    decay <= 0 ||
+    decay > 60 ||
+    typeof sampleRate !== "number" ||
+    !Number.isFinite(sampleRate) ||
+    sampleRate <= 0 ||
+    sampleRate > 768_000 ||
+    typeof seed !== "number" ||
+    !Number.isFinite(seed)
+  ) {
+    return;
+  }
   const length = Math.max(1, Math.floor(sampleRate * decay));
   const rand = mulberry32(seed);
 
