@@ -602,7 +602,11 @@ export class TsarProcessor {
     // (resonance normalized). Map qParam → damping the way the worklet maps
     // its own res: damping = 2 − 2·res, and res = normalized q.
     const res = clamp((qParam - 0.3) / 11.7, 0, 1);
-    const f = 2 * Math.sin((Math.PI * clamp(cutoffHz, 20, this.sampleRate * 0.24)) / this.sampleRate);
+    // Ceiling sr/6 (8000 Hz @48k): past it the Chamberlin form limit-cycles
+    // on broadband input even with the damping floor (measured 2026-10-17 —
+    // the T9 grain cloud's broadband output drove the old 0.24·sr ceiling
+    // into sustained 5.6× resonance; every shipped preset stays ≤ 5.2 kHz).
+    const f = 2 * Math.sin((Math.PI * clamp(cutoffHz, 20, this.sampleRate / 6)) / this.sampleRate);
     let q = 2 - 2 * res;
     const fqMax = (4 - f * f) * 0.49;
     if (f * q > fqMax) q = fqMax / f;
@@ -704,13 +708,7 @@ export class TsarProcessor {
    * (size·density·Hann mean), so density and size sweeps hold level — the
    * factory loudness-probe lesson.
    */
-  private grainSample(
-    voice: Voice,
-    slot: 0 | 1,
-    data: SourceData,
-    scan: number,
-    baseHz: number,
-  ): number {
+  private grainSample(voice: Voice, slot: 0 | 1, data: SourceData, scan: number, baseHz: number): number {
     const sr = this.sampleRate;
     const prefix = slot === 0 ? "srcA" : "srcB";
     const state = slot === 0 ? voice.grainStateA : voice.grainStateB;

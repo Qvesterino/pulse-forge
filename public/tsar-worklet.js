@@ -24,6 +24,8 @@
   // src/tsar/dsp/tsarProcessor.ts
   var MAX_VOICES = 16;
   var UNISON_MAX = 8;
+  var GRAIN_MAX = 10;
+  var GRAIN_FIELDS = 4;
   var FRAME_SIZE = 2048;
   var FALLBACK_TABLE = (() => {
     const frame = new Float32Array(FRAME_SIZE);
@@ -162,6 +164,13 @@
         posB: new Float32Array(UNISON_MAX),
         scanPhaseA: 0,
         scanPhaseB: 0,
+        grainStateA: new Float32Array(GRAIN_MAX * GRAIN_FIELDS),
+        grainStateB: new Float32Array(GRAIN_MAX * GRAIN_FIELDS),
+        grainCountA: 0,
+        grainCountB: 0,
+        grainSpawnA: 0,
+        grainSpawnB: 0,
+        grainLcg: 1,
         subPhase: 0,
         lfoPhase: index * GOLDEN % 1,
         driftPhase: index * DRIFT_GOLDEN % 1,
@@ -336,6 +345,11 @@
       voice.gain = 0;
       voice.scanPhaseA = 0;
       voice.scanPhaseB = 0;
+      voice.grainCountA = 0;
+      voice.grainCountB = 0;
+      voice.grainSpawnA = 0;
+      voice.grainSpawnB = 0;
+      voice.grainLcg = (2654435769 ^ Math.imul(pitch + 1, 2654435761) ^ Math.imul(voice.age, 40503)) >>> 0;
       voice.svfA1 = 0;
       voice.svfA2 = 0;
       voice.svfB1 = 0;
@@ -422,7 +436,7 @@
      */
     runSvf(input, type, cutoffHz, qParam, state) {
       const res = clamp((qParam - 0.3) / 11.7, 0, 1);
-      const f = 2 * Math.sin(Math.PI * clamp(cutoffHz, 20, this.sampleRate * 0.24) / this.sampleRate);
+      const f = 2 * Math.sin(Math.PI * clamp(cutoffHz, 20, this.sampleRate / 6) / this.sampleRate);
       let q = 2 - 2 * res;
       const fqMax = (4 - f * f) * 0.49;
       if (f * q > fqMax) q = fqMax / f;
@@ -474,19 +488,13 @@
       const unison = clamp(Math.round(this.params[`${prefix}Unison`] ?? 1), 1, UNISON_MAX);
       const spread = this.params[`${prefix}Spread`] ?? 0;
       const positions = slot === 0 ? voice.posA : voice.posB;
+      if (engine === 2) return this.grainSample(voice, slot, data, scan, baseHz);
       let sum = 0;
       for (let u = 0; u < unison; u++) {
         const spreadOffset = unison === 1 ? 0 : (u / (unison - 1) * 2 - 1) * spread;
         const f = baseHz * Math.pow(2, (detuneCents + spreadOffset) / 1200);
         let pos = positions[u];
-        if (engine === 2) {
-          pos += scan / this.sampleRate;
-          if (pos >= 1) pos -= 1;
-          if (data.pcm) {
-            const window = 0.5 - 0.5 * Math.cos(2 * Math.PI * pos);
-            sum += readWrapped(data.pcm, pos * (data.pcm.length - 1)) * window;
-          }
-        } else if (engine === 1) {
+        if (engine === 1) {
           sum += this.readWavetable(data, pos, morph);
           pos += f / this.sampleRate;
           if (pos >= 1) pos -= 1;
@@ -499,6 +507,92 @@
         positions[u] = pos;
       }
       return sum / Math.sqrt(unison);
+    }
+    /**
+     * The engine-2 grain cloud. Spawn cadence is DENSITY grains/second around
+     * the SCAN head; each grain resamples the PCM at the voice's frequency
+     * (rate 1 = recorded root), lives SIZE milliseconds under a Hann window,
+     * and dies. Overlap energy is compensated by the expected grain count
+     * (size·density·Hann mean), so density and size sweeps hold level — the
+     * factory loudness-probe lesson.
+     */
+    grainSample(voice, slot, data, scan, baseHz) {
+      const sr = this.sampleRate;
+      const prefix = slot === 0 ? "srcA" : "srcB";
+      const state = slot === 0 ? voice.grainStateA : voice.grainStateB;
+      const countKey = slot === 0 ? "grainCountA" : "grainCountB";
+      const spawnKey = slot === 0 ? "grainSpawnA" : "grainSpawnB";
+      const slotPos = slot === 0 ? voice.posA : voice.posB;
+      const inner = voice;
+      let count = inner[countKey];
+      const pcm = data.pcm;
+      if (!pcm || pcm.length === 0) {
+        inner[countKey] = 0;
+        return 0;
+      }
+      const density = clamp(this.params[`${prefix}GrainDensity`] ?? 16, 1, 64);
+      const sizeMs = clamp(this.params[`${prefix}GrainSize`] ?? 60, 5, 300);
+      const jitter = clamp(this.params[`${prefix}GrainJitter`] ?? 0.3, 0, 1);
+      const durSamples = Math.max(64, Math.min(sr * 0.5, sizeMs / 1e3 * sr));
+      const rate = baseHz / data.pcmRootHz;
+      const len = pcm.length;
+      let head = slotPos[0];
+      head += scan / sr;
+      if (head >= 1) head -= Math.floor(head);
+      slotPos[0] = head;
+      let spawnPhase = inner[spawnKey];
+      spawnPhase += density / sr;
+      let spawned = 0;
+      while (spawnPhase >= 1 && spawned < 3) {
+        spawnPhase -= 1;
+        spawned += 1;
+        if (count >= GRAIN_MAX) continue;
+        const jitterOffset = jitter * (this.grainDraw(voice) * 2 - 1) * 0.5;
+        let startPos = head + jitterOffset;
+        startPos -= Math.floor(startPos);
+        if (startPos < 0) startPos += 1;
+        const base = count * GRAIN_FIELDS;
+        state[base] = startPos;
+        state[base + 1] = 0;
+        state[base + 2] = durSamples;
+        state[base + 3] = rate;
+        count += 1;
+      }
+      inner[spawnKey] = spawnPhase;
+      let sum = 0;
+      for (let i = count - 1; i >= 0; i--) {
+        const base = i * GRAIN_FIELDS;
+        const age = state[base + 1] + 1;
+        const dur = state[base + 2];
+        if (age >= dur) {
+          const last = (count - 1) * GRAIN_FIELDS;
+          state[base] = state[last];
+          state[base + 1] = state[last + 1];
+          state[base + 2] = state[last + 2];
+          state[base + 3] = state[last + 3];
+          count -= 1;
+          continue;
+        }
+        state[base + 1] = age;
+        const window = 0.5 - 0.5 * Math.cos(2 * Math.PI * age / dur);
+        const readPos = (state[base] + age * state[base + 3] / len) * (len - 1);
+        sum += readWrapped(pcm, readPos) * window;
+      }
+      inner[countKey] = count;
+      const overlap = Math.max(1, durSamples / sr * density * 0.5);
+      let out = sum / Math.sqrt(overlap);
+      if (out > 0.9 || out < -0.9) {
+        const sign = out < 0 ? -1 : 1;
+        out = sign * (0.9 + Math.tanh(Math.abs(out) - 0.9) * 0.1);
+      }
+      return out;
+    }
+    /** Deterministic jitter draw [0,1) from the per-note LCG. */
+    grainDraw(voice) {
+      let state = voice.grainLcg;
+      state = Math.imul(state, 1664525) + 1013904223 >>> 0;
+      voice.grainLcg = state;
+      return state / 4294967296;
     }
     /**
      * Render one block. `currentFrame` is the absolute frame of the block start

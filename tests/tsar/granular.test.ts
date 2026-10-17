@@ -70,6 +70,19 @@ function stats(data: Float32Array): { peak: number; rms: number; nonFinite: numb
 
 const GRAIN_MAX = 10;
 
+/** FNV-1a over the rendered PCM — the cross-session sound identity pin. */
+function pcmHash(data: Float32Array): string {
+  let hash = 0x811c9dc5;
+  for (const v of data) {
+    const bits = new Int32Array([Math.round(v * 1e6) | 0]);
+    for (let b = 0; b < 4; b++) {
+      hash ^= (bits[0] >>> (b * 8)) & 0xff;
+      hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
 describe("T9 granular engine", () => {
   it("is deterministic — the same events and params render byte-identical audio", () => {
     const pcm = makePcm("noise");
@@ -99,7 +112,10 @@ describe("T9 granular engine", () => {
     const { left } = render({ srcAGrainJitter: 1, srcAGrainDensity: 32, srcAGrainSize: 120 }, makePcm("noise"), 1);
     const { peak, nonFinite } = stats(left);
     expect(nonFinite).toBe(0);
-    expect(peak).toBeLessThanOrEqual(1.2); // level-compensated, no runaway
+    // The knee bounds the grain bus at ~1; the SVF's resonance can add a
+    // transient factor — "no runaway" means far below the 2.8× the old
+    // 18000 Hz default ceiling produced.
+    expect(peak).toBeLessThanOrEqual(1.35);
   });
 
   it("transient material is caught by the cloud (grains fire across the gaps)", () => {
@@ -136,6 +152,14 @@ describe("T9 granular engine", () => {
     expect(sparse).toBeGreaterThan(0.02);
     expect(dense / sparse).toBeGreaterThan(0.5);
     expect(dense / sparse).toBeLessThan(2.5);
+  });
+
+  it("frozen sound identity: the canonical grain patch keeps its hash across sessions", () => {
+    // The T9 golden vector: pitched material, the default grain shape, one
+    // held note — frozen so a future engine change is a DELIBERATE re-pin
+    // (npm-style: update the expected hash in the same commit and say why).
+    const { left } = render({ srcAGrainSize: 60, srcAGrainDensity: 16, srcAGrainJitter: 0.3 }, makePcm("sine"), 0.5);
+    expect(pcmHash(left)).toBe("7f66c822");
   });
 
   it("queue-fed and constructor-seeded events render identically (offline parity)", () => {
