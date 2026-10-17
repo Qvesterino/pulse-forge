@@ -333,13 +333,15 @@ export class TriggerEngine {
     slideFromPitch?: number,
     locks?: Partial<Record<import("../project-model/types").StepLockKey, number>>,
     slideFromWhen?: number,
+    expression?: import("../project-model/types").NoteExpression,
   ): void {
     // Frozen tracks play back a pre-rendered buffer — skip individual noteOn
     if (this.warp.isFrozen(trackId)) return;
     const inst = this.deps.instrumentStates.get(trackId);
     if (!inst) return;
     const bendSemitones = inst.pitchBend ?? 0;
-    const adjustedPitch = bendSemitones !== 0 ? pitch + bendSemitones : pitch;
+    const notePitchOffset = expression?.pitchOffsetSemitones ?? 0;
+    const adjustedPitch = pitch + bendSemitones + notePitchOffset;
     const slideFrom =
       slideFromTick !== undefined && slideFromPitch !== undefined
         ? {
@@ -374,12 +376,16 @@ export class TriggerEngine {
         slideFromWhen !== undefined && Number.isFinite(slideFromWhen) && slideFromWhen < when
           ? slideFromWhen
           : Math.max(0, when - durationSec);
-      inst.runtime.noteOn(adjustedPitch, velocity, when, durationSec, {
-        pitch: slideFrom.pitch,
-        when: Math.max(0, glideStart),
-      });
+      inst.runtime.noteOn(
+        adjustedPitch,
+        velocity,
+        when,
+        durationSec,
+        { pitch: slideFrom.pitch, when: Math.max(0, glideStart) },
+        expression,
+      );
     } else {
-      inst.runtime.noteOn(adjustedPitch, velocity, when, durationSec);
+      inst.runtime.noteOn(adjustedPitch, velocity, when, durationSec, undefined, expression);
     }
     if (needsRatioLock) {
       // Restore after voice captured ratio (next tick) — keep automation clean

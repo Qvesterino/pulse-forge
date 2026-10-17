@@ -1,5 +1,5 @@
 import type { Command } from "./types";
-import type { InstrumentTrack, NoteEvent, ProjectDocument } from "../project-model/types";
+import type { InstrumentTrack, NoteEvent, NoteExpression, ProjectDocument } from "../project-model/types";
 import { STEP_TICKS } from "../project-model/types";
 import { MAX_ARRANGEMENT_CLIP_TICKS } from "../project-model/schema";
 import {
@@ -511,6 +511,78 @@ export function setNotesVelocities(doc: ProjectDocument, trackId: string, veloci
         patternId,
       ),
   };
+}
+
+export type NoteExpressionKey = keyof NoteExpression;
+
+const NOTE_EXPRESSION_LIMITS: Record<NoteExpressionKey, { min: number; max: number; defaultValue: number }> = {
+  pan: { min: -1, max: 1, defaultValue: 0 },
+  filterCutoffHz: { min: 80, max: 16000, defaultValue: 16000 },
+  filterResonance: { min: 0, max: 1, defaultValue: 0.5 },
+  releaseVelocity: { min: 0, max: 1, defaultValue: 0.5 },
+  pitchOffsetSemitones: { min: -12, max: 12, defaultValue: 0 },
+};
+
+/** Set one FL-style per-note event target with a single undoable command. */
+export function setNotesExpression(
+  doc: ProjectDocument,
+  trackId: string,
+  target: NoteExpressionKey,
+  values: Record<string, number>,
+): Command {
+  const patternId = doc.activePatternId;
+  const all = activeTrackNotes(doc, trackId);
+  const previous = new Map(all.filter((note) => values[note.id] !== undefined).map((note) => [note.id, note.expression]));
+  if (previous.size === 0) throw new Error("No matching notes for expression update");
+  const limit = NOTE_EXPRESSION_LIMITS[target];
+  const updates = Object.fromEntries(
+    Object.entries(values)
+      .filter(([id]) => previous.has(id))
+      .map(([id, value]) => [id, clamp(Number.isFinite(value) ? value : limit.defaultValue, limit.min, limit.max)]),
+  ) as Record<string, number>;
+  for (const [id, value] of Object.entries(updates)) {
+    const oldValue = previous.get(id)?.[target] ?? limit.defaultValue;
+    if (Math.abs(oldValue - value) < 0.0001) delete updates[id];
+  }
+  if (Object.keys(updates).length === 0) {
+    return { type: "setNotesExpression", label: "No expression change", execute: (d) => d, undo: (d) => d };
+  }
+  const applyValue = (note: NoteEvent, value: number): NoteEvent => {
+    const expression = { ...(note.expression ?? {}) };
+    if (Math.abs(value - limit.defaultValue) < 0.0001) delete expression[target];
+    else expression[target] = value;
+    return Object.keys(expression).length > 0 ? { ...note, expression } : omitExpression(note);
+  };
+  const apply = (d: ProjectDocument, source: typeof updates): ProjectDocument =>
+    withTrackNotes(
+      d,
+      trackId,
+      (notes) => notes.map((note) => (source[note.id] === undefined ? note : applyValue(note, source[note.id]))),
+      patternId,
+    );
+  const restore = (d: ProjectDocument): ProjectDocument =>
+    withTrackNotes(
+      d,
+      trackId,
+      (notes) =>
+        notes.map((note) => {
+          if (!previous.has(note.id)) return note;
+          const expression = previous.get(note.id);
+          return expression ? { ...note, expression } : omitExpression(note);
+        }),
+      patternId,
+    );
+  return {
+    type: "setNotesExpression",
+    label: `Set ${target} for ${previous.size} notes`,
+    execute: (d) => apply(d, updates),
+    undo: restore,
+  };
+}
+
+function omitExpression(note: NoteEvent): NoteEvent {
+  const { expression: _expression, ...rest } = note;
+  return rest;
 }
 
 export interface ApplyMidiCreativeOptions {

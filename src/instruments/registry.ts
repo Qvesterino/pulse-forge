@@ -1,5 +1,5 @@
 import type { InstrumentDefinition, InstrumentRuntime } from "./types";
-import type { InstrumentKind, InstrumentTrack, SampleLayer } from "../project-model/types";
+import type { InstrumentKind, InstrumentTrack, NoteExpression, SampleLayer } from "../project-model/types";
 import { midiToFreq } from "../project-model/types";
 import { hashString, mulberry32 } from "../shared/rng";
 import { buildWavetableMips, extractWavetable, FACTORY_WAVETABLES, FRAME_SIZE, pickMipLevel } from "./wavetables";
@@ -958,7 +958,7 @@ const bass808: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom, expression) {
         // FL-style voice handling: MONO cuts the previous 808 at the new
         // attack (trap cut), POLY lets tails overlap. GATE follows the piano
         // roll note length (predĺžené 808 tails), ONE-SHOT keeps the legacy
@@ -967,6 +967,11 @@ const bass808: InstrumentDefinition = {
         if (mono) current?.stop(when);
         const freq = midiToFreq(pitch);
         const decay = Math.max(0.05, p.decay ?? 0.9);
+        // The per-note release control follows FL's 0..1 note-event range.
+        // 0.5 leaves the preset response unchanged; faster/slower values scale
+        // the gated tail around that midpoint for this envelope-based voice.
+        const releaseVelocity = Math.max(0, Math.min(1, expression?.releaseVelocity ?? 0.5));
+        const releaseSec = decay * (0.25 + releaseVelocity * 1.5);
         const drop = p.pitchDrop ?? 0.4;
         // PUNCH: the modern-trap beater — the pitch envelope starts N
         // semitones ABOVE the target and snaps down in P-TIME, so the 808
@@ -980,7 +985,7 @@ const bass808: InstrumentDefinition = {
         const gated = (p.gate ?? 1) > 0.5;
         const gateSec = gated ? Math.max(0.05, Number.isFinite(durationSec) ? durationSec : 0.05) : 0.03;
         const off = when + gateSec;
-        const stopTime = gated ? off + decay * 2 + 0.6 : when + decay + 0.6;
+        const stopTime = gated ? off + releaseSec * 2 + 0.6 : when + decay + 0.6;
 
         const glideNorm = Math.max(0, Math.min(1, p.glide ?? 0.34));
         const glide = glideNorm * 0.35; // 0..1 → 0..0.35 s linear
@@ -1012,15 +1017,21 @@ const bass808: InstrumentDefinition = {
 
         const toneFilter = ctx.createBiquadFilter();
         toneFilter.type = "lowpass";
-        toneFilter.frequency.value = Math.max(120, toneHz);
-        toneFilter.Q.value = 0.7;
+        toneFilter.frequency.value = expression?.filterCutoffHz ?? Math.max(120, toneHz);
+        toneFilter.Q.value =
+          expression?.filterResonance !== undefined ? 0.1 + expression.filterResonance * 7.9 : 0.7;
         toneFilter.connect(pre);
         // The shared shaper feeds every live voice's post — no rewiring here.
         // (It used to disconnect() the shaper per note, hard-cutting the
         // previous voice's release tail; each voice now removes its own post
         // in onended instead of accumulating connections on `output` forever.)
         shaper.connect(post);
-        post.connect(output);
+        const notePanner = expression?.pan !== undefined ? ctx.createStereoPanner() : null;
+        if (notePanner) {
+          notePanner.pan.setValueAtTime(Math.max(-1, Math.min(1, expression.pan!)), when);
+          notePanner.connect(output);
+        }
+        const voiceOutput: AudioNode = notePanner ?? output;
 
         // Mod matrix (ENV/LFO/VEL/PRESS -> CUTOFF/AMP) — see modmatrix.ts.
         // CUTOFF steers the per-voice tone lowpass; AMP sits after `post`
@@ -1032,21 +1043,19 @@ const bass808: InstrumentDefinition = {
           velocity,
           attack: 0.005,
           off,
-          release: decay,
+          release: releaseSec,
           cutoffParam: toneFilter.frequency,
           cutoffBase: Math.max(120, toneHz),
         });
         liveMods.set(toneFilter, mod);
-        if (mod?.ampNode) {
-          post.disconnect(output);
-          post.connect(mod.ampNode).connect(output);
-        }
+        if (mod?.ampNode) post.connect(mod.ampNode);
+        (mod?.ampNode ?? post).connect(voiceOutput);
 
         const amp = ctx.createGain();
         amp.gain.setValueAtTime(Math.max(gainVal, 0.0002), when);
         // Gated: sustain full level through the note, release at gate-off.
         // One-shot: legacy immediate decay from just after the attack.
-        amp.gain.setTargetAtTime(0.0001, gated ? off : when + 0.01, decay / 3);
+        amp.gain.setTargetAtTime(0.0001, gated ? off : when + 0.01, (gated ? releaseSec : decay) / 3);
         amp.connect(toneFilter);
 
         const osc = ctx.createOscillator();
@@ -1258,6 +1267,7 @@ const bass808: InstrumentDefinition = {
             /* already */
           }
           post.disconnect();
+          notePanner?.disconnect();
           mod?.dispose();
           liveMods.delete(toneFilter);
           if (subOsc) {

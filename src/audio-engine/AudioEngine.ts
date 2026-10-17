@@ -1231,12 +1231,21 @@ export class AudioEngine {
     // re-assert the hint on the fresh runtimes at "now" (writes 0 when the
     // track holds no note — the fresh default anyway).
     this.applyPitchHint(ownerId, ctx.currentTime);
-    // PDC tap: every chain routes through a compensation delay so syncPdc()
-    // can align latency-introducing effects (look-ahead limiter) across the
-    // graph. delayTime stays 0 when no compensation is needed.
-    if (!state.pdcDelay) state.pdcDelay = ctx.createDelay(0.2);
-    head.connect(state.pdcDelay);
-    state.pdcDelay.connect(output);
+    // PDC tap: a chain WITH effects routes through a compensation delay so
+    // syncPdc() can align latency-introducing effects (look-ahead limiter)
+    // across the graph; delayTime stays 0 when no compensation is needed. A
+    // DRY chain carries no latency, so it connects straight through and the
+    // delay node (plus its 0.2 s buffer) is only ever built for chains that can
+    // need it — measured: 100 delays for 100 effect-free tracks before this.
+    if (effects.some((fx) => !fx.bypassed)) {
+      if (!state.pdcDelay) state.pdcDelay = ctx.createDelay(0.2);
+      head.connect(state.pdcDelay);
+      state.pdcDelay.connect(output);
+    } else {
+      state.pdcDelay?.disconnect();
+      state.pdcDelay = null;
+      head.connect(output);
+    }
     state.signature = this.fxSignature(effects);
   }
 
@@ -1384,7 +1393,7 @@ export class AudioEngine {
     nodes.modMacroGain.disconnect();
     nodes.modMacroPan.disconnect();
     nodes.analyser.disconnect();
-    nodes.preFaderAnalyser.disconnect();
+    nodes.preFaderAnalyser?.disconnect();
     this.trackNodes.delete(id);
   }
 
@@ -1448,7 +1457,7 @@ export class AudioEngine {
     nodes.modMacroGain.disconnect();
     nodes.modMacroPan.disconnect();
     nodes.analyser.disconnect();
-    nodes.preFaderAnalyser.disconnect();
+    nodes.preFaderAnalyser?.disconnect();
     for (const send of nodes.sends.values()) send.disconnect();
     nodes.sends.clear();
     for (const delay of nodes.sendDelays.values()) delay.disconnect();
@@ -1594,6 +1603,13 @@ export class AudioEngine {
     }
 
     for (const track of doc.tracks) {
+      // Groups own their strip in groupNodes (built above) — the missing guard
+      // here used to build a SECOND, fully-wired strip per group whose input
+      // nothing ever feeds: pure waste (8 nodes + a duplicated FX chain per
+      // group) and, because the metering deps read trackNodes first, a SILENT
+      // analyser that made every group strip's POST/PRE meter read 0 forever.
+      // The sibling routing loop below has always had this guard.
+      if (track.kind === "group") continue;
       let nodes = this.trackNodes.get(track.id);
       if (!nodes) {
         const input = ctx.createGain();
@@ -2129,6 +2145,7 @@ export class AudioEngine {
     slideFromPitch?: number,
     locks?: Partial<Record<import("../project-model/types").StepLockKey, number>>,
     slideFromWhen?: number,
+    expression?: import("../project-model/types").NoteExpression,
   ): void {
     this.pushHeldPitch(trackId, pitch, when);
     this.triggerEngine.noteOn(
@@ -2141,6 +2158,7 @@ export class AudioEngine {
       slideFromPitch,
       locks,
       slideFromWhen,
+      expression,
     );
   }
 
@@ -2683,9 +2701,11 @@ export class AudioEngine {
     return isLiveAudioContext(this.ctx) ? this.ctx : null;
   }
 
-  /** Post-FX tap for one track (the analyser branch carries the full track signal). */
+  /** Post-FX tap for one track (the analyser branch carries the full track
+   * signal). Groups resolve through their own strip — a group used to carry a
+   * duplicate in trackNodes, so the first lookup found a silent analyser. */
   getTrackTapNode(trackId: string): AudioNode | null {
-    return this.trackNodes.get(trackId)?.analyser ?? null;
+    return this.trackNodes.get(trackId)?.analyser ?? this.groupNodes.get(trackId)?.analyser ?? null;
   }
 
   /**

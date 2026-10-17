@@ -512,6 +512,8 @@ export interface NoteEvent {
   start: number;
   duration: number;
   velocity: number;
+  /** Optional per-note performance values; absent fields keep the instrument defaults. */
+  expression?: NoteExpression;
   /**
    * FL-style slide note (portamento): when true, this note glides FROM the
    * previous sounding pitch instead of starting a new attack. Consumed by
@@ -521,6 +523,20 @@ export interface NoteEvent {
   slide?: boolean;
   /** Per-note p-locks — absolute overrides for this hit (mirrors StepMeta.locks, for piano roll). */
   locks?: Partial<Record<StepLockKey, number>>;
+}
+
+/** FL-style note-event values that shape one note without mutating track parameters. */
+export interface NoteExpression {
+  /** -1 = hard left, 0 = center, 1 = hard right. */
+  pan?: number;
+  /** Additional per-note low-pass cutoff in Hz; absent means no added filter. */
+  filterCutoffHz?: number;
+  /** 0..1 mapped to a per-note low-pass Q of 0.1..8.0. */
+  filterResonance?: number;
+  /** MIDI note-off velocity, 0..1; absent uses the normal release response. */
+  releaseVelocity?: number;
+  /** Fine tuning in semitones, -12..12, applied in addition to the MIDI pitch. */
+  pitchOffsetSemitones?: number;
 }
 
 export interface PatternPhraseBar {

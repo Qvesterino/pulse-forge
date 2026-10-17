@@ -1,4 +1,4 @@
-import type { DrumTrack, Pattern, PlayMode, ProjectDocument } from "../project-model/types";
+import type { DrumTrack, NoteExpression, Pattern, PlayMode, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { ticksPerBar, ticksPerBeat } from "../project-model/schema";
 import { drumHitsInWindow } from "../project-model/groove";
@@ -53,6 +53,7 @@ export interface SchedulerDeps {
     slideFromPitch?: number,
     locks?: Partial<Record<import("../project-model/types").StepLockKey, number>>,
     slideFromWhen?: number,
+    expression?: NoteExpression,
   ): void;
   applyAutomation(
     fromTick: number,
@@ -1297,6 +1298,7 @@ export class Scheduler {
         slideFrom?.pitch,
         locks,
         slideFromWhen,
+        event.note.expression,
       );
       // Passive capture ring (Ableton) — note events with pitch info
       this.deps.recordCapturedEvent?.({

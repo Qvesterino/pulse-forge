@@ -237,6 +237,12 @@ describe("PRE-fader meter tap (post-insert, pre-pan/fader)", () => {
       preFaderAnalyser: unknown;
       analyser: unknown;
     };
+    // LAZY contract (2026-10-17): nothing is allocated for a meter no strip
+    // shows — 100 analysers at 100 tracks were dead weight before this. The
+    // FIRST read builds the tap, and it must still be a distinct second
+    // analyser fed by the panner.
+    expect(nodes.preFaderAnalyser, "the tap must not exist before the first PRE read").toBeNull();
+    expect(engine.getTrackPreMeterSnapshot(trackId).level).toBe(0);
     expect(nodes.preFaderAnalyser).toBeDefined();
     expect(nodes.preFaderAnalyser).not.toBe(nodes.analyser);
     expect(nodes.panner.connections.has(nodes.preFaderAnalyser)).toBe(true);
@@ -256,7 +262,11 @@ describe("PRE-fader meter tap (post-insert, pre-pan/fader)", () => {
       panner: { connections: Set<unknown> };
       preFaderAnalyser: unknown;
     };
+    // Build the tap through its real entry point first, or this spec would
+    // pass vacuously over a null edge (the lazy contract allocates on read).
+    engine.getTrackPreMeterSnapshot(trackId);
     const pre = nodes.preFaderAnalyser;
+    expect(pre).not.toBeNull();
     engine.setProject({ ...doc, tracks: doc.tracks.filter((t) => t.id !== trackId) });
     await flush();
     expect(nodes.panner.connections.has(pre)).toBe(false);
@@ -273,9 +283,39 @@ describe("PRE-fader meter tap (post-insert, pre-pan/fader)", () => {
       panner: { connections: Set<unknown> };
       preFaderAnalyser: unknown;
     };
+    // Lazily allocated on the group fallback read (lazy-PRE contract).
+    expect(engine.getTrackPreMeterSnapshot(groupId).level).toBe(0); // group fallback read
     expect(nodes.preFaderAnalyser).toBeDefined();
     expect(nodes.panner.connections.has(nodes.preFaderAnalyser)).toBe(true);
-    expect(engine.getTrackPreMeterSnapshot(groupId).level).toBe(0); // group fallback read
+  });
+});
+
+describe("scale: a group must not own a second, silent channel strip", () => {
+  it("a group id lives in groupNodes only — the duplicate strip reads silence", async () => {
+    // MEASURED (D, 2026-10-17): the track loop in syncProject lacked the
+    // `kind === "group"` guard its sibling routing loop has, so every group got
+    // a SECOND full strip in trackNodes (input/panner/gain/mods/analyser) plus a
+    // rebuilt duplicate FX chain that nothing ever feeds. Worse than the waste:
+    // the metering deps read `trackAnalyser(id) ?? groupAnalyser(id)`, so a
+    // group strip's POST (and now PRE) meter resolved to the ORPHAN's silent
+    // analyser and read 0 forever — a dead meter on every bus strip.
+    const { AudioEngine } = await import("../src/audio-engine/AudioEngine");
+    const { doc, groupId } = baseDoc();
+    const engine = new AudioEngine();
+    engine.useContext(mockCtx() as unknown as BaseAudioContext);
+    engine.setProject(doc);
+    await flush();
+    const internals = engineInternals(engine);
+    expect(
+      internals.trackNodes.has(groupId),
+      "a group owning a trackNodes strip is a silent duplicate: its analysers never see audio",
+    ).toBe(false);
+    // The group's own strip still exists and owns the audible tap.
+    const group = internals.groupNodes.get(groupId) as unknown as { analyser: unknown };
+    expect(group.analyser).toBeDefined();
+    // The post-FX tap accessor resolves a group through its real strip too.
+    const tap = (engine as unknown as { getTrackTapNode: (id: string) => unknown }).getTrackTapNode(groupId);
+    expect(tap).toBe(group.analyser);
   });
 });
 

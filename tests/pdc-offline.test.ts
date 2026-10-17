@@ -113,8 +113,14 @@ function mockCtx() {
 
 function twoTrackDoc(): { doc: ProjectDocument; groupId: string; trackA: string; trackB: string } {
   const group = createGroupTrackModel("Bus");
-  const a = { ...createDrumTrackModel("A"), groupId: group.id };
-  const b = { ...createDrumTrackModel("B"), groupId: group.id };
+  // Each chain carries ONE non-bypassed (latency-free) effect: a chain with no
+  // effects connects straight through and owns NO compensation delay at all
+  // (lazy-PDC, 2026-10-17), so a truly dry chain could not witness the writes
+  // these specs assert. The injected look-ahead latency still lands on the
+  // GROUP runtime, exactly as before.
+  const eqFx = () => [{ id: "eq", type: "eq", bypassed: false, params: {} }] as never;
+  const a = { ...createDrumTrackModel("A"), groupId: group.id, effects: eqFx() };
+  const b = { ...createDrumTrackModel("B"), groupId: group.id, effects: eqFx() };
   const doc = {
     schemaVersion: 1,
     id: "pdc-offline-doc",

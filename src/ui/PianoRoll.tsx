@@ -13,12 +13,14 @@ import {
   glueNotes,
   nudgeNotes,
   quantizeNotes,
+  setNotesExpression,
   setNotesVelocities,
   setNotesVelocity,
   splitNotes,
   moveNote,
   resizeNote,
 } from "../commands/commands";
+import type { NoteExpressionKey } from "../commands/notes";
 import { clamp, uid } from "../shared/ids";
 import { getScalePitchesInRange, isInScale, snapToScale, scaleDegreeLabel } from "../project-model/scales";
 import { chordAtTick, nearestChordPitch } from "../project-model/chords";
@@ -170,10 +172,91 @@ const PianoRollNote = memo(
 
 /** Velocity-lane handlers behind a stable object — see VelocityBar. */
 interface PianoRollVelHandlers {
-  beginDrag: (event: React.PointerEvent, note: NoteEvent) => void;
+  beginDrag: (event: React.PointerEvent, note: NoteEvent, target?: NoteExpressionKey) => void;
   pointerMove: (event: React.PointerEvent) => void;
   pointerUp: (event: React.PointerEvent) => void;
   pointerCancel: () => void;
+}
+
+type PianoRollEventTarget = "velocity" | NoteExpressionKey;
+
+const EVENT_EXPRESSION_DEFAULTS: Record<NoteExpressionKey, number> = {
+  pan: 0,
+  filterCutoffHz: 16000,
+  filterResonance: 0.5,
+  releaseVelocity: 0.5,
+  pitchOffsetSemitones: 0,
+};
+
+function eventLaneStoredValue(note: NoteEvent, target: NoteExpressionKey): number {
+  return note.expression?.[target] ?? EVENT_EXPRESSION_DEFAULTS[target];
+}
+
+function eventLaneNormalizedValue(note: NoteEvent, target: PianoRollEventTarget): number {
+  if (target === "velocity") return Math.max(0, Math.min(1, note.velocity));
+  if (target === "pan") return ((note.expression?.pan ?? 0) + 1) / 2;
+  if (target === "filterCutoffHz") {
+    const cutoff = Math.max(80, Math.min(16000, note.expression?.filterCutoffHz ?? 16000));
+    return Math.log(cutoff / 80) / Math.log(16000 / 80);
+  }
+  if (target === "filterResonance") return note.expression?.filterResonance ?? 0.5;
+  if (target === "releaseVelocity") return note.expression?.releaseVelocity ?? 0.5;
+  return ((note.expression?.pitchOffsetSemitones ?? 0) + 12) / 24;
+}
+
+function eventLaneValueFromNormalized(target: NoteExpressionKey, normalized: number): number {
+  const value = Math.max(0, Math.min(1, normalized));
+  if (target === "pan") return Math.round((value * 2 - 1) * 100) / 100;
+  if (target === "filterCutoffHz") return Math.round(80 * Math.pow(16000 / 80, value));
+  if (target === "pitchOffsetSemitones") return Math.round((value * 24 - 12) * 100) / 100;
+  return Math.round(value * 100) / 100;
+}
+
+function eventLaneNormalizedFromValue(target: NoteExpressionKey, value: number): number {
+  if (target === "pan") return (value + 1) / 2;
+  if (target === "filterCutoffHz") return Math.log(Math.max(80, Math.min(16000, value)) / 80) / Math.log(16000 / 80);
+  if (target === "pitchOffsetSemitones") return (value + 12) / 24;
+  return value;
+}
+
+function eventBarVisual(target: NoteExpressionKey, value: number): { height: string; top?: string; bottom?: string } {
+  if (target === "pitchOffsetSemitones") {
+    const signed = Math.max(-12, Math.min(12, value)) / 12;
+    return {
+      height: `${Math.abs(signed) * 50}%`,
+      top: signed >= 0 ? `${50 - Math.abs(signed) * 50}%` : "50%",
+      bottom: "auto",
+    };
+  }
+  return { height: `${Math.max(0, Math.min(1, eventLaneNormalizedFromValue(target, value)) * 100)}%`, bottom: "0%" };
+}
+
+function eventLaneTargetLabel(target: PianoRollEventTarget): string {
+  switch (target) {
+    case "velocity":
+      return "Velocity";
+    case "pan":
+      return "Pan";
+    case "filterCutoffHz":
+      return "Filter cutoff";
+    case "filterResonance":
+      return "Filter resonance";
+    case "releaseVelocity":
+      return "Release velocity";
+    case "pitchOffsetSemitones":
+      return "Fine pitch";
+  }
+}
+
+function eventLaneValueLabel(note: NoteEvent, target: PianoRollEventTarget): string {
+  const value = eventLaneNormalizedValue(note, target);
+  if (target === "velocity") return `${Math.round(value * 100)}%`;
+  if (target === "pan") return value < 0.49 ? `L${Math.round((0.5 - value) * 200)}` : value > 0.51 ? `R${Math.round((value - 0.5) * 200)}` : "C";
+  if (target === "filterCutoffHz") return `${Math.round(note.expression?.filterCutoffHz ?? 16000)} Hz`;
+  if (target === "filterResonance") return `${Math.round(value * 100)}%`;
+  if (target === "releaseVelocity") return `${Math.round(value * 100)}%`;
+  const semitones = note.expression?.pitchOffsetSemitones ?? 0;
+  return `${semitones > 0 ? "+" : ""}${semitones.toFixed(2)} st`;
 }
 
 /**
@@ -208,6 +291,53 @@ const VelocityBar = memo(
     );
   },
   (a, b) => a.note === b.note && a.patternTicks === b.patternTicks && a.selected === b.selected,
+);
+
+const ExpressionBar = memo(
+  function ExpressionBar({
+    note,
+    patternTicks,
+    target,
+    selected,
+    handlers,
+  }: {
+    note: NoteEvent;
+    patternTicks: number;
+    target: NoteExpressionKey;
+    selected: boolean;
+    handlers: PianoRollVelHandlers;
+  }) {
+    const left = (note.start / patternTicks) * 100;
+    const value = eventLaneStoredValue(note, target);
+    const hue =
+      target === "pan"
+        ? 165
+        : target === "filterCutoffHz"
+          ? 38
+          : target === "filterResonance"
+            ? 280
+            : target === "pitchOffsetSemitones"
+              ? 205
+              : 320;
+    const visual = eventBarVisual(target, value);
+    return (
+      <div
+        data-expression={note.id}
+        className={`pr-vel-bar pr-expression-bar${selected ? " selected" : ""}`}
+        style={{
+          left: `${left}%`,
+          ...visual,
+          background: `hsl(${hue} 75% 54%)`,
+        }}
+        title={`${pitchName(note.pitch)} ${eventLaneValueLabel(note, target)} — drag vertically`}
+        onPointerDown={(event) => handlers.beginDrag(event, note, target)}
+        onPointerMove={handlers.pointerMove}
+        onPointerUp={handlers.pointerUp}
+        onPointerCancel={handlers.pointerCancel}
+      />
+    );
+  },
+  (a, b) => a.note === b.note && a.patternTicks === b.patternTicks && a.target === b.target && a.selected === b.selected,
 );
 
 /** Keyboard-column handlers behind a stable object — see PianoKey. */
@@ -466,6 +596,16 @@ export function PianoRollTrack({
     startY: number;
     startVels: Record<string, number>;
   } | null>(null);
+  const [expressionDrag, setExpressionDrag] = useState<{
+    anchorId: string;
+    target: NoteExpressionKey;
+    startY: number;
+    startValues: Record<string, number>;
+  } | null>(null);
+  const [eventTarget, setEventTarget] = useState<PianoRollEventTarget>("velocity");
+  const eventTargets: PianoRollEventTarget[] =
+    track.instrument === "808" ? ["velocity", "pan", "filterCutoffHz", "filterResonance"] : ["velocity"];
+  const activeEventTarget = eventTargets.includes(eventTarget) ? eventTarget : "velocity";
   const [velZoom, setVelZoom] = useState(1);
   const [noteClipboard, setNoteClipboard] = useState<NoteEvent[] | null>(null);
   // Touch note menu — opened by a long-press; right-click keeps instant delete.
@@ -481,9 +621,10 @@ export function PianoRollTrack({
     if (drag?.noteId) ids.add(drag.noteId);
     if (noteMenu?.noteId) ids.add(noteMenu.noteId);
     if (velDrag?.anchorId) ids.add(velDrag.anchorId);
+    if (expressionDrag?.anchorId) ids.add(expressionDrag.anchorId);
     if (selectedNote?.trackId === track.id) for (const id of selectedNote.noteIds) ids.add(id);
     return ids;
-  }, [drag, noteMenu, velDrag, selectedNote, track.id]);
+  }, [drag, noteMenu, velDrag, expressionDrag, selectedNote, track.id]);
   const visibleNotes = useMemo(() => {
     if (!prView || prView.h <= 0 || prView.width <= 0) return notes;
     const topRow = Math.floor(prView.top / ROW_HEIGHT) - 8;
@@ -2243,22 +2384,4 @@ export function PianoRollTrack({
                 execute: (d: ProjectDocument) => ({
                   ...d,
                   patterns: d.patterns.map((p: Pattern) =>
-                    p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: next } } : p,
-                  ),
-                }),
-                undo: (d: ProjectDocument) => ({
-                  ...d,
-                  patterns: d.patterns.map((p: Pattern) =>
-                    p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: prev } } : p,
-                  ),
-                }),
-              } as never);
-            }}
-          >
-            {notes.find((n) => n.id === noteMenu.noteId)?.slide ? "Unslide" : "Slide"}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
+                    p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: next 

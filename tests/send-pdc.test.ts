@@ -133,10 +133,12 @@ describe("engine send-PDC wiring", () => {
     const nodes = trackNodes.trackNodes.get(trackId)!;
     expect(nodes.sends.has(returnId)).toBe(true);
     expect(nodes.sendDelays.has(returnId)).toBe(true);
-    // An empty effect signature is still a built pass-through chain. This is
-    // needed for dry-path PDC and for empty return buses to route at all.
-    expect(nodes.fx.pdcDelay).toBeTruthy();
-    expect(trackNodes.returnNodes.get(returnId)?.fx.pdcDelay).toBeTruthy();
+    // A DRY chain connects straight through: it can carry no latency, so it
+    // owns no compensation delay (before the 2026-10-17 lazy-PDC change, 100
+    // effect-free tracks paid 100 delay nodes for nothing). The SEND path's
+    // own delay above is a separate chain and is still built.
+    expect(nodes.fx.pdcDelay).toBeNull();
+    expect(trackNodes.returnNodes.get(returnId)?.fx.pdcDelay).toBeNull();
   });
 
   it("sizes the send delay from downstream group latency minus return latency", async () => {

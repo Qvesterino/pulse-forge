@@ -1,4 +1,4 @@
-import type { InstrumentKind, InstrumentTrack, SampleLayer } from "../project-model/types";
+import type { InstrumentKind, InstrumentTrack, NoteExpression, SampleLayer } from "../project-model/types";
 import type { ParamDef } from "../effects/types";
 
 export interface InstrumentRuntime {
@@ -11,6 +11,7 @@ export interface InstrumentRuntime {
     when: number,
     durationSec: number,
     slideFrom?: { pitch: number; when: number },
+    expression?: NoteExpression,
   ): void;
   noteOff?(pitch: number, when: number): void;
   /**

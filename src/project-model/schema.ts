@@ -14,6 +14,8 @@ import type {
   Lfo,
   Macro,
   MidiClip,
+  NoteEvent,
+  NoteExpression,
   MacroMapping,
   Marker,
   MasterConfig,
@@ -53,7 +55,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 32;
+export const SCHEMA_VERSION = 33;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -2983,20 +2985,35 @@ function normalizePatternsDomain(s: NormalizeState): void {
           hasInvalid = true;
           break;
         }
+        if (!noteExpressionEquals(normalizeNoteExpression(n.expression), n.expression)) {
+          hasInvalid = true;
+          break;
+        }
       }
       if (!hasInvalid) {
         notesByTrack[trackId] = noteList as never;
       } else {
-        const filtered = noteList.filter(
-          (n) =>
-            Number.isFinite(n.start) &&
-            n.start >= 0 &&
-            Number.isFinite(n.duration) &&
-            n.duration > 0 &&
-            n.start + n.duration <= maxNoteEndTick,
-        );
-        if (filtered.length !== noteList.length) notesChanged = true;
-        notesByTrack[trackId] = filtered as never;
+        const normalizedNotes: NoteEvent[] = [];
+        for (const n of noteList) {
+          if (
+            !Number.isFinite(n.start) ||
+            n.start < 0 ||
+            !Number.isFinite(n.duration) ||
+            n.duration <= 0 ||
+            n.start + n.duration > maxNoteEndTick
+          ) {
+            notesChanged = true;
+            continue;
+          }
+          const expression = normalizeNoteExpression(n.expression);
+          if (noteExpressionEquals(expression, n.expression)) normalizedNotes.push(n);
+          else {
+            notesChanged = true;
+            const { expression: _oldExpression, ...rest } = n;
+            normalizedNotes.push(expression ? { ...rest, expression } : rest);
+          }
+        }
+        notesByTrack[trackId] = normalizedNotes as never;
       }
     }
     if (notesChanged) {
@@ -3037,6 +3054,56 @@ function normalizePatternsDomain(s: NormalizeState): void {
     s.doc = { ...doc, patterns };
     s.changed = true;
   }
+}
+
+function normalizeNoteExpression(value: unknown): NoteExpression | undefined {
+  if (!isObject(value)) return undefined;
+  const expression: NoteExpression = {};
+  const pan = value.pan;
+  if (typeof pan === "number" && Number.isFinite(pan)) {
+    const normalized = Math.round(Math.max(-1, Math.min(1, pan)) * 100) / 100;
+    if (normalized !== 0) expression.pan = normalized;
+  }
+  const filterCutoffHz = value.filterCutoffHz;
+  if (typeof filterCutoffHz === "number" && Number.isFinite(filterCutoffHz)) {
+    const normalized = Math.round(Math.max(80, Math.min(16000, filterCutoffHz)));
+    if (normalized < 16000) expression.filterCutoffHz = normalized;
+  }
+  const filterResonance = value.filterResonance;
+  if (typeof filterResonance === "number" && Number.isFinite(filterResonance)) {
+    const normalized = Math.round(Math.max(0, Math.min(1, filterResonance)) * 100) / 100;
+    if (normalized !== 0.5) expression.filterResonance = normalized;
+  }
+  const releaseVelocity = value.releaseVelocity;
+  if (typeof releaseVelocity === "number" && Number.isFinite(releaseVelocity)) {
+    const normalized = Math.round(Math.max(0, Math.min(1, releaseVelocity)) * 100) / 100;
+    if (normalized !== 0.5) expression.releaseVelocity = normalized;
+  }
+  const pitchOffsetSemitones = value.pitchOffsetSemitones;
+  if (typeof pitchOffsetSemitones === "number" && Number.isFinite(pitchOffsetSemitones)) {
+    const normalized = Math.round(Math.max(-12, Math.min(12, pitchOffsetSemitones)) * 100) / 100;
+    if (normalized !== 0) expression.pitchOffsetSemitones = normalized;
+  }
+  return Object.keys(expression).length > 0 ? expression : undefined;
+}
+
+function noteExpressionEquals(left: NoteExpression | undefined, right: unknown): boolean {
+  if (!left) return right === undefined;
+  if (!isObject(right)) return false;
+  return (
+    left.pan === right.pan &&
+    left.filterCutoffHz === right.filterCutoffHz &&
+    left.filterResonance === right.filterResonance &&
+    left.releaseVelocity === right.releaseVelocity &&
+    left.pitchOffsetSemitones === right.pitchOffsetSemitones &&
+    Object.keys(right).every((key) =>
+      key === "pan" ||
+        key === "filterCutoffHz" ||
+        key === "filterResonance" ||
+        key === "releaseVelocity" ||
+        key === "pitchOffsetSemitones",
+    )
+  );
 }
 
 const NORMALIZE_DOMAINS: ((s: NormalizeState) => void)[] = [
@@ -3132,6 +3199,8 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // v32 adds optional per-step sample fade-in / fade-out locks and preserves
   // the existing ratio p-lock during normalization. Older projects remain
   // unchanged and continue using the pad's fade settings when no fade is set.
+  // v33 adds optional per-note expression (pan, filter and release velocity);
+  // absent or default-valued fields preserve the original sound.
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);
