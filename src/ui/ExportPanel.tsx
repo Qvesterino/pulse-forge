@@ -16,7 +16,16 @@ import {
   type WavBextMetadata,
 } from "../rendering/wav";
 import { buildScorepack } from "../export/scorepack";
-import { buildRenderManifest, formatManifestSummary, hashPcmChannels, manifestToIxml } from "../export/renderManifest";
+import {
+  buildRenderManifest,
+  formatManifestSummary,
+  hashPcmChannels,
+  lastRenderStamp,
+  manifestToIxml,
+  rememberRenderStamp,
+  type LastRenderStamp,
+} from "../export/renderManifest";
+import { VerifyStampButton } from "./VerifyStampButton";
 import { buildZyvoTransfer } from "../export/zyvo-transfer";
 import { exportProject } from "../export/project-io";
 import { canExportVideo, recordVideo } from "../export/video";
@@ -295,6 +304,9 @@ export function ExportPanel({
   const [includeTrackStems, setIncludeTrackStems] = useState(true);
   const [clipSeconds, setClipSeconds] = useState(15);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
+  // Wave 2/C: the last stamped export in this window (manifest-only registry,
+  // so it survives a panel toggle) — drives VERIFY LAST EXPORT.
+  const [stamp, setStamp] = useState<LastRenderStamp | null>(() => lastRenderStamp());
   const [masterReport, setMasterReport] = useState<MasterRenderReport | null>(null);
   const [masteringPreviewRender, setMasteringPreviewRender] = useState<{ buffer: AudioBuffer; runId: string } | null>(
     null,
@@ -428,6 +440,33 @@ export function ExportPanel({
       ? masterDeliveryFileName.replace(/\.(?:wav|mp3|flac)$/i, "-report.json")
       : `${baseName}-master-report.json`;
     downloadBlob(new Blob([json], { type: "application/json" }), reportName);
+  };
+
+  /**
+   * Wave 2/C: the iXML provenance stamp for a non-master deliverable (stem or
+   * track bounce). Same recipe as the master stamp minus the master chain,
+   * which those renders bypass — so the stamp describes what was ACTUALLY
+   * rendered, settings included.
+   */
+  const stampFor = async (label: string, scope: "stems" | "track", buffer: AudioBuffer): Promise<string> => {
+    const channels: Float32Array[] = [];
+    for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+      channels.push(buffer.getChannelData(channel));
+    }
+    return manifestToIxml(
+      buildRenderManifest({
+        doc,
+        scope,
+        mode,
+        sampleRate,
+        bitDepth,
+        durationSec: buffer.duration,
+        renderHash: await hashPcmChannels(channels),
+        assets: await services.userSamples.list().catch(() => []),
+        label,
+        settings: { quality, masterProcessing: false },
+      }),
+    );
   };
 
   const exportMaster = async (download = true) => {
@@ -671,12 +710,15 @@ export function ExportPanel({
       const stampManifest = buildRenderManifest({
         doc,
         scope: "master",
-        mode: "song",
+        mode,
         sampleRate,
         bitDepth,
         durationSec: renderedDurationSeconds,
         renderHash: await hashPcmChannels(stampChannels),
         assets: await services.userSamples.list().catch(() => []),
+        // The reproduction recipe: the exact settings this render used, so
+        // VERIFY LAST EXPORT can re-render the same PCM.
+        settings: { quality, masterProcessing: true },
       });
       const wavOptions = {
         bext: bextFor(`${doc.name} — KYX master`, summary, sampleRate, bitDepth),
@@ -706,6 +748,9 @@ export function ExportPanel({
       const fileName = `${baseName}-master${versionSuffix}.wav`;
       setMasterDeliveryFileName(fileName);
       downloadBlob(wavBlob, fileName);
+      // Remember the stamp AFTER the file is handed to the save boundary —
+      // VERIFY only makes sense against a file the user actually has.
+      setStamp(rememberRenderStamp({ manifest: stampManifest, fileName }));
       setStatus({
         kind: "done",
         label: `Master exported (${renderedDurationSeconds.toFixed(1)}s, ${sampleRate} Hz, ${bitDepth}-bit) as ${fileName} — ${encodedDelivery.decode.status === "measured" ? "decoded file measured" : "header checked; audio not measured"} · stamped: ${formatManifestSummary(stampManifest)}`,
@@ -806,6 +851,7 @@ export function ExportPanel({
         downloadWav(
           await encodeWavAsync(buffer, bitDepth, {
             bext: bextFor(`${doc.name} — ${group.label} stem`, lastSummary, sampleRate, bitDepth),
+            ixml: await stampFor(`${group.label} stem`, "stems", buffer),
             onProgress: (f) => setStatus({ kind: "busy", label: `Encoding stem WAV… ${Math.round(f * 100)}%` }),
             signal,
           }),
@@ -849,6 +895,7 @@ export function ExportPanel({
         downloadWav(
           await encodeWavAsync(buffer, bitDepth, {
             bext: bextFor(`${doc.name} — ${track.name} track stem`, lastSummary, sampleRate, bitDepth),
+            ixml: await stampFor(`${track.name} track`, "track", buffer),
             onProgress: (f) => setStatus({ kind: "busy", label: `Encoding track WAV… ${Math.round(f * 100)}%` }),
             signal,
           }),
@@ -922,7 +969,8 @@ export function ExportPanel({
           setStatus({ kind: "busy", label: `Scorepack: ${p.phase}…` });
         },
         signal,
-        { quality },
+        // assets → the AI provenance receipts stamped into every scorepack WAV.
+        { quality, assets: await services.userSamples.list().catch(() => []) },
       );
       if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
       const url = URL.createObjectURL(blob);
@@ -1687,6 +1735,7 @@ export function ExportPanel({
       {status.kind === "done" && (!masteringMode || masterReport) && !reportStale && (
         <AutoStageButton summary={deliveredMeasurements ?? status.summary} />
       )}
+      {status.kind === "done" && !masteringMode && <VerifyStampButton stamp={stamp} />}
 
       {!masteringMode && (
         <div className="export-resample" role="group" aria-label="Realtime resample">

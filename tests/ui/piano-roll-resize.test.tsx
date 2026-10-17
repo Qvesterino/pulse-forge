@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen } from "@testing-library/react";
+import { cleanup, fireEvent } from "@testing-library/react";
 import { PianoRollTrack } from "../../src/ui/PianoRoll";
 import { ProjectStore } from "../../src/store/ProjectStore";
 import { createProjectFromTemplate } from "../../src/project-model/templates";

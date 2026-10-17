@@ -16,6 +16,7 @@ import type {
   RankedCandidate,
 } from "./types";
 import { isPreferenceLearningEnabled, preferenceContextForIntent, readPreferenceLedger } from "./preference-ledger";
+import { explainSelection, formatSelectionReasons } from "./selection-reasons";
 
 function resultFromProposal(
   plan: ReturnType<typeof planGeneration>,
@@ -231,21 +232,36 @@ export async function generateAsyncResult(
     finalBank = [{ ...selected, pattern }, ...finalBank.slice(1)];
   }
 
+  // Wave E1: the "why this one?" layer. Derived from the same objects the
+  // ranking stages produced — no extra scoring, no invented prose.
+  const audioRerankMeta =
+    selectionChangedBySound && firstPassSelectedIndex !== undefined && selected != null
+      ? {
+          displacedCandidateIndex: firstPassSelectedIndex,
+          selectedCandidateIndex: selected.candidateIndex,
+          ...(selected.audioPreferenceApplied ? { personalized: true } : {}),
+        }
+      : undefined;
+  const selectionReasons = explainSelection({
+    bank: finalBank,
+    selectedIndex: selected?.candidateIndex ?? null,
+    proposalExists: proposal != null,
+    rankerMode: ranked.ranker.mode,
+    rankerSource: ranked.ranker.source,
+    ...(audioRerankMeta != null ? { audioRerank: audioRerankMeta } : {}),
+    resolvedBpm: plan.resolvedBpm,
+    requestedBpmRange: plan.intent.bpmRange ?? null,
+  });
+  const selectionRationale = formatSelectionReasons(selectionReasons);
   const selection = selected
     ? {
         ...ranked.ranker,
         selectedIndex: selected.candidateIndex,
-        ...(selectionChangedBySound && firstPassSelectedIndex !== undefined
-          ? {
-              audioRerank: {
-                displacedCandidateIndex: firstPassSelectedIndex,
-                selectedCandidateIndex: selected.candidateIndex,
-                ...(selected.audioPreferenceApplied ? { personalized: true } : {}),
-              },
-            }
-          : {}),
+        reasons: selectionReasons,
+        rationale: selectionRationale,
+        ...(audioRerankMeta != null ? { audioRerank: audioRerankMeta } : {}),
       }
-    : ranked.ranker;
+    : { ...ranked.ranker, reasons: selectionReasons, rationale: selectionRationale };
   return {
     ...base,
     status,

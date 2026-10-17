@@ -19,6 +19,8 @@ import { warmFactoryPresets } from "../presets/factory-loader";
 import { canonicalizePattern, contentHash } from "../ai/evaluation";
 import { parseIntentText, styleCandidatesForPrompt } from "../intent/text-parser";
 import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
+import { intentCandidateBudget } from "../intent/candidate-budget";
+import { orderClarificationChoices } from "../intent/reaction-choice-bias";
 import { parseChaseIntent } from "../intent/chaseIntent";
 import { parsePluginFinderIntent } from "../intent/pluginFinderIntent";
 import { parseToneIntent } from "../intent/toneIntent";
@@ -1148,15 +1150,20 @@ export function IntentPanel() {
 
   const runGeneration = async (intentInput: IntentInput, controller: AbortController, promptText = text) => {
     try {
+      // Wave A (audition-first): the multi-candidate default is owned by
+      // candidate-budget.ts — a single-candidate run has nothing to audition
+      // and therefore nothing for the taste loop to learn from, so the lean
+      // path is reserved for genuinely constrained devices.
+      const candidateBudget = intentCandidateBudget();
       const result: GenerationResult = await generateAsyncResult(
         doc,
         {
           ...intentInput,
           seed: intentInput.seed || `intent-${Date.now()}`,
-          candidateCount: intentInput.candidateCount ?? 3,
+          candidateCount: intentInput.candidateCount ?? candidateBudget.candidateCount,
           // T2: two extra candidates sampled from the ONNX symbolic drum
           // prior join the same bank; a missing model just shrinks the bank.
-          symbolicCandidates: intentInput.symbolicCandidates ?? 2,
+          symbolicCandidates: intentInput.symbolicCandidates ?? candidateBudget.symbolicCandidates,
           roles: intentInput.roles ?? ["drums", "bass"],
         },
         { mode: "apply", signal: controller.signal, includeBank: true, sound: { bank: services.bank } },
@@ -5301,7 +5308,7 @@ export function IntentPanel() {
         <div className="intent-history" aria-label="Nearest interpretations">
           <span className="intent-history-label">INTENT?</span>
           {(clarify.choices?.length
-            ? clarify.choices.map((choice) => ({ label: choice.label, choice }))
+            ? orderClarificationChoices(clarify.choices).map((choice) => ({ label: choice.label, choice }))
             : clarify.suggestions.map((suggestion) => ({ label: suggestion, choice: undefined }))
           ).map(({ label, choice }) => (
             <button

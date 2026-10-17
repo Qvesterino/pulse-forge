@@ -157,4 +157,32 @@ describe("arrangement drag commit gate", () => {
     const r = drag(100, 4);
     expect(r.renderedClips, "expected a populated arrangement").toBeGreaterThanOrEqual(100);
   });
+
+  it("NEGATIVE: a press with NO move (dead click) commits nothing", () => {
+    // The negative half the ledger called out for this seam: the EQ defect was
+    // a gesture that wrote on a press-without-drag. The undo stack is the
+    // witness — a no-op press must not push anything.
+    let doc = createProjectFromTemplate("house");
+    doc = addArrangementClip(doc, doc.scenes[0]!.id, 8, 4).execute(doc);
+    const project = new ProjectStore(doc);
+    const services = { ...mockServices(doc), store: project } as unknown as Services;
+    render(
+      createElement(
+        ServicesContext.Provider,
+        { value: services },
+        createElement(SelectionContext.Provider, { value: new SelectionStore() }, createElement(ArrangementPanel)),
+      ),
+    );
+    const clipEl = document.querySelector(".arr-clip");
+    expect(clipEl, "no clip rendered — the probe measured nothing").not.toBeNull();
+    vi.spyOn(clipEl!, "getBoundingClientRect").mockReturnValue(domRect(0, 100));
+    const startsBefore = project.doc.arrangement.clips.map((c) => c.startBar);
+
+    fireEvent.pointerDown(clipEl!, { button: 0, clientX: 40, pointerId: 1 });
+    fireEvent.pointerUp(clipEl!, { pointerId: 1 });
+
+    expect(project.undoStackLength, "a dead click must not push history").toBe(0);
+    expect(project.doc.arrangement.clips.map((c) => c.startBar)).toEqual(startsBefore);
+    cleanup();
+  });
 });

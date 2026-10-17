@@ -3,14 +3,18 @@ import {
   KYX_MANIFEST_FORMAT,
   MANIFEST_MAX_ASSETS,
   buildRenderManifest,
+  clearRenderStampForTests,
   collectAiAssetReceipts,
   collectAiPatternReceipts,
   collectAiTrackReceipts,
   formatManifestSummary,
   hashPcmChannels,
+  lastRenderStamp,
   manifestFromIxml,
   manifestToIxml,
   parseRenderManifestFromWav,
+  rememberRenderStamp,
+  reproductionSettings,
   sha256Hex,
   verifyRenderManifest,
   type RenderManifest,
@@ -93,6 +97,49 @@ describe("render manifest — build", () => {
     const manifest = manifestFor(doc, "0123456789abcdef".repeat(4));
     expect(formatManifestSummary(manifest)).toContain("hash 0123456789ab");
     expect(formatManifestSummary(manifest)).toContain("no AI provenance");
+  });
+
+  it("records the reproduction recipe (settings) and an optional scope label", () => {
+    const doc = createDefaultProject();
+    const manifest = buildRenderManifest({
+      doc,
+      scope: "stems",
+      mode: "song",
+      sampleRate: 48000,
+      bitDepth: 24,
+      durationSec: 3,
+      renderHash: "a".repeat(64),
+      label: "drums stem",
+      settings: { quality: "studio", masterProcessing: false, tailSeconds: 2 },
+      date: new Date("2026-10-17T10:00:00.000Z"),
+    });
+    expect(manifest.label).toBe("drums stem");
+    expect(manifest.settings).toEqual({
+      mode: "song",
+      sampleRate: 48000,
+      quality: "studio",
+      masterProcessing: false,
+      tailSeconds: 2,
+    });
+    expect(reproductionSettings(manifest)).toEqual(manifest.settings);
+    // A manifest without settings (pre-Wave-2 write) falls back to mode+rate
+    // instead of inventing quality/masterProcessing values.
+    const legacy = { ...manifest, settings: undefined };
+    expect(reproductionSettings(legacy)).toEqual({ mode: "song", sampleRate: 48000 });
+  });
+});
+
+describe("render manifest — last-export stamp registry", () => {
+  it("remembers exactly the last export and can be cleared", () => {
+    clearRenderStampForTests();
+    expect(lastRenderStamp()).toBeNull();
+    const manifest = manifestFor(createDefaultProject(), "b".repeat(64));
+    const first = rememberRenderStamp({ manifest, fileName: "a.wav" });
+    expect(first.recordedAt).toBeGreaterThan(0);
+    rememberRenderStamp({ manifest, fileName: "b.wav" });
+    expect(lastRenderStamp()?.fileName).toBe("b.wav");
+    clearRenderStampForTests();
+    expect(lastRenderStamp()).toBeNull();
   });
 });
 

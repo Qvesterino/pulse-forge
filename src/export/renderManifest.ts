@@ -41,6 +41,20 @@ export const MANIFEST_MAX_PROMPT_CHARS = 160;
 
 export type ManifestScope = "master" | "stems" | "track";
 
+/**
+ * Render settings that AFFECT the PCM. Recorded so a re-render can REPRODUCE
+ * the file instead of merely resembling it: same mode, same rate, same
+ * quality tier, same tail. Absent on manifests written before this field —
+ * the verifier then re-renders with the documented defaults and says so.
+ */
+export interface ManifestRenderSettings {
+  mode: string;
+  sampleRate: number;
+  quality?: string;
+  masterProcessing?: boolean;
+  tailSeconds?: number;
+}
+
 export interface ManifestAiAssetReceipt {
   assetId: string;
   name: string;
@@ -80,6 +94,10 @@ export interface RenderManifest {
   sampleRate: number;
   bitDepth: number;
   durationSec: number;
+  /** Human label inside a scope (e.g. "drums stem"). */
+  label?: string;
+  /** Settings that affect the PCM — the reproduction recipe. */
+  settings?: ManifestRenderSettings;
   hash: {
     algorithm: "SHA-256" | null;
     /** The hash covers the rendered float PCM, little-endian, channel by
@@ -233,6 +251,10 @@ export interface BuildRenderManifestInput {
   /** Result of {@link hashPcmChannels}; null = WebCrypto unavailable. */
   renderHash: string | null;
   assets?: readonly UserSampleAsset[];
+  /** Scope-local label, e.g. "drums stem". */
+  label?: string;
+  /** Settings that affect the PCM (quality/masterProcessing/tail). */
+  settings?: Partial<Omit<ManifestRenderSettings, "mode" | "sampleRate">>;
   /** Injectable clock for deterministic tests. */
   date?: Date;
 }
@@ -241,6 +263,13 @@ export function buildRenderManifest(input: BuildRenderManifestInput): RenderMani
   const aiAssets = collectAiAssetReceipts(input.doc, input.assets ?? []);
   const aiPatterns = collectAiPatternReceipts(input.doc);
   const aiTracks = collectAiTrackReceipts(input.doc);
+  const settings: ManifestRenderSettings = {
+    mode: input.mode,
+    sampleRate: input.sampleRate,
+    ...(input.settings?.quality !== undefined ? { quality: input.settings.quality } : {}),
+    ...(input.settings?.masterProcessing !== undefined ? { masterProcessing: input.settings.masterProcessing } : {}),
+    ...(input.settings?.tailSeconds !== undefined ? { tailSeconds: input.settings.tailSeconds } : {}),
+  };
   return {
     format: KYX_MANIFEST_FORMAT,
     renderedAt: (input.date ?? new Date()).toISOString(),
@@ -250,6 +279,8 @@ export function buildRenderManifest(input: BuildRenderManifestInput): RenderMani
     sampleRate: input.sampleRate,
     bitDepth: input.bitDepth,
     durationSec: Math.max(0, Math.round(input.durationSec * 1000) / 1000),
+    ...(input.label !== undefined ? { label: input.label } : {}),
+    settings,
     hash: {
       algorithm: input.renderHash == null ? null : "SHA-256",
       scope: "float32-pcm-le",
@@ -351,6 +382,45 @@ export function parseRenderManifestFromWav(bytes: Uint8Array): RenderManifest | 
   }
 }
 
+// ── last-export stamp (drives the VERIFY flow) ────────────────────────────
+
+/**
+ * The most recent export in this window. Deliberately ONE entry and manifest-
+ * only (no blob): the panel's VERIFY action re-renders and compares hashes,
+ * so keeping the file bytes resident would be pure memory cost. Surviving a
+ * panel unmount is the point — the user exports, keeps working, then verifies.
+ */
+export interface LastRenderStamp {
+  manifest: RenderManifest;
+  fileName: string;
+  recordedAt: number;
+}
+
+let lastStamp: LastRenderStamp | null = null;
+
+export function rememberRenderStamp(stamp: Omit<LastRenderStamp, "recordedAt">): LastRenderStamp {
+  lastStamp = { ...stamp, recordedAt: Date.now() };
+  return lastStamp;
+}
+
+export function lastRenderStamp(): LastRenderStamp | null {
+  return lastStamp;
+}
+
+/** Test/teardown hook — the registry is per-window by design. */
+export function clearRenderStampForTests(): void {
+  lastStamp = null;
+}
+
+/**
+ * The settings a faithful re-render needs. Manifests written before
+ * `settings` existed fall back to mode + rate (documented defaults for the
+ * rest), which the verify flow reports instead of implying a perfect match.
+ */
+export function reproductionSettings(manifest: RenderManifest): ManifestRenderSettings {
+  return manifest.settings ?? { mode: manifest.mode, sampleRate: manifest.sampleRate };
+}
+
 // ── verification ──────────────────────────────────────────────────────────
 
 export type ManifestVerificationStatus = "match" | "project-mismatch" | "hash-mismatch" | "hash-unavailable";
@@ -389,6 +459,6 @@ export async function verifyRenderManifest(
   }
   return {
     status: "hash-mismatch",
-    detail: `The project rendered differently (${currentHash.slice(0, 12)} ≠ ${manifest.hash.value.slice(0, 12)}) — it was edited since the file was written.`,
+    detail: `The re-render does not match (${currentHash.slice(0, 12)} ≠ ${manifest.hash.value.slice(0, 12)}) — the project or its render settings changed since this file was written.`,
   };
 }

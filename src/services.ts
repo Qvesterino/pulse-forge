@@ -47,6 +47,7 @@ import { RecordingRecoveryRepository } from "./persistence/RecordingRecoveryRepo
 import { ensureCuratedLayer } from "./sample-library/curated-layer";
 import { FrozenBufferRepository, restoreFrozenTracks } from "./persistence/FrozenBufferRepository";
 import { hydrateFreezeSignatures } from "./rendering/freezeSignature";
+import { attachReactionTransportSettle } from "./services/reactionTransportSettle";
 import { ensureWorkletsForDoc } from "./audio-worklets/loader";
 import type { YDocStore } from "./collab/YDocStore";
 import type { CollabSession } from "./collab/CollabSession";
@@ -534,11 +535,11 @@ export async function openProject(
       const touched = trackIdsChangedBetween(previousDoc, doc);
       if (touched.length > 0) reactionLedger.noteUserEdit(touched);
     };
-    // NOTE: the early "the transport moved on, so it was kept" settle is NOT
-    // wired here. Inside `openProject` the transport only exists on the
-    // returned Services object, so polling it would mean restructuring the
-    // boot path - out of scope for F1. The 90 s window still resolves every
-    // proposal, so no signal is lost, only settled later.
+    // The third seam — "the transport moved on, so it was kept" — cannot be
+    // subscribed HERE: inside `openProject` the transport does not exist yet.
+    // It is attached right after the Transport is constructed, below
+    // (`attachReactionTransportSettle`), where a real play/stop transition
+    // settles heard proposals instead of leaving them for the 90 s window.
   }
   collab?.connect();
 
@@ -570,6 +571,12 @@ export async function openProject(
 
   const transport = new Transport({ now: () => engine.currentTime }, initial.bpm);
   transport.setBarTicks(ticksPerBar(initial));
+  // F1's third settle seam, wired HERE because the reaction ledger is created
+  // before this transport exists (see the F1 block above): pressing play — or
+  // stopping after a listen — settles heard-but-not-undone proposals as kept
+  // immediately, so the F2 report is accurate sooner than the 90 s window.
+  // Null when the ledger is off, so a disabled ledger keeps costing nothing.
+  const detachReactionTransportSettle = attachReactionTransportSettle(reactionLedger, transport);
   // Transport-synced previews quantize to the next bar relative to the live
   // playhead — the engine has no Transport reference, so hand it the reader.
   engine.getTransportTick = () => transport.position;
@@ -1223,6 +1230,7 @@ export async function openProject(
     mtc.dispose();
     linkSync.dispose();
     midiOutput.dispose();
+    detachReactionTransportSettle?.();
     document.removeEventListener("visibilitychange", onVisibility);
     uninstallUnloadGuards();
     await flushSave();

@@ -154,8 +154,11 @@ interface TrackNodes {
   /** Exact downstream owner for the track output (master or one group input). */
   routeDestination: AudioNode;
   analyser: AnalyserNode;
-  /** PRE-fader tap (post-insert, pre-pan/fader) — gain-staging + triage meter. */
-  preFaderAnalyser: AnalyserNode;
+  /** PRE-fader tap (post-insert, pre-pan/fader) — gain-staging + triage meter.
+   * Allocated on FIRST read (see ensurePreAnalyser): the tap is a per-strip
+   * metering toggle, so a project whose strips never show PRE must not pay an
+   * AnalyserNode (+ its 2048-point buffers) per track. */
+  preFaderAnalyser: AnalyserNode | null;
   fx: FxChainState;
   sends: Map<string, GainNode>;
   /** Per-send PDC delays (sendGain → delay → return input), sized by syncPdc. */
@@ -203,8 +206,9 @@ interface GroupNodes {
   modMacroGain: GainNode;
   modMacroPan: StereoPannerNode;
   analyser: AnalyserNode;
-  /** PRE-fader tap (post-insert, pre-pan/fader) — gain-staging + triage meter. */
-  preFaderAnalyser: AnalyserNode;
+  /** PRE-fader tap (post-insert, pre-pan/fader) — gain-staging + triage meter.
+   * Allocated on FIRST read (see ensurePreAnalyser). */
+  preFaderAnalyser: AnalyserNode | null;
   fx: FxChainState;
   sends: Map<string, GainNode>;
   /** Per-send PDC delays (sendGain → delay → return input), sized by syncPdc. */
@@ -246,8 +250,8 @@ export class AudioEngine {
     trackAnalyser: (id) => this.trackNodes.get(id)?.analyser ?? null,
     groupAnalyser: (id) => this.groupNodes.get(id)?.analyser ?? null,
     returnAnalyser: (id) => this.returnNodes.get(id)?.analyser ?? null,
-    trackPreAnalyser: (id) => this.trackNodes.get(id)?.preFaderAnalyser ?? null,
-    groupPreAnalyser: (id) => this.groupNodes.get(id)?.preFaderAnalyser ?? null,
+    trackPreAnalyser: (id) => this.ensurePreAnalyser(id),
+    groupPreAnalyser: (id) => this.ensurePreAnalyser(id),
     masterStage: (): MasterStage => this.masterChain.stage,
   });
   /**
@@ -1314,6 +1318,33 @@ export class AudioEngine {
     }
   }
 
+  /**
+   * PRE-fader meter tap, allocated on FIRST read.
+   *
+   * The tap is a pure parallel edge off the panner (post-insert, pre-fader —
+   * the gain-staging and muted-channel-triage point), and the PRE meter is a
+   * per-strip toggle: before this, EVERY track and group paid an AnalyserNode
+   * plus its 2048-point buffers for a meter most strips never show (measured
+   * 209 analysers at 100 tracks, 100 of them never read). The first read is
+   * behaviour-identical — a fresh analyser reports zeros exactly like the
+   * eagerly created one did before its first frame.
+   */
+  private ensurePreAnalyser(id: string): AnalyserNode | null {
+    const ctx = this.ctx;
+    if (!ctx) return null;
+    const nodes = this.trackNodes.get(id) ?? this.groupNodes.get(id);
+    if (!nodes) return null;
+    if (!nodes.preFaderAnalyser) {
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 2048;
+      analyser.channelCount = 2;
+      analyser.channelCountMode = "explicit";
+      nodes.panner.connect(analyser);
+      nodes.preFaderAnalyser = analyser;
+    }
+    return nodes.preFaderAnalyser;
+  }
+
   private disposeTrackNodes(id: string, nodes: TrackNodes): void {
     // A frozen track's looping buffer source must die with its channel —
     // only the unfreeze/panic paths touch it otherwise, so deleting a
@@ -1523,15 +1554,9 @@ export class AudioEngine {
         analyser.fftSize = 2048;
         analyser.channelCount = 2;
         analyser.channelCountMode = "explicit";
-        // PRE-fader meter tap: the panner output is post-insert, pre-fader —
-        // the gain-staging and muted-channel-triage point. Pure parallel edge
-        // off panner; the audio path and PDC are untouched.
-        const preFaderAnalyser = ctx.createAnalyser();
-        preFaderAnalyser.fftSize = 2048;
-        preFaderAnalyser.channelCount = 2;
-        preFaderAnalyser.channelCountMode = "explicit";
+        // PRE-fader meter tap is NOT built here — it is a per-strip toggle and
+        // ensurePreAnalyser() allocates it on the first PRE read.
         input.connect(panner);
-        panner.connect(preFaderAnalyser);
         panner.connect(gain);
         gain.connect(modAutoGain);
         modAutoGain.connect(modAutoPan);
@@ -1548,7 +1573,7 @@ export class AudioEngine {
           modMacroGain,
           modMacroPan,
           analyser,
-          preFaderAnalyser,
+          preFaderAnalyser: null,
           fx: { runtimes: new Map(), params: new Map(), signature: null, pdcDelay: null, latencySubs: [] },
           sends: new Map(),
           sendDelays: new Map(),
@@ -1584,15 +1609,9 @@ export class AudioEngine {
         analyser.fftSize = 2048;
         analyser.channelCount = 2;
         analyser.channelCountMode = "explicit";
-        // PRE-fader meter tap: the panner output is post-insert, pre-fader —
-        // the gain-staging and muted-channel-triage point. Pure parallel edge
-        // off panner; the audio path and PDC are untouched.
-        const preFaderAnalyser = ctx.createAnalyser();
-        preFaderAnalyser.fftSize = 2048;
-        preFaderAnalyser.channelCount = 2;
-        preFaderAnalyser.channelCountMode = "explicit";
+        // PRE-fader meter tap is NOT built here — it is a per-strip toggle and
+        // ensurePreAnalyser() allocates it on the first PRE read.
         input.connect(panner);
-        panner.connect(preFaderAnalyser);
         panner.connect(gain);
         gain.connect(modAutoGain);
         modAutoGain.connect(modAutoPan);
@@ -1610,7 +1629,7 @@ export class AudioEngine {
           modMacroPan,
           routeDestination: this.masterChain.input,
           analyser,
-          preFaderAnalyser,
+          preFaderAnalyser: null,
           fx: { runtimes: new Map(), params: new Map(), signature: null, pdcDelay: null, latencySubs: [] },
           sends: new Map(),
           sendDelays: new Map(),

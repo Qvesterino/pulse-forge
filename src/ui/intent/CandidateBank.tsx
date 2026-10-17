@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import { Fragment, type ReactElement } from "react";
 import { CandidateIterationActions } from "../CandidateIterationActions";
 import type { GenerationResult, RankedCandidate } from "../../intent/types";
 
@@ -38,6 +38,9 @@ export function CandidateBank(props: CandidateBankProps): ReactElement | null {
     onSendToAudiotool,
   } = props;
   if (hidden || !candidates || candidates.length === 0) return null;
+  // Wave E1: the winner's measured rationale (bank scores, rerank displacement,
+  // personal residual) — the sentence behind the ★ best badge.
+  const rationale = bankResult?.selection?.rationale ?? null;
   return (
     <div className="intent-candidates" aria-label="Candidate bank">
       {candidates.map((candidate) => {
@@ -45,72 +48,79 @@ export function CandidateBank(props: CandidateBankProps): ReactElement | null {
         const isPlaying = playingIndex === candidate.candidateIndex;
         const isRendering = renderingIndex === candidate.candidateIndex;
         return (
-          <div key={candidate.candidateIndex} className={`intent-candidate-row${isWinner ? " winner" : ""}`}>
-            <button
-              type="button"
-              className="btn btn-small intent-audition-btn"
-              onClick={() => onToggleAudition(candidate)}
-              title={isPlaying ? "Stop audition" : "Audition this candidate"}
-            >
-              {isRendering ? "…" : isPlaying ? "■" : "▶"}
-            </button>
-            <span className="intent-candidate-meta">
-              <span className="intent-candidate-index">#{candidates.indexOf(candidate) + 1}</span>
-              <span
-                className={`intent-candidate-source ${candidate.source}`}
-                title={
-                  candidate.source === "symbolic-prior"
-                    ? "PRIOR — drums came from the symbolic-prior model (semantic/v2/v3 conditioning on your prompt, falling back to the genre+style one-hot). The model chose the grid."
-                    : "TPL — drums came from the groove template, not the model. Happens when the groove is outside the prior's fixed vocabulary and no semantic conditioning is available; the generator never guesses a grid, it falls back safely."
-                }
-              >
-                {candidate.source === "symbolic-prior" ? "PRIOR" : "TPL"}
-              </span>
-              {candidate.search && (
-                <span
-                  className={`intent-candidate-lane ${candidate.search.lane}`}
-                  title={`Search policy: ${candidate.search.mode}; family: ${candidate.search.family}${
-                    candidate.search.melodyFamily ? `; melody: ${candidate.search.melodyFamily}` : ""
-                  }${candidate.search.family === "personal-groove" ? "; selected for your learned groove preference" : ""}${
-                    candidate.search.grooveId ? ` (${candidate.search.grooveId})` : ""
-                  }${
-                    candidate.search.melodyFamily === "evolving-hook"
-                      ? "; repeating lead motif with alternating cadence space"
-                      : ""
-                  }`}
-                >
-                  {candidate.search.lane.toUpperCase()}
-                  {candidate.search.grooveId && " · GROOVE"}
-                  {candidate.search.melodyFamily === "repeating-hook" && " · HOOK"}
-                  {candidate.search.melodyFamily === "evolving-hook" && " · HOOK VARIATION"}
-                </span>
-              )}
-              {isWinner && <span className="intent-candidate-win">★ best</span>}
-              {candidate.status === "repaired" && <span className="intent-candidate-fixed">fixed</span>}
-            </span>
-            <button
-              type="button"
-              className="btn btn-small intent-use-btn"
-              onClick={() => onUseCandidate(candidate)}
-              title="Apply this candidate to the project (one undo step)"
-            >
-              USE
-            </button>
-            <CandidateIterationActions
-              candidatePosition={candidates.indexOf(candidate)}
-              onIterate={(prompt) => onIterate(prompt)}
-            />
-            {!window.kyxDesktop?.isDesktop && (
+          <Fragment key={candidate.candidateIndex}>
+            <div className={`intent-candidate-row${isWinner ? " winner" : ""}`}>
               <button
                 type="button"
-                className="btn btn-small"
-                onClick={() => onSendToAudiotool(candidate)}
-                title="Review and explicitly send this exact candidate to an Audiotool project"
+                className="btn btn-small intent-audition-btn"
+                onClick={() => onToggleAudition(candidate)}
+                title={isPlaying ? "Stop audition" : "Audition this candidate"}
               >
-                AUDIOTOOL
+                {isRendering ? "…" : isPlaying ? "■" : "▶"}
               </button>
+              <span className="intent-candidate-meta">
+                <span className="intent-candidate-index">#{candidates.indexOf(candidate) + 1}</span>
+                <span
+                  className={`intent-candidate-source ${candidate.source}`}
+                  title={
+                    candidate.source === "symbolic-prior"
+                      ? "PRIOR — drums came from the symbolic-prior model (semantic/v2/v3 conditioning on your prompt, falling back to the genre+style one-hot). The model chose the grid."
+                      : "TPL — drums came from the groove template, not the model. Happens when the groove is outside the prior's fixed vocabulary and no semantic conditioning is available; the generator never guesses a grid, it falls back safely."
+                  }
+                >
+                  {candidate.source === "symbolic-prior" ? "PRIOR" : "TPL"}
+                </span>
+                {candidate.search && (
+                  <span
+                    className={`intent-candidate-lane ${candidate.search.lane}`}
+                    title={`Search policy: ${candidate.search.mode}; family: ${candidate.search.family}${
+                      candidate.search.melodyFamily ? `; melody: ${candidate.search.melodyFamily}` : ""
+                    }${candidate.search.family === "personal-groove" ? "; selected for your learned groove preference" : ""}${
+                      candidate.search.grooveId ? ` (${candidate.search.grooveId})` : ""
+                    }${
+                      candidate.search.melodyFamily === "evolving-hook"
+                        ? "; repeating lead motif with alternating cadence space"
+                        : ""
+                    }`}
+                  >
+                    {candidate.search.lane.toUpperCase()}
+                    {candidate.search.grooveId && " · GROOVE"}
+                    {candidate.search.melodyFamily === "repeating-hook" && " · HOOK"}
+                    {candidate.search.melodyFamily === "evolving-hook" && " · HOOK VARIATION"}
+                  </span>
+                )}
+                {isWinner && <span className="intent-candidate-win">★ best</span>}
+                {candidate.status === "repaired" && <span className="intent-candidate-fixed">fixed</span>}
+              </span>
+              <button
+                type="button"
+                className="btn btn-small intent-use-btn"
+                onClick={() => onUseCandidate(candidate)}
+                title="Apply this candidate to the project (one undo step)"
+              >
+                USE
+              </button>
+              <CandidateIterationActions
+                candidatePosition={candidates.indexOf(candidate)}
+                onIterate={(prompt) => onIterate(prompt)}
+              />
+              {!window.kyxDesktop?.isDesktop && (
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  onClick={() => onSendToAudiotool(candidate)}
+                  title="Review and explicitly send this exact candidate to an Audiotool project"
+                >
+                  AUDIOTOOL
+                </button>
+              )}
+            </div>
+            {isWinner && rationale != null && (
+              <p className="intent-candidate-rationale" role="note" title={rationale}>
+                ★ {rationale}
+              </p>
             )}
-          </div>
+          </Fragment>
         );
       })}
       <p className="intent-candidate-legend">

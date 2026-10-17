@@ -93,7 +93,7 @@ describe("arrangement fade handle gesture (seam: arrangement-fade-handles)", () 
     fireEvent.pointerUp(fadeOut, { pointerId: 1 });
 
     expect(clipOf(project, clipId).fadeOut).toBe(0);
-    expect(project.undoStackLength).toBe(1);
+    expect(project.undoStackLength).toBe(0); // nothing committed
   });
 
   it("NEGATIVE: an interrupted fade drag (pointercancel) commits nothing", () => {
@@ -104,6 +104,6 @@ describe("arrangement fade handle gesture (seam: arrangement-fade-handles)", () 
     fireEvent.pointerCancel(fadeOut, { pointerId: 1 });
 
     expect(clipOf(project, clipId).fadeOut).toBe(0);
-    expect(project.undoStackLength).toBe(1);
+    expect(project.undoStackLength).toBe(0); // nothing committed
   });
 });

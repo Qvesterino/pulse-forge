@@ -31,17 +31,21 @@
     },
     {
       "id": "piano-roll-resize",
-      "status": "OPEN",
+      "status": "COVERED",
       "entryPoint": "src/ui/PianoRoll.tsx:692 right-edge resize",
-      "note": "No spec mentions resize or the right edge. Move is covered; resize is not."
+      "note": "Driven through the REAL PianoRoll note element (right-edge hit zone, stubbed 32px rect) with a REAL ProjectStore: a drag commits exactly one resize to the dropped duration, and a press-without-move, a pointercancel and a sub-one-step drag all commit nothing. Verified by mutation — killing the right-edge hit test or the changed-duration guard turns exactly the named spec red.",
+      "spec": "tests/ui/piano-roll-resize.test.tsx",
+      "seamEvent": "fireEvent.pointerMove(noteEl",
+      "negativeSpec": "NEGATIVE: press + release on the right edge with NO move commits nothing"
     },
     {
       "id": "arrangement-clip-move",
-      "status": "COVERED_NO_NEGATIVE",
+      "status": "COVERED",
       "entryPoint": "src/ui/ArrangementPanel.tsx clip body onPointerDown",
       "spec": "tests/ui/arrangement-drag-commit.test.tsx",
       "seamEvent": "pointerDown",
-      "note": "Enters the seam and asserts the commit count, but has NO no-move / cancel case. This is the exact shape that hid the EQ bug. Honest admission, not a false claim."
+      "note": "Enters the seam (clip pointerdown → commit vector per move) and now carries the negative it lacked: a dead click pushes no history and moves no clip. The orphaned-pointercancel abort lives in editor-hardening-interactions.test.tsx.",
+      "negativeSpec": "NEGATIVE: a press with NO move (dead click) commits nothing"
     },
     {
       "id": "arrangement-trim",
@@ -63,35 +67,48 @@
     },
     {
       "id": "arrangement-fade-handles",
-      "status": "OPEN",
+      "status": "COVERED",
       "entryPoint": "src/ui/ArrangementPanel.tsx fade handle hit zones",
-      "note": "No pointerDown anywhere near a fade handle. clip-fade-bounds-invariant.test.ts is helper-only (no render, no dispatch). Note the intent layer gained a fade verb (P0-C) while the UI gesture is still uncovered."
+      "note": "Drags the REAL fade handle with a REAL store: a left drag commits one longer fade, a huge drag clamps at the 2 s ceiling, and a no-move press, a right-drag at the zero floor and a pointercancel all commit nothing.",
+      "spec": "tests/ui/arrangement-fade-gesture.test.tsx",
+      "seamEvent": "arr-audio-clip-handle-fade",
+      "negativeSpec": "NEGATIVE: pressing the handle and releasing with NO move commits nothing"
     },
     {
       "id": "mixer-fader",
-      "status": "COVERED_NO_NEGATIVE",
+      "status": "COVERED",
       "entryPoint": "src/ui/controls.tsx:459 Slider handlePointerDown",
-      "spec": "tests/ui/slider-taper.test.tsx",
-      "seamEvent": "pointerDown",
-      "note": "Inherited from the shared Slider, not driven through the Mixer strip. Asserts the taper curve (log vs linear), not a no-op gesture, and uses one fixed clientX with no pointerMove — a move-sensitive defect would escape. Honest admission."
+      "spec": "tests/ui/mixer-fader-gesture.test.tsx",
+      "seamEvent": "pointerDown(slider",
+      "note": "The old pin drove the shared Slider directly with one fixed clientX and no pointerMove, so a move-sensitive defect escaped. Now the real Mixer strip fader is dragged press→move→release (asserting the DROPPED position, 1.2 not the press 0.3), with pointercancel and non-left-button negatives. slider-taper.test.tsx still pins the curve.",
+      "negativeSpec": "NEGATIVE: an interrupted drag (pointercancel) commits nothing"
     },
     {
       "id": "mixer-mute-solo",
-      "status": "OPEN",
+      "status": "COVERED",
       "entryPoint": "src/ui/Mixer.tsx:604 Mute / :615 Solo",
-      "note": "No spec clicks these buttons. mixer-batch.test.ts is command-level only."
+      "note": "Clicks the REAL strip M/S buttons against a REAL ProjectStore: one command per toggle, and the cross-negative — solo must not clear or set mute, un-muting must not clear solo.",
+      "spec": "tests/ui/mixer-mute-solo-gesture.test.tsx",
+      "seamEvent": "Mute track",
+      "negativeSpec": "NEGATIVE: Solo does not touch Mute, and Mute does not touch Solo"
     },
     {
       "id": "automation-point-drag",
-      "status": "OPEN",
+      "status": "COVERED",
       "entryPoint": "src/ui/ModPanel.tsx:885 onCanvasPointerDown",
-      "note": "LARGEST GAP. Zero pointerDown dispatches anywhere near the auto-canvas; ModPanel.test.tsx has fireEvent calls but no pointer event at all. The gesture most analogous to the EQ defect that shipped broken."
+      "note": "Was LARGEST GAP (zero pointerDown near the auto-canvas). Now driven through ModPanel → + LANE → lane row → .auto-canvas with a REAL store: empty-press adds the computed point (tick 960 / value 0.75), a drag commits exactly ONE move at the dropped position, and no-move, pointercancel and right-button presses commit nothing. Verified by mutation — removing the moved-guard or letting pointercancel commit turns exactly those specs red.",
+      "spec": "tests/ui/automation-point-gesture.test.tsx",
+      "seamEvent": "fireEvent.pointerDown(canvas",
+      "negativeSpec": "NEGATIVE: press + release with NO move commits nothing"
     },
     {
       "id": "reaction-ledger-panel-wiring",
-      "status": "OPEN",
+      "status": "COVERED",
       "entryPoint": "src/ui/IntentPanel.tsx:4720 noteIntentProposal",
-      "note": "reaction-bridge.test.ts calls the function directly and guards the panel call site with a SOURCE-TEXT substring check — a text guard cannot prove behavior. tests/ui/IntentPanel.test.tsx clicks DO IT (traverses the seam) but never installs a ledger, so the call no-ops: traversal without assertion."
+      "note": "Replaces the source-text guard: IntentPanel is driven end-to-end with a REAL store (the bridge refuses equal before/after hashes, so a mock store can never register) and the REAL ledger plus a witness ledger both see the row. Kill switch off → register is never called while the route still runs. The privacy boundary is asserted at the call site too.",
+      "spec": "tests/ui/reaction-ledger-wiring.test.tsx",
+      "seamEvent": "DO IT",
+      "negativeSpec": "NEGATIVE: with the ledger off the same gesture never reaches register"
     },
     {
       "id": "model-artifact-vs-schema",
@@ -104,9 +121,12 @@
     },
     {
       "id": "model-loader-path-vs-disk",
-      "status": "OPEN",
+      "status": "COVERED",
       "entryPoint": "src/intent/model-loader.ts:73 MANIFEST_PATH",
-      "note": "No spec asserts the loader's URL resolves to a file that exists. If MANIFEST_PATH drifts from the committed filename the artifact test stays green and the app 404s."
+      "note": "The failure this seam guards is a 404: the spec extracts the loader's MANIFEST_PATH from source, resolves it under public/ and asserts the file exists AND is the very manifest the artifact lock validated; model.url and features.url are asserted too (fetched unconditionally), while runtime.module is asserted only when a non-onnx kind would actually fetch it — under the shipped onnx kind it is latent metadata. A missing path fails with 'which is not on disk'.",
+      "spec": "tests/intent-model-artifact.test.ts",
+      "seamEvent": "MANIFEST_PATH",
+      "negativeSpec": "which is not on disk"
     },
     {
       "id": "mcp-dispatch",
@@ -119,9 +139,12 @@
     },
     {
       "id": "mcp-to-real-projectstore",
-      "status": "OPEN",
+      "status": "COVERED",
       "entryPoint": "src/mcp/tools.ts -> ProjectStore",
-      "note": "Dispatch to command is covered, but every ctx in the suite is a hand-rolled fake; dispatch -> REAL store -> undo depth is not asserted anywhere in the committed suite."
+      "note": "Every ctx in the old suite was a hand-rolled fake, so dispatch → REAL store → undo depth was never asserted. Now kyx_tracks setGain writes the real document, pushes exactly one history entry, and ctx.undo() restores it; kyx_state and listPresets leave both document and undo stack untouched.",
+      "spec": "tests/mcp-real-store-undo.test.ts",
+      "seamEvent": "executeMcpTool",
+      "negativeSpec": "NEGATIVE: a read tool leaves the document AND the undo stack untouched"
     },
     {
       "id": "resample-persistence-rollback",
@@ -167,6 +190,60 @@
       "seamEvent": "EDITED SINCE FREEZE",
       "negativeSpec": "stays quiet when the frozen buffer matches",
       "note": "Wave 2/D: the strip is driven through the real component with a remembered signature — a mismatching signature shows the badge and RE-FREEZE, while a matching one AND an unknown one (no signature) both stay quiet, because an unprovable staleness must never be claimed."
+    },
+    {
+      "id": "render-stamp-verify",
+      "status": "COVERED",
+      "entryPoint": "src/ui/VerifyStampButton.tsx VERIFY LAST EXPORT",
+      "spec": "tests/ui/VerifyStampButton.test.tsx",
+      "seamEvent": "VERIFY LAST EXPORT",
+      "negativeSpec": "a cancel from the Activity Center settles cleanly",
+      "note": "Wave 2/C reproduction half: the button drives the real verifyRenderStamp runner (only the offline renderer is mocked, jsdom has no OfflineAudioContext). Match is the ONLY success — a mismatch or an unhashable file settles the Job Center job as FAILED so no completion notice can say ✓ about a file that did not reproduce — and a cancel leaves no verdict and no stuck button."
+    },
+    {
+      "id": "audition-first-budget",
+      "status": "COVERED",
+      "entryPoint": "src/intent/candidate-budget.ts (studio runGeneration default)",
+      "spec": "tests/ui/audition-first-default.test.tsx",
+      "seamEvent": "USE RESULT",
+      "negativeSpec": "not an audition",
+      "note": "Wave A: entered through the REAL panel (type the brief, press DO IT). The default must yield a multi-candidate auditionable bank with ONE explained winner and NO single-result fallback; the negative spec spies the budget to the lean value and pins the honest constrained-device outcome (USE RESULT, nothing to audition) — proving the budget reaches the request instead of being decoration."
+    },
+    {
+      "id": "reaction-choice-bias",
+      "status": "COVERED",
+      "entryPoint": "src/ui/IntentPanel.tsx INTENT? clarification chips (orderClarificationChoices)",
+      "spec": "tests/reaction-choice-bias.test.ts",
+      "seamEvent": "orderClarificationChoices",
+      "negativeSpec": "returns the input array itself when no ledger is active",
+      "note": "Wave B / pre-registered bias guard: reactions REORDER already-validated interpretations and nothing else — the specs pin the reorder against a REAL ledger, member/length preservation, the identity return when there is no evidence, and the kill switch."
+    },
+    {
+      "id": "reaction-transport-settle",
+      "status": "COVERED",
+      "entryPoint": "src/services.ts (attachReactionTransportSettle after Transport construction)",
+      "spec": "tests/reaction-transport-settle.test.ts",
+      "seamEvent": "attachReactionTransportSettle",
+      "negativeSpec": "stops settling once the caller detaches",
+      "note": "Wave B: F1's third settle seam, wired where the transport actually exists. Driven against a REAL Transport and a REAL ledger — including NEGATIVEs that matter: the subscription's initial notification settles nothing, a null ledger subscribes to nothing, and a detached handler stops settling."
+    },
+    {
+      "id": "selection-rationale",
+      "status": "COVERED",
+      "entryPoint": "src/ui/intent/CandidateBank.tsx (★ rationale note on the winner row)",
+      "spec": "tests/ui/CandidateBankRationale.test.tsx",
+      "seamEvent": "shows the measured why next to the winning candidate",
+      "negativeSpec": "stays silent without a rationale",
+      "note": "Wave E1: the explanation is a pure derivation from measured scores (tests/selection-reasons.test.ts enters the real pipeline and asserts selection.rationale), and this surface spec pins that the note attaches to the WINNER only and disappears entirely when there is nothing measured to say."
+    },
+    {
+      "id": "taste-benchmark-baseline",
+      "status": "COVERED",
+      "entryPoint": "scripts/taste-benchmark.mts (npm run taste:benchmark)",
+      "spec": "tests/taste-benchmark.test.ts",
+      "seamEvent": "reproduces the committed baseline exactly",
+      "negativeSpec": "fails the determinism check when the second run picks a different winner",
+      "note": "Wave E2: the committed score is re-run through the REAL deterministic pipeline (parser → plan → gates → ranker → E1 rationale) and any non-timing drift fails — a moved winner hash, a lost rationale, a flipped check, or the ranker path changing under the benchmark. Re-blessing is deliberate (taste:benchmark:bless) and preserves humanGrades; the baseline's humanGrades stays null because no machine grades taste."
     },
     {
       "id": "render-manifest-stamp",

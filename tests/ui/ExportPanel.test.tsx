@@ -510,6 +510,12 @@ describe("ExportPanel", () => {
       expect(manifests[0]!.scope).toBe("master");
       // The hash covers the rendered PCM — WebCrypto is present in the runner.
       expect(manifests[0]!.hash.value).toMatch(/^[0-9a-f]{64}$/);
+      // The reproduction recipe travels with the file — including the ACTUAL
+      // play mode the panel rendered (the panel's default is "pattern").
+      expect(manifests[0]!.settings).toMatchObject({ mode: "pattern", masterProcessing: true });
+      expect(typeof manifests[0]!.settings!.sampleRate).toBe("number");
+      // …and the panel now offers the reproduction check against that file.
+      expect(screen.getByRole("button", { name: "VERIFY LAST EXPORT" })).toBeInTheDocument();
     } finally {
       createObjectURL.mockRestore();
     }

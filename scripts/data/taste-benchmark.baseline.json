@@ -1,0 +1,216 @@
+{
+  "harness": "taste-benchmark.v1",
+  "generatedAt": "2026-10-17T07:26:02.880Z",
+  "mode": "deterministic-core",
+  "rows": [
+    {
+      "id": "house-classic",
+      "prompt": "classic house beat at 124 BPM",
+      "checks": {
+        "accepted": true,
+        "genre": true,
+        "candidates": true,
+        "deterministic": true,
+        "rationale": true
+      },
+      "genre": "house",
+      "bpm": 124,
+      "candidates": 4,
+      "selectedHash": "7e70a9fa",
+      "secondRunHash": "7e70a9fa",
+      "rationale": "Highest deterministic fit score in the bank (0.845). Narrow lead over the runner-up (+0.013) — audition the alternatives.",
+      "rankerMode": "active",
+      "rankerSource": "fallback",
+      "ms": 104
+    },
+    {
+      "id": "techno-peak",
+      "prompt": "peak time techno, 140 BPM, hypnotic and driving",
+      "checks": {
+        "accepted": true,
+        "genre": true,
+        "candidates": true,
+        "deterministic": true,
+        "rationale": true
+      },
+      "genre": "techno",
+      "bpm": 140,
+      "candidates": 4,
+      "selectedHash": "8e710fb1",
+      "secondRunHash": "8e710fb1",
+      "rationale": "Highest deterministic fit score in the bank (0.914). Narrow lead over the runner-up (+0.005) — audition the alternatives.",
+      "rankerMode": "active",
+      "rankerSource": "fallback",
+      "ms": 13
+    },
+    {
+      "id": "trap-dark",
+      "prompt": "dark trap beat with 808 slides",
+      "checks": {
+        "accepted": true,
+        "genre": true,
+        "candidates": true,
+        "deterministic": true,
+        "rationale": true
+      },
+      "genre": "trap",
+      "bpm": null,
+      "candidates": 4,
+      "selectedHash": "5804923f",
+      "secondRunHash": "5804923f",
+      "rationale": "Highest deterministic fit score in the bank (0.846). Narrow lead over the runner-up (+0.000) — audition the alternatives.",
+      "rankerMode": "active",
+      "rankerSource": "fallback",
+      "ms": 17
+    },
+    {
+      "id": "drill-uk",
+      "prompt": "UK drill, sliding 808 bass, 145 BPM",
+      "checks": {
+        "accepted": true,
+        "genre": true,
+        "candidates": true,
+        "deterministic": true,
+        "rationale": true
+      },
+      "genre": "drill",
+      "bpm": 145,
+      "candidates": 4,
+      "selectedHash": "8b5ec1b7",
+      "secondRunHash": "8b5ec1b7",
+      "rationale": "Highest deterministic fit score in the bank (0.783). Narrow lead over the runner-up (+0.015) — audition the alternatives.",
+      "rankerMode": "active",
+      "rankerSource": "fallback",
+      "ms": 11
+    },
+    {
+      "id": "ambient-drift",
+      "prompt": "ambient atmosphere, slow drifting pads",
+      "checks": {
+        "accepted": true,
+        "genre": true,
+        "candidates": true,
+        "deterministic": true,
+        "rationale": true
+      },
+      "genre": "ambient",
+      "bpm": null,
+      "candidates": 4,
+      "selectedHash": "fb7e39c6",
+      "secondRunHash": "fb7e39c6",
+      "rationale": "Highest deterministic fit score in the bank (0.845). Narrow lead over the runner-up (+0.011) — audition the alternatives.",
+      "rankerMode": "active",
+      "rankerSource": "fallback",
+      "ms": 14
+    },
+    {
+      "id": "dnb-roller",
+      "prompt": "liquid drum and bass roller at 174 BPM",
+      "checks": {
+        "accepted": true,
+        "genre": true,
+        "candidates": true,
+        "deterministic": true,
+        "rationale": true
+      },
+      "genre": "dnb",
+      "bpm": 174,
+      "candidates": 4,
+      "selectedHash": "e4383378",
+      "secondRunHash": "e4383378",
+      "rationale": "Highest deterministic fit score in the bank (0.882). Narrow lead over the runner-up (+0.000) — audition the alternatives.",
+      "rankerMode": "active",
+      "rankerSource": "fallback",
+      "ms": 10
+    },
+    {
+      "id": "phonk-memphis",
+      "prompt": "memphis phonk, cowbell, dark and lo-fi",
+      "checks": {
+        "accepted": true,
+        "genre": true,
+        "candidates": true,
+        "deterministic": true,
+        "rationale": true
+      },
+      "genre": "phonk",
+      "bpm": 92,
+      "candidates": 4,
+      "selectedHash": "1c711525",
+      "secondRunHash": "1c711525",
+      "rationale": "Highest deterministic fit score in the bank (0.884). Narrow lead over the runner-up (+0.022) — audition the alternatives.",
+      "rankerMode": "active",
+      "rankerSource": "fallback",
+      "ms": 12
+    },
+    {
+      "id": "jersey-club",
+      "prompt": "jersey club, bed squeak sample, 135 BPM",
+      "checks": {
+        "accepted": true,
+        "genre": true,
+        "candidates": true,
+        "deterministic": true,
+        "rationale": true
+      },
+      "genre": "jersey",
+      "bpm": 135,
+      "candidates": 4,
+      "selectedHash": "9c48aee3",
+      "secondRunHash": "9c48aee3",
+      "rationale": "Highest deterministic fit score in the bank (0.939). Clear lead over the runner-up (+0.079).",
+      "rankerMode": "active",
+      "rankerSource": "fallback",
+      "ms": 15
+    },
+    {
+      "id": "sk-house",
+      "prompt": "sprav mi house beat s energickym klavirom",
+      "checks": {
+        "accepted": true,
+        "genre": true,
+        "candidates": true,
+        "deterministic": true,
+        "rationale": true
+      },
+      "genre": "house",
+      "bpm": null,
+      "candidates": 4,
+      "selectedHash": "1f64bfc7",
+      "secondRunHash": "1f64bfc7",
+      "rationale": "Highest deterministic fit score in the bank (0.852). Narrow lead over the runner-up (+0.010) — audition the alternatives.",
+      "rankerMode": "active",
+      "rankerSource": "fallback",
+      "ms": 14
+    },
+    {
+      "id": "sk-trap",
+      "prompt": "trap v style tmavej noci, tazke 808",
+      "checks": {
+        "accepted": true,
+        "genre": true,
+        "candidates": true,
+        "deterministic": true,
+        "rationale": true
+      },
+      "genre": "trap",
+      "bpm": null,
+      "candidates": 4,
+      "selectedHash": "445156ed",
+      "secondRunHash": "445156ed",
+      "rationale": "Highest deterministic fit score in the bank (0.879). Narrow lead over the runner-up (+0.029) — audition the alternatives.",
+      "rankerMode": "active",
+      "rankerSource": "fallback",
+      "ms": 18
+    }
+  ],
+  "summary": {
+    "score": 1,
+    "checksPassed": 50,
+    "checksTotal": 50,
+    "deterministic": true,
+    "prompts": 10,
+    "p95Ms": 104
+  },
+  "humanGrades": null
+}

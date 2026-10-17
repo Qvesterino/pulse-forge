@@ -4,9 +4,11 @@
  */
 import type { ProjectDocument } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
+import type { UserSampleAsset } from "../persistence/UserSampleRepository";
 import { renderProject, type ExportQuality } from "../rendering/renderer";
 import { buildStemProject, STEM_GROUPS } from "../rendering/stems";
 import { createBextMetadata, encodeWav } from "../rendering/wav";
+import { buildRenderManifest, hashPcmChannels, manifestToIxml } from "./renderManifest";
 import { buildZip } from "./zip";
 import { markerAssetFor } from "../project-model/markers";
 
@@ -31,6 +33,12 @@ export interface ScorepackOptions {
   fxeqRenderQuality?: boolean;
   /** Legacy per-plugin flag (kept for back-compat). Prefer `quality`. */
   ozvenaRenderQuality?: boolean;
+  /**
+   * Wave 2/C: AI provenance receipts for the generated assets the project
+   * places on the timeline. Supplied by the caller (the panel has the user
+   * sample repository); the scorepack builder never reaches for storage.
+   */
+  assets?: readonly UserSampleAsset[];
 }
 
 class MissingCueAssetError extends Error {
@@ -55,6 +63,43 @@ export async function buildScorepack(
   // bare: they are utility one-shots, not session interchange.
   const bext = (label: string) => createBextMetadata({ description: `${baseName} — ${label} (KYX scorepack)` });
 
+  // Wave 2/C: every scorepack WAV carries the provenance manifest in its iXML
+  // chunk — the reproduction recipe (rate/quality/tail), a PCM hash and the
+  // AI receipts — so a scorepack file is answerable on its own.
+  const stamp = async (
+    label: string,
+    scope: "master" | "stems",
+    buffer: AudioBuffer,
+    masterProcessing: boolean,
+  ): Promise<string> => {
+    const channels: Float32Array[] = [];
+    for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+      channels.push(buffer.getChannelData(channel));
+    }
+    return manifestToIxml(
+      buildRenderManifest({
+        doc,
+        scope,
+        mode: "song",
+        sampleRate,
+        bitDepth: 24,
+        durationSec: buffer.duration,
+        renderHash: await hashPcmChannels(channels),
+        assets: options.assets ?? [],
+        label,
+        // The legacy per-plugin flags (fxeqRenderQuality/ozvenaRenderQuality)
+        // are not expressible here; callers on that path get a manifest whose
+        // recipe covers mode/rate/tail/masterProcessing, and the verify flow
+        // reports a mismatch rather than pretending a match.
+        settings: {
+          ...(options.quality !== undefined ? { quality: options.quality } : {}),
+          masterProcessing,
+          tailSeconds,
+        },
+      }),
+    );
+  };
+
   const entries: { name: string; data: Uint8Array }[] = [];
 
   const qualityOpts =
@@ -76,7 +121,9 @@ export async function buildScorepack(
   throwIfAborted(signal);
   entries.push({
     name: "audio/" + baseName + "-master.wav",
-    data: new Uint8Array(encodeWav(masterBuffer, 24, { bext: bext("master") })),
+    data: new Uint8Array(
+      encodeWav(masterBuffer, 24, { bext: bext("master"), ixml: await stamp("master", "master", masterBuffer, true) }),
+    ),
   });
 
   throwIfAborted(signal);
@@ -97,7 +144,12 @@ export async function buildScorepack(
     throwIfAborted(signal);
     entries.push({
       name: "audio/stems/" + baseName + "-" + group.id + ".wav",
-      data: new Uint8Array(encodeWav(stemBuffer, 24, { bext: bext(group.label + " stem") })),
+      data: new Uint8Array(
+        encodeWav(stemBuffer, 24, {
+          bext: bext(group.label + " stem"),
+          ixml: await stamp(`${group.label} stem`, "stems", stemBuffer, false),
+        }),
+      ),
     });
   }
 

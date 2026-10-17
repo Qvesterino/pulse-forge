@@ -9,6 +9,7 @@ import type { GenerateOptions, GrooveData } from "../ai/types";
 import type { CandidateBankEntry } from "./candidate-bank";
 import type { CandidateSearchInfo } from "./candidate-search";
 import type { ProductionIntent } from "./production";
+import type { SelectionReason } from "./selection-reasons";
 
 export const INTENT_SCHEMA_VERSION = 1 as const;
 
@@ -238,6 +239,14 @@ export interface RankerSelectionMeta {
   selectedIndex?: number;
   /** Present only when audio-fit reordering displaced the first-pass winner. */
   audioRerank?: { displacedCandidateIndex: number; selectedCandidateIndex: number; personalized?: boolean };
+  /**
+   * Wave E1: WHY this candidate won — derived from measured bank scores,
+   * rerank displacement and the personal residual only
+   * (src/intent/selection-reasons.ts). Never invented prose.
+   */
+  reasons?: SelectionReason[];
+  /** Compact one-line form of `reasons` (tooltip / status line). */
+  rationale?: string;
 }
 
 /** Full provider ranking output — proposal plus the auditionable bank. */

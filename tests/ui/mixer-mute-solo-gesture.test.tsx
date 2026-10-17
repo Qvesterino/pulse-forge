@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, screen, within } from "@testing-library/react";
+import { cleanup, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Mixer } from "../../src/ui/Mixer";
 import { ProjectStore } from "../../src/store/ProjectStore";
