@@ -797,17 +797,18 @@
       const output = outputs[0];
       if (!output || output.length === 0) return true;
       const left = output[0];
-      const frames = Math.min(BLOCK, left.length);
-      const l = frames === left.length ? left : left.subarray(0, frames);
-      if (output.length > 1) {
-        const right = output[1];
-        const r = frames === right.length ? right : right.subarray(0, frames);
-        this.proc.process(l, r, currentFrame);
-      } else {
-        const scratchL = MONO_L.subarray(0, frames);
-        const scratchR = MONO_R.subarray(0, frames);
-        this.proc.process(scratchL, scratchR, currentFrame);
-        for (let i = 0; i < frames; i++) l[i] = (scratchL[i] + scratchR[i]) * 0.5;
+      for (let offset = 0; offset < left.length; offset += BLOCK) {
+        const frames = Math.min(BLOCK, left.length - offset);
+        const l = left.subarray(offset, offset + frames);
+        if (output.length > 1) {
+          const r = output[1].subarray(offset, offset + frames);
+          this.proc.process(l, r, currentFrame + offset);
+        } else {
+          const scratchL = MONO_L.subarray(0, frames);
+          const scratchR = MONO_R.subarray(0, frames);
+          this.proc.process(scratchL, scratchR, currentFrame + offset);
+          for (let i = 0; i < frames; i++) l[i] = (scratchL[i] + scratchR[i]) * 0.5;
+        }
       }
       return true;
     }

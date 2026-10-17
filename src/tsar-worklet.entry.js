@@ -115,19 +115,25 @@ class TsarWorkletProcessor extends AudioWorkletProcessor {
     const output = outputs[0];
     if (!output || output.length === 0) return true;
     const left = output[0];
-    const frames = Math.min(BLOCK, left.length);
-    const l = frames === left.length ? left : left.subarray(0, frames);
-    if (output.length > 1) {
-      // Stereo: render L and R into their real destination buffers.
-      const right = output[1];
-      const r = frames === right.length ? right : right.subarray(0, frames);
-      this.proc.process(l, r, currentFrame);
-    } else {
-      // Mono: render both channels into scratch, fold to mono, copy back.
-      const scratchL = MONO_L.subarray(0, frames);
-      const scratchR = MONO_R.subarray(0, frames);
-      this.proc.process(scratchL, scratchR, currentFrame);
-      for (let i = 0; i < frames; i++) l[i] = (scratchL[i] + scratchR[i]) * 0.5;
+    // The render quantum is 128 everywhere today, but the spec allows larger
+    // buffers — render in BLOCK chunks so every sample is written and the
+    // event window advances sample-accurately (same contract as the rezonans
+    // entry; a bare first-128 render left the tail unwritten and drifted
+    // every event after the first quantum).
+    for (let offset = 0; offset < left.length; offset += BLOCK) {
+      const frames = Math.min(BLOCK, left.length - offset);
+      const l = left.subarray(offset, offset + frames);
+      if (output.length > 1) {
+        // Stereo: render L and R into their real destination buffers.
+        const r = output[1].subarray(offset, offset + frames);
+        this.proc.process(l, r, currentFrame + offset);
+      } else {
+        // Mono: render both channels into scratch, fold to mono, copy back.
+        const scratchL = MONO_L.subarray(0, frames);
+        const scratchR = MONO_R.subarray(0, frames);
+        this.proc.process(scratchL, scratchR, currentFrame + offset);
+        for (let i = 0; i < frames; i++) l[i] = (scratchL[i] + scratchR[i]) * 0.5;
+      }
     }
     return true;
   }

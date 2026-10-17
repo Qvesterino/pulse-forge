@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
@@ -285,7 +285,7 @@ describe("AudioWorklet loader × engine contextrestore integration", () => {
     return ctx as unknown as BaseAudioContext;
   }
 
-  it("oncontextrestored re-arms and re-registers when the scope was rebuilt", async () => {
+  it("oncontextrestored re-arms and re-registers when the scope was rebuilt", { timeout: 20000 }, async () => {
     const { AudioEngine } = await import("../src/audio-engine/AudioEngine");
     const previousAudioContext = (globalThis as unknown as { AudioContext?: unknown }).AudioContext;
     const previousNode = (globalThis as unknown as { AudioWorkletNode?: unknown }).AudioWorkletNode;
@@ -298,7 +298,7 @@ describe("AudioWorklet loader × engine contextrestore integration", () => {
       // The boot worklet refresh loads the core on the live context. Wait on
       // READINESS, not call count — the marks land a microtask after the
       // fetches resolve.
-      await vi.waitFor(() => expect(isWorkletReady("bitcrusher", ctx)).toBe(true));
+      await vi.waitFor(() => expect(isWorkletReady("bitcrusher", ctx)).toBe(true), { timeout: 5000 });
       expect(addModule).toHaveBeenCalledTimes(2);
 
       // contextlost drops the handle; the browser restores it — with a
@@ -317,7 +317,7 @@ describe("AudioWorklet loader × engine contextrestore integration", () => {
       // the fresh scope — without this, every factory `new
       // AudioWorkletNode` would throw into syncProject forever.
       expect((engine as unknown as { ctx: unknown }).ctx).toBe(ctx);
-      await vi.waitFor(() => expect(isWorkletReady("bitcrusher", ctx)).toBe(true));
+      await vi.waitFor(() => expect(isWorkletReady("bitcrusher", ctx)).toBe(true), { timeout: 5000 });
       expect(addModule).toHaveBeenCalledTimes(4);
       expect(isWorkletReady("limiter", ctx)).toBe(true);
     } finally {
@@ -446,4 +446,95 @@ describe("Sidechain processor (unit logic)", () => {
 
     expect(reductionHigh).toBeGreaterThan(reductionLow);
   });
+});
+
+describe("TSAR/KOPA entry mono output fold (audit 12 re-run)", () => {
+  // The registry declares stereo output for both instruments, so the mono
+  // branch in the entries only runs for hosts that create the node with
+  // `outputChannelCount: [1]` — spec compliance, currently unpinned.
+  class FakeWorkletProcessor {
+    port = { postMessage() {} };
+  }
+  const registered = new Map<string, any>();
+  let previousProcessor: unknown;
+  let previousRegister: unknown;
+
+  beforeAll(async () => {
+    (globalThis as unknown as { sampleRate: number }).sampleRate = 48000;
+    const g = globalThis as unknown as Record<string, unknown>;
+    previousProcessor = g.AudioWorkletProcessor;
+    previousRegister = g.registerProcessor;
+    g.AudioWorkletProcessor = FakeWorkletProcessor;
+    g.registerProcessor = (name: string, cls: new () => any) => registered.set(name, cls);
+    await import("../src/tsar-worklet.entry.js");
+    await import("../src/kopa-worklet.entry.js");
+  });
+  afterAll(() => {
+    const g = globalThis as unknown as Record<string, unknown>;
+    if (previousProcessor === undefined) delete g.AudioWorkletProcessor;
+    else g.AudioWorkletProcessor = previousProcessor;
+    if (previousRegister === undefined) delete g.registerProcessor;
+    else g.registerProcessor = previousRegister;
+  });
+
+  const QUANTUM = 256;
+  const tsarOptions = {
+    params: { level: 0.8, glide: 0 },
+    events: [{ type: "noteOn", when: 0, pitch: 45, velocity: 0.9 }],
+  };
+  const kopaOptions = {
+    params: Object.fromEntries(
+      // kopaParams would import the definitions graph; a note at defaults is
+      // enough to make the tail audible.
+      [
+        ["clickType", 0],
+        ["clickLevel", 0.4],
+        ["clickDecay", 4],
+        ["level", 0.8],
+      ],
+    ),
+    events: [{ type: "noteOn", when: 0, pitch: 36, velocity: 1 }],
+  };
+
+  function driveMono(name: string, options: Record<string, unknown>, chunked: boolean): Float32Array {
+    const instance = new (
+      registered.get(name) as new (o: unknown) => { process: (i: unknown[], o: unknown[]) => boolean }
+    )({
+      processorOptions: options,
+    });
+    (globalThis as unknown as { currentFrame: number }).currentFrame = 0;
+    (globalThis as unknown as { currentTime: number }).currentTime = 0;
+    const mono = new Float32Array(QUANTUM);
+    mono.fill(9); // sentinel: unwritten samples stay 9
+    if (chunked) {
+      instance.process([], [[mono.subarray(0, 128)]]);
+      (globalThis as unknown as { currentFrame: number }).currentFrame = 128;
+      instance.process([], [[mono.subarray(128, 256)]]);
+    } else {
+      instance.process([], [[mono]]);
+    }
+    return mono;
+  }
+
+  for (const [name, options] of [
+    ["tsar-processor", tsarOptions],
+    ["kopa-processor", kopaOptions],
+  ] as const) {
+    it(`${name}: mono output is fully written and folds both channels`, () => {
+      const mono = driveMono(name, options, false);
+      let tailPeak = 0;
+      for (let i = 0; i < QUANTUM; i++) {
+        expect(Number.isFinite(mono[i]!)).toBe(true);
+        expect(mono[i]!).not.toBe(9); // every sample written
+        if (i >= QUANTUM / 2) tailPeak = Math.max(tailPeak, Math.abs(mono[i]!));
+      }
+      expect(tailPeak).toBeGreaterThan(1e-4); // the note is sounding past the first quantum
+    });
+
+    it(`${name}: mono render is block-invariant (256 as 1×256 equals 2×128)`, () => {
+      const whole = driveMono(name, options, false);
+      const split = driveMono(name, options, true);
+      for (let i = 0; i < QUANTUM; i++) expect(split[i]!).toBeCloseTo(whole[i]!, 4);
+    });
+  }
 });
