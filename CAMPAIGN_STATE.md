@@ -191,6 +191,12 @@ Last updated: 2026-10-06 (session sess_85d94465)
 
 ## SESSION LOG
 
+### 2026-10-07 (later) / W1 session 2 — gate plumbing + the pre-registered FAIL (92b1c372)
+- Built: gate --feature-v3 path (library folds, classical.* corpus train-only, --v3-no-corpus baseline); trainer v3 split fix (corpus groups train-only — the classical.* prefix was invisible to the old midi# check so corpus rows could land in VALIDATION); generator --no-midi-corpus baseline variant.
+- VERDICT (pre-registered, both fold counts): criterion (a) degree PASSED — 2-fold within tolerance, 3-fold corpus HELPS (+0.0072): chord conditioning confirmed, the W2 degree failure mode is gone with harmony context. Criterion (b) duration FAILED (2-fold -0.078, 3-fold -0.023): corpus legato still biases the duration head. FAIL (must hold all) -> no artefact ships, corpus stays out, v3 model unchanged/inert.
+- The W1 hypothesis is SPLIT, not dead: harmony transfers, texture does not. W1b (duration-preserving integration) recorded as an UNREGISTERED follow-up in the plan §4b — needs its own pre-registration before any rerun (no fishing).
+- Recommended continuation: W1b pre-registration + rerun, OR leave the corpus parked and move on; owner items unchanged.
+
 ### 2026-10-07 (late) / W1 chord-aware session 1 — discovery + the corpus bridge (cdba00af)
 - Discovery: W1 was HALF-BUILT (v3 contract 68 dims, dataset generator, TRAINED symbolic-melodic-v3 with gatePassed None + midiCorpusSamples 0, inert runMelodicNextV3 with no caller). The generator's corpus path assigned SYNTHETIC house/ambient ladders to classical pieces — the W2 conditioning mistake reborn; the W1 hypothesis was untested.
 - Built: docs/W1-CHORD-AWARE-PLAN.md rewritten to the REAL contract with the pre-registered gate (§4); v3 genre list + honest 5th "classical" slot (69 dims, contract grows pre-gate); deriveCorpusChordEvents (joint root+quality match + extra-tone penalty, inversions correct, honest skips, 7 pins); generator corpus path on raw PD MIDI, every role >= 8 events.
