@@ -72,7 +72,12 @@ describe("Producer DNA held-out evaluation", () => {
     expect(report.uncertainty95.personalLift).toEqual({ lower: -1, upper: 1 });
     expect(report.globalScoreVersions).toEqual([GLOBAL_VERSION]);
     expect(report.skipped.insufficientPriorChoices).toBe(2);
-    expect(report.caveat).toMatch(/prompt\/session groups are not stored/);
+    // The legacy-ledger caveat is explicit about what this report IS and IS
+    // NOT: a candidate-hash-disjoint diagnostic, not a user study — legacy
+    // observations carry no session/lineage groups.
+    expect(report.caveat).toMatch(/candidate-hash-disjoint holdout/);
+    expect(report.caveat).toMatch(/legacy observations do not carry session\/lineage groups/);
+    expect(report.caveat).toMatch(/not a statistically independent user study/);
   });
 
   it("does not let observations with the same timestamp train one another", () => {

@@ -6,6 +6,7 @@ import {
 } from "../src/rendering/bounce";
 import { createDefaultProject } from "../src/project-model/schema";
 import { addAudioClip, createScene } from "../src/commands/commands";
+import { quantizeAudioBar } from "../src/commands/audioClips";
 import { BAR_TICKS, PPQ } from "../src/project-model/types";
 import { consolidateRangeToAudio } from "../src/services/rangeConsolidation";
 import { renderProject } from "../src/rendering/renderer";
@@ -395,7 +396,12 @@ describe("consolidateRangeToAudio", () => {
     ]);
     const printClip = currentDoc.arrangement.audioClips?.find((clip) => clip.bufferId !== "audio.crossing");
     expect(printClip?.startBar).toBe(1);
-    expect(printClip?.lengthBars).toBe(Math.ceil((1 + (2 * sourceDoc.bpm) / 240) * 100) / 100);
+    // The print length is ceil'd to 0.01 bar, then the clip's stored geometry is
+    // tick-aligned by addAudioClip (quantizeAudioBar) — the documented storage
+    // precision: every snapped 1/8 and 1/16 position survives the round-trip.
+    expect(printClip?.lengthBars).toBe(
+      quantizeAudioBar(Math.ceil((1 + (2 * sourceDoc.bpm) / 240) * 100) / 100),
+    );
     expect(command.undo(currentDoc)).toEqual(sourceDoc);
   });
 

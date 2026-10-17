@@ -28,6 +28,15 @@ const ALL_KEYS: ShortcutKey[] = [
   "toggleLoop",
   "duplicatePattern",
   "deleteNote",
+  // Clip clipboard / lock family (the editor lock+clipboard wave).
+  "copyClips",
+  "cutClips",
+  "pasteClips",
+  "toggleClipMute",
+  "toggleSnap",
+  "groupClips",
+  "ungroupClips",
+  "toggleClipLock",
   "nextTrack",
   "prevTrack",
   "selectTrack1",
@@ -51,6 +60,7 @@ const ALL_KEYS: ShortcutKey[] = [
   "panelIntent",
   "panelMidi",
   "panelMaster",
+  "panelTsar",
   "nextPattern",
   "prevPattern",
   "seekHome",
@@ -96,13 +106,14 @@ describe("keyboard shortcut table", () => {
 
   it("maps every panel shortcut to a real bottom-panel id", () => {
     // "intent" is the real dock id App.tsx setBottomPanel() accepts
-    // (Alt+7); "fx" is canonicalized to the unified Devices panel in App.
-    const realPanelIds = new Set(["mixer", "fx", "arr", "mod", "exp", "midi", "dice", "intent", "master"]);
+    // (Alt+7); "fx" is canonicalized to the unified Devices panel in App;
+    // "tsar" is the TSAR engine dock panel (Alt+0).
+    const realPanelIds = new Set(["mixer", "fx", "arr", "mod", "exp", "midi", "dice", "intent", "master", "tsar"]);
     for (const sc of SHORTCUTS) {
       const panel = panelIdOfShortcut(sc.key);
       if (panel) expect(realPanelIds.has(panel), `${sc.key} → unknown panel "${panel}"`).toBe(true);
     }
-    expect(Object.keys(PANEL_IDS_BY_SHORTCUT)).toHaveLength(9);
+    expect(Object.keys(PANEL_IDS_BY_SHORTCUT)).toHaveLength(10);
   });
 });
 

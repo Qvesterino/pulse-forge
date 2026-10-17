@@ -518,4 +518,33 @@ describe("ExportPanel", () => {
     expect(executed.some((c) => c.type === "chopSampleToPads")).toBe(true);
     expect(await screen.findByText(/slices → .* \+ pattern/)).toBeInTheDocument();
   });
+
+  it("rolls the resample buffer back when persistence fails — no ghost sample", async () => {
+    const user = userEvent.setup();
+    const services = mockServices();
+    (services.engine as unknown as { getLiveAudioContext?: () => unknown }).getLiveAudioContext = vi.fn(() => ({}));
+    // The durable write fails (quota / blocked IndexedDB) AFTER the resample
+    // was already made playable in the bank. Without a rollback the take stays
+    // playable this session, is never listed in the library, and silently
+    // vanishes on the next reload — a ghost sample.
+    (services.userSamples.save as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("QuotaExceededError"));
+
+    renderWithContext(<ExportPanel />, { services });
+    await user.click(screen.getByRole("button", { name: /● REC/ }));
+    await user.click(await screen.findByRole("button", { name: /■ STOP/ }));
+
+    // The failure is surfaced, not swallowed.
+    await screen.findByText("QuotaExceededError");
+    // The playable buffer this resample added is removed again, so the
+    // in-memory bank and the durable store cannot disagree.
+    expect(services.bank.add).toHaveBeenCalledTimes(1);
+    const addedId = (services.bank.add as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(services.bank.remove).toHaveBeenCalledWith(addedId);
+    expect(services.bank.size).toBe(0);
+    // No take is offered: a failed save must not register a chop-able take.
+    expect(screen.queryByRole("button", { name: /^AUTO-CHOP/ })).toBeNull();
+    // ...and the panel is idle again, not stuck in "saving…".
+    expect(screen.queryByText("saving…")).toBeNull();
+    expect(screen.getByRole("button", { name: /● REC/ })).toBeInTheDocument();
+  });
 });

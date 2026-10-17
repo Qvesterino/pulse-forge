@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { act } from "react";
-import { mockServices } from "../helpers";
+import { mockServices, mockTopBarWidth } from "../helpers";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TopBar } from "../../src/ui/TopBar";
@@ -150,51 +150,63 @@ describe("TopBar", () => {
   });
 
   it("cycles count-in, toggles pre-roll and toggles the content metronome", async () => {
-    const user = userEvent.setup();
-    const { services } = renderWithContext(<TopBar {...topBarProps()} />);
+    // Count-in / pre-roll / metronome are direct only on a desktop-width bar
+    // (they overflow below 1200 px); this spec describes the desktop shell.
+    const restore = mockTopBarWidth();
+    try {
+      const user = userEvent.setup();
+      const { services } = renderWithContext(<TopBar {...topBarProps()} />);
 
-    const countIn = screen.getByRole("button", { name: "Count-in off" });
-    await user.click(countIn);
-    expect(services.transport.setCountIn).toHaveBeenCalledWith(1);
-    expect(screen.getByRole("button", { name: "Count-in 1 bar" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Count-in 1 bar" }));
-    expect(services.transport.setCountIn).toHaveBeenCalledWith(2);
-    await user.click(screen.getByRole("button", { name: "Count-in 2 bars" }));
-    expect(services.transport.setCountIn).toHaveBeenCalledWith(0);
+      const countIn = screen.getByRole("button", { name: "Count-in off" });
+      await user.click(countIn);
+      expect(services.transport.setCountIn).toHaveBeenCalledWith(1);
+      expect(screen.getByRole("button", { name: "Count-in 1 bar" })).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Count-in 1 bar" }));
+      expect(services.transport.setCountIn).toHaveBeenCalledWith(2);
+      await user.click(screen.getByRole("button", { name: "Count-in 2 bars" }));
+      expect(services.transport.setCountIn).toHaveBeenCalledWith(0);
 
-    const preRoll = screen.getByRole("button", { name: "Pre-roll off" });
-    await user.click(preRoll);
-    expect(services.transport.setPreRoll).toHaveBeenCalledWith(1);
-    expect(screen.getByRole("button", { name: "Pre-roll on" })).toHaveAttribute("aria-pressed", "true");
+      const preRoll = screen.getByRole("button", { name: "Pre-roll off" });
+      await user.click(preRoll);
+      expect(services.transport.setPreRoll).toHaveBeenCalledWith(1);
+      expect(screen.getByRole("button", { name: "Pre-roll on" })).toHaveAttribute("aria-pressed", "true");
 
-    const metronome = screen.getByRole("button", { name: "Metronome off" });
-    await user.click(metronome);
-    expect(services.transport.setMetronome).toHaveBeenCalledWith(true);
-    expect(screen.getByRole("button", { name: "Metronome on" })).toHaveAttribute("aria-pressed", "true");
+      const metronome = screen.getByRole("button", { name: "Metronome off" });
+      await user.click(metronome);
+      expect(services.transport.setMetronome).toHaveBeenCalledWith(true);
+      expect(screen.getByRole("button", { name: "Metronome on" })).toHaveAttribute("aria-pressed", "true");
+    } finally {
+      restore();
+    }
   });
 
   it("sets BPM from two taps without changing the project until the second tap", async () => {
-    const user = userEvent.setup();
-    const { services } = renderWithContext(<TopBar {...topBarProps()} />);
-    let now = 1_000;
-    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
-
+    const restore = mockTopBarWidth();
     try {
-      const tap = screen.getByRole("button", { name: "Tap tempo" });
-      await user.click(tap);
-      expect(services.store.execute).not.toHaveBeenCalled();
+      const user = userEvent.setup();
+      const { services } = renderWithContext(<TopBar {...topBarProps()} />);
+      let now = 1_000;
+      const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
 
-      now = 1_500;
-      await user.click(tap);
-      expect(services.store.execute).toHaveBeenCalledTimes(1);
-      const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
-        type: string;
-        execute: (doc: { bpm: number }) => { bpm: number };
-      };
-      expect(command.type).toBe("setBpm");
-      expect(command.execute(services.store.doc).bpm).toBe(120);
+      try {
+        const tap = screen.getByRole("button", { name: "Tap tempo" });
+        await user.click(tap);
+        expect(services.store.execute).not.toHaveBeenCalled();
+
+        now = 1_500;
+        await user.click(tap);
+        expect(services.store.execute).toHaveBeenCalledTimes(1);
+        const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+          type: string;
+          execute: (doc: { bpm: number }) => { bpm: number };
+        };
+        expect(command.type).toBe("setBpm");
+        expect(command.execute(services.store.doc).bpm).toBe(120);
+      } finally {
+        nowSpy.mockRestore();
+      }
     } finally {
-      nowSpy.mockRestore();
+      restore();
     }
   });
 
@@ -277,11 +289,17 @@ describe("TopBar", () => {
   });
 
   it("calls onToggleHelp when ? clicked", async () => {
-    const user = userEvent.setup();
-    const onToggleHelp = vi.fn();
-    renderWithContext(<TopBar {...topBarProps({ onToggleHelp })} />);
-    await user.click(screen.getByLabelText("Show keyboard shortcuts"));
-    expect(onToggleHelp).toHaveBeenCalled();
+    // ? is a direct tool on the desktop bar; below 1200 px it lives in ⋯.
+    const restore = mockTopBarWidth();
+    try {
+      const user = userEvent.setup();
+      const onToggleHelp = vi.fn();
+      renderWithContext(<TopBar {...topBarProps({ onToggleHelp })} />);
+      await user.click(screen.getByLabelText("Show keyboard shortcuts"));
+      expect(onToggleHelp).toHaveBeenCalled();
+    } finally {
+      restore();
+    }
   });
 
   it("opens DIAG from the overflow menu", async () => {
@@ -295,11 +313,16 @@ describe("TopBar", () => {
   });
 
   it("undo button calls store.undo", async () => {
-    const { services } = renderWithContext(<TopBar {...topBarProps()} />);
-    const undoBtn = screen.getByLabelText("Undo");
-    expect(undoBtn).toBeDisabled(); // nothing to undo
-    // Manually enable undo
-    (services.store as any).canUndo = true;
+    const restore = mockTopBarWidth();
+    try {
+      const { services } = renderWithContext(<TopBar {...topBarProps()} />);
+      const undoBtn = screen.getByLabelText("Undo");
+      expect(undoBtn).toBeDisabled(); // nothing to undo
+      // Manually enable undo
+      (services.store as any).canUndo = true;
+    } finally {
+      restore();
+    }
   });
 });
 

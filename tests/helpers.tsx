@@ -477,3 +477,21 @@ export function renderWithContext(ui: ReactElement, options?: RenderOptions & { 
     services,
   };
 }
+
+/**
+ * Pin the TopBar to a desktop width. The bar is responsive (compactTransport
+ * below 1200 px moves count-in / pre-roll / metronome / tap-tempo / LOOP and
+ * the lower-priority tools into the ⋯ overflow), and jsdom's default viewport
+ * is below that threshold — so a spec that wants to drive those controls
+ * DIRECTLY must declare the desktop shell it is describing. Returns the
+ * restore function; call it in `finally`.
+ */
+export function mockTopBarWidth(width = 1280): () => void {
+  const original = HTMLElement.prototype.getBoundingClientRect;
+  const spy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const rect = original.call(this);
+    if (this.classList.contains("topbar")) return { ...rect, width, left: 0, right: width } as DOMRect;
+    return rect;
+  });
+  return () => spy.mockRestore();
+}

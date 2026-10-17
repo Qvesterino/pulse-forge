@@ -10,6 +10,7 @@ import {
   setTheme,
   THEME_PRESETS,
 } from "../src/ui/theme";
+import { LAYOUT_STORAGE_KEY } from "../src/shared/layout-data";
 
 describe("theme", () => {
   beforeEach(() => {
@@ -48,11 +49,11 @@ describe("theme", () => {
   });
 
   it("an invalid persisted state falls back to defaults", () => {
-    localStorage.setItem("pf-layout-v1", "{not json");
+    localStorage.setItem(LAYOUT_STORAGE_KEY, "{not json");
     const state = initTheme();
     expect(state.preset).toBe("molten");
     // Unknown preset ids fall back to the default preset.
-    localStorage.setItem("pf-layout-v1", JSON.stringify({ preset: "nope" }));
+    localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify({ preset: "nope" }));
     expect(initTheme().preset).toBe("molten");
   });
 

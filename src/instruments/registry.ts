@@ -6558,6 +6558,7 @@ const tsar: InstrumentDefinition = {
         offline,
         bpm: env.bpm,
         track,
+        harmony: env.harmonyContext,
         getSample: (id) => env.getSample(id),
       });
     }

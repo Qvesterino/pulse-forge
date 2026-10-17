@@ -46,6 +46,7 @@ class TsarWorkletProcessor extends AudioWorkletProcessor {
       sampleRate,
       bpm: typeof opts.bpm === "number" ? opts.bpm : undefined,
       events: Array.isArray(opts.events) ? opts.events : undefined,
+      harmony: this.validHarmony(opts.harmony),
     });
     if (opts.params) {
       this.proc.applyParams(opts.params);
@@ -63,6 +64,30 @@ class TsarWorkletProcessor extends AudioWorkletProcessor {
     }
   }
 
+  /**
+   * Validate a harmony-context payload before it reaches the DSP (the
+   * canonical worklet rule: never trust event.data shape). Returns undefined
+   * for anything malformed — chromatic default is the safe degradation.
+   */
+  validHarmony(harmony) {
+    if (!harmony || typeof harmony !== "object") return undefined;
+    const scaleMask = Number(harmony.scaleMask);
+    const chords = Array.isArray(harmony.chords)
+      ? harmony.chords.filter(
+          (chord) =>
+            chord &&
+            typeof chord === "object" &&
+            Number.isFinite(chord.startBar) &&
+            Number.isFinite(chord.lengthBars) &&
+            Number.isFinite(chord.chordMask),
+        )
+      : undefined;
+    return {
+      ...(Number.isFinite(scaleMask) ? { scaleMask } : {}),
+      ...(chords ? { chords } : {}),
+    };
+  }
+
   handle(message) {
     if (!message || typeof message !== "object") return;
     switch (message.type) {
@@ -71,6 +96,9 @@ class TsarWorkletProcessor extends AudioWorkletProcessor {
         if (Array.isArray(message.events)) for (const e of message.events) this.proc.postEvent(e);
         this.initialized = true;
         this.port.postMessage({ type: "ready" });
+        break;
+      case "harmony":
+        this.proc.setHarmonyContext(this.validHarmony(message.harmony));
         break;
       case "param":
         this.proc.setParam(message.name, message.value);

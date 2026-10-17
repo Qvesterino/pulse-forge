@@ -173,7 +173,9 @@ describe("semantic conditioning gate", () => {
       { project: doc, mode: "apply" },
       0,
     );
-    expect(failures).toEqual([]);
+        // The template fallback is NAMED in failures (the semantic-escape-hatch
+    // contract): the reason stays diagnosable instead of invisible.
+    expect(failures).toEqual(["candidate-0:drums-template-semantic-unavailable"]);
     expect(runPriorGridV3Mock).not.toHaveBeenCalled();
     expect(entries[0].source).toBe("template");
     // Still a usable pattern — every drum row is shaped for the step count.
@@ -326,7 +328,7 @@ describe("symbolic prior provider", () => {
       true,
     );
 
-    expect(failures).toEqual([]);
+    expect(failures).toEqual(["candidate-4:drums-template-semantic-unavailable"]);
     expect(entries.map((entry) => entry.search?.lane)).toEqual(["safe", "personal"]);
     expect(entries[0].candidateIndex).toBe(3);
     expect(entries[0].seed).toBe(plan.symbolicSeeds[0]);
@@ -346,7 +348,7 @@ describe("symbolic prior provider", () => {
       true,
     );
 
-    expect(failures).toEqual([]);
+    expect(failures).toEqual(["candidate-3:drums-template-semantic-unavailable"]);
     expect(entries).toHaveLength(2);
     const experimental = entries.find((entry) => entry.search?.lane === "experimental");
     expect(experimental?.search?.family).toBe("alternate-groove");
@@ -462,7 +464,7 @@ describe("symbolic prior provider", () => {
       { project: doc, mode: "apply" },
       0,
     );
-    expect(failures).toEqual([]);
+    expect(failures).toEqual(["candidate-0:drums-template-semantic-unavailable"]);
     // The prior client is never consulted for a style it was not trained on.
     expect(runPriorGridMock).not.toHaveBeenCalled();
     expect(entries).toHaveLength(1);

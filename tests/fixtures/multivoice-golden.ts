@@ -57,14 +57,23 @@ export function generateGoldenVoice(testCase: MultivoiceGoldenCase): MultiVoiceR
  * (seed 42 → legacy index 0 everywhere; drill/phonk/jersey/dnb resolve
  * their own sets, no house fallback). Sanity at freeze: 32 bass (8ths),
  * 24 lead (full rhythm), voiced chords, named progressions — see QA-4 log.
+ *
+ * Re-frozen 2026-10-17 for drill/phonk/jersey only: the melodic-dialect waves
+ * landed after the freeze (gabber/hardcore roster, dialects wave 3, melodic
+ * table coverage 21/21) and legitimately changed those three voices' content
+ * identity — the other five hashes are byte-identical to the freeze. The
+ * full-band sanity spec below (bass/chord/lead non-empty, named progression)
+ * still passes for every case; only content identity moved, which is exactly
+ * what a freeze on generated MUSIC is expected to do when the dialect library
+ * grows. House/techno/trap/ambient/dnb stay untouched.
  */
 export const MULTIVOICE_GOLDEN_EXPECTED: ReadonlyArray<{ caseId: string; hash: string }> = [
   { caseId: "house", hash: "e7f3d7f1" },
   { caseId: "techno", hash: "6985914c" },
   { caseId: "trap", hash: "a5b858a3" },
   { caseId: "ambient", hash: "a94d6c99" },
-  { caseId: "drill", hash: "4e733b49" },
-  { caseId: "phonk", hash: "d3c8d39d" },
-  { caseId: "jersey", hash: "6d92fe79" },
+  { caseId: "drill", hash: "4cc8313b" },
+  { caseId: "phonk", hash: "4e1b40dd" },
+  { caseId: "jersey", hash: "eaec86f3" },
   { caseId: "dnb", hash: "07e3a388" },
 ];

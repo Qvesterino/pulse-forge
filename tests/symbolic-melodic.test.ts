@@ -138,7 +138,7 @@ describe("melodic prior sampling in the provider", () => {
       { project: doc, mode: "apply" },
       0,
     );
-    expect(failures).toEqual([]);
+    expect(failures).toEqual(["candidate-0:drums-template-semantic-unavailable"]);
     expect(entries.length).toBe(1);
     const notes = Object.values(entries[0].pattern.notes ?? {}).flat();
     expect(notes.length).toBeGreaterThan(0);
@@ -169,7 +169,7 @@ describe("melodic prior sampling in the provider", () => {
       { project: doc, mode: "apply" },
       0,
     );
-    expect(failures).toEqual([]); // melodic fallback is NOT a failure — candidate stays
+    expect(failures).toEqual(["candidate-0:drums-template-semantic-unavailable"]); // the tag names the TEMPLATE fallback; the melodic fallback itself is not a provider error
     expect(entries.length).toBe(1);
     expect(entries[0].pattern.name).not.toContain("+mv");
     const notes = Object.values(entries[0].pattern.notes ?? {}).flat();

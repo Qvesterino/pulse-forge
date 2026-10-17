@@ -68,8 +68,8 @@ function decodedStructure() {
   };
 }
 
-function makeFile(name: string, bytes = 1024): File {
-  return new File([new Uint8Array(bytes)], name, { type: "audio/wav" });
+function makeFile(name: string, bytes = 1024, type = "audio/wav"): File {
+  return new File([new Uint8Array(bytes)], name, { type });
 }
 
 /** Render the panel with an engine whose decoder yields `audioBuffer`. */
@@ -105,7 +105,12 @@ describe("ReferenceMapPanel — input guards", () => {
 
   it("rejects an unsupported extension before touching the audio context", async () => {
     const { decodeAudioData } = setup(decodedClickTrack(128, 4));
-    const file = makeFile("notes.txt");
+    // A real unsupported drop carries the OS-reported type for its extension
+    // (text/plain here). `isAudioImportFile` deliberately accepts when EITHER
+    // the extension or the declared MIME says audio, so the fixture must not
+    // claim audio/wav for a .txt file — that would be a spoofed type, not an
+    // unsupported file.
+    const file = makeFile("notes.txt", 1024, "text/plain");
     fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [file] } });
     await waitFor(() => expect(screen.getByTestId("reference-error")).toBeInTheDocument());
     expect(screen.getByTestId("reference-error").textContent).toMatch(/unsupported/i);

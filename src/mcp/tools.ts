@@ -1,5 +1,17 @@
 import type { ProjectDocument } from "../project-model/types";
 import { isForeignWork, labelsRevertedBy } from "./attribution";
+import {
+  LONG_RUNNING_AGENT_TOOLS,
+  completeAgentCall,
+  effectiveRisk,
+  markSessionCheckpointSaved,
+  prepareAgentCall,
+  summarizeToolArgs,
+  toolAnnotations,
+  toolRisk,
+  type McpToolAnnotations,
+} from "./agentTrust";
+import { startJob } from "../services/jobCenter";
 import { setMasterConfig } from "../commands/master";
 import { slipAudioClip, stretchAudioClip, setAudioClipsMute } from "../commands/audioClips";
 import {
@@ -191,6 +203,12 @@ export interface McpToolDef {
    * wire transports expose it as `structuredContent` and flag contract misses.
    */
   outputSchema?: McpOutputSchema;
+  /**
+   * MCP-standard tool annotations (Wave 1/A trust layer). Derived from the
+   * risk table in agentTrust.ts — `readOnlyHint` lets a client run reads
+   * without asking, `destructiveHint` tells it to confirm removals.
+   */
+  annotations?: McpToolAnnotations;
 }
 
 /** kyx_meter - the live meter snapshot. */
@@ -1622,6 +1640,10 @@ for (const def of MCP_TOOLS) {
     description:
       "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
   };
+  // Wave 1/A: MCP-standard annotations from the risk table — clients can run
+  // reads autonomously and confirm destructive calls per spec. Derived, never
+  // hand-maintained: agentTrust.ts is the single classification source.
+  def.annotations = toolAnnotations(def.name);
 }
 
 /** The kyx_export request: full-mix bounce or a stems zip, with render options. */
@@ -2135,9 +2157,15 @@ interface IdempotencyEntry {
 
 const idempotencyLedger = new Map<string, IdempotencyEntry>();
 
+/** Wave 1/A: nesting depth of the CURRENT call (kyx_batch re-enters the
+ *  wrapper per sub-call). Recorded in the audit log; the session checkpoint
+ *  is taken by the OUTERMOST mutating call. */
+let mcpCallDepth = 0;
+
 /** Test/teardown hook — the ledger is otherwise process-lifetime state. */
 export function resetMcpIdempotencyLedger(): void {
   idempotencyLedger.clear();
+  mcpCallDepth = 0;
 }
 
 /** P2-C: tools whose side effects are NOT document mutations — a dry-run
@@ -2197,10 +2225,31 @@ function dryRunContext(ctx: McpToolContext): { ctx: McpToolContext; applied: () 
 export async function executeMcpTool(ctx: McpToolContext, name: string, args: unknown): Promise<McpToolResult> {
   const envelope = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
   const requestId = typeof envelope.requestId === "string" ? envelope.requestId.trim().slice(0, 128) : "";
+  // Wave 1/A trust layer: every call — all transports, dry-runs and replays —
+  // is classified and audited; the audit lives outside the tool surface so it
+  // can never change tool behavior.
+  const agent = ctx.agentId ?? "local";
+  const risk = toolRisk(name);
+  const depth = mcpCallDepth;
+  const summary = summarizeToolArgs(args);
   if (requestId !== "") {
     const cached = idempotencyLedger.get(requestId);
     if (cached != null) {
       if (cached.docId === ctx.getDoc().id) {
+        const doc = ctx.getDoc();
+        completeAgentCall({
+          agent,
+          tool: name,
+          risk,
+          depth,
+          mutated: false,
+          isError: cached.result.isError === true,
+          durationMs: 0,
+          docId: doc.id,
+          docName: doc.name,
+          replayed: true,
+          ...(summary !== "" ? { summary } : {}),
+        });
         return {
           ...cached.result,
           text: `idempotent replay — requestId was already applied; nothing re-executed\n${cached.result.text}`,
@@ -2225,12 +2274,33 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
       );
     }
     const dry = dryRunContext(ctx);
-    const preview = await executeMcpToolDispatch(dry.ctx, name, args);
+    const dryStartedAt = Date.now();
+    mcpCallDepth += 1;
+    let preview: McpToolResult;
+    try {
+      preview = await executeMcpToolDispatch(dry.ctx, name, args);
+    } finally {
+      mcpCallDepth -= 1;
+    }
     const labels = dry.applied();
     const would =
       labels.length > 0
         ? `would apply ${labels.length} command(s): ${labels.join("; ")}`
         : "no document change would occur";
+    const dryDoc = ctx.getDoc();
+    completeAgentCall({
+      agent,
+      tool: name,
+      risk,
+      depth,
+      mutated: false,
+      isError: preview.isError === true,
+      durationMs: Date.now() - dryStartedAt,
+      docId: dryDoc.id,
+      docName: dryDoc.name,
+      dryRun: true,
+      ...(summary !== "" ? { summary } : {}),
+    });
     return {
       ...preview,
       text: `dry-run — nothing was applied
@@ -2240,7 +2310,67 @@ ${preview.text}`,
       dryRun: true,
     };
   }
-  const result = await executeMcpToolDispatch(ctx, name, args);
+  // ── Wave 1/A: session checkpoint BEFORE the first document mutation ──
+  // One clone per session, not per call: the first mutating call of a fresh
+  // session parks a checkpoint so "revert everything this agent just did" is
+  // a single action. Reads and runtime tools never start a session.
+  const docBefore = ctx.getDoc();
+  const prepared = prepareAgentCall({
+    agent,
+    tool: name,
+    risk: effectiveRisk(name, args),
+    docId: docBefore.id,
+    docName: docBefore.name,
+  });
+  if (prepared.checkpointName != null) {
+    try {
+      const saved = saveCheckpoint(prepared.checkpointName, ctx, true);
+      void persistCheckpoint(saved).then((durability) => {
+        // "Restorable from any surface" requires the durable record (the
+        // in-memory map alone is not visible to the UI's checkpoint module).
+        if (durability === "persisted" && prepared.sessionId != null) markSessionCheckpointSaved(prepared.sessionId);
+      });
+    } catch {
+      /* checkpointing is safety netting, never a gate on the call */
+    }
+  }
+  const startedAt = Date.now();
+  // Long-running calls surface in the Job Center so a user can see (and
+  // cancel) what the agent is waiting on — same tool set the transports give
+  // the extended 60 s call budget.
+  const job = LONG_RUNNING_AGENT_TOOLS.has(name)
+    ? startJob({
+        kind: "agent",
+        label: `${agent} · ${name}`,
+        key: `agent:${agent}:${name}`,
+        timeoutMs: 90_000,
+        ...(summary !== "" ? { note: summary } : {}),
+      })
+    : null;
+  mcpCallDepth += 1;
+  let result: McpToolResult;
+  try {
+    result = await executeMcpToolDispatch(ctx, name, args);
+  } catch (error) {
+    mcpCallDepth -= 1;
+    job?.fail(error);
+    completeAgentCall({
+      agent,
+      tool: name,
+      risk,
+      depth,
+      mutated: false,
+      isError: true,
+      errorCode: "THREW",
+      durationMs: Date.now() - startedAt,
+      docId: docBefore.id,
+      docName: docBefore.name,
+      ...(prepared.checkpointName != null ? { checkpoint: prepared.checkpointName } : {}),
+      ...(summary !== "" ? { summary } : {}),
+    });
+    throw error;
+  }
+  mcpCallDepth -= 1;
   // P1-D DOCUMENT/WINDOW ATTRIBUTION (control-surface audit 2026-10-13,
   // GAP-06): every caller — desktop stdio, web relay, QMR — executes
   // against the ONE relay session's document (the hub forwards to a single
@@ -2268,6 +2398,24 @@ ${preview.text}`,
       }
     }
   }
+  if (job != null) {
+    if (result.isError === true) job.fail(result.errorCode ?? "tool returned an error");
+    else job.done();
+  }
+  completeAgentCall({
+    agent,
+    tool: name,
+    risk,
+    depth,
+    mutated: result.mutated === true,
+    isError: result.isError === true,
+    ...(result.errorCode !== undefined ? { errorCode: result.errorCode } : {}),
+    durationMs: Date.now() - startedAt,
+    docId: result.docId ?? docBefore.id,
+    ...(result.docName !== undefined ? { docName: result.docName } : {}),
+    ...(prepared.checkpointName != null ? { checkpoint: prepared.checkpointName } : {}),
+    ...(summary !== "" ? { summary } : {}),
+  });
   return result;
 }
 
@@ -4041,6 +4189,31 @@ function checkpointProjectId(ctx: McpToolContext): string {
   return doc.id !== "" ? doc.id : `unnamed:${doc.name}`;
 }
 
+/** Best-effort durable write of an in-memory checkpoint. The record shape is
+ *  the shared `qvester-mcp-checkpoints` convention (${projectId}::${name}), so
+ *  the SAME checkpoint is restorable from the Intent Bar, kyx_checkpoint and
+ *  the Agent Activity panel. Returns the durability for the caller's text. */
+async function persistCheckpoint(name: string): Promise<"persisted" | "unavailable" | "failed"> {
+  const entry = checkpoints.get(name);
+  if (entry == null) return "failed";
+  const repo = await getCheckpointRepo();
+  if (repo == null) return "unavailable";
+  try {
+    await repo.put({
+      key: `${entry.projectId}::${name}`,
+      projectId: entry.projectId,
+      name,
+      label: entry.summary,
+      auto: entry.auto,
+      savedAt: new Date().toISOString(),
+      doc: entry.doc,
+    });
+    return "persisted";
+  } catch {
+    return "failed";
+  }
+}
+
 function saveCheckpoint(rawName: string | undefined, ctx: McpToolContext, auto: boolean): string {
   const name = checkpointName(rawName, auto);
   const doc = ctx.getDoc();
@@ -4102,23 +4275,13 @@ async function executeCheckpointTool(ctx: McpToolContext, record: Record<string,
   if (op === "save") {
     const saved = saveCheckpoint(name === "" ? undefined : name, ctx, false);
     const entry = checkpoints.get(saved)!;
-    let durable = "session only";
-    if (repo != null) {
-      try {
-        await repo.put({
-          key: `${entry.projectId}::${saved}`,
-          projectId: entry.projectId,
-          name: saved,
-          label: entry.summary,
-          auto: entry.auto,
-          savedAt: new Date().toISOString(),
-          doc: entry.doc,
-        });
-        durable = "persisted";
-      } catch {
-        durable = "session only (persistence unavailable)";
-      }
-    }
+    const durability = await persistCheckpoint(saved);
+    const durable =
+      durability === "persisted"
+        ? "persisted"
+        : durability === "unavailable"
+          ? "session only"
+          : "session only (persistence unavailable)";
     return {
       text: `checkpoint "${saved}" saved (${entry.summary}) — ${durable}, ${checkpoints.size}/${CHECKPOINT_LIMIT} in memory`,
       mutated: false,

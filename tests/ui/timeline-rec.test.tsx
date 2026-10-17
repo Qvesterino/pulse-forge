@@ -985,8 +985,12 @@ describe("arrangement REC wiring", () => {
         fireEvent.click(recButton);
       });
 
-      const openingButton = await screen.findByRole("button", { name: "◌ INPUT…" });
-      expect(openingButton).toBeDisabled();
+      // While the input opens the REC affordance is replaced by a dedicated
+      // CANCEL control (opening the device can hang on the OS prompt), so a
+      // second REC click has nothing to hit — exactly one start runs.
+      const cancelButton = await screen.findByRole("button", { name: "Cancel audio input startup" });
+      expect(cancelButton).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "● REC" })).not.toBeInTheDocument();
       await vi.waitFor(() => expect(startCount).toBe(1));
 
       unblockStart();

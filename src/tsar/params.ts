@@ -223,6 +223,20 @@ export const tsarParams: ParamDef[] = [
   { id: "arpOctaves", label: "A OCT", min: 1, max: 4, default: 1, step: 1, kind: "discrete" },
   { id: "arpGate", label: "A GATE", min: 0.05, max: 1, default: 0.5, format: pct },
   { id: "arpSwing", label: "A SWING", min: 0, max: 0.75, default: 0, format: pct },
+  {
+    id: "arpSnap",
+    label: "A SNAP",
+    min: 0,
+    max: 2,
+    default: 0,
+    step: 1,
+    kind: "discrete",
+    options: [
+      { value: 0, label: "FREE" },
+      { value: 1, label: "SCALE" },
+      { value: 2, label: "CHORD" },
+    ],
+  },
 ];
 
 /** Fast id → ParamDef lookup (built once; the schema is static). */

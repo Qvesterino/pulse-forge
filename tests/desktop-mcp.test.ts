@@ -94,13 +94,14 @@ afterEach(() => {
 });
 
 describe("desktop mcp tool defs — mirror pin", () => {
-  it("MCP_TOOL_DEFS mirrors src/mcp/tools.ts MCP_TOOLS exactly (names, descriptions, schemas)", () => {
+  it("MCP_TOOL_DEFS mirrors src/mcp/tools.ts MCP_TOOLS exactly (names, descriptions, schemas, annotations)", () => {
     expect(bridgeModule.MCP_TOOL_DEFS).toEqual(
       MCP_TOOLS.map((tool) => ({
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema,
         ...(tool.outputSchema != null ? { outputSchema: tool.outputSchema } : {}),
+        ...(tool.annotations != null ? { annotations: tool.annotations } : {}),
       })),
     );
   });

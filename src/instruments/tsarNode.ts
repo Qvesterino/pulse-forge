@@ -37,6 +37,15 @@ export interface TsarRuntime extends InstrumentRuntime {
   prepareOfflineRender?: () => void;
   /** Second source identity (Source B); mirrors `setSample` for slot A. */
   setSampleB?: (id: string | null) => void;
+  /** Project musical context (arp snap masks); diffed before the port send. */
+  setHarmonyContext?: (init: TsarHarmonyContext) => void;
+}
+
+/** Shape mirrored from effects/types `HarmonyContextInit` (no host imports). */
+export interface TsarHarmonyContext {
+  keyRootPc?: number;
+  scaleMask?: number;
+  chords?: { startBar: number; lengthBars: number; rootPc?: number; chordMask?: number }[];
 }
 
 export interface TsarRuntimeOptions {
@@ -48,6 +57,8 @@ export interface TsarRuntimeOptions {
   bpm: number;
   track: InstrumentTrack;
   getSample(id: string | null): AudioBuffer | undefined;
+  /** Initial musical context (offline builds seed it into processorOptions). */
+  harmony?: TsarHarmonyContext;
 }
 
 export interface TsarFallbackOptions {
@@ -158,6 +169,11 @@ export function createTsarRuntime(options: TsarRuntimeOptions): TsarRuntime {
   let pendingBpm: number | null = Number.isFinite(options.bpm) && options.bpm > 0 ? options.bpm : 120;
   let currentTrack = { ...options.track };
   let node: AudioWorkletNode | null = null;
+  let pendingHarmony: TsarHarmonyContext | undefined = options.harmony;
+  /** Cheap identity for the diff: re-sending the context restarts nothing in
+   * the DSP, but a quiet port is the house style (syncInstrument runs per
+   * document pass). */
+  let harmonySig = "";
 
   /** Root frequency per slot: the per-slot ROOT param is the real contract. */
   const rootHzFor = (slot: 0 | 1): number => {
@@ -284,6 +300,21 @@ export function createTsarRuntime(options: TsarRuntimeOptions): TsarRuntime {
     setVelocityLayers() {
       // Keyzones / round-robin are sampler features, not TSAR.
     },
+    setHarmonyContext(init: TsarHarmonyContext) {
+      if (!init || typeof init !== "object") return;
+      pendingHarmony = init;
+      // Idempotence diff: syncInstrument runs on every document pass and the
+      // masks rarely change — rebuild a cheap signature and skip identical
+      // sends (the port message itself is a DSP no-op, the quiet port is the
+      // house style).
+      const signature = `${init.scaleMask ?? 0xfff}:${(init.chords ?? [])
+        .map((chord) => `${chord.startBar}.${chord.lengthBars}.${chord.chordMask ?? 0}`)
+        .join(",")}`;
+      if (signature === harmonySig) return;
+      harmonySig = signature;
+      if (node) node.port.postMessage({ type: "harmony", harmony: init });
+      // Offline: stored in pendingHarmony and seeded at prepareOfflineRender.
+    },
     syncBpm(bpm, when) {
       // The arp clock and tempo-synced LFO derive their rates from project
       // tempo. Offline changes carry their exact event time into the queue.
@@ -336,6 +367,7 @@ export function createTsarRuntime(options: TsarRuntimeOptions): TsarRuntime {
           wavetables: uploads.wavetables,
           samples: uploads.samples,
           bpm: pendingBpm ?? undefined,
+          harmony: pendingHarmony,
         }),
       );
     };

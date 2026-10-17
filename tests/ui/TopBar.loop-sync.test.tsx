@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { TopBar } from "../../src/ui/TopBar";
-import { renderWithContext, mockServices } from "../helpers";
+import { renderWithContext, mockServices, mockTopBarWidth } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import type { Services } from "../../src/services";
 
@@ -67,29 +67,40 @@ function servicesWithRealLoopApi(doc: ReturnType<typeof createProjectFromTemplat
 
 describe("§5 TopBar loop is not a second source of truth", () => {
   it("reflects a loop change made outside the button, with the transport stopped", async () => {
-    const services = servicesWithRealLoopApi(createProjectFromTemplate("house"));
-    renderWithContext(<TopBar {...topBarProps()} />, { services });
+    // LOOP is direct only on a desktop-width bar (it overflows below 1200 px).
+    const restore = mockTopBarWidth();
+    try {
+      const services = servicesWithRealLoopApi(createProjectFromTemplate("house"));
+      renderWithContext(<TopBar {...topBarProps()} />, { services });
 
-    const loopButton = screen.getByRole("button", { name: "Toggle loop region" });
-    expect(loopButton).toHaveAttribute("aria-pressed", "false");
+      const loopButton = screen.getByRole("button", { name: "Toggle loop region" });
+      expect(loopButton).toHaveAttribute("aria-pressed", "false");
 
-    // Another surface writes the transport directly — no click, no command.
-    services.transport.setLoop(true, 2, 6);
+      // Another surface writes the transport directly — no click, no command.
+      services.transport.setLoop(true, 2, 6);
 
-    // The shared rAF bus must still be ticking with playback stopped.
-    await waitFor(() => expect(loopButton).toHaveAttribute("aria-pressed", "true"));
-    expect(loopButton.className).toContain("active");
+      // The shared rAF bus must still be ticking with playback stopped.
+      await waitFor(() => expect(loopButton).toHaveAttribute("aria-pressed", "true"));
+      expect(loopButton.className).toContain("active");
+    } finally {
+      restore();
+    }
   });
 
   it("returns to false when the loop is cleared externally", async () => {
-    const services = servicesWithRealLoopApi(createProjectFromTemplate("house"));
-    renderWithContext(<TopBar {...topBarProps()} />, { services });
+    const restore = mockTopBarWidth();
+    try {
+      const services = servicesWithRealLoopApi(createProjectFromTemplate("house"));
+      renderWithContext(<TopBar {...topBarProps()} />, { services });
 
-    const loopButton = screen.getByRole("button", { name: "Toggle loop region" });
-    services.transport.setLoop(true, 2, 6);
-    await waitFor(() => expect(loopButton).toHaveAttribute("aria-pressed", "true"));
+      const loopButton = screen.getByRole("button", { name: "Toggle loop region" });
+      services.transport.setLoop(true, 2, 6);
+      await waitFor(() => expect(loopButton).toHaveAttribute("aria-pressed", "true"));
 
-    services.transport.clearLoop();
-    await waitFor(() => expect(loopButton).toHaveAttribute("aria-pressed", "false"));
+      services.transport.clearLoop();
+      await waitFor(() => expect(loopButton).toHaveAttribute("aria-pressed", "false"));
+    } finally {
+      restore();
+    }
   });
 });

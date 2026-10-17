@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { ResizeGrip } from "../src/ui/ResizeGrip";
 import { getLayoutSnapshot, resetLayout } from "../src/ui/layout";
-import { LAYOUT_BOUNDS, DEFAULT_LAYOUT_STATE } from "../src/shared/layout-data";
+import { LAYOUT_BOUNDS, DEFAULT_LAYOUT_STATE, LAYOUT_STORAGE_KEY } from "../src/shared/layout-data";
 
 /**
  * Vlna C — the live resize grips.
@@ -64,12 +64,12 @@ describe("ResizeGrip · drag", () => {
     // every var + class + zoom on each write, and a 120 Hz mouse would do that
     // 120 times a second on the thread that renders the DAW — the exact hazard
     // the dock grip's debounce exists to avoid.
-    expect(setItem.mock.calls.filter(([k]) => k === "pf-layout-v1")).toHaveLength(0);
+    expect(setItem.mock.calls.filter(([k]) => k === LAYOUT_STORAGE_KEY)).toHaveLength(0);
     // The preview still tracks the pointer, so the edge never feels laggy.
     expect(Number(grip.getAttribute("aria-valuenow"))).toBe(320);
 
     act(() => fireEvent.pointerUp(window));
-    const stored = JSON.parse(localStorage.getItem("pf-layout-v1")!);
+    const stored = JSON.parse(localStorage.getItem(LAYOUT_STORAGE_KEY)!);
     expect(stored.inspectorWidth).toBe(320);
     setItem.mockRestore();
   });

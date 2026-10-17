@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
-import { normalizeProject } from "../src/project-model/schema";
+import { normalizeProject, MAX_ARRANGEMENT_CLIP_TICKS } from "../src/project-model/schema";
 import { BAR_TICKS, STEP_TICKS } from "../src/project-model/types";
 import { ProjectStore } from "../src/store/ProjectStore";
 import {
@@ -42,15 +42,19 @@ describe("note editing — boundary clamps (audit 01)", () => {
     return { s, trackId: track.id, noteId };
   }
 
-  it("resizeNote clamps to the pattern and never emits an overflowing/zero duration", () => {
+  it("resizeNote clamps to the musical-time ceiling and never emits an overflowing/zero duration", () => {
     const { s, trackId, noteId } = noteDoc();
     const pattern = s.getDoc().patterns[0];
     const patternTicks = pattern.stepCount * STEP_TICKS;
+    // ADR 0047: the step grid is no longer the end of a note phrase — a
+    // resized note may extend past patternTicks, bounded only by the 8192-bar
+    // musical-time ceiling (MAX_ARRANGEMENT_CLIP_TICKS).
     s.execute(resizeNote(s.getDoc(), trackId, noteId, patternTicks * 10));
     const note = (s.getDoc().patterns[0].notes?.[trackId] ?? [])[0]!;
-    expect(note.duration).toBe(patternTicks); // clamped, NOT dropped by normalize
+    expect(note.duration).toBe(patternTicks * 10);
+    expect(note.start + note.duration).toBeLessThanOrEqual(MAX_ARRANGEMENT_CLIP_TICKS);
     s.execute(resizeNote(s.getDoc(), trackId, noteId, Number.NaN));
-    expect((s.getDoc().patterns[0].notes?.[trackId] ?? [])[0]!.duration).toBe(patternTicks);
+    expect((s.getDoc().patterns[0].notes?.[trackId] ?? [])[0]!.duration).toBe(patternTicks * 10);
     s.execute(resizeNote(s.getDoc(), trackId, noteId, 0));
     expect((s.getDoc().patterns[0].notes?.[trackId] ?? [])[0]!.duration).toBeGreaterThanOrEqual(1);
   });

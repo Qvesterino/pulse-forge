@@ -25,12 +25,24 @@
  * patternTicks` (the `start` is already wrapped). Undo is unaffected — the
  * previous array is stored verbatim and the original notes were valid.
  *
+ * SUPERSEDED IN PART by ADR 0047 (2026-10-15, accepted): the step grid is no
+ * longer the end of a note phrase. Note start/duration may extend past
+ * `Pattern.stepCount` up to the 8192-bar musical-time ceiling, the phrase
+ * horizon is the later of the grid and the last note end rounded to a bar, and
+ * duplicate moves forward WITHOUT wrapping or truncating (wrapping would
+ * retrigger a sustained note at the wrong place). The two R9.D1 specs below
+ * pin the ADR 0047 contract; the R9.D1 wrap-era behaviour is historical.
+ *
  * Note: the default House project seeds the bass track with 4 starter notes
  * at steps 0/2/4/6, so tests that need a "clean" note use the LAST entry
  * of `notes[]` (the one just added) rather than `[0]`.
  */
 import { describe, expect, it } from "vitest";
-import { createDefaultProject, normalizeProject } from "../src/project-model/schema";
+import {
+  createDefaultProject,
+  normalizeProject,
+  MAX_ARRANGEMENT_CLIP_TICKS,
+} from "../src/project-model/schema";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { addNote, duplicateNotes, glueNotes, nudgeNotes, quantizeNotes, splitNotes } from "../src/commands/commands";
 import { STEP_TICKS, type InstrumentTrack, type NoteEvent } from "../src/project-model/types";
@@ -218,13 +230,12 @@ describe("glueNotes", () => {
   });
 });
 
-describe("duplicateNotes (R9.D1 regression)", () => {
-  it("clamps the duplicate's duration so the copy never exceeds patternTicks", () => {
+describe("duplicateNotes (R9.D1 regression, re-pinned to ADR 0047)", () => {
+  it("duplicates a long note forward without wrapping or truncating it (ADR 0047)", () => {
     // Original: start = 0, duration = 1900 in a 16-step pattern (1920 ticks).
-    // Valid (end = 1900 <= 1920). width = 1900, so the copy's start =
-    // (0 + 1900) % 1920 = 1900. Without the fix the copy would be
-    // (1900, 1900), end = 3800, far past patternTicks — silently dropped
-    // by the next normalizeProject() pass.
+    // ADR 0047: the copy moves forward in musical time (start = 0 + 1900) and
+    // KEEPS its duration — wrapping it back into the step grid would retrigger
+    // the sustained note at the wrong place and truncate its tail.
     const store = new ProjectStore(createDefaultProject());
     const bass = bassTrack(store);
     store.execute(addNote(store.doc, bass.id, { pitch: 36, start: 0, duration: 1900, velocity: 0.8 }));
@@ -235,13 +246,13 @@ describe("duplicateNotes (R9.D1 regression)", () => {
     const after = activePatternNotes(store, bass.id);
     const copy = after.find((n) => !beforeIds.has(n.id));
     expect(copy).toBeDefined();
-    // Invariant: copy's end is clamped to patternTicks
-    expect(copy!.start + copy!.duration).toBeLessThanOrEqual(patternTicks(store));
-    // The copy's duration is shorter than the original (truncated to fit)
-    expect(copy!.duration).toBeLessThanOrEqual(original.duration);
+    expect(copy!.start).toBe(1900);
+    expect(copy!.duration).toBe(1900);
+    // The only remaining bound is the musical-time safety ceiling.
+    expect(copy!.start + copy!.duration).toBeLessThanOrEqual(MAX_ARRANGEMENT_CLIP_TICKS);
   });
 
-  it("survives a normalizeProject round-trip without losing the duplicate", () => {
+  it("survives a normalizeProject round-trip including a note past the step grid (ADR 0047)", () => {
     const store = new ProjectStore(createDefaultProject());
     const bass = bassTrack(store);
     store.execute(addNote(store.doc, bass.id, { pitch: 36, start: 0, duration: 1900, velocity: 0.8 }));
@@ -254,12 +265,14 @@ describe("duplicateNotes (R9.D1 regression)", () => {
 
     const normalized = normalizeProject(store.doc);
     const normalizedNotes = normalized.patterns[0].notes[bass.id] ?? [];
-    // Both the original and the duplicate survive the normalize round-trip
+    // Both the original and the duplicate survive the normalize round-trip —
+    // the 3800-tick copy is LEGAL past the 1920-tick grid (ADR 0047) and is no
+    // longer silently dropped.
     expect(normalizedNotes).toHaveLength(beforeCount + 1);
-    expect(normalizedNotes.every((n) => n.start + n.duration <= patternTicks(store))).toBe(true);
-    // The duplicate (the id not in the pre-duplicate set) survives specifically
+    expect(normalizedNotes.every((n) => n.start + n.duration <= MAX_ARRANGEMENT_CLIP_TICKS)).toBe(true);
     const copy = normalizedNotes.find((n) => !beforeIds.has(n.id));
     expect(copy).toBeDefined();
+    expect(copy!.start + copy!.duration).toBeGreaterThan(patternTicks(store));
   });
 
   it("keeps both notes within the pattern boundary for a short selection (no clamping needed)", () => {

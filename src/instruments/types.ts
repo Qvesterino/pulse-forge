@@ -36,6 +36,12 @@ export interface InstrumentRuntime {
   setVelocityLayers?(layers: SampleLayer[]): void;
   /** Tempo changed — re-derive tempo-synced modulators (LFO sync, delay time…). `when` = scheduled offline application (see EffectRuntime.syncBpm). */
   syncBpm?(bpm: number, when?: number): void;
+  /**
+   * Project musical context (doc.key / arrangement.chords resolved into
+   * 12-bit pitch-class masks — the harmonyContext contract). TSAR uses it
+   * for the arp SNAP modes; runtimes without musical context omit it.
+   */
+  setHarmonyContext?(context: import("../effects/types").HarmonyContextInit): void;
   panic(): void;
   dispose(): void;
 }
@@ -43,6 +49,8 @@ export interface InstrumentRuntime {
 export interface InstrumentEnv {
   bpm: number;
   getSample(id: string | null): AudioBuffer | undefined;
+  /** Resolved project musical context (same shape as EffectRuntime's). */
+  harmonyContext?: import("../effects/types").HarmonyContextInit;
 }
 
 export type InstrumentFactory = (

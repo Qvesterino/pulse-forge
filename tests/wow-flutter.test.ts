@@ -33,7 +33,7 @@
  */
 
 import { beforeAll, describe, expect, it } from "vitest";
-import { wfSwingBudgetSeconds, wfSwingPlan } from "../src/audio-worklets/wowflutter-math.js";
+import { wfSwingBudgetSeconds, wfSwingPlan } from "../src/shared/wowflutter-math.js";
 import { wowFlutterParams } from "../src/effects/definitions";
 
 const SR = 44100;

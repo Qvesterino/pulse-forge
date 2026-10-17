@@ -46,7 +46,7 @@ describe("Sequencer", () => {
 
   it("has step sequencer aria label", () => {
     renderWithContext(<Sequencer {...defaultProps} />);
-    expect(screen.getByRole("region", { name: /Step Sequencer/ })).toBeInTheDocument();
+    expect(screen.getByRole("tabpanel", { name: /Step Sequencer/ })).toBeInTheDocument();
   });
 
   it("toggles Beat Focus without changing the pattern editor state", () => {
@@ -56,7 +56,7 @@ describe("Sequencer", () => {
     expect(container.querySelector(".sequencer.beat-focus")).toBeNull();
     fireEvent.click(enter);
     expect(container.querySelector(".sequencer.beat-focus")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Step Sequencer — Beat Focus" })).toBeInTheDocument();
+    expect(screen.getByRole("tabpanel", { name: "Step Sequencer — Beat Focus" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Exit Beat Focus" })).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: "Escape" });

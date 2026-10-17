@@ -12,7 +12,7 @@
  */
 import type { EffectType } from "../project-model/types";
 import type { ParamDef } from "./types";
-import { wfSwingPlan } from "../audio-worklets/wowflutter-math.js";
+import { wfSwingPlan } from "../shared/wowflutter-math.js";
 import { buildSchema as buildFxEqSchema } from "./fxeq-core/core/parameterSchema";
 import {
   PARAM_BY_ID as ULTINA_PARAM_BY_ID,

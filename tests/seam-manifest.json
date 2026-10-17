@@ -122,6 +122,42 @@
       "status": "OPEN",
       "entryPoint": "src/mcp/tools.ts -> ProjectStore",
       "note": "Dispatch to command is covered, but every ctx in the suite is a hand-rolled fake; dispatch -> REAL store -> undo depth is not asserted anywhere in the committed suite."
+    },
+    {
+      "id": "resample-persistence-rollback",
+      "status": "COVERED",
+      "entryPoint": "src/ui/ExportPanel.tsx:1055 stopRecording",
+      "spec": "tests/ui/ExportPanel.test.tsx",
+      "seamEvent": "■ STOP",
+      "negativeSpec": "no ghost sample",
+      "note": "Driven through the real REC / STOP buttons, not the inner helper: a failed durable save must roll the already-playable resample back out of the bank (no ghost sample), offer no take and return the panel to idle. Verified by mutation — disabling the rollback in src/sample-library/bank-persist.ts turns exactly this spec red."
+    },
+    {
+      "id": "agent-session-checkpoint",
+      "status": "COVERED",
+      "entryPoint": "src/mcp/tools.ts executeMcpTool (pre-dispatch session checkpoint)",
+      "spec": "tests/agent-trust.test.ts",
+      "seamEvent": "createHeadlessMcpHost",
+      "negativeSpec": "does not start a session for checkpoint save/list/diff",
+      "note": "Wave 1/A: the pre-session checkpoint is taken on the FIRST document-mutating call of a session only. Entered through the real headless MCP host (the same wrapper every transport uses); the negative specs pin that reads, runtime tools, dry-runs and checkpoint save/list/diff never start a session."
+    },
+    {
+      "id": "agent-session-revert",
+      "status": "COVERED",
+      "entryPoint": "src/ui/ActivityCenter.tsx REVERT SESSION",
+      "spec": "tests/ui/ActivityCenter.test.tsx",
+      "seamEvent": "REVERT SESSION",
+      "negativeSpec": "keeps the revert disabled while the session checkpoint is not durable",
+      "note": "Wave 1/A: the revert commits ONE undoable restoreSnapshot command from the panel, and closes the session. The negative spec pins that a non-durable checkpoint offers no revert at all (disabled, with the reason shown) instead of a button that cannot work."
+    },
+    {
+      "id": "job-center-cancel",
+      "status": "COVERED",
+      "entryPoint": "src/services/jobCenter.ts cancelJob",
+      "spec": "tests/job-center.test.ts",
+      "seamEvent": "cancelJob",
+      "negativeSpec": "aborts the owner's signal and settles as cancelled",
+      "note": "Wave 1/B: cancellation aborts the owner's signal and settles the job exactly once — the negative assertions pin that a cancelled job cannot be cancelled twice, cannot be revived by a late done(), and that the watchdog fails a lost owner instead of leaving it running."
     }
   ]
 }

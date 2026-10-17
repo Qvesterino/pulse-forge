@@ -13,6 +13,7 @@ import { mockServices, renderWithContext } from "../helpers";
 import type { Services } from "../../src/services";
 import type { NoteEvent, ProjectDocument } from "../../src/project-model/types";
 import { STEP_TICKS } from "../../src/project-model/types";
+import { MAX_ARRANGEMENT_CLIP_TICKS } from "../../src/project-model/schema";
 import { usePointerDragGuard } from "../../src/ui/usePointerDragGuard";
 import { useEffect } from "react";
 
@@ -29,6 +30,9 @@ import { useEffect } from "react";
  *    release with no movement planted an invisible copy on the original.
  *  - Paste overflow: pasting a clipboard taken from a longer pattern landed
  *    notes past patternTicks — silent zombies only normalizeProject dropped.
+ *    SUPERSEDED by ADR 0047: notes past the step grid are legal now; paste
+ *    clamps to the musical-time ceiling, not to the grid. The spec pins the
+ *    ceiling contract instead.
  */
 
 function liveServices(doc: ProjectDocument) {
@@ -215,14 +219,18 @@ describe("alt+click must not plant a hidden duplicate", () => {
     } as DOMRect);
 
     fireEvent.pointerDown(noteEl, { button: 0, altKey: true, clientX: 4, clientY: 2, pointerId: 1 });
-    // 32 px at the stubbed grid (160 px / 16 steps) = 3.2 steps → rounds to 3.
-    fireEvent.pointerMove(noteEl, { clientX: 36, clientY: 2, pointerId: 1 });
+    // ADR 0047 reworked the roll into a horizontally scrollable grid whose step
+    // width comes from the measured viewport: max(24, min(64, width/steps)).
+    // jsdom has no ResizeObserver measurement, so the roll falls back to
+    // 800 px / 16 steps = 50 px per step (PianoRoll.tsx:428-429). Drag exactly
+    // two such steps so the expectation never depends on pixel rounding.
+    fireEvent.pointerMove(noteEl, { clientX: 4 + 2 * 50, clientY: 2, pointerId: 1 });
     fireEvent.pointerUp(noteEl, { pointerId: 1 });
 
     const notes = noteIn(project, track.id);
     expect(notes).toHaveLength(2);
     const moved = notes.find((n) => n.id !== "n1")!;
-    expect(moved.start).toBe(note.start + 3 * STEP_TICKS);
+    expect(moved.start).toBe(note.start + 2 * STEP_TICKS);
     expect(moved.pitch).toBe(84);
   });
 });
@@ -304,12 +312,12 @@ describe("alt-drag is ONE undo transaction", () => {
   });
 });
 
-describe("paste clamps into the pattern", () => {
-  it("notes beyond patternTicks land inside it", () => {
-    // The clipboard note starts at step 25 — far past the 8-step pattern the
-    // roll is mounted on (a copy taken from a longer pattern / earlier
-    // session). Pre-fix the paste wrote the note at start 3000, where it
-    // never sounded and only normalizeProject's silent drop removed it.
+describe("paste respects the sparse phrase horizon (ADR 0047)", () => {
+  it("keeps a clipboard note past the step grid at its own position", () => {
+    // The clipboard note starts at step 25 — past the 8-step grid the roll is
+    // mounted on (a copy taken from a longer pattern / earlier session). Under
+    // ADR 0047 that position is LEGAL: the phrase horizon grows to cover it and
+    // the scheduler plays it, so paste must not drag it back into the grid.
     const note: NoteEvent = { id: "n1", pitch: 84, start: 25 * STEP_TICKS, duration: STEP_TICKS, velocity: 0.8 };
     const doc = createProjectFromTemplate("house");
     const track = doc.tracks.find((t) => t.kind === "instrument")!;
@@ -333,9 +341,37 @@ describe("paste clamps into the pattern", () => {
 
     const pasted = noteIn(project, track.id).find((n) => n.id !== "n1")!;
     expect(pasted).toBeDefined();
-    // Clamped to the last slot that fits the note's duration.
-    expect(pasted.start).toBe(8 * STEP_TICKS - pasted.duration);
-    expect(pasted.start + pasted.duration).toBeLessThanOrEqual(8 * STEP_TICKS);
+    expect(pasted.start).toBe(25 * STEP_TICKS);
+    expect(pasted.start + pasted.duration).toBeLessThanOrEqual(MAX_ARRANGEMENT_CLIP_TICKS);
+  });
+
+  it("clamps a clipboard note from beyond the ceiling back inside it", () => {
+    const overCeiling = MAX_ARRANGEMENT_CLIP_TICKS + 5_000;
+    const note: NoteEvent = { id: "n1", pitch: 84, start: overCeiling, duration: STEP_TICKS, velocity: 0.8 };
+    const doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find((t) => t.kind === "instrument")!;
+    const pattern = doc.patterns[0]!;
+    pattern.notes = { [track.id]: [note] };
+    const { project, services } = liveServices(doc);
+    renderWithContext(
+      <PianoRollTrack
+        track={track}
+        pattern={{ ...pattern, stepCount: 8 }}
+        playheadStep={-1}
+        selectedNote={{ trackId: track.id, noteIds: ["n1"] }}
+        onSelectNote={vi.fn()}
+        scaleSnap={false}
+      />,
+      { services },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "COPY" }));
+    fireEvent.click(screen.getByRole("button", { name: "PASTE" }));
+
+    const pasted = noteIn(project, track.id).find((n) => n.id !== "n1")!;
+    expect(pasted).toBeDefined();
+    expect(pasted.start).toBe(MAX_ARRANGEMENT_CLIP_TICKS - STEP_TICKS);
+    expect(pasted.start + pasted.duration).toBeLessThanOrEqual(MAX_ARRANGEMENT_CLIP_TICKS);
   });
 });
 

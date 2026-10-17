@@ -221,6 +221,21 @@ export function parseNamedTrackFaderIntent(text: string, doc: ProjectDocument): 
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")} `;
   if (/\blufs\b/.test(lower)) return null;
+  // An ask that names an effect AND one of ITS knobs ("set the lead reverb mix
+  // to 25%") belongs to the effectIntent grammar (see mix.ts: percent IS the
+  // knob's fraction), never to the track fader. The effect word ALONE is not
+  // enough — "turn down the Reverb Bus" (a track named that) stays a fader
+  // ask; this is the same collision the returns path gates on "return" below.
+  if (
+    /\b(?:reverb|delay|echo|chorus|compress(?:or|ion)?|saturat\w*|sidechain|pump|eq)\b[\s\S]{0,24}\b(?:mix|amount|wet|decay|feedback|time|rate|depth|tone|thresh\w*|ratio)\b/.test(
+      lower,
+    ) ||
+    /\b(?:mix|amount|wet|decay|feedback|time|rate|depth|tone|thresh\w*|ratio)\b[\s\S]{0,24}\b(?:reverb|delay|echo|chorus|compress(?:or|ion)?|saturat\w*|sidechain|pump|eq)\b/.test(
+      lower,
+    )
+  ) {
+    return null;
+  }
   // ABSOLUTE SET on a named track/return ("set reverb return to 50%") —
   // the same set-verb gate as parseFaderIntent; direction "set" makes
   // percent the absolute fraction of the fader range.

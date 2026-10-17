@@ -26,6 +26,7 @@ import {
   runPriorGrid,
   runPriorGridV2,
   runPriorGridV3,
+  embeddingConditionedMode,
   type PriorRunResult,
 } from "../../ai/symbolic/prior-client";
 import { semanticConditioningForIntent } from "../semantic-conditioning";
@@ -340,11 +341,17 @@ export class SymbolicPriorProvider implements GenerationProvider {
         } else if (supportsMelodicPrior) {
           const melodyRand = forkRandom(`${generationOptions.seed}|melody.neural`, "stream");
           // Preferred: embedding-conditioned v2 melodic prior; falls back to
-          // the v1 genre one-hot when the v2 model doesn't answer.
-          const priorMelody = semantic
-            ? ((await sampleMelodicParts(generationPlan, context, melodyRand, semantic)) ??
-              (await sampleMelodicParts(generationPlan, context, melodyRand)))
-            : await sampleMelodicParts(generationPlan, context, melodyRand);
+          // the v1 genre one-hot when the v2 model doesn't answer. The v2
+          // attempt is gated on the opt-in flag: a conditioning vector can
+          // also arrive from the STRUCTURED style table, which the neural v2
+          // row builder cannot use — attempting v2 for it is a guaranteed
+          // decline, and with embeddings opted out the provider must not
+          // reach for the model at all.
+          const priorMelody =
+            semantic && embeddingConditionedMode() === "on"
+              ? ((await sampleMelodicParts(generationPlan, context, melodyRand, semantic)) ??
+                (await sampleMelodicParts(generationPlan, context, melodyRand)))
+              : await sampleMelodicParts(generationPlan, context, melodyRand);
           if (priorMelody) {
             for (const role of ["bass", "chord", "lead"] as const) {
               const track = melodicRoleTrack(role);

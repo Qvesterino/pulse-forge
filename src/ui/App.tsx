@@ -84,6 +84,7 @@ import { encodeWav } from "../rendering/wav";
 import { consolidateRangeToAudio } from "../services/rangeConsolidation";
 import { CommandToast } from "./CommandToast";
 import { MixPreviewMount } from "./MixPreviewChip";
+import { ActivityCenter } from "./ActivityCenter";
 // Palette lives in a lazy chunk — it loads on first Ctrl+K.
 const PaletteOverlay = lazy(() => import("./PaletteOverlay").then((m) => ({ default: m.PaletteOverlay })));
 import { HelpOverlay } from "./HelpOverlay";
@@ -1876,6 +1877,7 @@ export function App({
               )}
               <CommandToast />
               <MixPreviewMount />
+              <ActivityCenter />
               <GestureHintToast />
               {captureOffer && services.capture.hasCapturedMaterial && (
                 <div

@@ -13,11 +13,20 @@ describe("Inspector", () => {
     return t;
   }
 
-  it("renders the TRACK header and Volume slider", () => {
+  it("renders the pad/track header and Volume slider", () => {
     const track = firstTrack();
-    const padId = track.kind === "drum" ? (track.pads[0]?.id ?? "") : "";
+    const pad = track.kind === "drum" ? track.pads[0] : undefined;
+    const padId = pad?.id ?? "";
     renderWithContext(<Inspector track={track} selectedPadId={padId} />);
-    expect(screen.getByText(new RegExp(`TRACK — ${track.name}`))).toBeInTheDocument();
+    // The drum Inspector focuses the SELECTED PAD (kicker "PAD" + the pad's
+    // name, with the pad-source toggle); the instrument branch keeps the
+    // instrument-name kicker + track name.
+    if (pad) {
+      expect(screen.getByText("PAD")).toBeInTheDocument();
+      expect(screen.getAllByText(pad.name).length).toBeGreaterThan(0);
+    } else {
+      expect(screen.getAllByText(track.name).length).toBeGreaterThan(0);
+    }
     expect(screen.getByRole("slider", { name: /Volume/i })).toBeInTheDocument();
   });
 

@@ -86,6 +86,8 @@ const STORE_CONSTS: string[] = [
   "STORE_PERSONAL_MODELS",
   "STORE_PRODUCER_MEMORY_EVENTS",
   "STORE_PRODUCER_LINEAGE",
+  // F1 Reaction Ledger: how the human answered each machine proposal.
+  "STORE_REACTIONS",
 ];
 
 const PUBLIC_FUNCTIONS: string[] = ["openDb", "tx"];

@@ -309,7 +309,7 @@ export const GENRE_FEEL: Partial<
   // Detroit rides a drum machine — near-zero jitter, the 808 timing is the
   // composition (the "complete mistake" was a sequencer, per Derrick May).
   detroit: { humanizeTiming: 0.03, humanizeVelocity: 0.09 },
-  postrock: { humanizeTiming: 0.18, humanizeVelocity: 0.22 },
+  postrock: { humanizeTiming: 0.18, humanizeVelocity: 0.2 },
   // Chiptune is a SEQUENCER, not a drummer - tracker rows land exactly on
   // the grid, and the "humanity" comes from the arpeggio, not timing.
   chiptune: { humanizeTiming: 0.02, humanizeVelocity: 0.07 },

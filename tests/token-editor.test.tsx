@@ -12,6 +12,7 @@ import {
   toHexInput,
 } from "../src/ui/tokenCatalog";
 import { getLayoutSnapshot, resetLayout, setLayout } from "../src/ui/layout";
+import { LAYOUT_STORAGE_KEY } from "../src/shared/layout-data";
 
 /**
  * The token editor (ADR 0036, confirmed scope).
@@ -263,7 +264,7 @@ describe("TokenEditor · the reset that must exist", () => {
     fireEvent.change(field, { target: { value: "#123456" } });
     fireEvent.keyDown(field, { key: "Enter" });
 
-    const stored = JSON.parse(localStorage.getItem("pf-layout-v1")!);
+    const stored = JSON.parse(localStorage.getItem(LAYOUT_STORAGE_KEY)!);
     expect(stored.colorOverrides["--bg-panel"]).toBe("#123456");
   });
 });

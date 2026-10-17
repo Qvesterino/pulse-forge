@@ -50,7 +50,7 @@ import {
   wfCentsToAmplitudeSeconds,
   wfAchievableCents,
   wfSwingPlan,
-} from "./wowflutter-math.js";
+} from "../shared/wowflutter-math.js";
 
 export { wfCentsToAmplitudeSeconds, wfAchievableCents };
 

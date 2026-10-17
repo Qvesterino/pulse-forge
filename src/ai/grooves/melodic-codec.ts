@@ -2,10 +2,17 @@ import type { MelodicNote } from "../types";
 
 const MELODIC_CODEC_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_";
 const MELODIC_DEGREES = [-1, 0, 2, 3, 4, 5, 6] as const;
-const MELODIC_DURATIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 16] as const;
+// Palettes are the union of the original compact set and every value the
+// authored reference data actually uses (the later ROCK/JAZZ/… waves wrote
+// raw literals with 0.41–0.64 velocities and 12-step rests). Widened
+// 2026-10-17: 7 degrees × 12 durations × 46 velocities = 3864 codes, still
+// inside the two-character (64²) alphabet. Any further widening must keep
+// CODE_COUNT <= 4096.
+const MELODIC_DURATIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 16] as const;
 const MELODIC_VELOCITIES = [
-  0, 0.3, 0.32, 0.35, 0.36, 0.38, 0.39, 0.4, 0.42, 0.44, 0.45, 0.46, 0.47, 0.48, 0.5, 0.52, 0.53, 0.54, 0.55, 0.6, 0.65,
-  0.66, 0.68, 0.7, 0.72, 0.74, 0.75, 0.76, 0.78, 0.8, 0.82, 0.85, 0.88, 0.9, 0.92, 0.94, 0.95,
+  0, 0.3, 0.32, 0.35, 0.36, 0.38, 0.39, 0.4, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.47, 0.48, 0.49, 0.5, 0.52, 0.53, 0.54,
+  0.55, 0.56, 0.58, 0.59, 0.6, 0.61, 0.62, 0.64, 0.65, 0.66, 0.68, 0.7, 0.72, 0.74, 0.75, 0.76, 0.78, 0.8, 0.82, 0.85,
+  0.88, 0.9, 0.92, 0.94, 0.95,
 ] as const;
 
 const CODE_COUNT = MELODIC_DEGREES.length * MELODIC_DURATIONS.length * MELODIC_VELOCITIES.length;

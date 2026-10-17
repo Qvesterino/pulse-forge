@@ -324,8 +324,10 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   // bebop/swing/big-band grooves own it now). Kept LAST on purpose: every
   // compound keeps its earlier lane — "jazz rap"/"jazz hop" ride boombap
   // (above), "nu jazz"/"jazz fusion" keep their house lane, "post-rock" its
-  // own genre.
-  [/\bjazz\b|\bbebop\b|\bbop\b|\bbig ?band\b|\bswing\b|\bstandards?\b/, "jazz"],
+  // own genre. A BARE "swing" is NOT a genre here: it is the swing-feel
+  // modifier the groove commands use ("more swing" must stay a groove ask —
+  // see the STYLE_PHRASES rule below), so only the compounds claim jazz.
+  [/\bjazz\b|\bbebop\b|\bbop\b|\bbig ?band\b|\bswing jazz\b|\bstandards?\b/, "jazz"],
   // Rock proper — the backline genre (classic/hard/punk/metal cores). Same
   // tail rule: alt/indie rock keep their house lanes, krautrock stays
   // techno, post-rock stays postrock — only the BARE rock/metal words land

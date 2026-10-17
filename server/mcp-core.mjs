@@ -195,6 +195,11 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["instruction"],
     },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
   },
   {
     name: "kyx_state",
@@ -242,6 +247,11 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["subject"],
     },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+    },
   },
   {
     name: "kyx_undo",
@@ -277,6 +287,11 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["action"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
     },
   },
   {
@@ -350,6 +365,11 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["action"],
     },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
   },
   {
     name: "kyx_export",
@@ -390,6 +410,11 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["format"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
     },
   },
   {
@@ -439,6 +464,11 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["bars", "durationSec", "sampleRate", "byteLength", "mimeType"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
     },
   },
   {
@@ -520,6 +550,11 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["genre"],
     },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
   },
   {
     name: "kyx_groove",
@@ -556,6 +591,11 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["direction"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
     },
   },
   {
@@ -630,6 +670,11 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["effect", "action"],
     },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+    },
   },
   {
     name: "kyx_sections",
@@ -687,6 +732,11 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["op", "role"],
     },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+    },
   },
   {
     name: "kyx_markers",
@@ -720,6 +770,11 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["op", "bar"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
     },
   },
   {
@@ -807,6 +862,11 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["op"],
     },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+    },
   },
   {
     name: "kyx_pattern",
@@ -836,6 +896,11 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["op"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
     },
   },
   {
@@ -881,6 +946,11 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["op", "family"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
     },
   },
   {
@@ -965,6 +1035,11 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["op"],
     },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+    },
   },
   {
     name: "kyx_music",
@@ -1028,6 +1103,11 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["op"],
     },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
   },
   {
     name: "kyx_catalog",
@@ -1057,6 +1137,11 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["subject"],
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
     },
   },
   {
@@ -1110,6 +1195,11 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["op"],
     },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
   },
   {
     name: "kyx_meter",
@@ -1152,6 +1242,11 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["master", "tracks"],
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
     },
   },
   {
@@ -1226,6 +1321,11 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["op"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
     },
   },
   {
@@ -1386,6 +1486,11 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["op"],
     },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+    },
   },
   {
     name: "kyx_batch",
@@ -1449,6 +1554,11 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["results", "mutations", "failures", "singleUndo"],
     },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
   },
   {
     name: "kyx_loudness",
@@ -1507,6 +1617,11 @@ export const MCP_TOOL_DEFS = [
         },
       },
     },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
   },
   {
     name: "kyx_import_sfz",
@@ -1558,6 +1673,11 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["name", "sfzBase64", "trackId", "samples"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
     },
   },
   {
@@ -1616,6 +1736,11 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["galleryId", "origin", "agent"],
     },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
   },
   {
     name: "kyx_render_summary",
@@ -1664,6 +1789,11 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["scope", "strips", "referenceLufs"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
     },
   },
   {
@@ -1735,6 +1865,11 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["scope", "strips", "findings", "suggestedActions"],
     },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
   },
   {
     name: "kyx_mix_idea",
@@ -1775,6 +1910,11 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["idea"],
     },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
   },
   {
     name: "kyx_checkpoint",
@@ -1804,6 +1944,11 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["op"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
     },
   },
   {
@@ -1872,6 +2017,11 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["genre"],
     },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
   },
   {
     name: "kyx_arrange",
@@ -1923,6 +2073,11 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["genre"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
     },
   },
   {
@@ -1987,6 +2142,11 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["genre"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
     },
   },
   {
@@ -2064,6 +2224,11 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["op"],
     },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
   },
   {
     name: "kyx_unsuno",
@@ -2104,6 +2269,11 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["action"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
     },
   },
   {
@@ -2231,6 +2401,11 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["op"],
     },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+    },
   },
   {
     name: "kyx_takes",
@@ -2264,6 +2439,11 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["op"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
     },
   },
   {
@@ -2316,6 +2496,11 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["op"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
     },
   },
 ];

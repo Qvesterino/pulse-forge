@@ -115,6 +115,8 @@ export interface TsarInitOptions {
   bpm?: number;
   /** Pre-seeded events (offline): applied at their absolute times. */
   events?: TsarEvent[];
+  /** Pre-seeded musical context (offline): the harmony-follow snap masks. */
+  harmony?: Parameters<TsarProcessor["setHarmonyContext"]>[0];
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -181,9 +183,76 @@ export class TsarProcessor {
   /** Notes currently owned by the arp (released when the arp stops them). */
   private arpSounding = new Set<number>();
 
+  // ── Harmony follow (arp snap) ───────────────────────────────────────────
+  // The HOST resolves doc.key / arrangement.chords into 12-bit pitch-class
+  // masks (the worklet carries no scale tables — the harmonyContext
+  // contract). Chromatic = the no-op default, so a project without a key
+  // keeps every arp untouched.
+  private scaleMask = 0xfff;
+  /** Sorted, capped chord list: { startBar, lengthBars, mask }. */
+  private chords: { startBar: number; lengthBars: number; mask: number }[] = [];
+
+  /**
+   * Install the project's musical context (live port message or the offline
+   * `processorOptions.harmony` seed — one contract). The chord list is
+   * capped: a worklet must stay bounded, and no arrangement needs more than
+   * a few hundred chords for step snapping.
+   */
+  setHarmonyContext(init: {
+    keyRootPc?: number;
+    scaleMask?: number;
+    chords?: { startBar: number; lengthBars: number; rootPc?: number; chordMask?: number }[];
+  }): void {
+    if (Number.isFinite(init.scaleMask) && (init.scaleMask as number) >= 0) {
+      this.scaleMask = (init.scaleMask as number) & 0xfff;
+    }
+    if (Array.isArray(init.chords)) {
+      this.chords = init.chords
+        .slice(0, 256)
+        .filter(
+          (chord) =>
+            Number.isFinite(chord.startBar) &&
+            Number.isFinite(chord.lengthBars) &&
+            chord.lengthBars > 0 &&
+            Number.isFinite(chord.chordMask),
+        )
+        .map((chord) => ({
+          startBar: chord.startBar,
+          lengthBars: chord.lengthBars,
+          mask: (chord.chordMask as number) & 0xfff,
+        }))
+        .sort((a, b) => a.startBar - b.startBar);
+    }
+  }
+
+  /** Nearest in-mask pitch, scanning outward; ties resolve upward. */
+  private snapPitch(pitch: number, mask: number): number {
+    if (mask <= 0 || mask >= 0xfff) return pitch;
+    const pc = ((Math.round(pitch) % 12) + 12) % 12;
+    if (mask & (1 << pc)) return pitch;
+    for (let delta = 1; delta <= 6; delta++) {
+      if (mask & (1 << ((pc + delta) % 12))) return pitch + delta;
+      if (mask & (1 << ((pc - delta + 144) % 12))) return pitch - delta;
+    }
+    return pitch;
+  }
+
+  /** Scale mask, or the mask of the chord sounding at `bar` (scale fallback). */
+  private maskAtBar(bar: number): number {
+    for (let i = this.chords.length - 1; i >= 0; i--) {
+      const chord = this.chords[i]!;
+      if (bar >= chord.startBar && bar < chord.startBar + chord.lengthBars) {
+        return chord.mask > 0 ? chord.mask : this.scaleMask;
+      }
+      if (chord.startBar <= bar) break; // sorted: nothing earlier can cover
+    }
+    return this.scaleMask;
+  }
+
   constructor(options: TsarInitOptions) {
     this.sampleRate = options.sampleRate > 0 ? options.sampleRate : 48000;
     if (options.bpm !== undefined) this.setBpm(options.bpm);
+    if (options.harmony) this.setHarmonyContext(options.harmony);
     for (let i = 0; i < MAX_VOICES; i++) this.voices.push(this.makeVoice(i));
     if (options.events) for (const event of options.events) this.postEvent(event);
   }
@@ -686,7 +755,14 @@ export class TsarProcessor {
           // Swing delays every OTHER step; the phase is nudged forward so the
           // pair of steps keeps the average rate.
           if (arpSwing > 0 && this.arpStep % 2 === 1) this.arpPhase = arpSwing * 0.5;
-          const pitch = this.arpNextPitch();
+          let pitch = this.arpNextPitch();
+          // Harmony follow: snap the step's pitch into the song's scale (or
+          // the chord sounding at this bar). FREE (0) leaves the walk as-is.
+          const arpSnap = Math.round(clamp(this.params.arpSnap ?? 0, 0, 2));
+          if (pitch > 0 && arpSnap > 0) {
+            const bar = (frameTime * this.bpm) / 240; // 4 beats per bar
+            pitch = this.snapPitch(pitch, arpSnap === 2 ? this.maskAtBar(bar) : this.scaleMask);
+          }
           if (pitch > 0) {
             this.noteOn(pitch, this.arpVelocity);
             this.arpSounding.add(pitch);

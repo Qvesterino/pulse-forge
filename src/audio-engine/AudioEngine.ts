@@ -1978,6 +1978,7 @@ export class AudioEngine {
       const runtime = INSTRUMENT_DEFS[track.instrument].factory(ctx, track, {
         bpm: this.doc?.bpm ?? 124,
         getSample: (id) => this.bank?.get(id),
+        harmonyContext: resolveHarmonyContext(this.doc),
       });
       const normGain = ctx.createGain();
       const normGainDb = presetNormalizationGainDb(track.presetId);
@@ -2018,6 +2019,12 @@ export class AudioEngine {
       // Reference compare — setVelocityLayersCommand swaps in a fresh array.
       state.layers = track.velocityLayers;
       state.runtime.setVelocityLayers?.(track.velocityLayers ?? []);
+    }
+    // Harmony follow (TSAR arp SNAP): push the resolved masks on every pass —
+    // the runtime diffs them before touching the port. Key/chord edits reach
+    // a playing arp without any rebuild.
+    if (track.instrument === "tsar" && this.doc) {
+      state.runtime.setHarmonyContext?.(resolveHarmonyContext(this.doc));
     }
     for (const [key, value] of Object.entries(track.params)) {
       if (state.params[key] !== value) state.runtime.setParameter(key, value);

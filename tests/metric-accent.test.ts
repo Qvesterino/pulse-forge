@@ -215,7 +215,10 @@ describe("metric accent end to end — the musical claim", () => {
     const pads = drumOf(d).pads;
     const hatRow = Object.entries(pattern.rows).find(([padId]) => {
       const idx = pads.findIndex((p) => p.id === padId);
-      return idx >= 0 && inferPadRole(pads[idx].name, idx) === "closedHat";
+      // The closedHat ROLE deliberately bundles shaker/tambourine (quiet
+      // decoration by design), so the spec must select the actual hat pad —
+      // the claim is about the hats, not about every percussion tick.
+      return idx >= 0 && inferPadRole(pads[idx].name, idx) === "closedHat" && /\bhat/i.test(pads[idx].name);
     });
     expect(hatRow).toBeDefined();
     const row = hatRow![1] as number[];

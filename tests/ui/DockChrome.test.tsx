@@ -32,18 +32,21 @@ describe("DockChrome", () => {
     expect(DOCK_TABS.map((t) => t.id).sort()).toEqual([...PANEL_KEYS].sort());
     renderChrome(state());
     for (const tab of DOCK_TABS) {
-      expect(screen.getByRole("tab", { name: tab.ariaLabel })).toBeInTheDocument();
+      // Split view can hold two panels open at once, so the dock is a
+      // disclosure group (button + aria-expanded), not a single-selection
+      // tablist — see the role="group" tab strip in DockChrome.tsx.
+      expect(screen.getByRole("button", { name: tab.ariaLabel })).toBeInTheDocument();
     }
   });
 
-  it("marks the open panel selected and reflects the split slot", () => {
+  it("marks the open panel expanded and reflects the split slot", () => {
     renderChrome(state({ slotA: "mixer", slotB: "intent" }));
-    expect(screen.getByRole("tab", { name: "Toggle mixer panel" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: "Toggle intent panel" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: "Toggle mixer panel" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Toggle intent panel" })).toHaveAttribute("aria-expanded", "true");
     // The split-slot tab carries the dimmer-LED class for at-a-glance reads.
-    expect(screen.getByRole("tab", { name: "Toggle intent panel" }).className).toContain("in-split");
-    expect(screen.getByRole("tab", { name: "Toggle arrangement and scenes" })).toHaveAttribute(
-      "aria-selected",
+    expect(screen.getByRole("button", { name: "Toggle intent panel" }).className).toContain("in-split");
+    expect(screen.getByRole("button", { name: "Toggle arrangement and scenes" })).toHaveAttribute(
+      "aria-expanded",
       "false",
     );
   });
@@ -53,11 +56,11 @@ describe("DockChrome", () => {
     const onToggle = vi.fn();
     renderChrome(state({ slotA: "mixer", slotB: null }), { onToggle });
 
-    await user.click(screen.getByRole("tab", { name: "Toggle dice panel" }));
+    await user.click(screen.getByRole("button", { name: "Toggle dice panel" }));
     expect(onToggle).toHaveBeenLastCalledWith("dice", false);
 
     await user.keyboard("[ControlLeft>]");
-    await user.click(screen.getByRole("tab", { name: "Toggle dice panel" }));
+    await user.click(screen.getByRole("button", { name: "Toggle dice panel" }));
     await user.keyboard("[/ControlLeft]");
     expect(onToggle).toHaveBeenLastCalledWith("dice", true);
   });

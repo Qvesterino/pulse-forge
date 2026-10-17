@@ -26,7 +26,6 @@
 @import "./23-tsar.css";
 @import "./24-layout-tokens.css";
 @import "./25-short-viewport.css";
-@import "./26-settings-glass.css";
 @import "./27-silver-glass-pulse.css";
 @import "./28-compact-studio-shell.css";
 @import "./29-premium-hierarchy.css";
@@ -53,3 +52,8 @@
 @import "./50-motion-accessibility.css";
 @import "./51-shell-proportion.css";
 @import "./52-intent-prompt-action.css";
+/* The settings glass MUST stay last: it is the only sheet that owns the
+   .theme-panel / .scale-popover selectors, and a later sheet would silently
+   win the cascade over its contrast-verified fills. Pinned by
+   tests/settings-glass.test.ts ("imports last, after every other sheet"). */
+@import "./26-settings-glass.css";
