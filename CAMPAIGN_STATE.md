@@ -191,6 +191,13 @@ Last updated: 2026-10-06 (session sess_85d94465)
 
 ## SESSION LOG
 
+### 2026-10-07 (late) / W1 chord-aware session 1 — discovery + the corpus bridge (cdba00af)
+- Discovery: W1 was HALF-BUILT (v3 contract 68 dims, dataset generator, TRAINED symbolic-melodic-v3 with gatePassed None + midiCorpusSamples 0, inert runMelodicNextV3 with no caller). The generator's corpus path assigned SYNTHETIC house/ambient ladders to classical pieces — the W2 conditioning mistake reborn; the W1 hypothesis was untested.
+- Built: docs/W1-CHORD-AWARE-PLAN.md rewritten to the REAL contract with the pre-registered gate (§4); v3 genre list + honest 5th "classical" slot (69 dims, contract grows pre-gate); deriveCorpusChordEvents (joint root+quality match + extra-tone penalty, inversions correct, honest skips, 7 pins); generator corpus path on raw PD MIDI, every role >= 8 events.
+- Dataset: 22 341 samples (289 library + 21 109 corpus, 230/345 pieces) - 747 groups.
+- Earned: manifest file paths carry midi/ (doubled join silently skipped 345/345); MusicalKey casing "C Major" bit twice; bash backticks eat commit-message words.
+- Remaining W1: python/gate plumbing, gated retrain vs §4, provider routing only on PASS.
+
 ### 2026-10-06 (follow-up 7) / eol policy — the quiet-window session (last structural item)
 - Did: .gitattributes (LF + binary exclusions + bat/cmd CRLF guard, 33b7f0c4); inventory proved the index was already 100% LF (autocrlf normalized on check-in for years) so renormalize was unnecessary; converted 108 clean worktree CRLF/mixed files to LF; formatted 8 committed-drift files from the mastering/DNA waves (ebc4cbc7).
 - Proved: fresh worktree checkout on autocrlf=true Windows produces 0 CRLF (the policy's acceptance test); format:check 103 -> 1 owned flag; drift:check EXIT 0 'no drift'.
