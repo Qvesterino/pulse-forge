@@ -148,7 +148,11 @@ describe("TSAR harmony-follow arp (A SNAP)", () => {
       instance.port.onmessage?.({
         data: {
           type: "harmony",
-          harmony: { keyRootPc: 0, scaleMask: C_MAJOR, chords: [{ startBar: 0, lengthBars: 8, rootPc: 0, chordMask: C_MAJ_TRIAD }] },
+          harmony: {
+            keyRootPc: 0,
+            scaleMask: C_MAJOR,
+            chords: [{ startBar: 0, lengthBars: 8, rootPc: 0, chordMask: C_MAJ_TRIAD }],
+          },
         },
       });
       for (const pitch of [61]) {

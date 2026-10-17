@@ -40,7 +40,6 @@ export interface TsarRuntime extends InstrumentRuntime {
   setSampleB?: (id: string | null) => void;
 }
 
-
 export interface TsarRuntimeOptions {
   /** The context's `createGain`/`AudioWorkletNode` access (never a raw ctx import). */
   createGain: () => GainNode;
