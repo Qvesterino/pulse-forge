@@ -205,15 +205,40 @@ def main() -> None:
         help="public-domain MIDI corpus dataset JSON (ingest-midi-corpus.mts output) — "
         "merged into TRAIN only; validation stays library-pure (W2)",
     )
+    parser.add_argument(
+        "--feature-v3",
+        action="store_true",
+        help="W1 recipe: chord-aware melodic-features-v3 rows from --v3-dataset "
+        "(69-dim). Library groups fold; classical.* corpus rows merge into "
+        "TRAIN only (drop with --v3-no-corpus for the baseline run).",
+    )
+    parser.add_argument("--v3-dataset", default="scripts/data/melodic-v3-dataset.json")
+    parser.add_argument(
+        "--v3-no-corpus",
+        action="store_true",
+        help="drop classical.* rows — the corpus-free BASELINE of the W1 comparison",
+    )
     args = parser.parse_args()
 
-    base, aug = load_datasets()
+    aug: list[dict] = []
     corpus: list[dict] = []
-    if args.midi_corpus:
-        corpus_payload = json.loads(Path(args.midi_corpus).read_text())
-        if corpus_payload.get("featureVersion") != "melodic-features.v1":
-            raise SystemExit(f"unexpected midi corpus feature version: {corpus_payload.get('featureVersion')}")
-        corpus = corpus_payload.get("data") or []
+    if args.feature_v3:
+        v3_payload = json.loads(Path(args.v3_dataset).read_text())
+        if v3_payload.get("featureVersion") != "melodic-features.v3":
+            raise SystemExit(f"unexpected v3 feature version: {v3_payload.get('featureVersion')}")
+        samples = v3_payload["samples"]
+        base = [s for s in samples if not str(s["group"]).startswith("classical.")]
+        if not args.v3_no_corpus:
+            corpus = [s for s in samples if str(s["group"]).startswith("classical.")]
+        if args.embedding or args.midi_corpus:
+            raise SystemExit("--feature-v3 is self-contained: no --embedding/--midi-corpus")
+    else:
+        base, aug = load_datasets()
+        if args.midi_corpus:
+            corpus_payload = json.loads(Path(args.midi_corpus).read_text())
+            if corpus_payload.get("featureVersion") != "melodic-features.v1":
+                raise SystemExit(f"unexpected midi corpus feature version: {corpus_payload.get('featureVersion')}")
+            corpus = corpus_payload.get("data") or []
     if args.exclude_dnb:
         base = [s for s in base if not str(s["group"]).startswith("dnb")]
         aug = [s for s in aug if not str(s["group"]).startswith("dnb")]
@@ -227,11 +252,21 @@ def main() -> None:
     else:
         folds = [set(f.tolist()) for f in np.array_split(unique, args.folds)]
 
-    dataset_version = json.loads(DATASET_PATH.read_text()).get("datasetVersion", "unknown")
+    dataset_version = (
+        json.loads(Path(args.v3_dataset).read_text()).get("datasetVersion", "unknown")
+        if args.feature_v3
+        else json.loads(DATASET_PATH.read_text()).get("datasetVersion", "unknown")
+    )
     recipe = "embedding-v2" if args.embedding else "genre-onehot-v1"
+    if args.feature_v3:
+        recipe = "chord-aware-v3"
     mode = "shipped 15% split" if args.shipped_split else f"{args.folds}-fold group CV"
     vintage = f"{dataset_version} -- no dnb" if args.exclude_dnb else f"{dataset_version} (current)"
-    corpus_label = f", midi corpus {len(corpus)} rows" if corpus else ", no midi corpus"
+    corpus_label = (
+        f", midi corpus {len(corpus)} rows (classical.*, train-only)"
+        if corpus
+        else (", corpus rows DROPPED (--v3-no-corpus baseline)" if args.feature_v3 else ", no midi corpus")
+    )
     print("=" * 78)
     print(f"MELODIC RETRAIN GATE -- {mode}, {recipe}, {vintage}{corpus_label}, weightPower={args.weight_power}")
     print("=" * 78)

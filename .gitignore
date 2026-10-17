@@ -176,3 +176,6 @@ public/models/stem/*.onnx
 scripts/data/intent-mined.json
 scripts/data/intent-mined-corpus.json
 scripts/data/intent-cycle-report.json
+
+# W1 gate baseline variant — regenerable via generate-melodic-v3-dataset.mts --no-midi-corpus
+scripts/data/melodic-v3-dataset-nocorpus.json

@@ -57,6 +57,9 @@ const outDir = path.join(root, "scripts", "data");
 // shipped artifact's exact training data stays on disk untouched.
 const outArg = process.argv.indexOf("--out");
 const OUT_FILE = path.join(outDir, outArg > -1 ? process.argv[outArg + 1]! : "melodic-v3-dataset.json");
+// --no-midi-corpus: library-only variant — the W1 gate's BASELINE run must
+// be the same generator, same folds, minus the corpus (docs/W1-CHORD-AWARE-PLAN.md §4).
+const NO_CORPUS = process.argv.includes("--no-midi-corpus");
 
 const DATASET_VERSION = "symbolic-melodic-v3-ds.v1";
 
@@ -184,7 +187,11 @@ const corpusMaxSteps = MAX_BARS_PER_PIECE * 16; // 128 steps (the 8-bar window)
 
 const midiCountBefore = sampleCount;
 let corpusPieces = 0;
+if (NO_CORPUS) {
+  console.log("[melodic-v3] --no-midi-corpus: skipping the corpus section (gate baseline variant)");
+}
 try {
+  if (NO_CORPUS) throw new Error("skipped by flag");
   const catalog = JSON.parse(readFileSync(CORPUS_MANIFEST, "utf8")) as {
     pieces?: CorpusCatalogEntry[];
   };

@@ -69,6 +69,36 @@ corpus becomes the first non-procedural training source in the project.
 FAIL → the corpus records its second negative result and stays out; the plan
 documents the falsification. No artefact ships on a FAIL — the W2 rule.
 
+## 4b. GATE VERDICT — FAIL (2026-10-07, recorded per the W2 rule)
+
+Ran exactly as pre-registered (same harness, identical library folds,
+baseline = same folds minus `classical.*` rows):
+
+| run | 2-fold degree | 2-fold duration | 3-fold degree | 3-fold duration |
+| --- | ---: | ---: | ---: | ---: |
+| baseline (no corpus) | 0.4933 | 0.5512 | 0.4850 | 0.5610 |
+| + corpus (20 407 classical rows, train-only) | 0.4891 | 0.4736 | 0.4922 | 0.5383 |
+
+- Criterion (a) degree: **PASSED both folds** — 2-fold within tolerance
+  (−0.0042), 3-fold the corpus actually HELPS (+0.0072). The chord-
+  conditioning hypothesis is CONFIRMED for degree: with harmony context,
+  the classical corpus no longer drags degree accuracy (the W2 failure
+  mode is gone).
+- Criterion (b) duration: **FAILED both folds** — 2-fold −0.078, 3-fold
+  −0.023 (just past the 0.02 line). The corpus's legato duration
+  distribution still biases the duration head toward long classes while
+  the electronic val wants short ones. W2's mechanism now lives ENTIRELY
+  in the duration axis.
+
+**Verdict: FAIL (must hold all). No artefact ships.** The v3 model stays
+library-only-trained and inert (unchanged); the corpus stays out.
+
+**Sharp follow-up hypothesis (W1b — NOT pre-registered, not fished by this
+gate):** the failure is isolated to the duration head; a duration-preserving
+corpus integration (re-balance corpus duration classes toward the library
+distribution, or drop the duration head's corpus loss term) may convert this
+to a PASS. Requires its own pre-registration before any rerun.
+
 ## 5. Non-goals
 
 - No change to the drum prior, the ranker, or v2's shipped artefacts.

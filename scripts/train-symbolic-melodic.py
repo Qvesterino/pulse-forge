@@ -323,7 +323,14 @@ def main() -> None:
         x_all = np.array(new_rows, dtype=np.float64)
         print(f"[train] features transformed to embedding-conditioned: {x_all.shape[1]} dims")
 
-    unique_groups = np.unique(groups)
+    # W1/W2 rule: corpus rows are TRAIN-ONLY. The v3 dataset's corpus groups
+    # carry the classical.* prefix — exclude them from the validation group
+    # pool so validation stays library-pure (the corpus still trains).
+    if feature_version == "melodic-features.v3":
+        library_mask = np.array([not str(g).startswith("classical.") for g in groups])
+        unique_groups = np.unique(groups[library_mask])
+    else:
+        unique_groups = np.unique(groups)
     rng.shuffle(unique_groups)
     val_count = max(1, int(len(unique_groups) * VAL_FRACTION))
     val_groups = set(unique_groups[:val_count].tolist())
