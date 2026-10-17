@@ -109,3 +109,41 @@ export function applyInstrumentPreset(doc: ProjectDocument, trackId: string, pre
     undo: (d) => apply(d, prevParams, prevSample, prevPresetId, prevLayers),
   };
 }
+
+/**
+ * Apply a full instrument patch (e.g. a Patch Mutations tournament winner)
+ * as ONE undoable step: replaces the track's parameter map wholesale, keeps
+ * sample/velocity-layers, and clears the preset id — a mutated patch is no
+ * longer the preset it started from. Mirrors `applyInstrumentPreset`'s
+ * params handling: every incoming value is clamped, and the params map is
+ * copied on every apply so undo/redo never alias a shared object.
+ */
+export function applyInstrumentPatch(
+  doc: ProjectDocument,
+  trackId: string,
+  params: Record<string, number>,
+  label = "Apply patch",
+): Command {
+  const track = doc.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.id === trackId);
+  if (!track) throw new Error(`Instrument track ${trackId} not found`);
+  const prevParams = { ...track.params };
+  const prevPresetId = track.presetId ?? null;
+
+  const nextParams: Record<string, number> = { ...params };
+  for (const key of Object.keys(nextParams)) {
+    nextParams[key] = clampInstrumentParam(track.instrument, key, nextParams[key]!);
+  }
+
+  const apply = (d: ProjectDocument, patch: Record<string, number>, presetId: string | null): ProjectDocument => ({
+    ...d,
+    tracks: d.tracks.map((t) =>
+      t.kind === "instrument" && t.id === trackId ? { ...t, params: { ...patch }, presetId } : t,
+    ),
+  });
+  return {
+    type: "applyInstrumentPatch",
+    label: `${INSTRUMENT_META[track.instrument].name} — ${label}`,
+    execute: (d) => apply(d, nextParams, null),
+    undo: (d) => apply(d, prevParams, prevPresetId),
+  };
+}

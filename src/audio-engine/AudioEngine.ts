@@ -2024,7 +2024,8 @@ export class AudioEngine {
     // the runtime diffs them before touching the port. Key/chord edits reach
     // a playing arp without any rebuild.
     if (track.instrument === "tsar" && this.doc) {
-      state.runtime.setHarmonyContext?.(resolveHarmonyContext(this.doc));
+      const harmony = resolveHarmonyContext(this.doc);
+      if (harmony) state.runtime.setHarmonyContext?.(harmony);
     }
     for (const [key, value] of Object.entries(track.params)) {
       if (state.params[key] !== value) state.runtime.setParameter(key, value);

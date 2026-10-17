@@ -2,8 +2,9 @@ import { useMemo, useRef, useState } from "react";
 import { useServices, useTracks } from "./context";
 import { Slider } from "./controls";
 import { tsarParams } from "../tsar/params";
-import { applyInstrumentPreset, setInstrumentParam, forgeSampleCommand } from "../commands/commands";
+import { applyInstrumentPatch, applyInstrumentPreset, setInstrumentParam, forgeSampleCommand } from "../commands/commands";
 import { forgePlan } from "../tsar/forge";
+import { mutateTsarPatch, mutationReveal, type TsarMutation } from "../tsar/mutations";
 import { TSAR_FACTORY_PRESETS } from "../presets/tsar-factory";
 import { importAudioFile } from "./sample-import";
 import type { InstrumentPreset } from "../presets/types";
@@ -131,6 +132,13 @@ export function TsarPanel() {
   const [forgeStatus, setForgeStatus] = useState<string | null>(null);
   const [presetFilter, setPresetFilter] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Patch Mutations ladder (Session Theatre for sound design): blind A/B
+  // picks over deterministic param-space variants; nothing touches the
+  // project until KEEP WINNER dispatches one undoable command.
+  const [mutLadder, setMutLadder] = useState<
+    { pool: TsarMutation[]; champion: TsarMutation; round: number; total: number } | null
+  >(null);
+  const [mutSeed, setMutSeed] = useState(() => 1_234_567);
 
   if (!track) {
     return (
@@ -158,6 +166,47 @@ export function TsarPanel() {
 
   const applyPreset = (preset: InstrumentPreset) => {
     services.store.execute(applyInstrumentPreset(services.store.doc, track.id, preset));
+  };
+
+  // ── Patch Mutations (blind A/B tournament over param-space variants) ──
+  const pseudoPreset = (id: string, name: string, params: Record<string, number>): InstrumentPreset => ({
+    id,
+    name,
+    instrument: "tsar",
+    genre: null,
+    mood: [],
+    tags: [],
+    params,
+  });
+  const previewMutation = (mutation: TsarMutation) => {
+    services.engine.previewInstrumentPreset(track.id, pseudoPreset(`tsar-mutation-${mutation.id}`, mutation.label, mutation.params));
+  };
+  const previewOriginal = () => {
+    services.engine.previewInstrumentPreset(track.id, pseudoPreset("tsar-original", "ORIGINAL", {}));
+  };
+  const startMutations = () => {
+    const variants = mutateTsarPatch(track.params, mutSeed);
+    if (variants.length < 2) return;
+    setMutLadder({ pool: variants.slice(1), champion: variants[0]!, round: 0, total: variants.length - 1 });
+  };
+  const pickMutation = (challengerWon: boolean) => {
+    setMutLadder((ladder) => {
+      if (!ladder || ladder.pool.length === 0) return ladder;
+      const challenger = ladder.pool[0]!;
+      return {
+        pool: ladder.pool.slice(1),
+        champion: challengerWon ? challenger : ladder.champion,
+        round: ladder.round + 1,
+        total: ladder.total,
+      };
+    });
+  };
+  const keepMutationWinner = () => {
+    if (!mutLadder) return;
+    services.store.execute(
+      applyInstrumentPatch(services.store.doc, track.id, mutLadder.champion.params, `mutation winner · seed ${mutSeed}`),
+    );
+    setMutLadder(null);
   };
 
   /**
@@ -358,6 +407,67 @@ export function TsarPanel() {
             Drop a WAV here — root, character and engine are detected automatically.
           </div>
           {forgeStatus && <div className="tsar-forge-status">{forgeStatus}</div>}
+        </section>
+
+        <section className="tsar-presets" aria-label="TSAR patch mutations">
+          <h3 className="tsar-section-title">PATCH MUTATIONS</h3>
+          {!mutLadder ? (
+            <div className="tsar-forge-controls">
+              <button type="button" className="btn btn-small" onClick={startMutations}>
+                MUTATE PATCH
+              </button>
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={() => setMutSeed((seed) => (seed * 1_664_525 + 1_013_904_223) >>> 0)}
+              >
+                RETAKE (SEED {mutSeed % 100_000})
+              </button>
+              <span className="tsar-forge-hint">6 deterministic variants — pick by ear, apply the winner.</span>
+            </div>
+          ) : mutLadder.pool.length > 0 ? (
+            <div className="tsar-forge-controls">
+              <span className="tsar-forge-hint">
+                BLIND A/B — round {mutLadder.round + 1}/{mutLadder.total}
+              </span>
+              <button type="button" className="btn btn-small" onClick={previewOriginal}>
+                ▶ ORIGINAL
+              </button>
+              <button type="button" className="btn btn-small" onClick={() => previewMutation(mutLadder.champion)}>
+                ▶ A
+              </button>
+              <button type="button" className="btn btn-small" onClick={() => previewMutation(mutLadder.pool[0]!)}>
+                ▶ B
+              </button>
+              <button type="button" className="btn btn-small" onClick={() => pickMutation(false)}>
+                A WINS
+              </button>
+              <button type="button" className="btn btn-small" onClick={() => pickMutation(true)}>
+                B WINS
+              </button>
+              <button type="button" className="btn btn-small" onClick={() => setMutLadder(null)}>
+                DISCARD
+              </button>
+            </div>
+          ) : (
+            <div className="tsar-forge-controls">
+              <span className="tsar-forge-hint">
+                WINNER: {mutLadder.champion.label || mutLadder.champion.id} — {mutationReveal(track.params, mutLadder.champion).join(" · ")}
+              </span>
+              <button type="button" className="btn btn-small" onClick={() => previewMutation(mutLadder.champion)}>
+                ▶ WINNER
+              </button>
+              <button type="button" className="btn btn-small" onClick={previewOriginal}>
+                ▶ ORIGINAL
+              </button>
+              <button type="button" className="btn btn-small" onClick={keepMutationWinner}>
+                KEEP WINNER
+              </button>
+              <button type="button" className="btn btn-small" onClick={() => setMutLadder(null)}>
+                DISCARD
+              </button>
+            </div>
+          )}
         </section>
 
         <section className="tsar-presets" aria-label="TSAR factory presets">

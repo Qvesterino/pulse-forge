@@ -97,9 +97,11 @@ class TsarWorkletProcessor extends AudioWorkletProcessor {
         this.initialized = true;
         this.port.postMessage({ type: "ready" });
         break;
-      case "harmony":
-        this.proc.setHarmonyContext(this.validHarmony(message.harmony));
+      case "harmony": {
+        const harmony = this.validHarmony(message.harmony);
+        if (harmony) this.proc.setHarmonyContext(harmony);
         break;
+      }
       case "param":
         this.proc.setParam(message.name, message.value);
         break;

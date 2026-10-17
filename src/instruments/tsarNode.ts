@@ -28,6 +28,7 @@
  */
 
 import type { InstrumentRuntime } from "./types";
+import type { HarmonyContextInit } from "../effects/types";
 import type { InstrumentTrack } from "../project-model/types";
 import { buildWavetableMips, extractWavetable, FACTORY_WAVETABLES, FRAME_SIZE } from "./wavetables";
 import type { TsarEvent } from "../tsar/dsp/tsarProcessor";
@@ -37,16 +38,8 @@ export interface TsarRuntime extends InstrumentRuntime {
   prepareOfflineRender?: () => void;
   /** Second source identity (Source B); mirrors `setSample` for slot A. */
   setSampleB?: (id: string | null) => void;
-  /** Project musical context (arp snap masks); diffed before the port send. */
-  setHarmonyContext?: (init: TsarHarmonyContext) => void;
 }
 
-/** Shape mirrored from effects/types `HarmonyContextInit` (no host imports). */
-export interface TsarHarmonyContext {
-  keyRootPc?: number;
-  scaleMask?: number;
-  chords?: { startBar: number; lengthBars: number; rootPc?: number; chordMask?: number }[];
-}
 
 export interface TsarRuntimeOptions {
   /** The context's `createGain`/`AudioWorkletNode` access (never a raw ctx import). */
@@ -58,7 +51,7 @@ export interface TsarRuntimeOptions {
   track: InstrumentTrack;
   getSample(id: string | null): AudioBuffer | undefined;
   /** Initial musical context (offline builds seed it into processorOptions). */
-  harmony?: TsarHarmonyContext;
+  harmony?: HarmonyContextInit;
 }
 
 export interface TsarFallbackOptions {
@@ -169,7 +162,7 @@ export function createTsarRuntime(options: TsarRuntimeOptions): TsarRuntime {
   let pendingBpm: number | null = Number.isFinite(options.bpm) && options.bpm > 0 ? options.bpm : 120;
   let currentTrack = { ...options.track };
   let node: AudioWorkletNode | null = null;
-  let pendingHarmony: TsarHarmonyContext | undefined = options.harmony;
+  let pendingHarmony: HarmonyContextInit | undefined = options.harmony;
   /** Cheap identity for the diff: re-sending the context restarts nothing in
    * the DSP, but a quiet port is the house style (syncInstrument runs per
    * document pass). */
@@ -300,7 +293,7 @@ export function createTsarRuntime(options: TsarRuntimeOptions): TsarRuntime {
     setVelocityLayers() {
       // Keyzones / round-robin are sampler features, not TSAR.
     },
-    setHarmonyContext(init: TsarHarmonyContext) {
+    setHarmonyContext(init: HarmonyContextInit) {
       if (!init || typeof init !== "object") return;
       pendingHarmony = init;
       // Idempotence diff: syncInstrument runs on every document pass and the

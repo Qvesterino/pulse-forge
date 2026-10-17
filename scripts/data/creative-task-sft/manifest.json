@@ -23,7 +23,7 @@
         "revision-mood-preserves-arrangement",
         "two-step-garage-chord-preservation"
       ],
-      "sha256": "ccc7a05669759c31f6da777f8442abfe4afb87258e67b08d2b0d95153f7e1166"
+      "sha256": "a057c5a9678d5fbbbe88a8939e7beff9571fa34d185ffaa5610e334ddd864cb2"
     },
     "validation": {
       "path": "validation.jsonl",
@@ -38,7 +38,7 @@
         "press-release-out-of-scope",
         "underspecified-contemporary-style"
       ],
-      "sha256": "af7b9aa0ab628b4f981ba2f10675c57c2ac56ea395d5a073f7d28c642e31b816"
+      "sha256": "c739de0a2d708fa793ca9cb6a4f69da8b55d6c73a425cdc94185d724a5b5c0e0"
     }
   },
   "heldOutGolden": {
@@ -52,11 +52,11 @@
     "scripts/generate-creative-task-sft.mts": "1f69ce8a9b70485c7d69f27fe354df6ea2b6ee6c31b44da236fe57f62f308568",
     "scripts/run-creative-task-sft.mjs": "d8e8b9e74696771e66ebd76ede8175c50bba057ecda3416a35898a5ebc98be26",
     "scripts/train-creative-task-sft.py": "d73430e0c3687361f96f2f53d975288dee7f342e516b30daf74c36e4d154030c",
-    "src/ai/types.ts": "72aa46b1e1ea692bc8c8085b379613df627d532f1be276050a2f41e481f22c0d",
+    "src/ai/types.ts": "b187a120731e123a9f8736d6c5ab5292c28e0a8c69af6c4cd5624cbd800d32bb",
     "src/intent/creative-task-contract.ts": "58844175f81279407def019ae5309adeb8d98ccf4316557ad1b2c24315a95840",
     "src/intent/creative-task-ollama.ts": "b2411211ce95b95e427e66acbed1b378f13d8cb4315277acd7c7fd882d7e4601",
     "src/intent/brief-contract.ts": "4a5277ef4a1663779f33c2610cd3f5481d909c9b9a126ce10723f175225f2b49",
-    "src/intent/text-parser.ts": "aedd78692dde6777e686aba3dec10f1a447d7e3966fa0900917cce76a9ce2f7a",
-    "src/project-model/types.ts": "ac4201ef1341f9129ec425f6dc0810c2867159d9c2055faf632e9993ab3f9cd3"
+    "src/intent/text-parser.ts": "2b8865e4f4e41b452c32f2da9b2e8c127b207c3f05c9aff0a1218123bab9076e",
+    "src/project-model/types.ts": "80bc7ca6f77064903d40c242afce2bae76457932e4b1b2457a9c0651cd866fd9"
   }
 }

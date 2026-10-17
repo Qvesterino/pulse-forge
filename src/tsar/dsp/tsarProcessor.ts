@@ -203,6 +203,7 @@ export class TsarProcessor {
     scaleMask?: number;
     chords?: { startBar: number; lengthBars: number; rootPc?: number; chordMask?: number }[];
   }): void {
+    if (!init || typeof init !== "object") return;
     if (Number.isFinite(init.scaleMask) && (init.scaleMask as number) >= 0) {
       this.scaleMask = (init.scaleMask as number) & 0xfff;
     }

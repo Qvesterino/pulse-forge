@@ -133,7 +133,7 @@ export function ActivityCenter() {
       <button
         type="button"
         className={`save-status ${noticeFresh && freshNotice?.status === "failed" ? "save-error" : ""}`}
-        style={{ position: "fixed", right: 12, bottom: 12, zIndex: 40 }}
+        style={{ position: "fixed", right: 12, bottom: 72, zIndex: 40 }}
         title="Activity — running jobs and the agent audit log"
         data-tick={tick}
         onClick={() => {
@@ -151,7 +151,7 @@ export function ActivityCenter() {
           aria-label="Activity center"
           style={{
             right: 12,
-            bottom: 48,
+            bottom: 108,
             top: "auto",
             left: "auto",
             width: 460,

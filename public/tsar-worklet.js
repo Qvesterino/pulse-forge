@@ -89,9 +89,61 @@
     arpSeed = 1234567;
     /** Notes currently owned by the arp (released when the arp stops them). */
     arpSounding = /* @__PURE__ */ new Set();
+    // ── Harmony follow (arp snap) ───────────────────────────────────────────
+    // The HOST resolves doc.key / arrangement.chords into 12-bit pitch-class
+    // masks (the worklet carries no scale tables — the harmonyContext
+    // contract). Chromatic = the no-op default, so a project without a key
+    // keeps every arp untouched.
+    scaleMask = 4095;
+    /** Sorted, capped chord list: { startBar, lengthBars, mask }. */
+    chords = [];
+    /**
+     * Install the project's musical context (live port message or the offline
+     * `processorOptions.harmony` seed — one contract). The chord list is
+     * capped: a worklet must stay bounded, and no arrangement needs more than
+     * a few hundred chords for step snapping.
+     */
+    setHarmonyContext(init) {
+      if (!init || typeof init !== "object") return;
+      if (Number.isFinite(init.scaleMask) && init.scaleMask >= 0) {
+        this.scaleMask = init.scaleMask & 4095;
+      }
+      if (Array.isArray(init.chords)) {
+        this.chords = init.chords.slice(0, 256).filter(
+          (chord) => Number.isFinite(chord.startBar) && Number.isFinite(chord.lengthBars) && chord.lengthBars > 0 && Number.isFinite(chord.chordMask)
+        ).map((chord) => ({
+          startBar: chord.startBar,
+          lengthBars: chord.lengthBars,
+          mask: chord.chordMask & 4095
+        })).sort((a, b) => a.startBar - b.startBar);
+      }
+    }
+    /** Nearest in-mask pitch, scanning outward; ties resolve upward. */
+    snapPitch(pitch, mask) {
+      if (mask <= 0 || mask >= 4095) return pitch;
+      const pc = (Math.round(pitch) % 12 + 12) % 12;
+      if (mask & 1 << pc) return pitch;
+      for (let delta = 1; delta <= 6; delta++) {
+        if (mask & 1 << (pc + delta) % 12) return pitch + delta;
+        if (mask & 1 << (pc - delta + 144) % 12) return pitch - delta;
+      }
+      return pitch;
+    }
+    /** Scale mask, or the mask of the chord sounding at `bar` (scale fallback). */
+    maskAtBar(bar) {
+      for (let i = this.chords.length - 1; i >= 0; i--) {
+        const chord = this.chords[i];
+        if (bar >= chord.startBar && bar < chord.startBar + chord.lengthBars) {
+          return chord.mask > 0 ? chord.mask : this.scaleMask;
+        }
+        if (chord.startBar <= bar) break;
+      }
+      return this.scaleMask;
+    }
     constructor(options) {
       this.sampleRate = options.sampleRate > 0 ? options.sampleRate : 48e3;
       if (options.bpm !== void 0) this.setBpm(options.bpm);
+      if (options.harmony) this.setHarmonyContext(options.harmony);
       for (let i = 0; i < MAX_VOICES; i++) this.voices.push(this.makeVoice(i));
       if (options.events) for (const event of options.events) this.postEvent(event);
     }
@@ -522,7 +574,12 @@
             for (const sounding of [...this.arpSounding]) this.noteOff(sounding);
             this.arpSounding.clear();
             if (arpSwing > 0 && this.arpStep % 2 === 1) this.arpPhase = arpSwing * 0.5;
-            const pitch = this.arpNextPitch();
+            let pitch = this.arpNextPitch();
+            const arpSnap = Math.round(clamp(this.params.arpSnap ?? 0, 0, 2));
+            if (pitch > 0 && arpSnap > 0) {
+              const bar = frameTime * this.bpm / 240;
+              pitch = this.snapPitch(pitch, arpSnap === 2 ? this.maskAtBar(bar) : this.scaleMask);
+            }
             if (pitch > 0) {
               this.noteOn(pitch, this.arpVelocity);
               this.arpSounding.add(pitch);
@@ -729,7 +786,8 @@
       this.proc = new TsarProcessor({
         sampleRate,
         bpm: typeof opts.bpm === "number" ? opts.bpm : void 0,
-        events: Array.isArray(opts.events) ? opts.events : void 0
+        events: Array.isArray(opts.events) ? opts.events : void 0,
+        harmony: this.validHarmony(opts.harmony)
       });
       if (opts.params) {
         this.proc.applyParams(opts.params);
@@ -746,6 +804,22 @@
         }
       }
     }
+    /**
+     * Validate a harmony-context payload before it reaches the DSP (the
+     * canonical worklet rule: never trust event.data shape). Returns undefined
+     * for anything malformed — chromatic default is the safe degradation.
+     */
+    validHarmony(harmony) {
+      if (!harmony || typeof harmony !== "object") return void 0;
+      const scaleMask = Number(harmony.scaleMask);
+      const chords = Array.isArray(harmony.chords) ? harmony.chords.filter(
+        (chord) => chord && typeof chord === "object" && Number.isFinite(chord.startBar) && Number.isFinite(chord.lengthBars) && Number.isFinite(chord.chordMask)
+      ) : void 0;
+      return {
+        ...Number.isFinite(scaleMask) ? { scaleMask } : {},
+        ...chords ? { chords } : {}
+      };
+    }
     handle(message) {
       if (!message || typeof message !== "object") return;
       switch (message.type) {
@@ -755,6 +829,11 @@
           this.initialized = true;
           this.port.postMessage({ type: "ready" });
           break;
+        case "harmony": {
+          const harmony = this.validHarmony(message.harmony);
+          if (harmony) this.proc.setHarmonyContext(harmony);
+          break;
+        }
         case "param":
           this.proc.setParam(message.name, message.value);
           break;
