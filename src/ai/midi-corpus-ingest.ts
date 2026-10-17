@@ -29,6 +29,7 @@ import {
   type MelodicRole,
   type MelodicGenre,
 } from "./symbolic/melodic-features";
+import { CHORD_INTERVALS, type ChordQuality, type HarmonicFunction } from "./harmony";
 
 // ── Krumhansl-Kessler key profiles (same values as src/ai/audio-tempo-key.ts) ──
 const MAJOR_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
@@ -310,3 +311,136 @@ export function eraOf(piece: CatalogPiece): string {
 export const MAX_BARS_PER_PIECE = 8;
 /** ~2 bars of next-note context per role per piece. */
 export const MAX_SAMPLES_PER_ROLE = 48;
+
+// ── W1: chord track → ChordEvent[] (the harmony-aware v3 bridge) ────────────
+
+/** Tonic-relative degree of a pitch class against the key (0..6), nearest match. */
+function pcToDegree(pc: number, parsedKey: { root: number; scaleType: string }, intervals: readonly number[]): number {
+  const tonicRelative = (((pc - parsedKey.root) % 12) + 12) % 12;
+  let degree = 0;
+  let best = Number.POSITIVE_INFINITY;
+  for (let d = 0; d < 7; d++) {
+    const distance = Math.min(Math.abs(intervals[d] - tonicRelative), 12 - Math.abs(intervals[d] - tonicRelative));
+    if (distance < best) {
+      best = distance;
+      degree = d;
+    }
+  }
+  return degree;
+}
+
+/** Harmonic function by scale degree (harmony.ts convention: I/vi = T, ii/IV = S, V = D, rest = p). */
+export function harmonicFunctionOfDegree(degree: number): HarmonicFunction {
+  switch (degree) {
+    case 0:
+    case 5:
+      return "T";
+    case 1:
+    case 3:
+      return "S";
+    case 4:
+      return "D";
+    default:
+      return "p";
+  }
+}
+
+/**
+ * Joint root+quality match: every quality template over all 12 rotations
+ * scores `covered/|template| − 0.5 × extra/|sounding|` — coverage rewards
+ * the template's own tones, the extra-tone penalty rejects chromatic
+ * clusters that merely CONTAIN a two-tone template subset ({C,C#,F#} reads
+ * as neither dim@C nor sus2@D). Max score wins, ties prefer the smaller
+ * template then the lower root (deterministic). Joint matching is what
+ * makes INVERSIONS read correctly — {C,E,G} is maj@C with any voicing, not
+ * "min@E" from the lowest-note shortcut. Below the 2/3 floor the slice has
+ * no recognizable chord.
+ */
+const CHORD_SCORE_FLOOR = 2 / 3;
+const EXTRA_TONE_PENALTY = 0.5;
+function matchChord(pcs: Set<number>): { rootPc: number; quality: ChordQuality } | null {
+  let best: { rootPc: number; quality: ChordQuality; score: number; size: number } | null = null;
+  for (const quality of Object.keys(CHORD_INTERVALS) as ChordQuality[]) {
+    const intervals = CHORD_INTERVALS[quality];
+    for (let rootPc = 0; rootPc < 12; rootPc++) {
+      const template = intervals.map((i) => (rootPc + i) % 12);
+      const covered = template.filter((pc) => pcs.has(pc)).length;
+      const extra = [...pcs].filter((pc) => !template.includes(pc)).length;
+      const score = covered / intervals.length - EXTRA_TONE_PENALTY * (extra / pcs.size);
+      if (score < CHORD_SCORE_FLOOR) continue;
+      if (
+        best === null ||
+        score > best.score ||
+        (score === best.score && intervals.length < best.size) ||
+        (score === best.score && intervals.length === best.size && rootPc < best.rootPc)
+      ) {
+        best = { rootPc, quality, score, size: intervals.length };
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * W1 bridge (docs/W1-CHORD-AWARE-PLAN.md §2.1): turn a piece's extracted
+ * chord track into the `ChordEvent[]` progression shape the v3 dataset
+ * generator and `buildMelodicFeatureRowV3` consume — so corpus rows and
+ * library rows flow through the SAME harmony-aware feature path.
+ *
+ * Segmentation: a new slice starts at every distinct chord-note onset; the
+ * slice lasts until the next onset group (or the note's end). Per slice the
+ * sounding pc set picks root (lowest covered pc → template match) → degree +
+ * quality + function. Deterministic: sorted onsets, fixed iteration order.
+ * Empty input → empty progression (no invented harmony).
+ */
+export function deriveCorpusChordEvents(
+  chordNotes: MidiNote[],
+  key: MusicalKey | null,
+  maxSteps: number,
+): { degree: number; quality: ChordQuality; duration: number; func: HarmonicFunction }[] {
+  const parsedKey = key ? parseKey(key) : null;
+  if (!parsedKey || chordNotes.length === 0) return [];
+  const intervals = SCALE_INTERVALS[parsedKey.scaleType];
+  const sorted = [...chordNotes].sort((a, b) => a.startTick - b.startTick || a.pitch - b.pitch);
+  const step = STEP_TICKS;
+
+  // Onset groups: distinct quantized start steps in order.
+  const onsets: number[] = [];
+  for (const note of sorted) {
+    const onset = Math.round(note.startTick / step) * step;
+    if (onsets.length === 0 || onsets[onsets.length - 1] !== onset) onsets.push(onset);
+  }
+
+  const events: { degree: number; quality: ChordQuality; duration: number; func: HarmonicFunction }[] = [];
+  for (let g = 0; g < onsets.length; g++) {
+    const from = onsets[g]!;
+    // The last slice lasts until the sounding notes actually end (not an
+    // invented 4-step tail); every slice caps at the corpus window.
+    const sliceEnd = g + 1 < onsets.length ? onsets[g + 1]! : Math.max(...sorted.map((n) => n.endTick));
+    const to = Math.min(sliceEnd, maxSteps * step);
+    const sounding = new Set<number>();
+    for (const note of sorted) {
+      if (note.startTick >= to) break; // sorted by startTick
+      if (note.endTick <= from) continue; // ended before the slice
+      const pc = ((note.pitch % 12) + 12) % 12;
+      sounding.add(pc);
+    }
+    if (sounding.size === 0) continue;
+    const matched = matchChord(sounding);
+    if (!matched) continue; // no recognizable chord — honest skip, no guess
+    const rootPc = matched.rootPc;
+    const quality = matched.quality;
+    const degree = pcToDegree(rootPc, parsedKey, intervals);
+    const startStep = Math.max(0, Math.round(from / step));
+    const endStep = Math.min(maxSteps, Math.max(startStep + 1, Math.round(to / step)));
+    if (startStep >= maxSteps) continue;
+    events.push({
+      degree,
+      quality,
+      duration: Math.max(1, endStep - startStep),
+      func: harmonicFunctionOfDegree(degree),
+    });
+    if (startStep + events[events.length - 1]!.duration >= maxSteps) break;
+  }
+  return events;
+}

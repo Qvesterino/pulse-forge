@@ -22,16 +22,25 @@ import type { ChordEvent } from "../harmony";
  */
 
 import {
-  MELODIC_GENRES,
   MELODIC_ROLE_VOCAB,
   MELODIC_DEGREE_CLASSES,
   MELODIC_DURATION_CLASSES,
   durationClass,
   contourClass,
 } from "./melodic-features";
-import type { MelodicGenre, MelodicRole } from "./melodic-features";
+import type { MelodicRole } from "./melodic-features";
 
 export const MELODIC_FEATURES_VERSION_V3 = "melodic-features.v3";
+
+/**
+ * v3's own genre vocabulary: v1's four electronic genres PLUS "classical" —
+ * the honest conditioning label for the MIDI corpus (W2 labelled its rows
+ * "ambient", a legacy of the pre-fix conditioning collision; the corpus is
+ * classical and must not masquerade as an electronic genre). v3 is ungated
+ * and unrouted, so the contract can grow now; it freezes at the gate.
+ */
+export const MELODIC_GENRES_V3 = ["house", "techno", "trap", "ambient", "classical"] as const;
+export type MelodicV3Genre = (typeof MELODIC_GENRES_V3)[number];
 
 /** Chord quality one-hot vocabulary (8 classes from harmony.ts). */
 export const CHORD_QUALITY_VOCAB = ["maj", "min", "dim", "dom7", "maj7", "min7", "sus4", "sus2"] as const;
@@ -44,7 +53,7 @@ export const MOTIF_EMBEDDING_DIM = 8;
 
 export const MELODIC_V3_FEATURE_COUNT =
   // ── v1 base (verbatim reuse) ──
-  MELODIC_GENRES.length +
+  MELODIC_GENRES_V3.length +
   MELODIC_ROLE_VOCAB.length +
   5 + // position sin/cos
   MELODIC_DEGREE_CLASSES +
@@ -60,7 +69,7 @@ export const MELODIC_V3_FEATURE_COUNT =
 
 export interface MelodicFeatureInputV3 {
   /** v1 base fields (reused verbatim). */
-  genre: MelodicGenre;
+  genre: MelodicV3Genre;
   role: MelodicRole;
   startStep: number;
   prevDegree: number;
@@ -104,8 +113,8 @@ export function buildMelodicFeatureRowV3(input: MelodicFeatureInputV3): number[]
   let offset = 0;
 
   // ── v1 base: genre one-hot ──
-  oneHot(MELODIC_GENRES, input.genre, offset, row);
-  offset += MELODIC_GENRES.length;
+  oneHot(MELODIC_GENRES_V3, input.genre, offset, row);
+  offset += MELODIC_GENRES_V3.length;
 
   // ── v1 base: role one-hot ──
   oneHot(MELODIC_ROLE_VOCAB, input.role, offset, row);

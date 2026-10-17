@@ -6,14 +6,17 @@
  *   1. LIBRARY references (MELODIC_BY_GENRE + MELODIC_BY_STYLE) — the same
  *      hand-written sequences the v1 dataset uses, now projected through
  *      their genre's chord progression via chordAtStep.
- *   2. MIDI corpus (midi-melodic-dataset-*.json, v1 29-dim rows grouped per
- *      sequence) — degrees/durations re-grouped per sequence and re-embedded
- *      with the chord progression assigned to the group's genre family.
+ *   2. MIDI corpus (raw PD MIDI, regenerable via npm run corpus:fetch) — the
+ *      piece's OWN chord track derives its ChordEvent[] progression
+ *      (deriveCorpusChordEvents), lead degrees ride chordAtStep as usual,
+ *      and rows condition on the honest "classical" genre slot. The earlier
+ *      draft assigned SYNTHETIC house/ambient ladders to classical pieces —
+ *      the W2 conditioning mistake reborn; that path is gone.
  *
- * Chord assignment is deterministic: genre → selectProgression(seed) →
- * expandProgression to the sequence length → chordAtStep per note. The
- * trainer's leak guard keeps groups held-out; library groups keep the
- * `genre#role#idx` shape, MIDI groups stay `midi#<pack>#role#idx`.
+ * Chord assignment: library = genre → selectProgression(seed) →
+ * expandProgression → chordAtStep; corpus = the piece's own chord track.
+ * The trainer's leak guard keeps groups held-out; library groups keep the
+ * `genre#role#idx` shape, corpus groups stay `classical.<era>#midi:<id>`.
  *
  * Run: npx vite-node scripts/generate-melodic-v3-dataset.mts
  */
@@ -26,6 +29,7 @@ import {
   buildMelodicFeatureRowV3,
   chordAtStep,
   type MelodicFeatureInputV3,
+  type MelodicV3Genre,
 } from "../src/ai/symbolic/melodic-features-v3";
 import {
   MELODIC_DURATION_VALUES,
@@ -35,6 +39,16 @@ import {
 } from "../src/ai/symbolic/melodic-features";
 import { MELODIC_BY_GENRE, MELODIC_BY_STYLE } from "../src/ai/grooves/melodic-data";
 import { expandProgression, selectProgression, type ChordEvent } from "../src/ai/harmony";
+import { parseMidiFile } from "../src/midi/midiFile";
+import {
+  deriveCorpusChordEvents,
+  eraOf,
+  MAX_BARS_PER_PIECE,
+  MAX_SAMPLES_PER_ROLE,
+  splitRoles,
+  toDegreeEvents,
+  type CatalogPiece,
+} from "../src/ai/midi-corpus-ingest";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, "..");
@@ -68,16 +82,18 @@ function chordLadder(genre: string, totalSteps: number, seed: number): ChordEven
 /** Emit next-note samples for one sequence with chord context. */
 function collectSequence(
   samples: V3Sample[],
-  genreKey: ReturnType<typeof melodicGenreOf>,
+  genreKey: MelodicV3Genre,
   role: MelodicRole,
   sequence: readonly SequenceNote[],
   group: string,
   chordSeed: number,
   genre: string,
+  /** Corpus rows: the piece's OWN derived progression replaces the genre ladder. */
+  ladderOverride?: ChordEvent[],
 ): void {
   if (sequence.length === 0) return;
   const totalSteps = sequence.reduce((acc, note) => acc + note.duration, 0);
-  const ladder = chordLadder(genre, totalSteps, chordSeed);
+  const ladder = ladderOverride ?? chordLadder(genre, totalSteps, chordSeed);
 
   let cumulative = 0;
   const emit = (
@@ -134,7 +150,15 @@ function collectLibraryRole(
   for (const pattern of patterns) {
     const role = pattern.role as MelodicRole;
     for (const [sequenceIndex, sequence] of pattern.sequences.entries()) {
-      collectSequence(samples, genreKey, role, sequence, `${groupPrefix}#${role}#${sequenceIndex}`, sequenceIndex);
+      collectSequence(
+        samples,
+        genreKey,
+        role,
+        sequence,
+        `${groupPrefix}#${role}#${sequenceIndex}`,
+        sequenceIndex,
+        genreKey,
+      );
       sampleCount += 1;
     }
   }
@@ -149,83 +173,53 @@ for (const [styleId, patterns] of Object.entries(MELODIC_BY_STYLE)) {
 }
 const libraryCount = sampleCount;
 
-/* ── 2. MIDI corpus (v1 rows re-embedded with chord context) ── */
-interface MidiV1Row {
-  x: number[];
-  degree: number;
-  duration: number;
-  group: string;
-}
-interface MidiV1Dataset {
-  datasetVersion: string;
-  featureVersion: string;
-  data: MidiV1Row[];
+/* ── 2. MIDI corpus — the pieces' OWN harmony (W1) ── */
+interface CorpusCatalogEntry extends CatalogPiece {
+  file: string;
 }
 
-const MIDI_SOURCES = [
-  // F5 kampane: the FULL W2 corpus (29 730 v1-rows / 645 classical.* groups,
-  // license-manifested). The two curated subset names this list carried
-  // before ("no-chord-8000", "bass-only-4000") were never-committed W2-era
-  // exports — the silent skip is why the shipped v3 manifest reports
-  // midiCorpusSamples: 0.
-  "midi-melodic-dataset.json",
-] as const;
-
-const midiDatasets: MidiV1Dataset[] = [];
-for (const source of MIDI_SOURCES) {
-  try {
-    midiDatasets.push(JSON.parse(readFileSync(path.join(outDir, source), "utf8")) as MidiV1Dataset);
-  } catch {
-    console.warn(`[melodic-v3] MIDI source missing, skipping: ${source}`);
-  }
-}
-
-// Reconstruct per-group degree/duration sequences from the v1 rows (rows of
-// one group are consecutive next-note samples of one looping sequence).
-const groupSequences = new Map<string, Array<{ degree: number; duration: number }>>();
-for (const dataset of midiDatasets) {
-  let previousGroup = "";
-  for (const row of dataset.data) {
-    if (row.group !== previousGroup) {
-      // row 0 of a group is the "first note" sample (prev = last note of
-      // the loop) — start a fresh sequence entry
-      groupSequences.set(row.group, []);
-      previousGroup = row.group;
-    }
-    const degreeClass = row.degree; // 0 = rest, 1..7 = degrees 0..6
-    const degree = degreeClass === 0 ? -1 : degreeClass - 1;
-    // v1 rows carry the duration CLASS (index) — convert back to steps so
-    // chord-slot math and the duration one-hot stay in the same space
-    const steps = MELODIC_DURATION_VALUES[row.duration] ?? 2;
-    groupSequences.get(row.group)!.push({ degree, duration: steps });
-  }
-}
+const CORPUS_MANIFEST = path.join(root, "scripts", "data", "midi-corpus", "manifest.json");
+const CORPUS_ROOT = path.join(root, "scripts", "data", "midi-corpus"); // manifest file paths already carry midi/
+const corpusMaxSteps = MAX_BARS_PER_PIECE * 16; // 128 steps (the 8-bar window)
 
 const midiCountBefore = sampleCount;
-// genre family per group prefix ("classical.baroque#midi:mutopia-1006#bass")
-// → all public-domain classical material rides the closest engine
-// progression family we have (house for baroque/classical/romantic periods,
-// ambient for impressionist/minimalist eras — deterministic by prefix).
-function genreFamilyFor(group: string): string {
-  if (/romantic|impressionist|minimal/i.test(group)) return "ambient";
-  return "house";
-}
-
-for (const [group, sequence] of groupSequences) {
-  if (sequence.length === 0) continue;
-  const roleRaw = group.split("#").pop() ?? "bass";
-  const role = (["bass", "chords", "lead"].includes(roleRaw) ? roleRaw : "bass") as MelodicRole;
-  const genreFamily = genreFamilyFor(group);
-  collectSequence(
-    samples,
-    melodicGenreOf(genreFamily as Parameters<typeof melodicGenreOf>[0]),
-    role,
-    sequence,
-    `midi#${group}`,
-    1000,
-    genreFamily,
+let corpusPieces = 0;
+try {
+  const catalog = JSON.parse(readFileSync(CORPUS_MANIFEST, "utf8")) as {
+    pieces?: CorpusCatalogEntry[];
+  };
+  const pieces = catalog.pieces ?? [];
+  for (const piece of pieces) {
+    let parsed: ReturnType<typeof parseMidiFile>;
+    try {
+      parsed = parseMidiFile(new Uint8Array(readFileSync(path.join(CORPUS_ROOT, piece.file))));
+    } catch {
+      continue; // raw file not fetched — regenerable via npm run corpus:fetch
+    }
+    const split = splitRoles(parsed);
+    if (!split.key) continue;
+    const chordEvents = deriveCorpusChordEvents(split.chord, split.key, corpusMaxSteps);
+    if (chordEvents.length === 0) continue; // no recognizable harmony — skip, never invent
+    // EVERY role with enough content trains (the W2 shape): most Mutopia
+    // pieces have 2 tracks, so "lead" alone would skip nearly everything.
+    let pieceUsed = false;
+    for (const role of ["bass", "chord", "lead"] as const) {
+      const events = toDegreeEvents(split[role], role, split.key, corpusMaxSteps);
+      if (events.length < 8) continue; // too short to teach transitions
+      const sequence = events.slice(0, MAX_SAMPLES_PER_ROLE).map((e) => ({ degree: e.degree, duration: e.duration }));
+      const group = `classical.${eraOf(piece)}#midi:${piece.id}#${role}`;
+      collectSequence(samples, "classical", role, sequence, group, 0, "classical", chordEvents);
+      sampleCount += sequence.length;
+      pieceUsed = true;
+    }
+    if (pieceUsed) corpusPieces += 1;
+  }
+  console.log(`[melodic-v3] corpus pieces used: ${corpusPieces}/${pieces.length}`);
+} catch (err) {
+  console.warn(
+    `[melodic-v3] corpus unavailable (${String(err).slice(0, 120)}) — building library-only; ` +
+      "regenerate with npm run corpus:fetch for the W1 experiment",
   );
-  sampleCount += sequence.length;
 }
 const midiCount = sampleCount - midiCountBefore;
 
@@ -259,8 +253,8 @@ const dataset = {
   groups: new Set(unique.map((sample) => sample.group)).size,
   sources: {
     libraryPairs: libraryCount,
-    midiRowsEmbedded: midiCount,
-    midiSources: MIDI_SOURCES,
+    midiCorpusRows: midiCount,
+    midiCorpusSource: "raw PD MIDI (scripts/data/midi-corpus), real derived harmony",
   },
   note: "v3 = v1 base + chord root/quality/function + next-chord root + position-in-chord + motif embedding (see melodic-features-v3.ts)",
 };
