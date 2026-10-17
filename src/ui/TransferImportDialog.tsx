@@ -6,6 +6,7 @@ import { importAudioFile } from "./sample-import";
 import { uid } from "../shared/ids";
 import {
   buildTransferProject,
+  defaultTransferTrackName,
   inspectTransferFiles,
   midiImportWarnings,
   type TransferInspection,
@@ -56,7 +57,8 @@ export function TransferImportDialog({ core, onCancel, onImported }: TransferImp
   const [numerator, setNumerator] = useState(4);
   const [denominator, setDenominator] = useState(4);
   const [meterTouched, setMeterTouched] = useState(false);
-  const [referenceFiles, setReferenceFiles] = useState<Set<string>>(() => new Set());
+  const [referenceFiles, setReferenceFiles] = useState<Set<number>>(() => new Set());
+  const [audioTrackNames, setAudioTrackNames] = useState<string[]>([]);
   const [aligned, setAligned] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -70,7 +72,10 @@ export function TransferImportDialog({ core, onCancel, onImported }: TransferImp
     setError(null);
     setAligned(false);
     setAcknowledged(false);
-    setReferenceFiles(new Set(selected.filter((file) => referenceCandidate(file.name)).map(fileKey)));
+    setReferenceFiles(new Set(selected.flatMap((file, index) => (referenceCandidate(file.name) ? [index] : []))));
+    setAudioTrackNames(
+      selected.map((file) => (/\.(mid|midi)$/i.test(file.name) ? "" : defaultTransferTrackName(file.name))),
+    );
     const firstBase = selected[0]?.name.replace(/\.[^.]+$/, "").trim();
     if (firstBase) setProjectName(firstBase.slice(0, 64));
 
@@ -99,6 +104,12 @@ export function TransferImportDialog({ core, onCancel, onImported }: TransferImp
   const warnings = [
     ...new Set([...(inspection?.warnings ?? []), ...midiImportWarnings(inspection?.parsedMidi ?? null)]),
   ];
+  const audioTrackNameError = inspection?.audioFiles.some((file) => {
+    const selectionIndex = files.indexOf(file);
+    return selectionIndex < 0 || !(audioTrackNames[selectionIndex] ?? "").trim();
+  })
+    ? "Name every audio track before importing the project."
+    : null;
   const alignmentRequired = (inspection?.audioFiles.length ?? 0) > 0;
   const settingsError =
     !Number.isFinite(bpm) || bpm < 20 || bpm > 300
@@ -114,6 +125,7 @@ export function TransferImportDialog({ core, onCancel, onImported }: TransferImp
     inspection !== null &&
     inspection.errors.length === 0 &&
     settingsError === null &&
+    audioTrackNameError === null &&
     (!alignmentRequired || aligned) &&
     (warnings.length === 0 || acknowledged) &&
     projectName.trim().length > 0;
@@ -127,6 +139,7 @@ export function TransferImportDialog({ core, onCancel, onImported }: TransferImp
     try {
       const audioAssets = [];
       for (const file of inspection.audioFiles) {
+        const selectionIndex = files.indexOf(file);
         const id = uid("transfer-audio");
         // Register the intended ID before decoding/persisting so a partial
         // failure inside importAudioFile is included in the batch rollback.
@@ -137,9 +150,10 @@ export function TransferImportDialog({ core, onCancel, onImported }: TransferImp
         });
         audioAssets.push({
           fileName: file.name,
+          trackName: audioTrackNames[selectionIndex] ?? defaultTransferTrackName(file.name),
           assetId: asset.id,
           durationSec: asset.duration,
-          referenceMix: referenceFiles.has(fileKey(file)),
+          referenceMix: referenceFiles.has(selectionIndex),
         });
       }
 
@@ -147,6 +161,7 @@ export function TransferImportDialog({ core, onCancel, onImported }: TransferImp
       const parsed = inspection.parsedMidi;
       const result = buildTransferProject({
         projectName,
+        sourceDaw,
         bpm,
         timeSignature: { numerator, denominator },
         audioAssets,
@@ -241,17 +256,35 @@ export function TransferImportDialog({ core, onCancel, onImported }: TransferImp
             <div className="kyx-transfer-file-list" aria-label="Selected transfer files">
               <div className="kyx-transfer-list-head">
                 <span>FILE</span>
+                <span>OUTPUT TRACK NAME</span>
                 <span>TYPE / SIZE</span>
                 <span>ROLE</span>
               </div>
               {files.map((file, index) => {
                 const isMidi = /\.(mid|midi)$/i.test(file.name);
-                const isReference = referenceFiles.has(fileKey(file));
+                const isReference = referenceFiles.has(index);
                 return (
                   <div className="kyx-transfer-file-row" key={`${fileKey(file)}:${index}`}>
                     <span className="kyx-transfer-file-name" title={file.name}>
                       {file.name}
                     </span>
+                    {isMidi ? (
+                      <span>Named MIDI lanes</span>
+                    ) : (
+                      <input
+                        className="kyx-transfer-track-name"
+                        type="text"
+                        aria-label={`Track name for ${file.name}`}
+                        maxLength={48}
+                        value={audioTrackNames[index] ?? ""}
+                        onChange={(event) => {
+                          const next = [...audioTrackNames];
+                          next[index] = event.target.value;
+                          setAudioTrackNames(next);
+                        }}
+                        disabled={busy}
+                      />
+                    )}
                     <span>
                       {isMidi ? "MIDI" : "AUDIO"} · {sizeLabel(file.size)}
                     </span>
@@ -262,8 +295,8 @@ export function TransferImportDialog({ core, onCancel, onImported }: TransferImp
                         disabled={busy || isMidi}
                         onChange={(event) => {
                           const next = new Set(referenceFiles);
-                          if (event.target.checked) next.add(fileKey(file));
-                          else next.delete(fileKey(file));
+                          if (event.target.checked) next.add(index);
+                          else next.delete(index);
                           setReferenceFiles(next);
                         }}
                       />
@@ -273,6 +306,12 @@ export function TransferImportDialog({ core, onCancel, onImported }: TransferImp
                 );
               })}
             </div>
+          )}
+
+          {inspection && inspection.audioFiles.length > 0 && (
+            <p className="kyx-transfer-batch-summary" aria-label="Total selected audio size">
+              {inspection.audioFiles.length} audio file(s) · {sizeLabel(inspection.totalAudioBytes)} encoded audio
+            </p>
           )}
 
           {inspection?.parsedMidi && (
@@ -367,8 +406,9 @@ export function TransferImportDialog({ core, onCancel, onImported }: TransferImp
             </p>
             <strong>What stays behind</strong>
             <p>
-              Native project layout, plug-in state, instrument patches, mixer routing, automation and MIDI
-              CC/pitch-bend/program data. These are disclosed here rather than silently substituted.
+              Native project layout, source mixer fader/pan controls, plug-in state, instrument patches, routing,
+              automation, tempo maps and MIDI CC/pitch-bend/program data. Levels and effects already printed into WAVs
+              stay in the audio.
             </p>
           </div>
 
@@ -385,6 +425,11 @@ export function TransferImportDialog({ core, onCancel, onImported }: TransferImp
           {settingsError && (
             <p className="kyx-transfer-error" role="alert">
               {settingsError}
+            </p>
+          )}
+          {audioTrackNameError && (
+            <p className="kyx-transfer-error" role="alert">
+              {audioTrackNameError}
             </p>
           )}
           {error && (

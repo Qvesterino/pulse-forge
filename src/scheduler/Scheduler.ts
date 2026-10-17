@@ -147,6 +147,7 @@ export interface SchedulerPlaybackOverride {
 }
 
 const INTERVAL_MS = 25;
+const INITIAL_START_GRACE_SEC = 0.02;
 const HORIZON_SECONDS = 0.12;
 /**
  * Flip-commit cadence (ms). The scheduled scene-tempo flip must land as close
@@ -268,6 +269,8 @@ export class Scheduler {
    */
   private songTimeAt: ((tick: number) => number) | null = null;
   private windowStartTick = 0;
+  /** One-window allowance for audio-clock quantization at a fresh play edge. */
+  private allowLateStartEvents = false;
   /**
    * Absolute tick of the next metronome click to schedule. Clicks fire on
    * every beat of the count-in region and (metronome ON) during playback;
@@ -477,7 +480,11 @@ export class Scheduler {
   start(): void {
     if (this.timer !== null || this.driverActive) return;
     const transport = this.deps.getTransport();
-    this.windowStartTick = Math.max(0, transport.position);
+    const now = this.deps.getAudioTime();
+    const anchorAgeSec = now - transport.timeMapAnchorTime;
+    this.allowLateStartEvents =
+      Number.isFinite(anchorAgeSec) && anchorAgeSec >= -0.002 && anchorAgeSec <= INITIAL_START_GRACE_SEC;
+    this.windowStartTick = Math.max(0, this.allowLateStartEvents ? transport.timeMapAnchorTick : transport.position);
     this.stopped = false;
     this.leadInUntilTick = transport.leadInBars() > 0 ? transport.anchorTickBeforePreRoll() : -1;
     this.leadInStartTick = this.leadInUntilTick >= 0 ? this.windowStartTick : -1;
@@ -707,6 +714,7 @@ export class Scheduler {
     // context resumes.
     const contextState = this.deps.getContextState?.() ?? "running";
     if (contextState !== "running") {
+      this.allowLateStartEvents = false;
       this.lastContextState = contextState;
       this.windowStartTick = windowEnd;
       this.stats.lastHorizonTick = windowEnd;
@@ -729,15 +737,18 @@ export class Scheduler {
       windowStart = this.windowStartTick;
     }
     if (windowEnd <= windowStart) {
+      this.allowLateStartEvents = false;
       this.stats.windows += 1;
       return;
     }
+    const allowLateStartEvents = this.allowLateStartEvents;
+    this.allowLateStartEvents = false;
     try {
       if (!transport.loopEnabled) {
         this.activeLoopEnd = null;
         this.cancelPendingLoopBoundary();
       }
-      this.scheduleWindow(transport, now, windowStart, windowEnd);
+      this.scheduleWindow(transport, now, windowStart, windowEnd, allowLateStartEvents);
     } catch (err) {
       // A scheduling failure must not wedge the transport: without advancing
       // the window, the next tick would re-schedule the same events every
@@ -753,7 +764,13 @@ export class Scheduler {
   }
 
   /** Schedule one lookahead window (pattern/song content, markers, automation, modulators). */
-  private scheduleWindow(transport: Transport, now: number, windowStart: number, windowEnd: number): void {
+  private scheduleWindow(
+    transport: Transport,
+    now: number,
+    windowStart: number,
+    windowEnd: number,
+    allowLateStartEvents = false,
+  ): void {
     const doc = this.getProject();
     const mode = this.deps.getMode();
     this.songTimeAt = null;
@@ -871,7 +888,14 @@ export class Scheduler {
         boundary = this.activeLoopEnd;
       }
 
-      this.schedulePatternWindow(pattern, 0, contentWindowStart, boundary ?? windowEnd);
+      this.schedulePatternWindow(
+        pattern,
+        0,
+        contentWindowStart,
+        boundary ?? windowEnd,
+        undefined,
+        allowLateStartEvents,
+      );
       automationCtx = { base: 0, patternTicks };
 
       if (boundary !== null && pending) {
@@ -888,7 +912,7 @@ export class Scheduler {
         const nextPattern = nextDoc.patterns.find((p) => p.id === pending.patternId);
         currentDoc = nextDoc;
         if (nextPattern) {
-          this.schedulePatternWindow(nextPattern, 0, boundary, windowEnd);
+          this.schedulePatternWindow(nextPattern, 0, boundary, windowEnd, undefined, allowLateStartEvents);
           automationCtx = { base: 0, patternTicks: STEP_TICKS * nextPattern.stepCount };
         }
       }
@@ -1045,7 +1069,14 @@ export class Scheduler {
         if (!pattern) continue;
         const patternTicks = STEP_TICKS * pattern.stepCount;
         const patternBase = patternBaseTickForClip(clip);
-        this.schedulePatternWindow(pattern, patternBase, s, e, tempoSplit ? timeAtForWindow : undefined);
+        this.schedulePatternWindow(
+          pattern,
+          patternBase,
+          s,
+          e,
+          tempoSplit ? timeAtForWindow : undefined,
+          allowLateStartEvents,
+        );
         if (!automationCtx && contentWindowStart >= clipStart) {
           automationCtx = { base: patternBase, patternTicks };
         }
@@ -1067,6 +1098,7 @@ export class Scheduler {
           now,
           scheduleOffsetSec,
           doc,
+          allowLateStartEvents,
         );
       }
       if (!automationCtx) {
@@ -1209,6 +1241,7 @@ export class Scheduler {
     windowStart: number,
     windowEnd: number,
     timeAtOverride?: (tick: number) => number,
+    allowLateStartEvents = false,
   ): void {
     const transport = this.deps.getTransport();
     const doc = this.getProject();
@@ -1222,7 +1255,7 @@ export class Scheduler {
     // The shared note scheduler maps both note start and note end through this
     // window's tempo map, so a sustained note can cross a scene tempo seam
     // without using the pre-seam BPM for its whole duration.
-    const audible = (when: number) => when >= now - 0.002;
+    const audible = (when: number) => when >= now - (allowLateStartEvents ? INITIAL_START_GRACE_SEC : 0.002);
 
     for (const hit of drumHitsInWindow(doc, pattern, base, windowStart, windowEnd)) {
       const when = timeAt(hit.tick) + scheduleOffsetSec;
@@ -1259,6 +1292,7 @@ export class Scheduler {
       now,
       scheduleOffsetSec,
       doc,
+      allowLateStartEvents,
     );
   }
 
@@ -1270,8 +1304,9 @@ export class Scheduler {
     now: number,
     scheduleOffsetSec: number,
     doc: ProjectDocument,
+    allowLateStartEvents = false,
   ): void {
-    const audible = (when: number) => when >= now - 0.002;
+    const audible = (when: number) => when >= now - (allowLateStartEvents ? INITIAL_START_GRACE_SEC : 0.002);
     for (const event of events) {
       const track = this.tracksById(doc).get(event.trackId);
       if (!track || track.kind !== "instrument") continue;

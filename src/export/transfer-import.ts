@@ -2,7 +2,7 @@ import { addAudioClip } from "../commands/audioClips";
 import { addArrangementClip } from "../commands/arrangement";
 import { addMidiClip } from "../commands/midiClips";
 import { createScene } from "../commands/scenes";
-import { assertAudioImportSize, isAudioImportFile } from "../audio-import-capabilities";
+import { assertAudioImportSize, isAudioImportFile, MAX_AUDIO_IMPORT_BYTES } from "../audio-import-capabilities";
 import {
   MAX_ARRANGEMENT_CLIP_BARS,
   MAX_ARRANGEMENT_CLIP_TICKS,
@@ -15,6 +15,7 @@ import {
   type InstrumentTrack,
   type Pattern,
   type ProjectDocument,
+  type ProjectTransferSourceDaw,
   type TimeSignature,
 } from "../project-model/types";
 import { createProjectFromTemplate } from "../project-model/templates";
@@ -22,10 +23,11 @@ import { uid } from "../shared/ids";
 import { importMidiCommand } from "../midi/midiProject";
 import { parseMidiFile, type ParsedMidi } from "../midi/midiFile";
 
-export type TransferSourceDaw = "fl-studio" | "cubase" | "pro-tools" | "other";
+export type TransferSourceDaw = ProjectTransferSourceDaw;
 
 export interface TransferInspection {
   audioFiles: File[];
+  totalAudioBytes: number;
   midiFile: File | null;
   parsedMidi: ParsedMidi | null;
   errors: string[];
@@ -36,11 +38,13 @@ export interface TransferAudioAsset {
   fileName: string;
   assetId: string;
   durationSec: number;
+  trackName?: string;
   referenceMix?: boolean;
 }
 
 export interface BuildTransferProjectOptions {
   projectName: string;
+  sourceDaw: TransferSourceDaw;
   bpm: number;
   timeSignature: TimeSignature;
   audioAssets: TransferAudioAsset[];
@@ -57,6 +61,7 @@ export interface TransferProjectResult {
 }
 
 const MAX_TRANSFER_AUDIO_TRACKS = 32;
+const TRANSFER_AUDIO_MEMORY_WARNING_BYTES = MAX_AUDIO_IMPORT_BYTES * 4;
 const MAX_TRANSFER_MIDI_BYTES = 10 * 1024 * 1024;
 const MAX_TRANSFER_MIDI_INSTRUMENT_TRACKS = 8;
 const MAX_IMPORTED_DRUM_STEPS = 512;
@@ -72,6 +77,11 @@ function fileBaseName(name: string): string {
     .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "")
     .trim();
   return (base || "Imported Track").slice(0, 48);
+}
+
+/** Sensible default for the editable output-lane name in the transfer preflight. */
+export function defaultTransferTrackName(fileName: string): string {
+  return fileBaseName(fileName);
 }
 
 function uniqueName(name: string, used: Set<string>): string {
@@ -128,6 +138,13 @@ export async function inspectTransferFiles(files: readonly File[]): Promise<Tran
   }
   if (midiFiles.length > 1)
     errors.push("Choose one combined MIDI file. It can contain multiple named instrument tracks.");
+
+  const totalAudioBytes = audioFiles.reduce((total, file) => total + file.size, 0);
+  if (totalAudioBytes > TRANSFER_AUDIO_MEMORY_WARNING_BYTES) {
+    warnings.push(
+      "This batch contains more than 100 MB of audio files. Decoded PCM can use considerably more memory; remove unused tracks or the reference mix if KYX is running on a low-memory device.",
+    );
+  }
 
   let parsedMidi: ParsedMidi | null = null;
   const midiFile = midiFiles[0] ?? null;
@@ -211,7 +228,7 @@ export async function inspectTransferFiles(files: readonly File[]): Promise<Tran
     );
   }
 
-  return { audioFiles, midiFile, parsedMidi, errors, warnings };
+  return { audioFiles, totalAudioBytes, midiFile, parsedMidi, errors, warnings };
 }
 
 function emptyTransferDocument(
@@ -291,7 +308,7 @@ export function buildTransferProject(options: BuildTransferProjectOptions): Tran
     if (!Number.isFinite(asset.durationSec) || asset.durationSec <= 0)
       throw new Error(`Audio track "${asset.fileName}" has an invalid duration.`);
     const track = createInstrumentTrackModel("sampler", index + 1);
-    track.name = uniqueName(fileBaseName(asset.fileName), audioNames);
+    track.name = uniqueName(fileBaseName(asset.trackName?.trim() || asset.fileName), audioNames);
     track.groupId = group?.id;
     if (asset.referenceMix) track.mute = true;
     return track;
@@ -374,8 +391,13 @@ export function buildTransferProject(options: BuildTransferProjectOptions): Tran
       warnings.push(`${importSummary.droppedNotes} MIDI note(s) exceeded KYX's arrangement range and were omitted.`);
   }
 
+  doc = normalizeProject({
+    ...doc,
+    transferOrigin: { version: 1, kind: "aligned-audio-midi", sourceDaw: options.sourceDaw },
+  });
+
   return {
-    doc: normalizeProject(doc),
+    doc,
     audioTrackNames,
     midiTrackNames,
     warnings,

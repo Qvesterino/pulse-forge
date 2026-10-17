@@ -18,6 +18,9 @@ import { appUrl } from "../shared/mountBase";
 const TransferImportDialog = lazy(() =>
   import("./TransferImportDialog").then((module) => ({ default: module.TransferImportDialog })),
 );
+const TransferCapabilityCard = lazy(() =>
+  import("./TransferCapabilityCard").then((module) => ({ default: module.TransferCapabilityCard })),
+);
 
 /** One row of the library: openable, or written by a newer app version. */
 type ProjectRow = { kind: "ok"; meta: SavedProjectMeta } | { kind: "newer"; meta: IncompatibleProjectMeta };
@@ -41,6 +44,19 @@ function formatRelative(iso: string): string {
   if (days === 1) return "yesterday";
   if (days < 7) return `${days} days ago`;
   return new Date(then).toLocaleDateString();
+}
+
+function formatTransferSource(source: NonNullable<SavedProjectMeta["transferOrigin"]>["sourceDaw"]): string {
+  switch (source) {
+    case "fl-studio":
+      return "FL Studio";
+    case "cubase":
+      return "Cubase";
+    case "pro-tools":
+      return "Pro Tools";
+    case "other":
+      return "WAV + MIDI";
+  }
 }
 
 export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (doc: ProjectDocument) => void }) {
@@ -263,7 +279,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
     setRecovery(null);
   };
 
-  const firstRun = projects !== null && projects.length === 0 && newerProjects.length === 0;
+  const firstRun = !listError && projects !== null && projects.length === 0 && newerProjects.length === 0;
   const rows = projects === null ? null : mergeRows(projects, newerProjects);
   const latest = projects !== null && projects.length > 0 ? projects[0] : null;
 
@@ -285,6 +301,11 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
       </header>
 
       <div className="pb-body">
+        {firstRun && (
+          <Suspense fallback={<div className="panel-loading">Loading transfer guide…</div>}>
+            <TransferCapabilityCard onStartTransfer={() => setTransferImportOpen(true)} />
+          </Suspense>
+        )}
         {recovery !== null && (
           <div className="pb-crash-banner" role="alert">
             <span className="pb-crash-text">
@@ -336,7 +357,9 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
               <span className="pb-continue-label">CONTINUE LAST PROJECT</span>
               <span className="pb-continue-name">{latest.name}</span>
               <span className="pb-continue-meta">
-                {latest.bpm} BPM · {latest.trackCount} tracks · saved {formatRelative(latest.updatedAt)}
+                {latest.bpm} BPM · {latest.trackCount} tracks
+                {latest.transferOrigin && ` · imported from ${formatTransferSource(latest.transferOrigin.sourceDaw)}`} ·
+                saved {formatRelative(latest.updatedAt)}
               </span>
             </button>
           </section>
@@ -361,14 +384,16 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
           <button type="button" className="btn btn-small" disabled={busy} onClick={() => fileInputRef.current?.click()}>
             IMPORT FROM FILE
           </button>
-          <button
-            type="button"
-            className="btn btn-small btn-primary pb-bring-song"
-            disabled={busy}
-            onClick={() => setTransferImportOpen(true)}
-          >
-            BRING A SONG FROM ANOTHER DAW
-          </button>
+          {!firstRun && (
+            <button
+              type="button"
+              className="btn btn-small btn-primary pb-bring-song"
+              disabled={busy}
+              onClick={() => setTransferImportOpen(true)}
+            >
+              BRING A SONG FROM ANOTHER DAW
+            </button>
+          )}
           <p className="pb-import-hint">
             Import aligned audio track-outs and one Standard MIDI file into a new KYX project.
           </p>
@@ -488,7 +513,10 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
                       </button>
                     )}
                     <span className="pb-row-meta">
-                      {project.bpm} BPM · {project.trackCount} tracks · saved {formatRelative(project.updatedAt)}
+                      {project.bpm} BPM · {project.trackCount} tracks
+                      {project.transferOrigin &&
+                        ` · imported from ${formatTransferSource(project.transferOrigin.sourceDaw)}`}{" "}
+                      · saved {formatRelative(project.updatedAt)}
                     </span>
                     <div className="pb-row-actions">
                       <button

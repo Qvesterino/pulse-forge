@@ -28,4 +28,12 @@ if(BUILD_TESTING)
   target_compile_features(kyx-windows-audio-probe-loopback-correlation-tests PRIVATE cxx_std_17)
   target_compile_options(kyx-windows-audio-probe-loopback-correlation-tests PRIVATE /W4 /permissive-)
   add_test(NAME loopback-correlation COMMAND kyx-windows-audio-probe-loopback-correlation-tests)
+
+  add_executable(kyx-windows-audio-probe-endpoint-json-tests endpoint-json-test.cpp)
+  target_compile_features(kyx-windows-audio-probe-endpoint-json-tests PRIVATE cxx_std_17)
+  target_compile_definitions(
+    kyx-windows-audio-probe-endpoint-json-tests PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+  target_compile_options(kyx-windows-audio-probe-endpoint-json-tests PRIVATE /W4 /permissive-)
+  target_link_libraries(kyx-windows-audio-probe-endpoint-json-tests PRIVATE ole32)
+  add_test(NAME endpoint-json COMMAND kyx-windows-audio-probe-endpoint-json-tests)
 endif()

@@ -27,9 +27,11 @@ const { registerVst3IpcHandlers } = require("./vst3-host-manager.cjs");
 const { registerAsioIpcHandlers } = require("./asio-host-manager.cjs");
 const { registerMcpIpcHandlers } = require("./mcp-host-manager.cjs");
 const { registerPcmIpcHandlers } = require("./pcm-desktop.cjs");
+const { registerWindowsAudioEndpointHandlers } = require("./windows-audio-devices.cjs");
 const { Mrt2NativeHostManager } = require("./mrt2-host-manager.cjs");
 const { Mrt2WindowsHostManager } = require("./mrt2-windows-host-manager.cjs");
 const { Mrt2Wsl2HostManager } = require("./mrt2-wsl2-host-manager.cjs");
+const { withAudioIsolationHeaders } = require("./audio-isolation.cjs");
 
 const DIST_DIR = path.join(__dirname, "..", "dist");
 const APP_URL = "app://bundle/index.html";
@@ -97,7 +99,7 @@ function registerAppProtocol() {
     }
     // net.fetch on a file:// URL infers Content-Type from the extension —
     // audio worklet modules and wasm need correct MIME to load.
-    return net.fetch(pathToFileURL(resolved).toString());
+    return net.fetch(pathToFileURL(resolved).toString()).then(withAudioIsolationHeaders);
   });
 }
 
@@ -206,6 +208,9 @@ app.whenReady().then(() => {
   registerClapIpcHandlers(ipcMain, { resourcesPath: process.resourcesPath });
   registerVst3IpcHandlers(ipcMain, { resourcesPath: process.resourcesPath });
   registerAsioIpcHandlers(ipcMain, { resourcesPath: process.resourcesPath });
+  registerWindowsAudioEndpointHandlers(ipcMain, {
+    ...(app.isPackaged ? { resourcesPath: process.resourcesPath } : {}),
+  });
   // MCP (Phase D2): opt-in loopback bridge + stdio forwarder lifecycle. Tool
   // calls execute in the renderer through the deterministic command layer.
   registerMcpIpcHandlers(ipcMain, {
@@ -339,11 +344,33 @@ function runSmoke() {
         `({
           origin: location.origin,
           rootMounted: !!document.querySelector("#root"),
+          crossOriginIsolated: window.crossOriginIsolated === true,
+          sharedArrayBufferAvailable: typeof SharedArrayBuffer === "function",
         })`,
       )
       .then((state) => {
-        const ok = why !== "timeout" && state.rootMounted && state.origin === "app://bundle" && errors.length === 0;
-        console.log(JSON.stringify({ ok, why, origin: state.origin, rootMounted: state.rootMounted, errors }, null, 2));
+        const ok =
+          why !== "timeout" &&
+          state.rootMounted &&
+          state.origin === "app://bundle" &&
+          state.crossOriginIsolated &&
+          state.sharedArrayBufferAvailable &&
+          errors.length === 0;
+        console.log(
+          JSON.stringify(
+            {
+              ok,
+              why,
+              origin: state.origin,
+              rootMounted: state.rootMounted,
+              crossOriginIsolated: state.crossOriginIsolated,
+              sharedArrayBufferAvailable: state.sharedArrayBufferAvailable,
+              errors,
+            },
+            null,
+            2,
+          ),
+        );
         app.exit(ok ? 0 : 1);
       })
       .catch((error) => {

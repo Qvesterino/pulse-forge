@@ -650,3 +650,81 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
     message: failures.length === 0 ? `passed=${cases}/${cases}` : failures.slice(0, 8).join(" | "),
   };
 }
+
+/**
+ * Representative note-expression parity checks. These enter through the
+ * engine's public noteOn/noteSlide calls and compare realtime playback against
+ * the same engine's offline export path. Registry-wide audibility/route checks
+ * live in noteExpressionAudioChecks; this focused corpus proves that a
+ * combined expressive event and held slides reach both render paths.
+ */
+export async function auditNoteExpressionLiveOfflineParity(bank: SampleBank): Promise<ParityCheckResult> {
+  const template = createProjectFromTemplate("house");
+  const cases: Array<{ label: string; doc: ProjectDocument; script: ParityScript }> = [];
+
+  const analogExpressionDoc = instrumentDoc(template, "analog");
+  cases.push({
+    label: "analog: combined pitch, pan, cutoff, resonance and release expression",
+    doc: analogExpressionDoc,
+    script: (engine, at) =>
+      engine.noteOn("parity-inst", 60, 0.85, at(0.05), 0.3, undefined, undefined, undefined, undefined, {
+        pitchOffsetSemitones: 0.37,
+        pan: -0.7,
+        filterCutoffHz: 2800,
+        filterResonance: 0.72,
+        releaseVelocity: 0.82,
+      }),
+  });
+
+  const analogModDoc = instrumentDoc(template, "analog");
+  cases.push({
+    label: "analog: Mod X/Y expression",
+    doc: analogModDoc,
+    script: (engine, at) =>
+      engine.noteOn("parity-inst", 64, 0.8, at(0.05), 0.3, undefined, undefined, undefined, undefined, {
+        modX: 0.78,
+        modY: 0.77,
+      }),
+  });
+
+  const docWithHeldSlide = (kind: "808" | "acid"): ProjectDocument => {
+    const doc = instrumentDoc(template, kind);
+    const track = doc.tracks.find((candidate) => candidate.kind === "instrument");
+    if (!track || track.kind !== "instrument") throw new Error(`missing ${kind} parity track`);
+    if (kind === "808") track.params = { ...track.params, gate: 1, mono: 1, click: 0, knock: 0 };
+    return doc;
+  };
+
+  for (const kind of ["808", "acid"] as const) {
+    const doc = docWithHeldSlide(kind);
+    const sourcePitch = kind === "808" ? 33 : 45;
+    cases.push({
+      label: `${kind}: held slide changes pitch and per-note tone without retrigger`,
+      doc,
+      script: (engine, at) => {
+        engine.noteOn("parity-inst", sourcePitch, 0.85, at(0.05), 0.38);
+        engine.noteSlide("parity-inst", sourcePitch + 12, at(0.18), 0.12, {
+          pan: kind === "808" ? 0.35 : -0.35,
+          filterCutoffHz: 4200,
+          filterResonance: 0.72,
+        });
+      },
+    });
+  }
+
+  const failures: string[] = [];
+  for (const item of cases) {
+    try {
+      const failure = await nullTestCase(bank, item.doc, item.script, item.label);
+      if (failure) failures.push(failure);
+    } catch (error) {
+      failures.push(`${item.label}: ${String(error)}`);
+    }
+  }
+
+  return {
+    name: "note-expression live↔offline audio parity",
+    ok: failures.length === 0,
+    message: failures.length === 0 ? `passed=${cases.length}/${cases.length}` : failures.join(" | "),
+  };
+}

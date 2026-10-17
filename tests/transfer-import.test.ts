@@ -36,9 +36,24 @@ describe("DAW transfer import", () => {
 
     expect(result.errors).toEqual([]);
     expect(result.audioFiles.map((file) => file.name)).toEqual(["Kick Stem.wav", "Reference Mix.wav"]);
+    expect(result.totalAudioBytes).toBe(6);
     expect(result.midiFile?.name).toBe("Song.mid");
     expect(result.parsedMidi?.tracks.map((track) => track.name)).toEqual(["Drums", "Sub Bass", "Lead"]);
     expect(result.warnings.some((warning) => warning.includes("same song start"))).toBe(true);
+  });
+
+  it("warns when a multi-stem selection crosses the encoded-audio memory caution point", async () => {
+    const audioFiles = Array.from({ length: 5 }, (_, index) => {
+      const file = new File([new Uint8Array([index])], `Stem ${index + 1}.wav`, { type: "audio/wav" });
+      Object.defineProperty(file, "size", { configurable: true, value: 20 * 1024 * 1024 + 1 });
+      return file;
+    });
+
+    const result = await inspectTransferFiles(audioFiles);
+
+    expect(result.errors).toEqual([]);
+    expect(result.totalAudioBytes).toBe(5 * (20 * 1024 * 1024 + 1));
+    expect(result.warnings.join(" ")).toContain("Decoded PCM can use considerably more memory");
   });
 
   it("creates aligned, named audio lanes and editable MIDI/drum arrangement clips", () => {
@@ -46,6 +61,7 @@ describe("DAW transfer import", () => {
     const parsed = parseMidiFile(bytes);
     const result = buildTransferProject({
       projectName: "My Session Transfer",
+      sourceDaw: "fl-studio",
       bpm: 120,
       timeSignature: { numerator: 4, denominator: 4 },
       audioAssets: [
@@ -58,6 +74,7 @@ describe("DAW transfer import", () => {
     });
 
     expect(result.doc.name).toBe("My Session Transfer");
+    expect(result.doc.transferOrigin).toEqual({ version: 1, kind: "aligned-audio-midi", sourceDaw: "fl-studio" });
     expect(result.doc.bpm).toBe(120);
     expect(result.doc.timeSignature).toEqual({ numerator: 4, denominator: 4 });
     expect(result.audioTrackNames).toEqual(["Kick Stem", "Reference Mix"]);
@@ -83,6 +100,7 @@ describe("DAW transfer import", () => {
     const parsed = parseMidiFile(bytes);
     const result = buildTransferProject({
       projectName: "Eight Stem Arrangement",
+      sourceDaw: "cubase",
       bpm: 100,
       timeSignature: { numerator: 7, denominator: 8 },
       audioAssets: Array.from({ length: 8 }, (_, index) => ({

@@ -26,6 +26,7 @@ import {
   type LastRenderStamp,
 } from "../export/renderManifest";
 import { VerifyStampButton } from "./VerifyStampButton";
+import { TrustReportButton } from "./TrustReportButton";
 import { buildZyvoTransfer } from "../export/zyvo-transfer";
 import { exportProject } from "../export/project-io";
 import { canExportVideo, recordVideo } from "../export/video";
@@ -1735,7 +1736,12 @@ export function ExportPanel({
       {status.kind === "done" && (!masteringMode || masterReport) && !reportStale && (
         <AutoStageButton summary={deliveredMeasurements ?? status.summary} />
       )}
-      {status.kind === "done" && !masteringMode && <VerifyStampButton stamp={stamp} />}
+      {status.kind === "done" && !masteringMode && (
+        <>
+          <VerifyStampButton stamp={stamp} />
+          <TrustReportButton />
+        </>
+      )}
 
       {!masteringMode && (
         <div className="export-resample" role="group" aria-label="Realtime resample">

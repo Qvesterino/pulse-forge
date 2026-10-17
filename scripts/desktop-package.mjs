@@ -54,14 +54,14 @@ async function moveInto(from, toDir) {
 }
 
 await mkdir(path.join(root, "build"), { recursive: true });
-await copyFile(
-  path.join(root, "public", "maskable-512x512.png"),
-  path.join(root, "build", "icon.png"),
-);
+await copyFile(path.join(root, "public", "maskable-512x512.png"), path.join(root, "build", "icon.png"));
 console.log("• icon → build/icon.png");
 
 console.log("• web build (KYX_DESKTOP=1)…");
 await run("npm", ["run", "build"], { KYX_DESKTOP: "1" });
+
+console.log("• Windows Core Audio endpoint-discovery helper…");
+await run("npm", ["run", "build:windows-audio-probe"]);
 
 const releaseDir = path.join(root, "release");
 await mkdir(releaseDir, { recursive: true });

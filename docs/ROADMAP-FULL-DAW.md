@@ -228,9 +228,25 @@ live and offline export. Publish the verified Web capability table.
 - [x] Compare the measured Web Audio, WASAPI shared/`IAudioClient3`, WASAPI
       exclusive and ASIO evidence; record the Windows audio I/O direction in
       [ADR 0050](./adr/0050-windows-audio-io-direction.md).
-- [ ] Define a typed audio-device backend contract: enumerate/select device,
-      input/output channel map, format negotiation, buffer/period, clock position,
-      start/stop, device loss, xruns, latency and diagnostics.
+- [x] Define the typed duplex request/session boundary in
+      `src/audio-engine/windowsAudioIo.ts`: exact input/output endpoints and
+      channel maps, negotiated rate/period/format, float32 capture/render ring
+      handles, stop and device-loss/xrun events. Seven contract tests reject
+      endpoint/channel substitution, invalid shared periods and unacknowledged
+      exclusive mode. This is a software contract, not a backend.
+- [x] Productize the read-only endpoint enumeration already present in
+      `native/windows-audio-probe/main.cpp`: a schema-versioned JSON list of
+      opaque device IDs, names, flow, state and console-default status now
+      passes through a bounded, validated preload API and appears in Studio's
+      I/O panel. Seven IPC-boundary tests, four native CTest checks and a live
+      Windows enumeration pass. This remains read-only discovery; the user
+      cannot select a native stream until the audio backend exists.
+- [ ] Implement a native duplex session behind that boundary; connect its
+      capture/render rings to the shared AudioEngine without PCM messages over
+      ordinary IPC.
+- [ ] Prove device clock position, timestamp alignment, reported latency,
+      dropout/xrun diagnostics, shutdown and exact-device recovery on a fixture
+      before enabling the backend in the product UI.
 - [ ] Benchmark whether a native I/O backend can preserve the shared project,
       transport, command and offline-render invariants. Do not use main-thread PCM
       messaging as the realtime solution.

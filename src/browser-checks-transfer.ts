@@ -7,6 +7,7 @@ import { Scheduler } from "./scheduler/Scheduler";
 import { Transport } from "./transport/Transport";
 import { buildTransferProject, inspectTransferFiles } from "./export/transfer-import";
 import { writeMidiFile } from "./midi/midiFile";
+import { midiClipEventsInWindow } from "./project-model/events";
 import { renderProject } from "./rendering/renderer";
 
 export const DAW_TRANSFER_FIXTURE_VERSION = "daw-transfer-v1";
@@ -59,6 +60,13 @@ export async function runDawTransferAcceptance(): Promise<{
   fixtureVersion: string;
   importedAudioTracks: number;
   importedMidiTracks: number;
+  reopenedProjectMetadata: {
+    name: string;
+    bpm: number;
+    timeSignature: { numerator: number; denominator: number };
+    sourceDaw: string;
+  };
+  reopenedAudioTrackNames: string[];
   reopenedAudioStartsAtBar: number[];
   restoredAudioAssets: number;
   renderedFrames: number;
@@ -115,11 +123,17 @@ export async function runDawTransferAcceptance(): Promise<{
       const assetId = `${DAW_TRANSFER_FIXTURE_VERSION}.audio-${index + 1}`;
       importedIds.push(assetId);
       const asset = await importAudioFile(importServices, file, { id: assetId, detectBpm: false });
-      audioAssets.push({ fileName: file.name, assetId: asset.id, durationSec: asset.duration });
+      audioAssets.push({
+        fileName: file.name,
+        trackName: `Imported Bus ${String(index + 1).padStart(2, "0")}`,
+        assetId: asset.id,
+        durationSec: asset.duration,
+      });
     }
 
     const transfer = buildTransferProject({
       projectName: "DAW Transfer Fixture v1",
+      sourceDaw: "cubase",
       bpm: 120,
       timeSignature: { numerator: 4, denominator: 4 },
       audioAssets,
@@ -132,6 +146,19 @@ export async function runDawTransferAcceptance(): Promise<{
 
     const reopened = await projectRepo.load(transfer.doc.id);
     if (!reopened) throw new Error("Saved fixture project could not be reopened from IndexedDB.");
+    const reopenedMeta = (await projectRepo.listAll()).find((project) => project.id === reopened.id);
+    if (
+      reopened.name !== "DAW Transfer Fixture v1" ||
+      reopened.bpm !== 120 ||
+      reopened.timeSignature.numerator !== 4 ||
+      reopened.timeSignature.denominator !== 4 ||
+      reopened.transferOrigin?.sourceDaw !== "cubase" ||
+      reopenedMeta?.transferOrigin?.sourceDaw !== "cubase"
+    ) {
+      throw new Error(
+        "Reopened fixture or project-library metadata lost its title, transfer source, starting tempo, or time signature.",
+      );
+    }
     const audioClips = reopened.arrangement.audioClips ?? [];
     if (audioClips.length !== 8 || !audioClips.every((clip) => clip.startBar === 0 && (clip.offsetSec ?? 0) === 0)) {
       throw new Error("Reopened fixture lost one or more bar-1 audio clip origins.");
@@ -140,12 +167,22 @@ export async function runDawTransferAcceptance(): Promise<{
     if (midiClips.length !== 4 || !midiClips.every((clip) => clip.startTick === 0)) {
       throw new Error("Reopened fixture lost one or more bar-1 MIDI arrangement lanes.");
     }
+    const plannedMidiEvents = midiClips.flatMap((clip) => midiClipEventsInWindow(reopened, clip, 0, 120));
+    if (plannedMidiEvents.length !== 4) {
+      throw new Error(
+        `The reopened MIDI lanes produced ${plannedMidiEvents.length} schedulable note events in the first 120 ticks.`,
+      );
+    }
     const expectedMidiNames = Array.from({ length: 4 }, (_, index) => `Fixture MIDI ${index + 1}`);
     if (expectedMidiNames.some((name) => !reopened.tracks.some((track) => track.name === name))) {
       throw new Error("Reopened fixture lost one or more MIDI track names.");
     }
-    if (audioFiles.some((file) => !reopened.tracks.some((track) => track.name === file.name.replace(/\.wav$/i, "")))) {
-      throw new Error("Reopened fixture lost one or more audio track names.");
+    const expectedAudioNames = Array.from(
+      { length: audioFiles.length },
+      (_, index) => `Imported Bus ${String(index + 1).padStart(2, "0")}`,
+    );
+    if (expectedAudioNames.some((name) => !reopened.tracks.some((track) => track.name === name))) {
+      throw new Error("Reopened fixture lost one or more user-mapped audio track names.");
     }
 
     await restoreUserSampleAudioMemoized(restoredBank);
@@ -218,7 +255,7 @@ export async function runDawTransferAcceptance(): Promise<{
         )
         .join(", ");
       throw new Error(
-        `Live fixture dispatched ${liveNoteOnsDispatched} note-ons and ${liveAudioClipsDispatched} audio clips at tick ${liveTransportPosition.toFixed(1)}, but MIDI track meters were silent or missing (${detail}).`,
+        `Live fixture planned ${plannedMidiEvents.length} MIDI events, dispatched ${liveNoteOnsDispatched} note-ons and ${liveAudioClipsDispatched} audio clips at tick ${liveTransportPosition.toFixed(1)}; MIDI meters ${detail}; scheduler ${liveScheduler.stats.scheduledEvents} scheduled/${liveScheduler.stats.windows} windows/${liveScheduler.stats.failedWindows} failed.`,
       );
     }
     if (!Number.isFinite(livePlaybackPeak) || livePlaybackPeak < 0.0001 || livePlaybackPeak >= 0.9) {
@@ -260,6 +297,13 @@ export async function runDawTransferAcceptance(): Promise<{
       fixtureVersion: DAW_TRANSFER_FIXTURE_VERSION,
       importedAudioTracks: audioClips.length,
       importedMidiTracks: midiClips.length,
+      reopenedProjectMetadata: {
+        name: reopened.name,
+        bpm: reopened.bpm,
+        timeSignature: reopened.timeSignature,
+        sourceDaw: reopened.transferOrigin?.sourceDaw ?? "unknown",
+      },
+      reopenedAudioTrackNames: expectedAudioNames,
       reopenedAudioStartsAtBar: audioClips.map((clip) => clip.startBar),
       restoredAudioAssets,
       renderedFrames: rendered.length,

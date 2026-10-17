@@ -147,7 +147,6 @@ import {
   type PcmCaptureInfo,
 } from "../audio-engine/PcmMicRecorder";
 import { buildAudioClipConsolidationDoc, buildBounceZoneDoc } from "../rendering/bounce";
-import { renderProject } from "../rendering/renderer";
 import {
   audioTakeAuditionStartOffsetSec,
   createAudioTakeAuditionDoc,
@@ -2098,6 +2097,7 @@ export function ArrangementPanel() {
       const sourceDoc = services.store.getDoc();
       const auditionDoc = createAudioTakeAuditionDoc(sourceDoc, groupId, takeId);
       const auditionStartOffsetSec = audioTakeAuditionStartOffsetSec(sourceDoc, groupId, takeId);
+      const { renderProject } = await import("../rendering/renderer");
       const buffer = await renderProject(auditionDoc, services.bank, {
         mode: "song",
         sampleRate: 48_000,
@@ -3312,6 +3312,7 @@ export function ArrangementPanel() {
       const sourceDoc = services.store.doc;
       const plan = buildAudioClipConsolidationDoc(sourceDoc, clipIds);
       const sampleRate = services.engine.getLiveAudioContext()?.sampleRate ?? 44100;
+      const { renderProject } = await import("../rendering/renderer");
       const buffer = await renderProject(plan.project, services.bank, {
         mode: "song",
         sampleRate,
@@ -3382,6 +3383,7 @@ export function ArrangementPanel() {
       // clip. No more placeholder sample standing in for the render.
       const zoneDoc = buildBounceZoneDoc(services.store.doc, trackIds, { startBar: fromBar, lengthBars: lenBars });
       const sr = services.engine.getLiveAudioContext()?.sampleRate ?? 44100;
+      const { renderProject } = await import("../rendering/renderer");
       const buffer = await renderProject(zoneDoc, services.bank, { mode: "song", sampleRate: sr, tailSeconds: 2 });
       const bufferId = userSampleId(`bounce-${Math.round(fromBar)}b`);
       services.bank.add(bufferId, buffer);

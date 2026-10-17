@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ProjectBrowser } from "../../src/ui/ProjectBrowser";
 import type { CoreServices } from "../../src/services";
-import type { IncompatibleProjectMeta } from "../../src/persistence/ProjectRepository";
+import type { IncompatibleProjectMeta, SavedProjectMeta } from "../../src/persistence/ProjectRepository";
 import { CrashJournalRepository } from "../../src/persistence/crashJournal";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import type { ProjectDocument } from "../../src/project-model/types";
@@ -93,11 +93,59 @@ describe("ProjectBrowser — import does not overwrite by embedded id", () => {
 
     expect(await screen.findByText("Future Project")).toBeTruthy();
     expect(screen.getByText("NEWER VERSION")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Continue your song in KYX" })).toBeNull();
     expect(screen.queryByRole("button", { name: /^OPEN$/ })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /^DEL$/ }));
     fireEvent.click(screen.getByRole("button", { name: /^DELETE\?$/ }));
     await waitFor(() => expect(core.repo.delete).toHaveBeenCalledWith(incompatible.id));
     expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("shows truthful first-run transfer boundaries and opens the transfer wizard", async () => {
+    render(<ProjectBrowser core={makeCore([])} onOpen={vi.fn()} />);
+
+    expect(await screen.findByRole("heading", { name: "Continue your song in KYX" })).toBeTruthy();
+    expect(screen.getByText(/KYX projects and supported project JSON import/)).toBeTruthy();
+    expect(screen.getByText(/native low-latency Windows audio backend is not shipped/)).toBeTruthy();
+    expect(screen.getByText(/CLAP scanning reads metadata only/)).toBeTruthy();
+    expect(screen.getByText(/does not recreate source fader, pan or automation controls/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /PREPARE WAV \+ MIDI TRANSFER/ }));
+
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+  });
+
+  it("does not present storage failure as first-run onboarding", async () => {
+    const core = makeCore([]);
+    vi.mocked(core.repo.listAll).mockRejectedValueOnce(new Error("database unavailable"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      render(<ProjectBrowser core={core} onOpen={vi.fn()} />);
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Saved projects could not be read");
+      expect(screen.queryByRole("heading", { name: "Continue your song in KYX" })).toBeNull();
+      expect(screen.queryByText("Pick a template — you will hear your first sound in under a minute.")).toBeNull();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("shows the source DAW on projects created through audio and MIDI transfer", async () => {
+    const core = makeCore([]);
+    const meta: SavedProjectMeta = {
+      id: "cubase-transfer",
+      name: "Transferred Song",
+      bpm: 124,
+      trackCount: 9,
+      createdAt: "2026-10-17T10:00:00.000Z",
+      updatedAt: "2026-10-17T10:00:00.000Z",
+      transferOrigin: { version: 1, kind: "aligned-audio-midi", sourceDaw: "cubase" },
+    };
+    vi.mocked(core.repo.listAll).mockResolvedValueOnce([meta]);
+
+    render(<ProjectBrowser core={core} onOpen={vi.fn()} />);
+
+    expect(await screen.findAllByText(/imported from Cubase/)).toHaveLength(2);
   });
 });

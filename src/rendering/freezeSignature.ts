@@ -27,7 +27,6 @@
 
 import type { ProjectDocument } from "../project-model/types";
 import { sha256Hex } from "../export/renderManifest";
-import { unfreezeDoc } from "./renderer";
 
 /**
  * Canonical JSON: object keys sorted, arrays in order, `undefined` omitted.
@@ -62,6 +61,10 @@ export function freezeSignature(doc: ProjectDocument): Promise<string | null> {
   if (cached != null) return cached;
   const pending = (async () => {
     try {
+      // Freeze signatures are only needed when a track is frozen or its
+      // staleness is inspected. Keep the full offline renderer out of the
+      // studio boot graph until one of those paths is actually used.
+      const { unfreezeDoc } = await import("./renderer");
       const canonical = canonicalJson(unfreezeDoc(doc));
       return await sha256Hex(new TextEncoder().encode(canonical));
     } catch {

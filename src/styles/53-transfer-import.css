@@ -134,7 +134,7 @@
 .kyx-transfer-list-head,
 .kyx-transfer-file-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 110px minmax(145px, auto);
+  grid-template-columns: minmax(0, 0.9fr) minmax(130px, 1fr) 110px minmax(145px, auto);
   align-items: center;
   gap: 12px;
   padding: 8px 10px;
@@ -165,6 +165,10 @@
   white-space: nowrap;
 }
 
+.kyx-transfer-track-name {
+  width: 100%;
+}
+
 .kyx-transfer-reference-toggle,
 .kyx-transfer-confirm-row {
   display: flex;
@@ -192,6 +196,12 @@
   color: var(--text-faint);
   font-size: 11px;
   line-height: 1.45;
+}
+
+.kyx-transfer-batch-summary {
+  margin: -4px 0 0;
+  color: var(--text-faint);
+  font: 9px var(--mono);
 }
 
 .kyx-transfer-midi-summary strong,
@@ -258,9 +268,12 @@
     grid-template-columns: 1fr;
   }
 
-  .kyx-transfer-list-head,
+  .kyx-transfer-list-head {
+    display: none;
+  }
+
   .kyx-transfer-file-row {
-    grid-template-columns: minmax(0, 1fr) 78px minmax(112px, auto);
+    grid-template-columns: minmax(0, 1fr) minmax(112px, 1fr);
     gap: 7px;
     padding-right: 7px;
     padding-left: 7px;

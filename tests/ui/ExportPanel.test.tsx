@@ -521,6 +521,37 @@ describe("ExportPanel", () => {
     }
   });
 
+  it("offers a Trust Report download carrying the markdown and the JSON", async () => {
+    // The report is the artifact you hand to someone else, so this spec runs
+    // the REAL export flow first and then asserts on the bytes of the SECOND
+    // download — both members of the zip are checked.
+    const user = userEvent.setup();
+    const services = mockServices();
+    renderWithContext(<ExportPanel />, { services });
+    const blobs: Blob[] = [];
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockImplementation((value: Blob | MediaSource) => {
+      if (value instanceof Blob) blobs.push(value);
+      return "blob:test";
+    });
+    try {
+      await user.click(screen.getByRole("button", { name: /^EXPORT MASTER/ }));
+      const trust = await screen.findByRole("button", { name: "TRUST REPORT" }, { timeout: 20000 });
+      await user.click(trust);
+      await waitFor(async () => {
+        const texts = await Promise.all(
+          blobs.map(async (blob) => new TextDecoder().decode(new Uint8Array(await blob.arrayBuffer()))),
+        );
+        const zipText = texts.find((text) => text.includes("trust-report.md"));
+        expect(zipText).toBeTruthy();
+        expect(zipText).toContain("trust-report.json");
+        expect(zipText).toContain("# KYX Trust Report");
+        expect(zipText).toContain("kyx-trust-report/1");
+      });
+    } finally {
+      createObjectURL.mockRestore();
+    }
+  }, 40000);
+
   it("global quality switch defaults to Studio HQ", () => {
     renderWithContext(<ExportPanel />, { services: mockServices() });
     const quality = screen.getByLabelText("QUALITY") as HTMLSelectElement;

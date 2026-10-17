@@ -32,6 +32,16 @@ object so Windows can report the matching shared-mode period range. Reported
 periods and format support are capability evidence only; a real stream soak and
 loopback measurement are still required before a device/backend is certified.
 
+The `--list-json` mode is the Studio's read-only endpoint-discovery interface.
+It emits one UTF-8 JSON object with `schemaVersion: 1` and an `endpoints` array;
+each record has an opaque endpoint `id`, friendly `name`, `flow` (`capture` or
+`render`), current `state`, and `isDefaultConsole`. It enumerates all endpoint
+states, opens no audio stream, and changes no device settings. Endpoint IDs are
+passed through unchanged and must not be parsed or written to project files.
+The list uses Windows' MMDevice endpoint API; Microsoft documents endpoint IDs
+as opaque values returned by `IMMDevice::GetId` ([MMDevice API](https://learn.microsoft.com/en-us/windows/win32/coreaudio/mmdevice-api),
+[`IMMDevice::GetId`](https://learn.microsoft.com/en-us/windows/win32/api/mmdeviceapi/nf-mmdeviceapi-immdevice-getid)).
+
 ## Build and run (PowerShell)
 
 Requires Visual Studio C++ build tools, the Windows SDK, and CMake.
@@ -44,9 +54,10 @@ ctest --test-dir $probeBuildDir -C Release --output-on-failure
 & (Join-Path $probeBuildDir 'Release/kyx-windows-audio-probe.exe')
 ```
 
-The CTest targets cover shared-period selection, QPC timestamp conversion and
-loopback-correlation math; they do not enumerate devices or initialize an
-audio stream.
+The CTest targets cover shared-period selection, QPC timestamp conversion,
+loopback-correlation math and endpoint JSON escaping. They do not initialize
+an audio stream. `--list-json` is separately exercised against the current
+Windows endpoint list by the build/qualification workflow.
 
 To estimate the shared Windows render-to-loopback path, the explicit command
 below plays one 2.6 ms correlation burst at -32 dBFS, captures the system mix

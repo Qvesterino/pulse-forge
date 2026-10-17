@@ -99,27 +99,58 @@ same project value.
   0 and 1. Probe ratios were Acid 5.2×/3.0×/13.7×/211× and Keys
   114×/96.9×/61×/2.9× (cutoff/Mod X/Mod Y/release). The sweep schedules
   real noteOn and noteOff events, rather than reading graph parameters alone.
-- Chromium `OfflineAudioContext` now sweeps every declared filter and release
-  route through isolated channel renders. The check passes 35/35: neutral Mod
-  X/Y has exactly zero sample delta on all 16 filter instruments, changed
-  cutoff and both modulation lanes alter rendered audio on all 16, and
-  release velocity changes the note-off tail on all 19 release instruments.
+- Chromium `OfflineAudioContext` now sweeps every built-in fine-pitch route and
+  every declared filter, release, pan, and held-voice slide route through
+  isolated channel renders. The check passes 79/79:
+  neutral Mod X/Y has exactly zero sample delta on all 16 filter instruments,
+  changed cutoff and both modulation lanes alter rendered audio on all 16,
+  release velocity changes the note-off tail on all 19 release instruments,
+  and pan preserves the centered baseline while rendering isolated hard-left/
+  right notes plus overlapping opposite-pan notes on all 18 declared
+  instruments; held-voice slide audio moves the fundamental on 808 and Acid
+  without a new attack. A 12-semitone fine-pitch event enters through the real
+  TriggerEngine and changes stereo RMS by more than 0.5% of the baseline on
+  all 24 built-in instrument runtimes.
   The sweep exposed and fixed release paths that were being overridden by a
   fixed 808/Clav note-off ramp, a fixed Spectral partial ramp, and Texture's
-  short source stop plus additive tremolo bypassing the envelope. The focused
-  command is `npm run test:browser:note-expression`; the same sweep is also
-  included in the full browser checks. This is Chromium evidence and does not
-  establish live/offline parity or cross-browser behavior.
+  short source stop plus additive tremolo bypassing the envelope. A follow-up
+  audit found the scheduler supplied note expression, but the `services.ts`
+  callback dropped the final argument before `AudioEngine.noteOn`; the callback
+  now forwards it, with scheduler-entry and service-wiring specs including the
+  no-expression case. The focused command is
+  `npm run test:browser:note-expression`; `npm run
+test:browser:note-expression:all` runs it in Chromium, Firefox and WebKit.
+  On 2026-10-17 Chromium and Firefox each passed 80/80: the 79 OfflineAudioContext
+  render checks plus one live/offline aggregate covering four cases (combined
+  Analog pitch/pan/filter/release, Analog Mod X/Y, and held slides on 808 and
+  Acid). The parity gate requires alignment within 512 samples and a null at or
+  below -40 dB, or correlation ≥0.99 when the realtime path is nondeterministic.
+  Playwright's Windows WebKit build exposes none of `AudioContext`,
+  `OfflineAudioContext` or `AudioWorkletNode`; the all-engine command reports
+  that browser as blocked and exits nonzero. This is not Safari evidence.
 - `tests/per-note-pan.test.ts` now routes overlapping notes independently on
   Texture Synth and Vocal Chop as well as the 16 previously supported voice
   instruments; neutral Texture pan keeps its existing voice panner centered,
   while Vocal Chop only inserts a panner for non-neutral events.
 - Chromium OfflineAudioContext checks render hard-left, hard-right, centered,
-  and simultaneous opposing-pan notes for Texture Synth and Vocal Chop. They
-  require the centered render to match the authored baseline within `1e-6`,
-  each hard-pan render to suppress the opposite channel by at least 40 dB, and
-  both simultaneous voices to remain audible in their selected channels. The
-  Texture measurement ends before its fixed 420 ms centered delay return.
+  and simultaneous opposing-pan notes for all 18 declared pan-capable
+  instruments. They require the centered render to match the authored
+  baseline within 5% RMS, each hard-pan render to suppress the opposite
+  channel by at least 40 dB, and both simultaneous voices to remain audible
+  in their selected channels. The Texture measurement ends before its fixed
+  420 ms centered delay return. Pluck preserves its neutral stereo width while
+  mapping pan endpoints to true hard-left/right.
+- Chromium OfflineAudioContext verifies held-voice slide-note fundamentals
+  move from source to target on 808 (55→110 Hz) and Acid 303 (110→220 Hz).
+  Graph tests separately verify that those events add no voice/oscillator and
+  are ignored when no matching held voice exists. Other runtimes' legacy
+  portamento paths do not yet imply FL-style no-retrigger slide-note support.
+- The browser verifier now selects Chromium, Firefox, WebKit, or all three.
+  Chromium and Firefox pass the same 79 rendered-audio expression checks and
+  four representative real-time/offline parity cases. The Playwright WebKit
+  build available on this Windows host has no Web Audio API, so Safari remains
+  an open verification target. The parity set is representative, not a
+  full-registry live/offline proof.
 - `tests/ui/piano-roll-event-editor.test.tsx` enters the real selector and
   pointer handlers against a real `ProjectStore`, including no-move and
   `pointercancel` negatives; it also edits Mod X from the lane and verifies

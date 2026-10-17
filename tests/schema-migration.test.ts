@@ -202,4 +202,51 @@ describe("schema migration contract", () => {
     const twice = schema.migrateProject(once);
     expect(twice.schemaVersion).toBe(schema.SCHEMA_VERSION);
   });
+
+  it("migrates pre-transfer projects without inventing transfer provenance", async () => {
+    const schema = await import("../src/project-model/schema");
+    const legacy = {
+      schemaVersion: schema.SCHEMA_VERSION - 1,
+      id: "legacy-transfer-project",
+      name: "Legacy Project",
+      bpm: 120,
+      timeSignature: { numerator: 4, denominator: 4 },
+      tracks: [],
+      patterns: [],
+      scenes: [],
+      arrangement: { clips: [], transitions: [] },
+      markers: [],
+    };
+
+    const migrated = schema.migrateProject(legacy as never);
+    expect(migrated.schemaVersion).toBe(schema.SCHEMA_VERSION);
+    expect(migrated.transferOrigin).toBeUndefined();
+  });
+
+  it("validates and normalizes versioned transfer provenance", async () => {
+    const schema = await import("../src/project-model/schema");
+    const base = {
+      schemaVersion: schema.SCHEMA_VERSION,
+      id: "transfer-project",
+      name: "Transferred Project",
+      bpm: 120,
+      timeSignature: { numerator: 4, denominator: 4 },
+      activePatternId: "pattern-1",
+      tracks: [],
+      patterns: [],
+      scenes: [],
+      arrangement: { clips: [], transitions: [] },
+      markers: [],
+    };
+    const valid = {
+      ...base,
+      transferOrigin: { version: 1, kind: "aligned-audio-midi", sourceDaw: "cubase" },
+    };
+    expect(schema.validateProjectShape(valid)).toBe(true);
+    expect(schema.migrateProject(valid as never).transferOrigin).toEqual(valid.transferOrigin);
+
+    const invalid = { ...base, transferOrigin: { version: 1, kind: "aligned-audio-midi", sourceDaw: "unknown" } };
+    expect(schema.validateProjectShape(invalid)).toBe(false);
+    expect(schema.normalizeProject(invalid as never).transferOrigin).toBeUndefined();
+  });
 });

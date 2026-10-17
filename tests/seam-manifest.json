@@ -48,6 +48,15 @@
       "note": "Drives the real Event target selector and lane against a real ProjectStore; covers undoable expression edits, Acid/808 slide-note toggling, unsupported-instrument no-op, zero-motion no-op, and pointercancel rollback."
     },
     {
+      "id": "piano-roll-expression-playback",
+      "status": "COVERED",
+      "entryPoint": "src/services.ts SchedulerDeps.noteOn callback → AudioEngine.noteOn",
+      "spec": "tests/services/wiring.test.ts",
+      "seamEvent": "deps.noteOn(\"track-expression\"",
+      "negativeSpec": "preserves the no-expression case",
+      "note": "The scheduler test enters Scheduler.start() with an expressive project note; the service-wiring test verifies the expression reaches AudioEngine.noteOn and that notes without expression stay unset."
+    },
+    {
       "id": "arrangement-clip-move",
       "status": "COVERED",
       "entryPoint": "src/ui/ArrangementPanel.tsx clip body onPointerDown",
@@ -219,6 +228,15 @@
       "note": "Wave A: entered through the REAL panel (type the brief, press DO IT). The default must yield a multi-candidate auditionable bank with ONE explained winner and NO single-result fallback; the negative spec spies the budget to the lean value and pins the honest constrained-device outcome (USE RESULT, nothing to audition) — proving the budget reaches the request instead of being decoration."
     },
     {
+      "id": "trust-report",
+      "status": "COVERED",
+      "entryPoint": "src/ui/TrustReportButton.tsx + ActivityCenter TRUST REPORT → src/services/trustReport.ts",
+      "spec": "tests/trust-report.test.ts",
+      "seamEvent": "buildTrustReport",
+      "negativeSpec": "never turns a MISSING source into a quiet pass",
+      "note": "One downloadable artifact (markdown + JSON) that answers 'did this app lose my work, and is anything it told me not true?'. The NEGATIVEs are the point: a check that could not run is `unknown` (never a quiet ✓), a report with unavailable checks is `partial` rather than `clean`, and the collector survives both a throwing and a MISSING source — because the report is what you open when something is already wrong. The download path is pinned through the real export flow in tests/ui/ExportPanel.test.tsx."
+    },
+    {
       "id": "session-tape-rewind",
       "status": "COVERED",
       "entryPoint": "src/ui/IntentPanel.tsx TAPE strip (rewindTapeTo → store.jumpTo)",
@@ -309,6 +327,42 @@
       "note": "Enters the actual transfer dialog through file selection and verifies the negative boundary: selecting audio inputs alone does not write a project or commit the import until the user confirms their common origin."
     },
     {
+      "id": "daw-transfer-first-run-capability-card",
+      "status": "COVERED",
+      "entryPoint": "src/ui/ProjectBrowser.tsx first-run transfer capability card",
+      "spec": "tests/ui/ProjectBrowser.test.tsx",
+      "seamEvent": "PREPARE WAV",
+      "negativeSpec": "does not present storage failure as first-run onboarding",
+      "note": "Renders the first-run migration contract from the Project Browser, enters the existing transfer dialog through its CTA, and proves a failed project-library read is not misrepresented as a new-user state."
+    },
+    {
+      "id": "daw-transfer-track-name-mapping",
+      "status": "COVERED",
+      "entryPoint": "src/ui/TransferImportDialog.tsx per-file output track name",
+      "spec": "tests/ui/transfer-import-dialog.test.tsx",
+      "seamEvent": "Track name for Stem.wav",
+      "negativeSpec": "requires an output track name before creating the project",
+      "note": "Enters the real transfer dialog, proves a user-edited audio lane name reaches the saved project, and checks that clearing a name blocks import without saving or dispatching the project."
+    },
+    {
+      "id": "daw-transfer-source-provenance",
+      "status": "COVERED",
+      "entryPoint": "src/ui/TransferImportDialog.tsx SOURCE DAW selector",
+      "spec": "tests/ui/transfer-import-dialog.test.tsx",
+      "seamEvent": "getByRole(\"combobox\", { name: /SOURCE DAW/i })",
+      "negativeSpec": "does not start a batch import before the user confirms common audio alignment",
+      "note": "Enters the real transfer dialog, selects a source DAW and confirms the new project carries that versioned provenance; older projects without provenance remain unlabeled after migration."
+    },
+    {
+      "id": "daw-transfer-audio-batch-memory-caution",
+      "status": "COVERED",
+      "entryPoint": "src/ui/TransferImportDialog.tsx selected audio preflight summary",
+      "spec": "tests/ui/transfer-import-dialog.test.tsx",
+      "seamEvent": "more than 100 MB of audio files",
+      "negativeSpec": "summarizes batch size and requires review of the decoded-memory warning",
+      "note": "Drives a real five-file selection above 100 MB, verifies aggregate size and the pre-commit memory warning, and proves the warning must be acknowledged before the import button enables."
+    },
+    {
       "id": "studio-io-missing-device",
       "status": "COVERED",
       "entryPoint": "src/ui/IoPanel.tsx input/output device selectors after device enumeration",
@@ -316,6 +370,30 @@
       "seamEvent": "keeps a missing saved input and output visible without silently selecting defaults",
       "negativeSpec": "expect(selectedDeviceIds).toEqual([\"gone-output\", \"gone-input\"])",
       "note": "A real panel render with missing saved endpoints shows the unavailable state and proves the input/output selections remain pinned until the user chooses another endpoint."
+    },
+    {
+      "id": "studio-io-output-context-reapply",
+      "status": "COVERED",
+      "entryPoint": "src/ui/IoPanel.tsx saved output selection applied to live AudioContext",
+      "spec": "tests/ui/io-panel.test.tsx",
+      "seamEvent": "reapplies the exact saved output when the live audio context is replaced",
+      "negativeSpec": "expect(secondSetSinkId).toHaveBeenCalledWith(\"volt-monitor-id\")",
+      "note": "The real panel subscribes to AudioEngine context replacement and serializes sink application, so a reopened/recreated context returns to the exact selected device rather than silently using the system default."
+    },
+    {
+      "id": "native-windows-endpoint-discovery",
+      "status": "COVERED",
+      "entryPoint": "src/ui/IoPanel.tsx Windows endpoint listing through the desktop preload bridge",
+      "spec": "tests/ui/io-panel.test.tsx",
+      "seamEvent": "shows native Windows endpoint discovery as read-only metadata",
+      "negativeSpec": "expect(screen.queryByRole(\"option\", { name: \"UA Volt Capture\" })).not.toBeInTheDocument()",
+      "note": "The actual I/O panel displays validated native endpoint names, flow, state and console-default status while keeping browser selectors separate until native stream routing is implemented."
+    },
+    {
+      "id": "desktop-pcm-playback",
+      "status": "OPEN",
+      "entryPoint": "src/ui/App.tsx EXT PCM chip → src/audio-engine/pcmPlayback.ts → desktop/preload.cjs",
+      "note": "Existing tests enter pipe and ring components in one Node process, not the Electron bridge. A real Electron probe shows SAB IPC cloning fails, so audible EXT PCM playback has no seam-entering pass yet."
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useServices } from "./context";
 import { PanelHeader } from "./PanelChrome";
 import { EmptyState } from "./PanelChrome";
@@ -44,12 +44,31 @@ interface AsioListResult {
   details: { status: string; drivers?: AsioDriverDetail[]; partial?: boolean; message?: string };
 }
 
+interface WindowsAudioEndpoint {
+  id: string;
+  name: string;
+  flow: "capture" | "render";
+  state: "active" | "disabled" | "not-present" | "unplugged" | "unknown";
+  isDefaultConsole: boolean;
+}
+
+interface WindowsAudioEndpointList {
+  status: "ok" | "unsupported" | "no-probe" | "timeout" | "invalid-output" | "error";
+  endpoints: WindowsAudioEndpoint[];
+  message?: string;
+}
+
 type DesktopBridge = {
   asio?: { list: () => Promise<AsioListResult> };
+  audio?: { listWindowsEndpoints: () => Promise<WindowsAudioEndpointList> };
 };
 
 function asioBridge(): DesktopBridge["asio"] | null {
   return (typeof window !== "undefined" ? (window as { kyxDesktop?: DesktopBridge }).kyxDesktop?.asio : null) ?? null;
+}
+
+function windowsAudioBridge(): DesktopBridge["audio"] | null {
+  return (typeof window !== "undefined" ? (window as { kyxDesktop?: DesktopBridge }).kyxDesktop?.audio : null) ?? null;
 }
 
 function formatHz(rate: number | string | undefined): string {
@@ -68,10 +87,26 @@ export function IoPanel() {
   // same facade — the panel must re-read, not cache, after each swap.
   const [ctx, setCtx] = useState<BaseAudioContext | null>(engine.context);
   useEffect(() => {
-    const tick = () => setCtx((prev) => (prev === engine.context ? prev : engine.context));
+    let active = true;
+    const subscribe = engine.subscribeLiveContext;
+    if (typeof subscribe === "function") {
+      const unsubscribe = subscribe.call(engine, (context) => {
+        if (active) setCtx((previous) => (previous === context ? previous : context));
+      });
+      return () => {
+        active = false;
+        unsubscribe();
+      };
+    }
+    // Lightweight test/legacy-service fallback; the real AudioEngine emits
+    // context replacement synchronously through subscribeLiveContext.
+    const tick = () => setCtx((previous) => (previous === engine.context ? previous : engine.context));
     tick();
     const id = window.setInterval(tick, 1000);
-    return () => window.clearInterval(id);
+    return () => {
+      active = false;
+      window.clearInterval(id);
+    };
   }, [engine]);
 
   const liveCtx = ctx && isLiveAudioContext(ctx) ? ctx : null;
@@ -85,6 +120,17 @@ export function IoPanel() {
   const [outputsLoaded, setOutputsLoaded] = useState(false);
   const outputUnavailable =
     outputsLoaded && outputId !== "default" && !outputs.some((device) => device.deviceId === outputId);
+  const outputApplyQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const outputSelectionRef = useRef({
+    context: liveCtx,
+    deviceId: outputId === "default" ? "" : outputId,
+    unavailable: outputUnavailable,
+  });
+  outputSelectionRef.current = {
+    context: liveCtx,
+    deviceId: outputId === "default" ? "" : outputId,
+    unavailable: outputUnavailable,
+  };
 
   const refreshOutputs = () => {
     void listOutputDevices().then((devices) => {
@@ -103,12 +149,43 @@ export function IoPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!liveCtx) return;
+    // A saved endpoint may take a moment to appear after permission/device
+    // enumeration. Keep its identity pinned until it is listed; never route
+    // the project to the system default as a recovery shortcut.
+    if (outputId !== "default" && !outputsLoaded) return;
+    if (outputUnavailable) {
+      setOutputMessage(null);
+      return;
+    }
+    if (!sinkSupported) {
+      if (outputId !== "default") setOutputMessage("This browser cannot switch audio outputs (no setSinkId)");
+      return;
+    }
+
+    const requestedDeviceId = outputId === "default" ? "" : outputId;
+    let active = true;
+    const apply = async () => {
+      const current = outputSelectionRef.current;
+      if (!active || current.context !== liveCtx || current.deviceId !== requestedDeviceId || current.unavailable)
+        return;
+      const result = await applyOutputDevice(liveCtx, requestedDeviceId);
+      const latest = outputSelectionRef.current;
+      if (!active || latest.context !== liveCtx || latest.deviceId !== requestedDeviceId || latest.unavailable) return;
+      setOutputMessage(result.status === "ok" ? null : (result.message ?? null));
+    };
+    const pending = outputApplyQueueRef.current.then(apply, apply);
+    outputApplyQueueRef.current = pending.catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [liveCtx, outputId, outputUnavailable, outputsLoaded, sinkSupported]);
+
   const changeOutput = (deviceId: string) => {
     setOutputId(deviceId);
     saveOutputDeviceId(deviceId === "default" ? "" : deviceId);
-    void applyOutputDevice(liveCtx, deviceId === "default" ? "" : deviceId).then((result) => {
-      setOutputMessage(result.status === "ok" ? null : (result.message ?? null));
-    });
+    setOutputMessage(null);
   };
 
   // ----- INPUT -----
@@ -180,6 +257,31 @@ export function IoPanel() {
   for (const driver of asio?.details.drivers ?? []) {
     if (typeof driver.name === "string") detailsByName.set(driver.name, driver);
   }
+
+  // ----- WINDOWS CORE AUDIO ENDPOINT DISCOVERY (metadata only) -----
+  const nativeAudioBridge = windowsAudioBridge();
+  const [nativeEndpoints, setNativeEndpoints] = useState<WindowsAudioEndpointList | null>(null);
+  const [nativeEndpointState, setNativeEndpointState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [nativeEndpointError, setNativeEndpointError] = useState<string | null>(null);
+  const loadNativeEndpoints = () => {
+    if (!nativeAudioBridge) return;
+    setNativeEndpointState("loading");
+    setNativeEndpointError(null);
+    nativeAudioBridge
+      .listWindowsEndpoints()
+      .then((result) => {
+        setNativeEndpoints(result);
+        setNativeEndpointState("done");
+      })
+      .catch((error: unknown) => {
+        setNativeEndpointError(error instanceof Error ? error.message : String(error));
+        setNativeEndpointState("error");
+      });
+  };
+  useEffect(() => {
+    if (nativeAudioBridge && nativeEndpointState === "idle") loadNativeEndpoints();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const tone = () => {
     const result = engine.playTestTone();
@@ -321,6 +423,60 @@ export function IoPanel() {
           Applies to audio-input takes; the arrangement recording toolbar picks the same device.
         </div>
       </section>
+
+      {/* WINDOWS CORE AUDIO — endpoint listing only; no native stream is started. */}
+      {nativeAudioBridge && (
+        <section className="panel-section">
+          <div className="panel-section-head">
+            <span className="panel-section-title">WINDOWS AUDIO ENDPOINTS</span>
+            <button
+              type="button"
+              className="btn btn-small"
+              onClick={loadNativeEndpoints}
+              disabled={nativeEndpointState === "loading"}
+              title="Re-enumerate Windows Core Audio endpoints"
+            >
+              {nativeEndpointState === "loading" ? "SCANNING…" : "RESCAN"}
+            </button>
+          </div>
+          {nativeEndpointState === "error" && (
+            <div className="io-error" role="status">
+              Discovery failed: {nativeEndpointError}
+            </div>
+          )}
+          {nativeEndpoints?.status === "ok" && nativeEndpoints.endpoints.length === 0 && (
+            <EmptyState
+              icon="🔌"
+              title="No Windows audio endpoints"
+              hint="Connect or enable an audio device, then rescan."
+            />
+          )}
+          {(nativeEndpoints?.endpoints.length ?? 0) > 0 && (
+            <ul className="io-driver-list">
+              {nativeEndpoints!.endpoints.map((endpoint) => (
+                <li key={`${endpoint.flow}:${endpoint.id}`} className="io-driver">
+                  <span className="io-driver-name" title={endpoint.name}>
+                    {endpoint.name}
+                  </span>
+                  <span className="io-driver-meta">
+                    {endpoint.flow} · {endpoint.state}
+                    {endpoint.isDefaultConsole ? " · console default" : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {nativeEndpoints && nativeEndpoints.status !== "ok" && (
+            <div className="io-note" role="note">
+              {nativeEndpoints.message ?? `Endpoint discovery: ${nativeEndpoints.status}`}
+            </div>
+          )}
+          <div className="io-note" role="note">
+            Discovery only (ADR 0050). Playback and recording still use the browser device selectors; native Windows
+            streaming is not shipped.
+          </div>
+        </section>
+      )}
 
       {/* DRIVERS — desktop shell only */}
       {bridge && (

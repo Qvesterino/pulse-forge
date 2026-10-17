@@ -1,4 +1,4 @@
-import type { ProjectDocument } from "../project-model/types";
+import type { ProjectDocument, ProjectTransferOriginV1 } from "../project-model/types";
 import { SCHEMA_VERSION, migrateProject, validateProjectShape } from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { STORE_META, STORE_PROJECTS, openDb, tx } from "./db";
@@ -12,6 +12,7 @@ export interface SavedProjectMeta {
   trackCount: number;
   createdAt: string;
   updatedAt: string;
+  transferOrigin?: ProjectTransferOriginV1;
 }
 
 /**
@@ -34,6 +35,7 @@ function metaOf(doc: ProjectDocument): SavedProjectMeta {
     trackCount: doc.tracks.length,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
+    ...(doc.transferOrigin ? { transferOrigin: doc.transferOrigin } : {}),
   };
 }
 

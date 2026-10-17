@@ -67,21 +67,25 @@ blockFrames}`, streams PCM blocks, closes with STATS and EOF.
   contiguity, bounded non-silent samples, clean EOF. Streaming from REAL
   hardware drivers and the 300 s soak stay owner gates — the fixture
   proves the host, not any specific driver.
-- Renderer playback (wave 3) IS shipped: the SPSC SharedArrayBuffer ring
-  (`src/audio-engine/pcmRing.ts`) with the Node producer mirror
-  (`desktop/pcm-ring-layout.cjs`), the `pcm-playback` AudioWorklet, and the
-  pipe→SAB bridge; E2E verifies 48 000 sine-exact frames across the ring
-  wrap with zero overruns against a realtime-paced source. The **desktop
-  wiring is shipped** (`desktop/pcm-desktop.cjs` + the statusbar EXT PCM
-  chip): the renderer builds the ring, hands the SAB over `kyx:pcm:start`,
-  the shell spawns the allowlisted source and bridges frames into it.
-  Actually LISTENING (click EXT PCM, hear the 440 Hz tone) is the owner
-  gate.
-- Resampling (wave 3.5) IS shipped: the bridge linear-resamples a source at
-  a different rate than the ring (stateful across blocks). Acceptance: a
-  440 Hz tone through 44100→48000 stays a 440 Hz tone within the linear
-  interpolation error (< 0.005 amplitude) across block boundaries.
-  Master-grade conversion remains future work.
+- The renderer components exist: the SPSC SharedArrayBuffer ring
+  (`src/audio-engine/pcmRing.ts`), its Node producer mirror
+  (`desktop/pcm-ring-layout.cjs`), and the `pcm-playback` AudioWorklet.
+  Same-process producer/reader tests verify 48 000 sine-exact frames across
+  ring wrap with zero overruns against a realtime-paced source. This is
+  component evidence only; it is not an Electron end-to-end playback test.
+- **The desktop bridge is not operational.** `desktop/pcm-desktop.cjs`
+  attempts to pass the renderer-created SAB to the main process through
+  `ipcRenderer.invoke`. Electron 44.4.3 rejects that payload with
+  `An object could not be cloned`; main-to-renderer `webContents.postMessage`
+  rejects it too. Therefore the statusbar EXT PCM chip has no valid live
+  main-process ring and must not be described as shipped playback. The
+  Electron-side isolation and same-renderer native-addon spike is recorded in
+  [ADR 0050](./0050-windows-audio-io-direction.md).
+- The stateful linear resampler is component-tested: a 440 Hz source through
+  44100→48000 stays within < 0.005 amplitude interpolation error across
+  block boundaries. Its end-to-end desktop path remains unverified until the
+  SAB ownership/transport boundary is replaced. Master-grade conversion
+  remains future work.
 
 ## Support matrix
 
@@ -90,9 +94,9 @@ blockFrames}`, streams PCM blocks, closes with STATS and EOF.
 | Framed PCM pipe protocol + Node consumer         | Shipped, acceptance-tested                                                      |
 | Reference source (deterministic generator)       | Shipped                                                                         |
 | ASIO streaming host (driver → frames)            | Shipped against the fixture driver (wave 2.5); real-hardware soak = owner gate  |
-| Renderer playback from the pipe ring             | Shipped (wave 3)                                                                |
-| Desktop "hear it" wiring (EXT PCM chip over IPC) | Shipped; the audible owner check is one click                                   |
-| Resampling (source rate ≠ context rate)          | Shipped (wave 3.5, linear interpolation); master-grade conversion = future work |
+| Renderer ring and AudioWorklet components         | Component tests pass; Electron integration is not verified                      |
+| Desktop "hear it" wiring (EXT PCM chip over IPC) | Not shipped; Electron cannot clone the ring SAB across processes                 |
+| Resampling (source rate ≠ context rate)           | Component tests pass; end-to-end bridge awaits a valid ring transport            |
 
 ## Consequences
 

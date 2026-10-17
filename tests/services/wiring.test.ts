@@ -66,6 +66,7 @@ function makeEngine(): AudioEngine {
     ensureContext: vi.fn(() => ({ state: "running" })),
     subscribeLiveContext: vi.fn(() => () => {}),
     setProject: vi.fn(),
+    noteOn: vi.fn(),
     panic: vi.fn(),
     automationReset: vi.fn(),
     transportStarted: vi.fn(),
@@ -313,6 +314,47 @@ describe("openProject — scheduler wiring", () => {
     expect(deps.getContextState!()).toBe("closed");
     (engine as unknown as { context: { state: string } }).context = { state: "running" };
     expect(deps.getContextState!()).toBe("running");
+    await services.closeProject();
+  });
+
+  it("forwards note expression to the live engine and preserves the no-expression case", async () => {
+    const services = await openProject(makeCore(engine), makeDoc());
+    const deps = (services.scheduler as unknown as { deps: SchedulerDeps }).deps;
+    const expression = {
+      pitchOffsetSemitones: 0.37,
+      pan: -0.75,
+      filterCutoffHz: 2345,
+      filterResonance: 0.65,
+      releaseVelocity: 0.8,
+    };
+
+    deps.noteOn("track-expression", 60, 0.9, 1, 0.25, undefined, undefined, undefined, undefined, expression);
+    expect(engine.noteOn).toHaveBeenCalledWith(
+      "track-expression",
+      60,
+      0.9,
+      1,
+      0.25,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      expression,
+    );
+
+    deps.noteOn("track-expression", 60, 0.9, 2, 0.25);
+    expect(engine.noteOn).toHaveBeenLastCalledWith(
+      "track-expression",
+      60,
+      0.9,
+      2,
+      0.25,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
     await services.closeProject();
   });
 

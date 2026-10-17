@@ -37,6 +37,10 @@ contextBridge.exposeInMainWorld("kyxDesktop", {
     /** ASIO discovery (ADR 0017): registry names + best-effort probe details. */
     list: () => ipcRenderer.invoke("kyx:asio:list"),
   },
+  audio: {
+    /** Windows Core Audio endpoint discovery only; this does not start a stream. */
+    listWindowsEndpoints: () => ipcRenderer.invoke("kyx:audio:windows-endpoints"),
+  },
   pcm: {
     /** External PCM source: main spawns the host, frames land in the shared ring. */
     start: (request) => ipcRenderer.invoke("kyx:pcm:start", request),

@@ -7,6 +7,7 @@
 #include <ksmedia.h>
 #include <wrl/client.h>
 #include "capture-start-time.h"
+#include "endpoint-json.h"
 #include "loopback-correlation.h"
 #include "shared-period-selection.h"
 
@@ -49,8 +50,117 @@ std::wstring endpointId(IMMDevice* device) {
   return id;
 }
 
+const wchar_t *endpointStateName(DWORD state) {
+  if (state == DEVICE_STATE_ACTIVE)
+    return L"active";
+  if (state == DEVICE_STATE_DISABLED)
+    return L"disabled";
+  if (state == DEVICE_STATE_NOTPRESENT)
+    return L"not-present";
+  if (state == DEVICE_STATE_UNPLUGGED)
+    return L"unplugged";
+  return L"unknown";
+}
+
+bool writeStdoutUtf8(const std::string &value) {
+  HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
+  if (!output || output == INVALID_HANDLE_VALUE)
+    return false;
+  DWORD consoleMode = 0;
+  if (GetConsoleMode(output, &consoleMode))
+    SetConsoleOutputCP(CP_UTF8);
+
+  std::size_t offset = 0;
+  while (offset < value.size()) {
+    const DWORD bytes = static_cast<DWORD>(
+        std::min<std::size_t>(value.size() - offset, MAXDWORD));
+    DWORD written = 0;
+    if (!WriteFile(output, value.data() + offset, bytes, &written, nullptr) ||
+        written == 0)
+      return false;
+    offset += written;
+  }
+  return true;
+}
+
+bool listEndpointsAsJson(IMMDeviceEnumerator *enumerator) {
+  if (!enumerator)
+    return false;
+  std::vector<kyx::windows_audio::EndpointRecord> endpoints;
+  constexpr DWORD kAllStates = DEVICE_STATE_ACTIVE | DEVICE_STATE_DISABLED |
+                               DEVICE_STATE_NOTPRESENT | DEVICE_STATE_UNPLUGGED;
+
+  for (const EDataFlow flow : {eCapture, eRender}) {
+    std::wstring defaultId;
+    ComPtr<IMMDevice> defaultDevice;
+    if (SUCCEEDED(enumerator->GetDefaultAudioEndpoint(
+            flow, eConsole, defaultDevice.GetAddressOf()))) {
+      defaultId = endpointId(defaultDevice.Get());
+    }
+
+    ComPtr<IMMDeviceCollection> devices;
+    HRESULT hr = enumerator->EnumAudioEndpoints(flow, kAllStates,
+                                                devices.GetAddressOf());
+    if (FAILED(hr)) {
+      std::wcerr << L"Endpoint enumeration failed for " << flowName(flow)
+                 << L" (HRESULT 0x" << std::hex
+                 << static_cast<unsigned long>(hr) << std::dec << L")\n";
+      return false;
+    }
+
+    UINT count = 0;
+    hr = devices->GetCount(&count);
+    if (FAILED(hr)) {
+      std::wcerr << L"Endpoint count failed for " << flowName(flow)
+                 << L" (HRESULT 0x" << std::hex
+                 << static_cast<unsigned long>(hr) << std::dec << L")\n";
+      return false;
+    }
+    if (count > 256) {
+      std::wcerr << L"Endpoint count exceeded the discovery limit\n";
+      return false;
+    }
+
+    for (UINT index = 0; index < count; ++index) {
+      ComPtr<IMMDevice> device;
+      hr = devices->Item(index, device.GetAddressOf());
+      if (FAILED(hr) || !device) {
+        std::wcerr << L"Could not read endpoint " << index << L" for "
+                   << flowName(flow) << L"\n";
+        return false;
+      }
+      std::wstring id = endpointId(device.Get());
+      if (id.empty()) {
+        std::wcerr << L"Endpoint " << index
+                   << L" has no readable endpoint ID\n";
+        return false;
+      }
+      DWORD state = 0;
+      const HRESULT stateHr = device->GetState(&state);
+      const bool isDefaultConsole = id == defaultId;
+      endpoints.push_back(
+          {std::move(id), endpointName(device.Get()), flowName(flow),
+           stateHr == S_OK ? endpointStateName(state) : L"unknown",
+           isDefaultConsole});
+    }
+  }
+
+  std::string json;
+  if (!kyx::windows_audio::serializeEndpointListJson(endpoints, &json)) {
+    std::wcerr << L"Could not encode Windows endpoint list as UTF-8 JSON\n";
+    return false;
+  }
+  json.push_back('\n');
+  if (!writeStdoutUtf8(json)) {
+    std::wcerr << L"Could not write endpoint JSON to stdout\n";
+    return false;
+  }
+  return true;
+}
+
 double framesToMs(UINT32 frames, UINT32 sampleRate) {
-  return sampleRate == 0 ? 0.0 : 1000.0 * static_cast<double>(frames) / sampleRate;
+  return sampleRate == 0 ? 0.0
+                         : 1000.0 * static_cast<double>(frames) / sampleRate;
 }
 
 void printFormat(const wchar_t* label, const WAVEFORMATEX* format) {
@@ -1082,11 +1192,23 @@ bool runStreamTest(IMMDeviceEnumerator* enumerator, EDataFlow flow, AUDCLNT_SHAR
 }
 
 void printUsage() {
-  std::wcout << L"\nOptional stream test (never runs without this explicit command):\n"
-            << L"  kyx-windows-audio-probe.exe --stream-test capture|render shared|exclusive \"exact endpoint name\" [seconds] [--exclusive-confirmed]\n"
-            << L"  Duration is 10 seconds by default and is capped at 30 seconds.\n"
-            << L"  Exclusive mode requires --exclusive-confirmed because it can interrupt other apps' audio.\n"
-            << L"  Capture packets are discarded; render mode queues silence only. No PCM is saved.\n";
+  std::wcout
+      << L"\nMetadata-only endpoint listing for the Studio discovery bridge:\n"
+      << L"  kyx-windows-audio-probe.exe --list-json\n"
+      << L"  Returns opaque endpoint IDs, friendly names, flow, state and "
+         L"console-default status.\n"
+      << L"  Does not initialize streams, read samples or change device "
+         L"settings.\n";
+  std::wcout
+      << L"\nOptional stream test (never runs without this explicit command):\n"
+      << L"  kyx-windows-audio-probe.exe --stream-test capture|render "
+         L"shared|exclusive \"exact endpoint name\" [seconds] "
+         L"[--exclusive-confirmed]\n"
+      << L"  Duration is 10 seconds by default and is capped at 30 seconds.\n"
+      << L"  Exclusive mode requires --exclusive-confirmed because it can "
+         L"interrupt other apps' audio.\n"
+      << L"  Capture packets are discarded; render mode queues silence only. "
+         L"No PCM is saved.\n";
   std::wcout << L"\nOptional render-loopback check (shared mode only):\n"
              << L"  kyx-windows-audio-probe.exe --loopback-test \"exact render endpoint name\" [seconds]\n"
              << L"  Duration is 4 seconds by default and may be set from 2 to 10 seconds.\n"
@@ -1162,9 +1284,12 @@ int wmain(int argc, wchar_t** argv) {
   }
   const bool streamMode = argc > 1 && std::wstring(argv[1]) == L"--stream-test";
   const bool loopbackMode = argc > 1 && std::wstring(argv[1]) == L"--loopback-test";
+  const bool endpointJsonMode =
+      argc > 1 && std::wstring(argv[1]) == L"--list-json";
   StreamTestOptions streamOptions;
   LoopbackOptions loopbackOptions;
-  std::wcout << L"KYX Windows audio capability probe\n";
+  if (!endpointJsonMode)
+    std::wcout << L"KYX Windows audio capability probe\n";
   if (streamMode) {
     if (!parseStreamTestOptions(argc, argv, &streamOptions)) {
       std::wcerr << L"Invalid stream-test arguments\n";
@@ -1177,8 +1302,15 @@ int wmain(int argc, wchar_t** argv) {
       printUsage();
       return 2;
     }
+  } else if (endpointJsonMode) {
+    if (argc != 2) {
+      std::wcerr << L"--list-json does not accept additional arguments\n";
+      return 2;
+    }
   } else {
-    std::wcout << L"Metadata only: no stream is initialized or started, no samples are read or recorded, and no device settings change.\n";
+    std::wcout
+        << L"Metadata only: no stream is initialized or started, no samples "
+           L"are read or recorded, and no device settings change.\n";
     if (argc > 1) {
       printUsage();
       return 2;
@@ -1187,27 +1319,35 @@ int wmain(int argc, wchar_t** argv) {
 
   const HRESULT initHr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
   if (FAILED(initHr)) {
-    std::wcerr << L"COM initialization failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(initHr)
-               << std::dec << L")\n";
+    std::wcerr << L"COM initialization failed (HRESULT 0x" << std::hex
+               << static_cast<unsigned long>(initHr) << std::dec << L")\n";
     return 1;
   }
 
   int exitCode = 0;
   ComPtr<IMMDeviceEnumerator> enumerator;
-  HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
-                                IID_PPV_ARGS(enumerator.GetAddressOf()));
+  HRESULT hr =
+      CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+                       IID_PPV_ARGS(enumerator.GetAddressOf()));
   if (FAILED(hr)) {
-    std::wcerr << L"Could not create the Windows audio device enumerator (HRESULT 0x" << std::hex
-               << static_cast<unsigned long>(hr) << std::dec << L")\n";
+    std::wcerr
+        << L"Could not create the Windows audio device enumerator (HRESULT 0x"
+        << std::hex << static_cast<unsigned long>(hr) << std::dec << L")\n";
     exitCode = 1;
   } else {
-    if (streamMode) {
-      exitCode = runStreamTest(enumerator.Get(), streamOptions.flow, streamOptions.mode, streamOptions.exactName,
+    if (endpointJsonMode) {
+      exitCode = listEndpointsAsJson(enumerator.Get()) ? 0 : 1;
+    } else if (streamMode) {
+      exitCode = runStreamTest(enumerator.Get(), streamOptions.flow,
+                               streamOptions.mode, streamOptions.exactName,
                                streamOptions.seconds)
                      ? 0
                      : 1;
     } else if (loopbackMode) {
-      exitCode = runLoopbackTest(enumerator.Get(), loopbackOptions.exactName, loopbackOptions.seconds) ? 0 : 1;
+      exitCode = runLoopbackTest(enumerator.Get(), loopbackOptions.exactName,
+                                 loopbackOptions.seconds)
+                     ? 0
+                     : 1;
     } else {
       for (const EDataFlow flow : {eCapture, eRender}) {
         std::wstring defaultId;

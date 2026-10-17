@@ -1345,6 +1345,16 @@ export interface ProjectProducerBriefV1 {
   facts: ProjectProducerBriefFact[];
 }
 
+/** Source selected by the user for a DAW-neutral aligned audio + MIDI transfer. */
+export type ProjectTransferSourceDaw = "fl-studio" | "cubase" | "pro-tools" | "other";
+
+/** Optional, versioned provenance for projects created by the Bring a Song workflow. */
+export interface ProjectTransferOriginV1 {
+  version: 1;
+  kind: "aligned-audio-midi";
+  sourceDaw: ProjectTransferSourceDaw;
+}
+
 export interface ProjectDocument {
   schemaVersion: number;
   id: ID;
@@ -1359,6 +1369,8 @@ export interface ProjectDocument {
   lineage?: ProjectLineage;
   /** Optional user-saved creative context for this project (schema v10). */
   producerBrief?: ProjectProducerBriefV1;
+  /** Optional transfer provenance (schema v36); absent on projects not created by transfer. */
+  transferOrigin?: ProjectTransferOriginV1;
   tracks: Track[];
   patterns: Pattern[];
   activePatternId: ID;

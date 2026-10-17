@@ -25,6 +25,7 @@ import type {
   Pattern,
   ProjectDocument,
   ProjectLineage,
+  ProjectTransferOriginV1,
   ReturnTrack,
   Scene,
   SceneRole,
@@ -56,7 +57,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 35;
+export const SCHEMA_VERSION = 36;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -2483,6 +2484,35 @@ function normalizeProducerBriefDomain(s: NormalizeState): void {
   }
 }
 
+function sanitizeProjectTransferOrigin(value: unknown): ProjectTransferOriginV1 | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const origin = value as Record<string, unknown>;
+  if (origin.version !== 1 || origin.kind !== "aligned-audio-midi") return undefined;
+  if (!["fl-studio", "cubase", "pro-tools", "other"].includes(String(origin.sourceDaw))) return undefined;
+  return {
+    version: 1,
+    kind: "aligned-audio-midi",
+    sourceDaw: origin.sourceDaw as ProjectTransferOriginV1["sourceDaw"],
+  };
+}
+
+function normalizeTransferOriginDomain(s: NormalizeState): void {
+  const doc = s.doc;
+  if (doc.transferOrigin === undefined) return;
+  const cleaned = sanitizeProjectTransferOrigin(doc.transferOrigin);
+  if (cleaned === undefined) {
+    const rest = { ...doc };
+    delete rest.transferOrigin;
+    s.doc = rest;
+    s.changed = true;
+    return;
+  }
+  if (!jsonEqual(cleaned, doc.transferOrigin)) {
+    s.doc = { ...doc, transferOrigin: cleaned };
+    s.changed = true;
+  }
+}
+
 function normalizeMarkersDomain(s: NormalizeState): void {
   const doc = s.doc;
   // Markers are NAVIGATION points, not arrangement content. Normalize used
@@ -3154,6 +3184,7 @@ const NORMALIZE_DOMAINS: ((s: NormalizeState) => void)[] = [
   normalizeKeyAndTagsDomain,
   normalizeLineageDomain,
   normalizeProducerBriefDomain,
+  normalizeTransferOriginDomain,
   normalizeMarkersDomain,
   normalizeSceneAutomationDomain,
   normalizeTimestampsDomain,
@@ -3236,6 +3267,7 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // v34 adds a distinct held-voice slide-note articulation, first supported on 808; legacy `slide` remains
   // the note-on portamento transition. v35 adds normalized per-note Mod X/Y
   // values; their neutral value (0.5) is omitted to preserve instrument defaults.
+  // v36 adds optional DAW-neutral audio + MIDI transfer provenance.
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);
@@ -3278,6 +3310,7 @@ export function validateProjectShape(doc: unknown): doc is ProjectDocument {
   if (doc.groove !== undefined && !isObject(doc.groove)) return false;
   if (doc.midi !== undefined && !isObject(doc.midi)) return false;
   if (doc.producerBrief !== undefined && sanitizeProjectProducerBrief(doc.producerBrief) === undefined) return false;
+  if (doc.transferOrigin !== undefined && sanitizeProjectTransferOrigin(doc.transferOrigin) === undefined) return false;
   if (doc.arrangement !== undefined) {
     if (!isObject(doc.arrangement) || !Array.isArray(doc.arrangement.clips)) return false;
   }

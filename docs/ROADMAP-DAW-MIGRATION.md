@@ -17,13 +17,13 @@ The migration path should feel familiar without copying another DAW's interface.
 | Area              | Shipped boundary                                                                                                                                                                                                                                                                                                                                             |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | KYX projects      | The project browser imports validated KYX project documents (`.kyx` and legacy JSON-shaped projects).                                                                                                                                                                                                                                                        |
-| Audio intake      | The Project Browser's **BRING A SONG FROM ANOTHER DAW** workflow accepts up to 32 selected audio files, checks the existing 25 MB per-file cap, and stages decoded audio as user assets with rollback on failure.                                                                                                                                            |
-| Audio arrangement | The transfer wizard creates sampler-backed named arrangement lanes at bar 1, sizes clips to source duration, and lets the user mark a reference mix muted. A distinct audio-track model is not required for this handoff.                                                                                                                                    |
+| Audio intake      | The Project Browser's **BRING A SONG FROM ANOTHER DAW** workflow accepts up to 32 selected audio files, checks the existing 25 MB per-file cap, shows aggregate audio size with a soft memory warning above 100 MB, and stages decoded audio as user assets with rollback on failure.                                                                        |
+| Audio arrangement | The transfer wizard creates sampler-backed arrangement lanes at bar 1, lets users edit each output track name before import, sizes clips to source duration, and lets the user mark a reference mix muted. A distinct audio-track model is not required for this handoff.                                                                                    |
 | MIDI intake       | The transfer wizard accepts one combined Standard MIDI file: up to 8 melodic tracks plus GM drums, note events on editable song clips, first tempo and first time signature. It reports tempo/meter maps, controller/program/pitch-bend/aftertouch/SysEx losses, and drum-grid mapping before import. Existing standalone MIDI import remains pattern-based. |
 | Song workflow     | Independent MIDI clips, audio clips, long songs, save/reopen, offline rendering and grouped stem export are implemented; the support matrix keeps their evidence boundaries explicit.                                                                                                                                                                        |
 | Recording         | Browser/software capture, takes and comping have software-path evidence. Physical routing, analog latency, reference-device qualification and native low-latency Windows audio remain open.                                                                                                                                                                  |
 | Plug-ins          | CLAP discovery is metadata-only. CLAP audio processing and VST3/AU hosting are not shipped.                                                                                                                                                                                                                                                                  |
-| Interchange       | **BRING A SONG** is a DAW-neutral audio + MIDI transfer path. There is no `.flp`, `.cpr`, `.ptx`, AAF or OMF importer; plug-in state, routing, automation and native layout are not carried.                                                                                                                                                                 |
+| Interchange       | **BRING A SONG** is a DAW-neutral audio + MIDI transfer path. There is no `.flp`, `.cpr`, `.ptx`, AAF or OMF importer; plug-in state, source fader/pan controls, routing, automation, tempo maps and native layout are not carried.                                                                                                                          |
 
 Relevant implementation: `src/ui/ProjectBrowser.tsx`, `src/ui/TransferImportDialog.tsx`, `src/export/transfer-import.ts`, `src/ui/sample-import.ts`, `src/ui/DropZone.tsx`, `src/ui/PatternBar.tsx`, `src/midi/midiFile.ts`, `src/midi/midiProject.ts`, `src/commands/audioClips.ts`, `src/commands/midiClips.ts`, `src/export/scorepack.ts`.
 
@@ -47,7 +47,7 @@ Bring aligned track-outs, a reference mix and, where useful, MIDI; preserve edit
 
 - [x] Audit the current project, audio, MIDI, recording, export, device and plug-in boundaries.
 - [x] Record this migration-specific roadmap and distinguish shipped, software-verified, hardware-verified and not-shipped capabilities.
-- [ ] Keep a first-run capability card honest: KYX project import, audio/MIDI transfer, audio hardware and plug-in-host status must be separate claims.
+- [x] Keep a first-run capability card honest: KYX project import, audio/MIDI transfer, audio hardware and plug-in-host status are separate claims in the Project Browser.
 
 **Exit gate:** a user can tell before starting whether a transfer path is supported and what it cannot carry.
 
@@ -58,6 +58,7 @@ Build a DAW-neutral route from standard exports rather than reverse-engineering 
 - [x] Define the first accepted-input contract: file selection (no archive/parser dependency), project title/source-DAW guidance, user-selected tempo/meter, up to 32 named audio tracks, one combined MIDI file, optional muted reference mix, and explicit confirmation that all audio starts together at bar 1.
 - [x] Add a preflight screen listing selected files, type/size, intended role, alignment rule, conversion boundary and unsupported MIDI/project data. Audio decoding and persistence are staged during import; a failure rolls back already staged assets before a project is saved.
 - [x] Import selected audio as sampler-backed named arrangement lanes at the common origin; save a new project and preserve the original DAW project.
+- [x] Preserve the user-selected source DAW as versioned project provenance and surface it in the project library; it records the transfer path, not a native project conversion.
 - [x] Import MIDI notes onto editable song lanes, apply the chosen starting tempo and meter, and disclose unsupported timeline/controller data and GM drum mapping.
 - [x] Add a versioned generated browser fixture with 8 decoded WAV lanes and 4 melodic MIDI lanes; verify save/reopen, media restoration, offline render and realtime playback on every MIDI lane in Chromium (`npm run test:browser:daw-transfer`).
 - [x] Write repeatable source-export instructions for FL Studio, Cubase and Pro Tools, with vendor-manual links and explicit shared-range/import-size constraints (`docs/DAW-TRANSFER-EXPORT-GUIDE.md`).
@@ -68,14 +69,14 @@ Build a DAW-neutral route from standard exports rather than reverse-engineering 
 
 **Acceptance gates:**
 
-1. A representative pack with 8 aligned audio lanes and 4 melodic MIDI lanes imports into a new KYX project with names and lane types intact.
+1. A representative pack with 8 aligned audio lanes and 4 melodic MIDI lanes imports into a new KYX project with the chosen audio output names, MIDI names, and lane types intact.
 2. Audio at a shared origin stays sample-aligned after decode/import, project save/reopen and offline render. v1 places every source at bar 1; explicit offsets are not supported.
 3. MIDI notes, selected starting tempo/meter and track naming match the supported subset; unsupported material appears before commit in a human-readable report.
 4. A malformed, oversized or partially undecodable selection fails safely and explains which file failed; staged user assets are rolled back and no project is saved.
 5. The original files and source DAW project remain unchanged; the import creates a separate KYX project.
 6. FL Studio, Cubase and Pro Tools export instructions are documented and repeatable from source export to KYX playback.
 
-**v1 boundaries:** 32 audio files maximum, existing 25 MB audio-file cap, one MIDI file (10 MB maximum), up to 8 melodic MIDI tracks, GM drum notes on a 32-bar 16th-note grid, and no tempo/meter map, MIDI controller, plug-in, routing or automation transfer. User-selected project tempo/meter are stored globally. Audio is imported at bar 1 only. A manifest/archive may be added later if real user demand justifies the added transport and validation surface.
+**v1 boundaries:** 32 audio files maximum, existing 25 MB per-file audio cap, a soft memory warning above 100 MB of selected audio, one MIDI file (10 MB maximum), up to 8 melodic MIDI tracks, GM drum notes on a 32-bar 16th-note grid, and no tempo/meter map, MIDI controller, plug-in, routing or automation transfer. User-selected project tempo/meter are stored globally. Audio is imported at bar 1 only. A manifest/archive may be added later if real user demand justifies the added transport and validation surface.
 
 ### Phase 2 — familiarity and first-session confidence
 

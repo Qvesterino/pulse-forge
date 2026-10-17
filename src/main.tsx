@@ -81,6 +81,21 @@ declare global {
           };
         }>;
       };
+      audio?: {
+        /** Native Windows endpoint metadata; it does not select devices or start streams. */
+        listWindowsEndpoints: () => Promise<{
+          status: "ok" | "unsupported" | "no-probe" | "timeout" | "invalid-output" | "error";
+          schemaVersion?: 1;
+          endpoints: Array<{
+            id: string;
+            name: string;
+            flow: "capture" | "render";
+            state: "active" | "disabled" | "not-present" | "unplugged" | "unknown";
+            isDefaultConsole: boolean;
+          }>;
+          message?: string;
+        }>;
+      };
       mrt2?: {
         getAvailability: () => Promise<{
           nativeInstalled: boolean;

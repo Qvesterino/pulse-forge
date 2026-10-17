@@ -36,6 +36,7 @@ import type {
   ProjectDocument,
   ProjectLineage,
   ProjectProducerBriefV1,
+  ProjectTransferOriginV1,
   ReturnTrack,
   SampleLayer,
   Scene,
@@ -112,6 +113,9 @@ function yMapToProject(m: Y.Map<unknown>): ProjectDocument {
     lineage: m.has("lineage") ? (plainValue(m.get("lineage")) as unknown as ProjectLineage) : undefined,
     ...(m.has("producerBrief")
       ? { producerBrief: plainValue(m.get("producerBrief")) as unknown as ProjectProducerBriefV1 }
+      : {}),
+    ...(m.has("transferOrigin")
+      ? { transferOrigin: plainValue(m.get("transferOrigin")) as unknown as ProjectTransferOriginV1 }
       : {}),
     createdAt: (m.get("createdAt") as string) ?? "",
     updatedAt: (m.get("updatedAt") as string) ?? "",
@@ -974,6 +978,7 @@ export function applyProjectToYMap(_oldDoc: ProjectDocument, newDoc: ProjectDocu
   // Producer Brief is an explicit project field, shared only with the project
   // session; keep its source/confidence alongside the structured facts.
   syncPlainJsonField(yMap, "producerBrief", newDoc.producerBrief);
+  syncPlainJsonField(yMap, "transferOrigin", newDoc.transferOrigin);
 }
 
 export function projectToYDoc(doc: ProjectDocument, yMap: Y.Map<unknown>): void {

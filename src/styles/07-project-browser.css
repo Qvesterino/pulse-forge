@@ -87,6 +87,72 @@
   color: var(--accent);
 }
 
+.pb-capability-card {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--kyx-silver-edge);
+  border-radius: 8px;
+  background:
+    linear-gradient(130deg, color-mix(in srgb, var(--kyx-pulse) 8%, transparent), transparent 62%), var(--bg-panel);
+}
+
+.pb-capability-head {
+  display: grid;
+  gap: 6px;
+}
+
+.pb-capability-eyebrow,
+.pb-capability-list dt {
+  margin: 0;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1.5px;
+}
+
+.pb-capability-head h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(20px, 3vw, 26px);
+  font-weight: 650;
+}
+
+.pb-capability-head > p:last-child,
+.pb-capability-list dd,
+.pb-capability-boundary {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.pb-capability-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 20px;
+  margin: 0;
+}
+
+.pb-capability-list > div {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+.pb-capability-list dd {
+  color: var(--text);
+}
+
+.pb-capability-boundary {
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline);
+}
+
+.pb-capability-card > .btn {
+  justify-self: start;
+}
+
 .pb-templates {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -239,6 +305,7 @@
 .pb-row-meta {
   font-size: 11px;
   color: var(--text-dim);
+  line-height: 1.5;
 }
 
 /* Project written by a newer app version — visible but not openable. */
@@ -291,6 +358,14 @@
 
   .pb-row-actions {
     flex-wrap: wrap;
+  }
+
+  .pb-capability-card {
+    padding: 16px;
+  }
+
+  .pb-capability-list {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

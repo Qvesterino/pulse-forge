@@ -33,6 +33,7 @@ const ALL_TOP_LEVEL_KEYS: Record<keyof ProjectDocument, true> = {
   tags: true,
   lineage: true,
   producerBrief: true,
+  transferOrigin: true,
   tracks: true,
   patterns: true,
   activePatternId: true,
@@ -110,6 +111,16 @@ describe("YDocAdapter drift pin (GOAL 05)", () => {
     });
     const restored = roundTrip(doc);
     expect(restored.producerBrief).toEqual(doc.producerBrief);
+    expect(restored).toEqual(doc);
+  });
+
+  it("round-trips DAW transfer provenance through collab", () => {
+    const doc = normalizeProject({
+      ...createProjectFromTemplate("drill"),
+      transferOrigin: { version: 1, kind: "aligned-audio-midi", sourceDaw: "pro-tools" },
+    });
+    const restored = roundTrip(doc);
+    expect(restored.transferOrigin).toEqual(doc.transferOrigin);
     expect(restored).toEqual(doc);
   });
 

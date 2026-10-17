@@ -11,6 +11,9 @@ Studio I/O panel can select browser-visible input and output devices, report
 the live context sample rate and latency fields, and run an output test tone.
 Recording requests the saved input ID exactly, can request 1–8 capture
 channels, and stops into durable recovery when the input track ends or mutes.
+The saved browser output ID is reapplied whenever the live `AudioContext` is
+replaced; an unavailable saved ID remains visible and is not changed to the
+system default.
 These are Web Audio capabilities; Electron does not yet own a native device
 stream or a user-selectable hardware period.
 
@@ -123,11 +126,55 @@ and [recovering from an invalid device](https://learn.microsoft.com/en-us/window
 
 ## Consequences
 
+- **Electron PCM bridge runtime spike (2026-10-17):** Electron 44.4.3's
+  packaged-style `app://` renderer did not expose `SharedArrayBuffer` until its
+  document response received `Cross-Origin-Opener-Policy: same-origin` and
+  `Cross-Origin-Embedder-Policy: require-corp`. The desktop protocol now adds
+  those headers through `desktop/audio-isolation.cjs`; `npm run desktop:smoke`
+  passed against `app://bundle`: the root mounted, `crossOriginIsolated === true`,
+  `SharedArrayBuffer` was available, and no renderer/preload errors fired. A
+  focused Electron probe also verified that a buffer created in an isolated
+  preload stayed shared with the page through `window.postMessage`.
+  `crossOriginIsolated === true` and a buffer created in an isolated preload
+  stayed shared with the page through `window.postMessage`. Electron's
+  `ipcRenderer.invoke` and main-to-renderer `webContents.postMessage` both
+  rejected the buffer with `An object could not be cloned`; the existing
+  main-process pipe-to-renderer-ring path is therefore invalid. A native N-API
+  marker module, compiled with Electron's Windows delay-load hook, loaded in an
+  Electron 44.4.3 runtime and wrote the same ring visible to the page. The
+  delay-load hook is required by Electron's [Windows native-module contract](https://www.electronjs.org/docs/latest/tutorial/using-native-node-modules).
+  This makes an in-renderer native audio callback a viable spike direction, not a
+  shipped stream. It requires an explicit security review because the current
+  BrowserWindow is sandboxed and loading a native module from preload requires
+  disabling that renderer sandbox while retaining context isolation and
+  `nodeIntegration: false`. The scratch harness is removed after the spike;
+  external-resource and full-project smoke under COEP remain open.
+- **Implementation checkpoint (2026-10-17):**
+  `src/audio-engine/windowsAudioIo.ts` now defines the typed duplex contract
+  for endpoint enumeration, exact endpoint/channel selection, format/period
+  negotiation, float32 capture/render rings, session stop, device-loss events
+  and xrun reports. Its seven contract tests reject endpoint/channel
+  substitution, invalid IAudioClient3 shared periods and exclusive mode
+  without explicit acknowledgement. `native/windows-audio-probe/main.cpp`
+  now supports a metadata-only `--list-json` mode that enumerates all Core
+  Audio endpoint states without opening streams. `desktop/windows-audio-devices.cjs`
+  bounds and validates that response before a narrow preload API exposes it in
+  the Studio I/O panel. Seven IPC-boundary tests, four CTest checks and a live
+  Windows enumeration pass verify the discovery path. It still does not drive
+  native stream selection. This does not add a Windows adapter or change the
+  product support status; native I/O remains not shipped.
+- **Browser output lifecycle (2026-10-17):** `IoPanel` subscribes to live
+  `AudioEngine` context changes and reapplies the exact saved browser sink to
+  each replacement context. Application calls are serialized so a delayed
+  earlier sink request cannot override the most recent selection. The real
+  panel lifecycle test verifies the same output ID is applied before and after
+  context replacement; this remains browser/Web Audio routing, not native
+  WASAPI selection or acoustic latency evidence.
 - Native Windows I/O remains **not shipped**. The decision records an evidence-
   led direction, not a user-facing support claim.
-- The next engineering step is a typed capture/output backend contract and a
-  measured Electron-to-host PCM bridge spike. No native host is integrated
-  until callback isolation, bounded buffering, duplex clock behavior and
+- The next engineering step is a measured Electron-to-host PCM bridge spike.
+  No native host is integrated until
+  callback isolation, bounded buffering, duplex clock behavior and
   shutdown/recovery pass software tests.
 - The Volt reference setup stays **Open** while the device is absent and until
   physical channel mapping, analog latency, recovery and the sustained soak

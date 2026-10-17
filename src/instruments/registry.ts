@@ -1055,7 +1055,10 @@ const bass808: InstrumentDefinition = {
         // roll note length (predĺžené 808 tails), ONE-SHOT keeps the legacy
         // decay-only behaviour regardless of note length.
         const mono = (p.mono ?? 1) > 0.5;
-        if (mono) current?.stop(when);
+        // A monophonic retrigger is a trap cut, not a normal note-off: use
+        // the short de-click fade so the previous sub/grit cannot ring under
+        // the incoming note. Explicit note-off still uses the musical release.
+        if (mono) current?.silence(when);
         const freq = midiToFreq(pitch);
         const decay = Math.max(0.05, p.decay ?? 0.9);
         // The per-note release control follows FL's 0..1 note-event range.
@@ -3739,8 +3742,18 @@ const pluck: InstrumentDefinition = {
         src.stop(when + 0.02);
 
         const panner = ctx.createStereoPanner();
-        // Width via pan spread per voice (deterministic from pitch)
-        const voicePan = (pitch % 2 === 0 ? 1 : -1) * width * 0.5 + (expression?.pan ?? 0);
+        // Keep the deterministic stereo width at the neutral note-pan value,
+        // while making the expression endpoints reach true hard left/right.
+        // A plain additive offset leaves the opposite channel audible when
+        // the voice already has pitch-based spread.
+        const voiceSpreadPan = Math.max(-1, Math.min(1, (pitch % 2 === 0 ? 1 : -1) * width * 0.5));
+        const notePan = expression?.pan;
+        const voicePan =
+          notePan === undefined
+            ? voiceSpreadPan
+            : notePan < 0
+              ? voiceSpreadPan + notePan * (1 + voiceSpreadPan)
+              : voiceSpreadPan + notePan * (1 - voiceSpreadPan);
         panner.pan.setValueAtTime(Math.max(-1, Math.min(1, voicePan)), when);
         // Rewire: postFilter already connected to amp, amp to panner? Actually amp is after postFilter, so we need panner after amp
         // Our chain above: toneFilter -> postFilter -> amp, so amp is after postFilter.

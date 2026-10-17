@@ -44,8 +44,9 @@ const { PcmPipeSource, defaultPcmHostPath } = require("../desktop/pcm-pipe.cjs")
  * The ring byte layout is a CONTRACT between two implementations (the TS
  * consumer behind the AudioWorkletProcessor and the Node producer behind
  * the pipe bridge). The interop test runs both against the SAME SAB; the
- * E2E drives a real pcm-gen through the bridge and verifies sine samples
- * read back through the TS ring — including across the wrap boundary.
+ * Node integration drives a real pcm-gen through the pipe bridge and verifies
+ * sine samples read back through the TS ring — including across wrap. This
+ * does not exercise Electron IPC or a physical device output.
  */
 
 const FORMAT = { channels: 2, capacityFrames: 4096, sampleRate: 48000 };
@@ -219,8 +220,8 @@ beforeAll(async () => {
   });
 }, 120_000);
 
-describe.skipIf(!existsSync(PCM_GEN))("pipe → bridge → ring → reader E2E (real host)", () => {
-  it("delivers sine-verified samples through the full renderer path", async () => {
+describe.skipIf(!existsSync(PCM_GEN))("pipe → bridge → ring → reader integration (real host)", () => {
+  it("delivers sine-verified samples from the native pipe bridge into the shared ring", async () => {
     const RATE = 48000;
     // Ring sizing contract (ADR 0018): capacity must exceed the OS pipe
     // buffer in frames — a 64 KB pipe delivers ~17k frames as one burst

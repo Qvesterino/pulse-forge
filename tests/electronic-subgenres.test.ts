@@ -88,9 +88,15 @@ describe("electronic parser phrases", () => {
   });
 
   it("big beat / moombahton / slap house / deep dubstep route", () => {
-    // "big beat" merged into the parallel session's breakbeat lane (its
-    // dedicated groove superseded house.bigbeat) — pinned as deliberate
-    expect(parseIntentText("big beat").input).toMatchObject({ genre: "house", style: "breakbeat" });
+    // "big beat" resolves to its own lane: house.bigbeat is committed AND
+    // resolvable (`getGrooveById("house.bigbeat")` is defined,
+    // `resolveGroove("house","bigbeat")` returns it), so the earlier note that
+    // "its dedicated groove superseded house.bigbeat" did not hold. It used to
+    // land in breakbeat only because the earlier breakbeat style entry also
+    // carried a `big ?beat` alternate that shadowed the dedicated entry below
+    // it; the lexicon gate (tests/intent-routing-lexicon.test.ts) now forbids
+    // shadows, and "big beat" routes by its own words.
+    expect(parseIntentText("big beat").input).toMatchObject({ genre: "house", style: "bigbeat" });
     expect(parseIntentText("breakbeat").input).toMatchObject({ genre: "house", style: "breakbeat" });
     expect(parseIntentText("moombahton").input).toMatchObject({ genre: "house", style: "moombahton" });
     expect(parseIntentText("slap house").input).toMatchObject({ genre: "house", style: "slaphouse" });

@@ -11,6 +11,7 @@ import {
   type ToolRisk,
 } from "../mcp/agentTrust";
 import { restoreIntentCheckpoint } from "../intent/checkpoints";
+import { downloadTrustReport } from "../services/trustReport";
 
 /**
  * ACTIVITY CENTER (Wave 1 A+B) — one visible place for "what is running" and
@@ -116,6 +117,24 @@ export function ActivityCenter() {
   );
   const running = useMemo(() => jobs.jobs.filter((job) => job.status === "running"), [jobs.jobs]);
   const audit = useMemo(() => [...trust.entries].slice(-15).reverse(), [trust.entries]);
+
+  /**
+   * TRUST REPORT — one downloadable artifact (markdown for a human, JSON for a
+   * machine) built from the live stores. It is deliberately reachable from
+   * HERE, next to the agent log: the moment you wonder "what did that thing do
+   * to my project?" is the moment you want the report.
+   */
+  const downloadReport = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await downloadTrustReport(services);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Trust report failed.");
+    } finally {
+      setBusy(false);
+    }
+  }, [services]);
 
   if (!visible && !open) return null;
 
@@ -250,8 +269,17 @@ export function ActivityCenter() {
               {entryLine(entry)}
             </div>
           ))}
-          {trust.entries.length > 0 && (
+          {trust.entries.length > 0 ? (
             <div style={{ padding: "6px 10px", display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                className="btn btn-export"
+                disabled={busy}
+                title="Download a Trust Report (markdown + JSON): durability, freeze integrity, agent activity, AI receipts, audio health and the last export hash"
+                onClick={() => void downloadReport()}
+              >
+                {busy ? "BUILDING…" : "TRUST REPORT"}
+              </button>
               <button
                 type="button"
                 className="btn"
@@ -260,6 +288,21 @@ export function ActivityCenter() {
                 }}
               >
                 CLEAR LOG
+              </button>
+              <button type="button" className="btn" onClick={() => setOpen(false)}>
+                CLOSE
+              </button>
+            </div>
+          ) : (
+            <div style={{ padding: "6px 10px", display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                className="btn btn-export"
+                disabled={busy}
+                title="Download a Trust Report (markdown + JSON): durability, freeze integrity, agent activity, AI receipts, audio health and the last export hash"
+                onClick={() => void downloadReport()}
+              >
+                {busy ? "BUILDING…" : "TRUST REPORT"}
               </button>
               <button type="button" className="btn" onClick={() => setOpen(false)}>
                 CLOSE

@@ -11,7 +11,13 @@ import { createProjectFromTemplate } from "../src/project-model/templates";
 import { getDrumTrack, BAR_TICKS, PPQ, STEP_TICKS } from "../src/project-model/types";
 import { Scheduler } from "../src/scheduler/Scheduler";
 import { Transport } from "../src/transport/Transport";
-import type { ArrangementAutomationClip, DrumPad, Pattern, ProjectDocument } from "../src/project-model/types";
+import type {
+  ArrangementAutomationClip,
+  DrumPad,
+  NoteExpression,
+  Pattern,
+  ProjectDocument,
+} from "../src/project-model/types";
 import { setStepVelocity } from "../src/project-model/transform";
 import { addAudioTakeClip, addMidiClip, addNote, clearPattern, setPatternLength } from "../src/commands/commands";
 import { createLiveAudioTakeAuditionProject } from "../src/rendering/take-audition";
@@ -79,7 +85,14 @@ describe("schema migration", () => {
 
 function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern", scheduleOffsetSec = 0) {
   const events: { trackId: string; padId: string; when: number; velocity: number }[] = [];
-  const noteEvents: { trackId: string; pitch: number; velocity: number; when: number; durationSec: number }[] = [];
+  const noteEvents: {
+    trackId: string;
+    pitch: number;
+    velocity: number;
+    when: number;
+    durationSec: number;
+    expression?: NoteExpression;
+  }[] = [];
   const clickEvents: { when: number; downbeat: boolean }[] = [];
   const automationCalls: { from: number; to: number; relOf: (tick: number) => number }[] = [];
   const automationOffsets: number[] = [];
@@ -102,8 +115,19 @@ function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern",
     trigger: (trackId: string, pad: DrumPad, when: number, velocity: number) => {
       events.push({ trackId, padId: pad.id, when, velocity });
     },
-    noteOn: (trackId: string, pitch: number, velocity: number, when: number, durationSec: number) => {
-      noteEvents.push({ trackId, pitch, velocity, when, durationSec });
+    noteOn: (
+      trackId: string,
+      pitch: number,
+      velocity: number,
+      when: number,
+      durationSec: number,
+      _slideFromTick?: number,
+      _slideFromPitch?: number,
+      _locks?: Partial<Record<import("../src/project-model/types").StepLockKey, number>>,
+      _slideFromWhen?: number,
+      expression?: NoteExpression,
+    ) => {
+      noteEvents.push({ trackId, pitch, velocity, when, durationSec, ...(expression ? { expression } : {}) });
     },
     metronomeClick: (when: number, downbeat: boolean) => {
       clickEvents.push({ when, downbeat });
@@ -407,6 +431,34 @@ describe("scheduler", () => {
     scheduler.stop();
   });
 
+  it("forwards per-note expression from the project note into the scheduled audio event", () => {
+    const base = createDefaultProject();
+    const instrument = base.tracks.find(
+      (track): track is import("../src/project-model/types").InstrumentTrack => track.kind === "instrument",
+    )!;
+    const expression: NoteExpression = {
+      pitchOffsetSemitones: 0.37,
+      pan: -0.75,
+      filterCutoffHz: 2345,
+      filterResonance: 0.65,
+      releaseVelocity: 0.8,
+    };
+    const note = { id: "scheduler-expression", pitch: 60, start: 0, duration: 120, velocity: 0.9, expression };
+    const doc: ProjectDocument = {
+      ...base,
+      patterns: base.patterns.map((pattern) =>
+        pattern.id === base.activePatternId ? { ...pattern, notes: { [instrument.id]: [note] } } : pattern,
+      ),
+    };
+    const harness = makeHarness(doc);
+    harness.transport.play(0, { leadIn: false });
+    harness.scheduler.start();
+
+    expect(harness.noteEvents).toHaveLength(1);
+    expect(harness.noteEvents[0]?.expression).toEqual(expression);
+    harness.scheduler.stop();
+  });
+
   it("plays independent MIDI arrangement clips in Song mode at their absolute tick positions", () => {
     const base = createDefaultProject();
     const bass = base.tracks.find(
@@ -689,6 +741,38 @@ describe("scheduler", () => {
     );
     expect(panCall?.clip.points.map((point) => point.value)).toEqual([-1, 1]);
     expect(panCall?.fromTick).toBe(0);
+    harness.scheduler.stop();
+  });
+
+  it("keeps the first onset when AudioContext time advances a few milliseconds before scheduler startup", () => {
+    const doc = createDefaultProject();
+    const kickPadId = getDrumTrack(doc).pads[0].id;
+    const harness = makeHarness(doc);
+    harness.transport.play(0, { leadIn: false });
+    harness.advance(0.01);
+
+    harness.scheduler.start();
+
+    expect(harness.events.some((event) => event.padId === kickPadId && event.when === 10)).toBe(true);
+    harness.scheduler.stop();
+  });
+
+  it("keeps the first MIDI clip note when AudioContext time advances before scheduler startup", () => {
+    const base = createDefaultProject();
+    const bass = base.tracks.find(
+      (track): track is import("../src/project-model/types").InstrumentTrack =>
+        track.kind === "instrument" && track.instrument === "808",
+    )!;
+    const pattern = base.patterns.find((candidate) => candidate.id === base.activePatternId)!;
+    const withClip = addMidiClip(base, bass.id, pattern.id, 0, BAR_TICKS).execute(base);
+    const doc = { ...withClip, arrangement: { ...withClip.arrangement, clips: [] } };
+    const harness = makeHarness(doc, "song");
+    harness.transport.play(0, { leadIn: false });
+    harness.advance(0.01);
+
+    harness.scheduler.start();
+
+    expect(harness.noteEvents.some((event) => event.trackId === bass.id && event.when === 10)).toBe(true);
     harness.scheduler.stop();
   });
 

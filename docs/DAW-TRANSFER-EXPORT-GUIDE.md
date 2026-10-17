@@ -7,14 +7,14 @@ This guide describes a repeatable DAW-neutral handoff using aligned audio files 
 1. Save a copy of the source project. MIDI preparation or commit operations can change the current session state.
 2. Choose one common range from the session/song start through the intended ending. Include any reverb or delay tail you want to keep.
 3. Export one full-range file per track, with every file starting at that same range origin. Do not trim initial silence or export isolated clips: KYX v1 places all imported audio at bar 1 and does not preserve per-file offsets.
-4. Decide whether each audio track should be dry or have its track effects printed. Export one optional full mix as a reference and mark it as **Reference (muted)** in KYX.
+4. Decide whether each audio track should be dry or have its track effects printed. Source fader, pan and effect choices may be baked into each WAV depending on the DAW export point; KYX receives the rendered audio, not those editable controls. Export one optional full mix as a reference and mark it as **Reference (muted)** in KYX.
 5. Use PCM WAV when each file fits the current **25 MB per-file** import limit. Choose mono for genuinely mono sources; retain stereo where the track needs it. Do not force a smaller range or normalise individual tracks unless that is intentional for the new mix. KYX currently supports up to 32 audio files and one MIDI file up to 10 MB.
 6. Export a single multitrack MIDI file for editable instrument parts. Include the starting tempo and meter. KYX v1 imports up to eight melodic tracks and GM drums; it applies one global starting tempo/meter and reports unsupported timeline or controller data before import.
 7. In KYX, choose **Bring a Song**, select all track-outs and the combined MIDI file, check that the names and file sizes are right, confirm they share an origin/range, review the loss report, then import as a new project. Keep the original DAW project.
 
 ### File-size reality
 
-The current audio import ceiling is 25 MB for each file. A 44.1 kHz stereo PCM WAV is approximately 10.1 MiB/minute at 16-bit or 15.1 MiB/minute at 24-bit, before small headers. A long, high-resolution track-out can exceed the ceiling even though the DAW exported it correctly. KYX v1 has no split/rejoin or per-clip offset workflow, so do not split a song into separately imported chunks expecting them to reconstruct in place. Use the import preflight as the authority for the current limit.
+The current audio import ceiling is 25 MB for each file. A 44.1 kHz stereo PCM WAV is approximately 10.1 MiB/minute at 16-bit or 15.1 MiB/minute at 24-bit, before small headers. A long, high-resolution track-out can exceed the ceiling even though the DAW exported it correctly. KYX also warns when the selected audio files exceed 100 MB in total because decoded PCM can require considerably more memory than the encoded files. KYX v1 has no split/rejoin or per-clip offset workflow, so do not split a song into separately imported chunks expecting them to reconstruct in place. Use the import preflight as the authority for the current limit.
 
 ## FL Studio
 
@@ -47,8 +47,9 @@ For current option details, see [Image-Line: Exporting Audio & MIDI](https://www
 ### MIDI
 
 1. Choose **File > Export > MIDI File** to export the project's MIDI tracks as one Standard MIDI File.
-2. In MIDI Export Options, use Type 1 (leave **Export as Type 0** disabled) to retain separate tracks. Keep the tempo/time-signature events enabled and choose the same locator range when exporting only a section.
-3. Controller, patch, automation and marker data may be present in the MIDI file, but KYX v1 imports notes and GM drum hits only; the preflight report describes unsupported event classes.
+2. In Export Options, leave **Export as Type 0** disabled to keep MIDI parts on separate tracks. If exporting only a section, enable **Export Locator Range** and set the project's locators to the same range used for the audio track-outs.
+3. Cubase includes tempo and time-signature events from the Tempo Track; if the Tempo Track is deactivated, it writes the current tempo and time signature. KYX v1 retains only the starting values, not later map changes.
+4. Controller, patch, automation and marker data may also be present depending on the Export Options. KYX v1 imports notes and GM drum hits only; the preflight report describes unsupported event classes.
 
 See [Steinberg: Export Audio Mixdown](https://www.steinberg.help/r/cubase-pro/15.0/en/cubase_nuendo/topics/export_audio_mixdown/export_audio_mixdown_options_r.html), [Steinberg: Exporting MIDI Tracks as Standard MIDI Files](https://www.steinberg.help/r/cubase-pro/cubasescore/15.0/en/cubase_nuendo_score_editor/topics/importing_exporting/exporting_midi_files_t.html), and [Steinberg: MIDI Export Options](https://www.steinberg.help/r/cubase-pro/15.0/en/cubase_nuendo/topics/preferences/preferences_midi_midi_file_export_options_r.html).
 
@@ -73,7 +74,7 @@ See [Avid: Exporting Individual Tracks](https://www.avid.com/pro-tools/user-guid
 ## Quick transfer check
 
 - Every track-out represents the same range and has the same start, including leading silence where needed for alignment.
-- Track names are meaningful and unique; avoid names such as `Audio 1` or `Insert 12`.
+- Track names are meaningful and unique; adjust the output names in KYX preflight if the export uses names such as `Audio 1` or `Insert 12`.
 - Audio files are below 25 MB each; the MIDI file is below 10 MB.
 - The MIDI file is multitrack and has no more than eight melodic tracks for KYX v1.
 - One optional full mix is clearly named as the reference.

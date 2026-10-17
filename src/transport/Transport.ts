@@ -108,6 +108,18 @@ export class Transport {
     return this.playing_ ? this.tickAt(this.clock.now()) : this.pauseTick;
   }
 
+  /** Tick anchor for the active tick↔time map. Useful when a scheduler starts
+   * a few audio quanta after play() and must still include the onset at the
+   * requested play position. */
+  get timeMapAnchorTick(): number {
+    return this.anchorTick;
+  }
+
+  /** Audio-clock anchor paired with timeMapAnchorTick. */
+  get timeMapAnchorTime(): number {
+    return this.anchorTime;
+  }
+
   get loopEnabled(): boolean {
     return this.loopEnabled_;
   }

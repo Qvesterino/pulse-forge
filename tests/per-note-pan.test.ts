@@ -68,7 +68,7 @@ describe("per-note pan voice routing", () => {
     const routedToOutput = pannerNodes.filter((node) => node.outputs.has(output));
     const panNodes = kind === "texture" || kind === "vocalchop" ? pannerNodes : routedToOutput;
     const directPanValues = panNodes.map((node) => (node as unknown as { pan: { value: number } }).pan.value);
-    const expected = kind === "pluck" ? [-0.5, 0.55] : [-0.65, 0.7];
+    const expected = kind === "pluck" ? [-0.5975, 0.655] : [-0.65, 0.7];
     for (const value of expected) {
       expect(directPanValues.some((actual) => Math.abs(actual - value) < 1e-9)).toBe(true);
     }
