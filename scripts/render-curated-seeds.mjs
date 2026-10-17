@@ -115,7 +115,7 @@ await server.listen();
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
-await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "commit", timeout: 120_000 });
 
 const results = await page.evaluate(
   async ({ categoryTreatment, assetTreatmentOverride, requestedIds, spatialFieldIds }) => {
@@ -243,17 +243,28 @@ const results = await page.evaluate(
         const cutoffHz = 650;
         const rc = 1 / (2 * Math.PI * cutoffHz);
         const a = rc / (rc + 1 / SR);
+        const midData = new Float32Array(mastered.length);
+        const sideData = new Float32Array(mastered.length);
         let y = 0;
         let xPrev = 0;
-        let peak = 0;
+        let midEnergy = 0;
+        let sideEnergy = 0;
         for (let i = 0; i < mastered.length; i++) {
           const mid = (left[i] + right[i]) * 0.5;
           const delayed = i >= delaySamples ? (left[i - delaySamples] + right[i - delaySamples]) * 0.5 : 0;
           y = a * (y + delayed - xPrev);
           xPrev = delayed;
-          const side = y * 0.14;
-          outLeft[i] = mid + side;
-          outRight[i] = mid - side;
+          midData[i] = mid;
+          sideData[i] = y;
+          midEnergy += mid * mid;
+          sideEnergy += y * y;
+        }
+        const sideGain = Math.min(0.65, 0.16 * Math.sqrt(midEnergy / Math.max(sideEnergy, 1e-18)));
+        let peak = 0;
+        for (let i = 0; i < mastered.length; i++) {
+          const side = sideData[i] * sideGain;
+          outLeft[i] = midData[i] + side;
+          outRight[i] = midData[i] - side;
           peak = Math.max(peak, Math.abs(outLeft[i]), Math.abs(outRight[i]));
         }
         const peakGuard = Math.min(1, Math.pow(10, treatment.ceiling / 20) / Math.max(peak, 1e-9));

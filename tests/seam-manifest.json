@@ -45,7 +45,7 @@
       "spec": "tests/ui/piano-roll-event-editor.test.tsx",
       "seamEvent": "fireEvent.pointerMove(bar",
       "negativeSpec": "NEGATIVE: pointercancel rolls back the lane preview",
-      "note": "Drives the real 808 Event target selector and lane against a real ProjectStore; covers one undoable pan edit, zero-motion no-op, and pointercancel rollback."
+      "note": "Drives the real Event target selector and lane against a real ProjectStore; covers undoable expression edits, Acid/808 slide-note toggling, unsupported-instrument no-op, zero-motion no-op, and pointercancel rollback."
     },
     {
       "id": "arrangement-clip-move",
@@ -219,6 +219,24 @@
       "note": "Wave A: entered through the REAL panel (type the brief, press DO IT). The default must yield a multi-candidate auditionable bank with ONE explained winner and NO single-result fallback; the negative spec spies the budget to the lean value and pins the honest constrained-device outcome (USE RESULT, nothing to audition) — proving the budget reaches the request instead of being decoration."
     },
     {
+      "id": "session-tape-rewind",
+      "status": "COVERED",
+      "entryPoint": "src/ui/IntentPanel.tsx TAPE strip (rewindTapeTo → store.jumpTo)",
+      "spec": "tests/ui/session-tape.test.tsx",
+      "seamEvent": "rewinds and detaches",
+      "negativeSpec": "refuses with the reason",
+      "note": "Session tape: the journal is filled by the gestures themselves (DO IT → ⚡, USE → ★, a route action → ✎) and REWIND goes through the store's own history jump, so the branch is redoable and everything after it detaches. The NEGATIVE pins the honest refusal: a step that applied nothing reports why (tests/session-tape.test.ts pins the pruned-window and first-state refusals too) instead of silently landing on a different state."
+    },
+    {
+      "id": "shadow-adjudication",
+      "status": "COVERED",
+      "entryPoint": "scripts/fit-rerank-weights.mjs (adjudicateShadow over the audio-fit ledger + human picks)",
+      "spec": "tests/shadow-adjudication.test.ts",
+      "seamEvent": "adjudicateShadow",
+      "negativeSpec": "refuses to stage an experiment",
+      "note": "CI for taste: the shipped default weight is the shadow policy, the fitted one the active policy, and the verdict is which ordering would have picked what the human kept — computed from the recorded finalist coordinates, so the counterfactual costs no render. NEGATIVEs pin the honest cases: identical weights are not an experiment, fewer than two human picks is no evidence, and a policy comparison never claims a musical quality it cannot measure."
+    },
+    {
       "id": "rerank-reaction-feed",
       "status": "COVERED",
       "entryPoint": "src/intent/reaction-rerank-feedback.ts (npm run rerank:fit) + IntentPanel USE registration",
@@ -271,6 +289,33 @@
       "seamEvent": "parseRenderManifestFromWav",
       "negativeSpec": "keeps the file layout valid without an iXML chunk",
       "note": "Wave 2/C: the manifest is written into a REAL encoded WAV and read back through the RIFF walker (hostile names/prompts, odd payload pad byte), and a file WITHOUT the chunk still has an exact RIFF size — the no-regression case for every existing exporter. The end-to-end step is pinned too: tests/ui/ExportPanel.test.tsx clicks EXPORT MASTER and parses the manifest out of the blob the panel hands to the save boundary."
+    },
+    {
+      "id": "reaction-taste-bias-chips",
+      "status": "COVERED",
+      "entryPoint": "src/ui/IntentPanel.tsx:5475 orderClarificationChoices",
+      "spec": "tests/ui/reaction-choice-bias-wiring.test.tsx",
+      "seamEvent": "Nearest interpretations",
+      "negativeSpec": "NEGATIVE: the kill switch reaches the panel — the same history reorders nothing",
+      "note": "The F2 rule (reactions REORDER gated candidates, never create/drop/edit one) is only true of the product if the CHIPS a human clicks are reordered. The ordering function had unit coverage; this drives the real panel with a real seeded ledger: a kept RETURN fader outranks returned SEND asks (opposite of the router order), while no-decisions, pending-only and the kill switch all keep the router order byte-for-byte, with an identical chip set. Verified by mutation — disabling the bias turns exactly the kept-first spec red."
+    },
+    {
+      "id": "daw-transfer-import-wizard",
+      "status": "COVERED",
+      "entryPoint": "src/ui/ProjectBrowser.tsx BRING A SONG FROM ANOTHER DAW",
+      "spec": "tests/ui/transfer-import-dialog.test.tsx",
+      "seamEvent": "fireEvent.change(fileInput",
+      "negativeSpec": "does not start a batch import before the user confirms common audio alignment",
+      "note": "Enters the actual transfer dialog through file selection and verifies the negative boundary: selecting audio inputs alone does not write a project or commit the import until the user confirms their common origin."
+    },
+    {
+      "id": "studio-io-missing-device",
+      "status": "COVERED",
+      "entryPoint": "src/ui/IoPanel.tsx input/output device selectors after device enumeration",
+      "spec": "tests/ui/io-panel.test.tsx",
+      "seamEvent": "keeps a missing saved input and output visible without silently selecting defaults",
+      "negativeSpec": "expect(selectedDeviceIds).toEqual([\"gone-output\", \"gone-input\"])",
+      "note": "A real panel render with missing saved endpoints shows the unavailable state and proves the input/output selections remain pinned until the user chooses another endpoint."
     }
   ]
 }

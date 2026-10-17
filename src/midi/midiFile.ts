@@ -28,11 +28,36 @@ export interface MidiTrackData {
   notes: MidiNote[];
 }
 
+export interface MidiTempoEvent {
+  tick: number;
+  bpm: number;
+}
+
+export interface MidiTimeSignatureEvent {
+  tick: number;
+  num: number;
+  den: number;
+}
+
+export interface MidiUnsupportedEvents {
+  controlChanges: number;
+  pitchBends: number;
+  programChanges: number;
+  aftertouch: number;
+  systemExclusive: number;
+}
+
 export interface ParsedMidi {
   division: number;
   /** First tempo meta (rounded), or null when the file has none. */
   bpm: number | null;
   timeSignature: { num: number; den: number } | null;
+  /** Distinct tempo changes in tick order; repeated copies of the same value are collapsed. */
+  tempoEvents: MidiTempoEvent[];
+  /** Distinct time-signature changes in tick order. */
+  timeSignatureEvents: MidiTimeSignatureEvent[];
+  /** MIDI event classes this note-focused importer does not preserve. */
+  unsupportedEvents: MidiUnsupportedEvents;
   /** One entry per chunk×channel that contains at least one note. */
   tracks: MidiTrackData[];
 }
@@ -76,8 +101,15 @@ export function parseMidiFile(data: Uint8Array): ParsedMidi {
   if (division === 0) throw new MidiParseError("invalid MIDI division (0)");
   if (format === 2) throw new MidiParseError("format-2 MIDI files are not supported");
 
-  let bpm: number | null = null;
-  let timeSignature: { num: number; den: number } | null = null;
+  const tempoEvents: MidiTempoEvent[] = [];
+  const timeSignatureEvents: MidiTimeSignatureEvent[] = [];
+  const unsupportedEvents: MidiUnsupportedEvents = {
+    controlChanges: 0,
+    pitchBends: 0,
+    programChanges: 0,
+    aftertouch: 0,
+    systemExclusive: 0,
+  };
 
   // Audit 10 D3: hard cap on retained notes. A machine-generated 10 MB .mid
   // (just under the file cap) packs ~2.5 M note events — the parse used to
@@ -152,10 +184,10 @@ export function parseMidiFile(data: Uint8Array): ParsedMidi {
         cursor += meta.value;
         if (type === 0x51 && meta.value === 3) {
           const usPerQuarter = (payload[0] << 16) | (payload[1] << 8) | payload[2];
-          if (usPerQuarter > 0 && bpm === null) bpm = Math.round(60_000_000 / usPerQuarter);
-        } else if (type === 0x58 && meta.value >= 2 && timeSignature === null) {
+          if (usPerQuarter > 0) tempoEvents.push({ tick, bpm: Math.round(60_000_000 / usPerQuarter) });
+        } else if (type === 0x58 && meta.value >= 2) {
           const den = Math.round(Math.pow(2, payload[1]));
-          if (den > 0) timeSignature = { num: payload[0], den };
+          if (den > 0 && payload[0] > 0) timeSignatureEvents.push({ tick, num: payload[0], den });
         } else if (type === 0x03) {
           const name = new TextDecoder().decode(payload).trim();
           if (name) entry.name = name;
@@ -168,6 +200,7 @@ export function parseMidiFile(data: Uint8Array): ParsedMidi {
       if (status === 0xf0 || status === 0xf7) {
         const sysex = readVlq(data, cursor);
         cursor = sysex.next + sysex.value;
+        unsupportedEvents.systemExclusive++;
         continue;
       }
 
@@ -187,8 +220,17 @@ export function parseMidiFile(data: Uint8Array): ParsedMidi {
         }
       } else if (kind === 0x80) {
         closeNote(channel, data1, tick);
+      } else if (kind === 0xb0) {
+        unsupportedEvents.controlChanges++;
+      } else if (kind === 0xe0) {
+        unsupportedEvents.pitchBends++;
+      } else if (kind === 0xc0) {
+        unsupportedEvents.programChanges++;
+      } else if (kind === 0xa0 || kind === 0xd0) {
+        unsupportedEvents.aftertouch++;
       }
-      // CC/PB/program/aftertouch: intentionally skipped.
+      // CC/PB/program/aftertouch are intentionally skipped, but counted so
+      // interchange workflows can disclose the loss before committing.
     }
 
     // Close any hanging notes at the last tick — better an audible short
@@ -224,7 +266,36 @@ export function parseMidiFile(data: Uint8Array): ParsedMidi {
     }
   }
 
-  return { division, bpm, timeSignature, tracks };
+  const collapseEvents = <T extends { tick: number }>(events: T[], sameValue: (a: T, b: T) => boolean): T[] => {
+    const sorted = events
+      .map((event, order) => ({ event, order }))
+      .sort((a, b) => a.event.tick - b.event.tick || a.order - b.order);
+    const collapsed: T[] = [];
+    for (const { event } of sorted) {
+      const previous = collapsed[collapsed.length - 1];
+      if (previous && previous.tick === event.tick && sameValue(previous, event)) continue;
+      if (previous && previous.tick !== event.tick && sameValue(previous, event)) continue;
+      collapsed.push(event);
+    }
+    return collapsed;
+  };
+  const tempos = collapseEvents(tempoEvents, (a, b) => (a as MidiTempoEvent).bpm === (b as MidiTempoEvent).bpm);
+  const signatures = collapseEvents(timeSignatureEvents, (a, b) => {
+    const left = a as MidiTimeSignatureEvent;
+    const right = b as MidiTimeSignatureEvent;
+    return left.num === right.num && left.den === right.den;
+  });
+  const firstTempo = tempos[0];
+  const firstSignature = signatures[0];
+  return {
+    division,
+    bpm: firstTempo?.bpm ?? null,
+    timeSignature: firstSignature ? { num: firstSignature.num, den: firstSignature.den } : null,
+    tempoEvents: tempos,
+    timeSignatureEvents: signatures,
+    unsupportedEvents,
+    tracks,
+  };
 }
 
 // ── writer ──────────────────────────────────────────────────────────────────

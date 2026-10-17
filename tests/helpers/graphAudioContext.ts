@@ -144,6 +144,7 @@ export interface GraphSnapshot {
  */
 class ParamStub {
   automated = false;
+  lastTargetTimeConstant: number | null = null;
   constructor(public _value: number) {}
   get value(): number {
     return this._value;
@@ -163,9 +164,12 @@ class ParamStub {
     this.automated = true;
     this._value = v;
   }
-  setTargetAtTime(v: number): void {
+  setTargetAtTime(v: number, _startTime?: number, timeConstant?: number): void {
     this.automated = true;
     this._value = v;
+    if (typeof timeConstant === "number" && Number.isFinite(timeConstant)) {
+      this.lastTargetTimeConstant = timeConstant;
+    }
   }
   cancelScheduledValues(): void {}
   cancelAndHoldAtTime(): void {}

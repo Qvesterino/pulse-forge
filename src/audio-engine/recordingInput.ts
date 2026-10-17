@@ -71,20 +71,24 @@ export async function listRecordingInputDevices(
     : null,
 ): Promise<RecordingInputDevice[]> {
   if (!mediaDevices || typeof mediaDevices.enumerateDevices !== "function") return [];
-  const devices = await mediaDevices.enumerateDevices();
-  let anonymousIndex = 0;
-  const seen = new Set<string>();
-  return devices.flatMap((device) => {
-    if (
-      device.kind !== "audioinput" ||
-      !device.deviceId ||
-      device.deviceId === "default" ||
-      seen.has(device.deviceId)
-    ) {
-      return [];
-    }
-    seen.add(device.deviceId);
-    anonymousIndex++;
-    return [{ deviceId: device.deviceId, label: device.label.trim() || `Audio input ${anonymousIndex}` }];
-  });
+  try {
+    const devices = await mediaDevices.enumerateDevices();
+    let anonymousIndex = 0;
+    const seen = new Set<string>();
+    return devices.flatMap((device) => {
+      if (
+        device.kind !== "audioinput" ||
+        !device.deviceId ||
+        device.deviceId === "default" ||
+        seen.has(device.deviceId)
+      ) {
+        return [];
+      }
+      seen.add(device.deviceId);
+      anonymousIndex++;
+      return [{ deviceId: device.deviceId, label: device.label.trim() || `Audio input ${anonymousIndex}` }];
+    });
+  } catch {
+    return [];
+  }
 }

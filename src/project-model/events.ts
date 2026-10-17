@@ -56,8 +56,8 @@ export interface ScheduledNote {
   /** Absolute project tick, matching the drum event plan's coordinate system. */
   tick: number;
   /**
-   * For `note.slide` notes: the previous non-slide note's (pitch, absolute
-   * when-tick) so the instrument runtime can glide instead of re-attacking.
+   * For legacy `note.slide` portamento: the previous attacked note's (pitch,
+   * absolute when-tick), so the runtime can glide into this new attack.
    */
   slideFrom?: { pitch: number; tick: number };
 }
@@ -72,9 +72,9 @@ export interface PatternEventPlan {
  * Realtime and offline rendering both use this helper so loop boundaries and
  * note timing cannot drift between playback and export.
  *
- * Slide notes (FL portamento): a `slide:true` note carries `slideFrom` with
- * the previous non-slide note's pitch + absolute tick (sorted by start), so
- * the runtime glides between the two. Live and offline produce identical glides.
+ * Portamento notes carry `slideFrom` with the previous attacked note's pitch
+ * and absolute tick. FL slide notes are separate pitch-only events and keep
+ * their own articulation flag for the scheduler. Live and offline share both.
  */
 export function noteEventsInWindow(
   pattern: Pattern,
@@ -94,9 +94,9 @@ export function noteEventsInWindow(
       sorted = [...notes].sort((a, b) => a.start - b.start);
       sortedNotesCache.set(notes, sorted);
     }
-    // lastNonSlide holds (pitch, absoluteTick) of the most recent non-slide note,
+    // lastAttacked holds (pitch, absoluteTick) of the most recent attacked note,
     // crossing pattern loops (previous cycle wraps as the slide source).
-    let lastNonSlide: { pitch: number; tick: number } | null = null;
+    let lastAttacked: { pitch: number; tick: number } | null = null;
     for (let cycle = Math.floor(Math.max(0, fromTick - base) / patternTicks) - 1; ; cycle++) {
       if (cycle < 0) cycle = 0;
       let anyInWindow = false;
@@ -110,8 +110,8 @@ export function noteEventsInWindow(
               trackId,
               note,
               tick,
-              ...(note.slide && lastNonSlide
-                ? { slideFrom: { pitch: lastNonSlide.pitch, tick: lastNonSlide.tick } }
+              ...(note.slide && lastAttacked
+                ? { slideFrom: { pitch: lastAttacked.pitch, tick: lastAttacked.tick } }
                 : note.slide
                   ? {}
                   : {}),
@@ -120,8 +120,8 @@ export function noteEventsInWindow(
           }
           if (tick < fromTick || tick >= fromTick) {
             // Track the last non-slide note (its end is the glide origin)
-            if (!note.slide)
-              lastNonSlide = {
+            if (!note.slide && !note.slideNote)
+              lastAttacked = {
                 pitch: note.pitch + (note.expression?.pitchOffsetSemitones ?? 0),
                 tick: tick + note.duration,
               };

@@ -71,6 +71,12 @@ describe("recording input selection", () => {
     await expect(listRecordingInputDevices(null)).resolves.toEqual([]);
   });
 
+  it("degrades safely when device enumeration is denied", async () => {
+    await expect(
+      listRecordingInputDevices({ enumerateDevices: () => Promise.reject(new Error("denied")) }),
+    ).resolves.toEqual([]);
+  });
+
   it("persists the input trim in dB and falls back to 0 dB", () => {
     const values = new Map<string, string>();
     const storage: Storage = {

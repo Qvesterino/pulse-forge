@@ -163,7 +163,17 @@ import {
   isAttentiveModeEnabled,
   setAttentiveModeEnabled,
 } from "../intent/attentive-mode";
-import { noteCandidateUse, noteIntentProposal } from "../intent/reaction-bridge";
+import { noteCandidateUse, noteIntentProposal, describeIntentAction } from "../intent/reaction-bridge";
+import {
+  clearTape,
+  markTapeAbandonedAfter,
+  recordTapeStep,
+  rewindTargetFor,
+  tapeSteps,
+  type TapeOutcome,
+  type TapeStep,
+} from "../intent/session-tape";
+import { sanitizeAction } from "../intent/reaction-ledger";
 import { activeReactionLedger, isReactionLedgerEnabled, setReactionLedgerEnabled } from "../intent/reaction-ledger";
 import { buildReactionReport, topRejections, type ReactionReport } from "../intent/reaction-learning";
 import { applyLoudnessIntent, measurePreviewLoudness } from "../intent/loudness";
@@ -385,6 +395,21 @@ const AudiotoolNexusExport = lazy(() =>
 /** B1: a `?regen=1` arrival auto-runs exactly one generation per page load —
     StrictMode must not double-fire it. */
 let regenAutoRan = false;
+
+/** Session-tape row glyphs — one per outcome, so the journal scans at a glance. */
+const TAPE_GLYPH: Record<TapeOutcome, string> = {
+  applied: "✎",
+  "applied-candidate": "★",
+  generated: "⚡",
+  clarify: "?",
+  failed: "!",
+};
+
+function tapeStepTitle(step: TapeStep): string {
+  const when = new Date(step.at).toLocaleTimeString();
+  const state = step.abandoned ? " · detached" : "";
+  return `${step.outcome} · ${step.routeKind}${step.detail ? ` · ${step.detail}` : ""} · ${when}${state} — click to rewind the session to this point`;
+}
 const BRIEF_CONFLICT_BLOCK_MESSAGE =
   "Zadanie si protirečí. Uprav konfliktné požiadavky v texte alebo odstráň ochranný čip pred generovaním.";
 
@@ -704,6 +729,28 @@ export function IntentPanel() {
     const enabled = isReactionLedgerEnabled();
     const ledger = enabled ? activeReactionLedger() : null;
     setReaction({ enabled, report: ledger ? buildReactionReport(ledger.entries()) : null });
+  };
+  /**
+   * SESSION TAPE rewind — Cubase-style history jump to the state a step left
+   * behind (`jumpTo` is itself redoable, so this is a branch, not a delete).
+   * Later steps are marked detached because they ran on a branch that is no
+   * longer current; the undo it performs also settles applied proposals as
+   * rejected in the reaction ledger, which is correct — a rewind IS a
+   * rejection of everything it rolls back.
+   */
+  const rewindTapeTo = (step: TapeStep) => {
+    const target = rewindTargetFor(step, services.store.undoStackLength);
+    if ("refusal" in target) {
+      setError(target.refusal);
+      return;
+    }
+    services.store.jumpTo(target.index);
+    const detached = markTapeAbandonedAfter(step.id);
+    refreshReaction();
+    setHistoryTick((tick) => tick + 1);
+    setStatus(
+      `⟲ rewound to "${step.prompt || step.routeKind}"${detached > 0 ? ` — ${detached} later step(s) detached (Ctrl+Y redoes)` : ""}`,
+    );
   };
   const toggleReactionLedger = () => {
     setReactionLedgerEnabled(!reaction.enabled);
@@ -1213,6 +1260,21 @@ export function IntentPanel() {
           ? `✓ ${count} candidates — ▶ to audition, USE to apply`
           : `✓ pattern generated (${rankerModeLabel()})`,
       );
+      // SESSION TAPE: the generation itself is a step (nothing applied yet, so
+      // it has no rewind depth — the row exists to show the session's shape).
+      recordTapeStep({
+        doc,
+        prompt: promptText,
+        outcome: "generated",
+        routeKind: "generation",
+        action: "generate:pattern:abs",
+        detail: count > 0 ? `${count} candidates` : "single result",
+        undoDepthAfter: null,
+        ...(result.selection?.rerankGenerationId !== undefined
+          ? { generationId: result.selection.rerankGenerationId }
+          : {}),
+      });
+      setHistoryTick((tick) => tick + 1);
     } catch (err) {
       if (controller.signal.aborted) return;
       setError(err instanceof Error ? err.message : String(err));
@@ -1652,12 +1714,35 @@ export function IntentPanel() {
     }
     services.store.endUndoFrame();
     const appliedCandidateIndex = candidate ? candidate.candidateIndex : (bankResult?.selection?.selectedIndex ?? null);
-    noteCandidateUse(doc, services.store.getDoc(), undoDepthBeforeUse, {
+    const useRegistration = noteCandidateUse(doc, services.store.getDoc(), undoDepthBeforeUse, {
       ...(bankResult?.selection?.rerankGenerationId !== undefined
         ? { generationId: bankResult.selection.rerankGenerationId }
         : {}),
       ...(appliedCandidateIndex !== null ? { candidateIndex: appliedCandidateIndex } : {}),
     });
+    // SESSION TAPE: the applied candidate is a step like any other — including
+    // the prompt that produced the bank, so the tape reads like the session
+    // actually went.
+    const tapeDetail =
+      appliedCandidateIndex !== null
+        ? `candidate #${appliedCandidateIndex + 1}`
+        : useRegistration === "disabled"
+          ? "learning ledger off"
+          : undefined;
+    recordTapeStep({
+      doc: services.store.getDoc(),
+      prompt: lastGeneration()?.text ?? text,
+      outcome: "applied-candidate",
+      routeKind: "candidateUse",
+      action: "generate:pattern:abs",
+      ...(tapeDetail !== undefined ? { detail: tapeDetail } : {}),
+      undoDepthAfter: services.store.undoStackLength,
+      ...(bankResult?.selection?.rerankGenerationId !== undefined
+        ? { generationId: bankResult.selection.rerankGenerationId }
+        : {}),
+      ...(appliedCandidateIndex !== null ? { candidateIndex: appliedCandidateIndex } : {}),
+    });
+    setHistoryTick((tick) => tick + 1);
     refreshReaction();
     const parentContentHash = iterationReferencePattern
       ? contentHash(canonicalizePattern(doc, iterationReferencePattern))
@@ -4679,6 +4764,18 @@ export function IntentPanel() {
           prompt: source,
         });
         logIntentMiningEvent({ prompt: source, outcome: "clarify", reason: route.reason });
+        // SESSION TAPE: a clarify is a step of the session too — the journal
+        // should show the asks that needed disambiguation, not only the wins.
+        recordTapeStep({
+          doc,
+          prompt: source,
+          outcome: "clarify",
+          routeKind: "clarify",
+          action: "clarify",
+          detail: route.reason,
+          undoDepthAfter: null,
+        });
+        setHistoryTick((tick) => tick + 1);
         setStatus(route.reason);
       } else {
         // The registered local model is trained for editor actions, not for
@@ -4744,7 +4841,28 @@ export function IntentPanel() {
     } finally {
       setRouteBusy(false);
       if (executedRoute && !delegatedToNestedRoute) {
-        noteIntentProposal(executedRoute, docBeforeRoute, services.store.getDoc(), undoDepthBeforeRoute);
+        const registration = noteIntentProposal(
+          executedRoute,
+          docBeforeRoute,
+          services.store.getDoc(),
+          undoDepthBeforeRoute,
+        );
+        // SESSION TAPE: journal the step unless the command provably changed
+        // nothing. With the learning ledger off ("disabled") the no-op filter
+        // cannot run (zero-cost contract), so the step is journalled anyway —
+        // the tape must not depend on that feature being on.
+        if (registration !== "noop") {
+          recordTapeStep({
+            doc: services.store.getDoc(),
+            prompt: source,
+            outcome: "applied",
+            routeKind: executedRoute.kind,
+            action: sanitizeAction(describeIntentAction(executedRoute)),
+            ...(registration === "disabled" ? { detail: "learning ledger off" } : {}),
+            undoDepthAfter: services.store.undoStackLength,
+          });
+          setHistoryTick((tick) => tick + 1);
+        }
         refreshReaction();
       }
     }
@@ -5116,6 +5234,38 @@ export function IntentPanel() {
                 {entry.text.length > 42 ? entry.text.slice(0, 40) + "…" : entry.text}
               </button>
             ))}
+        </div>
+      )}
+      {tapeSteps().length > 0 && (
+        <div className="intent-history" aria-label="Session tape">
+          <span className="intent-history-label">TAPE</span>
+          {tapeSteps()
+            .slice(0, 6)
+            .map((step) => (
+              <button
+                key={step.id}
+                type="button"
+                className="intent-history-chip"
+                style={step.abandoned ? { opacity: 0.55, textDecoration: "line-through" } : undefined}
+                disabled={routeBusy || busy || songBusy || theatreBusy || mutateBusy}
+                title={tapeStepTitle(step)}
+                onClick={() => rewindTapeTo(step)}
+              >
+                {TAPE_GLYPH[step.outcome]}{" "}
+                {step.prompt.length > 30 ? `${step.prompt.slice(0, 28)}…` : step.prompt || step.routeKind}
+              </button>
+            ))}
+          <button
+            type="button"
+            className="intent-history-chip"
+            title="Clear the session journal"
+            onClick={() => {
+              clearTape();
+              setHistoryTick((tick) => tick + 1);
+            }}
+          >
+            ×
+          </button>
         </div>
       )}
       {detectedText && (

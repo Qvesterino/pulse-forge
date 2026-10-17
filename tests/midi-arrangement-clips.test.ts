@@ -90,6 +90,33 @@ describe("independent MIDI arrangement clips", () => {
     expect(command.undo(extended).arrangement.midiClips![0]!.lengthTicks).toBe(BAR_TICKS);
   });
 
+  it("keeps slide-note pitch bends separate from legacy portamento origins", () => {
+    const { doc, trackId, patternId } = projectWithMelody();
+    const pattern = doc.patterns.find((candidate) => candidate.id === patternId)!;
+    const notes = [
+      { id: "origin", pitch: 36, start: 0, duration: STEP_TICKS * 4, velocity: 0.9 },
+      { id: "bend", pitch: 40, start: STEP_TICKS * 2, duration: STEP_TICKS, velocity: 0.8, slideNote: true },
+      { id: "portamento", pitch: 43, start: STEP_TICKS * 4, duration: STEP_TICKS * 2, velocity: 0.7, slide: true },
+    ];
+
+    const events = noteEventsInWindow(
+      { ...pattern, notes: { ...pattern.notes, [trackId]: notes } },
+      0,
+      0,
+      STEP_TICKS * 8,
+      trackId,
+    );
+
+    expect(events.find((event) => event.note.id === "bend")).toMatchObject({
+      tick: STEP_TICKS * 2,
+      note: { slideNote: true },
+    });
+    expect(events.find((event) => event.note.id === "portamento")).toMatchObject({
+      tick: STEP_TICKS * 4,
+      slideFrom: { pitch: 36, tick: STEP_TICKS * 4 },
+    });
+  });
+
   it("keeps duration when moving near the end cap and preserves phase through trim and split", () => {
     const { doc, trackId, patternId } = projectWithMelody();
     const add = addMidiClip(doc, trackId, patternId, 0, BAR_TICKS * 2);

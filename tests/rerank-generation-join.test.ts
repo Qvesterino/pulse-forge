@@ -50,7 +50,6 @@ const options: GenerateOptions = {
   replaceMode: "new",
   applyGrooveSettings: false,
   candidateCount: 4,
-  symbolicCandidates: 0,
 };
 
 beforeEach(() => {

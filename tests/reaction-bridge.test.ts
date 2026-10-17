@@ -325,8 +325,12 @@ describe("F1 glue — the panel wiring", () => {
 
   it("registers with the pre-apply depth and a separate before-document", () => {
     expect(source).toContain("const undoDepthBeforeRoute = services.store.undoStackLength;");
-    expect(source).toContain(
-      "noteIntentProposal(executedRoute, docBeforeRoute, services.store.getDoc(), undoDepthBeforeRoute)",
+    // Whitespace-tolerant: the call is now bound to a variable (the session
+    // tape journals its outcome), and Prettier owns the line breaks — pinning
+    // the exact single-line spelling made this assertion fail for a reformat
+    // rather than for a behavior change.
+    expect(source).toMatch(
+      /noteIntentProposal\(\s*executedRoute,\s*docBeforeRoute,\s*services\.store\.getDoc\(\),\s*undoDepthBeforeRoute,?\s*\)/,
     );
   });
 

@@ -1,5 +1,6 @@
 import type { InstrumentDefinition, InstrumentRuntime } from "./types";
-import type { InstrumentKind, InstrumentTrack, SampleLayer } from "../project-model/types";
+import { noteExpressionTargetsForInstrument } from "./noteExpressionCapabilities";
+import type { InstrumentKind, InstrumentTrack, NoteExpression, SampleLayer } from "../project-model/types";
 import { midiToFreq } from "../project-model/types";
 import { hashString, mulberry32 } from "../shared/rng";
 import { buildWavetableMips, extractWavetable, FACTORY_WAVETABLES, FRAME_SIZE, pickMipLevel } from "./wavetables";
@@ -136,6 +137,85 @@ function dbToLin(db: number): number {
   return Math.pow(10, db / 20);
 }
 
+/** Map FL's centered 0..1 Mod X value to a voice cutoff around its instrument base. */
+function noteModXCutoff(value: number, baseHz: number): number {
+  const mod = Math.max(0, Math.min(1, value));
+  if (mod === 0.5) return baseHz;
+  const base = Math.max(80, Math.min(16000, baseHz));
+  const ratio = mod <= 0.5 ? mod * 2 : (mod - 0.5) * 2;
+  const low = Math.log(80);
+  const center = Math.log(base);
+  const high = Math.log(16000);
+  return Math.exp(mod <= 0.5 ? low + ratio * (center - low) : center + ratio * (high - center));
+}
+
+/** Mod Y is centered on the voice's ordinary resonance and spans the safe Q range. */
+function noteModYResonance(value: number, baseQ: number): number {
+  const mod = Math.max(0, Math.min(1, value));
+  if (mod === 0.5) return baseQ;
+  const base = Math.max(0.1, Math.min(8, baseQ));
+  const ratio = mod <= 0.5 ? mod * 2 : (mod - 0.5) * 2;
+  const low = Math.log(0.1);
+  const center = Math.log(base);
+  const high = Math.log(8);
+  return Math.exp(mod <= 0.5 ? low + ratio * (center - low) : center + ratio * (high - center));
+}
+
+function noteFilterModulation(
+  expression: NoteExpression | undefined,
+  baseCutoff: number,
+  baseResonance: number,
+): { cutoff: number; resonance: number } {
+  return {
+    cutoff:
+      expression?.filterCutoffHz !== undefined
+        ? Math.max(80, Math.min(16000, expression.filterCutoffHz))
+        : expression?.modX === undefined
+          ? baseCutoff
+          : noteModXCutoff(expression.modX, baseCutoff),
+    resonance:
+      expression?.filterResonance !== undefined
+        ? 0.1 + Math.max(0, Math.min(1, expression.filterResonance)) * 7.9
+        : expression?.modY === undefined
+          ? baseResonance
+          : noteModYResonance(expression.modY, baseResonance),
+  };
+}
+
+/** Scale the note-off envelope around its authored release; 0.5 is neutral. */
+function noteReleaseTime(expression: NoteExpression | undefined, baseSeconds: number): number {
+  const value = expression?.releaseVelocity;
+  if (value === undefined) return baseSeconds;
+  const velocity = Math.max(0, Math.min(1, value));
+  if (velocity === 0.5) return baseSeconds;
+  return Math.max(0.005, baseSeconds * (0.25 + velocity * 1.5));
+}
+
+function notePanValue(expression: NoteExpression | undefined): number {
+  const value = expression?.pan;
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
+}
+
+/** Route one voice through a panner only when its note has a non-neutral pan event. */
+function connectNotePan(
+  ctx: BaseAudioContext,
+  input: AudioNode,
+  output: AudioNode,
+  when: number,
+  expression?: NoteExpression,
+  forcePanner = false,
+): StereoPannerNode | null {
+  const pan = notePanValue(expression);
+  if (pan === 0 && !forcePanner) {
+    input.connect(output);
+    return null;
+  }
+  const panner = ctx.createStereoPanner();
+  panner.pan.setValueAtTime(pan, when);
+  input.connect(panner).connect(output);
+  return panner;
+}
+
 /**
  * Analog drift — a slow, seeded detune wander wired into the oscillator's
  * detune input. This is THE Serum/Omnisphere "alive" ingredient every static
@@ -172,10 +252,28 @@ function addOscDrift(
 
 interface Voice {
   pitch: number;
+  /** Original key held by the event, preserved when slide notes change sounding pitch. */
+  sourcePitch?: number;
   stopAt: number;
-  slideToPitch?(pitch: number, when: number, durationSec: number): boolean;
+  startAt?: number;
+  heldUntil?: number;
+  slideToPitch?(pitch: number, when: number, durationSec: number, expression?: NoteExpression): boolean;
   stop(when: number): void;
   silence(now: number): void;
+}
+
+interface ExponentialFrequencyRamp {
+  startAt: number;
+  endAt: number;
+  startHz: number;
+  endHz: number;
+}
+
+function frequencyAtTime(ramp: ExponentialFrequencyRamp, when: number): number {
+  if (when <= ramp.startAt) return ramp.startHz;
+  if (when >= ramp.endAt || ramp.endAt <= ramp.startAt) return ramp.endHz;
+  const progress = (when - ramp.startAt) / (ramp.endAt - ramp.startAt);
+  return ramp.startHz * Math.pow(ramp.endHz / ramp.startHz, progress);
 }
 
 function makeVoiceManager(limit: number) {
@@ -338,12 +436,12 @@ const analog: InstrumentDefinition = {
     const runtime: InstrumentRuntime & { lastFreq: number | null } = {
       lastFreq: null,
       output,
-      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom, expression) {
         const freq = midiToFreq(pitch);
         const attack = Math.max(0.002, p.attack ?? 0.01);
         const decay = Math.max(0.02, p.decay ?? 0.25);
         const sustain = Math.max(0, Math.min(1, p.sustain ?? 0.7));
-        const release = Math.max(0.01, p.release ?? 0.2);
+        const release = noteReleaseTime(expression, Math.max(0.01, p.release ?? 0.2));
         const hold = Math.max(durationSec, attack + 0.01);
         const off = when + hold;
         const stopTime = off + release * 2 + 0.1;
@@ -369,23 +467,19 @@ const analog: InstrumentDefinition = {
           releaseTauDiv: 4,
           finalAnchor: false,
         });
-        amp.connect(output);
+        connectNotePan(ctx, amp, output, when, expression);
 
         const filterMode = Math.max(0, Math.min(2, Math.round(p.mode ?? 0)));
-        const filter = createVoiceFilter(
-          ctx,
-          effCutoff(p.cutoff ?? 9000, pitch),
-          p.resonance ?? 1,
-          filterMode,
-          p.drive ?? 0,
-        );
+        const baseCutoff = effCutoff(p.cutoff ?? 9000, pitch);
+        const filterMod = noteFilterModulation(expression, baseCutoff, p.resonance ?? 1);
+        const filter = createVoiceFilter(ctx, filterMod.cutoff, filterMod.resonance, filterMode, p.drive ?? 0);
         liveFilters.set(filter, pitch);
-        const base = effCutoff(p.cutoff ?? 9000, pitch);
+        const base = filterMod.cutoff;
         const peakCut = Math.min(18000, base + (p.filterEnv ?? 0.3) * velocity * 6000);
         filter.frequency.setValueAtTime(Math.max(40, base * 0.6), when);
         filter.frequency.linearRampToValueAtTime(peakCut, when + attack);
         filter.frequency.setTargetAtTime(base, when + attack, decay / 3);
-        setFilterResonance(filter, p.resonance ?? 1);
+        setFilterResonance(filter, filterMod.resonance);
         filter.output.connect(amp);
 
         // Mod matrix (ENV/LFO/VEL/PRESS -> CUTOFF/AMP) — see modmatrix.ts.
@@ -648,12 +742,12 @@ const bass: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom, expression) {
         const freq = midiToFreq(pitch);
         const width = p.width ?? 0.2;
         const hold = Math.max(durationSec, 0.03);
         const off = when + hold;
-        const release = 0.1;
+        const release = noteReleaseTime(expression, 0.1);
         const stopTime = off + release * 2 + 0.1;
         const level = velocity * dbToLin(p.level ?? -6);
 
@@ -668,7 +762,7 @@ const bass: InstrumentDefinition = {
         shaper.oversample = "4x";
         shaper.curve =
           distType === 2 ? hardClipCurve(grit) : distType === 1 ? tubeCurve(grit) : tanhCurve(1 + grit * 8);
-        shaper.connect(output);
+        connectNotePan(ctx, shaper, output, when, expression);
 
         const amp = ctx.createGain();
         if (slideOn && glide > 0.002 && slideFrom) {
@@ -685,22 +779,18 @@ const bass: InstrumentDefinition = {
         amp.connect(shaper);
 
         const filterMode = Math.max(0, Math.min(2, Math.round(p.mode ?? 0)));
-        const filter = createVoiceFilter(
-          ctx,
-          effCutoff(p.cutoff ?? 700, pitch),
-          p.resonance ?? 1.2,
-          filterMode,
-          p.drive ?? 0,
-        );
+        const baseCutoff = effCutoff(p.cutoff ?? 700, pitch);
+        const filterMod = noteFilterModulation(expression, baseCutoff, p.resonance ?? 1.2);
+        const filter = createVoiceFilter(ctx, filterMod.cutoff, filterMod.resonance, filterMode, p.drive ?? 0);
         liveFilters.set(filter, pitch);
-        const base = effCutoff(p.cutoff ?? 700, pitch);
+        const base = filterMod.cutoff;
         const punch = p.punch ?? 0.5;
         // Sweet-spot: punch now gives tighter 200-2600 range (was 400-4000, too wild)
         const peakCut = Math.min(6500, base + 200 + punch * 2400 * Math.pow(velocity, 0.6));
         filter.frequency.setValueAtTime(Math.max(50, base), when);
         filter.frequency.linearRampToValueAtTime(peakCut, when + 0.005);
         filter.frequency.setTargetAtTime(base, when + 0.005, (0.12 + punch * 0.14) / 1);
-        setFilterResonance(filter, p.resonance ?? 1.2);
+        setFilterResonance(filter, filterMod.resonance);
         filter.output.connect(amp);
 
         // Mod matrix (ENV/LFO/VEL/PRESS -> CUTOFF/AMP) — see modmatrix.ts.
@@ -971,8 +1061,7 @@ const bass808: InstrumentDefinition = {
         // The per-note release control follows FL's 0..1 note-event range.
         // 0.5 leaves the preset response unchanged; faster/slower values scale
         // the gated tail around that midpoint for this envelope-based voice.
-        const releaseVelocity = Math.max(0, Math.min(1, expression?.releaseVelocity ?? 0.5));
-        const releaseSec = decay * (0.25 + releaseVelocity * 1.5);
+        const releaseSec = noteReleaseTime(expression, decay);
         const drop = p.pitchDrop ?? 0.4;
         // PUNCH: the modern-trap beater — the pitch envelope starts N
         // semitones ABOVE the target and snaps down in P-TIME, so the 808
@@ -1018,20 +1107,27 @@ const bass808: InstrumentDefinition = {
 
         const toneFilter = ctx.createBiquadFilter();
         toneFilter.type = "lowpass";
-        toneFilter.frequency.value = expression?.filterCutoffHz ?? Math.max(120, toneHz);
-        toneFilter.Q.value = expression?.filterResonance !== undefined ? 0.1 + expression.filterResonance * 7.9 : 0.7;
+        const noteCutoffBase = Math.max(120, toneHz);
+        const noteResonanceBase = 0.7;
+        toneFilter.frequency.value =
+          expression?.filterCutoffHz ??
+          (expression?.modX !== undefined ? noteModXCutoff(expression.modX, noteCutoffBase) : noteCutoffBase);
+        toneFilter.Q.value =
+          expression?.filterResonance !== undefined
+            ? 0.1 + expression.filterResonance * 7.9
+            : expression?.modY !== undefined
+              ? noteModYResonance(expression.modY, noteResonanceBase)
+              : noteResonanceBase;
         toneFilter.connect(pre);
         // The shared shaper feeds every live voice's post — no rewiring here.
         // (It used to disconnect() the shaper per note, hard-cutting the
         // previous voice's release tail; each voice now removes its own post
         // in onended instead of accumulating connections on `output` forever.)
         shaper.connect(post);
-        const notePanner = expression?.pan !== undefined ? ctx.createStereoPanner() : null;
-        if (notePanner) {
-          notePanner.pan.setValueAtTime(Math.max(-1, Math.min(1, expression?.pan ?? 0)), when);
-          notePanner.connect(output);
-        }
-        const voiceOutput: AudioNode = notePanner ?? output;
+        const notePanner = ctx.createStereoPanner();
+        notePanner.pan.setValueAtTime(Math.max(-1, Math.min(1, expression?.pan ?? 0)), when);
+        notePanner.connect(output);
+        const voiceOutput: AudioNode = notePanner;
 
         // Mod matrix (ENV/LFO/VEL/PRESS -> CUTOFF/AMP) — see modmatrix.ts.
         // CUTOFF steers the per-voice tone lowpass; AMP sits after `post`
@@ -1192,7 +1288,7 @@ const bass808: InstrumentDefinition = {
         const voice: Voice = {
           pitch,
           stopAt: stopTime,
-          slideToPitch: (targetPitch, slideWhen, slideDurationSec) => {
+          slideToPitch: (targetPitch, slideWhen, slideDurationSec, slideExpression) => {
             if (current !== voice || !mono || slideWhen >= off) return false;
             const fromFreq = midiToFreq(voice.pitch);
             const targetFreq = midiToFreq(targetPitch);
@@ -1209,36 +1305,58 @@ const bass808: InstrumentDefinition = {
             schedulePitch(osc, 0);
             schedulePitch(subOsc, -12);
             schedulePitch(gritOsc, 0);
+            if (slideExpression?.pan !== undefined)
+              notePanner.pan.setTargetAtTime(Math.max(-1, Math.min(1, slideExpression.pan)), slideWhen, 0.01);
+            if (slideExpression?.filterCutoffHz !== undefined)
+              toneFilter.frequency.setTargetAtTime(
+                Math.max(80, Math.min(16000, slideExpression.filterCutoffHz)),
+                slideWhen,
+                0.01,
+              );
+            else if (slideExpression?.modX !== undefined)
+              toneFilter.frequency.setTargetAtTime(
+                noteModXCutoff(slideExpression.modX, noteCutoffBase),
+                slideWhen,
+                0.01,
+              );
+            if (slideExpression?.filterResonance !== undefined)
+              toneFilter.Q.setTargetAtTime(
+                0.1 + Math.max(0, Math.min(1, slideExpression.filterResonance)) * 7.9,
+                slideWhen,
+                0.01,
+              );
+            else if (slideExpression?.modY !== undefined)
+              toneFilter.Q.setTargetAtTime(noteModYResonance(slideExpression.modY, noteResonanceBase), slideWhen, 0.01);
             voice.pitch = targetPitch;
             return true;
           },
           stop: (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
-            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            amp.gain.setTargetAtTime(0.0001, t, Math.max(0.005, releaseSec / 3));
             if (subGain) {
               subGain.gain.cancelScheduledValues(t);
-              subGain.gain.setTargetAtTime(0.0001, t, 0.01);
+              subGain.gain.setTargetAtTime(0.0001, t, Math.max(0.005, releaseSec / 3));
             }
             if (gritGain) {
               gritGain.gain.cancelScheduledValues(t);
-              gritGain.gain.setTargetAtTime(0.0001, t, 0.01);
+              gritGain.gain.setTargetAtTime(0.0001, t, Math.max(0.005, releaseSec / 5));
             }
             try {
-              osc.stop(t + 0.06);
+              osc.stop(t + Math.max(0.06, releaseSec * 3 + 0.1));
             } catch {
               /* already stopped */
             }
             if (subOsc) {
               try {
-                subOsc.stop(t + 0.06);
+                subOsc.stop(t + Math.max(0.06, releaseSec * 3 + 0.1));
               } catch {
                 /* already stopped */
               }
             }
             if (gritOsc) {
               try {
-                gritOsc.stop(t + 0.06);
+                gritOsc.stop(t + Math.max(0.06, releaseSec * 3 + 0.1));
               } catch {
                 /* already stopped */
               }
@@ -1287,7 +1405,7 @@ const bass808: InstrumentDefinition = {
             /* already */
           }
           post.disconnect();
-          notePanner?.disconnect();
+          notePanner.disconnect();
           mod?.dispose();
           liveMods.delete(toneFilter);
           if (subOsc) {
@@ -1335,8 +1453,8 @@ const bass808: InstrumentDefinition = {
         current?.stop(when);
         current = null;
       },
-      noteSlide(pitch, when, durationSec) {
-        current?.slideToPitch?.(pitch, when, durationSec);
+      noteSlide(pitch, when, durationSec, expression) {
+        current?.slideToPitch?.(pitch, when, durationSec, expression);
       },
       panic() {
         current?.silence(ctx.currentTime);
@@ -1470,7 +1588,7 @@ const sampler: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom, expression) {
         // Velocity layers: pick the layer whose window contains the note's
         // velocity; overlapping windows round-robin through the candidates
         // (deterministic counter). No match — or no layers — falls back to
@@ -1503,7 +1621,7 @@ const sampler: InstrumentDefinition = {
         if (!buffer) return;
         const root = Math.round(layerRoot ?? p.root ?? 60);
         const attack = Math.max(0.001, p.attack ?? 0.003);
-        const release = Math.max(0.01, p.release ?? 0.12);
+        const release = noteReleaseTime(expression, Math.max(0.01, p.release ?? 0.12));
         const hold = Math.max(durationSec, attack + 0.01);
         const off = when + hold;
         const stopTime = off + release * 3 + 0.05;
@@ -1537,15 +1655,12 @@ const sampler: InstrumentDefinition = {
           amp.gain.exponentialRampToValueAtTime(Math.max(peak * sustain, 0.0002), decayEnd);
         }
         amp.gain.setTargetAtTime(0.0001, Math.max(off, decayEnd), release / 3);
-        amp.connect(output);
+        connectNotePan(ctx, amp, output, when, expression);
 
         const filterMode = Math.max(0, Math.min(2, Math.round(p.mode ?? 0)));
-        const filter = createVoiceFilter(
-          ctx,
-          cutoffFor(p.cutoff ?? 15000, velocity, pitch),
-          p.resonance ?? 0.7,
-          filterMode,
-        );
+        const baseCutoff = cutoffFor(p.cutoff ?? 15000, velocity, pitch);
+        const filterMod = noteFilterModulation(expression, baseCutoff, p.resonance ?? 0.7);
+        const filter = createVoiceFilter(ctx, filterMod.cutoff, filterMod.resonance, filterMode);
         filter.output.connect(amp);
         liveFilters.set(filter, { vel: velocity, pitch });
 
@@ -1558,7 +1673,7 @@ const sampler: InstrumentDefinition = {
           off,
           release,
           cutoffParam: filter.frequency,
-          cutoffBase: cutoffFor(p.cutoff ?? 15000, velocity, pitch),
+          cutoffBase: filterMod.cutoff,
         });
         liveMods.set(filter, mod);
         if (mod?.ampNode) {
@@ -1896,7 +2011,7 @@ const texture: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec) {
+      noteOn(pitch, velocity, when, durationSec, _slideFrom, expression) {
         const freq = midiToFreq(pitch);
         const color = p.color ?? 0.5;
         const density = p.density ?? 0.7;
@@ -1906,6 +2021,7 @@ const texture: InstrumentDefinition = {
         const level = velocity * dbToLin(p.level ?? -10);
         const filterFreq = 200 * Math.pow(15, color);
         const filterQ = 0.5 + textureVal * 7.5;
+        const filterMod = noteFilterModulation(expression, filterFreq, filterQ);
         const useSaw = textureVal > 0.5;
         const attack = Math.max(0.01, Math.min(3, p.attack ?? 0.5));
         // GATE=Hold (default): HOLD is a minimum body time so short notes keep
@@ -1914,8 +2030,9 @@ const texture: InstrumentDefinition = {
         const strictGate = (p.gate ?? 0) > 0.5;
         const holdFloor = strictGate ? attack + 0.05 : Math.max(0, p.hold ?? 1.5);
         const hold = Math.max(durationSec, holdFloor);
-        const releaseTc = Math.max(0.05, Math.min(4, p.release ?? 0.6));
-        const stopTime = when + hold + Math.max(1.2, releaseTc * 2) + 0.1;
+        const releaseTc = noteReleaseTime(expression, Math.max(0.05, Math.min(4, p.release ?? 0.6)));
+        const releaseTailSec = releaseTc * 3 + 0.1;
+        const stopTime = when + hold + Math.max(1.2, releaseTailSec);
 
         // The shared LFO clock starts anchored to the first note's `when` —
         // deterministic phase (see the determinism contract above).
@@ -1927,14 +2044,16 @@ const texture: InstrumentDefinition = {
 
         // Voice pan (LFO3 drift) -> voice amp -> sum
         const voicePan = ctx.createStereoPanner();
-        voicePan.pan.value = 0;
+        voicePan.pan.setValueAtTime(notePanValue(expression), when);
         voicePan.connect(sum);
         const voiceGain = ctx.createGain();
         voiceGain.gain.setValueAtTime(0.0001, when);
         voiceGain.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + attack);
         voiceGain.gain.setTargetAtTime(Math.max(level * 0.75, 0.0002), when + attack, 0.5);
         voiceGain.gain.setTargetAtTime(0.0001, when + hold + 0.05, releaseTc);
-        voiceGain.connect(voicePan);
+        const tremoloGain = ctx.createGain();
+        tremoloGain.gain.value = 1;
+        voiceGain.connect(tremoloGain).connect(voicePan);
 
         // Per-voice LFO3 amp tremolo (subtle breathing) + stereo drift
         const lfo3 = ctx.createOscillator();
@@ -1942,7 +2061,7 @@ const texture: InstrumentDefinition = {
         lfo3.frequency.value = 0.31 + Math.abs(Math.sin((chaosSeed + pitch) * 0.13)) * 0.4;
         const lfo3Depth = ctx.createGain();
         lfo3Depth.gain.value = 0.25 * (0.3 + motion * 0.7);
-        lfo3.connect(lfo3Depth).connect(voiceGain.gain);
+        lfo3.connect(lfo3Depth).connect(tremoloGain.gain);
         const lfo3PanDepth = ctx.createGain();
         lfo3PanDepth.gain.value = 0.35 * drift;
         lfo3.connect(lfo3PanDepth).connect(voicePan.pan);
@@ -1952,8 +2071,8 @@ const texture: InstrumentDefinition = {
         // Bandpass for the noise stream, modulated by shared LFO1
         const bandpass = ctx.createBiquadFilter();
         bandpass.type = "bandpass";
-        bandpass.frequency.setValueAtTime(filterFreq, when);
-        bandpass.Q.value = filterQ;
+        bandpass.frequency.setValueAtTime(filterMod.cutoff, when);
+        bandpass.Q.value = filterMod.resonance;
         lfo1Depth.connect(bandpass.frequency);
         bandpass.connect(voiceGain);
 
@@ -1968,12 +2087,12 @@ const texture: InstrumentDefinition = {
           off: when + hold,
           release: releaseTc,
           cutoffParam: bandpass.frequency,
-          cutoffBase: filterFreq,
+          cutoffBase: filterMod.cutoff,
         });
         liveMods.set(bandpass, mod);
         if (mod?.ampNode) {
-          voiceGain.disconnect(voicePan);
-          voiceGain.connect(mod.ampNode).connect(voicePan);
+          voiceGain.disconnect(tremoloGain);
+          voiceGain.connect(mod.ampNode).connect(tremoloGain);
         }
 
         // Filtered noise
@@ -2017,10 +2136,10 @@ const texture: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             voiceGain.gain.cancelScheduledValues(t);
-            voiceGain.gain.setTargetAtTime(0.0001, t, Math.min(0.3, releaseTc));
+            voiceGain.gain.setTargetAtTime(0.0001, t, releaseTc);
             for (const osc of [...oscs, lfo3, noise]) {
               try {
-                osc.stop(t + 0.1);
+                osc.stop(t + releaseTailSec);
               } catch {
                 /* already stopped */
               }
@@ -2050,6 +2169,11 @@ const texture: InstrumentDefinition = {
           }
           try {
             voiceGain.disconnect();
+          } catch {
+            /* already disconnected */
+          }
+          try {
+            tremoloGain.disconnect();
           } catch {
             /* already disconnected */
           }
@@ -2218,7 +2342,7 @@ const wavetable: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec) {
+      noteOn(pitch, velocity, when, durationSec, _slideFrom, expression) {
         const freq = midiToFreq(pitch);
         const allLevels = ensureFrames();
         if (!allLevels || !frameKs) return;
@@ -2227,7 +2351,7 @@ const wavetable: InstrumentDefinition = {
         // inside the table's clean range render bit-identically.
         const frames = allLevels[pickMipLevel(frameKs, freq, ctx.sampleRate)];
         const attack = Math.max(0.001, p.attack ?? 0.01);
-        const release = Math.max(0.01, p.release ?? 0.25);
+        const release = noteReleaseTime(expression, Math.max(0.01, p.release ?? 0.25));
         const hold = Math.max(durationSec, attack + 0.01);
         const off = when + hold;
         const stopTime = off + release * 3 + 0.05;
@@ -2713,7 +2837,7 @@ const granular: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec) {
+      noteOn(pitch, velocity, when, durationSec, _slideFrom, expression) {
         const buffer = env.getSample(sampleId);
         if (!buffer) return;
         const position = Math.min(1, Math.max(0, p.position ?? 0.25));
@@ -2725,7 +2849,7 @@ const granular: InstrumentDefinition = {
         const reverseProb = Math.min(1, Math.max(0, p.reverse ?? 0));
         const shape = Math.min(1, Math.max(0, p.shape ?? 0.5));
         const attack = Math.max(0.001, p.attack ?? 0.02);
-        const release = Math.max(0.01, p.release ?? 0.4);
+        const release = noteReleaseTime(expression, Math.max(0.01, p.release ?? 0.4));
         // SCAN drifts the read head through the sample in fractions of the
         // sample length per second (negative = backward), wrapping around;
         // P RAND sprays each grain's pitch ± semitones. Both are 0 by
@@ -2948,12 +3072,12 @@ const fm: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec) {
+      noteOn(pitch, velocity, when, durationSec, _slideFrom, expression) {
         const freq = midiToFreq(pitch);
         const attack = Math.max(0.001, p.attack ?? 0.003);
         const decay = Math.max(0.01, p.decay ?? 0.5);
         const sustain = Math.max(0, Math.min(1, p.sustain ?? 0.45));
-        const release = Math.max(0.01, p.release ?? 0.4);
+        const release = noteReleaseTime(expression, Math.max(0.01, p.release ?? 0.4));
         const hold = Math.max(durationSec, attack + decay * 0.5 + 0.02);
         const off = when + hold;
         const stopTime = off + release * 3 + 0.2;
@@ -2968,7 +3092,7 @@ const fm: InstrumentDefinition = {
           amp.gain.exponentialRampToValueAtTime(Math.max(level * sustain, 0.0002), decayEnd);
         }
         amp.gain.setTargetAtTime(0.0001, Math.max(off, decayEnd), release / 3);
-        amp.connect(output);
+        connectNotePan(ctx, amp, output, when, expression);
 
         // DX-style 2 operators: modulator → modGain → carrier.frequency.
         // Modulation deviation scales with the carrier frequency, so sideband
@@ -3143,10 +3267,10 @@ const keys: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom, expression) {
         const freq = midiToFreq(pitch);
         const attack = Math.max(0.001, p.attack ?? 0.005);
-        const release = Math.max(0.01, p.release ?? 0.35);
+        const release = noteReleaseTime(expression, Math.max(0.01, p.release ?? 0.35));
         const hold = Math.max(durationSec, attack + 0.02);
         const off = when + hold;
         const stopTime = off + release * 2 + 0.2;
@@ -3166,7 +3290,7 @@ const keys: InstrumentDefinition = {
         const dampRelease = release * (0.55 + damp * 0.7);
         amp.gain.setTargetAtTime(Math.max(level * sustain, 0.0002), when + attack, 0.28);
         amp.gain.setTargetAtTime(0.0001, off, dampRelease / 3);
-        amp.connect(output);
+        connectNotePan(ctx, amp, output, when, expression);
 
         if (trem > 0.005) {
           const lfo = ctx.createOscillator();
@@ -3180,12 +3304,9 @@ const keys: InstrumentDefinition = {
         }
 
         const filterMode = Math.max(0, Math.min(2, Math.round(p.mode ?? 0)));
-        const filter = createVoiceFilter(
-          ctx,
-          effCutoff(Math.max(80, Math.min(16000, p.cutoff ?? 4500)), pitch),
-          p.resonance ?? 1.8,
-          filterMode,
-        );
+        const baseCutoff = effCutoff(Math.max(80, Math.min(16000, p.cutoff ?? 4500)), pitch);
+        const filterMod = noteFilterModulation(expression, baseCutoff, p.resonance ?? 1.8);
+        const filter = createVoiceFilter(ctx, filterMod.cutoff, filterMod.resonance, filterMode);
         filter.output.connect(amp);
         liveFilters.set(filter, pitch);
 
@@ -3198,7 +3319,7 @@ const keys: InstrumentDefinition = {
           off,
           release,
           cutoffParam: filter.frequency,
-          cutoffBase: effCutoff(p.cutoff ?? 4500, pitch),
+          cutoffBase: filterMod.cutoff,
         });
         liveMods.set(filter, mod);
         if (mod?.ampNode) {
@@ -3533,10 +3654,10 @@ const pluck: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec) {
+      noteOn(pitch, velocity, when, durationSec, _slideFrom, expression) {
         const freq = midiToFreq(pitch);
         const attack = Math.max(0.001, p.attack ?? 0.002);
-        const release = Math.max(0.01, p.release ?? 0.3);
+        const release = noteReleaseTime(expression, Math.max(0.01, p.release ?? 0.3));
         const hold = Math.max(durationSec, attack + 0.02);
         const off = when + hold;
         const decay = Math.max(0.1, p.decay ?? 0.9);
@@ -3554,7 +3675,8 @@ const pluck: InstrumentDefinition = {
         amp.gain.setTargetAtTime(0.0001, off, release / 3);
         amp.connect(output);
 
-        const postFilter = createVoiceFilter(ctx, p.cutoff ?? 9000, p.resonance ?? 1.2);
+        const filterMod = noteFilterModulation(expression, p.cutoff ?? 9000, p.resonance ?? 1.2);
+        const postFilter = createVoiceFilter(ctx, filterMod.cutoff, filterMod.resonance);
         postFilter.output.connect(amp);
         liveFilters.set(postFilter, pitch);
 
@@ -3567,7 +3689,7 @@ const pluck: InstrumentDefinition = {
           off,
           release,
           cutoffParam: postFilter.frequency,
-          cutoffBase: p.cutoff ?? 9000,
+          cutoffBase: filterMod.cutoff,
         });
         liveMods.set(postFilter, mod);
         if (mod?.ampNode) {
@@ -3618,7 +3740,8 @@ const pluck: InstrumentDefinition = {
 
         const panner = ctx.createStereoPanner();
         // Width via pan spread per voice (deterministic from pitch)
-        panner.pan.value = (pitch % 2 === 0 ? 1 : -1) * width * 0.5;
+        const voicePan = (pitch % 2 === 0 ? 1 : -1) * width * 0.5 + (expression?.pan ?? 0);
+        panner.pan.setValueAtTime(Math.max(-1, Math.min(1, voicePan)), when);
         // Rewire: postFilter already connected to amp, amp to panner? Actually amp is after postFilter, so we need panner after amp
         // Our chain above: toneFilter -> postFilter -> amp, so amp is after postFilter.
         // To add width, we insert panner after amp
@@ -3777,12 +3900,12 @@ const flute: InstrumentDefinition = {
     const runtime: InstrumentRuntime & { lastFreq: number | null } = {
       lastFreq: null,
       output,
-      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom, expression) {
         const freq = midiToFreq(pitch);
         const attack = Math.max(0.004, p.attack ?? 0.06);
         const decay = Math.max(0.02, p.decay ?? 0.5);
         const sustain = Math.max(0, Math.min(1, p.sustain ?? 0.8));
-        const release = Math.max(0.01, p.release ?? 0.25);
+        const release = noteReleaseTime(expression, Math.max(0.01, p.release ?? 0.25));
         const hold = Math.max(durationSec, attack + 0.02);
         const off = when + hold;
         const stopTime = off + release * 2 + 0.3;
@@ -3798,8 +3921,10 @@ const flute: InstrumentDefinition = {
         // Formant body → optional drive → amp → out (shared by tone+breath).
         const formant = ctx.createBiquadFilter();
         formant.type = "lowpass";
-        formant.frequency.value = Math.max(200, Math.min(9000, p.formant ?? 3200));
-        formant.Q.value = 0.9;
+        const baseFormant = Math.max(200, Math.min(9000, p.formant ?? 3200));
+        const filterMod = noteFilterModulation(expression, baseFormant, 0.9);
+        formant.frequency.value = filterMod.cutoff;
+        formant.Q.value = filterMod.resonance;
         let tail: AudioNode = formant;
         const drive = Math.max(0, Math.min(1, p.drive ?? 0));
         if (drive > 0.001) {
@@ -3814,7 +3939,7 @@ const flute: InstrumentDefinition = {
           tail = shaper;
         }
         tail.connect(amp);
-        amp.connect(output);
+        connectNotePan(ctx, amp, output, when, expression);
 
         // Carrier with delayed vibrato (depth ramps in after vibDelay — the
         // classical wind-player behavior; without the delay every note wobbles
@@ -4050,10 +4175,10 @@ const organ: InstrumentDefinition = {
     const runtime: InstrumentRuntime & { lastFreq: number | null } = {
       lastFreq: null,
       output,
-      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom, expression) {
         const freq = midiToFreq(pitch);
         const attack = Math.max(0.001, p.attack ?? 0.003);
-        const release = Math.max(0.01, p.release ?? 0.08);
+        const release = noteReleaseTime(expression, Math.max(0.01, p.release ?? 0.08));
         const hold = Math.max(durationSec, attack + 0.02);
         const off = when + hold;
         const stopTime = off + release * 2 + 0.35;
@@ -4072,19 +4197,16 @@ const organ: InstrumentDefinition = {
         amp.gain.setTargetAtTime(0.0001, off, release / 3);
 
         // Drawbar tilt filter + grit (SVF drive), then the Leslie section.
-        const svf = createVoiceFilter(
-          ctx,
-          Math.max(120, Math.min(14000, p.cutoff ?? 6500)),
-          Math.max(0.1, Math.min(8, p.resonance ?? 0.8)),
-          0,
-          drive,
-        );
+        const baseCutoff = Math.max(120, Math.min(14000, p.cutoff ?? 6500));
+        const baseResonance = Math.max(0.1, Math.min(8, p.resonance ?? 0.8));
+        const filterMod = noteFilterModulation(expression, baseCutoff, baseResonance);
+        const svf = createVoiceFilter(ctx, filterMod.cutoff, filterMod.resonance, 0, drive);
         const trem = ctx.createGain();
         const panner = ctx.createStereoPanner();
         svf.output.connect(trem);
         trem.connect(panner);
         panner.connect(amp);
-        amp.connect(output);
+        connectNotePan(ctx, amp, output, when, expression);
 
         const lfos: OscillatorNode[] = [];
         if (rotDepth > 0.001 && rotRate > 0.005) {
@@ -4266,10 +4388,10 @@ const strings: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom, expression) {
         const freq = midiToFreq(pitch);
         const attack = Math.max(0.01, p.attack ?? 0.18);
-        const release = Math.max(0.05, p.release ?? 0.7);
+        const release = noteReleaseTime(expression, Math.max(0.05, p.release ?? 0.7));
         const hold = Math.max(durationSec, attack + 0.05);
         const off = when + hold;
         const stopTime = off + release * 2 + 0.4;
@@ -4291,15 +4413,13 @@ const strings: InstrumentDefinition = {
         bowShelf.type = "lowshelf";
         bowShelf.frequency.value = 320;
         bowShelf.gain.value = bow * 4;
-        const svf = createVoiceFilter(
-          ctx,
-          Math.max(200, Math.min(12000, (p.cutoff ?? 4200) * (0.8 + velocity * 0.4))),
-          Math.max(0.1, Math.min(8, p.resonance ?? 0.9)),
-          0,
-        );
+        const baseCutoff = Math.max(200, Math.min(12000, (p.cutoff ?? 4200) * (0.8 + velocity * 0.4)));
+        const baseResonance = Math.max(0.1, Math.min(8, p.resonance ?? 0.9));
+        const filterMod = noteFilterModulation(expression, baseCutoff, baseResonance);
+        const svf = createVoiceFilter(ctx, filterMod.cutoff, filterMod.resonance, 0);
         bowShelf.connect(svf.input);
         svf.output.connect(amp);
-        amp.connect(output);
+        connectNotePan(ctx, amp, output, when, expression);
 
         // Three detuned saws — the section. Deterministic detune offsets.
         const offsets = [0, 7, -12];
@@ -4430,7 +4550,7 @@ const bell: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec) {
+      noteOn(pitch, velocity, when, durationSec, _slideFrom, expression) {
         const freq = midiToFreq(pitch);
         const decay = Math.max(0.15, p.decay ?? 2.2);
         const gated = (p.gate ?? 0) > 0.5;
@@ -4511,14 +4631,15 @@ const bell: InstrumentDefinition = {
         // Tone trim (LP) — bells stay glassy but never fizzy.
         const lp = ctx.createBiquadFilter();
         lp.type = "lowpass";
-        lp.frequency.value = tone;
-        lp.Q.value = 0.5;
+        const filterMod = noteFilterModulation(expression, tone, 0.5);
+        lp.frequency.value = filterMod.cutoff;
+        lp.Q.value = filterMod.resonance;
 
         modulator.connect(modGain);
         carrier.connect(lp);
         shimmerOsc.connect(lp);
         lp.connect(amp);
-        amp.connect(output);
+        connectNotePan(ctx, amp, output, when, expression);
 
         carrier.start(when);
         carrier.stop(stopTime);
@@ -4615,9 +4736,9 @@ const reese: InstrumentDefinition = {
     const runtime: InstrumentRuntime & { lastFreq: number | null } = {
       lastFreq: null,
       output,
-      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom, expression) {
         const freq = midiToFreq(pitch);
-        const release = Math.max(0.02, p.release ?? 0.25);
+        const release = noteReleaseTime(expression, Math.max(0.02, p.release ?? 0.25));
         const hold = Math.max(durationSec, 0.06);
         const off = when + hold;
         const stopTime = off + release * 2 + 0.2;
@@ -4631,15 +4752,18 @@ const reese: InstrumentDefinition = {
         amp.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + 0.015);
         amp.gain.setTargetAtTime(0.0001, off, release / 3);
 
+        const baseCutoff = Math.max(150, Math.min(8000, p.cutoff ?? 1600));
+        const baseResonance = Math.max(0.1, Math.min(8, p.resonance ?? 1.6));
+        const filterMod = noteFilterModulation(expression, baseCutoff, baseResonance);
         const svf = createVoiceFilter(
           ctx,
-          Math.max(150, Math.min(8000, p.cutoff ?? 1600)),
-          Math.max(0.1, Math.min(8, p.resonance ?? 1.6)),
+          filterMod.cutoff,
+          filterMod.resonance,
           0,
           Math.max(0, Math.min(1, p.drive ?? 0.3)),
         );
         svf.output.connect(amp);
-        amp.connect(output);
+        connectNotePan(ctx, amp, output, when, expression);
 
         // Filter MOVEMENT: the slow LFO walk that makes the Reese morph.
         let moveLfo: OscillatorNode | null = null;
@@ -4769,16 +4893,16 @@ const acid: InstrumentDefinition = {
     const output = ctx.createGain();
     output.gain.value = 1;
     const p = { ...track.params };
-    const { voices, register, cleanup, findByPitch } = makeVoiceManager(1); // strictly mono
+    const { voices, register, cleanup } = makeVoiceManager(1); // strictly mono
     const WAVE_TYPES = ["sawtooth", "square"] as const;
 
     const runtime: InstrumentRuntime & { lastFreq: number | null } = {
       lastFreq: null,
       output,
-      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom, expression) {
         const freq = midiToFreq(pitch) * Math.pow(2, (p.tune ?? 0) / 12);
         const decay = Math.max(0.05, p.decay ?? 0.35);
-        const release = Math.min(decay, 0.15); // short tail, 303-like
+        const release = noteReleaseTime(expression, Math.min(decay, 0.15)); // short tail, 303-like
         const hold = Math.max(durationSec, 0.06);
         const off = when + hold;
         const stopTime = off + release * 2 + 0.1;
@@ -4788,6 +4912,7 @@ const acid: InstrumentDefinition = {
         const cutoffBase = Math.max(80, Math.min(8000, p.cutoff ?? 320));
         const envMod = Math.max(0, Math.min(1, p.envMod ?? 0.55));
         const reso = Math.max(0.5, Math.min(8, p.reso ?? 4.5));
+        const filterMod = noteFilterModulation(expression, cutoffBase, reso);
 
         // Amp: fast attack, accent lifts the peak.
         const amp = ctx.createGain();
@@ -4798,12 +4923,14 @@ const acid: InstrumentDefinition = {
 
         // SVF — the squelch engine. Cutoff envelope: slams to
         // cutoff × (1 + envMod × 4 + accent×2), decays back to cutoff.
-        const svf = createVoiceFilter(ctx, cutoffBase, reso, 0, 0);
-        const cutoffEnvPeak = Math.min(12000, cutoffBase * (1 + envMod * 4 + accentVel * 2));
+        const svf = createVoiceFilter(ctx, filterMod.cutoff, filterMod.resonance, 0, 0);
+        const cutoffEnvPeak = Math.min(12000, filterMod.cutoff * (1 + envMod * 4 + accentVel * 2));
         svf.frequency.setValueAtTime(cutoffEnvPeak, when);
-        svf.frequency.setTargetAtTime(cutoffBase, when + 0.01, decay / 3);
+        svf.frequency.setTargetAtTime(filterMod.cutoff, when + 0.01, decay / 3);
         svf.output.connect(amp);
-        amp.connect(output);
+        // Keep a voice-local panner available so a later slide note can change
+        // pan without inserting a node into a running graph.
+        const notePanner = connectNotePan(ctx, amp, output, when, expression, true);
 
         // Osc — saw or square, glide from lastFreq or slideFrom.
         const osc = ctx.createOscillator();
@@ -4814,12 +4941,16 @@ const acid: InstrumentDefinition = {
           : glideAmt > 0.001
             ? runtime.lastFreq
             : null;
+        let frequencyRamp: ExponentialFrequencyRamp;
         if (fromFreq && fromFreq > 20 && fromFreq !== freq) {
           const glideSec = Math.max(0.02, glideAmt * 0.3);
+          const glideEndAt = Math.min(when + glideSec, off);
           osc.frequency.setValueAtTime(fromFreq, when);
-          osc.frequency.exponentialRampToValueAtTime(freq, Math.min(when + glideSec, off));
+          osc.frequency.exponentialRampToValueAtTime(freq, glideEndAt);
+          frequencyRamp = { startAt: when, endAt: glideEndAt, startHz: fromFreq, endHz: freq };
         } else {
           osc.frequency.setValueAtTime(freq, when);
+          frequencyRamp = { startAt: when, endAt: when, startHz: freq, endHz: freq };
         }
         osc.connect(svf.input);
         osc.start(when);
@@ -4830,11 +4961,13 @@ const acid: InstrumentDefinition = {
 
         runtime.lastFreq = freq;
 
-        const voice = register(
+        let voice: Voice;
+        voice = register(
           pitch,
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
+            voice.heldUntil = Math.min(voice.heldUntil ?? stopTime, t);
             amp.gain.cancelScheduledValues(t);
             const releaseTau = Math.max(0.005, release / 4);
             const releaseTailSec = release * 3 + 0.1;
@@ -4846,6 +4979,7 @@ const acid: InstrumentDefinition = {
             }
           },
           (now) => {
+            voice.heldUntil = Math.min(voice.heldUntil ?? stopTime, now);
             amp.gain.cancelScheduledValues(now);
             amp.gain.setTargetAtTime(0.0001, now, 0.008);
             try {
@@ -4854,7 +4988,39 @@ const acid: InstrumentDefinition = {
               /* already stopped */
             }
           },
+          when,
         );
+        voice.sourcePitch = pitch;
+        voice.startAt = when;
+        voice.heldUntil = off;
+        voice.slideToPitch = (targetPitch, slideWhen, slideDurationSec, slideExpression) => {
+          const heldUntil = voice.heldUntil ?? off;
+          if (slideWhen < when || slideWhen >= heldUntil) return false;
+
+          const from = Math.max(20, frequencyAtTime(frequencyRamp, slideWhen));
+          const target = Math.max(20, midiToFreq(targetPitch) * Math.pow(2, (p.tune ?? 0) / 12));
+          const duration = Math.max(0, Number.isFinite(slideDurationSec) ? slideDurationSec : 0);
+          const rampEnd = Math.min(heldUntil, slideWhen + duration);
+          osc.frequency.cancelScheduledValues(slideWhen);
+          osc.frequency.setValueAtTime(from, slideWhen);
+          if (rampEnd > slideWhen + 0.001) osc.frequency.exponentialRampToValueAtTime(target, rampEnd);
+          else osc.frequency.setValueAtTime(target, slideWhen);
+          frequencyRamp = { startAt: slideWhen, endAt: rampEnd, startHz: from, endHz: target };
+          runtime.lastFreq = target;
+
+          if (slideExpression?.pan !== undefined)
+            notePanner?.pan.setTargetAtTime(Math.max(-1, Math.min(1, slideExpression.pan)), slideWhen, 0.01);
+          if (slideExpression?.filterCutoffHz !== undefined || slideExpression?.modX !== undefined) {
+            const filterMod = noteFilterModulation(slideExpression, cutoffBase, reso);
+            svf.frequency.setTargetAtTime(filterMod.cutoff, slideWhen, 0.01);
+          }
+          if (slideExpression?.filterResonance !== undefined || slideExpression?.modY !== undefined) {
+            const filterMod = noteFilterModulation(slideExpression, cutoffBase, reso);
+            setFilterResonance(svf, filterMod.resonance, slideWhen, 0.01);
+          }
+          voice.pitch = targetPitch;
+          return true;
+        };
         const clock = ctx.createOscillator();
         clock.type = "sine";
         clock.frequency.value = 440;
@@ -4869,13 +5035,22 @@ const acid: InstrumentDefinition = {
             osc.disconnect();
             svf.disconnect();
             amp.disconnect();
+            notePanner?.disconnect();
           } catch {
             /* already */
           }
         };
       },
       noteOff(pitch, when) {
-        for (const v of findByPitch(pitch)) v.stop(when);
+        for (const voice of voices) {
+          if (voice.pitch === pitch || voice.sourcePitch === pitch) voice.stop(when);
+        }
+      },
+      noteSlide(pitch, when, durationSec, expression) {
+        const heldVoice = voices.find(
+          (voice) => voice.startAt !== undefined && voice.startAt <= when && when < (voice.heldUntil ?? voice.stopAt),
+        );
+        heldVoice?.slideToPitch?.(pitch, when, durationSec, expression);
       },
       setParameter(id, value) {
         if (Number.isFinite(value)) p[id] = value;
@@ -4911,10 +5086,10 @@ const brass: InstrumentDefinition = {
     const runtime: InstrumentRuntime & { lastFreq: number | null } = {
       lastFreq: null,
       output,
-      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom, expression) {
         const freq = midiToFreq(pitch);
         const attack = Math.max(0.005, p.attack ?? 0.02);
-        const release = Math.max(0.03, p.release ?? 0.25);
+        const release = noteReleaseTime(expression, Math.max(0.03, p.release ?? 0.25));
         const hold = Math.max(durationSec, attack + 0.04);
         const off = when + hold;
         const stopTime = off + release * 2 + 0.2;
@@ -4933,10 +5108,13 @@ const brass: InstrumentDefinition = {
         amp.gain.setTargetAtTime(0.0001, off, release / 3);
 
         // The swoosh: cutoff slams open (sweep × velocity), decays back.
-        const svf = createVoiceFilter(ctx, cutoffBase * (0.7 + velocity * 0.5), reso, 0, 0);
-        const sweepPeak = Math.min(12000, cutoffBase * (1 + sweep * 3 * (0.5 + velocity * 0.5)));
+        const velocityCutoff = cutoffBase * (0.7 + velocity * 0.5);
+        const filterMod = noteFilterModulation(expression, velocityCutoff, reso);
+        const cutoffScale = filterMod.cutoff / velocityCutoff;
+        const svf = createVoiceFilter(ctx, filterMod.cutoff, filterMod.resonance, 0, 0);
+        const sweepPeak = Math.min(12000, cutoffBase * (1 + sweep * 3 * (0.5 + velocity * 0.5)) * cutoffScale);
         svf.frequency.setValueAtTime(sweepPeak, when);
-        svf.frequency.setTargetAtTime(cutoffBase * (0.7 + velocity * 0.5), when + attack, sweepTime);
+        svf.frequency.setTargetAtTime(filterMod.cutoff, when + attack, sweepTime);
 
         // Bite: high-shelf grind on top (the brass edge).
         const biteShelf = ctx.createBiquadFilter();
@@ -4946,7 +5124,7 @@ const brass: InstrumentDefinition = {
 
         svf.output.connect(biteShelf);
         biteShelf.connect(amp);
-        amp.connect(output);
+        connectNotePan(ctx, amp, output, when, expression);
 
         // Three detuned saws — a tight section, thinner spread than Strings.
         const offsets = [0, 6, -9];
@@ -5045,10 +5223,10 @@ const clav: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom, expression) {
         const freq = midiToFreq(pitch);
         const damp = Math.max(0.05, p.damp ?? 0.55);
-        const release = Math.max(0.02, p.release ?? 0.12);
+        const release = noteReleaseTime(expression, Math.max(0.02, p.release ?? 0.12));
         const hold = Math.max(durationSec, 0.05);
         const off = when + hold;
         const stopTime = off + release * 2 + damp;
@@ -5102,7 +5280,7 @@ const clav: InstrumentDefinition = {
         // flagged it FAIL but never got a fix. The cleanup path even calls
         // `amp.disconnect()`, which is what made the omission easy to miss.
         // Every other voice instrument connects its amp here; see line 367.
-        amp.connect(output);
+        connectNotePan(ctx, amp, output, when, expression);
 
         // Voice v2: tangent-string body = square (bite) + saw (body warmth),
         // slightly detuned and panned for stereo; plus a TINE partial (freq×2
@@ -5210,11 +5388,11 @@ const clav: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
-            amp.gain.setTargetAtTime(0.0001, t, 0.008);
+            amp.gain.setTargetAtTime(0.0001, t, Math.max(0.005, release / 3));
             for (const node of [oscA, oscB, tine, driftLfoA, driftLfoB, growlOsc, clickSrc]) {
               if (!node) continue;
               try {
-                node.stop(t + 0.05);
+                node.stop(t + Math.max(0.05, release * 3 + 0.1));
               } catch {
                 /* already stopped */
               }
@@ -5299,7 +5477,7 @@ const logdrum: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom, expression) {
         const freq = midiToFreq(pitch);
         const glideNorm = Math.max(0, Math.min(1, p.glide ?? 0.34));
         const glide = glideNorm * 0.35;
@@ -5316,7 +5494,7 @@ const logdrum: InstrumentDefinition = {
         amp.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + 0.002);
         amp.gain.setTargetAtTime(Math.max(level * 0.55, 0.0002), when + 0.002, decay / 3);
         amp.gain.setTargetAtTime(0.0001, off, decay / 4);
-        amp.connect(output);
+        connectNotePan(ctx, amp, output, when, expression);
 
         const tone = p.tone ?? 0.4;
         const body = p.body ?? 0.6;
@@ -5325,7 +5503,8 @@ const logdrum: InstrumentDefinition = {
         const width = p.width ?? 0.25;
 
         const toneHz = 400 + tone * 2800;
-        const filter = createVoiceFilter(ctx, toneHz, 0.9);
+        const filterMod = noteFilterModulation(expression, toneHz, 0.9);
+        const filter = createVoiceFilter(ctx, filterMod.cutoff, filterMod.resonance);
         liveFilters.set(filter, pitch);
         filter.output.connect(amp);
 
@@ -5339,7 +5518,7 @@ const logdrum: InstrumentDefinition = {
           off,
           release: decay,
           cutoffParam: filter.frequency,
-          cutoffBase: toneHz,
+          cutoffBase: filterMod.cutoff,
         });
         liveMods.set(filter, mod);
         if (mod?.ampNode) {
@@ -5528,7 +5707,7 @@ const spectral: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec) {
+      noteOn(pitch, velocity, when, durationSec, _slideFrom, expression) {
         const f0 = midiToFreq(pitch);
         const profile = Math.max(0, Math.min(4, Math.round(p.profile ?? 0)));
         const count = Math.max(2, Math.min(8, Math.round(p.partials ?? 6)));
@@ -5540,10 +5719,10 @@ const spectral: InstrumentDefinition = {
         const skew = Math.max(0, Math.min(1, p.skew ?? 0.45));
         const width = Math.max(0, Math.min(1, p.width ?? 0.5));
         const attack = Math.max(0.002, p.attack ?? 0.6);
-        const release = Math.max(0.05, p.release ?? 3);
+        const release = noteReleaseTime(expression, Math.max(0.05, p.release ?? 3));
         const hold = Math.max(durationSec, attack + 0.05);
         const off = when + hold;
-        const stopTime = off + release * 1.5 + 0.3;
+        const stopTime = off + release * 3 + 0.3;
         const level = velocity * dbToLin(p.level ?? -12);
 
         // RMS-normalized partial amplitudes keep level consistent across profiles
@@ -5556,7 +5735,8 @@ const spectral: InstrumentDefinition = {
         }
         const norm = 0.5 / Math.max(0.15, Math.sqrt(energy));
 
-        const filter = createVoiceFilter(ctx, p.cutoff ?? 6000, p.resonance ?? 0.8);
+        const filterMod = noteFilterModulation(expression, p.cutoff ?? 6000, p.resonance ?? 0.8);
+        const filter = createVoiceFilter(ctx, filterMod.cutoff, filterMod.resonance);
         filter.output.connect(output);
         liveFilters.set(filter, pitch);
 
@@ -5570,7 +5750,7 @@ const spectral: InstrumentDefinition = {
           off,
           release,
           cutoffParam: filter.frequency,
-          cutoffBase: p.cutoff ?? 6000,
+          cutoffBase: filterMod.cutoff,
         });
         liveMods.set(filter, mod);
         if (mod?.ampNode) {
@@ -5584,6 +5764,7 @@ const spectral: InstrumentDefinition = {
         // with the voice (motionNodes in onended).
         const oscs: OscillatorNode[] = [];
         const gains: GainNode[] = [];
+        const releaseTaus: number[] = [];
         const motionNodes: AudioNode[] = [];
         const motion = Math.max(0, Math.min(1, p.motion ?? 0));
         if (motion > 0.005) {
@@ -5639,6 +5820,7 @@ const spectral: InstrumentDefinition = {
           osc.stop(stopTime);
           oscs.push(osc);
           gains.push(g);
+          releaseTaus.push(decayTc / 3);
         }
 
         const voice = register(
@@ -5646,13 +5828,14 @@ const spectral: InstrumentDefinition = {
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            for (const g of gains) {
+            for (let i = 0; i < gains.length; i++) {
+              const g = gains[i]!;
               g.gain.cancelScheduledValues(t);
-              g.gain.setTargetAtTime(0.0001, t, 0.05);
+              g.gain.setTargetAtTime(0.0001, t, Math.max(0.005, releaseTaus[i]!));
             }
             for (const osc of oscs) {
               try {
-                osc.stop(t + 0.2);
+                osc.stop(t + Math.max(0.1, release * 3 + 0.1));
               } catch {
                 /* already stopped */
               }
@@ -5792,7 +5975,7 @@ const vocalchop: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom, expression) {
         const buffer = env.getSample(sampleId);
         if (!buffer) return;
         // Glide: reuse the previous voice's source and slide its playbackRate
@@ -5817,7 +6000,7 @@ const vocalchop: InstrumentDefinition = {
         const startVowel = Math.max(0, Math.min(4, Math.round(p.vowel ?? 0)));
         const morph = Math.max(0, Math.min(1, p.morph ?? 0));
         const attack = Math.max(0.001, p.attack ?? 0.005);
-        const release = Math.max(0.01, p.release ?? 0.15);
+        const release = noteReleaseTime(expression, Math.max(0.01, p.release ?? 0.15));
         const hold = Math.max(durationSec, attack + 0.02);
         const off = when + hold;
         const stopTime = off + release * 3 + 0.05;
@@ -5838,8 +6021,13 @@ const vocalchop: InstrumentDefinition = {
           release,
         });
         liveMods.set(amp, mod);
-        amp.connect(mod?.ampNode ?? tone);
-        if (mod?.ampNode) mod.ampNode.connect(tone);
+        const notePan = notePanValue(expression);
+        const voicePanner = notePan === 0 ? null : ctx.createStereoPanner();
+        if (voicePanner) voicePanner.pan.setValueAtTime(notePan, when);
+        const postAmp: AudioNode = voicePanner ?? tone;
+        amp.connect(mod?.ampNode ?? postAmp);
+        if (mod?.ampNode) mod.ampNode.connect(postAmp);
+        voicePanner?.connect(tone);
 
         // CONS: consonant transient — short broadband HP noise burst at the
         // attack, routed around the formant bank straight into the amp.
@@ -6006,6 +6194,7 @@ const vocalchop: InstrumentDefinition = {
           mod?.dispose();
           liveMods.delete(amp);
           amp.disconnect();
+          voicePanner?.disconnect();
           dry.disconnect();
           wet.disconnect();
           for (const band of formants) {
@@ -6636,28 +6825,37 @@ const kopa: InstrumentDefinition = {
 
 /* ---------------- registry ---------------- */
 
+function withNoteExpressionTargets(definition: InstrumentDefinition): InstrumentDefinition {
+  const targets = noteExpressionTargetsForInstrument(definition.kind);
+  if (targets.length === 0) return definition;
+  return {
+    ...definition,
+    noteExpressionTargets: targets,
+  };
+}
+
 export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
-  sampler,
-  analog,
-  bass,
-  "808": bass808,
-  texture,
-  wavetable,
-  granular,
-  keys,
-  organ,
-  strings,
-  bell,
-  reese,
-  clav,
-  acid,
-  brass,
-  fm,
-  pluck,
-  flute,
-  logdrum,
-  spectral,
-  vocalchop,
+  sampler: withNoteExpressionTargets(sampler),
+  analog: withNoteExpressionTargets(analog),
+  bass: withNoteExpressionTargets(bass),
+  "808": withNoteExpressionTargets(bass808),
+  texture: withNoteExpressionTargets(texture),
+  wavetable: withNoteExpressionTargets(wavetable),
+  granular: withNoteExpressionTargets(granular),
+  keys: withNoteExpressionTargets(keys),
+  organ: withNoteExpressionTargets(organ),
+  strings: withNoteExpressionTargets(strings),
+  bell: withNoteExpressionTargets(bell),
+  reese: withNoteExpressionTargets(reese),
+  clav: withNoteExpressionTargets(clav),
+  acid: withNoteExpressionTargets(acid),
+  brass: withNoteExpressionTargets(brass),
+  fm: withNoteExpressionTargets(fm),
+  pluck: withNoteExpressionTargets(pluck),
+  flute: withNoteExpressionTargets(flute),
+  logdrum: withNoteExpressionTargets(logdrum),
+  spectral: withNoteExpressionTargets(spectral),
+  vocalchop: withNoteExpressionTargets(vocalchop),
   drumsynth,
   tsar,
   kopa,

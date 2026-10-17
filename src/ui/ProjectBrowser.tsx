@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { CoreServices } from "../services";
 import type { IncompatibleProjectMeta, SavedProjectMeta } from "../persistence/ProjectRepository";
 import type { CrashJournalReport } from "../persistence/crashJournal";
@@ -14,6 +14,10 @@ import {
 } from "../persistence/recoveryBuffer";
 import { uid } from "../shared/ids";
 import { appUrl } from "../shared/mountBase";
+
+const TransferImportDialog = lazy(() =>
+  import("./TransferImportDialog").then((module) => ({ default: module.TransferImportDialog })),
+);
 
 /** One row of the library: openable, or written by a newer app version. */
 type ProjectRow = { kind: "ok"; meta: SavedProjectMeta } | { kind: "newer"; meta: IncompatibleProjectMeta };
@@ -52,6 +56,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   const [crashReport, setCrashReport] = useState<CrashJournalReport | null>(null);
   const [crashDismissed, setCrashDismissed] = useState(false);
   const [recovery, setRecovery] = useState<RecoveryBuffer | null>(null);
+  const [transferImportOpen, setTransferImportOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const applyLists = useCallback((list: SavedProjectMeta[], newer: IncompatibleProjectMeta[]) => {
@@ -356,6 +361,17 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
           <button type="button" className="btn btn-small" disabled={busy} onClick={() => fileInputRef.current?.click()}>
             IMPORT FROM FILE
           </button>
+          <button
+            type="button"
+            className="btn btn-small btn-primary pb-bring-song"
+            disabled={busy}
+            onClick={() => setTransferImportOpen(true)}
+          >
+            BRING A SONG FROM ANOTHER DAW
+          </button>
+          <p className="pb-import-hint">
+            Import aligned audio track-outs and one Standard MIDI file into a new KYX project.
+          </p>
           {importError && <span className="pb-import-error">{importError}</span>}
         </section>
 
@@ -526,6 +542,18 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
           )}
         </section>
       </div>
+      {transferImportOpen && (
+        <Suspense fallback={<div className="panel-loading">Loading transfer tools…</div>}>
+          <TransferImportDialog
+            core={core}
+            onCancel={() => setTransferImportOpen(false)}
+            onImported={(doc) => {
+              setTransferImportOpen(false);
+              enterStudio(doc);
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

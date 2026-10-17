@@ -56,6 +56,7 @@ import { autoMapVelocityLayers } from "./samples/autoMap";
 import { measurePreviewAudio, passesPreviewAudio, previewNoteDuration } from "./presets/audioQuality";
 import { hashString } from "./shared/rng";
 import { auditLiveOfflineParity, parityObligationCheck } from "./testing/live-offline-parity";
+import { runNoteExpressionAudioChecks } from "./testing/noteExpressionAudioChecks";
 
 export interface CheckResult {
   name: string;
@@ -2057,6 +2058,152 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     );
   } catch (error) {
     check("sampler STRETCH renders a +12st note (single buffer assignment)", false, String(error));
+  }
+
+  // Per-note pan regression: both runtimes now expose a voice-local pan lane.
+  // Compare actual OfflineAudioContext channels so a graph that merely stores
+  // the pan value cannot pass. Centered Vocal Chop deliberately inserts no
+  // extra panner; Texture's pre-existing voice panner stays at its neutral 0.
+  for (const kind of ["texture", "vocalchop"] as const) {
+    try {
+      const render = async (pans: readonly number[] | null): Promise<AudioBuffer> => {
+        const ctx = new OfflineAudioContext(2, Math.floor(SR * 0.65), SR);
+        const track: InstrumentTrack = {
+          id: `per-note-pan-${kind}`,
+          kind: "instrument",
+          instrument: kind,
+          name: kind,
+          gain: 1,
+          pan: 0,
+          mute: false,
+          solo: false,
+          sampleId: kind === "vocalchop" ? "factory.tonal.pluck" : null,
+          params: {
+            ...defaultInstrumentParams(kind),
+            ...(kind === "texture" ? { attack: 0.01, space: 0, drift: 0, diffuse: 0, unison: 1, spread: 0 } : {}),
+          },
+          effects: [],
+          sends: {},
+        };
+        const runtime = INSTRUMENT_DEFS[kind].factory(ctx, track, {
+          bpm: 124,
+          getSample: (id) => bank.get(id),
+        });
+        runtime.output.connect(ctx.destination);
+        if (pans === null) runtime.noteOn(60, 0.9, 0.02, 0.5);
+        else if (pans.length === 1) runtime.noteOn(60, 0.9, 0.02, 0.5, undefined, { pan: pans[0] });
+        else {
+          runtime.noteOn(60, 0.9, 0.02, 0.5, undefined, { pan: pans[0] });
+          runtime.noteOn(67, 0.9, 0.02, 0.5, undefined, { pan: pans[1] });
+        }
+        const buffer = await ctx.startRendering();
+        runtime.dispose();
+        return buffer;
+      };
+      const levels = (buffer: AudioBuffer) => {
+        const start = Math.floor(SR * 0.05);
+        // Texture's built-in delay is fixed at 420 ms and is intentionally
+        // centered after the voice bus; measure the direct voice before it.
+        const end = Math.floor(SR * 0.35);
+        return [0, 1].map((channel) => {
+          const data = buffer.getChannelData(channel);
+          let energy = 0;
+          for (let i = start; i < end; i++) energy += data[i]! * data[i]!;
+          return Math.sqrt(energy / (end - start));
+        });
+      };
+      const maxDifference = (a: AudioBuffer, b: AudioBuffer) => {
+        let diff = 0;
+        for (let channel = 0; channel < 2; channel++) {
+          const x = a.getChannelData(channel);
+          const y = b.getChannelData(channel);
+          for (let i = 0; i < x.length; i++) diff = Math.max(diff, Math.abs(x[i]! - y[i]!));
+        }
+        return diff;
+      };
+      const [authored, center, left, right, overlapping] = await Promise.all([
+        render(null),
+        render([0]),
+        render([-1]),
+        render([1]),
+        render([-1, 1]),
+      ]);
+      const leftLevels = levels(left);
+      const rightLevels = levels(right);
+      const overlapLevels = levels(overlapping);
+      const overlapAudible = overlapLevels.every((level) => level > 0.001);
+      check(
+        `${kind}: per-note pan renders left/right independently and neutral stays unchanged`,
+        maxDifference(authored, center) <= 1e-6 &&
+          leftLevels[0]! > 0.001 &&
+          leftLevels[1]! < leftLevels[0]! * 0.01 &&
+          rightLevels[1]! > 0.001 &&
+          rightLevels[0]! < rightLevels[1]! * 0.01 &&
+          overlapAudible,
+        `neutralDiff=${maxDifference(authored, center).toExponential(2)} left=${leftLevels.map((v) => v.toFixed(4)).join("/")} right=${rightLevels.map((v) => v.toFixed(4)).join("/")} overlap=${overlapLevels.map((v) => v.toFixed(4)).join("/")}`,
+      );
+    } catch (error) {
+      check(`${kind}: per-note pan browser render`, false, String(error));
+    }
+  }
+
+  // Acid 303 held-voice slide-note: check pitch content before and after the
+  // scheduled bend in the real OfflineAudioContext path.
+  try {
+    const ctx = new OfflineAudioContext(2, Math.floor(SR * 0.9), SR);
+    await loadCoreWorklets(ctx);
+    const track: InstrumentTrack = {
+      id: "check-acid-slide-note",
+      kind: "instrument",
+      instrument: "acid",
+      name: "Acid 303",
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      sampleId: null,
+      params: defaultInstrumentParams("acid"),
+      effects: [],
+      sends: {},
+    };
+    const runtime = INSTRUMENT_DEFS.acid.factory(ctx, track, { bpm: 124, getSample: () => undefined });
+    runtime.output.connect(ctx.destination);
+    runtime.noteOn(45, 0.9, 0.02, 0.8);
+    runtime.noteSlide?.(57, 0.25, 0.15);
+    const buffer = await ctx.startRendering();
+    runtime.dispose();
+
+    const data = buffer.getChannelData(0);
+    const tonePower = (startSec: number, endSec: number, hz: number) => {
+      const start = Math.floor(startSec * SR);
+      const end = Math.floor(endSec * SR);
+      const coefficient = 2 * Math.cos((2 * Math.PI * hz) / SR);
+      let previous = 0;
+      let previousPrevious = 0;
+      for (let i = start; i < end; i++) {
+        const current = data[i]! + coefficient * previous - previousPrevious;
+        previousPrevious = previous;
+        previous = current;
+      }
+      return previous * previous + previousPrevious * previousPrevious - coefficient * previous * previousPrevious;
+    };
+    const sourceHz = 110;
+    const targetHz = 220;
+    const preSource = tonePower(0.1, 0.2, sourceHz);
+    const preTarget = tonePower(0.1, 0.2, targetHz);
+    const postSource = tonePower(0.5, 0.6, sourceHz);
+    const postTarget = tonePower(0.5, 0.6, targetHz);
+    check(
+      "Acid 303 slide note moves the held fundamental without a new attack",
+      preSource > preTarget * 1.5 && postTarget > postSource * 1.5,
+      `pre 110/220=${preSource.toExponential(2)}/${preTarget.toExponential(2)}; post 110/220=${postSource.toExponential(2)}/${postTarget.toExponential(2)}`,
+    );
+  } catch (error) {
+    check("Acid 303 slide note browser render", false, String(error));
+  }
+
+  for (const result of await runNoteExpressionAudioChecks()) {
+    record(result);
   }
 
   // Automation lane ramp regression (Phase 2 of the plugin-audit follow-up):

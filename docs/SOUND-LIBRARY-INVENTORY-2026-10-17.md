@@ -5,15 +5,15 @@
 
 ## Executive view
 
-KYX already has broad coverage: **155 factory sound slots across 15 categories**, **24 playable instrument types**, **643 factory presets**, **57 registered effects**, **258 groove entries**, and **21 first-class genres**. The curated factory set is technically consistent: the current acoustic audit passed **142/142 WAVs**. The biggest opportunity is therefore not to keep expanding category counts. It is to give the library a recognizable source and performance character.
+KYX already has broad coverage: **155 factory sound slots across 15 categories**, **24 playable instrument types**, **643 factory presets**, **57 registered effects**, **258 groove entries**, and **21 first-class genres**. The curated factory set is technically consistent: the current acoustic audit passed **146/146 WAVs**. The biggest opportunity is therefore not to keep expanding category counts. It is to give the library a recognizable source and performance character.
 
-The factory WAVs are KYX-rendered seeds, not a recorded KYX session library. All 142 are dual-mono: centered and mono-safe, with no genuinely wide source textures. There is no first-party audio-break or phrase-loop collection. The optional Piano and VSCO multisample banks add conventional instrument breadth, but do not provide a shared KYX sonic identity.
+The factory WAVs are KYX-rendered seeds, not a recorded KYX session library. The original 142 WAVs are dual-mono. Four new Field WAVs have a restrained high-passed side signal, with the sub kept centered and measured stereo correlation at 0.950. This adds some spatial air, but it does not replace real recordings or a first-party audio-break/phrase-loop collection. The optional Piano and VSCO multisample banks add conventional instrument breadth, but do not provide a shared KYX sonic identity.
 
 ## What ships today
 
 ### Factory sample bank
 
-There are 155 manifest entries. **142 have curated WAV overrides**; 13 remain procedural voices: `Snare Ghost`, `Ride Ding`, both Brushes, and the nine Field sounds. The lists below are the current manifest names.
+There are 155 manifest entries. **146 have curated WAV overrides**; nine remain procedural voices: `Snare Ghost`, `Ride Ding`, both Brushes, and five Field sounds (`Fridge Hum`, `Mains Buzz`, `Gravel Steps`, `Paper Turn`, and `Switch Click`). The lists below are the current manifest names.
 
 | Category | Count | Sounds |
 |---|---:|---|
@@ -40,7 +40,7 @@ There are 155 manifest entries. **142 have curated WAV overrides**; 13 remain pr
 - **643 factory presets** provide breadth across those instruments and devices. The productive next move is a smaller, voiced KYX signature set with performance macros and clear sound roles.
 - **57 registered effects**, including six flagship suites, cover substantial processing. That gives KYX the tools to transform material; the missing piece is distinctive source material and a coherent way to use it.
 - **258 grooves, 21 genres, and 12 genre kits** provide pattern and kit coverage. Groove entries are note patterns, not recorded audio breaks or phrase loops.
-- Separate optional packs contain **120 Piano WAVs** and **2,485 VSCO WAVs**. The public sample tree has 2,747 WAV files in total: 142 factory, 120 Piano, and 2,485 VSCO.
+- Separate optional packs contain **120 Piano WAVs** and **2,485 VSCO WAVs**. The public sample tree has 2,751 WAV files in total: 146 factory, 120 Piano, and 2,485 VSCO.
 
 ## Technical and musical assessment
 
@@ -48,16 +48,17 @@ There are 155 manifest entries. **142 have curated WAV overrides**; 13 remain pr
 
 - Kicks, snares, claps, hats, basses, tonal one-shots, leads, and FX have useful functional coverage. There are already 16 kick types and 14 bass types, with clean, driven, sub, Reese, FM, wobble, and acid directions.
 - The D1 808 velocity-zone set and the 808 Synth glide control cover the basic modern 808 workflow. Current 808s should be judged for distinct timbre and musical range, rather than replaced by more generic 808 names.
-- The 142 curated WAVs are consistently **44.1 kHz / 24-bit PCM**, with no clipping or exact duplicate assets. Category loudness drift is at most 1.9 dB in the audit; no category exceeds its current gate.
+- All 146 curated WAVs are **44.1 kHz / 24-bit PCM** and pass the sample-library gate with no clipping; category loudness drift is at most 1.9 dB. The four stereo Field sources remain mono-compatible (0.950 measured correlation; side energy −15.9 dB relative to mid).
 - The only leading-silence flags are intentional FX ramps (`Reverse Rise`, `Short Riser`, `Riser`, `Sweep`) and the `Choir Pad` swell. Their starts should stay intact.
 - The procedural Field and Brush voices give the library useful starting points for atmosphere and tactile rhythm, and can serve as fallbacks.
+- **Atmosphere source pass (2026-10-17):** Room Tone, Distant Street, Cloth Rustle, and Match Strike now have curated WAV overrides. A quiet, delayed, high-passed side signal gives them source width while the mid and low-frequency content stays centered; the other sounds were left untouched.
 
 ### Gaps with audible impact
 
 1. **Own source material.** Factory samples are synthesized seeds. There is no small first-party set of close, room, and environmental recordings that could give several categories a shared identity.
 2. **Human performance.** The catalogue has instrument labels such as tabla, conga, clap, and brush, but no first-party session of real takes with natural articulation and alternate performances. More names will not add that feel.
 3. **Phrase-scale material.** There are no factory audio breaks or short performance loops. This matters for chopped-break, speed-garage, and percussion-led workflows; the existing 258 groove entries remain useful MIDI-style patterns.
-4. **Spatial source character.** Every factory WAV is dual-mono. The library is stable in mono, but lacks original room, stereo air, and evolving width baked into a source.
+4. **Spatial source character.** Four Field WAVs now provide restrained stereo air with centered low frequencies. The wider library still lacks genuinely recorded room texture and evolving stereo source performances.
 5. **A recognizable family relationship.** Existing sounds work as individual choices, but the library does not yet carry one source fingerprint through kick, bass, synth, texture, and transition FX.
 6. **A few close neighbours need an ear review.** The nearest-neighbour audit flagged `kick.knock` / `kick.lofi` (0.066), `hat.closed.soft` / `hat.closed` (0.091), `snare.drill` / `snare.main` (0.110), and `clap.soft` / `clap.trad` (0.141). These may be intentional adjacent colours; audition them in beats before changing or removing anything.
 

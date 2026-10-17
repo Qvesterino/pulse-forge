@@ -145,6 +145,15 @@ timeouts. This is endpoint smoke evidence only: physical jack mapping, analog
 round-trip latency, real ASIO, device-loss recovery and sustained hardware
 stability remain open. Details are in the [Volt smoke record](./WINDOWS-AUDIO-SPIKE-2026-09.md#volt-shared-mode-smoke--2026-10-15).
 
+**Execution checkpoint (2026-10-17):** a read-only Windows 11 Home 10.0.26300
+endpoint enumeration found the Realtek speakers and microphone array, the MSI
+display audio output and the Creative webcam microphone. It did not find the
+Volt 276 endpoints. No WASAPI stream was opened and no microphone samples were
+read in this check. The 2026-10-15 Volt smoke remains valid historical evidence,
+but the reference device was unavailable for another hardware run in this
+execution. See the [current endpoint check](./WINDOWS-AUDIO-SPIKE-2026-09.md#current-endpoint-check--2026-10-17).
+Reconnect the Volt before physical jack, latency, recovery or soak qualification.
+
 ## Phase 0 — make the target and baseline truthful
 
 - [x] Owner changes the goal from focused beat workstation to full production
@@ -216,8 +225,9 @@ live and offline export. Publish the verified Web capability table.
       real ASIO only after confirming the driver architecture and licensing
       route. Use exclusive mode only for a concrete unmet requirement and
       preserve its explicit acknowledgement.
-- [ ] Write a dedicated audio I/O ADR after a measured technical spike compares Web Audio,
-      WASAPI shared low-period/`IAudioClient3`, WASAPI exclusive and ASIO.
+- [x] Compare the measured Web Audio, WASAPI shared/`IAudioClient3`, WASAPI
+      exclusive and ASIO evidence; record the Windows audio I/O direction in
+      [ADR 0050](./adr/0050-windows-audio-io-direction.md).
 - [ ] Define a typed audio-device backend contract: enumerate/select device,
       input/output channel map, format negotiation, buffer/period, clock position,
       start/stop, device loss, xruns, latency and diagnostics.

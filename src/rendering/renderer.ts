@@ -783,7 +783,7 @@ function scheduleNotes(
 ): void {
   const { base } = window;
   for (const event of events) {
-    // FL slide note: glide from previous non-slide note's end (live==offline)
+    // Legacy portamento glides into a new attack (live==offline).
     const slideFrom = event.slideFrom;
     const step = Math.floor((event.tick - base) / 120);
     const metaLocks = (window.pattern as any).stepMeta?.[event.trackId]?.[step]?.locks as

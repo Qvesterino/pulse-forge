@@ -516,7 +516,7 @@ export interface NoteEvent {
   expression?: NoteExpression;
   /** Legacy portamento transition: this note starts a new voice that glides from the previous non-slide note. */
   slide?: boolean;
-  /** FL-style slide note: bends the currently held 808 voice toward this pitch without a new attack. */
+  /** FL-style slide note: bends a supported held mono voice toward this pitch without a new attack. */
   slideNote?: boolean;
   /** Per-note p-locks — absolute overrides for this hit (mirrors StepMeta.locks, for piano roll). */
   locks?: Partial<Record<StepLockKey, number>>;
@@ -532,6 +532,10 @@ export interface NoteExpression {
   filterResonance?: number;
   /** MIDI note-off velocity, 0..1; absent uses the normal release response. */
   releaseVelocity?: number;
+  /** FL Mod X / filter cutoff event, 0..1; 0.5 keeps the instrument's note cutoff. */
+  modX?: number;
+  /** FL Mod Y / filter resonance event, 0..1; 0.5 keeps the instrument's note resonance. */
+  modY?: number;
   /** Fine tuning in semitones, -12..12, applied in addition to the MIDI pitch. */
   pitchOffsetSemitones?: number;
 }

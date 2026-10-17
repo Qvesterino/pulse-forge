@@ -82,10 +82,14 @@ export function IoPanel() {
   const [outputId, setOutputId] = useState<string>(loadOutputDeviceId() || "default");
   const [outputMessage, setOutputMessage] = useState<string | null>(null);
   const [outputsMissingLabels, setOutputsMissingLabels] = useState(false);
+  const [outputsLoaded, setOutputsLoaded] = useState(false);
+  const outputUnavailable =
+    outputsLoaded && outputId !== "default" && !outputs.some((device) => device.deviceId === outputId);
 
   const refreshOutputs = () => {
     void listOutputDevices().then((devices) => {
       setOutputs(devices);
+      setOutputsLoaded(true);
       // Labels stay empty until the user has played audio in this browser
       // (Chromium's OutputDeviceInfo rule) — say so instead of "Audio output 1".
       setOutputsMissingLabels(devices.filter((d) => d.deviceId !== "default").every((d) => !d.label));
@@ -112,16 +116,25 @@ export function IoPanel() {
   const [inputId, setInputId] = useState<string>(loadRecordingInputDeviceId());
   const [inputGainDb, setInputGainDb] = useState<number>(loadRecordingInputGainDb());
   const [inputsMissingLabels, setInputsMissingLabels] = useState(false);
+  const [inputsLoaded, setInputsLoaded] = useState(false);
+  const inputUnavailable = inputsLoaded && Boolean(inputId) && !inputs.some((device) => device.deviceId === inputId);
 
   useEffect(() => {
     let cancelled = false;
     void listRecordingInputDevices().then((devices) => {
       if (cancelled) return;
       setInputs(devices);
+      setInputsLoaded(true);
       setInputsMissingLabels(devices.every((d) => !d.label || d.label.startsWith("Audio input ")));
     });
     const media = typeof navigator !== "undefined" ? navigator.mediaDevices : null;
-    const onChange = () => void listRecordingInputDevices().then((devices) => !cancelled && setInputs(devices));
+    const onChange = () =>
+      void listRecordingInputDevices().then((devices) => {
+        if (cancelled) return;
+        setInputs(devices);
+        setInputsLoaded(true);
+        setInputsMissingLabels(devices.every((device) => !device.label || device.label.startsWith("Audio input ")));
+      });
     media?.addEventListener?.("devicechange", onChange);
     return () => {
       cancelled = true;
@@ -192,15 +205,26 @@ export function IoPanel() {
           <select
             value={outputId}
             onChange={(event) => changeOutput(event.target.value)}
-            disabled={outputs.length <= 1}
+            disabled={outputs.length <= 1 && !outputUnavailable}
           >
             {outputs.map((device) => (
               <option key={device.deviceId} value={device.deviceId}>
                 {device.label || `Audio output ${device.deviceId.slice(0, 8)}`}
               </option>
             ))}
+            {outputUnavailable && (
+              <option value={outputId} disabled>
+                Saved output unavailable
+              </option>
+            )}
           </select>
         </label>
+        {outputUnavailable && (
+          <div className="io-error" role="status">
+            The saved output is not currently listed. Choose an available output or explicitly select System default
+            output.
+          </div>
+        )}
         {!sinkSupported && (
           <div className="io-note" role="note">
             This browser cannot switch outputs (no setSinkId) — sound follows the system default.
@@ -253,6 +277,11 @@ export function IoPanel() {
           <span className="io-field-label">DEVICE</span>
           <select value={inputId} onChange={(event) => changeInput(event.target.value)}>
             <option value="">System default input</option>
+            {inputUnavailable && (
+              <option value={inputId} disabled>
+                Saved input unavailable
+              </option>
+            )}
             {inputs.map((device) => (
               <option key={device.deviceId} value={device.deviceId}>
                 {device.label}
@@ -260,6 +289,12 @@ export function IoPanel() {
             ))}
           </select>
         </label>
+        {inputUnavailable && (
+          <div className="io-error" role="status">
+            The saved input is not currently listed. Recording stays pinned to this device ID and will report an error
+            if the browser cannot resolve it; it will not switch inputs silently.
+          </div>
+        )}
         {inputsMissingLabels && inputs.length > 0 && (
           <div className="io-note" role="note">
             Microphone names appear after granting input permission (arm a recording once).

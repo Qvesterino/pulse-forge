@@ -19,7 +19,11 @@ import { persistBankBuffer } from "../sample-library/bank-persist";
  * Extension acceptance lives in `audio-import-capabilities.ts` and is applied
  * by the surfaces that show a file picker or receive a drop.
  */
-export async function importAudioFile(services: Services, file: File): Promise<UserSampleAsset> {
+export async function importAudioFile(
+  services: Pick<Services, "engine" | "bank" | "userSamples">,
+  file: File,
+  options: { id?: string; detectBpm?: boolean } = {},
+): Promise<UserSampleAsset> {
   const ctx = services.engine.context;
   if (!ctx) throw new Error("Audio engine not ready");
   // Before arrayBuffer(): reading an oversized file first is the failure mode
@@ -29,16 +33,18 @@ export async function importAudioFile(services: Services, file: File): Promise<U
   // receives, so hand it a copy and keep the original for IDB.
   const raw = await file.arrayBuffer();
   const buffer = await ctx.decodeAudioData(raw.slice(0));
-  const id = userSampleId(file.name);
+  const id = options.id ?? userSampleId(file.name);
 
   // One-time tempo detection for the "Fit to project BPM" workflow.
   // Best-effort: a failed/absent detection just leaves `bpm` unset.
   let bpm: number | undefined;
-  try {
-    const detected = detectLoopBpm(buffer.getChannelData(0), buffer.sampleRate);
-    if (detected) bpm = detected.bpm;
-  } catch (err) {
-    console.warn("[sample-import] bpm detection failed:", err);
+  if (options.detectBpm !== false) {
+    try {
+      const detected = detectLoopBpm(buffer.getChannelData(0), buffer.sampleRate);
+      if (detected) bpm = detected.bpm;
+    } catch (err) {
+      console.warn("[sample-import] bpm detection failed:", err);
+    }
   }
 
   // Persist metadata + encoded bytes (survives reloads since DB v5). The

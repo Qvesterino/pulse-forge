@@ -42,6 +42,7 @@ import { sanitizeGateSteps, sanitizeLfo, sanitizeManglerSteps } from "./modulato
 import { uid } from "../shared/ids";
 import { jsonEqual } from "../shared/jsonEqual";
 import { clampInstrumentParam, defaultInstrumentParams, INSTRUMENT_META } from "../instruments/definitions";
+import { supportsHeldVoiceSlideNote } from "../instruments/noteExpressionCapabilities";
 import { createProjectFromTemplate } from "./templates";
 import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams } from "../effects/definitions";
 import { clampFxOutputTrimDb } from "../effects/presetLoudness";
@@ -55,7 +56,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 34;
+export const SCHEMA_VERSION = 35;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -2992,7 +2993,8 @@ function normalizePatternsDomain(s: NormalizeState): void {
           hasInvalid = true;
           break;
         }
-        const normalizedSlideNote = n.slideNote === true && n.slide !== true && instrumentKinds.get(trackId) === "808";
+        const normalizedSlideNote =
+          n.slideNote === true && n.slide !== true && supportsHeldVoiceSlideNote(instrumentKinds.get(trackId));
         if ((n.slideNote === true) !== normalizedSlideNote) {
           hasInvalid = true;
           break;
@@ -3014,8 +3016,10 @@ function normalizePatternsDomain(s: NormalizeState): void {
             continue;
           }
           const expression = normalizeNoteExpression(n.expression);
-          const slideNote = n.slideNote === true && n.slide !== true && instrumentKinds.get(trackId) === "808";
-          if (noteExpressionEquals(expression, n.expression) && (n.slideNote === true) === slideNote) normalizedNotes.push(n);
+          const slideNote =
+            n.slideNote === true && n.slide !== true && supportsHeldVoiceSlideNote(instrumentKinds.get(trackId));
+          if (noteExpressionEquals(expression, n.expression) && (n.slideNote === true) === slideNote)
+            normalizedNotes.push(n);
           else {
             notesChanged = true;
             const { expression: _oldExpression, slideNote: _oldSlideNote, ...rest } = n;
@@ -3092,6 +3096,16 @@ function normalizeNoteExpression(value: unknown): NoteExpression | undefined {
     const normalized = Math.round(Math.max(0, Math.min(1, releaseVelocity)) * 100) / 100;
     if (normalized !== 0.5) expression.releaseVelocity = normalized;
   }
+  const modX = value.modX;
+  if (typeof modX === "number" && Number.isFinite(modX)) {
+    const normalized = Math.round(Math.max(0, Math.min(1, modX)) * 100) / 100;
+    if (normalized !== 0.5) expression.modX = normalized;
+  }
+  const modY = value.modY;
+  if (typeof modY === "number" && Number.isFinite(modY)) {
+    const normalized = Math.round(Math.max(0, Math.min(1, modY)) * 100) / 100;
+    if (normalized !== 0.5) expression.modY = normalized;
+  }
   const pitchOffsetSemitones = value.pitchOffsetSemitones;
   if (typeof pitchOffsetSemitones === "number" && Number.isFinite(pitchOffsetSemitones)) {
     const normalized = Math.round(Math.max(-12, Math.min(12, pitchOffsetSemitones)) * 100) / 100;
@@ -3108,6 +3122,8 @@ function noteExpressionEquals(left: NoteExpression | undefined, right: unknown):
     left.filterCutoffHz === right.filterCutoffHz &&
     left.filterResonance === right.filterResonance &&
     left.releaseVelocity === right.releaseVelocity &&
+    left.modX === right.modX &&
+    left.modY === right.modY &&
     left.pitchOffsetSemitones === right.pitchOffsetSemitones &&
     Object.keys(right).every(
       (key) =>
@@ -3115,6 +3131,8 @@ function noteExpressionEquals(left: NoteExpression | undefined, right: unknown):
         key === "filterCutoffHz" ||
         key === "filterResonance" ||
         key === "releaseVelocity" ||
+        key === "modX" ||
+        key === "modY" ||
         key === "pitchOffsetSemitones",
     )
   );
@@ -3215,8 +3233,9 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // unchanged and continue using the pad's fade settings when no fade is set.
   // v33 adds optional per-note expression (pan, filter and release velocity);
   // absent or default-valued fields preserve the original sound.
-  // v34 adds a distinct 808 slide-note articulation; legacy `slide` remains
-  // the note-on portamento transition and projects without the new field keep it.
+  // v34 adds a distinct held-voice slide-note articulation, first supported on 808; legacy `slide` remains
+  // the note-on portamento transition. v35 adds normalized per-note Mod X/Y
+  // values; their neutral value (0.5) is omitted to preserve instrument defaults.
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

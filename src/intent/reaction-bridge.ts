@@ -79,16 +79,27 @@ export function isMutatingIntentRoute(route: RoutedIntent): boolean {
  *
  * Call this AFTER the command has run, with the document from before it.
  */
+/**
+ * What a bridge call did — returned so a JOURNAL (the session tape) can record
+ * only real proposals without depending on the reaction ledger being enabled.
+ *  - "registered": the state pair differed and a row was written.
+ *  - "noop":       the command changed nothing (or the route is not mutating).
+ *  - "disabled":   the kill switch is off; NOTHING was hashed (zero-cost
+ *                  contract), so a caller cannot know whether it was a no-op.
+ */
+export type ProposalRegistration = "registered" | "noop" | "disabled";
+
 export function noteIntentProposal(
   route: RoutedIntent,
   beforeDoc: ProjectDocument,
   afterDoc: ProjectDocument,
   undoDepthBeforeApply: number,
-): void {
+): ProposalRegistration {
   // The kill switch FIRST: a disabled ledger must cost zero cycles, and the
   // track-id diff below is real work (F1 contract).
-  if (!activeReactionLedger() || !isMutatingIntentRoute(route)) return;
-  registerProposal({
+  if (!activeReactionLedger()) return "disabled";
+  if (!isMutatingIntentRoute(route)) return "noop";
+  return registerProposal({
     routeKind: route.kind,
     action: describeIntentAction(route),
     trackIds: affectedTrackIds(route, beforeDoc, afterDoc),
@@ -115,9 +126,9 @@ export function noteCandidateUse(
   afterDoc: ProjectDocument,
   undoDepthBeforeApply: number,
   applied: { generationId?: string; candidateIndex?: number } = {},
-): void {
-  if (!activeReactionLedger()) return;
-  registerProposal({
+): ProposalRegistration {
+  if (!activeReactionLedger()) return "disabled";
+  return registerProposal({
     routeKind: "candidateUse",
     action: { verb: "generate", subject: "pattern", relative: false },
     trackIds: [...new Set(trackIdsChangedBetween(beforeDoc, afterDoc))].sort(),
@@ -141,9 +152,9 @@ interface RegisterProposalInput {
 }
 
 /** The shared body: build the state pair, enforce the no-op postcondition, register. */
-function registerProposal(input: RegisterProposalInput): void {
+function registerProposal(input: RegisterProposalInput): ProposalRegistration {
   const ledger = activeReactionLedger();
-  if (!ledger) return;
+  if (!ledger) return "disabled";
   const beforeHash = hashReactionState(proposalState(input.beforeDoc, input.trackIds));
   const afterHash = hashReactionState(proposalState(input.afterDoc, input.trackIds));
 
@@ -151,7 +162,7 @@ function registerProposal(input: RegisterProposalInput): void {
   // no-op command, a query, or a re-ask that landed on the current value.
   // Registering it would teach "kept" for a machine action the user never
   // heard, and would keep the ledger's keep-rate honest only by accident.
-  if (beforeHash === afterHash) return;
+  if (beforeHash === afterHash) return "noop";
 
   ledger.register({
     routeKind: input.routeKind,
@@ -163,6 +174,7 @@ function registerProposal(input: RegisterProposalInput): void {
     ...(input.generationId !== undefined ? { generationId: input.generationId } : {}),
     ...(input.candidateIndex !== undefined ? { candidateIndex: input.candidateIndex } : {}),
   });
+  return "registered";
 }
 
 /* ------------------------------------------------------------------ */

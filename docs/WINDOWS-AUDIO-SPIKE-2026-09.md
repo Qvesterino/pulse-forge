@@ -53,12 +53,12 @@ The capture packet contents were discarded; render queued silence. No tone,
 recording file, software loopback, physical cable loopback or ASIO stream was
 used.
 
-| Test | Endpoint | Result |
-| --- | --- | --- |
-| 10-second shared capture | `INPUT 1/2 (2- Volt 276)` | 10.01 s; 1,000 packets / 480,000 frames; one first-packet discontinuity and zero later discontinuities, silent packets, timestamp errors, device-position gaps or event timeouts; exit 0. First frame arrived 94.622 ms after the `Start` call and 1.842 ms after `Start` returned. |
-| 10-second shared render | `MONITOR L/R (2- Volt 276)` | 10.00 s; 1,001 events / 481,536 frames queued; zero event timeouts; exit 0. Silence only. |
-| 30-second shared capture | `INPUT 1/2 (2- Volt 276)` | 30.01 s; 3,000 packets / 1,440,000 frames; one first-packet discontinuity and zero later discontinuities, silent packets, timestamp errors, device-position gaps or event timeouts; exit 0. First frame arrived 89.276 ms after the `Start` call and 2.044 ms after `Start` returned. |
-| 30-second shared render | `MONITOR L/R (2- Volt 276)` | 30.00 s; 3,001 events / 1,441,536 frames queued (30.03 s); zero event timeouts; exit 0. Silence only. |
+| Test                     | Endpoint                    | Result                                                                                                                                                                                                                                                                                |
+| ------------------------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 10-second shared capture | `INPUT 1/2 (2- Volt 276)`   | 10.01 s; 1,000 packets / 480,000 frames; one first-packet discontinuity and zero later discontinuities, silent packets, timestamp errors, device-position gaps or event timeouts; exit 0. First frame arrived 94.622 ms after the `Start` call and 1.842 ms after `Start` returned.   |
+| 10-second shared render  | `MONITOR L/R (2- Volt 276)` | 10.00 s; 1,001 events / 481,536 frames queued; zero event timeouts; exit 0. Silence only.                                                                                                                                                                                             |
+| 30-second shared capture | `INPUT 1/2 (2- Volt 276)`   | 30.01 s; 3,000 packets / 1,440,000 frames; one first-packet discontinuity and zero later discontinuities, silent packets, timestamp errors, device-position gaps or event timeouts; exit 0. First frame arrived 89.276 ms after the `Start` call and 2.044 ms after `Start` returned. |
+| 30-second shared render  | `MONITOR L/R (2- Volt 276)` | 30.00 s; 3,001 events / 1,441,536 frames queued (30.03 s); zero event timeouts; exit 0. Silence only.                                                                                                                                                                                 |
 
 The probe reported 0.000 ms WASAPI stream latency; this is not a DAC/ADC
 round-trip measurement. These runs show that bounded shared-mode streams opened
@@ -67,6 +67,15 @@ discontinuities in the 30-second run. They do not verify which physical jacks
 feed the input/output channels, audio quality, analog monitoring latency,
 recovery after device loss, or long-session dropout behavior. Treat this as a
 hardware smoke only, not a support qualification.
+
+## Current endpoint check — 2026-10-17
+
+A read-only PnP enumeration on Windows 11 Home 10.0.26300 found the Creative
+webcam microphone, Realtek speakers, Realtek microphone array and MSI display
+audio output. It did not find either Volt 276 endpoint. No WASAPI stream was
+opened and no microphone samples were read. The 2026-10-15 Volt smoke remains
+historical evidence; repeat physical qualification only after the interface is
+connected and the exact endpoints enumerate again.
 
 ## Reference endpoints detected in the original 2026-09 session
 

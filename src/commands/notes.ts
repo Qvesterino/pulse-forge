@@ -533,13 +533,7 @@ export function setNotesSlideNote(doc: ProjectDocument, trackId: string, noteIds
     type: "setNotesSlideNote",
     label: `${enabled ? "Set" : "Clear"} slide note for ${previous.size} note${previous.size === 1 ? "" : "s"}`,
     execute: (d) => withTrackNotes(d, trackId, () => next, patternId),
-    undo: (d) =>
-      withTrackNotes(
-        d,
-        trackId,
-        (notes) => notes.map((note) => previous.get(note.id) ?? note),
-        patternId,
-      ),
+    undo: (d) => withTrackNotes(d, trackId, (notes) => notes.map((note) => previous.get(note.id) ?? note), patternId),
   };
 }
 
@@ -550,6 +544,8 @@ const NOTE_EXPRESSION_LIMITS: Record<NoteExpressionKey, { min: number; max: numb
   filterCutoffHz: { min: 80, max: 16000, defaultValue: null },
   filterResonance: { min: 0, max: 1, defaultValue: 0.08 },
   releaseVelocity: { min: 0, max: 1, defaultValue: 0.5 },
+  modX: { min: 0, max: 1, defaultValue: 0.5 },
+  modY: { min: 0, max: 1, defaultValue: 0.5 },
   pitchOffsetSemitones: { min: -12, max: 12, defaultValue: 0 },
 };
 

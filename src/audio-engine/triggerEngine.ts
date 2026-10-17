@@ -420,7 +420,7 @@ export class TriggerEngine {
     const inst = this.deps.instrumentStates.get(trackId);
     if (!inst?.runtime.noteSlide) return;
     const adjustedPitch = pitch + (inst.pitchBend ?? 0) + (expression?.pitchOffsetSemitones ?? 0);
-    inst.runtime.noteSlide(adjustedPitch, when, durationSec);
+    inst.runtime.noteSlide(adjustedPitch, when, durationSec, expression);
   }
 
   /**

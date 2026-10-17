@@ -14,7 +14,7 @@ export interface InstrumentRuntime {
     expression?: NoteExpression,
   ): void;
   /** Bend the currently held voice without starting a new attack (FL slide-note articulation). */
-  noteSlide?(pitch: number, when: number, durationSec: number): void;
+  noteSlide?(pitch: number, when: number, durationSec: number, expression?: NoteExpression): void;
   noteOff?(pitch: number, when: number): void;
   /**
    * MPE poly aftertouch. Convention: pressure 0..1 opens the matching
@@ -66,5 +66,7 @@ export interface InstrumentDefinition {
   kind: InstrumentKind;
   name: string;
   params: ParamDef[];
+  /** Per-note expression keys consumed by this runtime; Piano Roll uses this to avoid inert lanes. */
+  noteExpressionTargets?: readonly (keyof NoteExpression)[];
   factory: InstrumentFactory;
 }

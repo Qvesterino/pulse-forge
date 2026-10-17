@@ -178,6 +178,24 @@ const outcome = await page.evaluate(async (favorites) => {
   const fittedStar = fitRerankWeight(samples);
   const fittedLedger = fitRerankWeight(ledgerSamples);
   const fitted = fitRerankWeight(combined);
+
+  // SHADOW ADJUDICATION (CI for taste): the shipped default weight is the
+  // shadow policy; the fitted one is the active policy. Which would have
+  // picked what the human kept? Computed from the SAME observations — the
+  // counterfactual costs no render because the rerank's coordinates are stored.
+  const { adjudicateShadow } = await import("/src/intent/shadow-adjudication.ts");
+  const { AUDIO_FEEDBACK_WEIGHT } = await import("/src/intent/audio-feedback.ts");
+  const humanPicks = new Map();
+  for (const [generationId, verdict] of verdicts) {
+    if (verdict.candidateIndex !== undefined) humanPicks.set(generationId, verdict.candidateIndex);
+  }
+  const shadowAdjudication = adjudicateShadow({
+    observations: readAudioFitLedger(),
+    activeWeight: fitted?.weight ?? AUDIO_FEEDBACK_WEIGHT,
+    shadowWeight: AUDIO_FEEDBACK_WEIGHT,
+    humanPicks,
+  });
+
   return {
     fitted,
     fittedStar,
@@ -188,6 +206,7 @@ const outcome = await page.evaluate(async (favorites) => {
     ledgerGenerations,
     ledgerSampleCount: ledgerSamples.length,
     reactionReport,
+    shadowAdjudication,
   };
 }, entries);
 
@@ -219,6 +238,17 @@ if (outcome.reactionReport && outcome.reactionReport.generations > 0) {
   );
 }
 
+// SHADOW VERDICT — the one line that turns the fit into CI for taste.
+if (outcome.shadowAdjudication && outcome.shadowAdjudication.verdict !== "tie") {
+  const shadow = outcome.shadowAdjudication;
+  console.log(
+    `[rerank:fit] shadow verdict ${shadow.verdict.toUpperCase()}: ${shadow.detail} ` +
+      `(neither agreed ${shadow.neitherAgreed}, indistinguishable ${shadow.indistinguishable})`,
+  );
+} else if (outcome.shadowAdjudication) {
+  console.log(`[rerank:fit] shadow verdict: ${outcome.shadowAdjudication.detail}`);
+}
+
 const learned = {
   weight: outcome.fitted.weight,
   source: "learned-v1 (fit-rerank-weights: ★ rolls + audio-fit ledger, reaction-adjusted)",
@@ -228,6 +258,7 @@ const learned = {
   generations: outcome.fitted.generations,
   samples: outcome.sampleCount + (outcome.ledgerSampleCount ?? 0),
   ...(outcome.reactionReport ? { reactionAdjustments: outcome.reactionReport } : {}),
+  ...(outcome.shadowAdjudication ? { shadowAdjudication: outcome.shadowAdjudication } : {}),
 };
 const outDir = path.join(ROOT, "scripts", "data");
 mkdirSync(outDir, { recursive: true });

@@ -206,6 +206,52 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("Texture Synth runti
   });
 });
 
+describe.skipIf(typeof OfflineAudioContext === "undefined")("808 per-note Mod X/Y", () => {
+  const SR = 44100;
+
+  function makeTrack(): InstrumentTrack {
+    return {
+      id: "808-event-test",
+      kind: "instrument",
+      instrument: "808",
+      name: "808 event test",
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      sampleId: null,
+      params: defaultInstrumentParams("808"),
+      effects: [],
+      sends: {},
+    };
+  }
+
+  async function render(modX: number, modY: number): Promise<Float32Array> {
+    const ctx = new OfflineAudioContext(2, SR, SR);
+    const runtime = INSTRUMENT_DEFS["808"].factory(ctx, makeTrack(), { bpm: 124, getSample: () => undefined });
+    runtime.output.connect(ctx.destination);
+    runtime.noteOn(45, 0.9, 0.02, 0.8, undefined, { modX, modY });
+    const buffer = await ctx.startRendering();
+    runtime.dispose();
+    return buffer.getChannelData(0);
+  }
+
+  it("renders different per-note filter responses while the centered value preserves the base voice", async () => {
+    const centered = await render(0.5, 0.5);
+    const dark = await render(0, 0.5);
+    const resonant = await render(0.5, 1);
+    const rmsDifference = (a: Float32Array, b: Float32Array) => {
+      let sum = 0;
+      for (let index = 0; index < a.length; index++) sum += (a[index]! - b[index]!) ** 2;
+      return Math.sqrt(sum / a.length);
+    };
+
+    expect(rmsDifference(centered, dark)).toBeGreaterThan(0.0001);
+    expect(rmsDifference(centered, resonant)).toBeGreaterThan(0.0001);
+    expect(Math.max(...centered.subarray(0, SR / 2).map((sample) => Math.abs(sample)))).toBeGreaterThan(0.001);
+  });
+});
+
 describe("instrument expansion registry", () => {
   it("spectral exposes additive macros", () => {
     const ids = new Set(INSTRUMENT_DEFS.spectral.params.map((p) => p.id));

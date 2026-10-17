@@ -255,6 +255,33 @@ describe("808 GRIT — square harmonic anchor", () => {
     runtime.dispose();
   });
 
+  it("bends the held 808 on an FL slide note without creating a new attack", () => {
+    const { ctx, record } = mockCtx();
+    const runtime = INSTRUMENT_DEFS["808"].factory(ctx, track808() as never, TEST_ENV);
+    runtime.noteOn(33, 0.9, 0.1, 0.5);
+    const voiceOscillators = record.oscs.length;
+
+    runtime.noteSlide?.(45, 0.2, 0.1);
+
+    expect(record.oscs).toHaveLength(voiceOscillators);
+    expect(record.oscs[0]!.frequency.setValueAtTime).toHaveBeenLastCalledWith(A1, 0.2);
+    expect(record.oscs[0]!.frequency.exponentialRampToValueAtTime).toHaveBeenLastCalledWith(
+      midiToFreq(45),
+      expect.any(Number),
+    );
+    expect(record.oscs[0]!.frequency.exponentialRampToValueAtTime.mock.calls.at(-1)![1]).toBeCloseTo(0.3);
+    expect(record.oscs[1]!.frequency.exponentialRampToValueAtTime).toHaveBeenLastCalledWith(
+      midiToFreq(45) / 2,
+      expect.any(Number),
+    );
+    expect(record.oscs[1]!.frequency.exponentialRampToValueAtTime.mock.calls.at(-1)![1]).toBeCloseTo(0.3);
+
+    const slideCalls = record.oscs[0]!.frequency.setValueAtTime.mock.calls.length;
+    runtime.noteSlide?.(48, 0.61, 0.1); // The source note's gate ended at 0.6 s.
+    expect(record.oscs[0]!.frequency.setValueAtTime).toHaveBeenCalledTimes(slideCalls);
+    runtime.dispose();
+  });
+
   it("is cut when the voice is stopped (mono trap cut)", () => {
     const { ctx, record } = mockCtx();
     const runtime = INSTRUMENT_DEFS["808"].factory(ctx, track808({ sub: 0, grit: 0.5 }) as never, TEST_ENV);

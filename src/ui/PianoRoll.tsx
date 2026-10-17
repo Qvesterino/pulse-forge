@@ -31,6 +31,10 @@ import { MELODIC_OFFSETS, melodicKeys } from "./melodicKeys";
 import { humanizeVelocities, randomizeVelocities } from "../shared/velocityFx";
 import { HumToMelodyPanel } from "./HumToMelody";
 import { executeUserEdit } from "../commands/types";
+import {
+  noteExpressionTargetsForInstrument,
+  supportsHeldVoiceSlideNote,
+} from "../instruments/noteExpressionCapabilities";
 
 const PITCH_MIN = 24;
 const PITCH_MAX = 84;
@@ -186,6 +190,8 @@ const EVENT_EXPRESSION_DEFAULTS: Record<NoteExpressionKey, number> = {
   filterCutoffHz: 16000,
   filterResonance: 0.08,
   releaseVelocity: 0.5,
+  modX: 0.5,
+  modY: 0.5,
   pitchOffsetSemitones: 0,
 };
 
@@ -207,6 +213,8 @@ function eventLaneNormalizedValue(note: NoteEvent, target: PianoRollEventTarget,
     const cutoff = Math.max(80, Math.min(16000, note.expression?.filterCutoffHz ?? defaultValue));
     return Math.log(cutoff / 80) / Math.log(16000 / 80);
   }
+  if (target === "modX") return note.expression?.modX ?? defaultValue;
+  if (target === "modY") return note.expression?.modY ?? defaultValue;
   if (target === "filterResonance") return note.expression?.filterResonance ?? defaultValue;
   if (target === "releaseVelocity") return note.expression?.releaseVelocity ?? defaultValue;
   return ((note.expression?.pitchOffsetSemitones ?? defaultValue) + 12) / 24;
@@ -228,8 +236,13 @@ function eventLaneNormalizedFromValue(target: NoteExpressionKey, value: number):
 }
 
 function eventBarVisual(target: NoteExpressionKey, value: number): { height: string; top?: string; bottom?: string } {
-  if (target === "pitchOffsetSemitones" || target === "pan") {
-    const signed = target === "pan" ? Math.max(-1, Math.min(1, value)) : Math.max(-12, Math.min(12, value)) / 12;
+  if (target === "pitchOffsetSemitones" || target === "pan" || target === "modX" || target === "modY") {
+    const signed =
+      target === "pan"
+        ? Math.max(-1, Math.min(1, value))
+        : target === "modX" || target === "modY"
+          ? (Math.max(0, Math.min(1, value)) - 0.5) * 2
+          : Math.max(-12, Math.min(12, value)) / 12;
     return {
       height: `${Math.abs(signed) * 50}%`,
       top: signed >= 0 ? `${50 - Math.abs(signed) * 50}%` : "50%",
@@ -240,7 +253,10 @@ function eventBarVisual(target: NoteExpressionKey, value: number): { height: str
 }
 
 function eventBarIsNegative(target: NoteExpressionKey, value: number): boolean {
-  return (target === "pan" || target === "pitchOffsetSemitones") && value < 0;
+  return (
+    ((target === "pan" || target === "pitchOffsetSemitones") && value < 0) ||
+    ((target === "modX" || target === "modY") && value < 0.5)
+  );
 }
 
 function eventLaneTargetLabel(target: PianoRollEventTarget): string {
@@ -255,6 +271,10 @@ function eventLaneTargetLabel(target: PianoRollEventTarget): string {
       return "Filter resonance";
     case "releaseVelocity":
       return "Release velocity";
+    case "modX":
+      return "Mod X";
+    case "modY":
+      return "Mod Y";
     case "pitchOffsetSemitones":
       return "Fine pitch";
   }
@@ -272,6 +292,7 @@ function eventLaneValueLabel(note: NoteEvent, target: PianoRollEventTarget, defa
   if (target === "filterCutoffHz") return `${Math.round(note.expression?.filterCutoffHz ?? defaultValue)} Hz`;
   if (target === "filterResonance") return `${Math.round(value * 100)}%`;
   if (target === "releaseVelocity") return `${Math.round(value * 100)}%`;
+  if (target === "modX" || target === "modY") return `${Math.round(value * 100)}%`;
   const semitones = note.expression?.pitchOffsetSemitones ?? 0;
   return `${semitones > 0 ? "+" : ""}${semitones.toFixed(2)} st`;
 }
@@ -306,7 +327,7 @@ const VelocityBar = memo(
           background: `hsl(${hue} 85% 55%)`,
         }}
         title={`${pitchName(note.pitch)} vel ${Math.round(note.velocity * 100)}% — drag vertically`}
-        onPointerDown={(e) => handlers.beginDrag(e, note)}
+        onPointerDown={note.slideNote ? undefined : (e) => handlers.beginDrag(e, note)}
         onPointerMove={(e) => handlers.pointerMove(e)}
         onPointerUp={(e) => handlers.pointerUp(e)}
         onPointerCancel={() => handlers.pointerCancel()}
@@ -651,11 +672,14 @@ export function PianoRollTrack({
     startValues: Record<string, number>;
   } | null>(null);
   const [eventTarget, setEventTarget] = useState<PianoRollEventTarget>("velocity");
-  const eventTargets: PianoRollEventTarget[] =
-    track.instrument === "808"
-      ? ["velocity", "pitchOffsetSemitones", "pan", "filterCutoffHz", "filterResonance", "releaseVelocity"]
-      : ["velocity", "pitchOffsetSemitones"];
-  const activeEventTarget = eventTargets.includes(eventTarget) ? eventTarget : "velocity";
+  const selectedSlideNotesOnly =
+    selectedNote?.trackId === track.id &&
+    selectedNote.noteIds.length > 0 &&
+    selectedNote.noteIds.every((id) => notes.find((note) => note.id === id)?.slideNote === true);
+  const eventTargets: PianoRollEventTarget[] = selectedSlideNotesOnly
+    ? ["pitchOffsetSemitones"]
+    : ["velocity", "pitchOffsetSemitones", ...noteExpressionTargetsForInstrument(track.instrument)];
+  const activeEventTarget = eventTargets.includes(eventTarget) ? eventTarget : (eventTargets[0] ?? "velocity");
   const activeEventDefault = activeEventTarget === "velocity" ? 0.5 : eventLaneDefaultValue(track, activeEventTarget);
   const [velZoom, setVelZoom] = useState(1);
   const [noteClipboard, setNoteClipboard] = useState<NoteEvent[] | null>(null);
@@ -1276,7 +1300,7 @@ export function PianoRollTrack({
   );
 
   const beginVelDrag = (e: React.PointerEvent, note: NoteEvent) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || note.slideNote) return;
     e.stopPropagation();
     try {
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -1289,8 +1313,9 @@ export function PianoRollTrack({
       const map: Record<string, number> = {};
       for (const nid of selectedNote!.noteIds) {
         const n = notes.find((x) => x.id === nid);
-        if (n) map[nid] = n.velocity;
+        if (n && !n.slideNote) map[nid] = n.velocity;
       }
+      if (Object.keys(map).length === 0) return;
       setVelDrag({ anchorId: note.id, startY: e.clientY, startVels: map });
     } else {
       setVelDrag({ anchorId: note.id, startY: e.clientY, startVels: { [note.id]: note.velocity } });
@@ -1336,11 +1361,18 @@ export function PianoRollTrack({
 
   const beginExpressionDrag = (e: React.PointerEvent, note: NoteEvent, target?: NoteExpressionKey) => {
     if (e.button !== 0 || !target) return;
+    if (note.slideNote && target !== "pitchOffsetSemitones") return;
     e.stopPropagation();
     if (e.altKey) {
       const selectedIds =
         selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id) ? selectedNote.noteIds : [note.id];
-      const defaults = Object.fromEntries(selectedIds.map((id) => [id, null]));
+      const defaults = Object.fromEntries(
+        selectedIds
+          .filter(
+            (id) => target === "pitchOffsetSemitones" || !notes.find((candidate) => candidate.id === id)?.slideNote,
+          )
+          .map((id) => [id, null]),
+      );
       try {
         executeUserEdit(services.store, setNotesExpression(doc, track.id, target, defaults));
       } catch {
@@ -1355,7 +1387,10 @@ export function PianoRollTrack({
     }
     noteDragGuard.arm();
     const isInSel = selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id);
-    const selectedIds = isInSel && selectedNote!.noteIds.length > 1 ? selectedNote!.noteIds : [note.id];
+    const selectedIds = (isInSel && selectedNote!.noteIds.length > 1 ? selectedNote!.noteIds : [note.id]).filter(
+      (id) => target === "pitchOffsetSemitones" || !notes.find((candidate) => candidate.id === id)?.slideNote,
+    );
+    if (selectedIds.length === 0) return;
     const startValues: Record<string, number> = {};
     for (const id of selectedIds) {
       const selected = notes.find((candidate) => candidate.id === id);
@@ -1548,8 +1583,8 @@ export function PianoRollTrack({
     return () => window.removeEventListener("keydown", handler);
   }, [hasSelection, selectedNote, doc, track.id, services.store]);
 
-  // P2.1 shortcuts + P2.5: S strum, Alt+S slide, L legato, Ctrl/Cmd+B duplicate,
-  // Shift+C chord stamp menu, Alt+Q quick quantize 50%
+  // P2.1 shortcuts + P2.5: S strum, Alt+S portamento, Alt+Shift+S held-voice slide note,
+  // L legato, Ctrl/Cmd+B duplicate, Shift+C chord stamp menu, Alt+Q quick quantize 50%
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -1594,7 +1629,7 @@ export function PianoRollTrack({
       if (!hasSelection) return;
       if (lower === "s" && !ctrl) {
         if (e.altKey && e.shiftKey) {
-          if (track.instrument !== "808") return;
+          if (!supportsHeldVoiceSlideNote(track.instrument)) return;
           e.preventDefault();
           const selectedIds = selectedNote!.noteIds;
           const anySlideNote = notes.some((note) => selectedIds.includes(note.id) && note.slideNote);
@@ -1696,7 +1731,18 @@ export function PianoRollTrack({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [hasSelection, selectedNote, doc, track.id, pattern.id, patternTicks, notes, scaleSnap, services.store]);
+  }, [
+    hasSelection,
+    selectedNote,
+    doc,
+    track.id,
+    track.instrument,
+    pattern.id,
+    patternTicks,
+    notes,
+    scaleSnap,
+    services.store,
+  ]);
 
   // Latest-ref handlers for the memoized notes: the ref object identity is
   // stable (memo comparisons never see it change), while its fields always
@@ -2565,7 +2611,7 @@ export function PianoRollTrack({
               const prev = [...notes];
               executeUserEdit(services.store, {
                 type: "toggleSlide",
-                label: `${source.slide ? "Unslide" : "Slide"} ${pitchName(source.pitch)}`,
+                label: `${source.slide ? "Clear portamento" : "Set portamento"} ${pitchName(source.pitch)}`,
                 execute: (d: ProjectDocument) => ({
                   ...d,
                   patterns: d.patterns.map((p: Pattern) =>
@@ -2581,8 +2627,26 @@ export function PianoRollTrack({
               } as never);
             }}
           >
-            {notes.find((n) => n.id === noteMenu.noteId)?.slide ? "Unslide" : "Slide"}
+            {notes.find((n) => n.id === noteMenu.noteId)?.slide ? "Clear portamento" : "Set portamento"}
           </button>
+          {supportsHeldVoiceSlideNote(track.instrument) && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const source = notes.find((note) => note.id === noteMenu.noteId);
+                const target = noteMenu.noteId;
+                setNoteMenu(null);
+                if (!source) return;
+                executeUserEdit(
+                  services.store,
+                  setNotesSlideNote(services.store.doc, track.id, [target], !source.slideNote),
+                );
+              }}
+            >
+              {notes.find((note) => note.id === noteMenu.noteId)?.slideNote ? "Clear slide note" : "Set slide note"}
+            </button>
+          )}
         </div>
       )}
     </div>

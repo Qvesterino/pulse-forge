@@ -376,7 +376,11 @@ describe("sub-genre wave — acid trap, garage, baile, neuro, hard groove", () =
     expect(parseIntentText("midtempo bass 100").input.style).toBe("midtempo");
     expect(parseIntentText("mid tempo 95").input.style).toBe("midtempo");
     expect(parseIntentText("breakbeat 132").input.style).toBe("breakbeat");
-    expect(parseIntentText("big beat 130").input.style).toBe("breakbeat");
+    // "big beat" resolves to the BIGBEAT lane (house.bigbeat): it used to land
+    // in breakbeat only because the earlier breakbeat entry also carried a
+    // `big ?beat` alternate that shadowed the dedicated entry below it. The
+    // lexicon gate (tests/intent-routing-lexicon.test.ts) now forbids shadows.
+    expect(parseIntentText("big beat 130").input.style).toBe("bigbeat");
     // genre word present → style resolves against it
     expect(parseIntentText("sad chill beat 80").input.genre).toBe("ambient");
     expect(parseIntentText("sad chill beat 80").input.style).toBe("sadchill");
@@ -389,6 +393,7 @@ describe("sub-genre wave — acid trap, garage, baile, neuro, hard groove", () =
       "house.pianohouse",
       "house.midtempo",
       "house.breakbeat",
+      "house.bigbeat",
       "ambient.sadchill",
       "ambient.dirtyambient",
     ]) {

@@ -42,7 +42,7 @@ export interface SchedulerDeps {
     /** Resolved velocity-layer / round-robin sample for this hit (see groove.ts). */
     sampleId?: string | null,
   ): void;
-  /** Trigger a note; optional slide origin (pitch + absolute when-tick) for FL portamento. */
+  /** Trigger a note; optional slide origin (pitch + absolute when-tick) for legacy FL-style portamento. */
   noteOn(
     trackId: string,
     pitch: number,
@@ -1277,7 +1277,7 @@ export class Scheduler {
       if (!track || track.kind !== "instrument") continue;
       const when = timeAt(event.tick) + scheduleOffsetSec;
       if (!audible(when)) continue;
-      // FL slide note: glide from the previous non-slide note's end
+      // Legacy portamento: glide into a newly attacked note from its predecessor.
       const slideFrom = event.slideFrom ? { tick: event.slideFrom.tick, pitch: event.slideFrom.pitch } : undefined;
       // The glide ORIGIN time must come from the same tick→time map as `when`
       // (transport-anchored, scene-tempo aware) — deriving it from doc.bpm in

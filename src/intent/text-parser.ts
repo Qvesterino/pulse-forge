@@ -115,8 +115,10 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   // P2 wave). MUST sit above the generic dubstep entry.
   [/\bbrostep\b|\bbass ?dubstep\b|\bbass music\b|\btearout dubstep\b/, "trap"],
   [/\bdubstep\b|\briddim\b|\bhybrid trap\b/, "trap"],
-  // hip-hop sub-genre sweep — grime is a 140 UK floor (house family)
-  [/\bgrime\b|\beski\b/, "house"],
+  // hip-hop sub-genre sweep — bare "grime" belongs to the DRILL genre (line
+  // 109, groove drill.grime); the "140 UK floor (house family)" reading was
+  // superseded by the drill promotion and the duplicate here never fired.
+  [/\beski\b/, "house"],
   [/\bchillhop\b|\bstudy beats\b|\blofi hip hop\b/, "ambient"],
   // Explicit ambient compounds win over the standalone drone genre, so
   // "dark ambient drone" and "drone ambient" remain in the ambient family.
@@ -265,7 +267,11 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bbig room\b/, "house"],
   [/\bhouse\b/, "house"],
   [/\bdeep\b/, "house"],
-  [/\bgarage\b|\bukg\b|\buk garage\b/, "house"],
+  // Bare "garage" stays the house reading. The ukg/uk-garage alternates that
+  // used to sit here NEVER fired — the first-class UKG genre entry above took
+  // them (own grooves + form + mix), and a shadowed alternate would silently
+  // flip this lane back to house the day that entry is edited.
+  [/\bgarage\b/, "house"],
   [/\bjersey\b/, "jersey"], // first-class since the sound-quality pass (own grooves + kit)
   // Baltimore club — the parent sound, before the bare jersey entry would
   // never catch it ("bmore" has no other anchor).
@@ -328,14 +334,14 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   // modifier the groove commands use ("more swing" must stay a groove ask —
   // see the STYLE_PHRASES rule below), so only the compounds claim jazz.
   [/\bjazz\b|\bbebop\b|\bbop\b|\bbig ?band\b|\bswing jazz\b|\bstandards?\b/, "jazz"],
-  // Rock proper — the backline genre (classic/hard/punk/metal cores). Same
-  // tail rule: alt/indie rock keep their house lanes, krautrock stays
-  // techno, post-rock stays postrock — only the BARE rock/metal words land
-  // here.
-  [
-    /\brock\b|\bmetal\b|\bgrunge\b|\bpunk\b|\bhard rock\b|\bclassic rock\b|\bstoner\b|\bthrash\b|\briff(?:s|y)?\b/,
-    "rock",
-  ],
+  // Rock proper — the backline genre (classic/hard/punk cores). Only
+  // the words NO earlier entry owns land here: alt/indie rock keep their house
+  // lanes (above), krautrock stays techno, post-rock stays postrock, and the
+  // metal-family words (metal / grunge / thrash / metalcore / doom / nu metal)
+  // keep their HOUSE lanes — each has a dedicated house.* groove
+  // (house.metal, house.grunge, house.thrash, …) and this block used to list
+  // them too, where the tail position made every one of them dead text.
+  [/\brock\b|\bpunk\b|\bhard rock\b|\bclassic rock\b|\bstoner\b|\briff(?:s|y)?\b/, "rock"],
 ];
 
 /**
@@ -412,7 +418,7 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // Breakbeat / big beat before \bbreaks\b-adjacent entries.
   // Breakbeat hardcore is its own Eurodance lane, not generic breakbeat.
   [/\bbreakbeat\s+hardcore\b/, "bhc"],
-  [/\bbreakbeat\b|\bbig ?beat\b/, "breakbeat"],
+  [/\bbreakbeat\b/, "breakbeat"],
   [/\bmidtempo\b|\bmid[- ]?tempo\b/, "midtempo"],
   // Sad chill / dirty ambient — the ambient-family style tokens.
   [/\bsad ?chill\b|\bsadchill\b|\bemotional chill\b/, "sadchill"],
@@ -515,7 +521,9 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // trap / tune" keep their trap.countrytune routing below.
   [/\bcountry pop\b|\bpop country\b|\bcountrypop\b|\bnashville pop\b/, "countrypop"],
   // Big beat / moombahton / slap house — unique words, no generic collisions.
-  [/\bbig beat\b|\bbreakbeat\b|\bnus?kool breaks\b/, "bigbeat"],
+  // Bare "breakbeat" is NOT here: the earlier style entry owns it (house
+  // family, bigbeat is reached by "big beat" / "nuskool breaks" only).
+  [/\bbig beat\b|\bnus?kool breaks\b/, "bigbeat"],
   [/\bmoombahton\b/, "moombahton"],
   [/\bgqom\b/, "gqom"],
   [/\bslap house\b|\bslaphouse\b|\bbrazilian bass\b/, "slaphouse"],
