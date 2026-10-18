@@ -138,31 +138,20 @@ function buildDynamicsBufferInto(ctx: BaseAudioContext, seconds: number): AudioB
 /**
  * Pink-ish noise with a deterministic seed, for filter families.
  *
- * DETERMINISTIC ON PURPOSE: the rest of this file's signals use `Math.random()`
- * for their noise bursts. That is fine for them — each stimulus is built once
- * and reused across every render of that effect, so the comparison is
- * apples-to-apples. This buffer is the exception and is seeded, because it is
- * meant to be compared ACROSS runs: a re-run of the same audit should report
- * the same dead-parameter column, otherwise the column cannot be trusted as a
- * regression signal at all.
- *
  * White noise, shaped by a one-pole tilt toward pink. Flat white would put equal
  * energy in the 10 kHz region no musical EQ band sits in, so the roll-off keeps
  * the level sane while still leaving measurable content across the whole range
  * the bands sweep.
+ *
+ * Seeded for the same reason as every other stimulus now (see `seededRandom`):
+ * this column is compared ACROSS runs, so the signal that produces it cannot
+ * change between them.
  */
 function buildBroadbandBufferInto(ctx: BaseAudioContext, seconds: number): AudioBuffer {
   const buffer = ctx.createBuffer(2, Math.floor(SR * seconds), SR);
   const l = buffer.getChannelData(0);
   const r = buffer.getChannelData(1);
-  // mulberry32 — fixed seed, so two runs of this audit agree exactly.
-  let seed = 0x9e3779b9;
-  const rand = () => {
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+  const rand = seededRandom(0x9e3779b9);
   const a = 0.06; // one-pole smoothing -> roughly pink
   let zL = 0;
   let zR = 0;
@@ -484,6 +473,32 @@ function buildTestBuffer(): AudioBuffer {
   return buildTestBufferInto(ctx, SIGNAL_SECONDS);
 }
 
+/**
+ * Deterministic noise source (mulberry32) — one fresh generator per call.
+ *
+ * WHY THIS EXISTS, MEASURED: with `Math.random()` in the stimuli, two full runs
+ * of the SAME measuring code disagreed on the dead-parameter column —
+ * `shimmer.decay` and `prud.attack` flipped to dead and nothing recovered
+ * (145 -> 144 over three runs). Every other column was identical. That drift
+ * is why dead parameters could not be a regression gate: a run cannot tell a
+ * new defect from a new dice roll.
+ *
+ * A fresh generator per buffer, not one shared one: the stimuli are rebuilt for
+ * different lengths and different contexts (see `sweepEffect`), and a shared
+ * generator would make each buffer depend on every buffer built before it.
+ * That would still be deterministic within a run and wrong across them — the
+ * property being bought here is "same code, same signal, forever".
+ */
+function seededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function buildTestBufferInto(ctx: BaseAudioContext, seconds: number): AudioBuffer {
   const buffer = ctx.createBuffer(2, Math.floor(SR * seconds), SR);
   const l = buffer.getChannelData(0);
@@ -493,6 +508,8 @@ function buildTestBufferInto(ctx: BaseAudioContext, seconds: number): AudioBuffe
   // filters (vowel), notch sweeps (phaser) and band-focused EQs would
   // otherwise measure against a spectrally sparse signal and look inert.
   const sawPhase = (t: number) => 2 * (t * 110 - Math.floor(t * 110 + 0.5));
+  // Fixed seed so the attack transient is the same signal on every run.
+  const rand = seededRandom(0x1f123bb5);
   for (let i = 0; i < l.length; i++) {
     const t = i / SR;
     let sl = 0.22 * Math.sin(2 * Math.PI * 220 * t) + 0.14 * sawPhase(t);
@@ -504,8 +521,8 @@ function buildTestBufferInto(ctx: BaseAudioContext, seconds: number): AudioBuffe
       sr += 0.45 * env * thump;
     }
     if (t < 0.04) {
-      sl += 0.18 * (Math.random() * 2 - 1);
-      sr += 0.18 * (Math.random() * 2 - 1);
+      sl += 0.18 * (rand() * 2 - 1);
+      sr += 0.18 * (rand() * 2 - 1);
     }
     l[i] = sl;
     r[i] = sr;
@@ -522,9 +539,10 @@ function buildModulatorBuffer(ctx: BaseAudioContext): AudioBuffer {
   const buffer = ctx.createBuffer(1, Math.floor(SR * SIGNAL_SECONDS), SR);
   const d = buffer.getChannelData(0);
   const gate = Math.floor(SR * 0.18);
+  const rand = seededRandom(0x2a3f7c11);
   for (let i = 0; i < d.length; i++) {
     const on = i % (gate * 2) < gate;
-    d[i] = on ? 0.8 * (Math.random() * 2 - 1) : 0;
+    d[i] = on ? 0.8 * (rand() * 2 - 1) : 0;
   }
   return buffer;
 }
@@ -659,7 +677,10 @@ async function sweepEffect(type: EffectType, signal: AudioBuffer, dry: AudioBuff
         }
       }
       if (broadbandSignal !== null && broadbandBase !== null) {
-        const bb = deltaVs(broadbandBase, metricsOf(await renderEffect(type, { ...defaultParamsOf(type), [p.id]: value }, broadbandSignal)));
+        const bb = deltaVs(
+          broadbandBase,
+          metricsOf(await renderEffect(type, { ...defaultParamsOf(type), [p.id]: value }, broadbandSignal)),
+        );
         if (bb.delta > delta) {
           delta = bb.delta;
           metric = bb.metric;
