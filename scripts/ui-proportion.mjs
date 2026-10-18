@@ -25,7 +25,7 @@
  * Requires a dev or preview server already running; this script never starts
  * one (vite's first cold transform of AudioEngine.ts takes minutes).
  */
-import { chromium } from "playwright";
+import { chromium, devices } from "playwright";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -33,6 +33,8 @@ const argv = process.argv.slice(2);
 const urlIndex = argv.indexOf("--url");
 const URL = urlIndex >= 0 ? argv[urlIndex + 1] : "http://127.0.0.1:5173";
 const SHOTS = argv.includes("--shots");
+/** Add the coarse-pointer pass. See TOUCH_PASS below for why it is worth its boot. */
+const TOUCH = argv.includes("--touch");
 
 /** Cold-transform budget for the lazily-imported studio chunk on vite dev. */
 const STUDIO_WAIT_MS = 480_000;
@@ -45,6 +47,29 @@ const VIEWPORTS = [
   { w: 800, h: 900 },
   { w: 390, h: 844 },
 ];
+
+/**
+ * TOUCH_PASS — the coarse-pointer branch of this shell.
+ *
+ * Sequencer.tsx picks ROW_HEIGHT from `matchMedia("(pointer: coarse)")` and
+ * 57-row-pitch.css sets `--step-h: 44px` under the same query, so on a tablet
+ * every row is 46px instead of 30px. That entire branch ran in production with
+ * NO gate behind it: the context here had no touch emulation, so even at
+ * 390x844 the fine-pointer path answered and the report said "pitch TS 30px vs
+ * CSS 30px" — correct, and about the wrong branch.
+ *
+ * A gate that reports a pass for a branch it never entered is worse than no
+ * gate, because it closes the question. So this pass first asserts that the
+ * emulated context really reports `pointer: coarse`, and exits HARNESS_ERROR
+ * if it does not — a silent fall-through to the fine branch would be a green
+ * light over an unmeasured surface.
+ */
+const TOUCH_VIEWPORTS = [
+  { w: 390, h: 844 },
+  { w: 800, h: 1180 },
+];
+/** The value Sequencer.tsx must publish for a coarse pointer. */
+const COARSE_ROW_PITCH = 46;
 
 /**
  * Regions in top-to-bottom order. `weight` is what this slice is trying to
@@ -88,25 +113,46 @@ async function measure(page) {
       }
       out.sequencerVisibleRows = visible;
 
-      // THE PITCH CHECK. Compares Sequencer.tsx ROW_HEIGHT against the row box
-      // the STYLESHEET lays out — two INDEPENDENT sources, joined through the
-      // `data-row-height` attribute the component publishes.
+
+// THE PITCH CHECK. This took three attempts and each wrong one is recorded,
+      // because the shape of the mistake is the reusable part.
       //
-      // It deliberately does NOT compare the rendered top-to-top pitch: rows are
-      // absolutely positioned from `cumulativeHeights`, so the rendered pitch
-      // equals ROW_HEIGHT by construction and such a check is a tautology. The
-      // first version of this gate did exactly that and PASSED while
-      // ROW_HEIGHT was deliberately mutated — a check against your own output is
-      // not a check.
+      // WHAT ROW_HEIGHT MUST BE. `cumulativeHeights` sums getItemHeight() over
+      // the flat item list to produce `totalHeight` — the height of the scroll
+      // spacer — and `scrollTop` is mapped through it to decide which items are
+      // in view. So ROW_HEIGHT is the virtualizer's idea of how tall a row is,
+      // and it has to agree with the stylesheet or the spacer is the wrong size
+      // and scrolling renders the wrong rows.
+      //
+      // ATTEMPT 1 — "box + marginBottom". Wrong. On a coarse pointer it
+      // computed 48 against ROW_HEIGHT 46 and reported a 2px drift that does
+      // not exist, because the margin does not participate in layout there. It
+      // passed on the fine branch only by coincidence (28 + 2 == 30).
+      //
+      // ATTEMPT 2 — "rendered top-to-top pitch". Also wrong, and worse: it is a
+      // tautology. Mutating ROW_HEIGHT to 32 moved the rendered pitch to 32,
+      // because the component lays the rows out from its own constant. A check
+      // that follows the thing it checks cannot fail.
+      //
+      // ATTEMPT 3 — the quantity CSS alone produces: the row BOX height. Measured
+      // with ROW_HEIGHT mutated 30 -> 32, the box stayed 28 on fine and 46 on
+      // coarse. It is genuinely independent of the constant.
+      //
+      // The invariant that actually harms when violated is overlap: a row box
+      // taller than the slot ROW_HEIGHT reserves means each row overlaps the
+      // next by the excess, and the excess accumulates down the list. So the
+      // gate asserts box <= slot, and prints both numbers so a drift is legible
+      // even when it is not yet fatal.
       const assumed = Number(seq.getAttribute("data-row-height"));
       const row = rows[1] ?? rows[0];
       if (row) {
-        const style = getComputedStyle(row);
         const box = row.getBoundingClientRect().height;
-        const margin = parseFloat(style.marginBottom) || 0;
-        out.rowPitchFromCss = Math.round((box + margin) * 100) / 100;
+        out.rowBoxHeight = Math.round(box * 100) / 100;
+        out.rowMarginBottom = parseFloat(getComputedStyle(row).marginBottom) || 0;
       }
       out.rowPitchAssumed = Number.isFinite(assumed) ? assumed : null;
+      out.rowBoxOverlapsSlot =
+        out.rowBoxHeight != null && out.rowPitchAssumed != null && out.rowBoxHeight > out.rowPitchAssumed;
     }
     return out;
   }, REGIONS);
@@ -156,12 +202,13 @@ const report = [];
 // removes that failure mode, runs ~5x faster, and measures the same thing:
 // every breakpoint in this shell is CSS (media + container queries), all of
 // which respond to a resize.
-const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-{
-  const page = await context.newPage();
-  page.setDefaultNavigationTimeout(300_000);
-  page.setDefaultTimeout(300_000);
-
+/**
+ * Boot the studio once in a context: skip the landing page, open a project,
+ * wait out the lazy studio chunk, refuse to measure a crash screen, and close
+ * the first-run tour. Shared by the fine and coarse passes so the two branches
+ * cannot drift into measuring different things.
+ */
+async function openStudio(page, label) {
   // Skip the landing page: this measures the studio shell, not onboarding.
   await page.addInitScript(() => {
     try {
@@ -172,6 +219,18 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 900 
   });
 
   await page.goto(URL, { waitUntil: "domcontentloaded" });
+
+  // WARM THE OPTIMIZER BEFORE MEASURING. Observed 2026-10-18 on this repo:
+  // partway through the first load vite logged "new dependencies optimized:
+  // @huggingface/transformers / optimized dependencies changed. reloading"
+  // and force-reloaded the page AFTER the project was opened, so the studio
+  // chrome never came up and the run died as a navigation timeout. Two earlier
+  // sessions attributed that to "cold vite transform" with no log line to
+  // support it; this one is in the server log. The race disappears entirely
+  // under `vite preview` over dist.
+  await page.waitForLoadState("networkidle").catch(() => {});
+  await page.waitForTimeout(3000);
+  await page.reload({ waitUntil: "domcontentloaded" });
 
   // Fresh browser profiles have no saved project, so the project browser is
   // showing templates. `.pb-template-start` is the House template, pinned by
@@ -187,7 +246,7 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 900 
   await continueCard.or(templateCard).first().waitFor({ state: "visible", timeout: 60_000 });
   const resume = (await continueCard.count()) > 0 && (await continueCard.isVisible());
   await (resume ? continueCard : templateCard).first().click();
-  console.log(`booted once: ${resume ? "resumed last project" : "opened House template"}`);
+  console.log(`${label} booted once: ${resume ? "resumed last project" : "opened House template"}`);
 
   // `main.tsx` lazy-imports the studio (`./ui/App`) only once a project is
   // opened. The budget stays generous for a cold vite dev server.
@@ -213,6 +272,15 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 900 
     await skipTour.click().catch(() => {});
     await page.waitForTimeout(400);
   }
+}
+
+const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+{
+  const page = await context.newPage();
+  page.setDefaultNavigationTimeout(300_000);
+  page.setDefaultTimeout(300_000);
+
+  await openStudio(page, "[fine]");
 
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.w, height: vp.h });
@@ -234,6 +302,69 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 900 
   }
 }
 await context.close();
+
+/**
+ * The coarse-pointer pass. ONE context, resized between viewports — the same
+ * reason the fine pass boots once: a fresh context per viewport is a fresh
+ * cold boot of a ~180 KB AudioEngine, and three of five of those never reached
+ * the studio and reported nulls that read as a collapsed sequencer.
+ */
+const touchReport = [];
+let coarseEmulated = null;
+if (TOUCH) {
+  const touchContext = await browser.newContext({
+    ...devices["Pixel 7"],
+    viewport: { width: TOUCH_VIEWPORTS[0].w, height: TOUCH_VIEWPORTS[0].h },
+  });
+  const page = await touchContext.newPage();
+  page.setDefaultNavigationTimeout(300_000);
+  page.setDefaultTimeout(300_000);
+
+  await openStudio(page, "[coarse]");
+
+  // THE CLAIM UNDER TEST. If the emulated context does not actually report a
+  // coarse pointer, everything below measures the fine branch and every number
+  // it prints is true and irrelevant. That is HARNESS_ERROR, not a pass.
+  coarseEmulated = await page.evaluate(() => ({
+    coarse: window.matchMedia("(pointer: coarse)").matches,
+    fine: window.matchMedia("(pointer: fine)").matches,
+    anyCoarse: window.matchMedia("(any-pointer: coarse)").matches,
+    touchPoints: navigator.maxTouchPoints,
+  }));
+  if (!coarseEmulated.coarse) {
+    await touchContext.close();
+    await browser.close();
+    throw new Error(
+      "touch context does not report (pointer: coarse) - coarse=" +
+        coarseEmulated.coarse +
+        " fine=" +
+        coarseEmulated.fine +
+        " anyCoarse=" +
+        coarseEmulated.anyCoarse +
+        " maxTouchPoints=" +
+        coarseEmulated.touchPoints +
+        ". The coarse branch would NOT be measured.",
+    );
+  }
+
+  for (const vp of TOUCH_VIEWPORTS) {
+    await page.setViewportSize({ width: vp.w, height: vp.h });
+    await page.waitForTimeout(900);
+    const m = await measure(page);
+    if (m.topbar == null) {
+      await touchContext.close();
+      await browser.close();
+      throw new Error("studio shell absent at " + vp.w + "x" + vp.h + " (coarse) - measurement aborted");
+    }
+    const rows = REGIONS.map((r) => ({ label: r.label, px: m[r.key]?.h ?? null, weight: r.weight }));
+    touchReport.push({ vp, m, text: table(rows, vp.w, vp.h) });
+    if (SHOTS) {
+      await page.screenshot({ path: resolve(outDir, "proportion-touch-" + vp.w + "x" + vp.h + ".png") });
+    }
+  }
+  await touchContext.close();
+}
+
 await browser.close();
 
 const overflow = report.filter((r) => r.m.docWidth > r.m.vw);
@@ -242,8 +373,19 @@ const collapsed = report.filter((r) => r.m.sequencer == null || r.m.sequencer.h 
 // sources. Deliberately NOT the rendered pitch, which is derived from that same
 // constant and would make the check a tautology.
 const pitchMiss = report.filter(
-  (r) => r.m.rowPitchFromCss != null && r.m.rowPitchAssumed != null && r.m.rowPitchFromCss !== r.m.rowPitchAssumed,
+  (r) => r.m.rowBoxOverlapsSlot === true,
 );
+
+// The same two-source pitch check on the coarse branch, plus the branch itself:
+// a coarse pointer that still publishes the fine constant means the media query
+// either stopped matching or ROW_HEIGHT lost its coarse arm. Either way the
+// tablet row pitch is wrong by 16px per row.
+const touchOverflow = touchReport.filter((r) => r.m.docWidth > r.m.vw);
+const touchCollapsed = touchReport.filter((r) => r.m.sequencer == null || r.m.sequencer.h < 40);
+const touchPitchMiss = touchReport.filter(
+  (r) => r.m.rowBoxOverlapsSlot === true,
+);
+const touchWrongConstant = touchReport.filter((r) => r.m.rowPitchAssumed !== COARSE_ROW_PITCH);
 
 console.log("\n=== KYX studio shell - vertical budget ===\n");
 for (const r of report) {
@@ -253,7 +395,7 @@ for (const r of report) {
   );
   console.log(
     `  sequencer rows ${r.m.sequencerRows ?? 0}, visible ${r.m.sequencerVisibleRows ?? 0}; ` +
-      `pitch TS ${r.m.rowPitchAssumed ?? "?"}px vs CSS box+gap ${r.m.rowPitchFromCss ?? "?"}px`,
+      `row box ${r.m.rowBoxHeight ?? "?"}px (margin ${r.m.rowMarginBottom ?? 0}px) in slot TS ${r.m.rowPitchAssumed ?? "?"}px`,
   );
   console.log("");
 }
@@ -267,12 +409,54 @@ if (collapsed.length) {
 }
 if (pitchMiss.length) {
   console.log(
-    "FAIL: Sequencer.tsx ROW_HEIGHT disagrees with the CSS row box - each row would overlap or gap " +
-      "its neighbour by the difference, accumulating down the list. " +
+    "FAIL: the CSS row box is TALLER than the slot Sequencer.tsx reserves - each row overlaps the next by the excess, and the excess accumulates down the list. " +
       pitchMiss
-        .map((r) => `${r.vp.w}x${r.vp.h}: TS ${r.m.rowPitchAssumed}px vs CSS ${r.m.rowPitchFromCss}px`)
+        .map((r) => `${r.vp.w}x${r.vp.h}: row box ${r.m.rowBoxHeight}px in slot TS ${r.m.rowPitchAssumed}px`)
         .join("; "),
   );
+}
+
+if (TOUCH) {
+  console.log("\n=== coarse pointer (touch) - vertical budget ===\n");
+  console.log(
+    `  emulated: pointer:coarse=${coarseEmulated?.coarse} pointer:fine=${coarseEmulated?.fine} ` +
+      `any-pointer:coarse=${coarseEmulated?.anyCoarse} maxTouchPoints=${coarseEmulated?.touchPoints}`,
+  );
+  console.log(`  Sequencer.tsx must publish ROW_HEIGHT ${COARSE_ROW_PITCH} on a coarse pointer\n`);
+  for (const r of touchReport) {
+    console.log(r.text);
+    console.log(
+      `  doc ${r.m.docWidth}px vs viewport ${r.m.vw}px ${r.m.docWidth > r.m.vw ? "  <-- HORIZONTAL OVERFLOW" : ""}`,
+    );
+    console.log(
+      `  sequencer rows ${r.m.sequencerRows ?? 0}, visible ${r.m.sequencerVisibleRows ?? 0}; ` +
+        `row box ${r.m.rowBoxHeight ?? "?"}px (margin ${r.m.rowMarginBottom ?? 0}px) in slot TS ${r.m.rowPitchAssumed ?? "?"}px`,
+    );
+    console.log("");
+  }
+  if (touchOverflow.length) {
+    console.log(`FAIL (coarse): horizontal overflow at ${touchOverflow.map((r) => `${r.vp.w}x${r.vp.h}`).join(", ")}`);
+  }
+  if (touchCollapsed.length) {
+    console.log(
+      `FAIL (coarse): sequencer collapsed at ${touchCollapsed.map((r) => `${r.vp.w}x${r.vp.h} (${r.m.sequencer?.h ?? "missing"}px)`).join(", ")}`,
+    );
+  }
+  if (touchPitchMiss.length) {
+    console.log(
+      "FAIL (coarse): the CSS row box is TALLER than the slot ROW_HEIGHT reserves. " +
+        touchPitchMiss
+          .map((r) => `${r.vp.w}x${r.vp.h}: row box ${r.m.rowBoxHeight}px in slot TS ${r.m.rowPitchAssumed}px`)
+          .join("; "),
+    );
+  }
+  if (touchWrongConstant.length) {
+    console.log(
+      `FAIL (coarse): Sequencer.tsx published ROW_HEIGHT ${touchWrongConstant.map((r) => r.m.rowPitchAssumed).join(", ")}px ` +
+        `but a coarse pointer must publish ${COARSE_ROW_PITCH}px. Either the (pointer: coarse) query stopped matching ` +
+        `or ROW_HEIGHT lost its coarse arm - the tablet row pitch would be wrong by ${COARSE_ROW_PITCH - (touchWrongConstant[0].m.rowPitchAssumed ?? 0)}px per row.`,
+    );
+  }
 }
 
 /**
@@ -285,8 +469,17 @@ if (pitchMiss.length) {
  * A gate that cannot tell "I checked and it is wrong" from "I never checked"
  * reports the same score for both, and the second reading is worthless.
  */
-const failed = overflow.length || collapsed.length || pitchMiss.length;
+const failed =
+  overflow.length ||
+  collapsed.length ||
+  pitchMiss.length ||
+  touchOverflow.length ||
+  touchCollapsed.length ||
+  touchPitchMiss.length ||
+  touchWrongConstant.length;
 if (!failed) {
   console.log("PASS: no overflow, sequencer present at every viewport, row pitch matches the virtualizer");
+  if (TOUCH) console.log("PASS (coarse): " + TOUCH_VIEWPORTS.length + " touch viewports, ROW_HEIGHT " + COARSE_ROW_PITCH + "px == CSS box");
+  else console.log("NOTE: coarse-pointer branch NOT measured - pass --touch to cover it");
 }
 process.exit(failed ? EXIT_GATE_FAILED : 0);

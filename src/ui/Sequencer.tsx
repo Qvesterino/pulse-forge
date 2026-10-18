@@ -846,11 +846,19 @@ export function Sequencer({
       aria-labelledby={`${patternTabDomId(pattern.id)} sequencer-panel-label`}
       tabIndex={0}
       onPointerLeave={() => publishCursor(null)}
-      // Publishes the pitch this virtualizer assumes so scripts/ui-proportion.mjs
-      // can compare it against the row box the STYLESHEET lays out. Two
-      // independent sources: rows are absolutely positioned from
+      // Publishes the row height this virtualizer assumes, so
+      // scripts/ui-proportion.mjs can check it against the box the STYLESHEET
+      // lays out.
+      //
+      // This comment previously said "rows are absolutely positioned from
       // `cumulativeHeights`, so the RENDERED pitch equals this constant by
-      // construction and comparing them would be a tautology that cannot fail.
+      // construction and comparing them would be a tautology". Measured
+      // 2026-10-18: getComputedStyle(row).position === "static". The rows are in
+      // normal flow. The tautology conclusion turned out to hold anyway — for a
+      // different reason — because mutating this constant moved the rendered
+      // pitch with it. So the gate compares the CSS row BOX, which does NOT
+      // follow this constant, and asserts the box fits the slot. Do not "fix"
+      // that comparison back to a rendered-pitch check.
       data-row-height={ROW_HEIGHT}
     >
       <span id="sequencer-panel-label" className="sr-only">
