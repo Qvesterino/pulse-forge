@@ -1115,10 +1115,26 @@ export class AudioEngine {
       }
     }
     state.runtimes.clear();
-    // The chain rebuild replaced these effect instances — their meter flags
-    // must not survive as unreachable entries that grow across every
-    // add/remove/reorder for the life of the session.
-    for (const fxId of state.params.keys()) this.fxMetersEnabled.delete(fxId);
+    // The chain rebuild replaced these effect instances — the meter flags of
+    // effects that are actually GONE must not survive as unreachable entries
+    // that grow across every add/remove/reorder for the life of the session.
+    //
+    // Only the gone ones. The first version deleted every id this chain had
+    // seen, which is the previous chain, not the current one — so ANY rebuild
+    // (insert, remove, reorder, bypass) wiped the metering of effects that
+    // were still there. `setFxMetersEnabled` is a PANEL-LIFETIME gate (the
+    // panel sets it on mount and clears it on unmount), and the rebuild is
+    // where the engine re-applies it, so deleting it there meant the panel
+    // never got its meters back: reorder two inserts with Ultina open and its
+    // analysis silently stops while the panel still shows them as live.
+    //
+    // Bypassed effects count as present: they hold no runtime, but their panel
+    // is still mounted, and this same loop is what restores the flag when the
+    // effect is un-bypassed.
+    const liveFxIds = new Set(effects.map((fx) => fx.id));
+    for (const fxId of state.params.keys()) {
+      if (!liveFxIds.has(fxId)) this.fxMetersEnabled.delete(fxId);
+    }
     state.params.clear();
     input.disconnect();
     if (state.pdcDelay) {
