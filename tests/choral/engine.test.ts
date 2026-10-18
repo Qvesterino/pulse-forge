@@ -66,7 +66,7 @@ describe("CHORÁL harmony stack (ADR 0054)", () => {
     expect(activePitches(proc)).toEqual([62, 65, 69]); // D + F (+4? no: F=65 is +3) — mask prefers F
   });
 
-  it("a note over the A-minor chord takes the chord's own third", () => {
+  it("a note over the A-minor chord completes THE CHORD (C-E-A, not C-E-G)", () => {
     const proc = processor(
       { stackMode: 3 },
       {
@@ -76,9 +76,39 @@ describe("CHORÁL harmony stack (ADR 0054)", () => {
       },
     );
     proc.applyEvent({ type: "noteOn", when: 0, pitch: 60, velocity: 0.9 });
-    // C over A minor: +4 = E (in the chord) → C-E-G... G is not in the triad
-    // mask, so the fifth stays +7 (fifths are always consonant enough).
-    expect(activePitches(proc)).toEqual([60, 64, 67]);
+    // C is a member of A minor — the stack completes THAT chord upward:
+    // E (+4) then A (+9, the octave-wrapped root). C-E-G would import a G
+    // the A-minor chord does not contain.
+    expect(activePitches(proc)).toEqual([60, 64, 69]);
+  });
+
+  it("TRIAD is chord-refined: a chord tone completes the chord upward", () => {
+    // E over the C-major chord: the chord's pitch classes above E are G (+3)
+    // and C (+8, the wrapped root) — F would be the scale third, but F is
+    // not in the C triad and the refined voicing imports only chord tones.
+    const proc = processor(
+      { stackMode: 3 },
+      {
+        keyRootPc: 0,
+        scaleMask: C_MAJOR,
+        chords: [{ startBar: 0, lengthBars: 8, rootPc: 0, chordMask: C_MAJ_TRIAD }],
+      },
+    );
+    proc.applyEvent({ type: "noteOn", when: 0, pitch: 64, velocity: 0.9 });
+    expect(activePitches(proc)).toEqual([64, 67, 72]);
+  });
+
+  it("a NON-chord tone falls back to the scale third (D over the C triad keeps F)", () => {
+    const proc = processor(
+      { stackMode: 3 },
+      {
+        keyRootPc: 0,
+        scaleMask: C_MAJOR,
+        chords: [{ startBar: 0, lengthBars: 8, rootPc: 0, chordMask: C_MAJ_TRIAD }],
+      },
+    );
+    proc.applyEvent({ type: "noteOn", when: 0, pitch: 62, velocity: 0.9 });
+    expect(activePitches(proc)).toEqual([62, 65, 69]);
   });
 
   it("OCTAVES and FIFTHS are fixed interval sets; OFF is a single stream", () => {

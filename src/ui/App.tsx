@@ -41,6 +41,7 @@ const IntentPanel = lazy(() => import("./IntentPanel").then((m) => ({ default: m
 const ReferenceMapPanel = lazy(() => import("./ReferenceMapPanel").then((m) => ({ default: m.ReferenceMapPanel })));
 const MasteringPanel = lazy(() => import("./MasteringPanel").then((m) => ({ default: m.MasteringPanel })));
 const TsarPanel = lazy(() => import("./TsarPanel").then((m) => ({ default: m.TsarPanel })));
+const ChoralPanel = lazy(() => import("./ChoralPanel").then((m) => ({ default: m.ChoralPanel })));
 import { InstallPrompt } from "./InstallPrompt";
 import { ErrorBoundary } from "./ErrorBoundary";
 import {
@@ -1675,6 +1676,11 @@ export function App({
     tsar: (
       <ErrorBoundary panel="tsar">
         <TsarPanel />
+      </ErrorBoundary>
+    ),
+    choral: (
+      <ErrorBoundary panel="choral">
+        <ChoralPanel />
       </ErrorBoundary>
     ),
   };

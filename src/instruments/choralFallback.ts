@@ -63,7 +63,7 @@ export function createChoralFallbackRuntime(ctx: BaseAudioContext, track: Instru
         gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, level), when + Math.min(2, params.attack ?? 0.08));
         gain.connect(filter).connect(output);
         const oscs: OscillatorNode[] = [];
-        const detune = index === 0 ? 0 : ((index % 2 === 0 ? 1 : -1) * (params.stackDetune ?? 8));
+        const detune = index === 0 ? 0 : (index % 2 === 0 ? 1 : -1) * (params.stackDetune ?? 8);
         for (const type of ["sawtooth", "triangle"] as const) {
           const osc = ctx.createOscillator();
           osc.type = type;
