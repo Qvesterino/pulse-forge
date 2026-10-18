@@ -621,6 +621,21 @@
             "modBAmt": 0,
             "modLfoRate": 2
           }
+        },
+        {
+          "kind": "choral",
+          "defaults": {
+            "srcRoot": 60,
+            "stackMode": 3,
+            "stackLevel": 0.6,
+            "stackDetune": 8,
+            "grainSize": 80,
+            "grainDensity": 24,
+            "grainJitter": 0.15,
+            "attack": 0.08,
+            "release": 0.6,
+            "level": 0.8
+          }
         }
       ]
     },
@@ -1966,6 +1981,28 @@
         24,
         48,
         48
+      ]
+    },
+    {
+      "name": "clampInstrumentParam choral:srcRoot",
+      "operation": "clampInstrumentParam",
+      "input": {
+        "kind": "choral",
+        "paramId": "srcRoot",
+        "probes": [
+          -76,
+          24,
+          54,
+          84,
+          184
+        ]
+      },
+      "expected": [
+        24,
+        24,
+        54,
+        84,
+        84
       ]
     },
     {
