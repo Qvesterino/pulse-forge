@@ -507,6 +507,22 @@ let kopaWorkletKb = 0;
 }
 console.log(`[size-budget] KOPA worklet: ${kopaWorkletKb.toFixed(0)} KB (budget ${KOPA_WORKLET_BUDGET_KB})`);
 
+// CHORÁL harmony instrument worklet: lazy INSTRUMENT module (ADR 0054),
+// loaded only for projects with a CHORÁL track. Grain architecture shared
+// with TSAR's engine but no wavetable/unison/arp machinery; measured
+// ~15 KB at implementation, 48 KB is the ceiling.
+const CHORAL_WORKLET_BUDGET_KB = 48;
+let choralWorkletKb = 0;
+{
+  const path = join(dist, "choral-worklet.js");
+  if (!statSync(path).isFile()) {
+    console.error("[size-budget] FAIL — missing CHORÁL worklet: dist/choral-worklet.js");
+    process.exit(1);
+  }
+  choralWorkletKb = statSync(path).size / 1024;
+}
+console.log(`[size-budget] CHORÁL worklet: ${choralWorkletKb.toFixed(0)} KB (budget ${CHORAL_WORKLET_BUDGET_KB})`);
+
 // SKRUTKA phase-dispersion effect worklet: a LAZY first-party effect module
 // (loaded only for projects that use the effect), so it carries its own
 // budget row instead of inflating the core boot bundle. All-pass-only DSP —

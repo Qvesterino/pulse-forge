@@ -1,22 +1,37 @@
 # Music Maker 2026 → KYX product benchmark
 
 **Audit date:** 2026-10-18  
-**Sources:** [MAGIX Music Maker](https://www.magix.com/int/music/music-maker/) and the [official Music Maker feature list](https://www.magix.com/us/music-editing/music-maker/functions/).
+**Sources:** [MAGIX Music Maker](https://www.magix.com/int/music/music-maker/), the [official Music Maker feature list](https://www.magix.com/us/music-editing/music-maker/functions/) and its [2026 feature highlights](https://www.magix.com/int/music/music-maker/new-features/).
 
 This is a feature and workflow benchmark, not a plan to copy MAGIX code, content,
 names or visual design. Status is based on shipped KYX code and its architecture
 decisions, not on roadmap intent.
 
+## Audit status at a glance
+
+| Area                                 | KYX status                       | Evidence-based summary                                                                                                                                |
+| ------------------------------------ | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Loop discovery and content           | Partial                          | The browser filters user-imported loops by available metadata; KYX has no bundled licensed loop catalog.                                              |
+| Loop preview and placement           | Partial                          | BPM-tagged imports preview at project tempo and `Add` inserts a fitted, undoable audio clip; files without BPM cannot be tempo-matched automatically. |
+| Clip pitch and tempo                 | Partial                          | Pitch and tempo-fit behavior are implemented, but pitch adjustment is in the clip dialog rather than directly on the track.                           |
+| Live Pads and Live Sets              | Partial                          | KYX creates finite, editable clips from pads; open-ended stop/relaunch performance and bundled sets are absent.                                       |
+| MIDI multi-object editing            | Partial                          | Batch note-property edits are available; there is no combined Piano Roll for note selection across source patterns.                                   |
+| Spectrum and EQ                      | Partial                          | Analysis and frequency editing exist on separate surfaces; the master spectrum is not directly tied to EQ shaping.                                    |
+| Effects and beat making              | Partial / unverified             | Core effects, drum instruments and kits exist; common end-to-end workflows still need comparison.                                                     |
+| Audio recording and export           | Partial                          | Core recording and export exist, while formats and KYX Studio device support differ.                                                                  |
+| VST3 processing and native audio I/O | Missing as shipping capabilities | KYX has structural plug-in scanning and native I/O experiments, but neither is qualified product processing/device support.                           |
+
 ## Findings
 
 ### Loop discovery — partial
 
-MAGIX presents a dedicated browser with genre filtering and Soundpool and
-instrument lists. KYX's `LOOPS` view browses user-imported audio and filters by
-genre, mood, instrument, key and BPM range; users can edit loop tags from the
-Sounds list. KYX has no bundled tempo-tagged loop catalog. The MAGIX page makes
-clear that Soundpool availability varies by edition, so a KYX content pack needs
-its own creation or licensing decision.
+MAGIX describes its 2026 Loop Browser as optimized for faster browsing and adds
+a Genre Filter, with Soundpool and instrument lists. KYX's `LOOPS` view browses
+user-imported audio and filters by genre, mood, instrument, key and BPM range;
+users can edit loop tags from the Sounds list. KYX has no bundled tempo-tagged
+loop catalog. MAGIX's edition comparison shows that Soundpool availability
+varies by edition, so a KYX content pack needs its own creation or licensing
+decision.
 
 ### Loop audition and placement — partial
 
@@ -118,6 +133,8 @@ differ.
 - Added focused coverage for all metadata filters, both ends of the BPM range,
   preview ratio, fitted placement, undo, and refusal when a sample buffer is not
   ready.
+- Added an IndexedDB reload regression proving BPM and loop tags survive a read
+  through a fresh `UserSampleRepository` instance.
 - No schema migration was needed. Imported samples remain the available loop
   source; licensing or creating factory loop packs is outside this code wave.
 
