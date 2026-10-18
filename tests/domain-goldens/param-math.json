@@ -634,6 +634,8 @@
             "grainJitter": 0.15,
             "attack": 0.08,
             "release": 0.6,
+            "tone": 0,
+            "formant": 1,
             "level": 0.8
           }
         }
