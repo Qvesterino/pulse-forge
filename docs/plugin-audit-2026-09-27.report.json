@@ -8213,10 +8213,64 @@
       "wiredParams": 69,
       "totalParams": 76,
       "transientWired": []
+    },
+    {
+      "kind": "kopa",
+      "name": "KOPA",
+      "defaultAudible": true,
+      "defaultPeak": 0.04326644539833069,
+      "unstableParams": [],
+      "deadParams": [],
+      "wiredParams": 35,
+      "totalParams": 35,
+      "transientWired": [
+        "clickType",
+        "clickTone",
+        "clickDecay",
+        "clickLevel"
+      ]
+    },
+    {
+      "kind": "choral",
+      "name": "CHORÁL",
+      "defaultAudible": false,
+      "defaultPeak": 0,
+      "unstableParams": [],
+      "deadParams": [
+        "srcRoot",
+        "stackMode",
+        "stackLevel",
+        "stackDetune",
+        "grainSize",
+        "grainDensity",
+        "grainJitter",
+        "attack",
+        "release",
+        "tone",
+        "formant",
+        "level"
+      ],
+      "wiredParams": 0,
+      "totalParams": 12,
+      "transientWired": []
     }
   ],
-  "interactions": null,
+  "interactions": {
+    "chainFinite": true,
+    "chainPeak": 0.7405717372894287,
+    "chainRestoreDiff": 0.021966010332107544,
+    "chainDeterministic": true,
+    "chainDeterminismDiff": 0.0039033889770507812,
+    "duplicateDelta": 0.6571596786113498,
+    "duplicateFinite": true,
+    "liveInsertRemoveClean": true,
+    "rapidSyncsClean": true,
+    "notes": [
+      "determinism gate: one-way render step (environment module update mid-gate) — settled tail is stable",
+      "chain restore diff=2.20e-2"
+    ]
+  },
   "harness": "c902c867953b74fb",
   "startedAt": "2026-10-18T17:46:54.964Z",
-  "finishedAt": null
+  "finishedAt": "2026-10-18T18:33:48.938Z"
 }
