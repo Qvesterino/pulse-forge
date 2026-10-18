@@ -17,6 +17,7 @@ import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = Number(process.env.PORT) || 5221;
@@ -34,6 +35,40 @@ const auditSuffix = [
   ...(onlyInstruments.length > 0 ? [`instruments-${onlyInstruments.join("_")}`] : []),
 ].join("-");
 const outPath = path.join(root, "docs", `plugin-audit-2026-09-27${auditSuffix ? `-${auditSuffix}` : ""}.report.json`);
+
+/**
+ * Fingerprint of everything that decides what a number in the report MEANS.
+ *
+ * The audit's whole value is comparing a run against a previous run, so it must
+ * be impossible to compare across a change in the measuring code. It was
+ * possible, and it did happen: a full run on 2026-10-18 printed
+ * `[resume] keeping 56 effect rows, 20 instrument rows` and skipped nearly all
+ * of its work, inheriting rows that had been measured while the offline render
+ * was returning a truncated buffer (the premature `engine.dispose()` fixed in
+ * 9c3ad732). Those rows were not "stale", they were produced by broken code and
+ * still satisfied every health filter, because a truncated render is finite.
+ *
+ * A hash of the measuring sources makes the wrong comparison unreachable:
+ * change either file and the existing report is ignored by construction.
+ */
+const HARNESS_SOURCES = [
+  path.join(root, "src", "plugin-audit-checks.ts"),
+  path.join(root, "scripts", "verify-plugin-audit.mjs"),
+];
+const harnessHash = createHash("sha256")
+  .update(
+    HARNESS_SOURCES.map((file) => {
+      try {
+        return fs.readFileSync(file);
+      } catch {
+        return Buffer.from(`<missing:${file}>`);
+      }
+    })
+      .map((buf, index) => `::${path.basename(HARNESS_SOURCES[index])}::\n${buf.toString("utf8")}`)
+      .join("\n"),
+  )
+  .digest("hex")
+  .slice(0, 16);
 
 const server = await createServer({
   root,
@@ -61,32 +96,85 @@ let report = {
   effects: [],
   instruments: [],
   interactions: null,
+  harness: harnessHash,
   startedAt: new Date().toISOString(),
   finishedAt: null,
 };
 if (fs.existsSync(outPath)) {
   try {
     const prior = JSON.parse(fs.readFileSync(outPath, "utf8"));
-    report.startedAt = prior.startedAt ?? report.startedAt;
-    report.effects = (prior.effects ?? []).filter((e) => !e.sweepError && !e.hostError && e.hostFinite);
-    report.instruments = (prior.instruments ?? []).filter(
-      (i) => i.defaultAudible && !(i.unstableParams ?? []).some((u) => String(u).startsWith("runner:")),
-    );
-    const priorInt = prior.interactions;
-    const interactionsHealthy =
-      priorInt &&
-      priorInt.chainRestoreDiff != null &&
-      !(priorInt.notes ?? []).some((n) => String(n).startsWith("runner:"));
-    report.interactions = interactionsHealthy ? priorInt : null;
-    console.log(`[resume] keeping ${report.effects.length} effect rows, ${report.instruments.length} instrument rows`);
+    if (prior.harness !== harnessHash) {
+      // The measuring code changed, so every number in the prior report means
+      // something else now — including the rows that look perfectly healthy.
+      console.log(
+        `[resume] existing report was measured by a different harness (${prior.harness ?? "unfingerprinted"} ≠ ${harnessHash}) — re-rendering every row`,
+      );
+    } else {
+      report.startedAt = prior.startedAt ?? report.startedAt;
+      report.effects = (prior.effects ?? []).filter((e) => !e.sweepError && !e.hostError && e.hostFinite);
+      report.instruments = (prior.instruments ?? []).filter(
+        (i) => i.defaultAudible && !(i.unstableParams ?? []).some((u) => String(u).startsWith("runner:")),
+      );
+      const priorInt = prior.interactions;
+      const interactionsHealthy =
+        priorInt &&
+        priorInt.chainRestoreDiff != null &&
+        !(priorInt.notes ?? []).some((n) => String(n).startsWith("runner:"));
+      report.interactions = interactionsHealthy ? priorInt : null;
+      console.log(
+        `[resume] keeping ${report.effects.length} effect rows, ${report.instruments.length} instrument rows`,
+      );
+    }
   } catch {
     console.log("[resume] existing report unreadable — starting fresh");
   }
 }
 const errors = [];
 
+/**
+ * Persist the partial report. This is the audit's crash insurance — the whole
+ * reason the report is rewritten after every step — so it must not be the thing
+ * that kills the run.
+ *
+ * Two robustness properties, both bought by observation rather than taste:
+ *
+ * 1. ATOMIC. Write a sibling temp file and rename over the target. A torn
+ *    write would leave a report that parses as valid JSON but is missing rows,
+ *    and the resume filter below would then silently skip real work.
+ * 2. NON-FATAL + RETRIED. A transient write failure is real on Windows:
+ *    measured 2026-10-18 on a full run, `writeFileSync` failed with
+ *    `errno -4094 / code UNKNOWN` on a 224 KB file that was exclusively
+ *    writable seconds later — a sync client or scanner holding the handle. The
+ *    uncaught throw ended the audit and discarded the other 50-odd rows the
+ *    run had already paid for. Retry briefly, then record and carry on.
+ */
+let saveFailures = 0;
 function saveReport() {
-  fs.writeFileSync(outPath, JSON.stringify(report, null, 2));
+  const payload = JSON.stringify(report, null, 2);
+  const tmpPath = `${outPath}.tmp`;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      fs.writeFileSync(tmpPath, payload);
+      fs.renameSync(tmpPath, outPath);
+      return true;
+    } catch (error) {
+      if (attempt === 3) {
+        saveFailures++;
+        const message = `saveReport failed: ${String(error).slice(0, 160)}`;
+        errors.push(message);
+        console.log(`[audit] ${message} — continuing, partial evidence may be incomplete`);
+        try {
+          fs.rmSync(tmpPath, { force: true });
+        } catch {
+          /* best effort */
+        }
+        return false;
+      }
+      // Windows transient contention: back off and let the holder release it.
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250 * attempt);
+    }
+  }
+  return false;
 }
 
 /**
