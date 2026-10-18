@@ -39,6 +39,7 @@ const KIND_BADGE: Record<"drum" | "group" | InstrumentKind, string> = {
   drumsynth: "DSY",
   tsar: "TSR",
   kopa: "KPA",
+  choral: "CH",
 };
 
 export function trackBadge(track: Track): string {

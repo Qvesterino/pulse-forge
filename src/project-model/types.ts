@@ -98,7 +98,8 @@ export type InstrumentKind =
   | "vocalchop"
   | "drumsynth"
   | "tsar"
-  | "kopa";
+  | "kopa"
+  | "choral";
 
 export interface EffectInstance {
   id: ID;

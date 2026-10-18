@@ -9,6 +9,8 @@ import { createWtVoiceRuntime } from "./wtvoiceNode";
 import { createGrainVoiceRuntime, grainProcessorOptions } from "./granularNode";
 import { createTsarRuntime, createTsarFallbackRuntime } from "./tsarNode";
 import { createKopaRuntime, createKopaFallbackRuntime } from "./kopaNode";
+import { createChoralRuntime } from "./choralNode";
+import { createChoralFallbackRuntime } from "./choralFallback";
 import { tsarParams } from "../tsar/params";
 import { scheduleVoiceModMatrix, updateVoiceModMatrix } from "./modmatrix";
 import { shapeOscillator } from "./bandlimited";
@@ -38,6 +40,7 @@ import {
   vocalchopParams,
   drumsynthParams,
   kopaParams,
+  choralParams,
   WAVE_NAMES,
   SYNC_BEATS,
   syncRateHz,
@@ -6844,6 +6847,39 @@ const kopa: InstrumentDefinition = {
   },
 };
 
+/**
+ * CHORÁL (ADR 0054) — harmony-following timbre instrument. The worklet
+ * sustains the uploaded source as grain streams and voices a harmony stack
+ * that agrees with the song (harmonyContext masks). Without the module a
+ * detuned saw/triangle choir keeps the track audible.
+ */
+const choral: InstrumentDefinition = {
+  kind: "choral",
+  name: "CHORÁL",
+  params: choralParams,
+  factory(ctx, track, env) {
+    const offline = offlineRenderContext(ctx);
+    if (isWorkletReady("choral", ctx)) {
+      return createChoralRuntime({
+        createGain: () => ctx.createGain(),
+        createNode: (processorOptions) =>
+          new AudioWorkletNode(ctx, "choral-processor", {
+            numberOfInputs: 0,
+            numberOfOutputs: 1,
+            outputChannelCount: [2],
+            processorOptions,
+          }),
+        offline,
+        bpm: env.bpm,
+        track,
+        getSample: env.getSample,
+        harmony: env.harmonyContext,
+      });
+    }
+    return createChoralFallbackRuntime(ctx, track);
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 function withNoteExpressionTargets(definition: InstrumentDefinition): InstrumentDefinition {
@@ -6880,6 +6916,7 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   drumsynth: withNoteExpressionTargets(drumsynth),
   tsar,
   kopa,
+  choral,
 };
 
 export function instrumentTrackKindLabel(track: InstrumentTrack): string {

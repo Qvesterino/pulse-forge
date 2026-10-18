@@ -212,12 +212,13 @@ export type WorkletType = (typeof CORE_TYPES)[number] | LazyWorkletType | "gener
  * first-party kick designer with its own budget row. Instrument kind ->
  * worklet module (the doc-scan lives in `instrumentWorkletTypesInDoc`).
  */
-export const INSTRUMENT_WORKLET_TYPES = ["tsar", "kopa"] as const;
+export const INSTRUMENT_WORKLET_TYPES = ["tsar", "kopa", "choral"] as const;
 export type InstrumentWorkletType = (typeof INSTRUMENT_WORKLET_TYPES)[number];
 
 const INSTRUMENT_MODULE_FILES: Record<InstrumentWorkletType, string> = {
   tsar: "/tsar-worklet.js",
   kopa: "/kopa-worklet.js",
+  choral: "/choral-worklet.js",
 };
 
 const readyLazyTypes = new WeakMap<BaseAudioContext, Set<LazyWorkletType>>();

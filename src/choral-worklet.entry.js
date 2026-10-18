@@ -1,0 +1,116 @@
+/**
+ * CHORÁL AudioWorklet entry - bundled by scripts/build-choral-worklet.mjs
+ * into public/choral-worklet.js (loaded on demand; see INSTRUMENT_WORKLET_TYPES
+ * in src/audio-worklets/loader.ts and ADR 0054).
+ *
+ * Thin wrapper: ALL DSP lives in src/choral/dsp/choralProcessor.ts (typed,
+ * first-party, vitest-testable). The wrapper owns the port, the block loop
+ * and `currentFrame` - nothing else. Chunked render loop (the rezonans
+ * contract): the spec allows larger quanta than 128 — every sample is
+ * written.
+ *
+ * Messaging (main thread -> worklet):
+ *  { type: "init", params, events?, harmony?, pcm?, pcmRootHz? }
+ *  { type: "param", name, value }
+ *  { type: "noteOn", pitch, velocity, when }   absolute ctx time
+ *  { type: "noteOff", pitch, when }
+ *  { type: "panic" }
+ *  { type: "harmony", harmony }                12-bit masks (harmonyContext)
+ *  { type: "sample", pcm, rootHz }
+ */
+import { ChoralProcessor } from "./choral/dsp/choralProcessor.ts";
+
+class ChoralWorkletProcessor extends AudioWorkletProcessor {
+  constructor(options) {
+    super();
+    this.port.onmessage = (event) => this.handle(event.data);
+    const opts = (options && options.processorOptions) || {};
+    this.proc = new ChoralProcessor({
+      sampleRate,
+      events: Array.isArray(opts.events) ? opts.events.filter((e) => e && typeof e === "object") : undefined,
+      harmony: this.validHarmony(opts.harmony),
+      pcm: opts.pcm instanceof Float32Array ? opts.pcm : undefined,
+      pcmRootHz: typeof opts.pcmRootHz === "number" ? opts.pcmRootHz : undefined,
+    });
+    if (opts.params) this.proc.applyParams(opts.params);
+  }
+
+  /**
+   * Validate a harmony-context payload before it reaches the DSP (the
+   * canonical worklet rule: never trust event.data shape). Returns undefined
+   * for anything malformed - chromatic default is the safe degradation.
+   */
+  validHarmony(harmony) {
+    if (!harmony || typeof harmony !== "object") return undefined;
+    const scaleMask = Number(harmony.scaleMask);
+    const chords = Array.isArray(harmony.chords)
+      ? harmony.chords.filter(
+          (chord) =>
+            chord &&
+            typeof chord === "object" &&
+            Number.isFinite(chord.startBar) &&
+            Number.isFinite(chord.lengthBars) &&
+            Number.isFinite(chord.chordMask),
+        )
+      : undefined;
+    return {
+      ...(Number.isFinite(scaleMask) ? { scaleMask } : {}),
+      ...(chords ? { chords } : {}),
+    };
+  }
+
+  handle(message) {
+    if (!message || typeof message !== "object") return;
+    switch (message.type) {
+      case "init":
+        if (message.params) this.proc.applyParams(message.params);
+        if (Array.isArray(message.events)) for (const e of message.events) this.proc.postEvent(e);
+        break;
+      case "harmony": {
+        const harmony = this.validHarmony(message.harmony);
+        if (harmony) this.proc.setHarmonyContext(harmony);
+        break;
+      }
+      case "param":
+        if (typeof message.name === "string") this.proc.setParam(message.name, message.value);
+        break;
+      case "noteOn":
+      case "noteOff":
+      case "panic":
+        if (!Number.isFinite(message.when) && message.type !== "panic") break;
+        this.proc.postEvent({
+          type: message.type,
+          when: typeof message.when === "number" ? message.when : currentTime,
+          pitch: Number.isFinite(message.pitch) ? message.pitch : undefined,
+          velocity: Number.isFinite(message.velocity) ? message.velocity : undefined,
+        });
+        break;
+      case "sample":
+        if (message.pcm instanceof Float32Array) {
+          this.proc.setSample(message.pcm, Number.isFinite(message.rootHz) ? message.rootHz : undefined);
+        }
+        break;
+    }
+  }
+
+  process(_inputs, outputs) {
+    const output = outputs[0];
+    if (!output || output.length === 0) return true;
+    const left = output[0];
+    for (let offset = 0; offset < left.length; offset += 128) {
+      const frames = Math.min(128, left.length - offset);
+      const l = left.subarray(offset, offset + frames);
+      if (output.length > 1) {
+        const r = output[1].subarray(offset, offset + frames);
+        this.proc.process(l, r, currentFrame + offset);
+      } else {
+        const r = new Float32Array(frames);
+        this.proc.process(l, r, currentFrame + offset);
+        for (let i = 0; i < frames; i++) l[i] = (l[i] + r[i]) * 0.5;
+      }
+    }
+    return true;
+  }
+}
+
+registerProcessor("choral-processor", ChoralWorkletProcessor);

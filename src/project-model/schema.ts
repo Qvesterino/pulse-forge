@@ -195,6 +195,7 @@ const INSTRUMENT_NAMES: Record<InstrumentKind, string> = {
   drumsynth: "Drum Synth",
   tsar: "TSAR",
   kopa: "Kopa",
+  choral: "Chorál",
 };
 
 export function createInstrumentTrackModel(kind: InstrumentKind, index: number): InstrumentTrack {
