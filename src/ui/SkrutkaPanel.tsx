@@ -27,7 +27,33 @@ import {
 } from "../effects/skrutka-curves";
 import { TWIST_SCENE_PACK, findTwistScenePair, type TwistScenePair } from "../effects/skrutka-scene-pack";
 import type { SkrutkaMeterFrame } from "../audio-worklets/skrutka-node";
+import { skrutkaParams } from "../effects/definitions";
 import { useServices } from "./context";
+
+/**
+ * The REACHABLE focus range, read from the authoritative param definition
+ * (skrutkaParams → focusHz is min 40 / max 4000, log taper).
+ *
+ * Audit 17: the drag used to hardcode its own 30…16000 span while
+ * setEffectParam clamps to the ParamDef on commit and previewFxParam does NOT
+ * clamp at all. Dragging into the unreachable part of the axis therefore
+ * auditioned a value the document would reject: the hump audibly moved, the
+ * drawing did not (it reads the document), and releasing snapped the sound
+ * back. One source of truth now — the display axis below is a different,
+ * deliberate question (it shows the whole band the effect touches).
+ */
+const FOCUS_MIN = skrutkaParams.find((p) => p.id === "focusHz")?.min ?? 40;
+const FOCUS_MAX = skrutkaParams.find((p) => p.id === "focusHz")?.max ?? 4000;
+
+/**
+ * The DISPLAY band: the whole range the disperser touches, ticked at 100/1k/10k.
+ * Deliberately wider than the reachable FOCUS range — it is a view of the
+ * spectrum, not the parameter's own span. Defined ONCE: audit 17 found this
+ * span hardcoded twice in this file (draw + drag), which is how the drag and
+ * the drawing drifted apart in the first place.
+ */
+const BAND_LO = 30;
+const BAND_HI = 16000;
 
 const PANEL_SAMPLE_RATE_FALLBACK = 48_000;
 type SkrutkaViewMode = "wet-delay" | "output-delay" | "output-level";
@@ -137,8 +163,8 @@ export function SkrutkaPanel({
       el.height = Math.floor(h * dpr);
     };
 
-    const F_LO = 30;
-    const F_HI = 16000;
+    const F_LO = BAND_LO;
+    const F_HI = BAND_HI;
     const xOf = (f: number, cw: number) =>
       (Math.log(Math.min(F_HI, Math.max(F_LO, f)) / F_LO) / Math.log(F_HI / F_LO)) * cw;
 
@@ -576,12 +602,17 @@ export function SkrutkaPanel({
     const rect = el.getBoundingClientRect();
     const cw = Math.max(1, rect.width);
     const ch = Math.max(1, rect.height);
-    const F_LO = 30;
-    const F_HI = 16000;
+    const F_LO = BAND_LO;
+    const F_HI = BAND_HI;
     const sampleRate = skrutkaPanelSampleRate(services.engine.getLiveAudioContext()?.sampleRate);
     const x = Math.min(cw, Math.max(0, event.clientX - rect.left));
     const y = Math.min(ch, Math.max(0, event.clientY - rect.top));
-    const focus = F_LO * Math.pow(F_HI / F_LO, x / cw);
+    // Audit 17: clamp into the range the document can actually store. The
+    // preview goes straight to the runtime (no clamp) while the commit path
+    // clamps through clampEffectParam — without this the drag auditions a
+    // value the document rejects, then snaps back on release.
+    const rawFocus = F_LO * Math.pow(F_HI / F_LO, x / cw);
+    const focus = Math.min(FOCUS_MAX, Math.max(FOCUS_MIN, rawFocus));
     const cp: SkrutkaCurveParams = {
       dispersion: paramsRef.current.dispersion ?? 0.35,
       punch: paramsRef.current.punch ?? 0,
