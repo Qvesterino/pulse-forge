@@ -1,0 +1,15 @@
+
+> pulse-forge@0.1.0 test:browser:drag-responsiveness
+> node scripts/verify-drag-responsiveness-browser.mjs
+
+file:///D:/pulse-forge/scripts/verify-drag-responsiveness-browser.mjs:47
+  throw new Error("root escaped the project ÔÇö refusing to serve from " + root);
+        ^
+
+Error: root escaped the project ÔÇö refusing to serve from D:\pulse-forge
+    at file:///D:/pulse-forge/scripts/verify-drag-responsiveness-browser.mjs:47:9
+    at ModuleJob.run (node:internal/modules/esm/module_job:377:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:691:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+
+Node.js v24.11.0

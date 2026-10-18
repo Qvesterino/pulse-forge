@@ -114,8 +114,10 @@ class ReverbProcessor extends AudioWorkletProcessor {
     const modRateRad = (2 * Math.PI * 0.5) / sr;
 
     for (let i = 0; i < len; i++) {
-      const l = inL ? inL[i] : 0;
-      const r = inR ? inR[i] : l;
+      let l = inL ? inL[i] : 0;
+      let r = inR ? inR[i] : l;
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
 
       // Parallel combs — STEREO INPUT: each channel feeds its own network
       // (used to be summed to mono, which wasted the stereo field).

@@ -40,8 +40,10 @@ class EnvFollowerProcessor extends AudioWorkletProcessor {
     const sens = Math.max(0.2, Math.min(3, parameters.sensitivity[0]));
 
     for (let i = 0; i < out.length; i++) {
-      const l = inL ? inL[i] : 0;
-      const r = inR ? inR[i] : l;
+      let l = inL ? inL[i] : 0;
+      let r = inR ? inR[i] : l;
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
       const peak = Math.abs(l) > Math.abs(r) ? Math.abs(l) : Math.abs(r);
       const driven = Math.tanh(peak * sens);
       this.env =

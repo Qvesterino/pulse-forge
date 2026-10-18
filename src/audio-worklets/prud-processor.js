@@ -120,7 +120,8 @@ class PrudProcessor extends AudioWorkletProcessor {
         let env = det.env;
         let grDb = det.grDb;
         for (let i = 0; i < outData.length; i++) {
-          const x = src[i];
+          const raw = src[i];
+          const x = Number.isFinite(raw) ? raw : 0;
           const bp = d.b0 * x + d.b2 * z2 - d.a1 * z1 - d.a2 * z2;
           z2 = z1;
           z1 = bp;

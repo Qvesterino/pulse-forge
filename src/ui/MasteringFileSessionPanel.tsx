@@ -92,6 +92,7 @@ import { useServices } from "./context";
 import { MasteringLoudnessTimeline } from "./MasteringLoudnessTimeline";
 import { MasteringFingerprint } from "./MasteringFingerprint";
 import { MasteringRuntimeStatus } from "./MasteringRuntimeStatus";
+import { NumericDraftInput } from "./NumericDraftInput";
 import {
   MASTERING_RENDER_SAMPLE_RATE_LABELS,
   MASTERING_RENDER_SAMPLE_RATES,
@@ -2949,32 +2950,36 @@ export function MasteringFileSessionPanel({
             </label>
             <label>
               <strong>TARGET LUFS</strong>
-              <input
+              {/* Measured defects (UI audit 2026-10-18), same `Number("")` class
+                  the shared controls already guard against:
+                    empty LUFS field -> `Number("")` = 0 -> clamped to -5, i.e.
+                      the loudest legal target (+9 dB from the -14 default);
+                    empty true-peak -> clamped to 0 dBTP, ceiling disabled.
+                  `applySettings` persists the draft via `repository.put`, so
+                  this was written into the stored session, not just the draft.
+                  NumericDraftInput gives the project's draft/commit contract:
+                  stage locally, one write per edit, Escape abandons, an empty
+                  field is a cancel rather than a clamp to a bound. */}
+              <NumericDraftInput
                 aria-label="External mastering target loudness"
-                type="number"
-                min="-30"
-                max="-5"
-                step="0.1"
+                min={-30}
+                max={-5}
+                step={0.1}
                 value={draft.lufsTarget ?? -14}
                 disabled={Boolean(busy)}
-                onChange={(event) =>
-                  updateDraft({ lufsTarget: Math.min(-5, Math.max(-30, Number(event.target.value))) })
-                }
+                onCommit={(value) => updateDraft({ lufsTarget: Math.min(-5, Math.max(-30, value)) })}
               />
             </label>
             <label>
               <strong>TRUE PEAK TARGET</strong>
-              <input
+              <NumericDraftInput
                 aria-label="External mastering true peak target"
-                type="number"
-                min="-6"
-                max="0"
-                step="0.1"
+                min={-6}
+                max={0}
+                step={0.1}
                 value={draft.deliveryTruePeakDb ?? -1}
                 disabled={Boolean(busy)}
-                onChange={(event) =>
-                  updateDraft({ deliveryTruePeakDb: Math.min(0, Math.max(-6, Number(event.target.value))) })
-                }
+                onCommit={(value) => updateDraft({ deliveryTruePeakDb: Math.min(0, Math.max(-6, value)) })}
               />
             </label>
             <div

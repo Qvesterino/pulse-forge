@@ -258,8 +258,10 @@ class VinylProcessor extends AudioWorkletProcessor {
     const dryMix = 1 - mix;
 
     for (let i = 0; i < len; i++) {
-      const l = inL ? inL[i] : 0;
-      const r = inR ? inR[i] : l;
+      let l = inL ? inL[i] : 0;
+      let r = inR ? inR[i] : l;
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
 
       // --- Wow + flutter: modulated delay-line read (opposite per channel,
       // so the wobble is in anti-phase — a wide, turntable-like smear) ---

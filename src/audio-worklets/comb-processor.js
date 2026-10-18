@@ -66,8 +66,10 @@ class CombProcessor extends AudioWorkletProcessor {
     const dampAlpha = 1 - Math.exp((-2 * Math.PI * dampFreq) / sr);
 
     for (let i = 0; i < len; i++) {
-      const l = inL ? inL[i] : 0;
-      const r = inR ? inR[i] : l;
+      let l = inL ? inL[i] : 0;
+      let r = inR ? inR[i] : l;
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
 
       const readPos = this.writeIdx - delaySamples;
       const delayedL = this.readCubic(this.bufL, readPos);

@@ -24,6 +24,8 @@
  *              into the output so consonants survive the filterbank
  *   - `stereo` equal-power band fan across the stereo field
  *   - `attack`/`release` envelope ballistics, `q` band sharpness, `level`
+ *   - k-rate controls are de-clicked internally: MIX/LEVEL/SIBILANCE glide
+ *     per sample (8 ms), LO/HI/Q/FOCUS/STEREO glide per block (15 ms)
  *
  * Determinism: pure per-sample DSP with zero randomness — live and offline
  * renders are bit-identical by construction (no seed needed).
@@ -36,6 +38,20 @@
  */
 
 const VOC_MAX_BANDS = 16;
+
+// De-click time constants. A k-rate AudioParam jumps at a block boundary; the
+// processor glides the audible consequences instead of stepping them.
+//  - gains (mix / level / sibilance): per-sample one-pole, 8 ms
+//  - layout (lo/hi/q/shift/stereo): per-block one-pole, 15 ms — coefficient
+//    moves are audible, so they are interpolated across render quanta.
+const GAIN_SMOOTH_SEC = 0.008;
+const LAYOUT_SMOOTH_SEC = 0.015;
+
+/** Snap a smoothed value once it is indistinguishable from the target, so a
+ *  layout glide stops rebuilding the filterbank forever. */
+function snapTo(value, target, eps) {
+  return Math.abs(value - target) <= eps ? target : value;
+}
 
 /** One 2-pole RBJ bandpass biquad state. */
 function makeBiquadState() {
@@ -64,7 +80,17 @@ class VocoderProcessor extends AudioWorkletProcessor {
     // positive shift maps each modulator resonance onto a higher carrier band.
     this.carCoeffs = new Float64Array(VOC_MAX_BANDS * 5);
     this.modCoeffs = new Float64Array(VOC_MAX_BANDS * 5);
-    this.lastLayout = "";
+    // Numeric layout fingerprint (NOT a string): comparing numbers is
+    // allocation-free, while the previous template/toFixed comparison built
+    // seven short-lived strings on every render quantum. `stereo` has its own
+    // pan fingerprint because it does not touch the coefficient banks.
+    this.lastBands = -1;
+    this.lastLoFreq = NaN;
+    this.lastHiFreq = NaN;
+    this.lastQ = NaN;
+    this.lastShift = NaN;
+    this.lastPanBands = -1;
+    this.lastStereo = NaN;
 
     // Per-band filter state, indexed [band * 2 + channel].
     this.carrierState = Array.from({ length: VOC_MAX_BANDS * 2 }, makeBiquadState);
@@ -81,6 +107,46 @@ class VocoderProcessor extends AudioWorkletProcessor {
     // Equal-power pan gains, precomputed per band on layout change.
     this.panL = new Float64Array(VOC_MAX_BANDS);
     this.panR = new Float64Array(VOC_MAX_BANDS);
+
+    // Second, complete filterbank used only while a BANDS change crossfades.
+    // The old bank keeps processing (so its state stays coherent); the new
+    // bank starts from the shared band states and fades in over ~25 ms.
+    // Nothing is allocated on the render path: the bank exists for the life
+    // of the processor and is swapped in when the fade completes.
+    this.carCoeffsB = new Float64Array(VOC_MAX_BANDS * 5);
+    this.modCoeffsB = new Float64Array(VOC_MAX_BANDS * 5);
+    this.carrierStateB = Array.from({ length: VOC_MAX_BANDS * 2 }, makeBiquadState);
+    this.modStateB = Array.from({ length: VOC_MAX_BANDS * 2 }, makeBiquadState);
+    this.envB = new Float64Array(VOC_MAX_BANDS * 2);
+    this.panLB = new Float64Array(VOC_MAX_BANDS);
+    this.panRB = new Float64Array(VOC_MAX_BANDS);
+    this.fadeActive = false;
+    this.fadeWarm = false;
+    this.warmPos = 0;
+    this.warmLen = 1;
+    this.fadePos = 0;
+    this.fadeLen = 1;
+    this.fadeInv = 1;
+    this.fadeOldBands = VOC_MAX_BANDS;
+    this.fadeNewBands = VOC_MAX_BANDS;
+    this.fadeOldGain = 1.6 / Math.sqrt(VOC_MAX_BANDS);
+    this.fadeNewGain = 1.6 / Math.sqrt(VOC_MAX_BANDS);
+    this.bankSumL = 0;
+    this.bankSumR = 0;
+
+    // Smoothed control state. Initialized from the first render block, so a
+    // restored preset or a start-at-non-default automation value does not fade
+    // in from the constructor defaults.
+    this.layoutInit = false;
+    this.loFreqSmooth = 120;
+    this.hiFreqSmooth = 7000;
+    this.qSmooth = 4;
+    this.shiftSmooth = 0;
+    this.stereoSmooth = 0.6;
+    this.gainInit = false;
+    this.mixSmooth = 1;
+    this.levelSmooth = 1;
+    this.sibSmooth = 0.35;
   }
 
   static get parameterDescriptors() {
@@ -113,8 +179,8 @@ class VocoderProcessor extends AudioWorkletProcessor {
     bank[base + 4] = (1 - alpha) / a0;
   }
 
-  /** Rebuild both coefficient banks + pan table for a layout. */
-  rebuildLayout(bands, loFreq, hiFreq, q, shift, stereo) {
+  /** Write both coefficient banks for a layout into the supplied arrays. */
+  buildLayout(carCoeffs, modCoeffs, bands, loFreq, hiFreq, q, shift) {
     const ratio = hiFreq / loFreq;
     const shiftRatio = Math.pow(2, shift / 12);
     for (let b = 0; b < VOC_MAX_BANDS; b++) {
@@ -122,22 +188,163 @@ class VocoderProcessor extends AudioWorkletProcessor {
       const f0 = loFreq * Math.pow(ratio, t);
       // Bands beyond the active count mirror the last frequency: their state
       // is never read (the loop stops at `bands`), so the values are inert.
-      this.setBandpass(this.carCoeffs, b, f0, q);
+      this.setBandpass(carCoeffs, b, f0, q);
       // Positive formant shift raises the modulator's spectral envelope: a
       // modulator peak at f excites the carrier band at f * shiftRatio, so
       // analyze each carrier band at the corresponding lower modulator center.
-      this.setBandpass(this.modCoeffs, b, clamp(f0 / shiftRatio, 20, this.sr * 0.45), q);
+      this.setBandpass(modCoeffs, b, clamp(f0 / shiftRatio, 20, this.sr * 0.45), q);
+    }
+  }
 
-      // Equal-power fan across the stereo field, blended toward mono by
-      // `stereo` (0 = every band centred, 1 = full L→R fan).
+  /** Rebuild the live coefficient banks for a layout. */
+  rebuildLayout(bands, loFreq, hiFreq, q, shift) {
+    this.buildLayout(this.carCoeffs, this.modCoeffs, bands, loFreq, hiFreq, q, shift);
+    this.lastBands = bands;
+    this.lastLoFreq = loFreq;
+    this.lastHiFreq = hiFreq;
+    this.lastQ = q;
+    this.lastShift = shift;
+  }
+
+  /** Write the equal-power band fan into the supplied pan arrays. */
+  buildPan(panL, panR, bands, stereo) {
+    for (let b = 0; b < VOC_MAX_BANDS; b++) {
       const pan = bands > 1 ? (b / (bands - 1)) * 2 - 1 : 0;
       const angle = ((pan + 1) * Math.PI) / 4;
       const gl = Math.cos(angle);
       const gr = Math.sin(angle);
-      this.panL[b] = 1 + (gl - 1) * stereo;
-      this.panR[b] = 1 + (gr - 1) * stereo;
+      panL[b] = 1 + (gl - 1) * stereo;
+      panR[b] = 1 + (gr - 1) * stereo;
     }
-    this.lastLayout = `${bands}|${loFreq.toFixed(1)}|${hiFreq.toFixed(1)}|${q.toFixed(2)}|${shift.toFixed(2)}|${stereo.toFixed(2)}`;
+  }
+
+  /** Rebuild the live pan fan. Separated from the coefficient banks because
+   *  STEREO and BANDS change the fan without changing any biquad. */
+  rebuildPan(bands, stereo) {
+    this.buildPan(this.panL, this.panR, bands, stereo);
+    this.lastPanBands = bands;
+    this.lastStereo = stereo;
+  }
+
+  /** Begin a click-free BANDS change. The old bank keeps its coefficients and
+   *  state; the new bank shares the states of bands that already exist and
+   *  starts the rest at zero, then the two outputs crossfade. */
+  startBandCrossfade(newBands, loFreq, hiFreq, q, shift, stereo) {
+    const oldBands = this.lastBands > 0 ? this.lastBands : newBands;
+    this.fadeOldBands = oldBands;
+    this.fadeNewBands = newBands;
+    this.fadeOldGain = 1.6 / Math.sqrt(oldBands);
+    this.fadeNewGain = 1.6 / Math.sqrt(newBands);
+    this.buildLayout(this.carCoeffsB, this.modCoeffsB, newBands, loFreq, hiFreq, q, shift);
+    this.buildPan(this.panLB, this.panRB, newBands, stereo);
+
+    // Start the new bank from zero state, not by copying the old band states:
+    // BANDS changes the band CENTRES (b/(bands-1)), so the old state belongs to
+    // a different transfer function. A silent 20 ms warm-up lets the new bank
+    // settle before any of it is faded into the output.
+    for (let b = 0; b < VOC_MAX_BANDS * 2; b++) {
+      const dstCar = this.carrierStateB[b];
+      const dstMod = this.modStateB[b];
+      dstCar.x1 = dstCar.x2 = dstCar.y1 = dstCar.y2 = 0;
+      dstMod.x1 = dstMod.x2 = dstMod.y1 = dstMod.y2 = 0;
+      this.envB[b] = 0;
+    }
+
+    this.fadeWarm = true;
+    this.warmPos = 0;
+    this.warmLen = Math.max(1, Math.round(0.02 * this.sr));
+    this.fadePos = 0;
+    this.fadeLen = Math.max(1, Math.round(0.025 * this.sr));
+    this.fadeInv = 1 / this.fadeLen;
+    this.fadeActive = true;
+    // The live bank is still the old one, but the target is now the new count.
+    // Marking it here suppresses a second crossfade on the next block; a newer
+    // BANDS value that arrives mid-fade starts another fade after this one.
+    this.lastBands = newBands;
+  }
+
+  /** Swap in the newly built bank. Reuses the old bank's allocations for the
+   *  next crossfade, so repeated BANDS changes allocate nothing. */
+  finishBandCrossfade(loFreq, hiFreq, q, shift, stereo) {
+    let swap = this.carCoeffs;
+    this.carCoeffs = this.carCoeffsB;
+    this.carCoeffsB = swap;
+    swap = this.modCoeffs;
+    this.modCoeffs = this.modCoeffsB;
+    this.modCoeffsB = swap;
+    swap = this.carrierState;
+    this.carrierState = this.carrierStateB;
+    this.carrierStateB = swap;
+    swap = this.modState;
+    this.modState = this.modStateB;
+    this.modStateB = swap;
+    swap = this.env;
+    this.env = this.envB;
+    this.envB = swap;
+    swap = this.panL;
+    this.panL = this.panLB;
+    this.panLB = swap;
+    swap = this.panR;
+    this.panR = this.panRB;
+    this.panRB = swap;
+    this.fadeActive = false;
+    this.lastBands = this.fadeNewBands;
+    this.lastLoFreq = loFreq;
+    this.lastHiFreq = hiFreq;
+    this.lastQ = q;
+    this.lastShift = shift;
+    this.lastPanBands = this.fadeNewBands;
+    this.lastStereo = stereo;
+  }
+
+  /** Render one bank for one sample; the un-scaled band sum lands in
+   *  `bankSumL/R`. Used for the live bank and, during a BANDS crossfade, for
+   *  both banks. Kept free of allocation and of shared post-processing. */
+  renderBankSample(
+    carLv,
+    carRv,
+    modLv,
+    modRv,
+    attCoef,
+    relCoef,
+    bands,
+    carCoeffs,
+    modCoeffs,
+    carrierState,
+    modState,
+    env,
+    panL,
+    panR,
+  ) {
+    let sumL = 0;
+    let sumR = 0;
+    for (let b = 0; b < bands; b++) {
+      const cIdx = b * 2;
+
+      // Carrier band at f0 (L/R).
+      const carBandL = this.biquad(carLv, carCoeffs, b, carrierState[cIdx]);
+      const carBandR = this.biquad(carRv, carCoeffs, b, carrierState[cIdx + 1]);
+
+      // Modulator band mapped inversely to carrier f0 — positive shift moves
+      // a modulator peak upward onto a higher-frequency carrier band.
+      const modBandL = this.biquad(modLv, modCoeffs, b, modState[cIdx]);
+      const modBandR = this.biquad(modRv, modCoeffs, b, modState[cIdx + 1]);
+
+      // Envelope follower per channel (asymmetric attack/release).
+      const absL = Math.abs(modBandL);
+      const absR = Math.abs(modBandR);
+      const envL = env[cIdx];
+      const envR = env[cIdx + 1];
+      const nextL = absL > envL ? attCoef * envL + (1 - attCoef) * absL : relCoef * envL + (1 - relCoef) * absL;
+      const nextR = absR > envR ? attCoef * envR + (1 - attCoef) * absR : relCoef * envR + (1 - relCoef) * absR;
+      env[cIdx] = nextL < 1e-20 ? 0 : nextL;
+      env[cIdx + 1] = nextR < 1e-20 ? 0 : nextR;
+
+      sumL += carBandL * nextL * panL[b];
+      sumR += carBandR * nextR * panR[b];
+    }
+    this.bankSumL = sumL;
+    this.bankSumR = sumR;
   }
 
   /** One biquad pass (direct form I). */
@@ -180,16 +387,82 @@ class VocoderProcessor extends AudioWorkletProcessor {
     const levelLin = Math.pow(10, clamp(pv(parameters, "level", 0), -24, 12) / 20);
     const mix = clamp(pv(parameters, "mix", 1), 0, 1);
 
-    // Rebuild the filterbank only when the layout actually changes.
-    const layout = `${bands}|${loFreq.toFixed(1)}|${hiFreq.toFixed(1)}|${q.toFixed(2)}|${shift.toFixed(2)}|${stereo.toFixed(2)}`;
-    if (layout !== this.lastLayout) {
-      this.rebuildLayout(bands, loFreq, hiFreq, q, shift, stereo);
+    // Glide the coefficient-moving controls across render quanta. A k-rate
+    // AudioParam jumps at a block boundary; applying a new biquad bank in one
+    // step is a coefficient discontinuity (audible on Q/FOCUS/BAND moves).
+    // BANDS is discrete and intentionally immediate; STEREO only rebuilds the
+    // pan fan.
+    const layoutCoef = 1 - Math.exp(-len / (this.sr * LAYOUT_SMOOTH_SEC));
+    if (!this.layoutInit) {
+      this.layoutInit = true;
+      this.loFreqSmooth = loFreq;
+      this.hiFreqSmooth = hiFreq;
+      this.qSmooth = q;
+      this.shiftSmooth = shift;
+      this.stereoSmooth = stereo;
+    } else {
+      this.loFreqSmooth = snapTo(this.loFreqSmooth + (loFreq - this.loFreqSmooth) * layoutCoef, loFreq, 0.01);
+      this.hiFreqSmooth = snapTo(this.hiFreqSmooth + (hiFreq - this.hiFreqSmooth) * layoutCoef, hiFreq, 0.01);
+      this.qSmooth = snapTo(this.qSmooth + (q - this.qSmooth) * layoutCoef, q, 1e-3);
+      this.shiftSmooth = snapTo(this.shiftSmooth + (shift - this.shiftSmooth) * layoutCoef, shift, 1e-3);
+      this.stereoSmooth = snapTo(this.stereoSmooth + (stereo - this.stereoSmooth) * layoutCoef, stereo, 1e-4);
+    }
+
+    if (this.fadeActive) {
+      // Keep the incoming bank aligned with a simultaneous LO/HI/Q/FOCUS or
+      // STEREO glide. The outgoing bank stays frozen at its fade-start state.
+      this.buildLayout(
+        this.carCoeffsB,
+        this.modCoeffsB,
+        this.fadeNewBands,
+        this.loFreqSmooth,
+        this.hiFreqSmooth,
+        this.qSmooth,
+        this.shiftSmooth,
+      );
+      this.buildPan(this.panLB, this.panRB, this.fadeNewBands, this.stereoSmooth);
+    } else if (bands !== this.lastBands) {
+      if (this.lastBands < 0) {
+        // First render block: there is no old bank to fade from.
+        this.rebuildLayout(bands, this.loFreqSmooth, this.hiFreqSmooth, this.qSmooth, this.shiftSmooth);
+        this.rebuildPan(bands, this.stereoSmooth);
+      } else {
+        // BANDS is the one discrete layout control: crossfade two complete
+        // banks instead of dropping seven/eight bands in one sample.
+        this.startBandCrossfade(
+          bands,
+          this.loFreqSmooth,
+          this.hiFreqSmooth,
+          this.qSmooth,
+          this.shiftSmooth,
+          this.stereoSmooth,
+        );
+      }
+    } else {
+      if (
+        this.loFreqSmooth !== this.lastLoFreq ||
+        this.hiFreqSmooth !== this.lastHiFreq ||
+        this.qSmooth !== this.lastQ ||
+        this.shiftSmooth !== this.lastShift
+      ) {
+        this.rebuildLayout(bands, this.loFreqSmooth, this.hiFreqSmooth, this.qSmooth, this.shiftSmooth);
+      }
+      if (bands !== this.lastPanBands || this.stereoSmooth !== this.lastStereo) {
+        this.rebuildPan(bands, this.stereoSmooth);
+      }
     }
 
     // No modulator wired — pass the carrier through 1:1. The node reports
     // `degraded` so a half-wired vocoder reads as audible-carrier, not
-    // silent mystery.
+    // silent mystery. The sibilance filter state is cleared so a later
+    // reconnect starts from zero instead of replaying the last tail.
     if (!modL) {
+      this.sibLp[0] = 0;
+      this.sibLp[1] = 0;
+      this.sibHp[0] = 0;
+      this.sibHp[1] = 0;
+      this.sibHpPrev[0] = 0;
+      this.sibHpPrev[1] = 0;
       for (let i = 0; i < len; i++) {
         const l = carL ? carL[i] : 0;
         outL[i] = l;
@@ -205,68 +478,151 @@ class VocoderProcessor extends AudioWorkletProcessor {
     const sibHpCoef = 1 - Math.exp((-2 * Math.PI * 500) / this.sr);
     // Many bands sum; scale by 1/sqrt(n) keeps the level sane across counts.
     const bandGain = 1.6 / Math.sqrt(bands);
-    const dryMix = 1 - mix;
+    // Per-sample gain glide (MIX / LEVEL / SIBILANCE). The first block adopts
+    // the current values so preset recall and restored automation do not fade.
+    const gainCoef = 1 - Math.exp(-1 / (this.sr * GAIN_SMOOTH_SEC));
+    if (!this.gainInit) {
+      this.gainInit = true;
+      this.mixSmooth = mix;
+      this.levelSmooth = levelLin;
+      this.sibSmooth = sibilance;
+    }
 
     for (let i = 0; i < len; i++) {
-      const carLv = carL ? carL[i] : 0;
-      const carRv = carR ? carR[i] : carLv;
-      const modLv = modL ? modL[i] : 0;
-      const modRv = modR ? modR[i] : modLv;
+      // Non-finite input must not reach the recursive filter/envelope state:
+      // one NaN sample latches every biquad (y1/y2) and envelope follower and
+      // silences the plugin for the rest of its life. The graph boundary is the
+      // cheapest place to stop that class (same guard as kaskada/skrutka), and
+      // it also covers a short input array (undefined reads) safely.
+      let carLv = carL ? carL[i] : 0;
+      let carRv = carR ? carR[i] : carLv;
+      let modLv = modL ? modL[i] : 0;
+      let modRv = modR ? modR[i] : modLv;
+      if (!Number.isFinite(carLv)) carLv = 0;
+      if (!Number.isFinite(carRv)) carRv = 0;
+      if (!Number.isFinite(modLv)) modLv = 0;
+      if (!Number.isFinite(modRv)) modRv = 0;
+
+      // De-zipper MIX / LEVEL / SIBILANCE. Steady-state endpoints stay exact:
+      // mix 0 keeps the dry path bit-identical and mix 1 mutes it exactly.
+      this.mixSmooth += (mix - this.mixSmooth) * gainCoef;
+      this.levelSmooth += (levelLin - this.levelSmooth) * gainCoef;
+      this.sibSmooth += (sibilance - this.sibSmooth) * gainCoef;
 
       let sumL = 0;
       let sumR = 0;
 
-      for (let b = 0; b < bands; b++) {
-        const cIdx = b * 2;
-
-        // Carrier band at f0 (L/R).
-        const carBandL = this.biquad(carLv, this.carCoeffs, b, this.carrierState[cIdx]);
-        const carBandR = this.biquad(carRv, this.carCoeffs, b, this.carrierState[cIdx + 1]);
-
-        // Modulator band mapped inversely to carrier f0 — positive shift moves
-        // a modulator peak upward onto a higher-frequency carrier band.
-        const modBandL = this.biquad(modLv, this.modCoeffs, b, this.modState[cIdx]);
-        const modBandR = this.biquad(modRv, this.modCoeffs, b, this.modState[cIdx + 1]);
-
-        // Envelope follower per channel (asymmetric attack/release).
-        const absL = Math.abs(modBandL);
-        const absR = Math.abs(modBandR);
-        const envL = this.env[cIdx];
-        const envR = this.env[cIdx + 1];
-        const nextL = absL > envL ? attCoef * envL + (1 - attCoef) * absL : relCoef * envL + (1 - relCoef) * absL;
-        const nextR = absR > envR ? attCoef * envR + (1 - attCoef) * absR : relCoef * envR + (1 - relCoef) * absR;
-        this.env[cIdx] = nextL < 1e-20 ? 0 : nextL;
-        this.env[cIdx + 1] = nextR < 1e-20 ? 0 : nextR;
-
-        sumL += carBandL * nextL * this.panL[b];
-        sumR += carBandR * nextR * this.panR[b];
+      if (this.fadeActive) {
+        this.renderBankSample(
+          carLv,
+          carRv,
+          modLv,
+          modRv,
+          attCoef,
+          relCoef,
+          this.fadeOldBands,
+          this.carCoeffs,
+          this.modCoeffs,
+          this.carrierState,
+          this.modState,
+          this.env,
+          this.panL,
+          this.panR,
+        );
+        const oldL = this.bankSumL * this.fadeOldGain;
+        const oldR = this.bankSumR * this.fadeOldGain;
+        this.renderBankSample(
+          carLv,
+          carRv,
+          modLv,
+          modRv,
+          attCoef,
+          relCoef,
+          this.fadeNewBands,
+          this.carCoeffsB,
+          this.modCoeffsB,
+          this.carrierStateB,
+          this.modStateB,
+          this.envB,
+          this.panLB,
+          this.panRB,
+        );
+        const newL = this.bankSumL * this.fadeNewGain;
+        const newR = this.bankSumR * this.fadeNewGain;
+        if (this.fadeWarm) {
+          // Warm-up: the new bank runs silently so its filters and envelopes
+          // settle; only the old bank is audible.
+          sumL = oldL;
+          sumR = oldR;
+          if (++this.warmPos >= this.warmLen) this.fadeWarm = false;
+        } else {
+          let t = this.fadePos * this.fadeInv;
+          if (t > 1) t = 1;
+          // Smoothstep: no slope discontinuity at either end of the fade.
+          const mixB = t * t * (3 - 2 * t);
+          sumL = oldL + (newL - oldL) * mixB;
+          sumR = oldR + (newR - oldR) * mixB;
+          this.fadePos++;
+        }
+      } else {
+        this.renderBankSample(
+          carLv,
+          carRv,
+          modLv,
+          modRv,
+          attCoef,
+          relCoef,
+          bands,
+          this.carCoeffs,
+          this.modCoeffs,
+          this.carrierState,
+          this.modState,
+          this.env,
+          this.panL,
+          this.panR,
+        );
+        sumL = this.bankSumL * bandGain;
+        sumR = this.bankSumR * bandGain;
       }
-
-      sumL *= bandGain;
-      sumR *= bandGain;
 
       // Sibilance: high-passed modulator straight to the output so unvoiced
       // consonants cut through the filterbank.
-      if (sibilance > 0.001) {
-        this.sibLp[0] += (modLv - this.sibLp[0]) * sibLpCoef;
-        this.sibHpPrev[0] = this.sibHp[0];
-        this.sibHp[0] = this.sibLp[0] - this.sibHpPrev[0] * (1 - sibHpCoef);
-        this.sibLp[1] += (modRv - this.sibLp[1]) * sibLpCoef;
-        this.sibHpPrev[1] = this.sibHp[1];
-        this.sibHp[1] = this.sibLp[1] - this.sibHpPrev[1] * (1 - sibHpCoef);
-        if (this.sibLp[0] > -1e-20 && this.sibLp[0] < 1e-20) this.sibLp[0] = 0;
-        if (this.sibLp[1] > -1e-20 && this.sibLp[1] < 1e-20) this.sibLp[1] = 0;
-        if (this.sibHp[0] > -1e-20 && this.sibHp[0] < 1e-20) this.sibHp[0] = 0;
-        if (this.sibHp[1] > -1e-20 && this.sibHp[1] < 1e-20) this.sibHp[1] = 0;
-        sumL += this.sibHp[0] * sibilance * 0.8;
-        sumR += this.sibHp[1] * sibilance * 0.8;
-      }
+      //
+      // One-pole HP = input − one-pole LP, computed in the stable direct form
+      //   hp[n] = (1 − c)·(hp[n−1] + lp[n] − lp[n−1])
+      // (the same chain vinyl-processor.js uses for its hiss/tone trims).
+      // The previous recurrence fed back the OUTPUT without subtracting the
+      // previous LP input, which is not a high-pass: it passed DC and 60 Hz at
+      // ~0.52 and boosted the top octave, so the "sibilance" layer leaked
+      // low-mid modulator content into the wet signal.
+      //
+      // The chain runs even when SIBILANCE is 0 (the output contribution is
+      // multiplied by the knob): a gated-off chain froze its state, so
+      // re-enabling the knob replayed the stale tail as a click.
+      this.sibLp[0] += (modLv - this.sibLp[0]) * sibLpCoef;
+      this.sibHp[0] = (1 - sibHpCoef) * (this.sibHp[0] + this.sibLp[0] - this.sibHpPrev[0]);
+      this.sibHpPrev[0] = this.sibLp[0];
+      this.sibLp[1] += (modRv - this.sibLp[1]) * sibLpCoef;
+      this.sibHp[1] = (1 - sibHpCoef) * (this.sibHp[1] + this.sibLp[1] - this.sibHpPrev[1]);
+      this.sibHpPrev[1] = this.sibLp[1];
+      if (this.sibLp[0] > -1e-20 && this.sibLp[0] < 1e-20) this.sibLp[0] = 0;
+      if (this.sibLp[1] > -1e-20 && this.sibLp[1] < 1e-20) this.sibLp[1] = 0;
+      if (this.sibHp[0] > -1e-20 && this.sibHp[0] < 1e-20) this.sibHp[0] = 0;
+      if (this.sibHp[1] > -1e-20 && this.sibHp[1] < 1e-20) this.sibHp[1] = 0;
+      sumL += this.sibHp[0] * this.sibSmooth * 0.8;
+      sumR += this.sibHp[1] * this.sibSmooth * 0.8;
 
-      sumL *= levelLin;
-      sumR *= levelLin;
+      sumL *= this.levelSmooth;
+      sumR *= this.levelSmooth;
 
-      outL[i] = carLv * dryMix + sumL * mix;
-      if (outR) outR[i] = carRv * dryMix + sumR * mix;
+      outL[i] = carLv * (1 - this.mixSmooth) + sumL * this.mixSmooth;
+      if (outR) outR[i] = carRv * (1 - this.mixSmooth) + sumR * this.mixSmooth;
+    }
+
+    // The new bank is warm after the fade; swap it in at the block boundary
+    // (mid-block swaps would add a branch to every sample for no benefit).
+    if (this.fadeActive && !this.fadeWarm && this.fadePos >= this.fadeLen) {
+      this.finishBandCrossfade(this.loFreqSmooth, this.hiFreqSmooth, this.qSmooth, this.shiftSmooth, this.stereoSmooth);
     }
 
     return true;

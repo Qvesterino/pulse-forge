@@ -109,7 +109,8 @@ class KwMeterProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < inL.length; i++) {
       // K-weighting biquad chain per channel.
       for (let ch = 0; ch < 2; ch++) {
-        const x = ch === 0 ? inL[i] || 0 : inR ? inR[i] : inL[i] || 0;
+        const raw = ch === 0 ? inL[i] : inR ? inR[i] : inL[i];
+        const x = Number.isFinite(raw) ? raw : 0;
         const shelf = s1[0] * x + s1[1] * this.x1[ch] + s1[2] * this.x2[ch] - s1[3] * this.y1[ch] - s1[4] * this.y2[ch];
         this.x2[ch] = this.x1[ch];
         this.x1[ch] = x;

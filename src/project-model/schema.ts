@@ -360,9 +360,17 @@ export function clampMarkerType(value: unknown): Marker["type"] {
 export function sanitizeMarkers(input: unknown, projectTicks: number): Marker[] {
   if (!Array.isArray(input)) return [];
   const out: Marker[] = [];
+  const seenIds = new Set<string>();
   for (const raw of input) {
     if (!isObject(raw)) continue;
     const id = typeof raw.id === "string" ? raw.id : uid("marker");
+    // The doc-comment promised this dedupe and the body never did it, so a
+    // document carrying two markers under one id kept both: every id-lookup
+    // (`markers.find(m => m.id === …)`) resolves to the first, and the second
+    // is a live marker with no owner. Keep the first occurrence — the one the
+    // lookups already resolve to.
+    if (seenIds.has(id)) continue;
+    seenIds.add(id);
     const name = typeof raw.name === "string" && raw.name.trim() !== "" ? raw.name : "Marker";
     const type = clampMarkerType(raw.type);
     const tick = Math.max(0, Math.min(projectTicks, Math.floor(Number(raw.tick) || 0)));
@@ -2529,9 +2537,30 @@ function normalizeMarkersDomain(s: NormalizeState): void {
   // ceiling" sentinel; `sanitizeMarkers` floors the value, so a corrupt file
   // still cannot produce an Infinity or fractional tick.
   const cleanedMarkers = sanitizeMarkers(doc.markers, Number.MAX_SAFE_INTEGER);
-  const markersChanged = !Array.isArray(doc.markers) || JSON.stringify(cleanedMarkers) !== JSON.stringify(doc.markers);
+  // `linkedClipId` is a REFERENCE, and this pass is the only backstop for a
+  // document that arrived from outside the command layer — project import,
+  // share code, a collab peer, a hand-edited file. Every delete verb unlinks
+  // in-command (`docOps.unlinkMarkersOfClips`), which is exactly why the gap
+  // stayed invisible: no user gesture produces a stale link. Clip-group
+  // membership has been validated here since v15 for the same reason, while
+  // marker links never were. A stale id survives every save and the cue
+  // preview silently falls back to the global bus. Same rule as a clip group:
+  // clear the reference, keep the marker — a cue is navigation, not content.
+  const liveClipIds = new Set<string>([
+    ...doc.arrangement.clips.map((clip) => clip.id),
+    ...(doc.arrangement.audioClips ?? []).map((clip) => clip.id),
+    ...(doc.arrangement.midiClips ?? []).map((clip) => clip.id),
+    ...(doc.arrangement.automationClips ?? []).map((clip) => clip.id),
+  ]);
+  const linkedMarkers = cleanedMarkers.map((marker) => {
+    if (marker.linkedClipId === undefined || liveClipIds.has(marker.linkedClipId)) return marker;
+    const next = { ...marker };
+    delete next.linkedClipId;
+    return next;
+  });
+  const markersChanged = !Array.isArray(doc.markers) || !jsonEqual(linkedMarkers, doc.markers);
   if (markersChanged) {
-    s.doc = { ...doc, markers: cleanedMarkers };
+    s.doc = { ...doc, markers: linkedMarkers };
     s.changed = true;
   }
 }
@@ -2818,7 +2847,25 @@ function normalizeMidiDomain(s: NormalizeState): void {
           };
         })
         .filter((mapping): mapping is import("./types").MidiCcMapping => mapping !== null);
-      const drumNoteMap = Array.isArray(m.drumNoteMap) ? m.drumNoteMap : [];
+      const rawDrumNoteMap = Array.isArray(m.drumNoteMap) ? m.drumNoteMap : [];
+      // A drum-note mapping is a REFERENCE to a pad, and `deleteTrack` strips
+      // the mappings of the pads it removes — but only on the command path.
+      // This used to pass the array through verbatim, so a document from
+      // import / share code / a collab peer kept a mapping aimed at a pad that
+      // does not exist: the incoming MIDI note resolves to nothing, silently,
+      // in every save from then on. Tracks are already normalized above
+      // (`normalizeTracksDomain` runs before this domain), so the live pad set
+      // here is authoritative.
+      const padIds = new Set(
+        doc.tracks.flatMap((track) => (track.kind === "drum" ? track.pads.map((pad) => pad.id) : [])),
+      );
+      const drumNoteMap = rawDrumNoteMap.filter(
+        (entry) =>
+          isObject(entry) &&
+          typeof (entry as Record<string, unknown>).padId === "string" &&
+          Number.isFinite(Number((entry as Record<string, unknown>).midiNote)) &&
+          padIds.has((entry as Record<string, unknown>).padId as string),
+      );
       const aftertouchTarget =
         isObject(m.aftertouchTarget) && isAutomationTargetValid(doc, m.aftertouchTarget as unknown as AutomationTarget)
           ? (m.aftertouchTarget as unknown as AutomationTarget)
@@ -2835,6 +2882,10 @@ function normalizeMidiDomain(s: NormalizeState): void {
         instrumentChannel !== m.instrumentChannel ||
         pitchBendRange !== m.pitchBendRange ||
         JSON.stringify(ccMappings) !== JSON.stringify(rawCcMappings) ||
+        // `drumNoteMap` was missing from this list: the field was rewritten in
+        // the rebuilt object but never counted as a change, so a filtered
+        // mapping would be computed and then discarded by the identity guard.
+        !jsonEqual(drumNoteMap, rawDrumNoteMap) ||
         JSON.stringify(aftertouchTarget) !== JSON.stringify(m.aftertouchTarget) ||
         aftertouchRange !== m.aftertouchRange
       ) {
@@ -3168,7 +3219,101 @@ function noteExpressionEquals(left: NoteExpression | undefined, right: unknown):
   );
 }
 
+/**
+ * Duplicate-entity-id backstop (first domain in the pipeline).
+ *
+ * Every id in this model is the primary key for `find(t => t.id === …)` — so a
+ * document carrying two entities under one id produces a DUPLICATE RUNTIME
+ * OBJECT: the mixer builds a strip for each, while every command, every
+ * selection and every id-lookup silently addresses only the first. The second
+ * is live audio with no owner. Measured on a duplicated `testDoc()` before
+ * this pass existed: `doc.tracks.length` 4 for a 3-track project, with the
+ * extra strip rendered and unreachable.
+ *
+ * The command layer already refuses colliding ids at the boundary
+ * (`createInstrumentTrack` in the AI executor throws on an existing id), which
+ * is why only an out-of-band document could produce this — project import,
+ * share code, a collab peer, a hand-edited file. This pass is that missing
+ * backstop, and it runs FIRST so every later domain validates against the
+ * deduped sets rather than against a set with twins in it.
+ *
+ * Keep the FIRST occurrence: it is the entity every `find` already resolves
+ * to, so no live reference changes meaning. Within-collection only — the four
+ * clip systems are separately namespaced by their `uid()` prefixes, so
+ * dropping a clip because another system's clip shares its id would destroy
+ * content to fix a collision nothing can produce.
+ */
+function dedupeEntityIdsDomain(s: NormalizeState): void {
+  const doc = s.doc;
+  /** First-wins dedupe of one top-level collection. Returns undefined when unchanged. */
+  const dedupe = <T>(list: unknown): T[] | undefined => {
+    if (!Array.isArray(list)) return undefined;
+    const seen = new Set<string>();
+    const out: T[] = [];
+    let dropped = 0;
+    for (const entry of list as T[]) {
+      const id = (entry as { id?: unknown } | null)?.id;
+      if (typeof id === "string") {
+        if (seen.has(id)) {
+          dropped++;
+          continue;
+        }
+        seen.add(id);
+      }
+      out.push(entry);
+    }
+    return dropped > 0 ? out : undefined;
+  };
+  const patch: Record<string, unknown> = {};
+  for (const key of TOP_LEVEL_ID_COLLECTIONS) {
+    const next = dedupe(doc[key]);
+    if (next) patch[key] = next;
+  }
+  const arrangement = doc.arrangement as Record<string, unknown> | undefined;
+  if (arrangement && typeof arrangement === "object") {
+    const arrPatch: Record<string, unknown> = {};
+    for (const key of ARRANGEMENT_ID_COLLECTIONS) {
+      const next = dedupe(arrangement[key]);
+      if (next) arrPatch[key] = next;
+    }
+    if (Object.keys(arrPatch).length > 0) patch.arrangement = { ...arrangement, ...arrPatch };
+  }
+  if (Object.keys(patch).length === 0) return;
+  s.doc = { ...doc, ...patch } as ProjectDocument;
+  s.changed = true;
+}
+
+/** Collections whose ids are primary keys and must be unique. */
+const TOP_LEVEL_ID_COLLECTIONS = [
+  "tracks",
+  "returns",
+  "patterns",
+  "scenes",
+  "automation",
+  "sceneAutomation",
+  "lfos",
+  "macros",
+  // `markers` is deliberately absent: `sanitizeMarkers` already dedupes by id
+  // and its own contract promises that, so covering markers here too would be
+  // the same invariant enforced twice. Measured: with the sanitizeMarkers
+  // dedupe removed, the marker-dedupe mutation below still went green on this
+  // list and red without it — one owner, provably load-bearing.
+] as const;
+
+/** Same, one level down — the four clip systems plus their side collections. */
+const ARRANGEMENT_ID_COLLECTIONS = [
+  "clips",
+  "audioClips",
+  "midiClips",
+  "automationClips",
+  "clipGroups",
+  "takeGroups",
+  "transitions",
+  "chords",
+] as const;
+
 const NORMALIZE_DOMAINS: ((s: NormalizeState) => void)[] = [
+  dedupeEntityIdsDomain,
   normalizeTimeSignatureDomain,
   normalizeBpmDomain,
   normalizeActivePatternDomain,

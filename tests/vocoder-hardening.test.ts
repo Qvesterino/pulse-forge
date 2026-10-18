@@ -36,6 +36,14 @@ const BLOCK = 128;
 let factory: () => {
   process: (i: Float32Array[][], o: Float32Array[][], p: Record<string, Float32Array>) => boolean;
   rebuildLayout?: (...args: number[]) => void;
+  renderBankSample?: (...args: any[]) => void;
+  fadeActive?: boolean;
+  fadeWarm?: boolean;
+  fadeOldBands?: number;
+  fadeNewBands?: number;
+  lastBands?: number;
+  carCoeffs?: Float64Array;
+  carCoeffsB?: Float64Array;
 };
 
 beforeAll(() => {
@@ -82,7 +90,21 @@ function allFinite(data: Float32Array): boolean {
   return true;
 }
 
-function sineBlocks(freq: number, amp: number, blocks: number, startSample = 0): [Float32Array, Float32Array] {
+/** Largest sample-to-sample step across a captured transition. A gain step
+ *  shows up here as a jump of the whole signal amplitude. */
+function maxAdjacentDelta(blocks: Float32Array[], before: number): number {
+  let prev = before;
+  let worst = 0;
+  for (const block of blocks) {
+    for (let i = 0; i < block.length; i++) {
+      worst = Math.max(worst, Math.abs(block[i] - prev));
+      prev = block[i];
+    }
+  }
+  return worst;
+}
+
+function sineBlocks(freq: number, amp: number, startSample = 0): [Float32Array, Float32Array] {
   const l = new Float32Array(BLOCK);
   const r = new Float32Array(BLOCK);
   for (let i = 0; i < BLOCK; i++) {
@@ -95,7 +117,7 @@ function sineBlocks(freq: number, amp: number, blocks: number, startSample = 0):
 
 /** Render `blocks` quanta of the given modulator against a silent carrier and
  *  return the peak of the LAST block (the filters have long settled). */
-function sibilanceTailPeak(freq: number | "dc", blocks: number, amp = 0.5): number {
+function sibilanceTailPeak(freq: number | "dc", blocks: number, amp = 0.5, sr = SR): number {
   const proc = factory();
   const p = param({ sibilance: 1, mix: 1, level: 0 });
   let last = 0;
@@ -105,13 +127,20 @@ function sibilanceTailPeak(freq: number | "dc", blocks: number, amp = 0.5): numb
     const modL = new Float32Array(BLOCK);
     const modR = new Float32Array(BLOCK);
     for (let i = 0; i < BLOCK; i++) {
-      const v = freq === "dc" ? amp : amp * Math.sin((2 * Math.PI * freq * (b * BLOCK + i)) / SR);
+      const v = freq === "dc" ? amp : amp * Math.sin((2 * Math.PI * freq * (b * BLOCK + i)) / sr);
       modL[i] = v;
       modR[i] = v;
     }
     const outL = new Float32Array(BLOCK);
     const outR = new Float32Array(BLOCK);
-    proc.process([[carrierL, carrierR], [modL, modR]], [[outL, outR]], p);
+    proc.process(
+      [
+        [carrierL, carrierR],
+        [modL, modR],
+      ],
+      [[outL, outR]],
+      p,
+    );
     if (b === blocks - 1) last = peak(outL);
   }
   return last;
@@ -137,11 +166,18 @@ describe("vocoder hardening — non-finite input cannot poison recursive state",
     let sawNonFinite = false;
     let tailPeak = 0;
     for (let b = 0; b < 32; b++) {
-      const [car, carR] = sineBlocks(440, 0.4, 1, b * BLOCK);
-      const [mod, modR] = sineBlocks(1000, 0.4, 1, b * BLOCK);
+      const [car, carR] = sineBlocks(440, 0.4, b * BLOCK);
+      const [mod, modR] = sineBlocks(1000, 0.4, b * BLOCK);
       const outL = new Float32Array(BLOCK);
       const outR = new Float32Array(BLOCK);
-      proc.process([[car, carR], [mod, modR]], [[outL, outR]], p);
+      proc.process(
+        [
+          [car, carR],
+          [mod, modR],
+        ],
+        [[outL, outR]],
+        p,
+      );
       if (!allFinite(outL) || !allFinite(outR)) sawNonFinite = true;
       if (b === 31) tailPeak = peak(outL);
     }
@@ -155,7 +191,14 @@ describe("vocoder hardening — non-finite input cannot poison recursive state",
     const short = new Float32Array(16); // shorter than the 128-sample output
     const outL = new Float32Array(BLOCK);
     const outR = new Float32Array(BLOCK);
-    proc.process([[short, short], [short, short]], [[outL, outR]], p);
+    proc.process(
+      [
+        [short, short],
+        [short, short],
+      ],
+      [[outL, outR]],
+      p,
+    );
     expect(allFinite(outL)).toBe(true);
     expect(allFinite(outR)).toBe(true);
   });
@@ -184,10 +227,275 @@ describe("vocoder hardening — SIBILANCE is the documented LP→HP chain", () =
     // the LP→HP chain lands at ≈ 0.10.
     expect(sibilanceTailPeak(18000, 200)).toBeLessThan(0.12);
   });
+
+  it("re-enabling SIBILANCE after a muted passage does not replay stale filter state", () => {
+    const proc = factory();
+    const outL = new Float32Array(BLOCK);
+    const outR = new Float32Array(BLOCK);
+    const run = (modAmp: number, sibilance: number) => {
+      const p = param({ sibilance, mix: 1, level: 0 });
+      const carrier = new Float32Array(BLOCK);
+      const [mod, modR] = sineBlocks(8000, modAmp);
+      proc.process(
+        [
+          [carrier, carrier],
+          [mod, modR],
+        ],
+        [[outL, outR]],
+        p,
+      );
+    };
+    for (let b = 0; b < 20; b++) run(0.9, 1); // charge the sibilance chain
+    for (let b = 0; b < 20; b++) run(0, 0); // muted + knob off (old code froze)
+    run(0, 1); // re-enable on silence: stale state would click here
+    expect(peak(outL)).toBeLessThan(1e-4);
+  });
+});
+
+describe("vocoder hardening — parameter transitions are de-clicked", () => {
+  it("a MIX 0 → 1 jump glides instead of dropping the dry signal in one sample", () => {
+    const proc = factory();
+    const dc = new Float32Array(BLOCK).fill(0.5);
+    const run = (mix: number) => {
+      const p = param({ mix, sibilance: 0, level: 0 });
+      const outL = new Float32Array(BLOCK);
+      const outR = new Float32Array(BLOCK);
+      proc.process(
+        [
+          [dc, dc],
+          [dc, dc],
+        ],
+        [[outL, outR]],
+        p,
+      );
+      return outL;
+    };
+    for (let b = 0; b < 20; b++) run(0);
+    const prev = 0.5; // steady mix=0 output is exactly the carrier
+    const transition: Float32Array[] = [];
+    for (let b = 0; b < 4; b++) transition.push(run(1));
+    // Pre-smoothing the first wet sample dropped the 0.5 dry term at once.
+    expect(maxAdjacentDelta(transition, prev)).toBeLessThan(0.02);
+  });
+
+  it("a LEVEL +12 dB jump glides instead of stepping the wet gain", () => {
+    const proc = factory();
+    const run = (level: number, startSample: number) => {
+      const p = param({ mix: 1, level, sibilance: 0 });
+      const [car, carR] = sineBlocks(997, 0.9, startSample);
+      const [mod, modR] = sineBlocks(997, 0.9, startSample);
+      const outL = new Float32Array(BLOCK);
+      const outR = new Float32Array(BLOCK);
+      proc.process(
+        [
+          [car, carR],
+          [mod, modR],
+        ],
+        [[outL, outR]],
+        p,
+      );
+      return outL;
+    };
+    let n = 0;
+    let last = 0;
+    for (let b = 0; b < 30; b++) {
+      const block = run(0, n);
+      last = block[BLOCK - 1];
+      n += BLOCK;
+    }
+    const transition: Float32Array[] = [];
+    for (let b = 0; b < 4; b++) {
+      transition.push(run(12, n));
+      n += BLOCK;
+    }
+    // The 1 kHz sine itself moves ~0.05 between samples; a gain step adds the
+    // whole amplitude difference (~1.2 here). The glide stays near the sine.
+    expect(maxAdjacentDelta(transition, last)).toBeLessThan(0.15);
+  });
+
+  it("a SIBILANCE 0 → 1 jump glides instead of switching the layer on in one sample", () => {
+    const proc = factory();
+    const silent = new Float32Array(BLOCK);
+    const run = (sibilance: number, startSample: number) => {
+      const p = param({ mix: 1, level: 0, sibilance });
+      const [mod, modR] = sineBlocks(500, 0.5, startSample);
+      const outL = new Float32Array(BLOCK);
+      const outR = new Float32Array(BLOCK);
+      proc.process(
+        [
+          [silent, silent],
+          [mod, modR],
+        ],
+        [[outL, outR]],
+        p,
+      );
+      return outL;
+    };
+    let n = 0;
+    let last = 0;
+    for (let b = 0; b < 20; b++) {
+      const block = run(0, n);
+      last = block[BLOCK - 1];
+      n += BLOCK;
+    }
+    const transition: Float32Array[] = [];
+    for (let b = 0; b < 4; b++) {
+      transition.push(run(1, n));
+      n += BLOCK;
+    }
+    // The 500 Hz sibilance signal moves ~0.018 per sample; the old gain step
+    // added the full ~0.28 amplitude on the first sample.
+    expect(maxAdjacentDelta(transition, last)).toBeLessThan(0.08);
+  });
+});
+
+describe("vocoder hardening — BANDS changes crossfade two complete banks", () => {
+  const render = (
+    proc: ReturnType<typeof factory>,
+    bands: number,
+    blocks: number,
+    startSample: number,
+    outL: Float32Array,
+    outR: Float32Array,
+  ) => {
+    const p = param({ bands, mix: 1, level: 0, sibilance: 0.35 });
+    for (let b = 0; b < blocks; b++) {
+      const n = startSample + b * BLOCK;
+      const [car, carR] = sineBlocks(220, 0.4, n);
+      const [mod, modR] = sineBlocks(1000, 0.4, n);
+      proc.process(
+        [
+          [car, carR],
+          [mod, modR],
+        ],
+        [[outL, outR]],
+        p,
+      );
+    }
+    return startSample + blocks * BLOCK;
+  };
+
+  it("16 → 8 runs both banks for ~25 ms, then swaps once", () => {
+    const proc = factory();
+    let calls = 0;
+    const original = proc.renderBankSample!.bind(proc);
+    proc.renderBankSample = (...args: Parameters<NonNullable<typeof proc.renderBankSample>>) => {
+      calls += 1;
+      original(...args);
+    };
+    const outL = new Float32Array(BLOCK);
+    const outR = new Float32Array(BLOCK);
+    let n = render(proc, 16, 40, 0, outL, outR);
+    calls = 0;
+    n = render(proc, 16, 1, n, outL, outR);
+    expect(calls).toBe(128); // steady state: one bank per sample
+    calls = 0;
+    n = render(proc, 8, 1, n, outL, outR);
+    expect(calls, "the first changed block renders the old and the new bank").toBe(256);
+    expect(proc.fadeActive).toBe(true);
+    expect(proc.fadeWarm, "the new bank warms silently before the audible blend").toBe(true);
+    expect(proc.fadeOldBands).toBe(16);
+    expect(proc.fadeNewBands).toBe(8);
+    render(proc, 8, 20, n, outL, outR);
+    expect(proc.fadeActive, "20 ms warm-up + 25 ms fade completes after twenty blocks").toBe(false);
+    expect(proc.lastBands).toBe(8);
+    expect(proc.carCoeffs).not.toBe(proc.carCoeffsB);
+    calls = 0;
+    render(proc, 8, 1, n + 20 * BLOCK, outL, outR);
+    expect(calls, "after the swap the old bank is idle").toBe(128);
+  });
+
+  it("8 → 16 crossfades the newly activated bands in and stays finite", () => {
+    const proc = factory();
+    const outL = new Float32Array(BLOCK);
+    const outR = new Float32Array(BLOCK);
+    let n = render(proc, 8, 40, 0, outL, outR);
+    let worst = 0;
+    const p = param({ bands: 16, mix: 1, level: 0, sibilance: 0.35 });
+    for (let b = 0; b < 20; b++) {
+      const [car, carR] = sineBlocks(220, 0.4, n + b * BLOCK);
+      const [mod, modR] = sineBlocks(1000, 0.4, n + b * BLOCK);
+      proc.process(
+        [
+          [car, carR],
+          [mod, modR],
+        ],
+        [[outL, outR]],
+        p,
+      );
+      expect(allFinite(outL)).toBe(true);
+      worst = Math.max(worst, peak(outL));
+    }
+    expect(proc.fadeActive).toBe(false);
+    expect(proc.lastBands).toBe(16);
+    expect(worst).toBeGreaterThan(0.001);
+  });
+
+  it("a second BANDS change during a fade is deferred, then fades again", () => {
+    const proc = factory();
+    const outL = new Float32Array(BLOCK);
+    const outR = new Float32Array(BLOCK);
+    let n = render(proc, 16, 40, 0, outL, outR);
+    n = render(proc, 8, 2, n, outL, outR);
+    expect(proc.fadeActive).toBe(true);
+    expect(proc.fadeNewBands).toBe(8);
+    // The 8-band fade completes first; the 12-band target then starts a
+    // second fade instead of swapping mid-transition.
+    render(proc, 12, 40, n, outL, outR);
+    expect(proc.fadeActive).toBe(false);
+    expect(proc.lastBands).toBe(12);
+    expect(allFinite(outL)).toBe(true);
+  });
+});
+
+describe("vocoder hardening — runtime configuration boundaries", () => {
+  it("derives the sibilance HP corner from the active sample rate (44.1 / 48 / 96 / 192 kHz)", () => {
+    for (const sr of [44100, 48000, 96000, 192000]) {
+      (globalThis as unknown as { sampleRate: number }).sampleRate = sr;
+      try {
+        expect(sibilanceTailPeak("dc", 80, 0.5, sr), `${sr} Hz: DC rejected`).toBeLessThan(1e-4);
+        expect(sibilanceTailPeak(2000, 100, 0.5, sr), `${sr} Hz: 2 kHz passed`).toBeGreaterThan(0.2);
+      } finally {
+        (globalThis as unknown as { sampleRate: number }).sampleRate = SR;
+      }
+    }
+  });
+
+  it("non-finite parameter values fall back to descriptor defaults instead of poisoning the block", () => {
+    const proc = factory();
+    const p = param({
+      bands: NaN,
+      loFreq: NaN,
+      hiFreq: Infinity,
+      q: NaN,
+      attack: NaN,
+      release: Infinity,
+      shift: -Infinity,
+      sibilance: NaN,
+      stereo: NaN,
+      level: NaN,
+      mix: NaN,
+    });
+    const [car, carR] = sineBlocks(440, 0.4);
+    const [mod, modR] = sineBlocks(1000, 0.4);
+    const outL = new Float32Array(BLOCK);
+    const outR = new Float32Array(BLOCK);
+    proc.process(
+      [
+        [car, carR],
+        [mod, modR],
+      ],
+      [[outL, outR]],
+      p,
+    );
+    expect(allFinite(outL)).toBe(true);
+    expect(allFinite(outR)).toBe(true);
+    expect(peak(outL)).toBeGreaterThan(0.001);
+  });
 });
 
 describe("vocoder hardening — layout and parameter stability", () => {
-  it("rebuilds the filterbank once for a layout and again only when it changes", () => {
+  it("rebuilds once per layout, glides a changed layout, then stops rebuilding", () => {
     const proc = factory();
     let calls = 0;
     const original = proc.rebuildLayout!.bind(proc);
@@ -207,14 +515,25 @@ describe("vocoder hardening — layout and parameter stability", () => {
     }
     const outL = new Float32Array(BLOCK);
     const outR = new Float32Array(BLOCK);
-    const run = (patch: Record<string, number>) => {
+    const run = (patch: Record<string, number>, blocks: number) => {
       const p = param(patch);
-      for (let b = 0; b < 8; b++) proc.process([[carrierL, carrierR], [modL, modR]], [[outL, outR]], p);
+      for (let b = 0; b < blocks; b++)
+        proc.process(
+          [
+            [carrierL, carrierR],
+            [modL, modR],
+          ],
+          [[outL, outR]],
+          p,
+        );
     };
-    run({});
+    run({}, 8);
     expect(calls, "same layout over eight blocks rebuilds once").toBe(1);
-    run({ q: 8 });
-    expect(calls, "a changed layout rebuilds once").toBe(2);
+    run({ q: 8 }, 60);
+    const glided = calls;
+    expect(glided, "a changed layout is interpolated across quanta, not stepped").toBeGreaterThan(2);
+    run({ q: 8 }, 10);
+    expect(calls, "a settled layout stops rebuilding").toBe(glided);
   });
 
   it("mono input mirrors to both output channels and stays finite", () => {
@@ -248,7 +567,14 @@ describe("vocoder hardening — layout and parameter stability", () => {
       }
       const outL = new Float32Array(BLOCK);
       const outR = new Float32Array(BLOCK);
-      proc.process([[l, r], [l, r]], [[outL, outR]], p);
+      proc.process(
+        [
+          [l, r],
+          [l, r],
+        ],
+        [[outL, outR]],
+        p,
+      );
       expect(allFinite(outL) && allFinite(outR)).toBe(true);
       worst = Math.max(worst, peak(outL), peak(outR));
     }

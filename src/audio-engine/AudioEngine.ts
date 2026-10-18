@@ -14,6 +14,7 @@ import { MAX_AUDIO_CLIP_WARP_SEGMENTS, resolveWarpPinPoints } from "../project-m
 export { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
 import { hashString } from "../shared/rng";
 import { PPQ } from "../project-model/types";
+import { createAudioBoundaryDiagnostics, type AudioBoundaryDiagnostics } from "./audioBoundaryDiagnostics";
 import type { SampleBank } from "../sample-library/factory";
 import { EFFECT_DEFS, clampEffectParam } from "../effects/registry";
 import type { EffectGainReductionReading, EffectRuntime } from "../effects/types";
@@ -332,6 +333,9 @@ export class AudioEngine {
   private fxMetersEnabled = new Map<string, boolean>();
   private instruments = new Map<string, InstrumentState>();
 
+  /** Non-finite events dropped at the audio boundary (first per kind logged). */
+  private readonly boundaryDiagnostics: AudioBoundaryDiagnostics = createAudioBoundaryDiagnostics();
+
   /**
    * Wave 4f (FINAL decomposition): realtime performance path — drum/synth
    * voices, instrument noteOn with p-locks + slides, AudioClips, MPE/MIDI
@@ -343,6 +347,7 @@ export class AudioEngine {
       doc: () => this.doc,
       bank: () => this.bank,
       currentTime: () => this.currentTime,
+      diagnostics: this.boundaryDiagnostics,
       trackNodes: this.trackNodes as unknown as Map<string, TriggerTrackView>,
       groupNodes: this.groupNodes as unknown as Map<string, TriggerTrackView>,
       instrumentStates: this.instruments as unknown as Map<string, InstrumentStateView>,
@@ -630,6 +635,11 @@ export class AudioEngine {
     return [...this.missedAssets];
   }
 
+  /** Count of non-finite events dropped at the audio boundary, per kind. */
+  get audioBoundaryDiagnostics(): Readonly<Record<string, number>> {
+    return this.boundaryDiagnostics.snapshot();
+  }
+
   /**
    * Route offline-rendered track output around the fixed master chain.
    * Disabled user master processors are still not a transparent identity:
@@ -680,6 +690,13 @@ export class AudioEngine {
   }
 
   useContext(ctx: BaseAudioContext): void {
+    // A context swap ENDS any offline-render regime. The renderer uses a
+    // throwaway engine per render today, but an engine reused for a render and
+    // then returned to live would otherwise keep exact (non-glide) PDC writes
+    // AND the syncPdc lock forever — live latency compensation would silently
+    // stop tracking after the first export.
+    this.offlineExactPdc = false;
+    this.offlineRenderLocked = false;
     this.cancelEffectIntentPreview(this.doc ?? undefined, "manual");
     const previousContext = this.ctx;
     if (previousContext && previousContext !== ctx) {
@@ -2163,6 +2180,13 @@ export class AudioEngine {
     slideFromWhen?: number,
     expression?: import("../project-model/types").NoteExpression,
   ): void {
+    // Finite gate BEFORE the held-pitch mutation: applyPitchHint writes
+    // hintHz/when into every insert runtime, and the trigger engine drops the
+    // same invalid event (see allFinite in triggerEngine.ts).
+    if (![pitch, velocity, when, durationSec].every((value) => Number.isFinite(value))) {
+      this.boundaryDiagnostics.reportDropped("note");
+      return;
+    }
     this.pushHeldPitch(trackId, pitch, when);
     this.triggerEngine.noteOn(
       trackId,
@@ -2185,6 +2209,10 @@ export class AudioEngine {
     durationSec: number,
     expression?: import("../project-model/types").NoteExpression,
   ): void {
+    if (![pitch, when, durationSec].every((value) => Number.isFinite(value))) {
+      this.boundaryDiagnostics.reportDropped("slide");
+      return;
+    }
     this.triggerEngine.noteSlide(trackId, pitch, when, durationSec, expression);
   }
 
@@ -2236,6 +2264,10 @@ export class AudioEngine {
   }
 
   noteOff(trackId: string, pitch: number, when: number): void {
+    if (![pitch, when].every((value) => Number.isFinite(value))) {
+      this.boundaryDiagnostics.reportDropped("noteOff");
+      return;
+    }
     this.releaseHeldPitch(trackId, pitch, when);
     this.triggerEngine.noteOff(trackId, pitch, when);
   }

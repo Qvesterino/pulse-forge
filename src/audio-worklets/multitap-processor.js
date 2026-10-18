@@ -155,8 +155,10 @@ class MultitapProcessor extends AudioWorkletProcessor {
     const bufL = this.bufL;
     const bufR = this.bufR;
     for (let i = 0; i < len; i++) {
-      const dryL = inL ? inL[i] : 0;
-      const dryR = inR ? inR[i] : dryL;
+      let dryL = inL ? inL[i] : 0;
+      let dryR = inR ? inR[i] : dryL;
+      if (!Number.isFinite(dryL)) dryL = 0;
+      if (!Number.isFinite(dryR)) dryR = 0;
 
       // Taps read the shared loop signal at their own offsets.
       let toneInL = 0;

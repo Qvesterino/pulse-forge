@@ -129,8 +129,10 @@ class CompressorProcessor extends AudioWorkletProcessor {
     const bpLpA = deEss ? Math.exp(-2 * Math.PI * (bandHz * 1.8) * dt) : 0;
 
     for (let i = 0; i < len; i++) {
-      const l = mainL ? mainL[i] : 0;
-      const r = mainR ? mainR[i] : l;
+      let l = mainL ? mainL[i] : 0;
+      let r = mainR ? mainR[i] : l;
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
 
       // ---- detector source (sidechain when connected, else main) ----
       let dL = 0;
@@ -165,14 +167,18 @@ class CompressorProcessor extends AudioWorkletProcessor {
           dL = Math.abs(p2l) < 1e-15 ? 0 : p2l;
           dR = Math.abs(p2r) < 1e-15 ? 0 : p2r;
         } else {
-          const sl = sideL ? sideL[i] : 0;
-          const sr2 = sideR ? sideR[i] : sl;
+          let sl = sideL ? sideL[i] : 0;
+          let sr2 = sideR ? sideR[i] : sl;
+          if (!Number.isFinite(sl)) sl = 0;
+          if (!Number.isFinite(sr2)) sr2 = 0;
           dL = sl;
           dR = sr2;
         }
       } else if (sideActive) {
-        const sl = sideL ? sideL[i] : 0;
-        const sr2 = sideR ? sideR[i] : sl;
+        let sl = sideL ? sideL[i] : 0;
+        let sr2 = sideR ? sideR[i] : sl;
+        if (!Number.isFinite(sl)) sl = 0;
+        if (!Number.isFinite(sr2)) sr2 = 0;
         if (hpfOn) {
           // 2× cascaded one-pole highpass (12 dB/oct) on the detector path.
           const y1l = hpA * (this.postL1 + sl - this.prevInL);
@@ -240,10 +246,12 @@ class CompressorProcessor extends AudioWorkletProcessor {
 
       // ---- gain smoothing: attack dives, release recovers ----
       if (autoRel) {
-        const d = (mainL ? mainL[i] : 0) - (mainL && i > 0 ? mainL[i - 1] : 0);
-        const dd = (mainR ? mainR[i] : 0) - (mainR && i > 0 ? mainR[i - 1] : 0);
+        const prevL = mainL && i > 0 && Number.isFinite(mainL[i - 1]) ? mainL[i - 1] : 0;
+        const prevR = mainR && i > 0 && Number.isFinite(mainR[i - 1]) ? mainR[i - 1] : 0;
+        const d = l - prevL;
+        const dd = (mainR ? r : 0) - prevR;
         diffEnergy += d * d + dd * dd;
-        const xv = mainL ? mainL[i] : 0;
+        const xv = l;
         totEnergy += xv * xv;
       }
       // releaseBlendEff: dense transients shorten recovery (down to 0.3×),

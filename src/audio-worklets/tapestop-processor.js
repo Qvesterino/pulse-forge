@@ -91,8 +91,10 @@ class TapeStopProcessor extends AudioWorkletProcessor {
     const coef = linear ? 1 / blocks : 1 - Math.exp(-5 / blocks);
 
     for (let i = 0; i < len; i++) {
-      const l = inL ? inL[i] : 0;
-      const r = inR ? inR[i] : l;
+      let l = inL ? inL[i] : 0;
+      let r = inR ? inR[i] : l;
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
 
       // Write at tape speed (1.0×) — the transport never slows, only the head.
       this.bufL[this.writePos % this.bufferLen] = l;

@@ -6,6 +6,25 @@ import { connectAudioClipSourceChannel } from "./audioClipChannels";
 import { timeStretch } from "./time-stretch";
 import { DECLICK_TAIL_SEC, resolveSlicePlayback, declickFadeOut, fitSliceFades } from "./declick";
 import { audioClipPlayWindow, buildWarpSegments, type WarpSegment, type WarpManager } from "./warpManager";
+import type { AudioBoundaryDiagnostics } from "./audioBoundaryDiagnostics";
+
+/**
+ * AUDIO-BOUNDARY FINITE GATE (engine audit 2026-10-18).
+ *
+ * `AudioParam.setValueAtTime(NaN)` / `setTargetAtTime(NaN)` and
+ * `AudioScheduledSourceNode.start(NaN)` throw a TypeError, and a throw inside a
+ * scheduler tick aborts the rest of that tick's events. Non-finite note values
+ * are reachable from a corrupt/old project, the MCP agent surface, and —
+ * proven by the audit probe — from a non-finite pitch bend: the bend is stored
+ * on the instrument state, so ONE bad bend poisons EVERY subsequent note on
+ * the track (`adjustedPitch = pitch + NaN`). The boundary drops the invalid
+ * event instead of letting it poison a tick or a render; finite values are
+ * untouched.
+ */
+function allFinite(...values: number[]): boolean {
+  for (const value of values) if (!Number.isFinite(value)) return false;
+  return true;
+}
 
 export interface TriggerVoice {
   source: AudioScheduledSourceNode;
@@ -97,6 +116,8 @@ export interface TriggerEngineDeps {
   releaseOneShot(source: AudioScheduledSourceNode): void;
   /** Report an asset that failed to resolve (engine diagnostics). */
   missAsset(assetId: string): void;
+  /** Non-finite-event counter (optional so test fakes need not thread it). */
+  diagnostics?: AudioBoundaryDiagnostics;
 }
 
 /**
@@ -335,6 +356,12 @@ export class TriggerEngine {
     slideFromWhen?: number,
     expression?: import("../project-model/types").NoteExpression,
   ): void {
+    // Finite gate BEFORE any state: a non-finite value must never reach
+    // setValueAtTime/start (see allFinite's note above).
+    if (!allFinite(pitch, velocity, when, durationSec)) {
+      this.deps.diagnostics?.reportDropped("note");
+      return;
+    }
     // Frozen tracks play back a pre-rendered buffer — skip individual noteOn
     if (this.warp.isFrozen(trackId)) return;
     const inst = this.deps.instrumentStates.get(trackId);
@@ -416,6 +443,10 @@ export class TriggerEngine {
     durationSec: number,
     expression?: import("../project-model/types").NoteExpression,
   ): void {
+    if (!allFinite(pitch, when, durationSec)) {
+      this.deps.diagnostics?.reportDropped("slide");
+      return;
+    }
     if (this.warp.isFrozen(trackId)) return;
     const inst = this.deps.instrumentStates.get(trackId);
     if (!inst?.runtime.noteSlide) return;
@@ -784,6 +815,10 @@ export class TriggerEngine {
     /** Resolved velocity-layer / round-robin sample for this hit (see groove.ts). */
     sampleId?: string | null,
   ): void {
+    if (!allFinite(when, velocity)) {
+      this.deps.diagnostics?.reportDropped("drumHit");
+      return;
+    }
     const ctx = this.deps.ctx();
     const trackNodes = this.deps.trackNodes.get(trackId);
     if (!ctx || !trackNodes) return;
@@ -1405,7 +1440,14 @@ export class TriggerEngine {
   setMidiPitchBend(trackId: string, semitones: number): void {
     const inst = this.deps.instrumentStates.get(trackId);
     if (!inst) return;
-    inst.pitchBend = semitones;
+    // A bend is stored, not written: an invalid or absurd value here would
+    // poison every later note on the track (adjustedPitch = pitch + bend).
+    // Ignore non-finite input and clamp to the MPE bend-range ceiling.
+    if (!Number.isFinite(semitones)) {
+      this.deps.diagnostics?.reportDropped("pitchBend");
+      return;
+    }
+    inst.pitchBend = Math.max(-96, Math.min(96, semitones));
   }
 
   /** Apply polyphonic aftertouch to a specific note on an instrument track. */
@@ -1416,12 +1458,20 @@ export class TriggerEngine {
    * whose runtime does not implement it.
    */
   polyTimbre(trackId: string, pitch: number, timbre: number): void {
+    if (!allFinite(pitch, timbre)) {
+      this.deps.diagnostics?.reportDropped("poly");
+      return;
+    }
     const inst = this.deps.instrumentStates.get(trackId);
     if (!inst) return;
     inst.runtime.polyTimbre?.(pitch, timbre, this.deps.ctx()?.currentTime ?? 0);
   }
 
   polyPressure(trackId: string, pitch: number, pressure: number): void {
+    if (!allFinite(pitch, pressure)) {
+      this.deps.diagnostics?.reportDropped("poly");
+      return;
+    }
     const inst = this.deps.instrumentStates.get(trackId);
     if (!inst?.runtime.polyPressure) return;
     inst.runtime.polyPressure(pitch, pressure, this.deps.ctx()?.currentTime ?? 0);
@@ -1429,6 +1479,10 @@ export class TriggerEngine {
 
   /** Release a specific voice by pitch. */
   noteOff(trackId: string, pitch: number, when: number): void {
+    if (!allFinite(pitch, when)) {
+      this.deps.diagnostics?.reportDropped("noteOff");
+      return;
+    }
     const inst = this.deps.instrumentStates.get(trackId);
     if (!inst?.runtime.noteOff) return;
     inst.runtime.noteOff(pitch, when);

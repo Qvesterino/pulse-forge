@@ -145,8 +145,10 @@ class ReverseSwellProcessor extends AudioWorkletProcessor {
     const smoothCoef = 1 - Math.exp(-1 / (sr * 0.004));
 
     for (let i = 0; i < len; i++) {
-      const l = inL ? inL[i] : 0;
-      const r = inR ? inR[i] : l;
+      let l = inL ? inL[i] : 0;
+      let r = inR ? inR[i] : l;
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
 
       // Record always — a trigger must always find fresh material.
       this.bufL[this.writePos % this.bufferLen] = l;

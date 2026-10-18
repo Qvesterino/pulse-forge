@@ -93,7 +93,8 @@ export class LimiterOversampler2x {
     }
     for (let frame = 0; frame < inputFrames; frame++) {
       write = (write + 1) % PHASE_TAP_COUNT;
-      history[write] = input[frame] ?? 0;
+      const sample = input[frame] ?? 0;
+      history[write] = Number.isFinite(sample) ? sample : 0;
       const out = frame * FACTOR;
       for (let phase = 0; phase < FACTOR; phase++) {
         const taps = UP_PHASES[phase];
@@ -124,7 +125,8 @@ export class LimiterOversampler2x {
       // in both FIR stages, this makes the measured cascade latency exactly
       // 64 base-rate samples instead of a half-sample fractional delay.
       write = (write + 1) % TAPS;
-      history[write] = input[source] ?? 0;
+      const s0 = input[source] ?? 0;
+      history[write] = Number.isFinite(s0) ? s0 : 0;
       let acc = 0;
       for (let tap = 0; tap < DOWN_TAPS.length; tap++) {
         const entry = DOWN_TAPS[tap];
@@ -132,7 +134,8 @@ export class LimiterOversampler2x {
       }
       output[frame] = acc;
       write = (write + 1) % TAPS;
-      history[write] = input[source + 1] ?? 0;
+      const s1 = input[source + 1] ?? 0;
+      history[write] = Number.isFinite(s1) ? s1 : 0;
     }
     if (right) this.downWriteR = write;
     else this.downWriteL = write;

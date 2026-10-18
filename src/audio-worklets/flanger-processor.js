@@ -69,8 +69,10 @@ class FlangerProcessor extends AudioWorkletProcessor {
     const spreadOffset = spread * Math.PI;
 
     for (let i = 0; i < len; i++) {
-      const l = inL ? inL[i] : 0;
-      const r = inR ? inR[i] : l;
+      let l = inL ? inL[i] : 0;
+      let r = inR ? inR[i] : l;
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
 
       // LFO → delay times per channel
       const lfoL = Math.sin(this.lfoPhaseL);

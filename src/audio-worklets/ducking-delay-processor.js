@@ -85,8 +85,10 @@ class DuckingDelayProcessor extends AudioWorkletProcessor {
     const relCoef = Math.exp(-1 / (sr * relSec));
 
     for (let i = 0; i < len; i++) {
-      const l = inL ? inL[i] : 0;
-      const r = inR ? inR[i] : l;
+      let l = inL ? inL[i] : 0;
+      let r = inR ? inR[i] : l;
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
 
       // Envelope follower on dry (peak stereo)
       const peak = Math.abs(l) > Math.abs(r) ? Math.abs(l) : Math.abs(r);

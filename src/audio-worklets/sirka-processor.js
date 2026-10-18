@@ -54,8 +54,10 @@ class SirkaProcessor extends AudioWorkletProcessor {
     let midR = this.midR;
 
     for (let i = 0; i < lOut.length; i++) {
-      const l = lIn[i];
-      const r = rIn[i];
+      let l = lIn[i];
+      let r = rIn[i];
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
       // Split 1: low vs rest (complementary — perfect reconstruction).
       lowL += a1 * (l - lowL);
       lowR += a1 * (r - lowR);

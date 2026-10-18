@@ -1,0 +1,90 @@
+[nav] http://127.0.0.1:5266/
+[console.debug] [vite] connecting...
+[console.debug] [vite] connected.
+[console.info] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[diag] browser ok: {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":true,"dockButtons":0,"crashBanner":false}
+[diag] clicking HOUSE template ...
+[console.debug] [vite] connecting...
+[console.debug] [vite] connected.
+[diag] +2s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+05:12:57 [vite] (client) Pre-transform error: Transform failed with 1 error:
+D:/pulse-forge/src/ui/padChannelState.ts:26:37: ERROR: Expected ")" but found ">"
+  Plugin: vite:esbuild
+  File: D:/pulse-forge/src/ui/padChannelState.ts:26:37
+  
+  Expected ")" but found ">"
+  24 |  
+  25 |  type Listener = () => void;
+  26 |  type Updater<T> = T | ((prev: T) => T>;
+     |                                       ^
+  27 |  
+  28 |  function notify(listeners: Set<Listener>): void {
+  
+05:12:58 [vite] Internal server error: Transform failed with 1 error:
+D:/pulse-forge/src/ui/padChannelState.ts:26:37: ERROR: Expected ")" but found ">"
+  Plugin: vite:esbuild
+  File: D:/pulse-forge/src/ui/padChannelState.ts:26:37
+  
+  Expected ")" but found ">"
+  24 |  
+  25 |  type Listener = () => void;
+  26 |  type Updater<T> = T | ((prev: T) => T>;
+     |                                       ^
+  27 |  
+  28 |  function notify(listeners: Set<Listener>): void {
+  
+      at failureErrorWithLog (D:\pulse-forge\node_modules\esbuild\lib\main.js:1467:15)
+      at D:\pulse-forge\node_modules\esbuild\lib\main.js:736:50
+      at responseCallbacks.<computed> (D:\pulse-forge\node_modules\esbuild\lib\main.js:603:9)
+      at handleIncomingPacket (D:\pulse-forge\node_modules\esbuild\lib\main.js:658:12)
+      at Socket.readFromStdout (D:\pulse-forge\node_modules\esbuild\lib\main.js:581:7)
+      at Socket.emit (node:events:508:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+[console.error] Failed to load resource: the server responded with a status of 500 (Internal Server Error)
+[pageerror] TypeError: Failed to fetch dynamically imported module: http://127.0.0.1:5266/src/ui/App.tsx
+[pageerror] TypeError: Failed to fetch dynamically imported module: http://127.0.0.1:5266/src/ui/App.tsx
+[console.error] The above error occurred in one of your React components:
+
+    at Lazy
+    at Suspense
+    at ErrorBoundary (http://127.0.0.1:5266/src/ui/ErrorBoundary.tsx:9:8)
+    at Boot (http://127.0.0.1:5266/src/main.tsx:196:31)
+   
+[console.error] [ErrorBoundary] TypeError: Failed to fetch dynamically imported module: http://127.0.0.1:5266/src/ui/App.tsx 
+    at Lazy
+    at Suspense
+    at ErrorBoundary (http://127.0.0.1:5266/src/ui/ErrorBoundary.tsx:9:8)
+    at B
+[diag] +4s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +6s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +8s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +10s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +12s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +14s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +16s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +18s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +20s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +22s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +24s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +26s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +28s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +30s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +32s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +34s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +36s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +38s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +40s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +42s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +44s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +46s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +48s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +50s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +52s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +54s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +56s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +58s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] +60s {"path":"/","topbar":false,"sequencer":false,"sequencerBox":null,"projectBrowser":false,"dockButtons":0,"crashBanner":false}
+[diag] screenshot -> .debug-drag2.png

@@ -78,7 +78,8 @@ class ApeksProcessor extends AudioWorkletProcessor {
     let peak = 0;
     for (let i = 0; i < data.length; i++) {
       for (let j = this.tpHistLen - 1; j > 0; j--) hist[j] = hist[j - 1];
-      hist[0] = data[i];
+      const sample = data[i];
+      hist[0] = Number.isFinite(sample) ? sample : 0;
       for (let p = 0; p < phases.length; p++) {
         const taps = phases[p];
         let acc = 0;
@@ -128,12 +129,14 @@ class ApeksProcessor extends AudioWorkletProcessor {
         const up = this.tpPeakOf(data, this.tpHistory[Math.min(ch, 1)]);
         if (up * inGain > peak) peak = up * inGain;
         for (let i = 0; i < data.length; i++) {
-          const v = Math.abs(data[i]) * inGain;
+          const sample = data[i];
+          const v = (Number.isFinite(sample) ? Math.abs(sample) : 0) * inGain;
           if (v > samplePeak) samplePeak = v;
         }
       } else {
         for (let i = 0; i < data.length; i++) {
-          const v = Math.abs(data[i]) * inGain;
+          const sample = data[i];
+          const v = (Number.isFinite(sample) ? Math.abs(sample) : 0) * inGain;
           if (v > peak) peak = v;
         }
       }
@@ -154,7 +157,8 @@ class ApeksProcessor extends AudioWorkletProcessor {
       let slow = this.slowEnv[Math.min(ch, 1)];
       let gr = ch === 0 ? this.gr : this.gr; // linked trajectory
       for (let i = 0; i < outData.length; i++) {
-        const d = inData[i];
+        const raw = inData[i];
+        const d = Number.isFinite(raw) ? raw : 0;
         const x = d * inGain;
         const ax = Math.abs(x);
         // Envelope followers classify the sample: transient when fast outruns slow.

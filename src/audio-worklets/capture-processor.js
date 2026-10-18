@@ -99,8 +99,10 @@ class CaptureProcessor extends AudioWorkletProcessor {
     const remaining = this.captureFrames > 0 ? Math.max(0, this.captureFrames - this.capturedFrames) : ch0.length;
     const count = Math.min(ch0.length, remaining);
     for (let i = 0; i < count; i++) {
-      this.left[this.filled] = ch0[i];
-      this.right[this.filled] = ch1 ? ch1[i] : ch0[i];
+      const rawL = ch0[i];
+      const rawR = ch1 ? ch1[i] : rawL;
+      this.left[this.filled] = Number.isFinite(rawL) ? rawL : 0;
+      this.right[this.filled] = Number.isFinite(rawR) ? rawR : 0;
       this.filled++;
       this.capturedFrames++;
       if (this.filled >= this.chunkFrames) this.flush();

@@ -211,8 +211,10 @@ class LimiterProcessor extends AudioWorkletProcessor {
     const applyKnee = (peak) => this.applyKneeGain(peak, thresholdDb, ceilingDb, kneeWidthDb);
 
     for (let i = 0; i < processingFrames; i++, this.step++) {
-      const l = processInL ? processInL[i] : 0;
-      const r = processInR ? processInR[i] : l;
+      let l = processInL ? processInL[i] : 0;
+      let r = processInR ? processInR[i] : l;
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
       const s = this.step;
       const w = s % this.cap;
       this.delayL[w] = l;

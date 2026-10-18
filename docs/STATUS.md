@@ -1,6 +1,6 @@
 # KYX STATUS — the claims, and the commands that check them
 
-Generated 2026-10-17T18:39:09.691Z · **4 pass · 0 fail · 4 pending · 0 not run**
+Generated 2026-10-18T02:53:27.112Z · **4 pass · 0 fail · 4 pending · 0 not run**
 
 > This page is a measurement table, not marketing. A row is PASS only from a real exit code.
 > `drift-checked` rows are re-run and compared by `npm run drift:check`; `at-generation` rows show
@@ -11,7 +11,7 @@ Generated 2026-10-17T18:39:09.691Z · **4 pass · 0 fail · 4 pending · 0 not r
 | State | Claim | Command | Measured | Freshness |
 | ----- | ----- | ------- | -------- | --------- |
 | ✓ PASS | Every user-facing seam is declared with an entry-point spec and a negative assertion | `node scripts/check-seam-coverage.mjs` | 1 check(s), 53 seams | drift-checked |
-| ✓ PASS | docs/CURRENT-STATE.md's spec-file count equals the committed tree | `git ls-files tests (spec-file count vs docs/CURRENT-STATE.md)` | 1067 claimed, 1067 measured | drift-checked |
+| ✓ PASS | docs/CURRENT-STATE.md's spec-file count equals the committed tree | `git ls-files tests (spec-file count vs docs/CURRENT-STATE.md)` | 1068 claimed, 1068 measured | drift-checked |
 | ✓ PASS | The deterministic taste benchmark still matches its committed baseline | `npm run taste:benchmark (harness re-run + committed baseline diff)` | score 1 · deterministic=true · 0 drift row(s) | drift-checked |
 | ✓ PASS | A stamped master verifies offline with the published verifier | `npm run verify:wav:fixture -- <tmp>/stamped.wav && node tools/kyx-verify/kyx-verify.mjs <tmp>/stamped.wav` | VERIFIED (exit 0, hash recomputed from the file) | drift-checked |
 

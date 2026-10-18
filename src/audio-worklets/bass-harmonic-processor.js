@@ -546,8 +546,10 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     const twoPi = 2 * Math.PI;
 
     for (let i = 0; i < len; i++) {
-      const l = inL ? inL[i] : 0;
-      const r = inR ? inR[i] : l;
+      let l = inL ? inL[i] : 0;
+      let r = inR ? inR[i] : l;
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
       const mono = (l + r) * 0.5;
 
       // --- fundamental detection (mono, ≤300 Hz band) -------------------
@@ -586,7 +588,11 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
 
       // --- sidechain key envelope (PUMP/DUCK) ----------------------------
       if (keyMode > 0) {
-        const k = keyL ? Math.abs(keyR ? (keyL[i] + keyR[i]) * 0.5 : keyL[i]) : 0;
+        const keyRawL = keyL ? keyL[i] : 0;
+        const keyRawR = keyR ? keyR[i] : keyRawL;
+        const k = keyL
+          ? Math.abs((Number.isFinite(keyRawL) ? keyRawL : 0) * 0.5 + (Number.isFinite(keyRawR) ? keyRawR : 0) * 0.5)
+          : 0;
         this.keyEnv += (k > this.keyEnv ? keyAtkCoef : keyRelCoef) * (k - this.keyEnv);
         if (this.keyEnv < 1e-20) this.keyEnv = 0;
       }

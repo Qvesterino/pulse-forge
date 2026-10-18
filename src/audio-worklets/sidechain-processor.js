@@ -127,7 +127,8 @@ class SidechainProcessor extends AudioWorkletProcessor {
     }
 
     for (let i = 0; i < len; i++) {
-      const sidePeak = Math.abs(sidechain[0][i]);
+      const sideRaw = sidechain[0][i];
+      const sidePeak = Number.isFinite(sideRaw) ? Math.abs(sideRaw) : 0;
 
       const thresh = threshold.length > 1 ? threshold[i] : threshold[0];
       const rat = ratio.length > 1 ? ratio[i] : ratio[0];
@@ -155,7 +156,8 @@ class SidechainProcessor extends AudioWorkletProcessor {
       if (splitActive) {
         // 2-pole Butterworth crossover: low band gets ducked, high band passes.
         for (let ch = 0; ch < Math.min(main.length, output.length); ch++) {
-          const x = main[ch][i];
+          const xRaw = main[ch][i];
+          const x = Number.isFinite(xRaw) ? xRaw : 0;
           const st = ch === 0 ? this.lpL : this.lpR;
           const low = this.lpFilter(x, st);
           const high = x - low;
@@ -163,7 +165,8 @@ class SidechainProcessor extends AudioWorkletProcessor {
         }
       } else {
         for (let ch = 0; ch < Math.min(main.length, output.length); ch++) {
-          output[ch][i] = main[ch][i] * gain;
+          const xRaw = main[ch][i];
+          output[ch][i] = (Number.isFinite(xRaw) ? xRaw : 0) * gain;
         }
       }
     }
@@ -171,7 +174,8 @@ class SidechainProcessor extends AudioWorkletProcessor {
     // Handle remaining samples if sidechain is shorter (pass through).
     for (let i = len; i < mainLen; i++) {
       for (let ch = 0; ch < Math.min(main.length, output.length); ch++) {
-        output[ch][i] = main[ch][i];
+        const xRaw = main[ch][i];
+        output[ch][i] = Number.isFinite(xRaw) ? xRaw : 0;
       }
     }
 

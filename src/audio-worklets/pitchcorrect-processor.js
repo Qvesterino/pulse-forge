@@ -288,8 +288,12 @@ class PitchCorrectProcessor extends AudioWorkletProcessor {
     // ── write this block into the ring ──
     const first = this.writePos;
     for (let i = 0; i < len; i++) {
-      this.bufL[(first + i) % this.bufferLen] = inL ? inL[i] : 0;
-      this.bufR[(first + i) % this.bufferLen] = inR && inR.length > i ? inR[i] : inL ? inL[i] : 0;
+      let safeInL = inL ? inL[i] : 0;
+      let safeInR = inR && inR.length > i ? inR[i] : safeInL;
+      if (!Number.isFinite(safeInL)) safeInL = 0;
+      if (!Number.isFinite(safeInR)) safeInR = 0;
+      this.bufL[(first + i) % this.bufferLen] = safeInL;
+      this.bufR[(first + i) % this.bufferLen] = safeInR;
     }
     this.writePos = first + len;
 
@@ -357,8 +361,10 @@ class PitchCorrectProcessor extends AudioWorkletProcessor {
 
     for (let i = 0; i < len; i++) {
       const A = first + i;
-      const live = inL ? inL[i] : 0;
-      const liveR = inR && inR.length > i ? inR[i] : live;
+      let live = inL ? inL[i] : 0;
+      let liveR = inR && inR.length > i ? inR[i] : live;
+      if (!Number.isFinite(live)) live = 0;
+      if (!Number.isFinite(liveR)) liveR = 0;
       if (ratioIsUnity || A < H * 2) {
         outL[i] = live;
         if (outR) outR[i] = liveR;

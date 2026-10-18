@@ -475,6 +475,24 @@
       "status": "OPEN",
       "entryPoint": "src/ui/App.tsx EXT PCM chip → src/audio-engine/pcmPlayback.ts → desktop/preload.cjs",
       "note": "Existing tests enter pipe and ring components in one Node process, not the Electron bridge. A real Electron probe shows SAB IPC cloning fails, so audible EXT PCM playback has no seam-entering pass yet."
+    },
+    {
+      "id": "external-mastering-delivery-targets",
+      "status": "COVERED",
+      "entryPoint": "src/ui/MasteringFileSessionPanel.tsx TARGET LUFS / TRUE PEAK TARGET -> updateDraft -> applySettings -> repository.put",
+      "spec": "tests/ui/mastering-session-delivery-targets.test.tsx",
+      "seamEvent": "External mastering target loudness",
+      "negativeSpec": "writes nothing",
+      "note": "This panel had NO committed render test before this audit. The spec enters the real fields and the real updateDraft: the block only renders once `session && draft`, so the spec mocks the three collaborators of the load chain (inspect, SHA-256 fingerprint, decode) and drives the real session select. Measured defect: an emptied LUFS field committed Number('') === 0 clamped to -5, a +9 dB jump from the -14 default, and `Apply settings` PERSISTED it via repository.put - so it survived a reload. Empty TP committed 0 dBTP, disabling the ceiling."
+    },
+    {
+      "id": "codec-preview-start-offset",
+      "status": "COVERED",
+      "entryPoint": "src/ui/MasteringCodecPreview.tsx START (s) -> startSeconds -> encodeMp3 startFrame",
+      "spec": "tests/ui/mastering-codec-preview-start.test.tsx",
+      "seamEvent": "Codec preview start time in seconds",
+      "negativeSpec": "keeps the chosen offset when the field is cleared to be retyped",
+      "note": "Asserted on the frame math reaching encodeMp3, not on the rendered string: the rendered value is derived and stays plausible even while the wrong offset is encoded. Measured defect: setting a 30 s offset and then clearing the field to retype it called encodeMp3 with startFrame 0, silently previewing a different excerpt. The read-side clamp meant no NaN ever reached the engine - which is why this reads as a silent wrong result rather than a crash."
     }
   ]
 }

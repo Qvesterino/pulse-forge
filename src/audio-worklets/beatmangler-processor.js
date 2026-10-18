@@ -216,8 +216,10 @@ class BeatManglerProcessor extends AudioWorkletProcessor {
     const windowStart = Math.floor((this.writePos - this.barSamples) / this.barSamples) * this.barSamples;
 
     for (let i = 0; i < len; i++) {
-      const live = inL ? inL[i] : 0;
-      const liveR = inR && inR.length > i ? inR[i] : live;
+      let live = inL ? inL[i] : 0;
+      let liveR = inR && inR.length > i ? inR[i] : live;
+      if (!Number.isFinite(live)) live = 0;
+      if (!Number.isFinite(liveR)) liveR = 0;
 
       // Record before capture: each event includes the sample immediately
       // before its boundary, and a gate can never read future input.

@@ -11,6 +11,7 @@ import { formatAuditionTrim, getLoudnessMatchGain, resolveLoudnessMatchTarget } 
 import { tryAcquireMasteringWork } from "../mastering/workGate";
 import { decodeAudioData } from "../services/audio-decode";
 import { useServices } from "./context";
+import { NumericDraftInput } from "./NumericDraftInput";
 
 const CODEC_PREVIEW_LENGTHS = [5, 10, 15, 20, 30] as const;
 
@@ -324,17 +325,17 @@ export function MasteringCodecPreview({
         </label>
         <label className="fx-param-select">
           <span className="slider-label">START (s)</span>
-          <input
+          <NumericDraftInput
             aria-label="Codec preview start time in seconds"
-            type="number"
             min={0}
-            max={maxStartSeconds.toFixed(1)}
+            max={maxStartSeconds}
             step={0.1}
-            value={selectedStartSeconds.toFixed(1)}
+            value={selectedStartSeconds}
+            format={(v) => v.toFixed(1)}
             disabled={working || disabled || !validSource}
-            onChange={(event) => {
+            onCommit={(value) => {
               invalidatePreview();
-              setStartSeconds(Number(event.target.value));
+              setStartSeconds(value);
             }}
           />
         </label>

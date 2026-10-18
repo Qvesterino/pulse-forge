@@ -1,0 +1,12 @@
+
+> pulse-forge@0.1.0 test:browser:drag-responsiveness
+> node scripts/verify-drag-responsiveness-browser.mjs
+
+drag responsiveness verification failed: page.waitForSelector: Timeout 60000ms exceeded.
+Call log:
+  - waiting for locator('.devices-panel') to be visible
+
+    at D:\pulse-forge\scripts\verify-drag-responsiveness-browser.mjs:259:14 {
+  log: [ "  - waiting for locator('.devices-panel') to be visible" ],
+  name: 'TimeoutError'
+}

@@ -41,7 +41,11 @@ class GateProcessor extends AudioWorkletProcessor {
     const channels = Math.min(input.length, output.length);
     for (let i = 0; i < output[0].length; i++) {
       let peak = 0;
-      for (let ch = 0; ch < channels; ch++) peak = Math.max(peak, Math.abs(input[ch][i] || 0));
+      for (let ch = 0; ch < channels; ch++) {
+        const raw = input[ch][i];
+        const v = Number.isFinite(raw) ? Math.abs(raw) : 0;
+        if (v > peak) peak = v;
+      }
       const threshold = parameters.threshold.length > 1 ? parameters.threshold[i] : parameters.threshold[0];
       const hysteresis = parameters.hysteresis.length > 1 ? parameters.hysteresis[i] : parameters.hysteresis[0];
       const lookahead = parameters.lookahead.length > 1 ? parameters.lookahead[i] : parameters.lookahead[0];
@@ -91,7 +95,8 @@ class GateProcessor extends AudioWorkletProcessor {
       for (let ch = 0; ch < channels; ch++) {
         const ringIdx = ch * this.lookaheadSamples + this.audioRingIdx;
         const delayed = this.audioRing[ringIdx];
-        this.audioRing[ringIdx] = input[ch][i] || 0;
+        const raw = input[ch][i];
+        this.audioRing[ringIdx] = Number.isFinite(raw) ? raw : 0;
         const delayedGain = this.gainRing[this.audioRingIdx];
         output[ch][i] = delayed * (1 + ((lookahead >= 0.5 ? this.gain : delayedGain) - 1) * mix);
       }

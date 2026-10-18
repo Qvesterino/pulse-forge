@@ -56,6 +56,148 @@ rounds predated or missed. Full detail in `AGENT_WORK_LOG.md`
 
 ---
 
+## Round 5 (2026-10-18) — Vocoder DSP boundary + SIBILANCE transfer function
+
+Scope: `src/audio-worklets/vocoder-processor.js` (core-worklet bundle) and the
+2-input wrapper, re-audited against the 61 objective areas. Two defects were
+reproduced headlessly before any change:
+
+- **P1 — non-finite input poisoned every recursive state permanently.** The 32
+  bandpass biquads (carrier + modulator), 32 envelope followers and the
+  sibilance chain had no graph-boundary guard. One NaN/Infinity block latched
+  them; the next 40 blocks rendered NaN, so the track stayed silent for the rest
+  of its life (measured: 128/128 non-finite samples in the last of 40
+  post-poison blocks). Fix: per-sample boundary sanitization, matching the
+  kaskada/skrutka precedent; a short input array (`undefined` reads) is treated
+  as silence too.
+- **P2 — SIBILANCE advertised a 500 Hz high-pass that was not one.** The
+  recurrence fed back the previous OUTPUT without subtracting the previous LP
+  input (`hp[n] = lp[n] − (1−c)·hp[n−1]`), so DC and 60 Hz passed at ~0.52 and
+  the top octave was boosted. This leaked low-mid modulator content into the wet
+  signal. The correct direct form is the one already used by
+  `vinyl-processor.js`: `hp[n] = (1−c)·(hp[n−1] + lp[n] − lp[n−1])`. Measured
+  before → after: DC peak 0.2065 → 0.0000; 60 Hz 0.1752 → 0.0338; 18 kHz
+  0.1482 → 0.1026; 2 kHz 0.1867 → ~0.35 (the sibilance region is now actually
+  passed). The chain also ran only while the knob was above 0.001, so a muted
+  passage froze its state and re-enabling replayed it (measured 0.1126 peak);
+  it now always tracks the modulator, the output contribution is multiplied by
+  the knob, and a modulator disconnect clears it. The sonic change is the
+  intended one; no parameter id, range, preset or state schema changed.
+- **P2 — k-rate parameter jumps stepped the wet path.** MIX, LEVEL and
+  SIBILANCE are block-rate AudioParams, so a knob or automation jump changed the
+  whole wet gain in one sample. Measured transition steps: MIX 0→1 0.5000;
+  LEVEL 0→+12 dB 0.8336; SIBILANCE 0→1 0.2678. They now glide with a
+  per-sample 8 ms one-pole. The same class existed in the coefficient layout:
+  Q / BAND / FOCUS / STEREO changes rebuilt the bank in one quantum. Those
+  controls now glide with a per-block 15 ms one-pole (STEREO rebuilds only the
+  pan fan), and snap to the target when settled so the filterbank stops
+  rebuilding. Post-fix transition steps are below 0.02 / 0.15 / 0.08
+  respectively; the steady-state endpoints are unchanged (MIX 0 is still
+  bit-exact dry). BANDS stays intentionally discrete/immediate.
+- **P3 — per-quantum string allocation removed.** Layout detection compared a
+  template string built with six `toFixed()` calls on every render quantum
+  (~375 short-lived strings/s at 48 kHz). It now compares the number state
+  stored on the instance; the filterbank rebuilds only when a smoothed value
+  actually moves (pinned).
+
+Tests: `tests/vocoder-hardening.test.ts` (15 specs). Falsifiability: **8 of the
+15 went red against the pre-fix processor** (the four invariants plus the three
+new transition specs stayed green); against the pre-smoothing processor, the
+three de-click specs **and** the layout-glide spec go red. Sibling sweep: the
+broken recurrence occurs only in
+the vocoder; vinyl's identical chain is the positive reference. The missing
+non-finite input guard is still present in most other generic worklets (see
+remaining risks) — this pass fixed the vocoder only.
+
+Verification executed: `npx vitest run tests/vocoder-hardening.test.ts
+tests/vocoder.test.ts` (25/25), the adjacent suite set
+(`tests/plugin-functional-audit.test.ts`, `tests/audio-engine-audit12.test.ts`,
+`tests/audio-worklets.test.ts`, `tests/drift-check.test.ts`,
+`tests/status-report.test.ts`) (237/237 including the vocoder files), a scoped
+strict typecheck and Prettier check (clean; the full-repo gates were blocked by
+concurrent untracked specs), `npm run drift:check` (pass), `npx vite build`
+(pass, 41.6 s), and `npm run build:core-worklets` (shipped
+`public/core-worklet.js` regenerated; 155,849 → 157,203 bytes, +1.35 KB for the
+smoothing state). A probe of the SHIPPED bundle measured the MIX 0→1 step at
+**0.0013** (0.5 before smoothing). The bundle-size gate still fails on
+pre-existing concurrent growth (core worklets 155 > 150 KB; boot path
+2267 > 2200 KB).
+
+## Round 6 (2026-10-18) — Generic worklet NaN boundary + BANDS crossfade
+
+### 6.1 Systemic input boundary
+
+The Round 5 finding (one NaN block latches recursive state) was not
+vocoder-specific. A sweep of the generic effect fleet found the same missing
+guard at the **audio input boundary** of every delay, filter, modulation and
+dynamics processor. Each now sanitizes the samples it reads: non-finite values
+become 0 before they can enter a ring, biquad memory, envelope follower or LFO
+phase. This is a boundary guard, not an output clamp, and it also makes a short
+input array (`undefined` reads) behave as silence.
+
+Covered: `apeks`, `autowah`, `bass-harmonic`, `bassbuss-sub`, `beatmangler`,
+`capture`, `chorus`, `comb`, `compressor`, `ducking-delay`, `envfollower`, `eq`,
+`flanger`, `freqshifter`, `gate`, `granularfreeze`, `kwmeter`, `limiter`,
+`multitap`, `pitchcorrect`, `pitchshift`, `prud`, `reverb`, `reverseswell`,
+`ringmod`, `sidechain`, `sirka`, `stepgate`, `stock-delay`, `stutter`, `svfilter`, `tape`,
+`tapestop`, `transient`, `tremolo`, `vinyl`, `vowel`, `wowflutter`.
+
+Evidence: against the pre-sweep `stock-delay`, a single poisoned block produced
+non-finite output from **block 139** onward (139 × 128 / 48 kHz ≈ 370 ms, i.e.
+when the 375 ms delay line read the poison). After the guard, the same scenario
+runs 220 blocks (~587 ms) with every output sample finite. The shipped
+`public/core-worklet.js` and `public/bass-harmonic-worklet.js` bundles were
+probed directly and behave the same.
+
+### 6.2 BANDS crossfade
+
+`BANDS` was the last discrete layout control that stepped: 16→8 dropped eight
+bands (and changed the band fan and `1/√n` gain) in one sample. It now runs two
+complete filterbanks:
+
+- the incoming bank is built from the new count and starts from zero state;
+- it runs **silently for 20 ms** so its biquads and envelope followers settle;
+- a 25 ms smoothstep crossfade then blends old → new;
+- the bank swap happens at the render-quantum boundary;
+- a second BANDS change arriving mid-transition is deferred until the first
+  fade completes, then fades again (no mid-fade state swap).
+
+The second bank is preallocated and reused, so repeated BANDS changes allocate
+nothing on the audio thread. CPU is 2× only for the ~45 ms transition.
+Other layout controls (LO/HI/Q/FOCUS/STEREO) keep the Round 5 glides; the
+crossfade rebuilds the incoming bank each block so it follows simultaneous
+automation.
+
+Tests: `tests/vocoder-hardening.test.ts` now has **18 specs**. The three
+crossfade specs prove: one bank per sample in steady state vs two during the
+change, the new bank warms before the audible blend, the swap completes after
+20 blocks, 8→16 stays finite while the new bands warm, and 16→8→12 defers the
+second target instead of swapping mid-fade. `tests/worklet-nan-boundary.test.ts`
+adds **36 specs** (one per audio-emitting swept processor; CAPTURE and KWMETER
+are guarded too, but have no output channel to assert).
+
+Verification executed on this round: the 8-file targeted suite **276/276**, the
+adjacent worklet/parameter set **161/161**, the changed test files typecheck
+clean (the full-repo typecheck is currently blocked by concurrent edits in
+`src/project-model/schema.ts` and `tests/referential-integrity.test.ts`),
+Prettier clean, `npm run drift:check` (pass), both worklet bundles rebuilt and
+probed, and `npx vite build` (pass). The bundle-size gate remains red: core
+worklets grew to **162,950 bytes (the gate reports 160 KB)** against the 150 KB
+budget, of which ~5.7 KB is this sweep + crossfade; the boot path (2268 KB) is
+unrelated concurrent growth. That is a deliberate reliability-over-bytes
+tradeoff and needs an owner decision (lazy seam or a conscious budget change),
+not a silent raise.
+
+Not covered here: instrument voice processors (`wtvoice`, `granular-voice`) and
+thread-fed source processors (`pcm-playback`) are outside the generic-effect
+boundary; no real-browser or manual listening pass was run.
+
+Bookkeeping: `tests/worklet-nan-boundary.test.ts` is a new spec file. The
+commit that adds it must bump the committed spec-file count in
+`docs/CURRENT-STATE.md` (and the generated `docs/STATUS.md` / `status.json`)
+from 1068 to 1069 — the drift gate counts `git ls-files`, so the working-tree
+count stays 1068 until then.
+
 ## 1. Plugin Invariants (Objective §1)
 
 Verified by reading code, existing regression tests, and the dedicated

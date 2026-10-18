@@ -142,6 +142,8 @@ class VowelProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < len; i++) {
       let l = inL ? inL[i] : 0;
       let r = inR ? inR[i] : l;
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
       let wetL = l;
       let wetR = r;
       for (let f = 0; f < 3; f++) {

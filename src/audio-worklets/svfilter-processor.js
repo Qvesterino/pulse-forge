@@ -213,6 +213,8 @@ class SvFilterProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < len; i++) {
       let l = inL ? inL[i] : 0;
       let r = inR ? inR[i] : l;
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
       if (drive > 0) {
         const makeup = 1 + drive * 2.5;
         l = osDrive(this.drvL, l, driveGain, makeup);

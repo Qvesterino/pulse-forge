@@ -140,6 +140,8 @@ class AutowahProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < len; i++) {
       let l = inL ? inL[i] : 0;
       let r = inR ? inR[i] : l;
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
       // Drive stage: 2× oversampled tanh grit BEFORE the SVF (the envelope
       // follower reads the RAW input below, so wah tracking is untouched).
       if (drive > 0.001) {
@@ -149,8 +151,10 @@ class AutowahProcessor extends AudioWorkletProcessor {
 
       // ---- Envelope follower (on the RAW signal — drive would over-open it;
       // the envelope tracks the performance, not the grit) ----
-      const rawL = inL ? inL[i] : 0;
-      const rawR = inR ? inR[i] : rawL;
+      let rawL = inL ? inL[i] : 0;
+      let rawR = inR ? inR[i] : rawL;
+      if (!Number.isFinite(rawL)) rawL = 0;
+      if (!Number.isFinite(rawR)) rawR = 0;
       const peak = Math.abs(rawL) > Math.abs(rawR) ? Math.abs(rawL) : Math.abs(rawR);
       const driven = Math.tanh(peak * sens);
       this.env =

@@ -45,8 +45,10 @@ class RingModProcessor extends AudioWorkletProcessor {
     const phaseInc = (2 * Math.PI * freq) / sr;
 
     for (let i = 0; i < len; i++) {
-      const l = inL ? inL[i] : 0;
-      const r = inR ? inR[i] : l;
+      let l = inL ? inL[i] : 0;
+      let r = inR ? inR[i] : l;
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
       let mod = Math.sin(this.phase + this.lastOut * feedback * Math.PI);
       if (xmode) mod = Math.abs(mod);
       this.phase += phaseInc;

@@ -161,8 +161,10 @@ class WowFlutterProcessor extends AudioWorkletProcessor {
     const frames = outL ? outL.length : 0;
 
     for (let i = 0; i < frames; i++) {
-      const l = inL ? inL[i] : 0;
-      const r = inR ? inR[i] : l;
+      let l = inL ? inL[i] : 0;
+      let r = inR ? inR[i] : l;
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
 
       this.wowPhase += wowStep;
       if (this.wowPhase > 1) this.wowPhase -= 1;

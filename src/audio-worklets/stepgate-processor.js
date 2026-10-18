@@ -87,8 +87,10 @@ class StepGateProcessor extends AudioWorkletProcessor {
       this.gain += (target - this.gain) * smoothBlend;
       if (this.gain < 1e-10) this.gain = 0;
 
-      const l = inL ? inL[i] : 0;
-      const r = inR ? inR[i] : l;
+      let l = inL ? inL[i] : 0;
+      let r = inR ? inR[i] : l;
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
       outL[i] = l * (1 - mix + this.gain * mix);
       if (outR) outR[i] = r * (1 - mix + this.gain * mix);
     }

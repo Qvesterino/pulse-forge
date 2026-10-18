@@ -1,0 +1,18 @@
+[diag] browser ok
+[diag] studio mounted
+{
+  "tag": "before-click",
+  "dockTabs": [],
+  "hasDevicesPanel": false,
+  "addEffect": false,
+  "panelishClasses": []
+}
+[diag] click: NOT FOUND
+{
+  "tag": "after-click",
+  "dockTabs": [],
+  "hasDevicesPanel": false,
+  "addEffect": false,
+  "panelishClasses": []
+}
+[diag] screenshot -> .debug-drag.png

@@ -80,8 +80,10 @@ class StockDelayProcessor extends AudioWorkletProcessor {
       this.curDelayL += (targetSamples - this.curDelayL) * step;
       this.curDelayR += (targetSamples - this.curDelayR) * step;
 
-      const l = inL ? inL[i] : 0;
-      const r = inR ? inR[i] : l;
+      let l = inL ? inL[i] : 0;
+      let r = inR ? inR[i] : l;
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
 
       const tapL = this.readCubic(this.bufL, this.writeIdx - this.curDelayL);
       const tapR = this.readCubic(this.bufR, this.writeIdx - this.curDelayR);
@@ -91,8 +93,15 @@ class StockDelayProcessor extends AudioWorkletProcessor {
       this.lpR += lpCoef * (tapR - this.lpR);
       const fbL = pingPong ? this.lpR : this.lpL;
       const fbR = pingPong ? this.lpL : this.lpR;
-      this.bufL[this.writeIdx] = l + fbL * feedback;
-      this.bufR[this.writeIdx] = r + fbR * feedback;
+      // Flush BEFORE storing: the guard used to run after `writeIdx++`, so it
+      // zeroed the NEXT slot and the just-written sub-threshold sample survived
+      // until the ring wrapped (found by the quiet-impulse probe).
+      let wL = l + fbL * feedback;
+      let wR = r + fbR * feedback;
+      if (Math.abs(wL) < 1e-20) wL = 0;
+      if (Math.abs(wR) < 1e-20) wR = 0;
+      this.bufL[this.writeIdx] = wL;
+      this.bufR[this.writeIdx] = wR;
       this.writeIdx++;
       if (this.writeIdx >= STOCK_DELAY_RING) this.writeIdx = 0;
 

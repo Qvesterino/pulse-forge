@@ -4,13 +4,7 @@ import type { DrumTrack } from "../project-model/types";
 import { usePlayheadStep } from "./playhead";
 import { assetCategoryOf, categoryColor } from "./kitColors";
 import { FALLOFF_MODES, REPEAT_RATES, type FalloffMode, type RepeatRate } from "../audio-engine/NoteRepeat";
-import {
-  applyKitToDrumTrack,
-  captureKitFromTrack,
-  captureSketchFromDoc,
-  installPackSketch,
-  setPadColor,
-} from "../commands/commands";
+import { applyKitToDrumTrack, captureKitFromTrack, captureSketchFromDoc, installPackSketch } from "../commands/commands";
 import { decodeBindsCode, encodeBindsCode } from "../export/bindsCode";
 import { decodePackCode, encodePackCode, type SharedPack } from "../export/packCode";
 import { getThemeSnapshot, setTheme } from "./theme";
@@ -19,28 +13,21 @@ import type { UserKit } from "../persistence/KitRepository";
 import { TextPromptDialog } from "./TextPromptDialog";
 
 import { bindPadKey, getPadKeys, importPadKeys, isPadKey, resetPadKeys, usePadKeys } from "./padKeys";
-
-const PAD_COLOR_SWATCHES = [
-  "#f59e0b",
-  "#f87171",
-  "#fb7185",
-  "#f472b6",
-  "#a78bfa",
-  "#60a5fa",
-  "#22d3ee",
-  "#4ade80",
-  "#a3e635",
-  "#e8e8e8",
-];
-
-/** Divisions a pad can pin individually (global "off" is the master switch, not an option here). */
-const PINNABLE_RATES = ["1/4", "1/8", "1/16", "1/8T", "1/16T"] as const;
-type PinnableRate = (typeof PINNABLE_RATES)[number];
-
-/** A pad's pinned rate wins; otherwise the global default. (A function breaks TS's const alias-narrowing, which otherwise types this as PinnableRate.) */
-function effectiveRateOf(pinned: RepeatRate | undefined, globalRate: RepeatRate): RepeatRate {
-  return pinned ?? globalRate;
-}
+// Channel state (pinned rates, 16 LEVELS, live peaks) is SHARED with the
+// sequencer row labels — see padChannelState.ts. The rack is its editor; it no
+// longer owns the values.
+import {
+  decayPeaks,
+  effectiveRateOf,
+  PINNABLE_RATES,
+  setPinnedRates,
+  setPadPeak,
+  setSixteenLevels,
+  usePeaks,
+  usePinnedRates,
+  useSixteenLevels,
+} from "./padChannelState";
+import { PadRateMenu } from "./PadRateMenu";
 
 export function RackStrip({
   track,
@@ -66,11 +53,11 @@ export function RackStrip({
   const [repeatRate, setRepeatRate] = useState<RepeatRate>("off");
   const [falloff, setFalloff] = useState<FalloffMode>("decay");
   /** Per-pad pinned divisions — kick can roll 1/16 while the hat rolls 1/8T. */
-  const [pinnedRates, setPinnedRates] = useState<Record<string, PinnableRate>>({});
+  const pinnedRates = usePinnedRates();
   const [rateMenu, setRateMenu] = useState<{ padId: string; x: number; y: number } | null>(null);
   const padMenuTimer = useRef<number | null>(null);
   /** MPC 16 LEVELS: pads become velocity lanes for the selected sound. */
-  const [sixteenLevels, setSixteenLevels] = useState(false);
+  const sixteenLevels = useSixteenLevels();
   const padKeys = usePadKeys();
   const [keysMenu, setKeysMenu] = useState<{ x: number; y: number } | null>(null);
   const [captureIndex, setCaptureIndex] = useState<number | null>(null);
@@ -99,14 +86,8 @@ export function RackStrip({
     void services.userKits.list().then(setUserKits);
   }, [kitMenu, services]);
 
-  // Close the per-pad rate menu on any outside press (same contract as the
-  // arrangement context menus).
-  useEffect(() => {
-    if (!rateMenu) return;
-    const close = () => setRateMenu(null);
-    document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
-  }, [rateMenu]);
+  // The pad rate menu closes itself on any outside press (PadRateMenu owns
+  // that listener now that the sequencer rows host the same component).
   useEffect(() => {
     if (!kitMenu) return;
     const close = () => setKitMenu(null);
@@ -140,7 +121,7 @@ export function RackStrip({
     if (pad) {
       services.engine.preview(pad, track.id);
       const peak = pad.gain;
-      setPeaks((prev) => ({ ...prev, [padId]: peak }));
+      setPadPeak(padId, peak);
     }
   };
 
@@ -160,7 +141,7 @@ export function RackStrip({
     const pad = track.pads.find((p) => p.id === targetPadId);
     if (!pad) return;
     services.noteRepeat.start(holdKey, track.id, targetPadId, baseVelocity, pinnedRates[targetPadId]);
-    setPeaks((prev) => ({ ...prev, [targetPadId]: pad.gain * baseVelocity }));
+    setPadPeak(targetPadId, pad.gain * baseVelocity);
   };
 
   const padUp = (holdKey: string) => {
@@ -211,24 +192,15 @@ export function RackStrip({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track.id, track.pads, services.noteRepeat, padKeys]);
 
-  const [peaks, setPeaks] = useState<Record<string, number>>({});
-  const peaksRef = useRef(peaks);
-  peaksRef.current = peaks;
+  const peaks = usePeaks();
 
-  // Decay peaks 60fps
+  // Decay peaks 60fps. The LOOP still lives here (same lifecycle as before);
+  // only the storage moved into padChannelState so the sequencer rows read the
+  // same numbers.
   useEffect(() => {
     let raf = 0;
     const tick = () => {
-      let changed = false;
-      const next: Record<string, number> = {};
-      for (const [id, v] of Object.entries(peaksRef.current)) {
-        const nv = v * 0.88;
-        if (nv > 0.02) {
-          next[id] = nv;
-          changed = true;
-        } else changed = true;
-      }
-      if (changed) setPeaks(next);
+      decayPeaks();
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -244,7 +216,7 @@ export function RackStrip({
       const vel = pattern.rows[pad.id]?.[playheadStep] ?? 0;
       if (vel > 0 && !pad.mute && !track.mute) {
         const peak = Math.min(1.2, vel * pad.gain);
-        setPeaks((prev) => ({ ...prev, [pad.id]: peak }));
+        setPadPeak(pad.id, peak);
       }
     }
   }, [playheadStep, pattern.rows, track.pads, track.mute]);
@@ -604,84 +576,15 @@ export function RackStrip({
         );
       })}
       {rateMenu && (
-        <div
-          className="context-menu"
-          role="menu"
-          aria-label="Pad repeat rate"
-          style={{
-            left: Math.min(rateMenu.x, window.innerWidth - 220),
-            top: Math.min(rateMenu.y, window.innerHeight - 260),
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <div className="context-menu-header">PAD REPEAT RATE</div>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setPinnedRates((prev) => {
-                const next = { ...prev };
-                delete next[rateMenu.padId];
-                return next;
-              });
-              setRateMenu(null);
-            }}
-          >
-            Inherit global ({repeatRate})
-          </button>
-          {PINNABLE_RATES.map((rate) => (
-            <button
-              key={rate}
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setPinnedRates((prev) => ({ ...prev, [rateMenu.padId]: rate }));
-                setRateMenu(null);
-              }}
-            >
-              {rate}
-              {pinnedRates[rateMenu.padId] === rate ? " ✓" : ""}
-            </button>
-          ))}
-          <div className="context-menu-header">COLOR</div>
-          <div className="pad-color-row">
-            {PAD_COLOR_SWATCHES.map((swatch) => (
-              <button
-                key={swatch}
-                type="button"
-                role="menuitemradio"
-                aria-checked={track.pads.find((p) => p.id === rateMenu.padId)?.color === swatch}
-                className="pad-color-swatch"
-                style={{ background: swatch }}
-                title={swatch}
-                onClick={() => {
-                  try {
-                    services.store.execute(setPadColor(services.store.doc, track.id, rateMenu.padId, swatch));
-                  } catch {
-                    setKitStatus("Colour change failed");
-                  }
-                  setRateMenu(null);
-                }}
-              />
-            ))}
-            <button
-              type="button"
-              role="menuitem"
-              className="pad-color-auto"
-              title="Back to the category colour"
-              onClick={() => {
-                try {
-                  services.store.execute(setPadColor(services.store.doc, track.id, rateMenu.padId, null));
-                } catch {
-                  setKitStatus("Clear failed");
-                }
-                setRateMenu(null);
-              }}
-            >
-              AUTO
-            </button>
-          </div>
-        </div>
+        <PadRateMenu
+          padId={rateMenu.padId}
+          track={track}
+          x={rateMenu.x}
+          y={rateMenu.y}
+          globalRate={repeatRate}
+          onClose={() => setRateMenu(null)}
+          onStatus={setKitStatus}
+        />
       )}
       {kitMenu && (
         <div

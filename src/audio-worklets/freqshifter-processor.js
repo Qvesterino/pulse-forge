@@ -187,15 +187,21 @@ class FreqShiftProcessor extends AudioWorkletProcessor {
     let out = x;
     for (let s = 0; s < coeffs.length; s++) {
       const c = coeffs[s];
-      const xPrev = state[s * 2];
+      let xPrev = state[s * 2];
       let yPrev = state[s * 2 + 1];
-      // Denormal flush — silence would otherwise park yPrev in the denormal
-      // range and stall the cascade for as long as the quiet tail lasts.
+      // Denormal flush — silence would otherwise park the cascade in the
+      // denormal range and stall it for as long as the quiet tail lasts. BOTH
+      // states are flushed: an allpass is lossless, so a tiny xPrev left
+      // un-flushed sustains the branch forever (found by the flush-coverage
+      // gate: the tail sat at ~3e-19 indefinitely).
+      if (xPrev > -1e-20 && xPrev < 1e-20) xPrev = 0;
       if (yPrev > -1e-20 && yPrev < 1e-20) yPrev = 0;
       const y = c * out + xPrev - c * yPrev;
-      state[s * 2] = out;
-      state[s * 2 + 1] = y;
-      out = y;
+      const nextX = out > -1e-20 && out < 1e-20 ? 0 : out;
+      const nextY = y > -1e-20 && y < 1e-20 ? 0 : y;
+      state[s * 2] = nextX;
+      state[s * 2 + 1] = nextY;
+      out = nextY;
     }
     return out;
   }
@@ -226,8 +232,10 @@ class FreqShiftProcessor extends AudioWorkletProcessor {
     // Mix 0 is a bit-exact dry copy (no DSP touched).
     if (mix <= 0) {
       for (let i = 0; i < len; i++) {
-        outL[i] = inL ? inL[i] : 0;
-        if (outR) outR[i] = inR ? inR[i] : outL[i];
+        const rawL = inL ? inL[i] : 0;
+        const rawR = inR ? inR[i] : rawL;
+        outL[i] = Number.isFinite(rawL) ? rawL : 0;
+        if (outR) outR[i] = Number.isFinite(rawR) ? rawR : 0;
       }
       return true;
     }
@@ -243,8 +251,10 @@ class FreqShiftProcessor extends AudioWorkletProcessor {
     const dryMix = 1 - mix;
 
     for (let i = 0; i < len; i++) {
-      const l = inL ? inL[i] : 0;
-      const r = inR ? inR[i] : l;
+      let l = inL ? inL[i] : 0;
+      let r = inR ? inR[i] : l;
+      if (!Number.isFinite(l)) l = 0;
+      if (!Number.isFinite(r)) r = 0;
 
       // LFO sweep (shared phase — both channels breathe together; spread
       // only flips the carrier direction, never the sweep).
