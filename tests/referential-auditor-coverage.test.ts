@@ -111,16 +111,35 @@ function referenceFields(): { iface: string; field: string }[] {
 const fields = referenceFields();
 const audited = new Set(fields.filter((f) => AUDITOR.includes(f.field)).map((f) => f.field));
 
+/** EXEMPT keys that no longer name a real reference field. Named so it can be
+ *  given a positive control in the test below, instead of being an inline
+ *  filter whose "empty result" is indistinguishable from "no check happened". */
+function staleExemptionKeys(exempt: Record<string, string>, real: Set<string>): string[] {
+  return Object.keys(exempt).filter((key) => !real.has(key));
+}
+
+/** EXEMPT entries whose reason is too thin to be a justification. */
+function blankReasonFields(exempt: Record<string, string>): string[] {
+  return Object.entries(exempt)
+    .filter(([, reason]) => reason.trim().length < 20)
+    .map(([field]) => field);
+}
+
 describe("referential auditor coverage gate", () => {
   it("the extraction actually finds reference fields (a silent parser guards nothing)", () => {
     // Without this, a regex that stops matching turns every assertion below
     // into a vacuous pass — the gate would be green because it read nothing.
     expect(fields.length).toBeGreaterThan(15);
     expect(audited.size).toBeGreaterThan(8);
-    // Spot-checks on fields that must always be there, so a renamed interface
-    // cannot quietly empty the whole set.
+    // The spot-checks below, not the threshold above, are what stop a dead
+    // regex: a threshold can always be lowered, but naming five fields that
+    // MUST be extracted cannot.
     for (const must of ["activePatternId", "trackId", "patternId", "sceneId", "linkedClipId"]) {
       expect(audited.has(must), `${must} should be audited`).toBe(true);
+      expect(
+        fields.some((f) => f.field === must),
+        `${must} should be extracted from types.ts`,
+      ).toBe(true);
     }
   });
 
@@ -137,15 +156,23 @@ describe("referential auditor coverage gate", () => {
 
   it("no exemption is stale — every EXEMPT key is still a real reference field", () => {
     const real = new Set(fields.map((f) => f.field));
-    const stale = Object.keys(EXEMPT).filter((key) => !real.has(key));
-    expect(stale, `Delete these stale exemptions: ${stale.join(", ")}`).toEqual([]);
+    // Both halves pinned in ONE assertion on one call site. Two separate
+    // assertions let `const stale = []` delete one half and leave the control
+    // green — which is what falsification caught here: the positive control
+    // proved the HELPER works, while nothing proved the TEST still USES it.
+    const results = [staleExemptionKeys(EXEMPT, real), staleExemptionKeys({ ghostField: "why not" }, real)];
+    expect(results[0], `Delete these stale exemptions: ${results[0].join(", ")}`).toEqual([]);
+    expect(results, "the stale check must flag a fabricated bogus key, not only ever return empty").toEqual([
+      [],
+      ["ghostField"],
+    ]);
   });
 
   it("every exemption carries a real reason (an empty string excuses nothing)", () => {
-    const blank = Object.entries(EXEMPT)
-      .filter(([, reason]) => reason.trim().length < 20)
-      .map(([field]) => field);
-    expect(blank, `These exemptions have no usable reason: ${blank.join(", ")}`).toEqual([]);
+    // Same single-assertion structure as above, for the same reason.
+    const blank = [blankReasonFields(EXEMPT), blankReasonFields({ fine: "a reason long enough to count", bad: "" })];
+    expect(blank[0], `These exemptions have no usable reason: ${blank[0].join(", ")}`).toEqual([]);
+    expect(blank, "the blank-reason check must flag an empty reason").toEqual([[], ["bad"]]);
   });
 
   it("the auditor really is independent — it imports no resolver from the code it checks", () => {

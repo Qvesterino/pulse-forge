@@ -222,27 +222,178 @@ invariant a single owner.
 
 ---
 
-## Remaining Risks
+# Risk-closure round (same day)
 
-1. **`normalizeProject` is on the critical path of every command.** `dedupeEntityIdsDomain`
-   runs first and allocates two `Set`s per collection on every apply, on every command,
-   on every autosave. The cost is linear in entity count and the whole pass is a no-op
-   on a valid document, but it is a new O(n) step on the hottest path in the app and has
-   not been profiled under a large project.
-2. **Cross-system clip-id collisions are not repaired.** Within each of the four clip
-   systems ids are deduped; an audio clip and a midi clip sharing one id would survive.
-   Markers, transitions and clip groups resolve against the union, so such a collision
-   would be ambiguous for them. No reachable producer creates one (the `uid()` prefixes
-   differ), so this is deliberate — repairing it would destroy content to fix a collision
-   nothing can produce. Revisit if a new import path ever mints ids itself.
+The five remaining risks were worked rather than left as prose. One turned out to
+hide a **fifth confirmed defect**.
+
+## R1 — cost of the dedupe pass: measured, and the optimization reverted
+
+`dedupeEntityIdsDomain` runs after every command and every autosave, so the
+"not profiled" risk was real. Measured (`.artifacts/measure-dedupe.mjs`):
+
+| scale | entities | dedupe pass | normalizeProject | dedupe share |
+| ----- | -------- | ----------- | ---------------- | ------------ |
+| 1x    | 269      | 0.069 ms    | 1.059 ms         | 6.5 %        |
+| 4x    | 1,052    | 0.201 ms    | 3.262 ms         | 6.2 %        |
+| 16x   | 4,184    | 0.911 ms    | 14.375 ms        | 6.3 %        |
+
+Linear, and a **stable ~6 % of the total**, independent of scale — under 1 % of
+the 100 ms normalization budget in `tests/stress.test.ts` at 16x a large project.
+No early-out is warranted.
+
+A lazy variant of the loop (materialize the output array only on the first
+duplicate) was written and **reverted**: the difference sat inside the machine's
+noise floor — the same run's `normalizeProject` totals drifted by 30 % between
+passes, because the parallel agent session was running tests throughout. An
+unmeasurable optimization that makes the obvious version harder to read is not
+kept. The measurement and the reverted attempt are recorded in the source.
+
+## R2 — cross-system clip-id collisions: closed by measurement
+
+The open question was whether any producer mints ids itself, which would make a
+cross-system collision reachable. Answered by reading, not by assumption:
+
+- `importProject` (project-io.ts:30) "validates shape, migrates schema, and
+  normalizes" — it never mints an id.
+- `uid(prefix)` always prefixes: `clip-<uuid>` vs `audioclip-<uuid>`. A
+  cross-system collision needs the same prefix _and_ the same uuid.
+- The test-only deterministic mode uses one shared monotonic counter, so even
+  there ids stay unique across systems.
+
+No reachable producer. The decision to dedupe within collections only is correct,
+and this is now a closed question rather than a "revisit if…".
+
+## R3 — the auditor's own coverage, now machine-checked — and a fifth defect
+
+Mapping every `*Id` field in `types.ts` to its interface showed the auditor was
+missing a whole collection: `ProjectDocument.liveSets` and `activeLiveSetId`
+existed and were checked by nobody. Probing it found the fifth confirmed defect.
+
+### 5. `AudioClip.liveSetId` survived both the delete command and the normalizer — CONFIRMED, FIXED
+
+`LivePadsPanel.tsx:126` writes `liveSetId` + `livePadSlot` onto a clip when a Live
+Pad is launched. `sanitizeAudioClips` then validated that pair on **shape alone**
+(non-empty string, slot 0–15) and never resolved the set. `deleteLiveSet` removed
+the set, fixed `activeLiveSetId`, and never touched the clips.
+
+Measured, through the real command layer only:
+
+```
+BEFORE delete: clip.liveSetId = liveSet-f40a71b0…  slot = 0
+AFTER  delete: clip.liveSetId = liveSet-f40a71b0…  slot = 0
+liveSets remaining: 0
+=> DANGLING: YES — persists in every save
+normalizeProject on an imported dead reference -> liveSet-f40a71b0…
+```
+
+This is worse than the marker case in finding 2: **a user gesture reaches it**,
+not just an out-of-band document. `normalizeArrangementDomain` now strips the pair
+when the set is absent, in the same shape as the existing take-group strip below
+it in that function.
+
+The first probe was wrong twice and both errors were caught by re-measuring rather
+than by reasoning: `LiveSet.trackId` looked dangling but is _optional_ and already
+validated (schema.ts:2945), and `activeLiveSetId` looked dangling but already
+falls back (schema.ts:2998). Reporting either would have been a false finding.
+
+### The coverage gate, and the two weak guards hiding in it
+
+`tests/referential-auditor-coverage.test.ts` extracts every `*Id`/`*Ids` field
+from a named set of document-graph interfaces and requires each to be audited or
+exempted with a reason — in both directions, so a stale exemption also fails.
+
+**On its first run it found six real gaps in the auditor**: `TrackInputInsert.presetId`,
+`AudioClip.takeId`, `AudioClip.compSourceTakeId`, `AudioTakeGroup.activeTakeId`,
+`AudioTakeGroup.compTakeId`, plus an incomplete interface list. The take-group
+internals turned out to be validated thoroughly by `sanitizeAudioTakeGroups`
+(schema.ts:726–731) — the product was fine, the auditor was not, so the checks
+were added there.
+
+Honest scope, stated in the file: **the gate checks the bookkeeping, not the
+judgement.** An exemption is acceptable because someone wrote down a reason; the
+gate only enforces that the reason exists and has not gone stale. A gate that
+tried to re-derive the judgement would be a second, weaker auditor.
+
+Falsifying the gate then exposed **two guards in the gate itself that could not
+fail** — both were `expect([]).toEqual([])`, which passes forever:
+
+- The stale-exemption and blank-reason checks now pin the empty case _and_ a
+  fabricated non-empty case **in one assertion on one call site**. Splitting them
+  let `const stale = []` delete half the check while the positive control — which
+  exercised the helper directly, not the call site — stayed green.
+- The extraction sanity check no longer rests on a threshold that can simply be
+  lowered; it names five fields that MUST be extracted.
+
+### One owner, decided by falsification
+
+A command-level cleanup of `AudioClip.liveSetId` inside `deleteLiveSet` was
+written first, matching the `deleteTrack` precedent. Falsifying it left the suite
+**green** — `normalizeArrangementDomain` caught the same defect anyway. That is
+the two-implementations-of-one-rule shape that lets the weaker copy rot
+unnoticed, so the command-level copy was **removed** and the normalizer kept as
+the single, more general owner (it covers the import and collab paths too). This
+is the same resolution as the marker dedupe in finding 4.
+
+## Harness failures found while falsifying the new guards
+
+Three more, each of which first looked like a weak guard:
+
+1. **Vitest truncates `it.each` titles at ~37 characters** —
+   `'audio clip points at a deleted live s…' is repaired…` — and `-t` matches the
+   _truncated_ name. Three filters written against the readable name selected
+   **zero tests**, exited 0, and read exactly like "this guard cannot go red". The
+   harness now reports a run that selected nothing as its own verdict, and every
+   filter is a prefix short enough to survive truncation.
+2. **The non-vacuity parser then failed the other way**: it counted only `passed`,
+   so four genuine REDs were reported as `NO-TEST-RAN`. It now counts `passed +
+failed` — a run that fails one test _did_ run a test.
+3. **M7 was not a weak guard, it was an overlap** — see "One owner" above. The
+   mutation was changed to one that actually destroys the property.
+
+## Verification
+
+| check                                                                                           | result                                                                                                                                                                                                                                                               |
+| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npx vitest run tests/referential-integrity.test.ts tests/referential-auditor-coverage.test.ts` | **52 passed**                                                                                                                                                                                                                                                        |
+| + `stress` + `templates` + `project-invariants`                                                 | **222 passed**                                                                                                                                                                                                                                                       |
+| `npx tsc -p .artifacts/tsconfig.audit15.json` (scoped)                                          | **exit 0**                                                                                                                                                                                                                                                           |
+| `.artifacts/measure-dedupe.mjs`                                                                 | linear, ~6 % of normalizeProject                                                                                                                                                                                                                                     |
+| `.artifacts/falsify-audit15-risks.mjs`                                                          | **8/8 mutations went red, control included, worktree restored**                                                                                                                                                                                                      |
+| `npm run typecheck` (whole repo)                                                                | still red, **not ours** — `src/plugin-audit-checks.ts(112)` TS6133 and `src/ui/Diagnostics.tsx(42)` TS2774, both in files the parallel session is actively editing. The earlier `padChannelState.ts` syntax error was fixed by that session mid-review (`aac1cc61`). |
+
+## Still open
+
+- `docs/CURRENT-STATE.md` still carries the parallel session's uncommitted edits,
+  so the audit-15 invariants remain undocumented there. No count bump is needed —
+  the spec files are already committed and counted.
+- Whole-repo typecheck cannot serve as a gate while the parallel session's
+  in-flight files are red; this audit verified its own files with a scoped tsconfig.
+- The dedupe pass is linear and cheap, but it is a new O(n) step on the hottest
+  path. If `normalizeProject` ever becomes the bottleneck under a very large
+  project, the honest starting point is this measurement, not a guess.
+
+1. ~~**`normalizeProject` is on the critical path of every command.**~~ **RESOLVED
+   in the risk-closure round above (R1):** measured at 0.069 ms for 269 entities and
+   0.911 ms for 4,184 — linear, a stable ~6 % of `normalizeProject`, under 1 % of the
+   100 ms budget in `tests/stress.test.ts` at 16x a large project. A lazy-allocation
+   variant was tried and reverted because it could not be shown above the noise floor.
+2. ~~**Cross-system clip-id collisions are not repaired.**~~ **RESOLVED in R2:** no
+   reachable producer creates one. `importProject` never mints ids, `uid(prefix)`
+   always prefixes, and the deterministic test mode uses one shared counter. This is a
+   closed question, not a "revisit if…" — though a genuinely new import path that mints
+   ids itself would reopen it, and the coverage gate would not catch it (it checks the
+   document model, not the producers).
 3. **Import is not end-to-end validated.** Every gap found here lived on the
    out-of-band path, and the auditor now covers the classes it knows about. A new
    persisted field that references another entity is still only protected if someone
    adds it to `auditReferences`.
-4. **The repository-wide `npm run typecheck` gate is red** on a file this audit did not
-   touch (`src/ui/padChannelState.ts`, committed in `ba7a2261`). Until that is fixed,
-   whole-repo typecheck cannot be used as a gate for anything — which is why this audit
-   verified its two files with a scoped tsconfig.
+4. **The repository-wide `npm run typecheck` gate is red** — now on the parallel
+   session's in-flight files (`src/plugin-audit-checks.ts(112)` TS6133,
+   `src/ui/Diagnostics.tsx(42)` TS2774), not on anything this audit touched. The
+   `src/ui/padChannelState.ts` syntax error that blocked it earlier was fixed by that
+   session mid-review (`aac1cc61`). Until those clear, whole-repo typecheck cannot gate
+   anything — which is why this audit verified its own files with a scoped tsconfig.
 5. **`docs/CURRENT-STATE.md` was intentionally left unmodified.** It is mid-edit by the
    parallel session; committing it would have swept their uncommitted changes into this
    commit. The spec-file count needs no bump — `tests/referential-integrity.test.ts` was

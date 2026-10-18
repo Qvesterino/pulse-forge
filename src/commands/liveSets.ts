@@ -56,24 +56,15 @@ export function deleteLiveSet(doc: ProjectDocument, setId: string): Command {
   const removed = requiredSet(doc, setId);
   const liveSets = doc.liveSets!.filter((set) => set.id !== setId);
   const activeLiveSetId = doc.activeLiveSetId === setId ? liveSets[0]?.id : doc.activeLiveSetId;
-  // `AudioClip.liveSetId` is a cross-reference HELD BY ANOTHER ENTITY: the
-  // clip was launched from a pad of this set, and both fields travel together
-  // (`liveSetId` + `livePadSlot`). Clear them in-command, not in the post-apply
-  // normalize — same contract as deleteTrack's marker / sidechain cleanup: the
-  // stale id otherwise survives every save, and undo could never restore the
-  // link because normalize works outside the captured delta.
-  const audioClips = doc.arrangement.audioClips?.map((clip) => {
-    if (clip.liveSetId !== setId) return clip;
-    const next = { ...clip };
-    delete next.liveSetId;
-    delete next.livePadSlot;
-    return next;
-  });
-  const nextDoc: ProjectDocument = {
-    ...doc,
-    liveSets,
-    ...(audioClips ? { arrangement: { ...doc.arrangement, audioClips } } : {}),
-  };
+  // `AudioClip.liveSetId` + `livePadSlot` are a cross-reference HELD BY ANOTHER
+  // ENTITY (the clip was launched from a pad of this set). They are NOT
+  // cleared here: `normalizeArrangementDomain` owns that rule, and since this
+  // command ends in `normalizeProject` the saved document is clean either way.
+  // Falsifying a command-level copy of the cleanup left the suite green — the
+  // normalizer caught it — which is exactly the two-implementations-of-one-rule
+  // shape that lets the weaker copy rot unnoticed. One owner, provably
+  // load-bearing (see `.artifacts/falsify-audit15-risks.mjs`, M8).
+  const nextDoc: ProjectDocument = { ...doc, liveSets };
   if (activeLiveSetId) nextDoc.activeLiveSetId = activeLiveSetId;
   else delete nextDoc.activeLiveSetId;
   const next = normalizeProject(nextDoc);
