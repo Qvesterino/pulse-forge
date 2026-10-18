@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { normalizeProject } from "../src/project-model/schema";
 import { modulatorEventsInRange } from "../src/project-model/modulators";
-import { valueAt } from "../src/project-model/automation";
+import { AUTOMATION_RAMP_MAX_EVENTS, interpolateAutomationPoints, valueAt } from "../src/project-model/automation";
 import type { Lfo } from "../src/project-model/types";
 import { ProjectStore } from "../src/store/ProjectStore";
 import {
@@ -133,5 +133,114 @@ describe("addAutomationPoint — NaN tick gating (audit 06)", () => {
     expect(lane.points).toHaveLength(1);
     expect(lane.points[0]!.tick).toBe(0);
     expect(valueAt(lane.points, 500, 0)).toBeCloseTo(0.5);
+  });
+});
+
+/* ── audit 16 D1: moveAutomationPoint must gate the tick the same way ──── */
+
+describe("moveAutomationPoint — non-finite tick gating (audit 16 D1)", () => {
+  /**
+   * `addAutomationPoint` gated its tick (audit 06 D4) and
+   * `moveSceneAutomationPoint` already did. The project-lane move did not:
+   * `Math.max(0, Math.round(NaN))` is NaN, not 0. Measured consequences before
+   * the fix — the whole ramp went NaN and normalize then DELETED a point:
+   *   valueAt = NaN NaN NaN 1.000 1.000   (healthy: 0.000 0.250 0.500 …)
+   *   normalizeProject -> [{tick:1920}]   (the author's tick-0 point gone)
+   */
+  function twoPointLane(): { store: ProjectStore; laneId: string } {
+    const base = createProjectFromTemplate("house");
+    const store = new ProjectStore(base);
+    const trackId = base.tracks[0]!.id;
+    store.execute(addAutomationLane(base, { kind: "trackGain", trackId }));
+    const laneId = store.getDoc().automation[0]!.id;
+    store.execute(addAutomationPoint(store.getDoc(), laneId, 0, 0));
+    store.execute(addAutomationPoint(store.getDoc(), laneId, 1920, 1));
+    return { store, laneId };
+  }
+
+  it("a NaN tick leaves the point — and the whole ramp — untouched", () => {
+    const { store, laneId } = twoPointLane();
+    const before = store.getDoc().automation[0]!.points;
+    store.execute(moveAutomationPoint(store.getDoc(), laneId, 0, { tick: Number.NaN }));
+    const lane = store.getDoc().automation[0]!;
+    expect(lane.points).toEqual(before);
+    // The ramp must still read as a ramp, not collapse to NaN.
+    expect(valueAt(lane.points, 480)).toBeCloseTo(0.25);
+    expect(valueAt(lane.points, 960)).toBeCloseTo(0.5);
+    expect(lane.points.every((p) => Number.isFinite(p.tick))).toBe(true);
+  });
+
+  it("an Infinity tick is refused too (pre-fix: normalize deleted a point)", () => {
+    const { store, laneId } = twoPointLane();
+    store.execute(moveAutomationPoint(store.getDoc(), laneId, 1, { tick: Number.POSITIVE_INFINITY }));
+    const lane = store.getDoc().automation[0]!;
+    expect(lane.points).toHaveLength(2);
+    expect(lane.points.map((p) => p.tick)).toEqual([0, 1920]);
+    // And the round-trip through the schema must not delete anything either.
+    const reloaded = normalizeProject(store.getDoc());
+    expect(reloaded.automation[0]!.points.map((p) => p.tick)).toEqual([0, 1920]);
+  });
+
+  it("a finite tick still moves the point (the gate must not swallow real work)", () => {
+    const { store, laneId } = twoPointLane();
+    store.execute(moveAutomationPoint(store.getDoc(), laneId, 0, { tick: 960 }));
+    const ticks = store.getDoc().automation[0]!.points.map((p) => p.tick);
+    expect(ticks).toEqual([960, 1920]);
+    expect(store.getDoc().automation[0]!.points.every((p) => Number.isFinite(p.tick))).toBe(true);
+  });
+});
+
+/* ── audit 16 D2: the ramp cap must not eat the author's points ────────── */
+
+describe("dense automation — the event cap bounds the RAMP, not the author's points (audit 16 D2)", () => {
+  const STEP = 240;
+
+  function laneWith(count: number): import("../src/project-model/types").AutomationLane {
+    const base = createProjectFromTemplate("house");
+    const store = new ProjectStore(base);
+    const trackId = base.tracks[0]!.id;
+    store.execute(addAutomationLane(base, { kind: "trackGain", trackId }));
+    const laneId = store.getDoc().automation[0]!.id;
+    for (let i = 0; i < count; i++) {
+      store.execute(addAutomationPoint(store.getDoc(), laneId, i * STEP, (i % 30) / 30));
+    }
+    return normalizeProject(store.getDoc()).automation[0]!;
+  }
+
+  it("every authored point reaches the schedule on a 300-point lane (pre-fix: 149 of 300 dropped)", () => {
+    const lane = laneWith(300);
+    expect(lane.points).toHaveLength(300);
+    const scheduled = interpolateAutomationPoints(lane.points);
+    const scheduledTicks = new Set(scheduled.map((p) => p.tick));
+    const missed = lane.points.filter((p) => !scheduledTicks.has(p.tick));
+    expect(missed, `authored points missing from the DSP schedule: ${missed.length}`).toEqual([]);
+  });
+
+  it("the scheduled curve agrees with the editor curve at every authored point", () => {
+    const lane = laneWith(300);
+    const scheduled = interpolateAutomationPoints(lane.points);
+    for (const point of lane.points) {
+      // The decisive property: what the editor drew is what the engine plays.
+      expect(valueAt(scheduled, point.tick)).toBeCloseTo(point.value, 6);
+    }
+  });
+
+  it("the cap still bounds the GENERATED grid — two points across 2000 bars", () => {
+    // The storm case the cap exists for: it must keep working.
+    const sparse = [
+      { tick: 0, value: 0 },
+      { tick: 480 * 2000, value: 10 },
+    ];
+    expect(interpolateAutomationPoints(sparse).length).toBeLessThanOrEqual(AUTOMATION_RAMP_MAX_EVENTS);
+  });
+
+  it("a modest lane is unchanged: ramp grid still interpolates between sparse points", () => {
+    const lane = laneWith(40);
+    const scheduled = interpolateAutomationPoints(lane.points);
+    expect(scheduled.length).toBeGreaterThan(lane.points.length);
+    expect(scheduled.length).toBeLessThanOrEqual(AUTOMATION_RAMP_MAX_EVENTS);
+    // Endpoints survive any stride.
+    expect(scheduled[0]!.tick).toBe(lane.points[0]!.tick);
+    expect(scheduled[scheduled.length - 1]!.tick).toBe(lane.points[lane.points.length - 1]!.tick);
   });
 });

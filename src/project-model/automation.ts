@@ -38,6 +38,17 @@ export const AUTOMATION_RAMP_MAX_EVENTS = 256;
  * so arbitrarily long lanes degrade to coarser-but-still-ramped curves.
  * Discrete parameters (toggles/enums) must NOT be routed through this —
  * call sites decide.
+ *
+ * WHAT THE CAP BOUNDS (audit 16 D2). The cap exists to keep AudioParam port
+ * queues bounded by the GENERATED ramp grid — two points across 2000 bars must
+ * not emit 8000 events. It is not a licence to discard the author's own
+ * points. Decimating the merged list did exactly that: a 300-point lane was
+ * decimated to 151 events, so 149 user points never reached the DSP and the
+ * curve diverged from the lane editor by up to 50 % of the parameter range.
+ * The budget therefore applies to generated samples only; authored points are
+ * signal and always survive. A lane whose authored points alone exceed the cap
+ * emits exactly those points and no ramp — degraded resolution is an honest
+ * answer, silently-dropped automation is not.
  */
 export function interpolateAutomationPoints(
   points: AutomationPoint[],
@@ -51,7 +62,9 @@ export function interpolateAutomationPoints(
 
   const span = Math.max(1, points[points.length - 1].tick - points[0].tick);
   let stride = Math.max(1, Math.round(gridTicks));
-  while (span / stride + points.length > maxEvents && stride < span) stride *= 2;
+  // Spend the cap on generated samples; the author's points are already paid for.
+  const interiorBudget = Math.max(0, maxEvents - points.length);
+  while (span / stride > interiorBudget && stride < span) stride *= 2;
 
   const out: AutomationPoint[] = [{ tick: points[0].tick, value: points[0].value }];
   for (let i = 1; i < points.length; i++) {
@@ -67,13 +80,6 @@ export function interpolateAutomationPoints(
       }
     }
     out.push({ tick: b.tick, value: b.value });
-  }
-  // The adaptive stride can overshoot the cap on pathological inputs —
-  // decimate by keeping every nth event, preserving lane endpoints.
-  if (out.length > maxEvents) {
-    const keepEvery = Math.ceil(out.length / maxEvents);
-    const decimated = out.filter((_p, idx) => idx % keepEvery === 0 || idx === out.length - 1);
-    return decimated.length > 0 ? decimated : out.slice(0, maxEvents);
   }
   return out;
 }

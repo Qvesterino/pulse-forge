@@ -125,7 +125,17 @@ export function moveAutomationPoint(
         if (at === -1) return l;
         const points = [...l.points];
         points[at] = {
-          tick: Math.max(0, Math.round(delta.tick ?? original.tick)),
+          // Audit 16 D1: gate the tick on finite, exactly as addAutomationPoint
+          // does (Audit 06 D4) and as moveSceneAutomationPoint already did.
+          // `Math.max(0, Math.round(NaN))` is NaN, not 0: the non-finite point
+          // sorted unpredictably and made `valueAt` return NaN across most of
+          // the lane — measured 0.000/0.250/0.500 collapsing to NaN/NaN/NaN —
+          // and `normalizeProject` then responded by DELETING one of the
+          // author's points. A bad drag coordinate must not rewrite the curve.
+          tick:
+            delta.tick !== undefined && Number.isFinite(delta.tick)
+              ? Math.max(0, Math.round(delta.tick))
+              : original.tick,
           value: nextValue ?? original.value,
         };
         return { ...l, points: points.sort((a, b) => a.tick - b.tick) };

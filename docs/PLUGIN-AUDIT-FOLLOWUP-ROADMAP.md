@@ -155,7 +155,13 @@ Two options:
 **Resolution.** Implemented exactly as recommended:
 `interpolateAutomationPoints` (`src/project-model/automation.ts`) expands
 continuous lanes onto a 16th-note grid (120 ticks) with an adaptive stride
-capped at 256 events; constant lanes short-circuit.
+capped at 256 **generated** events; constant lanes short-circuit.
+_(Refined by audit 16 D2: the cap bounds the generated ramp grid, never the
+author's own points. It previously decimated the merged list, so a 300-point
+lane scheduled 151 events — 149 authored points never reached the DSP and the
+curve diverged from the lane editor by up to 50 % of range. A lane whose
+authored points alone exceed the cap now emits exactly those points and no
+ramp.)_
 `scheduleDeviceAutomation` applies it to continuous params (resolved
 `TargetParamDef.kind`) and keeps raw point events for toggle/enum/discrete;
 `scheduleTrackAutomation` ramps gain/pan the same way. The live scheduler
