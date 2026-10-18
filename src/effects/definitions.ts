@@ -2201,7 +2201,15 @@ export const KOREN_CHARACTER_LABELS = ["CLEAN", "SAT", "FOLD"] as const;
 export const KOREN_KEY_MODE_LABELS = ["OFF", "PUMP", "DUCK"] as const;
 
 export const bassHarmonicParams: ParamDef[] = [
-  { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.45, format: formatPct },
+  {
+    id: "drive",
+    label: "DRIVE",
+    min: 0,
+    max: 1,
+    default: 0.45,
+    format: formatPct,
+    description: "How hard the generated stack is driven by the low-band envelope — the overall amount of synthesized harmonics.",
+  },
   {
     id: "focusHz",
     label: "FOCUS",
@@ -2211,10 +2219,40 @@ export const bassHarmonicParams: ParamDef[] = [
     unit: "Hz",
     format: formatHz,
     taper: "log",
+    description:
+      "Centre of the detection window in Hz: the tracker only follows fundamentals within ×0.5–×2 of it, so pitches outside generate nothing (no invented harmonics).",
   },
-  { id: "harmonics", label: "HARMONICS", min: 0, max: 1, default: 0.5, format: formatPct },
-  { id: "subAnchor", label: "SUB ANCHOR", min: 0, max: 1, default: 0.7, format: formatPct },
-  { id: "lowCut", label: "LOW CUT", min: 20, max: 200, default: 45, unit: "Hz", format: formatHz, taper: "log" },
+  {
+    id: "harmonics",
+    label: "HARMONICS",
+    min: 0,
+    max: 1,
+    default: 0.5,
+    format: formatPct,
+    description: "Balance between the 2nd (0) and 3rd (1) harmonic as the leading partial; the higher partials always sit low.",
+  },
+  {
+    id: "subAnchor",
+    label: "SUB ANCHOR",
+    min: 0,
+    max: 1,
+    default: 0.7,
+    format: formatPct,
+    description:
+      "How much of the ORIGINAL sub (high-passed at LOW CUT) stays in the wet path: 1 keeps the dry sub under the harmonics, 0 removes it.",
+  },
+  {
+    id: "lowCut",
+    label: "LOW CUT",
+    min: 20,
+    max: 200,
+    default: 45,
+    unit: "Hz",
+    format: formatHz,
+    taper: "log",
+    description:
+      "High-pass corner (Hz) on the sub-anchor branch — raise it to stop the original sub from doubling the generated 2nd harmonic.",
+  },
   {
     id: "range",
     label: "RANGE",
@@ -2224,6 +2262,8 @@ export const bassHarmonicParams: ParamDef[] = [
     step: 1,
     kind: "discrete",
     format: (v) => `${Math.round(v)} OCT`,
+    description:
+      "Octave span of the generated stack: 2^RANGE partials (2–16). PRESENCE needs a wide range to have phone-band partials to redistribute.",
   },
   {
     id: "attack",
@@ -2234,6 +2274,7 @@ export const bassHarmonicParams: ParamDef[] = [
     unit: "s",
     format: (v) => `${(v * 1000).toFixed(1)} ms`,
     taper: "log",
+    description: "Attack time of the generator's gain envelope (s).",
   },
   {
     id: "release",
@@ -2244,8 +2285,18 @@ export const bassHarmonicParams: ParamDef[] = [
     unit: "s",
     format: (v) => `${(v * 1000).toFixed(0)} ms`,
     taper: "log",
+    description: "Release time of the generator's gain envelope (s); long values smear note gaps together.",
   },
-  { id: "sustain", label: "SUSTAIN", min: 0, max: 1, default: 0, format: formatPct },
+  {
+    id: "sustain",
+    label: "SUSTAIN",
+    min: 0,
+    max: 1,
+    default: 0,
+    format: formatPct,
+    description:
+      "Compresses the generator target on quiet passages (env^gamma) so soft bass lines still read on small speakers; the bottom fades to linear so silence is never pumped.",
+  },
   {
     id: "retrig",
     label: "RETRIG",
@@ -2254,6 +2305,8 @@ export const bassHarmonicParams: ParamDef[] = [
     default: 1,
     format: (v) => (v >= 0.5 ? "ON" : "OFF"),
     kind: "toggle",
+    description:
+      "ON resets the harmonic phase and the generator envelope on note-ons so staccato lines glue to the attack; OFF leaves them free-running like a pad.",
   },
   {
     id: "character",
@@ -2265,8 +2318,19 @@ export const bassHarmonicParams: ParamDef[] = [
     step: 1,
     options: KOREN_CHARACTER_LABELS.map((label, value) => ({ value, label })),
     format: (v) => KOREN_CHARACTER_LABELS[Math.max(0, Math.min(2, Math.round(v)))],
+    description:
+      "Waveform of the GENERATED layer only: CLEAN (no shaping), SAT (soft tanh saturation), FOLD (sine wavefolder for growl timbres).",
   },
-  { id: "phase", label: "PHASE", min: 0, max: 1, default: 0, format: formatPct },
+  {
+    id: "phase",
+    label: "PHASE",
+    min: 0,
+    max: 1,
+    default: 0,
+    format: formatPct,
+    description:
+      "Schroeder phase spread across the partials: the spectrum and RMS stay the same while the crest factor drops, so the same stack fits more level under a limiter.",
+  },
   {
     id: "tilt",
     label: "TILT",
@@ -2274,8 +2338,19 @@ export const bassHarmonicParams: ParamDef[] = [
     max: 1,
     default: 0,
     format: (v) => `${v > 0 ? "+" : ""}${Math.round(v * 100)}%`,
+    description:
+      "Spectral slope across the stack: +1 flattens the tail toward a saw-like 1/n (buzzier, richer), −1 steepens toward 1/n² (darker, rounder).",
   },
-  { id: "width", label: "WIDTH", min: 0, max: 1, default: 0, format: formatPct },
+  {
+    id: "width",
+    label: "WIDTH",
+    min: 0,
+    max: 1,
+    default: 0,
+    format: formatPct,
+    description:
+      "Stereo rotation of the generated partials above 120 Hz (φ = WIDTH·0.6 rad); the sub stays mono by construction.",
+  },
   {
     id: "presence",
     label: "PRESENCE",
@@ -2283,6 +2358,8 @@ export const bassHarmonicParams: ParamDef[] = [
     max: 1,
     default: 0,
     format: formatPct,
+    description:
+      "Log-frequency hump (650 Hz centre) that REDISTRIBUTES the stack into 350–1200 Hz — the band phone speakers can reproduce. Pair with a wide RANGE.",
   },
   {
     id: "keyMode",
@@ -2294,9 +2371,28 @@ export const bassHarmonicParams: ParamDef[] = [
     step: 1,
     options: KOREN_KEY_MODE_LABELS.map((label, value) => ({ value, label })),
     format: (v) => KOREN_KEY_MODE_LABELS[Math.max(0, Math.min(2, Math.round(v)))],
+    description:
+      "Sidechain key from a kick on the engine's key feed: PUMP blooms the harmonics ×1–2 on every key hit, DUCK pulls them ×0.15–1 so the kick clears its way. OFF (or no key) is a bit-exact no-op.",
   },
-  { id: "mix", label: "MIX", min: 0, max: 1, default: 0.6, format: formatPct },
-  { id: "output", label: "OUTPUT", min: -18, max: 12, default: 0, unit: "dB", format: formatDb },
+  {
+    id: "mix",
+    label: "MIX",
+    min: 0,
+    max: 1,
+    default: 0.6,
+    format: formatPct,
+    description: "Dry/wet of the whole effect; 0 is a bit-exact dry passthrough.",
+  },
+  {
+    id: "output",
+    label: "OUTPUT",
+    min: -18,
+    max: 12,
+    default: 0,
+    unit: "dB",
+    format: formatDb,
+    description: "Output gain in dB, used for preset and chain level matching.",
+  },
 ];
 
 /**

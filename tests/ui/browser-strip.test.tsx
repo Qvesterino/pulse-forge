@@ -5,6 +5,9 @@ import { BrowserStrip } from "../../src/ui/BrowserStrip";
 import { KYX_SAMPLE_MIME, sampleIdFromDrag } from "../../src/ui/SampleBrowser";
 import { mockServices, renderWithContext } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
+import { BAR_TICKS } from "../../src/project-model/types";
+import { tempoAtTick } from "../../src/project-model/scene-time";
+import type { UserSampleAsset } from "../../src/persistence/UserSampleRepository";
 
 const drumTrackOf = (doc: ReturnType<typeof createProjectFromTemplate>) => doc.tracks.find((t) => t.kind === "drum")!;
 const instrumentTrackOf = (doc: ReturnType<typeof createProjectFromTemplate>) =>
@@ -66,6 +69,57 @@ describe("BrowserStrip (ROADMAP-UI-2027 V4)", () => {
     await userEvent.setup().click(sampleButton);
     const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as { type: string };
     expect(command.type).toBe("setInstrumentSample");
+  });
+
+  it("previews a loop against the scene tempo and adds one fitted undoable clip", async () => {
+    const doc = createProjectFromTemplate("house");
+    const services = mockServices(doc);
+    const track = drumTrackOf(doc);
+    const loop: UserSampleAsset = {
+      id: "user.loop-preview-01",
+      name: "House Loop",
+      fileName: "house-loop.wav",
+      category: "Custom",
+      duration: 8,
+      sampleRate: 44100,
+      channels: 2,
+      createdAt: "2026-10-18T00:00:00.000Z",
+      bpm: 120,
+      loopMetadata: { isLoop: true, genre: "House", mood: "Deep", instrument: "Drums", key: "Am" },
+    };
+    vi.mocked(services.userSamples.list).mockResolvedValue([loop]);
+    services.bank.add(loop.id, { duration: loop.duration } as AudioBuffer);
+    services.transport.position = 100;
+    services.engine.previewAssetSynced = vi.fn();
+    const padId = track.pads[0].id;
+    renderWithContext(<BrowserStrip track={track} selectedPadId={padId} />, { services });
+
+    await screen.findByLabelText("Search samples");
+    await userEvent.setup().click(screen.getByRole("button", { name: /LOOPS 1/ }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Preview loop in project tempo House Loop" }));
+    const previewBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, services.transport.position, doc.bpm);
+    expect(services.engine.previewAssetSynced).toHaveBeenCalledWith(loop.id, loop.bpm! / previewBpm);
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Add House Loop to arrangement" }));
+    await waitFor(() => expect(services.store.execute).toHaveBeenCalled());
+    const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as {
+      type: string;
+      execute: (current: typeof doc) => typeof doc;
+      undo: (current: typeof doc) => typeof doc;
+    };
+    expect(command.type).toBe("addAudioClip");
+    const next = command.execute(doc);
+    const [clip] = next.arrangement.audioClips ?? [];
+    expect(clip).toMatchObject({
+      trackId: track.id,
+      bufferId: loop.id,
+      startBar: Math.ceil((services.transport.position - 1e-6) / BAR_TICKS),
+      lengthBars: 4,
+      stretchMode: "stretch",
+    });
+    expect(clip.stretchRate).toBeCloseTo(loop.bpm! / previewBpm, 2);
+    expect(command.undo(next).arrangement.audioClips ?? []).toHaveLength(0);
+    await screen.findByText("House Loop added to the arrangement.");
   });
 });
 

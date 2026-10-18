@@ -18,6 +18,15 @@ export interface UserSampleAsset {
    * loops without a steady pulse never get one.
    */
   bpm?: number;
+  /** User-authored loop catalog metadata; stored with the sample row, not in project state. */
+  loopMetadata?: {
+    /** Explicit false lets users exclude a tempo-detected file from the loop catalog. */
+    isLoop?: boolean;
+    genre?: string;
+    mood?: string;
+    instrument?: string;
+    key?: string;
+  };
   /** Optional provenance for generated audio; absent means imported/recorded user audio. */
   origin?: "generated";
   generated?: {

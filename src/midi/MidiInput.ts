@@ -128,6 +128,22 @@ export class MidiInput {
   }
 
   async requestAccess(): Promise<boolean> {
+    // Android shell (ADR 0052): load the native MIDI shim only when Web MIDI
+    // is absent and the shell injected a bridge. Keeping this dynamic keeps
+    // the bridge out of the PWA boot closure.
+    if (
+      typeof navigator !== "undefined" &&
+      !navigator.requestMIDIAccess &&
+      typeof window !== "undefined" &&
+      window.kyxNative?.midi
+    ) {
+      try {
+        const { installNativeMidiShim } = await import("./nativeMidi");
+        installNativeMidiShim();
+      } catch (error) {
+        console.warn("[native-midi] shim load failed:", error);
+      }
+    }
     if (typeof navigator === "undefined" || !navigator.requestMIDIAccess) return false;
     try {
       this.access = await navigator.requestMIDIAccess();
@@ -201,7 +217,11 @@ export class MidiInput {
       input.removeEventListener("midimessage", handler);
     }
     this.listeners.clear();
-    if (this.access) this.access.onstatechange = null;
+    if (this.access) {
+      this.access.onstatechange = null;
+      (this.access as unknown as { dispose?: () => void }).dispose?.();
+      this.access = null;
+    }
     this.noteRepeat?.stopAll();
     // Land any coalesced macro sweep at its final value before teardown.
     if (this.macroFlushTimer !== null) {

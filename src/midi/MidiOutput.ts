@@ -11,6 +11,19 @@ export class MidiOutput {
   private pending = new Map<ReturnType<typeof setTimeout>, Uint8Array>();
 
   async requestAccess(): Promise<boolean> {
+    if (
+      typeof navigator !== "undefined" &&
+      !navigator.requestMIDIAccess &&
+      typeof window !== "undefined" &&
+      window.kyxNative?.midi
+    ) {
+      try {
+        const { installNativeMidiShim } = await import("./nativeMidi");
+        installNativeMidiShim();
+      } catch (error) {
+        console.warn("[native-midi] shim load failed:", error);
+      }
+    }
     if (typeof navigator === "undefined" || !navigator.requestMIDIAccess) return false;
     try {
       this.access = await navigator.requestMIDIAccess();
@@ -132,6 +145,7 @@ export class MidiOutput {
       this.sendCC(ch, 123, 0); // All Notes Off
       this.sendCC(ch, 120, 0); // All Sound Off
     }
+    (this.access as unknown as { dispose?: () => void } | null)?.dispose?.();
     this.access = null;
   }
 }

@@ -5592,7 +5592,11 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
         ? `primary knob (kyx_fx more/less): ${knob}`
         : "no single primary knob — set parameters via kyx_plugin_param",
       "parameters (native units; kyx_plugin_param set clamps into these ranges):",
-      ...meta.params.map((param) => {
+      // A range alone is not a contract an agent can reason about: every
+      // parameter may carry a one-sentence DESCRIPTION of what it does, on its
+      // own indented line. Effects that have not been documented yet simply
+      // omit the line — the catalog never invents one.
+      ...meta.params.flatMap((param) => {
         const extras = [
           param.unit != null ? `unit ${param.unit}` : null,
           param.kind != null ? param.kind : null,
@@ -5600,7 +5604,8 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
           param.taper != null ? `${param.taper} taper` : null,
           param.options != null ? `options: ${param.options.map((o) => `${o.value}=${o.label}`).join("|")}` : null,
         ].filter(Boolean);
-        return `  ${param.id} "${param.label}": ${param.min} .. ${param.max}, default ${param.default}${extras.length > 0 ? ` (${extras.join(", ")})` : ""}`;
+        const line = `  ${param.id} "${param.label}": ${param.min} .. ${param.max}, default ${param.default}${extras.length > 0 ? ` (${extras.join(", ")})` : ""}`;
+        return param.description != null ? [line, `      ${param.description}`] : [line];
       }),
     ];
     return { text: lines.join("\n"), mutated: false };

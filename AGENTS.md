@@ -473,7 +473,7 @@ Before opening a PR or guessing at "how does X work", check the relevant ADR. AD
 | Offline render + export                     | `docs/adr/0009-offline-render-export.md`, `src/rendering/renderer.ts`                                        |
 | Desktop packaging                           | `docs/adr/0010-desktop-packaging.md`, `desktop/main.cjs`                                                     |
 | Desktop auto-update                         | `docs/adr/0011-desktop-auto-update.md`, `electron-builder.yml`                                               |
-| Mobile / Android packaging                  | `docs/MOBILE.md`, `docs/adr/0051-mobile-runtime-profile.md`, `scripts/mobile/`                                |
+| Mobile / Android packaging                  | `docs/MOBILE.md`, `docs/MOBILE-SHELL.md`, `docs/adr/0051-mobile-runtime-profile.md`, `docs/adr/0052-android-native-shell-boundary.md`, `scripts/mobile/` |
 
 If a decision feels arbitrary, look for an ADR. If none exists and you think there should be one, write it.
 

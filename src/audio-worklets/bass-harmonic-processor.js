@@ -314,6 +314,7 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     this.envLag = 0; // 20 ms lag of envFast; fast − lag = transient rise
     this.sinceRetrig = 1e9; // samples since the last accepted note-on reset
     this.keyEnv = 0; // sidechain-key envelope (PUMP/DUCK)
+    this.lastKeyMode = 0; // mode the envelope above belongs to (see process())
     this.lastKeyGain = 1; // key scaler applied to the last generated sample
     this.refineAge = 1e9; // samples since the last accepted GLIDE refinement
     this.lastHint = 0; // last engine pitch hint seen (0 = none)
@@ -457,6 +458,16 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     const width = clamp(parameters.width[0], 0, 1);
     const presence = clamp(parameters.presence[0], 0, 1);
     const keyMode = Math.round(clamp(parameters.keyMode[0], 0, 2));
+    // A mode change must not inherit the previous mode's envelope. `keyEnv`
+    // only advances while a key mode is active, so switching PUMP -> OFF froze
+    // it; switching back ON then applied that stale bloom as an unsmoothed
+    // gain step on the generated layer (up to +6 dB in one block). Reset on
+    // every change — OFF -> ON and PUMP <-> DUCK both start from rest and ride
+    // the 2 ms attack instead of jumping. Constant modes are bit-identical.
+    if (keyMode !== this.lastKeyMode) {
+      this.keyEnv = 0;
+      this.lastKeyMode = keyMode;
+    }
     const hint = clamp(parameters.hintHz[0], 0, 2000);
     const mix = clamp(parameters.mix[0], 0, 1);
     const outGain = Math.pow(10, clamp(parameters.output[0], -18, 12) / 20);

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EFFECT_DEFS } from "../src/effects/registry";
-import type { EffectInstance } from "../src/effects/types";
+import type { EffectInstance } from "../src/project-model/types";
 
 /**
  * IR WORKER TIMEOUT GATE (browser lifecycle audit 2026-10-18, follow-up)
@@ -130,7 +130,7 @@ const TIMEOUT_MS = 5_000;
 
 function build() {
   const { ctx, convolvers } = fakeContext();
-  const runtime = EFFECT_DEFS.reverb.factory(ctx as unknown as BaseAudioContext, INSTANCE);
+  const runtime = EFFECT_DEFS.reverb.factory(ctx as unknown as BaseAudioContext, INSTANCE, { bpm: 120 });
   const worker = FakeWorker.instances[0]!;
   const convolver = convolvers[0]!;
   return { runtime, worker, convolver };

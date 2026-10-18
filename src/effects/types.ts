@@ -7,6 +7,14 @@ export interface ParamDef {
   max: number;
   default: number;
   unit?: string;
+  /**
+   * WHAT this parameter does, in one sentence — for an agent (or a new user)
+   * that sees only `id: 0..1, default 0` otherwise. Exposed by
+   * `kyx_catalog subject:effect`; a dead-simple completeness pin
+   * (`tests/koren-catalog.test.ts`) requires it on every KOREŇ param, so a
+   * new knob cannot ship undocumented.
+   */
+  description?: string;
   format?: (value: number) => string;
   options?: { value: number; label: string }[];
   /** Explicit value kind when a numeric range alone is ambiguous. */

@@ -46,6 +46,24 @@ paints and keeps them correct across rotation or pointer changes.
 Desktop is untouched: every rule is behind a coarse-pointer or narrow-touch
 media query.
 
+## Optional native shell (phase 2)
+
+A Capacitor/WebView shell is **not required** for v1 and is not built by this
+repository. The web app already exposes the bridge contract for the four gaps a
+PWA cannot close: USB/BLE MIDI, SAF document flows, a foreground service and
+audio focus. See [MOBILE-SHELL.md](./MOBILE-SHELL.md) and
+[ADR 0052](./adr/0052-android-native-shell-boundary.md).
+
+Without a shell:
+
+- Web MIDI is used where available; the native MIDI shim is a no-op.
+- Exports use the normal anchor download.
+- Playback/recording uses the Screen Wake Lock API where available.
+- Background playback has no guarantee.
+
+The shell is added only when one of those gaps is actually scheduled, and it
+injects `window.kyxNative` — it does not own project state or DSP.
+
 ## PWA
 
 The PWA is already built by `vite-plugin-pwa` (`src/pwa.ts`):

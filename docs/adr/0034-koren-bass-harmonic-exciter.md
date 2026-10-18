@@ -466,3 +466,30 @@ diff shape, the rewrite-not-stack behavior across pair switches AND against a
 hand-made intensity mapping, and the non-GROW refusal. The panel suite covers
 the select → apply wiring, the SCENE-INTENSITY chip, and the CUSTOM fallback
 for hand-stored slots.
+
+## Addendum 13 (2026-10-18) — key-mode change reset (recovery/quality audit)
+
+**Finding.** `keyEnv` only advanced while a key mode was active, so switching
+PUMP → OFF **froze** the envelope at its last value; switching back ON (or
+PUMP ↔ DUCK) then applied that stale bloom as an **unsmoothed gain step** on the
+generated layer — up to +6 dB within one block, the exact class of defect the
+effect checklist §4 forbids (a per-sample gain that steps when a parameter
+changes). The OFF window itself was inaudible (`keyGain` is 1 in OFF), which is
+why no existing spec saw it.
+
+**Fix.** `lastKeyMode` tracks the mode the envelope belongs to; ANY mode change
+resets `keyEnv` to 0. OFF → ON and PUMP ↔ DUCK now start from rest and ride the
+existing 2 ms key attack instead of jumping. Constant modes remain
+bit-identical (the wave-4 PUMP/DUCK ratio and no-key no-op specs pass
+unchanged).
+
+**Pin.** `tests/bass-harmonic.test.ts` (wave-4 block) drives a constant hot key
+through PUMP → OFF → PUMP block by block with the harness's new `perBlock`
+hook: the bloom must exist before the switch (`keyEnv > 0.5`), the re-enable
+must start from rest (`keyEnv < 0.1`), and it must settle again (`> 0.5`).
+Falsification: removing the reset turns **exactly this spec** red
+(`expected 0.8000000119209236 to be less than 0.1`) and leaves the other 42
+green.
+
+**Evidence.** All five KOREŇ suites green — 60/60 including the two 300 s
+soaks; `tsc --noEmit` and Prettier clean. No other change to the effect.

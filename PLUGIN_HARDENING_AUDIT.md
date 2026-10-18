@@ -254,10 +254,11 @@ Prettier, and the bundle probe. The **core worklet gate is now green**
 (2270 > 2200 KB), which is JS anchor debt (App/curated-layer/ledger) and cannot
 be paid by a worklet seam; it needs the separate eager-diet work.
 
-Bookkeeping: the committed spec-file count is now 1080 (concurrent waves took
-it from 1068). Three specs are still untracked — `tests/worklet-nan-boundary.test.ts`,
-`tests/mobile-profile.test.ts` and `tests/mobile-packaging.test.ts`; the commit
-that adds them must bump 1080 → 1083.
+Bookkeeping: the committed spec-file count is now 1087 (concurrent waves took
+it from 1068). Four specs are still untracked — `tests/worklet-nan-boundary.test.ts`,
+`tests/mobile-profile.test.ts`, `tests/mobile-packaging.test.ts` and
+`tests/mobile-native-bridge.test.ts`; the commit that adds them must bump
+1087 → 1091.
 
 ## 1. Plugin Invariants (Objective §1)
 

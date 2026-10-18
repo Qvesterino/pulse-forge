@@ -1,5 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "compilerOptions": { "incremental": false },
-  "include": ["src/shared/mobileProfile.ts", "tests/mobile-profile.test.ts"]
-}

@@ -30,6 +30,16 @@ initPadKeys();
 // CSS layer and keeps them correct across rotation / pointer changes.
 initMobileProfile();
 
+// Android shell (ADR 0052): Web MIDI is absent in Chrome Android. Only load
+// the native MIDI shim when the shell actually injected a bridge, so the PWA
+// boot path does not carry an unused module. A late-injected bridge is still
+// picked up by MidiInput/MidiOutput.requestAccess().
+if (window.kyxNative?.midi) {
+  void import("./midi/nativeMidi")
+    .then((mod) => mod.installNativeMidiShim())
+    .catch((error) => console.warn("[native-midi] shim load failed:", error));
+}
+
 // Service-worker update banner (PWA "prompt" mode) — registers on every
 // route; the banner only appears when a new build is waiting.
 initSwUpdate();

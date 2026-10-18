@@ -61,7 +61,12 @@ function renderProcessor(
   params: Record<string, Float32Array>,
   seconds: number,
   input: (i: number) => number,
-  extras?: { key?: (i: number) => number; proc?: (proc: any) => void },
+  extras?: {
+    key?: (i: number) => number;
+    proc?: (proc: any) => void;
+    /** Runs before each block's process(), so a test can flip parameters. */
+    perBlock?: (offset: number) => void;
+  },
 ): Float32Array {
   const proc = new cls();
   extras?.proc?.(proc);
@@ -73,6 +78,7 @@ function renderProcessor(
     if (extras?.key) {
       inputs.push([Float32Array.from({ length: len }, (_, i) => extras.key!(offset + i))]);
     }
+    extras?.perBlock?.(offset);
     const out = [new Float32Array(len), new Float32Array(len)];
     proc.process(inputs, [out], params);
     outAll.set(out[0]!.subarray(0, len), offset);
@@ -703,6 +709,45 @@ describe("GROW wave-4 key modes (PUMP / DUCK)", () => {
     const plain = renderProcessor(cls, keyParams(0), 1.0, sineAt(55));
     expect(renderProcessor(cls, keyParams(1), 1.0, sineAt(55))).toEqual(plain);
     expect(renderProcessor(cls, keyParams(2), 1.0, sineAt(55))).toEqual(plain);
+  });
+
+  it("resets the key envelope on a mode change instead of applying a stale bloom", () => {
+    // REGRESSION: keyEnv only advanced while a mode was active, so PUMP -> OFF
+    // froze it and OFF -> PUMP applied the stale bloom as an unsmoothed gain
+    // step on the generated layer. The envelope must restart from rest on any
+    // mode change (the 2 ms attack handles the rest) — a constant mode stays
+    // bit-identical, which the two specs above pin.
+    const cls = registered.get("bass-harmonic-processor");
+    const params = paramsOf(cls, {
+      drive: 0.9,
+      mix: 1,
+      subAnchor: 0,
+      focusHz: 90,
+      harmonics: 0,
+      range: 1,
+      keyMode: 1,
+    });
+    const mode = params.keyMode!;
+    let proc: any = null;
+    let envAtOffStart = -1;
+    let envAtOnStart = -1;
+    renderProcessor(cls, params, 1.0, sineAt(55), {
+      key: () => 0.8, // a constant hot key (the envelope source, not audio)
+      proc: (p) => (proc = p),
+      perBlock: (offset) => {
+        // 0–0.3 s PUMP (the bloom), 0.3–0.6 s OFF (envelope must reset),
+        // 0.6–1.0 s ON again (must start from rest).
+        mode[0] = offset < 0.3 * SR ? 1 : offset < 0.6 * SR ? 0 : 1;
+        if (offset >= 0.3 * SR && envAtOffStart < 0) envAtOffStart = proc.keyEnv;
+        if (offset >= 0.6 * SR && envAtOnStart < 0) envAtOnStart = proc.keyEnv;
+      },
+    });
+    // The bloom really happened before the switch (positive control).
+    expect(envAtOffStart).toBeGreaterThan(0.5);
+    // Re-enabling starts from rest, not from the frozen PUMP envelope.
+    expect(envAtOnStart).toBeLessThan(0.1);
+    // …and the bloom still settles once the key is hot again.
+    expect(proc.keyEnv).toBeGreaterThan(0.5);
   });
 
   it("posts a throttled koren telemetry frame with f0, clarity, boost and partials", () => {

@@ -1,8 +1,10 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 import { useServices } from "./context";
-import { setInstrumentSample, setPadParams } from "../commands/commands";
+import { addAudioClip, fittedLoopPlacement, setInstrumentSample, setPadParams } from "../commands/commands";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
-import type { Track } from "../project-model/types";
+import { BAR_TICKS, type Track } from "../project-model/types";
+import { sceneSecondsToBars, tempoAtTick } from "../project-model/scene-time";
+import type { UserSampleAsset } from "../persistence/UserSampleRepository";
 
 const SampleBrowser = lazy(() => import("./SampleBrowser").then((m) => ({ default: m.SampleBrowser })));
 
@@ -43,6 +45,7 @@ export function BrowserStrip({ track, selectedPadId }: { track: Track; selectedP
   const drumPad =
     track.kind === "drum" ? (track.pads.find((pad) => pad.id === selectedPadId) ?? track.pads[0] ?? null) : null;
   const instrumentTarget = track.kind === "instrument" ? track : null;
+  const arrangementTarget = track.kind === "generative" ? null : track;
   const currentId = drumPad ? drumPad.assetId : instrumentTarget ? instrumentTarget.sampleId : null;
 
   const assign = (assetId: string | null) => {
@@ -56,6 +59,55 @@ export function BrowserStrip({ track, selectedPadId }: { track: Track; selectedP
     if (instrumentTarget) {
       services.store.execute(setInstrumentSample(doc, instrumentTarget.id, assetId));
     }
+  };
+
+  const previewLoop = (asset: UserSampleAsset) => {
+    const currentDoc = services.store.getDoc();
+    const targetBpm = tempoAtTick(
+      currentDoc.arrangement.clips,
+      currentDoc.scenes,
+      services.transport.position,
+      currentDoc.bpm,
+    );
+    services.engine.previewAssetSynced(asset.id, asset.bpm ? asset.bpm / targetBpm : 1);
+  };
+
+  const addLoopToArrangement = async (asset: UserSampleAsset) => {
+    if (!arrangementTarget) throw new Error("Select a drum, instrument, or group track first.");
+    await services.core.initialSampleBankHydration;
+    if (!services.bank.has(asset.id)) throw new Error("This loop is still loading or its audio could not be restored.");
+
+    const currentDoc = services.store.getDoc();
+    const target = currentDoc.tracks.find((candidate) => candidate.id === arrangementTarget.id);
+    if (!target || target.kind === "generative") throw new Error("The selected arrangement track is no longer available.");
+    const playheadTick = Math.max(0, services.transport.position);
+    const startBar = Math.max(0, Math.ceil((playheadTick - 1e-6) / BAR_TICKS));
+    const targetBpm = tempoAtTick(
+      currentDoc.arrangement.clips,
+      currentDoc.scenes,
+      startBar * BAR_TICKS,
+      currentDoc.bpm,
+    );
+    const fitted = fittedLoopPlacement(
+      asset.duration,
+      asset.bpm,
+      targetBpm,
+      currentDoc.timeSignature.numerator,
+    );
+    const lengthBars =
+      fitted?.lengthBars ??
+      Math.max(0.25, sceneSecondsToBars(asset.duration, targetBpm));
+
+    services.store.execute(
+      addAudioClip(
+        currentDoc,
+        target.id,
+        asset.id,
+        startBar,
+        lengthBars,
+        fitted ? { stretchMode: "stretch", stretchRate: fitted.rate } : {},
+      ),
+    );
   };
 
   if (!open) {
@@ -79,8 +131,14 @@ export function BrowserStrip({ track, selectedPadId }: { track: Track; selectedP
     <aside className="browser-strip" aria-label="Sounds">
       <div className="browser-strip-head">
         <span className="panel-kicker">SOUNDS</span>
-        <span className="browser-strip-target" title="Clicking a sound assigns to this target and previews it">
-          {drumPad ? `→ ${drumPad.name}` : instrumentTarget ? `→ ${instrumentTarget.name}` : "no target"}
+        <span className="browser-strip-target" title="Sounds assign to the selected pad or instrument; loops can be added to the arrangement track">
+          {drumPad
+            ? `→ ${drumPad.name}`
+            : instrumentTarget
+              ? `→ ${instrumentTarget.name}`
+              : arrangementTarget
+                ? `→ ${arrangementTarget.name}`
+                : "no target"}
         </span>
         <button
           type="button"
@@ -100,6 +158,8 @@ export function BrowserStrip({ track, selectedPadId }: { track: Track; selectedP
             onSelect={assign}
             allowNone={Boolean(drumPad || instrumentTarget)}
             showDropZone
+            onPreviewLoop={previewLoop}
+            onAddLoop={arrangementTarget ? addLoopToArrangement : undefined}
           />
         </Suspense>
       </div>

@@ -38,6 +38,8 @@ import { setActivePattern, setBpm, unfreezeTrack } from "./commands/commands";
 import { MidiInput } from "./midi/MidiInput";
 import { PatternRecorder } from "./midi/patternRecorder";
 import { recordPlayActivity } from "./ui/playActivity";
+import { getSessionRecordingState, subscribeSessionRecordingState } from "./ui/sessionStateSurface";
+import { acquireMobileAudio, releaseAllMobileAudio, releaseMobileAudio } from "./mobile/audioSession";
 import { MidiOutput } from "./midi/MidiOutput";
 import { MidiClock } from "./midi/MidiClock";
 import { MtcChaser, MtcReceiver } from "./midi/smpte";
@@ -577,6 +579,28 @@ export async function openProject(
   // immediately, so the F2 report is accurate sooner than the 90 s window.
   // Null when the ledger is off, so a disabled ledger keeps costing nothing.
   const detachReactionTransportSettle = attachReactionTransportSettle(reactionLedger, transport);
+
+  // Mobile shell contract (ADR 0052): the native foreground service and audio
+  // focus follow the real app activity, not a UI panel. Reasons are
+  // refcounted; these bindings only call on real state changes so repeated
+  // recording-state publishes cannot leak a count.
+  let mobilePlaying = false;
+  let mobileRecording = false;
+  const detachMobilePlayback = transport.subscribePlaying((playing) => {
+    if (playing === mobilePlaying) return;
+    mobilePlaying = playing;
+    if (playing) acquireMobileAudio("playback");
+    else releaseMobileAudio("playback");
+  });
+  const syncMobileRecording = () => {
+    const recording = getSessionRecordingState().recState !== "idle";
+    if (recording === mobileRecording) return;
+    mobileRecording = recording;
+    if (recording) acquireMobileAudio("recording");
+    else releaseMobileAudio("recording");
+  };
+  const detachMobileRecording = subscribeSessionRecordingState(syncMobileRecording);
+  syncMobileRecording();
   // Transport-synced previews quantize to the next bar relative to the live
   // playhead — the engine has no Transport reference, so hand it the reader.
   engine.getTransportTick = () => transport.position;
@@ -1255,6 +1279,9 @@ export async function openProject(
     linkSync.dispose();
     midiOutput.dispose();
     detachReactionTransportSettle?.();
+    detachMobilePlayback();
+    detachMobileRecording();
+    releaseAllMobileAudio();
     document.removeEventListener("visibilitychange", onVisibility);
     uninstallUnloadGuards();
     await flushSave();
