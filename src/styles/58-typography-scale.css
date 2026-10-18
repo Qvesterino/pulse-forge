@@ -1,0 +1,125 @@
+/* 58-typography-scale.css — give the studio a top of the scale to read.
+ *
+ * READ THE MEASUREMENT FIRST
+ * --------------------------
+ * Measured with scripts/typography-audit.mjs (1440x900, House Beat, 6 dock
+ * panels open). The honest numbers, not the flattering ones:
+ *
+ *   1376 text nodes in the shell.
+ *     806 of them (59%) are ONE scrolling sample catalogue:
+ *       button.sample-name    @11px   270
+ *       button.sample-preview @ 9px   268
+ *       button.sample-fav     @12px   268
+ *       div.sample-row parent     538
+ *     79 more are <option> elements inside CLOSED <select> dropdowns
+ *     (option.option @10px 44, @11px 35) - text the user cannot see until they
+ *     open the menu, counted anyway.
+ *
+ * So the widely-quoted "74% of the studio's text is 8-11px" was measuring a
+ * catalogue list and a closed dropdown. The shell chrome is a different, much
+ * smaller population. This sheet does not touch either of them, on purpose:
+ * a uniform catalogue list SHOULD be uniform and small - it is a list, and
+ * sameness there is the design.
+ *
+ * WHAT THE SHELL ACTUALLY LOOKED LIKE BEFORE THIS SHEET
+ * -----------------------------------------------------
+ *   .dock-tab            11px   (navigation of the whole bottom half)
+ *   .row-pad-name        12px   (the channel's name)
+ *   .track-header-name   12px   (the SAME role - the channel's name)
+ *   .toolbar-label        9px   (group heading over 11px buttons)
+ *
+ * THREE defects, all measured, none of them taste:
+ *
+ *   1. ONE ROLE, TWO SIZES. A channel's name is 12px in the track header and
+ *      12px->13px in the sequencer row. The same word, the same entity, two
+ *      sizes - the eye reads the mismatch as "these are different things".
+ *      This is the only real defect in the set, and it is the only one that
+ *      survives section "REJECTED" below.
+ *
+ *   2. NO TOP OF THE SCALE for the things you reach for without looking.
+ *      The dock row - the primary navigation of the bottom half of the studio -
+ *      sat at 11px, one step below the body text of a channel name.
+ *
+ * WHAT THIS SHEET CHANGES
+ * -----------------------
+ *   dock tab          11px -> 12px   (--fs-sm -> --fs-md)
+ *   channel name      12px -> 13px   (--fs-md  -> --fs-body), both carriers
+ *   row index          8px  (pinned, see below)
+ *   transport buttons restored (see REJECTED)
+ *
+ * WHAT THIS SHEET DELIBERATELY DOES NOT DO
+ * -----------------------------------------
+ * Panel titles are NOT touched. Measured with two dock panels open there are
+ * 8 of them: 4 <h2> at 15px and 4 <h3> at 12px. That two-step ladder is set
+ * deliberately in 29-premium-hierarchy.css ("the h3 size stays one step
+ * quieter for the local sections inside larger workspaces") and it is correct.
+ * An earlier draft of this sheet set .panel-title to a single 15px for every
+ * level; had it won the cascade it would have flattened h2 and h3 into one
+ * step and destroyed a hierarchy that already worked. scripts/typography-audit.mjs
+ * now pins the ladder so a later sheet cannot quietly undo it either.
+ *
+ * Toolbar group captions are NOT touched. An earlier draft raised them from 9px
+ * to 12px on the argument that "a heading smaller than its content inverts the
+ * hierarchy". The measurement behind that sentence is real - the caption is 9px
+ * (.pattern-bar .toolbar-label, 51-shell-proportion.css:240) and the buttons it
+ * captions are 11px (.toolbar-group .btn-small, 29-premium-hierarchy.css:82) -
+ * but the conclusion was not. 51 calls these captions "ALL-CAPS metadata, not
+ * primary controls", and a caption is supposed to sit under its content; that is
+ * how Ableton and FL Studio treat section captions too. A size comparison alone
+ * does not establish that a grouping fails to group. That draft is rejected
+ * here so it is not re-attempted on the same evidence.
+ *
+ * Transport buttons are NOT restyled. The draft pinned them at --fs-compact
+ * (10px), which measured as a no-op against 20-control-kit for the size but
+ * DID flatten the transport: without it the cluster carries 12px and 14px
+ * buttons and a 15px position readout, which is the only place in the shell
+ * with a real size spread. The pin was removed and the spread came back.
+ *
+ * The step grid, row toggles (10px) and the 30px row pitch they live inside are
+ * untouched and gated by scripts/ui-proportion.mjs. So are the status bar
+ * (100% of its 9 nodes are perf readouts and key hints - metadata at 9px is the
+ * intent), piano-roll keys (8px), ruler ticks (10px), the 270 sample names
+ * (11px - a uniform catalogue list SHOULD be uniform and small), the 268 sample
+ * preview lines (9px) and every badge.
+ *
+ * THE GATE
+ * --------
+ * scripts/typography-roles.mjs asserts that every rule in this sheet actually
+ * applies: matched >= 1 and computed font-size == the size declared here.
+ * It exists because the first draft of this file had 8 rules of which 2 did
+ * anything - 3 restated the value that was already there, 2 matched nothing,
+ * and 1 lost the cascade. "74% -> 74.2%" looked like a measurement of the
+ * change and was actually a measurement of a sample list. A whole-shell
+ * average cannot see a dead rule; a per-role assertion can.
+ */
+
+/* ---------- Dock tabs: the primary navigation of the bottom half ---------- */
+
+.dock-tab {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+/* ---------- The channel name: one role, one size ---------- */
+
+/* The sequencer row. */
+.row-pad-name {
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+
+/* The track header. Scoped with .sequencer on purpose: 31-workspace-finishing.css:220
+   already sets this at .sequencer .track-header-name, and an unscoped
+   .track-header-name would lose to it and silently do nothing. */
+.sequencer .track-header-name {
+  font-size: var(--fs-body);
+  letter-spacing: 0.02em;
+}
+
+/* The 1-based index is metadata about the row, not the row's name. It stays on
+   the bottom step deliberately: its low contrast and small size are what keep
+   it from competing with the pad name for the eye. */
+.row-pad-index {
+  font-size: var(--fs-2xs);
+}

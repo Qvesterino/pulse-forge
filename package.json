@@ -163,6 +163,8 @@
     "test:browser:factory-presets": "node scripts/verify-factory-presets.mjs",
     "test:browser:production": "node scripts/verify-production-browser.mjs",
     "test:browser:live-editing": "node scripts/verify-live-editing.mjs",
+    "ui:proportion": "node scripts/ui-proportion.mjs",
+    "ui:typography": "node scripts/typography-audit.mjs",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:debug": "playwright test --debug",

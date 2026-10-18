@@ -193,23 +193,61 @@ duplikát.
 **Gate:** proportion gate + `pad-channel-state.test.tsx` + manuálna kontrola
 QWERTY triggerov a dlhého podpru.
 
-**Otvorené rozhodnutie pre Daniela:** riadok je 36 px a nesie viac než FL
-Studio channel row. Stlačiť späť na 30 px (kompaktnejšie badge-y) alebo
-nechať 36 px pre čitateľnosť? Toto je dizajn, nie bug.
+**Rozhodnutie (hotovo):** riadok je **30 px**. Obohatený riadok sa stlačil,
+aby si badge-y nevykupovali viac miesta než čitateľnosť. `ROW_HEIGHT` v
+`Sequencer.tsx` a CSS box v `57-row-pitch.css` sú zviazané bránou
+`ui-proportion.mjs` (TS 30 == CSS 30 na piatich viewporoch).
 
 ### Vlna 3 — mierka
 
-Chýba. Dnes je všetko 9–11 px a rovnocenné; oko nemá čo hierarchicky čítať.
+**Predpoklad v prvej verzii tohto plánu bol zlý a meranie ho vyvrátilo.**
+Plán tvrdil, že „dnes je všetko 9–11 px a rovnocenné". Zmerané
+(`scripts/typography-audit.mjs`, 1440×900, House Beat, 2 panely v docku):
 
-| Rola                  | Teraz                  | Cieľ                          |
-| --------------------- | ---------------------- | ----------------------------- |
-| Transport tlačidlá    | malé, všetky rovnaké   | 28 px, RECORD/PLAY/STOP s LED |
-| Step bunky            | 26 px                  | 20–24 px na širokom           |
-| Primárne labely       | 9–11 px ALL CAPS       | 11–12 px, zmiešaná veľkosť    |
-| Sekundárne / metadata | rovnaké ako primárne   | 9 px, zriedené                |
-| Nadpis panelu         | líšti sa medzi panelmi | 15–17 px konzistentne         |
+| Tvrdenie                | Zmerané                                                       |
+| ----------------------- | ------------------------------------------------------------- |
+| 74 % textu je 8–11 px   | Pravda, ale **806 z 1543 uzlov je jeden zoznam vzoriek**      |
+|                         | (`.sample-name` 270, `.sample-preview` 268, `.sample-fav` 268) |
+|                         | + 79 `<option>` v zatvorených `<select>` — neviditeľný text    |
+| Panel nadpisy sú ploché | **Nie.** 4× `h2` = 15 px, 4× `h3` = 12 px — rebrík existuje     |
+| Chýba vrchol stupnice   | V shelli nie, ale ani v pláne nebolo kam vystúpiť              |
 
-Jeden `--type-scale` a jedna stupnica spacingu. Zmerané, nie odhadnuté.
+Takže „74 % je ploché" bolo meranie **katalógu**, nie shella. Rozhodnutie:
+nemeriť sa priemerom, ale **rolami**.
+
+**Vykonané zmeny** (`58-typography-scale.css`):
+
+| Rola              | bolo  | je    | Prečo                                          |
+| ----------------- | ----- | ----- | ---------------------------------------------- |
+| Dock tab          | 11 px | 12 px | primárna navigácia spodnej polovice            |
+| Názov kanála (riadok)  | 12 px | 13 px | jedna rola — dva nosiče                      |
+| Názov kanála (track header) | 12 px | 13 px | **isté slovo, dve veľkosti** — jediný skutočný defekt |
+| Index riadka      | 8 px  | 8 px  | metadata, pripnuté zámerne                     |
+
+**Zamietnuté zmeny** (zaznamenané, aby sa nezopakovali na rovnakom dôkaze):
+
+- *Nadpisy panelov na 15 px* — zflattenovalo by h2 aj h3 na jeden stupeň.
+  Brána teraz rebrík chráni.
+- *Nadpisy skupín na 12 px* — argument „nadpis menší než obsah = prevrátená
+  hierarchia" bol merateľný (9 px vs 11 px) ale **záver nebol**. `51` ich
+  zámerne volí ako „ALL-CAPS metadata, not primary controls" a kapitón pod
+  obsahom je správna konvencia aj vo FL Studiu.
+- *Transport tlačidlá na 10 px* — reverzovalo rozloženie: bez toho má
+  transport 12/14 px tlačidlá a 15 px readout, čo je jediné miesto v shelli
+  so skutočným rozptylom veľkostí.
+
+**Nezmenené zámerne:** step grid a prepínače (10 px — viazané na 30 px
+pitch), status bar (9 uzlov, všetko perf readouty = metadata), piano-roll
+klávesy (8 px), meničky (10 px), 270 názvov vzoriek (11 px — rovnomerný
+zoznam má byť rovnomerný a malý), 268 preview riadkov (9 px), všetky
+badge-y.
+
+**Brána:** `scripts/typography-audit.mjs` (exit 0 prešlo / 1 zlyhalo /
+2 harness) — pre každú rolu vyžaduje, že selektor **matchne aspoň jeden
+viditeľný uzol** a že sa vypočítaná veľkosť **rovná deklarovanej**. Vznikla
+preto, že prvá verzia mala 8 pravidiel, z ktorých **2 niečo urobili**:
+3 vypovedali hodnotu, ktorá už bola nastavená, 2 nič nenašli a 1 prehralo
+kasádu. Priemer shella takúto chybu nevidí.
 
 ### Vlna 4 — materiál
 
