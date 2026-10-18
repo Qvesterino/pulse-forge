@@ -43,6 +43,13 @@ export interface ArtifactGateOptions {
   clickProminence?: number;
   /** Samples either side used for the local body residual (default 64). */
   clickWindow?: number;
+  /**
+   * Sample rate the analysed buffer was rendered at. Only the DC-offset
+   * detector uses it — its 5 Hz corner is a frequency, so deriving it from a
+   * fixed rate made `dcOffsetRatio` mean a different thing at 44.1 and 96 kHz.
+   * Defaults to 44100, which is what this module assumed before.
+   */
+  sampleRate?: number;
 }
 
 export interface ArtifactReport {
@@ -141,8 +148,12 @@ export function analyzeArtifacts(channels: readonly Float32Array[], options: Art
   // DC: sub-audio residual of a 2×5 Hz high-pass. Diagnostic only — a
   // percussive one-shot has too few cycles and a decaying envelope for ANY
   // sub-audio measurement to mean "offset" (see `dcOffsetRatio`).
+  // The cutoff is a FREQUENCY, so it is only 5 Hz at 44.1 kHz — this used to
+  // bake that rate in and reported 4.6 Hz at 44.1 kHz / 10.4 Hz at 96 kHz, so
+  // `dcOffsetRatio` meant different things per render rate. `options.sampleRate`
+  // is optional and defaults to the rate this module already assumed.
   let dcRatio = 0;
-  const hpAlpha = 1 / (1 + 44100 / (2 * Math.PI * 5));
+  const hpAlpha = 1 / (1 + (cfg.sampleRate ?? 44100) / (2 * Math.PI * 5));
   for (const channel of channels) {
     if (channel.length === 0) continue;
     let lpA = 0;

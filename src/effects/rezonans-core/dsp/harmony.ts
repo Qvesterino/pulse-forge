@@ -218,9 +218,13 @@ export class HarmonyBus {
   private widthTarget = 1;
   private sideState = 0;
   private hpCoef = 0;
+  /** Kept from prepare(): the hop smoother's time constant is in seconds, so
+      it has to be scaled by the real rate rather than a baked-in literal. */
+  private sampleRate = 48000;
 
   prepare(sampleRate: number, fftSize: number, hop: number): void {
     this.hop = hop;
+    this.sampleRate = sampleRate;
     let ringLen = 1;
     while (ringLen < fftSize * 2) ringLen <<= 1;
     this.ringMask = ringLen - 1;
@@ -284,7 +288,11 @@ export class HarmonyBus {
   ): void {
     // Frame-rate smoothing: the bus gain and width move once per hop, which is
     // ~10.7 ms — smooth enough for automation and free of per-sample cost.
-    const smooth = 1 - Math.exp(-this.hop / (0.03 * 48000));
+    // The time constant is in SECONDS, so it must be scaled by the actual rate:
+    // this hardcoded 48000 made the glide 32.65 ms at 44.1 kHz and 15 ms at
+    // 96 kHz. `this.sampleRate` is in scope (set by prepare) and used two lines
+    // down for the same kind of conversion.
+    const smooth = 1 - Math.exp(-this.hop / (0.03 * this.sampleRate));
     this.busGain += (this.busGainTarget - this.busGain) * smooth;
     this.widthSm += (this.widthTarget - this.widthSm) * smooth;
     if (this.busGain < 1e-7) this.busGain = 0;
