@@ -5,6 +5,14 @@ import type { ReferenceStage } from "./types";
 
 /** Above this length (s × sr) we pay worker startup + transfer cost; below it we stay on the main thread. */
 const WORKER_MIN_SAMPLES = 22050 * 2; // 2 seconds at 22.05 kHz
+/**
+ * Bounded wait for the reference worker. A worker can die WITHOUT firing
+ * `error` (killed under memory pressure, module torn down) — without this the
+ * returned promise never settles and the UI waits forever. 120 s matches the
+ * heavy-render convention (warp-render); the deterministic sync path is the
+ * documented degradation for a missing/failed worker.
+ */
+const REFERENCE_WORKER_TIMEOUT_MS = 120_000;
 
 /**
  * Run the deterministic reference analyzer without blocking the UI on long
@@ -45,9 +53,14 @@ export function analyzeReferenceAsync(
 
     let settled = false;
     let removeAbortListener: () => void = () => undefined;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const finish = (payload: AnalyzeReferenceOutput) => {
       if (settled) return;
       settled = true;
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
       removeAbortListener();
       worker.terminate();
       resolve(payload);
@@ -100,6 +113,13 @@ export function analyzeReferenceAsync(
       );
     } catch {
       finish(analyzeReference({ ...rest, onStage }));
+    }
+    // Arm AFTER the post so a synchronous throw cannot leave a timer behind.
+    if (!settled) {
+      timer = setTimeout(
+        () => finish(analyzeReference({ ...rest, onStage: () => undefined })),
+        REFERENCE_WORKER_TIMEOUT_MS,
+      );
     }
   });
 }
@@ -160,9 +180,16 @@ export function transcribeTrackAsync(
       return;
     }
     let settled = false;
+    let removeAbortListener: () => void = () => undefined;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const finish = (payload: UnsunoTranscription): void => {
       if (settled) return;
       settled = true;
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      removeAbortListener();
       worker.terminate();
       resolve(payload);
     };
@@ -174,6 +201,18 @@ export function transcribeTrackAsync(
     const onError = (): void => finish(run());
     worker.addEventListener("message", onMessage);
     worker.addEventListener("error", onError);
+    // Abort DURING the wait must settle like the pre-check does (skip the
+    // worker, compute synchronously). Without this listener an aborted
+    // transcription still waited for the worker or the timeout.
+    if (options.signal) {
+      const onAbort = () => finish(run());
+      options.signal.addEventListener("abort", onAbort, { once: true });
+      removeAbortListener = () => options.signal?.removeEventListener("abort", onAbort);
+      if (options.signal.aborted) {
+        finish(run());
+        return;
+      }
+    }
     try {
       const copy = new Float32Array(pcm);
       worker.postMessage(
@@ -189,6 +228,10 @@ export function transcribeTrackAsync(
       );
     } catch {
       finish(run());
+    }
+    // Arm AFTER the post so a synchronous throw cannot leave a timer behind.
+    if (!settled) {
+      timer = setTimeout(() => finish(run()), REFERENCE_WORKER_TIMEOUT_MS);
     }
   });
 }

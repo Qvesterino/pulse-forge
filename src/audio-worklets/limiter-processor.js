@@ -217,8 +217,10 @@ class LimiterProcessor extends AudioWorkletProcessor {
       if (!Number.isFinite(r)) r = 0;
       const s = this.step;
       const w = s % this.cap;
-      this.delayL[w] = l;
-      this.delayR[w] = r;
+      // Sub-threshold input is flushed at the WRITE: the look-ahead line then
+      // never stores energy below the denormal guard (quiet-impulse probe).
+      this.delayL[w] = Math.abs(l) < 1e-20 ? 0 : l;
+      this.delayR[w] = Math.abs(r) < 1e-20 ? 0 : r;
 
       const absL = l < 0 ? -l : l;
       const absR = r < 0 ? -r : r;

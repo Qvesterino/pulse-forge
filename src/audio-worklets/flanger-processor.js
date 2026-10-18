@@ -96,8 +96,13 @@ class FlangerProcessor extends AudioWorkletProcessor {
       // Zero-delay feedback: wet signal feeds back into the buffer NOW.
       // TZF invert flips the wet polarity both in the loop and at the mix
       // tap — the classic through-zero notch sweep.
-      this.bufL[this.writeIdx] = l + wetL * invert * feedback;
-      this.bufR[this.writeIdx] = r + wetR * invert * feedback;
+      // Flush BEFORE storing: the post-advance guard zeroed the wrong slot.
+      let writeL = l + wetL * invert * feedback;
+      let writeR = r + wetR * invert * feedback;
+      if (Math.abs(writeL) < 1e-20) writeL = 0;
+      if (Math.abs(writeR) < 1e-20) writeR = 0;
+      this.bufL[this.writeIdx] = writeL;
+      this.bufR[this.writeIdx] = writeR;
       this.writeIdx = (this.writeIdx + 1) & this.mask;
 
       outL[i] = l * (1 - mix) + wetL * invert * mix;

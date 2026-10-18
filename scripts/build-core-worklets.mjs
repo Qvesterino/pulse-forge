@@ -38,6 +38,17 @@ await build({
   },
 });
 
+// Rare/heavy creative effects. One lazy module covers the whole group; the
+// loader marks every effect it registers ready after its single addModule.
+await build({
+  ...shared,
+  entryPoints: ["src/audio-worklets/fx-extra-processor.js"],
+  outfile: "public/fx-extra-worklet.js",
+  banner: {
+    js: "/* KYX on-demand FX extras AudioWorklet bundle — generated. Do not edit. */",
+  },
+});
+
 await build({
   ...shared,
   entryPoints: ["src/audio-worklets/generative-player-processor.js"],
@@ -48,5 +59,5 @@ await build({
 });
 
 console.log(
-  "[core-worklets] bundles written to public/bitcrusher-worklet.js, public/core-worklet.js, and public/generative-player-worklet.js",
+  "[core-worklets] bundles written to public/bitcrusher-worklet.js, public/core-worklet.js, public/fx-extra-worklet.js, and public/generative-player-worklet.js",
 );

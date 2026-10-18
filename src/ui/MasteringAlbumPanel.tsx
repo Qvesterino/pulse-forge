@@ -16,6 +16,7 @@ import {
 } from "../mastering/albumStore";
 import type { MasteringSessionSummary } from "../mastering/sessionStore";
 import type { MasteringRenderSampleRate } from "../mastering/sampleRates";
+import { NumericDraftInput } from "./NumericDraftInput";
 
 export interface MasteringAlbumBatchExportOptions {
   format: "wav" | "flac" | "mp3";
@@ -429,44 +430,54 @@ export function MasteringAlbumPanel({
                   />
                 </label>
                 {batchNormalize && (
+                  // These three drive the gain applied to the EXPORTED PCM of
+                  // every album track, so an unguarded parse is an audio
+                  // defect, not a display one. They used to be raw
+                  // `Number(event.currentTarget.value)` onChange handlers:
+                  //   empty field → Number("") === 0 → normalizeToLufs 0
+                  //     (measured reaching onBatchExport), i.e. 0 LUFS-I;
+                  //   "99"        → accepted unclamped (measured reaching
+                  //     onAudition), far outside the declared [-24, -6];
+                  //   empty TP    → truePeakCeilingDbtp 0, ceiling disabled.
+                  // NumericDraftInput gives the project's documented
+                  // draft/commit contract (one write per edit, empty = cancel,
+                  // Escape abandons) and the parent clamps to the same range
+                  // the `min`/`max` attributes advertise.
                   <>
                     <label>
                       <span>TARGET LUFS-I</span>
-                      <input
-                        type="number"
+                      <NumericDraftInput
                         aria-label="Album batch target integrated loudness in LUFS"
                         min={-24}
                         max={-6}
                         step={0.1}
                         value={batchTargetLufs}
                         disabled={controlsBusy}
-                        onChange={(event) => setBatchTargetLufs(Number(event.currentTarget.value))}
+                        onCommit={(value) => setBatchTargetLufs(Math.min(-6, Math.max(-24, value)))}
                       />
                     </label>
                     <label>
                       <span>TRUE-PEAK CEILING</span>
-                      <input
-                        type="number"
+                      <NumericDraftInput
                         aria-label="Album batch true-peak ceiling in dBTP"
                         min={-6}
                         max={0}
                         step={0.1}
                         value={batchTruePeakCeiling}
                         disabled={controlsBusy}
-                        onChange={(event) => setBatchTruePeakCeiling(Number(event.currentTarget.value))}
+                        onCommit={(value) => setBatchTruePeakCeiling(Math.min(0, Math.max(-6, value)))}
                       />
                     </label>
                     <label>
                       <span>MAXIMUM BOOST</span>
-                      <input
-                        type="number"
+                      <NumericDraftInput
                         aria-label="Album batch maximum gain boost in decibels"
                         min={0}
                         max={24}
                         step={1}
                         value={batchMaximumGain}
                         disabled={controlsBusy}
-                        onChange={(event) => setBatchMaximumGain(Number(event.currentTarget.value))}
+                        onCommit={(value) => setBatchMaximumGain(Math.min(24, Math.max(0, value)))}
                       />
                     </label>
                   </>

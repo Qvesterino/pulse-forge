@@ -26,69 +26,72 @@
 const EQ_SMOOTH_TC = 0.003;
 const BUTTER_Q = 0.7071067811865475;
 
-/** 2-pole Butterworth lowpass prototype (normalized, a0 = 1). */
-function lpProto(fc, sr) {
+/**
+ * 2-pole Butterworth lowpass prototype (normalized, a0 = 1).
+ * Writes into `out` and returns it. It USED to `return {…}` a fresh literal,
+ * which meant one allocation per call; `process` built nine of these per render
+ * quantum on the audio thread. The coefficients are written into a preallocated
+ * record instead. The arithmetic is byte-for-byte the same — only the lifetime
+ * of the object changed.
+ */
+function lpProto(out, fc, sr) {
   const w0 = (2 * Math.PI * fc) / sr;
   const cos = Math.cos(w0);
   const sin = Math.sin(w0);
   const alpha = sin / (2 * BUTTER_Q);
   const a0 = 1 + alpha;
-  return {
-    b0: (1 - cos) / 2 / a0,
-    b1: (1 - cos) / a0,
-    b2: (1 - cos) / 2 / a0,
-    a1: (-2 * cos) / a0,
-    a2: (1 - alpha) / a0,
-  };
+  out.b0 = (1 - cos) / 2 / a0;
+  out.b1 = (1 - cos) / a0;
+  out.b2 = (1 - cos) / 2 / a0;
+  out.a1 = (-2 * cos) / a0;
+  out.a2 = (1 - alpha) / a0;
+  return out;
 }
 
-/** RBJ highpass (normalized, a0 = 1). */
-function hpProto(fc, sr) {
+/** RBJ highpass (normalized, a0 = 1). Writes into `out`. */
+function hpProto(out, fc, sr) {
   const w0 = (2 * Math.PI * fc) / sr;
   const cos = Math.cos(w0);
   const sin = Math.sin(w0);
   const alpha = sin / (2 * BUTTER_Q);
   const a0 = 1 + alpha;
-  return {
-    b0: (1 + cos) / 2 / a0,
-    b1: -(1 + cos) / a0,
-    b2: (1 + cos) / 2 / a0,
-    a1: (-2 * cos) / a0,
-    a2: (1 - alpha) / a0,
-  };
+  out.b0 = (1 + cos) / 2 / a0;
+  out.b1 = -(1 + cos) / a0;
+  out.b2 = (1 + cos) / 2 / a0;
+  out.a1 = (-2 * cos) / a0;
+  out.a2 = (1 - alpha) / a0;
+  return out;
 }
 
-/** RBJ peaking with caller-supplied (possibly pre-corrected) Q. */
-function peakProto(fc, gdb, q, sr) {
+/** RBJ peaking with caller-supplied (possibly pre-corrected) Q. Writes into `out`. */
+function peakProto(out, fc, gdb, q, sr) {
   const A = Math.pow(10, gdb / 40);
   const w0 = (2 * Math.PI * fc) / sr;
   const cos = Math.cos(w0);
   const sin = Math.sin(w0);
   const alpha = sin / (2 * q);
   const a0 = 1 + alpha / A;
-  return {
-    b0: (1 + alpha * A) / a0,
-    b1: (-2 * cos) / a0,
-    b2: (1 - alpha * A) / a0,
-    a1: (-2 * cos) / a0,
-    a2: (1 - alpha / A) / a0,
-  };
+  out.b0 = (1 + alpha * A) / a0;
+  out.b1 = (-2 * cos) / a0;
+  out.b2 = (1 - alpha * A) / a0;
+  out.a1 = (-2 * cos) / a0;
+  out.a2 = (1 - alpha / A) / a0;
+  return out;
 }
 
-/** RBJ notch — infinite depth at fc, near-unity elsewhere. */
-function notchProto(fc, q, sr) {
+/** RBJ notch — infinite depth at fc, near-unity elsewhere. Writes into `out`. */
+function notchProto(out, fc, q, sr) {
   const w0 = (2 * Math.PI * fc) / sr;
   const cos = Math.cos(w0);
   const sin = Math.sin(w0);
   const alpha = sin / (2 * q);
   const a0 = 1 + alpha;
-  return {
-    b0: 1 / a0,
-    b1: (-2 * cos) / a0,
-    b2: 1 / a0,
-    a1: (-2 * cos) / a0,
-    a2: (1 - alpha) / a0,
-  };
+  out.b0 = 1 / a0;
+  out.b1 = (-2 * cos) / a0;
+  out.b2 = 1 / a0;
+  out.a1 = (-2 * cos) / a0;
+  out.a2 = (1 - alpha) / a0;
+  return out;
 }
 
 /**
@@ -131,6 +134,24 @@ class EqProcessor extends AudioWorkletProcessor {
     // 8 DF-I biquads × 4 states (x1, x2, y1, y2) per channel.
     this.sL = new Float64Array(32);
     this.sR = new Float64Array(32);
+    // Block-rate coefficient record, preallocated. `process` refills these in
+    // place every render quantum; it must never build the object graph here.
+    // Previously `process` allocated one literal plus nine nested coefficient
+    // objects per block (~10 allocations × 375 blocks/s per stereo pair at
+    // 48 kHz) on the audio thread, even though the values only change when the
+    // smoothed controls glide.
+    this.C = {
+      hp: { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 },
+      lp: { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 },
+      lsLp: { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 },
+      hsLp: { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 },
+      lm: { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 },
+      hm: { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 },
+      f1: { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 },
+      f2: { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 },
+      lsG: 0,
+      hsG: 0,
+    };
   }
 
   static get parameterDescriptors() {
@@ -210,24 +231,21 @@ class EqProcessor extends AudioWorkletProcessor {
     this.f2Type = this.clampNum(P.free2Type ? P.free2Type[0] : 0, 0, 1) >= 0.5 ? 1 : 0;
 
     // Block-rate coefficients (controls glide on ~3 ms, never step audibly).
-    const C = {
-      hp: hpProto(this.hp, sr),
-      lp: lpProto(this.lp, sr),
-      lsLp: lpProto(this.lsF, sr),
-      hsLp: lpProto(this.hsF, sr),
-      lm: peakProto(this.lmF, this.lmG, decrampedQ(this.lmQ, this.lmF, sr), sr),
-      hm: peakProto(this.hmF, this.hmG, decrampedQ(this.hmQ, this.hmF, sr), sr),
-      f1:
-        this.f1Type >= 0.5
-          ? notchProto(this.f1F, decrampedQ(this.f1Q, this.f1F, sr), sr)
-          : peakProto(this.f1F, this.f1G, decrampedQ(this.f1Q, this.f1F, sr), sr),
-      f2:
-        this.f2Type >= 0.5
-          ? notchProto(this.f2F, decrampedQ(this.f2Q, this.f2F, sr), sr)
-          : peakProto(this.f2F, this.f2G, decrampedQ(this.f2Q, this.f2F, sr), sr),
-      lsG: Math.pow(10, this.lsG / 20) - 1,
-      hsG: Math.pow(10, this.hsG / 20) - 1,
-    };
+    // Written IN PLACE into the preallocated record — no allocation on the
+    // audio thread. Same arithmetic, same order, same values as before.
+    const C = this.C;
+    hpProto(C.hp, this.hp, sr);
+    lpProto(C.lp, this.lp, sr);
+    lpProto(C.lsLp, this.lsF, sr);
+    lpProto(C.hsLp, this.hsF, sr);
+    peakProto(C.lm, this.lmF, this.lmG, decrampedQ(this.lmQ, this.lmF, sr), sr);
+    peakProto(C.hm, this.hmF, this.hmG, decrampedQ(this.hmQ, this.hmF, sr), sr);
+    if (this.f1Type >= 0.5) notchProto(C.f1, this.f1F, decrampedQ(this.f1Q, this.f1F, sr), sr);
+    else peakProto(C.f1, this.f1F, this.f1G, decrampedQ(this.f1Q, this.f1F, sr), sr);
+    if (this.f2Type >= 0.5) notchProto(C.f2, this.f2F, decrampedQ(this.f2Q, this.f2F, sr), sr);
+    else peakProto(C.f2, this.f2F, this.f2G, decrampedQ(this.f2Q, this.f2F, sr), sr);
+    C.lsG = Math.pow(10, this.lsG / 20) - 1;
+    C.hsG = Math.pow(10, this.hsG / 20) - 1;
 
     for (let i = 0; i < len; i++) {
       let l = inL ? inL[i] : 0;

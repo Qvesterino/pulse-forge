@@ -128,7 +128,10 @@ class ChorusProcessor extends AudioWorkletProcessor {
         if (v === 0) delayed1 = delayed;
         if (v === 1) delayed2 = delayed;
         const inV = v === 0 ? l : r;
-        const written = inV + delayed * feedback;
+        // Flush BEFORE storing (the old guard ran after the write index
+        // advanced, so it zeroed the wrong slot — quiet-impulse probe).
+        let written = inV + delayed * feedback;
+        if (Math.abs(written) < 1e-20) written = 0;
         buf[this.writeIdx] = written > 1.5 ? 1.5 : written < -1.5 ? -1.5 : written;
         // Constant-power pan.
         const pan = CHORUS_PANS[v];

@@ -241,4 +241,16 @@ describe("audio boundary numeric gate", () => {
       warn.mockRestore();
     }
   });
+
+  it("diagnostics expose the dropped-event counters the panel reads", async () => {
+    const { engine, instrument } = await build();
+    for (let i = 0; i < 3; i += 1) engine.noteOn(instrument.id, Number.NaN, 0.8, 1, 0.2);
+    engine.setMidiPitchBend(instrument.id, Number.NaN);
+    const diagnostics = engine.getDiagnostics();
+    expect(diagnostics.audioBoundaryDrops).toBe(4);
+    expect(diagnostics.audioBoundaryDropKinds).toBe("note=3, pitchBend=1");
+    // A clean engine reports the real empty state, not a fabricated kind list.
+    expect(new AudioEngine().getDiagnostics().audioBoundaryDropKinds).toBe("none");
+    expect(new AudioEngine().getDiagnostics().audioBoundaryDrops).toBe(0);
+  });
 });

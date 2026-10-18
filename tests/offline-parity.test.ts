@@ -119,4 +119,18 @@ describe("offline render / live playback — shared engine surface", () => {
     // The tail must be added to the duration, not subtracted.
     expect(renderer).toMatch(/const duration\s*=\s*\([\s\S]*?\)\s*\+\s*tail/);
   });
+
+  it("offline render disposes its throwaway engine on every path (no per-export graph accumulation)", () => {
+    // The engine-level BEHAVIOUR is covered by audio-engine-lifecycle-stress
+    // (dispose releases the graph and never closes a caller-owned context).
+    // This structural pin exists because the renderer's wiring is the part a
+    // refactor can silently drop: without dispose(), every export/stem/bounce
+    // leaves a full offline graph (worklet nodes + runtimes) for GC instead of
+    // releasing it deterministically.
+    const renderer = readSrc(RENDERER_PATH);
+    const detachIdx = renderer.indexOf("engine.detachBank()");
+    expect(detachIdx, "the renderer lost its cleanup finally block").toBeGreaterThan(-1);
+    const cleanup = renderer.slice(detachIdx, detachIdx + 500);
+    expect(cleanup, "the throwaway render engine must dispose its graph").toMatch(/engine\.dispose\(\)/);
+  });
 });

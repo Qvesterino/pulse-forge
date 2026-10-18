@@ -196,9 +196,11 @@ class WowFlutterProcessor extends AudioWorkletProcessor {
 
       // Write both channels, then read both behind the write pointer with
       // linear interpolation. Both channels share ONE modulation value, so the
-      // stereo image survives (see header, point 3).
-      this.delayL[this.pos] = l;
-      this.delayR[this.pos] = r;
+      // stereo image survives (see header, point 3). Sub-threshold input is
+      // flushed at the write (quiet-impulse probe) — the modulated read would
+      // otherwise carry a denormal residue for a whole swing cycle.
+      this.delayL[this.pos] = Math.abs(l) < 1e-20 ? 0 : l;
+      this.delayR[this.pos] = Math.abs(r) < 1e-20 ? 0 : r;
 
       let readL = this.pos - offset;
       while (readL < 0) readL += this.delayLen;

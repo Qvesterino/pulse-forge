@@ -23,7 +23,7 @@ import type { RepeatRate } from "../audio-engine/NoteRepeat";
  */
 
 type Listener = () => void;
-type Updater<T> = T | ((prev: T) => T>;
+type Updater<T> = T | ((prev: T) => T);
 
 function notify(listeners: Set<Listener>): void {
   for (const listener of [...listeners]) listener();

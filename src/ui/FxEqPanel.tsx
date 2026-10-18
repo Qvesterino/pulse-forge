@@ -13,6 +13,7 @@ import type { EffectRuntime } from "../effects/types";
 import { bandEqMagnitudeDb, crossoverBandMagnitudeDb } from "./fxeqCurve";
 import { useServices } from "./context";
 import { Slider } from "./controls";
+import { NumericDraftInput } from "./NumericDraftInput";
 import { EffectAbControls, type EffectAbState } from "./EffectAbControls";
 
 const MODULE_ORDER = ["eq", "sat", "lofi", "mod", "delay", "rev", "dyn"] as const;
@@ -817,8 +818,7 @@ export function FxEqPanel({
             {splits.map((freq, index) => (
               <label key={`split-${index}`} className="fxeq-split-field">
                 <span className="slider-label">X{index + 2}</span>
-                <input
-                  type="number"
+                <NumericDraftInput
                   className="fxeq-split-input"
                   aria-label={`Crossover ${index + 2} frequency`}
                   value={Math.round(freq)}
@@ -827,14 +827,18 @@ export function FxEqPanel({
                     Math.min(AXIS_MAX_HZ, schema.defById.get(`crossoverFreq${index + 2}`)?.maxValue ?? AXIS_MAX_HZ),
                   )}
                   step={10}
-                  onChange={(event) => {
-                    const raw = Number(event.target.value);
-                    if (!Number.isFinite(raw)) return;
-                    onParam(`crossoverFreq${index + 2}`, clampSplit(index, raw));
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") event.currentTarget.blur();
-                  }}
+                  // One typed edit = ONE document write. This field used to
+                  // commit on every keystroke (typing "1200" produced four
+                  // `onParam` calls) and — because the input is CONTROLLED by
+                  // the stored value, so the field snapped back mid-typing —
+                  // the intermediate states also fought the caret: measured
+                  // 4 writes for "1200", 3 for "800", all clamped to the
+                  // neighbour gap instead of the typed number. Clearing the
+                  // field wrote `Number("") === 0` → clampSplit → the 80 Hz
+                  // floor. NumericDraftInput gives the field the project's
+                  // documented draft/commit contract: stage locally, write
+                  // once on blur/Enter, Escape abandons, empty = cancel.
+                  onCommit={(value) => onParam(`crossoverFreq${index + 2}`, clampSplit(index, value))}
                 />
                 <span className="fxeq-split-unit">Hz</span>
               </label>

@@ -28,6 +28,7 @@ import {
 import { parseIntentText } from "../src/intent/text-parser";
 import { generateAsyncResult } from "../src/intent/pipeline";
 import { createDefaultProject } from "../src/project-model/schema";
+import { formatVlyxClaim, vlyxTonalClaim } from "../src/analysis/vlyxClaim";
 
 const STATUS_JSON = path.resolve("docs/status.json");
 const STATUS_MD = path.resolve("docs/STATUS.md");
@@ -188,7 +189,37 @@ function manualGates(): ManualGate[] {
   }
 }
 
-const claims: StatusClaim[] = [seamClaim(), countsClaim(), await tasteClaim(), protocolClaim()];
+function vlyxSoundClaim(): StatusClaim {
+  const command = "tests/fixtures/vlyx-claim/vlyx-claim-v1.json (golden) + src/analysis/vlyxClaim.ts";
+  try {
+    const fixture = JSON.parse(readFileSync("tests/fixtures/vlyx-claim/vlyx-claim-v1.json", "utf8")) as {
+      ratios: number[];
+      targetDb: number[];
+      expected: unknown;
+    };
+    const claim = vlyxTonalClaim(fixture.ratios, fixture.targetDb);
+    const ok = claim != null && JSON.stringify(claim) === JSON.stringify(fixture.expected) && claim.improvementDb >= 0;
+    return {
+      id: "vlyx-claim",
+      claim: "VLYX sound identity: target correction reduces the mean deviation from the reference curve",
+      command,
+      state: ok ? "pass" : "fail",
+      summary: claim != null ? formatVlyxClaim(claim) : "no claim produced",
+      freshness: "drift-checked",
+    };
+  } catch {
+    return {
+      id: "vlyx-claim",
+      claim: "VLYX sound identity: target correction reduces the mean deviation from the reference curve",
+      command,
+      state: "fail",
+      summary: "golden fixture unreadable",
+      freshness: "drift-checked",
+    };
+  }
+}
+
+const claims: StatusClaim[] = [seamClaim(), countsClaim(), await tasteClaim(), protocolClaim(), vlyxSoundClaim()];
 const report = buildStatusReport({
   generatedAt: new Date(),
   claims,

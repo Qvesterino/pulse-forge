@@ -38,7 +38,7 @@ import {
 import { ProjectStore } from "../src/store/ProjectStore";
 import { commandHarness, deterministicTestDoc, testDoc } from "./fixtures/doc";
 import { STEP_TICKS } from "../src/project-model/types";
-import type { AutomationTarget, ProjectDocument } from "../src/project-model/types";
+import type { AutomationTarget, MidiConfig, ProjectDocument } from "../src/project-model/types";
 
 /**
  * Entities that can own modulation / automation, i.e. every audio bus a target
@@ -67,9 +67,7 @@ function insertEffectIds(owner: unknown): Set<string> {
 function targetResolves(doc: ProjectDocument, target: AutomationTarget | undefined | null): boolean {
   if (!target || typeof target.trackId !== "string") return false;
   const owner =
-    doc.tracks.find((t) => t.id === target.trackId) ??
-    doc.returns.find((r) => r.id === target.trackId) ??
-    undefined;
+    doc.tracks.find((t) => t.id === target.trackId) ?? doc.returns.find((r) => r.id === target.trackId) ?? undefined;
   if (!owner) return false;
   // fxParam / instParam must name a device that exists on the OWNER. A live
   // looking lane at a deleted plugin is the defect this guards.
@@ -104,14 +102,9 @@ export function auditReferences(doc: ProjectDocument): string[] {
   const busIds = new Set([...trackIds, ...returnIds]);
   const patternIds = new Set(doc.patterns.map((p) => p.id));
   const sceneIds = new Set(doc.scenes.map((s) => s.id));
-  const padIds = new Set(
-    doc.tracks.flatMap((t) => (t.kind === "drum" ? t.pads.map((p) => p.id) : [])),
-  );
+  const padIds = new Set(doc.tracks.flatMap((t) => (t.kind === "drum" ? t.pads.map((p) => p.id) : [])));
   const arr = doc.arrangement;
   const sceneClipIds = new Set(arr.clips.map((c) => c.id));
-  const audioClipIds = new Set((arr.audioClips ?? []).map((c) => c.id));
-  const midiClipIds = new Set((arr.midiClips ?? []).map((c) => c.id));
-  const autoClipIds = new Set((arr.automationClips ?? []).map((c) => c.id));
   // Membership lookup set vs the RAW list: markers, transitions and clip
   // groups all resolve against the union, so a repeated clip id is ambiguous
   // for every one of them. The duplicates must be counted on the raw array —
@@ -150,9 +143,9 @@ export function auditReferences(doc: ProjectDocument): string[] {
   for (const id of duplicates(rawClipIds)) bad("arrangement.*Clips.id", `duplicate clip id "${id}"`);
   // Effect-instance ids are the fxId key of every AutomationTarget, so two
   // instances sharing one id make every lane at that device ambiguous.
-  const effectInstanceIds = [
+  const effectInstanceIds: string[] = [
     ...doc.tracks.flatMap((t) => [...ownerEffects(t).keys(), ...insertEffectIds(t)]),
-    ...doc.returns.flatMap((r) => ownerEffects(r).keys()),
+    ...doc.returns.flatMap((r) => [...ownerEffects(r).keys()]),
   ];
   for (const id of duplicates(effectInstanceIds)) bad("effects.id", `duplicate id "${id}"`);
 
@@ -162,21 +155,27 @@ export function auditReferences(doc: ProjectDocument): string[] {
     if (track.groupId !== undefined && !groupIds.has(track.groupId))
       bad(`tracks.${track.id}.groupId`, `group "${track.groupId}" does not exist`);
     for (const fx of track.effects) {
-      if (fx.sidechainTrackId !== undefined && !trackIds.has(fx.sidechainTrackId))
-        bad(`tracks.${track.id}.effects.${fx.id}.sidechainTrackId`, `track "${fx.sidechainTrackId}" does not exist`);
+      const sidechain = fx.sidechainTrackId;
+      if (sidechain != null && !trackIds.has(sidechain))
+        bad(`tracks.${track.id}.effects.${fx.id}.sidechainTrackId`, `track "${sidechain}" does not exist`);
     }
-    for (const fx of track.inputInsert?.effects ?? [])
-      if (fx.sidechainTrackId !== undefined && !trackIds.has(fx.sidechainTrackId))
-        bad(`tracks.${track.id}.inputInsert.${fx.id}.sidechainTrackId`, `track "${fx.sidechainTrackId}" does not exist`);
+    // `inputInsert` is on the input-insert-capable track kinds only.
+    const insertEffects = track.kind === "drum" || track.kind === "instrument" ? track.inputInsert?.effects : undefined;
+    for (const fx of insertEffects ?? []) {
+      const sidechain = fx.sidechainTrackId;
+      if (sidechain != null && !trackIds.has(sidechain))
+        bad(`tracks.${track.id}.inputInsert.${fx.id}.sidechainTrackId`, `track "${sidechain}" does not exist`);
+    }
   }
   for (const ret of doc.returns)
-    for (const fx of ret.effects)
-      if (fx.sidechainTrackId !== undefined && !trackIds.has(fx.sidechainTrackId))
-        bad(`returns.${ret.id}.effects.${fx.id}.sidechainTrackId`, `track "${fx.sidechainTrackId}" does not exist`);
+    for (const fx of ret.effects) {
+      const sidechain = fx.sidechainTrackId;
+      if (sidechain != null && !trackIds.has(sidechain))
+        bad(`returns.${ret.id}.effects.${fx.id}.sidechainTrackId`, `track "${sidechain}" does not exist`);
+    }
 
   // ---- patterns ------------------------------------------------------------
-  if (!patternIds.has(doc.activePatternId))
-    bad("activePatternId", `pattern "${doc.activePatternId}" does not exist`);
+  if (!patternIds.has(doc.activePatternId)) bad("activePatternId", `pattern "${doc.activePatternId}" does not exist`);
   doc.patterns.forEach((pattern, i) => {
     for (const padId of Object.keys(pattern.rows))
       if (!padIds.has(padId)) bad(`patterns[${i}].rows`, `pad "${padId}" does not exist`);
@@ -186,8 +185,7 @@ export function auditReferences(doc: ProjectDocument): string[] {
 
   // ---- scenes --------------------------------------------------------------
   doc.scenes.forEach((scene, i) => {
-    if (!patternIds.has(scene.patternId))
-      bad(`scenes[${i}].patternId`, `pattern "${scene.patternId}" does not exist`);
+    if (!patternIds.has(scene.patternId)) bad(`scenes[${i}].patternId`, `pattern "${scene.patternId}" does not exist`);
     // NOT checked, by contract: `scenes[].packs` (fxId), `scenes[].macros`
     // (macroId), `scenes[].ccRemaps` / `ccOverrides` (mappingId) and
     // `scenes[].modulators` (lfoId) deliberately KEEP unknown ids — each is a
@@ -247,7 +245,8 @@ export function auditReferences(doc: ProjectDocument): string[] {
     if (!targetResolves(doc, lane.target))
       bad(`automation.${lane.id}.target`, `does not resolve (${JSON.stringify(lane.target)})`);
   for (const lane of doc.sceneAutomation) {
-    if (!sceneIds.has(lane.sceneId)) bad(`sceneAutomation.${lane.id}.sceneId`, `scene "${lane.sceneId}" does not exist`);
+    if (!sceneIds.has(lane.sceneId))
+      bad(`sceneAutomation.${lane.id}.sceneId`, `scene "${lane.sceneId}" does not exist`);
     if (!targetResolves(doc, lane.target))
       bad(`sceneAutomation.${lane.id}.target`, `does not resolve (${JSON.stringify(lane.target)})`);
   }
@@ -285,6 +284,17 @@ function expectClean(doc: ProjectDocument, label: string): void {
   expect(findings, `${label} left ${findings.length} violation(s): ${findings.join(" ;; ")}`).toEqual([]);
 }
 
+/** A full MidiConfig, for the case the fixture document has none. */
+const DEFAULT_MIDI: MidiConfig = {
+  enabled: false,
+  deviceId: "",
+  drumChannel: 0,
+  instrumentChannel: 0,
+  pitchBendRange: 2,
+  ccMappings: [],
+  drumNoteMap: [],
+};
+
 /** A doc that exercises every reference class the auditor knows about. */
 function richDoc(): ProjectDocument {
   let doc = testDoc();
@@ -307,7 +317,7 @@ function richDoc(): ProjectDocument {
   // undefined, every fxId-keyed reference was silently skipped, and the CC
   // mapping fixture never existed — the corruption class then failed on
   // `undefined`, which reads like a product failure and is not one.
-  const drum = doc.tracks.find((t) => t.id === drumId)!;
+  const drum = doc.tracks.find((t) => t.kind === "drum")!;
   const padId = drum.pads[0].id;
   const inst = doc.tracks.find((t) => t.kind === "instrument");
 
@@ -341,14 +351,17 @@ function richDoc(): ProjectDocument {
     lfos: [
       ...doc.lfos,
       { id: "lfo-1", trackId: drum.id, param: "gain", amount: 0.5 },
-      ...(fxId ? [{ id: "lfo-2", trackId: drum.id, param: "gain", amount: 0.5, target: ccTarget }] : []),
+      ...(ccTarget ? [{ id: "lfo-2", trackId: drum.id, param: "gain" as const, amount: 0.5, target: ccTarget }] : []),
     ],
     midi: {
-      ...(doc.midi ?? { drumNoteMap: [], ccMappings: [] }),
-      ccMappings: [...(doc.midi?.ccMappings ?? []), ...(ccTarget ? [{ id: "cc-1", ccNumber: 7, target: ccTarget }] : [])],
+      ...(doc.midi ?? DEFAULT_MIDI),
+      ccMappings: [
+        ...(doc.midi?.ccMappings ?? []),
+        ...(ccTarget ? [{ id: "cc-1", ccNumber: 7, target: ccTarget, min: 0, max: 1 }] : []),
+      ],
       drumNoteMap: [...(doc.midi?.drumNoteMap ?? []), { midiNote: 36, padId }],
     },
-    patterns: doc.patterns.map((p) => (p.id === patternId ? { ...p, rows: { ...p.rows, [padId]: { velocity: 1 } } } : p)),
+    patterns: doc.patterns.map((p) => (p.id === patternId ? { ...p, rows: { ...p.rows, [padId]: [0.9] } } : p)),
     arrangement: {
       ...doc.arrangement,
       clipGroups: [{ id: "cg-1", clipIds: [sceneClipId] }],
@@ -427,7 +440,10 @@ describe("referential integrity — corruption classes vs normalizeProject", () 
         return {
           ...doc,
           automation: [
-            { ...lane, target: { kind: "fxParam", trackId: lane.target.trackId, fxId: "ghost-fx", paramId: "threshold" } },
+            {
+              ...lane,
+              target: { kind: "fxParam", trackId: lane.target.trackId, fxId: "ghost-fx", paramId: "threshold" },
+            },
           ],
         };
       },
@@ -499,7 +515,7 @@ describe("referential integrity — corruption classes vs normalizeProject", () 
       name: "pattern row keys a deleted pad",
       inject: (doc) => {
         const [pattern] = doc.patterns;
-        return { ...doc, patterns: [{ ...pattern, rows: { ...pattern.rows, "ghost-pad": { velocity: 1 } } }] };
+        return { ...doc, patterns: [{ ...pattern, rows: { ...pattern.rows, "ghost-pad": [0.9] } }] };
       },
       expected: "patterns[0].rows",
     },
@@ -507,7 +523,7 @@ describe("referential integrity — corruption classes vs normalizeProject", () 
       name: "pattern notes key a deleted track",
       inject: (doc) => {
         const [pattern] = doc.patterns;
-        return { ...doc, patterns: [{ ...pattern, notes: { "ghost-track": { notes: [] } } }] };
+        return { ...doc, patterns: [{ ...pattern, notes: { "ghost-track": [] } }] };
       },
       expected: "patterns[0].notes",
     },
@@ -535,9 +551,7 @@ describe("referential integrity — corruption classes vs normalizeProject", () 
         return {
           ...doc,
           tracks: doc.tracks.map((t) =>
-            t.id === track.id
-              ? ({ ...t, effects: [{ ...fx, sidechainTrackId: "ghost-track" }] } as typeof t)
-              : t,
+            t.id === track.id ? ({ ...t, effects: [{ ...fx, sidechainTrackId: "ghost-track" }] } as typeof t) : t,
           ),
         };
       },
@@ -561,7 +575,13 @@ describe("referential integrity — corruption classes vs normalizeProject", () 
         arrangement: {
           ...doc.arrangement,
           transitions: [
-            { id: "tr-1", fromClipId: doc.arrangement.clips[0].id, toClipId: "ghost-clip", type: "fade" as const, lengthBars: 1 },
+            {
+              id: "tr-1",
+              fromClipId: doc.arrangement.clips[0].id,
+              toClipId: "ghost-clip",
+              type: "custom" as const,
+              lengthBars: 1,
+            },
           ],
         },
       }),

@@ -45,7 +45,8 @@ export type TemplateId =
   | "lofi-house"
   | "reggaeton"
   | "dnb"
-  | "boombap";
+  | "boombap"
+  | "vlyx-demo";
 
 export interface TemplateInfo {
   id: TemplateId;
@@ -139,6 +140,14 @@ export const TEMPLATES: TemplateInfo[] = [
     description: "The golden-era breakbeat pocket — knock kick, hard snare, dusty chops at 90 BPM.",
     bpm: 90,
     tags: ["hip-hop", "dusty", "swing"],
+  },
+  {
+    id: "vlyx-demo",
+    name: "VLYX Demo — Muddy Mix",
+    description:
+      "The sound-identity demo: a deliberately muddy keys part voiced an octave low. Select “Muddy Keys”, run VLYX MIX ASSIST, and read the measured change instead of trusting an adjective.",
+    bpm: 120,
+    tags: ["vlyx", "demo", "mix-assist"],
   },
   {
     id: "dnb",
@@ -325,6 +334,79 @@ function buildHouse(): ProjectDocument {
   doc.scenes = [sc];
   doc.arrangement = { clips: [clip(sc.id, 0, 4)] };
   doc.macros = performanceMacros(drums.id, bass.id, chords.id);
+  return finish(doc);
+}
+
+/**
+ * VLYX SOUND-IDENTITY DEMO (Prestige §3.4): a mix that is muddy BY
+ * CONSTRUCTION, so the assistant's measured claim has something real to fix.
+ * The keys are the same chord an octave DOWN from the House template with the
+ * filter shut to 900 Hz, which piles energy into the 200–500 Hz range the
+ * target-correction rule reacts to. Nothing here is "wrong" on purpose beyond
+ * the voicing — the demo is a listening test, not a broken project.
+ */
+function buildVlyxDemo(): ProjectDocument {
+  const doc = baseDocument("VLYX Demo — Muddy Mix", 120);
+  const drums = createDrumTrackModel("Drums");
+  const bass = createInstrumentTrackModel("808", 1);
+  const keys = createInstrumentTrackModel("analog", 1);
+  keys.name = "Muddy Keys";
+  keys.params = {
+    ...keys.params,
+    oscA: 2,
+    oscB: 1,
+    oscBDetune: 7,
+    subLevel: 0.35,
+    // The mud: a dark filter and a hot level on a low-voiced chord.
+    cutoff: 900,
+    resonance: 1.1,
+    filterEnv: 0.2,
+    attack: 0.006,
+    decay: 0.3,
+    sustain: 0.6,
+    release: 0.25,
+    level: -6,
+  };
+
+  let pattern = emptyPattern("Muddy Groove", [drums]);
+  pattern = setSteps(pattern, drums.pads, 0, [
+    [0, 0.95],
+    [4, 0.95],
+    [8, 0.95],
+    [12, 0.95],
+  ]);
+  pattern = setSteps(pattern, drums.pads, 6, [
+    [4, 0.7],
+    [12, 0.75],
+  ]);
+  pattern = setSteps(pattern, drums.pads, 8, [
+    [2, 0.5],
+    [6, 0.5],
+    [10, 0.5],
+    [14, 0.55],
+  ]);
+  pattern = withNotes(pattern, bass.id, [
+    note(28, 0, PPQ / 2, 0.9),
+    note(28, 3 * (PPQ / 4), PPQ / 2, 0.7),
+    note(31, 2 * PPQ, PPQ / 2, 0.9),
+    note(28, 3 * PPQ, PPQ / 2, 0.8),
+  ]);
+  // C3 / E3 / G3 — one octave below the House template's chord.
+  pattern = withNotes(pattern, keys.id, [
+    note(48, 0, PPQ / 2, 0.7),
+    note(52, 0, PPQ / 2, 0.6),
+    note(55, 0, PPQ / 2, 0.55),
+    note(48, 2 * PPQ, PPQ / 2, 0.7),
+    note(52, 2 * PPQ, PPQ / 2, 0.6),
+    note(55, 2 * PPQ, PPQ / 2, 0.55),
+  ]);
+
+  const sc = scene("Muddy", pattern.id);
+  doc.tracks = [drums, bass, keys];
+  doc.patterns = [pattern];
+  doc.scenes = [sc];
+  doc.arrangement = { clips: [clip(sc.id, 0, 4)] };
+  doc.macros = performanceMacros(drums.id, bass.id, keys.id);
   return finish(doc);
 }
 
@@ -792,5 +874,7 @@ export function createProjectFromTemplate(id: TemplateId): ProjectDocument {
       return buildDrumBass();
     case "boombap":
       return buildBoomBap();
+    case "vlyx-demo":
+      return buildVlyxDemo();
   }
 }

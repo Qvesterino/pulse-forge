@@ -5,7 +5,7 @@
       "claim": "Every user-facing seam is declared with an entry-point spec and a negative assertion",
       "command": "node scripts/check-seam-coverage.mjs",
       "state": "pass",
-      "summary": "1 check(s), 53 seams",
+      "summary": "1 check(s), 60 seams",
       "freshness": "drift-checked"
     },
     {
@@ -13,7 +13,7 @@
       "claim": "docs/CURRENT-STATE.md's spec-file count equals the committed tree",
       "command": "git ls-files tests (spec-file count vs docs/CURRENT-STATE.md)",
       "state": "pass",
-      "summary": "1068 claimed, 1068 measured",
+      "summary": "1080 claimed, 1080 measured",
       "freshness": "drift-checked"
     },
     {
@@ -30,6 +30,14 @@
       "command": "npm run verify:wav:fixture -- <tmp>/stamped.wav && node tools/kyx-verify/kyx-verify.mjs <tmp>/stamped.wav",
       "state": "pass",
       "summary": "VERIFIED (exit 0, hash recomputed from the file)",
+      "freshness": "drift-checked"
+    },
+    {
+      "id": "vlyx-claim",
+      "claim": "VLYX sound identity: target correction reduces the mean deviation from the reference curve",
+      "command": "tests/fixtures/vlyx-claim/vlyx-claim-v1.json (golden) + src/analysis/vlyxClaim.ts",
+      "state": "pass",
+      "summary": "mean deviation from the reference curve 2.7 → 1.6 dB (−1.1 dB, 5/10 bands)",
       "freshness": "drift-checked"
     }
   ],

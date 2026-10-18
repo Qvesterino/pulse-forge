@@ -608,6 +608,14 @@ describe("external mastering album sequences", () => {
       fireEvent.change(screen.getByRole("spinbutton", { name: "Album batch target integrated loudness in LUFS" }), {
         target: { value: "-16" },
       });
+      // The batch fields stage a draft and commit once on blur/Enter (the
+      // `NumericDraftInput` contract every hand-rolled numeric field was
+      // migrated onto during the 2026-10-16 UI audit — previously each
+      // keystroke wrote the document). A real browser blurs the focused input
+      // on mousedown, so the commit lands BEFORE the click handler reads the
+      // state; `fireEvent.click` does not simulate that blur, so the test
+      // dispatches it explicitly rather than relying on the dispatch order.
+      fireEvent.blur(screen.getByRole("spinbutton", { name: "Album batch target integrated loudness in LUFS" }));
       fireEvent.click(screen.getByRole("button", { name: "Audition gain-matched sequence" }));
       expect(onAudition).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Road EP" }), {
         targetLufs: -16,

@@ -3269,7 +3269,7 @@ function dedupeEntityIdsDomain(s: NormalizeState): void {
     const next = dedupe(doc[key]);
     if (next) patch[key] = next;
   }
-  const arrangement = doc.arrangement as Record<string, unknown> | undefined;
+  const arrangement = doc.arrangement as unknown as Record<string, unknown> | undefined;
   if (arrangement && typeof arrangement === "object") {
     const arrPatch: Record<string, unknown> = {};
     for (const key of ARRANGEMENT_ID_COLLECTIONS) {

@@ -113,6 +113,61 @@ with both a `seamEvent` and a `negativeSpec`).
 
 ---
 
+## 4a. Execution log — 2026-10-18: Phase 1 is written but has NEVER RUN
+
+The harness exists (`scripts/verify-drag-responsiveness-browser.mjs`) and is
+wired correctly through boot, template open, device-chain open, FX popover,
+device selection and the drag itself. **No measurement was ever taken.** Three
+blockers, in the order they were hit:
+
+**Blocker 1 — the build was broken by someone else's work (FIXED).**
+`src/ui/padChannelState.ts` — a new, untracked file from a parallel session,
+imported by that session's modified `RackStrip.tsx` — had a missing closing
+bracket in a type alias:
+
+```
+type Updater<T> = T | ((prev: T) => T>;      // needs ) before ;
+```
+
+Vite returned 500 for `App.tsx`, so the studio never mounted: the app stayed on
+the project browser with the crash-journal banner ("The last session did not end
+through KYX's normal shutdown"), and `tsc --noEmit` was red. One character
+restored the build. **This is worth knowing on its own: any browser gate in this
+repo is currently reporting a failure mode that looks like "the app is flaky"
+and is actually "the tree does not compile".**
+
+**Blocker 2 — an EXISTING gate has silently drifted (NOT fixed).**
+`verify-browser.mjs` opens a flagship effect with
+`.devices-add-effect` → `selectOption("fxeq")`. **That class no longer exists
+anywhere in `src/ui`.** The add flow is a popover now: `FxAddPopover`, opened
+by a `✚ ADD FX` button (`.fx-add-trigger`), filtered through `.fx-add-search`,
+with `.fx-add-device` rows. The new harness uses the real selectors and reaches
+the device panel. `verify-browser.mjs` was not touched — it belongs to whoever
+owns that gate, and a stale selector there means its flagship-effect workflow
+check is either failing or being skipped for a reason unrelated to the product.
+**This is a real finding from Phase 1, independent of the drag measurement.**
+
+**Blocker 3 — the machine was saturated (ENVIRONMENTAL).**
+At the time of the attempt: 56 `node` processes, 23 measurably active (16
+intensively), CPU load 100 %. Under that load `page.goto` alone timed out at
+300 s, having previously succeeded at 120 s. Runs were non-reproducible: the
+same build mounted the studio in one run and not in the next. **A real-browser
+performance measurement is the one kind of measurement this worktree cannot do
+while another session is saturating the machine.**
+
+### What this means for the plan
+
+- Phase 1 is **blocked on a quiet machine**, not on design. Nothing about the
+  approach needs to change; it needs an idle box and ~10 minutes.
+- The budget constant `DOC_WRITE_BUDGET_PCT = 25` is still **a guess**. It was
+  written before any measurement existed and must be calibrated from a real
+  run, then frozen. Do not gate on it until then.
+- Until Phase 1 has produced one green run, the harness stays a DRAFT and is
+  deliberately **not** wired into `package.json` or the `AGENTS.md` §6 gate
+  table. A gate that has never run is not a gate.
+
+---
+
 ## 6. Recommended order
 
 1. **Phase 0** — correct the three false claims in the audit document (minutes,

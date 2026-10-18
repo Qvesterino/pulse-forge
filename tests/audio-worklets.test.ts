@@ -6,7 +6,7 @@ import {
   INSTRUMENT_WORKLET_TYPES,
   invalidateWorkletReadiness,
   isWorkletReady,
-  LAZY_WORKLET_TYPES,
+  LAZY_MODULE_GROUP_COUNT,
   loadAllWorklets,
   loadCoreWorklets,
   loadGenerativePlayerWorklet,
@@ -92,6 +92,24 @@ describe("AudioWorklet loader", () => {
     ).toEqual(["fxeq", "ozvena"]);
   });
 
+  it("one lazy module registers a whole effect group in a single fetch", async () => {
+    const addModule = vi.fn(async () => {});
+    const ctx = mockCtx(addModule);
+    const doc = {
+      tracks: [{ effects: [{ type: "vocoder" }, { type: "vinyl" }] }],
+      returns: [],
+      master: { effects: [] },
+    };
+    const ready = await ensureWorkletsForDoc(doc, ctx);
+    expect(ready.sort()).toEqual(["vinyl", "vocoder"]);
+    // 2 core modules + ONE fx-extra bundle, not one fetch per effect.
+    expect(addModule).toHaveBeenCalledTimes(3);
+    // The bundle registers all of its effects; readiness follows the module.
+    expect(isWorkletReady("beatMangler", ctx)).toBe(true);
+    expect(isWorkletReady("wowFlutter", ctx)).toBe(true);
+    expect(isWorkletReady("fxeq", ctx)).toBe(false);
+  });
+
   it("tracks readiness per context — offline renders are separate contexts", async () => {
     // Regression: a global ready flag made factories construct
     // AudioWorkletNodes in OfflineAudioContexts where the processor was
@@ -125,6 +143,28 @@ describe("AudioWorklet loader", () => {
     expect(isWorkletReady("generativePlayer", ctx)).toBe(false);
   });
 
+  it("keeps the rare creative processors out of the core entry (lazy seam)", () => {
+    const core = readFileSync(resolve(__dirname, "../src/audio-worklets/core-processor.js"), "utf-8");
+    const extras = readFileSync(resolve(__dirname, "../src/audio-worklets/fx-extra-processor.js"), "utf-8");
+    const moved = [
+      "beatmangler",
+      "freqshifter",
+      "granularfreeze",
+      "pitchcorrect",
+      "pitchshift",
+      "reverseswell",
+      "stutter",
+      "tapestop",
+      "vinyl",
+      "vocoder",
+      "wowflutter",
+    ];
+    for (const name of moved) {
+      expect(core, `${name} belongs to the lazy fx-extra bundle`).not.toContain(`./${name}-processor.js`);
+      expect(extras, `${name} must be registered by fx-extra`).toContain(`./${name}-processor.js`);
+    }
+  });
+
   it("loadAllWorklets still fetches every module (browser check suite)", async () => {
     const addModule = vi.fn(async () => {});
     const ctx = mockCtx(addModule);
@@ -133,13 +173,15 @@ describe("AudioWorklet loader", () => {
     // PORTAL took it to 11 and REZONANS to 12, both times with a green-looking
     // comment. Reading the count off the loader's own lists makes a new lazy
     // module update this assertion instead of quietly rotting it.
-    expect(addModule).toHaveBeenCalledTimes(2 + LAZY_WORKLET_TYPES.length + INSTRUMENT_WORKLET_TYPES.length + 1);
+    expect(addModule).toHaveBeenCalledTimes(2 + LAZY_MODULE_GROUP_COUNT + INSTRUMENT_WORKLET_TYPES.length + 1);
     expect(isWorkletReady("fxeq", ctx)).toBe(true);
     expect(isWorkletReady("ultina", ctx)).toBe(true);
     expect(isWorkletReady("ozvena", ctx)).toBe(true);
     expect(isWorkletReady("bassHarmonic", ctx)).toBe(true);
     expect(isWorkletReady("skrutka", ctx)).toBe(true);
     expect(isWorkletReady("rezonans", ctx)).toBe(true);
+    expect(isWorkletReady("vocoder", ctx)).toBe(true);
+    expect(isWorkletReady("wowFlutter", ctx)).toBe(true);
     expect(isWorkletReady("generativePlayer", ctx)).toBe(true);
   });
 

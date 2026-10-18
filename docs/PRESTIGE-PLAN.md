@@ -332,3 +332,36 @@ vectors + a demo project). **No implementation until the owner picks.**
   - Panels migrate one at a time; nothing here rewrites a panel that has not been
     migrated on purpose. `3.2 mobile` still needs the owner's GO (checkpoint 4)
     and `3.4 sound identity` still needs the owner's decision (checkpoint 5).
+
+- **2026-10-18 — Phase 3.4 brief delivered; the decision is the owner's.**
+  - `docs/SOUND-IDENTITY.md`: the three candidates (VLYX mix doctor, DRIFT space
+    pad, PRISM paint EQ) with what each ALREADY has in the tree, the measurable
+    claim it would carry, the 60-second demo, the comparison matrix, and the
+    recommendation (**VLYX**, because the product's moat is proof around sound,
+    not sound itself).
+  - Fixed build order after the pick, so the decision cannot creep: artifact
+    (factory template) → pin (golden fixture + a `docs/status.json` claim row) →
+    claim card → public face. Non-goals: no new DSP, no rename, no marketing copy
+    before steps 1–3 exist.
+  - **Still open:** the one-word pick (`VLYX` / `DRIFT` / `PRISM`) and the §3.2
+    GO. Nothing in §3.4 is implemented before the pick, by design.
+
+- **2026-10-18 — §3.4 VLYX SELECTED; the identity shipped in the plan's order.**
+  - **Artifact:** `vlyx-demo` factory template ("VLYX Demo — Muddy Mix") — the
+    House chord voiced an octave DOWN with a 900 Hz filter, muddy by
+    construction; its engine golden hash is pinned and the templates count moved
+    14 → 15 (drift-checked).
+  - **Pin:** `src/analysis/vlyxClaim.ts` + `tests/fixtures/vlyx-claim/vlyx-claim-v1.json`
+    - `tests/vlyx-claim.test.ts` — the golden numbers frozen, the REAL
+      `analyzeWithTarget` feeding the claim from its own octave profile, and the
+      monotonicity invariant over 200 deterministic vectors (the rule can never
+      increase the mean deviation). A drift-checked `vlyx-claim` row on the status
+      page reads "mean deviation 2.7 → 1.6 dB (−1.1 dB, 5/10 bands)".
+  - **Claim:** the REFERENCE MATCH review now prints the CLAIM line with the
+    measured octave-profile deviation, right next to the level-matched A/B and
+    the integrated LUFS. Taste is never claimed: the A/B is the "does it sound
+    better" measurement, the claim is arithmetic.
+  - **Face:** one landing section naming VLYX, pointing at the status page and
+    at the demo template.
+  - Non-goals respected: no new DSP, no rename, no logo, no marketing copy that
+    is not backed by a row above.

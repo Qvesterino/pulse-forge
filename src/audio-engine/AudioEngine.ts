@@ -335,6 +335,10 @@ export class AudioEngine {
 
   /** Non-finite events dropped at the audio boundary (first per kind logged). */
   private readonly boundaryDiagnostics: AudioBoundaryDiagnostics = createAudioBoundaryDiagnostics();
+  /** The live context this engine CREATED (ensureContext) — it closes it on swap. */
+  private ownedContext: BaseAudioContext | null = null;
+  /** close() failures (already closed / browser policy) — surfaced in diagnostics. */
+  private contextCloseFailures = 0;
 
   /**
    * Wave 4f (FINAL decomposition): realtime performance path — drum/synth
@@ -689,17 +693,52 @@ export class AudioEngine {
     return this.masterChain.isBypassed;
   }
 
-  useContext(ctx: BaseAudioContext): void {
-    // A context swap ENDS any offline-render regime. The renderer uses a
-    // throwaway engine per render today, but an engine reused for a render and
-    // then returned to live would otherwise keep exact (non-glide) PDC writes
-    // AND the syncPdc lock forever — live latency compensation would silently
-    // stop tracking after the first export.
-    this.offlineExactPdc = false;
-    this.offlineRenderLocked = false;
-    this.cancelEffectIntentPreview(this.doc ?? undefined, "manual");
+  /**
+   * Release every AudioNode/runtime this engine owns. Shared by the context
+   * swap and the public dispose(); the CALLER decides whether the old context
+   * is closed (only an engine-created one ever is).
+   */
+  /**
+   * Best-effort close of a context the engine created. A failure (already
+   * closed, browser policy) must stay OBSERVABLE: the counter is surfaced in
+   * getDiagnostics() instead of a silent leak.
+   */
+  private closeOwnedContext(context: BaseAudioContext): void {
+    const close = (context as AudioContext).close;
+    if (typeof close !== "function") return;
+    void close.call(context).catch(() => {
+      this.contextCloseFailures += 1;
+    });
+  }
+
+  /**
+   * Release the engine's live graph and close the context IT created.
+   * Caller-owned contexts (host, tests, offline render) are left open — the
+   * caller owns their lifetime. Idempotent; the project document is kept, so
+   * useContext(ctx) + setProject() rebuilds afterwards. This is the teardown
+   * path for throwaway engines (offline renders, benchmarks, tools) that never
+   * swap to another context.
+   */
+  dispose(): void {
     const previousContext = this.ctx;
-    if (previousContext && previousContext !== ctx) {
+    const previousOwned = this.ownedContext;
+    this.teardownGraph(previousContext);
+    this.ctx = null;
+    this.ownedContext = null;
+    if (previousContext && previousContext === previousOwned) {
+      this.closeOwnedContext(previousContext);
+    }
+    this.heldPitches.clear();
+  }
+
+  /**
+   * Release every AudioNode/runtime this engine owns. Shared by the context
+   * swap and dispose(); the CALLER decides whether the old context is closed
+   * (only an engine-created one ever is).
+   */
+  private teardownGraph(previousContext: BaseAudioContext | null): void {
+    this.cancelEffectIntentPreview(this.doc ?? undefined, "manual");
+    if (previousContext) {
       try {
         previousContext.onstatechange = null;
       } catch {
@@ -777,6 +816,27 @@ export class AudioEngine {
     // (contextlost recovery) never runs setProject. (Wave 4e: WarpManager.)
     this.warpManager.invalidateForContextSwap();
     this.disposeFxChainForContextSwap(this.masterFx);
+  }
+
+  useContext(ctx: BaseAudioContext): void {
+    // A context swap ENDS any offline-render regime. The renderer uses a
+    // throwaway engine per render today, but an engine reused for a render and
+    // then returned to live would otherwise keep exact (non-glide) PDC writes
+    // AND the syncPdc lock forever — live latency compensation would silently
+    // stop tracking after the first export.
+    this.offlineExactPdc = false;
+    this.offlineRenderLocked = false;
+    const previousContext = this.ctx;
+    const previousOwned = this.ownedContext;
+    this.teardownGraph(previousContext);
+    // An open AudioContext kept by the engine holds an audio thread and a device
+    // handle for nothing. Close the one the engine CREATED (ensureContext) when
+    // it is replaced; externally supplied contexts (host, tests, offline render)
+    // are never closed — the caller owns their lifetime.
+    if (previousContext && previousContext !== ctx && previousContext === previousOwned) {
+      this.ownedContext = null;
+      this.closeOwnedContext(previousContext);
+    }
     this.ctx = ctx;
     this.masterChain.build();
     if (this.doc) {
@@ -976,6 +1036,9 @@ export class AudioEngine {
         throw new Error("This browser does not provide a realtime AudioContext");
       }
       const ctx = new AudioContext();
+      // Mark ownership BEFORE the swap: useContext closes a replaced context
+      // only when the engine created it (this one), never a caller's.
+      this.ownedContext = ctx;
       // Route every creation path through useContext() so a context that was
       // closed by the browser/device lifecycle gets a complete graph rebuild,
       // exactly like an offline-to-live context swap.
@@ -3420,6 +3483,12 @@ export class AudioEngine {
   getDiagnostics(): Record<string, string | number> {
     const effectCount = [...this.trackNodes.values()].reduce((sum, n) => sum + n.fx.runtimes.size, 0);
     const rt = this.metering.getRtLoad();
+    // Audio-boundary health: non-finite events are dropped (never thrown into a
+    // scheduler tick); the first occurrence per kind is logged once and every
+    // occurrence is counted here. "none" is a real state, not a fabricated zero.
+    const boundary = this.boundaryDiagnostics.snapshot();
+    const boundaryKinds = Object.entries(boundary).sort(([a], [b]) => a.localeCompare(b));
+    const boundaryTotal = boundaryKinds.reduce((sum, [, count]) => sum + count, 0);
     return {
       contextState: this.ctx?.state ?? "not-created",
       sampleRate: this.ctx?.sampleRate ?? "-",
@@ -3431,6 +3500,10 @@ export class AudioEngine {
       returns: this.returnNodes.size,
       automationLanes: this.doc?.automation.length ?? 0,
       missingAssets: this.missingAssets.join(", ") || "none",
+      audioBoundaryDrops: boundaryTotal,
+      audioBoundaryDropKinds:
+        boundaryKinds.length > 0 ? boundaryKinds.map(([kind, count]) => `${kind}=${count}`).join(", ") : "none",
+      contextCloseFailures: this.contextCloseFailures,
       // Audio-thread health: quanta the device actually dropped, plus the
       // main-thread delivery jitter of the worklet heartbeat. "n/a" (never a
       // fabricated 0) while no RT Monitor is attached.

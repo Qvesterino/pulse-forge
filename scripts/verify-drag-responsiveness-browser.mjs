@@ -1,6 +1,27 @@
 /**
  * DRAG RESPONSIVENESS — the flagship canvases, measured in a REAL browser.
  *
+ * ╔══════════════════════════════════════════════════════════════════════╗
+ * ║ STATUS: DRAFT — THIS HARNESS HAS NEVER COMPLETED A RUN.             ║
+ * ║ Do not wire it into the gate table until it has passed once on a    ║
+ * ║ quiet machine. Run it directly:  node scripts/<this file>           ║
+ * ╚══════════════════════════════════════════════════════════════════════╝
+ *
+ * Why it is still a draft (2026-10-18): the machine sat at 100 % CPU with
+ * 56 node processes (23 active) from a parallel session, and this repo's dev
+ * boot is slow on a cold Vite cache. Under that load `page.goto` alone timed
+ * out at 300 s, so no measurement was ever taken. A gate that has never run
+ * is not a gate — it is a guess with a green paint job.
+ *
+ * The three blockers encountered, in the order they were hit:
+ *   1. a syntax error in src/ui/padChannelState.ts (another session's WIP)
+ *      made Vite return 500 for App.tsx — nothing could mount at all;
+ *   2. `.devices-add-effect` (the selector the existing verify-browser.mjs
+ *      still uses) no longer exists anywhere in src/ui — the add flow is a
+ *      popover now, and that gate's selector has silently drifted;
+ *   3. CPU saturation above.
+ * Steps 1 and 2 are fixed below. Step 3 is environmental.
+ *
  * Audit 16 (2026-10-16) fixed three canvas gestures that wrote the DOCUMENT on
  * every pointermove (Rezonans formant, Ozvena blend pad, Skrutka curve). The
  * fix was proven two ways, both inside jsdom: a regression spec whose negative
@@ -26,7 +47,7 @@
  *   COMMIT     the persisted project document's focusHz changes after release —
  *              the drag reached the document, once, through the normal path.
  *
- * Usage:  npm run test:browser:drag-responsiveness        (PORT overrides 5261)
+ * Usage:  node scripts/verify-drag-responsiveness-browser.mjs   (PORT overrides 5261)
  * Exit 0 = the canvas gesture stayed inside the document-write budget.
  *
  * Note on instrument choice: long-task and frame-jank observers were rejected.
@@ -237,14 +258,12 @@ try {
   // Boot recipe mirrored from verify-browser.mjs, which already carries a
   // "mount retry" for this repo's slow cold mount.
   let mountRetry = false;
-  await page
-    .waitForSelector(".landing, .project-browser", { timeout: navTimeout })
-    .catch(async () => {
-      if (mountRetry) throw new Error("mount retry also timed out");
-      mountRetry = true;
-      await page.reload({ waitUntil: "domcontentloaded", timeout: navTimeout });
-      return page.waitForSelector(".landing, .project-browser", { timeout: navTimeout });
-    });
+  await page.waitForSelector(".landing, .project-browser", { timeout: navTimeout }).catch(async () => {
+    if (mountRetry) throw new Error("mount retry also timed out");
+    mountRetry = true;
+    await page.reload({ waitUntil: "domcontentloaded", timeout: navTimeout });
+    return page.waitForSelector(".landing, .project-browser", { timeout: navTimeout });
+  });
   if (await page.$(".landing")) {
     await page.waitForSelector(".landing-hero-player .embed-play", { timeout: navTimeout });
     await page.evaluate(() => document.querySelector(".landing-nav button.landing-btn-primary")?.click());
@@ -255,9 +274,16 @@ try {
   await page.waitForSelector(".sequencer", { timeout: navTimeout });
 
   // Open the device chain and add TWIST (SKRUTKA) to the selected track.
+  // NOTE: the add flow is a popover (FxAddPopover), not a <select> — the
+  // ".devices-add-effect" select that verify-browser.mjs still uses no longer
+  // exists anywhere in src/ui, so that gate's selector has drifted.
   await page.locator('.dock-tabs button[aria-label="Toggle track device chain"]').first().click();
   await page.waitForSelector(".devices-panel", { timeout: 60_000 });
-  await page.locator(".devices-add-effect").first().selectOption("skrutka");
+  await page.locator(".fx-add-trigger").first().click();
+  await page.waitForSelector(".fx-add-popover", { timeout: 30_000 });
+  await page.locator(".fx-add-search").fill("twist");
+  await page.waitForSelector(".fx-add-device", { timeout: 30_000 });
+  await page.locator(".fx-add-device").filter({ hasText: "TWIST" }).first().click();
   await page.waitForSelector(".fx-device", { timeout: 60_000 });
   await page.locator(".fx-device").first().click();
   await page.waitForSelector("canvas.skrutka-viz", { timeout: 60_000 });
@@ -277,15 +303,20 @@ try {
   // GUARD 1 — liveness. A panel that ignored the gesture would profile clean.
   const repainted = !!before && !!after && (before.hash !== after.hash || before.length !== after.length);
   // GUARD 2 — commit. The gesture must have reached the persisted document.
-  const committed =
-    typeof focusBefore === "number" && typeof focusAfter === "number" && focusAfter !== focusBefore;
+  const committed = typeof focusBefore === "number" && typeof focusAfter === "number" && focusAfter !== focusBefore;
 
   const withinBudget = measured.bucketPct["document-write"] <= DOC_WRITE_BUDGET_PCT;
 
   console.log("\n[drag-responsiveness] TWIST curve drag, " + DRAG_STEPS + " pointer samples");
   console.log("  wall time                 " + measured.wallMs + " ms");
   console.log("  app share of main thread  " + measured.wallSharePct + " % (" + measured.srcSamples + " samples)");
-  console.log("  document-write            " + measured.bucketPct["document-write"] + " %  (budget " + DOC_WRITE_BUDGET_PCT + " %)");
+  console.log(
+    "  document-write            " +
+      measured.bucketPct["document-write"] +
+      " %  (budget " +
+      DOC_WRITE_BUDGET_PCT +
+      " %)",
+  );
   console.log("  skrutka-panel             " + measured.bucketPct["skrutka-panel"] + " %");
   console.log("  engine                    " + measured.bucketPct["engine"] + " %");
   console.log("  liveness (repainted)      " + (repainted ? "yes" : "NO — the drag did nothing"));

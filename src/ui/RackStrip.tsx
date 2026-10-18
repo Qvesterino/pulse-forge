@@ -4,7 +4,12 @@ import type { DrumTrack } from "../project-model/types";
 import { usePlayheadStep } from "./playhead";
 import { assetCategoryOf, categoryColor } from "./kitColors";
 import { FALLOFF_MODES, REPEAT_RATES, type FalloffMode, type RepeatRate } from "../audio-engine/NoteRepeat";
-import { applyKitToDrumTrack, captureKitFromTrack, captureSketchFromDoc, installPackSketch } from "../commands/commands";
+import {
+  applyKitToDrumTrack,
+  captureKitFromTrack,
+  captureSketchFromDoc,
+  installPackSketch,
+} from "../commands/commands";
 import { decodeBindsCode, encodeBindsCode } from "../export/bindsCode";
 import { decodePackCode, encodePackCode, type SharedPack } from "../export/packCode";
 import { getThemeSnapshot, setTheme } from "./theme";
@@ -19,8 +24,6 @@ import { bindPadKey, getPadKeys, importPadKeys, isPadKey, resetPadKeys, usePadKe
 import {
   decayPeaks,
   effectiveRateOf,
-  PINNABLE_RATES,
-  setPinnedRates,
   setPadPeak,
   setSixteenLevels,
   usePeaks,

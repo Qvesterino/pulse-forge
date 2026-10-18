@@ -41,6 +41,22 @@ import { SequencerCheatSheet } from "./SequencerCheatSheet";
 import type { RemoteCursor } from "../collab/CollaborationProvider";
 import { executeUserEdit } from "../commands/types";
 import { ACTIVE_PATTERN_PANEL_ID, patternTabDomId } from "./patternDomIds";
+import { PadRateMenu } from "./PadRateMenu";
+import { setPadPeak, usePadPeak, usePinnedRates, useSixteenLevels } from "./padChannelState";
+
+/**
+ * Hold-to-repeat engage delay for the row label. Note repeat fires its first
+ * hit inside `start()`, so a zero-delay hold would double every click (hold hit
+ * plus preview). Past this delay the press becomes a live roll; below it the
+ * gesture stays the plain select-and-preview click it always was.
+ */
+const HOLD_ENGAGE_MS = 140;
+/**
+ * How long after a hold engaged its trailing click counts as "already sounded".
+ * Widen enough to cover a slow release, narrow enough that a later keyboard
+ * activation of the same button previews normally again.
+ */
+const HOLD_RELEASE_WINDOW_MS = 1200;
 
 export interface StepSelection {
   padIds: string[];
@@ -76,6 +92,8 @@ interface PadRowItem {
   padIndex: number;
   pad: DrumTrack["pads"][number];
   trackId: string;
+  /** The owning drum track — the row label is a full channel row (rate menu, meters). */
+  track: DrumTrack;
 }
 interface PianoRollItem {
   type: "pianoRoll";
@@ -141,7 +159,14 @@ function buildFlatItems(tracks: Track[]): FlatItem[] {
     if (track.kind === "group") continue;
     if (track.kind === "drum") {
       for (let pi = 0; pi < track.pads.length; pi++) {
-        items.push({ type: "padRow", trackIndex: ti, padIndex: pi, pad: track.pads[pi], trackId: track.id });
+        items.push({
+          type: "padRow",
+          trackIndex: ti,
+          padIndex: pi,
+          pad: track.pads[pi],
+          trackId: track.id,
+          track,
+        });
       }
     } else {
       items.push({ type: "pianoRoll", trackIndex: ti, track });
@@ -1134,10 +1159,13 @@ function VirtualRow({
     return (
       <PadRow
         pad={item.pad}
+        padIndex={item.padIndex}
+        track={item.track}
         trackId={item.trackId}
         pattern={pattern}
         playheadStep={playheadStep}
         selected={item.pad.id === selectedPadId}
+        selectedPadId={selectedPadId}
         dragPreview={dragPreview}
         paintPreview={paintPreview}
         stepSelection={stepSelection}
@@ -1560,10 +1588,13 @@ function TrackHeaderRow({
 
 function PadRow({
   pad,
+  padIndex,
+  track,
   trackId,
   pattern,
   playheadStep,
   selected,
+  selectedPadId,
   dragPreview,
   paintPreview,
   stepSelection,
@@ -1577,6 +1608,8 @@ function PadRow({
   effMinCol,
 }: {
   pad: DrumTrack["pads"][number];
+  padIndex: number;
+  track: DrumTrack;
   trackId: string;
   pattern: {
     id: string;
@@ -1586,6 +1619,8 @@ function PadRow({
   };
   playheadStep: number;
   selected: boolean;
+  /** The selected pad id — 16 LEVELS lanes aim at it, not at the pressed row. */
+  selectedPadId: string;
   dragPreview: {
     padId: string;
     stepIndex: number;
@@ -1635,6 +1670,55 @@ function PadRow({
   // flash must not re-render the 256 memoized step cells below.
   const [sampleOver, setSampleOver] = useState(false);
 
+  // ── Channel state (shared with the drum rack — padChannelState.ts) ───────
+  // The row label is a complete channel row, so it reads the same values the
+  // rack header writes and renders the same meter the rack pad shows.
+  const peak = usePadPeak(pad.id);
+  const pinnedRates = usePinnedRates();
+  const sixteenLevels = useSixteenLevels();
+  const pinned = pinnedRates[pad.id];
+  const levelsPercent = Math.round(((padIndex + 1) / track.pads.length) * 100);
+  const [rateMenu, setRateMenu] = useState<{ x: number; y: number } | null>(null);
+  const menuTimer = useRef<number | null>(null);
+  const holdTimer = useRef<number | null>(null);
+  /** When the hold engaged (ms epoch) — lets the trailing click know the pad
+   *  was already sounded by note repeat instead of previewing twice. */
+  const holdEngagedAt = useRef(0);
+  const holdKey = `row:${trackId}:${pad.id}`;
+
+  // Hold-to-repeat for this row: one immediate hit, then repeats while held
+  // when a division is armed. In 16 LEVELS every row plays the SELECTED pad's
+  // sound at a fixed velocity by position — the MPC rule, selection locked.
+  const padDown = useCallback(() => {
+    const levels = sixteenLevels && selectedPadId;
+    const targetPadId = levels ? selectedPadId : pad.id;
+    const baseVelocity = levels ? (padIndex + 1) / track.pads.length : 1;
+    const target = track.pads.find((p) => p.id === targetPadId);
+    if (!target) return;
+    services.noteRepeat.start(holdKey, trackId, targetPadId, baseVelocity, pinnedRates[targetPadId]);
+    setPadPeak(targetPadId, target.gain * baseVelocity);
+  }, [sixteenLevels, selectedPadId, pad.id, padIndex, track.pads, holdKey, trackId, pinnedRates, services.noteRepeat]);
+
+  const padUp = useCallback(() => {
+    services.noteRepeat.stop(holdKey);
+  }, [services.noteRepeat, holdKey]);
+
+  const releasePointer = useCallback(() => {
+    if (menuTimer.current !== null) {
+      window.clearTimeout(menuTimer.current);
+      menuTimer.current = null;
+    }
+    if (holdTimer.current !== null) {
+      window.clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+    padUp();
+  }, [padUp]);
+
+  // A press that unmounts (view switch, track delete) must not leave a live
+  // hold or a pending menu timer behind.
+  useEffect(() => releasePointer, [releasePointer]);
+
   return (
     <div
       className={`sequencer-row${selected ? " selected" : ""}`}
@@ -1660,18 +1744,77 @@ function PadRow({
           executeUserEdit(services.store, setPadParams(doc, pad.id, { assetId }));
         }}
       >
+        {/* The row label IS the pad channel: index, name, M/S, 16 LEVELS or
+            pinned-rate badge, synth badge, live meter and the rate menu all
+            live here, so the row can carry what the rack grid carries without
+            the grid being removed yet. */}
         <button
           type="button"
           className={`row-pad${selected ? " selected" : ""}`}
           data-pad-id={pad.id}
           style={{ "--pad-color": categoryColor(assetCategoryOf(pad)) } as React.CSSProperties}
-          title={`${pad.name} — click to preview and select`}
+          title={`${pad.name} — click to preview and select, hold to play${
+            pinned ? ` (repeats ${pinned})` : ""
+          } — right-click or hold for rate/colour`}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setRateMenu({ x: event.clientX, y: event.clientY });
+          }}
+          onPointerDown={(event) => {
+            // No preventDefault: the click that follows must still select and
+            // preview, exactly as before.
+            //
+            // Hold-to-repeat engages on a DELAY, not on the press itself.
+            // Note repeat fires its first hit inside start(), so engaging it on
+            // the press would double every click (hold hit + preview) and would
+            // silently mute click-to-audition on a MUTED pad, which a hold can
+            // never sound. Below the delay the gesture stays exactly what it
+            // was: a click that selects and previews.
+            if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
+            holdTimer.current = window.setTimeout(() => {
+              holdTimer.current = null;
+              holdEngagedAt.current = Date.now();
+              // In 16 LEVELS the rows are velocity lanes — selection stays locked.
+              if (!sixteenLevels) onSelectPad(pad.id);
+              padDown();
+            }, HOLD_ENGAGE_MS);
+            // Touch/pen long-press opens the rate menu (right-click is
+            // mouse-only, so the menu would otherwise be unreachable on touch).
+            if (event.pointerType !== "mouse") {
+              if (menuTimer.current !== null) window.clearTimeout(menuTimer.current);
+              const anchor = { x: event.clientX, y: event.clientY };
+              menuTimer.current = window.setTimeout(() => {
+                menuTimer.current = null;
+                padUp();
+                setRateMenu(anchor);
+              }, 500);
+            }
+          }}
+          onPointerUp={releasePointer}
+          onPointerLeave={releasePointer}
+          onPointerCancel={releasePointer}
           onClick={() => {
+            // A hold that engaged already sounded the pad, and in 16 LEVELS it
+            // must NOT change the selection — that is the grid's locked rule.
+            // A MUTED pad makes no sound through note repeat, so it previews
+            // here to keep click-to-audition intact for muted rows.
+            if (Date.now() - holdEngagedAt.current < HOLD_RELEASE_WINDOW_MS) {
+              holdEngagedAt.current = 0;
+              if (pad.mute || track.mute) services.engine.preview(pad, trackId);
+              return;
+            }
             onSelectPad(pad.id);
             services.engine.preview(pad, trackId);
           }}
         >
-          {pad.name}
+          <span className="row-pad-index">{padIndex + 1}</span>
+          <span className="row-pad-name">{pad.name}</span>
+          {sixteenLevels && <span className="row-pad-rate-badge">{levelsPercent}%</span>}
+          {pinned && <span className="row-pad-rate-badge">{pinned}</span>}
+          {pad.synth && <span className="pad-synth-badge">{pad.synth.type.slice(0, 3).toUpperCase()}</span>}
+          <span className="row-pad-meter" aria-hidden="true">
+            <span className="row-pad-meter-fill" style={{ height: `${Math.min(100, peak * 100)}%` }} />
+          </span>
         </button>
         <button
           type="button"
@@ -1689,6 +1832,18 @@ function PadRow({
         >
           S
         </button>
+        {/* Same menu component the rack pad opens — a rate picked here is
+            immediately visible in the rack grid and in every other row. */}
+        {rateMenu && (
+          <PadRateMenu
+            padId={pad.id}
+            track={track}
+            x={rateMenu.x}
+            y={rateMenu.y}
+            globalRate={services.noteRepeat.currentRate}
+            onClose={() => setRateMenu(null)}
+          />
+        )}
       </div>
       <div
         className="row-steps"

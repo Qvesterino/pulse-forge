@@ -16,6 +16,7 @@ import {
   type UltinaProposal,
 } from "../effects/ultina-core/analysis/assistant";
 import type { ProjectDocument } from "../project-model/types";
+import { formatVlyxClaim, vlyxTonalClaim } from "../analysis/vlyxClaim";
 import { applyUltinaProposal } from "../commands/commands";
 import { matchAuditionLevels, playAuditionBuffer, stopAudition } from "../intent/audition";
 import { TARGET_LIBRARY, getTargetById } from "../effects/ultina-core/analysis/targetLibrary";
@@ -324,6 +325,8 @@ export function UltinaPanel({
     label: string;
     goal: string;
     changes: { parameterId: string; value: number }[];
+    /** VLYX sound-identity claim (measured, see src/analysis/vlyxClaim.ts). */
+    claimLine?: string;
   }) => {
     const sourceToggles = Array.isArray(args.proposal.moduleToggles) ? args.proposal.moduleToggles : [];
     const toggles = sourceToggles.flatMap((toggle) => {
@@ -378,6 +381,7 @@ export function UltinaPanel({
     const metric = (value: number, unit: string) => (Number.isFinite(value) ? `${value.toFixed(1)} ${unit}` : "n/a");
     const trackName = args.baseDoc.tracks.find((track) => track.id === trackId)?.name ?? trackId;
     const lines = [
+      ...(args.claimLine ? [args.claimLine] : []),
       levelMatch
         ? `A/B LEVEL — BS.1770 integrated ${beforeLufs?.toFixed(1)} → ${afterLufs?.toFixed(1)} LUFS; preview matched at ${levelMatch.targetLufs.toFixed(1)} LUFS (before ${levelMatch.beforeGainDb.toFixed(1)} dB, proposal ${levelMatch.afterGainDb.toFixed(1)} dB). Preview-only gain; no upward normalization.`
         : "A/B LEVEL — one render was too quiet or too short to measure; preview uses original render levels.",
@@ -739,6 +743,12 @@ export function UltinaPanel({
         setMatchSummary([`Tonal balance already within ±1.5 dB of ${targetName} — no EQ moves needed.`]);
         return;
       }
+      // The sound-identity claim, computed from the analysis's own octave
+      // profile and the chosen target (see src/analysis/vlyxClaim.ts).
+      const claim = vlyxTonalClaim(
+        proposal.features.spectralProfile.map((band) => band.ratio),
+        targetCurve,
+      );
       await stageProposalReview({
         kind: "match",
         run,
@@ -748,6 +758,16 @@ export function UltinaPanel({
         label: `Reference match (${targetName})`,
         goal: `move this track toward the “${targetName}” tonal target`,
         changes: eqChanges.map((change) => ({ parameterId: change.parameterId, value: change.value })),
+        // The sound-identity CLAIM, computed from this render's own octave
+        // profile against the chosen target — the A/B line below is the render
+        // measurement; this line is the rule's predicted correction.
+        ...(claim
+          ? {
+              claimLine:
+                `CLAIM — VLYX target correction: ${formatVlyxClaim(claim)} ` +
+                "(measured on this render's octave profile; the rule halves each deviation over the 1.5 dB threshold, capped at ±6 dB).",
+            }
+          : {}),
       });
     } catch (err) {
       if (isUltinaAnalysisCancelledError(err)) return;

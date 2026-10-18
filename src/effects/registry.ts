@@ -1048,7 +1048,7 @@ const wowFlutter: EffectDefinition = {
   category: "character",
   params: wowFlutterParams,
   factory(ctx, instance) {
-    if (isWorkletReady("tapeSat", ctx)) return createWowFlutterNode(ctx, instance);
+    if (isWorkletReady("wowFlutter", ctx)) return createWowFlutterNode(ctx, instance);
     return bypassRuntime(ctx, "AudioWorklet unavailable - wow & flutter bypassed (1:1 signal)");
   },
 };
@@ -1143,6 +1143,14 @@ const clipper: EffectDefinition = {
 
 /* ---------------- Reverb ---------------- */
 
+/**
+ * Bounded wait for the fallback convolver's IR worker. The worker can die
+ * WITHOUT firing `error` (killed under memory pressure, module torn down after
+ * a long idle); the wet path would then stay silent forever with nothing to
+ * observe. 5 s is far above a normal IR render (~ms) and still bounded.
+ */
+const IR_WORKER_TIMEOUT_MS = 5_000;
+
 function makeImpulseResponse(ctx: BaseAudioContext, decaySec: number, seed: number): AudioBuffer {
   const length = Math.max(1, Math.floor(ctx.sampleRate * decaySec));
   const buffer = ctx.createBuffer(2, length, ctx.sampleRate);
@@ -1221,11 +1229,33 @@ const reverb: EffectDefinition = {
     mix.wet.connect(preDelay).connect(conv).connect(tone).connect(mix.output);
     const seed = hashString(instance.id);
     let worker: Worker | null = null;
+    let irTimer: ReturnType<typeof setTimeout> | null = null;
     // Freshest decay the fallback can use if the worker dies before replying.
     let fallbackDecay = instance.params.decay ?? 1.8;
+    const clearIrTimer = () => {
+      if (irTimer !== null) {
+        clearTimeout(irTimer);
+        irTimer = null;
+      }
+    };
+    // The single degradation path: a dead/absent/hung worker swaps in the
+    // deterministic sync impulse and stops posting into a dead worker.
+    const useSyncImpulse = () => {
+      clearIrTimer();
+      worker?.terminate();
+      worker = null;
+      conv.buffer = makeImpulseResponse(ctx, fallbackDecay, seed);
+    };
+    const armIrTimer = () => {
+      clearIrTimer();
+      if (worker && typeof setTimeout === "function") {
+        irTimer = setTimeout(useSyncImpulse, IR_WORKER_TIMEOUT_MS);
+      }
+    };
     try {
       worker = new Worker(new URL("../audio-workers/ir-generator.ts", import.meta.url), { type: "module" });
       worker.onmessage = (e: MessageEvent<{ left: Float32Array; right: Float32Array; length: number }>) => {
+        clearIrTimer();
         const { left, right, length } = e.data;
         const buffer = ctx.createBuffer(2, length, ctx.sampleRate);
         buffer.copyToChannel(left as Float32Array<ArrayBuffer>, 0);
@@ -1238,9 +1268,7 @@ const reverb: EffectDefinition = {
       // `conv.buffer` was never assigned (no wet signal), and the sync fallback
       // in the `decay` case below was unreachable.
       worker.onerror = () => {
-        worker?.terminate();
-        worker = null;
-        conv.buffer = makeImpulseResponse(ctx, fallbackDecay, seed);
+        useSyncImpulse();
       };
     } catch {
       // Worker not available — sync fallback
@@ -1249,8 +1277,12 @@ const reverb: EffectDefinition = {
       switch (id) {
         case "decay":
           fallbackDecay = v;
-          if (worker) worker.postMessage({ decay: v, sampleRate: ctx.sampleRate, seed });
-          else conv.buffer = makeImpulseResponse(ctx, v, seed);
+          if (worker) {
+            worker.postMessage({ decay: v, sampleRate: ctx.sampleRate, seed });
+            // Re-arm per request: a worker that answered once can still die
+            // before the NEXT reply, and the wet path must not go silent.
+            armIrTimer();
+          } else conv.buffer = makeImpulseResponse(ctx, v, seed);
           break;
         case "predelay":
           smooth(preDelay.delayTime, v / 1000, when, 0.05);
@@ -1267,6 +1299,10 @@ const reverb: EffectDefinition = {
       }
     };
     for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
+    // A reverb instance whose params never mention `decay` still needs its
+    // impulse: arm the bounded wait after the replay, so a worker that never
+    // answers cannot leave the wet path dry forever.
+    armIrTimer();
     return {
       input: mix.input,
       output: mix.output,
@@ -1286,6 +1322,7 @@ const reverb: EffectDefinition = {
         }
       },
       dispose: () => {
+        clearIrTimer();
         worker?.terminate();
         mix.input.disconnect();
         mix.output.disconnect();

@@ -198,6 +198,67 @@ commit that adds it must bump the committed spec-file count in
 from 1068 to 1069 — the drift gate counts `git ls-files`, so the working-tree
 count stays 1068 until then.
 
+## Round 7 (2026-10-18) — Worklet lazy seam (core budget paid, not raised)
+
+The hardening rounds pushed the core worklet bundle to **162,950 bytes** (gate:
+160 KB) against its 150 KB budget. Raising the cap would have hidden the debt;
+the worklet is a startup asset, so the correct move was a real seam.
+
+**What moved:** eleven rare/heavy creative effects now live in one on-demand
+bundle, `public/fx-extra-worklet.js`: VOCODER, VINYL, BEAT MANGLER, FREQ
+SHIFTER, PITCH CORRECT, PITCH SHIFT, REVERSE SWELL, GRANULAR FREEZE, WOW &
+FLUTTER, TAPE STOP and STUTTER. They are useful, but no everyday EQ / comp /
+delay / reverb chain needs them, and together they were the largest optional
+block in core.
+
+**Loader contract:** `LAZY_MODULE_GROUPS` maps each effect type to a physical
+module. Requesting any one of the eleven calls `addModule` for
+`fx-extra-worklet.js` exactly once (inflight is keyed by module, not type);
+success marks **every** type that module registers ready, and `isWorkletReady`
+falls back to the module set if a per-type set is ever partial. A project that
+never references one of these effects never fetches the 50 KB bundle.
+
+**Latent bug exposed and fixed:** WOW & FLUTTER's factory gated on
+`isWorkletReady("tapeSat")` because the type was never in the loader's lists.
+That happened to work while both lived in core; with WOW & FLUTTER moved it
+would have constructed an `AudioWorkletNode` before its module landed. The
+gate is now `"wowFlutter"`, and the type is registered in the loader.
+
+**Measured result (production build):**
+
+| Bundle | Before | After | Budget |
+|---|---:|---:|---:|
+| core worklets (`bitcrusher` + `core`) | 160 KB | **111 KB** | 150 KB |
+| `fx-extra-worklet.js` (lazy) | — | **50 KB** | 64 KB |
+| generative player | 3 KB | 3 KB | 4 KB |
+
+`core-worklet.js` is 112,189 bytes; `fx-extra-worklet.js` is 50,948 bytes.
+A shipped-bundle probe confirms the seam is real: `core` registers
+stock-delay/eq but **not** vocoder/vinyl/wowflutter; `fx-extra` registers all
+eleven moved processors, and `dist/fx-extra-worklet.js` is emitted.
+
+**Tests:** `tests/audio-worklets.test.ts` (27) now includes the group contract
+(two effects → ONE extra `addModule`, both ready, unrelated types still not
+ready) and a structural seam pin (the moved processors are absent from
+`core-processor.js` and present in `fx-extra-processor.js`). `loadAllWorklets`
+derives its module count from `LAZY_MODULE_GROUP_COUNT`, so a new physical
+module updates the assertion instead of rotting it.
+
+**Verification:** `npm run build:core-worklets` (both bundles), `npx vite
+build`, `npx vitest run tests/audio-worklets.test.ts` (27/27; the
+`oncontextrestored` spec needs more than its 20 s timeout when the dynamic
+`AudioEngine` import runs under heavy concurrent load — it passed at 60 s with
+no code change), the targeted hardening/loader suites, scoped typecheck and
+Prettier, and the bundle probe. The **core worklet gate is now green**
+(111/150). The remaining size-gate failure is the **studio boot path**
+(2270 > 2200 KB), which is JS anchor debt (App/curated-layer/ledger) and cannot
+be paid by a worklet seam; it needs the separate eager-diet work.
+
+Bookkeeping: the committed spec-file count is now 1080 (concurrent waves took
+it from 1068). Three specs are still untracked — `tests/worklet-nan-boundary.test.ts`,
+`tests/mobile-profile.test.ts` and `tests/mobile-packaging.test.ts`; the commit
+that adds them must bump 1080 → 1083.
+
 ## 1. Plugin Invariants (Objective §1)
 
 Verified by reading code, existing regression tests, and the dedicated

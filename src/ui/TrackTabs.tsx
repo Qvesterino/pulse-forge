@@ -9,6 +9,7 @@ import {
   setTrackParams,
 } from "../commands/commands";
 import type { InstrumentKind, Track } from "../project-model/types";
+import { INSTRUMENT_META, INSTRUMENT_ORDER } from "../instruments/definitions";
 import { KYX_SAMPLE_MIME, sampleIdFromDrag } from "./SampleBrowser";
 
 const KIND_BADGE: Record<"drum" | "group" | InstrumentKind, string> = {
@@ -177,21 +178,18 @@ export function TrackTabs({
         <option value="">+ TRACK</option>
         <option value="drum">Drum Rack</option>
         <option value="generative">MRT2 Generative</option>
-        <option value="sampler">Sampler</option>
-        <option value="analog">Analog Synth</option>
-        <option value="bass">Bass Synth</option>
-        <option value="808">808 Synth</option>
-        <option value="texture">Texture Synth</option>
-        <option value="wavetable">Wavetable Synth</option>
-        <option value="granular">Granular Synth</option>
-        <option value="keys">Keys Synth</option>
-        <option value="pluck">Pluck Synth</option>
-        <option value="flute">Flute</option>
-        <option value="logdrum">Log Drum</option>
-        <option value="spectral">Spectral Pad</option>
-        <option value="vocalchop">Vocal Chop</option>
-        <option value="drumsynth">Drum Synth</option>
-        <option value="kopa">KOPA Kick Designer</option>
+        {/* Registry-driven, not hand-listed. The hardcoded list this replaced
+            offered 15 kinds while `INSTRUMENT_ORDER` has 24, and TrackTabs is
+            the only UI caller of `createInstrumentTrack` — so organ, strings,
+            bell, reese, clav, acid, brass, fm and tsar were fully implemented
+            yet unreachable from the UI. Labels now come from INSTRUMENT_META,
+            which also removes the drift where this menu said "KOPA Kick
+            Designer" / "Keys Synth" while the registry says "KOPA" / "Keys". */}
+        {INSTRUMENT_ORDER.map((kind) => (
+          <option key={kind} value={kind}>
+            {INSTRUMENT_META[kind].name}
+          </option>
+        ))}
         <option value="group">Group</option>
       </select>
     </div>

@@ -14,6 +14,7 @@ import { stripBasePath } from "./shared/mountBase";
 import "./styles/index.css";
 import { initTheme } from "./ui/theme";
 import { initPadKeys } from "./ui/padKeys";
+import { initMobileProfile } from "./shared/mobileProfile";
 
 // Ecosystem mount (Qvester Studio subpath): when built with
 // STUDIO_APP_BASE=/kyx/, BASE_URL carries the mount — root-absolute
@@ -23,6 +24,11 @@ configureAssetBase(import.meta.env.BASE_URL);
 
 // Load persisted pad key bindings before the first paint.
 initPadKeys();
+
+// Mobile runtime profile (ADR 0051): classify from pointer capability, not a
+// user-agent string. Sets data-mobile-profile/data-input-mode for the touch
+// CSS layer and keeps them correct across rotation / pointer changes.
+initMobileProfile();
 
 // Service-worker update banner (PWA "prompt" mode) — registers on every
 // route; the banner only appears when a new build is waiting.

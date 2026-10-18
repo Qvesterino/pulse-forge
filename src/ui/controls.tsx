@@ -211,6 +211,27 @@ export function ratioToTaper(min: number, max: number, ratio: number, taper: Sli
   return min * Math.pow(max / min, r);
 }
 
+/**
+ * Parse a hand-typed control value into the control's domain (pure —
+ * unit-tested). Returns `null` for "commit nothing" so callers can distinguish
+ * a cancelled edit from a real zero.
+ *
+ * The empty case is the whole point. `Number("")` is `0` and `Number("  ")` is
+ * `0`, so a field the user cleared (select-all, backspace, then Tab) parsed as
+ * a legitimate value and was clamped into range — silently slamming the
+ * parameter to its MINIMUM. Typing a value, deciding to abandon it and hitting
+ * Escape-or-blur must leave the engine untouched; only an explicitly emptied
+ * field previously moved the domain. Whitespace is trimmed for the same
+ * reason, and a comma decimal separator is accepted for Slovak/Czech keyboards.
+ */
+export function parseTypedControlValue(draft: string, min: number, max: number): number | null {
+  const raw = draft.trim();
+  if (raw === "") return null;
+  const parsed = Number(raw.replace(",", "."));
+  if (!Number.isFinite(parsed)) return null;
+  return Math.min(max, Math.max(min, parsed));
+}
+
 export function Slider({
   label,
   hint,
@@ -291,9 +312,9 @@ export function Slider({
 
   const commitTypeDraft = () => {
     if (typeDraft === null) return;
-    const parsed = Number(typeDraft.replace(",", "."));
+    const parsed = parseTypedControlValue(typeDraft, min, max);
     setTypeDraft(null);
-    if (Number.isFinite(parsed)) onCommit(Math.min(max, Math.max(min, parsed)));
+    if (parsed !== null) onCommit(parsed);
   };
 
   const firePreview = (v: number) => {
@@ -709,9 +730,9 @@ export function DragNumber({
 
   const commitTypeDraft = () => {
     if (typeDraft === null) return;
-    const parsed = Number(typeDraft.replace(",", "."));
+    const parsed = parseTypedControlValue(typeDraft, min, max);
     setTypeDraft(null);
-    if (Number.isFinite(parsed)) cleanCommit(parsed);
+    if (parsed !== null) cleanCommit(parsed);
   };
 
   return (

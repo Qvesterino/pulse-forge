@@ -228,6 +228,15 @@
       "note": "Wave A: entered through the REAL panel (type the brief, press DO IT). The default must yield a multi-candidate auditionable bank with ONE explained winner and NO single-result fallback; the negative spec spies the budget to the lean value and pins the honest constrained-device outcome (USE RESULT, nothing to audition) — proving the budget reaches the request instead of being decoration."
     },
     {
+      "id": "vlyx-sound-identity",
+      "status": "COVERED",
+      "entryPoint": "docs/SOUND-IDENTITY.md (VLYX chosen) → vlyx-demo template + src/analysis/vlyxClaim.ts + status row + REFERENCE MATCH claim line + landing section",
+      "spec": "tests/vlyx-claim.test.ts",
+      "seamEvent": "reproduces the committed numbers exactly",
+      "negativeSpec": "never increases the mean deviation",
+      "note": "The sound identity, shipped in the plan's fixed order: artifact (the 'VLYX Demo — Muddy Mix' template, muddy by construction and golden-hashed), pin (a frozen vector plus a drift-checked status row), claim (the CLAIM line in the REFERENCE MATCH review, computed from the REAL analyzeWithTarget's octave profile), face (one landing section). NEGATIVEs: the rule can never INCREASE the mean deviation (200 deterministic vectors), the claim reads only what the analysis measured, and taste is never claimed — the render + LUFS A/B stays the 'does it sound better' measurement."
+    },
+    {
       "id": "i18n-skeleton",
       "status": "COVERED",
       "entryPoint": "src/i18n/index.ts (t + useLocale) with PublishButton as the pattern panel",
@@ -493,6 +502,42 @@
       "seamEvent": "Codec preview start time in seconds",
       "negativeSpec": "keeps the chosen offset when the field is cleared to be retyped",
       "note": "Asserted on the frame math reaching encodeMp3, not on the rendered string: the rendered value is derived and stays plausible even while the wrong offset is encoded. Measured defect: setting a 30 s offset and then clearing the field to retype it called encodeMp3 with startFrame 0, silently previewing a different excerpt. The read-side clamp meant no NaN ever reached the engine - which is why this reads as a silent wrong result rather than a crash."
+    },
+    {
+      "id": "control-typed-value-entry",
+      "status": "COVERED",
+      "entryPoint": "src/ui/controls.tsx Slider/DragNumber right-click -> ValueMenu -> 'Type value...' -> input blur/Enter",
+      "spec": "tests/ui/control-typed-value-validation.test.tsx",
+      "seamEvent": "Type value",
+      "negativeSpec": "commits NOTHING when the field is cleared and blurred",
+      "note": "The Number('') === 0 class: an emptied field parsed as a legitimate 0, passed Number.isFinite, and was clamped into range as the control MINIMUM (Slider min 0 wrote 0; DragNumber min 40 wrote 40). The guard now lives in the pure parseTypedControlValue. Specs drive the real menu and the real input, not the parser alone."
+    },
+    {
+      "id": "numeric-field-empty-cancel",
+      "status": "COVERED",
+      "entryPoint": "type=number fields that hand-roll Number(event.target.value) instead of routing through NumericDraftInput",
+      "spec": "tests/ui/fxeq-crossover-numeric-entry.test.tsx",
+      "seamEvent": "Crossover 2 frequency",
+      "negativeSpec": "writes NOTHING",
+      "note": "PRISM crossover: an emptied field wrote the 80 Hz floor, AND the typed value '1200' produced 4 document writes because the input was CONTROLLED by the stored value while committing on every keystroke. Routed onto NumericDraftInput: one gesture is one write. (This seam was lost when the branch history was rewritten and has been re-applied.)"
+    },
+    {
+      "id": "album-batch-delivery-targets",
+      "status": "COVERED",
+      "entryPoint": "src/ui/MasteringAlbumPanel.tsx GAIN-ONLY LOUDNESS MATCH numeric fields -> onBatchExport / onAudition options",
+      "spec": "tests/ui/mastering-album-batch-numeric.test.tsx",
+      "seamEvent": "Album batch target integrated loudness in LUFS",
+      "negativeSpec": "does NOT",
+      "note": "These values become normalizeToLufs / truePeakCeilingDbtp / maximumGainDb, and the album normalization path applies that gain to the RENDERED PCM of every exported track. Measured defects: an empty LUFS field exported normalizeToLufs 0 (0 LUFS-I), an empty true-peak field disabled the ceiling, and '99' passed through unclamped."
+    },
+    {
+      "id": "add-track-instrument-parity",
+      "status": "COVERED",
+      "entryPoint": "src/ui/TrackTabs.tsx add-track select -> createInstrumentTrack",
+      "spec": "tests/ui/tracktabs-instrument-parity.test.tsx",
+      "seamEvent": "Add track",
+      "negativeSpec": "offers no instrument value outside the registry",
+      "note": "TrackTabs is the only UI caller of createInstrumentTrack, so a missing option is an unreachable instrument rather than a cosmetic gap. The hand-written list offered 15 of 24 kinds (organ, strings, bell, reese, clav, acid, brass, fm, tsar were uncreatable) and drifted from the INSTRUMENT_META names. Now registry-generated, with a two-sided parity assertion."
     }
   ]
 }

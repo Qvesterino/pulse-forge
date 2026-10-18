@@ -1901,7 +1901,12 @@ export function MasteringAssistant({
                       workBlocked ||
                       !analysisIsCurrent ||
                       analysis.candidates.length < 2 ||
-                      studyLeftIndex === studyRightIndex
+                      studyLeftIndex === studyRightIndex ||
+                      // Mirrors the handler's own guard. Without it the button
+                      // reads as available and the only feedback is an error
+                      // toast explaining a precondition the UI never showed —
+                      // a control wired to a rule it does not display.
+                      !levelMatch
                     }
                   >
                     {busy === "study" ? "Rendering blind pair…" : "Render blind pair"}
@@ -1924,7 +1929,11 @@ export function MasteringAssistant({
                       proposal 2 {studyAudioPair.right.safeAfterPreview ? "passes" : "flags"} sample-peak/true-peak
                       limits.
                     </span>
-                    <button type="button" onClick={beginStudyReview} disabled={blockAudition || busy !== null}>
+                    <button
+                      type="button"
+                      onClick={beginStudyReview}
+                      disabled={blockAudition || busy !== null || !levelMatch}
+                    >
                       Start listener 1
                     </button>
                     <button type="button" onClick={releaseStudyAudio}>

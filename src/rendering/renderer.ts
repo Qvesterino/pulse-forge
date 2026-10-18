@@ -694,6 +694,11 @@ export async function renderProject(
     // shared bank outlives this throwaway engine, and an unconsumed closure
     // would retain every discarded render engine (one per export/stem/bounce).
     engine.detachBank();
+    // Deterministic graph teardown: the offline context is caller-owned (never
+    // closed here), but the worklet nodes, runtimes and voices are released now
+    // instead of waiting for GC — repeated exports/stems no longer accumulate a
+    // full graph each.
+    engine.dispose();
   }
 }
 

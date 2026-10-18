@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AudioEngine } from "../src/audio-engine/AudioEngine";
 import { SampleBank } from "../src/sample-library/factory";
 import { createProjectFromTemplate } from "../src/project-model/templates";
@@ -297,6 +297,49 @@ describe("engine lifecycle stress gate", () => {
     expect(retained, "the live graph retains nodes created on the swapped-out context").toEqual([]);
   });
 
+  it("closes an engine-created context on swap and NEVER a caller's context", async () => {
+    const globals = globalThis as unknown as { AudioContext?: unknown };
+    const RealAudioContext = globals.AudioContext;
+    // The real engine-created path: ensureContext() does `new AudioContext()`.
+    // The stub carries the full navigable mock so the graph builds on it and
+    // `isLiveAudioContext` (instanceof) recognises it.
+    class StubAudioContext {
+      close = vi.fn(async () => {
+        (this as unknown as { state: string }).state = "closed";
+      });
+      constructor() {
+        Object.assign(this, makeCtx());
+      }
+    }
+    globals.AudioContext = StubAudioContext;
+    try {
+      const engine = new AudioEngine();
+      const owned = engine.ensureContext();
+      expect(owned).toBeInstanceOf(StubAudioContext);
+
+      const external = makeCtx() as unknown as { close: ReturnType<typeof vi.fn> };
+      external.close = vi.fn();
+      engine.useContext(external as unknown as AudioContext);
+
+      expect(
+        (owned as unknown as { close: ReturnType<typeof vi.fn> }).close,
+        "the replaced engine-created context was not closed — audio thread + device handle leak",
+      ).toHaveBeenCalledTimes(1);
+      expect(external.close, "a caller-owned context must never be closed").not.toHaveBeenCalled();
+
+      // A second external swap closes neither external context.
+      const external2 = makeCtx() as unknown as { close: ReturnType<typeof vi.fn> };
+      external2.close = vi.fn();
+      engine.useContext(external2 as unknown as AudioContext);
+      expect(external.close).not.toHaveBeenCalled();
+      expect(external2.close).not.toHaveBeenCalled();
+      await flush();
+    } finally {
+      if (RealAudioContext === undefined) delete globals.AudioContext;
+      else globals.AudioContext = RealAudioContext;
+    }
+  });
+
   it("a context swap clears the offline-render lock (reused-engine safety)", () => {
     const ctx = makeCtx();
     const engine = new AudioEngine();
@@ -310,6 +353,79 @@ describe("engine lifecycle stress gate", () => {
 
     expect(internals.offlineRenderLocked, "syncPdc would stay locked forever on live audio").toBe(false);
     expect(internals.offlineExactPdc, "live PDC writes would stay sample-exact (no glide)").toBe(false);
+  });
+
+  it("counts close failures for the diagnostics panel (no silent leak)", async () => {
+    const globals = globalThis as unknown as { AudioContext?: unknown };
+    const RealAudioContext = globals.AudioContext;
+    class RejectingAudioContext {
+      close = vi.fn(async () => {
+        throw new DOMException("already closing", "InvalidStateError");
+      });
+      constructor() {
+        Object.assign(this, makeCtx());
+      }
+    }
+    globals.AudioContext = RejectingAudioContext;
+    try {
+      const engine = new AudioEngine();
+      engine.ensureContext();
+      engine.useContext(makeCtx() as unknown as AudioContext);
+      await flush();
+      expect(
+        engine.getDiagnostics().contextCloseFailures,
+        "a failed close must stay observable instead of silently leaking the audio thread",
+      ).toBe(1);
+    } finally {
+      if (RealAudioContext === undefined) delete globals.AudioContext;
+      else globals.AudioContext = RealAudioContext;
+    }
+  });
+
+  it("dispose() releases the graph, closes only an owned context and stays reusable", async () => {
+    const globals = globalThis as unknown as { AudioContext?: unknown };
+    const RealAudioContext = globals.AudioContext;
+
+    // Caller-owned context: never closed, but the graph is fully released.
+    const external = makeCtx() as unknown as { close: ReturnType<typeof vi.fn> };
+    external.close = vi.fn();
+    const engine = new AudioEngine();
+    engine.useContext(external as unknown as AudioContext);
+    engine.setProject(createProjectFromTemplate("house"));
+    await flush();
+    expect(sizes(engine).tracks).toBeGreaterThan(0);
+
+    engine.dispose();
+    expect(external.close, "dispose must never close a caller-owned context").not.toHaveBeenCalled();
+    expect(engine.context).toBeNull();
+    expect(sizes(engine)).toEqual({ tracks: 0, groups: 0, returns: 0 });
+    expect(() => engine.dispose(), "dispose is idempotent").not.toThrow();
+    // Reusable: a later boot rebuilds from the kept document.
+    engine.useContext(makeCtx() as unknown as AudioContext);
+    await flush();
+    expect(sizes(engine).tracks, "the engine could not be reused after dispose").toBeGreaterThan(0);
+
+    // Engine-created context: closed exactly once, even across a second dispose.
+    class OwnedAudioContext {
+      close = vi.fn(async () => {});
+      constructor() {
+        Object.assign(this, makeCtx());
+      }
+    }
+    globals.AudioContext = OwnedAudioContext;
+    try {
+      const ownedEngine = new AudioEngine();
+      const owned = ownedEngine.ensureContext();
+      ownedEngine.dispose();
+      expect((owned as unknown as { close: ReturnType<typeof vi.fn> }).close).toHaveBeenCalledTimes(1);
+      expect(ownedEngine.context).toBeNull();
+      ownedEngine.dispose();
+      expect((owned as unknown as { close: ReturnType<typeof vi.fn> }).close).toHaveBeenCalledTimes(1);
+    } finally {
+      if (RealAudioContext === undefined) delete globals.AudioContext;
+      else globals.AudioContext = RealAudioContext;
+    }
+    await flush();
   });
 
   it("NEGATIVE: a teardown before any context is a no-op, not a crash", () => {

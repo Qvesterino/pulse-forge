@@ -1,0 +1,96 @@
+/* Sequencer row = the ONE pad channel row (see src/ui/padChannelState.ts).
+ *
+ * The pad channel list used to be rendered twice: as the rack pad grid above
+ * the sequencer and as the `.row-label` beside the steps. The row now carries
+ * everything the grid pad carries — index, name, 16 LEVELS percentage or
+ * pinned rate, synth badge and a live meter — so the grid can be removed in a
+ * later step without losing a single affordance. Until then both render, and
+ * these rules only ADD to `.row-pad`; nothing here changes the grid.
+ *
+ * The row is 34px tall (46 on coarse pointers) and its label column is 168px,
+ * so every addition here is sized for that budget: badges sit in the button's
+ * own flow, the meter is a 3px bar pinned to the right edge, and the name keeps
+ * the ellipsis it always had.
+ */
+
+.row-pad {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  /* A press starts a note-repeat hold — text selection would fight it. */
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.row-pad-index {
+  flex: none;
+  font-family: var(--mono);
+  font-size: var(--fs-2xs);
+  color: var(--text-faint);
+  min-width: 1.4em;
+  text-align: right;
+}
+
+/* The name keeps the ellipsis the button always had: it is the only child that
+   may shrink, so the badges and the meter never push it out of the button. */
+.row-pad-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-pad-rate-badge {
+  flex: none;
+  font-family: var(--mono);
+  font-size: var(--fs-2xs);
+  line-height: 1.2;
+  color: var(--accent);
+  background: rgb(0 0 0 / 0.45);
+  border: 1px solid color-mix(in srgb, var(--accent) 66%, transparent);
+  border-radius: 3px;
+  padding: 0 2px;
+  pointer-events: none;
+}
+
+.row-pad .pad-synth-badge {
+  flex: none;
+  margin-top: 0;
+  pointer-events: none;
+}
+
+/* Same reading the rack pad shows, from the same shared peaks record — the row
+   meter is a rendering of sequencer state, not a second meter. */
+.row-pad-meter {
+  flex: none;
+  position: relative;
+  width: 3px;
+  align-self: stretch;
+  margin: 4px 3px 4px 1px;
+  background: rgb(255 255 255 / 0.06);
+  border-radius: 2px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.row-pad-meter-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--pad-color, var(--accent));
+  opacity: 0.9;
+  border-radius: 2px;
+}
+
+/* Coarse pointers get the taller row the layout already reserves, so the meter
+   and the badges keep the same proportions there. */
+@media (pointer: coarse) {
+  .row-pad-meter {
+    margin-top: 6px;
+    margin-bottom: 6px;
+  }
+}

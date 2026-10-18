@@ -1,0 +1,47 @@
+{
+  "format": "vlyx-tonal-claim.v1",
+  "note": "Golden vector for VLYX's target-correction claim (Prestige §3.4). The ratios are an octave-band spectral profile as the analysis reports it (`features.spectralProfile[i].ratio`); the target is a reference curve in the same dB units the core uses. tests/vlyx-claim.test.ts freezes these numbers — regenerating it to make a failing test pass would remove the claim's only pin.",
+  "ratios": [
+    0.08,
+    0.14,
+    0.24,
+    0.22,
+    0.14,
+    0.08,
+    0.04,
+    0.02,
+    0.008,
+    0.002
+  ],
+  "targetDb": [
+    -2,
+    0,
+    2,
+    2.5,
+    2,
+    0.5,
+    -1,
+    -3,
+    -6,
+    -9
+  ],
+  "expected": {
+    "bands": 10,
+    "meanDeviationDbBefore": 2.715,
+    "meanDeviationDbAfter": 1.629,
+    "improvementDb": 1.087,
+    "correctedBands": 5,
+    "correctionsDb": [
+      0,
+      0,
+      -0.901,
+      0,
+      0,
+      0,
+      1.49,
+      1.995,
+      2.485,
+      3.995
+    ]
+  }
+}

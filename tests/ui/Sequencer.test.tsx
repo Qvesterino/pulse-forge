@@ -28,10 +28,13 @@ describe("Sequencer", () => {
 
   it("renders step numbers in ruler", () => {
     renderWithContext(<Sequencer {...defaultProps} />);
-    expect(screen.getByText("1")).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getByText("4")).toBeInTheDocument();
+    // Scoped to the ruler: the pad rows carry their own 1-based pad index, so a
+    // document-wide getByText("1") now matches a ruler tick AND a pad index.
+    const ruler = within(screen.getByRole("group", { name: /Step ruler/ }));
+    expect(ruler.getByText("1")).toBeInTheDocument();
+    expect(ruler.getByText("2")).toBeInTheDocument();
+    expect(ruler.getByText("3")).toBeInTheDocument();
+    expect(ruler.getByText("4")).toBeInTheDocument();
   });
 
   it("renders dots for non-beat steps", () => {

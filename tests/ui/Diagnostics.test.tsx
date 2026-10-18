@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Diagnostics } from "../../src/ui/Diagnostics";
-import { renderWithContext } from "../helpers";
+import { AudioEngine } from "../../src/audio-engine/AudioEngine";
+import { mockServices, renderWithContext } from "../helpers";
 
 describe("Diagnostics", () => {
   it("renders ENGINE tab by default", () => {
@@ -36,5 +37,20 @@ describe("Diagnostics", () => {
   it("has correct aria-label", () => {
     renderWithContext(<Diagnostics />);
     expect(screen.getByRole("region", { name: /Engine diagnostics/ })).toBeInTheDocument();
+  });
+
+  it("shows the audio-boundary counters from the real engine diagnostics", () => {
+    const rows = new AudioEngine().getDiagnostics();
+    const services = mockServices();
+    (services as unknown as { getDiagnostics: () => Record<string, string | number | boolean> }).getDiagnostics = () =>
+      rows;
+    renderWithContext(<Diagnostics />, { services });
+
+    const drops = screen.getByText("audioBoundaryDrops").closest(".diagnostics-row");
+    expect(drops?.textContent, "the dropped-event total must reach the panel").toContain("0");
+    const kinds = screen.getByText("audioBoundaryDropKinds").closest(".diagnostics-row");
+    expect(kinds?.textContent, "the per-kind row must render the real empty state").toContain("none");
+    const closeFailures = screen.getByText("contextCloseFailures").closest(".diagnostics-row");
+    expect(closeFailures?.textContent, "failed context closes must be visible, not a silent leak").toContain("0");
   });
 });

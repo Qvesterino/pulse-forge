@@ -275,6 +275,63 @@ export function LandingPage({ onEnterStudio }: { onEnterStudio: () => void }) {
         </div>
       </section>
 
+      <section className="landing-section landing-section-tight" aria-label="VLYX sound identity">
+        <div className="landing-shell">
+          <div className="landing-section-head">
+            <p className="landing-eyebrow">The signature sound</p>
+            <h2>VLYX — the mix doctor you can check</h2>
+            <p className="landing-section-sub">
+              Press MIX ASSIST and VLYX renders your track, proposes the moves with the numbers attached, and steers it
+              toward your reference curve. The claim is arithmetic, not an adjective: the mean deviation across ten
+              octave bands drops, each correction is capped, and the exact figure is published on our status page —
+              reproduced by the same command we run.
+            </p>
+          </div>
+          <div className="landing-grid landing-grid-3">
+            <div className="landing-card">
+              <span className="landing-card-icon">
+                <Icon>
+                  <path d="M4 20V10" />
+                  <path d="M10 20V4" />
+                  <path d="M16 20v-7" />
+                  <path d="M22 20v-4" />
+                </Icon>
+              </span>
+              <h3>Measured, not promised</h3>
+              <p>
+                Before you apply anything: the level-matched A/B, the integrated loudness, and the deviation from the
+                target — on screen, in numbers.
+              </p>
+            </div>
+            <div className="landing-card">
+              <span className="landing-card-icon">
+                <Icon>
+                  <path d="M3 12a9 9 0 1 0 9-9" />
+                  <path d="M3 4v5h5" />
+                </Icon>
+              </span>
+              <h3>The project is unchanged until you say so</h3>
+              <p>
+                A proposal is a preview. Applying it is one undoable step, and the claim travels with your session
+                story.
+              </p>
+            </div>
+            <div className="landing-card">
+              <span className="landing-card-icon">
+                <Icon>
+                  <path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l4 4-9 9H4v-4l9-9Z" />
+                </Icon>
+              </span>
+              <h3>Try the demo</h3>
+              <p>
+                Open the “VLYX Demo — Muddy Mix” template, select “Muddy Keys”, and run MIX ASSIST. A deliberately muddy
+                part, so the measured change has something real to fix.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="landing-section landing-section-tight" aria-label="How it works">
         <div className="landing-shell">
           <div className="landing-section-head">

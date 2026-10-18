@@ -2164,7 +2164,16 @@ export function ArrangementPanel() {
       const { renderProject } = await import("../rendering/renderer");
       const buffer = await renderProject(auditionDoc, services.bank, {
         mode: "song",
-        sampleRate: 48_000,
+        // From the LIVE context, not a literal. This was hardcoded to 48_000
+        // while every sibling render in this file already derives it
+        // (:3378, :3449). On a 44.1 kHz session that meant two defects in one
+        // feature: the audition's filter coefficients and delay lines were
+        // built for the wrong rate, and `previewBuffer` then played a 48 kHz
+        // buffer into a 44.1 kHz context — Web Audio resamples on playback, so
+        // the take came out ~8.8% slow and low. The whole point of an audition
+        // is A/B-ing a take against the project it belongs to (AGENTS.md
+        // invariant 3: exports must sound exactly like the project).
+        sampleRate: services.engine.getLiveAudioContext()?.sampleRate ?? 44100,
         // Track/group/return FX are baked into the audition buffer. The
         // live preview bus applies this project's master chain exactly once.
         masterProcessing: false,

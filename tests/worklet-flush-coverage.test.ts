@@ -131,6 +131,7 @@ const QUIET_ONLY: Record<string, FlushEntry> = {
 /** Not loadable here; DSP lives outside the worklet tree or is message-driven. */
 const EXEMPT: Record<string, string> = {
   "core-processor.js": "entry aggregator: imports the sibling processors, each classified and tested here",
+  "fx-extra-processor.js": "lazy FX-extras bundle: imports its processors, each classified and tested here",
   "pcm-playback-processor.js": "message-driven PCM sink (ring reader from src/audio-engine/pcmRing.ts)",
   "portal-processor.js":
     "imports the vendored spectral entry; guards documented in ADR 0038 + src/effects/spectral-core",
@@ -154,6 +155,10 @@ function resolveImport(fromFile: string, specifier: string): string | null {
 /**
  * Inline same-project relative imports so `new Function` can evaluate the
  * module as a classic script (the processors are ES modules for addModule).
+ * Handles the three forms the worklets use:
+ *   - `import "spec"` (side effect, e.g. a worklet entry),
+ *   - `import { A, B as C } from "spec"` (aliases become `const C = B`),
+ *   - `export { A } from "spec"` (re-export; the imported module is inlined).
  * `export` keywords are dropped; the harness only needs the side effects
  * (registerProcessor) and the imported helpers.
  */
@@ -162,17 +167,46 @@ function inlineSource(file: string, seen = new Set<string>()): string {
   if (seen.has(absolute)) return "";
   seen.add(absolute);
   let source = readFileSync(absolute, "utf8");
+  const aliases: string[] = [];
+
+  const inlineTarget = (specifier: string): string | null => {
+    if (!specifier.startsWith(".")) return null;
+    const target = resolveImport(file, specifier);
+    if (!target) return null;
+    return inlineSource(relative(WORKLET_DIR, target).replace(/\\/g, "/"), seen);
+  };
+
+  // import "spec"
   source = source.replace(
-    /^\s*import\s+(?:[\s\S]*?\sfrom\s+)?["']([^"']+)["'];?\s*$/gm,
-    (match: string, specifier: string) => {
-      if (!specifier.startsWith(".")) return match; // bare specifier — not expected in worklets
-      const target = resolveImport(file, specifier);
-      if (!target) return match;
-      const targetFile = relative(WORKLET_DIR, target).replace(/\\/g, "/");
-      return inlineSource(targetFile, seen);
+    /^\s*import\s+["']([^"']+)["'];?[^\S\n]*$/gm,
+    (match: string, specifier: string) => inlineTarget(specifier) ?? match,
+  );
+  // import ... from "spec"
+  source = source.replace(
+    /^\s*import\s+([\s\S]*?)\s+from\s+["']([^"']+)["'];?[^\S\n]*$/gm,
+    (match: string, clause: string, specifier: string) => {
+      const inlined = inlineTarget(specifier);
+      if (inlined === null) return match;
+      for (const part of clause.replace(/[{}]/g, "").split(",")) {
+        const [original, alias] = part
+          .split(/\s+as\s+/)
+          .map((piece) => piece.trim())
+          .filter(Boolean);
+        if (original && alias && alias !== original) aliases.push(`const ${alias} = ${original};`);
+      }
+      return inlined;
     },
   );
-  return source.replace(/^\s*export\s+/gm, "");
+  // export { ... } from "spec"
+  source = source.replace(
+    /^\s*export\s+(?:[\s\S]*?\s+from\s+)?["']([^"']+)["'];?[^\S\n]*$/gm,
+    (match: string, specifier: string) => inlineTarget(specifier) ?? match,
+  );
+  // export { a, b };  (local list, no module side effect to keep)
+  source = source.replace(/^\s*export\s*\{[^}]*\};?[^\S\n]*$/gm, "");
+  // export declarations
+  source = source.replace(/^\s*export\s+/gm, "");
+  return aliases.length > 0 ? `${source}\n${aliases.join("\n")}\n` : source;
 }
 
 function loadProcessor(file: string): { Class: new (options?: unknown) => unknown } {

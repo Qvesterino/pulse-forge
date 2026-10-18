@@ -1,0 +1,81 @@
+/* Mobile runtime profile (ADR 0051).
+   Every rule is gated on a coarse pointer or a narrow touch viewport; desktop
+   sizing and hover affordances are untouched. The JS layer sets
+   data-mobile-profile/data-input-mode for diagnostics and future rules, but
+   the media queries are the source of truth (a rotated tablet is still touch). */
+
+@media (pointer: coarse) {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Touch targets: 44 CSS px is the platform guideline and the token the
+     existing shell already uses. Only controls that were mouse-sized grow. */
+  button,
+  .btn,
+  select,
+  .drag-number,
+  .pattern-chip,
+  .dock-tab {
+    min-height: var(--touch-target-large);
+  }
+
+  .btn.btn-icon,
+  .transport-cluster > .btn {
+    min-width: var(--touch-target-large);
+  }
+
+  /* Gesture ownership: a horizontal drag on a fader/clip edge must not scroll
+     the panel underneath it. Taps elsewhere keep normal scrolling. */
+  .slider-track,
+  .drag-number,
+  .arr-audio-clip-handle,
+  .arr-audio-clip-handle-fade,
+  .arr-audio-clip-handle-gain,
+  .arr-clip-resize,
+  .arr-mic-clip {
+    touch-action: none;
+  }
+
+  .pad,
+  .pattern-chip,
+  .dock-tab,
+  .transport-cluster > .btn,
+  .topbar-overflow-trigger {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Long-press on a transport/pad must not select the label text or pop the
+     Android text-selection menu. Inputs/selects/textareas stay selectable. */
+  .transport-cluster,
+  .pad,
+  .dock-tabs,
+  .pattern-chip {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/* A touch device with no hover has no way to un-stick a hover transform; the
+   active/focus states remain, so feedback is not lost. */
+@media (pointer: coarse) and (hover: none) {
+  .btn:hover,
+  .dock-tab:hover,
+  .pad:hover,
+  .pattern-chip:hover {
+    transform: none;
+  }
+}
+
+/* A narrow touch viewport may also be a small window on a desktop with a
+   touchscreen; it still needs the larger targets above. The explicit profile
+   attribute lets the shell opt into the same rules when the viewport is wide
+   but the primary input is touch (e.g. a tablet in landscape). */
+@media (min-width: 821px) {
+  [data-input-mode="touch"] .btn,
+  [data-input-mode="touch"] button,
+  [data-input-mode="touch"] select {
+    min-height: var(--touch-target-large);
+  }
+}

@@ -4,12 +4,14 @@ import { join } from "node:path";
 import { pwaOptions } from "../src/pwa";
 
 interface TestManifest {
+  id: string;
   name: string;
   short_name: string;
   description: string;
   start_url: string;
   scope: string;
   display: string;
+  display_override?: string[];
   theme_color: string;
   background_color: string;
   icons: Array<{ src: string; sizes: string; type: string; purpose?: string }>;
@@ -22,9 +24,11 @@ describe("PWA manifest config", () => {
   it("has required identity fields", () => {
     expect(manifest.name).toMatch(/KYX/);
     expect(manifest.short_name).toBe("KYX");
+    expect(manifest.id).toBe("/");
     expect(manifest.start_url).toBe("/");
     expect(manifest.scope).toBe("/");
     expect(manifest.display).toBe("standalone");
+    expect(manifest.display_override).toContain("standalone");
   });
 
   it("has non-empty description", () => {
@@ -132,6 +136,7 @@ describe("PWA caching strategy", () => {
       const m = mounted.manifest as unknown as TestManifest;
       expect(m.start_url).toBe("/kyx/");
       expect(m.scope).toBe("/kyx/");
+      expect(m.id).toBe("/kyx/");
     } finally {
       vi.unstubAllEnvs();
       vi.resetModules();

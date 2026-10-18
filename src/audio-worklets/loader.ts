@@ -12,12 +12,15 @@ import { assetUrl } from "../shared/assetUrls";
  * Modules come in three weight classes:
  *  - CORE (bitcrusher + core-processor: stock FX/instrument processors) —
  *    shared by the AudioEngine's normal live and offline audio paths.
- *  - LAZY (fxeq / ultina / ozvena / morphdynamics / bassHarmonic / skrutka) —
- *    heavier DSP (vendored suites + first-party processors), loaded on demand: only
- *    when a project actually uses the effect (see ensureWorkletsForDoc) or
- *    when the engine builds its chain (which then hot-swaps the bypass
- *    runtime once the module lands). Loading ~500 KB of reverb EQ a beat
- *    never touches would be pure waste on metered/mobile connections.
+ *  - LAZY (fxeq / ultina / ozvena / morphdynamics / bassHarmonic / skrutka /
+ *    rezonans / portal / fxExtras) — heavier DSP (vendored suites +
+ *    first-party processors), loaded on demand: only when a project actually
+ *    uses the effect (see ensureWorkletsForDoc) or when the engine builds its
+ *    chain (which then hot-swaps the bypass runtime once the module lands).
+ *    `fxExtras` is one bundle shared by the rare creative/voice/performance
+ *    effects; loading it marks every processor it registers ready. Loading
+ *    ~500 KB of reverb EQ a beat never touches would be pure waste on
+ *    metered/mobile connections.
  *  - GENERATIVE PLAYER — bounded PCM sink, loaded only when a provider-backed
  *    generative track starts.
  *
@@ -60,6 +63,7 @@ function coreLoadExhausted(ctx: BaseAudioContext): boolean {
 export function invalidateWorkletReadiness(ctx: BaseAudioContext): void {
   readyContexts.delete(ctx);
   readyLazyTypes.delete(ctx);
+  readyLazyModules.delete(ctx);
   readyInstrumentTypes.delete(ctx);
   readyGenerativePlayers.delete(ctx);
   coreFailures.delete(ctx);
@@ -88,7 +92,7 @@ export function workletScopeAlive(ctx: BaseAudioContext): boolean {
   }
 }
 
-/** Lazy worklet DSP modules (vendored suites + first-party) — per effect type, on demand. */
+/** Lazy worklet DSP modules — loaded on demand, grouped by physical bundle. */
 export const LAZY_WORKLET_TYPES = [
   "fxeq",
   "ultina",
@@ -98,10 +102,52 @@ export const LAZY_WORKLET_TYPES = [
   "skrutka",
   "rezonans",
   "portal",
+  // Creative/voice/performance effects bundled together in
+  // public/fx-extra-worklet.js. They are not part of the everyday
+  // EQ/comp/delay/reverb chain, so a project that never uses them must not
+  // download or parse them during studio startup.
+  "vocoder",
+  "vinyl",
+  "beatMangler",
+  "freqShifter",
+  "pitchCorrect",
+  "pitchShift",
+  "reverseSwell",
+  "granularFreeze",
+  "wowFlutter",
+  "tapeStop",
+  "stutter",
 ] as const;
 export type LazyWorkletType = (typeof LAZY_WORKLET_TYPES)[number];
 
-const LAZY_MODULE_URLS: Record<LazyWorkletType, string> = {
+/**
+ * Effect type -> physical module. Several effects share one module; loading
+ * that module marks every type it registers ready.
+ */
+export const LAZY_MODULE_GROUPS = {
+  fxeq: "fxeq",
+  ultina: "ultina",
+  ozvena: "ozvena",
+  morphdynamics: "morphdynamics",
+  bassHarmonic: "bassHarmonic",
+  skrutka: "skrutka",
+  rezonans: "rezonans",
+  portal: "portal",
+  vocoder: "fxExtras",
+  vinyl: "fxExtras",
+  beatMangler: "fxExtras",
+  freqShifter: "fxExtras",
+  pitchCorrect: "fxExtras",
+  pitchShift: "fxExtras",
+  reverseSwell: "fxExtras",
+  granularFreeze: "fxExtras",
+  wowFlutter: "fxExtras",
+  tapeStop: "fxExtras",
+  stutter: "fxExtras",
+} as const satisfies Record<LazyWorkletType, string>;
+export type LazyWorkletModule = (typeof LAZY_MODULE_GROUPS)[LazyWorkletType];
+
+const LAZY_MODULE_URLS: Record<LazyWorkletModule, string> = {
   fxeq: new URL(assetUrl("/fxeq-worklet.js"), import.meta.url).href,
   ultina: new URL(assetUrl("/ultina-worklet.js"), import.meta.url).href,
   ozvena: new URL(assetUrl("/ozvena-worklet.js"), import.meta.url).href,
@@ -110,7 +156,19 @@ const LAZY_MODULE_URLS: Record<LazyWorkletType, string> = {
   skrutka: new URL(assetUrl("/skrutka-worklet.js"), import.meta.url).href,
   rezonans: new URL(assetUrl("/rezonans-worklet.js"), import.meta.url).href,
   portal: new URL(assetUrl("/spectral-worklet.js"), import.meta.url).href,
+  fxExtras: new URL(assetUrl("/fx-extra-worklet.js"), import.meta.url).href,
 };
+
+/** Number of distinct physical modules behind the lazy type list. */
+export const LAZY_MODULE_GROUP_COUNT = new Set<LazyWorkletModule>(Object.values(LAZY_MODULE_GROUPS)).size;
+
+const lazyTypesByModule = new Map<LazyWorkletModule, LazyWorkletType[]>();
+for (const type of LAZY_WORKLET_TYPES) {
+  const module = LAZY_MODULE_GROUPS[type];
+  const group = lazyTypesByModule.get(module);
+  if (group) group.push(type);
+  else lazyTypesByModule.set(module, [type]);
+}
 
 const CORE_TYPES = [
   "bitcrusher",
@@ -130,7 +188,6 @@ const CORE_TYPES = [
   "flanger",
   "tremolo",
   "autowah",
-  "stutter",
   "tapeSat",
   "comb",
   "multiTapDelay",
@@ -144,15 +201,6 @@ const CORE_TYPES = [
   "wtVoice",
   "grainVoice",
   "ringMod",
-  "tapeStop",
-  "freqShifter",
-  "pitchShift",
-  "pitchCorrect",
-  "vinyl",
-  "beatMangler",
-  "vocoder",
-  "reverseSwell",
-  "granularFreeze",
 ] as const;
 
 export type WorkletType = (typeof CORE_TYPES)[number] | LazyWorkletType | "generativePlayer";
@@ -173,7 +221,8 @@ const INSTRUMENT_MODULE_URLS: Record<InstrumentWorkletType, string> = {
 };
 
 const readyLazyTypes = new WeakMap<BaseAudioContext, Set<LazyWorkletType>>();
-const lazyInflight = new Map<BaseAudioContext, Map<LazyWorkletType, Promise<void>>>();
+const readyLazyModules = new WeakMap<BaseAudioContext, Set<LazyWorkletModule>>();
+const lazyInflight = new Map<BaseAudioContext, Map<LazyWorkletModule, Promise<void>>>();
 const readyInstrumentTypes = new WeakMap<BaseAudioContext, Set<InstrumentWorkletType>>();
 const instrumentInflight = new Map<BaseAudioContext, Map<InstrumentWorkletType, Promise<void>>>();
 
@@ -183,7 +232,11 @@ export function isWorkletReady(
 ): boolean {
   if (!ctx || !readyContexts.has(ctx)) return false;
   if ((LAZY_WORKLET_TYPES as readonly string[]).includes(type)) {
-    return readyLazyTypes.get(ctx)?.has(type as LazyWorkletType) ?? false;
+    const lazyType = type as LazyWorkletType;
+    if (readyLazyTypes.get(ctx)?.has(lazyType)) return true;
+    // A shared module marks every type it registers; the module set is the
+    // source of truth if a group's type set is ever partially populated.
+    return readyLazyModules.get(ctx)?.has(LAZY_MODULE_GROUPS[lazyType]) ?? false;
   }
   if ((INSTRUMENT_WORKLET_TYPES as readonly string[]).includes(type)) {
     return readyInstrumentTypes.get(ctx)?.has(type as InstrumentWorkletType) ?? false;
@@ -268,11 +321,11 @@ export async function loadGenerativePlayerWorklet(ctx: BaseAudioContext): Promis
 }
 
 /**
- * Load ONE lazy worklet module
- * (fxeq/ultina/ozvena/morphdynamics/bassHarmonic/skrutka)
- * into the context. Must run after (or together with) the core modules — lazy
- * readiness is tracked on top of the core "context ready" mark. Idempotent
- * per context.
+ * Load ONE lazy worklet module into the context. Several effect types share a
+ * physical module (`fxExtras`); requesting any of them fetches that module
+ * once and marks every type it registers ready. Must run after (or together
+ * with) the core modules — lazy readiness is tracked on top of the core
+ * "context ready" mark. Idempotent per context and per module.
  */
 export async function loadLazyWorklet(ctx: BaseAudioContext, type: LazyWorkletType): Promise<void> {
   if (!ctx?.audioWorklet) return;
@@ -280,30 +333,46 @@ export async function loadLazyWorklet(ctx: BaseAudioContext, type: LazyWorkletTy
   // Under an exhausted core breaker this is a graceful no-op; a core that
   // merely failed transiently re-runs (and this call awaits that retry).
   if (coreLoadExhausted(ctx)) return;
-  const lazySet = readyLazyTypes.get(ctx);
-  if (lazySet?.has(type)) return;
+  if (isWorkletReady(type, ctx)) return;
+
+  const module = LAZY_MODULE_GROUPS[type];
+  if (readyLazyModules.get(ctx)?.has(module)) {
+    // Defensive: module landed but the per-type set did not (e.g. a partial
+    // readiness reset). Mark the whole group instead of re-adding the module.
+    const set = readyLazyTypes.get(ctx);
+    for (const groupType of lazyTypesByModule.get(module) ?? []) set?.add(groupType);
+    return;
+  }
 
   let perCtx = lazyInflight.get(ctx);
-  if (perCtx?.get(type)) return perCtx.get(type);
+  if (perCtx?.get(module)) return perCtx.get(module);
 
   const load = ctx.audioWorklet
-    .addModule(LAZY_MODULE_URLS[type])
+    .addModule(LAZY_MODULE_URLS[module])
     .then(() => {
-      readyLazyTypes.get(ctx)?.add(type);
+      const modules = readyLazyModules.get(ctx);
+      if (modules) modules.add(module);
+      else readyLazyModules.set(ctx, new Set([module]));
+      let set = readyLazyTypes.get(ctx);
+      if (!set) {
+        set = new Set();
+        readyLazyTypes.set(ctx, set);
+      }
+      for (const groupType of lazyTypesByModule.get(module) ?? []) set.add(groupType);
     })
     .catch((err) => {
-      console.warn(`[audio-worklets] ${type} module load failed, effect stays bypassed:`, err);
+      console.warn(`[audio-worklets] ${module} module load failed (${type}), effect stays bypassed:`, err);
     })
     .finally(() => {
       perCtx = lazyInflight.get(ctx);
-      perCtx?.delete(type);
+      perCtx?.delete(module);
       if (perCtx && perCtx.size === 0) lazyInflight.delete(ctx);
     });
   if (!perCtx) {
     perCtx = new Map();
     lazyInflight.set(ctx, perCtx);
   }
-  perCtx.set(type, load);
+  perCtx.set(module, load);
   return load;
 }
 

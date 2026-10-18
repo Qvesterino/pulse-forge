@@ -16,7 +16,7 @@ function drumPadIds(doc: ProjectDocument): Set<string> {
 }
 
 describe("templates", () => {
-  it("ships the fourteen promised templates", () => {
+  it("ships the fifteen promised templates", () => {
     expect(TEMPLATE_IDS.sort()).toEqual(
       [
         "ambient",
@@ -33,6 +33,7 @@ describe("templates", () => {
         "techno",
         "trap",
         "ukg",
+        "vlyx-demo",
       ].sort(),
     );
   });

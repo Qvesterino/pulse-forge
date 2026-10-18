@@ -13,5 +13,6 @@ export const EXPECTED_GOLDEN_HASHES: Record<string, string> = {
   reggaeton: "4c59384474ec135c",
   dnb: "0d78fbd266c1858b",
   boombap: "1f2b429a9f3705a0",
+  "vlyx-demo": "53d6c17fd86f094d",
   empty: "a75c20ed0948af6f",
 };

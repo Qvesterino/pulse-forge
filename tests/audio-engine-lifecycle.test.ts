@@ -71,20 +71,24 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     // per-track/per-return/per-group EffectRuntime plus every LFO
     // oscillator. The fix iterates the three node maps and the LFO
     // map BEFORE calling buildMaster(). Pin the call order here.
-    const body = sliceFunction(readEngine(), /useContext\s*\(/);
-    expect(body, "useContext not found in AudioEngine.ts").not.toBe("");
-    const idxDispose = body.indexOf("disposeTrackNodes(");
+    // The teardown body lives in teardownGraph() (shared with dispose());
+    // useContext must call it BEFORE rebuilding the master chain.
+    const body = sliceFunction(readEngine(), /private teardownGraph\(/);
+    expect(body, "teardownGraph not found in AudioEngine.ts").not.toBe("");
+    const useContext = sliceFunction(readEngine(), /useContext\(ctx: BaseAudioContext\): void \{/);
+    const idxTeardown = useContext.indexOf("this.teardownGraph(previousContext)");
     // Wave 4b: buildMaster moved to MasterChain.build(); useContext must
     // still call it (through the collaborator) in the same order.
-    const idxBuildMaster = body.indexOf("masterChain.build(");
-    expect(idxDispose, "useContext must call disposeTrackNodes to clear prior EffectRuntimes").toBeGreaterThan(-1);
+    const idxBuildMaster = useContext.indexOf("masterChain.build(");
+    expect(idxTeardown, "useContext must call teardownGraph to clear prior EffectRuntimes").toBeGreaterThan(-1);
     expect(idxBuildMaster, "useContext must call masterChain.build() to rebuild the master chain").toBeGreaterThan(-1);
     // Dispose must run BEFORE the rebuild — otherwise the old runtimes
     // would still be wired into the old master and the new master
     // would briefly double the graph.
-    expect(idxDispose, "useContext must dispose prior runtimes before masterChain.build()").toBeLessThan(
+    expect(idxTeardown, "useContext must dispose prior runtimes before masterChain.build()").toBeLessThan(
       idxBuildMaster,
     );
+    expect(body, "the teardown must dispose per-track EffectRuntimes").toMatch(/this\.disposeTrackNodes\(/);
     // LFOs are part of the prior state and must be cleared too —
     // otherwise the LFO oscillator keeps modulating the (now stale)
     // target AudioParam.
@@ -99,7 +103,7 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     // context path (ensureContext) and the swap path (useContext)
     // must wire the observer.
     const engine = readEngine();
-    const useContext = sliceFunction(engine, /useContext\s*\(/);
+    const useContext = sliceFunction(engine, /useContext\(ctx: BaseAudioContext\): void \{/);
     // Wave 4c: anchor to the method signature — a bare /ensureContext\(/ now
     // matches the PreviewDeck deps closure first.
     const ensureContext = sliceFunction(engine, /ensureContext\(\): BaseAudioContext \{/);
@@ -127,7 +131,7 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     // `event.preventDefault()` on contextlost is required for contextrestored
     // to fire — feature-detect with `typeof !== "undefined"` because the
     // property is missing on Safari < 16.4 and Firefox.
-    const useContext = sliceFunction(readEngine(), /useContext\s*\(/);
+    const useContext = sliceFunction(readEngine(), /useContext\(ctx: BaseAudioContext\): void \{/);
     expect(useContext, "useContext not found").not.toBe("");
     expect(useContext).toMatch(/oncontextlost\s*=/);
     expect(useContext).toMatch(/oncontextrestored\s*=/);
@@ -185,8 +189,11 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     // matching Set when the old source finally finished (cross-context
     // identity corruption). The fix iterates each set/map, stops the
     // live source, and disconnects the gain before clearing.
-    const body = sliceFunction(readEngine(), /useContext\s*\(/);
-    expect(body, "useContext not found in AudioEngine.ts").not.toBe("");
+    // The teardown body lives in teardownGraph() (shared with dispose()).
+    const body = sliceFunction(readEngine(), /private teardownGraph\(/);
+    expect(body, "teardownGraph not found in AudioEngine.ts").not.toBe("");
+    const useContext = sliceFunction(readEngine(), /useContext\(ctx: BaseAudioContext\): void \{/);
+    expect(useContext, "useContext must delegate to teardownGraph").toMatch(/this\.teardownGraph\(previousContext\)/);
     // The cleanup must clear all four collections. Check for the
     // .clear() calls specifically — a future refactor that drops one
     // of them will surface as a missing `.clear(` substring here.
@@ -245,7 +252,7 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
 
   it("notifies live-context observers when the context is rebound or lost", () => {
     const engine = readEngine();
-    const useContext = sliceFunction(engine, /useContext\s*\(/);
+    const useContext = sliceFunction(engine, /useContext\(ctx: BaseAudioContext\): void \{/);
     expect(engine).toMatch(/subscribeLiveContext\(listener:/);
     expect(engine).toMatch(/listener\(this\.getLiveAudioContext\(\)\)/);
     expect(useContext).toMatch(/this\.notifyLiveContextChange\(\)/);

@@ -22,6 +22,8 @@
  * chunk budgets because they are lazy-loaded. The two stock/core bundles are
  * shipped with every build and therefore have an explicit separate budget
  * below; they must stay small enough to load during normal studio startup.
+ * The rare creative effects live in a third, on-demand `fx-extra` bundle with
+ * its own budget so the core line stays honest.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
@@ -418,6 +420,25 @@ for (const file of ["bitcrusher-worklet.js", "core-worklet.js"]) {
 }
 console.log(`[size-budget] core worklets: ${coreWorkletKb.toFixed(0)} KB (budget ${CORE_WORKLET_BUDGET_KB})`);
 
+// One on-demand module shared by the rare creative/voice/performance effects
+// (vocoder, vinyl, pitch correct/shift, freq shifter, beat mangler, reverse
+// swell, granular freeze, wow & flutter, tape stop, stutter). It loads only
+// when a project references one of them; keeping it out of the core bundle is
+// what makes the 150 KB core cap live again.
+const FX_EXTRA_WORKLET_BUDGET_KB = 64;
+let fxExtraWorkletKb = 0;
+{
+  const path = join(dist, "fx-extra-worklet.js");
+  if (!statSync(path, { throwIfNoEntry: false })?.isFile()) {
+    console.error("[size-budget] FAIL — missing on-demand FX extras worklet: dist/fx-extra-worklet.js");
+    process.exit(1);
+  }
+  fxExtraWorkletKb = statSync(path).size / 1024;
+}
+console.log(
+  `[size-budget] FX extras worklet (lazy): ${fxExtraWorkletKb.toFixed(0)} KB (budget ${FX_EXTRA_WORKLET_BUDGET_KB})`,
+);
+
 // The bounded PCM queue is used only by provider-backed generative tracks;
 // its module loads when such a track starts, not with the stock core bundle.
 const GENERATIVE_PLAYER_WORKLET_BUDGET_KB = 4;
@@ -660,6 +681,12 @@ if (/undici|connect-node/i.test(nexusRuntime)) {
 if (coreWorkletKb > CORE_WORKLET_BUDGET_KB) {
   console.error(
     `[size-budget] FAIL — core worklets over budget: ${coreWorkletKb.toFixed(0)} > ${CORE_WORKLET_BUDGET_KB} KB.`,
+  );
+  failed = true;
+}
+if (fxExtraWorkletKb > FX_EXTRA_WORKLET_BUDGET_KB) {
+  console.error(
+    `[size-budget] FAIL — lazy FX extras worklet over budget: ${fxExtraWorkletKb.toFixed(0)} > ${FX_EXTRA_WORKLET_BUDGET_KB} KB.`,
   );
   failed = true;
 }

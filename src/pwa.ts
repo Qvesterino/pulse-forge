@@ -25,6 +25,9 @@ export const pwaOptions: Partial<VitePWAOptions> = {
   registerType: "prompt",
   includeAssets: ["apple-touch-icon.png"],
   manifest: {
+    // Stable identity for install + TWA. It follows the mount so two mounts
+    // of the same origin do not fight over one installed app identity.
+    id: mountBase,
     name: "KYX — Browser DAW",
     short_name: "KYX",
     description:
@@ -35,6 +38,9 @@ export const pwaOptions: Partial<VitePWAOptions> = {
     scope: mountBase,
     start_url: mountBase,
     display: "standalone",
+    // Standalone is the product shell; minimal-ui is the honest fallback for
+    // a browser that cannot hide its chrome. Both keep the same start URL.
+    display_override: ["standalone", "minimal-ui"],
     // Signal Glass app shell (mirrors --bg in src/styles/01-base.css / THEME_PRESETS[0]).
     background_color: "#0b0c10",
     theme_color: "#0b0c10",
