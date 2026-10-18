@@ -874,13 +874,16 @@ export const MCP_TOOLS: McpToolDef[] = [
     description:
       "Live audio meters — the AI's ears: master true peak, RMS, LUFS " +
       "(momentary/short-term/integrated), stereo correlation, clip flags, " +
-      "plus per-track peak/RMS. Read-only snapshot of the RUNNING engine; " +
-      "honestly refused when no engine/audio context is live. LUFS-I needs " +
-      "a few seconds of playback to stabilize.",
+      "plus per-track peak/RMS. scope:\"fx\" reports the telemetry of EVERY " +
+      "inserted effect (KOREŇ f0/clarity/+dB harmonics/key scaler, dynamics " +
+      "gain reduction, plugin frames) — the closed loop for verifying an " +
+      "effect change instead of assuming it. Read-only snapshot of the " +
+      "RUNNING engine; honestly refused when no engine/audio context is " +
+      "live. LUFS-I needs a few seconds of playback to stabilize.",
     inputSchema: {
       type: "object",
       properties: {
-        scope: { type: "string", enum: ["master", "tracks", "all"], description: "Default all" },
+        scope: { type: "string", enum: ["master", "tracks", "fx", "all"], description: "Default all" },
       },
       required: [],
     },
@@ -1677,6 +1680,31 @@ export interface McpMeterSnapshot {
   };
 }
 
+/**
+ * Live telemetry of ONE inserted effect — the closed loop an agent needs to
+ * verify a change instead of assuming it. KOREŇ reports its tracked f0, the
+ * harmonic gain and the key scaler; dynamics report their gain-reduction
+ * readings; PRISM/VLYX report their own frames. `meters` is whatever the
+ * wrapper's `getMeters()` returns — the tool renders known scalars and never
+ * invents meaning for the rest.
+ */
+export interface McpFxMeterReading {
+  /** Track, group or return that owns the insert; "master" for the master chain. */
+  ownerId: string;
+  ownerName: string;
+  fxId: string;
+  type: string;
+  /** Display name ("GROW", "PRISM", …). */
+  name: string;
+  bypassed: boolean;
+  meters: unknown;
+  gainReduction?: Array<{ label: string; gainReductionDb: number }> | null;
+}
+
+export interface McpFxMeterSnapshot {
+  effects: McpFxMeterReading[];
+}
+
 /** Narrow capability surface the tools need — implemented by the app's
  * services (browser relay) or by a ProjectStore wrapper (headless tests). */
 export interface McpToolContext {
@@ -1723,6 +1751,9 @@ export interface McpToolContext {
   /** Present when a live engine can be metered (kyx_meter). Null/absent →
    * the tool refuses honestly instead of inventing numbers. */
   meters?: () => McpMeterSnapshot | null;
+  /** Live per-effect telemetry (kyx_meter scope:"fx"). Absent on transports
+   * without a live engine → the tool refuses honestly. */
+  fxMeters?: () => McpFxMeterSnapshot | null;
   /**
    * D4 escalation: destructive MCP ops (removing tracks/sections/FX) run
    * ONLY while the user's allow flag is on. Absent/false → honest refusal.
@@ -3087,6 +3118,39 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
     case "kyx_batch":
       return executeBatchTool(ctx, record);
     case "kyx_meter": {
+      const scope = String(record.scope ?? "all");
+      // FX telemetry: the per-insert closed loop (KOREŇ's sound-identity
+      // readings, dynamics gain reduction, plugin frames). Refused honestly on
+      // transports without a live engine, exactly like the master meters.
+      if (scope === "fx") {
+        if (ctx.fxMeters == null) {
+          return mcpError(
+            "UNAVAILABLE_ON_TRANSPORT",
+            "fx metering is not available over this MCP transport (no live engine bound) — start KYX with an audio context",
+          );
+        }
+        const fxSnapshot = ctx.fxMeters();
+        if (fxSnapshot == null) {
+          return mcpError("UNAVAILABLE_ON_TRANSPORT", "engine is not running (no audio context) — nothing to meter yet");
+        }
+        const lines = fxSnapshot.effects.map((reading) => {
+          const details = [describeFxMeters(reading.meters), describeGainReduction(reading.gainReduction)]
+            .filter((part) => part !== "")
+            .join(" · ");
+          const bypass = reading.bypassed ? " · BYPASSED" : "";
+          return `${reading.ownerName} / ${reading.name} (${reading.type}, id=${reading.fxId})${bypass}: ${
+            details === "" ? "no telemetry (bypassed, degraded or offline)" : details
+          }`;
+        });
+        return {
+          text:
+            lines.length > 0
+              ? `${lines.length} inserted effect(s):\n${lines.join("\n")}`
+              : "no effects inserted on tracks, returns or the master chain",
+          mutated: false,
+          data: fxSnapshot,
+        };
+      }
       if (ctx.meters == null) {
         return mcpError(
           "UNAVAILABLE_ON_TRANSPORT",
@@ -3097,7 +3161,6 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       if (snapshotMeters == null) {
         return mcpError("UNAVAILABLE_ON_TRANSPORT", "engine is not running (no audio context) — nothing to meter yet");
       }
-      const scope = String(record.scope ?? "all");
       const db = (value: number): string => (Number.isFinite(value) ? `${value.toFixed(1)} dBFS` : "-inf");
       const lines: string[] = [];
       if (scope !== "tracks") {
@@ -5623,6 +5686,43 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
       lines.join("\n"),
     mutated: false,
   };
+}
+
+/**
+ * Bounded, honest rendering of an effect's meter frame for `kyx_meter scope:fx`.
+ * KOREŇ's sound-identity telemetry has known names (f0 / clarity / harmonics /
+ * key / hint); everything else is printed as finite scalars and array lengths
+ * with NO invented meaning — an unknown frame still tells an agent something,
+ * but never something false.
+ */
+function describeFxMeters(meters: unknown): string {
+  if (meters == null || typeof meters !== "object" || Array.isArray(meters)) return "";
+  const record = meters as Record<string, unknown>;
+  if (typeof record.f0 === "number" && Number.isFinite(record.f0) && record.f0 > 0) {
+    const parts = [`f0 ${record.f0.toFixed(1)} Hz`];
+    if (typeof record.clarity === "number" && Number.isFinite(record.clarity)) {
+      parts.push(`clarity ${record.clarity.toFixed(2)}`);
+    }
+    if (typeof record.harm === "number" && Number.isFinite(record.harm)) parts.push(`+${record.harm.toFixed(1)} dB harmonics`);
+    if (typeof record.key === "number" && Number.isFinite(record.key)) parts.push(`key ×${record.key.toFixed(2)}`);
+    if (record.hint === 1) parts.push("HINT");
+    return parts.join(" · ");
+  }
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(record).slice(0, 8)) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      parts.push(`${key} ${Math.round(value * 1000) / 1000}`);
+    } else if (ArrayBuffer.isView(value) || Array.isArray(value)) {
+      parts.push(`${key}[${(value as { length?: number }).length ?? 0}]`);
+    }
+  }
+  return parts.join(" · ");
+}
+
+/** Dynamics-stage readings as one compact phrase (ZENIT reports several). */
+function describeGainReduction(readings: McpFxMeterReading["gainReduction"]): string {
+  if (readings == null || readings.length === 0) return "";
+  return readings.map((reading) => `${reading.label} ${reading.gainReductionDb.toFixed(1)} dB`).join(" / ");
 }
 
 /** kyx_plugin_param — precise per-instance parameter control over the

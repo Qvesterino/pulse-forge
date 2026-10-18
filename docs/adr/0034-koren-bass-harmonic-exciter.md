@@ -493,3 +493,50 @@ green.
 
 **Evidence.** All five KOREŇ suites green — 60/60 including the two 300 s
 soaks; `tsc --noEmit` and Prettier clean. No other change to the effect.
+
+## Addendum 14 (2026-10-18) — AI legibility + the robustness measurements
+
+### 14.1 Every knob now explains itself to an agent
+
+An MCP client saw only `presence: 0..1, default 0` — a range with no meaning —
+so it could not distinguish PRESENCE (the phone band) from TILT (a spectral
+slope) and had no way to choose values deliberately. `ParamDef` gains an
+optional `description`; **every** KOREŇ parameter carries one sentence (what it
+does, the direction, units, and the interaction that matters — PRESENCE needs a
+wide RANGE, KEY MODE needs the engine's key feed, CHARACTER is generated-layer
+only). `kyx_catalog subject:effect effect:bassHarmonic` prints it on an
+indented line beneath each range line, and an effect without descriptions gets
+no invented text.
+
+Pin: `tests/koren-catalog.test.ts` — completeness over `bassHarmonicParams`
+(a new knob cannot ship undocumented), the REAL catalog through the headless
+MCP host (every description appears, the CHARACTER/KEY MODE option ladders are
+present), and a no-leak negative (KOREŇ's text never appears in another
+effect's listing). `hintHz` is deliberately absent from the definitions — the
+catalog must not invent a parameter the engine alone writes.
+
+### 14.2 The measurements Addendum 6.2 listed as required
+
+- **Nyquist taper (8 kHz** — the only rate where the 16-partial ladder crosses
+  Nyquist; f0 = 400 Hz, focus 220, range 4, presence 1, tilt 1, FOLD):
+  the 2nd partial (800 Hz) is the reference; the 8th (3200 Hz) is present; the
+  9th (3600 Hz) is **attenuated to under 0.7×** of the 8th although its raw
+  weight is ~equal (that is the taper, not the ladder); the 10th (4000 Hz =
+  Nyquist) is zeroed; and six between-harmonic bins (1000/1800/2600/3000/3400/
+  3800 Hz) stay below 6 % of the 2nd — no shaping junk off the 400 Hz grid.
+  Honest limit: **a DTFT bin above Nyquist is its own alias**, so "energy above
+  Nyquist" is not measurable; the taper is proven by the attenuated 9th and the
+  zeroed Nyquist partial instead.
+- **Release clicks**: a 0.5-amplitude 55 Hz tone stopped dead at 0.4 s — the
+  peak sample-to-sample delta after the stop stays under 1.5× the steady
+  signal's own slew (+1e-3), and a hint jump 55 → 82.4 Hz stays under 2× the
+  steady slew either side (the frequency change scales the slew; a click would
+  be an order of magnitude above it).
+- **Mono compatibility**: at WIDTH = 1 a fold-down keeps the generated 2nd
+  (no null; theory cos 0.6 ≈ −1.7 dB), the side signal is real at the 3rd
+  (165 Hz) and absent at the 2nd (110 Hz, below the 120 Hz mono crossover).
+
+Pins live in `tests/bass-harmonic.test.ts`
+(`GROW robustness — Nyquist taper, release clicks, mono compatibility`).
+The only DSP change in this audit remains the key-mode reset of Addendum 13;
+the rest of this addendum is documentation and measurement.

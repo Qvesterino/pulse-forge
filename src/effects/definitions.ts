@@ -2208,7 +2208,8 @@ export const bassHarmonicParams: ParamDef[] = [
     max: 1,
     default: 0.45,
     format: formatPct,
-    description: "How hard the generated stack is driven by the low-band envelope — the overall amount of synthesized harmonics.",
+    description:
+      "How hard the generated stack is driven by the low-band envelope — the overall amount of synthesized harmonics.",
   },
   {
     id: "focusHz",
@@ -2229,7 +2230,8 @@ export const bassHarmonicParams: ParamDef[] = [
     max: 1,
     default: 0.5,
     format: formatPct,
-    description: "Balance between the 2nd (0) and 3rd (1) harmonic as the leading partial; the higher partials always sit low.",
+    description:
+      "Balance between the 2nd (0) and 3rd (1) harmonic as the leading partial; the higher partials always sit low.",
   },
   {
     id: "subAnchor",

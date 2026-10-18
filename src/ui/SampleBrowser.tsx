@@ -3,6 +3,8 @@ import { useLibrary, useServices } from "./context";
 import type { FactoryAsset } from "../sample-library/manifest";
 import { ASSET_MOODS } from "../sample-library/manifest";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
+import { PPQ } from "../project-model/types";
+import { tempoAtTick } from "../project-model/scene-time";
 import { categoryColor } from "./kitColors";
 import { DropZone } from "./DropZone";
 import { IntakeTray } from "./IntakeTray";
@@ -35,9 +37,13 @@ function isFactoryAsset(a: SampleAsset): a is FactoryAsset {
   return "character" in a;
 }
 
+function hasValidLoopBpm(asset: UserSampleAsset): asset is UserSampleAsset & { bpm: number } {
+  return Number.isFinite(asset.bpm) && asset.bpm! >= 40 && asset.bpm! <= 240;
+}
+
 function isLoopAsset(asset: UserSampleAsset): boolean {
   if (asset.loopMetadata?.isLoop !== undefined) return asset.loopMetadata.isLoop;
-  return Number.isFinite(asset.bpm) && asset.bpm! >= 40 && asset.bpm! <= 240;
+  return hasValidLoopBpm(asset);
 }
 
 function normalizedText(value: unknown): string {
@@ -116,7 +122,10 @@ export function SampleBrowser({
           setAllUserAssets((current) => {
             const merged = new Map<string, UserSampleAsset>();
             for (const asset of [...loaded, ...current]) merged.set(asset.id, asset);
-            return [...merged.values()];
+            const next = [...merged.values()];
+            return next.length === current.length && next.every((asset, index) => asset === current[index])
+              ? current
+              : next;
           });
         }
       })
@@ -173,7 +182,8 @@ export function SampleBrowser({
       if (!matchesFilter(asset.loopMetadata?.key, loopKey)) return false;
       if (query.trim().length > 0) {
         const q = query.trim().toLocaleLowerCase();
-        const haystack = `${asset.name} ${asset.fileName} ${asset.loopMetadata?.genre ?? ""} ${asset.loopMetadata?.mood ?? ""} ${asset.loopMetadata?.instrument ?? ""} ${asset.loopMetadata?.key ?? ""} ${asset.bpm ?? ""}`.toLocaleLowerCase();
+        const haystack =
+          `${asset.name} ${asset.fileName} ${asset.loopMetadata?.genre ?? ""} ${asset.loopMetadata?.mood ?? ""} ${asset.loopMetadata?.instrument ?? ""} ${asset.loopMetadata?.key ?? ""} ${asset.bpm ?? ""}`.toLocaleLowerCase();
         if (!haystack.includes(q)) return false;
       }
       if (minimum !== null && (!Number.isFinite(asset.bpm) || asset.bpm! < minimum)) return false;
@@ -185,9 +195,7 @@ export function SampleBrowser({
   const filtered = loopView ? loopFiltered : soundFiltered;
   const filteredIds = new Set(filtered.map((asset) => asset.id));
   const recent = loopView ? [] : library.recentAssets.filter((id) => filteredIds.has(id));
-  const favorites = loopView
-    ? []
-    : library.favoriteAssets.filter((id) => filteredIds.has(id) && !recent.includes(id));
+  const favorites = loopView ? [] : library.favoriteAssets.filter((id) => filteredIds.has(id) && !recent.includes(id));
   const rest = filtered.filter((asset) => !recent.includes(asset.id) && !favorites.includes(asset.id));
 
   const apply = (id: string | null) => {
@@ -250,10 +258,12 @@ export function SampleBrowser({
   const preview = (asset: SampleAsset) => {
     if (loopView && !isFactoryAsset(asset)) {
       services.engine.stopPreview();
-      if (asset.bpm !== undefined && onPreviewLoop) onPreviewLoop(asset);
-      else if (asset.bpm !== undefined) {
-        const projectBpm = services.store.getDoc().bpm;
-        services.engine.previewAssetSynced(asset.id, asset.bpm / projectBpm);
+      if (hasValidLoopBpm(asset) && onPreviewLoop) onPreviewLoop(asset);
+      else if (hasValidLoopBpm(asset)) {
+        const doc = services.store.getDoc();
+        const nextBeatTick = (Math.floor(services.transport.position / PPQ) + 1) * PPQ;
+        const targetBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, nextBeatTick, doc.bpm);
+        services.engine.previewAssetSynced(asset.id, asset.bpm / targetBpm);
       } else services.engine.previewAsset(asset.id);
       return;
     }
@@ -296,9 +306,9 @@ export function SampleBrowser({
           <button
             type="button"
             className="sample-preview"
-            title={loopView && userAsset?.bpm !== undefined ? "Preview matched to project tempo" : "Preview"}
+            title={loopView && userAsset && hasValidLoopBpm(userAsset) ? "Preview matched to project tempo" : "Preview"}
             aria-label={
-              loopView && userAsset?.bpm !== undefined
+              loopView && userAsset && hasValidLoopBpm(userAsset)
                 ? `Preview loop in project tempo ${asset.name}`
                 : `Preview ${asset.name}`
             }
@@ -309,12 +319,14 @@ export function SampleBrowser({
           <button
             type="button"
             className="sample-name"
-            title={isFactoryAsset(asset) ? `${asset.character} — click to assign` : `${asset.fileName} — click to assign`}
+            title={
+              isFactoryAsset(asset) ? `${asset.character} — click to assign` : `${asset.fileName} — click to assign`
+            }
             onClick={() => apply(asset.id)}
           >
             {asset.name}
           </button>
-          {userAsset?.bpm !== undefined && (
+          {userAsset && hasValidLoopBpm(userAsset) && (
             <span className="sample-bpm" title="Detected tempo in BPM">
               {Math.round(userAsset.bpm)} BPM
             </span>
@@ -377,12 +389,14 @@ export function SampleBrowser({
               />
               Include in loop browser
             </label>
-            {([
-              ["genre", "Genre"],
-              ["mood", "Mood"],
-              ["instrument", "Instrument"],
-              ["key", "Key"],
-            ] as const).map(([field, label]) => (
+            {(
+              [
+                ["genre", "Genre"],
+                ["mood", "Mood"],
+                ["instrument", "Instrument"],
+                ["key", "Key"],
+              ] as const
+            ).map(([field, label]) => (
               <label key={field} className="loop-tag-field">
                 <span>{label}</span>
                 <input
@@ -423,7 +437,11 @@ export function SampleBrowser({
   const selectFilter = (label: string, value: string, values: string[], onChange: (value: string) => void) => (
     <label className="loop-filter">
       <span>{label}</span>
-      <select aria-label={`Filter by ${label.toLocaleLowerCase()}`} value={value} onChange={(event) => onChange(event.target.value)}>
+      <select
+        aria-label={`Filter by ${label.toLocaleLowerCase()}`}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
         <option value="all">All</option>
         {values.map((option) => (
           <option key={option} value={option}>
@@ -440,10 +458,20 @@ export function SampleBrowser({
       {showDropZone && <FreesoundSection onImport={handleImport} />}
       {showDropZone && <IntakeTray onImported={handleImport} />}
       <div className="sample-view-tabs" aria-label="Sound browser view">
-        <button type="button" aria-pressed={!loopView} className={!loopView ? "active" : ""} onClick={() => setLoopView(false)}>
+        <button
+          type="button"
+          aria-pressed={!loopView}
+          className={!loopView ? "active" : ""}
+          onClick={() => setLoopView(false)}
+        >
           SOUNDS
         </button>
-        <button type="button" aria-pressed={loopView} className={loopView ? "active" : ""} onClick={() => setLoopView(true)}>
+        <button
+          type="button"
+          aria-pressed={loopView}
+          className={loopView ? "active" : ""}
+          onClick={() => setLoopView(true)}
+        >
           LOOPS <span>{loopAssets.length}</span>
         </button>
       </div>
@@ -511,11 +539,25 @@ export function SampleBrowser({
           {selectFilter("Key", loopKey, keys, setLoopKey)}
           <label className="loop-filter">
             <span>Min BPM</span>
-            <input type="number" min="40" max="240" value={minBpm} aria-label="Minimum BPM" onChange={(e) => setMinBpm(e.target.value)} />
+            <input
+              type="number"
+              min="40"
+              max="240"
+              value={minBpm}
+              aria-label="Minimum BPM"
+              onChange={(e) => setMinBpm(e.target.value)}
+            />
           </label>
           <label className="loop-filter">
             <span>Max BPM</span>
-            <input type="number" min="40" max="240" value={maxBpm} aria-label="Maximum BPM" onChange={(e) => setMaxBpm(e.target.value)} />
+            <input
+              type="number"
+              min="40"
+              max="240"
+              value={maxBpm}
+              aria-label="Maximum BPM"
+              onChange={(e) => setMaxBpm(e.target.value)}
+            />
           </label>
         </div>
       )}
@@ -547,7 +589,9 @@ export function SampleBrowser({
             })}
           </>
         )}
-        {(rest.length > 0 || (loopView && rest.length === 0)) && <div className="sample-group-label">{loopView ? "LOOPS" : "LIBRARY"}</div>}
+        {(rest.length > 0 || (loopView && rest.length === 0)) && (
+          <div className="sample-group-label">{loopView ? "LOOPS" : "LIBRARY"}</div>
+        )}
         {rest.length === 0 && (
           <div className="sample-empty">
             <span className="sample-empty-icon" aria-hidden="true">

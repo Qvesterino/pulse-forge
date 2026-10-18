@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { PreviewDeck } from "../src/audio-engine/previewDeck";
 import type { PreviewDeckDeps } from "../src/audio-engine/previewDeck";
+import type { ProjectDocument } from "../src/project-model/types";
 import { DECLICK_TAIL_SEC, declickFadeOut, resolveSlicePlayback } from "../src/audio-engine/declick";
 
 /**
@@ -187,6 +188,36 @@ describe("PreviewDeck (Wave 4c)", () => {
     expect(deck.voiceCounts().samples).toBe(1);
     source.onended?.();
     expect(deck.voiceCounts().samples).toBe(0);
+  });
+
+  it("syncs a loop preview to the active scene tempo at the next beat", () => {
+    const source = new FakeBufferSource();
+    const master = { sink: true };
+    const fakeCtx = {
+      currentTime: 5,
+      createBufferSource: () => source,
+      createGain: () => ({ gain: { value: 1 }, connect: () => master, disconnect: () => {} }),
+    };
+    const doc = {
+      bpm: 120,
+      arrangement: { clips: [{ sceneId: "slow-scene", startBar: 0, lengthBars: 4 }] },
+      scenes: [{ id: "slow-scene", bpm: 60 }],
+    } as unknown as ProjectDocument;
+    const deck = new PreviewDeck(
+      makeDeps({
+        ctx: () => fakeCtx as unknown as BaseAudioContext,
+        doc: () => doc,
+        bank: () => ({ get: () => ({ duration: 8 }) }) as never,
+        masterInput: () => master as never,
+        transportTickNow: () => 0,
+      }),
+    );
+
+    deck.previewAssetSynced("loop", 2);
+
+    expect(source.playbackRate.value).toBe(2);
+    expect(source.startArgs[0]).toBeCloseTo(6.005, 3);
+    expect(deck.voiceCounts().samples).toBe(1);
   });
 
   it("missing asset reports through missAsset (engine's missedAssets)", () => {

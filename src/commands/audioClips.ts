@@ -45,6 +45,7 @@ export function addAudioClip(
   // Audit hardening: a non-finite position/duration from a caller parse bug
   // must never poison the document (Math.max/min pass NaN through).
   const finiteOr = (value: number, fallback: number): number => (Number.isFinite(value) ? value : fallback);
+  const pitchSemitones = Math.round(Math.min(24, Math.max(-24, finiteOr(patch.pitchSemitones ?? 0, 0))));
   const clip: AudioClip = {
     id: uid("audioClip"),
     trackId,
@@ -58,6 +59,7 @@ export function addAudioClip(
     fadeIn: Math.max(0, finiteOr(patch.fadeIn ?? 0, 0)),
     fadeOut: Math.max(0, finiteOr(patch.fadeOut ?? 0, 0)),
     stretchRate: Math.min(4, Math.max(0.25, finiteOr(patch.stretchRate ?? 1, 1))),
+    ...(pitchSemitones !== 0 ? { pitchSemitones } : {}),
     reverse: patch.reverse === true,
     ...(Number.isSafeInteger(patch.sourceChannel) &&
     (patch.sourceChannel ?? -1) >= 0 &&

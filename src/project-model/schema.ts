@@ -57,7 +57,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 36;
+export const SCHEMA_VERSION = 37;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -620,6 +620,9 @@ export function sanitizeAudioClips(
     const fadeOut = Math.min(fadeBoundSec, Math.max(0, Number.isFinite(Number(raw.fadeOut)) ? Number(raw.fadeOut) : 0));
     let stretchRate = Number.isFinite(Number(raw.stretchRate)) ? Number(raw.stretchRate) : 1;
     stretchRate = Math.min(4, Math.max(0.25, stretchRate));
+    const pitchSemitones = Number.isFinite(Number(raw.pitchSemitones))
+      ? Math.round(Math.min(24, Math.max(-24, Number(raw.pitchSemitones))))
+      : 0;
     const reverse = raw.reverse === true;
     const loop = raw.loop === true;
     const loopPhaseOffsetSec =
@@ -665,6 +668,7 @@ export function sanitizeAudioClips(
       fadeIn,
       fadeOut,
       stretchRate,
+      ...(pitchSemitones !== 0 ? { pitchSemitones } : {}),
       reverse,
       ...(sourceChannel !== undefined ? { sourceChannel } : {}),
       ...(takeGroupId && takeId ? { takeGroupId, takeId } : {}),
@@ -3421,6 +3425,7 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // the note-on portamento transition. v35 adds normalized per-note Mod X/Y
   // values; their neutral value (0.5) is omitted to preserve instrument defaults.
   // v36 adds optional DAW-neutral audio + MIDI transfer provenance.
+  // v37 adds an independent, duration-preserving AudioClip pitch offset.
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

@@ -5,8 +5,8 @@ import { useEffect, useRef, useState } from "react";
  *
  * Replaces the old `window.prompt("Stretch rate…")` with a real dialog:
  * rate slider (0.25–4), resample-vs-preserve mode toggle, live playback
- * math (source seconds → played seconds) and a one-click Fit from the
- * detected loop tempo. Apply commits ONE undoable `updateAudioClip`
+ * math (source seconds → played seconds), independent semitone transposition
+ * and a one-click Fit from the detected loop tempo. Apply commits ONE undoable `updateAudioClip`
  * command via the caller's onApply — the dialog itself never touches the
  * store, so it stays unit-testable without services.
  */
@@ -41,16 +41,22 @@ export function fitRate(detectedBpm: number, projectBpm: number): number | null 
   return clampStretchRate(detectedBpm / projectBpm);
 }
 
+export function clampPitchSemitones(pitch: number): number {
+  if (!Number.isFinite(pitch)) return 0;
+  return Math.round(Math.min(24, Math.max(-24, pitch)));
+}
+
 export interface StretchDialogProps {
   clipName: string;
   /** Source buffer seconds (0 when the buffer is not loaded). */
   sourceSec: number;
   initialRate: number;
   initialMode: StretchMode;
+  initialPitch?: number;
   /** Detected loop tempo, if the loop has a steady pulse. */
   detectedBpm: number | null;
   projectBpm: number;
-  onApply: (rate: number, mode: StretchMode) => void;
+  onApply: (rate: number, mode: StretchMode, pitchSemitones: number) => void;
   onClose: () => void;
 }
 
@@ -59,6 +65,7 @@ export function StretchDialog({
   sourceSec,
   initialRate,
   initialMode,
+  initialPitch,
   detectedBpm,
   projectBpm,
   onApply,
@@ -66,6 +73,7 @@ export function StretchDialog({
 }: StretchDialogProps) {
   const [rate, setRate] = useState(() => clampStretchRate(initialRate));
   const [mode, setMode] = useState<StretchMode>(initialMode);
+  const [pitch, setPitch] = useState(() => clampPitchSemitones(initialPitch ?? 0));
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -91,10 +99,10 @@ export function StretchDialog({
   const playsSec = stretchedPlaybackSec(sourceSec, rate);
 
   return (
-    <div className="generate-dialog-backdrop" role="dialog" aria-label="Time-stretch audio clip">
+    <div className="generate-dialog-backdrop" role="dialog" aria-label="Audio clip time and pitch">
       <div className="generate-dialog" ref={dialogRef}>
         <div className="generate-dialog-header">
-          <span className="generate-dialog-title">TIME-STRETCH · {clipName}</span>
+          <span className="generate-dialog-title">CLIP TIME &amp; PITCH · {clipName}</span>
           <button type="button" className="btn btn-small" onClick={onClose} aria-label="Close stretch dialog">
             ✕
           </button>
@@ -136,6 +144,22 @@ export function StretchDialog({
               </button>
             </div>
           </div>
+          <div className="generate-field">
+            <label className="generate-label" htmlFor="stretch-pitch">
+              PITCH · {pitch > 0 ? `+${pitch}` : pitch} st
+            </label>
+            <input
+              id="stretch-pitch"
+              type="range"
+              min={-24}
+              max={24}
+              step={1}
+              value={pitch}
+              onChange={(e) => setPitch(clampPitchSemitones(Number(e.target.value)))}
+              aria-label="Pitch shift in semitones"
+            />
+            <div className="intent-detected">Independent pitch offset · clip duration stays the same.</div>
+          </div>
           <div className="intent-detected" aria-label="Stretch preview">
             {sourceSec > 0
               ? `Source ${sourceSec.toFixed(2)}s → plays ${playsSec.toFixed(2)}s${mode === "stretch" ? " · pitch kept" : " · pitch ×" + rate.toFixed(2)}`
@@ -163,15 +187,16 @@ export function StretchDialog({
             onClick={() => {
               setRate(1);
               setMode("resample");
+              setPitch(0);
             }}
-            title="Back to 1.00 resample"
+            title="Reset rate, mode and pitch to their defaults"
           >
             Reset
           </button>
           <button type="button" className="btn btn-small" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="btn btn-small intent-use-btn" onClick={() => onApply(rate, mode)}>
+          <button type="button" className="btn btn-small intent-use-btn" onClick={() => onApply(rate, mode, pitch)}>
             Apply
           </button>
         </div>

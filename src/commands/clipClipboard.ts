@@ -201,6 +201,7 @@ export function pasteClips(doc: ProjectDocument, clipboard: ClipClipboard, playh
           fadeIn: stored.fadeIn,
           fadeOut: stored.fadeOut,
           stretchRate: stored.stretchRate,
+          pitchSemitones: stored.pitchSemitones,
           reverse: stored.reverse,
           stretchMode: stored.stretchMode,
           loop: stored.loop === true ? true : undefined,

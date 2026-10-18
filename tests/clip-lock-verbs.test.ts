@@ -20,7 +20,7 @@ import type { AudioClip, ProjectDocument } from "../src/project-model/types";
  *
  * The contract itself is documented in `src/commands/clipGroups.ts`:
  *
- *   "Direct editing verbs (move/resize/trim/split/slip/stretch/delete) refuse
+ *   "Direct editing verbs (move/resize/trim/split/slip/stretch/pitch/delete) refuse
  *    locked clips; non-destructive verbs (mute, duplicate, selection) stay
  *    allowed."
  *
@@ -95,11 +95,12 @@ describe("§29 clip lock — the verbs the contract names", () => {
     expect(() => fitAudioClipTempo(doc, a.id, 128)).toThrow(REFUSES_LOCK);
   });
 
-  it("the generic patch verb refuses SLIP/TRIM/STRETCH fields on a locked clip", () => {
+  it("the generic patch verb refuses SLIP/TRIM/STRETCH/PITCH fields on a locked clip", () => {
     const { doc, a } = lockedFixture();
     expect(() => updateAudioClip(doc, a.id, { offsetSec: 1 })).toThrow(REFUSES_LOCK);
     expect(() => updateAudioClip(doc, a.id, { trimStart: 0.5 })).toThrow(REFUSES_LOCK);
     expect(() => updateAudioClip(doc, a.id, { stretchRate: 1.5 })).toThrow(REFUSES_LOCK);
+    expect(() => updateAudioClip(doc, a.id, { pitchSemitones: 2 })).toThrow(REFUSES_LOCK);
   });
 
   it("the generic patch verb still allows NON-destructive fields on a locked clip", () => {

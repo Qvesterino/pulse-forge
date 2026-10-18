@@ -889,6 +889,8 @@ export interface AudioClip {
   fadeIn: number;
   fadeOut: number;
   stretchRate: number;
+  /** Independent pitch offset in semitones; duration is unchanged. */
+  pitchSemitones?: number;
   reverse: boolean;
   /**
    * Loop the trimmed content for the whole clip length (texture beds):

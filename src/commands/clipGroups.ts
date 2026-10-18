@@ -9,7 +9,7 @@
  *
  * LOCK: `locked` is enforced at COMMAND level — the choke point every entry
  * point (UI, MCP, intent) shares. Direct editing verbs (move/resize/trim/
- * split/slip/stretch/delete) refuse locked clips; non-destructive verbs
+ * split/slip/stretch/pitch/delete) refuse locked clips; non-destructive verbs
  * (mute, duplicate, selection) stay allowed. Compound/whole-range operations
  * are lock-aware only for their TARGET clip in v1 — the ripple tail and
  * range operations flowing around a locked clip are a documented boundary.

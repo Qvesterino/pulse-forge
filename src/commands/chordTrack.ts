@@ -257,9 +257,8 @@ export function generateChordProgression(
  * nudges past the boundary simply stop moving the clamped notes (standard
  * MIDI-clip behavior).
  *
- * Audio clips are not transposable — the engine has no independent pitch
- * shift for audio (`stretchRate` couples pitch and tempo), and silently
- * speeding up a loop is not a transposition. Documented boundary.
+ * Audio clips are not transposed by this command — their independent pitch
+ * offset belongs to the audio-clip editor and is not shared pattern state.
  */
 export function transposeInstrumentClips(doc: ProjectDocument, clipIds: readonly string[], semitones: number): Command {
   if (!Number.isFinite(semitones) || semitones === 0) {

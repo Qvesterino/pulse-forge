@@ -50,7 +50,7 @@ describe("StretchDialog", () => {
     expect(screen.getByText(/plays 8\.00s/)).toBeInTheDocument();
     fireEvent.click(screen.getByText(/Stretch · keep pitch/));
     fireEvent.click(screen.getByText("Apply"));
-    expect(onApply).toHaveBeenCalledWith(0.5, "stretch");
+    expect(onApply).toHaveBeenCalledWith(0.5, "stretch", 0);
   });
 
   it("Fit locks detected tempo and switches to preserve mode", () => {
@@ -58,7 +58,7 @@ describe("StretchDialog", () => {
     fireEvent.click(screen.getByText(/Fit 128 → 124 BPM/));
     expect((screen.getByLabelText("Stretch rate") as HTMLInputElement).value).toBe("1.03");
     fireEvent.click(screen.getByText("Apply"));
-    expect(onApply).toHaveBeenCalledWith(1.03, "stretch");
+    expect(onApply).toHaveBeenCalledWith(1.03, "stretch", 0);
   });
 
   it("fit hides without detection, Reset restores 1.00", () => {

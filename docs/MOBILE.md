@@ -64,6 +64,19 @@ Without a shell:
 The shell is added only when one of those gaps is actually scheduled, and it
 injects `window.kyxNative` — it does not own project state or DSP.
 
+## Native audio host (phase 3) — measurement gate
+
+The Oboe/AAudio + C++ DSP host is **not built**. It starts only if the acoustic
+latency reports show that Web Audio blocks tracking on the target device set.
+Run the latency calibration with a wired loopback on at least five real devices,
+three runs each, and export the JSON report from the wizard. See
+[MOBILE-LATENCY.md](./MOBILE-LATENCY.md) and
+[ADR 0053](./adr/0053-native-audio-host-measurement-gate.md) for the thresholds
+and the decision matrix.
+
+The gate is deliberately conservative: reported `baseLatency`/`outputLatency`
+alone cannot justify a second engine; the acoustic round trip is the evidence.
+
 ## PWA
 
 The PWA is already built by `vite-plugin-pwa` (`src/pwa.ts`):

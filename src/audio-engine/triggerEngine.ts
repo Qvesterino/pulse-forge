@@ -3,7 +3,7 @@ import { BAR_TICKS } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
 import type { InstrumentRuntime } from "../instruments/types";
 import { connectAudioClipSourceChannel } from "./audioClipChannels";
-import { timeStretch } from "./time-stretch";
+import { pitchShiftPreserveDuration, timeStretch } from "./time-stretch";
 import { DECLICK_TAIL_SEC, resolveSlicePlayback, declickFadeOut, fitSliceFades } from "./declick";
 import { audioClipPlayWindow, buildWarpSegments, type WarpSegment, type WarpManager } from "./warpManager";
 import type { AudioBoundaryDiagnostics } from "./audioBoundaryDiagnostics";
@@ -67,6 +67,17 @@ function computeStretchedBuffer(
     // reversing it in place would corrupt the bank's shared source buffer.
     const channel = reverse ? (stretched === src ? stretched.slice() : stretched).reverse() : stretched;
     out.getChannelData(c).set(channel);
+  }
+  return out;
+}
+
+/** Render an independent pitch offset without changing the buffer duration. */
+function computePitchShiftedBuffer(ctx: BaseAudioContext, source: AudioBuffer, semitones: number): AudioBuffer {
+  const out = ctx.createBuffer(source.numberOfChannels, source.length, source.sampleRate);
+  for (let channel = 0; channel < source.numberOfChannels; channel++) {
+    out
+      .getChannelData(channel)
+      .set(pitchShiftPreserveDuration(source.getChannelData(channel), source.sampleRate, semitones));
   }
   return out;
 }
@@ -465,6 +476,8 @@ export class TriggerEngine {
    * - "resample" (default): playbackRate changes pitch + time together
    * - "stretch": non-destructive time-stretch preserves pitch (pre-rendered
    *   grain buffer cached per bufferId+rate, deterministic live==offline)
+   * pitchSemitones is applied afterward as an independent, duration-preserving
+   * offset and cached against the final source variant.
    */
   triggerAudioClip(
     clip: import("../project-model/types").AudioClip,
@@ -496,6 +509,7 @@ export class TriggerEngine {
 
     // --- stretchMode selection ---
     let playBuffer: AudioBuffer;
+    let pitchSourceKey = `${clip.bufferId}|source`;
     let playbackRate: number;
     let clipDurSec: number;
     // offsetSec/trimStart/trimEnd are seconds in the ORIGINAL sample; the
@@ -508,6 +522,7 @@ export class TriggerEngine {
       // moves the key to the newest slot; eviction drops only the oldest —
       // same policy as the sampler's pitch cache in registry.ts).
       const cacheKey = `${clip.bufferId}|${rate}|${reverse ? 1 : 0}`;
+      pitchSourceKey = `stretch:${cacheKey}`;
       let stretched = this.warp.getStretched(cacheKey);
       if (stretched) {
         this.warp.storeStretched(cacheKey, stretched);
@@ -641,11 +656,27 @@ export class TriggerEngine {
     if (hasWarpPins && !reverse && clip.loop !== true && clip.stretchMode === "stretch") {
       warpedHit = this.warp.getWarp(this.warp.warpCacheKey(clip, clipDurSec));
       if (warpedHit) {
+        playBuffer = warpedHit;
+        pitchSourceKey = `warp:${this.warp.warpCacheKey(clip, clipDurSec)}`;
         source.buffer = warpedHit;
         source.playbackRate.value = 1;
       } else {
         this.warp.warmWarp(clip, clipDurSec);
       }
+    }
+
+    const pitchSemitones = Math.round(Math.min(24, Math.max(-24, clip.pitchSemitones ?? 0)));
+    if (pitchSemitones !== 0) {
+      const pitchCacheKey = `${pitchSourceKey}|pitch:${pitchSemitones}`;
+      let pitched = this.warp.getStretched(pitchCacheKey);
+      if (pitched) {
+        this.warp.storeStretched(pitchCacheKey, pitched);
+      } else {
+        pitched = computePitchShiftedBuffer(ctx, playBuffer, pitchSemitones);
+        this.warp.storeStretched(pitchCacheKey, pitched);
+      }
+      playBuffer = pitched;
+      source.buffer = pitched;
     }
 
     // Repitch warp (FL/Slicex-style): warp markers pin sample time to the

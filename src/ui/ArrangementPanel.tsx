@@ -4762,7 +4762,7 @@ export function ArrangementPanel() {
                 const selected = (doc.arrangement.chords ?? []).find((c) => c.id === chordSel);
                 if (!selected) return null;
                 // Transpose/conform operate on the shared CLIP selection's
-                // scene clips (audio clips have no pitch to move).
+                // scene clips; audio clips keep their own per-clip pitch offset.
                 const hasSceneClipSelection = doc.arrangement.clips.some((c) => selection.clipIds.includes(c.id));
                 return (
                   <div className="arr-chord-editor" style={{ left: 6 }}>
@@ -5198,7 +5198,7 @@ export function ArrangementPanel() {
                   key={clip.id}
                   className={`arr-audio-clip${selected ? " selected" : ""}${isCurrent ? " current" : ""}${clip.takeId === clipTakeGroup?.compTakeId ? " comp" : ""}${clip.muted ? " muted" : ""}${clip.locked ? " locked" : ""}${arrangement.clipGroups?.some((g) => g.clipIds.includes(clip.id)) ? " grouped" : ""}`}
                   style={{ left: startBar * barWidth, width: lengthBars * barWidth - 4 }}
-                  title={`${track?.name ?? clip.trackId} · ${clip.bufferId} · ${clip.locked ? "LOCKED " : ""}${clip.muted ? "MUTED " : ""}${clip.reverse ? "REV " : ""}${clip.loop ? "LOOP " : ""}${(clip.warpMarkers?.length ?? 0) > 0 ? `WARP${clip.warpMarkers!.length} ` : ""}${clip.stretchMode === "stretch" ? `STRETCH×${effRate.toFixed(2)} ` : effRate !== 1 ? `×${effRate.toFixed(2)} ` : ""}${lengthBars}b · trim ${clip.trimStart.toFixed(2)}/${clip.trimEnd.toFixed(2)} fade ${effFadeIn.toFixed(2)}/${effFadeOut.toFixed(2)} gain ${effGain.toFixed(2)} — M mutes · PT: top corners fade, top middle clip gain, Alt+edge stretches, Alt+body slips${clip.reverse || clip.loop || (clip.warpMarkers?.length ?? 0) > 0 ? " (slip off: REV/LOOP/WARP)" : ""}`}
+                  title={`${track?.name ?? clip.trackId} · ${clip.bufferId} · ${clip.locked ? "LOCKED " : ""}${clip.muted ? "MUTED " : ""}${clip.reverse ? "REV " : ""}${clip.loop ? "LOOP " : ""}${(clip.warpMarkers?.length ?? 0) > 0 ? `WARP${clip.warpMarkers!.length} ` : ""}${clip.pitchSemitones ? `PITCH${clip.pitchSemitones > 0 ? "+" : ""}${clip.pitchSemitones}st ` : ""}${clip.stretchMode === "stretch" ? `STRETCH×${effRate.toFixed(2)} ` : effRate !== 1 ? `×${effRate.toFixed(2)} ` : ""}${lengthBars}b · trim ${clip.trimStart.toFixed(2)}/${clip.trimEnd.toFixed(2)} fade ${effFadeIn.toFixed(2)}/${effFadeOut.toFixed(2)} gain ${effGain.toFixed(2)} — M mutes · PT: top corners fade, top middle clip gain, Alt+edge stretches, Alt+body slips${clip.reverse || clip.loop || (clip.warpMarkers?.length ?? 0) > 0 ? " (slip off: REV/LOOP/WARP)" : ""}`}
                   onPointerDown={(event) => {
                     // CUT TOOL: sample-precise split at the pointer, snapped
                     // when the grid is on (same click contract as the scene
@@ -5961,13 +5961,13 @@ export function ArrangementPanel() {
             <button
               type="button"
               role="menuitem"
-              title="Rate slider, pitch mode, live duration math and one-click tempo fit"
+              title="Adjust time-stretch, independent pitch and tempo fit"
               onClick={() => {
                 setStretchClipId(audioMenu.clipId);
                 setAudioMenu(null);
               }}
             >
-              Time-stretch…
+              Time & pitch…
             </button>
             <button
               type="button"
@@ -6218,16 +6218,21 @@ export function ArrangementPanel() {
             sourceSec={stretchSourceSec}
             initialRate={stretchTarget.stretchRate ?? 1}
             initialMode={stretchTarget.stretchMode ?? "resample"}
+            initialPitch={stretchTarget.pitchSemitones ?? 0}
             detectedBpm={stretchDetectedBpm}
             projectBpm={tempoAtTick(doc.arrangement.clips, doc.scenes, stretchTarget.startBar * BAR_TICKS, doc.bpm)}
-            onApply={(rate, mode) => {
+            onApply={(rate, mode, pitchSemitones) => {
               // The factory throws before `execute`'s guard can run: stretch is
               // a direct editing verb, so a locked clip refuses here exactly as
               // it does on the stretch drag (`stretchAudioClip`). Without this
               // the refusal left the handler as an uncaught exception.
               try {
                 execute(
-                  updateAudioClip(services.store.doc, stretchTarget.id, { stretchRate: rate, stretchMode: mode }),
+                  updateAudioClip(services.store.doc, stretchTarget.id, {
+                    stretchRate: rate,
+                    stretchMode: mode,
+                    pitchSemitones,
+                  }),
                 );
                 setStretchClipId(null);
               } catch (err) {

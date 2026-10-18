@@ -2,7 +2,12 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useLatencyCalibration, useServices } from "./context";
 import { useFocusRestore } from "./useFocusRestore";
 import { AudioLatencyCalibrationError, measureAudioRoundTrip } from "../audio-engine/latencyProbe";
-import { MAX_MIDI_REFERENCE_OFFSET_MS, MIN_MIDI_REFERENCE_OFFSET_MS } from "../audio-engine/latencyCalibration";
+import {
+  MAX_MIDI_REFERENCE_OFFSET_MS,
+  MIN_MIDI_REFERENCE_OFFSET_MS,
+  type AudioLatencyMeasurement,
+} from "../audio-engine/latencyCalibration";
+import { downloadMobileLatencyReport } from "../mobile/latencyAudit";
 import {
   MAX_RECORDING_INPUT_OFFSET_MS,
   MIN_RECORDING_INPUT_OFFSET_MS,
@@ -34,6 +39,8 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
   const [phase, setPhase] = useState<WizardPhase>("intro");
   const [error, setError] = useState("");
   const [testPlaying, setTestPlaying] = useState(false);
+  /** Exact measurement behind the report; null until this run measured. */
+  const [lastMeasurement, setLastMeasurement] = useState<AudioLatencyMeasurement | null>(null);
   /** Offset actually applied to recording placement by the last stable measurement
    * (post-clamp); null when the current run has not applied anything. */
   const [appliedOffsetMs, setAppliedOffsetMs] = useState<number | null>(null);
@@ -49,6 +56,7 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
     setPhase("intro");
     setError("");
     setTestPlaying(false);
+    setLastMeasurement(null);
     setAppliedOffsetMs(null);
     setMeasuredOffsetMs(null);
     playbackSnapshotRef.current = {
@@ -111,6 +119,7 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
       });
       if (token !== runTokenRef.current) return;
       services.latency.setAudioMeasurement(measurement);
+      setLastMeasurement(measurement);
       // Feed the measured round trip into recording placement (previously
       // display-only): a stable measurement seeds the mic recording offset,
       // which every take compensates via compensateRecordingStartBar.
@@ -137,6 +146,19 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
     setTestPlaying(services.transport.playing);
   };
 
+  const downloadLatencyReport = async () => {
+    try {
+      const context = services.engine.ensureContext();
+      if (typeof AudioContext === "undefined" || !(context instanceof AudioContext)) {
+        throw new AudioLatencyCalibrationError("A live AudioContext is required for the latency report.");
+      }
+      await downloadMobileLatencyReport(context, lastMeasurement);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      setPhase("error");
+    }
+  };
+
   const resetCalibration = () => {
     runTokenRef.current += 1;
     audioAbortRef.current?.abort();
@@ -147,6 +169,7 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
     setPhase("intro");
     setError("");
     setTestPlaying(false);
+    setLastMeasurement(null);
   };
 
   const phaseTitle = (() => {
@@ -238,9 +261,16 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
             <p className="latency-copy">
               This is an audio-path measurement, not the physical latency of a MIDI controller.
             </p>
+            <p className="latency-hint">
+              The JSON report is the evidence the native-host gate (ADR 0053) consumes. Run it on each device, not just
+              once on the fastest phone.
+            </p>
             <div className="latency-actions">
               <button type="button" className="btn btn-small active-solo" onClick={() => setPhase("midi")}>
                 CONTINUE TO MIDI
+              </button>
+              <button type="button" className="btn btn-small" onClick={() => void downloadLatencyReport()}>
+                DOWNLOAD REPORT
               </button>
               <button type="button" className="btn btn-small" onClick={() => void runAudioCalibration()}>
                 MEASURE AGAIN

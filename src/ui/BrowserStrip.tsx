@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useState } from "react";
 import { useServices } from "./context";
 import { addAudioClip, fittedLoopPlacement, setInstrumentSample, setPadParams } from "../commands/commands";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
-import { BAR_TICKS, type Track } from "../project-model/types";
+import { BAR_TICKS, PPQ, type Track } from "../project-model/types";
 import { sceneSecondsToBars, tempoAtTick } from "../project-model/scene-time";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
 
@@ -63,13 +63,10 @@ export function BrowserStrip({ track, selectedPadId }: { track: Track; selectedP
 
   const previewLoop = (asset: UserSampleAsset) => {
     const currentDoc = services.store.getDoc();
-    const targetBpm = tempoAtTick(
-      currentDoc.arrangement.clips,
-      currentDoc.scenes,
-      services.transport.position,
-      currentDoc.bpm,
-    );
-    services.engine.previewAssetSynced(asset.id, asset.bpm ? asset.bpm / targetBpm : 1);
+    const nextBeatTick = (Math.floor(services.transport.position / PPQ) + 1) * PPQ;
+    const targetBpm = tempoAtTick(currentDoc.arrangement.clips, currentDoc.scenes, nextBeatTick, currentDoc.bpm);
+    const detectedBpm = Number.isFinite(asset.bpm) && asset.bpm! >= 40 && asset.bpm! <= 240 ? asset.bpm! : targetBpm;
+    services.engine.previewAssetSynced(asset.id, detectedBpm / targetBpm);
   };
 
   const addLoopToArrangement = async (asset: UserSampleAsset) => {
@@ -79,7 +76,8 @@ export function BrowserStrip({ track, selectedPadId }: { track: Track; selectedP
 
     const currentDoc = services.store.getDoc();
     const target = currentDoc.tracks.find((candidate) => candidate.id === arrangementTarget.id);
-    if (!target || target.kind === "generative") throw new Error("The selected arrangement track is no longer available.");
+    if (!target || target.kind === "generative")
+      throw new Error("The selected arrangement track is no longer available.");
     const playheadTick = Math.max(0, services.transport.position);
     const startBar = Math.max(0, Math.ceil((playheadTick - 1e-6) / BAR_TICKS));
     const targetBpm = tempoAtTick(
@@ -88,15 +86,8 @@ export function BrowserStrip({ track, selectedPadId }: { track: Track; selectedP
       startBar * BAR_TICKS,
       currentDoc.bpm,
     );
-    const fitted = fittedLoopPlacement(
-      asset.duration,
-      asset.bpm,
-      targetBpm,
-      currentDoc.timeSignature.numerator,
-    );
-    const lengthBars =
-      fitted?.lengthBars ??
-      Math.max(0.25, sceneSecondsToBars(asset.duration, targetBpm));
+    const fitted = fittedLoopPlacement(asset.duration, asset.bpm, targetBpm, currentDoc.timeSignature.numerator);
+    const lengthBars = fitted?.lengthBars ?? Math.max(0.25, sceneSecondsToBars(asset.duration, targetBpm));
 
     services.store.execute(
       addAudioClip(
@@ -131,7 +122,10 @@ export function BrowserStrip({ track, selectedPadId }: { track: Track; selectedP
     <aside className="browser-strip" aria-label="Sounds">
       <div className="browser-strip-head">
         <span className="panel-kicker">SOUNDS</span>
-        <span className="browser-strip-target" title="Sounds assign to the selected pad or instrument; loops can be added to the arrangement track">
+        <span
+          className="browser-strip-target"
+          title="Sounds assign to the selected pad or instrument; loops can be added to the arrangement track"
+        >
           {drumPad
             ? `→ ${drumPad.name}`
             : instrumentTarget

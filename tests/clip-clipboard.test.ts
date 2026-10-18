@@ -44,7 +44,12 @@ const audioClipsOf = (doc: ProjectDocument): AudioClip[] => doc.arrangement.audi
 const docWithTones = (): { doc: ProjectDocument; trackId: string; a: string; b: string } => {
   const base = createProjectFromTemplate("house");
   const trackId = base.tracks.find((t) => t.kind === "instrument")!.id;
-  let doc = addAudioClip(base, trackId, "buf-a", 0, 2, { fadeIn: 0.1, fadeOut: 0.2, gain: 0.9 }).execute(base);
+  let doc = addAudioClip(base, trackId, "buf-a", 0, 2, {
+    fadeIn: 0.1,
+    fadeOut: 0.2,
+    gain: 0.9,
+    pitchSemitones: 5,
+  }).execute(base);
   doc = addAudioClip(doc, trackId, "buf-b", 4, 2, { trimStart: 0.5 }).execute(doc);
   return {
     doc,
@@ -95,6 +100,7 @@ describe("C2/C3/C8 paste: fresh ids, deep clones, relative spacing, layering", (
     // Field-level carry: fades/gain/trim ride along.
     expect(pasted.find((c) => c.bufferId === "buf-a")!.fadeIn).toBeCloseTo(0.1, 6);
     expect(pasted.find((c) => c.bufferId === "buf-a")!.gain).toBeCloseTo(0.9, 6);
+    expect(pasted.find((c) => c.bufferId === "buf-a")!.pitchSemitones).toBe(5);
     expect(pasted.find((c) => c.bufferId === "buf-b")!.trimStart).toBeCloseTo(0.5, 6);
 
     // Editing the paste never mutates the copied originals.

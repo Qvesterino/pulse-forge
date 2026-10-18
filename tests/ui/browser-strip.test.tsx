@@ -5,7 +5,7 @@ import { BrowserStrip } from "../../src/ui/BrowserStrip";
 import { KYX_SAMPLE_MIME, sampleIdFromDrag } from "../../src/ui/SampleBrowser";
 import { mockServices, renderWithContext } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
-import { BAR_TICKS } from "../../src/project-model/types";
+import { BAR_TICKS, PPQ } from "../../src/project-model/types";
 import { tempoAtTick } from "../../src/project-model/scene-time";
 import type { UserSampleAsset } from "../../src/persistence/UserSampleRepository";
 
@@ -89,7 +89,7 @@ describe("BrowserStrip (ROADMAP-UI-2027 V4)", () => {
     };
     vi.mocked(services.userSamples.list).mockResolvedValue([loop]);
     services.bank.add(loop.id, { duration: loop.duration } as AudioBuffer);
-    services.transport.position = 100;
+    Object.defineProperty(services.transport, "position", { value: 100, configurable: true });
     services.engine.previewAssetSynced = vi.fn();
     const padId = track.pads[0].id;
     renderWithContext(<BrowserStrip track={track} selectedPadId={padId} />, { services });
@@ -97,7 +97,8 @@ describe("BrowserStrip (ROADMAP-UI-2027 V4)", () => {
     await screen.findByLabelText("Search samples");
     await userEvent.setup().click(screen.getByRole("button", { name: /LOOPS 1/ }));
     await userEvent.setup().click(screen.getByRole("button", { name: "Preview loop in project tempo House Loop" }));
-    const previewBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, services.transport.position, doc.bpm);
+    const nextBeatTick = (Math.floor(services.transport.position / PPQ) + 1) * PPQ;
+    const previewBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, nextBeatTick, doc.bpm);
     expect(services.engine.previewAssetSynced).toHaveBeenCalledWith(loop.id, loop.bpm! / previewBpm);
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Add House Loop to arrangement" }));
@@ -120,6 +121,33 @@ describe("BrowserStrip (ROADMAP-UI-2027 V4)", () => {
     expect(clip.stretchRate).toBeCloseTo(loop.bpm! / previewBpm, 2);
     expect(command.undo(next).arrangement.audioClips ?? []).toHaveLength(0);
     await screen.findByText("House Loop added to the arrangement.");
+  });
+
+  it("explains when a loop's audio is not ready and leaves the arrangement untouched", async () => {
+    const doc = createProjectFromTemplate("house");
+    const services = mockServices(doc);
+    const track = drumTrackOf(doc);
+    const loop: UserSampleAsset = {
+      id: "user.loop-not-ready",
+      name: "Restoring Loop",
+      fileName: "restoring-loop.wav",
+      category: "Custom",
+      duration: 8,
+      sampleRate: 44100,
+      channels: 2,
+      createdAt: "2026-10-18T00:00:00.000Z",
+      bpm: 120,
+      loopMetadata: { isLoop: true },
+    };
+    vi.mocked(services.userSamples.list).mockResolvedValue([loop]);
+    renderWithContext(<BrowserStrip track={track} selectedPadId={track.pads[0].id} />, { services });
+
+    await screen.findByLabelText("Search samples");
+    await userEvent.setup().click(screen.getByRole("button", { name: /LOOPS 1/ }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Add Restoring Loop to arrangement" }));
+
+    expect(await screen.findByText(/still loading or its audio could not be restored/i)).toBeInTheDocument();
+    expect(services.store.execute).not.toHaveBeenCalled();
   });
 });
 

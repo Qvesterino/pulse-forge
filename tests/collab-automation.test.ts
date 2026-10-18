@@ -257,7 +257,7 @@ describe("linked arrangement automation targets", () => {
       },
     });
     expect(normalized.arrangement.automationClips![0]!.linkedTargets).toEqual([pan]);
-    expect(SCHEMA_VERSION).toBe(36);
+    expect(SCHEMA_VERSION).toBe(37);
     const oldClip = { ...clip };
     delete oldClip.linkedTargets;
     const migrated = migrateProject({
@@ -265,7 +265,7 @@ describe("linked arrangement automation targets", () => {
       schemaVersion: 29,
       arrangement: { ...doc.arrangement, automationClips: [oldClip] },
     });
-    expect(migrated.schemaVersion).toBe(36);
+    expect(migrated.schemaVersion).toBe(37);
     expect(migrated.arrangement.automationClips![0]!.linkedTargets).toBeUndefined();
 
     const yDoc = new Y.Doc();

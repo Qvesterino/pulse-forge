@@ -22,11 +22,18 @@ import { addAudioClip, audioClipDurationSec, clampClipFades } from "./audioClips
 /**
  * §29 lock: the fields of the generic patch verb that ARE direct editing
  * verbs — slip (offsetSec), trim (trimStart/trimEnd) and stretch
- * (stretchRate/stretchMode). `assertClipEditable` is applied to these only:
+ * (stretchRate/stretchMode/pitchSemitones). `assertClipEditable` is applied to these only:
  * gain, fades, mute, loop, reverse and source props are not in the contract's
  * verb list, so a locked clip must still be mixable and mutable.
  */
-const LOCKED_VERB_FIELDS = ["offsetSec", "trimStart", "trimEnd", "stretchRate", "stretchMode"] as const;
+const LOCKED_VERB_FIELDS = [
+  "offsetSec",
+  "trimStart",
+  "trimEnd",
+  "stretchRate",
+  "stretchMode",
+  "pitchSemitones",
+] as const;
 
 export function updateAudioClip(
   doc: ProjectDocument,
@@ -42,6 +49,7 @@ export function updateAudioClip(
       | "fadeOut"
       | "stretchRate"
       | "stretchMode"
+      | "pitchSemitones"
       | "reverse"
       | "loop"
       | "muted"
@@ -82,6 +90,9 @@ export function updateAudioClip(
   if (fadeOut !== undefined) nextPatch.fadeOut = fadeOut;
   const stretchRate = num(patch.stretchRate, 0.25, 4);
   if (stretchRate !== undefined) nextPatch.stretchRate = stretchRate;
+  const pitchSemitones = num(patch.pitchSemitones, -24, 24);
+  if (pitchSemitones !== undefined)
+    nextPatch.pitchSemitones = pitchSemitones === 0 ? undefined : Math.round(pitchSemitones);
   if (patch.stretchMode !== undefined) nextPatch.stretchMode = patch.stretchMode;
   if (patch.warpMarkers !== undefined) {
     // Clone, never store the caller's array: addAudioClip/duplicateAudioClip

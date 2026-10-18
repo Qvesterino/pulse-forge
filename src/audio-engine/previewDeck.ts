@@ -1,5 +1,6 @@
 import type { DrumPad, InstrumentTrack, ProjectDocument } from "../project-model/types";
 import { PPQ } from "../project-model/types";
+import { arrangementSecondsBetweenTicks } from "../project-model/scene-time";
 import type { SampleBank } from "../sample-library/factory";
 import type { InstrumentRuntime } from "../instruments/types";
 import type { InstrumentPreset } from "../presets/types";
@@ -598,9 +599,9 @@ export class PreviewDeck {
   }
 
   /**
-   * Preview a sample synced to the transport (FL Browser Alt+P): the sample's
-   * first beat lands on the next bar boundary and playbackRate tempo-matches
-   * the project. `rate` is caller-computed (fileBPM/doc.bpm) — 1 = dry.
+   * Preview a sample synced to the transport: its first beat lands on the
+   * next beat and playbackRate tempo-matches the tempo active at that point.
+   * `rate` is caller-computed (fileBPM/targetBPM) — 1 = dry.
    */
   previewAssetSynced(assetId: string, rate = 1): void {
     this.deps.ensureContext();
@@ -608,15 +609,11 @@ export class PreviewDeck {
     const buffer = this.deps.bank()?.get(assetId);
     const doc = this.deps.doc();
     if (!ctx || !this.deps.masterInput() || !buffer || !doc) return;
-    const bpm = Math.max(1, doc.bpm);
-    const barSec = (60 / bpm) * 4;
     const now = ctx.currentTime;
-    // Quantized start: next bar boundary relative to transport playhead
     const pos = this.deps.transportTickNow();
-    const secondsPerTick = 60 / (bpm * PPQ);
-    const nextBarSec = ((Math.floor(pos / PPQ) + 1) * PPQ - pos) * secondsPerTick;
-    const when = now + Math.max(0.005, (nextBarSec % Math.max(0.001, barSec)) + 0.005);
-    void barSec;
+    const nextBeatTick = (Math.floor(pos / PPQ) + 1) * PPQ;
+    const delaySec = arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, pos, nextBeatTick, doc.bpm);
+    const when = now + Math.max(0.005, delaySec + 0.005);
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.playbackRate.value = Math.min(4, Math.max(0.25, rate));

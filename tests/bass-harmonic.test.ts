@@ -1089,3 +1089,128 @@ describe("GROW factory preset adoption (wave-9 axes)", () => {
     expect(byId.get("bassharmonic-subtle-body")!.params.tilt).toBeLessThan(0);
   });
 });
+
+/**
+ * GROW robustness — the measurements Addendum 6.2 says are "required before
+ * calling this behavior regression-validated": alias energy above Nyquist,
+ * release clicks on an abrupt input stop / pitch jump, and mono compatibility
+ * of the width rotation. These are measured claims, not descriptions.
+ */
+describe("GROW robustness — Nyquist taper, release clicks, mono compatibility", () => {
+  const hintParams = (overrides: Record<string, number>) => {
+    const cls = registered.get("bass-harmonic-processor");
+    return paramsOf(cls, {
+      drive: 1,
+      mix: 1,
+      subAnchor: 0,
+      range: 4,
+      presence: 1,
+      tilt: 1,
+      character: 2,
+      ...overrides,
+    });
+  };
+
+  it("never writes a partial above the Nyquist taper (low sample rate)", () => {
+    // At 8 kHz the 16-partial ladder reaches far past Nyquist, so the 0.42/0.48
+    // taper is the only thing keeping above-Nyquist partials out of the output
+    // (they would fold back into the audible band). f0 = 400 Hz at focus 220.
+    const cls = registered.get("bass-harmonic-processor");
+    const params = hintParams({ focusHz: 220, hintHz: 400, range: 4 });
+    const { L } = renderProcessorCorpus(
+      cls,
+      params,
+      1.0,
+      (i, rate) => [0.5 * Math.sin((2 * Math.PI * 400 * i) / rate), 0.5 * Math.sin((2 * Math.PI * 400 * i) / rate)],
+      8000,
+    );
+    // The 8th partial (3200 Hz) is inside the pass band and must exist…
+    const second = goertzelAtRate(L, 800, 8000, 0.5);
+    const eighth = goertzelAtRate(L, 3200, 8000, 0.5);
+    const ninth = goertzelAtRate(L, 3600, 8000, 0.5);
+    const nyquist = goertzelAtRate(L, 4000, 8000, 0.5);
+    // The 2nd partial (800 Hz) is the reference for "the stack is generating"…
+    expect(second).toBeGreaterThan(0.005);
+    // …the 8th (3200 Hz) is still well inside the pass band…
+    expect(eighth).toBeGreaterThan(second * 0.05);
+    // …the 9th (3600 Hz) sits inside the Nyquist taper and must be visibly
+    // attenuated (with tilt = 1 its raw weight is ~equal to the 8th, so the
+    // halving is the taper doing its job, not the weight ladder)…
+    expect(ninth).toBeLessThan(eighth * 0.7);
+    // …and the 10th (4000 Hz = Nyquist) is zeroed. A DTFT bin above Nyquist is
+    // its own alias, so the meaningful check is at and below it.
+    expect(nyquist).toBeLessThan(second * 0.02);
+    // No shaping junk between harmonics: half-partial bins stay far below the
+    // 2nd (FOLD creates harmonics OF the stack, which stay on the 400 Hz grid).
+    for (const hz of [1000, 1800, 2600, 3000, 3400, 3800]) {
+      expect(goertzelAtRate(L, hz, 8000, 0.5), `${hz} Hz must stay between-harmonic`).toBeLessThan(second * 0.06);
+    }
+  });
+
+  it("does not click when the input stops abruptly (generator release)", () => {
+    // A 0.5-amplitude 55 Hz tone stops dead at 0.4 s. The generated high
+    // partials carry a large legitimate slew, so a click is measured as a jump
+    // BEYOND that slew, not as an absolute delta.
+    const cls = registered.get("bass-harmonic-processor");
+    const params = hintParams({ focusHz: 90, hintHz: 55 });
+    const tone = (i: number) => (i < 0.4 * SR ? 0.5 * Math.sin((2 * Math.PI * 55 * i) / SR) : 0);
+    const out = renderProcessor(cls, params, 0.8, tone);
+    const maxDeltaIn = (from: number, to: number): number => {
+      let max = 0;
+      for (let i = Math.max(1, Math.floor(from * SR)); i < Math.min(out.length, Math.floor(to * SR)); i += 1) {
+        max = Math.max(max, Math.abs(out[i]! - out[i - 1]!));
+      }
+      return max;
+    };
+    const steady = maxDeltaIn(0.2, 0.4);
+    const afterStop = maxDeltaIn(0.4, 0.55);
+    expect(steady).toBeGreaterThan(0.005); // the stack really has high partials
+    expect(afterStop).toBeLessThan(steady * 1.5 + 1e-3);
+  });
+
+  it("does not click when the hint jumps to a new note (phase stays continuous)", () => {
+    const cls = registered.get("bass-harmonic-processor");
+    const params = hintParams({ focusHz: 90, hintHz: 55 });
+    const hint = params.hintHz!;
+    const out = renderProcessor(cls, params, 0.8, sineAt(55), {
+      perBlock: (offset) => {
+        hint[0] = offset >= 0.4 * SR ? 82.4 : 55;
+      },
+    });
+    const maxDeltaIn = (from: number, to: number): number => {
+      let max = 0;
+      for (let i = Math.max(1, Math.floor(from * SR)); i < Math.min(out.length, Math.floor(to * SR)); i += 1) {
+        max = Math.max(max, Math.abs(out[i]! - out[i - 1]!));
+      }
+      return max;
+    };
+    const before = maxDeltaIn(0.22, 0.4);
+    const jump = maxDeltaIn(0.4, 0.42);
+    const after = maxDeltaIn(0.6, 0.8);
+    // A hint change moves the frequency, so the slew scales with it; a click
+    // would be an order of magnitude above the steady signal either side.
+    expect(jump).toBeLessThan(Math.max(before, after) * 2 + 1e-3);
+  });
+
+  it("keeps the generated 2nd harmonic audible in a mono fold-down (width rotation)", () => {
+    // WIDTH rotates upper partials ±0.6 rad; a mono sum loses cos(0.6) ≈ 1.7 dB
+    // but must never null, and the lowest partial (n = 2, ≤ 120 Hz) must stay
+    // mono by construction.
+    const cls = registered.get("bass-harmonic-processor");
+    const params = hintParams({ focusHz: 90, hintHz: 55, range: 2, width: 1, character: 0, tilt: 0 });
+    const { L, R } = renderProcessorStereo(cls, params, 1.0, sineAt(55));
+    const mono = new Float32Array(L.length);
+    const side = new Float32Array(L.length);
+    for (let i = 0; i < L.length; i += 1) {
+      mono[i] = (L[i]! + R[i]!) * 0.5;
+      side[i] = L[i]! - R[i]!;
+    }
+    const left2 = goertzelAt(L, 110);
+    expect(left2).toBeGreaterThan(0.01);
+    expect(goertzelAt(mono, 110)).toBeGreaterThan(left2 * 0.6); // no null
+    // The width rotation is real at the 3rd partial…
+    expect(goertzelAt(side, 165)).toBeGreaterThan(0.001);
+    // …and the 2nd partial (at/below the 120 Hz crossover) stays mono.
+    expect(goertzelAt(side, 110)).toBeLessThan(goertzelAt(side, 165) * 0.2);
+  });
+});

@@ -1,6 +1,8 @@
-import type { McpMeterSnapshot } from "./tools";
+import type { McpFxMeterReading, McpFxMeterSnapshot, McpMeterSnapshot } from "./tools";
 import type { Services } from "../services";
+import type { EffectInstance } from "../project-model/types";
 import { MASTER_EFFECT_OWNER_ID } from "../project-model/types";
+import { EFFECT_DEFS } from "../effects/registry";
 
 /**
  * KYX MCP — METER BRIDGE (kyx_meter's ears, docs/INTENT-MCP-EXPANSION-PLAN.md
@@ -63,5 +65,48 @@ export function mcpMeterSnapshotFromServices(services: Services): McpMeterSnapsh
     return snapshot;
   } catch {
     return null; // engine not booted / context suspended — honest refusal
+  }
+}
+
+/**
+ * KYX MCP — FX TELEMETRY BRIDGE (kyx_meter scope:"fx").
+ *
+ * The closed loop for an effect change: after an agent applies KOREŇ, it can
+ * read the tracked f0, the "+x dB harmonics" gain and the key scaler instead
+ * of assuming the effect did something. Walks every insert host — track effects
+ * (groups are tracks), return effects and the master chain
+ * (`MASTER_EFFECT_OWNER_ID`) — and asks the engine's own per-effect meter cache
+ * (`getFxMeters`) and dynamics breakdown, so this helper adds NO DSP knowledge:
+ * it reports exactly what the wrappers expose and nothing else.
+ *
+ * Null when the engine has no live context (honest refusal), and a throwing
+ * engine call degrades to null rather than taking the relay down.
+ */
+export function mcpFxMetersFromServices(services: Services): McpFxMeterSnapshot | null {
+  try {
+    const engine = services.engine;
+    if (engine.getLiveAudioContext() === null) return null;
+    const doc = services.store.getDoc();
+    const effects: McpFxMeterReading[] = [];
+    const collect = (ownerId: string, ownerName: string, list: readonly EffectInstance[]): void => {
+      for (const fx of list) {
+        effects.push({
+          ownerId,
+          ownerName,
+          fxId: fx.id,
+          type: fx.type,
+          name: EFFECT_DEFS[fx.type]?.name ?? String(fx.type),
+          bypassed: fx.bypassed === true,
+          meters: engine.getFxMeters(ownerId, fx.id) ?? null,
+          gainReduction: engine.getFxGainReductionBreakdown(ownerId, fx.id) ?? null,
+        });
+      }
+    };
+    for (const track of doc.tracks) collect(track.id, track.name, track.effects);
+    for (const ret of doc.returns) collect(ret.id, ret.name, ret.effects);
+    collect(MASTER_EFFECT_OWNER_ID, "master", doc.master.effects ?? []);
+    return { effects };
+  } catch {
+    return null; // engine not booted — the tool refuses honestly
   }
 }

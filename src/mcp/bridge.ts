@@ -1,6 +1,6 @@
 import type { ProjectDocument } from "../project-model/types";
 import type { Command } from "../commands/types";
-import { executeMcpToolAsync, type McpExportRequest, type McpMeterSnapshot, type McpToolContext } from "./tools";
+import { executeMcpToolAsync, type McpExportRequest, type McpFxMeterSnapshot, type McpMeterSnapshot, type McpToolContext } from "./tools";
 import { mcpAllowDestructive } from "./flags";
 import { withAgentAttribution } from "./attribution";
 
@@ -48,6 +48,7 @@ export interface McpBridgeDeps {
   export?: (request: McpExportRequest) => Promise<string>;
   audioPreview?: NonNullable<McpToolContext["audioPreview"]>;
   meters?: () => McpMeterSnapshot | null;
+  fxMeters?: () => McpFxMeterSnapshot | null;
   beginUndoFrame?: (label?: string) => void;
   endUndoFrame?: () => void;
   measureLoudness?: () => Promise<{ integrated: number; measured: boolean }>;
@@ -153,6 +154,7 @@ export class McpBridge {
         export: this.deps.export,
         audioPreview: this.deps.audioPreview,
         meters: this.deps.meters,
+        fxMeters: this.deps.fxMeters,
         beginUndoFrame: this.deps.beginUndoFrame,
         endUndoFrame: this.deps.endUndoFrame,
         measureLoudness: this.deps.measureLoudness,

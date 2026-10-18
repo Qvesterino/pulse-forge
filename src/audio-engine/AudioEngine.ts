@@ -2565,7 +2565,7 @@ export class AudioEngine {
 
   /**
    * Late-bound transport reader (assigned by services after construction):
-   * transport-synced previews quantize to the next bar relative to the live
+   * transport-synced previews quantize to the next beat relative to the live
    * playhead; falls back to 0 when unset.
    */
   getTransportTick: (() => number) | null = null;
