@@ -216,7 +216,9 @@ describe("protocol conformance — the CLI itself", () => {
     let exitCode = 0;
     let output = "";
     try {
-      output = execFileSync(process.execPath, ["tools/kyx-verify/kyx-verify.mjs", file, "--json"], { encoding: "utf8" });
+      output = execFileSync(process.execPath, ["tools/kyx-verify/kyx-verify.mjs", file, "--json"], {
+        encoding: "utf8",
+      });
     } catch (error) {
       const failure = error as { status?: number; stdout?: string };
       exitCode = failure.status ?? -1;

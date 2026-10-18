@@ -8,8 +8,8 @@ const NOTE_EXPRESSION_TARGETS: Partial<Record<InstrumentKind, readonly NoteExpre
   bass: ["pan", "filterCutoffHz", "filterResonance", "releaseVelocity", "modX", "modY"],
   "808": ["pan", "filterCutoffHz", "filterResonance", "releaseVelocity", "modX", "modY"],
   texture: ["pan", "filterCutoffHz", "filterResonance", "releaseVelocity", "modX", "modY"],
-  wavetable: ["releaseVelocity"],
-  granular: ["releaseVelocity"],
+  wavetable: ["pan", "releaseVelocity"],
+  granular: ["pan", "releaseVelocity"],
   fm: ["pan", "releaseVelocity"],
   keys: ["pan", "filterCutoffHz", "filterResonance", "releaseVelocity", "modX", "modY"],
   organ: ["pan", "filterCutoffHz", "filterResonance", "releaseVelocity", "modX", "modY"],
@@ -22,8 +22,9 @@ const NOTE_EXPRESSION_TARGETS: Partial<Record<InstrumentKind, readonly NoteExpre
   pluck: ["pan", "filterCutoffHz", "filterResonance", "releaseVelocity", "modX", "modY"],
   flute: ["pan", "filterCutoffHz", "filterResonance", "releaseVelocity", "modX", "modY"],
   logdrum: ["pan", "filterCutoffHz", "filterResonance", "modX", "modY"],
-  spectral: ["filterCutoffHz", "filterResonance", "releaseVelocity", "modX", "modY"],
+  spectral: ["pan", "filterCutoffHz", "filterResonance", "releaseVelocity", "modX", "modY"],
   vocalchop: ["pan", "releaseVelocity"],
+  drumsynth: ["pan"],
 };
 
 const HELD_VOICE_SLIDE_NOTE_INSTRUMENTS = new Set<InstrumentKind>(["808", "acid"]);

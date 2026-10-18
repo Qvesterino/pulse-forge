@@ -6,7 +6,8 @@
  * requirement).
  *
  * Protocol (port):
- *   { type: "arm", chunkFrames?: number, captureFrames?: number } — begin capture
+ *   { type: "arm", chunkFrames?: number, captureFrames?: number, startFrame?: number }
+ *       — begin immediately or at the requested absolute audio frame
  *   { type: "stop" } — stop capturing; a final partial chunk is flushed
  * Main thread receives:
  *   { type: "capture-start", time, frame, sampleRate } — audio-clock time of the
@@ -31,6 +32,7 @@ class CaptureProcessor extends AudioWorkletProcessor {
     this.filled = 0;
     this.captureFrames = 0;
     this.capturedFrames = 0;
+    this.startFrame = 0;
     this.armed = false;
     this.announced = false;
     this.port.onmessage = (event) => {
@@ -47,6 +49,8 @@ class CaptureProcessor extends AudioWorkletProcessor {
         this.filled = 0;
         this.capturedFrames = 0;
         this.captureFrames = Number.isSafeInteger(frames) && frames >= 128 ? frames : 0;
+        const startFrame = Number(data.startFrame);
+        this.startFrame = Number.isSafeInteger(startFrame) && startFrame >= 0 ? startFrame : 0;
         this.armed = true;
         this.announced = false;
       } else if (data.type === "stop") {
@@ -75,6 +79,8 @@ class CaptureProcessor extends AudioWorkletProcessor {
 
   process(inputs) {
     if (!this.armed) return true;
+    const frame = Number(globalThis.currentFrame) || 0;
+    if (!this.announced && this.startFrame > 0 && frame < this.startFrame) return true;
     if (!this.announced) {
       this.announced = true;
       // currentTime is the audio-clock time at the start of this quantum —
@@ -82,7 +88,7 @@ class CaptureProcessor extends AudioWorkletProcessor {
       this.port.postMessage({
         type: "capture-start",
         time: currentTime,
-        frame: globalThis.currentFrame || 0,
+        frame,
         sampleRate: globalThis.sampleRate || 0,
       });
     }

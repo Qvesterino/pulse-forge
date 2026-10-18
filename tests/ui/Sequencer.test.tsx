@@ -21,7 +21,9 @@ const defaultProps = {
 describe("Sequencer", () => {
   it("renders step ruler", () => {
     renderWithContext(<Sequencer {...defaultProps} />);
-    expect(screen.getByRole("row", { name: /Step ruler/ })).toBeInTheDocument();
+    // A labelled GROUP, not a row: a lone `role="row"` with no grid parent is an
+    // invalid ARIA structure (caught by the accessibility gate, tests/a11y-panels.test.tsx).
+    expect(screen.getByRole("group", { name: /Step ruler/ })).toBeInTheDocument();
   });
 
   it("renders step numbers in ruler", () => {

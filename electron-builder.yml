@@ -45,6 +45,8 @@ win:
   extraResources:
     - from: build/windows-audio-probe/Release/kyx-windows-audio-probe.exe
       to: windows-audio-probe/kyx-windows-audio-probe.exe
+    - from: native/windows-audio-host/build/Release/kyx_windows_audio_host.node
+      to: windows-audio-host/kyx_windows_audio_host.node
   target:
     - target: nsis
       arch: [x64]

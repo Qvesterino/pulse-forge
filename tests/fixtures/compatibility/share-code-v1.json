@@ -9,10 +9,6 @@
     "bpm": 124,
     "trackCount": 3,
     "patternCount": 1,
-    "trackKinds": [
-      "drum",
-      "instrument",
-      "instrument"
-    ]
+    "trackKinds": ["drum", "instrument", "instrument"]
   }
 }

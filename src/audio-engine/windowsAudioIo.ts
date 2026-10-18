@@ -2,8 +2,11 @@
  * Windows Studio audio-I/O boundary (ADR 0050).
  *
  * This is a control/session contract, not a shipped device backend. Device
- * identities and channel maps are exact user intent; PCM must use the shared
- * capture/render rings and never travel through React or ordinary IPC events.
+ * identities and channel maps are exact user intent. The Electron utility
+ * process cannot currently receive the renderer's SharedArrayBuffer, so the
+ * candidate PCM protocol uses bounded Float32Array packets over a dedicated
+ * MessagePort. No native device stream is shipped yet. Do not send audio in
+ * invoke payloads or through React state.
  */
 
 export type WindowsAudioBackend = "wasapi-shared" | "wasapi-exclusive" | "asio";
@@ -57,6 +60,16 @@ export interface WindowsAudioIoNegotiation {
   sharedPeriods?: { minFrames: number; maxFrames: number; fundamentalFrames: number };
 }
 
+/** One bounded interleaved float32 block sent over the session's dedicated port. */
+export interface WindowsAudioIoPcmPacket {
+  type: WindowsAudioFlow;
+  sessionId: string;
+  sequence: number;
+  frames: number;
+  channels: number;
+  samples: ArrayBuffer;
+}
+
 export type WindowsAudioIoSessionEvent =
   | { type: "xrun"; direction: WindowsAudioFlow; count: number }
   | { type: "device-lost"; endpointId: string; message: string }
@@ -66,10 +79,8 @@ export type WindowsAudioIoSessionEvent =
 export interface WindowsAudioIoSession {
   id: string;
   negotiation: WindowsAudioIoNegotiation;
-  /** Native capture producer → engine/worklet consumer. */
-  captureRing: SharedArrayBuffer;
-  /** Engine/worklet producer → native render consumer. */
-  renderRing: SharedArrayBuffer;
+  /** Dedicated renderer/worklet ↔ native utility port carrying bounded ArrayBuffers. */
+  port: MessagePort;
   subscribe(listener: (event: WindowsAudioIoSessionEvent) => void): () => void;
   /** Idempotent; releases both endpoints and rejects stale buffers by session ID. */
   stop(): Promise<void>;
@@ -79,6 +90,9 @@ export interface WindowsAudioIoBackend {
   enumerateEndpoints(): Promise<WindowsAudioEndpoint[]>;
   startDuplex(request: WindowsAudioIoRequest): Promise<WindowsAudioIoSession>;
 }
+
+const MAX_PCM_PACKET_FRAMES = 8192;
+const MAX_PCM_PACKET_BYTES = 1 * 1024 * 1024;
 
 export type WindowsAudioIoValidation<T> = { ok: true; value: T } | { ok: false; errors: string[] };
 
@@ -144,6 +158,48 @@ export function validateWindowsAudioIoRequest(value: unknown): WindowsAudioIoVal
       inputChannelMap: [...(value.inputChannelMap as number[])],
       outputChannelMap: [...(value.outputChannelMap as number[])],
       exclusiveAcknowledged: value.exclusiveAcknowledged as boolean,
+    },
+  };
+}
+
+/** Validate an untrusted PCM message before it enters an audio or native queue. */
+export function validateWindowsAudioIoPcmPacket(
+  value: unknown,
+  direction: WindowsAudioFlow,
+  sessionId: string,
+  expectedChannels: number,
+): WindowsAudioIoValidation<WindowsAudioIoPcmPacket> {
+  if (!isRecord(value)) return { ok: false, errors: ["PCM packet must be an object"] };
+  const errors: string[] = [];
+  if (value.type !== direction) errors.push("PCM packet direction is invalid");
+  if (value.sessionId !== sessionId) errors.push("PCM packet belongs to a different session");
+  if (!isBoundedNonNegativeInteger(value.sequence, Number.MAX_SAFE_INTEGER))
+    errors.push("PCM packet sequence is invalid");
+  if (!isBoundedPositiveInteger(value.frames, MAX_PCM_PACKET_FRAMES)) errors.push("PCM packet frame count is invalid");
+  if (!isBoundedPositiveInteger(value.channels, 32) || value.channels !== expectedChannels)
+    errors.push("PCM packet channel count does not match the selected channel map");
+  if (!(value.samples instanceof ArrayBuffer)) errors.push("PCM packet samples must be an ArrayBuffer");
+
+  if (
+    isBoundedPositiveInteger(value.frames, MAX_PCM_PACKET_FRAMES) &&
+    isBoundedPositiveInteger(value.channels, 32) &&
+    value.samples instanceof ArrayBuffer
+  ) {
+    const expectedBytes = value.frames * value.channels * Float32Array.BYTES_PER_ELEMENT;
+    if (expectedBytes > MAX_PCM_PACKET_BYTES) errors.push("PCM packet exceeds the one-megabyte transfer limit");
+    if (value.samples.byteLength !== expectedBytes) errors.push("PCM packet sample buffer length is inconsistent");
+  }
+
+  if (errors.length > 0) return { ok: false, errors };
+  return {
+    ok: true,
+    value: {
+      type: direction,
+      sessionId,
+      sequence: value.sequence as number,
+      frames: value.frames as number,
+      channels: value.channels as number,
+      samples: value.samples as ArrayBuffer,
     },
   };
 }

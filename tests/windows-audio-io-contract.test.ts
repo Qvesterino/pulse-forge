@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   validateWindowsAudioIoNegotiation,
+  validateWindowsAudioIoPcmPacket,
   validateWindowsAudioIoRequest,
   type WindowsAudioIoNegotiation,
   type WindowsAudioIoRequest,
@@ -43,6 +44,74 @@ function negotiation(overrides: Partial<WindowsAudioIoNegotiation> = {}): Window
 }
 
 describe("Windows audio-I/O backend contract", () => {
+  it("accepts bounded capture and render packets only for the active session", () => {
+    const samples = new Float32Array(480 * 2).buffer;
+    const capture = validateWindowsAudioIoPcmPacket(
+      { type: "capture", sessionId: "session-1", sequence: 0, frames: 480, channels: 2, samples },
+      "capture",
+      "session-1",
+      2,
+    );
+    const render = validateWindowsAudioIoPcmPacket(
+      { type: "render", sessionId: "session-1", sequence: 8, frames: 480, channels: 2, samples },
+      "render",
+      "session-1",
+      2,
+    );
+    expect(capture.ok).toBe(true);
+    expect(render.ok).toBe(true);
+  });
+
+  it("rejects wrong direction, stale session, channel layout and sample-buffer length", () => {
+    const result = validateWindowsAudioIoPcmPacket(
+      {
+        type: "render",
+        sessionId: "old-session",
+        sequence: -1,
+        frames: 480,
+        channels: 1,
+        samples: new ArrayBuffer(16),
+      },
+      "capture",
+      "current-session",
+      2,
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("invalid PCM packet unexpectedly passed");
+    expect(result.errors).toEqual(
+      expect.arrayContaining([
+        "PCM packet direction is invalid",
+        "PCM packet belongs to a different session",
+        "PCM packet sequence is invalid",
+        "PCM packet channel count does not match the selected channel map",
+        "PCM packet sample buffer length is inconsistent",
+      ]),
+    );
+  });
+
+  it("caps packet dimensions before accepting transferred PCM", () => {
+    const result = validateWindowsAudioIoPcmPacket(
+      { type: "capture", sessionId: "session-1", sequence: 0, frames: 8193, channels: 2, samples: new ArrayBuffer(0) },
+      "capture",
+      "session-1",
+      2,
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("oversized PCM packet unexpectedly passed");
+    expect(result.errors).toContain("PCM packet frame count is invalid");
+  });
+
+  it("allows the maximum one-megabyte packet at exactly 8192 frames by 32 channels", () => {
+    const samples = new ArrayBuffer(8192 * 32 * Float32Array.BYTES_PER_ELEMENT);
+    const result = validateWindowsAudioIoPcmPacket(
+      { type: "capture", sessionId: "session-1", sequence: 0, frames: 8192, channels: 32, samples },
+      "capture",
+      "session-1",
+      32,
+    );
+    expect(result.ok).toBe(true);
+  });
+
   it("preserves exact endpoints, period and user channel order", () => {
     const result = validateWindowsAudioIoRequest(request());
     expect(result).toEqual({ ok: true, value: request() });

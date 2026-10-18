@@ -4,6 +4,7 @@ import { encodeProjectForGallery, PUBLISH_CODE_KEY, setRemixParent } from "./gal
 import { GALLERY_RENDER_KEY, provenanceFromStamp } from "./galleryProvenance";
 import { lastRenderStamp } from "../export/renderManifest";
 import { funnelEvent } from "../services/funnel";
+import { t, useLocale } from "../i18n";
 
 /**
  * PUBLISH TO GALLERY — hands the current project to /gallery via
@@ -11,9 +12,14 @@ import { funnelEvent } from "../services/funnel";
  * where the publish form is pre-filled. When the studio was entered through
  * a gallery FORK (?import=…&remixOf=<id>), the chain travels along so the
  * published beat links back to its parent.
+ *
+ * i18n PATTERN PANEL (src/i18n/index.ts): every user-facing string here goes
+ * through `t()`, so this panel both stays English by default and demonstrates
+ * the migration pattern for the next panel.
  */
 export function PublishToGalleryButton() {
   const doc = useDoc();
+  useLocale(); // re-render when the language changes
   const [error, setError] = useState<string | null>(null);
   const publish = () => {
     funnelEvent("share_publish");
@@ -21,7 +27,7 @@ export function PublishToGalleryButton() {
     try {
       code = encodeProjectForGallery(doc);
     } catch {
-      setError("This project is too large to hand off — export it as a file instead.");
+      setError(t("publish.tooLarge"));
       return;
     }
     try {
@@ -30,7 +36,7 @@ export function PublishToGalleryButton() {
       // sessionStorage blocked (private mode, quota). Opening the gallery would
       // silently show an EMPTY publish form — the old comment promised a
       // "URL hand-off below" that never existed. Say what happened instead.
-      setError("The browser blocked temporary storage — allow site data, or export the project instead.");
+      setError(t("publish.storageBlocked"));
       return;
     }
     setError(null);
@@ -51,13 +57,8 @@ export function PublishToGalleryButton() {
   };
   return (
     <>
-      <button
-        type="button"
-        className="btn btn-export"
-        title="Drop this beat into the public Beat Gallery (tags + playable embed)"
-        onClick={publish}
-      >
-        PUBLISH TO GALLERY
+      <button type="button" className="btn btn-export" title={t("publish.title")} onClick={publish}>
+        {t("publish.cta")}
       </button>
       {error && (
         <span className="save-status save-error" role="alert" title={error}>

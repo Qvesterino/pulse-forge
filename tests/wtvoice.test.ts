@@ -14,7 +14,7 @@ type Proc = {
   handleMessage: (msg: Record<string, unknown>) => void;
 };
 
-let Processor: new () => Proc;
+let Processor: new (options?: { processorOptions?: Record<string, unknown> }) => Proc;
 let now = 0;
 const SR = 44100;
 const BLOCK = 128;
@@ -65,35 +65,38 @@ function makeTables(): { levels: Float32Array[][]; ks: number[] } {
   return { levels: [frames, pure], ks: [11, 1] };
 }
 
-function run(
+function runStereo(
   params: Record<string, number>,
-  notes: Array<{ pitch: number; velocity: number; when: number; dur: number; releaseVelocity?: number }>,
+  notes: Array<{ pitch: number; velocity: number; when: number; dur: number; releaseVelocity?: number; pan?: number }>,
   duration: number,
   pressure?: { pitch: number; value: number; at: number },
-): Float32Array {
-  const proc = new Processor();
+  preseeded = false,
+): { outL: Float32Array; outR: Float32Array } {
   const tables = makeTables();
   // Reset the shared clock BEFORE dispatching — `when` values are clamped to
   // currentTime at handle time, so a stale clock would push events away.
   now = 0;
-  proc.handleMessage({ type: "tables", levels: tables.levels, ks: tables.ks });
-  for (const [name, value] of Object.entries(params)) {
-    proc.handleMessage({ type: "param", name, value });
-  }
-  for (const n of notes) {
-    proc.handleMessage({
+  const events = notes.flatMap((note) => [
+    {
       type: "noteOn",
-      pitch: n.pitch,
-      velocity: n.velocity,
-      when: n.when,
-      releaseVelocity: n.releaseVelocity,
-    });
-    proc.handleMessage({ type: "noteOff", pitch: n.pitch, when: n.when + n.dur });
+      pitch: note.pitch,
+      velocity: note.velocity,
+      when: note.when,
+      releaseVelocity: note.releaseVelocity,
+      pan: note.pan,
+    },
+    { type: "noteOff", pitch: note.pitch, when: note.when + note.dur },
+  ]);
+  const proc = preseeded ? new Processor({ processorOptions: { params, tables, events } }) : new Processor();
+  if (!preseeded) {
+    proc.handleMessage({ type: "tables", levels: tables.levels, ks: tables.ks });
+    for (const [name, value] of Object.entries(params)) {
+      proc.handleMessage({ type: "param", name, value });
+    }
+    for (const event of events) proc.handleMessage(event);
   }
   // Pressure is aftertouch — dispatch it mid-render when the voice exists
   const deferredPressure = pressure ? { ...pressure, done: false } : null;
-  console.log("DBG run:", JSON.stringify(params), "notes:", notes.length, "nowAfter:", now.toFixed(3));
-
   const total = Math.ceil(duration * SR);
   const out = new Float32Array(total);
   const outR = new Float32Array(total);
@@ -110,14 +113,49 @@ function run(
     outR.set(blockR, start);
     now = (start + BLOCK) / SR;
   }
-  void outR;
-  return out;
+  return { outL: out, outR };
+}
+
+function run(
+  params: Record<string, number>,
+  notes: Array<{ pitch: number; velocity: number; when: number; dur: number; releaseVelocity?: number; pan?: number }>,
+  duration: number,
+  pressure?: { pitch: number; value: number; at: number },
+): Float32Array {
+  return runStereo(params, notes, duration, pressure).outL;
 }
 
 function peak(data: Float32Array, from = 0, to = data.length): number {
   let v = 0;
   for (let i = from; i < to; i++) v = Math.max(v, Math.abs(data[i]));
   return v;
+}
+
+function maxAbsDiff(a: Float32Array, b: Float32Array): number {
+  let difference = 0;
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    difference = Math.max(difference, Math.abs(a[i]! - b[i]!));
+  }
+  return difference;
+}
+
+function stereoPan(inputL: Float32Array, inputR: Float32Array, pan: number) {
+  const left = new Float32Array(inputL.length);
+  const right = new Float32Array(inputR.length);
+  if (pan === 0) return { left: inputL, right: inputR };
+  const x = pan < 0 ? pan + 1 : pan;
+  const gainL = Math.cos((x * Math.PI) / 2);
+  const gainR = Math.sin((x * Math.PI) / 2);
+  for (let i = 0; i < inputL.length; i++) {
+    if (pan < 0) {
+      left[i] = inputL[i]! + inputR[i]! * gainL;
+      right[i] = inputR[i]! * gainR;
+    } else {
+      left[i] = inputL[i]! * gainL;
+      right[i] = inputR[i]! + inputL[i]! * gainR;
+    }
+  }
+  return { left, right };
 }
 
 function goertzel(data: Float32Array, freq: number, sampleRate = SR): number {
@@ -169,7 +207,6 @@ describe("wtvoice worklet engine", () => {
 
   it("releases and dies after noteOff", () => {
     const out = run({}, [{ pitch: 60, velocity: 0.9, when: 0.05, dur: 0.25 }], 1.5);
-    console.log("DBG peak whole:", peak(out).toFixed(4), "peak 0-0.3s:", peak(out, 0, Math.floor(0.3 * SR)).toFixed(4));
     expect(peak(out, 0, Math.floor(0.3 * SR))).toBeGreaterThan(0.01);
     expect(peak(out, Math.floor(1.0 * SR))).toBeLessThan(0.001);
   });
@@ -193,6 +230,54 @@ describe("wtvoice worklet engine", () => {
     expect(rms(long, Math.floor(0.32 * SR), Math.floor(0.5 * SR))).toBeGreaterThan(
       rms(short, Math.floor(0.32 * SR), Math.floor(0.5 * SR)) * 1.5,
     );
+  });
+
+  it("applies per-note pan to the complete stereo voice without changing centered output", () => {
+    const params = { unison: 3, spread: 0.7 };
+    const note = { pitch: 60, velocity: 0.9, when: 0.05, dur: 0.4 };
+    const baseline = runStereo(params, [note], 0.8);
+    const center = runStereo(params, [{ ...note, pan: 0 }], 0.8);
+    const left = runStereo(params, [{ ...note, pan: -1 }], 0.8);
+    const right = runStereo(params, [{ ...note, pan: 1 }], 0.8);
+
+    expect(peak(center.outL)).toBeGreaterThan(0.01);
+    expect(peak(center.outR)).toBeGreaterThan(0.01);
+    expect(maxAbsDiff(center.outL, baseline.outL)).toBe(0);
+    expect(maxAbsDiff(center.outR, baseline.outR)).toBe(0);
+    expect(maxAbsDiff(baseline.outL, baseline.outR)).toBeGreaterThan(0.001);
+    const expectedLeft = stereoPan(baseline.outL, baseline.outR, -1);
+    const expectedRight = stereoPan(baseline.outL, baseline.outR, 1);
+    expect(maxAbsDiff(left.outL, expectedLeft.left)).toBeLessThan(1e-6);
+    expect(maxAbsDiff(left.outR, expectedLeft.right)).toBeLessThan(1e-6);
+    expect(maxAbsDiff(right.outL, expectedRight.left)).toBeLessThan(1e-6);
+    expect(maxAbsDiff(right.outR, expectedRight.right)).toBeLessThan(1e-6);
+    expect(peak(left.outL)).toBeGreaterThan(0.01);
+    expect(peak(left.outR)).toBeLessThan(peak(left.outL) * 0.001);
+    expect(peak(right.outR)).toBeGreaterThan(0.01);
+    expect(peak(right.outL)).toBeLessThan(peak(right.outR) * 0.001);
+  });
+
+  it("keeps overlapping wavetable note pan independent", () => {
+    const notes = [
+      { pitch: 60, velocity: 0.9, when: 0.05, dur: 0.5, pan: -1 },
+      { pitch: 67, velocity: 0.8, when: 0.05, dur: 0.5, pan: 1 },
+    ];
+    const { outL, outR } = runStereo({}, notes, 0.8);
+    expect(peak(outL)).toBeGreaterThan(0.01);
+    expect(peak(outR)).toBeGreaterThan(0.01);
+  });
+
+  it("renders constructor-seeded offline pan events identically to the live event queue", () => {
+    const params = { unison: 3, spread: 0.7 };
+    const notes = [
+      { pitch: 60, velocity: 0.9, when: 0.05, dur: 0.3, releaseVelocity: 0.8, pan: -0.65 },
+      { pitch: 67, velocity: 0.7, when: 0.1, dur: 0.35, pan: 0.55 },
+    ];
+    const live = runStereo(params, notes, 0.8);
+    const offlineSeeded = runStereo(params, notes, 0.8, undefined, true);
+
+    expect(maxAbsDiff(offlineSeeded.outL, live.outL)).toBe(0);
+    expect(maxAbsDiff(offlineSeeded.outR, live.outR)).toBe(0);
   });
 
   it("mod matrix: LFO -> cutoff actually modulates the filter", () => {

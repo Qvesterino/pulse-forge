@@ -36,7 +36,8 @@ same project value.
    with the expression keys consumed by its runtime and drives the Piano Roll
    lane list. The
    first runtime slice supports fine pitch across built-in instruments,
-   voice-specific pan on 18 built-in voice instruments, and centered Mod X/Y
+   voice-specific pan on 22 built-in voice instruments, including per-hit
+   Drum Synth routing and full-voice Spectral routing, and centered Mod X/Y
    mapped around each instrument's ordinary per-voice cutoff and resonance on
    16 built-in voice-filtered instruments. Release velocity scales the authored
    note-off envelope on 19 built-in instruments; normalized 0.5 preserves the
@@ -65,7 +66,7 @@ same project value.
   project schema v35, including centered Mod X/Y values.
 - `setNotesExpression` creates one undoable command and returns an identity
   command when a gesture produces no value change.
-- Piano Roll exposes velocity/fine pitch for every instrument, pan for the 18
+- Piano Roll exposes velocity/fine pitch for every instrument, pan for the 22
   runtimes declaring that voice-level capability, Mod X/Y and direct
   cutoff/resonance for 16 per-voice filter runtimes, and release velocity for
   19 runtimes with a note-off envelope.
@@ -85,23 +86,17 @@ same project value.
   available for note-off. The existing portamento flag still starts its own
   sliding attack.
 - The live wavetable and granular AudioWorklet bridges previously dropped
-  `releaseVelocity` while forwarding note-on events, even though their native
-  offline graphs consumed it. Both bridges now send the normalized value with
-  each sample-timed note-on; each worklet stores it on that voice and derives
-  the release time constant when the matching note-off arrives. Raw processor
-  audio specs prove that neutral 0.5 is sample-identical to the default,
-  release values 0 and 1 leave pre-note-off audio unchanged and change the
-  post-note-off tail by more than 1.5×. Bridge specs assert the serialized
-  per-note value. A browser release-response audit now verifies the live
-  runtime output is an `AudioWorkletNode` for both instruments, then compares
-  the 0→1 release response with the offline native voice renderer. At 44.1 kHz,
-  Chromium measured wavetable live/offline tail ratios of 3.37×/3.71× and
-  granular ratios of 2.38×/2.80×; Firefox measured 3.37×/3.72× and
-  2.38×/2.80×. Pre-note-off body ratios stayed within 1% of unity. Both
-  browsers meet the audit's >1.5× audibility and 35% cross-render agreement
-  limits. This is release-response parity, not a waveform null: offline
-  `AudioWorklet` message queues cannot deliver these note events during render,
-  so export uses the native voice renderer.
+  `releaseVelocity` while forwarding note-on events. Both bridges now send the
+  normalized value with each sample-timed note-on; each worklet stores it on
+  that voice and derives the release time constant at the matching note-off.
+  Raw processor audio specs prove that neutral 0.5 is sample-identical to the
+  default, release values 0 and 1 leave pre-note-off audio unchanged and change
+  the post-note-off tail by more than 1.5×. Live and offline now use the same
+  final-output graph and worklet processor for both instruments. The 2026-10-18
+  Chromium audit measured pre-note-off ratios of 1.00×/1.00× and live/offline
+  release-response ratios of 3.37×/3.37× for wavetable and 2.37×/2.37× for
+  granular. This verifies response parity for these release paths; it is not a
+  full-registry waveform parity result.
 - `tests/note-expression.test.ts` covers clamping, Yjs round-trip,
   undo/redo and default-value no-op.
 - `tests/per-note-filter-modulation.test.ts` checks that neutral Mod X/Y keeps
@@ -119,12 +114,13 @@ same project value.
   real noteOn and noteOff events, rather than reading graph parameters alone.
 - Chromium `OfflineAudioContext` now sweeps every built-in fine-pitch route and
   every declared filter, release, pan, and held-voice slide route through
-  isolated channel renders. The check passes 79/79:
+  isolated channel renders. The 2026-10-18 browser audit passed 85/85
+  top-level checks:
   neutral Mod X/Y has exactly zero sample delta on all 16 filter instruments,
   changed cutoff and both modulation lanes alter rendered audio on all 16,
   release velocity changes the note-off tail on all 19 release instruments,
   and pan preserves the centered baseline while rendering isolated hard-left/
-  right notes plus overlapping opposite-pan notes on all 18 declared
+  right notes plus overlapping opposite-pan notes on all 22 declared
   instruments; held-voice slide audio moves the fundamental on 808 and Acid
   without a new attack. A 12-semitone fine-pitch event enters through the real
   TriggerEngine and changes stereo RMS by more than 0.5% of the baseline on
@@ -138,34 +134,27 @@ same project value.
   no-expression case. The focused command is
   `npm run test:browser:note-expression`; `npm run
 test:browser:note-expression:all` runs it in Chromium, Firefox and WebKit.
-  The verifier has 79 OfflineAudioContext render assertions, six live/offline
-  parity cases, and the worklet release-response audit. The 2026-10-17
-  Chromium run passed all six parity cases with audio-frame-counted captures.
-  Analog Mod X remained phase-sensitive at the waveform level (0.8 dB
-  live/offline null, 0.394 correlation, 0.7 dB live-repeat null at 364
-  samples), while the live/offline, offline-repeat and live-repeat magnitude
-  comparisons measured spectral cosine 0.9941/1.0000/0.9949 and RMS
-  1.049/1.000/0.960. The offline repeat null was −323.0 dB. This met the
-  note-expression-only phase-insensitive gate; the other five cases passed the
-  strict waveform null. The capture worklet now stops at the exact requested
-  audio-frame count, including its final partial chunk; its focused processor
-  specs cover exact length and manual-stop compatibility. The parity fallback
-  still requires deterministic offline control, ≥0.98 spectral cosine and
-  0.90–1.10 RMS across all three comparisons, and rejects a divergent or silent
-  repeat capture. Synthetic checks cover changed pitch, level, missing
-  comparisons and a dirty offline control. This exception does not relax the
-  general parity corpus. The six-case corpus has not yet been rerun in
-  Firefox; its earlier four-case run passed 4/4. The worklet release-response
-  audit passed in Chromium and Firefox. Playwright's Windows WebKit build
-  exposes none of `AudioContext`, `OfflineAudioContext` or `AudioWorkletNode`;
-  the all-engine command reports that browser as blocked and exits nonzero.
-  This is not Safari evidence.
+  The current verifier covers all 24 instrument runtimes in the Chromium
+  OfflineAudioContext sweep, ten selected live/offline parity cases, and the
+  Wavetable/Granular release-response parity audit. The 2026-10-18 Chromium run
+  passed 85/85 top-level checks. Selected parity cases include pan on Drum
+  Synth, Spectral, Wavetable and Granular, combined expression and Mod X/Y on
+  Analog, and held slides on 808 and Acid; matched cases have strict waveform
+  nulls and deterministic repeated renders. Wavetable and Granular now use
+  the same worklet voice path in both live and offline graphs. The Firefox
+  results dated 2026-10-17 predate that routing change and need a fresh rerun.
+  Playwright's Windows WebKit build exposes none of `AudioContext`,
+  `OfflineAudioContext` or `AudioWorkletNode`; this is not Safari evidence.
 - `tests/per-note-pan.test.ts` now routes overlapping notes independently on
   Texture Synth and Vocal Chop as well as the 16 previously supported voice
-  instruments; neutral Texture pan keeps its existing voice panner centered,
-  while Vocal Chop only inserts a panner for non-neutral events.
+  instruments, Drum Synth and Spectral Pad. Drum Synth inserts a voice-local
+  panner only for a non-neutral note pan; its default event path remains
+  direct. Spectral Pad pans the complete voice, including the optional rotary
+  wet path, and leaves its centered graph unchanged. The graph spec covers
+  independent overlapping pan values and asserts that an expression-free
+  Drum Synth note allocates no panner.
 - Chromium OfflineAudioContext checks render hard-left, hard-right, centered,
-  and simultaneous opposing-pan notes for all 18 declared pan-capable
+  and simultaneous opposing-pan notes for all 22 declared pan-capable
   instruments. They require the centered render to match the authored
   baseline within 5% RMS, each hard-pan render to suppress the opposite
   channel by at least 40 dB, and both simultaneous voices to remain audible
@@ -178,12 +167,12 @@ test:browser:note-expression:all` runs it in Chromium, Firefox and WebKit.
   are ignored when no matching held voice exists. Other runtimes' legacy
   portamento paths do not yet imply FL-style no-retrigger slide-note support.
 - The browser verifier now selects Chromium, Firefox, WebKit, or all three.
-  Chromium's current run passes 79 rendered-audio checks and six representative
-  real-time/offline parity cases. Firefox passes the 79 rendered-audio checks;
-  its recorded live/offline evidence covers the earlier four-case corpus. The
-  Playwright WebKit build available on this Windows host has no Web Audio API,
-  so Safari remains an open verification target. The parity set is
-  representative, not a full-registry live/offline proof.
+  Chromium passes 85/85 top-level checks, including ten selected
+  real-time/offline parity cases. Firefox's 2026-10-17 result predates the
+  latest worklet graph changes and needs a fresh run. The Playwright WebKit
+  build available on this Windows host has no Web Audio API, so Safari remains
+  an open verification target. The parity set is representative, not a
+  full-registry live/offline proof.
 - `tests/ui/piano-roll-event-editor.test.tsx` enters the real selector and
   pointer handlers against a real `ProjectStore`, including no-move and
   `pointercancel` negatives; it also edits Mod X from the lane and verifies
@@ -191,7 +180,8 @@ test:browser:note-expression:all` runs it in Chromium, Firefox and WebKit.
 
 ## Acceptance gates for further coverage
 
-- Extend voice-specific pan to remaining instrument runtimes, and extend
+- Extend voice-specific pan to the remaining TSAR and
+  KOPA runtimes, and extend
   direct cutoff/resonance, release velocity and held-voice slide only after
   mapping them to each runtime's actual voice controls. The current slide-note
   slice covers 808 and mono Acid 303; other suitable instruments remain open.

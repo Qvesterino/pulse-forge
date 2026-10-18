@@ -43,16 +43,53 @@ async function audit(container: HTMLElement): Promise<{ blocking: string[]; all:
   return { blocking, all: results.violations.length };
 }
 
+/**
+ * A pragmatic accessible-name hint, mirroring the sources a browser uses
+ * (aria-label → aria-labelledby → own text → wrapping <label> text → title).
+ * It grades the EMPTY case — the icon-button-with-no-name class of defect —
+ * and deliberately does not grade naming QUALITY (an emoji-only label passes
+ * here and is a taste question, not a gate).
+ */
+function accessibleNameHint(control: HTMLElement): string {
+  const byAria = control.getAttribute("aria-label");
+  if (byAria != null && byAria.trim() !== "") return byAria;
+  const labelledBy = control.getAttribute("aria-labelledby");
+  if (labelledBy != null) {
+    const text = labelledBy
+      .split(/\s+/)
+      .map((id) => document.getElementById(id)?.textContent ?? "")
+      .join(" ");
+    if (text.trim() !== "") return text;
+  }
+  const ownText = control.textContent ?? "";
+  if (ownText.trim() !== "") return ownText;
+  const title = control.getAttribute("title");
+  if (title != null && title.trim() !== "") return title;
+  const label = control.closest("label");
+  if (label != null) {
+    const labelText = (label.textContent ?? "").replace(ownText, "");
+    if (labelText.trim() !== "") return labelText;
+    const labelTitle = label.getAttribute("title");
+    if (labelTitle != null && labelTitle.trim() !== "") return labelTitle;
+  }
+  return control.getAttribute("alt") ?? "";
+}
+
+/** Hidden controls are not exposed to assistive tech — axe ignores them too. */
+function isHidden(control: HTMLElement): boolean {
+  if (control.hasAttribute("hidden")) return true;
+  if (control.closest('[aria-hidden="true"]') != null) return true;
+  return /display:\s*none/i.test(control.getAttribute("style") ?? "");
+}
+
 function unnamedControls(container: HTMLElement): string[] {
-  const controls = container.querySelectorAll<HTMLElement>("button, [role=button], input, select, textarea, [role=slider]");
+  const controls = container.querySelectorAll<HTMLElement>(
+    "button, [role=button], input, select, textarea, [role=slider]",
+  );
   const unnamed: string[] = [];
   for (const control of controls) {
-    const name =
-      control.getAttribute("aria-label") ??
-      control.getAttribute("title") ??
-      control.textContent ??
-      "";
-    if (name.trim() === "") unnamed.push(control.outerHTML.slice(0, 90));
+    if (isHidden(control)) continue;
+    if (accessibleNameHint(control).trim() === "") unnamed.push(control.outerHTML.slice(0, 90));
   }
   return unnamed;
 }

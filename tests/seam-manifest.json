@@ -228,6 +228,24 @@
       "note": "Wave A: entered through the REAL panel (type the brief, press DO IT). The default must yield a multi-candidate auditionable bank with ONE explained winner and NO single-result fallback; the negative spec spies the budget to the lean value and pins the honest constrained-device outcome (USE RESULT, nothing to audition) — proving the budget reaches the request instead of being decoration."
     },
     {
+      "id": "i18n-skeleton",
+      "status": "COVERED",
+      "entryPoint": "src/i18n/index.ts (t + useLocale) with PublishButton as the pattern panel",
+      "spec": "tests/i18n.test.tsx",
+      "seamEvent": "the pattern panel reads the catalog",
+      "negativeSpec": "never renders nothing",
+      "note": "The mechanism for migrating panels one at a time: a TYPED catalog (TypeScript refuses a missing key — the completeness pin costs no test), a fallback chain that ends at the KEY and never at an empty label, and one migrated panel proving the wiring (switch the locale, the rendered button and its error text change). Nothing rewrites a panel that has not been migrated on purpose."
+    },
+    {
+      "id": "a11y-panels",
+      "status": "COVERED",
+      "entryPoint": "tests/a11y-panels.test.tsx (axe-core on the app shell, mixer, arrangement, intent panel)",
+      "spec": "tests/a11y-panels.test.tsx",
+      "seamEvent": "no critical/serious/moderate/minor violations",
+      "negativeSpec": "every control is named",
+      "note": "The accessibility gate. Earning it fixed three real defects: an orphan role=\"row\" with no grid parent (Sequencer), a role=\"meter\" whose aria-valuenow only arrived on the first rAF tick (Meter's first paint was invalid), and an aria-label on a bare div (the arrangement's chord lane). Honest limits are stated in the spec: color-contrast cannot run in jsdom and is excluded, axe's `incomplete` bucket is not gated, and naming QUALITY is not graded — only the empty case."
+    },
+    {
       "id": "status-report",
       "status": "COVERED",
       "entryPoint": "scripts/status-report.mts (npm run status:report; drift section 'status')",

@@ -267,7 +267,9 @@ vectors + a demo project). **No implementation until the owner picks.**
     badge and the feed filter are derived from the item's own object (no stored
     flag), carry the exact `npx kyx-verify … --expect <hash>` command, and the
     client and server sanitizers are pinned to agree on a table of payloads
-    (`tests/gallery-render-provenance.test.ts`).
+    (`tests/gallery-render-provenance.test.ts`), which also carries the
+    **end-to-end**: the hash the gallery stores is the hash the PUBLIC verifier
+    checks against a real stamped export, run as a real CLI process.
   - **1.3** `docs/COMPATIBILITY.md` (the public half of `LONGEVITY.md §0`) plus a
     committed golden share code (`tests/fixtures/compatibility/share-code-v1.json`)
     with three pins: it decodes, it migrates to the CURRENT schema version, and a
@@ -301,3 +303,32 @@ vectors + a demo project). **No implementation until the owner picks.**
   - Phase 2 evidence: 91/91 in the 10 files the phase touches, `tsc` clean,
     seam gate green (51 seams, 2 new), and a live run of the report itself
     (4 pass · 0 fail · 4 pending).
+
+- **2026-10-17 — Phase 3.1 (accessibility gate) implemented.**
+  - `axe-core` added as a dev dependency; `tests/a11y-panels.test.tsx` gates the
+    four primary surfaces (app shell, mixer, arrangement, intent panel) on
+    critical+serious+moderate+minor = ZERO, plus an independent check that every
+    interactive control carries a non-empty accessible name.
+  - Earning it fixed three real defects: orphan `role="row"` with no grid parent
+    (Sequencer), `role="meter"` whose `aria-valuenow` only arrived on the first
+    rAF tick (Meter — the first paint was invalid), and `aria-label` on a bare
+    div (the arrangement chord lane). The sequencer spec was updated to the new,
+    VALID role (`group`) — the assertion intent is unchanged.
+  - Stated limits, on the spec itself: `color-contrast` cannot run in jsdom and is
+    excluded; the `incomplete` bucket is not gated; naming QUALITY is not graded
+    (only the empty case). Focus order and keyboard operability are covered by
+    the existing keyboard specs and are NOT re-asserted here.
+
+- **2026-10-17 — Phase 3.3 (i18n skeleton) implemented; 3.2 and 3.4 await the owner.**
+  - `src/i18n/index.ts`: a TYPED message catalog (TypeScript refuses a missing
+    key, so completeness costs no test), `t(key, vars)` with a fallback chain
+    (missing translation → EN → the KEY — never an empty label), `setLocale` /
+    `getLocale` persisted per window, and `useLocale()` so a panel re-renders on
+    a language switch.
+  - The PATTERN PANEL is `PublishButton` (the smallest surface, and English by
+    default so nothing visible changed): every string it renders now comes from
+    the catalog, and `tests/i18n.test.tsx` proves the wiring by switching to
+    Slovak and asserting the rendered label and error text follow.
+  - Panels migrate one at a time; nothing here rewrites a panel that has not been
+    migrated on purpose. `3.2 mobile` still needs the owner's GO (checkpoint 4)
+    and `3.4 sound identity` still needs the owner's decision (checkpoint 5).

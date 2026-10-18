@@ -39,6 +39,10 @@ import { ensureWorkletsForDoc, isWorkletReady } from "../audio-worklets/loader";
 const SR = 44100;
 /** Seconds of live capture per case (also the offline comparison window). */
 const CASE_SECONDS = 0.45;
+/** Schedule capture in the future so the note events can be queued before it starts. */
+const CAPTURE_START_LEAD_SEC = 0.5;
+/** AudioWorklet render quantum used to align the requested capture frame. */
+const CAPTURE_QUANTUM_FRAMES = 128;
 /** Additional scheduling cushion for browser-thread note-event probes. */
 const NOTE_EXPRESSION_EVENT_PREROLL_SEC = 0.12;
 /** Null below this (dB, relative to reference energy) is inaudible. */
@@ -184,6 +188,8 @@ interface CaptureResult {
   sampleRate: number;
   /** Exact frame target shared with the matching offline render. */
   requestedFrames: number;
+  /** Absolute audio frame requested for capture start. */
+  requestedStartFrame: number;
   /** Smallest future lead, in seconds, when the script scheduled its events. */
   minimumEventLeadSec: number;
 }
@@ -199,8 +205,9 @@ async function renderOffline(
   script: ParityScript,
   sampleRate: number,
   eventPrerollSec = 0,
+  leadSec = 0,
 ): Promise<Float32Array | null> {
-  const frames = Math.ceil((CASE_SECONDS + 0.2 + eventPrerollSec) * sampleRate);
+  const frames = Math.ceil((CASE_SECONDS + 0.2 + eventPrerollSec + leadSec) * sampleRate);
   const ctx = new OfflineAudioContext(2, frames, sampleRate);
   // Same loader contract as the renderer: core + exactly the plugin suites
   // this doc uses.
@@ -209,7 +216,7 @@ async function renderOffline(
   engine.attachBank(bank);
   engine.useContext(ctx);
   engine.setProject(doc);
-  script(engine, (offset) => eventPrerollSec + offset);
+  script(engine, (offset) => leadSec + eventPrerollSec + offset);
   // The export barrier: exact PDC sizing before the (un-abortable) render —
   // the same sequencing the real renderer performs.
   await engine.prepareOfflineRender();
@@ -259,13 +266,13 @@ async function captureLive(
     if (expectedWorklet) {
       const instruments = (
         engine as unknown as {
-          instruments?: Map<string, { runtime?: { output?: AudioNode } }>;
+          instruments?: Map<string, { runtime?: { processorNode?: AudioWorkletNode } }>;
         }
       ).instruments;
-      const output = instruments?.get("parity-inst")?.runtime?.output;
-      if (typeof AudioWorkletNode === "undefined" || !(output instanceof AudioWorkletNode)) {
+      const processorNode = instruments?.get("parity-inst")?.runtime?.processorNode;
+      if (typeof AudioWorkletNode === "undefined" || !(processorNode instanceof AudioWorkletNode)) {
         throw new Error(
-          `${expectedWorklet} was ready, but parity-inst selected ${output?.constructor?.name ?? "no runtime"}`,
+          `${expectedWorklet} was ready, but parity-inst selected ${processorNode?.constructor?.name ?? "no processor"}`,
         );
       }
     }
@@ -276,7 +283,7 @@ async function captureLive(
     let captureStartFrame = 0;
     let resolveDone: (() => void) | null = null;
     const done = new Promise<void>((resolve) => (resolveDone = resolve));
-    const requestedFrames = Math.ceil((CASE_SECONDS + 0.2 + eventPrerollSec) * ctx.sampleRate);
+    const requestedFrames = Math.ceil((CASE_SECONDS + 0.2 + eventPrerollSec + leadSec) * ctx.sampleRate);
     const scheduledTimes: number[] = [];
     const capture = new AudioWorkletNode(ctx, "capture-processor", {
       numberOfInputs: 1,
@@ -302,24 +309,28 @@ async function captureLive(
     const masterTap = engine.getMasterTapNode();
     if (!masterTap) return null;
     masterTap.connect(capture);
-    capture.port.postMessage({ type: "arm", chunkFrames: 4096, captureFrames: requestedFrames });
-
-    // Wait until the capture has actually started before scheduling, so the
-    // first event cannot land in a pre-capture quantum.
-    const armDeadline = performance.now() + 1000;
-    while (Number.isNaN(originTime) && performance.now() < armDeadline) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    if (Number.isNaN(originTime)) return null;
-    if (leadSec > 0) await new Promise((resolve) => setTimeout(resolve, leadSec * 1000));
+    // Choose an absolute future frame and queue every event before capture
+    // begins. Waiting for capture-start on the main thread is unsafe: a busy
+    // browser can deliver that port message after the audio clock has already
+    // advanced, making an event appear late even though capture began on time.
+    const requestedStartFrame =
+      Math.ceil(((ctx.currentTime + CAPTURE_START_LEAD_SEC) * ctx.sampleRate) / CAPTURE_QUANTUM_FRAMES) *
+      CAPTURE_QUANTUM_FRAMES;
+    const requestedStartTime = requestedStartFrame / ctx.sampleRate;
     script(engine, (offset) => {
-      const when = originTime + leadSec + eventPrerollSec + offset;
+      const when = requestedStartTime + leadSec + eventPrerollSec + offset;
       scheduledTimes.push(when);
       return when;
     });
     const minimumEventLeadSec = scheduledTimes.length
       ? Math.min(...scheduledTimes.map((when) => when - ctx.currentTime))
       : Number.POSITIVE_INFINITY;
+    capture.port.postMessage({
+      type: "arm",
+      chunkFrames: 4096,
+      captureFrames: requestedFrames,
+      startFrame: requestedStartFrame,
+    });
 
     const captureCompleted = await Promise.race([
       done.then(() => true),
@@ -351,6 +362,7 @@ async function captureLive(
       originFrame: captureStartFrame,
       sampleRate: captureSampleRate || ctx.sampleRate,
       requestedFrames,
+      requestedStartFrame,
       minimumEventLeadSec,
     };
   } finally {
@@ -704,7 +716,10 @@ function windowRms(samples: Float32Array, sampleRate: number, startSec: number, 
  * between the short and long release settings while checking that expression
  * leaves the pre-note-off body unchanged in each path.
  */
-export async function auditWorkletReleaseResponseParity(bank: SampleBank): Promise<ParityCheckResult> {
+export async function auditWorkletReleaseResponseParity(
+  bank: SampleBank,
+  onlyKinds?: readonly ("wavetable" | "granular")[],
+): Promise<ParityCheckResult> {
   const template = createProjectFromTemplate("house");
   const sampleId = "parity-granular-release-fixture";
   if (!bank.has(sampleId)) {
@@ -723,7 +738,8 @@ export async function auditWorkletReleaseResponseParity(bank: SampleBank): Promi
 
   const failures: string[] = [];
   const details: string[] = [];
-  for (const kind of ["wavetable", "granular"] as const) {
+  const kinds = (["wavetable", "granular"] as const).filter((kind) => !onlyKinds || onlyKinds.includes(kind));
+  for (const kind of kinds) {
     const doc = instrumentDoc(template, kind);
     if (kind === "granular") {
       const track = doc.tracks.find((candidate) => candidate.kind === "instrument");
@@ -880,12 +896,18 @@ export async function measureParityCase(
       error: `live capture ended early: received ${live.left.length} of ${live.requestedFrames} audio frames`,
     };
   }
+  if (live.originFrame !== live.requestedStartFrame) {
+    return {
+      ...empty,
+      error: `live capture started at frame ${live.originFrame}, requested ${live.requestedStartFrame}`,
+    };
+  }
   if (live.minimumEventLeadSec <= 0) {
     return { ...empty, error: `live event was scheduled late (${(live.minimumEventLeadSec * 1000).toFixed(1)} ms)` };
   }
-  const reference = await renderOffline(bank, doc, script, live.sampleRate, eventPrerollSec);
+  const reference = await renderOffline(bank, doc, script, live.sampleRate, eventPrerollSec, leadSec);
   if (!reference) return { ...empty, error: "offline render produced no buffer" };
-  const control = await renderOffline(bank, doc, script, live.sampleRate, eventPrerollSec);
+  const control = await renderOffline(bank, doc, script, live.sampleRate, eventPrerollSec, leadSec);
   // Third control: a SECOND realtime capture. If two live runs of the same
   // case disagree by the same order as the live null, the divergence is the
   // realtime clock/jitter, not the engine's live-vs-offline behaviour.
@@ -895,6 +917,12 @@ export async function measureParityCase(
     return {
       ...empty,
       error: `live repeat capture ended early: received ${live2.left.length} of ${live2.requestedFrames} audio frames`,
+    };
+  }
+  if (live2.originFrame !== live2.requestedStartFrame) {
+    return {
+      ...empty,
+      error: `live repeat capture started at frame ${live2.originFrame}, requested ${live2.requestedStartFrame}`,
     };
   }
   if (live2.minimumEventLeadSec <= 0) {
@@ -1043,9 +1071,24 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
  * live in noteExpressionAudioChecks; this focused corpus proves that a
  * combined expressive event and held slides reach both render paths.
  */
-export async function auditNoteExpressionLiveOfflineParity(bank: SampleBank): Promise<ParityCheckResult> {
+export async function auditNoteExpressionLiveOfflineParity(
+  bank: SampleBank,
+  onlyLabels?: readonly string[],
+): Promise<ParityCheckResult> {
   const template = createProjectFromTemplate("house");
   const cases: Array<{ label: string; doc: ProjectDocument; script: ParityScript }> = [];
+
+  const granularPanSampleId = "parity-granular-pan-fixture";
+  if (!bank.has(granularPanSampleId)) {
+    const sampleContext = new OfflineAudioContext(1, SR, SR);
+    const sample = sampleContext.createBuffer(1, SR, SR);
+    const data = sample.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      const t = i / SR;
+      data[i] = 0.3 * Math.sin(2 * Math.PI * 110 * t) + 0.2 * Math.sin(2 * Math.PI * 440 * t);
+    }
+    bank.add(granularPanSampleId, sample);
+  }
 
   const analogExpressionDoc = instrumentDoc(template, "analog");
   cases.push({
@@ -1075,6 +1118,54 @@ export async function auditNoteExpressionLiveOfflineParity(bank: SampleBank): Pr
     });
   }
 
+  const drumsynthPanDoc = instrumentDoc(template, "drumsynth");
+  const drumsynthTrack = drumsynthPanDoc.tracks.find((candidate) => candidate.kind === "instrument");
+  if (!drumsynthTrack || drumsynthTrack.kind !== "instrument") throw new Error("missing Drum Synth parity track");
+  drumsynthTrack.params = { ...drumsynthTrack.params, type: 0, gate: 1 };
+  cases.push({
+    label: "drumsynth: per-note pan expression",
+    doc: drumsynthPanDoc,
+    script: (engine, at) =>
+      engine.noteOn("parity-inst", 60, 0.85, at(0.05), 0.3, undefined, undefined, undefined, undefined, {
+        pan: -0.7,
+      }),
+  });
+
+  const spectralPanDoc = instrumentDoc(template, "spectral");
+  const spectralTrack = spectralPanDoc.tracks.find((candidate) => candidate.kind === "instrument");
+  if (!spectralTrack || spectralTrack.kind !== "instrument") throw new Error("missing Spectral parity track");
+  spectralTrack.params = { ...spectralTrack.params, attack: 0.01, motion: 0 };
+  cases.push({
+    label: "spectral: per-note pan expression",
+    doc: spectralPanDoc,
+    script: (engine, at) =>
+      engine.noteOn("parity-inst", 60, 0.85, at(0.05), 0.3, undefined, undefined, undefined, undefined, {
+        pan: 0.7,
+      }),
+  });
+
+  cases.push({
+    label: "wavetable: per-note pan expression",
+    doc: instrumentDoc(template, "wavetable"),
+    script: (engine, at) =>
+      engine.noteOn("parity-inst", 60, 0.85, at(0.05), 0.3, undefined, undefined, undefined, undefined, {
+        pan: -0.7,
+      }),
+  });
+
+  const granularPanDoc = instrumentDoc(template, "granular");
+  const granularPanTrack = granularPanDoc.tracks.find((candidate) => candidate.kind === "instrument");
+  if (!granularPanTrack || granularPanTrack.kind !== "instrument") throw new Error("missing Granular parity track");
+  granularPanTrack.sampleId = granularPanSampleId;
+  cases.push({
+    label: "granular: per-note pan expression",
+    doc: granularPanDoc,
+    script: (engine, at) =>
+      engine.noteOn("parity-inst", 60, 0.85, at(0.05), 0.3, undefined, undefined, undefined, undefined, {
+        pan: -0.7,
+      }),
+  });
+
   const docWithHeldSlide = (kind: "808" | "acid"): ProjectDocument => {
     const doc = instrumentDoc(template, kind);
     const track = doc.tracks.find((candidate) => candidate.kind === "instrument");
@@ -1102,7 +1193,8 @@ export async function auditNoteExpressionLiveOfflineParity(bank: SampleBank): Pr
 
   const failures: string[] = [];
   const measurements: string[] = [];
-  for (const item of cases) {
+  const selectedCases = onlyLabels ? cases.filter((item) => onlyLabels.includes(item.label)) : cases;
+  for (const item of selectedCases) {
     try {
       const failure = await nullTestCase(
         bank,

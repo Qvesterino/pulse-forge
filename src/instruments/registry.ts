@@ -2265,20 +2265,22 @@ const wavetable: InstrumentDefinition = {
     // remains the honest fallback.
     const output = ctx.createGain();
     output.gain.value = 1;
-    // The wtvoice worklet receives NOTES via port messages, and Chromium
-    // does not pump processor message queues during an OfflineAudioContext
-    // render — queued notes surface only after the buffer is done, so the
-    // worklet path exported SILENCE for every wavetable track (live was
-    // fine). Offline renders use the native voice graph, which schedules
-    // all envelopes up front and renders deterministically.
-    if (!offlineRenderContext(ctx) && isWorkletReady("wtVoice", ctx)) {
-      const node = new AudioWorkletNode(ctx, "wtvoice-processor", {
-        numberOfInputs: 0,
-        numberOfOutputs: 1,
-        outputChannelCount: [2],
-      });
-      node.connect(output);
-      return createWtVoiceRuntime(node, track, env);
+    // The wtvoice worklet receives notes via port messages. Offline notes are
+    // seeded before rendering; both contexts expose the same final gain node
+    // to AudioEngine so live and offline use the same routing graph.
+    if (isWorkletReady("wtVoice", ctx)) {
+      const createNode = (processorOptions: Record<string, unknown>) =>
+        new AudioWorkletNode(ctx, "wtvoice-processor", {
+          numberOfInputs: 0,
+          numberOfOutputs: 1,
+          outputChannelCount: [2],
+          processorOptions,
+        });
+      if (offlineRenderContext(ctx)) {
+        return createWtVoiceRuntime(null, track, env, { output, createNode });
+      }
+      const node = createNode({});
+      return createWtVoiceRuntime(node, track, env, { output, createNode });
     }
     const p = { ...track.params };
     let sampleId: string | null = track.sampleId;
@@ -2365,7 +2367,7 @@ const wavetable: InstrumentDefinition = {
         amp.gain.setValueAtTime(0.0001, when);
         amp.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0002), when + attack);
         amp.gain.setTargetAtTime(0.0001, off, release / 3);
-        amp.connect(output);
+        connectNotePan(ctx, amp, output, when, expression);
 
         const filterMode = Math.max(0, Math.min(2, Math.round(p.mode ?? 0)));
         const filter = createVoiceFilter(ctx, effCutoff(p.cutoff ?? 12000, pitch), p.resonance ?? 1, filterMode);
@@ -2804,23 +2806,20 @@ const granular: InstrumentDefinition = {
     tone.Q.value = 0.7;
     tone.connect(output);
 
-    // Phase-2 voice-engine track: when the granular voice worklet is
-    // loaded, grains are scheduled per-sample inside the processor and the
-    // playhead (POSITION/SCAN/JITTER/RATE/SIZE) is live during held notes.
-    // Otherwise the deterministic upfront-scheduled cloud below stays.
-    // The grainVoice worklet receives notes via port messages, which
-    // Chromium does not deliver during an OfflineAudioContext render —
-    // offline exports went silent, so offline uses the upfront-scheduled
-    // native cloud (see the wavetable note above).
-    if (!offlineRenderContext(ctx) && isWorkletReady("grainVoice", ctx)) {
-      const node = new AudioWorkletNode(ctx, "granular-voice-processor", {
-        numberOfInputs: 0,
-        numberOfOutputs: 1,
-        outputChannelCount: [2],
-        processorOptions: grainProcessorOptions(track, env),
-      });
-      const rt = createGrainVoiceRuntime(node, track, env);
-      rt.output.connect(tone);
+    // When loaded, the same per-sample grain voice worklet serves live and
+    // offline playback. Offline events are seeded before startRendering.
+    if (isWorkletReady("grainVoice", ctx)) {
+      const createNode = (processorOptions: Record<string, unknown>) =>
+        new AudioWorkletNode(ctx, "granular-voice-processor", {
+          numberOfInputs: 0,
+          numberOfOutputs: 1,
+          outputChannelCount: [2],
+          processorOptions,
+        });
+      const runtimeOptions = { output, input: tone, createNode };
+      const rt = offlineRenderContext(ctx)
+        ? createGrainVoiceRuntime(null, track, env, runtimeOptions)
+        : createGrainVoiceRuntime(createNode(grainProcessorOptions(track, env)), track, env, runtimeOptions);
       return rt;
     }
 
@@ -2872,7 +2871,7 @@ const granular: InstrumentDefinition = {
         amp.gain.setValueAtTime(0.0001, when);
         amp.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0002), when + attack);
         amp.gain.setTargetAtTime(0.0001, off, release / 3);
-        amp.connect(tone);
+        connectNotePan(ctx, amp, tone, when, expression);
 
         const playRate = Math.pow(2, (pitch - 60 + (p.pitch ?? 0)) / 12);
         // Overlapping grains sum — compensate so RATE×GRAIN presets stay level.
@@ -5739,6 +5738,13 @@ const spectral: InstrumentDefinition = {
         const stopTime = off + release * 3 + 0.3;
         const level = velocity * dbToLin(p.level ?? -12);
 
+        // Per-note panning wraps the complete spectral voice (including the
+        // optional rotary wet path) while leaving centered notes on the
+        // historical graph exactly as it was.
+        const hasNotePan = notePanValue(expression) !== 0;
+        const voiceOutput = hasNotePan ? ctx.createGain() : output;
+        const notePanner = hasNotePan ? connectNotePan(ctx, voiceOutput, output, when, expression) : null;
+
         // RMS-normalized partial amplitudes keep level consistent across profiles
         let energy = 0;
         const amps: number[] = [];
@@ -5751,7 +5757,7 @@ const spectral: InstrumentDefinition = {
 
         const filterMod = noteFilterModulation(expression, p.cutoff ?? 6000, p.resonance ?? 0.8);
         const filter = createVoiceFilter(ctx, filterMod.cutoff, filterMod.resonance);
-        filter.output.connect(output);
+        filter.output.connect(voiceOutput);
         liveFilters.set(filter, pitch);
 
         // Mod matrix (ENV/LFO/VEL/PRESS -> CUTOFF/AMP) — see modmatrix.ts.
@@ -5768,8 +5774,8 @@ const spectral: InstrumentDefinition = {
         });
         liveMods.set(filter, mod);
         if (mod?.ampNode) {
-          filter.output.disconnect(output);
-          filter.output.connect(mod.ampNode).connect(output);
+          filter.output.disconnect(voiceOutput);
+          filter.output.connect(mod.ampNode).connect(voiceOutput);
         }
 
         // MOTION = ROTARY: per-note two-tap chorus panned hard L/R in counter
@@ -5779,7 +5785,7 @@ const spectral: InstrumentDefinition = {
         const oscs: OscillatorNode[] = [];
         const gains: GainNode[] = [];
         const releaseTaus: number[] = [];
-        const motionNodes: AudioNode[] = [];
+        const motionNodes: AudioNode[] = notePanner ? [voiceOutput, notePanner] : [];
         const motion = Math.max(0, Math.min(1, p.motion ?? 0));
         if (motion > 0.005) {
           const mRate = Math.max(0.3, Math.min(8, syncRateHz(p.motionSync ?? 0, bpm) || (p.motionRate ?? 0.8)));
@@ -5804,7 +5810,7 @@ const spectral: InstrumentDefinition = {
           wet.gain.value = motion * 0.55;
           filter.output.connect(tapL).connect(panL).connect(wet);
           filter.output.connect(tapR).connect(panR).connect(wet);
-          wet.connect(output);
+          wet.connect(voiceOutput);
           lfo.start(when);
           lfo.stop(stopTime);
           oscs.push(lfo);
@@ -6278,7 +6284,7 @@ const drumsynth: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec, _slideFrom) {
+      noteOn(pitch, velocity, when, durationSec, _slideFrom, expression) {
         const type = Math.max(0, Math.min(12, Math.round(p.type ?? 0)));
         const tune = Math.max(-12, Math.min(12, p.tune ?? 0));
         // All models transpose from C4 — po = pitch offset in semitones
@@ -6315,7 +6321,8 @@ const drumsynth: InstrumentDefinition = {
           noteGain.connect(shaper);
           tail = shaper;
         }
-        tail.connect(levelGain).connect(output);
+        tail.connect(levelGain);
+        connectNotePan(ctx, levelGain, output, when, expression);
 
         const oscs: OscillatorNode[] = [];
         const srcs: AudioBufferSourceNode[] = [];
@@ -6870,7 +6877,7 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   logdrum: withNoteExpressionTargets(logdrum),
   spectral: withNoteExpressionTargets(spectral),
   vocalchop: withNoteExpressionTargets(vocalchop),
-  drumsynth,
+  drumsynth: withNoteExpressionTargets(drumsynth),
   tsar,
   kopa,
 };

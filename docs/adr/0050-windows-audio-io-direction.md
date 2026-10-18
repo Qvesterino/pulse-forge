@@ -191,12 +191,67 @@ and [recovering from an invalid device](https://learn.microsoft.com/en-us/window
   panel lifecycle test verifies the same output ID is applied before and after
   context replacement; this remains browser/Web Audio routing, not native
   WASAPI selection or acoustic latency evidence.
+- **Channel-map primitive (2026-10-17):** `native/windows-audio-host` now has
+  bounded float32 helpers that copy selected input channels into project order
+  and route project output channels to selected endpoint channels, clearing
+  unused endpoint outputs. Validation rejects duplicate/out-of-range maps,
+  oversized channel counts, invalid buffers and overlapping source/destination
+  buffers before writing. The Windows C++ target builds with MSVC and its CTest
+  check passes its channel-map cases. The WASAPI adapter core below now uses
+  this mapping; the utility-process smoke does not start a real stream, and the
+  product PCM bridge and AudioEngine do not use it yet. Native I/O remains not
+  shipped.
+- **Bounded PCM ring (2026-10-17):** the same target now includes a preallocated
+  interleaved float32 SPSC FIFO with fixed power-of-two frame capacity, a 32 MiB
+  per-direction memory ceiling, all-or-nothing writes and lock-free 64-bit indexes. Its CTest
+  check covers wraparound, full-ring rejection, invalid configurations and a
+  100,000-frame concurrent producer/consumer sequence. The adapter core below
+  uses these rings; the product PCM bridge does not use them yet.
+- **WASAPI duplex adapter core (2026-10-17):**
+  `WasapiSharedDuplexSession` now opens exact active capture and render IDs,
+  verifies endpoint flow, requires an exact float32 shared format and a period
+  legal for both endpoints, then runs event-driven capture and render on one
+  MMCSS service thread. It maps input/output channels through the bounded
+  helpers, queues PCM through the fixed SPSC rings, reports stream latency and
+  xrun/discontinuity counters, and stops on endpoint loss without selecting a
+  replacement. A new session is required for an explicit retry. The Windows
+  MSVC build succeeds and all four CTest targets pass; the duplex request test
+  also proves an unknown endpoint ID fails without opening another stream.
+  This is a native adapter core, not a shipped device path. It supports exact
+  float32 shared mode only, has no separate-device clock-drift correction, and
+  has no real Volt stream evidence. No latency or monitoring support claim
+  follows from the successful build.
+- **Electron N-API smoke (2026-10-17):** the native target now builds an
+  Electron 44 Node-API module and packages it as a Windows extra resource. The
+  desktop smoke loads it inside the existing isolated utility process, creates
+  a session with deliberately nonexistent endpoint IDs, and confirms that the
+  request fails without falling back to another device. The smoke still sends
+  only synthetic PCM through the MessagePort. This does not open a real device
+  or connect the WASAPI rings to AudioEngine/worklets, so native I/O remains
+  **not shipped**. No latency or monitoring support claim follows from the
+  smoke.
+- **PCM process-boundary check (2026-10-17):** Electron 44.4.3's direct
+  `utilityProcess.postMessage()` rejects a `SharedArrayBuffer` with
+  `An object could not be cloned`. Across the renderer-to-utility MessagePort,
+  an ordinary control ping arrived, the following SAB payload did not arrive,
+  and the ordered follow-up ping did. The smoke therefore records shared-memory
+  transport as unavailable across this boundary. The 100-block copied-
+  `ArrayBuffer` AudioWorklet round-trip passed, but observed p95/max ranged from
+  2/2 ms to 121/171 ms across runs; that variability is not a low-latency
+  qualification. The typed contract now uses bounded 1 MiB maximum PCM packets
+  over a dedicated MessagePort; this packet path is only a candidate and is
+  not yet connected to WASAPI or AudioEngine.
 - Native Windows I/O remains **not shipped**. The decision records an evidence-
   led direction, not a user-facing support claim.
-- The next engineering step is to put a WASAPI shared-mode adapter inside the
-  isolated utility process, then verify actual endpoint negotiation, callback
-  isolation, bounded buffering, duplex clocks, device-loss recovery and a
-  hardware loopback. No native host is integrated yet.
+- The next engineering step is to connect the utility-process adapter's native
+  rings to a bounded sequenced PCM packet bridge and measure its sustained
+  jitter and underruns. If copied packets cannot meet the monitoring target,
+  select a native boundary that can share memory with the renderer before
+  claiming low-latency support. Then add clock-drift handling for independent
+  endpoints and verify actual
+  endpoint negotiation, bounded buffering, device-loss recovery, acoustic
+  round-trip latency and a 30-minute Volt duplex soak. Until those checks pass,
+  native Windows I/O remains not shipped.
 - The Volt reference setup stays **Open** while the device is absent and until
   physical channel mapping, analog latency, recovery and the sustained soak
   have evidence. The current record is in the

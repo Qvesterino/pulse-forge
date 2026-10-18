@@ -15,7 +15,7 @@ type Proc = {
   handleMessage: (msg: Record<string, unknown>) => void;
 };
 
-let Processor: new () => Proc;
+let Processor: new (options?: { processorOptions?: Record<string, unknown> }) => Proc;
 let now = 0;
 const SR = 44100;
 const BLOCK = 128;
@@ -64,29 +64,48 @@ interface RunEvent {
 /** Render the processor: messages before t=0 up front, others mid-render. */
 function run(
   params: Record<string, number>,
-  notes: Array<{ pitch: number; velocity: number; when: number; dur: number; releaseVelocity?: number }>,
+  notes: Array<{
+    pitch: number;
+    velocity: number;
+    when: number;
+    dur: number;
+    releaseVelocity?: number;
+    pan?: number;
+    sendNoteOff?: boolean;
+  }>,
   duration: number,
   midEvents: RunEvent[] = [],
+  preseeded = false,
 ): { outL: Float32Array; outR: Float32Array } {
-  const proc = new Processor();
   const sample = makeSample();
   now = 0;
-  proc.handleMessage({ type: "sample", ch0: sample.ch0, ch1: sample.ch1, sampleRate: SR });
-  for (const [name, value] of Object.entries(params)) {
-    proc.handleMessage({ type: "param", name, value });
-  }
-  proc.handleMessage({ type: "bpm", value: 124 });
-  for (const n of notes) {
-    proc.handleMessage({
+  const events = notes.flatMap((note) => [
+    {
       type: "noteOn",
-      pitch: n.pitch,
-      velocity: n.velocity,
-      when: n.when,
-      dur: n.dur,
-      releaseVelocity: n.releaseVelocity,
-      seed: 12345 + n.pitch,
-    });
-    proc.handleMessage({ type: "noteOff", pitch: n.pitch, when: n.when + n.dur });
+      pitch: note.pitch,
+      velocity: note.velocity,
+      when: note.when,
+      dur: note.dur,
+      pan: note.pan,
+      releaseVelocity: note.releaseVelocity,
+      seed: 12345 + note.pitch,
+    },
+    ...(note.sendNoteOff === false ? [] : [{ type: "noteOff", pitch: note.pitch, when: note.when + note.dur }]),
+  ]);
+  const processorOptions = {
+    params,
+    bpm: 124,
+    sample: { ch0: sample.ch0, ch1: sample.ch1, sampleRate: SR },
+    events,
+  };
+  const proc = preseeded ? new Processor({ processorOptions }) : new Processor();
+  if (!preseeded) {
+    proc.handleMessage({ type: "sample", ch0: sample.ch0, ch1: sample.ch1, sampleRate: SR });
+    for (const [name, value] of Object.entries(params)) {
+      proc.handleMessage({ type: "param", name, value });
+    }
+    proc.handleMessage({ type: "bpm", value: 124 });
+    for (const event of events) proc.handleMessage(event);
   }
   const deferred = midEvents.map((e) => ({ ...e, done: false }));
 
@@ -123,6 +142,25 @@ function diff(a: Float32Array, b: Float32Array, from = 0, to = a.length): number
   return d;
 }
 
+function stereoPan(inputL: Float32Array, inputR: Float32Array, pan: number) {
+  const left = new Float32Array(inputL.length);
+  const right = new Float32Array(inputR.length);
+  if (pan === 0) return { left: inputL, right: inputR };
+  const x = pan < 0 ? pan + 1 : pan;
+  const gainL = Math.cos((x * Math.PI) / 2);
+  const gainR = Math.sin((x * Math.PI) / 2);
+  for (let i = 0; i < inputL.length; i++) {
+    if (pan < 0) {
+      left[i] = inputL[i]! + inputR[i]! * gainL;
+      right[i] = inputR[i]! * gainR;
+    } else {
+      left[i] = inputL[i]! * gainL;
+      right[i] = inputR[i]! + inputL[i]! * gainR;
+    }
+  }
+  return { left, right };
+}
+
 function rms(data: Float32Array, from: number, to: number): number {
   let sum = 0;
   for (let i = from; i < to; i++) sum += data[i]! * data[i]!;
@@ -151,6 +189,61 @@ describe("granular voice worklet engine", () => {
     expect(rms(long.outL, Math.floor(0.32 * SR), Math.floor(0.5 * SR))).toBeGreaterThan(
       rms(short.outL, Math.floor(0.32 * SR), Math.floor(0.5 * SR)) * 1.5,
     );
+  });
+
+  it("uses note duration as an offline gate when no separate noteOff can arrive", () => {
+    const note = { pitch: 60, velocity: 0.9, when: 0.05, dur: 0.25, sendNoteOff: false };
+    const short = run({}, [{ ...note, releaseVelocity: 0 }], 0.9, [], true);
+    const long = run({}, [{ ...note, releaseVelocity: 1 }], 0.9, [], true);
+    const noteOffFrame = Math.floor((note.when + note.dur) * SR);
+    const tailStart = noteOffFrame + Math.floor(0.02 * SR);
+    const tailEnd = Math.floor(0.5 * SR);
+    expect(diff(short.outL, long.outL, 0, noteOffFrame)).toBe(0);
+    expect(rms(long.outL, tailStart, tailEnd)).toBeGreaterThan(rms(short.outL, tailStart, tailEnd) * 1.5);
+  });
+
+  it("applies per-note pan after each voice sum and preserves the centered stereo image", () => {
+    const note = { pitch: 60, velocity: 0.9, when: 0.05, dur: 0.4 };
+    const baseline = run({}, [note], 0.8);
+    const center = run({}, [{ ...note, pan: 0 }], 0.8);
+    const left = run({}, [{ ...note, pan: -1 }], 0.8);
+    const right = run({}, [{ ...note, pan: 1 }], 0.8);
+
+    expect(diff(center.outL, baseline.outL)).toBe(0);
+    expect(diff(center.outR, baseline.outR)).toBe(0);
+    expect(diff(baseline.outL, baseline.outR)).toBeGreaterThan(0.001);
+    const expectedLeft = stereoPan(baseline.outL, baseline.outR, -1);
+    const expectedRight = stereoPan(baseline.outL, baseline.outR, 1);
+    expect(diff(left.outL, expectedLeft.left)).toBeLessThan(1e-6);
+    expect(diff(left.outR, expectedLeft.right)).toBeLessThan(1e-6);
+    expect(diff(right.outL, expectedRight.left)).toBeLessThan(1e-6);
+    expect(diff(right.outR, expectedRight.right)).toBeLessThan(1e-6);
+    expect(peak(left.outL)).toBeGreaterThan(0.001);
+    expect(peak(left.outR)).toBeLessThan(peak(left.outL) * 0.001);
+    expect(peak(right.outR)).toBeGreaterThan(0.001);
+    expect(peak(right.outL)).toBeLessThan(peak(right.outR) * 0.001);
+  });
+
+  it("keeps overlapping granular note pan independent", () => {
+    const notes = [
+      { pitch: 60, velocity: 0.9, when: 0.05, dur: 0.5, pan: -1 },
+      { pitch: 67, velocity: 0.8, when: 0.05, dur: 0.5, pan: 1 },
+    ];
+    const { outL, outR } = run({}, notes, 0.8);
+    expect(peak(outL)).toBeGreaterThan(0.001);
+    expect(peak(outR)).toBeGreaterThan(0.001);
+  });
+
+  it("renders constructor-seeded offline pan events identically to the live event queue", () => {
+    const notes = [
+      { pitch: 60, velocity: 0.9, when: 0.05, dur: 0.3, releaseVelocity: 0.8, pan: -0.65 },
+      { pitch: 67, velocity: 0.7, when: 0.1, dur: 0.35, pan: 0.55 },
+    ];
+    const live = run({}, notes, 0.8);
+    const offlineSeeded = run({}, notes, 0.8, [], true);
+
+    expect(diff(offlineSeeded.outL, live.outL)).toBe(0);
+    expect(diff(offlineSeeded.outR, live.outR)).toBe(0);
   });
 
   it("is deterministic — identical message sequences render bit-identically", () => {

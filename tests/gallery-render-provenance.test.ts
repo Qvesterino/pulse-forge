@@ -1,6 +1,10 @@
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { compressToEncodedURIComponent } from "lz-string";
-import { createCollabServer, sanitizeGalleryRender as serverSanitize } from "../server/collab-server.mjs";
+import { createCollabServer } from "../server/collab-server.mjs";
 import {
   GALLERY_RENDER_FORMAT,
   MAX_GALLERY_MODELS,
@@ -9,7 +13,13 @@ import {
   provenanceVerifyHint,
   sanitizeGalleryRenderProvenance,
 } from "../src/gallery/galleryProvenance";
-import { buildRenderManifest, type LastRenderStamp } from "../src/export/renderManifest";
+import {
+  buildRenderManifest,
+  hashPcmChannels,
+  manifestToIxml,
+  type LastRenderStamp,
+} from "../src/export/renderManifest";
+import { encodeWav } from "../src/rendering/wav";
 import { createDefaultProject } from "../src/project-model/schema";
 import type { UserSampleAsset } from "../src/persistence/UserSampleRepository";
 
@@ -120,10 +130,25 @@ describe("client and server sanitizers AGREE (two validators, one truth)", () =>
   it("agrees on accept/reject and on the normalized shape for every case", () => {
     for (const [label, value] of table) {
       const client = sanitizeGalleryRenderProvenance(value);
-      const server = serverSanitize(value);
-      expect(client === null, `client/server verdict differs for: ${label}`).toBe(server === null);
-      if (client !== null && server !== null) {
-        expect(client, `normalized shape differs for: ${label}`).toEqual(server);
+      // Through the store's PUBLIC contract, not an internal helper: what a
+      // client may publish is exactly what the server stores.
+      const { gallery } = createCollabServer();
+      const result = gallery.add({ title: "t", author: "a", code: validCode(), render: value });
+      const serverAccepted = result.error === undefined;
+      const listed = serverAccepted
+        ? (gallery.list() as Array<Record<string, unknown>>).find((item) => item.id === result.item?.id)
+        : null;
+
+      if (value == null) {
+        // ABSENT provenance is not a rejection — it is "no claim", on both sides.
+        expect(client, `absent case differs for: ${label}`).toBeNull();
+        expect(serverAccepted, `server refused an absent claim for: ${label}`).toBe(true);
+        expect(listed?.render ?? null).toBeNull();
+        continue;
+      }
+      expect(client === null, `client/server verdict differs for: ${label}`).toBe(!serverAccepted);
+      if (client !== null && serverAccepted) {
+        expect(client, `normalized shape differs for: ${label}`).toEqual(listed?.render ?? null);
       }
     }
   });
@@ -136,6 +161,70 @@ describe("client and server sanitizers AGREE (two validators, one truth)", () =>
       MAX_GALLERY_MODELS,
     );
   });
+});
+
+describe("END-TO-END — the hash the gallery stores is the one the verifier checks", () => {
+  it("publish a beat with a real render hash, then verify the exported file with the stored hash", async () => {
+    // The full loop the badge promises a reader: the artist exports a stamped
+    // master, the gallery stores its hash, and anyone can download the file and
+    // check it against that hash with the PUBLIC verifier. Every step here is
+    // the real code path — the encoder, the manifest builder, the store's
+    // sanitizer and the CLI process.
+    const sampleRate = 44_100;
+    const length = 4096;
+    const left = new Float32Array(length);
+    const right = new Float32Array(length);
+    for (let index = 0; index < length; index += 1) {
+      left[index] = Math.sin(index * 0.01) * 0.5;
+      right[index] = Math.cos(index * 0.013) * 0.4;
+    }
+    const buffer = {
+      numberOfChannels: 2,
+      length,
+      sampleRate,
+      duration: length / sampleRate,
+      getChannelData: (channel: number) => (channel === 0 ? left : right),
+    } as unknown as AudioBuffer;
+
+    const doc = createDefaultProject();
+    const renderHash = await hashPcmChannels([left, right]);
+    const manifest = buildRenderManifest({
+      doc,
+      scope: "master",
+      mode: "song",
+      sampleRate,
+      bitDepth: 32,
+      durationSec: buffer.duration,
+      renderHash,
+      date: new Date("2026-10-17T00:00:00.000Z"),
+    });
+    const provenance = provenanceFromStamp({ manifest, fileName: "beat-master.wav", recordedAt: 1 });
+    expect(provenance).not.toBeNull();
+
+    const { gallery } = createCollabServer();
+    const published = gallery.add({
+      title: "verifiable loop",
+      author: "qvester",
+      code: validCode(),
+      render: provenance,
+    });
+    expect(published.error).toBeUndefined();
+    const stored = (gallery.list() as Array<Record<string, unknown>>).find((item) => item.id === published.item?.id);
+    const storedHash = (stored?.render as { hash?: string } | null)?.hash;
+    expect(storedHash).toBe(renderHash);
+
+    // The file the artist exported in the first place.
+    const dir = mkdtempSync(join(tmpdir(), "kyx-gallery-e2e-"));
+    const wav = join(dir, "beat-master.wav");
+    writeFileSync(wav, new Uint8Array(encodeWav(buffer, 32, { ixml: manifestToIxml(manifest) })));
+
+    // A reader downloads it and checks it against what the gallery claims.
+    const verified = execFileSync(process.execPath, ["tools/kyx-verify/kyx-verify.mjs", wav, "--expect", storedHash!], {
+      encoding: "utf8",
+    });
+    expect(verified).toContain("VERIFIED");
+    expect(verified).toContain("MATCH");
+  }, 30_000);
 });
 
 describe("provenanceFromStamp — built from the real export stamp", () => {

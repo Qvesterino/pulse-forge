@@ -63,6 +63,9 @@ await run("npm", ["run", "build"], { KYX_DESKTOP: "1" });
 console.log("• Windows Core Audio endpoint-discovery helper…");
 await run("npm", ["run", "build:windows-audio-probe"]);
 
+console.log("• Windows WASAPI shared-duplex host and Electron N-API module…");
+await run("npm", ["run", "build:windows-audio-host"]);
+
 const releaseDir = path.join(root, "release");
 await mkdir(releaseDir, { recursive: true });
 // A leftover win-unpacked.tmp from an interrupted run is junk (or locked);

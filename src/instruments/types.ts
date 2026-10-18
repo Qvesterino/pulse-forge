@@ -3,6 +3,8 @@ import type { ParamDef } from "../effects/types";
 
 export interface InstrumentRuntime {
   output: AudioNode;
+  /** Underlying worklet used by test and diagnostics when output is graph-backed. */
+  readonly processorNode?: AudioWorkletNode;
   /** Seed event-queue runtimes before an OfflineAudioContext starts rendering. */
   prepareOfflineRender?(): void;
   noteOn(

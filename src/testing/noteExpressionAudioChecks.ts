@@ -80,10 +80,14 @@ function expressionScenarios(kind: InstrumentKind): {
   return { scenarios, hasFilter, hasRelease, hasPan, hasSlide };
 }
 
-export async function runNoteExpressionAudioChecks(): Promise<NoteExpressionAudioCheckResult[]> {
+export async function runNoteExpressionAudioChecks(
+  onlyKinds?: readonly InstrumentKind[],
+): Promise<NoteExpressionAudioCheckResult[]> {
   const results: NoteExpressionAudioCheckResult[] = [];
   const record = (name: string, ok: boolean, message: string) => results.push({ name, ok, message });
-  const kinds = Object.values(INSTRUMENT_DEFS).map((definition) => definition.kind);
+  const kinds = Object.values(INSTRUMENT_DEFS)
+    .map((definition) => definition.kind)
+    .filter((kind) => !onlyKinds || onlyKinds.includes(kind));
 
   for (const kind of kinds) {
     const definition = INSTRUMENT_DEFS[kind];
@@ -131,6 +135,9 @@ export async function runNoteExpressionAudioChecks(): Promise<NoteExpressionAudi
           getSample: (id) => (id === SAMPLE_ID ? sample : undefined),
         });
         runtimes.push(runtime);
+        if (kind === "granular" && typeof runtime.prepareOfflineRender !== "function") {
+          throw new Error("offline Granular factory did not select the seeded worklet runtime");
+        }
         const warp = { isFrozen: () => false } as never;
         const trigger = new TriggerEngine(
           {
@@ -184,6 +191,10 @@ export async function runNoteExpressionAudioChecks(): Promise<NoteExpressionAudi
         if (scenario.noteOff !== undefined) runtime.noteOff?.(60, start + scenario.noteOff);
       }
 
+      // Render through the same pre-start worklet seeding barrier as the real
+      // export path. Offline worklets cannot receive note messages once the
+      // render has started.
+      for (const runtime of runtimes) runtime.prepareOfflineRender?.();
       const buffer = await ctx.startRendering();
       for (const runtime of runtimes) runtime.dispose();
       runtimes = [];
@@ -196,6 +207,16 @@ export async function runNoteExpressionAudioChecks(): Promise<NoteExpressionAudi
         let energy = 0;
         for (let i = start; i < end; i++) energy += left[i]! * left[i]! + right[i]! * right[i]!;
         return Math.sqrt(energy / Math.max(1, 2 * (end - start)));
+      };
+      const peakWindow = (scenarioId: string, startSec: number, endSec: number) => {
+        const scenario = channels.get(scenarioId)!;
+        const left = buffer.getChannelData(scenario * 2);
+        const right = buffer.getChannelData(scenario * 2 + 1);
+        const start = Math.floor(startSec * SAMPLE_RATE);
+        const end = Math.floor(endSec * SAMPLE_RATE);
+        let peak = 0;
+        for (let i = start; i < end; i++) peak = Math.max(peak, Math.abs(left[i]!), Math.abs(right[i]!));
+        return peak;
       };
       const rmsDifference = (first: string, second: string, startSec: number, endSec: number) => {
         const firstChannel = channels.get(first)! * 2;
@@ -251,8 +272,10 @@ export async function runNoteExpressionAudioChecks(): Promise<NoteExpressionAudi
         const releaseRatio = longLevel / Math.max(1e-8, shortLevel);
         record(
           `${kind}: per-note release velocity changes the rendered note-off tail`,
-          longLevel > 0.00001 && releaseRatio > 1.5,
-          `short=${shortLevel.toFixed(5)} long=${longLevel.toFixed(5)} ratio×${releaseRatio.toFixed(2)}`,
+          longLevel > 0.00001 && releaseRatio > 1.5 && shortLevel <= 8 && longLevel <= 8,
+          `short=${shortLevel.toFixed(5)} peak=${peakWindow("release-short", releaseWindowStart, releaseWindowEnd).toExponential(2)} ` +
+            `long=${longLevel.toFixed(5)} peak=${peakWindow("release-long", releaseWindowStart, releaseWindowEnd).toExponential(2)} ` +
+            `ratio×${releaseRatio.toFixed(2)}`,
         );
       }
       if (hasPan) {

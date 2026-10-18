@@ -10,6 +10,7 @@ type CaptureMessage = {
   sampleRate?: number;
   chunkFrames?: number;
   captureFrames?: number;
+  startFrame?: number;
   frames?: number;
   left?: Float32Array;
   right?: Float32Array;
@@ -57,24 +58,33 @@ beforeAll(() => {
 
 beforeEach(() => {
   messages = [];
-  const globals = globalThis as unknown as { currentTime: number; currentFrame: number };
-  globals.currentTime = 1.25;
+  const globals = globalThis as unknown as { sampleRate: number; currentTime: number; currentFrame: number };
   globals.currentFrame = 8192;
+  globals.currentTime = globals.currentFrame / globals.sampleRate;
 });
 
 describe("parity capture worklet", () => {
-  it("stops at an exact audio-frame target and flushes the final partial chunk", () => {
+  it("starts at the requested audio frame, then flushes the exact final partial chunk", () => {
     const processor = new Processor();
-    processor.port.onmessage?.({ data: { type: "arm", chunkFrames: 256, captureFrames: 300 } });
+    processor.port.onmessage?.({ data: { type: "arm", chunkFrames: 256, captureFrames: 300, startFrame: 8448 } });
     const left = new Float32Array(128).fill(0.25);
     const right = new Float32Array(128).fill(-0.25);
+    const globals = globalThis as unknown as { sampleRate: number; currentTime: number; currentFrame: number };
+
+    for (let block = 0; block < 2; block++) {
+      processor.process([[left, right]]);
+      globals.currentFrame += 128;
+      globals.currentTime += 128 / globals.sampleRate;
+    }
+    expect(messages).toHaveLength(0);
 
     for (let block = 0; block < 3; block++) {
       processor.process([[left, right]]);
-      (globalThis as unknown as { currentFrame: number }).currentFrame += 128;
+      globals.currentFrame += 128;
+      globals.currentTime += 128 / globals.sampleRate;
     }
 
-    expect(messages[0]).toMatchObject({ type: "capture-start", time: 1.25, frame: 8192, sampleRate: 44100 });
+    expect(messages[0]).toMatchObject({ type: "capture-start", time: 8448 / 44100, frame: 8448, sampleRate: 44100 });
     const chunks = messages.filter((message) => message.type === "chunk");
     expect(chunks.map((chunk) => chunk.frames)).toEqual([256, 44]);
     expect(chunks.reduce((sum, chunk) => sum + (chunk.frames ?? 0), 0)).toBe(300);

@@ -18,8 +18,6 @@ import { resolve } from "node:path";
  */
 
 const ROOT = resolve(__dirname, "..");
-const MAP_PATH = resolve(ROOT, "docs/AGENT-MAP.md");
-const AGENTS_PATH = resolve(ROOT, "AGENTS.md");
 
 const ROUTING_FLOOR = 10;
 const INVARIANT_FLOOR = 12;
@@ -42,7 +40,8 @@ function rowsOfSection(markdown: string, heading: string): MapRow[] {
       .slice(1, -1)
       .split("|")
       .map((cell) => cell.trim());
-    if (cells.length > 0 && cells[0] !== "I need to…") rows.push({ cells });
+    // Skip the markdown header row (either table's first cell).
+    if (cells.length > 0 && cells[0] !== "I need to…" && cells[0] !== "Invariant") rows.push({ cells });
   }
   return rows;
 }

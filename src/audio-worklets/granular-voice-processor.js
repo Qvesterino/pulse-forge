@@ -92,6 +92,7 @@ class GrainVoice {
     this.env = 0;
     this.stage = "attack";
     this.releaseVelocity = 0.5;
+    this.pan = 0;
     this.releaseSeconds = Math.max(0.005, params.release ?? 0.4);
     this.peak = 0;
     this.rand = () => 0;
@@ -108,6 +109,7 @@ class GrainVoice {
     this.pitch = msg.pitch;
     this.vel = Math.max(0, Math.min(1, msg.velocity));
     this.releaseVelocity = Number.isFinite(msg.releaseVelocity) ? Math.max(0, Math.min(1, msg.releaseVelocity)) : 0.5;
+    this.pan = Number.isFinite(msg.pan) ? Math.max(-1, Math.min(1, msg.pan)) : 0;
     this.releaseSeconds = noteReleaseSeconds(this.p.release ?? 0.4, this.releaseVelocity);
     this.startFrame = Math.round(msg.when * sr);
     const size = Math.min(0.4, Math.max(0.02, this.p.size ?? 0.09));
@@ -222,6 +224,7 @@ class GrainVoiceProcessor extends AudioWorkletProcessor {
       release: 0.4,
     };
     this.events = [];
+    this.eventIndex = 0;
     this.port.onmessage = (e) => this.handleMessage(e.data);
     // Initial state arrives via processorOptions — port messages to an
     // OfflineAudioContext's worklet are only delivered AFTER the render
@@ -231,6 +234,9 @@ class GrainVoiceProcessor extends AudioWorkletProcessor {
       if (init.params) Object.assign(this.params, init.params);
       if (typeof init.bpm === "number") this.bpm = init.bpm;
       if (init.sample) this.handleMessage({ type: "sample", ...init.sample });
+      if (Array.isArray(init.events)) {
+        for (const event of init.events) this.handleMessage(event);
+      }
     }
   }
 
@@ -258,16 +264,17 @@ class GrainVoiceProcessor extends AudioWorkletProcessor {
         // sample-accurate queue (`Math.round(NaN) <= frame` is always false)
         // — it would wedge every later note and grow `events` unboundedly.
         if (Number.isFinite(msg.when) && Number.isFinite(msg.pitch)) {
-          this.events.push({ ...msg, kind: "on" });
+          this.queueEvent(msg, "on");
         }
         return;
       case "noteOff":
         if (Number.isFinite(msg.when) && Number.isFinite(msg.pitch)) {
-          this.events.push({ ...msg, kind: "off" });
+          this.queueEvent(msg, "off");
         }
         return;
       case "panic":
         this.events.length = 0;
+        this.eventIndex = 0;
         for (const v of this.voices) {
           v.active = false;
           v.gate = false;
@@ -276,17 +283,50 @@ class GrainVoiceProcessor extends AudioWorkletProcessor {
         }
         return;
       case "bpm":
-        if (typeof msg.value === "number" && msg.value > 10 && msg.value < 400) this.bpm = msg.value;
+        if (typeof msg.value === "number" && msg.value > 10 && msg.value < 400) {
+          if (Number.isFinite(msg.when)) this.queueEvent(msg, "bpm");
+          else this.bpm = msg.value;
+        }
         return;
       case "param":
         // Validate the NAME (sibling wtvoice does the same): a bogus name
         // would grow this.params forever and pollute every voice's p reads.
         if (typeof msg.value === "number" && Number.isFinite(msg.value) && msg.name in this.params) {
-          this.params[msg.name] = msg.value;
+          if (Number.isFinite(msg.when)) this.queueEvent(msg, "param");
+          else this.params[msg.name] = msg.value;
         }
         return;
       default:
         return;
+    }
+  }
+
+  queueEvent(message, kind) {
+    const when = Math.max(message.when, currentTime);
+    const event = { ...message, when, kind };
+    const last = this.events[this.events.length - 1];
+    if (!last || last.when <= when) {
+      this.events.push(event);
+      return;
+    }
+    let low = this.eventIndex;
+    let high = this.events.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (this.events[mid].when <= when) low = mid + 1;
+      else high = mid;
+    }
+    this.events.splice(low, 0, event);
+  }
+
+  compactEvents() {
+    if (this.eventIndex === 0) return;
+    if (this.eventIndex === this.events.length) {
+      this.events.length = 0;
+      this.eventIndex = 0;
+    } else if (this.eventIndex >= 256) {
+      this.events.splice(0, this.eventIndex);
+      this.eventIndex = 0;
     }
   }
 
@@ -335,13 +375,12 @@ class GrainVoiceProcessor extends AudioWorkletProcessor {
       const frame = Math.round((blockStart + i / sr) * sr);
       this.lastFrame = frame;
       // Sample-accurate event dispatch (scheduler posts `when` ahead).
-      for (let e = this.events.length - 1; e >= 0; e--) {
-        const ev = this.events[e];
-        if (Math.round(ev.when * sr) <= frame) {
-          this.events.splice(e, 1);
-          if (ev.kind === "on") this.triggerOn(ev, sr);
-          else this.triggerOff(ev.pitch, frame, sr);
-        }
+      while (this.eventIndex < this.events.length && Math.round(this.events[this.eventIndex].when * sr) <= frame) {
+        const ev = this.events[this.eventIndex++];
+        if (ev.kind === "on") this.triggerOn(ev, sr);
+        else if (ev.kind === "off") this.triggerOff(ev.pitch, frame, sr);
+        else if (ev.kind === "param") this.params[ev.name] = ev.value;
+        else if (ev.kind === "bpm") this.bpm = ev.value;
       }
 
       let l = 0;
@@ -362,7 +401,10 @@ class GrainVoiceProcessor extends AudioWorkletProcessor {
           const tau = v.releaseSeconds / 3;
           v.env += (0 - v.env) * (1 - Math.exp(-1 / (tau * sr)));
         }
-        if (!v.gate && frame >= v.offFrame) v.stage = "release";
+        // A note's declared duration is a real gate boundary, even if a
+        // caller cannot deliver a separate noteOff message during offline
+        // rendering. An explicit noteOff wins when it arrives first.
+        if (v.gate && frame >= v.offFrame) v.release(v.offFrame, sr);
 
         // Live playhead: spawn decisions read CURRENT params every grain.
         while (v.nextSpawn <= frame && v.nextSpawn < v.offFrame + 0.005 * sr) {
@@ -410,8 +452,25 @@ class GrainVoiceProcessor extends AudioWorkletProcessor {
         }
 
         const amp = v.env;
-        l += gl * amp;
-        r += gr * amp;
+        const voiceLeft = gl * amp;
+        const voiceRight = gr * amp;
+        // Match StereoPannerNode's stereo-input equal-power law. Each voice
+        // already has a stereo image from its independently panned grains.
+        if (v.pan === 0) {
+          l += voiceLeft;
+          r += voiceRight;
+        } else if (v.pan < 0) {
+          const x = v.pan + 1;
+          const crossfeed = Math.cos((x * Math.PI) / 2);
+          const rightGain = Math.sin((x * Math.PI) / 2);
+          l += voiceLeft + voiceRight * crossfeed;
+          r += voiceRight * rightGain;
+        } else {
+          const leftGain = Math.cos((v.pan * Math.PI) / 2);
+          const crossfeed = Math.sin((v.pan * Math.PI) / 2);
+          l += voiceLeft * leftGain;
+          r += voiceRight + voiceLeft * crossfeed;
+        }
 
         // Voice death: released, faded, no grains left, spawn window closed.
         if (
@@ -439,6 +498,7 @@ class GrainVoiceProcessor extends AudioWorkletProcessor {
       if (!this.voices[v].dead) this.voices[w++] = this.voices[v];
     }
     this.voices.length = w;
+    this.compactEvents();
     return true;
   }
 }

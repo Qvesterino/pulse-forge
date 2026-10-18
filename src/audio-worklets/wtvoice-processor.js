@@ -98,6 +98,7 @@ class WtVoice {
     this.f0 = 261.63;
     this.vel = 0;
     this.releaseVelocity = 0.5;
+    this.pan = 0;
     this.releaseSeconds = Math.max(0.005, params.release ?? 0.25);
     this.pressure = 0;
     this.levelIndex = 0;
@@ -123,7 +124,7 @@ class WtVoice {
     this.copyCount = 0;
   }
 
-  noteOn(pitch, velocity, releaseVelocity) {
+  noteOn(pitch, velocity, releaseVelocity, pan) {
     this.active = true;
     this.gate = true;
     this.dead = false;
@@ -131,6 +132,7 @@ class WtVoice {
     this.f0 = 440 * Math.pow(2, (pitch - 69) / 12);
     this.vel = velocity;
     this.releaseVelocity = Number.isFinite(releaseVelocity) ? Math.max(0, Math.min(1, releaseVelocity)) : 0.5;
+    this.pan = Number.isFinite(pan) ? Math.max(-1, Math.min(1, pan)) : 0;
     this.releaseSeconds = noteReleaseSeconds(this.p.release ?? 0.25, this.releaseVelocity);
     this.pressure = 0;
     this.env = 0;
@@ -178,12 +180,13 @@ class WtVoice {
 }
 
 class WtVoiceProcessor extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super();
     this.tables = new WtTables();
     this.voices = [];
     this.voiceCounter = 0;
     this.events = []; // {when, kind, pitch, velocity} sorted by `when`
+    this.eventIndex = 0;
     this.params = {
       morph: 0.3,
       morphRate: 0,
@@ -217,7 +220,16 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
     this.tunableParamNames = new Set(Object.keys(this.params).filter((k) => k !== "tableFrames" && k !== "pickLevel"));
     this.dueOn = [];
     this.dueOff = [];
+    this.dueParam = [];
     this.port.onmessage = (e) => this.handleMessage(e.data);
+    const init = options?.processorOptions;
+    if (init) {
+      if (init.params && typeof init.params === "object") Object.assign(this.params, init.params);
+      if (init.tables && typeof init.tables === "object") this.handleMessage({ type: "tables", ...init.tables });
+      if (Array.isArray(init.events)) {
+        for (const event of init.events) this.handleMessage(event);
+      }
+    }
   }
 
   handleMessage(msg) {
@@ -234,7 +246,7 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
         // poisons the phase math past the output clamp.
         const when = Number.isFinite(msg.when) ? Math.max(msg.when, currentTime) : currentTime;
         if (!Number.isFinite(msg.pitch)) break;
-        this.events.push({
+        this.queueEvent({
           when,
           kind: "on",
           pitch: msg.pitch,
@@ -242,15 +254,14 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
           releaseVelocity: Number.isFinite(msg.releaseVelocity)
             ? Math.max(0, Math.min(1, msg.releaseVelocity))
             : undefined,
+          pan: Number.isFinite(msg.pan) ? Math.max(-1, Math.min(1, msg.pan)) : 0,
         });
-        this.events.sort((a, b) => a.when - b.when);
         break;
       }
       case "noteOff": {
         const when = Number.isFinite(msg.when) ? Math.max(msg.when, currentTime) : currentTime;
         if (Number.isFinite(msg.pitch)) {
-          this.events.push({ when, kind: "off", pitch: msg.pitch });
-          this.events.sort((a, b) => a.when - b.when);
+          this.queueEvent({ when, kind: "off", pitch: msg.pitch });
         }
         break;
       }
@@ -262,20 +273,55 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
       case "panic":
         this.voices.length = 0;
         this.events.length = 0;
+        this.eventIndex = 0;
         break;
       case "param":
         if (typeof msg.name === "string" && this.tunableParamNames.has(msg.name) && Number.isFinite(msg.value)) {
-          this.params[msg.name] = msg.value;
+          if (Number.isFinite(msg.when)) {
+            const when = Math.max(msg.when, currentTime);
+            this.queueEvent({ when, kind: "param", name: msg.name, value: msg.value });
+          } else {
+            this.params[msg.name] = msg.value;
+          }
         }
         break;
     }
   }
 
-  drainDue(t, dueOn, dueOff) {
-    while (this.events.length > 0 && this.events[0].when <= t) {
-      const ev = this.events.shift();
+  queueEvent(event) {
+    const when = event.when;
+    const last = this.events[this.events.length - 1];
+    if (!last || last.when <= when) {
+      this.events.push(event);
+      return;
+    }
+    let low = this.eventIndex;
+    let high = this.events.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (this.events[mid].when <= when) low = mid + 1;
+      else high = mid;
+    }
+    this.events.splice(low, 0, event);
+  }
+
+  drainDue(t, dueOn, dueOff, dueParam) {
+    while (this.eventIndex < this.events.length && this.events[this.eventIndex].when <= t) {
+      const ev = this.events[this.eventIndex++];
       if (ev.kind === "on") dueOn.push(ev);
-      else dueOff.push(ev);
+      else if (ev.kind === "off") dueOff.push(ev);
+      else dueParam.push(ev);
+    }
+  }
+
+  compactEvents() {
+    if (this.eventIndex === 0) return;
+    if (this.eventIndex === this.events.length) {
+      this.events.length = 0;
+      this.eventIndex = 0;
+    } else if (this.eventIndex >= 256) {
+      this.events.splice(0, this.eventIndex);
+      this.eventIndex = 0;
     }
   }
 
@@ -296,7 +342,7 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
         this.voices.push(voice);
       }
     }
-    voice.noteOn(ev.pitch, ev.velocity, ev.releaseVelocity);
+    voice.noteOn(ev.pitch, ev.velocity, ev.releaseVelocity, ev.pan);
   }
 
   triggerOff(pitch) {
@@ -317,8 +363,10 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
     // arrays on the GC nursery every render quantum).
     const dueOn = this.dueOn;
     const dueOff = this.dueOff;
+    const dueParam = this.dueParam;
     dueOn.length = 0;
     dueOff.length = 0;
+    dueParam.length = 0;
     const p = this.params;
     const N = p.tableFrames;
     const tN1 = Math.max(1, N - 1);
@@ -328,7 +376,9 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
       const t = blockStart + i * dt;
       dueOn.length = 0;
       dueOff.length = 0;
-      this.drainDue(t, dueOn, dueOff);
+      dueParam.length = 0;
+      this.drainDue(t, dueOn, dueOff, dueParam);
+      for (const ev of dueParam) this.params[ev.name] = ev.value;
       for (const ev of dueOn) this.triggerOn(ev);
       for (const ev of dueOff) this.triggerOff(ev.pitch);
 
@@ -457,8 +507,25 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
         // ── Amp mod route + env ──
         const ampMod = srcA * p.modAAmt * (p.modADst === 3 ? 1 : 0) + srcB * p.modBAmt * (p.modBDst === 3 ? 1 : 0);
         const gain = amp * Math.max(0.1, 1 + ampMod);
-        l += fL * gain;
-        r += fR * gain;
+        const voiceLeft = fL * gain;
+        const voiceRight = fR * gain;
+        // Match StereoPannerNode's stereo-input equal-power law. Wavetable
+        // voices are stereo before note pan because unison copies have width.
+        if (v.pan === 0) {
+          l += voiceLeft;
+          r += voiceRight;
+        } else if (v.pan < 0) {
+          const x = v.pan + 1;
+          const crossfeed = Math.cos((x * Math.PI) / 2);
+          const rightGain = Math.sin((x * Math.PI) / 2);
+          l += voiceLeft + voiceRight * crossfeed;
+          r += voiceRight * rightGain;
+        } else {
+          const leftGain = Math.cos((v.pan * Math.PI) / 2);
+          const crossfeed = Math.sin((v.pan * Math.PI) / 2);
+          l += voiceLeft * leftGain;
+          r += voiceRight + voiceLeft * crossfeed;
+        }
         v.age++;
       }
 
@@ -475,6 +542,7 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
       if (!this.voices[v].dead) this.voices[w++] = this.voices[v];
     }
     this.voices.length = w;
+    this.compactEvents();
     return true;
   }
 }

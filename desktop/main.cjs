@@ -360,13 +360,33 @@ function runSmoke() {
     let hostExited = false;
     let utilityPortAttached = false;
     let utilityReceivedFirstPeriod = false;
+    let utilityReceivedSharedBufferProbe = false;
+    let utilityReceivedSharedBufferControl = false;
     let probeSettled = false;
+    let nativeProbeSettled = false;
     let resolveProbe;
     let rejectProbe;
+    let resolveNativeProbe;
+    let rejectNativeProbe;
     const probeResult = new Promise((resolve, reject) => {
       resolveProbe = resolve;
       rejectProbe = reject;
     });
+    const nativeHostProbe = new Promise((resolve, reject) => {
+      resolveNativeProbe = resolve;
+      rejectNativeProbe = reject;
+    });
+    let sharedBufferProbeSettled = false;
+    let resolveSharedBufferProbe;
+    let rejectSharedBufferProbe;
+    const sharedBufferProbe = new Promise((resolve, reject) => {
+      resolveSharedBufferProbe = resolve;
+      rejectSharedBufferProbe = reject;
+    });
+    // The native probe can finish while the renderer is preparing its AudioWorklet.
+    // Attach a rejection handler immediately and still await the original promise below.
+    void nativeHostProbe.catch(() => {});
+    void sharedBufferProbe.catch(() => {});
     const settleProbe = (callback, value) => {
       if (probeSettled) return;
       probeSettled = true;
@@ -375,14 +395,53 @@ function runSmoke() {
     host.once("exit", (code) => {
       hostExited = true;
       if (!probeSettled) settleProbe(rejectProbe, new Error(`audio utility exited with code ${code}`));
+      if (!nativeProbeSettled) {
+        nativeProbeSettled = true;
+        rejectNativeProbe(new Error(`audio utility exited before native addon probe (code ${code})`));
+      }
+      if (!sharedBufferProbeSettled) {
+        sharedBufferProbeSettled = true;
+        rejectSharedBufferProbe(new Error(`audio utility exited before SharedArrayBuffer probe (code ${code})`));
+      }
     });
     host.on("message", (message) => {
       if (message?.type === "port-attached") utilityPortAttached = true;
       if (message?.type === "first-period-received") utilityReceivedFirstPeriod = true;
+      if (message?.type === "shared-buffer-probe-received") utilityReceivedSharedBufferProbe = true;
+      if (message?.type === "shared-buffer-probe-control-received") utilityReceivedSharedBufferControl = true;
       if (message?.type === "probe-result") settleProbe(resolveProbe, message.result);
       if (message?.type === "probe-error") settleProbe(rejectProbe, new Error(message.message || "PCM probe failed"));
+      if (message?.type === "native-host-probe-result" && !nativeProbeSettled) {
+        nativeProbeSettled = true;
+        resolveNativeProbe(message.result);
+      }
+      if (message?.type === "native-host-probe-error" && !nativeProbeSettled) {
+        nativeProbeSettled = true;
+        rejectNativeProbe(new Error(message.message || "Windows audio native-addon probe failed"));
+      }
+      if (message?.type === "shared-buffer-probe-result" && !sharedBufferProbeSettled) {
+        sharedBufferProbeSettled = true;
+        const expected = [3.5, 5.5, 7.5, 9.5];
+        const valuesMatch =
+          message.samples?.length === expected.length &&
+          message.samples.every((value, index) => value === expected[index]);
+        if (valuesMatch)
+          resolveSharedBufferProbe({ ok: true, sharedMemoryTransportSupported: true, sharedNapiMutation: true });
+        else rejectSharedBufferProbe(new Error("native process did not report the expected shared-buffer mutation"));
+      }
+      if (message?.type === "shared-buffer-transport-unavailable" && !sharedBufferProbeSettled) {
+        sharedBufferProbeSettled = true;
+        resolveSharedBufferProbe({
+          ok: true,
+          sharedMemoryTransportSupported: false,
+          reason: message.reason || "SharedArrayBuffer was not received by the utility process",
+        });
+      }
+      if (message?.type === "shared-buffer-probe-error" && !sharedBufferProbeSettled) {
+        sharedBufferProbeSettled = true;
+        rejectSharedBufferProbe(new Error(message.message || "SharedArrayBuffer transfer probe failed"));
+      }
     });
-
     const waitForHostExit = (timeoutMs) =>
       new Promise((resolve) => {
         const onExit = () => {
@@ -409,6 +468,77 @@ function runSmoke() {
           resources.silent?.disconnect();
           if (resources.context && resources.context.state !== "closed") void resources.context.close();
         };
+        const probeSharedBuffer = (port) => new Promise((resolve, reject) => {
+          const samples = new Float32Array(new SharedArrayBuffer(4 * Float32Array.BYTES_PER_ELEMENT));
+          samples.set([1.25, 2.25, 3.25, 4.25]);
+          window.__kyxNativeSharedBufferProbe = { ok: false, status: "pending" };
+          let sentSharedArrayBuffer = false;
+          let checkTimer = null;
+          const timeout = setTimeout(() => {
+            port.removeEventListener("message", onProbeMessage);
+            reject(new Error("renderer-to-utility SharedArrayBuffer probe timed out"));
+          }, 5000);
+          const onProbeMessage = (probeEvent) => {
+            const message = probeEvent.data;
+            if (message?.type === "shared-buffer-probe-error") {
+              clearTimeout(timeout);
+              clearTimeout(checkTimer);
+              port.removeEventListener("message", onProbeMessage);
+              window.__kyxNativeSharedBufferProbe = { ok: false, error: message.message || "native shared-buffer probe failed" };
+              reject(new Error(message.message || "native shared-buffer probe failed"));
+              return;
+            }
+            if (message?.type === "shared-buffer-probe-dropped") {
+              clearTimeout(timeout);
+              clearTimeout(checkTimer);
+              port.removeEventListener("message", onProbeMessage);
+              window.__kyxNativeSharedBufferProbe = {
+                ok: true,
+                supported: false,
+                transportReady: true,
+                reason: "SharedArrayBuffer message was dropped before reaching the utility process",
+              };
+              resolve({ ok: true, sharedMemoryTransportSupported: false });
+              return;
+            }
+            if (message?.type === "shared-buffer-probe-control-result" && !sentSharedArrayBuffer) {
+              window.__kyxNativeSharedBufferProbe = { ok: false, status: "pending", transportReady: true };
+              try {
+                port.postMessage({ type: "shared-buffer-probe", samples: samples.buffer });
+                sentSharedArrayBuffer = true;
+                checkTimer = setTimeout(() => port.postMessage({ type: "shared-buffer-probe-control-check" }), 250);
+              } catch (error) {
+                clearTimeout(timeout);
+                port.removeEventListener("message", onProbeMessage);
+                window.__kyxNativeSharedBufferProbe = { ok: false, error: String(error), transportReady: true };
+                try {
+                  port.postMessage({ type: "shared-buffer-probe-error", message: String(error) });
+                } catch {
+                  /* Surface the original structured-clone failure below. */
+                }
+                reject(error);
+              }
+              return;
+            }
+            if (message?.type !== "shared-buffer-probe-result") return;
+            const expected = [3.5, 5.5, 7.5, 9.5];
+            const valuesMatch = samples.every((value, index) => value === expected[index]);
+            clearTimeout(timeout);
+            clearTimeout(checkTimer);
+            port.removeEventListener("message", onProbeMessage);
+            if (!valuesMatch) {
+              window.__kyxNativeSharedBufferProbe = { ok: false, error: "utility native code did not update shared memory" };
+              reject(new Error("utility native code did not update the renderer SharedArrayBuffer"));
+              return;
+            }
+            window.__kyxNativeSharedBufferProbe = { ok: true, supported: true, values: Array.from(samples) };
+            port.postMessage({ type: "shared-buffer-probe-verified", samples: Array.from(samples) });
+            resolve();
+          };
+          port.addEventListener("message", onProbeMessage);
+          port.start();
+          port.postMessage({ type: "shared-buffer-probe-control" });
+        });
         const onPort = (event) => {
           const data = event.data;
           if (data?.requestId !== requestId || data.type !== "kyx:audio:bridge-port") return;
@@ -417,7 +547,12 @@ function runSmoke() {
             fail(new Error("audio bridge port did not arrive from the ready app context"));
             return;
           }
-          resources.node.port.postMessage({ type: "attach", port: data.port }, [data.port]);
+          void probeSharedBuffer(data.port)
+            .then(() => resources.node.port.postMessage({ type: "attach", port: data.port }, [data.port]))
+            .catch((error) => {
+              data.port?.close?.();
+              fail(error);
+            });
         };
         window.addEventListener("message", onPort);
         const start = async () => {
@@ -483,8 +618,11 @@ function runSmoke() {
           }),
         ]);
       } catch (error) {
+        const rendererProbe = await win.webContents
+          .executeJavaScript("window.__kyxNativeSharedBufferProbe")
+          .catch(() => null);
         throw new Error(
-          `${error instanceof Error ? error.message : String(error)}; utilityPortAttached=${utilityPortAttached}; utilityReceivedFirstPeriod=${utilityReceivedFirstPeriod}`,
+          `${error instanceof Error ? error.message : String(error)}; utilityPortAttached=${utilityPortAttached}; utilityReceivedSharedBufferControl=${utilityReceivedSharedBufferControl}; utilityReceivedSharedBufferProbe=${utilityReceivedSharedBufferProbe}; utilityReceivedFirstPeriod=${utilityReceivedFirstPeriod}; rendererSharedBufferProbe=${JSON.stringify(rendererProbe)}`,
         );
       } finally {
         clearTimeout(resultTimeout);
@@ -492,7 +630,47 @@ function runSmoke() {
       if (!result?.ok || result.sent !== 100 || result.received !== 100) {
         throw new Error("PCM MessagePort probe did not complete every 10 ms block");
       }
-      return result;
+      let nativeProbeTimeout;
+      let nativeHostResult;
+      try {
+        nativeHostResult = await Promise.race([
+          nativeHostProbe,
+          new Promise((_, reject) => {
+            nativeProbeTimeout = setTimeout(
+              () => reject(new Error("Windows audio native-addon probe timed out")),
+              5_000,
+            );
+          }),
+        ]);
+      } finally {
+        clearTimeout(nativeProbeTimeout);
+      }
+      if (!nativeHostResult?.ok || !nativeHostResult.exactEndpointRejected) {
+        throw new Error("Windows audio native-addon probe did not confirm exact endpoint refusal");
+      }
+      let sharedBufferResult;
+      let sharedBufferTimeout;
+      try {
+        sharedBufferResult = await Promise.race([
+          sharedBufferProbe,
+          new Promise((_, reject) => {
+            sharedBufferTimeout = setTimeout(
+              () => reject(new Error("SharedArrayBuffer process probe timed out")),
+              5_000,
+            );
+          }),
+        ]);
+      } finally {
+        clearTimeout(sharedBufferTimeout);
+      }
+      const rendererSharedBufferResult = await win.webContents.executeJavaScript("window.__kyxNativeSharedBufferProbe");
+      if (
+        !rendererSharedBufferResult?.ok ||
+        rendererSharedBufferResult.supported !== sharedBufferResult.sharedMemoryTransportSupported
+      ) {
+        throw new Error("renderer and utility process disagreed about SharedArrayBuffer transport support");
+      }
+      return { ...result, nativeHost: nativeHostResult, sharedBuffer: sharedBufferResult };
     } finally {
       if (!hostExited) {
         try {

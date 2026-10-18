@@ -44,18 +44,27 @@ try {
         exitCode = 1;
         continue;
       }
-      const results = await page.evaluate(async (parityOnly) => {
-        const { SampleBank } = await import("/src/sample-library/factory.ts");
-        const { auditNoteExpressionLiveOfflineParity, auditWorkletReleaseResponseParity } =
-          await import("/src/testing/live-offline-parity.ts");
-        const bank = new SampleBank();
-        if (parityOnly) return [await auditNoteExpressionLiveOfflineParity(bank)];
-        const { runNoteExpressionAudioChecks } = await import("/src/testing/noteExpressionAudioChecks.ts");
-        const offline = await runNoteExpressionAudioChecks();
-        const parity = await auditNoteExpressionLiveOfflineParity(bank);
-        const workletReleaseParity = await auditWorkletReleaseResponseParity(bank);
-        return [...offline, parity, workletReleaseParity];
-      }, process.argv.includes("--parity-only"));
+      const results = await page.evaluate(
+        async ({ parityOnly, granularOnly }) => {
+          const { SampleBank } = await import("/src/sample-library/factory.ts");
+          const { auditNoteExpressionLiveOfflineParity, auditWorkletReleaseResponseParity } =
+            await import("/src/testing/live-offline-parity.ts");
+          const bank = new SampleBank();
+          if (parityOnly) return [await auditNoteExpressionLiveOfflineParity(bank)];
+          const { runNoteExpressionAudioChecks } = await import("/src/testing/noteExpressionAudioChecks.ts");
+          if (granularOnly) {
+            const offline = await runNoteExpressionAudioChecks(["granular"]);
+            const parity = await auditNoteExpressionLiveOfflineParity(bank, ["granular: per-note pan expression"]);
+            const releaseParity = await auditWorkletReleaseResponseParity(bank, ["granular"]);
+            return [...offline, parity, releaseParity];
+          }
+          const offline = await runNoteExpressionAudioChecks();
+          const parity = await auditNoteExpressionLiveOfflineParity(bank);
+          const workletReleaseParity = await auditWorkletReleaseResponseParity(bank);
+          return [...offline, parity, workletReleaseParity];
+        },
+        { parityOnly: process.argv.includes("--parity-only"), granularOnly: process.argv.includes("--granular-only") },
+      );
 
       let failed = 0;
       for (const result of results) {

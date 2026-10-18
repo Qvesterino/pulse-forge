@@ -240,14 +240,7 @@ export function firstLevelImports(specPath) {
     const specifier = match[1];
     if (!specifier.startsWith(".")) continue;
     const base = resolve(REPO_ROOT, dirname(specPath), specifier);
-    const candidates = [
-      base,
-      `${base}.ts`,
-      `${base}.tsx`,
-      `${base}.js`,
-      `${base}.mjs`,
-      resolve(base, "index.ts"),
-    ];
+    const candidates = [base, `${base}.ts`, `${base}.tsx`, `${base}.js`, `${base}.mjs`, resolve(base, "index.ts")];
     const hit = candidates.find((candidate) => existsSync(candidate));
     if (hit) out.add(relative(REPO_ROOT, hit).replace(/\\/g, "/"));
   }

@@ -45,3 +45,17 @@ export declare function regenerateLedger(
   failedIds: readonly string[],
   meta: { recordedAgainst: string; date: string },
 ): Ledger;
+
+/** In-flight attribution (reporting only — never changes the gate's verdict). */
+export interface InFlightAnnotation {
+  id: string;
+  inFlight: boolean;
+  reason: string | null;
+}
+
+export declare function gitDirtyPaths(): Set<string>;
+export declare function firstLevelImports(specPath: string): Set<string>;
+export declare function annotateInFlight(
+  newReds: readonly string[],
+  dirty?: ReadonlySet<string>,
+): InFlightAnnotation[];

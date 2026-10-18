@@ -22,6 +22,10 @@ const PAN_KINDS: readonly InstrumentKind[] = [
   "flute",
   "logdrum",
   "vocalchop",
+  "drumsynth",
+  "spectral",
+  "wavetable",
+  "granular",
 ];
 
 function trackFor(kind: InstrumentKind): InstrumentTrack {
@@ -66,13 +70,26 @@ describe("per-note pan voice routing", () => {
     const output = runtime.output as unknown as GraphNode;
     const pannerNodes = ctx.nodes.filter((node) => node.kind === "panner");
     const routedToOutput = pannerNodes.filter((node) => node.outputs.has(output));
-    const panNodes = kind === "texture" || kind === "vocalchop" ? pannerNodes : routedToOutput;
+    const panNodes = ["texture", "vocalchop", "granular"].includes(kind) ? pannerNodes : routedToOutput;
     const directPanValues = panNodes.map((node) => (node as unknown as { pan: { value: number } }).pan.value);
     const expected = kind === "pluck" ? [-0.5975, 0.655] : [-0.65, 0.7];
     for (const value of expected) {
       expect(directPanValues.some((actual) => Math.abs(actual - value) < 1e-9)).toBe(true);
     }
 
+    runtime.dispose();
+  });
+
+  it("NEGATIVE: Drum Synth keeps the default event path unpanned without allocating a panner", () => {
+    const ctx = new GraphAudioContext();
+    const runtime = INSTRUMENT_DEFS.drumsynth.factory(ctx as never, trackFor("drumsynth"), {
+      bpm: 120,
+      getSample: () => ctx.createBuffer(2, 48000) as never,
+    });
+
+    runtime.noteOn(60, 0.8, 0.05, 0.4);
+
+    expect(ctx.nodes.filter((node) => node.kind === "panner")).toHaveLength(0);
     runtime.dispose();
   });
 });

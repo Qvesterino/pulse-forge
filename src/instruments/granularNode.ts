@@ -2,12 +2,17 @@ import type { InstrumentRuntime } from "./types";
 import type { InstrumentTrack } from "../project-model/types";
 import { hashString } from "../shared/rng";
 
-/**
- * Initial worklet state for `new AudioWorkletNode(..., { processorOptions })`.
- * Offline renders never deliver port messages during the render (they land
- * after it), so the sample, params and bpm the first note needs must be
- * constructor state. Live updates keep flowing through the port.
- */
+type GrainMessage = Record<string, unknown> & { type: string };
+
+interface GrainVoiceRuntimeOptions {
+  /** Stable final node exposed to AudioEngine on both live and offline paths. */
+  output: GainNode;
+  /** Node after the worklet, used for instrument-local tone shaping. */
+  input?: AudioNode;
+  createNode(processorOptions: Record<string, unknown>): AudioWorkletNode;
+}
+
+/** Initial sample/parameter state for a worklet created before offline render. */
 export function grainProcessorOptions(
   track: InstrumentTrack,
   env: { bpm: number; getSample(id: string | null): AudioBuffer | undefined },
@@ -36,82 +41,120 @@ export function grainProcessorOptions(
 }
 
 /**
- * Worklet-backed granular runtime (Phase-2 voice-engine track, sibling of
- * wtvoiceNode). The whole granular voice runs per-sample inside
- * `granular-voice-processor`; this wrapper is only a message bridge: sample
- * upload on create/sample changes, note/param/bpm events relayed with their
- * absolute times. The worklet owns polyphony (6 voices, oldest-steal), the
- * grain scheduler and the LIVE PLAYHEAD — POSITION/SCAN/JITTER/RATE/SIZE
- * are read at every grain spawn, so dragging them mid-note steers the cloud
- * (the main-thread fallback cloud captures params at noteOn).
+ * Worklet-backed granular runtime. Live nodes receive timed messages; offline
+ * nodes receive the same sample, parameters, BPM and events in their initial
+ * processor state before startRendering.
  */
 export function createGrainVoiceRuntime(
-  node: AudioWorkletNode,
+  node: AudioWorkletNode | null,
   track: InstrumentTrack,
   env: { bpm: number; getSample(id: string | null): AudioBuffer | undefined },
+  options?: GrainVoiceRuntimeOptions,
 ): InstrumentRuntime {
-  const port = node.port;
+  if (!node && !options) throw new Error("granular runtime requires a live node or offline node factory");
   let currentTrack = track;
+  let currentBpm = env.bpm;
+  const pendingEvents: GrainMessage[] = [];
+  const initial = grainProcessorOptions(track, env);
+  let params = { ...initial.params };
+  let sample = initial.sample;
 
-  /** Upload the current sample to the worklet (mono or stereo channel data). */
+  const send = (message: GrainMessage) => {
+    if (node) node.port.postMessage(message);
+    else pendingEvents.push(message);
+  };
+
   const uploadSample = () => {
     const buffer = currentTrack.sampleId ? env.getSample(currentTrack.sampleId) : undefined;
-    if (!buffer || buffer.length === 0) return;
-    port.postMessage({
-      type: "sample",
-      ch0: buffer.getChannelData(0),
-      ch1: buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : null,
-      length: buffer.length,
-      sampleRate: buffer.sampleRate,
-    });
+    sample =
+      buffer && buffer.length > 0
+        ? {
+            ch0: buffer.getChannelData(0),
+            ch1: buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : null,
+            sampleRate: buffer.sampleRate,
+          }
+        : null;
+    if (node && sample) node.port.postMessage({ type: "sample", ...sample });
   };
-  uploadSample();
 
-  const setParam = (name: string, value: number) => port.postMessage({ type: "param", name, value });
-
-  // Push the initial parameter snapshot so the first note uses track values.
-  for (const [name, value] of Object.entries(track.params)) {
-    if (typeof value === "number") setParam(name, value);
+  if (node) {
+    if (sample) node.port.postMessage({ type: "sample", ...sample });
+    for (const [name, value] of Object.entries(params)) node.port.postMessage({ type: "param", name, value });
+    node.port.postMessage({ type: "bpm", value: currentBpm });
+    if (options) node.connect(options.input ?? options.output);
   }
-  port.postMessage({ type: "bpm", value: env.bpm });
 
   const runtime: InstrumentRuntime = {
-    output: node,
+    output: options?.output ?? node!,
+    get processorNode() {
+      return node ?? undefined;
+    },
     noteOn(pitch, velocity, when, durationSec, _slideFrom, expression) {
-      // Same PRNG seed contract as the fallback cloud: trackId:pitch.
-      port.postMessage({
+      send({
         type: "noteOn",
         pitch,
         velocity,
         when,
         dur: durationSec ?? 0.5,
+        pan: expression?.pan,
         releaseVelocity: expression?.releaseVelocity,
         seed: hashString(`${currentTrack.id}:${pitch}`),
       });
     },
     noteOff(pitch, when) {
-      port.postMessage({ type: "noteOff", pitch, when });
+      send({ type: "noteOff", pitch, when });
     },
     setSample(id) {
       currentTrack = { ...currentTrack, sampleId: id };
       uploadSample();
     },
     setVelocityLayers(layers) {
-      void layers; // keyzones/RR are sampler features
+      void layers; // Keyzones/RR are sampler features.
     },
-    syncBpm(bpm) {
-      port.postMessage({ type: "bpm", value: bpm });
+    syncBpm(bpm, when) {
+      if (!Number.isFinite(bpm) || bpm <= 0) return;
+      if (when !== undefined) {
+        send({ type: "bpm", value: bpm, when });
+        return;
+      }
+      currentBpm = bpm;
+      if (node) node.port.postMessage({ type: "bpm", value: bpm });
     },
-    setParameter(name, value) {
-      if (typeof value === "number") setParam(name, value);
+    setParameter(name, value, when) {
+      if (typeof value !== "number" || !Number.isFinite(value)) return;
+      currentTrack = { ...currentTrack, params: { ...currentTrack.params, [name]: value } };
+      if (when === undefined && !node) params[name] = value;
+      send({ type: "param", name, value, ...(when !== undefined ? { when } : {}) });
+    },
+    setParameterAt(name, value, when) {
+      this.setParameter(name, value, when);
     },
     panic() {
-      port.postMessage({ type: "panic" });
+      if (node) node.port.postMessage({ type: "panic" });
+      else pendingEvents.length = 0;
     },
     dispose() {
-      port.postMessage({ type: "panic" });
-      node.disconnect();
+      if (node) {
+        node.port.postMessage({ type: "panic" });
+        node.disconnect();
+        node = null;
+      }
+      options?.output.disconnect();
     },
   };
+
+  if (options) {
+    runtime.prepareOfflineRender = () => {
+      if (node) return;
+      node = options.createNode({
+        params: { ...params },
+        bpm: currentBpm,
+        sample,
+        events: pendingEvents.slice(),
+      });
+      node.connect(options.input ?? options.output);
+    };
+  }
+
   return runtime;
 }
