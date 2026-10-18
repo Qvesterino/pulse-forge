@@ -18,10 +18,10 @@ from the raw document and imports **no** resolver from `schema.ts`, `targets.ts`
 
 The auditor asks one question over three families of documents:
 
-| family | what it covers |
-| --- | --- |
-| canonical | `testDoc()`, `deterministicTestDoc()`, and a purpose-built `richDoc()` carrying a clip of every system |
-| corrupted | 31 classes, each injecting exactly one broken reference, then asserting `normalizeProject` repairs it |
+| family                             | what it covers                                                                                                                   |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| canonical                          | `testDoc()`, `deterministicTestDoc()`, and a purpose-built `richDoc()` carrying a clip of every system                           |
+| corrupted                          | 31 classes, each injecting exactly one broken reference, then asserting `normalizeProject` repairs it                            |
 | produced by the real command layer | `deleteTrack` / `deletePattern` / `deleteReturnTrack` / `removeEffectFromTracks` through `ProjectStore`, including undo and redo |
 
 A calibration block proves the auditor is not vacuously green: it must report a
@@ -55,9 +55,9 @@ produce this: project import, share code, a collab peer, a hand-edited file.
 ### 2. `markers[].linkedClipId` was never validated — CONFIRMED, FIXED
 
 Every delete verb unlinks markers in-command (`docOps.unlinkMarkersOfClips`), and that
-function's own comment states the consequence of not doing so: *"the stale id survived
+function's own comment states the consequence of not doing so: _"the stale id survived
 every save (schema keeps any string) and the scheduler silently fell back to the
-global preview bus."*
+global preview bus."_
 
 So the gap was known, documented at the command layer, and never closed at the schema
 layer. Clip-group membership — the same kind of cross-reference, held by another
@@ -82,13 +82,34 @@ would have left the test green.
 
 ### 4. `sanitizeMarkers` promised a dedupe it never performed — CONFIRMED, FIXED
 
-Its doc-comment read *"Filter + clamp marker points (drop empty, **dedupe by id**, sort
-by tick)"*. The body had no dedupe. The code now matches its own contract.
+Its doc-comment read _"Filter + clamp marker points (drop empty, **dedupe by id**, sort
+by tick)"_. The body had no dedupe. The code now matches its own contract.
 
 Markers are deliberately **not** also listed in the new domain-level dedupe: the first
 falsification run proved the two overlap. Keeping both would have been the same
 invariant enforced twice, and the second copy would have been untested. One owner,
 provably load-bearing.
+
+### 5. Regression introduced by fix 2, caught by an existing gate — FIXED
+
+The marker fix first compared the sanitized markers with `jsonEqual` instead of the
+`JSON.stringify` comparison that call site had always used. `jsonEqual` **counts an
+`undefined`-valued key as present** — that is its documented contract, valid because
+normalizers are expected to build objects with conditional spreads. `sanitizeMarkers`
+builds every marker with `linkedClipId` and `customId` keys present and their values
+possibly `undefined`, so the two conventions collided: every marker read as changed,
+and `normalizeProject` rewrote a canonical document with explicit `customId: undefined`
+keys.
+
+`tests/templates.test.ts`'s _"scene-score template is unchanged by normalization"_ went
+red. That gate is the reason this was caught rather than shipped — a template is
+supposed to be a fixed point of the normalizer, and the change had broken exactly that.
+The comparison is back to `JSON.stringify`, which drops `undefined`-valued keys, and a
+fixed-point pin now sits in this audit's own test file.
+
+Recorded because the failure mode is general: **swapping in a "better" comparator is a
+behaviour change, not a refactor**, and two correct-looking helpers disagreed about
+whether a key exists.
 
 ---
 
@@ -97,14 +118,14 @@ provably load-bearing.
 `scenes[].packs`, `.macros`, `.ccRemaps`, `.ccOverrides` and `.modulators` **keep
 unknown ids by design**. The source says so for each:
 
-- `packs`: *"pair ids are matched against the packs at use time, so an unknown id is
-  dropped by the engine"*
-- `macros`: *"macro existence is matched at use time (an unknown id is inert)"*
-- `ccOverrides` / `modulators`: *"Unknown mapping ids stay inert"* / *"Unknown lfo ids
-  stay inert"*
+- `packs`: _"pair ids are matched against the packs at use time, so an unknown id is
+  dropped by the engine"_
+- `macros`: _"macro existence is matched at use time (an unknown id is inert)"_
+- `ccOverrides` / `modulators`: _"Unknown mapping ids stay inert"_ / _"Unknown lfo ids
+  stay inert"_
 
 They are **named identities** matched at use time. Dropping one on load would destroy a
-user's scene automation because a referenced entity is *temporarily* absent. An auditor
+user's scene automation because a referenced entity is _temporarily_ absent. An auditor
 that flagged them as dangling would have been proposing a regression.
 
 These are now pinned by two tests in the inert-by-contract block, so a future reader who
@@ -135,14 +156,14 @@ already satisfies the invariant.
 
 ## Tests Added
 
-`tests/referential-integrity.test.ts` — 39 specs.
+`tests/referential-integrity.test.ts` — 40 specs.
 
-| block | specs | what it pins |
-| --- | --- | --- |
-| auditor calibration | 4 | the auditor reports a violation when given one; sees a duplicate; canonical docs are clean; the rich fixture is clean before corruption |
-| corruption classes | 31 | each injects one broken reference, asserts the auditor sees it, then asserts `normalizeProject` repairs it |
-| inert-by-contract | 2 | scene pins for unknown macro / cc / lfo / fx ids survive |
-| delete commands | 5 | `deleteTrack`, its undo and redo, `deleteReturnTrack` + undo, `deletePattern`, `removeEffectFromTracks` + undo — all clean afterwards |
+| block               | specs | what it pins                                                                                                                                                                                                               |
+| ------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| auditor calibration | 5     | the auditor reports a violation when given one; sees a duplicate; canonical docs are clean; the rich fixture is clean before corruption; the rich fixture is a **fixed point** of `normalizeProject` by reference identity |
+| corruption classes  | 31    | each injects one broken reference, asserts the auditor sees it, then asserts `normalizeProject` repairs it                                                                                                                 |
+| inert-by-contract   | 2     | scene pins for unknown macro / cc / lfo / fx ids survive                                                                                                                                                                   |
+| delete commands     | 5     | `deleteTrack`, its undo and redo, `deleteReturnTrack` + undo, `deletePattern`, `removeEffectFromTracks` + undo — all clean afterwards                                                                                      |
 
 Contributor rule is in the file header: a new persisted field that points at another
 entity must be added to `auditReferences` **and** to the corruption classes. A reference
@@ -152,28 +173,29 @@ the auditor does not know about is a reference nobody checks.
 
 ## Verification
 
-| check | result |
-| --- | --- |
-| `npx vitest run tests/referential-integrity.test.ts` | **39 passed** |
-| `npx tsc -p .artifacts/tsconfig.audit15.json` (scoped to the two changed files) | **exit 0** |
-| falsification harness (`.artifacts/falsify-audit15.mjs`) | **7/7 mutations went red, control included** |
-| `npm run typecheck` (whole repo) | **BLOCKED** — pre-existing syntax error in `src/ui/padChannelState.ts:26` (`T>;`, missing `)`), committed by the parallel session in `ba7a2261`. Not this change; not touched. |
-| full `npm run test` | see the completion report — the suite was still running when this file was written |
+| check                                                                                                         | result                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npx vitest run tests/referential-integrity.test.ts`                                                          | **40 passed**                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `npx tsc -p .artifacts/tsconfig.audit15.json` (scoped to the two changed files)                               | **exit 0**                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `npx vitest run tests/templates.test.ts tests/referential-integrity.test.ts tests/project-invariants.test.ts` | **201 passed**                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| falsification harness (`.artifacts/falsify-audit15.mjs`)                                                      | **7/7 mutations went red, control included**                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `npm run typecheck` (whole repo)                                                                              | **BLOCKED** — pre-existing syntax error in `src/ui/padChannelState.ts:26` (`T>;`, missing `)`), committed by the parallel session in `ba7a2261`. Not this change; not touched.                                                                                                                                                                                                                                                                                             |
+| full `npm run test`                                                                                           | **34 failed.** 1 was mine — `templates.test.ts` canonicality, the regression in finding 5, now fixed. The other 33 were re-run in isolation: **10 still fail, 23 pass**, so 23 were machine-load flakes. **None of the 10 remaining files references `normalizeProject` or `migrateProject` at all** (verified by grep), so they cannot be caused by changes confined to that function; they are pre-existing in HEAD from the parallel session's instrument and UI waves. |
 
 ### Falsification
 
 A green suite proves nothing until each guard is shown able to go red. Each fix was
 reverted one at a time; the matching test had to fail.
 
-| mutation | reverted | verdict |
-| --- | --- | --- |
-| M1 | `dedupeEntityIdsDomain` removed from the pipeline | DETECTED |
-| M2 | `sanitizeMarkers` stops deduping by id | DETECTED |
-| M3 | `normalizeMarkersDomain` stops clearing a dead `linkedClipId` | DETECTED |
-| M4 | `normalizeMidiDomain` stops rejecting an unknown `padId` | DETECTED |
-| M5 | `drumNoteMap` change-detection removed from the rebuild guard | DETECTED |
-| M6 | scene macro pins dropped | DETECTED |
-| **C1 (control)** | **the auditor's own duplicate detection neutered** | **DETECTED** |
+| mutation         | reverted                                                      | verdict      |
+| ---------------- | ------------------------------------------------------------- | ------------ |
+| M1               | `dedupeEntityIdsDomain` removed from the pipeline             | DETECTED     |
+| M2               | `sanitizeMarkers` stops deduping by id                        | DETECTED     |
+| M3               | `normalizeMarkersDomain` stops clearing a dead `linkedClipId` | DETECTED     |
+| M4               | `normalizeMidiDomain` stops rejecting an unknown `padId`      | DETECTED     |
+| M5               | `drumNoteMap` change-detection removed from the rebuild guard | DETECTED     |
+| M6               | scene macro pins dropped                                      | DETECTED     |
+| **C1 (control)** | **the auditor's own duplicate detection neutered**            | **DETECTED** |
 
 The control is what makes the other six meaningful: it proves the harness can see red
 in the test file itself.
@@ -184,7 +206,7 @@ each one initially looked like "weak guard":
 1. **First run: 0/7, all `UNCLEAR`.** `execFileSync` cannot spawn `npx` on Windows
    without `shell: true`; every run threw with `status: null` and empty output. The
    control was `UNCLEAR` too — the signature of a broken harness, not six weak guards.
-2. **Second run: crash mid-restore, worktree left MUTATED.** `copyFileSync` *replaces*
+2. **Second run: crash mid-restore, worktree left MUTATED.** `copyFileSync` _replaces_
    a file, and Windows refuses that while the parallel session's vitest holds a
    user-mapped section on `schema.ts`. The harness died inside the restore and left
    `src/project-model/schema.ts` carrying a live mutation in the shared tree. Restored

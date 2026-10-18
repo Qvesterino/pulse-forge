@@ -392,6 +392,18 @@ describe("referential integrity — auditor calibration", () => {
   it("the rich fixture is internally consistent before corruption", () => {
     expect(auditReferences(richDoc())).toEqual([]);
   });
+
+  // Fixed-point contract, by reference identity. Every repair in this audit is
+  // a no-op on a document that already satisfies the invariant, so a document
+  // this file builds must survive normalization UNTOUCHED — not merely
+  // structurally equal. Caught in practice: comparing sanitized markers with
+  // `jsonEqual` counts an `undefined`-valued key as present, which rewrote a
+  // canonical template with explicit `customId: undefined` keys. The existing
+  // `templates.test.ts` gate caught it; this pins it where the fixes live.
+  it("the rich fixture is already a fixed point of normalizeProject", () => {
+    const doc = richDoc();
+    expect(normalizeProject(doc)).toBe(doc);
+  });
 });
 
 describe("referential integrity — corruption classes vs normalizeProject", () => {

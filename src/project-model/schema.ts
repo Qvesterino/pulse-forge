@@ -2558,7 +2558,15 @@ function normalizeMarkersDomain(s: NormalizeState): void {
     delete next.linkedClipId;
     return next;
   });
-  const markersChanged = !Array.isArray(doc.markers) || !jsonEqual(linkedMarkers, doc.markers);
+  // JSON.stringify, NOT `jsonEqual`: `sanitizeMarkers` builds every marker with
+  // `linkedClipId`/`customId` keys present, so `jsonEqual` — which counts an
+  // `undefined`-valued key as PRESENT — reported every marker as changed and
+  // rewrote a canonical document with explicit `customId: undefined` keys.
+  // That broke `templates.test.ts`'s "scene-score template is unchanged by
+  // normalization": a template is supposed to be a fixed point of the
+  // normalizer. `stringify` drops `undefined`-valued keys, which is what this
+  // call site has always compared with.
+  const markersChanged = !Array.isArray(doc.markers) || JSON.stringify(linkedMarkers) !== JSON.stringify(doc.markers);
   if (markersChanged) {
     s.doc = { ...doc, markers: linkedMarkers };
     s.changed = true;
