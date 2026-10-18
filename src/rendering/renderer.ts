@@ -668,7 +668,16 @@ export async function renderProject(
     // offline context finishes in the background and is discarded by GC)
     // and the UI transitions to "cancelled".
     const rendering = ctx.startRendering();
-    if (!options.signal) return rendering;
+    // `return await`, not `return`: returning a promise from inside a try block
+    // runs the enclosing `finally` BEFORE the caller can await it, so the
+    // engine's dispose() below tore the whole graph down the instant rendering
+    // started. Measured 2026-10-18 on the house template, pattern mode, master
+    // chain on: without a signal the buffer was [null, null, …] — total silence;
+    // the same document WITH an AbortSignal rendered [-4.1, -3.4, -3.6, …]
+    // dBFS because the signal path awaits Promise.race and disposes afterwards.
+    // Every renderProject call that omits `signal` hit this: stems, track
+    // exports, beat-only WAV, consolidation, reference-map and intent analyses.
+    if (!options.signal) return await rendering;
     const signal = options.signal;
     let removeAbortListener: () => void = () => undefined;
     const abortPromise = new Promise<never>((_, reject) => {
