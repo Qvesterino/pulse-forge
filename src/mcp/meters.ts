@@ -90,6 +90,17 @@ export function mcpFxMetersFromServices(services: Services): McpFxMeterSnapshot 
     const effects: McpFxMeterReading[] = [];
     const collect = (ownerId: string, ownerName: string, list: readonly EffectInstance[]): void => {
       for (const fx of list) {
+        // One misbehaving runtime must not blind the whole snapshot: its
+        // telemetry degrades to null, the rest still report.
+        let meters: unknown = null;
+        let gainReduction: McpFxMeterReading["gainReduction"] = null;
+        try {
+          meters = engine.getFxMeters(ownerId, fx.id) ?? null;
+          gainReduction = engine.getFxGainReductionBreakdown(ownerId, fx.id) ?? null;
+        } catch {
+          meters = null;
+          gainReduction = null;
+        }
         effects.push({
           ownerId,
           ownerName,
@@ -97,8 +108,8 @@ export function mcpFxMetersFromServices(services: Services): McpFxMeterSnapshot 
           type: fx.type,
           name: EFFECT_DEFS[fx.type]?.name ?? String(fx.type),
           bypassed: fx.bypassed === true,
-          meters: engine.getFxMeters(ownerId, fx.id) ?? null,
-          gainReduction: engine.getFxGainReductionBreakdown(ownerId, fx.id) ?? null,
+          meters,
+          gainReduction,
         });
       }
     };

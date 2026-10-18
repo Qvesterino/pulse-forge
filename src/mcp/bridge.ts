@@ -1,6 +1,12 @@
 import type { ProjectDocument } from "../project-model/types";
 import type { Command } from "../commands/types";
-import { executeMcpToolAsync, type McpExportRequest, type McpFxMeterSnapshot, type McpMeterSnapshot, type McpToolContext } from "./tools";
+import {
+  executeMcpToolAsync,
+  type McpExportRequest,
+  type McpFxMeterSnapshot,
+  type McpMeterSnapshot,
+  type McpToolContext,
+} from "./tools";
 import { mcpAllowDestructive } from "./flags";
 import { withAgentAttribution } from "./attribution";
 

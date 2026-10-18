@@ -55,6 +55,7 @@
 @import "./53-transfer-import.css";
 @import "./54-row-pad-channel.css";
 @import "./55-mobile-profile.css";
+@import "./56-live-pads.css";
 /* The settings glass MUST stay last: it is the only sheet that owns the
    .theme-panel / .scale-popover selectors, and a later sheet would silently
    win the cascade over its contrast-verified fills. Pinned by

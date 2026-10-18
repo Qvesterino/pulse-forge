@@ -60,7 +60,16 @@ describe("agent kit — the document cannot name tools that do not exist", () =>
 
   it("states the enforcement contract the app actually implements", () => {
     const doc = readFileSync("docs/AGENT-KIT.md", "utf8");
-    for (const claim of ["pre-session checkpoint", "requestId", "dryRun", "destructiveHint", "REVERT SESSION"]) {
+    // The kit must say HOW to verify an effect change, not only that a session
+    // can be reverted: kyx_meter scope:fx is the closed loop for inserts.
+    for (const claim of [
+      "pre-session checkpoint",
+      "requestId",
+      "dryRun",
+      "destructiveHint",
+      "REVERT SESSION",
+      '"scope":"fx"',
+    ]) {
       expect(doc, `the kit must state: ${claim}`).toContain(claim);
     }
   });

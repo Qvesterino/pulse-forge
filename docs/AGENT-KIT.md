@@ -46,6 +46,12 @@ The app enforces the classes, not the agent's goodwill:
 4. **Ask before removals.** `destructiveHint: true` means confirm with the user
    first; if they say no, propose an alternative instead.
 5. **Verify.** `kyx_state` after applying, or `kyx_checkpoint {op:"diff"}`.
+   For an EFFECT change, read the insert's own telemetry:
+   `kyx_meter {"scope":"fx"}` returns every inserted effect with what its
+   wrapper exposes — KOREŇ reports f0, clarity, "+x dB harmonics", the key
+   scaler and the hint flag; dynamics report their gain-reduction stages; a
+   bypassed or degraded insert honestly says "no telemetry" instead of zeros.
+   That is the closed loop: apply → read → decide.
 
 ### Worked example A — read-only survey (safe everywhere)
 

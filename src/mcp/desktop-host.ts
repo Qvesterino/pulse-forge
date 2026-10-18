@@ -4,7 +4,7 @@ import { mcpAllowDestructive } from "./flags";
 import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
 import { quickBounceDownload } from "../export/quick-bounce";
 import { decodeAudioData } from "../services/audio-decode";
-import { mcpMeterSnapshotFromServices } from "./meters";
+import { mcpFxMetersFromServices, mcpMeterSnapshotFromServices } from "./meters";
 import { mcpApplyLoudness, mcpMeasureLoudness } from "./loudness";
 import { mcpRenderSummary } from "./render-summary";
 import { mcpRenderAudioPreview } from "./audio-preview";
@@ -70,6 +70,7 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     transport: services.transport,
     // kyx_meter reads the LIVE engine (null when no audio context is up).
     meters: () => mcpMeterSnapshotFromServices(services),
+    fxMeters: () => mcpFxMetersFromServices(services),
     // THE AI's EARS (closed-loop iterate): renders the current doc → stereo
     // PCM for the measurement pipeline. Same render path as mcpRenderSummary.
     renderMix: async () => {

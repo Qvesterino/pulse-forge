@@ -58,20 +58,21 @@ export const pwaOptions: Partial<VitePWAOptions> = {
     ],
   },
   workbox: {
-    // Precache all built assets (JS/CSS/HTML) + icons + curated factory
-    // samples from public/samples/ (local-first: the curated kit must be
-    // available offline, not only on the first online visit). Internal
-    // golden-review listening renders are not product assets, and the optional
-    // intent ranker stays lazy: its 13.9 MB WASM runtime must never inflate
-    // the app-shell install/update payload.
-    // The Audiotool validator is a large, optional SDK dependency. Keep it out
-    // of the install payload; a separate runtime rule caches it only after the
-    // user enters the Audiotool flow.
-    globPatterns: ["**/*.{js,css,html,svg,png,woff2,wav}"],
+    // Precache the app shell only: JS/CSS/HTML/icons. Sample WAVs are NOT
+    // part of install/update anymore — the curated piano pack alone is 236 MB
+    // and the one-shots another 36 MB. On mobile that is a multi-hundred-MB
+    // download before the first note, and every deploy would churn it.
+    // Samples now use the runtime `kyx-samples` cache on first use, and the
+    // explicit "offline pack" action (Diagnostics → Device) can prefill the
+    // same cache for a chosen pack. The app remains offline-capable for the
+    // shell; audio content becomes offline after use or after that action.
+    globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
     globIgnores: [
       "models/ort/**",
       "models/intent-ranker-v1.onnx",
       "golden-review/**",
+      // All sample packs are on-demand, never install payload.
+      "**/samples/**",
       // The optional SDK and its KYX adapter are downloaded only after the
       // user chooses Audiotool export; do not include either in PWA install/update.
       "**/audiotool-nexus-*.js",
@@ -86,18 +87,9 @@ export const pwaOptions: Partial<VitePWAOptions> = {
       "assets/ort-*.wasm",
       // An optional vendored copy must not be downloaded during PWA install.
       "audiotool-nexus/**",
-      // Locally-converted VSCO packs (scripts/convert-vsco2.mjs, gitignored at
-      // .gitignore:139) contain sustained piano/percussion loops at 4.3–4.7 MB
-      // each, past `maximumFileSizeToCacheInBytes` below. Workbox REPORTS
-      // over-limit precache entries as a build error, not a warning, so a
-      // developer who has converted the pack locally cannot build at all.
-      //
-      // Raise the cap instead and the install payload would grow by tens of
-      // megabytes of loops that a user only plays if they open the kit.
-      // Excluding them keeps the shell lean and matches how they are built:
-      // these are local development assets, not shipped ones. The curated
-      // `samples/piano/` pack — which IS what a shipped install precaches —
-      // stays under the cap and is unaffected.
+      // Local-only VSCO conversions are development assets, not shipped
+      // content. They are excluded even from the runtime pack manifest by the
+      // generator, so a developer's converted loops cannot inflate a release.
       "**/samples/vsco/**",
     ],
     // Workbox silently EXCLUDES precache entries above its 2 MiB default —
@@ -111,6 +103,31 @@ export const pwaOptions: Partial<VitePWAOptions> = {
     // makes `npm run build` succeed on a machine that has them.
     maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
     runtimeCaching: [
+      {
+        // Sample content is cache-first after the first use. The explicit
+        // offline pack writes into this same cache, so the SW can serve it
+        // without a second policy. 600 entries covers curated one-shots +
+        // the 120-file piano pack; quota pressure can purge the cache rather
+        // than failing a project save.
+        urlPattern: /\/samples\/.+\.(?:wav|ogg|mp3|flac)$/i,
+        handler: "CacheFirst",
+        options: {
+          cacheName: "kyx-samples",
+          cacheableResponse: { statuses: [0, 200] },
+          expiration: { maxEntries: 600, maxAgeSeconds: 60 * 60 * 24 * 365, purgeOnQuotaError: true },
+        },
+      },
+      {
+        // Optional AI models load behind circuit breakers; cache only after
+        // a model is actually used (never during install).
+        urlPattern: /\/models\/.+\.(?:onnx|json|bin)$/i,
+        handler: "CacheFirst",
+        options: {
+          cacheName: "kyx-models",
+          cacheableResponse: { statuses: [0, 200] },
+          expiration: { maxEntries: 12, maxAgeSeconds: 60 * 60 * 24 * 365, purgeOnQuotaError: true },
+        },
+      },
       {
         urlPattern: /\/assets\/ort\.bundle\.min-[^/]+\.js$/,
         handler: "CacheFirst",

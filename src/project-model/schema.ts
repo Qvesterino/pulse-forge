@@ -57,7 +57,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 37;
+export const SCHEMA_VERSION = 38;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -633,6 +633,12 @@ export function sanitizeAudioClips(
       Number.isSafeInteger(raw.sourceChannel) && Number(raw.sourceChannel) >= 0 && Number(raw.sourceChannel) < 32
         ? Number(raw.sourceChannel)
         : undefined;
+    const liveSetId = typeof raw.liveSetId === "string" && raw.liveSetId !== "" && raw.liveSetId.length <= 128
+      ? raw.liveSetId
+      : undefined;
+    const livePadSlot = Number.isInteger(raw.livePadSlot) && Number(raw.livePadSlot) >= 0 && Number(raw.livePadSlot) < 16
+      ? Number(raw.livePadSlot)
+      : undefined;
     const takeGroupId = typeof raw.takeGroupId === "string" && raw.takeGroupId !== "" ? raw.takeGroupId : undefined;
     const takeId = typeof raw.takeId === "string" && raw.takeId !== "" ? raw.takeId : undefined;
     const compSourceTakeId =
@@ -671,6 +677,7 @@ export function sanitizeAudioClips(
       ...(pitchSemitones !== 0 ? { pitchSemitones } : {}),
       reverse,
       ...(sourceChannel !== undefined ? { sourceChannel } : {}),
+      ...(liveSetId !== undefined && livePadSlot !== undefined ? { liveSetId, livePadSlot } : {}),
       ...(takeGroupId && takeId ? { takeGroupId, takeId } : {}),
       ...(takeGroupId && takeId && compSourceTakeId ? { compSourceTakeId } : {}),
       ...(loop ? { loop } : {}),
@@ -2921,6 +2928,85 @@ function normalizeMidiDomain(s: NormalizeState): void {
   }
 }
 
+function normalizeLiveSetsDomain(s: NormalizeState): void {
+  const doc = s.doc;
+  if (doc.liveSets === undefined && doc.activeLiveSetId === undefined) return;
+  const liveSetsInput = doc.liveSets;
+  const eligibleTrackIds = new Set(doc.tracks.filter((track) => track.kind !== "generative").map((track) => track.id));
+  const allowedLoopBars = new Set([1, 2, 4, 8, 16]);
+  const liveSets: import("./types").LiveSet[] = [];
+
+  if (Array.isArray(liveSetsInput)) {
+    for (let index = 0; index < Math.min(32, liveSetsInput.length); index++) {
+      const rawSet = liveSetsInput[index];
+      if (!isObject(rawSet)) continue;
+      const id = typeof rawSet.id === "string" && rawSet.id.trim() !== "" ? rawSet.id : uid("liveSet");
+      const name = typeof rawSet.name === "string" && rawSet.name.trim() !== "" ? rawSet.name.trim().slice(0, 64) : `Live Set ${index + 1}`;
+      const trackId = typeof rawSet.trackId === "string" && eligibleTrackIds.has(rawSet.trackId) ? rawSet.trackId : undefined;
+      const rawLoopBars = Number(rawSet.loopBars);
+      const loopBars = allowedLoopBars.has(rawLoopBars) ? (rawLoopBars as 1 | 2 | 4 | 8 | 16) : 4;
+      const pads: import("./types").LiveSetPad[] = [];
+      const seenSlots = new Set<number>();
+      if (Array.isArray(rawSet.pads)) {
+        for (const rawPad of rawSet.pads) {
+          if (!isObject(rawPad)) continue;
+          const slot = Number(rawPad.slot);
+          const bufferId = typeof rawPad.bufferId === "string" ? rawPad.bufferId.trim() : "";
+          if (!Number.isInteger(slot) || slot < 0 || slot >= 16 || seenSlots.has(slot) || !bufferId || bufferId.length > 512)
+            continue;
+          seenSlots.add(slot);
+          const padName = typeof rawPad.name === "string" && rawPad.name.trim() !== "" ? rawPad.name.trim().slice(0, 96) : `Pad ${slot + 1}`;
+          const rawBpm = Number(rawPad.bpm);
+          const bpm = Number.isFinite(rawBpm) && rawBpm >= 40 && rawBpm <= 240 ? rawBpm : undefined;
+          const pad: import("./types").LiveSetPad = {
+            slot,
+            bufferId,
+            name: padName,
+            ...(bpm !== undefined ? { bpm } : {}),
+            ...(rawPad.loop === true ? { loop: true } : {}),
+          };
+          const unchanged =
+            rawPad.slot === pad.slot &&
+            rawPad.bufferId === pad.bufferId &&
+            rawPad.name === pad.name &&
+            rawPad.bpm === pad.bpm &&
+            rawPad.loop === pad.loop;
+          pads.push(unchanged ? (rawPad as unknown as import("./types").LiveSetPad) : pad);
+        }
+      }
+      pads.sort((a, b) => a.slot - b.slot);
+      const set: import("./types").LiveSet = {
+        id,
+        name,
+        ...(trackId ? { trackId } : {}),
+        loopBars,
+        pads,
+      };
+      const rawPads = Array.isArray(rawSet.pads) ? rawSet.pads : [];
+      const unchanged =
+        rawSet.id === set.id &&
+        rawSet.name === set.name &&
+        rawSet.trackId === set.trackId &&
+        rawSet.loopBars === set.loopBars &&
+        rawPads.length === pads.length &&
+        pads.every((pad, padIndex) => rawPads[padIndex] === pad);
+      liveSets.push(unchanged ? (rawSet as unknown as import("./types").LiveSet) : set);
+    }
+  }
+
+  const requestedActiveId = typeof doc.activeLiveSetId === "string" ? doc.activeLiveSetId : undefined;
+  const activeLiveSetId = liveSets.some((set) => set.id === requestedActiveId) ? requestedActiveId : liveSets[0]?.id;
+  const setsUnchanged = liveSetsInput === undefined ? liveSets.length === 0 : liveSets.length === liveSetsInput.length && liveSets.every((set, index) => set === liveSetsInput[index]);
+  if (setsUnchanged && activeLiveSetId === doc.activeLiveSetId) return;
+  const next: ProjectDocument = { ...doc };
+  if (liveSets.length > 0) next.liveSets = liveSets;
+  else delete next.liveSets;
+  if (activeLiveSetId) next.activeLiveSetId = activeLiveSetId;
+  else delete next.activeLiveSetId;
+  s.doc = next;
+  s.changed = true;
+}
+
 function normalizePatternsDomain(s: NormalizeState): void {
   const doc = s.doc;
   const padIds = new Set(allPadIds(doc));
@@ -3301,6 +3387,7 @@ const TOP_LEVEL_ID_COLLECTIONS = [
   "returns",
   "patterns",
   "scenes",
+  "liveSets",
   "automation",
   "sceneAutomation",
   "lfos",
@@ -3347,6 +3434,7 @@ const NORMALIZE_DOMAINS: ((s: NormalizeState) => void)[] = [
   normalizeTimestampsDomain,
   normalizeGrooveDomain,
   normalizeMidiDomain,
+  normalizeLiveSetsDomain,
   normalizePatternsDomain,
 ];
 
@@ -3426,6 +3514,7 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // values; their neutral value (0.5) is omitted to preserve instrument defaults.
   // v36 adds optional DAW-neutral audio + MIDI transfer provenance.
   // v37 adds an independent, duration-preserving AudioClip pitch offset.
+  // v38 adds project-local Live Sets with named 4×4 loop-pad assignments.
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

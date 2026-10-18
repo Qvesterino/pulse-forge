@@ -1,0 +1,1084 @@
+{
+  "version": 1,
+  "note": "Optional offline audio packs. Runtime-cached into kyx-samples; never precached at install.",
+  "packs": [
+    {
+      "id": "factory",
+      "label": "Factory one-shots",
+      "bytes": 37186198,
+      "files": [
+        {
+          "url": "/samples/factory.bass.808.hard.wav",
+          "bytes": 436688
+        },
+        {
+          "url": "/samples/factory.bass.808.medium.wav",
+          "bytes": 410222
+        },
+        {
+          "url": "/samples/factory.bass.808.soft.wav",
+          "bytes": 330836
+        },
+        {
+          "url": "/samples/factory.bass.acid.fast.wav",
+          "bytes": 172058
+        },
+        {
+          "url": "/samples/factory.bass.acid.slow.wav",
+          "bytes": 284198
+        },
+        {
+          "url": "/samples/factory.bass.clean.wav",
+          "bytes": 383678
+        },
+        {
+          "url": "/samples/factory.bass.dist.wav",
+          "bytes": 410168
+        },
+        {
+          "url": "/samples/factory.bass.fm.wav",
+          "bytes": 436664
+        },
+        {
+          "url": "/samples/factory.bass.pluck.wav",
+          "bytes": 145604
+        },
+        {
+          "url": "/samples/factory.bass.reese.wav",
+          "bytes": 489560
+        },
+        {
+          "url": "/samples/factory.bass.subsine.wav",
+          "bytes": 489548
+        },
+        {
+          "url": "/samples/factory.bass.subsquare.wav",
+          "bytes": 489542
+        },
+        {
+          "url": "/samples/factory.bass.upright.wav",
+          "bytes": 277892
+        },
+        {
+          "url": "/samples/factory.bass.wobble.wav",
+          "bytes": 489554
+        },
+        {
+          "url": "/samples/factory.clap.dnb.wav",
+          "bytes": 119138
+        },
+        {
+          "url": "/samples/factory.clap.main.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.clap.pop.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.clap.soft.wav",
+          "bytes": 108560
+        },
+        {
+          "url": "/samples/factory.clap.trad.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.crash.china.wav",
+          "bytes": 124088
+        },
+        {
+          "url": "/samples/factory.crash.dark.wav",
+          "bytes": 397592
+        },
+        {
+          "url": "/samples/factory.crash.main.wav",
+          "bytes": 312188
+        },
+        {
+          "url": "/samples/factory.crash.pop.wav",
+          "bytes": 228578
+        },
+        {
+          "url": "/samples/factory.crash.roll.wav",
+          "bytes": 515240
+        },
+        {
+          "url": "/samples/factory.crash.short.wav",
+          "bytes": 116216
+        },
+        {
+          "url": "/samples/factory.crash.trash.wav",
+          "bytes": 117086
+        },
+        {
+          "url": "/samples/factory.field.match.wav",
+          "bytes": 327518
+        },
+        {
+          "url": "/samples/factory.field.roomtone.wav",
+          "bytes": 1073966
+        },
+        {
+          "url": "/samples/factory.field.rustle.wav",
+          "bytes": 251246
+        },
+        {
+          "url": "/samples/factory.field.street.wav",
+          "bytes": 1074074
+        },
+        {
+          "url": "/samples/factory.fx.downlifter.wav",
+          "bytes": 418370
+        },
+        {
+          "url": "/samples/factory.fx.impact.wav",
+          "bytes": 277898
+        },
+        {
+          "url": "/samples/factory.fx.impact2.wav",
+          "bytes": 198284
+        },
+        {
+          "url": "/samples/factory.fx.noise-down.wav",
+          "bytes": 202130
+        },
+        {
+          "url": "/samples/factory.fx.noise.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.fx.reverse.wav",
+          "bytes": 312920
+        },
+        {
+          "url": "/samples/factory.fx.riser-short.wav",
+          "bytes": 203768
+        },
+        {
+          "url": "/samples/factory.fx.riser.wav",
+          "bytes": 529202
+        },
+        {
+          "url": "/samples/factory.fx.subdrop.wav",
+          "bytes": 331784
+        },
+        {
+          "url": "/samples/factory.fx.sweep.wav",
+          "bytes": 361262
+        },
+        {
+          "url": "/samples/factory.fx.vinyl.wav",
+          "bytes": 1071716
+        },
+        {
+          "url": "/samples/factory.hat.closed.soft.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.hat.closed.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.hat.dnb.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.hat.drill.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.hat.jersey.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.hat.open.cup.wav",
+          "bytes": 158600
+        },
+        {
+          "url": "/samples/factory.hat.open.short.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.hat.open.wav",
+          "bytes": 121730
+        },
+        {
+          "url": "/samples/factory.hat.pedal.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.hat.phonk.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.hat.wash.wav",
+          "bytes": 238814
+        },
+        {
+          "url": "/samples/factory.kick.808drive.wav",
+          "bytes": 357296
+        },
+        {
+          "url": "/samples/factory.kick.808pure.wav",
+          "bytes": 410198
+        },
+        {
+          "url": "/samples/factory.kick.909.wav",
+          "bytes": 119138
+        },
+        {
+          "url": "/samples/factory.kick.deep.wav",
+          "bytes": 145604
+        },
+        {
+          "url": "/samples/factory.kick.dnb.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.kick.drill.wav",
+          "bytes": 125840
+        },
+        {
+          "url": "/samples/factory.kick.jersey.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.kick.knock.wav",
+          "bytes": 108566
+        },
+        {
+          "url": "/samples/factory.kick.lofi.wav",
+          "bytes": 113930
+        },
+        {
+          "url": "/samples/factory.kick.phonk.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.kick.pop.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.kick.punch.wav",
+          "bytes": 105914
+        },
+        {
+          "url": "/samples/factory.kick.soft.wav",
+          "bytes": 182642
+        },
+        {
+          "url": "/samples/factory.kick.sub808.wav",
+          "bytes": 304376
+        },
+        {
+          "url": "/samples/factory.kick.techno.wav",
+          "bytes": 164120
+        },
+        {
+          "url": "/samples/factory.kick.trap.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.lead.pluck.bright.wav",
+          "bytes": 251414
+        },
+        {
+          "url": "/samples/factory.lead.pluck.dark.wav",
+          "bytes": 251408
+        },
+        {
+          "url": "/samples/factory.lead.saw.wav",
+          "bytes": 304196
+        },
+        {
+          "url": "/samples/factory.lead.square.wav",
+          "bytes": 251426
+        },
+        {
+          "url": "/samples/factory.lead.supersaw.wav",
+          "bytes": 383612
+        },
+        {
+          "url": "/samples/factory.mallet.celesta.wav",
+          "bytes": 516050
+        },
+        {
+          "url": "/samples/factory.mallet.kalimba.wav",
+          "bytes": 277910
+        },
+        {
+          "url": "/samples/factory.mallet.marimba.wav",
+          "bytes": 330824
+        },
+        {
+          "url": "/samples/factory.mallet.musicbox.wav",
+          "bytes": 595436
+        },
+        {
+          "url": "/samples/factory.mallet.vibes.wav",
+          "bytes": 860024
+        },
+        {
+          "url": "/samples/factory.perc.agogo.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.perc.blip.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.perc.bongos.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.perc.cajon.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.perc.clave.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.perc.conga.high.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.perc.conga.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.perc.cowbell.bright.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.perc.cowbell.dark.wav",
+          "bytes": 124430
+        },
+        {
+          "url": "/samples/factory.perc.cowbell.drill.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.perc.cowbell.scream.wav",
+          "bytes": 135152
+        },
+        {
+          "url": "/samples/factory.perc.cowbell.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.perc.shaker.pop.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.perc.snapstack.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.perc.tabla.wav",
+          "bytes": 172052
+        },
+        {
+          "url": "/samples/factory.perc.tambourine.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.perc.tick.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.perc.timbale.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.perc.woodblock.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.ride.bell.wav",
+          "bytes": 280922
+        },
+        {
+          "url": "/samples/factory.ride.jazz.wav",
+          "bytes": 429866
+        },
+        {
+          "url": "/samples/factory.ride.ping.wav",
+          "bytes": 207974
+        },
+        {
+          "url": "/samples/factory.ride.splash.wav",
+          "bytes": 119186
+        },
+        {
+          "url": "/samples/factory.rim.chip.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.rim.hard.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.rim.pop.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.rim.snap.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.shaker.fast.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.shaker.long.wav",
+          "bytes": 132272
+        },
+        {
+          "url": "/samples/factory.shaker.soft.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.snare.dnb.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.snare.drill.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.snare.jersey.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.snare.lofi.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.snare.main.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.snare.phonk.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.snare.punch.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.snare.room.wav",
+          "bytes": 148808
+        },
+        {
+          "url": "/samples/factory.snare.tight.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.snare.trap.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.tom.floor.wav",
+          "bytes": 119006
+        },
+        {
+          "url": "/samples/factory.tom.high.wav",
+          "bytes": 119138
+        },
+        {
+          "url": "/samples/factory.tom.low.wav",
+          "bytes": 119138
+        },
+        {
+          "url": "/samples/factory.tom.mid.wav",
+          "bytes": 119138
+        },
+        {
+          "url": "/samples/factory.tom.perc.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.tonal.acousticguitar.wav",
+          "bytes": 595424
+        },
+        {
+          "url": "/samples/factory.tonal.animepluck.wav",
+          "bytes": 119138
+        },
+        {
+          "url": "/samples/factory.tonal.bell.wav",
+          "bytes": 354188
+        },
+        {
+          "url": "/samples/factory.tonal.cello.wav",
+          "bytes": 647858
+        },
+        {
+          "url": "/samples/factory.tonal.choirpad.wav",
+          "bytes": 808346
+        },
+        {
+          "url": "/samples/factory.tonal.darkstrings.wav",
+          "bytes": 376442
+        },
+        {
+          "url": "/samples/factory.tonal.erhu.wav",
+          "bytes": 489386
+        },
+        {
+          "url": "/samples/factory.tonal.harp.wav",
+          "bytes": 177338
+        },
+        {
+          "url": "/samples/factory.tonal.keys.wav",
+          "bytes": 277502
+        },
+        {
+          "url": "/samples/factory.tonal.memphisguitar.wav",
+          "bytes": 217160
+        },
+        {
+          "url": "/samples/factory.tonal.nylonguitar.wav",
+          "bytes": 595364
+        },
+        {
+          "url": "/samples/factory.tonal.orchestrahit.wav",
+          "bytes": 171074
+        },
+        {
+          "url": "/samples/factory.tonal.organ.wav",
+          "bytes": 529022
+        },
+        {
+          "url": "/samples/factory.tonal.padwarm.wav",
+          "bytes": 577808
+        },
+        {
+          "url": "/samples/factory.tonal.pizzicato.wav",
+          "bytes": 119150
+        },
+        {
+          "url": "/samples/factory.tonal.pluck.wav",
+          "bytes": 105884
+        },
+        {
+          "url": "/samples/factory.tonal.rhodes.wav",
+          "bytes": 371582
+        },
+        {
+          "url": "/samples/factory.tonal.sadpiano.wav",
+          "bytes": 531386
+        },
+        {
+          "url": "/samples/factory.tonal.sitar.wav",
+          "bytes": 541904
+        },
+        {
+          "url": "/samples/factory.tonal.stab.wav",
+          "bytes": 124346
+        },
+        {
+          "url": "/samples/factory.tonal.trumpet.wav",
+          "bytes": 304688
+        },
+        {
+          "url": "/samples/factory.tonal.violin.wav",
+          "bytes": 542318
+        },
+        {
+          "url": "/samples/factory.tonal.wurli.wav",
+          "bytes": 595388
+        }
+      ]
+    },
+    {
+      "id": "piano",
+      "label": "Piano",
+      "bytes": 247147784,
+      "files": [
+        {
+          "url": "/samples/piano/factory.piano.a0.z1.wav",
+          "bytes": 3167884
+        },
+        {
+          "url": "/samples/piano/factory.piano.a0.z2.wav",
+          "bytes": 3886992
+        },
+        {
+          "url": "/samples/piano/factory.piano.a0.z3.wav",
+          "bytes": 3937396
+        },
+        {
+          "url": "/samples/piano/factory.piano.a0.z4.wav",
+          "bytes": 4073960
+        },
+        {
+          "url": "/samples/piano/factory.piano.a1.z1.wav",
+          "bytes": 3219580
+        },
+        {
+          "url": "/samples/piano/factory.piano.a1.z2.wav",
+          "bytes": 3954932
+        },
+        {
+          "url": "/samples/piano/factory.piano.a1.z3.wav",
+          "bytes": 3925896
+        },
+        {
+          "url": "/samples/piano/factory.piano.a1.z4.wav",
+          "bytes": 3958120
+        },
+        {
+          "url": "/samples/piano/factory.piano.a2.z1.wav",
+          "bytes": 2762720
+        },
+        {
+          "url": "/samples/piano/factory.piano.a2.z2.wav",
+          "bytes": 2661012
+        },
+        {
+          "url": "/samples/piano/factory.piano.a2.z3.wav",
+          "bytes": 2677200
+        },
+        {
+          "url": "/samples/piano/factory.piano.a2.z4.wav",
+          "bytes": 2816632
+        },
+        {
+          "url": "/samples/piano/factory.piano.a3.z1.wav",
+          "bytes": 2032308
+        },
+        {
+          "url": "/samples/piano/factory.piano.a3.z2.wav",
+          "bytes": 2556292
+        },
+        {
+          "url": "/samples/piano/factory.piano.a3.z3.wav",
+          "bytes": 2492324
+        },
+        {
+          "url": "/samples/piano/factory.piano.a3.z4.wav",
+          "bytes": 2627824
+        },
+        {
+          "url": "/samples/piano/factory.piano.a4.z1.wav",
+          "bytes": 1732004
+        },
+        {
+          "url": "/samples/piano/factory.piano.a4.z2.wav",
+          "bytes": 1924216
+        },
+        {
+          "url": "/samples/piano/factory.piano.a4.z3.wav",
+          "bytes": 1990296
+        },
+        {
+          "url": "/samples/piano/factory.piano.a4.z4.wav",
+          "bytes": 2178340
+        },
+        {
+          "url": "/samples/piano/factory.piano.a5.z1.wav",
+          "bytes": 974900
+        },
+        {
+          "url": "/samples/piano/factory.piano.a5.z2.wav",
+          "bytes": 1276992
+        },
+        {
+          "url": "/samples/piano/factory.piano.a5.z3.wav",
+          "bytes": 1611616
+        },
+        {
+          "url": "/samples/piano/factory.piano.a5.z4.wav",
+          "bytes": 1669416
+        },
+        {
+          "url": "/samples/piano/factory.piano.a6.z1.wav",
+          "bytes": 613540
+        },
+        {
+          "url": "/samples/piano/factory.piano.a6.z2.wav",
+          "bytes": 954876
+        },
+        {
+          "url": "/samples/piano/factory.piano.a6.z3.wav",
+          "bytes": 603252
+        },
+        {
+          "url": "/samples/piano/factory.piano.a6.z4.wav",
+          "bytes": 516748
+        },
+        {
+          "url": "/samples/piano/factory.piano.a7.z1.wav",
+          "bytes": 50644
+        },
+        {
+          "url": "/samples/piano/factory.piano.a7.z2.wav",
+          "bytes": 180784
+        },
+        {
+          "url": "/samples/piano/factory.piano.a7.z3.wav",
+          "bytes": 234904
+        },
+        {
+          "url": "/samples/piano/factory.piano.a7.z4.wav",
+          "bytes": 490180
+        },
+        {
+          "url": "/samples/piano/factory.piano.c1.z1.wav",
+          "bytes": 3661872
+        },
+        {
+          "url": "/samples/piano/factory.piano.c1.z2.wav",
+          "bytes": 3839952
+        },
+        {
+          "url": "/samples/piano/factory.piano.c1.z3.wav",
+          "bytes": 3683064
+        },
+        {
+          "url": "/samples/piano/factory.piano.c1.z4.wav",
+          "bytes": 3964992
+        },
+        {
+          "url": "/samples/piano/factory.piano.c2.z1.wav",
+          "bytes": 2874720
+        },
+        {
+          "url": "/samples/piano/factory.piano.c2.z2.wav",
+          "bytes": 3536008
+        },
+        {
+          "url": "/samples/piano/factory.piano.c2.z3.wav",
+          "bytes": 3630944
+        },
+        {
+          "url": "/samples/piano/factory.piano.c2.z4.wav",
+          "bytes": 3647144
+        },
+        {
+          "url": "/samples/piano/factory.piano.c3.z1.wav",
+          "bytes": 2399324
+        },
+        {
+          "url": "/samples/piano/factory.piano.c3.z2.wav",
+          "bytes": 2626388
+        },
+        {
+          "url": "/samples/piano/factory.piano.c3.z3.wav",
+          "bytes": 2516032
+        },
+        {
+          "url": "/samples/piano/factory.piano.c3.z4.wav",
+          "bytes": 2659820
+        },
+        {
+          "url": "/samples/piano/factory.piano.c4.z1.wav",
+          "bytes": 1854176
+        },
+        {
+          "url": "/samples/piano/factory.piano.c4.z2.wav",
+          "bytes": 2560932
+        },
+        {
+          "url": "/samples/piano/factory.piano.c4.z3.wav",
+          "bytes": 2656340
+        },
+        {
+          "url": "/samples/piano/factory.piano.c4.z4.wav",
+          "bytes": 2449992
+        },
+        {
+          "url": "/samples/piano/factory.piano.c5.z1.wav",
+          "bytes": 813112
+        },
+        {
+          "url": "/samples/piano/factory.piano.c5.z2.wav",
+          "bytes": 2484232
+        },
+        {
+          "url": "/samples/piano/factory.piano.c5.z3.wav",
+          "bytes": 2179456
+        },
+        {
+          "url": "/samples/piano/factory.piano.c5.z4.wav",
+          "bytes": 2076224
+        },
+        {
+          "url": "/samples/piano/factory.piano.c6.z1.wav",
+          "bytes": 666044
+        },
+        {
+          "url": "/samples/piano/factory.piano.c6.z2.wav",
+          "bytes": 982584
+        },
+        {
+          "url": "/samples/piano/factory.piano.c6.z3.wav",
+          "bytes": 992232
+        },
+        {
+          "url": "/samples/piano/factory.piano.c6.z4.wav",
+          "bytes": 913864
+        },
+        {
+          "url": "/samples/piano/factory.piano.c7.z1.wav",
+          "bytes": 138772
+        },
+        {
+          "url": "/samples/piano/factory.piano.c7.z2.wav",
+          "bytes": 553152
+        },
+        {
+          "url": "/samples/piano/factory.piano.c7.z3.wav",
+          "bytes": 225368
+        },
+        {
+          "url": "/samples/piano/factory.piano.c7.z4.wav",
+          "bytes": 376900
+        },
+        {
+          "url": "/samples/piano/factory.piano.c8.z1.wav",
+          "bytes": 472928
+        },
+        {
+          "url": "/samples/piano/factory.piano.c8.z2.wav",
+          "bytes": 587488
+        },
+        {
+          "url": "/samples/piano/factory.piano.c8.z3.wav",
+          "bytes": 635108
+        },
+        {
+          "url": "/samples/piano/factory.piano.c8.z4.wav",
+          "bytes": 576252
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds1.z1.wav",
+          "bytes": 3134300
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds1.z2.wav",
+          "bytes": 3824772
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds1.z3.wav",
+          "bytes": 3952296
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds1.z4.wav",
+          "bytes": 4086764
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds2.z1.wav",
+          "bytes": 2988140
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds2.z2.wav",
+          "bytes": 3710156
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds2.z3.wav",
+          "bytes": 3716548
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds2.z4.wav",
+          "bytes": 3798684
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds3.z1.wav",
+          "bytes": 1982544
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds3.z2.wav",
+          "bytes": 2392956
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds3.z3.wav",
+          "bytes": 2612364
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds3.z4.wav",
+          "bytes": 2573092
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds4.z1.wav",
+          "bytes": 1942112
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds4.z2.wav",
+          "bytes": 2267796
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds4.z3.wav",
+          "bytes": 2232804
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds4.z4.wav",
+          "bytes": 2304276
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds5.z1.wav",
+          "bytes": 856216
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds5.z2.wav",
+          "bytes": 1915892
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds5.z3.wav",
+          "bytes": 2015308
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds5.z4.wav",
+          "bytes": 1117548
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds6.z1.wav",
+          "bytes": 1167180
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds6.z2.wav",
+          "bytes": 1044152
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds6.z3.wav",
+          "bytes": 1074172
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds6.z4.wav",
+          "bytes": 1031860
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds7.z1.wav",
+          "bytes": 113860
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds7.z2.wav",
+          "bytes": 233036
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds7.z3.wav",
+          "bytes": 390080
+        },
+        {
+          "url": "/samples/piano/factory.piano.ds7.z4.wav",
+          "bytes": 676908
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs1.z1.wav",
+          "bytes": 2450840
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs1.z2.wav",
+          "bytes": 3761964
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs1.z3.wav",
+          "bytes": 3860372
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs1.z4.wav",
+          "bytes": 3916104
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs2.z1.wav",
+          "bytes": 2919196
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs2.z2.wav",
+          "bytes": 3442808
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs2.z3.wav",
+          "bytes": 3471212
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs2.z4.wav",
+          "bytes": 3557860
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs3.z1.wav",
+          "bytes": 2506408
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs3.z2.wav",
+          "bytes": 2658620
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs3.z3.wav",
+          "bytes": 2557192
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs3.z4.wav",
+          "bytes": 2506716
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs4.z1.wav",
+          "bytes": 1797160
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs4.z2.wav",
+          "bytes": 2163252
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs4.z3.wav",
+          "bytes": 2188124
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs4.z4.wav",
+          "bytes": 2239360
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs5.z1.wav",
+          "bytes": 564048
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs5.z2.wav",
+          "bytes": 1097112
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs5.z3.wav",
+          "bytes": 969528
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs5.z4.wav",
+          "bytes": 1573836
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs6.z1.wav",
+          "bytes": 721372
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs6.z2.wav",
+          "bytes": 978156
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs6.z3.wav",
+          "bytes": 989236
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs6.z4.wav",
+          "bytes": 949948
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs7.z1.wav",
+          "bytes": 847640
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs7.z2.wav",
+          "bytes": 750552
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs7.z3.wav",
+          "bytes": 815304
+        },
+        {
+          "url": "/samples/piano/factory.piano.fs7.z4.wav",
+          "bytes": 748852
+        }
+      ]
+    }
+  ]
+}

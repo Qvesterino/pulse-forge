@@ -48,6 +48,12 @@ export const DOCK_TABS: readonly DockTabDef[] = [
     ariaLabel: "Toggle arrangement and scenes",
     title: "Arrangement timeline and scenes (Alt+3)",
   },
+  {
+    id: "live",
+    label: "LIVE",
+    ariaLabel: "Toggle Live Pads",
+    title: "Live Pads — save loop sets and launch loops into the song arrangement",
+  },
   { id: "mod", label: "MOD", ariaLabel: "Toggle modulation panel", title: "Automation, LFOs and macros (Alt+4)" },
   { id: "dice", label: "DICE", ariaLabel: "Toggle dice panel", title: "Dice — rapid beat generator (Alt+6)" },
   { id: "intent", label: "INTENT", ariaLabel: "Toggle intent panel", title: "Describe the beat in words (Alt+7)" },

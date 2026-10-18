@@ -874,6 +874,10 @@ export interface AudioClip {
   bufferId: string;
   /** Optional zero-based source channel routed as mono; absent plays the full source layout. */
   sourceChannel?: number;
+  /** Origin metadata for clips launched from the project-local Live Pads grid. */
+  liveSetId?: ID;
+  /** Zero-based source pad slot, present together with `liveSetId`. */
+  livePadSlot?: number;
   /** Take group identity for non-destructive loop/punch alternatives. */
   takeGroupId?: ID;
   /** Pass identity inside the referenced take group. */
@@ -1357,6 +1361,28 @@ export interface ProjectTransferOriginV1 {
   sourceDaw: ProjectTransferSourceDaw;
 }
 
+/** One assignable pad in a saved 4×4 Live Set. Empty slots are omitted. */
+export interface LiveSetPad {
+  slot: number;
+  bufferId: string;
+  name: string;
+  /** Source loop tempo, when detected or supplied by the user. */
+  bpm?: number;
+  /** Whether the source should repeat for the Live Set's launch length. */
+  loop?: boolean;
+}
+
+/** Project-local loop launcher layout. Pad assignments travel with the project. */
+export interface LiveSet {
+  id: ID;
+  name: string;
+  /** Destination track shared by the set's pads; absent uses the first audio-capable track. */
+  trackId?: ID;
+  /** Duration for launched loop pads, in bars. One-shot pads use their source duration. */
+  loopBars: 1 | 2 | 4 | 8 | 16;
+  pads: LiveSetPad[];
+}
+
 export interface ProjectDocument {
   schemaVersion: number;
   id: ID;
@@ -1373,6 +1399,10 @@ export interface ProjectDocument {
   producerBrief?: ProjectProducerBriefV1;
   /** Optional transfer provenance (schema v36); absent on projects not created by transfer. */
   transferOrigin?: ProjectTransferOriginV1;
+  /** Project-local Live Pads layouts (schema v38). */
+  liveSets?: LiveSet[];
+  /** Selected Live Set id; absent when no set has been created. */
+  activeLiveSetId?: ID;
   tracks: Track[];
   patterns: Pattern[];
   activePatternId: ID;

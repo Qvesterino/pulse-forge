@@ -874,7 +874,7 @@ export const MCP_TOOLS: McpToolDef[] = [
     description:
       "Live audio meters — the AI's ears: master true peak, RMS, LUFS " +
       "(momentary/short-term/integrated), stereo correlation, clip flags, " +
-      "plus per-track peak/RMS. scope:\"fx\" reports the telemetry of EVERY " +
+      'plus per-track peak/RMS. scope:"fx" reports the telemetry of EVERY ' +
       "inserted effect (KOREŇ f0/clarity/+dB harmonics/key scaler, dynamics " +
       "gain reduction, plugin frames) — the closed loop for verifying an " +
       "effect change instead of assuming it. Read-only snapshot of the " +
@@ -1698,7 +1698,7 @@ export interface McpFxMeterReading {
   name: string;
   bypassed: boolean;
   meters: unknown;
-  gainReduction?: Array<{ label: string; gainReductionDb: number }> | null;
+  gainReduction?: ReadonlyArray<{ label: string; gainReductionDb: number }> | null;
 }
 
 export interface McpFxMeterSnapshot {
@@ -3131,7 +3131,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         }
         const fxSnapshot = ctx.fxMeters();
         if (fxSnapshot == null) {
-          return mcpError("UNAVAILABLE_ON_TRANSPORT", "engine is not running (no audio context) — nothing to meter yet");
+          return mcpError(
+            "UNAVAILABLE_ON_TRANSPORT",
+            "engine is not running (no audio context) — nothing to meter yet",
+          );
         }
         const lines = fxSnapshot.effects.map((reading) => {
           const details = [describeFxMeters(reading.meters), describeGainReduction(reading.gainReduction)]
@@ -5703,7 +5706,8 @@ function describeFxMeters(meters: unknown): string {
     if (typeof record.clarity === "number" && Number.isFinite(record.clarity)) {
       parts.push(`clarity ${record.clarity.toFixed(2)}`);
     }
-    if (typeof record.harm === "number" && Number.isFinite(record.harm)) parts.push(`+${record.harm.toFixed(1)} dB harmonics`);
+    if (typeof record.harm === "number" && Number.isFinite(record.harm))
+      parts.push(`+${record.harm.toFixed(1)} dB harmonics`);
     if (typeof record.key === "number" && Number.isFinite(record.key)) parts.push(`key ×${record.key.toFixed(2)}`);
     if (record.hint === 1) parts.push("HINT");
     return parts.join(" · ");

@@ -622,6 +622,28 @@
   margin-top: 8px;
 }
 
+.diag-packs {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.diag-pack {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.diag-pack-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 10px;
+}
+
 .diag-issues {
   padding-top: 10px;
   border-top: 1px solid var(--border-soft);

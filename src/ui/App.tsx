@@ -32,6 +32,7 @@ import { UndoHistoryPanel } from "./UndoHistoryPanel";
 // touch only one or two of them.
 const Mixer = lazy(() => import("./Mixer").then((m) => ({ default: m.Mixer })));
 const ArrangementPanel = lazy(() => import("./ArrangementPanel").then((m) => ({ default: m.ArrangementPanel })));
+const LivePadsPanel = lazy(() => import("./LivePadsPanel").then((m) => ({ default: m.LivePadsPanel })));
 const ModPanel = lazy(() => import("./ModPanel").then((m) => ({ default: m.ModPanel })));
 const MidiPanel = lazy(() => import("./MidiPanel").then((m) => ({ default: m.MidiPanel })));
 const ExportPanel = lazy(() => import("./ExportPanel").then((m) => ({ default: m.ExportPanel })));
@@ -1623,6 +1624,11 @@ export function App({
     arr: (
       <ErrorBoundary panel="arr">
         <ArrangementPanel />
+      </ErrorBoundary>
+    ),
+    live: (
+      <ErrorBoundary panel="live">
+        <LivePadsPanel />
       </ErrorBoundary>
     ),
     mod: (

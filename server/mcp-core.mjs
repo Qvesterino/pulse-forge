@@ -1204,13 +1204,13 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_meter",
     description:
-      "Live audio meters — the AI's ears: master true peak, RMS, LUFS (momentary/short-term/integrated), stereo correlation, clip flags, plus per-track peak/RMS. Read-only snapshot of the RUNNING engine; honestly refused when no engine/audio context is live. LUFS-I needs a few seconds of playback to stabilize.",
+      'Live audio meters — the AI\'s ears: master true peak, RMS, LUFS (momentary/short-term/integrated), stereo correlation, clip flags, plus per-track peak/RMS. scope:"fx" reports the telemetry of EVERY inserted effect (KOREŇ f0/clarity/+dB harmonics/key scaler, dynamics gain reduction, plugin frames) — the closed loop for verifying an effect change instead of assuming it. Read-only snapshot of the RUNNING engine; honestly refused when no engine/audio context is live. LUFS-I needs a few seconds of playback to stabilize.',
     inputSchema: {
       type: "object",
       properties: {
         scope: {
           type: "string",
-          enum: ["master", "tracks", "all"],
+          enum: ["master", "tracks", "fx", "all"],
           description: "Default all",
         },
         requestId: {

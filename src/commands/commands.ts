@@ -23,6 +23,7 @@ export * from "./twistScene";
 export * from "./korenScene";
 export * from "./project";
 export * from "./groove";
+export * from "./liveSets";
 export * from "./patterns";
 export * from "./arrangement";
 export * from "./markers";

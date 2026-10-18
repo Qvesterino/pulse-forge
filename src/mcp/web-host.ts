@@ -3,7 +3,7 @@ import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
 import { quickBounceDownload } from "../export/quick-bounce";
 import { mcpRenderAudioPreview } from "../mcp/audio-preview";
 import { mcpRenderSummary } from "../mcp/render-summary";
-import { mcpMeterSnapshotFromServices } from "./meters";
+import { mcpFxMetersFromServices, mcpMeterSnapshotFromServices } from "./meters";
 import { mcpApplyLoudness, mcpMeasureLoudness } from "./loudness";
 import { decodeAudioData } from "../services/audio-decode";
 // Relay CONFIG lives in the tiny eager module (the IntentPanel reads the
@@ -81,6 +81,7 @@ function depsFromServices(services: Services): McpBridgeDeps {
     transport: services.transport,
     // kyx_meter reads the LIVE engine (null when no audio context is up).
     meters: () => mcpMeterSnapshotFromServices(services),
+    fxMeters: () => mcpFxMetersFromServices(services),
     beginUndoFrame: (label) => services.store.beginUndoFrame(label),
     endUndoFrame: () => services.store.endUndoFrame(),
     measureLoudness: () => mcpMeasureLoudness(services),

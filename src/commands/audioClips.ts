@@ -60,6 +60,12 @@ export function addAudioClip(
     fadeOut: Math.max(0, finiteOr(patch.fadeOut ?? 0, 0)),
     stretchRate: Math.min(4, Math.max(0.25, finiteOr(patch.stretchRate ?? 1, 1))),
     ...(pitchSemitones !== 0 ? { pitchSemitones } : {}),
+    ...(typeof patch.liveSetId === "string" && patch.liveSetId !== "" &&
+    Number.isInteger(patch.livePadSlot) &&
+    (patch.livePadSlot ?? -1) >= 0 &&
+    (patch.livePadSlot ?? 16) < 16
+      ? { liveSetId: patch.liveSetId, livePadSlot: patch.livePadSlot }
+      : {}),
     reverse: patch.reverse === true,
     ...(Number.isSafeInteger(patch.sourceChannel) &&
     (patch.sourceChannel ?? -1) >= 0 &&
