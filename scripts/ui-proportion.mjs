@@ -87,6 +87,26 @@ async function measure(page) {
         if (rb.bottom > seqBox.top && rb.top < seqBox.bottom) visible += 1;
       }
       out.sequencerVisibleRows = visible;
+
+      // THE PITCH CHECK. Compares Sequencer.tsx ROW_HEIGHT against the row box
+      // the STYLESHEET lays out — two INDEPENDENT sources, joined through the
+      // `data-row-height` attribute the component publishes.
+      //
+      // It deliberately does NOT compare the rendered top-to-top pitch: rows are
+      // absolutely positioned from `cumulativeHeights`, so the rendered pitch
+      // equals ROW_HEIGHT by construction and such a check is a tautology. The
+      // first version of this gate did exactly that and PASSED while
+      // ROW_HEIGHT was deliberately mutated — a check against your own output is
+      // not a check.
+      const assumed = Number(seq.getAttribute("data-row-height"));
+      const row = rows[1] ?? rows[0];
+      if (row) {
+        const style = getComputedStyle(row);
+        const box = row.getBoundingClientRect().height;
+        const margin = parseFloat(style.marginBottom) || 0;
+        out.rowPitchFromCss = Math.round((box + margin) * 100) / 100;
+      }
+      out.rowPitchAssumed = Number.isFinite(assumed) ? assumed : null;
     }
     return out;
   }, REGIONS);
@@ -106,6 +126,18 @@ function table(rows, vw, vh) {
   }
   return lines.join("\n");
 }
+
+const EXIT_GATE_FAILED = 1;
+const EXIT_HARNESS_ERROR = 2;
+
+// A navigation timeout also exits non-zero, so without a separate code it is
+// indistinguishable from a caught defect: twice this script reported exit 1
+// having evaluated nothing, because the cold dev server timed out the page load.
+process.on("uncaughtException", (error) => {
+  console.error(`\nHARNESS_ERROR ${error?.message ?? error}`);
+  console.error("The measurement did not complete. NOT a gate result - nothing was checked.");
+  process.exit(EXIT_HARNESS_ERROR);
+});
 
 const browser = await chromium.launch({
   args: ["--autoplay-policy=no-user-gesture-required", "--use-gl=swiftshader"],
@@ -127,6 +159,8 @@ const report = [];
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 {
   const page = await context.newPage();
+  page.setDefaultNavigationTimeout(300_000);
+  page.setDefaultTimeout(300_000);
 
   // Skip the landing page: this measures the studio shell, not onboarding.
   await page.addInitScript(() => {
@@ -204,14 +238,23 @@ await browser.close();
 
 const overflow = report.filter((r) => r.m.docWidth > r.m.vw);
 const collapsed = report.filter((r) => r.m.sequencer == null || r.m.sequencer.h < 40);
+// The STYLESHEET's row box vs the COMPONENT's constant. Two independent
+// sources. Deliberately NOT the rendered pitch, which is derived from that same
+// constant and would make the check a tautology.
+const pitchMiss = report.filter(
+  (r) => r.m.rowPitchFromCss != null && r.m.rowPitchAssumed != null && r.m.rowPitchFromCss !== r.m.rowPitchAssumed,
+);
 
-console.log("\n=== KYX studio shell — vertical budget ===\n");
+console.log("\n=== KYX studio shell - vertical budget ===\n");
 for (const r of report) {
   console.log(r.text);
   console.log(
     `  doc ${r.m.docWidth}px vs viewport ${r.m.vw}px ${r.m.docWidth > r.m.vw ? "  <-- HORIZONTAL OVERFLOW" : ""}`,
   );
-  console.log(`  sequencer rows ${r.m.sequencerRows ?? 0}, visible ${r.m.sequencerVisibleRows ?? 0}`);
+  console.log(
+    `  sequencer rows ${r.m.sequencerRows ?? 0}, visible ${r.m.sequencerVisibleRows ?? 0}; ` +
+      `pitch TS ${r.m.rowPitchAssumed ?? "?"}px vs CSS box+gap ${r.m.rowPitchFromCss ?? "?"}px`,
+  );
   console.log("");
 }
 if (overflow.length) {
@@ -222,5 +265,28 @@ if (collapsed.length) {
     `FAIL: sequencer collapsed at ${collapsed.map((r) => `${r.vp.w}x${r.vp.h} (${r.m.sequencer?.h ?? "missing"}px)`).join(", ")}`,
   );
 }
-if (!overflow.length && !collapsed.length) console.log("PASS: no overflow, sequencer present at every viewport");
-process.exit(overflow.length || collapsed.length ? 1 : 0);
+if (pitchMiss.length) {
+  console.log(
+    "FAIL: Sequencer.tsx ROW_HEIGHT disagrees with the CSS row box - each row would overlap or gap " +
+      "its neighbour by the difference, accumulating down the list. " +
+      pitchMiss
+        .map((r) => `${r.vp.w}x${r.vp.h}: TS ${r.m.rowPitchAssumed}px vs CSS ${r.m.rowPitchFromCss}px`)
+        .join("; "),
+  );
+}
+
+/**
+ * Exit codes are load-bearing. 0 = the gate ran and passed. 1 = the gate ran
+ * and FAILED. 2 = HARNESS_ERROR - the measurement never completed.
+ *
+ * A navigation timeout also exits non-zero, so without a separate code it is
+ * indistinguishable from "the gate caught a defect": the first falsification
+ * of the pitch check reported exit 1 having never evaluated the pitch at all.
+ * A gate that cannot tell "I checked and it is wrong" from "I never checked"
+ * reports the same score for both, and the second reading is worthless.
+ */
+const failed = overflow.length || collapsed.length || pitchMiss.length;
+if (!failed) {
+  console.log("PASS: no overflow, sequencer present at every viewport, row pitch matches the virtualizer");
+}
+process.exit(failed ? EXIT_GATE_FAILED : 0);

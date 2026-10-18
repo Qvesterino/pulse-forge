@@ -103,7 +103,7 @@ interface PianoRollItem {
 type FlatItem = HeaderItem | PadRowItem | PianoRollItem;
 
 const COARSE_POINTER = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
-const ROW_HEIGHT = COARSE_POINTER ? 46 : 34;
+const ROW_HEIGHT = COARSE_POINTER ? 46 : 36;
 const HEADER_HEIGHT = COARSE_POINTER ? 44 : 38;
 const STEP_MIN_PX = COARSE_POINTER ? 34 : 22;
 const OVERSCAN = 5;
@@ -846,6 +846,12 @@ export function Sequencer({
       aria-labelledby={`${patternTabDomId(pattern.id)} sequencer-panel-label`}
       tabIndex={0}
       onPointerLeave={() => publishCursor(null)}
+      // Publishes the pitch this virtualizer assumes so scripts/ui-proportion.mjs
+      // can compare it against the row box the STYLESHEET lays out. Two
+      // independent sources: rows are absolutely positioned from
+      // `cumulativeHeights`, so the RENDERED pitch equals this constant by
+      // construction and comparing them would be a tautology that cannot fail.
+      data-row-height={ROW_HEIGHT}
     >
       <span id="sequencer-panel-label" className="sr-only">
         {beatFocus ? "Step Sequencer — Beat Focus" : "Step Sequencer"}
@@ -1670,7 +1676,8 @@ function PadRow({
   // flash must not re-render the 256 memoized step cells below.
   const [sampleOver, setSampleOver] = useState(false);
 
-  // ── Channel state (shared with the drum rack — padChannelState.ts) ───────
+  // Channel state shared with the drum rack (padChannelState.ts). The rack and the
+  // row both read the same pinned rates, 16 LEVELS flag and live peaks.
   // The row label is a complete channel row, so it reads the same values the
   // rack header writes and renders the same meter the rack pad shows.
   const peak = usePadPeak(pad.id);
