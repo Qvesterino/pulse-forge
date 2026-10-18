@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { Sequencer } from "../../src/ui/Sequencer";
 import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
@@ -19,6 +20,58 @@ const defaultProps = {
 };
 
 describe("Sequencer", () => {
+  // ── The row is the ONE pad channel row ────────────────────────────────────
+  // These four replace the pad-grid tests that used to live in
+  // tests/ui/RackStrip.test.tsx. The grid was removed as a duplicate of the row
+  // (STUDIO-OPTIMIZATION-PLAN.md §2.1), so pad naming, indexing and selection
+  // needed a home here or they would have lost their guard entirely.
+
+  it("renders one row per pad of the active track", () => {
+    const doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find((t) => t.kind === "drum")!;
+    const { container } = renderWithContext(<Sequencer {...defaultProps} selectedTrackId={track.id} />, {
+      services: mockServices(doc),
+    });
+    expect(container.querySelectorAll(".sequencer-row").length).toBe(track.pads.length);
+  });
+
+  it("shows the pad name and its 1-based index on the row", () => {
+    const doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find((t) => t.kind === "drum")!;
+    const pad = track.pads[0];
+    const { container } = renderWithContext(<Sequencer {...defaultProps} selectedTrackId={track.id} />, {
+      services: mockServices(doc),
+    });
+    expect(screen.getByText(pad.name)).toBeInTheDocument();
+    // Scoped to the first row: the ruler renders its own "1" tick, so a
+    // document-wide getByText("1") is ambiguous by design.
+    const row = container.querySelector(".sequencer-row")!;
+    expect(row.querySelector(".row-pad-index")?.textContent).toBe("1");
+  });
+
+  it("selects the pad when its row label is clicked", async () => {
+    const user = userEvent.setup();
+    const doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find((t) => t.kind === "drum")!;
+    const onSelectPad = vi.fn();
+    renderWithContext(<Sequencer {...defaultProps} selectedTrackId={track.id} onSelectPad={onSelectPad} />, {
+      services: mockServices(doc),
+    });
+    await user.click(screen.getByText(track.pads[0].name));
+    expect(onSelectPad).toHaveBeenCalledWith(track.pads[0].id);
+  });
+
+  it("marks the selected pad's row", () => {
+    const doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find((t) => t.kind === "drum")!;
+    const { container } = renderWithContext(
+      <Sequencer {...defaultProps} selectedTrackId={track.id} selectedPadId={track.pads[0].id} />,
+      { services: mockServices(doc) },
+    );
+    const rows = container.querySelectorAll(".sequencer-row");
+    expect(rows[0].querySelector(".row-pad")).toHaveClass("selected");
+    expect(rows[1].querySelector(".row-pad")).not.toHaveClass("selected");
+  });
   it("renders step ruler", () => {
     renderWithContext(<Sequencer {...defaultProps} />);
     // A labelled GROUP, not a row: a lone `role="row"` with no grid parent is an

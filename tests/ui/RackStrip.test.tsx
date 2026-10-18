@@ -6,60 +6,27 @@ import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import type { DrumTrack } from "../../src/project-model/types";
 
+// The pad GRID is gone: the sequencer row is the one channel list (see
+// 57-row-pitch.css and STUDIO-OPTIMIZATION-PLAN.md §2.1). These five tests used
+// to assert pad count, pad name, index numbers, click-to-select and the
+// selected class against `.pad` elements in this component.
+//
+// They were NOT deleted outright. Every behaviour they named still exists —
+// it moved to the row label — and no other test covered it, so removing them
+// would have left pad naming, indexing and selection unguarded. The equivalent
+// assertions now live in tests/ui/Sequencer.test.tsx against `.sequencer-row`,
+// which is where the affordances actually render now.
+//
+// What genuinely stayed HERE is everything with no duplicate: the track tabs,
+// Note Repeat, 16 LEVELS, KIT and KEYS all live in the rack header, and the
+// QWERTY pad trigger is a window-level listener built from track.pads +
+// padKeys — independent of any rendered element.
 describe("RackStrip", () => {
   function drumTrack() {
     const doc = createProjectFromTemplate("house");
     const track = doc.tracks.find((t) => t.kind === "drum") as DrumTrack;
     return { doc, track };
   }
-
-  it("renders pad buttons for each pad", () => {
-    const { doc, track } = drumTrack();
-    const { container } = renderWithContext(
-      <RackStrip track={track} selectedPadId={track.pads[0].id} onSelectPad={vi.fn()} />,
-      { services: mockServices(doc) },
-    );
-    // Scope to pads — the header has its own buttons (16 LVL toggle).
-    expect(container.querySelectorAll(".pad").length).toBe(track.pads.length);
-  });
-
-  it("shows pad names", () => {
-    const { doc, track } = drumTrack();
-    renderWithContext(<RackStrip track={track} selectedPadId="" onSelectPad={vi.fn()} />, {
-      services: mockServices(doc),
-    });
-    expect(screen.getByText(track.pads[0].name)).toBeInTheDocument();
-  });
-
-  it("calls onSelectPad on click", async () => {
-    const user = userEvent.setup();
-    const { doc, track } = drumTrack();
-    const onSelect = vi.fn();
-    renderWithContext(<RackStrip track={track} selectedPadId="" onSelectPad={onSelect} />, {
-      services: mockServices(doc),
-    });
-    await user.click(screen.getByText(track.pads[0].name));
-    expect(onSelect).toHaveBeenCalledWith(track.pads[0].id);
-  });
-
-  it("shows pad index numbers", () => {
-    const { doc, track } = drumTrack();
-    renderWithContext(<RackStrip track={track} selectedPadId="" onSelectPad={vi.fn()} />, {
-      services: mockServices(doc),
-    });
-    expect(screen.getByText("1")).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
-  });
-
-  it("marks selected pad", () => {
-    const { doc, track } = drumTrack();
-    const { container } = renderWithContext(
-      <RackStrip track={track} selectedPadId={track.pads[0].id} onSelectPad={vi.fn()} />,
-      { services: mockServices(doc) },
-    );
-    const pads = container.querySelectorAll(".pad");
-    expect(pads[0]).toHaveClass("selected");
-  });
 
   it("keeps keymap sharing inside the KEYS menu, not as always-visible chrome", async () => {
     const user = userEvent.setup();

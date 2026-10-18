@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useActivePatternId, usePatterns, useServices } from "./context";
 import type { DrumTrack } from "../project-model/types";
 import { usePlayheadStep } from "./playhead";
-import { assetCategoryOf, categoryColor } from "./kitColors";
 import { FALLOFF_MODES, REPEAT_RATES, type FalloffMode, type RepeatRate } from "../audio-engine/NoteRepeat";
 import {
   applyKitToDrumTrack,
@@ -21,21 +20,11 @@ import { bindPadKey, getPadKeys, importPadKeys, isPadKey, resetPadKeys, usePadKe
 // Channel state (pinned rates, 16 LEVELS, live peaks) is SHARED with the
 // sequencer row labels — see padChannelState.ts. The rack is its editor; it no
 // longer owns the values.
-import {
-  decayPeaks,
-  effectiveRateOf,
-  setPadPeak,
-  setSixteenLevels,
-  usePeaks,
-  usePinnedRates,
-  useSixteenLevels,
-} from "./padChannelState";
-import { PadRateMenu } from "./PadRateMenu";
+import { decayPeaks, setPadPeak, setSixteenLevels, usePinnedRates, useSixteenLevels } from "./padChannelState";
 
 export function RackStrip({
   track,
   selectedPadId,
-  onSelectPad,
   leading,
 }: {
   track: DrumTrack;
@@ -57,8 +46,6 @@ export function RackStrip({
   const [falloff, setFalloff] = useState<FalloffMode>("decay");
   /** Per-pad pinned divisions — kick can roll 1/16 while the hat rolls 1/8T. */
   const pinnedRates = usePinnedRates();
-  const [rateMenu, setRateMenu] = useState<{ padId: string; x: number; y: number } | null>(null);
-  const padMenuTimer = useRef<number | null>(null);
   /** MPC 16 LEVELS: pads become velocity lanes for the selected sound. */
   const sixteenLevels = useSixteenLevels();
   const padKeys = usePadKeys();
@@ -118,17 +105,6 @@ export function RackStrip({
     window.addEventListener("keydown", onCapture, true);
     return () => window.removeEventListener("keydown", onCapture, true);
   }, [captureIndex]);
-
-  const triggerPad = (padId: string) => {
-    const pad = track.pads.find((p) => p.id === padId);
-    if (pad) {
-      services.engine.preview(pad, track.id);
-      const peak = pad.gain;
-      setPadPeak(padId, peak);
-    }
-  };
-
-  const padKeyOf = (padId: string) => `pad:${track.id}:${padId}`;
 
   /**
    * Pad-down via pointer/QWERTY: one immediate hit, repeats while held when
@@ -194,8 +170,6 @@ export function RackStrip({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track.id, track.pads, services.noteRepeat, padKeys]);
-
-  const peaks = usePeaks();
 
   // Decay peaks 60fps. The LOOP still lives here (same lifecycle as before);
   // only the storage moved into padChannelState so the sequencer rows read the
@@ -500,95 +474,6 @@ export function RackStrip({
           <span className="rack-header-hint">hold pad · right-click / long-press = pad rate · QWERTYUI·ASDFGHJK</span>
         </div>
       </div>
-      {track.pads.map((pad, index) => {
-        const hit = playheadStep >= 0 && (pattern.rows[pad.id]?.[playheadStep] ?? 0) > 0;
-        const selected = pad.id === selectedPadId;
-        const holdKey = padKeyOf(pad.id);
-        const pinned: RepeatRate | undefined = pinnedRates[pad.id];
-        const effectiveRate = effectiveRateOf(pinned, repeatRate);
-        return (
-          <button
-            key={pad.id}
-            type="button"
-            className={`pad${hit ? " hit" : ""}${selected ? " selected" : ""}`}
-            style={{ "--pad-color": categoryColor(assetCategoryOf(pad)) } as React.CSSProperties}
-            title={`${pad.name} — hold to play${effectiveRate !== "off" ? ` (repeats ${effectiveRate}, velocity ${falloff})` : ""} — key ${(padKeys[index] || "—").toUpperCase()} — right-click or hold for rate/colour`}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              setRateMenu({ padId: pad.id, x: event.clientX, y: event.clientY });
-            }}
-            onPointerDown={(event) => {
-              event.preventDefault();
-              // In 16 LEVELS the pads are velocity lanes — selection stays locked.
-              if (!sixteenLevels) onSelectPad(pad.id);
-              padDown(pad.id, holdKey);
-              // Touch/pen long-press opens the rate/colour menu (right-click is
-              // mouse-only, so the pad menu was unreachable on touch).
-              if (event.pointerType !== "mouse") {
-                if (padMenuTimer.current !== null) window.clearTimeout(padMenuTimer.current);
-                const anchor = { padId: pad.id, x: event.clientX, y: event.clientY };
-                padMenuTimer.current = window.setTimeout(() => {
-                  padMenuTimer.current = null;
-                  padUp(holdKey);
-                  setRateMenu({ padId: anchor.padId, x: anchor.x, y: anchor.y });
-                }, 500);
-              }
-            }}
-            onPointerUp={() => {
-              if (padMenuTimer.current !== null) {
-                window.clearTimeout(padMenuTimer.current);
-                padMenuTimer.current = null;
-              }
-              padUp(holdKey);
-            }}
-            onPointerLeave={() => {
-              if (padMenuTimer.current !== null) {
-                window.clearTimeout(padMenuTimer.current);
-                padMenuTimer.current = null;
-              }
-              padUp(holdKey);
-            }}
-            onPointerCancel={() => {
-              if (padMenuTimer.current !== null) {
-                window.clearTimeout(padMenuTimer.current);
-                padMenuTimer.current = null;
-              }
-              padUp(holdKey);
-            }}
-            onKeyDown={(event) => {
-              // Keyboard-activated button (Enter): single hit, no hold.
-              // Space stays free for the global play/pause shortcut.
-              if (event.key === "Enter") {
-                event.preventDefault();
-                if (!sixteenLevels) onSelectPad(pad.id);
-                triggerPad(sixteenLevels ? selectedPadId || pad.id : pad.id);
-              }
-            }}
-          >
-            <span className="pad-index">{index + 1}</span>
-            <span className="pad-name">{pad.name}</span>
-            {sixteenLevels && (
-              <span className="pad-rate-badge">{Math.round(((index + 1) / track.pads.length) * 100)}%</span>
-            )}
-            {pinned && <span className="pad-rate-badge">{pinned}</span>}
-            {pad.synth && <span className="pad-synth-badge">{pad.synth.type.slice(0, 3).toUpperCase()}</span>}
-            <span className="pad-meter" aria-hidden="true">
-              <span className="pad-meter-fill" style={{ height: `${Math.min(100, (peaks[pad.id] ?? 0) * 100)}%` }} />
-            </span>
-          </button>
-        );
-      })}
-      {rateMenu && (
-        <PadRateMenu
-          padId={rateMenu.padId}
-          track={track}
-          x={rateMenu.x}
-          y={rateMenu.y}
-          globalRate={repeatRate}
-          onClose={() => setRateMenu(null)}
-          onStatus={setKitStatus}
-        />
-      )}
       {kitMenu && (
         <div
           className="context-menu"
