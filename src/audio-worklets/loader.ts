@@ -1,4 +1,4 @@
-import { assetUrl } from "../shared/assetUrls";
+import { getWorkletManifest, workletFileUrl } from "./workletManifest";
 /**
  * AudioWorklet module loader. Loads processor modules per context and
  * reports readiness synchronously so effect factories can fall back.
@@ -147,16 +147,16 @@ export const LAZY_MODULE_GROUPS = {
 } as const satisfies Record<LazyWorkletType, string>;
 export type LazyWorkletModule = (typeof LAZY_MODULE_GROUPS)[LazyWorkletType];
 
-const LAZY_MODULE_URLS: Record<LazyWorkletModule, string> = {
-  fxeq: new URL(assetUrl("/fxeq-worklet.js"), import.meta.url).href,
-  ultina: new URL(assetUrl("/ultina-worklet.js"), import.meta.url).href,
-  ozvena: new URL(assetUrl("/ozvena-worklet.js"), import.meta.url).href,
-  morphdynamics: new URL(assetUrl("/morph-dynamics-worklet.js"), import.meta.url).href,
-  bassHarmonic: new URL(assetUrl("/bass-harmonic-worklet.js"), import.meta.url).href,
-  skrutka: new URL(assetUrl("/skrutka-worklet.js"), import.meta.url).href,
-  rezonans: new URL(assetUrl("/rezonans-worklet.js"), import.meta.url).href,
-  portal: new URL(assetUrl("/spectral-worklet.js"), import.meta.url).href,
-  fxExtras: new URL(assetUrl("/fx-extra-worklet.js"), import.meta.url).href,
+const LAZY_MODULE_FILES: Record<LazyWorkletModule, string> = {
+  fxeq: "/fxeq-worklet.js",
+  ultina: "/ultina-worklet.js",
+  ozvena: "/ozvena-worklet.js",
+  morphdynamics: "/morph-dynamics-worklet.js",
+  bassHarmonic: "/bass-harmonic-worklet.js",
+  skrutka: "/skrutka-worklet.js",
+  rezonans: "/rezonans-worklet.js",
+  portal: "/spectral-worklet.js",
+  fxExtras: "/fx-extra-worklet.js",
 };
 
 /** Number of distinct physical modules behind the lazy type list. */
@@ -215,9 +215,9 @@ export type WorkletType = (typeof CORE_TYPES)[number] | LazyWorkletType | "gener
 export const INSTRUMENT_WORKLET_TYPES = ["tsar", "kopa"] as const;
 export type InstrumentWorkletType = (typeof INSTRUMENT_WORKLET_TYPES)[number];
 
-const INSTRUMENT_MODULE_URLS: Record<InstrumentWorkletType, string> = {
-  tsar: new URL(assetUrl("/tsar-worklet.js"), import.meta.url).href,
-  kopa: new URL(assetUrl("/kopa-worklet.js"), import.meta.url).href,
+const INSTRUMENT_MODULE_FILES: Record<InstrumentWorkletType, string> = {
+  tsar: "/tsar-worklet.js",
+  kopa: "/kopa-worklet.js",
 };
 
 const readyLazyTypes = new WeakMap<BaseAudioContext, Set<LazyWorkletType>>();
@@ -258,23 +258,26 @@ export async function loadCoreWorklets(ctx: BaseAudioContext): Promise<void> {
   const pending = inflight.get(ctx);
   if (pending) return pending;
 
-  const load = Promise.all([
-    // These are generated self-contained files. Keeping the two-module
-    // contract preserves the loader's readiness semantics while avoiding a
-    // production-only Vite data-URL failure for core-processor's relative
-    // imports.
-    ctx.audioWorklet.addModule(new URL(assetUrl("/bitcrusher-worklet.js"), import.meta.url).href),
-    ctx.audioWorklet.addModule(new URL(assetUrl("/core-worklet.js"), import.meta.url).href),
-  ])
-    .then(() => {
-      readyContexts.add(ctx);
-      readyLazyTypes.set(ctx, new Set());
-      // Instrument worklets (TSAR) track readiness on the same per-context
-      // mark; without this set the loader could never report a loaded
-      // instrument module (measured by the E2E lazy-load check).
-      readyInstrumentTypes.set(ctx, new Set());
-      coreFailures.delete(ctx);
-    })
+  const load = (async () => {
+    // Resolve the version manifest INSIDE the inflight promise: concurrent
+    // callers must share one load even while the manifest fetch is pending.
+    const manifest = await getWorkletManifest();
+    await Promise.all([
+      // These are generated self-contained files. Keeping the two-module
+      // contract preserves the loader's readiness semantics while avoiding a
+      // production-only Vite data-URL failure for core-processor's relative
+      // imports.
+      ctx.audioWorklet.addModule(new URL(workletFileUrl("/bitcrusher-worklet.js", manifest), import.meta.url).href),
+      ctx.audioWorklet.addModule(new URL(workletFileUrl("/core-worklet.js", manifest), import.meta.url).href),
+    ]);
+    readyContexts.add(ctx);
+    readyLazyTypes.set(ctx, new Set());
+    // Instrument worklets (TSAR) track readiness on the same per-context
+    // mark; without this set the loader could never report a loaded
+    // instrument module (measured by the E2E lazy-load check).
+    readyInstrumentTypes.set(ctx, new Set());
+    coreFailures.delete(ctx);
+  })()
     .catch((err) => {
       const attempts = (coreFailures.get(ctx) ?? 0) + 1;
       coreFailures.set(ctx, attempts);
@@ -305,11 +308,13 @@ export async function loadGenerativePlayerWorklet(ctx: BaseAudioContext): Promis
   const pending = generativePlayerInflight.get(ctx);
   if (pending) return pending;
 
-  const load = ctx.audioWorklet
-    .addModule(new URL(assetUrl("/generative-player-worklet.js"), import.meta.url).href)
-    .then(() => {
-      readyGenerativePlayers.add(ctx);
-    })
+  const load = (async () => {
+    const manifest = await getWorkletManifest();
+    await ctx.audioWorklet.addModule(
+      new URL(workletFileUrl("/generative-player-worklet.js", manifest), import.meta.url).href,
+    );
+    readyGenerativePlayers.add(ctx);
+  })()
     .catch((err) => {
       console.warn("[audio-worklets] generative player module load failed:", err);
     })
@@ -345,33 +350,35 @@ export async function loadLazyWorklet(ctx: BaseAudioContext, type: LazyWorkletTy
   }
 
   let perCtx = lazyInflight.get(ctx);
-  if (perCtx?.get(module)) return perCtx.get(module);
-
-  const load = ctx.audioWorklet
-    .addModule(LAZY_MODULE_URLS[module])
-    .then(() => {
-      const modules = readyLazyModules.get(ctx);
-      if (modules) modules.add(module);
-      else readyLazyModules.set(ctx, new Set([module]));
-      let set = readyLazyTypes.get(ctx);
-      if (!set) {
-        set = new Set();
-        readyLazyTypes.set(ctx, set);
-      }
-      for (const groupType of lazyTypesByModule.get(module) ?? []) set.add(groupType);
-    })
-    .catch((err) => {
-      console.warn(`[audio-worklets] ${module} module load failed (${type}), effect stays bypassed:`, err);
-    })
-    .finally(() => {
-      perCtx = lazyInflight.get(ctx);
-      perCtx?.delete(module);
-      if (perCtx && perCtx.size === 0) lazyInflight.delete(ctx);
-    });
   if (!perCtx) {
     perCtx = new Map();
     lazyInflight.set(ctx, perCtx);
   }
+  const pending = perCtx.get(module);
+  if (pending) return pending;
+
+  const load = (async () => {
+    const manifest = await getWorkletManifest();
+    await ctx.audioWorklet.addModule(
+      new URL(workletFileUrl(LAZY_MODULE_FILES[module], manifest), import.meta.url).href,
+    );
+    const modules = readyLazyModules.get(ctx);
+    if (modules) modules.add(module);
+    else readyLazyModules.set(ctx, new Set([module]));
+    let set = readyLazyTypes.get(ctx);
+    if (!set) {
+      set = new Set();
+      readyLazyTypes.set(ctx, set);
+    }
+    for (const groupType of lazyTypesByModule.get(module) ?? []) set.add(groupType);
+  })()
+    .catch((err) => {
+      console.warn(`[audio-worklets] ${module} module load failed (${type}), effect stays bypassed:`, err);
+    })
+    .finally(() => {
+      perCtx.delete(module);
+      if (perCtx.size === 0) lazyInflight.delete(ctx);
+    });
   perCtx.set(module, load);
   return load;
 }
@@ -391,25 +398,27 @@ export async function loadInstrumentWorklet(ctx: BaseAudioContext, type: Instrum
   if (instrumentSet?.has(type)) return;
 
   let perCtx = instrumentInflight.get(ctx);
-  if (perCtx?.get(type)) return perCtx.get(type);
-
-  const load = ctx.audioWorklet
-    .addModule(INSTRUMENT_MODULE_URLS[type])
-    .then(() => {
-      readyInstrumentTypes.get(ctx)?.add(type);
-    })
-    .catch((err) => {
-      console.warn(`[audio-worklets] ${type} instrument module load failed, factory keeps its fallback:`, err);
-    })
-    .finally(() => {
-      perCtx = instrumentInflight.get(ctx);
-      perCtx?.delete(type);
-      if (perCtx && perCtx.size === 0) instrumentInflight.delete(ctx);
-    });
   if (!perCtx) {
     perCtx = new Map();
     instrumentInflight.set(ctx, perCtx);
   }
+  const pending = perCtx.get(type);
+  if (pending) return pending;
+
+  const load = (async () => {
+    const manifest = await getWorkletManifest();
+    await ctx.audioWorklet.addModule(
+      new URL(workletFileUrl(INSTRUMENT_MODULE_FILES[type], manifest), import.meta.url).href,
+    );
+    readyInstrumentTypes.get(ctx)?.add(type);
+  })()
+    .catch((err) => {
+      console.warn(`[audio-worklets] ${type} instrument module load failed, factory keeps its fallback:`, err);
+    })
+    .finally(() => {
+      perCtx.delete(type);
+      if (perCtx.size === 0) instrumentInflight.delete(ctx);
+    });
   perCtx.set(type, load);
   return load;
 }

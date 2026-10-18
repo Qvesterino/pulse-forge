@@ -96,10 +96,10 @@ describe("TriggerEngine (Wave 4f — final)", () => {
     expect(src.match(/this\.warp\.isFrozen\(/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
 
-  it("pure helpers moved with their only consumers (computeStretchedBuffer)", () => {
+  it("live clips and previews use the shared pitch-preserving stretch renderer", () => {
     const src = readFileSync(TRIGGER, "utf8");
-    expect(src).toMatch(/function computeStretchedBuffer\(/);
+    expect(src).toContain('from "./stretchedAudioBuffer"');
     const engine = readFileSync(ENGINE, "utf8");
-    expect(engine.includes("function computeStretchedBuffer(")).toBe(false);
+    expect(engine).toContain("renderStretchedAudioBuffer(ctx, source, rate)");
   });
 });

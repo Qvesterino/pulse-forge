@@ -88,6 +88,21 @@ describe("UserSampleRepository audio persistence", () => {
     expect(meta.some((a) => a.id === id)).toBe(true);
   });
 
+  it("persists loop tags across a fresh repository read", async () => {
+    const id = userSampleId("loop-tags");
+    await repo.save({
+      ...asset(id),
+      bpm: 124,
+      loopMetadata: { isLoop: true, genre: "House", mood: "Deep", instrument: "Drums", key: "Am" },
+    });
+
+    const reloaded = await new UserSampleRepository().list();
+    expect(reloaded.find((sample) => sample.id === id)).toMatchObject({
+      bpm: 124,
+      loopMetadata: { isLoop: true, genre: "House", mood: "Deep", instrument: "Drums", key: "Am" },
+    });
+  });
+
   it("remove deletes metadata and audio", async () => {
     const id = userSampleId("gone");
     await repo.save(asset(id), new Uint8Array([9]).buffer);

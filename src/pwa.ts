@@ -118,6 +118,17 @@ export const pwaOptions: Partial<VitePWAOptions> = {
         },
       },
       {
+        // The tiny pack manifest is fetched only by the Device tab; cache it
+        // so the offline-pack UI still works after the app has been online once.
+        urlPattern: /\/samples\/offline-pack\.json$/,
+        handler: "StaleWhileRevalidate",
+        options: {
+          cacheName: "kyx-offline-pack-manifest",
+          cacheableResponse: { statuses: [0, 200] },
+          expiration: { maxEntries: 1, maxAgeSeconds: 60 * 60 * 24 * 30 },
+        },
+      },
+      {
         // Optional AI models load behind circuit breakers; cache only after
         // a model is actually used (never during install).
         urlPattern: /\/models\/.+\.(?:onnx|json|bin)$/i,
@@ -158,6 +169,13 @@ export const pwaOptions: Partial<VitePWAOptions> = {
       },
     ],
     navigateFallback: "index.html",
+    // The worklet loader appends ?v=<sha256> to addModule URLs. Match those
+    // requests to the precached unversioned bundle so offline still works; the
+    // service-worker update (not the query) is the atomic deployment boundary.
+    ignoreURLParametersMatching: [/^v$/],
+    // Small generated hash map; the loader needs it before the first
+    // addModule. Precache it so an offline shell can resolve hashed URLs too.
+    additionalManifestEntries: [{ url: "worklets-manifest.json", revision: null }],
     // Qvester owns this nested marketing route. The KYX worker shares the
     // /kyx/ scope, but must let the host shell serve /kyx/landing.
     navigateFallbackDenylist: [/^\/api\//, /^\/kyx\/landing(?:\/|$)/],

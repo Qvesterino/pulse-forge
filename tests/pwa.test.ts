@@ -76,13 +76,18 @@ describe("PWA caching strategy", () => {
     expect(glob).toContain("html");
   });
 
-  it("precache includes curated factory samples with a raised per-file cap", () => {
-    // Local-first (VISION §24): the curated kit must survive offline — WAVs
-    // are precached, and the 2 MiB workbox default would SILENTLY drop any
-    // larger curated one-shot from the offline kit.
+  it("keeps sample WAVs out of the install precache (mobile install diet)", () => {
+    // 236 MB piano + 36 MB one-shots must not be downloaded before the first
+    // note. Samples are runtime-cached on use; the Device tab can prefill the
+    // same `kyx-samples` cache explicitly.
     const glob = (pwaOptions.workbox!.globPatterns as string[]).join(" ");
-    expect(glob).toContain("wav");
-    expect(pwaOptions.workbox!.maximumFileSizeToCacheInBytes).toBeGreaterThan(2 * 1024 * 1024);
+    expect(glob).not.toContain("wav");
+    const ignores = (pwaOptions.workbox!.globIgnores as string[]).join(" ");
+    expect(ignores).toContain("samples/**");
+    const routes = (pwaOptions.workbox!.runtimeCaching ?? []) as Array<{
+      options?: { cacheName?: string };
+    }>;
+    expect(routes.some((route) => route.options?.cacheName === "kyx-samples")).toBe(true);
   });
 
   it("keeps the optional ranker runtime out of the app-shell precache", () => {

@@ -4,6 +4,7 @@ import {
   addMidiClip,
   deleteMidiClip,
   duplicateMidiClip,
+  editMidiClipNotes,
   makeMidiClipUnique,
   moveMidiClip,
   resizeMidiClip,
@@ -12,6 +13,7 @@ import {
 } from "../../commands/midiClips";
 import { nudgeClips } from "../../commands/clipEditing";
 import type { MidiClip, NoteEvent, ProjectDocument, Track } from "../../project-model/types";
+import type { MidiObjectNoteEdit } from "../../commands/midiClips";
 import { BAR_TICKS, STEP_TICKS } from "../../project-model/types";
 import { midiPhraseLengthTicks } from "../../project-model/midiTime";
 import { snapBarsFor, snapTick, type SnapGridId } from "../snap";
@@ -20,18 +22,19 @@ import {
   publishTimelineGroupDragPreview,
   useTimelineGroupDragPreview,
 } from "./groupDragPreview";
+import { MidiMultiObjectEditor } from "./MidiMultiObjectEditor";
 
 interface MidiClipLanesProps {
   doc: ProjectDocument;
   tracks: Track[];
   midiClips: MidiClip[];
-  selectedClipId: string | null;
+  selectedClipIds: readonly string[];
   totalBars: number;
   barWidth: number;
   snapGrid: SnapGridId;
   playheadTick: number;
   onExecute: (command: Command) => boolean;
-  onSelect: (clipId: string) => void;
+  onSelect: (clipId: string, mode?: "replace" | "toggle" | "range") => void;
   onEditSource: (clip: MidiClip) => void;
   onMakeUniqueAndEdit: (clipId: string) => void;
 }
@@ -49,6 +52,7 @@ interface ClipDrag {
   groupId?: string;
   groupClipIds?: string[];
   groupHasScene?: boolean;
+  multiClipIds?: string[];
 }
 
 const EMPTY_NOTES: readonly NoteEvent[] = [];
@@ -94,7 +98,7 @@ export function MidiClipLanes({
   doc,
   tracks,
   midiClips,
-  selectedClipId,
+  selectedClipIds,
   totalBars,
   barWidth,
   snapGrid,
@@ -109,8 +113,13 @@ export function MidiClipLanes({
   const [preview, setPreview] = useState<ClipDrag | null>(null);
   const groupDragPreview = useTimelineGroupDragPreview();
   const [menu, setMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
+  const [editingClipIds, setEditingClipIds] = useState<string[] | null>(null);
   const laneWidth = totalBars * barWidth;
   const menuClip = menu ? midiClips.find((clip) => clip.id === menu.clipId) : undefined;
+  const selectedMidiClips = (doc.arrangement.midiClips ?? []).filter((clip) => selectedClipIds.includes(clip.id));
+  const editingClips = editingClipIds
+    ? (doc.arrangement.midiClips ?? []).filter((clip) => editingClipIds.includes(clip.id))
+    : [];
   const patternPlacementCounts = useMemo(() => {
     const counts = new Map<string, number>();
     const addPatternPlacement = (patternId: string | undefined) => {
@@ -143,7 +152,15 @@ export function MidiClipLanes({
   const beginDrag = (event: React.PointerEvent<HTMLButtonElement>, clip: MidiClip) => {
     if (event.button !== 0) return;
     event.stopPropagation();
-    onSelect(clip.id);
+    if (event.ctrlKey || event.metaKey) {
+      onSelect(clip.id, "toggle");
+      return;
+    }
+    if (event.shiftKey) {
+      onSelect(clip.id, "range");
+      return;
+    }
+    if (!selectedClipIds.includes(clip.id)) onSelect(clip.id, "replace");
     if (clip.locked) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - rect.left;
@@ -157,6 +174,10 @@ export function MidiClipLanes({
     const groupHasScene = groupId
       ? doc.arrangement.clips.some((candidate) => groupClipIds.includes(candidate.id))
       : false;
+    const multiClipIds =
+      mode === "move" && selectedClipIds.length > 1 && selectedClipIds.includes(clip.id)
+        ? selectedMidiClips.filter((candidate) => candidate.locked !== true).map((candidate) => candidate.id)
+        : [];
     const drag: ClipDrag = {
       clipId: clip.id,
       pointerId: event.pointerId,
@@ -168,10 +189,12 @@ export function MidiClipLanes({
       nextLengthTicks: clip.lengthTicks,
       barWidthAt: barWidth,
       ...(groupId ? { groupId, groupClipIds, groupHasScene } : {}),
+      ...(multiClipIds.length > 1 && !groupId ? { multiClipIds } : {}),
     };
     dragRef.current = drag;
     setPreview(drag);
     if (groupId) publishTimelineGroupDragPreview(doc, groupId, groupClipIds);
+    else if (multiClipIds.length > 1) publishTimelineGroupDragPreview(doc, "midi-selection", multiClipIds);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -179,6 +202,25 @@ export function MidiClipLanes({
     const current = dragRef.current;
     if (!current || current.pointerId !== event.pointerId) return;
     const delta = ((event.clientX - current.clientX) / Math.max(1, current.barWidthAt)) * BAR_TICKS;
+    if (current.multiClipIds) {
+      const stillLive = current.multiClipIds.every((id) =>
+        (doc.arrangement.midiClips ?? []).some((candidate) => candidate.id === id),
+      );
+      if (!stillLive) {
+        cancelDrag();
+        return;
+      }
+      const deltaTicks = snapToGrid(delta, snapGrid, event.shiftKey);
+      const planned = nudgeClips(doc, current.multiClipIds, deltaTicks / BAR_TICKS).execute(doc);
+      const nextStartTick =
+        planned.arrangement.midiClips?.find((candidate) => candidate.id === current.clipId)?.startTick ??
+        current.startTick;
+      const next = { ...current, nextStartTick, nextLengthTicks: current.lengthTicks };
+      dragRef.current = next;
+      setPreview(next);
+      publishTimelineGroupDragPreview(planned, "midi-selection", current.multiClipIds);
+      return;
+    }
     if (current.groupId && current.groupClipIds) {
       const currentGroup = doc.arrangement.clipGroups?.find((group) => group.id === current.groupId);
       const stillSameGroup =
@@ -233,6 +275,12 @@ export function MidiClipLanes({
       event.currentTarget.releasePointerCapture(event.pointerId);
     } catch {
       /* Pointer capture can be released by the browser before pointerup. */
+    }
+    if (current.multiClipIds) {
+      const deltaTicks = current.nextStartTick - current.startTick;
+      clearTimelineGroupDragPreview();
+      if (deltaTicks !== 0) onExecute(nudgeClips(doc, current.multiClipIds, deltaTicks / BAR_TICKS));
+      return;
     }
     if (current.groupId && current.groupClipIds) {
       const currentGroup = doc.arrangement.clipGroups?.find((group) => group.id === current.groupId);
@@ -331,7 +379,7 @@ export function MidiClipLanes({
                   <button
                     type="button"
                     key={clip.id}
-                    className={`arr-midi-clip${selectedClipId === clip.id ? " selected" : ""}${clip.muted ? " muted" : ""}${clip.locked ? " locked" : ""}${sharedSource ? " shared-source" : ""}${doc.arrangement.clipGroups?.some((group) => group.clipIds.includes(clip.id)) ? " grouped" : ""}`}
+                    className={`arr-midi-clip${selectedClipIds.includes(clip.id) ? " selected" : ""}${clip.muted ? " muted" : ""}${clip.locked ? " locked" : ""}${sharedSource ? " shared-source" : ""}${doc.arrangement.clipGroups?.some((group) => group.clipIds.includes(clip.id)) ? " grouped" : ""}`}
                     aria-label={`${source?.name ?? "Pattern"} MIDI clip on ${track.name}, bar ${Math.floor(startTick / BAR_TICKS) + 1}${sharedSource ? `, shared source pattern used by ${sourcePlacementCount} placements` : ""}`}
                     title={`${source?.name ?? "Pattern"} · ${track.name} · ${lengthTicks} ticks · ${sharedHint} Double-click to edit source pattern.`}
                     style={{
@@ -350,7 +398,7 @@ export function MidiClipLanes({
                     onContextMenu={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      onSelect(clip.id);
+                      if (!selectedClipIds.includes(clip.id)) onSelect(clip.id, "replace");
                       setMenu({ clipId: clip.id, x: event.clientX, y: event.clientY });
                     }}
                   >
@@ -377,6 +425,24 @@ export function MidiClipLanes({
       })}
       {menu && menuClip && (
         <div className="arr-midi-clip-menu" style={{ left: menu.x, top: menu.y }} role="menu">
+          {selectedMidiClips.length > 1 && (
+            <button
+              type="button"
+              role="menuitem"
+              disabled={selectedMidiClips.some((clip) => clip.locked === true)}
+              title={
+                selectedMidiClips.some((clip) => clip.locked === true)
+                  ? "Unlock every selected MIDI object before editing notes."
+                  : undefined
+              }
+              onClick={() => {
+                setEditingClipIds(selectedMidiClips.map((clip) => clip.id));
+                setMenu(null);
+              }}
+            >
+              Edit note properties in {selectedMidiClips.length} objects…
+            </button>
+          )}
           {[
             ["Edit source pattern", () => onEditSource(menuClip)],
             ["Duplicate", () => onExecute(duplicateMidiClip(doc, menu.clipId))],
@@ -404,6 +470,29 @@ export function MidiClipLanes({
             </button>
           ))}
         </div>
+      )}
+      {editingClips.length > 0 && (
+        <MidiMultiObjectEditor
+          doc={doc}
+          clips={editingClips}
+          onClose={() => setEditingClipIds(null)}
+          onApply={(edit: MidiObjectNoteEdit) => {
+            try {
+              const committed = onExecute(
+                editMidiClipNotes(
+                  doc,
+                  editingClips.map((clip) => clip.id),
+                  edit,
+                ),
+              );
+              if (!committed) return "The note edit could not be applied to the current project.";
+              setEditingClipIds(null);
+              return null;
+            } catch (error) {
+              return error instanceof Error ? error.message : String(error);
+            }
+          }}
+        />
       )}
     </section>
   );

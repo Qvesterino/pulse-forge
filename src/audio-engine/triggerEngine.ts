@@ -3,7 +3,8 @@ import { BAR_TICKS } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
 import type { InstrumentRuntime } from "../instruments/types";
 import { connectAudioClipSourceChannel } from "./audioClipChannels";
-import { pitchShiftPreserveDuration, timeStretch } from "./time-stretch";
+import { pitchShiftPreserveDuration } from "./time-stretch";
+import { renderStretchedAudioBuffer } from "./stretchedAudioBuffer";
 import { DECLICK_TAIL_SEC, resolveSlicePlayback, declickFadeOut, fitSliceFades } from "./declick";
 import { audioClipPlayWindow, buildWarpSegments, type WarpSegment, type WarpManager } from "./warpManager";
 import type { AudioBoundaryDiagnostics } from "./audioBoundaryDiagnostics";
@@ -41,34 +42,6 @@ export interface TriggerVoice {
    * matched by `stopVoicesForOwner`.
    */
   owner?: string;
-}
-
-/**
- * Compute a time-stretched AudioBuffer from source at the given rate.
- * Uses the grain-based `timeStretch` algorithm from time-stretch.ts.
- * The stretched buffer plays at rate=1 so pitch is preserved.
- */
-function computeStretchedBuffer(
-  ctx: BaseAudioContext,
-  source: AudioBuffer,
-  stretchRate: number,
-  reverse: boolean,
-): AudioBuffer {
-  const sr = source.sampleRate;
-  const ch = source.numberOfChannels;
-  const stretchFactor = Math.min(4, Math.max(0.25, stretchRate));
-  // timeStretch changes duration by stretchFactor: >1 = longer (slower), <1 = shorter (faster)
-  const outFrames = Math.max(1, Math.round(source.duration * stretchFactor * sr));
-  const out = ctx.createBuffer(ch, outFrames, sr);
-  for (let c = 0; c < ch; c++) {
-    const src = source.getChannelData(c);
-    const stretched = timeStretch(src, sr, stretchFactor);
-    // timeStretch returns the input array itself on its fallback paths —
-    // reversing it in place would corrupt the bank's shared source buffer.
-    const channel = reverse ? (stretched === src ? stretched.slice() : stretched).reverse() : stretched;
-    out.getChannelData(c).set(channel);
-  }
-  return out;
 }
 
 /** Render an independent pitch offset without changing the buffer duration. */
@@ -527,7 +500,7 @@ export class TriggerEngine {
       if (stretched) {
         this.warp.storeStretched(cacheKey, stretched);
       } else {
-        stretched = computeStretchedBuffer(ctx, srcBuffer, rate, reverse);
+        stretched = renderStretchedAudioBuffer(ctx, srcBuffer, rate, reverse);
         this.warp.storeStretched(cacheKey, stretched);
       }
       playBuffer = stretched;
@@ -537,7 +510,10 @@ export class TriggerEngine {
     } else {
       // Default resample: playbackRate controls both pitch and time
       playBuffer = srcBuffer;
-      playbackRate = (reverse ? -1 : 1) * rate;
+      // A stretchRate is a duration factor. If it is close enough to 1 that
+      // granular rendering is skipped, its resample fallback must use the
+      // reciprocal playback rate to keep the same tempo direction.
+      playbackRate = (reverse ? -1 : 1) * (clip.stretchMode === "stretch" ? 1 / rate : rate);
       clipDurSec = durationSec ?? srcBuffer.duration / Math.abs(playbackRate);
       timeScale = 1;
     }

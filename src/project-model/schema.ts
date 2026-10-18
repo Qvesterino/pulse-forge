@@ -633,12 +633,14 @@ export function sanitizeAudioClips(
       Number.isSafeInteger(raw.sourceChannel) && Number(raw.sourceChannel) >= 0 && Number(raw.sourceChannel) < 32
         ? Number(raw.sourceChannel)
         : undefined;
-    const liveSetId = typeof raw.liveSetId === "string" && raw.liveSetId !== "" && raw.liveSetId.length <= 128
-      ? raw.liveSetId
-      : undefined;
-    const livePadSlot = Number.isInteger(raw.livePadSlot) && Number(raw.livePadSlot) >= 0 && Number(raw.livePadSlot) < 16
-      ? Number(raw.livePadSlot)
-      : undefined;
+    const liveSetId =
+      typeof raw.liveSetId === "string" && raw.liveSetId !== "" && raw.liveSetId.length <= 128
+        ? raw.liveSetId
+        : undefined;
+    const livePadSlot =
+      Number.isInteger(raw.livePadSlot) && Number(raw.livePadSlot) >= 0 && Number(raw.livePadSlot) < 16
+        ? Number(raw.livePadSlot)
+        : undefined;
     const takeGroupId = typeof raw.takeGroupId === "string" && raw.takeGroupId !== "" ? raw.takeGroupId : undefined;
     const takeId = typeof raw.takeId === "string" && raw.takeId !== "" ? raw.takeId : undefined;
     const compSourceTakeId =
@@ -1864,7 +1866,21 @@ function normalizeArrangementDomain(s: NormalizeState): void {
     trackIds,
   );
   const validTakeGroups = new Map((takeGroups ?? []).map((group) => [group.id, group]));
+  const liveSetIds = new Set((s.doc.liveSets ?? []).map((set) => set.id));
   const audioClips = sanitizedAudioClips?.map((clip) => {
+    // `liveSetId` marks the Live Set pad this clip was launched from, and
+    // `livePadSlot` is only meaningful next to it. `sanitizeAudioClips` accepts
+    // the pair on SHAPE alone (non-empty string, slot 0-15), so a document that
+    // arrived from import / share code / a collab peer kept the pair aimed at a
+    // set that does not exist — in every save, with nothing to repair it.
+    // `deleteLiveSet` clears it on the command path; this is that path's
+    // backstop, same shape as the take-group strip below.
+    if (clip.liveSetId !== undefined && !liveSetIds.has(clip.liveSetId)) {
+      const unlaunched = { ...clip };
+      delete unlaunched.liveSetId;
+      delete unlaunched.livePadSlot;
+      return unlaunched;
+    }
     const group = clip.takeGroupId ? validTakeGroups.get(clip.takeGroupId) : undefined;
     if (!group || group.trackId !== clip.trackId) {
       const ordinaryClip = { ...clip };
@@ -2941,8 +2957,12 @@ function normalizeLiveSetsDomain(s: NormalizeState): void {
       const rawSet = liveSetsInput[index];
       if (!isObject(rawSet)) continue;
       const id = typeof rawSet.id === "string" && rawSet.id.trim() !== "" ? rawSet.id : uid("liveSet");
-      const name = typeof rawSet.name === "string" && rawSet.name.trim() !== "" ? rawSet.name.trim().slice(0, 64) : `Live Set ${index + 1}`;
-      const trackId = typeof rawSet.trackId === "string" && eligibleTrackIds.has(rawSet.trackId) ? rawSet.trackId : undefined;
+      const name =
+        typeof rawSet.name === "string" && rawSet.name.trim() !== ""
+          ? rawSet.name.trim().slice(0, 64)
+          : `Live Set ${index + 1}`;
+      const trackId =
+        typeof rawSet.trackId === "string" && eligibleTrackIds.has(rawSet.trackId) ? rawSet.trackId : undefined;
       const rawLoopBars = Number(rawSet.loopBars);
       const loopBars = allowedLoopBars.has(rawLoopBars) ? (rawLoopBars as 1 | 2 | 4 | 8 | 16) : 4;
       const pads: import("./types").LiveSetPad[] = [];
@@ -2952,10 +2972,20 @@ function normalizeLiveSetsDomain(s: NormalizeState): void {
           if (!isObject(rawPad)) continue;
           const slot = Number(rawPad.slot);
           const bufferId = typeof rawPad.bufferId === "string" ? rawPad.bufferId.trim() : "";
-          if (!Number.isInteger(slot) || slot < 0 || slot >= 16 || seenSlots.has(slot) || !bufferId || bufferId.length > 512)
+          if (
+            !Number.isInteger(slot) ||
+            slot < 0 ||
+            slot >= 16 ||
+            seenSlots.has(slot) ||
+            !bufferId ||
+            bufferId.length > 512
+          )
             continue;
           seenSlots.add(slot);
-          const padName = typeof rawPad.name === "string" && rawPad.name.trim() !== "" ? rawPad.name.trim().slice(0, 96) : `Pad ${slot + 1}`;
+          const padName =
+            typeof rawPad.name === "string" && rawPad.name.trim() !== ""
+              ? rawPad.name.trim().slice(0, 96)
+              : `Pad ${slot + 1}`;
           const rawBpm = Number(rawPad.bpm);
           const bpm = Number.isFinite(rawBpm) && rawBpm >= 40 && rawBpm <= 240 ? rawBpm : undefined;
           const pad: import("./types").LiveSetPad = {
@@ -2996,7 +3026,10 @@ function normalizeLiveSetsDomain(s: NormalizeState): void {
 
   const requestedActiveId = typeof doc.activeLiveSetId === "string" ? doc.activeLiveSetId : undefined;
   const activeLiveSetId = liveSets.some((set) => set.id === requestedActiveId) ? requestedActiveId : liveSets[0]?.id;
-  const setsUnchanged = liveSetsInput === undefined ? liveSets.length === 0 : liveSets.length === liveSetsInput.length && liveSets.every((set, index) => set === liveSetsInput[index]);
+  const setsUnchanged =
+    liveSetsInput === undefined
+      ? liveSets.length === 0
+      : liveSets.length === liveSetsInput.length && liveSets.every((set, index) => set === liveSetsInput[index]);
   if (setsUnchanged && activeLiveSetId === doc.activeLiveSetId) return;
   const next: ProjectDocument = { ...doc };
   if (liveSets.length > 0) next.liveSets = liveSets;
@@ -3340,6 +3373,19 @@ function noteExpressionEquals(left: NoteExpression | undefined, right: unknown):
  * clip systems are separately namespaced by their `uid()` prefixes, so
  * dropping a clip because another system's clip shares its id would destroy
  * content to fix a collision nothing can produce.
+ *
+ * COST, measured 2026-10-18 (`.artifacts/measure-dedupe.mjs`): 0.069 ms at 269
+ * entities, 0.911 ms at 4,184 — linear, and a stable **~6 % of
+ * `normalizeProject`'s total**, independent of scale. Against the 100 ms
+ * normalization budget in `tests/stress.test.ts` that is under 1 % at 16x a
+ * large project, so no early-out is warranted.
+ *
+ * A lazy variant of this loop was tried and REVERTED: allocating the result
+ * array only on the first duplicate is strictly less garbage, but the measured
+ * difference sat inside the machine's noise floor (the same run's
+ * `normalizeProject` totals drifted by 30 % between passes), so it could not be
+ * shown to help. An unmeasurable optimization that makes the obvious version
+ * harder to read is not worth keeping.
  */
 function dedupeEntityIdsDomain(s: NormalizeState): void {
   const doc = s.doc;

@@ -40,6 +40,7 @@ import { PreviewDeck, type MasterCompareSide } from "./previewDeck";
 import { AutomationBridge } from "./automationBridge";
 import { WarpManager } from "./warpManager";
 import { TriggerEngine } from "./triggerEngine";
+import { renderStretchedAudioBuffer } from "./stretchedAudioBuffer";
 import type { TriggerTrackView, InstrumentStateView, ClipSourceMeta } from "./triggerEngine";
 import { audioClipsForPlayback } from "../project-model/audio-takes";
 import { resolveHarmonyContext } from "./harmonyContext";
@@ -271,6 +272,7 @@ export class AudioEngine {
     trigger: (trackId, pad, when, velocity) => this.trigger(trackId, pad, when, velocity),
     noteOn: (trackId, pitch, velocity, when, durationSec) => this.noteOn(trackId, pitch, velocity, when, durationSec),
     missAsset: (assetId) => this.missedAssets.add(assetId),
+    stretchBuffer: (assetId, source, stretchRate) => this.previewStretchedBuffer(assetId, source, stretchRate),
   });
   /**
    * Wave 4e (decomposition): warp/freeze cache owner — the time-stretch LRU,
@@ -2643,8 +2645,23 @@ export class AudioEngine {
     this.previewDeck.updateMasterComparePreview(gainValue, mono);
   }
 
-  previewAssetSynced(assetId: string, rate = 1): void {
-    this.previewDeck.previewAssetSynced(assetId, rate);
+  previewAssetSynced(assetId: string, rate = 1, preservePitch = false): void {
+    this.previewDeck.previewAssetSynced(assetId, rate, preservePitch);
+  }
+
+  private previewStretchedBuffer(assetId: string, source: AudioBuffer, stretchRate: number): AudioBuffer | null {
+    const ctx = this.ctx;
+    if (!ctx) return null;
+    const rate = Math.min(4, Math.max(0.25, stretchRate));
+    const cacheKey = `${assetId}|${rate}|0`;
+    const cached = this.warpManager.getStretched(cacheKey);
+    if (cached) {
+      this.warpManager.storeStretched(cacheKey, cached);
+      return cached;
+    }
+    const stretched = renderStretchedAudioBuffer(ctx, source, rate);
+    this.warpManager.storeStretched(cacheKey, stretched);
+    return stretched;
   }
 
   /**

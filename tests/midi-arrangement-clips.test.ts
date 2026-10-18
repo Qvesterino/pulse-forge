@@ -6,6 +6,7 @@ import {
   deletePattern,
   deleteTrack,
   addNote,
+  editMidiClipNotes,
   makeMidiClipUnique,
   moveMidiClip,
   resizeMidiClip,
@@ -18,6 +19,7 @@ import { projectToYDoc, yDocToProject } from "../src/collab/YDocAdapter";
 import { midiClipEventsInWindow, noteEventsInWindow } from "../src/project-model/events";
 import { computeRenderTicks } from "../src/rendering/renderer";
 import { createProjectFromTemplate } from "../src/project-model/templates";
+import { ProjectStore } from "../src/store/ProjectStore";
 import { migrateProject, normalizeProject, SCHEMA_VERSION } from "../src/project-model/schema";
 import { BAR_TICKS, STEP_TICKS } from "../src/project-model/types";
 
@@ -160,6 +162,100 @@ describe("independent MIDI arrangement clips", () => {
     expect(newClip.patternId).not.toBe(patternId);
     expect(unique.patterns.find((pattern) => pattern.id === newClip.patternId)?.notes[trackId]).toHaveLength(2);
     expect(unique.arrangement.midiClips![0]!.lengthTicks).toBe(BAR_TICKS * 3);
+  });
+
+  it("batch-edits selected MIDI objects once, isolates unselected shared placements, and undoes/redoes atomically", () => {
+    const { doc, trackId, patternId } = projectWithMelody();
+    const first = addMidiClip(doc, trackId, patternId, 0, BAR_TICKS * 2).execute(doc);
+    const second = addMidiClip(first, trackId, patternId, BAR_TICKS * 4, BAR_TICKS * 2).execute(first);
+    const third = addMidiClip(second, trackId, patternId, BAR_TICKS * 8, BAR_TICKS * 2).execute(second);
+    const [selectedA, selectedB, unselected] = third.arrangement.midiClips!;
+    if (!selectedA || !selectedB || !unselected) throw new Error("three MIDI clips are required");
+    const sourceNotes = third.patterns.find((pattern) => pattern.id === patternId)!.notes[trackId];
+    const store = new ProjectStore(third);
+    const historyBefore = store.undoStackLength;
+
+    store.execute(
+      editMidiClipNotes(store.getDoc(), [selectedA.id, selectedB.id], {
+        transposeSemitones: 2,
+        velocityScalePercent: 50,
+        pan: -0.5,
+      }),
+    );
+
+    const edited = store.getDoc();
+    const editedClips = edited.arrangement.midiClips!;
+    const editedA = editedClips.find((clip) => clip.id === selectedA.id)!;
+    const editedB = editedClips.find((clip) => clip.id === selectedB.id)!;
+    const editedThird = editedClips.find((clip) => clip.id === unselected.id)!;
+    expect(store.undoStackLength).toBe(historyBefore + 1);
+    expect(editedA.patternId).not.toBe(patternId);
+    expect(editedB.patternId).toBe(editedA.patternId);
+    expect(editedThird.patternId).toBe(patternId);
+    expect(edited.patterns.find((pattern) => pattern.id === patternId)!.notes[trackId]).toEqual(sourceNotes);
+    const editedNotes = edited.patterns.find((pattern) => pattern.id === editedA.patternId)!.notes[trackId];
+    expect(
+      editedNotes.map(({ pitch, start, duration, velocity, expression }) => ({
+        pitch,
+        start,
+        duration,
+        velocity,
+        expression,
+      })),
+    ).toEqual(
+      sourceNotes.map((note) => ({
+        pitch: note.pitch + 2,
+        start: note.start,
+        duration: note.duration,
+        velocity: Math.max(0.05, note.velocity * 0.5),
+        expression: { ...(note.expression ?? {}), pan: -0.5 },
+      })),
+    );
+
+    store.undo();
+    expect(store.getDoc().arrangement.midiClips).toEqual(third.arrangement.midiClips);
+    expect(store.getDoc().patterns.find((pattern) => pattern.id === patternId)!.notes[trackId]).toEqual(sourceNotes);
+    store.redo();
+    expect(store.getDoc().arrangement.midiClips).toEqual(edited.arrangement.midiClips);
+    expect(store.getDoc().patterns.find((pattern) => pattern.id === editedA.patternId)!.notes[trackId]).toEqual(
+      edited.patterns.find((pattern) => pattern.id === editedA.patternId)!.notes[trackId],
+    );
+  });
+
+  it("batch-edits multiple distinct MIDI sources and rejects a locked selection", () => {
+    const { doc, trackId, patternId } = projectWithMelody();
+    const original = doc.patterns.find((pattern) => pattern.id === patternId)!;
+    const secondPatternId = "midi-multi-edit-second-pattern";
+    const secondPattern = {
+      ...original,
+      id: secondPatternId,
+      name: "Second source",
+      notes: {
+        ...original.notes,
+        [trackId]: original.notes[trackId].map((note) => ({ ...note, id: `${note.id}-second`, pitch: note.pitch + 5 })),
+      },
+    };
+    const withSecondPattern = { ...doc, patterns: [...doc.patterns, secondPattern] };
+    const first = addMidiClip(withSecondPattern, trackId, patternId, 0, BAR_TICKS * 2).execute(withSecondPattern);
+    const second = addMidiClip(first, trackId, secondPatternId, BAR_TICKS * 4, BAR_TICKS * 2).execute(first);
+    const [firstClip, secondClip] = second.arrangement.midiClips!;
+    if (!firstClip || !secondClip) throw new Error("two MIDI clips are required");
+
+    const edited = editMidiClipNotes(second, [firstClip.id, secondClip.id], { transposeSemitones: -3 }).execute(second);
+    const editedFirstClip = edited.arrangement.midiClips!.find((clip) => clip.id === firstClip.id)!;
+    expect(
+      edited.patterns
+        .find((pattern) => pattern.id === editedFirstClip.patternId)!
+        .notes[trackId].map((note) => note.pitch),
+    ).toEqual(original.notes[trackId].map((note) => note.pitch - 3));
+    expect(
+      edited.patterns.find((pattern) => pattern.id === secondPatternId)!.notes[trackId].map((note) => note.pitch),
+    ).toEqual(secondPattern.notes[trackId].map((note) => note.pitch - 3));
+
+    const locked = setMidiClipLocked(second, firstClip.id, true).execute(second);
+    expect(() => editMidiClipNotes(locked, [firstClip.id, secondClip.id], { transposeSemitones: 1 })).toThrow(
+      /locked/i,
+    );
   });
 
   it("normalizes legacy schema documents and round-trips MIDI clips through Yjs", () => {

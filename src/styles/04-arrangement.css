@@ -224,6 +224,138 @@
   background: rgba(100, 180, 230, 0.12);
 }
 
+.midi-multi-edit-backdrop {
+  position: fixed;
+  z-index: 1300;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-3);
+  background: rgba(4, 8, 14, 0.78);
+}
+
+.midi-multi-edit {
+  display: grid;
+  gap: var(--space-3);
+  width: min(760px, 100%);
+  max-height: min(90vh, 820px);
+  overflow: auto;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-panel);
+  color: var(--text);
+  box-shadow: 0 18px 56px rgba(0, 0, 0, 0.58);
+}
+
+.midi-multi-edit__header,
+.midi-multi-edit__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.midi-multi-edit__header h2 {
+  margin: 2px 0 4px;
+  font-size: 1.2rem;
+}
+
+.midi-multi-edit__header > button {
+  align-self: flex-start;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.midi-multi-edit__eyebrow {
+  margin: 0;
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.midi-multi-edit__summary {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+}
+
+.midi-multi-edit__objects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.midi-multi-edit__objects span {
+  padding: 4px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+}
+
+.midi-multi-edit__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+
+.midi-multi-edit__fields > label {
+  display: grid;
+  gap: 5px;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+}
+
+.midi-multi-edit__input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.midi-multi-edit__input-wrap input,
+.midi-multi-edit__fields select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.midi-multi-edit__input-wrap small {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+}
+
+.midi-multi-edit__clear-locks {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+}
+
+.midi-multi-edit__actions {
+  justify-content: flex-end;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-soft);
+}
+
+@media (max-width: 560px) {
+  .midi-multi-edit__fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* Mid widths: the scene rail + timeline stop coexisting in one row. */
 @media (max-width: 1000px) {
   .arr-panel {

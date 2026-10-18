@@ -38,7 +38,20 @@ const outPath = path.join(root, "docs", `plugin-audit-2026-09-27${auditSuffix ? 
 const server = await createServer({
   root,
   logLevel: "error",
-  server: { port: PORT, host: "127.0.0.1", strictPort: true },
+  server: {
+    port: PORT,
+    host: "127.0.0.1",
+    strictPort: true,
+    // This server exists only to serve modules to the audit page. HMR and the
+    // file watcher are off, which is the root-cause fix for the audit dying on
+    // "Navigation to ... is interrupted by another navigation": a concurrent
+    // agent session saving a file makes Vite push a full-reload, and a reload
+    // that lands on top of an in-flight `page.goto` aborts it. Retrying the
+    // navigation only loses time while the other session keeps saving — the
+    // audit has no reason to take live reloads at all.
+    hmr: false,
+    watch: null,
+  },
 });
 await server.listen();
 
@@ -76,6 +89,29 @@ function saveReport() {
   fs.writeFileSync(outPath, JSON.stringify(report, null, 2));
 }
 
+/**
+ * Navigate to the audit page, retrying the navigation races.
+ *
+ * Only navigation-shaped failures are retried. A 404 or a server that never
+ * came up is a real failure and must surface immediately — retrying it would
+ * burn three minutes to report the same error with more words.
+ */
+const NAV_RACE = /interrupted|context was destroyed|navigation|timeout|net::ERR_ABORTED|Execution context/i;
+
+async function gotoResilient(page, attempts = 5) {
+  const url = `http://127.0.0.1:${PORT}/`;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 180_000 });
+      return;
+    } catch (error) {
+      if (attempt >= attempts || !NAV_RACE.test(String(error))) throw error;
+      console.log(`[retry] navigation race on attempt ${attempt} (${String(error).slice(0, 90)})`);
+      await new Promise((r) => setTimeout(r, 1000 * attempt));
+    }
+  }
+}
+
 /** Evaluate with retry; a dead page is reloaded before the next attempt. */
 async function evaluateResilient(page, fn, arg, retries = 3) {
   for (let attempt = 1; ; attempt++) {
@@ -85,7 +121,7 @@ async function evaluateResilient(page, fn, arg, retries = 3) {
       if (attempt >= retries) throw error;
       console.log(`[retry] evaluate attempt ${attempt} failed (${String(error).slice(0, 120)}) — reloading page`);
       errors.push(String(error));
-      await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 180_000 });
+      await gotoResilient(page);
     }
   }
 }
@@ -101,16 +137,7 @@ try {
   });
   page.on("pageerror", (err) => errors.push(String(err)));
 
-  for (let attempt = 1; ; attempt++) {
-    try {
-      await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 180_000 });
-      break;
-    } catch (error) {
-      if (attempt >= 3 || !/interrupted|context was destroyed|navigation|timeout/i.test(String(error))) throw error;
-      console.log("[retry] navigation race — retrying goto");
-      await new Promise((r) => setTimeout(r, 2000));
-    }
-  }
+  await gotoResilient(page);
 
   // Phase 0: fixtures (bank + signal + base render), cached on window.
   const basePeak = await evaluateResilient(page, async () => {

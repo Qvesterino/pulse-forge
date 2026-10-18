@@ -53,6 +53,26 @@ describe("offline render / live playback — shared engine surface", () => {
     expect(scheduler).toMatch(/noteOn\s*\(\s*trackId/);
   });
 
+  it("live and offline AudioClips use the same pitch-capable engine trigger", () => {
+    const renderer = readSrc(RENDERER_PATH);
+    const scheduler = readSrc(SCHEDULER_PATH);
+    const services = readSrc(SERVICES_PATH);
+    const triggerEngine = readFileSync(resolve(process.cwd(), "src/audio-engine/triggerEngine.ts"), "utf8");
+
+    expect(scheduler, "the live song scheduler must dispatch arrangement AudioClips").toMatch(
+      /this\.deps\.triggerAudioClip\s*\(/,
+    );
+    expect(services, "the service bridge must route live clips to AudioEngine.triggerAudioClip").toMatch(
+      /triggerAudioClip:\s*\(clip,\s*when,\s*durationSec,\s*resumeOffsetSec\)\s*=>\s*engine\.triggerAudioClip\s*\(/,
+    );
+    expect(renderer, "the offline renderer must dispatch clips through engine.triggerAudioClip").toMatch(
+      /engine\.triggerAudioClip\s*\(clip,\s*when,\s*durationSec\)/,
+    );
+    expect(triggerEngine, "the shared clip trigger must apply independent pitch offsets").toMatch(
+      /const pitchSemitones\s*=.*clip\.pitchSemitones[\s\S]*?computePitchShiftedBuffer/,
+    );
+  });
+
   it("offline scheduleModulatorsOffline is the same code path as live applyModulators", () => {
     // Defect A07.D2 (offline render audit): the live scheduler calls
     // `engine.applyModulators` once per 25 ms window; the offline

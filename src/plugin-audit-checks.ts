@@ -88,6 +88,30 @@ const BAR_SYNCED_EFFECTS = new Set<EffectType>([
 const DYNAMICS_STIMULUS_TYPES = new Set<string>(["gate", "compressor", "limiter", "duckDelay", "transient"]);
 
 /**
+ * Filter-family types get a BROADBAND stimulus, for the same reason the
+ * dynamics family gets bursts — wrong stimulus, not dead wiring.
+ *
+ * MEASURED 2026-10-18 on the shipped defaults: with the continuous kick/tone
+ * stimulus, the core EQ reports 17 "dead" parameters. Every one of them is a
+ * FREQUENCY or a Q — `lowShelfFreq`, `lowMidFreq`, `lowMidQ`, `highMidFreq`,
+ * all delta exactly 0 — while every GAIN in the same device moves measurably
+ * (`lowShelfGain` 1.54, `lowMidGain` 1.44, `hostProcesses` true, hostDelta
+ * 0.50). The EQ is processing and its gains reach the DSP; the stimulus simply
+ * has almost no energy above ~200 Hz, so sweeping a bell's centre frequency
+ * from 80 Hz to 2 kHz cannot change RMS, peak or crest.
+ *
+ * A bandpass's frequency is only observable through the band it passes. Sweeping
+ * it with a signal that has no content in that band produces a bit-identical
+ * render, which is indistinguishable from an unwired parameter — so the column
+ * says "dead" about wiring that works, and a real regression in that column
+ * becomes invisible next to 17 false positives.
+ *
+ * Like the dynamics stimulus, the best delta wins, so this can only turn a
+ * false negative into a true positive, never the reverse.
+ */
+const FILTER_STIMULUS_TYPES = new Set<string>(["eq", "msEq", "multiband", "svFilter"]);
+
+/**
  * Rhythmic bursts with gaps long enough for a 20 ms hold and an 80 ms release
  * to actually close a gate. Measured against the shipped defaults: a 220 ms
  * gap leaves the one-pole envelope at ~-30 dB, still above a -36 dB threshold,
@@ -107,6 +131,55 @@ function buildDynamicsBufferInto(ctx: BaseAudioContext, seconds: number): AudioB
     const tone = 0.25 * Math.sin(2 * Math.PI * 220 * t);
     l[i] = active ? 0.45 * Math.sin(2 * Math.PI * 180 * t) + tone : 0.0004 * Math.sin(2 * Math.PI * 900 * t);
     r[i] = active ? 0.45 * Math.sin(2 * Math.PI * 180 * t) + tone * 1.01 : 0.0004 * Math.sin(2 * Math.PI * 900 * t);
+  }
+  return buffer;
+}
+
+/**
+ * Pink-ish noise with a deterministic seed, for filter families.
+ *
+ * DETERMINISTIC ON PURPOSE: the rest of this file's signals use `Math.random()`
+ * for their noise bursts. That is fine for them — each stimulus is built once
+ * and reused across every render of that effect, so the comparison is
+ * apples-to-apples. This buffer is the exception and is seeded, because it is
+ * meant to be compared ACROSS runs: a re-run of the same audit should report
+ * the same dead-parameter column, otherwise the column cannot be trusted as a
+ * regression signal at all.
+ *
+ * White noise, shaped by a one-pole tilt toward pink. Flat white would put equal
+ * energy in the 10 kHz region no musical EQ band sits in, so the roll-off keeps
+ * the level sane while still leaving measurable content across the whole range
+ * the bands sweep.
+ */
+function buildBroadbandBufferInto(ctx: BaseAudioContext, seconds: number): AudioBuffer {
+  const buffer = ctx.createBuffer(2, Math.floor(SR * seconds), SR);
+  const l = buffer.getChannelData(0);
+  const r = buffer.getChannelData(1);
+  // mulberry32 — fixed seed, so two runs of this audit agree exactly.
+  let seed = 0x9e3779b9;
+  const rand = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const a = 0.06; // one-pole smoothing -> roughly pink
+  let zL = 0;
+  let zR = 0;
+  let peak = 0;
+  for (let i = 0; i < l.length; i++) {
+    zL = a * (rand() * 2 - 1) + (1 - a) * zL;
+    zR = a * (rand() * 2 - 1) + (1 - a) * zR;
+    l[i] = zL;
+    r[i] = zR;
+    const m = Math.max(Math.abs(zL), Math.abs(zR));
+    if (m > peak) peak = m;
+  }
+  // Normalise so the stimulus level cannot be the reason a parameter "moves".
+  const g = peak > 0 ? 0.5 / peak : 1;
+  for (let i = 0; i < l.length; i++) {
+    l[i] *= g;
+    r[i] *= g;
   }
   return buffer;
 }
@@ -524,6 +597,12 @@ async function sweepEffect(type: EffectType, signal: AudioBuffer, dry: AudioBuff
   const dynamicsBase = dynamicsSignal
     ? metricsOf(await renderEffect(type, defaultParamsOf(type), dynamicsSignal))
     : null;
+  // Third stimulus, same "best delta wins" rule — see FILTER_STIMULUS_TYPES.
+  const broadbandContext = new OfflineAudioContext(2, Math.floor(SR * seconds), SR);
+  const broadbandSignal = FILTER_STIMULUS_TYPES.has(type) ? buildBroadbandBufferInto(broadbandContext, seconds) : null;
+  const broadbandBase = broadbandSignal
+    ? metricsOf(await renderEffect(type, defaultParamsOf(type), broadbandSignal))
+    : null;
 
   const params: ParamAudit[] = [];
   const deadParams: string[] = [];
@@ -577,6 +656,14 @@ async function sweepEffect(type: EffectType, signal: AudioBuffer, dry: AudioBuff
           delta = dynDelta;
           metric = deltaVs(dynamicsBase, metricsOf(dynRendered)).metric;
           stimulus = "dynamics";
+        }
+      }
+      if (broadbandSignal !== null && broadbandBase !== null) {
+        const bb = deltaVs(broadbandBase, metricsOf(await renderEffect(type, { ...defaultParamsOf(type), [p.id]: value }, broadbandSignal)));
+        if (bb.delta > delta) {
+          delta = bb.delta;
+          metric = bb.metric;
+          stimulus = "broadband";
         }
       }
       if (delta > bestDelta) {

@@ -21,6 +21,7 @@ import type {
   FrozenState,
   GenerativeTrackConfig,
   GrooveSettings,
+  LiveSet,
   Lfo,
   Macro,
   MacroMapping,
@@ -117,6 +118,8 @@ function yMapToProject(m: Y.Map<unknown>): ProjectDocument {
     ...(m.has("transferOrigin")
       ? { transferOrigin: plainValue(m.get("transferOrigin")) as unknown as ProjectTransferOriginV1 }
       : {}),
+    ...(m.has("liveSets") ? { liveSets: plainValue(m.get("liveSets")) as unknown as LiveSet[] } : {}),
+    ...(m.has("activeLiveSetId") ? { activeLiveSetId: m.get("activeLiveSetId") as string } : {}),
     createdAt: (m.get("createdAt") as string) ?? "",
     updatedAt: (m.get("updatedAt") as string) ?? "",
   };
@@ -864,6 +867,7 @@ export function applyProjectToYMap(_oldDoc: ProjectDocument, newDoc: ProjectDocu
   setIfChanged(yMap, "activePatternId", newDoc.activePatternId);
   setIfChanged(yMap, "createdAt", newDoc.createdAt);
   setIfChanged(yMap, "updatedAt", newDoc.updatedAt);
+  setOrDelete(yMap, "activeLiveSetId", newDoc.activeLiveSetId);
   setOrDelete(yMap, "key", newDoc.key);
 
   // Tags — Y.Array of plain strings, replaced only when content differs.
@@ -979,6 +983,7 @@ export function applyProjectToYMap(_oldDoc: ProjectDocument, newDoc: ProjectDocu
   // session; keep its source/confidence alongside the structured facts.
   syncPlainJsonField(yMap, "producerBrief", newDoc.producerBrief);
   syncPlainJsonField(yMap, "transferOrigin", newDoc.transferOrigin);
+  syncPlainJsonField(yMap, "liveSets", newDoc.liveSets);
 }
 
 export function projectToYDoc(doc: ProjectDocument, yMap: Y.Map<unknown>): void {

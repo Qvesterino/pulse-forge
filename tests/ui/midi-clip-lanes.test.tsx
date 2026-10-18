@@ -155,6 +155,92 @@ describe("instrument MIDI arrangement lanes", () => {
     );
   });
 
+  it("does not show the batch note editor for a single MIDI clip, then edits a multi-selection", () => {
+    const source = createProjectFromTemplate("house");
+    const track = source.tracks.find((candidate) => candidate.kind === "instrument");
+    const pattern = source.patterns.find((candidate) => candidate.id === source.activePatternId);
+    if (!track || track.kind !== "instrument" || !pattern) throw new Error("house template fixture is incomplete");
+    const notes = [
+      { id: "multi-edit-note-a", pitch: 48, start: 0, duration: 240, velocity: 0.8 },
+      { id: "multi-edit-note-b", pitch: 55, start: 240, duration: 120, velocity: 0.6 },
+    ];
+    const base: ProjectDocument = {
+      ...source,
+      patterns: source.patterns.map((candidate) =>
+        candidate.id === pattern.id ? { ...candidate, notes: { ...candidate.notes, [track.id]: notes } } : candidate,
+      ),
+      arrangement: { ...source.arrangement, midiClips: [] },
+    };
+    const first = addMidiClip(base, track.id, pattern.id, 0, BAR_TICKS * 2).execute(base);
+    const firstClip = first.arrangement.midiClips![0]!;
+    const second = addMidiClip(first, track.id, pattern.id, BAR_TICKS * 4, BAR_TICKS * 2).execute(first);
+    const secondClip = second.arrangement.midiClips!.find((clip) => clip.id !== firstClip.id)!;
+    const third = addMidiClip(second, track.id, pattern.id, BAR_TICKS * 8, BAR_TICKS * 2).execute(second);
+    const thirdClip = third.arrangement.midiClips!.find(
+      (clip) => clip.id !== firstClip.id && clip.id !== secondClip.id,
+    )!;
+    const project = new ProjectStore(third);
+    const selectionStore = new SelectionStore();
+    const services = { ...mockServices(third), store: project } as unknown as Services;
+    const view = render(
+      createElement(
+        ServicesContext.Provider,
+        { value: services },
+        createElement(
+          SelectionContext.Provider,
+          { value: selectionStore },
+          createElement(ArrangementPanel) as ReactElement,
+        ),
+      ),
+    );
+
+    const clipButtons = [...view.container.querySelectorAll(".arr-midi-clip")] as HTMLButtonElement[];
+    expect(clipButtons).toHaveLength(3);
+    act(() => fireEvent.contextMenu(clipButtons[0]!, { clientX: 120, clientY: 80 }));
+    expect(screen.queryByRole("menuitem", { name: /Edit note properties/ })).toBeNull();
+    act(() => fireEvent.mouseDown(view.container.querySelector(".arr-midi-lanes-heading")!));
+    act(() => {
+      fireEvent.pointerDown(clipButtons[0]!, { button: 0, clientX: 20, pointerId: 1 });
+      fireEvent.pointerUp(clipButtons[0]!, { pointerId: 1 });
+      fireEvent.pointerDown(clipButtons[1]!, { button: 0, clientX: 180, ctrlKey: true, pointerId: 2 });
+    });
+    expect(selectionStore.getState().clipIds).toEqual([firstClip.id, secondClip.id]);
+    act(() => fireEvent.contextMenu(clipButtons[1]!, { clientX: 120, clientY: 80 }));
+    act(() => fireEvent.click(screen.getByRole("menuitem", { name: "Edit note properties in 2 objects…" })));
+
+    expect(screen.getByRole("dialog", { name: "Edit notes in 2 MIDI objects" })).toBeTruthy();
+    expect(screen.getByText(/2 source notes across 2 objects/)).toBeTruthy();
+    act(() => fireEvent.change(screen.getByRole("spinbutton", { name: "Transpose" }), { target: { value: "2" } }));
+    const historyBefore = project.undoStackLength;
+    act(() => fireEvent.click(screen.getByRole("button", { name: "Apply as one edit" })));
+
+    const editedClips = project.getDoc().arrangement.midiClips!;
+    const editedFirst = editedClips.find((clip) => clip.id === firstClip.id)!;
+    const editedSecond = editedClips.find((clip) => clip.id === secondClip.id)!;
+    const unselectedThird = editedClips.find((clip) => clip.id === thirdClip.id)!;
+    expect(editedFirst.patternId).not.toBe(pattern.id);
+    expect(editedSecond.patternId).toBe(editedFirst.patternId);
+    expect(unselectedThird.patternId).toBe(pattern.id);
+    const editedNotes = project.getDoc().patterns.find((candidate) => candidate.id === editedFirst.patternId)!.notes[
+      track.id
+    ];
+    expect(editedNotes.map(({ pitch, start, duration, velocity }) => ({ pitch, start, duration, velocity }))).toEqual(
+      notes.map(({ pitch, start, duration, velocity }) => ({ pitch: pitch + 2, start, duration, velocity })),
+    );
+    expect(project.getDoc().patterns.find((candidate) => candidate.id === pattern.id)!.notes[track.id]).toEqual(notes);
+    expect(project.undoStackLength).toBe(historyBefore + 1);
+    act(() => project.undo());
+    expect(project.getDoc().arrangement.midiClips?.map((clip) => clip.patternId)).toEqual([
+      pattern.id,
+      pattern.id,
+      pattern.id,
+    ]);
+    act(() => project.redo());
+    expect(project.getDoc().arrangement.midiClips?.find((clip) => clip.id === firstClip.id)?.patternId).toBe(
+      editedFirst.patternId,
+    );
+  });
+
   it("duplicates a MIDI clip as one undoable edit", () => {
     const source = createProjectFromTemplate("house");
     const track = source.tracks.find((candidate) => candidate.kind === "instrument");
@@ -217,7 +303,7 @@ describe("instrument MIDI arrangement lanes", () => {
         doc: third,
         tracks: third.tracks,
         midiClips: allClips.slice(0, 2),
-        selectedClipId: null,
+        selectedClipIds: [],
         totalBars: 60,
         barWidth: 30,
         snapGrid: "1",

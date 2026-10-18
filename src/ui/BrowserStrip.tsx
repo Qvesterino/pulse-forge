@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 import { useServices } from "./context";
 import { addAudioClip, fittedLoopPlacement, setInstrumentSample, setPadParams } from "../commands/commands";
+import { loopPreviewPlaybackRate } from "../audio-engine/loopTempo";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
 import { BAR_TICKS, PPQ, type Track } from "../project-model/types";
 import { sceneSecondsToBars, tempoAtTick } from "../project-model/scene-time";
@@ -66,7 +67,7 @@ export function BrowserStrip({ track, selectedPadId }: { track: Track; selectedP
     const nextBeatTick = (Math.floor(services.transport.position / PPQ) + 1) * PPQ;
     const targetBpm = tempoAtTick(currentDoc.arrangement.clips, currentDoc.scenes, nextBeatTick, currentDoc.bpm);
     const detectedBpm = Number.isFinite(asset.bpm) && asset.bpm! >= 40 && asset.bpm! <= 240 ? asset.bpm! : targetBpm;
-    services.engine.previewAssetSynced(asset.id, detectedBpm / targetBpm);
+    services.engine.previewAssetSynced(asset.id, loopPreviewPlaybackRate(detectedBpm, targetBpm), true);
   };
 
   const addLoopToArrangement = async (asset: UserSampleAsset) => {

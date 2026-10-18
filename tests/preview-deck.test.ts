@@ -220,6 +220,39 @@ describe("PreviewDeck (Wave 4c)", () => {
     expect(deck.voiceCounts().samples).toBe(1);
   });
 
+  it("uses the shared clip-stretch buffer for pitch-preserving loop previews", () => {
+    const source = new FakeBufferSource();
+    const master = { sink: true };
+    const sourceBuffer = { duration: 8, numberOfChannels: 2 } as AudioBuffer;
+    const stretchedBuffer = { duration: 8 * (4 / 3), numberOfChannels: 2 } as AudioBuffer;
+    const stretchBuffer = vi.fn(() => stretchedBuffer);
+    const fakeCtx = {
+      currentTime: 5,
+      createBufferSource: () => source,
+      createGain: () => ({ gain: { value: 1 }, connect: () => master, disconnect: () => {} }),
+    };
+    const doc = {
+      bpm: 120,
+      arrangement: { clips: [] },
+      scenes: [],
+    } as unknown as ProjectDocument;
+    const deck = new PreviewDeck(
+      makeDeps({
+        ctx: () => fakeCtx as unknown as BaseAudioContext,
+        doc: () => doc,
+        bank: () => ({ get: () => sourceBuffer }) as never,
+        masterInput: () => master as never,
+        stretchBuffer,
+      }),
+    );
+
+    deck.previewAssetSynced("loop", 0.75, true);
+
+    expect(stretchBuffer).toHaveBeenCalledWith("loop", sourceBuffer, 4 / 3);
+    expect(source.buffer).toBe(stretchedBuffer);
+    expect(source.playbackRate.value).toBe(1);
+  });
+
   it("missing asset reports through missAsset (engine's missedAssets)", () => {
     const missed: string[] = [];
     const fakeCtx = {

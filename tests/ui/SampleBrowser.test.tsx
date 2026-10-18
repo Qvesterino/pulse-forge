@@ -4,6 +4,8 @@ import { SampleBrowser } from "../../src/ui/SampleBrowser";
 import { mockServices, renderWithContext } from "../helpers";
 import { FACTORY_ASSETS } from "../../src/sample-library/manifest";
 import type { UserSampleAsset } from "../../src/persistence/UserSampleRepository";
+import { PPQ } from "../../src/project-model/types";
+import { tempoAtTick } from "../../src/project-model/scene-time";
 
 const loopA: UserSampleAsset = {
   id: "user.loop-house-01",
@@ -59,7 +61,7 @@ describe("SampleBrowser", () => {
     expect(screen.queryAllByRole("button", { name: /Kick/ })).toHaveLength(0);
   });
 
-  it("filters loops by tags and tempo metadata", async () => {
+  it("filters loops by genre, mood, instrument, key, and BPM range", async () => {
     const services = mockServices();
     vi.mocked(services.userSamples.list).mockResolvedValue([loopA, loopB]);
     renderWithContext(<SampleBrowser assets={[]} currentId={null} onSelect={vi.fn()} />, { services });
@@ -69,11 +71,42 @@ describe("SampleBrowser", () => {
     expect(screen.getByRole("button", { name: "House Drums" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Techno Bass" })).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Filter by genre"), { target: { value: "House" } });
-    fireEvent.change(screen.getByLabelText("Minimum BPM"), { target: { value: "110" } });
+    const filters = [
+      ["Filter by genre", "House"],
+      ["Filter by mood", "Deep"],
+      ["Filter by instrument", "Drums"],
+      ["Filter by key", "Am"],
+    ] as const;
+    for (const [label, value] of filters) {
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+      expect(screen.getByRole("button", { name: "House Drums" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Techno Bass" })).not.toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText(label), { target: { value: "all" } });
+      expect(screen.getByRole("button", { name: "Techno Bass" })).toBeInTheDocument();
+    }
+    fireEvent.change(screen.getByLabelText("Minimum BPM"), { target: { value: "115" } });
+    fireEvent.change(screen.getByLabelText("Maximum BPM"), { target: { value: "125" } });
     expect(screen.getByRole("button", { name: "House Drums" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Techno Bass" })).not.toBeInTheDocument();
     expect(screen.getByText("120 BPM")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Maximum BPM"), { target: { value: "119" } });
+    expect(screen.getByText("No loops match. Try another filter or clear the search.")).toBeInTheDocument();
+  });
+
+  it("previews a loop at the project tempo when used outside the browser strip", async () => {
+    const services = mockServices();
+    vi.mocked(services.userSamples.list).mockResolvedValue([loopA]);
+    services.engine.previewAssetSynced = vi.fn();
+    renderWithContext(<SampleBrowser assets={[]} currentId={null} onSelect={vi.fn()} />, { services });
+
+    await screen.findByRole("button", { name: /LOOPS 1/ });
+    fireEvent.click(screen.getByRole("button", { name: /LOOPS 1/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview loop in project tempo House Drums" }));
+
+    const doc = services.store.getDoc();
+    const nextBeatTick = (Math.floor(services.transport.position / PPQ) + 1) * PPQ;
+    const targetBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, nextBeatTick, doc.bpm);
+    expect(services.engine.previewAssetSynced).toHaveBeenCalledWith(loopA.id, targetBpm / loopA.bpm!, true);
   });
 
   it("saves user loop tags and previews the loop through the tempo-aware callback", async () => {

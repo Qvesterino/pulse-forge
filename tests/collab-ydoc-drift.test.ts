@@ -3,6 +3,7 @@ import * as Y from "yjs";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { normalizeProject } from "../src/project-model/schema";
 import { projectToYDoc, yDocToProject } from "../src/collab/YDocAdapter";
+import { assignLivePad, createLiveSet } from "../src/commands/commands";
 import type { ProjectDocument } from "../src/project-model/types";
 
 /**
@@ -34,6 +35,8 @@ const ALL_TOP_LEVEL_KEYS: Record<keyof ProjectDocument, true> = {
   lineage: true,
   producerBrief: true,
   transferOrigin: true,
+  liveSets: true,
+  activeLiveSetId: true,
   tracks: true,
   patterns: true,
   activePatternId: true,
@@ -71,6 +74,21 @@ describe("YDocAdapter drift pin (GOAL 05)", () => {
       }
     }
     expect(restored).toEqual(doc);
+  });
+
+  it("keeps Live Set assignments through the project Y.Doc codec", () => {
+    const base = createProjectFromTemplate("house");
+    const withSet = createLiveSet(base, "Collab loops").execute(base);
+    const set = withSet.liveSets![0]!;
+    const doc = assignLivePad(withSet, set.id, {
+      slot: 11,
+      bufferId: "user.loop-collab",
+      name: "Collab loop",
+      bpm: 128,
+      loop: true,
+    }).execute(withSet);
+
+    expect(roundTrip(doc)).toEqual(doc);
   });
 
   it("survives a second apply (idempotent targeted diff)", () => {

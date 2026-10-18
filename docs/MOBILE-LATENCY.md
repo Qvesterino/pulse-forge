@@ -43,6 +43,18 @@ The report is `kyx.mobile.latency.v1` and contains:
 - `reasons`: human-readable evidence, including the "reported, not acoustic"
   caveat.
 
+## Aggregate the evidence
+
+```bash
+npm run mobile:latency-summary -- release-evidence/mobile-latency
+```
+
+The aggregator validates `kyx.mobile.latency.v1`, groups reports by device,
+requires **five devices with three valid runs each**, and prints the same
+decision matrix. It exits non-zero while the evidence is insufficient; it does
+not invent a device or average across models. A single unstable run is treated
+as marginal, not as a pass.
+
 ## Decision matrix
 
 | Acoustic round trip (stable) | `nativeHostForTracking` | Action |

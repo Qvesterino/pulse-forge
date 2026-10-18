@@ -98,6 +98,8 @@ export interface PreviewDeckDeps {
   noteOn(trackId: string, pitch: number, velocity: number, when: number, durationSec: number): void;
   /** Report a sample that failed to resolve (engine's missedAssets set). */
   missAsset: (assetId: string) => void;
+  /** Shared cached AudioClip stretch renderer, when a preview requests pitch preservation. */
+  stretchBuffer?: (assetId: string, source: AudioBuffer, stretchRate: number) => AudioBuffer | null;
 }
 
 export class PreviewDeck {
@@ -601,9 +603,11 @@ export class PreviewDeck {
   /**
    * Preview a sample synced to the transport: its first beat lands on the
    * next beat and playbackRate tempo-matches the tempo active at that point.
-   * `rate` is caller-computed (fileBPM/targetBPM) — 1 = dry.
+   * `rate` is the AudioBufferSourceNode playback-rate ratio (targetBPM/fileBPM)
+   * — 1 = dry. `preservePitch` renders through the same cached clip stretch
+   * path, using the reciprocal duration factor.
    */
-  previewAssetSynced(assetId: string, rate = 1): void {
+  previewAssetSynced(assetId: string, rate = 1, preservePitch = false): void {
     this.deps.ensureContext();
     const ctx = this.deps.ctx();
     const buffer = this.deps.bank()?.get(assetId);
@@ -614,9 +618,24 @@ export class PreviewDeck {
     const nextBeatTick = (Math.floor(pos / PPQ) + 1) * PPQ;
     const delaySec = arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, pos, nextBeatTick, doc.bpm);
     const when = now + Math.max(0.005, delaySec + 0.005);
+    const playbackRate = Number.isFinite(rate) ? Math.min(4, Math.max(0.25, rate)) : 1;
+    let playBuffer = buffer;
+    let sourceRate = playbackRate;
+    const stretchRate = 1 / playbackRate;
+    if (preservePitch && Math.abs(stretchRate - 1) >= 0.01) {
+      try {
+        const stretched = this.deps.stretchBuffer?.(assetId, buffer, stretchRate);
+        if (stretched) {
+          playBuffer = stretched;
+          sourceRate = 1;
+        }
+      } catch {
+        /* fall back to tempo-matched resampling if the stretch render fails */
+      }
+    }
     const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.playbackRate.value = Math.min(4, Math.max(0.25, rate));
+    source.buffer = playBuffer;
+    source.playbackRate.value = sourceRate;
     const gain = ctx.createGain();
     gain.gain.value = 0.85;
     source.connect(gain).connect(this.deps.masterInput()!);

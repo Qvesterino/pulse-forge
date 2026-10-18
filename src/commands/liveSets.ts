@@ -53,14 +53,31 @@ export function duplicateLiveSet(doc: ProjectDocument, setId: string): Command {
 }
 
 export function deleteLiveSet(doc: ProjectDocument, setId: string): Command {
-  requiredSet(doc, setId);
+  const removed = requiredSet(doc, setId);
   const liveSets = doc.liveSets!.filter((set) => set.id !== setId);
   const activeLiveSetId = doc.activeLiveSetId === setId ? liveSets[0]?.id : doc.activeLiveSetId;
-  const nextDoc: ProjectDocument = { ...doc, liveSets };
+  // `AudioClip.liveSetId` is a cross-reference HELD BY ANOTHER ENTITY: the
+  // clip was launched from a pad of this set, and both fields travel together
+  // (`liveSetId` + `livePadSlot`). Clear them in-command, not in the post-apply
+  // normalize — same contract as deleteTrack's marker / sidechain cleanup: the
+  // stale id otherwise survives every save, and undo could never restore the
+  // link because normalize works outside the captured delta.
+  const audioClips = doc.arrangement.audioClips?.map((clip) => {
+    if (clip.liveSetId !== setId) return clip;
+    const next = { ...clip };
+    delete next.liveSetId;
+    delete next.livePadSlot;
+    return next;
+  });
+  const nextDoc: ProjectDocument = {
+    ...doc,
+    liveSets,
+    ...(audioClips ? { arrangement: { ...doc.arrangement, audioClips } } : {}),
+  };
   if (activeLiveSetId) nextDoc.activeLiveSetId = activeLiveSetId;
   else delete nextDoc.activeLiveSetId;
   const next = normalizeProject(nextDoc);
-  return snapshot("deleteLiveSet", `Delete Live Set ${requiredSet(doc, setId).name}`, doc, next);
+  return snapshot("deleteLiveSet", `Delete Live Set ${removed.name}`, doc, next);
 }
 
 export function selectLiveSet(doc: ProjectDocument, setId: string): Command {
@@ -77,7 +94,7 @@ export function setLiveSetOptions(
   patch: { trackId?: string | null; loopBars?: LiveSet["loopBars"] },
 ): Command {
   const set = requiredSet(doc, setId);
-  const trackId = patch.trackId === null ? undefined : patch.trackId ?? set.trackId;
+  const trackId = patch.trackId === null ? undefined : (patch.trackId ?? set.trackId);
   if (trackId && !doc.tracks.some((track) => track.id === trackId && track.kind !== "generative")) {
     throw new Error(`Live Set destination track ${trackId} is not audio-capable`);
   }

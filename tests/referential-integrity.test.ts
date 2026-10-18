@@ -29,7 +29,10 @@ import {
   addAudioClip,
   addEffect,
   addMidiClip,
+  assignLivePad,
+  createLiveSet,
   createPattern,
+  deleteLiveSet,
   deletePattern,
   deleteReturnTrack,
   deleteTrack,
@@ -103,6 +106,8 @@ export function auditReferences(doc: ProjectDocument): string[] {
   const patternIds = new Set(doc.patterns.map((p) => p.id));
   const sceneIds = new Set(doc.scenes.map((s) => s.id));
   const padIds = new Set(doc.tracks.flatMap((t) => (t.kind === "drum" ? t.pads.map((p) => p.id) : [])));
+  const liveSetIds = new Set((doc.liveSets ?? []).map((set) => set.id));
+  const liveEligibleTrackIds = new Set(doc.tracks.filter((t) => t.kind !== "generative").map((t) => t.id));
   const arr = doc.arrangement;
   const sceneClipIds = new Set(arr.clips.map((c) => c.id));
   // Membership lookup set vs the RAW list: markers, transitions and clip
@@ -133,6 +138,7 @@ export function auditReferences(doc: ProjectDocument): string[] {
     ["lfos", doc.lfos.map((l) => l.id)],
     ["macros", doc.macros.map((m) => m.id)],
     ["markers", doc.markers.map((m) => m.id)],
+    ["liveSets", (doc.liveSets ?? []).map((s) => s.id)],
     ["chords", (arr.chords ?? []).map((c) => c.id)],
     ["takeGroups", (arr.takeGroups ?? []).map((g) => g.id)],
     ["transitions", (arr.transitions ?? []).map((t) => t.id)],
@@ -176,6 +182,16 @@ export function auditReferences(doc: ProjectDocument): string[] {
 
   // ---- patterns ------------------------------------------------------------
   if (!patternIds.has(doc.activePatternId)) bad("activePatternId", `pattern "${doc.activePatternId}" does not exist`);
+  // Live Sets are the other "active…Id" pointer the document carries, and they
+  // live in their own collection: same class as activePatternId, separate set.
+  if (doc.activeLiveSetId !== undefined && !liveSetIds.has(doc.activeLiveSetId))
+    bad("activeLiveSetId", `live set "${doc.activeLiveSetId}" does not exist`);
+  (doc.liveSets ?? []).forEach((set, i) => {
+    // `trackId` is optional and absent means "first audio-capable track"; a
+    // present one must be a track the launcher can actually route to.
+    if (set.trackId !== undefined && !liveEligibleTrackIds.has(set.trackId))
+      bad(`liveSets[${i}].trackId`, `track "${set.trackId}" is missing or not launch-eligible`);
+  });
   doc.patterns.forEach((pattern, i) => {
     for (const padId of Object.keys(pattern.rows))
       if (!padIds.has(padId)) bad(`patterns[${i}].rows`, `pad "${padId}" does not exist`);
@@ -206,6 +222,24 @@ export function auditReferences(doc: ProjectDocument): string[] {
       bad(`arrangement.audioClips[${i}].bufferId`, `source buffer id is empty`);
     if (clip.takeGroupId !== undefined && !takeGroupIds.has(clip.takeGroupId))
       bad(`arrangement.audioClips[${i}].takeGroupId`, `take group "${clip.takeGroupId}" does not exist`);
+    // A take id only means something together with the group it belongs to.
+    if (clip.takeGroupId === undefined && clip.takeId !== undefined)
+      bad(`arrangement.audioClips[${i}].takeId`, `take "${clip.takeId}" with no take group`);
+    // A comp source is the take another clip was recorded from, so it must
+    // name a take in the same group — never the comp take itself, never a take
+    // of a different group.
+    if (clip.compSourceTakeId !== undefined) {
+      const groupTakeIds = new Set(
+        (arr.audioClips ?? []).filter((c) => c.takeGroupId === clip.takeGroupId).map((c) => c.takeId as string),
+      );
+      if (!groupTakeIds.has(clip.compSourceTakeId))
+        bad(`arrangement.audioClips[${i}].compSourceTakeId`, `take "${clip.compSourceTakeId}" is not in the group`);
+    }
+    if (clip.liveSetId !== undefined && !liveSetIds.has(clip.liveSetId))
+      bad(`arrangement.audioClips[${i}].liveSetId`, `live set "${clip.liveSetId}" does not exist`);
+    // `livePadSlot` means nothing without the set it indexes.
+    if (clip.livePadSlot !== undefined && clip.liveSetId === undefined)
+      bad(`arrangement.audioClips[${i}].livePadSlot`, `slot ${clip.livePadSlot} with no live set`);
   });
   (arr.midiClips ?? []).forEach((clip, i) => {
     if (!trackIds.has(clip.trackId))
@@ -233,6 +267,15 @@ export function auditReferences(doc: ProjectDocument): string[] {
   });
   (arr.takeGroups ?? []).forEach((g, i) => {
     if (!trackIds.has(g.trackId)) bad(`arrangement.takeGroups[${i}].trackId`, `track "${g.trackId}" does not exist`);
+    // Take ids are not entities of their own — they are identities OF THE
+    // CLIPS in the group. Both group pointers must name a take that exists.
+    const groupTakes = new Set(
+      (arr.audioClips ?? []).filter((c) => c.takeGroupId === g.id).map((c) => c.takeId as string),
+    );
+    if (g.activeTakeId !== undefined && !groupTakes.has(g.activeTakeId))
+      bad(`arrangement.takeGroups[${i}].activeTakeId`, `take "${g.activeTakeId}" is not in the group`);
+    if (g.compTakeId !== undefined && !groupTakes.has(g.compTakeId))
+      bad(`arrangement.takeGroups[${i}].compTakeId`, `take "${g.compTakeId}" is not in the group`);
   });
 
   // ---- markers -------------------------------------------------------------
@@ -320,11 +363,22 @@ function richDoc(): ProjectDocument {
   const drum = doc.tracks.find((t) => t.kind === "drum")!;
   const padId = drum.pads[0].id;
   const inst = doc.tracks.find((t) => t.kind === "instrument");
+  // A Live Set with a launched clip: the second "active…Id" collection, and the
+  // one `deleteLiveSet` used to orphan.
+  doc = createLiveSet(doc, "Set A").execute(doc);
+  doc = assignLivePad(doc, doc.liveSets![0].id, {
+    slot: 0,
+    bufferId: "buf-live",
+    name: "Kick",
+    bpm: 128,
+    loop: true,
+  }).execute(doc);
+  const liveSetId = doc.liveSets![0].id;
 
   // One clip of every system: scene clip, audio clip, midi clip.
   doc = addArrangementClip(doc, sceneId, 4, 2).execute(doc);
   const sceneClipId = doc.arrangement.clips[doc.arrangement.clips.length - 1].id;
-  doc = addAudioClip(doc, drum.id, "buf-1", 0, 4).execute(doc);
+  doc = addAudioClip(doc, drum.id, "buf-1", 0, 4, { liveSetId, livePadSlot: 0 }).execute(doc);
   if (inst) doc = addMidiClip(doc, inst.id, patternId, 0, STEP_TICKS * 64).execute(doc);
   // A second instrument clip for the midi-clip-corruption classes.
   const secondPattern = doc.patterns[0].id;
@@ -653,6 +707,61 @@ describe("referential integrity — corruption classes vs normalizeProject", () 
       },
       expected: "duplicate id",
     },
+    {
+      name: "audio clip points at a deleted live set",
+      inject: (doc) => {
+        const [clip] = doc.arrangement.audioClips!;
+        return {
+          ...doc,
+          arrangement: {
+            ...doc.arrangement,
+            audioClips: [{ ...clip, liveSetId: "ghost-set", livePadSlot: 0 }],
+          },
+        };
+      },
+      expected: "liveSetId",
+    },
+    {
+      name: "live pad slot with no live set",
+      inject: (doc) => {
+        const [clip] = doc.arrangement.audioClips!;
+        const stripped = { ...clip, livePadSlot: 3 };
+        delete stripped.liveSetId;
+        return { ...doc, arrangement: { ...doc.arrangement, audioClips: [stripped] } };
+      },
+      expected: "livePadSlot",
+    },
+    {
+      name: "activeLiveSetId points at a deleted live set",
+      inject: (doc) => ({ ...doc, activeLiveSetId: "ghost-set" }),
+      expected: "activeLiveSetId",
+    },
+    {
+      name: "live set routed at a deleted track",
+      inject: (doc) => {
+        const [set] = doc.liveSets!;
+        return { ...doc, liveSets: [{ ...set, trackId: "ghost-track" }] };
+      },
+      expected: "liveSets[0].trackId",
+    },
+    {
+      name: "live set routed at a generative track (not launch-eligible)",
+      inject: (doc) => {
+        const [set] = doc.liveSets!;
+        const generative = doc.tracks.find((t) => t.kind === "generative") ?? { id: "ghost-generative" };
+        return {
+          ...doc,
+          tracks: [...doc.tracks, { ...doc.tracks[0], id: generative.id, kind: "generative" } as never],
+          liveSets: [{ ...set, trackId: generative.id }],
+        };
+      },
+      expected: "liveSets[0].trackId",
+    },
+    {
+      name: "duplicate live set id",
+      inject: (doc) => ({ ...doc, liveSets: [...doc.liveSets!, doc.liveSets![0]] }),
+      expected: "duplicate id",
+    },
   ];
 
   it.each(corruptionClasses)("$name is repaired by normalizeProject", ({ inject, expected }) => {
@@ -740,5 +849,24 @@ describe("referential integrity — delete commands leave no stale references", 
     expectClean(store.doc, "removeEffectFromTracks applied");
     store.undo();
     expectClean(store.doc, "removeEffectFromTracks undone");
+  });
+
+  it("deleteLiveSet: the launched clip keeps no dangling liveSetId, and undo restores it", () => {
+    const store = new ProjectStore(richDoc());
+    const setId = store.doc.liveSets![0].id;
+    expect(store.doc.arrangement.audioClips![0].liveSetId).toBe(setId);
+
+    store.execute(deleteLiveSet(store.doc, setId));
+    const clip = store.doc.arrangement.audioClips![0];
+    // The pair travels together: a slot without its set means nothing.
+    expect(clip.liveSetId).toBeUndefined();
+    expect(clip.livePadSlot).toBeUndefined();
+    expectClean(store.doc, "deleteLiveSet applied");
+
+    store.undo();
+    // Undo must bring the link back — the reason the cleanup lives inside the
+    // command, not in the post-apply normalize that works outside the delta.
+    expect(store.doc.arrangement.audioClips![0].liveSetId).toBe(setId);
+    expectClean(store.doc, "deleteLiveSet undone");
   });
 });

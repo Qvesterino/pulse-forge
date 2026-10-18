@@ -33,10 +33,14 @@ export function Diagnostics() {
     const ctx = services.engine.getLiveAudioContext();
     const caps = nativeCapabilities();
     const root = document.documentElement;
-    const matchMedia = (window as unknown as { matchMedia?: (query: string) => MediaQueryList }).matchMedia;
-    const standalone = matchMedia ? matchMedia("(display-mode: standalone)").matches : false;
+    const matchMedia = (window as unknown as { matchMedia?: unknown }).matchMedia;
+    const standalone =
+      typeof matchMedia === "function"
+        ? (matchMedia as (query: string) => MediaQueryList)("(display-mode: standalone)").matches
+        : false;
     const sw = navigator.serviceWorker?.controller ? "active" : "not controlling";
-    const midi = navigator.requestMIDIAccess ? "Web MIDI" : caps.midi ? "native bridge" : "unavailable";
+    const requestMidi = (navigator as unknown as { requestMIDIAccess?: unknown }).requestMIDIAccess;
+    const midi = typeof requestMidi === "function" ? "Web MIDI" : caps.midi ? "native bridge" : "unavailable";
     const ms = (value: number | undefined) =>
       typeof value === "number" && Number.isFinite(value) ? `${(value * 1000).toFixed(1)} ms` : "—";
     setDevice({

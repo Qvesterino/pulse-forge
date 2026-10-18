@@ -12,6 +12,7 @@ import {
 import { migrateProject, normalizeProject, SCHEMA_VERSION } from "../src/project-model/schema";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { ProjectStore } from "../src/store/ProjectStore";
+import type { ProjectDocument } from "../src/project-model/types";
 
 describe("project-local Live Sets", () => {
   it("creates, assigns, duplicates, selects, renames and deletes with undoable commands", () => {
@@ -22,7 +23,9 @@ describe("project-local Live Sets", () => {
     const trackId = store.doc.tracks.find((track) => track.kind !== "generative")!.id;
 
     store.execute(setLiveSetOptions(store.doc, set.id, { trackId, loopBars: 8 }));
-    store.execute(assignLivePad(store.doc, set.id, { slot: 5, bufferId: "user.loop-1", name: "Night loop", bpm: 124, loop: true }));
+    store.execute(
+      assignLivePad(store.doc, set.id, { slot: 5, bufferId: "user.loop-1", name: "Night loop", bpm: 124, loop: true }),
+    );
     expect(store.doc.liveSets![0]!.pads).toEqual([
       { slot: 5, bufferId: "user.loop-1", name: "Night loop", bpm: 124, loop: true },
     ]);
@@ -61,7 +64,7 @@ describe("project-local Live Sets", () => {
             { slot: 19, bufferId: "user.loop-3", name: "Out of range" },
           ],
         },
-      ],
+      ] as unknown as ProjectDocument["liveSets"],
       activeLiveSetId: "missing-set",
     });
     expect(malformed.liveSets).toEqual([
@@ -83,16 +86,21 @@ describe("project-local Live Sets", () => {
   });
 
   it("keeps Live Pad origin metadata on the editable arrangement audio clip", () => {
-    const doc = createProjectFromTemplate("house");
+    const base = createProjectFromTemplate("house");
+    const doc = createLiveSet(base, "Clip source").execute(base);
+    const liveSetId = doc.liveSets![0]!.id;
     const trackId = doc.tracks.find((track) => track.kind !== "generative")!.id;
     const next = addAudioClip(doc, trackId, "user.loop-1", 2, 4, {
       loop: true,
-      liveSetId: "live-set-a",
+      liveSetId,
       livePadSlot: 7,
     }).execute(doc);
     const clip = next.arrangement.audioClips![0]!;
-    expect(clip.liveSetId).toBe("live-set-a");
+    expect(clip.liveSetId).toBe(liveSetId);
     expect(clip.livePadSlot).toBe(7);
-    expect(normalizeProject(next).arrangement.audioClips![0]).toMatchObject({ liveSetId: "live-set-a", livePadSlot: 7 });
+    expect(normalizeProject(next).arrangement.audioClips![0]).toMatchObject({
+      liveSetId,
+      livePadSlot: 7,
+    });
   });
 });

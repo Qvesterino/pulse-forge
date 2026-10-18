@@ -1,5 +1,6 @@
-import type { MidiClip, Pattern, ProjectDocument } from "../project-model/types";
+import type { MidiClip, NoteEvent, NoteExpression, Pattern, ProjectDocument } from "../project-model/types";
 import { MAX_ARRANGEMENT_CLIP_TICKS } from "../project-model/schema";
+import { midiPhraseLengthTicks } from "../project-model/midiTime";
 import { cloneStepMeta, unlinkMarkersOfClips } from "./docOps";
 import { clipGroupsWithoutIds } from "./clipGroups";
 import { snapshot } from "./core";
@@ -21,6 +22,205 @@ function patternOf(doc: ProjectDocument, patternId: string): Pattern {
   const pattern = doc.patterns.find((candidate) => candidate.id === patternId);
   if (!pattern) throw new Error(`Pattern ${patternId} not found`);
   return pattern;
+}
+
+/** Transform shared by every note in each selected MIDI object. Blank UI fields are omitted. */
+export interface MidiObjectNoteEdit {
+  /** Add an integer number of MIDI semitones. */
+  transposeSemitones?: number;
+  /** Add/subtract musical ticks while keeping note order and duration. */
+  startOffsetTicks?: number;
+  /** Multiply note lengths by this percentage (100 = unchanged). */
+  durationScalePercent?: number;
+  /** Multiply note velocities by this percentage (100 = unchanged). */
+  velocityScalePercent?: number;
+  /** Add to each note's fine pitch offset in semitones. */
+  pitchOffsetSemitones?: number;
+  pan?: number;
+  filterCutoffHz?: number;
+  filterResonance?: number;
+  releaseVelocity?: number;
+  modX?: number;
+  modY?: number;
+  slide?: boolean;
+  slideNote?: boolean;
+  clearLocks?: boolean;
+}
+
+function clonePatternForMidiClip(source: Pattern): Pattern {
+  return {
+    ...source,
+    id: uid("pattern"),
+    name: `${source.name} · MIDI clip`,
+    rows: Object.fromEntries(Object.entries(source.rows).map(([padId, row]) => [padId, [...row]])),
+    notes: Object.fromEntries(
+      Object.entries(source.notes ?? {}).map(([trackId, notes]) => [
+        trackId,
+        notes.map((note) => ({
+          ...note,
+          id: uid("note"),
+          ...(note.expression ? { expression: { ...note.expression } } : {}),
+          ...(note.locks ? { locks: { ...note.locks } } : {}),
+        })),
+      ]),
+    ),
+    stepMeta: cloneStepMeta(source.stepMeta),
+    generation: source.generation ? { ...source.generation, sourcePatternId: source.id } : undefined,
+    phrasePlan: source.phrasePlan?.map((bar) => ({ ...bar })),
+    assist: source.assist ? { ...source.assist } : undefined,
+  };
+}
+
+function clampFinite(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function editNote(note: NoteEvent, edit: MidiObjectNoteEdit): NoteEvent {
+  const start = clampFinite(Math.round(note.start + (edit.startOffsetTicks ?? 0)), 0, MAX_ARRANGEMENT_CLIP_TICKS - 1);
+  const durationScale = (edit.durationScalePercent ?? 100) / 100;
+  const duration = clampFinite(
+    Math.round(note.duration * durationScale),
+    1,
+    Math.max(1, MAX_ARRANGEMENT_CLIP_TICKS - start),
+  );
+  const next: NoteEvent = {
+    ...note,
+    pitch: clampFinite(Math.round(note.pitch + (edit.transposeSemitones ?? 0)), 0, 127),
+    start,
+    duration,
+    velocity: clampFinite(note.velocity * ((edit.velocityScalePercent ?? 100) / 100), 0.05, 1),
+  };
+  if (edit.slide !== undefined) next.slide = edit.slide;
+  if (edit.slideNote !== undefined) next.slideNote = edit.slideNote;
+  if (edit.clearLocks) delete next.locks;
+
+  const expression: NoteExpression = { ...(note.expression ?? {}) };
+  const setExpression = (key: keyof NoteExpression, value: number | undefined, min: number, max: number) => {
+    if (value !== undefined) expression[key] = clampFinite(value, min, max);
+  };
+  if (edit.pitchOffsetSemitones !== undefined) {
+    setExpression("pitchOffsetSemitones", (expression.pitchOffsetSemitones ?? 0) + edit.pitchOffsetSemitones, -12, 12);
+  }
+  setExpression("pan", edit.pan, -1, 1);
+  setExpression("filterCutoffHz", edit.filterCutoffHz, 20, 20_000);
+  setExpression("filterResonance", edit.filterResonance, 0, 1);
+  setExpression("releaseVelocity", edit.releaseVelocity, 0, 1);
+  setExpression("modX", edit.modX, 0, 1);
+  setExpression("modY", edit.modY, 0, 1);
+  if (Object.keys(expression).length > 0) next.expression = expression;
+  else delete next.expression;
+  return next;
+}
+
+function validateMidiObjectNoteEdit(edit: MidiObjectNoteEdit): void {
+  const numericValues = [
+    edit.transposeSemitones,
+    edit.startOffsetTicks,
+    edit.durationScalePercent,
+    edit.velocityScalePercent,
+    edit.pitchOffsetSemitones,
+    edit.pan,
+    edit.filterCutoffHz,
+    edit.filterResonance,
+    edit.releaseVelocity,
+    edit.modX,
+    edit.modY,
+  ].filter((value): value is number => value !== undefined);
+  if (numericValues.some((value) => !Number.isFinite(value))) throw new Error("MIDI note edits must be finite");
+  if (edit.durationScalePercent !== undefined && edit.durationScalePercent <= 0)
+    throw new Error("Note length scale must be positive");
+  if (edit.velocityScalePercent !== undefined && edit.velocityScalePercent < 0)
+    throw new Error("Velocity scale cannot be negative");
+  if (numericValues.length === 0 && edit.slide === undefined && edit.slideNote === undefined && !edit.clearLocks) {
+    throw new Error("Choose at least one note property to edit");
+  }
+}
+
+/** Apply a batch note edit across multiple MIDI clip sources as one undoable document command. */
+export function editMidiClipNotes(doc: ProjectDocument, clipIds: readonly string[], edit: MidiObjectNoteEdit): Command {
+  validateMidiObjectNoteEdit(edit);
+  const uniqueIds = [...new Set(clipIds)];
+  if (uniqueIds.length === 0) throw new Error("Select at least one MIDI object");
+
+  const selected = uniqueIds.map((id) => clipOf(doc, id));
+  for (const clip of selected) editable(clip);
+  const selectedIdSet = new Set(uniqueIds);
+
+  // Preserve the selected objects' shared-source behavior while isolating them
+  // from unselected scene/MIDI placements that still reference the source.
+  const scenePatternIds = new Set(
+    doc.arrangement.clips.flatMap((clip) => {
+      const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
+      return scene ? [scene.patternId] : [];
+    }),
+  );
+  const selectedPatternIds = new Set(selected.map((clip) => clip.patternId));
+  const patternsToClone = new Set(
+    [...selectedPatternIds].filter(
+      (patternId) =>
+        scenePatternIds.has(patternId) ||
+        (doc.arrangement.midiClips ?? []).some((clip) => clip.patternId === patternId && !selectedIdSet.has(clip.id)),
+    ),
+  );
+  const clonedBySourceId = new Map<string, Pattern>();
+  for (const patternId of patternsToClone) {
+    clonedBySourceId.set(patternId, clonePatternForMidiClip(patternOf(doc, patternId)));
+  }
+
+  const patterns = [...doc.patterns, ...clonedBySourceId.values()];
+  const targetPatternId = new Map<string, string>();
+  for (const clip of selected) {
+    targetPatternId.set(clip.id, clonedBySourceId.get(clip.patternId)?.id ?? clip.patternId);
+  }
+  let editedNotes = 0;
+  const editedSourceTracks = new Set<string>();
+  const nextPatterns = patterns.map((pattern) => {
+    const matching = selected.filter((clip) => targetPatternId.get(clip.id) === pattern.id);
+    if (matching.length === 0) return pattern;
+    let notesByTrack = pattern.notes ?? {};
+    let changed = false;
+    for (const trackId of new Set(matching.map((clip) => clip.trackId))) {
+      const key = `${pattern.id}:${trackId}`;
+      if (editedSourceTracks.has(key)) continue;
+      editedSourceTracks.add(key);
+      const sourceNotes = notesByTrack[trackId] ?? [];
+      if (sourceNotes.length === 0) continue;
+      editedNotes += sourceNotes.length;
+      notesByTrack = { ...notesByTrack, [trackId]: sourceNotes.map((note) => editNote(note, edit)) };
+      changed = true;
+    }
+    return changed ? { ...pattern, notes: notesByTrack } : pattern;
+  });
+  if (editedNotes === 0) throw new Error("The selected MIDI objects contain no notes to edit");
+
+  const clipLengths = new Map<string, number>();
+  for (const clip of selected) {
+    const pattern = nextPatterns.find((candidate) => candidate.id === targetPatternId.get(clip.id));
+    const notes = pattern?.notes?.[clip.trackId] ?? [];
+    if (!pattern) continue;
+    const phraseTicks = midiPhraseLengthTicks(pattern.stepCount, notes);
+    if (phraseTicks > clip.lengthTicks) {
+      clipLengths.set(clip.id, Math.min(phraseTicks, MAX_ARRANGEMENT_CLIP_TICKS - clip.startTick));
+    }
+  }
+
+  const midiClips = (doc.arrangement.midiClips ?? []).map((clip) => {
+    const nextPatternId = targetPatternId.get(clip.id);
+    const lengthTicks = clipLengths.get(clip.id);
+    return nextPatternId || lengthTicks !== undefined
+      ? { ...clip, ...(nextPatternId ? { patternId: nextPatternId } : {}), ...(lengthTicks ? { lengthTicks } : {}) }
+      : clip;
+  });
+  return snapshot(
+    "editMidiClipNotes",
+    `Edit notes in ${selected.length} MIDI object${selected.length === 1 ? "" : "s"}`,
+    doc,
+    {
+      ...doc,
+      patterns: nextPatterns,
+      arrangement: { ...doc.arrangement, midiClips },
+    },
+  );
 }
 
 function safeGeometry(startTick: number, lengthTicks: number): { startTick: number; lengthTicks: number } {
@@ -160,22 +360,7 @@ export function makeMidiClipUnique(doc: ProjectDocument, clipId: string): Comman
   const clip = clipOf(doc, clipId);
   editable(clip);
   const source = patternOf(doc, clip.patternId);
-  const copy: Pattern = {
-    ...source,
-    id: uid("pattern"),
-    name: `${source.name} · MIDI clip`,
-    rows: Object.fromEntries(Object.entries(source.rows).map(([padId, row]) => [padId, [...row]])),
-    notes: Object.fromEntries(
-      Object.entries(source.notes ?? {}).map(([trackId, notes]) => [
-        trackId,
-        notes.map((note) => ({ ...note, id: uid("note"), ...(note.locks ? { locks: { ...note.locks } } : {}) })),
-      ]),
-    ),
-    stepMeta: cloneStepMeta(source.stepMeta),
-    generation: source.generation ? { ...source.generation, sourcePatternId: source.id } : undefined,
-    phrasePlan: source.phrasePlan?.map((bar) => ({ ...bar })),
-    assist: source.assist ? { ...source.assist } : undefined,
-  };
+  const copy = clonePatternForMidiClip(source);
   return snapshot("makeMidiClipUnique", `Make MIDI clip unique`, doc, {
     ...doc,
     patterns: [...doc.patterns, copy],

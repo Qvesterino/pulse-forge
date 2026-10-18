@@ -52,7 +52,9 @@ A Capacitor/WebView shell is **not required** for v1 and is not built by this
 repository. The web app already exposes the bridge contract for the four gaps a
 PWA cannot close: USB/BLE MIDI, SAF document flows, a foreground service and
 audio focus. See [MOBILE-SHELL.md](./MOBILE-SHELL.md) and
-[ADR 0052](./adr/0052-android-native-shell-boundary.md).
+[ADR 0052](./adr/0052-android-native-shell-boundary.md). The opt-in Capacitor
+spike scaffold lives in [`mobile/shell/`](../mobile/shell/README.md); it is not
+shipped and contains no verified native implementation.
 
 Without a shell:
 
@@ -83,7 +85,14 @@ The PWA is already built by `vite-plugin-pwa` (`src/pwa.ts`):
 
 - manifest identity, icons, scope/start URL follow `STUDIO_APP_BASE`;
 - prompt-mode updates so a running session never loses its precache;
-- the app shell and curated samples are precached; optional runtimes are not.
+- **only the app shell is precached** (~9 MB). Sample WAVs are runtime-cached
+  on first use; the old 236 MB piano + 36 MB one-shot install payload is gone;
+- `Diagnostics → Device → Offline audio packs` can prefill the same
+  `kyx-samples` cache for explicit offline work (factory ~36 MB, piano ~236 MB;
+  use Wi-Fi);
+- worklet bundles are content-hashed in `public/worklets-manifest.json`; the
+  loader appends `?v=<sha256>` so a CDN/HTTP cache cannot mix an old worklet
+  with a new app.
 
 Verify after a production build:
 

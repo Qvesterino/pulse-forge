@@ -5359,16 +5359,35 @@ export function ArrangementPanel() {
             doc={services.store.getDoc()}
             tracks={tracks}
             midiClips={visibleMidiClips}
-            selectedClipId={selection.clipIds.find((id) => midiClips.some((clip) => clip.id === id)) ?? null}
+            selectedClipIds={selection.clipIds.filter((id) => midiClips.some((clip) => clip.id === id))}
             totalBars={totalBars}
             barWidth={barWidth}
             snapGrid={snapGrid}
             playheadTick={services.transport.position}
             onExecute={execute}
-            onSelect={(id) => {
+            onSelect={(id, mode = "replace") => {
               setSelectedClipId(null);
               setSelectedAudioClipId(null);
-              selectionStore.setClips([id]);
+              if (mode === "toggle") {
+                selectionStore.setClips([id], "add");
+              } else if (mode === "range") {
+                const trackOrder = new Map(tracks.map((track, index) => [track.id, index]));
+                const ordered = [...midiClips].sort(
+                  (a, b) =>
+                    (trackOrder.get(a.trackId) ?? Number.MAX_SAFE_INTEGER) -
+                      (trackOrder.get(b.trackId) ?? Number.MAX_SAFE_INTEGER) || a.startTick - b.startTick,
+                );
+                const lastSelected = selection.clipIds.at(-1);
+                const from = ordered.findIndex((clip) => clip.id === lastSelected);
+                const to = ordered.findIndex((clip) => clip.id === id);
+                selectionStore.setClips(
+                  from !== -1 && to !== -1
+                    ? ordered.slice(Math.min(from, to), Math.max(from, to) + 1).map((clip) => clip.id)
+                    : [id],
+                );
+              } else if (!selectionStore.isClipSelected(id)) {
+                selectionStore.setClips([id]);
+              }
             }}
             onEditSource={openMidiClipSource}
             onMakeUniqueAndEdit={makeMidiClipUniqueAndEdit}

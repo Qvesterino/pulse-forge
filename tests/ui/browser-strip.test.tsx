@@ -99,7 +99,7 @@ describe("BrowserStrip (ROADMAP-UI-2027 V4)", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "Preview loop in project tempo House Loop" }));
     const nextBeatTick = (Math.floor(services.transport.position / PPQ) + 1) * PPQ;
     const previewBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, nextBeatTick, doc.bpm);
-    expect(services.engine.previewAssetSynced).toHaveBeenCalledWith(loop.id, loop.bpm! / previewBpm);
+    expect(services.engine.previewAssetSynced).toHaveBeenCalledWith(loop.id, previewBpm / loop.bpm!, true);
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Add House Loop to arrangement" }));
     await waitFor(() => expect(services.store.execute).toHaveBeenCalled());

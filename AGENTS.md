@@ -413,6 +413,12 @@ npm run test:browser:factory-presets          # factory preset audio QA
 
 # Worklets (auto-run by predev/prebuild hooks)
 npm run build:core-worklets
+npm run build:sample-pack-manifest   # public/samples/offline-pack.json
+npm run build:worklet-manifest       # public/worklets-manifest.json (sha256 -> ?v=)
+
+# Mobile
+npm run mobile:twa                    # needs KYX_DEPLOY_URL + KYX_ANDROID_SHA256
+npm run mobile:latency-summary -- release-evidence/mobile-latency
 
 # Derivable artifacts (MCP mirrors, domain goldens, CURRENT-STATE counts)
 npm run drift:check                          # verify artifacts match their generators

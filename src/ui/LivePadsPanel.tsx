@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { addAudioClip, assignLivePad, createLiveSet, deleteLiveSet, duplicateLiveSet, fittedLoopPlacement, renameLiveSet, selectLiveSet, setLiveSetOptions } from "../commands/commands";
+import {
+  addAudioClip,
+  assignLivePad,
+  createLiveSet,
+  deleteLiveSet,
+  duplicateLiveSet,
+  fittedLoopPlacement,
+  renameLiveSet,
+  selectLiveSet,
+  setLiveSetOptions,
+} from "../commands/commands";
 import { BAR_TICKS } from "../project-model/types";
 import { sceneSecondsToBars, tempoAtTick } from "../project-model/scene-time";
 import type { LiveSet, LiveSetPad } from "../project-model/types";
@@ -24,8 +34,10 @@ function sampleIdFromDrop(data: DataTransfer): string | null {
 function padFromAsset(id: string, userAssets: readonly UserSampleAsset[]): LiveSetPad {
   const userAsset = userAssets.find((asset) => asset.id === id);
   if (userAsset) {
-    const isLoop = userAsset.loopMetadata?.isLoop === false ? false :
-      userAsset.loopMetadata?.isLoop === true || (Number.isFinite(userAsset.bpm) && (userAsset.bpm ?? 0) >= 40);
+    const isLoop =
+      userAsset.loopMetadata?.isLoop === false
+        ? false
+        : userAsset.loopMetadata?.isLoop === true || (Number.isFinite(userAsset.bpm) && (userAsset.bpm ?? 0) >= 40);
     return {
       slot: 0,
       bufferId: userAsset.id,
@@ -61,9 +73,8 @@ export function LivePadsPanel() {
   const sets = doc.liveSets ?? EMPTY_LIVE_SETS;
   const liveSet = sets.find((set) => set.id === doc.activeLiveSetId) ?? sets[0];
   const tracks = useMemo(() => doc.tracks.filter((track) => track.kind !== "generative"), [doc.tracks]);
-  const trackId = liveSet?.trackId && tracks.some((track) => track.id === liveSet.trackId)
-    ? liveSet.trackId
-    : tracks[0]?.id;
+  const trackId =
+    liveSet?.trackId && tracks.some((track) => track.id === liveSet.trackId) ? liveSet.trackId : tracks[0]?.id;
   const clips = doc.arrangement.audioClips ?? [];
 
   useEffect(() => {
@@ -83,9 +94,8 @@ export function LivePadsPanel() {
 
   const launch = async (pad: LiveSetPad) => {
     if (!liveSet) return;
-    const destinationId = liveSet.trackId && tracks.some((track) => track.id === liveSet.trackId)
-      ? liveSet.trackId
-      : trackId;
+    const destinationId =
+      liveSet.trackId && tracks.some((track) => track.id === liveSet.trackId) ? liveSet.trackId : trackId;
     if (!destinationId) {
       setMessage("Add an audio-capable track before launching a pad.");
       return;
@@ -101,19 +111,14 @@ export function LivePadsPanel() {
       const barTick = Math.max(0, services.transport.position);
       const startBar = services.transport.playing
         ? Math.floor(barTick / BAR_TICKS) + 1
-        : Math.ceil((barTick - 1e-6) / BAR_TICKS);
+        : Math.max(0, Math.ceil((barTick - 1e-6) / BAR_TICKS));
       const startTick = startBar * BAR_TICKS;
-      const targetBpm = tempoAtTick(
-        currentDoc.arrangement.clips,
-        currentDoc.scenes,
-        startTick,
-        currentDoc.bpm,
-      );
+      const targetBpm = tempoAtTick(currentDoc.arrangement.clips, currentDoc.scenes, startTick, currentDoc.bpm);
       const fit = pad.bpm
         ? fittedLoopPlacement(source.duration, pad.bpm, targetBpm, currentDoc.timeSignature.numerator)
         : null;
       const lengthBars = pad.loop
-        ? liveSet.loopBars
+        ? Math.max(liveSet.loopBars, fit?.lengthBars ?? 0)
         : Math.max(0.25, sceneSecondsToBars(source.duration, targetBpm));
       const patch = {
         ...(pad.loop ? { loop: true } : {}),
@@ -126,7 +131,13 @@ export function LivePadsPanel() {
       services.playback.setMode("song");
       services.store.execute(addAudioClip(currentDoc, destinationId, pad.bufferId, startBar, lengthBars, patch));
       if (!services.transport.playing) services.playback.playPause();
-      setMessage(`Queued ${pad.name} for bar ${startBar + 1}. The audio clip is editable in the arrangement.`);
+      const loopNotice =
+        pad.loop && fit && fit.lengthBars > liveSet.loopBars
+          ? ` Source loop needs ${fit.lengthBars} bars, so the clip keeps its full length.`
+          : "";
+      setMessage(
+        `Queued ${pad.name} for bar ${startBar + 1}. The audio clip is editable in the arrangement.${loopNotice}`,
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not launch this Live Pad.");
     } finally {
@@ -160,7 +171,9 @@ export function LivePadsPanel() {
               onChange={(event) => services.store.execute(selectLiveSet(doc, event.target.value))}
             >
               {sets.map((set) => (
-                <option key={set.id} value={set.id}>{set.name}</option>
+                <option key={set.id} value={set.id}>
+                  {set.name}
+                </option>
               ))}
             </select>
           )}
@@ -175,10 +188,18 @@ export function LivePadsPanel() {
           </button>
           {liveSet && (
             <>
-              <button type="button" className="btn btn-small" onClick={() => services.store.execute(duplicateLiveSet(doc, liveSet.id))}>
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={() => services.store.execute(duplicateLiveSet(doc, liveSet.id))}
+              >
                 DUPLICATE
               </button>
-              <button type="button" className="btn btn-small" onClick={() => services.store.execute(deleteLiveSet(doc, liveSet.id))}>
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={() => services.store.execute(deleteLiveSet(doc, liveSet.id))}
+              >
                 DELETE
               </button>
             </>
@@ -211,12 +232,20 @@ export function LivePadsPanel() {
               <select
                 aria-label="Live Set destination track"
                 value={trackId ?? ""}
-                onChange={(event) => services.store.execute(setLiveSetOptions(doc, liveSet.id, { trackId: event.target.value || null }))}
+                onChange={(event) =>
+                  services.store.execute(setLiveSetOptions(doc, liveSet.id, { trackId: event.target.value || null }))
+                }
                 disabled={tracks.length === 0}
               >
-                {tracks.length === 0 ? <option value="">No audio track</option> : tracks.map((track) => (
-                  <option key={track.id} value={track.id}>{track.name}</option>
-                ))}
+                {tracks.length === 0 ? (
+                  <option value="">No audio track</option>
+                ) : (
+                  tracks.map((track) => (
+                    <option key={track.id} value={track.id}>
+                      {track.name}
+                    </option>
+                  ))
+                )}
               </select>
             </label>
             <label>
@@ -224,12 +253,22 @@ export function LivePadsPanel() {
               <select
                 aria-label="Live Pad loop length"
                 value={liveSet.loopBars}
-                onChange={(event) => services.store.execute(setLiveSetOptions(doc, liveSet.id, { loopBars: Number(event.target.value) as LiveSet["loopBars"] }))}
+                onChange={(event) =>
+                  services.store.execute(
+                    setLiveSetOptions(doc, liveSet.id, { loopBars: Number(event.target.value) as LiveSet["loopBars"] }),
+                  )
+                }
               >
-                {LOOP_LENGTHS.map((bars) => <option key={bars} value={bars}>{bars} BARS</option>)}
+                {LOOP_LENGTHS.map((bars) => (
+                  <option key={bars} value={bars}>
+                    {bars} BARS
+                  </option>
+                ))}
               </select>
             </label>
-            <span className="live-pads-mode-hint">LOOPS LAUNCH ON THE NEXT BAR · AUDIO CLIPS APPEAR IN SONG ARRANGEMENT</span>
+            <span className="live-pads-mode-hint">
+              LOOPS LAUNCH ON THE NEXT BAR · AUDIO CLIPS APPEAR IN SONG ARRANGEMENT
+            </span>
           </div>
 
           <div className="live-pads-grid" role="grid" aria-label={`${liveSet.name} pads`}>
@@ -242,7 +281,10 @@ export function LivePadsPanel() {
                   key={slot}
                   role="gridcell"
                   onDragOver={(event) => {
-                    if (event.dataTransfer.types.includes(KYX_SAMPLE_MIME) || event.dataTransfer.types.includes("text/plain")) {
+                    if (
+                      event.dataTransfer.types.includes(KYX_SAMPLE_MIME) ||
+                      event.dataTransfer.types.includes("text/plain")
+                    ) {
                       event.preventDefault();
                       event.dataTransfer.dropEffect = "copy";
                     }
@@ -259,12 +301,20 @@ export function LivePadsPanel() {
                     className="live-pad"
                     disabled={!pad || busyPad !== null}
                     onClick={() => pad && void launch(pad)}
-                    aria-label={pad ? `Launch pad ${slot + 1}, ${pad.name}${active ? ", playing" : ""}` : `Empty pad ${slot + 1}, drop a sample loop here`}
+                    aria-label={
+                      pad
+                        ? `Launch pad ${slot + 1}, ${pad.name}${active ? ", playing" : ""}`
+                        : `Empty pad ${slot + 1}, drop a sample loop here`
+                    }
                     title={pad ? `Launch ${pad.name} at the next bar` : "Drag a loop or sample here"}
                   >
                     <span className="live-pad-number">{String(slot + 1).padStart(2, "0")}</span>
                     <span className="live-pad-name">{pad ? assetName(pad.bufferId) : "DROP LOOP"}</span>
-                    {pad?.bpm && <span className="live-pad-meta">{Math.round(pad.bpm)} BPM{pad.loop ? " · LOOP" : ""}</span>}
+                    {pad?.bpm && (
+                      <span className="live-pad-meta">
+                        {Math.round(pad.bpm)} BPM{pad.loop ? " · LOOP" : ""}
+                      </span>
+                    )}
                     {busyPad === slot && <span className="live-pad-meta">LOADING…</span>}
                   </button>
                   {pad && (
@@ -289,10 +339,14 @@ export function LivePadsPanel() {
       ) : (
         <div className="live-pads-empty">
           <p>Create a Live Set, then drag loops from the Sounds browser onto the pads.</p>
-          <button type="button" className="btn" onClick={() => services.store.execute(createLiveSet(doc))}>CREATE LIVE SET</button>
+          <button type="button" className="btn" onClick={() => services.store.execute(createLiveSet(doc))}>
+            CREATE LIVE SET
+          </button>
         </div>
       )}
-      <div className="live-pads-status" aria-live="polite">{message}</div>
+      <div className="live-pads-status" aria-live="polite">
+        {message}
+      </div>
     </section>
   );
 }

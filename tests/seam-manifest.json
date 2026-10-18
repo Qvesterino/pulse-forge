@@ -531,6 +531,24 @@
       "note": "These values become normalizeToLufs / truePeakCeilingDbtp / maximumGainDb, and the album normalization path applies that gain to the RENDERED PCM of every exported track. Measured defects: an empty LUFS field exported normalizeToLufs 0 (0 LUFS-I), an empty true-peak field disabled the ceiling, and '99' passed through unclamped."
     },
     {
+      "id": "live-pad-launch",
+      "status": "COVERED",
+      "entryPoint": "src/ui/LivePadsPanel.tsx 4×4 pad grid drop and launch handlers",
+      "spec": "tests/ui/LivePadsPanel.test.tsx",
+      "seamEvent": "getByRole(\"button\", { name: /Launch pad",
+      "negativeSpec": "does not launch an empty pad",
+      "note": "The panel routes a dropped library asset into a project Live Set and queues loop clips at bar boundaries. Empty slots remain inert."
+    },
+    {
+      "id": "loop-browser-preview-and-insert",
+      "status": "COVERED",
+      "entryPoint": "src/ui/BrowserStrip.tsx → src/ui/SampleBrowser.tsx loop preview and Add action",
+      "spec": "tests/ui/browser-strip.test.tsx",
+      "seamEvent": "previews a loop against the scene tempo and adds one fitted undoable clip",
+      "negativeSpec": "leaves the arrangement untouched",
+      "note": "The real browser controls preview tempo and dispatches addAudioClip; the refusal case proves an unavailable loop buffer cannot mutate the arrangement."
+    },
+    {
       "id": "add-track-instrument-parity",
       "status": "COVERED",
       "entryPoint": "src/ui/TrackTabs.tsx add-track select -> createInstrumentTrack",
@@ -538,6 +556,15 @@
       "seamEvent": "Add track",
       "negativeSpec": "offers no instrument value outside the registry",
       "note": "TrackTabs is the only UI caller of createInstrumentTrack, so a missing option is an unreachable instrument rather than a cosmetic gap. The hand-written list offered 15 of 24 kinds (organ, strings, bell, reese, clav, acid, brass, fm, tsar were uncreatable) and drifted from the INSTRUMENT_META names. Now registry-generated, with a two-sided parity assertion."
+    },
+    {
+      "id": "midi-multi-object-note-edit",
+      "status": "COVERED",
+      "entryPoint": "src/ui/arrangement/MidiClipLanes.tsx MIDI clip selection -> context menu -> batch editor",
+      "spec": "tests/ui/midi-clip-lanes.test.tsx",
+      "seamEvent": "Edit note properties in 2 objects…",
+      "negativeSpec": "does not show the batch note editor for a single MIDI clip",
+      "note": "The UI keeps single-object edits on the existing source-pattern path and sends a multi-object transform through one command. The regression also verifies undo/redo and isolation of an unselected shared source."
     }
   ]
 }

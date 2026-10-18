@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { downloadOfflinePack, formatBytes, parseOfflinePackManifest, type OfflinePack } from "../src/pwa/offlinePack";
 
 function pack(files: Array<{ url: string; bytes: number }>): OfflinePack {
@@ -56,6 +58,21 @@ describe("offline pack manifest", () => {
     expect(formatBytes(0)).toBe("0 MB");
     expect(formatBytes(2048)).toBe("2 KB");
     expect(formatBytes(5 * 1024 * 1024)).toBe("5.0 MB");
+  });
+});
+
+describe("shipped offline pack manifest", () => {
+  it("lists the factory and piano packs with real files", () => {
+    const manifest = parseOfflinePackManifest(
+      JSON.parse(readFileSync(resolve(process.cwd(), "public/samples/offline-pack.json"), "utf-8")),
+    );
+    expect(manifest?.packs.map((p) => p.id)).toEqual(["factory", "piano"]);
+    expect(manifest?.packs.find((p) => p.id === "factory")?.files.length).toBeGreaterThan(100);
+    expect(manifest?.packs.find((p) => p.id === "piano")?.files.length).toBeGreaterThan(100);
+    for (const pack of manifest!.packs) {
+      expect(pack.bytes).toBeGreaterThan(0);
+      expect(pack.files.every((file) => file.url.startsWith("/samples/"))).toBe(true);
+    }
   });
 });
 

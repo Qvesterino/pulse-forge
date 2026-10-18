@@ -4,6 +4,7 @@ import { addAudioClip, updateAudioClip } from "../src/commands/commands";
 import { normalizeProject, migrateProject, SCHEMA_VERSION } from "../src/project-model/schema";
 import type { ProjectDocument } from "../src/project-model/types";
 import { TriggerEngine } from "../src/audio-engine/triggerEngine";
+import { ProjectStore } from "../src/store/ProjectStore";
 import { testDoc } from "./fixtures/doc";
 import { StretchDialog } from "../src/ui/StretchDialog";
 
@@ -18,10 +19,13 @@ function docWithAudioClip() {
 describe("independent AudioClip pitch", () => {
   it("stores a semitone offset as one undoable clip edit and clamps its range", () => {
     const { doc, clipId } = docWithAudioClip();
-    const command = updateAudioClip(doc, clipId, { pitchSemitones: 7 });
-    const next = command.execute(doc);
-    expect(next.arrangement.audioClips![0]!.pitchSemitones).toBe(7);
-    expect(command.undo(next).arrangement.audioClips![0]!.pitchSemitones).toBeUndefined();
+    const store = new ProjectStore(doc);
+    store.execute(updateAudioClip(store.doc, clipId, { pitchSemitones: 7 }));
+    expect(store.doc.arrangement.audioClips![0]!.pitchSemitones).toBe(7);
+    store.undo();
+    expect(store.doc.arrangement.audioClips![0]!.pitchSemitones).toBeUndefined();
+    store.redo();
+    expect(store.doc.arrangement.audioClips![0]!.pitchSemitones).toBe(7);
 
     expect(
       updateAudioClip(doc, clipId, { pitchSemitones: 30 }).execute(doc).arrangement.audioClips![0]!.pitchSemitones,
@@ -52,8 +56,8 @@ describe("independent AudioClip pitch", () => {
       },
     };
     const migrated = migrateProject(legacy);
-    expect(SCHEMA_VERSION).toBe(37);
-    expect(migrated.schemaVersion).toBe(37);
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(37);
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
     expect(
       migrated.arrangement.audioClips!.find((candidate) => candidate.id === clipId)!.pitchSemitones,
     ).toBeUndefined();
@@ -144,6 +148,71 @@ describe("independent AudioClip pitch", () => {
     fireEvent.change(screen.getByRole("slider", { name: "Pitch shift in semitones" }), { target: { value: "5" } });
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
     expect(onApply).toHaveBeenCalledWith(1, "stretch", 5);
+  });
+});
+
+describe("AudioClip tempo stretch", () => {
+  it("uses reciprocal resampling when the duration stretch is below the render threshold", () => {
+    const { doc, trackId } = docWithAudioClip();
+    const sourceBuffer = makeAudioBuffer(1, 44100, 44100);
+    const sources: Array<{ buffer: ReturnType<typeof makeAudioBuffer> | null; playbackRate: { value: number } }> = [];
+    const ctx = {
+      createBuffer: makeAudioBuffer,
+      createBufferSource: () => {
+        const source = {
+          buffer: null as ReturnType<typeof makeAudioBuffer> | null,
+          playbackRate: { value: 1 },
+          loop: false,
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+          start: vi.fn(),
+          stop: vi.fn(),
+          onended: null as (() => void) | null,
+        };
+        sources.push(source);
+        return source;
+      },
+      createGain: () => ({
+        gain: {
+          value: 1,
+          setValueAtTime: vi.fn(),
+          linearRampToValueAtTime: vi.fn(),
+          setValueCurveAtTime: vi.fn(),
+        },
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+      }),
+    };
+    const warp = {
+      isFrozen: () => false,
+      getStretched: () => undefined,
+      storeStretched: vi.fn(),
+      getWarp: () => null,
+      warmWarp: vi.fn(),
+      warpCacheKey: () => "unused",
+    };
+    const engine = new TriggerEngine(
+      {
+        ctx: () => ctx,
+        doc: () => doc,
+        bank: () => ({ get: (id: string) => (id === "audio.pitch-test" ? sourceBuffer : null) }),
+        currentTime: () => 0,
+        trackNodes: new Map([[trackId, { input: { connect: vi.fn(), disconnect: vi.fn() } }]]),
+        groupNodes: new Map(),
+        instrumentStates: new Map(),
+        warp,
+        trackOneShot: vi.fn(),
+        releaseOneShot: vi.fn(),
+        missAsset: vi.fn(),
+      } as never,
+      warp as never,
+    );
+    const clip = { ...doc.arrangement.audioClips![0]!, stretchMode: "stretch" as const, stretchRate: 1.005 };
+
+    engine.triggerAudioClip(clip, 0, 0.99);
+
+    expect(sources[0]?.buffer).toBe(sourceBuffer);
+    expect(sources[0]?.playbackRate.value).toBeCloseTo(1 / 1.005);
   });
 });
 

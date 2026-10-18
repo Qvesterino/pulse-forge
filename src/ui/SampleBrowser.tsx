@@ -5,6 +5,7 @@ import { ASSET_MOODS } from "../sample-library/manifest";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
 import { PPQ } from "../project-model/types";
 import { tempoAtTick } from "../project-model/scene-time";
+import { loopPreviewPlaybackRate } from "../audio-engine/loopTempo";
 import { categoryColor } from "./kitColors";
 import { DropZone } from "./DropZone";
 import { IntakeTray } from "./IntakeTray";
@@ -263,7 +264,7 @@ export function SampleBrowser({
         const doc = services.store.getDoc();
         const nextBeatTick = (Math.floor(services.transport.position / PPQ) + 1) * PPQ;
         const targetBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, nextBeatTick, doc.bpm);
-        services.engine.previewAssetSynced(asset.id, asset.bpm / targetBpm);
+        services.engine.previewAssetSynced(asset.id, loopPreviewPlaybackRate(asset.bpm, targetBpm), true);
       } else services.engine.previewAsset(asset.id);
       return;
     }
