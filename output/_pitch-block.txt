@@ -1,0 +1,39 @@
+// THE PITCH CHECK. This took three attempts and each wrong one is recorded,
+      // because the shape of the mistake is the reusable part.
+      //
+      // WHAT ROW_HEIGHT MUST BE. `cumulativeHeights` sums getItemHeight() over
+      // the flat item list to produce `totalHeight` — the height of the scroll
+      // spacer — and `scrollTop` is mapped through it to decide which items are
+      // in view. So ROW_HEIGHT is the virtualizer's idea of how tall a row is,
+      // and it has to agree with the stylesheet or the spacer is the wrong size
+      // and scrolling renders the wrong rows.
+      //
+      // ATTEMPT 1 — "box + marginBottom". Wrong. On a coarse pointer it
+      // computed 48 against ROW_HEIGHT 46 and reported a 2px drift that does
+      // not exist, because the margin does not participate in layout there. It
+      // passed on the fine branch only by coincidence (28 + 2 == 30).
+      //
+      // ATTEMPT 2 — "rendered top-to-top pitch". Also wrong, and worse: it is a
+      // tautology. Mutating ROW_HEIGHT to 32 moved the rendered pitch to 32,
+      // because the component lays the rows out from its own constant. A check
+      // that follows the thing it checks cannot fail.
+      //
+      // ATTEMPT 3 — the quantity CSS alone produces: the row BOX height. Measured
+      // with ROW_HEIGHT mutated 30 -> 32, the box stayed 28 on fine and 46 on
+      // coarse. It is genuinely independent of the constant.
+      //
+      // The invariant that actually harms when violated is overlap: a row box
+      // taller than the slot ROW_HEIGHT reserves means each row overlaps the
+      // next by the excess, and the excess accumulates down the list. So the
+      // gate asserts box <= slot, and prints both numbers so a drift is legible
+      // even when it is not yet fatal.
+      const assumed = Number(seq.getAttribute("data-row-height"));
+      const row = rows[1] ?? rows[0];
+      if (row) {
+        const box = row.getBoundingClientRect().height;
+        out.rowBoxHeight = Math.round(box * 100) / 100;
+        out.rowMarginBottom = parseFloat(getComputedStyle(row).marginBottom) || 0;
+      }
+      out.rowPitchAssumed = Number.isFinite(assumed) ? assumed : null;
+      out.rowBoxOverlapsSlot =
+        out.rowBoxHeight != null && out.rowPitchAssumed != null && out.rowBoxHeight > out.rowPitchAssumed;

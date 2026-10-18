@@ -1,0 +1,43 @@
+ui(proportion): measure the coarse branch, and fix a gate that measured the wrong thing
+
+The coarse-pointer branch of the shell ran in production with no gate behind
+it. Sequencer.tsx picks ROW_HEIGHT from matchMedia('(pointer: coarse)') and
+57-row-pitch.css sets --step-h under the same query, but the gate's context
+had no touch emulation - so at 390x844 it answered from the fine branch and
+reported 'pitch TS 30px vs CSS 30px': correct, and about the wrong branch.
+
+Adds --touch: one extra context (devices['Pixel 7']) resized across 390x844
+and 800x1180. Before measuring it asserts the context really reports
+(pointer: coarse); if the emulation ever fails to flip, that is HARNESS_ERROR
+rather than a pass, because a gate reporting green over a branch it never
+entered is worse than no gate.
+
+THE GATE WAS ALSO WRONG. Its pitch metric was rowBox + marginBottom. On a
+coarse pointer that computes 48 against ROW_HEIGHT 46 and reports a 2px
+drift that does not exist - the margin does not participate in layout there.
+It passed on the fine branch only by coincidence (28 + 2 == 30).
+
+Two wrong metrics were tried before the right one, and all three are recorded
+in the file because the shape of the mistake is the reusable part:
+
+  1. box + marginBottom   - wrong, inert margin on the coarse branch
+  2. rendered top-to-top  - a tautology. Mutating ROW_HEIGHT to 32 moved the
+                            rendered pitch to 32, because the component lays
+                            rows out from its own constant
+  3. the CSS row box       - correct. With ROW_HEIGHT mutated 30 -> 32 the box
+                            stayed 28 (fine) and 46 (coarse), so it is
+                            genuinely independent
+
+The invariant that actually harms is overlap: a box taller than the slot
+accumulates down the list. Asserts box <= slot and prints both numbers.
+
+Falsified: ROW_HEIGHT set to 40/24 turned both branches red with the correct
+message; the corroborating symptom was visible rows jumping from 12 to 15 as
+the virtualizer believed the rows were shorter.
+
+Also corrects a comment in Sequencer.tsx that asserted the rows are
+absolutely positioned from cumulativeHeights. Measured: position is static.
+The tautology conclusion survived, for a different reason, and the comment now
+says so and warns off "fixing" the comparison back to a rendered-pitch check.
+
+Both branches pass: fine 28px box in a 30px slot, coarse 46px in 46.

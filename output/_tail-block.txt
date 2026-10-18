@@ -1,0 +1,14 @@
+const failed =
+  overflow.length ||
+  collapsed.length ||
+  pitchMiss.length ||
+  touchOverflow.length ||
+  touchCollapsed.length ||
+  touchPitchMiss.length ||
+  touchWrongConstant.length;
+if (!failed) {
+  console.log("PASS: no overflow, sequencer present at every viewport, row pitch matches the virtualizer");
+  if (TOUCH) console.log("PASS (coarse): " + TOUCH_VIEWPORTS.length + " touch viewports, ROW_HEIGHT " + COARSE_ROW_PITCH + "px == CSS box");
+  else console.log("NOTE: coarse-pointer branch NOT measured - pass --touch to cover it");
+}
+process.exit(failed ? EXIT_GATE_FAILED : 0);

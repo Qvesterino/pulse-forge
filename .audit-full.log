@@ -70,3 +70,25 @@
 [audit] instrument bell
 [audit] instrument reese
 [retry] evaluate attempt 1 failed (Error: page.evaluate: Execution context was destroyed, most likely because of a navigation.) — reloading page
+[retry] navigation race on attempt 1 (TimeoutError: page.goto: Timeout 180000ms exceeded.
+Call log:
+[2m  - navigating to "http:)
+[audit] instrument clav
+[audit] instrument acid
+[audit] instrument brass
+[audit] instrument fm
+[audit] instrument pluck
+[audit] instrument flute
+[audit] instrument logdrum
+[audit] instrument spectral
+[audit] instrument vocalchop
+[audit] instrument drumsynth
+[audit] instrument tsar
+[audit] instrument kopa
+[audit] instrument choral
+[audit] interactions
+[audit] report written to D:\pulse-forge\docs\plugin-audit-2026-09-27.report.json
+[audit] 3 error(s) during the audit:
+  ! WebSocket connection to 'ws://127.0.0.1:5221/' failed: Error in connection establishment: net::ERR_NETWORK_IO_SUSPENDED
+  ! WebSocket connection to 'ws://127.0.0.1:5221/' failed: Error in connection establishment: net::ERR_NETWORK_IO_SUSPENDED
+  ! Error: page.evaluate: Execution context was destroyed, most likely because of a navigation.

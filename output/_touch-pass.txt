@@ -1,0 +1,65 @@
+await context.close();
+
+/**
+ * The coarse-pointer pass. ONE context, resized between viewports — the same
+ * reason the fine pass boots once: a fresh context per viewport is a fresh
+ * cold boot of a ~180 KB AudioEngine, and three of five of those never reached
+ * the studio and reported nulls that read as a collapsed sequencer.
+ */
+const touchReport = [];
+let coarseEmulated = null;
+if (TOUCH) {
+  const touchContext = await browser.newContext({
+    ...devices["Pixel 7"],
+    viewport: { width: TOUCH_VIEWPORTS[0].w, height: TOUCH_VIEWPORTS[0].h },
+  });
+  const page = await touchContext.newPage();
+  page.setDefaultNavigationTimeout(300_000);
+  page.setDefaultTimeout(300_000);
+
+  await openStudio(page, "[coarse]");
+
+  // THE CLAIM UNDER TEST. If the emulated context does not actually report a
+  // coarse pointer, everything below measures the fine branch and every number
+  // it prints is true and irrelevant. That is HARNESS_ERROR, not a pass.
+  coarseEmulated = await page.evaluate(() => ({
+    coarse: window.matchMedia("(pointer: coarse)").matches,
+    fine: window.matchMedia("(pointer: fine)").matches,
+    anyCoarse: window.matchMedia("(any-pointer: coarse)").matches,
+    touchPoints: navigator.maxTouchPoints,
+  }));
+  if (!coarseEmulated.coarse) {
+    await touchContext.close();
+    await browser.close();
+    throw new Error(
+      "touch context does not report (pointer: coarse) - coarse=" +
+        coarseEmulated.coarse +
+        " fine=" +
+        coarseEmulated.fine +
+        " anyCoarse=" +
+        coarseEmulated.anyCoarse +
+        " maxTouchPoints=" +
+        coarseEmulated.touchPoints +
+        ". The coarse branch would NOT be measured.",
+    );
+  }
+
+  for (const vp of TOUCH_VIEWPORTS) {
+    await page.setViewportSize({ width: vp.w, height: vp.h });
+    await page.waitForTimeout(900);
+    const m = await measure(page);
+    if (m.topbar == null) {
+      await touchContext.close();
+      await browser.close();
+      throw new Error("studio shell absent at " + vp.w + "x" + vp.h + " (coarse) - measurement aborted");
+    }
+    const rows = REGIONS.map((r) => ({ label: r.label, px: m[r.key]?.h ?? null, weight: r.weight }));
+    touchReport.push({ vp, m, text: table(rows, vp.w, vp.h) });
+    if (SHOTS) {
+      await page.screenshot({ path: resolve(outDir, "proportion-touch-" + vp.w + "x" + vp.h + ".png") });
+    }
+  }
+  await touchContext.close();
+}
+
+await browser.close();
