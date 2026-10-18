@@ -90,7 +90,9 @@ export class ChoralProcessor {
   private pcmRootHz = 261.63;
 
   private scaleMask = CHROMATIC;
-  private chords: { startBar: number; lengthBars: number; mask: number }[] = [];
+  // The chord lane is ACCEPTED in the context shape (the host sends it) but
+  // v1 voicing reads only the scale mask — chord-refined stacking is the
+  // follow-up wave (ADR 0054 §3 scope line).
 
   private events: ChoralEvent[] = [];
   private streams: Stream[] = [];
@@ -130,24 +132,6 @@ export class ChoralProcessor {
     if (!init || typeof init !== "object") return;
     if (Number.isFinite(init.scaleMask) && (init.scaleMask as number) >= 0) {
       this.scaleMask = (init.scaleMask as number) & CHROMATIC;
-    }
-    if (Array.isArray(init.chords)) {
-      this.chords = init.chords
-        .slice(0, 256)
-        .filter(
-          (chord) =>
-            chord &&
-            Number.isFinite(chord.startBar) &&
-            Number.isFinite(chord.lengthBars) &&
-            chord.lengthBars > 0 &&
-            Number.isFinite(chord.chordMask),
-        )
-        .map((chord) => ({
-          startBar: chord.startBar,
-          lengthBars: chord.lengthBars,
-          mask: (chord.chordMask as number) & CHROMATIC,
-        }))
-        .sort((a, b) => a.startBar - b.startBar);
     }
   }
 
@@ -220,7 +204,8 @@ export class ChoralProcessor {
       stream.startFrame = startFrame;
       stream.pitch = pitch + interval + detuneCents;
       stream.rate = midiToHz(stream.pitch) / this.pcmRootHz;
-      stream.lcg = (0x9e3779b9 ^ Math.imul(Math.round(stream.pitch) + 1, 2654435761) ^ Math.imul(this.streamCounter, 40503)) >>> 0;
+      stream.lcg =
+        (0x9e3779b9 ^ Math.imul(Math.round(stream.pitch) + 1, 2654435761) ^ Math.imul(this.streamCounter, 40503)) >>> 0;
       this.streamCounter += 1;
     }
   }

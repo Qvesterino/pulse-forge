@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { ChoralProcessor } from "../../src/choral/dsp/choralProcessor";
 import { defaultInstrumentParams } from "../../src/instruments/definitions";
-import { createChoralFallbackRuntime } from "../../src/instruments/choralFallback";
 import { normalizeProject } from "../../src/project-model/schema";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import type { InstrumentTrack } from "../../src/project-model/types";
+import type { InstrumentRuntime } from "../../src/instruments/types";
 
 /**
  * CHORÁL (ADR 0054) — the harmony-following timbre instrument. The core
@@ -18,7 +18,6 @@ const SR = 48000;
 const BLOCK = 128;
 const C_MAJOR = 2741; // pcs {0,2,4,5,7,9,11}
 const C_MAJ_TRIAD = 145; // pcs {0,4,7}
-const A_MIN_TRIAD = 0b1000100010010 & 0xfff; // placeholder — recomputed below
 const A_MIN = (() => {
   // A minor triad: pcs {9, 0, 4} → bits 9, 0, 4.
   return (1 << 9) | (1 << 0) | (1 << 4);
@@ -162,7 +161,11 @@ describe("CHORÁL render contract", () => {
         sampleRate: SR,
         pcm: humPcm(),
         pcmRootHz: 220,
-        harmony: { keyRootPc: 0, scaleMask: C_MAJOR, chords: [{ startBar: 0, lengthBars: 8, rootPc: 0, chordMask: C_MAJ_TRIAD }] },
+        harmony: {
+          keyRootPc: 0,
+          scaleMask: C_MAJOR,
+          chords: [{ startBar: 0, lengthBars: 8, rootPc: 0, chordMask: C_MAJ_TRIAD }],
+        },
         events: seeded ? undefined : events,
       });
       if (seeded) for (const event of events) proc.postEvent(event);
@@ -241,10 +244,14 @@ describe("CHORÁL kind integration (ADR 0054)", () => {
     const track = { id: "fb", kind: "instrument", instrument: "choral", params: {} } as unknown as InstrumentTrack;
     const runtime = createChoralFallbackRuntime(ctx, track);
     expect(() => {
-      runtime.noteOn(60, 0.9, 0);
-      runtime.noteOff(60, 0.5);
-      runtime.panic();
-      runtime.dispose();
+      // noteOff is optional on the runtime contract — assert through a
+      // narrowed handle so the optional-member call typechecks.
+      const r = runtime as Required<Pick<InstrumentRuntime, "noteOn" | "noteOff" | "panic" | "dispose">> &
+        InstrumentRuntime;
+      r.noteOn(60, 0.9, 0, 0.5);
+      r.noteOff(60, 0.5);
+      r.panic();
+      r.dispose();
     }).not.toThrow();
   });
 });
