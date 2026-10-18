@@ -1,0 +1,89 @@
+/* 57-row-pitch.css — the sequencer row's own height budget.
+ *
+ * WHY A NEW NUMBER
+ * -----------------
+ * The first version of this sheet was `52-step-grid-density.css`. A parallel
+ * session took slot 52 for an unrelated sheet and the file was deleted from
+ * disk and dropped from index.css — no conflict, no marker, just gone. The
+ * symptom was silent: `--step-h` stopped existing, `.step` fell back to the
+ * 30px declared in 02-sequencer.css, and the row grew. Recorded here because
+ * "the density work vanished and nobody knows why" is a failure mode of
+ * additive CSS layering in a shared tree, and the number is the only evidence.
+ *
+ * WHAT THIS FILE OWNS
+ * -------------------
+ * The row pitch. Sequencer.tsx has its own ROW_HEIGHT constant for the
+ * virtualizer, and the two are checked against each other by
+ * scripts/ui-proportion.mjs (TS constant vs the box the stylesheet lays out).
+ * Neither derives from the other, which is deliberate — a check between two
+ * independent sources is the only kind that can fail.
+ *
+ * THE ARITHMETIC (measured, in a live browser — see scripts/ui-proportion.mjs)
+ * ---------------------------------------------------------------------------
+ *   row pitch = .row-label content + its padding
+ *             = .row-steps height
+ *             + .sequencer-row margin-bottom
+ *
+ * The row is a two-column grid, so its height is the TALLER of the two sides.
+ * Measured before this sheet: `.row-label` children 28px, `.step` 30px,
+ * `.row-steps` 32px, row box 34px, pitch 36px. The STEPS side was the
+ * constraint, not the label — which is why shrinking `.step` alone would have
+ * done nothing while the label was 32px.
+ *
+ * Target 30px pitch, reached from all three parts at once:
+ *   .step            30 -> 26   (so .row-steps becomes 28)
+ *   .row-pad/toggle  28 -> 26   (3px -> 2px block padding)
+ *   .row-label pad    2 -> 1px  (so the label column is 28, not 30)
+ *   .sequencer-row    margin-bottom via --step-row-gap, 2px
+ *
+ * The row carries index, name, live meter, M, S, the 16 LEVELS percentage or
+ * pinned rate, and the synth badge. Trimming the row to 30px is a deliberate
+ * trade: every one of those affordances stays, they just share the budget
+ * instead of the label claiming more than the steps.
+ */
+
+:root {
+  --step-h: 28px;
+  /* The gap between rows belongs to the grid, not to general spacing. It used
+     to come from --space-1, which means a spacing re-tune elsewhere in the app
+     could silently move every row in the sequencer. */
+  --step-row-gap: 2px;
+}
+
+.step {
+  height: var(--step-h);
+}
+
+.sequencer-row {
+  margin-bottom: var(--step-row-gap);
+}
+
+/* The label column has to give back 2px as well, or it — not the steps —
+   becomes the tallest child and the row stays 32px. */
+.sequencer-row .row-label {
+  padding: 2px 1px;
+}
+
+.sequencer-row .row-pad,
+.sequencer-row .row-toggle {
+  padding-block: 2px;
+}
+
+/* Touch keeps its own, larger geometry — the one ROW_HEIGHT's coarse branch
+   already assumed and CSS never implemented. 44px cells plus the row padding
+   lands the coarse pitch at 46px. */
+@media (pointer: coarse) {
+  :root {
+    --step-h: 44px;
+    --step-row-gap: 2px;
+  }
+
+  .sequencer-row .row-label {
+    padding: 2px;
+  }
+
+  .sequencer-row .row-pad,
+  .sequencer-row .row-toggle {
+    padding-block: 3px;
+  }
+}

@@ -103,7 +103,7 @@ interface PianoRollItem {
 type FlatItem = HeaderItem | PadRowItem | PianoRollItem;
 
 const COARSE_POINTER = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
-const ROW_HEIGHT = COARSE_POINTER ? 46 : 36;
+const ROW_HEIGHT = COARSE_POINTER ? 46 : 30;
 const HEADER_HEIGHT = COARSE_POINTER ? 44 : 38;
 const STEP_MIN_PX = COARSE_POINTER ? 34 : 22;
 const OVERSCAN = 5;
