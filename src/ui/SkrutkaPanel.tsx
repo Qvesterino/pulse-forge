@@ -456,7 +456,7 @@ export function SkrutkaPanel({
 
       // Live dot: the processor's current radius + LFO-moderated focus.
       if (frame && !degraded) {
-        const fEff = Math.min(4000, Math.max(40, frame.focusHz));
+        const fEff = Math.min(FOCUS_MAX, Math.max(FOCUS_MIN, frame.focusHz));
         const radius = Math.min(SKRUTKA_R_HARD_MAX, Math.max(0.02, frame.radius));
         const value =
           viewMode === "wet-delay"
@@ -537,7 +537,7 @@ export function SkrutkaPanel({
       frameRef.current =
         raw &&
         bounded(raw.lfo, 0, 1) &&
-        bounded(raw.focusHz, 40, 4000) &&
+        bounded(raw.focusHz, FOCUS_MIN, FOCUS_MAX) &&
         bounded(raw.env, 0, 1) &&
         typeof raw.key === "number" &&
         Number.isFinite(raw.key) &&

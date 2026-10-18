@@ -924,7 +924,10 @@ export function FxEqPanel({
             value={valueOf(`band${selectedBand}.dynReleaseMs`)}
             min={10}
             max={1000}
-            defaultValue={150}
+            // Audit 17: was 150, while the schema's dynReleaseMs default is
+            // 100 (fxeq-core/core/parameterSchema.ts). Double-click reset
+            // landed on a value no fresh band ever had.
+            defaultValue={100}
             format={(v) => `${v.toFixed(0)} ms`}
             onCommit={(v) => onParam(`band${selectedBand}.dynReleaseMs`, v)}
             onPreview={(v) => previewParam(`band${selectedBand}.dynReleaseMs`, v)}

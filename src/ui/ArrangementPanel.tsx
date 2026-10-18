@@ -455,6 +455,24 @@ interface AudioTakeAuditionRequest extends AudioTakeAudition {
   controller: AbortController;
 }
 
+/**
+ * AUDIT 17: which loop bounds are legitimate audio-clip snap targets.
+ *
+ * `Transport.setLoop` keeps `end === 0` on purpose — it is the sentinel for
+ * "loop to the end of the current content", which `Scheduler.resolveLoopEnd`
+ * expands. It is NOT tick 0. Pushing it as a snap target made every dragged
+ * audio clip jump to the top of the arrangement as soon as the loop was
+ * enabled without an explicit end.
+ *
+ * Exported so the rule is testable without reproducing a full pointer drag.
+ */
+export function loopSnapTargetBars(loopEnabled: boolean, loopStart: number, loopEnd: number): number[] {
+  if (!loopEnabled) return [];
+  const targets = [loopStart / BAR_TICKS];
+  if (loopEnd > 0) targets.push(loopEnd / BAR_TICKS);
+  return targets;
+}
+
 export function ArrangementPanel() {
   const services = useServices();
   // Fine-grained selectors (GOAL 04): ArrangementPanel reads scenes, the
@@ -2985,7 +3003,8 @@ export function ArrangementPanel() {
     }
     for (const marker of doc.markers ?? []) targets.push(marker.tick / BAR_TICKS);
     if (services.transport.loopEnabled) {
-      targets.push(services.transport.loopStart / BAR_TICKS, services.transport.loopEnd / BAR_TICKS);
+      // loopEnd === 0 is a SENTINEL, not bar 0 — see loopSnapTargetBars.
+      targets.push(...loopSnapTargetBars(true, services.transport.loopStart, services.transport.loopEnd));
     }
     return targets;
   };
