@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs";
 import { createHash } from "node:crypto";
+import { computeHarnessHash, evaluateAuditGate } from "./lib/plugin-audit-gate.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = Number(process.env.PORT) || 5221;
@@ -38,37 +39,20 @@ const outPath = path.join(root, "docs", `plugin-audit-2026-09-27${auditSuffix ? 
 
 /**
  * Fingerprint of everything that decides what a number in the report MEANS.
+ * Shared with scripts/verify-plugin-audit-quick.mjs via the gate module so the
+ * two can never drift apart — a runner that stamps one hash and a gate that
+ * checks another would make every report look stale.
  *
  * The audit's whole value is comparing a run against a previous run, so it must
  * be impossible to compare across a change in the measuring code. It was
  * possible, and it did happen: a full run on 2026-10-18 printed
  * `[resume] keeping 56 effect rows, 20 instrument rows` and skipped nearly all
  * of its work, inheriting rows that had been measured while the offline render
- * was returning a truncated buffer (the premature `engine.dispose()` fixed in
- * 9c3ad732). Those rows were not "stale", they were produced by broken code and
- * still satisfied every health filter, because a truncated render is finite.
- *
- * A hash of the measuring sources makes the wrong comparison unreachable:
- * change either file and the existing report is ignored by construction.
+ * was returning a truncated buffer (fixed in 9c3ad732). Those rows were not
+ * "stale", they were produced by broken code and still satisfied every health
+ * filter, because a truncated render is finite.
  */
-const HARNESS_SOURCES = [
-  path.join(root, "src", "plugin-audit-checks.ts"),
-  path.join(root, "scripts", "verify-plugin-audit.mjs"),
-];
-const harnessHash = createHash("sha256")
-  .update(
-    HARNESS_SOURCES.map((file) => {
-      try {
-        return fs.readFileSync(file);
-      } catch {
-        return Buffer.from(`<missing:${file}>`);
-      }
-    })
-      .map((buf, index) => `::${path.basename(HARNESS_SOURCES[index])}::\n${buf.toString("utf8")}`)
-      .join("\n"),
-  )
-  .digest("hex")
-  .slice(0, 16);
+const harnessHash = computeHarnessHash(root);
 
 const server = await createServer({
   root,
@@ -358,10 +342,39 @@ try {
   saveReport();
   console.log(`[audit] report written to ${outPath}`);
 
+  /**
+   * Gate semantics live in scripts/lib/plugin-audit-gate.mjs so they can be
+   * exercised against an existing report without a multi-hour re-render. The
+   * short version: a failed measurement or a measured health violation fails;
+   * dead parameters and console noise do not. A gate that is red on arrival
+   * (143 dead parameters exist today) or red because the harness disabled its
+   * own HMR socket teaches people to ignore it.
+   */
+  const gate = evaluateAuditGate(report);
+  if (saveFailures > 0) {
+    gate.failures.push(`report could not be persisted in ${saveFailures} of the save attempts`);
+    gate.ok = false;
+  }
+
+  console.log(
+    `[audit] ${gate.stats.effects} effects, ${gate.stats.instruments} instruments, ${gate.stats.deadParameters} dead parameters, ${gate.stats.notProcessing.length} effects not processing in the host graph`,
+  );
+  if (gate.stats.notProcessing.length > 0)
+    console.log(`[audit]   not processing: ${gate.stats.notProcessing.join(", ")}`);
+  if (gate.stats.silentInstruments.length > 0) {
+    console.log(`[audit]   silent by default: ${gate.stats.silentInstruments.join(", ")}`);
+  }
+
   if (errors.length > 0) {
-    console.log(`[audit] ${errors.length} error(s) during the audit:`);
-    for (const e of errors.slice(0, 20)) console.log(`  ! ${e.slice(0, 300)}`);
+    console.log(`[audit] ${errors.length} console/diagnostic message(s) — logged, not fatal:`);
+    for (const e of [...new Set(errors)].slice(0, 10)) console.log(`  ~ ${e.slice(0, 240)}`);
+  }
+  if (!gate.ok) {
+    console.log(`[audit] GATE FAILED — ${gate.failures.length} problem(s):`);
+    for (const f of gate.failures.slice(0, 25)) console.log(`  ! ${f.slice(0, 300)}`);
     process.exitCode = 1;
+  } else {
+    console.log(`[audit] GATE PASSED — every measured effect processed and stayed finite`);
   }
 } finally {
   await browser?.close();

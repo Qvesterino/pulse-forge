@@ -161,6 +161,8 @@
     "test:browser:rezonans": "vite-node scripts/verify-rezonans-worklet-browser.mts",
     "test:browser:twist": "vite-node scripts/verify-skrutka-worklet-browser.mts",
     "test:browser:factory-presets": "node scripts/verify-factory-presets.mjs",
+    "test:browser:plugin-audit": "node scripts/verify-plugin-audit.mjs",
+    "test:browser:plugin-audit:quick": "node scripts/verify-plugin-audit-quick.mjs",
     "test:browser:production": "node scripts/verify-production-browser.mjs",
     "test:browser:live-editing": "node scripts/verify-live-editing.mjs",
     "ui:proportion": "node scripts/ui-proportion.mjs",
