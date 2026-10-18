@@ -252,19 +252,24 @@ describe("SkrutkaPanel", () => {
 
     fireEvent.pointerDown(canvas, { clientX: 150, clientY: 30, pointerId: 1 });
     expect(onGestureStart).toHaveBeenCalledTimes(1);
-    expect(onParam).toHaveBeenCalledWith("focusHz", expect.any(Number));
-    expect(onParam).toHaveBeenCalledWith("dispersion", expect.any(Number));
-    const focusCall = onParam.mock.calls.find((call) => call[0] === "focusHz")!;
-    // x = 150/300 → geometric mean of the axis: 30 × (16000/30)^0.5 ≈ 693 Hz.
-    expect(focusCall[1]).toBeGreaterThan(600);
-    expect(focusCall[1]).toBeLessThan(800);
+    // Audit 16/17: the press auditions through the runtime. The document is
+    // written ONCE, on release — writing here meant two full document
+    // mutations per pointermove.
+    expect(onParam).not.toHaveBeenCalled();
 
     fireEvent.pointerMove(canvas, { clientX: 200, clientY: 60, pointerId: 1 });
-    const moves = onParam.mock.calls.filter((call) => call[0] === "focusHz").length;
-    expect(moves).toBeGreaterThanOrEqual(2);
+    expect(onParam).not.toHaveBeenCalled();
 
     fireEvent.pointerUp(canvas, { clientX: 200, clientY: 60, pointerId: 1 });
     expect(onGestureEnd).toHaveBeenCalledTimes(1);
+    // ONE undoable pair, carrying the last position the pointer was at.
+    expect(onParam).toHaveBeenCalledTimes(2);
+    expect(onParam.mock.calls.map((call) => call[0])).toEqual(["focusHz", "dispersion"]);
+    const focusCall = onParam.mock.calls.find((call) => call[0] === "focusHz")!;
+    // x = 200/300 along the display band: 30 × (16000/30)^(200/300) ≈ 1972 Hz,
+    // clamped into the parameter's reachable range.
+    expect(focusCall[1]).toBeGreaterThan(1900);
+    expect(focusCall[1]).toBeLessThan(2050);
   });
 
   it("renders the SHAPE / FIELD / DYN / KEY / LFO state chips", () => {

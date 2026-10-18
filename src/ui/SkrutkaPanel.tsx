@@ -136,6 +136,12 @@ export function SkrutkaPanel({
   const [soloOn, setSoloOn] = useState(false);
   const [viewMode, setViewMode] = useState<SkrutkaViewMode>("wet-delay");
   const draggingRef = useRef(false);
+  /**
+   * Latest drag-derived focus/dispersion — the event authority for the release.
+   * The pointer handlers fire faster than React renders, so the commit reads
+   * this rather than state.
+   */
+  const skrutkaLiveRef = useRef<{ focus: number; dispersion: number } | null>(null);
 
   // BAND SOLO is monitor-only and panel-scoped: when the device card (or the
   // panel) unmounts, the audition band must not survive it.
@@ -596,9 +602,11 @@ export function SkrutkaPanel({
     engine.setMonitorBand?.(next ? (params.focusHz ?? 220) : null);
   };
 
-  const pointerToParams = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+  const pointerToParams = (
+    event: ReactPointerEvent<HTMLCanvasElement>,
+  ): { focus: number; dispersion: number } | null => {
     const el = canvasRef.current;
-    if (!el || !onParam) return;
+    if (!el || !onParam) return null;
     const rect = el.getBoundingClientRect();
     const cw = Math.max(1, rect.width);
     const ch = Math.max(1, rect.height);
@@ -629,8 +637,33 @@ export function SkrutkaPanel({
     const maxMs = Math.max(0.05, skrutkaPeakDelay(cp, sampleRate, dragChannel).ms * 1.12);
     const targetMs = Math.max(0, ((ch - 3 - y) / (ch - 6)) * maxMs);
     const dispersion = skrutkaDispersionForPeakMs(cp, sampleRate, targetMs);
-    onParam("focusHz", Math.round(focus));
-    onParam("dispersion", Math.round(dispersion * 1000) / 1000);
+    const next = { focus: Math.round(focus), dispersion: Math.round(dispersion * 1000) / 1000 };
+    // AUDITION ONLY - one port message per param, no document, no undo frame.
+    // Writing the document here meant a full mutation (normalize -> undo push
+    // -> engine re-projection) per pointermove.
+    services.engine.previewFxParam?.(trackId, fxId, "focusHz", next.focus);
+    services.engine.previewFxParam?.(trackId, fxId, "dispersion", next.dispersion);
+    skrutkaLiveRef.current = next;
+    return next;
+  };
+
+  /** Release lands the final pair as ONE undoable step inside the gesture frame. */
+  const commitSkrutkaDrag = (): void => {
+    const next = skrutkaLiveRef.current;
+    skrutkaLiveRef.current = null;
+    if (!next || !onParam) return;
+    onParam("focusHz", next.focus);
+    onParam("dispersion", next.dispersion);
+  };
+
+  /**
+   * Cancelled drag: put the DOCUMENT values back into the runtime, or the
+   * worklet keeps sounding a curve the project never took.
+   */
+  const revertSkrutkaPreview = (): void => {
+    skrutkaLiveRef.current = null;
+    services.engine.previewFxParam?.(trackId, fxId, "focusHz", paramsRef.current.focusHz ?? 220);
+    services.engine.previewFxParam?.(trackId, fxId, "dispersion", paramsRef.current.dispersion ?? 0.35);
   };
 
   // The chips report the EFFECTIVE (morphed) state — what the DSP plays.
@@ -766,11 +799,15 @@ export function SkrutkaPanel({
           if (!draggingRef.current) return;
           draggingRef.current = false;
           event.currentTarget.releasePointerCapture?.(event.pointerId);
+          // Commit INSIDE the gesture frame: endUndoFrame collapses the frame
+          // into one history entry, so a commit after it would leave two.
+          commitSkrutkaDrag();
           onGestureEnd?.();
         }}
         onPointerCancel={() => {
           if (!draggingRef.current) return;
           draggingRef.current = false;
+          revertSkrutkaPreview();
           onGestureEnd?.();
         }}
       />
