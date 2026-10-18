@@ -219,6 +219,37 @@ try {
   });
   console.log(`[audit] base render peak=${basePeak.toFixed(3)}`);
 
+  /**
+   * Recycle the page every RECYCLE_EVERY measured plugins.
+   *
+   * Not a product leak: measured 2026-10-18, 40 consecutive `renderProject`
+   * calls in one page hold the JS heap flat at 54 MB while contexts accumulate
+   * (859 -> 908), and a canary oscillator keeps allocating the whole way. The
+   * render path releases everything it owns. What fails is the browser's own
+   * native audio budget, and it only fails after an hour: a full run logged
+   * `NotSupportedError: ... createOscillator ... insufficient memory` from
+   * `noteOn` in src/instruments/registry.ts near the very end.
+   *
+   * There is no way to close the contexts deterministically — this Chromium
+   * exposes no `close()` on OfflineAudioContext or BaseAudioContext at all
+   * (measured), so they can only leave via GC. Recycling the page is therefore
+   * the only lever, and it is safe: the fixtures live on `window` by design and
+   * rebuild themselves on the next evaluate.
+   *
+   * Cost check before setting this too low: `generateFactoryBank()` synthesises
+   * its fallback samples with ~850 offline contexts, so every reload pays that
+   * again. 20 keeps that to a handful of rebuilds for a full run.
+   */
+  const recycleEvery = Math.max(1, Number(process.env.KYX_AUDIT_RECYCLE_EVERY) || 20);
+  let sinceRecycle = 0;
+  const recycleIfDue = async () => {
+    sinceRecycle += 1;
+    if (sinceRecycle < recycleEvery) return;
+    console.log(`[audit] recycling page after ${sinceRecycle} plugins (native audio budget)`);
+    sinceRecycle = 0;
+    await gotoResilient(page);
+  };
+
   // Phase 1: effects, one evaluate each (or the KYX_AUDIT_ONLY subset).
   const effectTypes = await page.evaluate(async () => {
     const reg = await import("/src/effects/registry.ts");
@@ -270,6 +301,7 @@ try {
       });
     }
     saveReport();
+    await recycleIfDue();
   }
 
   // Phase 2: instruments, one evaluate each.
@@ -312,6 +344,7 @@ try {
       });
     }
     saveReport();
+    await recycleIfDue();
   }
 
   // Phase 3: interactions.

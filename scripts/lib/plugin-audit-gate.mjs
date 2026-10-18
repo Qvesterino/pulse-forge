@@ -2,11 +2,16 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-/** Sources whose contents decide what a number in a report MEANS. */
-export const HARNESS_SOURCES = [
-  path.join("src", "plugin-audit-checks.ts"),
-  path.join("scripts", "verify-plugin-audit.mjs"),
-];
+/**
+ * Sources whose contents decide what a number in a report MEANS.
+ *
+ * Only the measurement code. The runner is deliberately EXCLUDED: it schedules
+ * evaluates and writes the file, it does not decide what any number is. Hashing
+ * it meant every logging tweak, retry tweak or page-recycle tweak invalidated a
+ * baseline that costs about an hour to produce — the runner would have been able
+ * to invalidate its own evidence without changing a single measurement.
+ */
+export const HARNESS_SOURCES = [path.join("src", "plugin-audit-checks.ts")];
 
 /**
  * Fingerprint of the measuring code.
