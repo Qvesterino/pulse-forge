@@ -62,4 +62,5 @@
    win the cascade over its contrast-verified fills. Pinned by
    tests/settings-glass.test.ts ("imports last, after every other sheet"). */
 @import "./58-typography-scale.css";
+@import "./59-material-bevel.css";
 @import "./26-settings-glass.css";

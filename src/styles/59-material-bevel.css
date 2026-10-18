@@ -1,0 +1,91 @@
+/* 59-material-bevel.css — one material recipe for the shell's control family.
+ *
+ * MEASURED, NOT ASSUMED (scripts/material-audit.mjs, 1440x900, House Beat)
+ * -----------------------------------------------------------------------
+ * The plan said "today KYX has flat surfaces with thin borders, so it reads as
+ * a debug dashboard". That reason was wrong and is corrected in
+ * docs/STUDIO-OPTIMIZATION-PLAN.md: the bevel already exists on ~217 surfaces.
+ * What is missing is ONE recipe. The top highlight lands at twelve strengths,
+ * and two adjacent controls in the same toolbar can carry different ones:
+ *
+ *   .btn / .btn-small   rgba(255,255,255,0.075) inset 0 1px 0  + rgba(0,0,0,0.18) 0 1px 2px
+ *   .row-pad            rgba(255,255,255,0.08)  inset 0 1px 0  + rgb(245,158,11) inset 0 -2px 0
+ *   .track-header-name  rgba(255,255,255,0.11)  inset 0 1px 0  + rgb(245,158,11) inset 2px 0 0
+ *   .pattern-chip       rgba(255,255,255,0.2)   inset 0 1px 0  + amber glow
+ *   .track-tab          rgba(255,255,255,0.32)  inset 0 1px 0  + rgba(18,22,27,0.28) inset 0 -1px 0
+ *   .dock-tab           none
+ *   .preset-chip        none
+ *
+ * Twelve strengths, and the eye cannot build a consistent expectation of "this
+ * is raised" from a family that disagrees with itself. Also note the baseline
+ * 0.075 is barely perceptible at all, and two of the busiest surfaces carry no
+ * shadow whatsoever — the dock tab row is the primary navigation of the bottom
+ * half of the studio and is currently flat.
+ *
+ * WHAT THIS SHEET DOES
+ * --------------------
+ * Two tokens, and one decision applied to the BASELINE control family:
+ *
+ *   --bevel-hi  1px inset white on the top edge   (the light the edge catches)
+ *   --bevel-lo  1px inset dark on the bottom edge (the shadow it sits on)
+ *
+ * .btn is raised from 0.075 to 0.10 because at 0.075 the top edge does not read
+ * as an edge on this background. The bottom inset is new everywhere it is
+ * applied — only .track-tab had one — and it is the half of the effect that
+ * makes a surface look lifted rather than tinted.
+ *
+ * WHAT THIS SHEET DELIBERATELY DOES NOT TOUCH
+ * ---------------------------------------------
+ * .track-tab (0.32), .row-pad (0.08), .track-header-name (0.11) and
+ * .pattern-chip (0.2) are left alone. Their highlight is a SELECTION signal,
+ * not a baseline: each carries an amber inset alongside it (amber underline,
+ * amber left bar, amber glow). Normalising those to the baseline would flatten
+ * "this channel is selected" into "this is a button", which is the opposite of
+ * what the material is for. The census samples the first matching element of
+ * each selector, so their values are state samples — rewriting them from a
+ * single sample is how this project got here.
+ *
+ * Also untouched, for the same reason the census counts argue: 122 surfaces at
+ * 0.06 are piano-roll keys (only 2 on screen), 268 are sample-catalogue rows,
+ * 256 are step cells. A bevel on texture is noise, and box-shadow on hundreds
+ * of elements is paint cost.
+ *
+ * THE GATE
+ * --------
+ * scripts/material-audit.mjs asserts each declared role computes to the token's
+ * alpha. Same reasoning as typography-audit.mjs: a whole-shell histogram cannot
+ * see a rule that lost the cascade, and this layer sits before
+ * 26-settings-glass.css, which is allowed to restyle controls.
+ */
+
+:root {
+  /* The two halves of a raised edge. Kept as tokens so "how lit is a raised
+     surface" stops being a per-component decision. */
+  --bevel-hi: rgba(255, 255, 255, 0.1);
+  --bevel-lo: rgba(0, 0, 0, 0.32);
+  /* The lifted-edge pair as one value, for the common case. */
+  --bevel-raised: inset 0 1px 0 var(--bevel-hi), inset 0 -1px 0 var(--bevel-lo);
+}
+
+/* ---------- Baseline raised controls ---------- */
+
+.btn,
+.btn-small,
+.preset-chip {
+  box-shadow: var(--bevel-raised);
+}
+
+/* The dock tab row had no shadow at all. These are the primary navigation of
+   the bottom half of the studio and they read as flat wireframe next to the
+   toolbar buttons above them. */
+.dock-tab {
+  box-shadow: var(--bevel-raised);
+}
+
+/* .preset-chip is in the family for a checked reason, not a loose one: it is
+   the one busy surface that has no box-shadow in ANY state. grep of
+   07-project-browser.css shows `.preset-chip.active` changes background, border
+   and colour and nothing else, so there is no competing state recipe to break —
+   the contrast with .track-tab and .row-pad, whose highlights carry amber
+   selection insets and are therefore left alone. An active chip keeps the
+   bevel and turns amber on top of it, which is what a lit switch does. */

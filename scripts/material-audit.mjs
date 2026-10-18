@@ -71,7 +71,29 @@ const skip = page.locator("button:has-text('SKIP')").first();
 if ((await skip.count()) > 0) await skip.click().catch(() => {});
 await page.waitForTimeout(500);
 
-const census = await page.evaluate(() => {
+// The wave-4 family. This sheet owns these four; the material must apply.
+// Roles whose highlight is a SELECTION signal (.track-tab, .row-pad,
+// .track-header-name, .pattern-chip) are deliberately absent — see
+// 59-material-bevel.css.
+const GATED_ROLES = [
+  { role: "base button", selector: ".btn", expect: 0.1 },
+  { role: "small button", selector: ".btn-small", expect: 0.1 },
+  { role: "dock tab", selector: ".dock-tab", expect: 0.1 },
+  { role: "preset filter chip", selector: ".preset-chip", expect: 0.1 },
+];
+
+const CANDIDATE_ROLES = [
+  ".btn",
+  ".btn-small",
+  ".dock-tab",
+  ".preset-chip",
+  ".track-tab",
+  ".row-pad",
+  ".track-header-name",
+  ".pattern-chip",
+];
+
+const census = await page.evaluate((candidates) => {
   const bump = (map, key) => map.set(key, (map.get(key) ?? 0) + 1);
   const shell = document.querySelector(".app") ?? document.body;
   const kinds = { raised: 0, wireframe: 0, fillonly: 0 };
@@ -80,6 +102,23 @@ const census = await page.evaluate(() => {
   const shadowShapes = new Map();
   const vh = window.innerHeight;
 
+  // Computed style normalises box-shadow to <color> <x> <y> <blur> <spread>
+  // [inset] — inset goes LAST. The first parser here assumed "inset 0px 1px 0"
+  // order, matched nothing, and printed "none found" while 196 surfaces were
+  // carrying a real bevel.
+  const topHi = (shadow) => {
+    if (!shadow || shadow === "none") return null;
+    for (const part of shadow.split(/,(?![^(]*\))/)) {
+      if (!/\binset\b/.test(part)) continue;
+      const lens = part.match(/(-?\d*\.?\d+)px/g) || [];
+      if (lens.length >= 2 && Math.round(parseFloat(lens[1])) === 1) {
+        const c = part.match(/rgba?\([^)]*\)|color\(srgb[^)]*\)/);
+        return c ? c[0] : null;
+      }
+    }
+    return null;
+  };
+
   const alphaOf = (c) => {
     const m = /rgba?\(([^)]+)\)/.exec(c || "");
     if (!m) return 0;
@@ -87,6 +126,28 @@ const census = await page.evaluate(() => {
     if (parts.length < 4) return 1;
     return Number.isFinite(parts[3]) ? parts[3] : 1;
   };
+
+  // Per-candidate recipe: what the wave-4 family resolves to TODAY, so the
+  // tokens in 59-material-bevel.css are chosen from measurement, not taste.
+  const roles = {};
+  for (const sel of candidates) {
+    const el = document.querySelector(sel);
+    if (!el) {
+      roles[sel] = { present: false };
+      continue;
+    }
+    const cs = getComputedStyle(el);
+    const hi = topHi(cs.boxShadow);
+    const b = el.getBoundingClientRect();
+    roles[sel] = {
+      present: true,
+      visible: b.height > 0 && cs.display !== "none",
+      shadow: (cs.boxShadow || "none").replace(/\s+/g, " "),
+      highlightAlpha: hi ? Math.round(alphaOf(hi) * 1000) / 1000 : null,
+      bg: cs.backgroundColor,
+      text: (el.textContent || "").trim().slice(0, 18),
+    };
+  }
 
   for (const el of shell.querySelectorAll("*")) {
     const cs = getComputedStyle(el);
@@ -166,12 +227,25 @@ const census = await page.evaluate(() => {
     raised: rank(byRole.get("raised") ?? new Map()),
     wireframe: rank(byRole.get("wireframe") ?? new Map()),
     fillonly: rank(byRole.get("fillonly") ?? new Map()),
+    roles,
     topHighlightAlpha: Object.fromEntries([...highlightAlpha.entries()].sort((a, b) => b[1] - a[1])),
     otherShadowRecipes: Object.fromEntries([...shadowShapes.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)),
   };
-});
+}, CANDIDATE_ROLES);
 
 console.log("=== surface census (1440x900, House Beat) ===");
+console.log("\n--- wave-4 candidate roles: current recipe ---");
+for (const [sel, r] of Object.entries(census.roles)) {
+  if (!r.present) {
+    console.log(`  ${sel.padEnd(24)} ABSENT in this state`);
+    continue;
+  }
+  console.log(
+    `  ${sel.padEnd(24)} topLight=${String(r.highlightAlpha ?? "none").padEnd(7)} ` +
+      `visible=${r.visible ? "y" : "n"}  text="${r.text}"`,
+  );
+  console.log(`  ${" ".repeat(24)} ${r.shadow}`);
+}
 console.log(
   `  raised (border + fill) ${census.counts.raised}   ` +
     `wireframe (border only) ${census.counts.wireframe}   fillonly ${census.counts.fillonly}\n`,
@@ -201,5 +275,29 @@ for (const [kind, table] of [
   console.log("");
 }
 
+console.log("\n--- wave-4 gate: declared roles must resolve to the token ---\n");
+let failed = 0;
+for (const g of GATED_ROLES) {
+  const r = census.roles[g.selector];
+  const got = r?.highlightAlpha ?? null;
+  const ok = r?.present === true && r.visible === true && got === g.expect;
+  if (ok) {
+    console.log(`  PASS  ${g.role.padEnd(22)} ${g.selector.padEnd(16)} top light ${got}`);
+  } else {
+    failed += 1;
+    const why =
+      r?.present !== true
+        ? "selector does not exist in this state"
+        : r?.visible !== true
+          ? "matched but not visible"
+          : `computed ${got} but the sheet declares ${g.expect}`;
+    console.log(`  FAIL  ${g.role.padEnd(22)} ${g.selector.padEnd(16)} ${why}`);
+  }
+}
+
 await browser.close();
-process.exit(0);
+if (failed > 0) {
+  console.error(`\n${failed} material role(s) FAILED`);
+  process.exit(EXIT_GATE);
+}
+console.log("\nall material roles applied");

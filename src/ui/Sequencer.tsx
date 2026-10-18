@@ -1823,7 +1823,18 @@ function PadRow({
           }}
         >
           <span className="row-pad-index">{padIndex + 1}</span>
-          <span className="row-pad-name">{pad.name}</span>
+          {/* 58-typography-scale.css raised the channel name from 12px to 13px
+              so it matches the track header (one role, one size). At 13px the
+              label column can no longer fit the longer factory names and they
+              ellipsize — "Kick Techno" renders as "Kick Tech…". Rather than
+              give the name its pixels back and reintroduce two sizes for one
+              role, the full name goes in the tooltip: truncated-with-tooltip is
+              how FL Studio handles a narrow channel label too. The button's
+              accessible name is unaffected either way, since CSS truncation
+              never touches the accessibility tree. */}
+          <span className="row-pad-name" title={pad.name}>
+            {pad.name}
+          </span>
           {sixteenLevels && <span className="row-pad-rate-badge">{levelsPercent}%</span>}
           {pinned && <span className="row-pad-rate-badge">{pinned}</span>}
           {pad.synth && <span className="pad-synth-badge">{pad.synth.type.slice(0, 3).toUpperCase()}</span>}
