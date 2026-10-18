@@ -394,6 +394,14 @@ try {
   );
   if (gate.stats.notProcessing.length > 0)
     console.log(`[audit]   not processing: ${gate.stats.notProcessing.join(", ")}`);
+  // Reported apart from the line above on purpose: a zero host delta with a
+  // documented reason is the fixture being unable to excite the plugin, while a
+  // zero delta without one is an unexplained hole. Printing both as "not
+  // processing" hid that difference in every run so far.
+  if (gate.stats.hostExempt.length > 0)
+    console.log(
+      `[audit]   exempt from host test (zero delta is correct): ${gate.stats.hostExempt.map((e) => e.type).join(", ")}`,
+    );
   if (gate.stats.silentInstruments.length > 0) {
     console.log(`[audit]   silent by default: ${gate.stats.silentInstruments.join(", ")}`);
   }

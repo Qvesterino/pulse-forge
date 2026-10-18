@@ -57,6 +57,14 @@ export function computeHarnessHash(root) {
  * - A DEAD PARAMETER does not fail. There are 143 of them today and no agreed
  *   bar; the column is a work list, not a pass/fail. Gating on it would make
  *   the gate red on arrival and teach everyone to ignore it.
+ * - AN EFFECT THAT DOES NOT PROCESS does not fail either, but the two reasons
+ *   it might not are NOT the same claim and must never be summed into one
+ *   number. An effect carrying an `hostExemptReason` has a documented reason a
+ *   zero host delta is the correct output (the minimal host doc has no key or
+ *   modulator track to duck against). An effect without one is unaccounted
+ *   for. Reporting "6 effects not processing" when 2 of them are explained
+ *   overstates the defect count by a third and sends the next audit at the
+ *   wrong two plugins.
  * - CONSOLE NOISE does not fail. The first full run logged two WebSocket
  *   errors caused by the runner's own `hmr: false`; that made the gate report
  *   the harness as broken for something the harness did to itself.
@@ -89,6 +97,16 @@ export function evaluateAuditGate(report) {
     .map((e) => ({ type: e.type, dead: e.deadParams?.length ?? 0 }))
     .sort((a, b) => b.dead - a.dead);
 
+  // An effect exempts itself from the host test only by carrying a non-empty
+  // reason. `hostProcesses:false` alone cannot distinguish "the host fixture
+  // cannot excite this" from "this plugin is wired to nothing" — the audit
+  // already writes the reason down, so the gate reads it instead of guessing.
+  const hostExempt = effects
+    .filter((e) => typeof e.hostExemptReason === "string" && e.hostExemptReason.trim().length > 0)
+    .map((e) => ({ type: e.type, reason: e.hostExemptReason, hostProcesses: e.hostProcesses === true }));
+  const exemptTypes = new Set(hostExempt.map((e) => e.type));
+  const notProcessing = effects.filter((e) => !e.hostProcesses && !exemptTypes.has(e.type)).map((e) => e.type);
+
   return {
     ok: failures.length === 0,
     failures,
@@ -98,7 +116,8 @@ export function evaluateAuditGate(report) {
       interactions: Boolean(report?.interactions),
       deadParameters: deadByEffect.reduce((sum, e) => sum + e.dead, 0),
       deadByEffect,
-      notProcessing: effects.filter((e) => !e.hostProcesses).map((e) => e.type),
+      notProcessing,
+      hostExempt,
       silentInstruments: instruments.filter((i) => !i.defaultAudible).map((i) => i.kind),
     },
   };
