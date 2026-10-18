@@ -281,6 +281,16 @@ export interface HostResult {
   hostExemptReason?: string;
   hostProcesses: boolean;
   hostDelta: number;
+  /**
+   * Delta from driving the mix-class param to its max. This is the WIRING
+   * probe: a dry/wet control moves level on any material whatsoever, so a
+   * non-zero value proves the effect node is actually in the host graph.
+   * `hostDelta` above is a TIMBRE probe — it asks whether the effect's
+   * characteristic parameter changes the sound, which a drum bus cannot
+   * excite for a harmony or envelope follower even when the effect is
+   * wired correctly. `hostProcesses` is the OR of the two.
+   */
+  hostMixDelta?: number;
   hostBypassEqualsRemoved: boolean;
   hostFinite: boolean;
   automationDelta: number;
@@ -881,6 +891,44 @@ async function hostTestEffect(
   const hostFinite = finiteEverywhere(on) && finiteEverywhere(bypassed) && finiteEverywhere(removed);
   const hostBypassEqualsRemoved = maxDiff(bypassed, removed) <= 1e-5;
 
+  // WIRING probe. `fingerprintOf` deliberately skips mix-class params because
+  // a dry/wet control "only changes the level" — which makes it worthless for
+  // measuring timbre and perfect for answering a different question than the
+  // one `hostProcesses` claims to answer.
+  //
+  // MEASURED on the same house doc, same render path, one effect:
+  //   rezonans  timbre fingerprint 7.9e-8   mix 7.2e-2   -> was a false "dead"
+  //   reverb    timbre fingerprint 8.8e-2   mix 3.7e-1   -> healthy control
+  // `fingerprintOf` picked harmony.mode + detect.clarity for rezonans — a
+  // harmony generator fed a percussive drum bus — while the effect sat wired
+  // in the graph the whole time.
+  //
+  // HONEST SCOPE: across seven effects this probe moves the verdict for ONE
+  // (rezonans). sirka, reverseSwell, pitchCorrect, vocoder and sidechain stay
+  // below HOST_EPS under BOTH probes, so the OR adds no signal for them and
+  // they remain open questions — at least sirka has a documented benign
+  // reason ("width 1 everywhere is a neutral pass", so mix=max against a dry
+  // bus is a passthrough by design). Do not read a still-false verdict here as
+  // either a confirmed defect or a confirmed exemption; it needs per-effect
+  // triage, and the honest next step is material that actually exercises the
+  // device rather than a bigger threshold.
+  //
+  // Comparing against `bypassed` (not against the default render) is what makes
+  // this sound: mix already sits at max on several effects, so mix=max equals
+  // the default there, and only the dry reference still separates wet from dry.
+  const mixParamId = EFFECT_META[type].params.find((p: ParamDef) => MIX_CLASS_IDS.has(p.id));
+  let hostMixDelta: number | undefined;
+  if (mixParamId) {
+    // Built from `base`, not from `doc`: one effect, mix at max, every other
+    // param at its default. Adding a second effect to `doc` would stack the
+    // device with itself and prove nothing about wiring.
+    const mixStore = new ProjectStore(base);
+    const mixAdd = addEffect(mixStore.getDoc(), trackId, type);
+    mixStore.execute(mixAdd);
+    mixStore.execute(setEffectParam(mixStore.getDoc(), trackId, mixAdd.effectId, mixParamId.id, mixParamId.max));
+    hostMixDelta = deltaVs(metricsOf(bypassed), metricsOf(await renderDoc(mixStore.getDoc(), bank))).delta;
+  }
+
   // State restore: the SAME doc through a JSON round-trip must render the
   // same mix (worklet offline renders are deterministic).
   // State restore: the SAME doc through a JSON round-trip must render the
@@ -934,8 +982,13 @@ async function hostTestEffect(
   return {
     hostError: undefined,
     hostExemptReason,
-    hostProcesses: hostDelta.delta > HOST_EPS,
+    // OR of the timbre probe and the wiring probe: either one moving the output
+    // past HOST_EPS means the effect is doing something in this graph. Measured
+    // effect of the OR so far is one rescued verdict (rezonans) — see the
+    // wiring-probe comment above for why the other five are still open.
+    hostProcesses: hostDelta.delta > HOST_EPS || (hostMixDelta ?? 0) > HOST_EPS,
     hostDelta: hostDelta.delta,
+    hostMixDelta,
     hostBypassEqualsRemoved,
     hostFinite,
     automationDelta,
