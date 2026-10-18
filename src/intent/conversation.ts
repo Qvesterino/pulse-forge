@@ -20,6 +20,7 @@
 import type { Command } from "../commands/types";
 import { setBpm, setMasterConfig, setPadParams, setReturnGain, setTrackParams, snapshot } from "../commands/commands";
 import { parsePercent, parsePercentAllowingZero } from "./percent";
+import { calibrateFaderFactor, degreeToFaderAmount, parseDegree, type Degree } from "./degree";
 import { intentCarriesGenreSignal } from "./exact";
 import { inferPadRole } from "../ai/pad-roles";
 import type { DrumTrack, ProjectDocument } from "../project-model/types";
@@ -73,11 +74,39 @@ export interface FaderIntent {
    * absolute target level. Wins over vibe `amount` when present.
    */
   percent?: number;
+  /**
+   * The resolved graduated degree (intent/degree.ts) when the ask NAMED one.
+   * Absent for an unqualified ask, which keeps the documented default.
+   *
+   * `amount` stays the coarse, schema-pinned bucket (the model classes and
+   * tests read it); `degree` is the fine-grained magnitude the fold actually
+   * calibrates from. Both are produced from the same vocabulary in one call,
+   * so they cannot disagree — see `faderDegree`.
+   */
+  degree?: Degree;
 }
 
 /** ALL SK stems DE-ACCENTED — the parser strips diacritics before matching. */
 const FADER_DOWN =
   /\bzniz|\bstis|\bstiah\w*|\bnizs|\btahaj dole|\bdaj dole|\btichs|\bdole\b|\bturn down\b|\bpull down\b|\bbring down\b|\blower\b|\bdial down\b|\bquieter\b|\bquiet down\b|\b(?:take|bring|pull|turn|dial|drop)\b.{0,36}\bdown\b|\bdrop\b.{0,24}\b(?:level|volume|fader)\b|\b(?:less|fewer|menej)\b.{0,28}\b(?:room|space|presence|dominant|prominent|forward|pronounced|vyrazn\w*|vystupujuc\w*)\b|\b(?:too|overly|prilis)\b.{0,20}\b(?:dominant|forward|prominent|vyrazn\w*)\b|\bmore\b.{0,20}\bsubdued\b|\b(?:in|into|do|v)\s+(?:the\s+)?(?:background|pozadi|uzadia)\b|\b(?:recede|recedes|receding|ease back|sit back|sit behind|ustup\w*|zazit do pozadia)\b|\bease\b.{0,36}\bback\b|\bsit\b.{0,24}\b(?:behind|beneath|under(?:neath)?)\b|\btuck\b.{0,36}\b(?:under(?:neath)?|back|down)\b/;
+/**
+ * COMPARATIVE DOWN ("even less", "still less", "ešte menej") — a FURTHER
+ * relative step, not a repeat of an absolute target. The existing `less` rule
+ * only fired when the sentence named a mix noun ("less room", "less
+ * presence"), so a bare "make it even less" matched no direction stem at all
+ * and fell through to generation. The fader still needs a target noun after it
+ * ("even less BASS"), so this cannot make a target-less sentence mutate.
+ */
+const FADER_DOWN_COMPARATIVE = /\b(?:even|still)\s+(?:less|fewer|menej)\b|\beste\s+menej\b/;
+/**
+ * COMPARATIVE UP ("even more", "still more") — the mirror of
+ * FADER_DOWN_COMPARATIVE. Bare "more" is deliberately NOT an up stem (it is
+ * also the voice of "more reverb", "more sub", "more punch"), so the
+ * comparative only resolves when it is qualified. Kept OUT of
+ * FADER_UP_DIRECTIONAL on purpose: a qualified "even more" next to a down stem
+ * is a soft follow-up, not the hard conflict that must decline.
+ */
+const FADER_UP_COMPARATIVE = /\b(?:even|still)\s+more\b|\beste\sviac\b/;
 const FADER_UP =
   /\bzvis\b|\bzvys|\bvyss\b|\btazs\w*|\bpotiahni hore|\btahaj hore|\bdaj hore|\bhlasnej|\bhlasit|\bhore\b|\bturn up\b|\bbring up\b|\braise\b|\blift\b|\bpush up\b|\blouder\b|\b(?:bring|turn|push|move)\b.{0,36}\bup\b|\btake\b.{0,36}\bup\b(?!\s+(?:less|fewer)\b)|\b(?:bring|move|push)\b.{0,28}\bforward\b|\bcloser\b.{0,24}\b(?:front|foreground)\b/;
 const SK_ADD_FADER = /\bpridaj\s+(?:(?:hlasitos\w*|volume)\s+)?(?:bas\w*|lead\w*|master\w*|bic\w*)\b/;
@@ -113,10 +142,27 @@ const FADER_PADS: ReadonlyArray<readonly [RegExp, FaderPadFamily]> = [
   [/\bperc(?:ussion\w*|s)?\b|\bperkus\w*/, "perc"],
 ];
 
-/** Amount modifiers: "trochu" / "o dosť" / "úplne" scale the fader step. */
-const AMOUNT_FULL = /\bupl\w*|\bplne\b|\bmaximal\w*|\bcomplete(?:ly)?\b|\bfully\b|\bextrem\w*/;
-const AMOUNT_BIG = /\bo dos\w*|\bdost\b|\bhodn\w*|\bvelm\w*|\ba lot\b|\bmuch\b/;
-const AMOUNT_SUBTLE = /\btrochu\b|\bkusok\b|\bjemn\w*|\bslight(?:ly)?\b|\ba bit\b|\ba little\b/;
+/**
+ * Amount modifiers, resolved through the shared degree taxonomy
+ * (intent/degree.ts). The three local regexes this replaced
+ * (AMOUNT_FULL / AMOUNT_BIG / AMOUNT_SUBTLE) each carried their own vocabulary
+ * and none of them knew about "barely", "a touch", "considerably" or "much" —
+ * "much less" only worked HERE, and "slightly more reverb" meant one thing in
+ * the fader and another in the effect layer. The taxonomy is the union of all
+ * four vocabularies, so no word loses its old bucket:
+ *
+ *   subtle ← trochu / kusok / jemne / slightly / a bit / a little   (unchanged)
+ *   big    ← o dosť / veľmi / hodne / a lot / much / way / heavily   (unchanged)
+ *   full   ← úplne / plne / maximálne / complete / fully            (unchanged)
+ *   normal ← anything else, including an unqualified ask             (unchanged)
+ *
+ * The magnitude comes from `degree` when present; see `foldFaderIntent`.
+ */
+function faderDegree(text: string): { amount: FaderAmount; degree?: Degree } {
+  const degree = parseDegree(text);
+  if (!degree) return { amount: "normal" };
+  return { amount: degreeToFaderAmount(degree.level), degree };
+}
 
 /**
  * A stated dB magnitude ("by 2 dB", "o 3 db") as the fold's RELATIVE fader
@@ -175,8 +221,9 @@ export function parseFaderIntent(text: string): FaderIntent | null {
     // "set X to N%" without a fader family → not a fader ask (tempo/effects
     // own their own set-modes); fall through below for the relative stems.
   }
-  const down = FADER_DOWN.test(commandText);
-  const up = !down && (FADER_UP.test(commandText) || SK_ADD_FADER.test(commandText));
+  const down = FADER_DOWN.test(commandText) || FADER_DOWN_COMPARATIVE.test(commandText);
+  const up =
+    !down && (FADER_UP.test(commandText) || FADER_UP_COMPARATIVE.test(commandText) || SK_ADD_FADER.test(commandText));
   if (!down && !up) return null;
   // CONFLICTING directions ("zníž basu a zvýš lead") must not silently take
   // the down-priority and move BOTH targets the same way — decline instead.
@@ -187,17 +234,18 @@ export function parseFaderIntent(text: string): FaderIntent | null {
   const targets = FADER_TARGETS.filter(([pattern]) => pattern.test(targetText)).map(([, target]) => target);
   const pads = FADER_PADS.filter(([pattern]) => pattern.test(targetText)).map(([, family]) => family);
   if (targets.length === 0 && pads.length === 0) return null; // "zniz" alone is ambiguous
-  const amount: FaderAmount = AMOUNT_FULL.test(commandText)
-    ? "full"
-    : AMOUNT_BIG.test(commandText)
-      ? "big"
-      : AMOUNT_SUBTLE.test(commandText)
-        ? "subtle"
-        : "normal";
+  const { amount, degree } = faderDegree(commandText);
   // Explicit numbers beat vibe words ("o 10 %" wins over "trochu"); a
   // stated dB magnitude converts to the same relative percent.
   const percent = parsePercent(commandText) ?? dBPercent(commandText, down ? "down" : "up");
-  return { targets, pads, direction: down ? "down" : "up", amount, ...(percent != null ? { percent } : {}) };
+  return {
+    targets,
+    pads,
+    direction: down ? "down" : "up",
+    amount,
+    ...(degree ? { degree } : {}),
+    ...(percent != null ? { percent } : {}),
+  };
 }
 
 /**
@@ -270,13 +318,7 @@ export function parseNamedTrackFaderIntent(text: string, doc: ProjectDocument): 
     : [];
   if (named.length === 0 && namedReturns.length === 0) return null;
   const direction: "down" | "up" | "set" = isSet ? "set" : down ? "down" : "up";
-  const amount: FaderAmount = AMOUNT_FULL.test(lower)
-    ? "full"
-    : AMOUNT_BIG.test(lower)
-      ? "big"
-      : AMOUNT_SUBTLE.test(lower)
-        ? "subtle"
-        : "normal";
+  const { amount, degree } = faderDegree(lower);
   const percent = isSet
     ? parsePercentAllowingZero(text)
     : (parsePercent(text) ?? dBPercent(text, down ? "down" : "up"));
@@ -286,6 +328,7 @@ export function parseNamedTrackFaderIntent(text: string, doc: ProjectDocument): 
     returnIds: namedReturns.map((item) => item.id),
     direction,
     ...(amount !== "normal" ? { amount } : {}),
+    ...(degree ? { degree } : {}),
     ...(percent != null ? { percent } : {}),
   };
 }
@@ -513,6 +556,13 @@ function foldFaderIntent(cursor: ProjectDocument, intent: FaderIntent): FaderFol
         ? Math.max(0, 1 - intent.percent / 100)
         : 1 + intent.percent / 100
       : (() => {
+          // The fine-grained DEGREE wins when the ask named one — that is what
+          // separates "barely" (×0.95) from "a little" (×0.92) from "much"
+          // (×0.70). The coarse FADER_FACTORS table stays the FALLBACK for a
+          // decoded model intent, which carries the schema's `amount` class
+          // without any words to re-derive a degree from (model-decoder.ts).
+          if (intent.degree)
+            return calibrateFaderFactor(intent.degree.value, intent.direction === "down" ? "down" : "up");
           const factors = FADER_FACTORS[intent.amount ?? "normal"];
           return intent.direction === "down" ? factors.down : factors.up;
         })();

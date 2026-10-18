@@ -22,6 +22,7 @@ import type { ParamDef } from "../effects/types";
 import { EFFECT_META, clampEffectParam, defaultParamsOf } from "../effects/definitions";
 import type { Command } from "../commands/types";
 import { effectWordIn, applyMixIntent, TARGET_WORDS, EFFECT_KNOB, type MixDecision, type MixTarget } from "./mix";
+import { calibrateParamFraction, degreeToEffectAmount, parseDegree, type Degree } from "./degree";
 
 export type ParamRole = "mix" | "time" | "tone" | "drive" | "width";
 
@@ -100,6 +101,12 @@ export interface ParamIntent {
   value?: number;
   /** Vibe ladder for relative asks (fractions of the param range). */
   amount: "subtle" | "medium" | "huge";
+  /**
+   * The resolved graduated degree (intent/degree.ts) when the ask NAMED one.
+   * `amount` is the coarse class; `degree` is the magnitude the apply path
+   * calibrates from in the param's OWN domain (log for taper:"log").
+   */
+  degree?: Degree;
   /** Explicit percent ("o 20 %") — fraction of the param's range, interpolated
    * in the param's own domain (log for taper:"log"). Wins over `amount`. */
   percent?: number;
@@ -269,10 +276,18 @@ export function parseParamIntent(text: string): ParamIntent | null {
     (role === "mix" && drier && !wetter);
   const timeShorter = /\bkrats|\bshort/.test(lower);
   const direction: "more" | "less" = role === "time" ? (timeShorter ? "less" : "more") : less ? "less" : "more";
-  let amount: ParamIntent["amount"] = "medium";
-  if (/\bsubtle\b|\btrochu\b|\bmalic/.test(lower)) amount = "subtle";
-  else if (/\bhuge\b|\ba lot\b|\bobri\b|\bvela\b|\bvelmi\b|\breally\b/.test(lower)) amount = "huge";
-  detected.push(direction, percent != null ? `${percent}%` : amount);
+  // Graduated degree, resolved through the shared taxonomy (intent/degree.ts).
+  // The regexes this replaced (`subtle|trochu|malic` / `huge|a lot|obri|vela|
+  // velmi|really`) were missing "slightly", "a little" and "a bit" — so
+  // "slightly more delay" landed on MEDIUM here while mix.ts called the very
+  // same word SUBTLE on the primary knob. Same sentence, two magnitudes. The
+  // taxonomy is the union of both vocabularies plus "barely"/"much"/"a touch".
+  const degree = parseDegree(text);
+  const amount: ParamIntent["amount"] = degree ? degreeToEffectAmount(degree.level) : "medium";
+  detected.push(
+    direction,
+    percent != null ? `${percent}%` : degree ? `${degree.name} (${degree.matched.trim()})` : amount,
+  );
   return {
     effectType,
     role,
@@ -280,6 +295,7 @@ export function parseParamIntent(text: string): ParamIntent | null {
     targets: [...targets],
     mode: direction,
     amount,
+    ...(degree ? { degree } : {}),
     ...(percent != null ? { percent } : {}),
     detected,
   };
@@ -387,7 +403,12 @@ export function applyParamIntent(doc: Parameters<typeof applyMixIntent>[0], inte
     if (intent.mode === "set") {
       next = intent.value ?? current;
     } else {
-      const fraction = intent.percent != null ? intent.percent / 100 : AMOUNT_FRACTION[intent.amount];
+      const fraction =
+        intent.percent != null
+          ? intent.percent / 100
+          : intent.degree
+            ? calibrateParamFraction(intent.degree.value)
+            : AMOUNT_FRACTION[intent.amount];
       const step = intent.mode === "less" ? -fraction : fraction;
       next = param ? valueAtFraction(param, fractionOf(param, current) + step) : current;
     }

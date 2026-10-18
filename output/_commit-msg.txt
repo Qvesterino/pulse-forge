@@ -1,43 +1,60 @@
-ui(proportion): measure the coarse branch, and fix a gate that measured the wrong thing
+ui(material): one bevel recipe for the shell's control family
 
-The coarse-pointer branch of the shell ran in production with no gate behind
-it. Sequencer.tsx picks ROW_HEIGHT from matchMedia('(pointer: coarse)') and
-57-row-pitch.css sets --step-h under the same query, but the gate's context
-had no touch emulation - so at 390x844 it answered from the fine branch and
-reported 'pitch TS 30px vs CSS 30px': correct, and about the wrong branch.
+The plan's reason for this wave was wrong and is corrected in the same commit:
+it said "today KYX has flat surfaces with thin borders". Measured, the bevel
+already exists on ~217 surfaces. What is missing is ONE recipe — the top
+highlight lands at twelve different strengths, and two controls sitting next
+to each other in the same toolbar can disagree.
 
-Adds --touch: one extra context (devices['Pixel 7']) resized across 390x844
-and 800x1180. Before measuring it asserts the context really reports
-(pointer: coarse); if the emulation ever fails to flip, that is HARNESS_ERROR
-rather than a pass, because a gate reporting green over a branch it never
-entered is worse than no gate.
+Measured before (scripts/material-audit.mjs, 1440x900):
 
-THE GATE WAS ALSO WRONG. Its pitch metric was rowBox + marginBottom. On a
-coarse pointer that computes 48 against ROW_HEIGHT 46 and reports a 2px
-drift that does not exist - the margin does not participate in layout there.
-It passed on the fine branch only by coincidence (28 + 2 == 30).
+  .btn / .btn-small   rgba(255,255,255,0.075) inset 0 1px 0  + rgba(0,0,0,0.18) 0 1px 2px
+  .row-pad            rgba(255,255,255,0.08)  inset 0 1px 0  + amber inset 0 -2px 0
+  .track-header-name  rgba(255,255,255,0.11)  inset 0 1px 0  + amber inset 2px 0 0
+  .pattern-chip       rgba(255,255,255,0.2)   inset 0 1px 0  + amber glow
+  .track-tab          rgba(255,255,255,0.32)  inset 0 1px 0  + dark inset 0 -1px 0
+  .dock-tab           none
+  .preset-chip        none
 
-Two wrong metrics were tried before the right one, and all three are recorded
-in the file because the shape of the mistake is the reusable part:
+Two of the busiest surfaces had no shadow at all: the dock tab row is the
+primary navigation of the bottom half of the studio and was flat, and the
+baseline 0.075 does not read as an edge on this background at all.
 
-  1. box + marginBottom   - wrong, inert margin on the coarse branch
-  2. rendered top-to-top  - a tautology. Mutating ROW_HEIGHT to 32 moved the
-                            rendered pitch to 32, because the component lays
-                            rows out from its own constant
-  3. the CSS row box       - correct. With ROW_HEIGHT mutated 30 -> 32 the box
-                            stayed 28 (fine) and 46 (coarse), so it is
-                            genuinely independent
+Adds two tokens and applies one recipe to the baseline family:
 
-The invariant that actually harms is overlap: a box taller than the slot
-accumulates down the list. Asserts box <= slot and prints both numbers.
+  --bevel-hi  1px inset white on the top edge
+  --bevel-lo  1px inset dark on the bottom edge
 
-Falsified: ROW_HEIGHT set to 40/24 turned both branches red with the correct
-message; the corroborating symptom was visible rows jumping from 12 to 15 as
-the virtualizer believed the rows were shorter.
+.btn 0.075 -> 0.10, .btn-small -> 0.10, .dock-tab none -> 0.10, .preset-chip
+none -> 0.10. The bottom inset is new everywhere it is applied (only .track-tab
+had one) and is the half of the effect that reads as lifted rather than tinted.
+The 0.075 population (67 surfaces) is gone from the census.
 
-Also corrects a comment in Sequencer.tsx that asserted the rows are
-absolutely positioned from cumulativeHeights. Measured: position is static.
-The tautology conclusion survived, for a different reason, and the comment now
-says so and warns off "fixing" the comparison back to a rendered-pitch check.
+Deliberately not touched: .track-tab (0.32), .row-pad (0.08),
+.track-header-name (0.11) and .pattern-chip (0.2). Their highlight is a
+SELECTION signal — each carries an amber inset alongside it — and normalising
+them to the baseline would flatten "this channel is selected" into "this is a
+button". The census samples the first matching element of a selector, so their
+values are state samples; rewriting them from one sample is how this project
+arrived here. Also untouched: 122 piano-roll keys (2 on screen), 268
+catalogue rows, 256 step cells — bevel on texture is noise, and box-shadow on
+hundreds of elements is paint cost.
 
-Both branches pass: fine 28px box in a 30px slot, coarse 46px in 46.
+.preset-chip is in the family for a checked reason, not a loose one: grep of
+07-project-browser.css shows .preset-chip.active changes background, border and
+colour and nothing else, so there is no competing state recipe to break.
+
+scripts/material-audit.mjs becomes a gate: each declared role must resolve to
+the token's alpha, exit 0/1/2. Same reasoning as typography-audit — a census
+histogram cannot see a rule that lost the cascade, and this layer sits before
+26-settings-glass.css, which is allowed to restyle controls. Falsified by
+setting --bevel-hi to 0.14: all four roles went red with the computed value
+named.
+
+Also fixes a regression this session introduced. Wave 3 raised the channel name
+from 12px to 13px so it would match the track header, and at 13px the label
+column no longer fits the longer factory names: "Kick Techno" renders as
+"Kick Tech…". Rather than give the pixels back and reintroduce two sizes for
+one role, the full name goes in a tooltip — truncated-with-tooltip is how FL
+Studio handles a narrow channel label. CSS truncation never touches the
+accessibility tree, so the button's accessible name was never affected.

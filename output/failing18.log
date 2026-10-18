@@ -1,0 +1,8 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+filter:  tests/mcp-tools.test.ts tests/creative-task-contract.test.ts tests/ui/timeline-rec.test.tsx tests/desktop-mcp.test.ts tests/gallery-server.test.ts tests/layout-data.test.ts tests/intent-model-schema.test.ts tests/collab-automation.test.ts tests/stress.test.ts tests/curated-samples.test.ts tests/acid-brass.test.ts tests/ui/PianoRoll.test.tsx tests/recording-audit.test.ts tests/intent-sft-golden.test.ts tests/instrument-voice-reachability.test.ts tests/audio-engine-audit12.test.ts tests/ui/DockChrome.test.tsx tests/bridge-rate-limit.test.ts
+include: **/*.{test,spec}.?(c|m)[jt]s?(x)
+exclude:  **/node_modules/**, **/dist/**, **/.{idea,git,cache,output,temp}/**, **/.kilo/**, **/.sft/**, tests/e2e/**
+
+No test files found, exiting with code 1

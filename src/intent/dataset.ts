@@ -24,6 +24,27 @@ export interface CompactIntentResponse {
   [key: string]: unknown;
 }
 
+/**
+ * Strip the parse-time `degree` refinement before an intent becomes teacher
+ * output (intent/degree.ts).
+ *
+ * `degree` answers "which of the seven bands did the user's adverb land in?"
+ * — a question only the DETERMINISTIC layer can answer, because only it sees
+ * the words. The model is trained to emit the coarse, canonical action
+ * (`amount`: subtle | medium | huge), and the parser re-derives the fine
+ * magnitude from the user's own phrasing. Emitting `degree` here would change
+ * the SFT teacher contract — `scripts/data/intent-sft/{golden,train,val}.jsonl`
+ * are byte-pinned by tests/intent-sft-golden.test.ts — for no model benefit.
+ *
+ * Property order is preserved (spread first), so an unstripped intent would
+ * serialise identically to the pinned golden.
+ */
+function withoutDegree<T extends object>(intent: T): Omit<T, "degree"> {
+  const copy: Record<string, unknown> = { ...intent };
+  delete copy.degree;
+  return copy as Omit<T, "degree">;
+}
+
 export function compactIntentResponse(route: RoutedIntent): CompactIntentResponse {
   switch (route.kind) {
     case "preset":
@@ -57,7 +78,7 @@ export function compactIntentResponse(route: RoutedIntent): CompactIntentRespons
     case "clips":
       return { kind: "clips", ops: route.ops };
     case "fader":
-      return { kind: "fader", intent: route.intent };
+      return { kind: "fader", intent: withoutDegree(route.intent) };
     case "compound":
       return { kind: "compound", parts: route.parts };
     case "transport":
@@ -85,7 +106,7 @@ export function compactIntentResponse(route: RoutedIntent): CompactIntentRespons
         ...(route.intent.percent !== undefined ? { percent: route.intent.percent } : {}),
       };
     case "effectIntent":
-      return { kind: "effectIntent", intent: route.intent };
+      return { kind: "effectIntent", intent: withoutDegree(route.intent) };
     case "loudness":
       return { kind: "loudness", parse: route.parse };
     case "tempo":

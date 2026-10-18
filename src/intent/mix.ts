@@ -15,6 +15,7 @@ import { SONG_LOUDNESS_TARGET_LUFS, SONG_LOUDNESS_TRIM_LIMIT_DB } from "./genre-
 import { artistMixProfileOf } from "./artist-mix";
 import { roleForTrack } from "./favorites";
 import { parsePercent, parsePercentAllowingZero } from "./percent";
+import { calibrateKnobScale, degreeToEffectAmount, parseDegree, type Degree } from "./degree";
 import type { IntentSpec } from "./types";
 
 /**
@@ -688,6 +689,13 @@ export interface EffectIntent {
   direction: "more" | "less" | "remove" | "set";
   amount: "subtle" | "medium" | "huge";
   /**
+   * The resolved graduated degree (intent/degree.ts) when the ask NAMED one.
+   * `amount` is the coarse schema-pinned class; `degree` is the magnitude the
+   * apply path calibrates from. Absent for an unqualified ask — which then
+   * keeps the documented medium default.
+   */
+  degree?: Degree;
+  /**
    * Explicit percent ("o 20 %") — fraction of the knob's own range in the
    * parsed direction. For direction "set" it is the absolute target level.
    */
@@ -1002,16 +1010,29 @@ export function parseEffectIntent(text: string): EffectIntent | null {
     }
   }
 
-  let amount: EffectIntent["amount"] = "medium";
-  if (/\bsubtle\b|\bslightly\b|\ba little\b|\ba bit\b|\btrochu\b|\bmalicko/.test(lower)) amount = "subtle";
-  else if (/\bhuge\b|\ba lot\b|\bobri\b|\bvela\b|\bvelmi/.test(lower)) amount = "huge";
+  // Graduated degree, resolved through the shared taxonomy (intent/degree.ts).
+  // The two local regexes this replaced knew only "subtle|slightly|a little|
+  // a bit|trochu|malicko" and "huge|a lot|obri|vela|velmi" — they had no rung
+  // for "much" at all, so "much more reverb" was MEDIUM while "a lot more
+  // reverb" was HUGE: the weaker adverb produced the stronger change. The
+  // taxonomy inverts that and keeps every old word in its old bucket.
+  const degree = parseDegree(text);
+  const amount: EffectIntent["amount"] = degree ? degreeToEffectAmount(degree.level) : "medium";
 
   // Explicit numbers beat vibe words ("o 20 %" wins over "trochu").
   const percent = parsePercent(text);
   const detected = [`${direction} ${effectType}`, `→ ${[...targets].join("+")}`];
   if (percent != null) detected.push(`${percent}%`);
-  else if (amount !== "medium") detected.push(amount);
-  return { effectType, targets: [...targets], direction, amount, ...(percent != null ? { percent } : {}), detected };
+  else if (degree) detected.push(`${degree.name} (${degree.matched.trim()})`);
+  return {
+    effectType,
+    targets: [...targets],
+    direction,
+    amount,
+    ...(degree ? { degree } : {}),
+    ...(percent != null ? { percent } : {}),
+    detected,
+  };
 }
 
 const AMOUNT_SCALE: Record<EffectIntent["amount"], number> = { subtle: 0.5, medium: 1, huge: 1.75 };
@@ -1021,7 +1042,7 @@ const AMOUNT_SCALE: Record<EffectIntent["amount"], number> = { subtle: 0.5, medi
 export function effectKnobDelta(intent: EffectIntent): number {
   if (intent.move) return 0;
   if (intent.direction === "set") return 0; // absolute — no delta
-  const scale = AMOUNT_SCALE[intent.amount];
+  const scale = intent.degree ? calibrateKnobScale(intent.degree.value) : AMOUNT_SCALE[intent.amount];
   const base = 0.16 * scale;
   return intent.direction === "more" ? base : -base;
 }
@@ -1045,7 +1066,7 @@ export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): R
   if (!knob) {
     throw new Error(`no knob mapped for effect "${intent.effectType}" — intent understood, effect unsupported`);
   }
-  const scale = AMOUNT_SCALE[intent.amount];
+  const scale = intent.degree ? calibrateKnobScale(intent.degree.value) : AMOUNT_SCALE[intent.amount];
   const trackIds = intent.targets.flatMap((target) => trackIdsForTarget(doc, target));
   if (trackIds.length === 0) {
     throw new Error(`no tracks match the target (${intent.targets.join(", ")})`);
