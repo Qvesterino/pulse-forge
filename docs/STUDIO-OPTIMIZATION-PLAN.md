@@ -252,11 +252,46 @@ kasádu. Priemer shella takúto chybu nevidí.
 ### Vlna 4 — materiál
 
 FL Studio vyzerá ako „hardware" nie „web app" pre **bevel**: 1px svetlý
-horný okraj + 1px tmavý spodok na každom raised povrchu. Dnes KYX má ploché
-plochy s tenkými hranicami → číta sa to ako debug dashboard.
+horný okraj + 1px tmavý spodok na každom raised povrchu.
+
+**Dôvod v tejto vete bol chybný a meranie ho vyvrátilo.** Písala sa v dobe,
+kedy nikto nevidel `box-shadow` v prepočítanom štýle. Zmerané
+(`scripts/material-audit.mjs`, 1440×900): v shelli je **1178 raised
+povrchov** a bevel na nich **už existuje** — asi 217 povrchov nesie 1px inset
+horný svetlý lúč. Nie je teda chýbajúci materiál, **chýba jediný recept**.
+
+| Sila horného svetla | Počet povrchov            |
+| -------------------- | ------------------------ |
+| `rgba(255,255,255,.055)` | 2                    |
+| `rgba(255,255,255,.06)`  | 122                  |
+| `rgba(255,255,255,.075)` | 67                   |
+| `rgba(255,255,255,.08)`  | 2                    |
+| `rgba(255,255,255,.24)`  | 2                    |
+| `rgba(255,255,255,.30)`  | 8                    |
+| `rgba(255,255,255,.32)`  | 1                    |
+| `rgba(255,255,255,.9)`   | 1                    |
+| farebné (`color(srgb …)`) | 11 (farby padov)    |
+
+**Dvanásť rôznych síl na susediacich ovládacích prvkoch.** Oko si nedokáže
+vytvoriť konzistentné očakávanie „toto je vybočené", pretože susedné tlačidlá
+svietia rôzne. To — nie chýbajúci bevel — je dôvod, prečo sa to číta ako
+dashboard. Výplň k tomu prispieva len málo.
+
+**Konkrétna zmena:** dva tokeny `--bevel-hi` / `--bevel-lo` a jeden recept
+pre rodinu ovládacích prvkov v shelli (`.btn`, `.btn-small`, `.dock-tab`,
+`.track-tab`, `.row-pad`, `.track-header-name`, `.pattern-chip`), namiesto
+dvanástich.
+
+**Mimo scope zámerne:** 256 step buniek, 268 riadkov katalógu vzoriek a 122
+klávesov piano rollu. Sú mimo obrazovky alebo textúra — bevel na nich je
+šum, nie materiál, a `box-shadow` na stovkách prvkov je paint cost.
 
 Je to jediná položka, ktorá je čisto estetická. Ale je to tá, ktorá dáva
 všetkému hĺbku naraz.
+
+**Brána:** `scripts/material-audit.mjs` musí tvrdiť, že vypočítaná sila
+horného svetla deklarovaných rolí sa rovná tokenu — rovnaká trieda brány ako
+`typography-audit.mjs`, lebo rovnaká chyba sa dá spraviť rovnakým spôsobom.
 
 ---
 
