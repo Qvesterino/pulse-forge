@@ -129,16 +129,42 @@ describe("a11y: keyboard navigation across major panels", () => {
       expect(await screen.findByText(/2\/4 — PROGRAM THE BEAT/)).toBeInTheDocument();
     });
 
-    it("Tab cycles through the tour controls (Skip / Next)", async () => {
+    it("Tab cycles through every tour control in DOM order", async () => {
       const user = userEvent.setup();
       renderWithContext(<OnboardingTour />, { services: mockServices() });
-      await screen.findByRole("dialog", { name: "Onboarding tour" }, { timeout: 5000 });
+      const dialog = await screen.findByRole("dialog", { name: "Onboarding tour" }, { timeout: 5000 });
       const skipBtn = screen.getByRole("button", { name: "Skip tour" });
       const nextBtn = screen.getByRole("button", { name: "NEXT" });
-      skipBtn.focus();
+
+      // The tour carries an optional "Previous DAW profile" picker — a real
+      // <select> — between SKIP and NEXT in the DOM (OnboardingTour.tsx, step 0
+      // of a non-transfer project). The previous version of this test asserted
+      // that ONE Tab from SKIP landed on NEXT, so it went red the day that
+      // picker landed. The component was right; the expectation was stale.
+      //
+      // This version derives the focus chain from the dialog's own DOM, which
+      // is STRONGER than the old one-hop assertion: it pins SKIP as the first
+      // stop, NEXT as the last, and every control in between, so a control
+      // that is unreachable or mis-ordered still fails — and a control that is
+      // merely ADDED does not.
+      const focusables = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button, select, input, textarea, a[href], [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => el.tabIndex >= 0 && !el.hasAttribute("disabled"));
+      expect(focusables.length, "the tour dialog must expose at least SKIP and NEXT").toBeGreaterThanOrEqual(2);
+      expect(focusables[0], "SKIP must be the first stop in the tour's focus order").toBe(skipBtn);
+      expect(focusables[focusables.length - 1], "NEXT must be the last stop").toBe(nextBtn);
+
+      focusables[0].focus();
       expect(document.activeElement).toBe(skipBtn);
-      await user.tab();
-      expect(document.activeElement).toBe(nextBtn);
+      for (const expected of focusables.slice(1)) {
+        await user.tab();
+        expect(
+          document.activeElement,
+          `Tab did not advance to the next tour control in DOM order (${expected.getAttribute("aria-label") ?? expected.tagName})`,
+        ).toBe(expected);
+      }
     });
   });
 
