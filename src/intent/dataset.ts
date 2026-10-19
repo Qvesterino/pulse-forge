@@ -40,7 +40,7 @@ export interface CompactIntentResponse {
  * serialise identically to the pinned golden.
  */
 function withoutDegree<T extends object>(intent: T): Omit<T, "degree"> {
-  const copy: Record<string, unknown> = { ...intent };
+  const copy = { ...intent } as Record<string, unknown>;
   delete copy.degree;
   return copy as Omit<T, "degree">;
 }

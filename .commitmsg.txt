@@ -1,0 +1,51 @@
+audit: add a mix-class wiring probe to the host test, and pin the gate with a real test
+
+`hostProcesses` claimed to answer "is this effect in the host graph". What it
+actually measured was "does this effect's strongest non-dry parameter change
+the timbre of a drum bus". Those are different questions, and for at least one
+effect the second one has the wrong answer.
+
+MEASURED on the same house doc, same render path, one fingerprint each:
+
+  effect       timbreDelta   mixDelta    verdict before   verdict after
+  rezonans     7.9e-8        7.2e-2      not processing   processing
+  reverb       8.8e-2        3.7e-1      processing       processing   (control)
+  sirka        9.9e-11       1.7e-10     not processing   not processing
+  reverseSwell 1.6e-10       2.6e-10     not processing   not processing
+  pitchCorrect 3.6e-11       8.3e-11     not processing   not processing
+  vocoder      1.0e-10       7.9e-8      not processing   not processing
+  sidechain    1.3e-10       (no mix)    not processing   not processing
+
+`fingerprintOf` picked harmony.mode + detect.clarity for rezonans — a harmony
+generator fed a percussive drum bus — while the effect sat wired in the graph
+the whole time. Driving its dry/wet instead moves the render by 7.2e-2, ninety
+thousand times the timbre probe and fourteen times HOST_EPS. MIX_CLASS_IDS
+excludes mix because "a dry/wet control only changes the level", which is
+exactly why it is the right probe for a WIRING question and the wrong one for a
+timbre question.
+
+The guard is not vacuous: the OR still returns false for five of the seven
+above. A probe that had moved every verdict would have detected nothing, so
+that was measured rather than assumed.
+
+HONEST SCOPE — this rescues ONE verdict, not four. sirka, reverseSwell,
+pitchCorrect, vocoder and sidechain sit below HOST_EPS under BOTH probes and
+remain open. At least one has a documented benign reason: sirka's own
+parameter definition says "width 1 everywhere is a neutral pass", so mix=max
+against a dry bus is a passthrough by design and its zero is correct. The
+others are genuinely unexplained. A still-false verdict here means neither
+"confirmed defect" nor "confirmed exemption" — it needs per-effect triage with
+material that actually exercises the device, not a larger threshold.
+
+Also adds tests/plugin-audit-gate.test.ts (13 specs) pinning the hostExempt
+split from the previous commit, including the loophole that an effect must not
+be able to exempt itself by writing "" or "   " — the filter tests .trim().
+length, not mere presence. Falsified by reverting the gate to its pre-split
+logic: 3 specs fail, and they are exactly the three asserting the split.
+scripts/lib/plugin-audit-gate.d.mts follows the repo's existing .d.mts
+convention for typed .mjs imports. CURRENT-STATE spec count 1104 -> 1106; the
+intervening 1105 was pre-existing drift from another session.
+
+Note: this changes the harness fingerprint (HARNESS_SOURCES covers only
+src/plugin-audit-checks.ts), so the committed baseline report is stale and a
+full re-run is required before the quick gate is green again.
