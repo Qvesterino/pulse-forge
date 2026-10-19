@@ -61,6 +61,11 @@ function mockCtx() {
       connect: (n: unknown) => n,
       disconnect: () => undefined,
     }),
+    // Acid routes its amp through connectNotePan with forcePanner=true
+    // (registry.ts), so the panner is created unconditionally. Without this
+    // the mock threw "createStereoPanner is not a function" and the MONO /
+    // GLIDE cases died on the harness, not on the behaviour under test.
+    createStereoPanner: () => ({ pan: mockParam(0), connect: (n: unknown) => n, disconnect: () => undefined }),
     createOscillator: () => {
       const osc: MockOsc = {
         type: "sine",
@@ -124,8 +129,12 @@ describe("acid — the squelch wiring", () => {
       registry.indexOf("const brass: InstrumentDefinition"),
     );
     expect(acidBlock).toContain("svf.frequency.setValueAtTime(cutoffEnvPeak, when)");
-    expect(acidBlock).toContain("svf.frequency.setTargetAtTime(cutoffBase, when + 0.01, decay / 3)");
-    expect(acidBlock).toContain("cutoffBase * (1 + envMod * 4 + accentVel * 2)");
+    // The decay target is the EXPRESSION-MODULATED cutoff (filterMod.cutoff),
+    // not the raw base: noteFilterModulation returns baseCutoff when no
+    // expression/modX is present, so these cases are numerically identical —
+    // but pinning the modulated value keeps the pin honest if that changes.
+    expect(acidBlock).toContain("svf.frequency.setTargetAtTime(filterMod.cutoff, when + 0.01, decay / 3)");
+    expect(acidBlock).toContain("filterMod.cutoff * (1 + envMod * 4 + accentVel * 2)");
   });
 
   it("GLIDE pulls from lastFreq — the second note slides from the first pitch", () => {
@@ -156,7 +165,8 @@ describe("brass — the horn stab wiring", () => {
     const registry = readFileSync(resolve(process.cwd(), "src/instruments/registry.ts"), "utf8");
     const brassBlock = registry.slice(registry.indexOf("const brass: InstrumentDefinition"));
     expect(brassBlock).toContain("svf.frequency.setValueAtTime(sweepPeak, when)");
-    expect(brassBlock).toContain("svf.frequency.setTargetAtTime(cutoffBase * (0.7 + velocity * 0.5)");
+    // Decay lands on the modulated cutoff over the sweep time.
+    expect(brassBlock).toContain("svf.frequency.setTargetAtTime(filterMod.cutoff, when + attack, sweepTime)");
     expect(brassBlock).toContain("cutoffBase * (1 + sweep * 3 * (0.5 + velocity * 0.5))");
   });
 

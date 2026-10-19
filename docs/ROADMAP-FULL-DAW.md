@@ -101,9 +101,10 @@ its own evidence lane:
    at 48 kHz, with bounded lag and successful post-crash recovery. This verifies
    the browser software path only. Keep physical routing, real takes, latency
    and the longer hardware soak open.
-4. **Qualify the reference device.** The UA Volt 276 is now active. A bounded
-   10- and 30-second shared-mode capture plus silent-render smoke passed on its
-   named endpoints with MMCSS. Record the driver and physical channel map, then
+4. **Qualify the reference device.** The UA Volt 276 passed bounded 10- and
+   30-second shared-mode capture plus silent-render smokes on 2026-10-15, but
+   read-only endpoint checks on 2026-10-17 and 2026-10-19 did not find it
+   connected. When it is present, record the driver and physical channel map,
    measure analog round-trip latency and run a sustained device-loss/recovery
    soak. Assess real ASIO streaming only after the SDK and licensing route is
    clear.
@@ -153,6 +154,13 @@ read in this check. The 2026-10-15 Volt smoke remains valid historical evidence,
 but the reference device was unavailable for another hardware run in this
 execution. See the [current endpoint check](./WINDOWS-AUDIO-SPIKE-2026-09.md#current-endpoint-check--2026-10-17).
 Reconnect the Volt before physical jack, latency, recovery or soak qualification.
+
+**Execution checkpoint (2026-10-19):** a second read-only PnP enumeration
+again found the Creative webcam microphone, Realtek speakers and microphone
+array, and MSI display audio output, with no Volt 276 endpoints. No stream was
+opened. The 2026-10-15 Volt result remains historical evidence; continue with
+software bridge work until the device is present for physical qualification.
+See the [2026-10-19 endpoint check](./WINDOWS-AUDIO-SPIKE-2026-09.md#current-endpoint-check--2026-10-19).
 
 ## Phase 0 — make the target and baseline truthful
 

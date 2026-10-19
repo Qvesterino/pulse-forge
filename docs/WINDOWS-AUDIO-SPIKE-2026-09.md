@@ -77,6 +77,15 @@ opened and no microphone samples were read. The 2026-10-15 Volt smoke remains
 historical evidence; repeat physical qualification only after the interface is
 connected and the exact endpoints enumerate again.
 
+## Current endpoint check — 2026-10-19
+
+A second read-only `Get-PnpDevice -Class AudioEndpoint -PresentOnly`
+enumeration found the Creative webcam microphone, Realtek speakers and
+microphone array, and MSI display audio output. It again found no Volt 276
+capture or render endpoint. No WASAPI stream was opened and no input samples
+were read. The Volt's 2026-10-15 shared-mode smoke remains historical; repeat
+physical qualification only when the Volt endpoints are present.
+
 ## Reference endpoints detected in the original 2026-09 session
 
 Windows reported these active Universal Audio endpoints in the original session:

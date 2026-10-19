@@ -121,7 +121,12 @@ describe("PianoRollTrack", () => {
     expect(el.style.width).toBe("18.75%"); // 3 of 16 steps
     expect(el.style.opacity).toBeCloseTo(0.35 + 0.6 * 0.65, 5);
     expect(el.title).toContain("C4");
-    expect(el.title).toContain("(slide)");
+    // The accessible label says (portamento) — the engine name for a
+    // pitched glide. (slide) was the old label; (slide note) is a DIFFERENT
+    // NoteEvent flag, so asserting either of those here would pin the wrong
+    // property. The CSS class stays "slide" and is asserted above.
+    expect(el.title).toContain("(portamento)");
+    expect(el.title).not.toContain("(slide note)");
     // Velocity lane bar renders alongside the grid note.
     expect(container.querySelector('[data-vel="n1"]')).toBeTruthy();
   });

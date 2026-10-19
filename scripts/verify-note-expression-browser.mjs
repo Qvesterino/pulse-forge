@@ -54,7 +54,9 @@ try {
           const { runNoteExpressionAudioChecks } = await import("/src/testing/noteExpressionAudioChecks.ts");
           if (granularOnly) {
             const offline = await runNoteExpressionAudioChecks(["granular"]);
-            const parity = await auditNoteExpressionLiveOfflineParity(bank, ["granular: per-note pan expression"]);
+            const parity = await auditNoteExpressionLiveOfflineParity(bank, [
+              "granular: velocity + fine pitch + pan + releaseVelocity",
+            ]);
             const releaseParity = await auditWorkletReleaseResponseParity(bank, ["granular"]);
             return [...offline, parity, releaseParity];
           }

@@ -230,6 +230,7 @@ INSTRUMENTS = sorted(
         "drumsynth",
         "tsar",
         "kopa",
+        "choral",
     ]
 )
 EXPORT_FORMATS = sorted(["wav", "mp3"])

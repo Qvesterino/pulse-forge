@@ -1,6 +1,7 @@
 # Music Maker 2026 → KYX product benchmark
 
-**Audit date:** 2026-10-18  
+**Audit date:** 2026-10-19
+
 **Sources:** [MAGIX Music Maker](https://www.magix.com/int/music/music-maker/), the [official Music Maker feature list](https://www.magix.com/us/music-editing/music-maker/functions/) and its [2026 feature highlights](https://www.magix.com/int/music/music-maker/new-features/).
 
 This is a feature and workflow benchmark, not a plan to copy MAGIX code, content,
@@ -9,17 +10,17 @@ decisions, not on roadmap intent.
 
 ## Audit status at a glance
 
-| Area                                 | KYX status                       | Evidence-based summary                                                                                                                                |
-| ------------------------------------ | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Loop discovery and content           | Partial                          | The browser filters user-imported loops by available metadata; KYX has no bundled licensed loop catalog.                                              |
-| Loop preview and placement           | Partial                          | BPM-tagged imports preview at project tempo and `Add` inserts a fitted, undoable audio clip; files without BPM cannot be tempo-matched automatically. |
-| Clip pitch and tempo                 | Partial                          | Pitch and tempo-fit behavior are implemented, but pitch adjustment is in the clip dialog rather than directly on the track.                           |
-| Live Pads and Live Sets              | Partial                          | KYX creates finite, editable clips from pads; open-ended stop/relaunch performance and bundled sets are absent.                                       |
-| MIDI multi-object editing            | Partial                          | Batch note-property edits are available; there is no combined Piano Roll for note selection across source patterns.                                   |
-| Spectrum and EQ                      | Partial                          | Analysis and frequency editing exist on separate surfaces; the master spectrum is not directly tied to EQ shaping.                                    |
-| Effects and beat making              | Partial / unverified             | Core effects, drum instruments and kits exist; common end-to-end workflows still need comparison.                                                     |
-| Audio recording and export           | Partial                          | Core recording and export exist, while formats and KYX Studio device support differ.                                                                  |
-| VST3 processing and native audio I/O | Missing as shipping capabilities | KYX has structural plug-in scanning and native I/O experiments, but neither is qualified product processing/device support.                           |
+| Area                                 | KYX status                       | Evidence-based summary                                                                                                                                    |
+| ------------------------------------ | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Loop discovery and content           | Partial                          | The browser filters user-imported loops by available metadata; KYX has no bundled licensed loop catalog.                                                  |
+| Loop preview and placement           | Partial                          | BPM-tagged imports preview at project tempo and `Add` inserts a fitted, undoable audio clip; files without BPM cannot be tempo-matched automatically.     |
+| Clip pitch and tempo                 | Implemented                      | AudioClip stores an undoable ±24-semitone offset separately from stretch rate; the dialog, project migration and shared live/offline trigger are covered. |
+| Live Pads and Live Sets              | Partial                          | KYX creates finite, editable clips from pads; open-ended stop/relaunch performance and bundled sets are absent.                                           |
+| MIDI multi-object editing            | Partial                          | Batch note-property edits are available; there is no combined Piano Roll for note selection across source patterns.                                       |
+| Spectrum and EQ                      | Partial                          | Analysis and frequency editing exist on separate surfaces; the master spectrum is not directly tied to EQ shaping.                                        |
+| Effects and beat making              | Partial / unverified             | Core effects, drum instruments and kits exist; common end-to-end workflows still need comparison.                                                         |
+| Audio recording and export           | Partial                          | Core recording and export exist, while formats and KYX Studio device support differ.                                                                      |
+| VST3 processing and native audio I/O | Missing as shipping capabilities | KYX has structural plug-in scanning and native I/O experiments, but neither is qualified product processing/device support.                               |
 
 ## Findings
 
@@ -148,6 +149,10 @@ differ.
   loop length is selected from 1/2/4/8/16 bars.
 - The UI reports active finite clips, and source loops retain their complete
   audio when they are longer than the selected clip length.
+- The Scene Launcher already queues pattern changes at the next bar. While
+  arrangement capture is active, `ArrangementCaptureController` records those
+  scene launches and `FINISH` appends corresponding scene clips with one
+  undoable command.
 
 The finite clip workflow is implemented in `src/ui/LivePadsPanel.tsx` and
 `src/commands/liveSets.ts`; current coverage is in
@@ -155,26 +160,43 @@ The finite clip workflow is implemented in `src/ui/LivePadsPanel.tsx` and
 
 ### Proposed parity wave
 
-Add live loop voices that can continue until a quantized stop or retrigger.
-Treat pad launches and stops as musical events owned by the scheduler and audio
-engine. React may show the active state, but must not schedule or own audio
-voices. On stop, turn the captured launch/stop interval into a normal finite
-`AudioClip` through one command, so the result is editable, saveable and
-undoable. Reuse the existing sample reference, tempo-fit and shared live/offline
-trigger path; do not bake the loop into a new audio file just to capture a pad
-performance.
+Extend the existing `ArrangementCaptureController` so the same CAPTURE /
+FINISH / CANCEL session records Live Pad loop intervals alongside Scene
+Launcher changes. Add open-ended live loop voices that stop on a quantized
+boundary. Keep voice scheduling in the scheduler/audio engine and let the
+capture controller own runtime interval metadata; React only sends intents and
+shows state. On FINISH, add captured scene clips and normal finite `AudioClip`s
+with one command, so the performance is editable, saveable and undoable. Reuse
+the existing sample reference, tempo-fit and shared live/offline trigger path;
+do not bake the loop into a new audio file.
 
-Before implementation, an ADR should settle these interaction details:
+### Recommended v1 interaction contract
 
-1. Whether launching the same active pad stops it or restarts it at the next
-   quantized boundary, and whether a different pad stacks or replaces it.
-2. The default launch/stop quantum (bar is the current behavior) and whether a
-   set can choose a finer grid independently from its loop duration.
-3. Whether stopping transport finalizes active pad intervals or cancels them.
-   Finalized clips should enter project history as one undoable performance
-   capture and autosave through the existing lifecycle.
-4. How to report a launch whose sample is still loading or whose target track
-   disappears before its queued boundary.
+- Reuse Arrangement's existing CAPTURE / FINISH / CANCEL controls. Outside
+  capture, preserve today's finite one-tap clip launch. During capture, keep the
+  existing one-bar launch quantum and use that same boundary for pad stops.
+  Keep the set's 1/2/4/8/16-bar loop length separate from launch quantization;
+  a finer quantum selector can follow after capture is proven.
+- In capture, tapping an inactive pad starts it on the next bar; tapping the
+  same active pad queues a stop for the next bar. Tapping it again before its
+  queued start cancels that start.
+- Let different pads stack on the set's destination track. This follows the
+  arrangement's existing audio-clip layering rule and supports live builds.
+  Prevent two overlapping voices from the same pad slot in one set.
+- Keep launch, stop and active voice ownership in `ArrangementCaptureController`
+  and the audio engine. Use scheduler tick-boundary subscriptions for audio-
+  clock timing; React only sends intents and displays queued/active state.
+- FINISH commits the captured scene clips and audio clips with one command.
+  Stopping transport closes active pad intervals at the exact stop tick;
+  CANCEL, panic, project switch or device loss silences voices and discards the
+  uncommitted capture. Saved pad intervals are regular `AudioClip`s, so existing
+  undo, autosave, editing and offline playback apply.
+- Captured scene launches stay as scene/arrangement clips. Captured pads become
+  audio clips; neither source is flattened into a rendered performance file.
+
+The v1 interaction and ownership decision is recorded in [ADR 0055](adr/0055-live-pad-performance-capture.md).
+The current finite-pad behavior remains shipped until that runtime capture wave
+is implemented.
 
 ### Acceptance gates
 
@@ -255,3 +277,4 @@ new licensing interpretation and does not authorize native implementation.
   `src/ui/FxEqPanel.tsx` and `src/effects/fxeq-core/`.
 - Live Pads, clip pitch, VST3 and Windows I/O: `docs/CURRENT-STATE.md` and the
   ADRs linked above.
+- Proposed Live Pad runtime capture contract: `docs/adr/0055-live-pad-performance-capture.md`.

@@ -52,7 +52,22 @@ function isEntityList(list: unknown[]): boolean {
   return list.length > 0 && list.every((item) => idOf(item) !== undefined);
 }
 
-/** Reference-pruned, order-insensitive structural equality. */
+/**
+ * Reference-pruned, order-insensitive structural equality.
+ *
+ * ABSENT ≡ `undefined`. A key present with the value `undefined` carries no
+ * information the document does not already have: the project is persisted as
+ * JSON, `JSON.stringify` drops such keys, and a save→load cycle therefore
+ * cannot restore the difference. Before this rule, any command that wrote an
+ * optional field as `undefined` (`transitions: transitionsForClips(...)` on a
+ * document that has no `transitions` key) produced a document that
+ * `JSON.stringify` proved IDENTICAL to the previous one — yet `deepEqualRef`
+ * called them different, so the delta engine emitted a real `set` op, the
+ * store pushed a history entry, and Ctrl+Z undid nothing at all. That is a
+ * dead undo step: reachable from the arrangement by dragging a scene clip less
+ * than half a bar, because `moveArrangementClip` rounds its argument to a
+ * whole bar after the UI has already compared the UNROUNDED drag value.
+ */
 export function deepEqualRef(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (Array.isArray(a) && Array.isArray(b)) {
@@ -63,10 +78,16 @@ export function deepEqualRef(a: unknown, b: unknown): boolean {
     return true;
   }
   if (isPlainObject(a) && isPlainObject(b)) {
-    const aKeys = Object.keys(a);
-    if (aKeys.length !== Object.keys(b).length) return false;
-    for (const key of aKeys) {
-      if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
+    // Compare the UNION of keys, and let `undefined` fall through the
+    // reference check — `deepEqualRef(undefined, undefined)` is true by the
+    // `a === b` rule at the top, so a key present only on one side with an
+    // `undefined` value compares equal instead of forcing a key-count mismatch.
+    for (const key of Object.keys(a)) {
+      if (!(key in b) && a[key] !== undefined) return false;
+      if (!deepEqualRef(a[key], b[key])) return false;
+    }
+    for (const key of Object.keys(b)) {
+      if (!(key in a) && b[key] !== undefined) return false;
       if (!deepEqualRef(a[key], b[key])) return false;
     }
     return true;
@@ -120,11 +141,16 @@ function diffAny(a: unknown, b: unknown, path: DeltaPath, ops: DeltaOp[]): void 
 function diffObject(a: Record<string, unknown>, b: Record<string, unknown>, path: DeltaPath, ops: DeltaOp[]): void {
   for (const key of Object.keys(a)) {
     if (!Object.prototype.hasOwnProperty.call(b, key)) {
+      // ABSENT ≡ `undefined` (see deepEqualRef): materializing a key whose
+      // value is undefined is not a change the document can persist, and
+      // emitting an op for it is what used to push dead undo entries.
+      if (a[key] === undefined) continue;
       ops.push({ k: "del", path: [...path, key], removed: a[key] });
     }
   }
   for (const key of Object.keys(b)) {
     if (!Object.prototype.hasOwnProperty.call(a, key)) {
+      if (b[key] === undefined) continue;
       ops.push({ k: "set", path: [...path, key], value: b[key] });
       continue;
     }

@@ -53,12 +53,46 @@ same project value.
    Acid 303 voice without starting a new attack. A shared capability map gates
    the UI and schema. Acid evaluates the current exponential pitch ramp at the
    event time, caps the bend at the held gate, and keeps note-off attached to
-   the source key. Chord/color groups remain open because KYX has no FL-style
-   note-color reference selection.
-6. Standard MIDI 1.0 output cannot represent arbitrary polyphonic per-note
-   expression on one channel. Export or external MIDI support must use an
-   explicit MPE/channel policy rather than silently dropping pitch or mapping
-   per-note pan to a track-wide controller.
+   the source key. FL-style note-color groups remain a separate feature: KYX
+   does not store note colors, route colors to MIDI channels, or scope slide
+   events to matching color groups.
+6. Standard MIDI 1.0 channel-wide controllers cannot represent arbitrary
+   independent per-note expression for overlapping notes. Export or external
+   MIDI support must use an explicit MPE/channel policy rather than silently
+   dropping pitch or mapping per-note pan to a track-wide controller.
+
+## FL Studio compatibility boundary
+
+This ADR uses Image-Line's Piano Roll and Channel Settings manuals as behavior
+references, not as a claim of bit-for-bit compatibility. FL Studio offers 16
+note-color groups. A color selects a MIDI channel for hosted wrapper plugins,
+and slide notes affect notes in the same color group; Mono mode also works per
+color group. External MIDI hardware uses a MIDI Out channel instead. KYX has no
+persisted note-color group or per-color MIDI routing. Its held `slideNote`
+currently bends one matching monophonic voice in 808 or Acid 303, so it does
+not reproduce FL Studio's simultaneous color-group slide behavior. Ordinary
+note color selection and color-scoped editing are also not implemented.
+
+KYX's stored `NoteEvent.expression` values are internal project data consumed
+by declared built-in instrument runtimes and shared by live and offline audio.
+They are not currently a lossless MIDI-file interchange format. MPE carries
+per-note expression by assigning notes to member channels in a configured
+zone. KYX's Web MIDI receiver currently accepts poly pressure, CC74 timbre and
+pitch bend, but does not parse MPE zone configuration, keep expression state
+keyed by member channel, or apply pitch bend per note. Poly pressure is keyed
+by pitch, CC74 is associated with the last note seen on that channel, and pitch
+bend is routed track-wide. The current MIDI-file importer skips CC, pitch bend,
+program-change and aftertouch messages. Therefore its live input indicator is
+an activity display for a subset of MPE-related messages, not proof that a
+controller negotiated a complete MPE connection. These limits must remain
+visible until channel-zone handling and MIDI round-trip behavior are specified
+and tested.
+
+References:
+
+- [FL Studio Piano Roll: Color Groups, Slides and MIDI](https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/pianoroll.htm)
+- [FL Studio Channel Settings: Mono and Portamento](https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/chansettings_misc.htm)
+- [The MIDI Association: MPE profiles and member channels](https://midi.org/6-new-profile-specifications-adopted)
 
 ## Current evidence
 
@@ -95,8 +129,9 @@ same project value.
   final-output graph and worklet processor for both instruments. The 2026-10-18
   Chromium audit measured pre-note-off ratios of 1.00×/1.00× and live/offline
   release-response ratios of 3.37×/3.37× for wavetable and 2.37×/2.37× for
-  granular. This verifies response parity for these release paths; it is not a
-  full-registry waveform parity result.
+  granular. Chromium and Firefox each passed the 85/85 top-level audit. This
+  verifies response parity for these release paths; it is not a full-registry
+  waveform parity result.
 - `tests/note-expression.test.ts` covers clamping, Yjs round-trip,
   undo/redo and default-value no-op.
 - `tests/per-note-filter-modulation.test.ts` checks that neutral Mod X/Y keeps
@@ -141,8 +176,8 @@ test:browser:note-expression:all` runs it in Chromium, Firefox and WebKit.
   Synth, Spectral, Wavetable and Granular, combined expression and Mod X/Y on
   Analog, and held slides on 808 and Acid; matched cases have strict waveform
   nulls and deterministic repeated renders. Wavetable and Granular now use
-  the same worklet voice path in both live and offline graphs. The Firefox
-  results dated 2026-10-17 predate that routing change and need a fresh rerun.
+  the same worklet voice path in both live and offline graphs. Chromium and
+  Firefox both pass the current 85/85 audit after the routing change.
   Playwright's Windows WebKit build exposes none of `AudioContext`,
   `OfflineAudioContext` or `AudioWorkletNode`; this is not Safari evidence.
 - `tests/per-note-pan.test.ts` now routes overlapping notes independently on
@@ -167,12 +202,15 @@ test:browser:note-expression:all` runs it in Chromium, Firefox and WebKit.
   are ignored when no matching held voice exists. Other runtimes' legacy
   portamento paths do not yet imply FL-style no-retrigger slide-note support.
 - The browser verifier now selects Chromium, Firefox, WebKit, or all three.
-  Chromium passes 85/85 top-level checks, including ten selected
-  real-time/offline parity cases. Firefox's 2026-10-17 result predates the
-  latest worklet graph changes and needs a fresh run. The Playwright WebKit
-  build available on this Windows host has no Web Audio API, so Safari remains
-  an open verification target. The parity set is representative, not a
-  full-registry live/offline proof.
+  Chromium and Firefox each pass 85/85 top-level checks, including the
+  registry-derived live/offline parity matrix. The matrix covers velocity and
+  fine pitch on every registered instrument, pan and release velocity where
+  declared, direct filter and Mod X/Y on every declared filtered instrument,
+  and held-voice slide on 808 and Acid. The Playwright WebKit build available
+  on this Windows host has no Web Audio API, so Safari remains an open
+  verification target. The parity matrix has 59 cases derived from the
+  25-instrument registry and capability map; its exact membership is locked by
+  `tests/parity-obligation.test.ts`.
 - `tests/ui/piano-roll-event-editor.test.tsx` enters the real selector and
   pointer handlers against a real `ProjectStore`, including no-move and
   `pointercancel` negatives; it also edits Mod X from the lane and verifies
@@ -197,5 +235,5 @@ test:browser:note-expression:all` runs it in Chromium, Firefox and WebKit.
   deterministic voice selection for each supported instrument. The 808 and
   mono Acid 303 ignore a slide note without an overlapping held voice; FL-style
   note-color groups and chord reference selection remain unimplemented.
-- Define MPE behavior for external MIDI and MIDI-file round-trip before
-  claiming per-note expression interchange.
+- Implement MPE zone/member-channel handling, per-note pitch bend, and MIDI
+  expression import/export before claiming per-note expression interchange.

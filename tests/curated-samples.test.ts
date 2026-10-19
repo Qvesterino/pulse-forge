@@ -180,11 +180,11 @@ describe("curated coverage — full-kit contract", () => {
       "factory.field.fridge",
       "factory.field.gravel",
       "factory.field.mains",
-      "factory.field.match",
+      // factory.field.match / roomtone / rustle / street used to live here and
+      // were removed in 3743f178: they ship WAVs AND curated overrides
+      // (src/sample-library/curated.ts:193-196), so they are no longer
+      // synth-only. factory.field.paper has no WAV and stays.
       "factory.field.paper",
-      "factory.field.roomtone",
-      "factory.field.rustle",
-      "factory.field.street",
       "factory.field.switch",
       "factory.ride.ding",
       "factory.snare.ghost",

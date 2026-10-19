@@ -6,6 +6,7 @@ import {
   PARITY_NULL_FLOOR_DB,
   comparePhaseInsensitiveParity,
   noteExpressionParityAgrees,
+  noteExpressionParityMatrix,
   phaseInsensitiveParityAgrees,
   parityFxCorpus,
   parityInstrumentCorpus,
@@ -13,6 +14,10 @@ import {
   parityObligations,
 } from "../src/testing/live-offline-parity";
 import { EFFECT_ORDER } from "../src/effects/registry";
+import {
+  noteExpressionTargetsForInstrument,
+  supportsHeldVoiceSlideNote,
+} from "../src/instruments/noteExpressionCapabilities";
 import { INSTRUMENT_ORDER } from "../src/instruments/registry";
 
 function tone(frequency: number, phase = 0, amplitude = 0.3, sampleRate = 44100): Float32Array {
@@ -59,6 +64,33 @@ describe("live↔offline parity obligation", () => {
       uncoveredInstruments,
       `these instruments need a parity decision: ${uncoveredInstruments.join(", ")}`,
     ).toEqual([]);
+  });
+
+  it("maps every declared Piano Roll target and slide-note capability to a live/offline parity case", () => {
+    const matrix = noteExpressionParityMatrix();
+    const obligationIds = matrix.map(({ kind, family }) => `${kind}:${family}`);
+    expect(new Set(obligationIds).size).toBe(obligationIds.length);
+
+    for (const kind of INSTRUMENT_ORDER) {
+      const declared = noteExpressionTargetsForInstrument(kind);
+      const rows = matrix.filter((row) => row.kind === kind);
+      const noteOn = rows.find((row) => row.family === "note-on");
+      expect(noteOn?.targetKeys).toEqual([
+        "velocity",
+        "pitchOffsetSemitones",
+        ...declared.filter((target) => target === "pan" || target === "releaseVelocity"),
+      ]);
+
+      const directFilter = rows.find((row) => row.family === "direct-filter");
+      expect(directFilter?.targetKeys ?? []).toEqual(
+        declared.filter((target) => target === "filterCutoffHz" || target === "filterResonance"),
+      );
+
+      const modulation = rows.find((row) => row.family === "modulation");
+      expect(modulation?.targetKeys ?? []).toEqual(declared.filter((target) => target === "modX" || target === "modY"));
+
+      expect(rows.some((row) => row.family === "held-slide")).toBe(supportsHeldVoiceSlideNote(kind));
+    }
   });
 
   it("the corpus is registry-derived and non-empty", () => {

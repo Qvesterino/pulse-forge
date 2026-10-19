@@ -93,11 +93,20 @@ const FADER_DOWN =
  * COMPARATIVE DOWN ("even less", "still less", "ešte menej") — a FURTHER
  * relative step, not a repeat of an absolute target. The existing `less` rule
  * only fired when the sentence named a mix noun ("less room", "less
- * presence"), so a bare "make it even less" matched no direction stem at all
- * and fell through to generation. The fader still needs a target noun after it
- * ("even less BASS"), so this cannot make a target-less sentence mutate.
+ * presence"), so a bare "make it even less" — or a bare repeat,
+ * "a little less again" — matched no direction stem at all and fell through
+ * to generation. The fader still needs a target noun after it ("even less
+ * BASS"), so this cannot make a target-less sentence mutate.
+ *
+ * The REPEAT form is another phrasing of the same intent, not a memory
+ * feature: "a little less again" asks for the same step again, which the
+ * degree ladder already expresses. "half as much as LAST TIME" would need
+ * real conversation memory (what the previous delta actually was) and is
+ * deliberately NOT faked here — that still declines rather than guessing a
+ * percentage of the range.
  */
-const FADER_DOWN_COMPARATIVE = /\b(?:even|still)\s+(?:less|fewer|menej)\b|\beste\s+menej\b/;
+const FADER_DOWN_COMPARATIVE =
+  /\b(?:even|still)\s+(?:less|fewer|menej)\b|\beste\s+menej\b|\b(?:less|fewer|menej)\b.{0,16}\b(?:again|once more|znova|znovu)\b/;
 /**
  * COMPARATIVE UP ("even more", "still more") — the mirror of
  * FADER_DOWN_COMPARATIVE. Bare "more" is deliberately NOT an up stem (it is

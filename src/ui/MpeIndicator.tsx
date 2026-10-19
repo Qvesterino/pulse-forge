@@ -3,10 +3,9 @@ import { useServices } from "./context";
 import { pitchName } from "../project-model/types";
 
 /**
- * MPE discoverability strip: a badge that lights up once per-note pressure
- * or CC74 timbre arrives from a controller, plus live per-note bars for the
- * held notes (top row = pressure, bottom = timbre). Makes the expressive
- * engine visible instead of living under the hood.
+ * Partial MPE input activity strip: a badge that lights up when poly pressure
+ * or CC74 timbre arrives, with live bars keyed by held pitch. It does not
+ * imply complete zone negotiation or per-note pitch-bend support.
  */
 export function MpeIndicator() {
   const services = useServices();
@@ -25,19 +24,19 @@ export function MpeIndicator() {
   const notes = typeof midi.getMpeNotes === "function" ? midi.getMpeNotes() : [];
 
   return (
-    <div className="mpe-indicator" role="status" aria-label="MPE controller activity">
+    <div className="mpe-indicator" role="status" aria-label="MPE-related MIDI input activity">
       <span
         className={`mpe-badge${connected ? " active" : ""}`}
         title={
           connected
-            ? "MPE controller connected — per-note pressure + CC74 timbre are live"
-            : "No MPE controller detected — send per-note pressure or CC74 from a controller to light this up"
+            ? "MPE-related input seen — pressure and CC74 are received; pitch bend currently applies track-wide"
+            : "No MPE-related pressure or CC74 input seen; this indicator does not detect or negotiate an MPE zone"
         }
       >
         MPE
       </span>
       {notes.length === 0 ? (
-        <span className="mpe-hint">{connected ? "touch a note" : "no MPE notes held"}</span>
+        <span className="mpe-hint">{connected ? "touch a note" : "no MPE expression seen"}</span>
       ) : (
         notes.slice(0, 8).map((n) => (
           <span

@@ -75,7 +75,14 @@ describe("instrument voice reachability (source-graph guard)", () => {
     // src/browser-checks.ts.
     for (const { name, kind, body } of sources) {
       if (!/const amp = ctx\.createGain\(\)/.test(body)) continue;
-      const ampOutputs = [...body.matchAll(/amp\.connect\(/g)];
+      // Two wirings count as "the amp leaves the voice": the literal
+      // `amp.connect(...)`, and the `connectNotePan` helper, which always
+      // terminates at `output` — either directly (`input.connect(output)`
+      // when pan is 0 and no panner is forced) or through a StereoPanner
+      // (`input.connect(panner).connect(output)`). Thirteen factories route
+      // through the helper, and a guard blind to the indirection reported
+      // them all as SILENT while they render audio fine.
+      const ampOutputs = [...body.matchAll(/amp\.connect\(|connectNotePan\(\s*ctx,\s*amp\b/g)];
       expect(
         ampOutputs.length,
         `${name} (${kind}): creates a voice 'amp' but never calls amp.connect(...) — ` +
@@ -100,8 +107,8 @@ describe("instrument voice reachability (source-graph guard)", () => {
     const clav = sources.find((s) => s.kind === "clav");
     expect(clav, "clav slice must be found in the registry source").toBeTruthy();
     expect(
-      /amp\.connect\(output\)/.test(clav!.body),
-      "clav lost amp.connect(output) — the Clavinet is silent again",
+      /amp\.connect\(output\)|connectNotePan\(\s*ctx,\s*amp,\s*output\b/.test(clav!.body),
+      "clav lost its amp→output wiring (amp.connect(output) or connectNotePan(ctx, amp, output, …)) — the Clavinet is silent again",
     ).toBe(true);
   });
 });

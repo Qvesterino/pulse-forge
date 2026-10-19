@@ -99,9 +99,13 @@ describe("count-in lead-in placement trim (audit 07)", () => {
     expect(metadata).toContain("leadInSec?: number");
     const panel = readFileSync(resolve(process.cwd(), "src/ui/ArrangementPanel.tsx"), "utf8");
     expect(panel).toContain("leadInWillApply");
-    expect(
-      panel.match(/offsetSec: punchWindow\?\.offsetSec \?\? (?:take\.session|session)\.leadInSec/g)?.length ?? 0,
-    ).toBe(2);
+    // Pin the FALLBACK, not the whole assignment: ce8dda96 wrapped the first
+    // call site in `Math.max(0, (…) + singleAlignShift)` so the landed take can
+    // never be pulled negative. The old pin required the literal
+    // `offsetSec: punchWindow?.offsetSec ?? …`, which that wrapper broke — and
+    // the failure mode was a silently unpinned lead-in, not a fixed bug.
+    // What matters is that BOTH placement sites honour session.leadInSec.
+    expect(panel.match(/punchWindow\?\.offsetSec \?\? (?:take\.session|session)\.leadInSec/g)?.length ?? 0).toBe(2);
     expect(panel).toContain("take.buffer.duration - (take.session.leadInSec ?? 0)");
   });
 });

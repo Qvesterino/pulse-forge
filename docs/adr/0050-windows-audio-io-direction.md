@@ -37,9 +37,9 @@ The Windows probe evidence is intentionally bounded:
   probe. The fixture ASIO host and its soak prove the transport/host boundary,
   not the Volt driver. ASIO discovery and the fixture are documented in
   [ADR 0017](./0017-smpte-asio-discovery.md) and [ADR 0018](./0018-pcm-pipe-transport.md).
-- A read-only endpoint enumeration on 2026-10-17 did not find the Volt
-  connected. The 2026-10-15 result is retained as historical smoke evidence;
-  no new hardware stream was opened in that check.
+- Read-only endpoint enumerations on 2026-10-17 and 2026-10-19 did not find
+  the Volt connected. The 2026-10-15 result is retained as historical smoke
+  evidence; no new hardware stream was opened in either enumeration.
 
 Microsoft documents `IAudioClient3` as the shared-mode API for querying legal
 engine periods and initializing a stream at one of those periods. The period

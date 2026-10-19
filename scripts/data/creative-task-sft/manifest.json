@@ -56,7 +56,7 @@
     "src/intent/creative-task-contract.ts": "58844175f81279407def019ae5309adeb8d98ccf4316557ad1b2c24315a95840",
     "src/intent/creative-task-ollama.ts": "b2411211ce95b95e427e66acbed1b378f13d8cb4315277acd7c7fd882d7e4601",
     "src/intent/brief-contract.ts": "4a5277ef4a1663779f33c2610cd3f5481d909c9b9a126ce10723f175225f2b49",
-    "src/intent/text-parser.ts": "2b8865e4f4e41b452c32f2da9b2e8c127b207c3f05c9aff0a1218123bab9076e",
-    "src/project-model/types.ts": "80bc7ca6f77064903d40c242afce2bae76457932e4b1b2457a9c0651cd866fd9"
+    "src/intent/text-parser.ts": "60711ea3ef9126a730dc2079e0fc8723df95df60191322a426f2c1dfa3b581c9",
+    "src/project-model/types.ts": "c8a53f0584de4ff20c2c42cc412bf1a0b1489340fa48a61d6f71240d2089b2cb"
   }
 }

@@ -298,5 +298,70 @@ describe("context and reference resolution — comparative follow-ups", () => {
   it("a target-less comparative still declines rather than guessing", () => {
     // The fader must never invent a target: no noun, no mutation.
     expect(parseFaderIntent("make it even less")).toBeNull();
+    expect(parseFaderIntent("make it a little less again")).toBeNull();
+  });
+
+  it("'a little less again' repeats the same step the phrase already names", () => {
+    // A repeat is a phrasing of the same intent, not a memory lookup: the
+    // degree says how much, the direction says which way.
+    const again = parseFaderIntent("make it a little less again on the bass");
+    const once = parseFaderIntent("make it a little less on the bass");
+    expect(again).not.toBeNull();
+    expect(again!.direction).toBe("down");
+    expect(again!.degree?.level).toBe(3);
+    // Identical magnitude to the non-repeat phrasing — "again" must not add
+    // a second step on top of the degree.
+    expect(again!.degree?.value).toBe(once!.degree?.value);
+  });
+});
+
+/**
+ * FALSE-POSITIVE GUARD (P1, audit 2026-10-18).
+ *
+ * Sharing one vocabulary across the fader, effect and param layers is what
+ * fixes "much more reverb" — and it is also the way a descriptive sentence
+ * could silently become a mutation. The words that carry the most risk are the
+ * ones a producer uses when merely COMMENTING: "really muddy", "way too wet",
+ * "pretty loud", "significantly buried", "barely audible".
+ *
+ * This block locks the answer measured on 2026-10-18: none of them parse as a
+ * command. If a future synonym addition makes one of these resolve, this test
+ * fails — which is the point. A degree word is not a licence to mutate.
+ */
+describe("false-positive guard — descriptive sentences stay descriptive", () => {
+  const DESCRIPTIVE: ReadonlyArray<string> = [
+    "the bass is really muddy",
+    "the reverb is way too wet",
+    "the kick is pretty loud in the low end",
+    "this mix is considerably more dynamic than the last one",
+    "the pad is barely audible",
+    "the vocal is significantly buried",
+    "the master is massively loud",
+    "the lead is markedly sharper than the reference",
+    "the drums are way too dry",
+    "the bass sounds a touch boomy",
+    "the top end is a hair harsh",
+    "the room is as much as possible",
+    "the hi-hats are not very present",
+    "the kick is a little bit clicky but that is fine",
+    "this is very slightly brighter",
+    "the mix is somewhat louder than the reference",
+  ];
+
+  it("none of them resolve to a mutating intent", () => {
+    for (const text of DESCRIPTIVE) {
+      expect(parseFaderIntent(text), `fader must decline: "${text}"`).toBeNull();
+      expect(parseEffectIntent(text), `effect must decline: "${text}"`).toBeNull();
+      expect(parseParamIntent(text), `param must decline: "${text}"`).toBeNull();
+    }
+  });
+
+  it("a qualified imperative still DOES resolve (the guard is not a blanket refusal)", () => {
+    // Guards that pass by declining everything are worthless. Same words, now
+    // as a command, must still produce a real, ordered intent.
+    expect(parseFaderIntent("turn down the master considerably")?.degree?.level).toBe(5);
+    expect(parseFaderIntent("turn down the master barely")?.degree?.level).toBe(1);
+    expect(parseEffectIntent("slightly more reverb on the pads")?.degree?.level).toBe(3);
+    expect(parseEffectIntent("much more reverb on the pads")?.degree?.level).toBe(6);
   });
 });

@@ -355,7 +355,7 @@ describe("arrangement REC wiring", () => {
       (services.scheduler as any).subscribeTickBoundary = punchBoundary;
       Object.assign(services.transport, { loopEnabled: false, loopStart: BAR_TICKS, loopEnd: BAR_TICKS * 2 });
       (services.engine as any).ensureContext = vi.fn();
-      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
+      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0, sampleRate: 48_000 }));
 
       renderWithContext(<ArrangementPanel />, { services });
       fireEvent.change(screen.getByLabelText("Arm track for recording"), {
@@ -402,7 +402,7 @@ describe("arrangement REC wiring", () => {
     const doc = createDocWithTracks();
     const services = mockServices(doc);
     (services.engine as any).ensureContext = vi.fn();
-    (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
+    (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0, sampleRate: 48_000 }));
     renderWithContext(<ArrangementPanel />, { services });
     fireEvent.change(screen.getByLabelText("Arm track for recording"), { target: { value: doc.tracks[0].id } });
     fireEvent.click(screen.getByRole("button", { name: "● REC" }));
@@ -500,6 +500,13 @@ describe("arrangement REC wiring", () => {
     const services = mockServices(withTwoTakes);
     const previewBuffer = vi.fn();
     Object.assign(services.engine, { previewBuffer });
+    // This test builds its OWN services, so it must also state the live
+    // context rate: the audition renders at
+    // `getLiveAudioContext()?.sampleRate ?? 44100`. Without it the assertion
+    // below was measuring the hard-coded fallback, not the project contract.
+    Object.assign(services.engine, {
+      getLiveAudioContext: vi.fn(() => ({ currentTime: 0, sampleRate: 48_000 })),
+    });
     vi.mocked(renderProject).mockResolvedValue({} as AudioBuffer);
     const { container } = renderWithContext(<ArrangementPanel />, { services });
 
@@ -758,7 +765,7 @@ describe("arrangement REC wiring", () => {
       ).execute(base);
       const services = mockServices(withTake);
       (services.engine as any).ensureContext = vi.fn();
-      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
+      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0, sampleRate: 48_000 }));
       (services.transport as any).seek = vi.fn((tick: number) => {
         (services.transport as any).position = tick;
       });
@@ -834,7 +841,7 @@ describe("arrangement REC wiring", () => {
       const doc = createDocWithTracks();
       const services = mockServices(doc);
       (services.engine as any).ensureContext = vi.fn();
-      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
+      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0, sampleRate: 48_000 }));
       const view = renderWithContext(<ArrangementPanel />, { services });
       const inputSelect = screen.getByLabelText("Audio input device");
       await screen.findByRole("option", { name: "Studio Interface · Input 2" });
@@ -920,7 +927,7 @@ describe("arrangement REC wiring", () => {
       }
       const services = mockServices(doc);
       (services.engine as any).ensureContext = vi.fn();
-      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
+      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0, sampleRate: 48_000 }));
       const view = renderWithContext(<ArrangementPanel />, { services });
       await screen.findByRole("option", { name: "Multichannel Interface" });
       fireEvent.change(screen.getByLabelText("Audio input device"), { target: { value: "interface-multichannel" } });
@@ -1017,7 +1024,7 @@ describe("arrangement REC wiring", () => {
       const doc = createDocWithTracks();
       const services = mockServices(doc);
       (services.engine as any).ensureContext = vi.fn();
-      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
+      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0, sampleRate: 48_000 }));
 
       renderWithContext(<ArrangementPanel />, { services });
       fireEvent.change(screen.getByLabelText("Arm track for recording"), {
@@ -1064,7 +1071,7 @@ describe("arrangement REC wiring", () => {
       const doc = createDocWithTracks();
       const services = mockServices(doc);
       (services.engine as any).ensureContext = vi.fn();
-      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
+      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0, sampleRate: 48_000 }));
 
       const { unmount } = renderWithContext(<ArrangementPanel />, { services });
       fireEvent.change(screen.getByLabelText("Arm track for recording"), {
@@ -1107,7 +1114,7 @@ describe("arrangement REC wiring", () => {
 
     try {
       const services = mockServices(doc);
-      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
+      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0, sampleRate: 48_000 }));
       services.recordingRecovery.finalize = vi.fn(async () => {
         throw new Error("quota exceeded");
       });
@@ -1168,7 +1175,7 @@ describe("arrangement REC wiring", () => {
     try {
       const store = new ProjectStore(doc);
       const services = { ...mockServices(doc), store } as unknown as Services;
-      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
+      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0, sampleRate: 48_000 }));
 
       renderWithContext(<ArrangementPanel />, { services });
       fireEvent.change(screen.getByLabelText("Arm track for recording"), {

@@ -43,6 +43,12 @@ export const DOCK_TABS: readonly DockTabDef[] = [
     title: "TSAR - hybrid sample + synthesis engine: dual sources, morph, mod matrix, Forge (Alt+0)",
   },
   {
+    id: "choral",
+    label: "CHO",
+    ariaLabel: "Toggle Chorál panel",
+    title: "Chorál — drop-a-hum choir: grain stack, formant shaping and Forge root estimate",
+  },
+  {
     id: "arr",
     label: "ARR",
     ariaLabel: "Toggle arrangement and scenes",

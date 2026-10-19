@@ -29,9 +29,20 @@
 
 import { EFFECT_ORDER, defaultParamsOf } from "../effects/registry";
 import { INSTRUMENT_ORDER, defaultInstrumentParams } from "../instruments/registry";
+import {
+  noteExpressionTargetsForInstrument,
+  supportsHeldVoiceSlideNote,
+} from "../instruments/noteExpressionCapabilities";
 import { createProjectFromTemplate } from "../project-model/templates";
 import { createInstrumentTrackModel } from "../project-model/schema";
-import type { DrumTrack, EffectInstance, EffectType, InstrumentKind, ProjectDocument } from "../project-model/types";
+import type {
+  DrumTrack,
+  EffectInstance,
+  EffectType,
+  InstrumentKind,
+  NoteExpression,
+  ProjectDocument,
+} from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
 import { AudioEngine } from "../audio-engine/AudioEngine";
 import { ensureWorkletsForDoc, isWorkletReady } from "../audio-worklets/loader";
@@ -1064,12 +1075,65 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
   };
 }
 
+export type NoteExpressionParityFamily = "note-on" | "direct-filter" | "modulation" | "held-slide";
+
+export interface NoteExpressionParityObligation {
+  kind: InstrumentKind;
+  family: NoteExpressionParityFamily;
+  /** Event inputs exercised by at least one live/offline audio parity case. */
+  targetKeys: readonly string[];
+}
+
 /**
- * Representative note-expression parity checks. These enter through the
- * engine's public noteOn/noteSlide calls and compare realtime playback against
- * the same engine's offline export path. Registry-wide audibility/route checks
- * live in noteExpressionAudioChecks; this focused corpus proves that a
- * combined expressive event and held slides reach both render paths.
+ * Derive the parity obligation matrix from the same capability declaration
+ * that drives the Piano Roll. This makes newly supported targets expand the
+ * real-audio parity corpus automatically, while the unit obligation locks the
+ * exact mapping between declarations and cases.
+ */
+export function noteExpressionParityMatrix(): NoteExpressionParityObligation[] {
+  return INSTRUMENT_ORDER.flatMap((kind) => {
+    const declaredTargets = noteExpressionTargetsForInstrument(kind);
+    const obligations: NoteExpressionParityObligation[] = [
+      {
+        kind,
+        family: "note-on",
+        targetKeys: [
+          "velocity",
+          "pitchOffsetSemitones",
+          ...declaredTargets.filter((target) => target === "pan" || target === "releaseVelocity"),
+        ],
+      },
+    ];
+    if (declaredTargets.includes("filterCutoffHz") || declaredTargets.includes("filterResonance")) {
+      obligations.push({
+        kind,
+        family: "direct-filter",
+        targetKeys: declaredTargets.filter((target) => target === "filterCutoffHz" || target === "filterResonance"),
+      });
+    }
+    if (declaredTargets.includes("modX") || declaredTargets.includes("modY")) {
+      obligations.push({
+        kind,
+        family: "modulation",
+        targetKeys: declaredTargets.filter((target) => target === "modX" || target === "modY"),
+      });
+    }
+    if (supportsHeldVoiceSlideNote(kind)) {
+      obligations.push({
+        kind,
+        family: "held-slide",
+        targetKeys: ["slideNote", "pan", "filterCutoffHz", "filterResonance"],
+      });
+    }
+    return obligations;
+  });
+}
+
+/**
+ * Registry-wide note-expression parity checks. Each case enters through the
+ * engine's public noteOn/noteSlide calls and compares realtime playback with
+ * the same engine's offline export path. The separate OfflineAudioContext
+ * sweep checks that every declared target audibly changes its intended route.
  */
 export async function auditNoteExpressionLiveOfflineParity(
   bank: SampleBank,
@@ -1090,110 +1154,79 @@ export async function auditNoteExpressionLiveOfflineParity(
     bank.add(granularPanSampleId, sample);
   }
 
-  const analogExpressionDoc = instrumentDoc(template, "analog");
-  cases.push({
-    label: "analog: combined pitch, pan, cutoff, resonance and release expression",
-    doc: analogExpressionDoc,
-    script: (engine, at) =>
-      engine.noteOn("parity-inst", 60, 0.85, at(0.05), 0.3, undefined, undefined, undefined, undefined, {
-        pitchOffsetSemitones: 0.37,
-        pan: -0.7,
-        filterCutoffHz: 2800,
-        filterResonance: 0.72,
-        releaseVelocity: 0.82,
-      }),
-  });
-
-  const analogModCases = [
-    { label: "analog: Mod X expression", expression: { modX: 0.78, modY: 0.5 } },
-    { label: "analog: Mod Y expression", expression: { modX: 0.5, modY: 0.77 } },
-    { label: "analog: combined Mod X/Y expression", expression: { modX: 0.78, modY: 0.77 } },
-  ] as const;
-  for (const { label, expression } of analogModCases) {
-    cases.push({
-      label,
-      doc: instrumentDoc(template, "analog"),
-      script: (engine, at) =>
-        engine.noteOn("parity-inst", 64, 0.8, at(0.05), 0.3, undefined, undefined, undefined, undefined, expression),
-    });
-  }
-
-  const drumsynthPanDoc = instrumentDoc(template, "drumsynth");
-  const drumsynthTrack = drumsynthPanDoc.tracks.find((candidate) => candidate.kind === "instrument");
-  if (!drumsynthTrack || drumsynthTrack.kind !== "instrument") throw new Error("missing Drum Synth parity track");
-  drumsynthTrack.params = { ...drumsynthTrack.params, type: 0, gate: 1 };
-  cases.push({
-    label: "drumsynth: per-note pan expression",
-    doc: drumsynthPanDoc,
-    script: (engine, at) =>
-      engine.noteOn("parity-inst", 60, 0.85, at(0.05), 0.3, undefined, undefined, undefined, undefined, {
-        pan: -0.7,
-      }),
-  });
-
-  const spectralPanDoc = instrumentDoc(template, "spectral");
-  const spectralTrack = spectralPanDoc.tracks.find((candidate) => candidate.kind === "instrument");
-  if (!spectralTrack || spectralTrack.kind !== "instrument") throw new Error("missing Spectral parity track");
-  spectralTrack.params = { ...spectralTrack.params, attack: 0.01, motion: 0 };
-  cases.push({
-    label: "spectral: per-note pan expression",
-    doc: spectralPanDoc,
-    script: (engine, at) =>
-      engine.noteOn("parity-inst", 60, 0.85, at(0.05), 0.3, undefined, undefined, undefined, undefined, {
-        pan: 0.7,
-      }),
-  });
-
-  cases.push({
-    label: "wavetable: per-note pan expression",
-    doc: instrumentDoc(template, "wavetable"),
-    script: (engine, at) =>
-      engine.noteOn("parity-inst", 60, 0.85, at(0.05), 0.3, undefined, undefined, undefined, undefined, {
-        pan: -0.7,
-      }),
-  });
-
-  const granularPanDoc = instrumentDoc(template, "granular");
-  const granularPanTrack = granularPanDoc.tracks.find((candidate) => candidate.kind === "instrument");
-  if (!granularPanTrack || granularPanTrack.kind !== "instrument") throw new Error("missing Granular parity track");
-  granularPanTrack.sampleId = granularPanSampleId;
-  cases.push({
-    label: "granular: per-note pan expression",
-    doc: granularPanDoc,
-    script: (engine, at) =>
-      engine.noteOn("parity-inst", 60, 0.85, at(0.05), 0.3, undefined, undefined, undefined, undefined, {
-        pan: -0.7,
-      }),
-  });
-
-  const docWithHeldSlide = (kind: "808" | "acid"): ProjectDocument => {
+  const docForKind = (kind: InstrumentKind): ProjectDocument => {
     const doc = instrumentDoc(template, kind);
     const track = doc.tracks.find((candidate) => candidate.kind === "instrument");
     if (!track || track.kind !== "instrument") throw new Error(`missing ${kind} parity track`);
     if (kind === "808") track.params = { ...track.params, gate: 1, mono: 1, click: 0, knock: 0 };
+    if (kind === "drumsynth") track.params = { ...track.params, type: 0, gate: 1 };
+    if (kind === "spectral") track.params = { ...track.params, attack: 0.01, motion: 0 };
+    if (kind === "granular") track.sampleId = granularPanSampleId;
     return doc;
   };
 
-  for (const kind of ["808", "acid"] as const) {
-    const doc = docWithHeldSlide(kind);
-    const sourcePitch = kind === "808" ? 33 : 45;
-    cases.push({
-      label: `${kind}: held slide changes pitch and per-note tone without retrigger`,
-      doc,
-      script: (engine, at) => {
-        engine.noteOn("parity-inst", sourcePitch, 0.85, at(0.05), 0.38);
-        engine.noteSlide("parity-inst", sourcePitch + 12, at(0.18), 0.12, {
-          pan: kind === "808" ? 0.35 : -0.35,
-          filterCutoffHz: 4200,
-          filterResonance: 0.72,
-        });
-      },
-    });
+  for (const obligation of noteExpressionParityMatrix()) {
+    const { kind, family, targetKeys } = obligation;
+    const doc = docForKind(kind);
+    if (family === "note-on") {
+      const expression: NoteExpression = {};
+      if (targetKeys.includes("pitchOffsetSemitones")) expression.pitchOffsetSemitones = 0.37;
+      if (targetKeys.includes("pan")) expression.pan = kind === "spectral" ? 0.7 : -0.7;
+      if (targetKeys.includes("releaseVelocity")) expression.releaseVelocity = 0.82;
+      const optionalTargets = targetKeys.filter((target) => target !== "velocity" && target !== "pitchOffsetSemitones");
+      cases.push({
+        label: `${kind}: velocity + fine pitch${optionalTargets.length ? ` + ${optionalTargets.join(" + ")}` : ""}`,
+        doc,
+        script: (engine, at) =>
+          engine.noteOn("parity-inst", 60, 0.68, at(0.05), 0.3, undefined, undefined, undefined, undefined, expression),
+      });
+    } else if (family === "direct-filter") {
+      const expression: NoteExpression = {};
+      if (targetKeys.includes("filterCutoffHz")) expression.filterCutoffHz = 2800;
+      if (targetKeys.includes("filterResonance")) expression.filterResonance = 0.72;
+      cases.push({
+        label: `${kind}: direct cutoff + resonance expression`,
+        doc,
+        script: (engine, at) =>
+          engine.noteOn("parity-inst", 60, 0.8, at(0.05), 0.3, undefined, undefined, undefined, undefined, expression),
+      });
+    } else if (family === "modulation") {
+      const expression: NoteExpression = {};
+      if (targetKeys.includes("modX")) expression.modX = 0.78;
+      if (targetKeys.includes("modY")) expression.modY = 0.77;
+      cases.push({
+        label: `${kind}: combined Mod X/Y expression`,
+        doc,
+        script: (engine, at) =>
+          engine.noteOn("parity-inst", 64, 0.8, at(0.05), 0.3, undefined, undefined, undefined, undefined, expression),
+      });
+    } else {
+      const sourcePitch = kind === "808" ? 33 : 45;
+      cases.push({
+        label: `${kind}: held slide pitch + tone expression`,
+        doc,
+        script: (engine, at) => {
+          engine.noteOn("parity-inst", sourcePitch, 0.85, at(0.05), 0.38);
+          engine.noteSlide("parity-inst", sourcePitch + 12, at(0.18), 0.12, {
+            pan: kind === "808" ? 0.35 : -0.35,
+            filterCutoffHz: 4200,
+            filterResonance: 0.72,
+          });
+        },
+      });
+    }
   }
 
   const failures: string[] = [];
   const measurements: string[] = [];
   const selectedCases = onlyLabels ? cases.filter((item) => onlyLabels.includes(item.label)) : cases;
+  if (selectedCases.length === 0) {
+    return {
+      name: "note-expression live↔offline audio parity",
+      ok: false,
+      message: `no parity cases matched filter: ${onlyLabels?.join(", ") ?? "<none>"}`,
+    };
+  }
   for (const item of selectedCases) {
     try {
       const failure = await nullTestCase(
@@ -1231,7 +1264,7 @@ export async function auditNoteExpressionLiveOfflineParity(
     name: "note-expression live↔offline audio parity",
     ok: failures.length === 0,
     message: [
-      failures.length === 0 ? `passed=${cases.length}/${cases.length}` : failures.join(" | "),
+      failures.length === 0 ? `passed=${selectedCases.length}/${selectedCases.length}` : failures.join(" | "),
       ...measurements,
     ].join(" | "),
   };

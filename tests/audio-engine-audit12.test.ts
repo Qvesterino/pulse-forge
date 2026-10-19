@@ -77,15 +77,20 @@ describe("audit 12 — engine lifecycle (context swap hygiene)", () => {
     // after a device change a stale entry would play off-pitch. setProject
     // clears them too, but a bare context swap never runs setProject.
     const engine = read("src/audio-engine/AudioEngine.ts");
-    const ctxSwap = engine.slice(
-      engine.indexOf("useContext(ctx: BaseAudioContext): void"),
-      engine.indexOf("useContext(ctx: BaseAudioContext): void") + 16_000,
-    );
-    // Wave 4e: warp caches live in WarpManager — the swap invalidates
-    // through it (clear + inflight + epoch bump in one call).
-    expect(ctxSwap).toContain("this.warpManager.invalidateForContextSwap();");
-    // In-flight claims + epoch bump ride the same manager call.
-    expect(ctxSwap).toContain("this.warpManager.invalidateForContextSwap();");
-    expect(ctxSwap).toContain("this.warpManager.invalidateForContextSwap();");
+    const teardown = engine.indexOf("private teardownGraph(previousContext");
+    const useContext = engine.indexOf("useContext(ctx: BaseAudioContext): void");
+    expect(teardown, "teardownGraph must exist").toBeGreaterThan(-1);
+    expect(useContext, "useContext must exist").toBeGreaterThan(-1);
+    // The invalidation lives INSIDE teardownGraph, which is declared BEFORE
+    // useContext in the file. The old slice started at useContext and ran
+    // forward 16 kB, so it could never see a line that sits ~80 chars earlier —
+    // the pin was anchored outside the body it asserted. Slice the real body.
+    const teardownBody = engine.slice(teardown, useContext);
+    // Wave 4e: warp caches live in WarpManager — the swap invalidates through
+    // it (clear + inflight + epoch bump in one call).
+    expect(teardownBody).toContain("this.warpManager.invalidateForContextSwap();");
+    // …and the swap actually routes through teardownGraph, so pinning the
+    // helper alone would still pass if a context swap stopped calling it.
+    expect(engine.slice(useContext, useContext + 2_000)).toContain("this.teardownGraph(previousContext);");
   });
 });
