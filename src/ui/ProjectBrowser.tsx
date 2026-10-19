@@ -5,7 +5,9 @@ import type { CrashJournalReport } from "../persistence/crashJournal";
 import type { ProjectDocument } from "../project-model/types";
 import { TEMPLATES, createProjectFromTemplate } from "../project-model/templates";
 import type { TemplateId } from "../project-model/templates";
+import { ASSET_MOODS } from "../sample-library/manifest";
 import { importProject } from "../export/project-io";
+import { stashIntentPrefill, stashSongStarter } from "../landing/handoff";
 import {
   clearRecoveryBuffer,
   isBufferWorthOffering,
@@ -14,6 +16,9 @@ import {
 } from "../persistence/recoveryBuffer";
 import { uid } from "../shared/ids";
 import { appUrl } from "../shared/mountBase";
+import { addAudioClip, fittedLoopPlacement } from "../commands/commands";
+import { UserSampleRepository } from "../persistence/UserSampleRepository";
+import { installKyxStarterLoops } from "../sample-library/kyx-starter-loops";
 
 const TransferImportDialog = lazy(() =>
   import("./TransferImportDialog").then((module) => ({ default: module.TransferImportDialog })),
@@ -24,6 +29,27 @@ const TransferCapabilityCard = lazy(() =>
 
 /** One row of the library: openable, or written by a newer app version. */
 type ProjectRow = { kind: "ok"; meta: SavedProjectMeta } | { kind: "newer"; meta: IncompatibleProjectMeta };
+
+const SONG_STARTER_TEMPLATES = TEMPLATES.filter(
+  (template) => template.id !== "empty" && template.id !== "scene-score" && template.id !== "vlyx-demo",
+);
+
+const LOOP_DEMOS = {
+  house: {
+    template: "house" as const,
+    name: "KYX Demo — Afterhours House",
+    bpm: 124,
+    instrumentTrack: "Chords",
+    loops: ["kyx.loop.v1.house.midnight-drums", "kyx.loop.v1.house.afterhours-keys"],
+  },
+  trap: {
+    template: "trap" as const,
+    name: "KYX Demo — Half-Time Trap",
+    bpm: 140,
+    instrumentTrack: "808 Sub",
+    loops: ["kyx.loop.v1.trap.half-time-drums", "kyx.loop.v1.trap.soft-808"],
+  },
+} as const;
 
 const mergeRows = (openable: SavedProjectMeta[], newer: IncompatibleProjectMeta[]): ProjectRow[] =>
   [
@@ -73,6 +99,10 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   const [crashDismissed, setCrashDismissed] = useState(false);
   const [recovery, setRecovery] = useState<RecoveryBuffer | null>(null);
   const [transferImportOpen, setTransferImportOpen] = useState(false);
+  const [songStarterGenre, setSongStarterGenre] = useState<TemplateId>("house");
+  const [songStarterMood, setSongStarterMood] = useState("all");
+  const [songStarterBpm, setSongStarterBpm] = useState("124");
+  const [demoProgress, setDemoProgress] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const applyLists = useCallback((list: SavedProjectMeta[], newer: IncompatibleProjectMeta[]) => {
@@ -177,6 +207,82 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
         enterStudio(doc);
       } finally {
         setBusy(false);
+      }
+    });
+  };
+
+  const createSongStarter = () => {
+    if (busy) return;
+    const template = SONG_STARTER_TEMPLATES.find((candidate) => candidate.id === songStarterGenre);
+    const parsedBpm = Number(songStarterBpm);
+    if (!template || !Number.isFinite(parsedBpm) || parsedBpm < 40 || parsedBpm > 240) {
+      setActionError("Choose a genre and a tempo from 40 to 240 BPM.");
+      return;
+    }
+
+    setBusy(true);
+    setActionError(null);
+    void guard(async () => {
+      try {
+        const bpm = Math.round(parsedBpm * 10) / 10;
+        const mood = songStarterMood === "all" ? null : songStarterMood;
+        const doc = createProjectFromTemplate(template.id);
+        doc.name = `${template.name} Song Starter`;
+        doc.bpm = bpm;
+        await core.repo.save(doc);
+        stashIntentPrefill(
+          `Create a full ${template.name} song${mood ? ` with a ${mood} mood` : ""} at ${bpm} BPM. Include an intro, build, drop, break, final drop, and outro.`,
+        );
+        stashSongStarter({ genre: template.name, mood, bpm });
+        enterStudio(doc);
+      } finally {
+        setBusy(false);
+      }
+    });
+  };
+
+  const createLoopDemo = (kind: keyof typeof LOOP_DEMOS) => {
+    if (busy) return;
+    const demo = LOOP_DEMOS[kind];
+    setBusy(true);
+    setActionError(null);
+    setDemoProgress("Preparing original KYX loop pack…");
+    void guard(async () => {
+      try {
+        await core.initialSampleBankHydration;
+        const userSamples = new UserSampleRepository();
+        await installKyxStarterLoops(core.bank, userSamples, {
+          onProgress: ({ completed, total, name }) => setDemoProgress(`Installing ${completed}/${total} · ${name}`),
+        });
+        const assets = await userSamples.list();
+        let doc = createProjectFromTemplate(demo.template);
+        doc.name = demo.name;
+        doc.bpm = demo.bpm;
+        // The templates keep their editable patterns and scenes, while the
+        // arrangement starts with the two ready-to-play pack clips.
+        doc.arrangement = { ...doc.arrangement, clips: [], audioClips: [] };
+        const drumTrack = doc.tracks.find((track) => track.kind === "drum");
+        const instrumentTrack = doc.tracks.find(
+          (track) => track.kind === "instrument" && track.name === demo.instrumentTrack,
+        );
+        if (!drumTrack || !instrumentTrack) throw new Error(`The ${kind} demo template is missing a required track.`);
+        const targetTracks = [drumTrack, instrumentTrack];
+        for (const [index, bufferId] of demo.loops.entries()) {
+          const asset = assets.find((candidate) => candidate.id === bufferId);
+          const track = targetTracks[index];
+          if (!asset || !track) throw new Error(`A loop for the ${kind} demo could not be installed.`);
+          const placement = fittedLoopPlacement(asset.duration, asset.bpm, demo.bpm, doc.timeSignature.numerator);
+          if (!placement) throw new Error(`${asset.name} does not contain valid loop timing information.`);
+          doc = addAudioClip(doc, track.id, asset.id, 0, placement.lengthBars, {
+            stretchMode: "stretch",
+            stretchRate: placement.rate,
+          }).execute(doc);
+        }
+        await core.repo.save(doc);
+        enterStudio(doc);
+      } finally {
+        setBusy(false);
+        setDemoProgress(null);
       }
     });
   };
@@ -405,6 +511,79 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
           {firstRun && (
             <p className="pb-first-run">Pick a template — you will hear your first sound in under a minute.</p>
           )}
+          <div className="pb-song-starter" aria-label="Guided song starter">
+            <div className="pb-song-starter-copy">
+              <strong>START A SONG</strong>
+              <span>Choose a style and mood. KYX opens the full-song prompt and filters your loop library.</span>
+            </div>
+            <div className="pb-song-starter-fields">
+              <label>
+                <span>GENRE</span>
+                <select
+                  aria-label="Song starter genre"
+                  value={songStarterGenre}
+                  disabled={busy}
+                  onChange={(event) => {
+                    const next = SONG_STARTER_TEMPLATES.find((template) => template.id === event.target.value);
+                    if (!next) return;
+                    setSongStarterGenre(next.id);
+                    setSongStarterBpm(String(next.bpm));
+                  }}
+                >
+                  {SONG_STARTER_TEMPLATES.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>MOOD</span>
+                <select
+                  aria-label="Song starter mood"
+                  value={songStarterMood}
+                  disabled={busy}
+                  onChange={(event) => setSongStarterMood(event.target.value)}
+                >
+                  <option value="all">Any mood</option>
+                  {ASSET_MOODS.map((mood) => (
+                    <option key={mood} value={mood}>
+                      {mood}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>TEMPO · BPM</span>
+                <input
+                  type="number"
+                  aria-label="Song starter tempo BPM"
+                  min={40}
+                  max={240}
+                  step={0.1}
+                  value={songStarterBpm}
+                  disabled={busy}
+                  onChange={(event) => setSongStarterBpm(event.target.value)}
+                />
+              </label>
+            </div>
+            <div className="pb-song-starter-actions">
+              <span>Choose a key in the loop browser after the project opens.</span>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={
+                  busy ||
+                  !Number.isFinite(Number(songStarterBpm)) ||
+                  Number(songStarterBpm) < 40 ||
+                  Number(songStarterBpm) > 240
+                }
+                onClick={createSongStarter}
+              >
+                {busy ? "OPENING…" : "CREATE SONG STARTER"}
+              </button>
+            </div>
+          </div>
           <div className="pb-templates">
             {TEMPLATES.map((template) => (
               <button
@@ -424,6 +603,36 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
               </button>
             ))}
           </div>
+        </section>
+
+        <section className="pb-section">
+          <h2 className="pb-title">PLAY A LOOP DEMO</h2>
+          <p className="pb-import-hint">
+            Install the 4.9 MB original KYX loop pack and open a saved, editable example.
+          </p>
+          <div className="pb-loop-demos">
+            <button type="button" className="pb-template" disabled={busy} onClick={() => createLoopDemo("house")}>
+              <span className="pb-template-top">
+                <span className="pb-template-name">AFTERHOURS HOUSE</span>
+                <span className="pb-template-bpm">124 BPM</span>
+              </span>
+              <span className="pb-template-desc">Deep four-on-the-floor drums with warm C minor keys.</span>
+              <span className="pb-template-tags">4 bars · House · C minor</span>
+            </button>
+            <button type="button" className="pb-template" disabled={busy} onClick={() => createLoopDemo("trap")}>
+              <span className="pb-template-top">
+                <span className="pb-template-name">HALF-TIME TRAP</span>
+                <span className="pb-template-bpm">140 BPM</span>
+              </span>
+              <span className="pb-template-desc">Half-time drums with a tuned C minor 808 phrase.</span>
+              <span className="pb-template-tags">4 bars · Trap · C minor</span>
+            </button>
+          </div>
+          {demoProgress && (
+            <p className="pb-import-hint" role="status">
+              {demoProgress}
+            </p>
+          )}
         </section>
 
         <section className="pb-section">

@@ -21,6 +21,7 @@ import type { Command } from "../commands/types";
 import { setBpm, setMasterConfig, setPadParams, setReturnGain, setTrackParams, snapshot } from "../commands/commands";
 import { parsePercent, parsePercentAllowingZero } from "./percent";
 import { calibrateFaderFactor, degreeToFaderAmount, parseDegree, type Degree } from "./degree";
+import { stripReferenceClauses } from "./reference-clause";
 import { intentCarriesGenreSignal } from "./exact";
 import { inferPadRole } from "../ai/pad-roles";
 import type { DrumTrack, ProjectDocument } from "../project-model/types";
@@ -138,10 +139,6 @@ const FADER_TARGETS: ReadonlyArray<readonly [RegExp, FaderTarget]> = [
   ],
 ];
 
-/** Track mentions inside a comparison describe a reference, not an edit target. */
-const FADER_REFERENCE_CLAUSE =
-  /\b(?:behind|beneath|under(?:neath)?|ahead of|in front of|compared with|compared to|than|za|pred|oproti)\b.{0,48}/g;
-
 const FADER_PADS: ReadonlyArray<readonly [RegExp, FaderPadFamily]> = [
   [/\bkick\w*/, "kick"],
   [/\bsnare\w*/, "snare"],
@@ -220,7 +217,7 @@ export function parseFaderIntent(text: string): FaderIntent | null {
   if (setFaderVerb && !/\bpan\b/.test(lower) && !EFFECT_NOUN.test(lower)) {
     const setPercent = parsePercentAllowingZero(text);
     if (setPercent != null) {
-      const targetText = lower.replace(FADER_REFERENCE_CLAUSE, " ");
+      const targetText = stripReferenceClauses(lower);
       const targets = FADER_TARGETS.filter(([pattern]) => pattern.test(targetText)).map(([, target]) => target);
       const pads = FADER_PADS.filter(([pattern]) => pattern.test(targetText)).map(([, family]) => family);
       if (targets.length > 0 || pads.length > 0) {
@@ -239,7 +236,7 @@ export function parseFaderIntent(text: string): FaderIntent | null {
   // The loud-words ("hlasnejšie"/"hlasitosť") are excluded from the conflict
   // check: "zníž hlasitosť basu" names the volume NOUN, not an up-direction.
   if (down && FADER_UP_DIRECTIONAL.test(commandText)) return null;
-  const targetText = commandText.replace(FADER_REFERENCE_CLAUSE, " ");
+  const targetText = stripReferenceClauses(commandText);
   const targets = FADER_TARGETS.filter(([pattern]) => pattern.test(targetText)).map(([, target]) => target);
   const pads = FADER_PADS.filter(([pattern]) => pattern.test(targetText)).map(([, family]) => family);
   if (targets.length === 0 && pads.length === 0) return null; // "zniz" alone is ambiguous
@@ -301,6 +298,13 @@ export function parseNamedTrackFaderIntent(text: string, doc: ProjectDocument): 
   const up = !down && (FADER_UP.test(lower) || SK_ADD_FADER.test(lower));
   if (!down && !up && !isSet) return null; // no stem and no absolute set ask
   if (down && FADER_UP_DIRECTIONAL.test(lower)) return null; // conflicting directions decline
+  // A track named in a COMPARISON is the yardstick, not the edit target:
+  // "bring the Rhodes up so it sits louder than the kick" must move Rhodes
+  // and leave the Kick alone. parseFaderIntent has always stripped the
+  // reference clause; this document-derived sibling did not, so it was the one
+  // path that knew the user's REAL track names and also mutated the track they
+  // used as a reference (measured: both track ids came back as targets).
+  const targetText = stripReferenceClauses(lower);
   const named = doc.tracks.filter((track) => {
     if (track.kind === "group") return false;
     const name = ` ${track.name
@@ -310,7 +314,7 @@ export function parseNamedTrackFaderIntent(text: string, doc: ProjectDocument): 
       .trim()} `;
     // Phrase-bounded: "fx return bus" must appear as a phrase. The 3-char
     // floor keeps two-letter names ("To") from hijacking every sentence.
-    return name.trim().length >= 3 && lower.includes(name);
+    return name.trim().length >= 3 && targetText.includes(name);
   });
   // P2-D remainder: return BUSES are faders too ("reverb return to -6 dB").
   // Matched the same phrase-bounded way against doc.returns; routed through
@@ -322,7 +326,7 @@ export function parseNamedTrackFaderIntent(text: string, doc: ProjectDocument): 
   const namedReturns = namesReturn
     ? doc.returns.filter((item) => {
         const name = ` ${item.name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim()} `;
-        return name.trim().length >= 3 && lower.includes(name);
+        return name.trim().length >= 3 && targetText.includes(name);
       })
     : [];
   if (named.length === 0 && namedReturns.length === 0) return null;

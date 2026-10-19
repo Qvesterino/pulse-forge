@@ -123,6 +123,63 @@ describe("BrowserStrip (ROADMAP-UI-2027 V4)", () => {
     await screen.findByText("House Loop added to the arrangement.");
   });
 
+  it("opens on song-starter filters and places a compatible loop into the arrangement", async () => {
+    const doc = createProjectFromTemplate("house");
+    const services = mockServices(doc);
+    const track = drumTrackOf(doc);
+    const matchingLoop: UserSampleAsset = {
+      id: "user.loop-techno-starter",
+      name: "Techno Loop",
+      fileName: "techno-loop.wav",
+      category: "Custom",
+      duration: 8,
+      sampleRate: 44100,
+      channels: 2,
+      createdAt: "2026-10-18T00:00:00.000Z",
+      bpm: 140,
+      loopMetadata: { isLoop: true, genre: "Techno", mood: "Dark", instrument: "Drums", key: "F#m" },
+    };
+    const outsideStarter: UserSampleAsset = {
+      ...matchingLoop,
+      id: "user.loop-house-starter",
+      name: "House Loop",
+      fileName: "house-loop.wav",
+      bpm: 120,
+      loopMetadata: { isLoop: true, genre: "House", mood: "Deep", instrument: "Drums", key: "Am" },
+    };
+    vi.mocked(services.userSamples.list).mockResolvedValue([matchingLoop, outsideStarter]);
+    services.bank.add(matchingLoop.id, { duration: matchingLoop.duration } as AudioBuffer);
+    renderWithContext(
+      <BrowserStrip
+        track={track}
+        selectedPadId={track.pads[0].id}
+        songStarter={{ genre: "Techno", mood: "dark", bpm: 145 }}
+      />,
+      { services },
+    );
+
+    await screen.findByLabelText("Search loops");
+    expect(screen.getByText(/Techno · dark · 145 BPM/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Filter by genre")).toHaveValue("Techno");
+    expect(screen.getByLabelText("Filter by mood")).toHaveValue("Dark");
+    expect(screen.getByLabelText("Minimum BPM")).toHaveValue(130);
+    expect(screen.getByLabelText("Maximum BPM")).toHaveValue(160);
+    expect(screen.getByRole("button", { name: "Techno Loop" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "House Loop" })).not.toBeInTheDocument();
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Add Techno Loop to arrangement" }));
+    await screen.findByText("Techno Loop added to the arrangement.");
+    const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as {
+      type: string;
+      execute: (current: typeof doc) => typeof doc;
+    };
+    expect(command.type).toBe("addAudioClip");
+    expect(command.execute(doc).arrangement.audioClips?.[0]).toMatchObject({
+      trackId: track.id,
+      bufferId: matchingLoop.id,
+    });
+  });
+
   it("explains when a loop's audio is not ready and leaves the arrangement untouched", async () => {
     const doc = createProjectFromTemplate("house");
     const services = mockServices(doc);

@@ -620,6 +620,12 @@ export async function openProject(
     (command) => store.execute(command),
     () => transport.position,
   );
+  let captureProjectId = store.doc.id;
+  const detachCaptureProject = store.subscribe(() => {
+    if (store.doc.id === captureProjectId) return;
+    capture.cancel();
+    captureProjectId = store.doc.id;
+  });
   // The scheduler speaks AudioContext seconds; scheduled MIDI sends are a
   // delay-from-now. Events already due (negative delay) go out immediately.
   const midiDelayMs = (when: number | undefined): number =>
@@ -782,10 +788,29 @@ export async function openProject(
     },
     () => {
       setLiveTakeAuditionProject(null);
+      capture.pauseLivePads();
       capture.markPause();
       patternRecorder.onTransportInterrupted();
     },
   );
+  capture.attachLivePadRuntime({
+    isPlaying: () => transport.playing,
+    startSongTransport: () => {
+      playback.setMode("song");
+      playback.playPause();
+    },
+    getAudioTime: () => engine.currentTime,
+    subscribeTickBoundary: (tick, listener) => scheduler.subscribeTickBoundary(tick, listener),
+    triggerAudioClip: (clip, when, voiceId, loopUntilStopped) =>
+      engine.triggerLivePadAudioClip(clip, when, voiceId, loopUntilStopped),
+    hasLivePadVoice: (voiceId) => engine.hasLivePadVoice(voiceId),
+    stopLivePadVoice: (voiceId, when) => engine.stopLivePadVoice(voiceId, when),
+    cancelLivePadStop: (voiceId) => engine.cancelLivePadStop(voiceId),
+    cancelLivePadVoice: (voiceId) => engine.cancelLivePadVoice(voiceId),
+  });
+  const detachCaptureContext = engine.subscribeLiveContext((context) => {
+    if (context === null && capture.getSnapshot().capturing) capture.cancel();
+  });
   let generativeRuntimeRef: GenerativeRuntime | null = null;
 
   if (collab) {
@@ -1259,6 +1284,8 @@ export async function openProject(
     noteRepeat.stopAll();
     ghost.stop();
     capture.cancel();
+    detachCaptureProject();
+    detachCaptureContext();
     generativeContextLifecycle.dispose();
     await generativeRuntime.dispose();
     playback.stop();

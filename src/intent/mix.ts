@@ -15,6 +15,7 @@ import { SONG_LOUDNESS_TARGET_LUFS, SONG_LOUDNESS_TRIM_LIMIT_DB } from "./genre-
 import { artistMixProfileOf } from "./artist-mix";
 import { roleForTrack } from "./favorites";
 import { parsePercent, parsePercentAllowingZero } from "./percent";
+import { stripReferenceClauses } from "./reference-clause";
 import { calibrateKnobScale, degreeToEffectAmount, parseDegree, type Degree } from "./degree";
 import type { IntentSpec } from "./types";
 
@@ -782,6 +783,20 @@ export const TARGET_WORDS: ReadonlyArray<readonly [RegExp, MixTarget]> = [
 ];
 
 /**
+ * The FIRST track family named in a sentence — read on the reference-stripped
+ * residue so a comparison's track is never mistaken for the edit target.
+ *
+ * This exists because send and bypass both did `TARGET_WORDS.find(re => re.test(lower))`
+ * on the WHOLE sentence, and effect intent did the same in a loop. Measured:
+ * "raise the reverb send on the pad, match the bass" picked "bass" and left the
+ * pad untouched (audit 2026-10-19). Three copies of the scan meant fixing one
+ * route left the other two broken.
+ */
+function firstTargetIn(deaccentedLower: string): MixTarget | undefined {
+  return TARGET_WORDS.find(([re]) => re.test(stripReferenceClauses(deaccentedLower)))?.[1];
+}
+
+/**
  * SEMANTIC MOVES — named, absolute re-voicings that a producer asks for
  * without naming a parameter: "wider hats", "make the 808 throw", "mono safe
  * on the bass". Each move is a small absolute parameter map (clamped on
@@ -958,9 +973,16 @@ export function parseEffectIntent(text: string): EffectIntent | null {
     direction = "less";
   }
 
+  // TARGET resolution runs on the reference-stripped residue: a track named
+  // after a comparison word is the yardstick, not the thing to edit. Measured
+  // "more delay on the pad, like the lead" returned BOTH chords and lead, so
+  // the effect landed on a track the producer never asked about (audit
+  // 2026-10-19). Direction and effect-word detection deliberately keep the
+  // whole sentence — "louder than" is not an amount and "match" is not a verb.
+  const targetText = stripReferenceClauses(lower);
   const targets = new Set<MixTarget>();
   for (const [re, target] of TARGET_WORDS) {
-    if (re.test(lower)) targets.add(target);
+    if (re.test(targetText)) targets.add(target);
   }
   // scene-role targets expand to their instrumentation
   for (const [role, expanded] of Object.entries(ROLE_TARGETS)) {
@@ -968,7 +990,7 @@ export function parseEffectIntent(text: string): EffectIntent | null {
     // chorus section. An explicit track family takes precedence when the
     // noun is shared by an effect and a scene role.
     if (role === effectType && targets.size > 0) continue;
-    if (new RegExp(`\\b${role}\\b`).test(lower)) {
+    if (new RegExp(`\\b${role}\\b`).test(targetText)) {
       for (const target of expanded) targets.add(target);
     }
   }
@@ -1274,7 +1296,7 @@ export function parseSendIntent(text: string): SendIntent | null {
   if (!/\bsend\b/.test(lower)) return null;
   const effectType = effectWordIn(lower);
   if (!effectType) return null;
-  const target = TARGET_WORDS.find(([re]) => re.test(lower))?.[1];
+  const target = firstTargetIn(lower);
   if (!target) return null;
   let direction: SendIntent["direction"] = "more";
   if (/\b(?:no|remove|without|bez)\b/.test(lower) || /\bsend\b\s*(?:off|out)\b/.test(lower)) {
@@ -1363,7 +1385,7 @@ export function parseBypassIntent(text: string): BypassIntent | null {
   if (!bypassed && !enabled) return null;
   const effectType = effectWordIn(lower);
   if (!effectType) return null;
-  const target = TARGET_WORDS.find(([re]) => re.test(lower))?.[1];
+  const target = firstTargetIn(lower);
   if (!target) return null;
   return { effectType, target, bypassed };
 }

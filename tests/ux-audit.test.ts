@@ -26,7 +26,7 @@ const ALL_KEYS: ShortcutKey[] = [
   "redo",
   "save",
   "toggleLoop",
-  "duplicatePattern",
+  "duplicateSelection",
   "deleteNote",
   // Clip clipboard / lock family (the editor lock+clipboard wave).
   "copyClips",

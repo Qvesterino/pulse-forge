@@ -16,6 +16,7 @@ class PulseForgePcmCaptureProcessor extends AudioWorkletProcessor {
     this.lastAckedSequence = -1;
     this.readySent = false;
     this.armed = false;
+    this.startFrame = null;
     this.takeBoundaryFrames = [];
     this.chunkTakeBoundaries = [];
     this.stopAtFrame = null;
@@ -28,6 +29,18 @@ class PulseForgePcmCaptureProcessor extends AudioWorkletProcessor {
     if (!message || typeof message.type !== "string") return;
     if (message.type === "start") {
       if (!this.stopped && !this.failed) {
+        const requestedStartFrame = Number(message.startFrame);
+        if (Number.isSafeInteger(requestedStartFrame) && requestedStartFrame >= 0) {
+          if (requestedStartFrame < currentFrame) {
+            this.fail(
+              "A coordinated input start reached the capture worklet too late; recording stopped to preserve alignment",
+            );
+            return;
+          }
+          this.startFrame = requestedStartFrame;
+        } else {
+          this.startFrame = null;
+        }
         this.armed = true;
         if (message.loopCapture === true) this.takeBoundaryFrames.push(0);
         if (message.punchInNow === true) this.takeBoundaryFrames.push(0);
@@ -184,8 +197,16 @@ class PulseForgePcmCaptureProcessor extends AudioWorkletProcessor {
     if (!this.armed) return true;
 
     const quantumFrames = input[0]?.length ?? 0;
+    if (this.startFrame !== null && currentFrame > this.startFrame) {
+      this.fail("A coordinated input start skipped its shared audio frame; recording stopped to preserve alignment");
+      return false;
+    }
     for (let frame = 0; frame < quantumFrames; frame++) {
       const absoluteFrame = currentFrame + frame;
+      if (this.startFrame !== null) {
+        if (absoluteFrame < this.startFrame) continue;
+        this.startFrame = null;
+      }
       if (this.stopAtFrame !== null && this.stopAtFrame <= absoluteFrame) {
         if (!this.flush(true, true)) return false;
         this.armed = false;

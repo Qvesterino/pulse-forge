@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
+import type { ProjectTransferSourceDaw } from "../project-model/types";
 import { useServices } from "./context";
+import { DAW_ACTION_MAPPINGS, DAW_PROFILE_OPTIONS, readDawProfile, writeDawProfile } from "./dawProfile";
+import type { SongStarterHandoff } from "../landing/handoff";
 
 const TOUR_KEY = "pf-tour-v1";
+const TRANSFER_TOUR_KEY = "pf-transfer-tour-v1";
+const SONG_STARTER_TOUR_KEY = "pf-song-starter-tour-v1";
 
 interface TourStep {
   title: string;
@@ -21,20 +26,73 @@ const STEPS: TourStep[] = [
     hint: "16 steps = 1 bar",
   },
   {
-    title: "3/4 — SHAPE THE MIX",
-    body: "ASSIST proposes patterns and mix moves. SLICE LAB chops any MP3 onto pads. Every action is undoable.",
-    hint: "Ctrl+Z always works",
+    title: "3/4 — ARRANGE & MIX",
+    body: "Switch between PATTERN and SONG in the top bar: build a loop in Pattern, then arrange it on the Song timeline. Ctrl+K searches panels and actions; Ctrl+Z undoes an edit.",
+    hint: "Watch the top bar for save status",
   },
   {
-    title: "4/4 — FORGE & SHARE",
-    body: "EXPORT gives you MP3, WAV, video or a share link that opens the whole project anywhere.",
-    hint: "Welcome to the forge",
+    title: "4/4 — SAVE & EXPORT",
+    body: "Press Ctrl+S to save now. Open EXPORT for WAV, MP3, video, or a share link.",
+    hint: "Your next session starts here",
   },
 ];
 
-function tourDone(): boolean {
+const TRANSFER_STEPS: TourStep[] = [
+  {
+    title: "1/4 — CHECK THE ARRANGEMENT",
+    body: "Your audio lanes start together at bar 1. Play through once and check their alignment before you continue editing.",
+    hint: "Your source project stays in its original DAW",
+  },
+  {
+    title: "2/4 — CONTINUE WITH MIDI",
+    body: "Imported MIDI becomes editable song clips in the arrangement; use the drum grid to build new patterns. CC7 and CC11 become track-volume automation, CC10 becomes pan, and CC64 sustain extends note lengths.",
+    hint: "Other unsupported MIDI data was listed before import",
+  },
+  {
+    title: "3/4 — FIND YOUR NEXT ACTION",
+    body: "Open the command palette with Ctrl+K to search for actions such as Mixer, Arrangement, or Export. Use Ctrl+Z to undo an edit.",
+    hint: "Your imported audio and MIDI stay in one project",
+  },
+  {
+    title: "4/4 — SAVE AND EXPORT",
+    body: "Save this KYX project with Ctrl+S, then open Export to make a WAV, MP3, or stems for your next step.",
+    hint: "Continue from your new KYX copy",
+  },
+];
+
+const SONG_STARTER_STEPS: TourStep[] = [
+  {
+    title: "1/4 — YOUR SONG STARTER",
+    body: "Your style, mood, and tempo are set. The full-song brief is ready in Intent — press Ctrl/Cmd+Enter to build from it.",
+    hint: "Edit the brief before you generate if you want",
+  },
+  {
+    title: "2/4 — LISTEN AND CHOOSE",
+    body: "Listen through the generated result before keeping a take. Sounds is already filtered to your style and mood; audition a loop there to add a played layer.",
+    hint: "Ctrl+Z undoes your last applied edit",
+  },
+  {
+    title: "3/4 — ARRANGE AND MIX",
+    body: "Switch between PATTERN and SONG. Open Arrangement to edit sections on the timeline, then Mixer to balance the tracks.",
+    hint: "Your template is a starting point you can change",
+  },
+  {
+    title: "4/4 — SAVE AND EXPORT",
+    body: "Press Ctrl+S to save, then open Export to render a WAV or MP3. Reopen the project to continue later.",
+    hint: "The project is saved in your KYX library",
+  },
+];
+
+const TRANSFER_SOURCE_LABELS: Record<ProjectTransferSourceDaw, string> = {
+  "fl-studio": "FL STUDIO TO KYX",
+  cubase: "CUBASE TO KYX",
+  "pro-tools": "PRO TOOLS TO KYX",
+  other: "ANOTHER DAW TO KYX",
+};
+
+function tourDone(key: string): boolean {
   try {
-    return localStorage.getItem(TOUR_KEY) === "1";
+    return localStorage.getItem(key) === "1";
   } catch {
     return true; // storage blocked — don't nag
   }
@@ -44,15 +102,28 @@ function tourDone(): boolean {
 let tourActive = false;
 
 /**
- * First-run onboarding: four steps over the real UI. Shows once per
- * browser (pf-tour-v1), skippable at any point.
+ * First-run onboarding: four steps over the real UI. A transferred DAW
+ * project gets its own one-time tour without repeating the general tour.
  */
-export function OnboardingTour() {
+export function OnboardingTour({
+  sourceDaw,
+  songStarter,
+}: {
+  sourceDaw?: ProjectTransferSourceDaw;
+  songStarter?: SongStarterHandoff | null;
+}) {
   const services = useServices();
   const [step, setStep] = useState(-1);
+  const [preferredSourceDaw, setPreferredSourceDaw] = useState<ProjectTransferSourceDaw | null>(readDawProfile);
+  const isTransferProject = sourceDaw !== undefined;
+  const isSongStarterProject = !isTransferProject && songStarter != null;
+  const profile = sourceDaw ?? preferredSourceDaw;
+  const tourKey = isTransferProject ? TRANSFER_TOUR_KEY : isSongStarterProject ? SONG_STARTER_TOUR_KEY : TOUR_KEY;
+  const steps = isTransferProject ? TRANSFER_STEPS : isSongStarterProject ? SONG_STARTER_STEPS : STEPS;
 
   useEffect(() => {
-    if (tourDone() || tourActive) return;
+    setStep(-1);
+    if (tourDone(tourKey) || tourActive) return;
     tourActive = true;
     // Wait one beat so the studio chrome settles before the card appears.
     const id = setTimeout(() => setStep(0), 600);
@@ -60,11 +131,11 @@ export function OnboardingTour() {
       clearTimeout(id);
       tourActive = false;
     };
-  }, []);
+  }, [tourKey]);
 
   const finish = () => {
     try {
-      localStorage.setItem(TOUR_KEY, "1");
+      localStorage.setItem(tourKey, "1");
     } catch {
       // storage blocked — hide for this session only
     }
@@ -73,7 +144,24 @@ export function OnboardingTour() {
   };
 
   if (step < 0) return null;
-  const current = STEPS[step];
+  const current = steps[step];
+  if (!current) return null;
+  const profileHint =
+    !isTransferProject && profile && step === 2
+      ? `Your ${DAW_PROFILE_OPTIONS.find(({ id }) => id === profile)?.label} equivalent is ${DAW_ACTION_MAPPINGS[1]!.familiarTerm[profile]}.`
+      : !isTransferProject && profile && step === 3
+        ? `You may know this as ${DAW_ACTION_MAPPINGS[2]!.familiarTerm[profile]}.`
+        : null;
+  const tourTitle =
+    isTransferProject && step === 0
+      ? `1/4 — ${TRANSFER_SOURCE_LABELS[sourceDaw]}`
+      : isSongStarterProject && step === 0
+        ? `1/4 — YOUR ${songStarter.genre.toUpperCase()} STARTER`
+        : current.title;
+  const tourBody =
+    isSongStarterProject && step === 0
+      ? `Your ${songStarter.genre}${songStarter.mood ? ` · ${songStarter.mood}` : ""} song is set to ${songStarter.bpm} BPM. The full-song brief is ready in Intent — press Ctrl/Cmd+Enter to build from it.`
+      : current.body;
 
   return (
     <div className="tour-card" role="dialog" aria-label="Onboarding tour" aria-live="polite">
@@ -83,16 +171,40 @@ export function OnboardingTour() {
           SKIP
         </button>
       </div>
-      <h3 className="tour-title">{current.title}</h3>
-      <p className="tour-body">{current.body}</p>
+      <h3 className="tour-title">{tourTitle}</h3>
+      <p className="tour-body">{tourBody}</p>
+      {profileHint && <p className="tour-profile-hint">{profileHint}</p>}
+      {!isTransferProject && step === 0 && (
+        <label className="tour-profile-picker">
+          Coming from another DAW? <span>Optional</span>
+          <select
+            aria-label="Previous DAW profile"
+            value={preferredSourceDaw ?? ""}
+            onChange={(event) => {
+              const next = DAW_PROFILE_OPTIONS.some(({ id }) => id === event.currentTarget.value)
+                ? (event.currentTarget.value as ProjectTransferSourceDaw)
+                : null;
+              setPreferredSourceDaw(next);
+              writeDawProfile(next);
+            }}
+          >
+            <option value="">Choose later</option>
+            {DAW_PROFILE_OPTIONS.map(({ id, label }) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <div className="tour-foot">
         <span className="tour-hint">{current.hint}</span>
         <div className="tour-dots" aria-hidden>
-          {STEPS.map((_, i) => (
+          {steps.map((_, i) => (
             <span key={i} className={`tour-dot${i === step ? " active" : ""}${i < step ? " done" : ""}`} />
           ))}
         </div>
-        {step < STEPS.length - 1 ? (
+        {step < steps.length - 1 ? (
           <button type="button" className="btn btn-small btn-export" onClick={() => setStep((s) => s + 1)}>
             NEXT
           </button>

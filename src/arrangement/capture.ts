@@ -1,12 +1,73 @@
 import type { Command } from "../commands/types";
-import { appendCapturedArrangement, snapshot, type CapturedArrangementClip } from "../commands/commands";
+import {
+  addAudioClip,
+  appendCapturedArrangement,
+  fittedLoopPlacement,
+  snapshot,
+  type CapturedArrangementAudioClip,
+  type CapturedArrangementClip,
+} from "../commands/commands";
 import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
-import type { NoteEvent, ProjectDocument } from "../project-model/types";
+import type { AudioClip, NoteEvent, ProjectDocument } from "../project-model/types";
+import { sceneSecondsToBars, tempoAtTick } from "../project-model/scene-time";
 
 export interface ArrangementCaptureSnapshot {
   capturing: boolean;
   launchCount: number;
   firstBar: number | null;
+  livePads: LivePadCaptureStatus[];
+  message: string | null;
+}
+
+export interface LivePadCaptureStatus {
+  setId: string;
+  slot: number;
+  phase: "queued-start" | "playing" | "queued-stop";
+  startTick: number;
+  endTick: number | null;
+  stopTick: number | null;
+}
+
+interface LivePadRuntime {
+  isPlaying(): boolean;
+  startSongTransport(): void;
+  getAudioTime(): number;
+  subscribeTickBoundary(
+    tick: number,
+    listener: (boundary: { tick: number; audioTime: number; cancelled?: true }) => void,
+  ): () => void;
+  triggerAudioClip(clip: AudioClip, when: number, voiceId: string, loopUntilStopped: boolean): boolean;
+  hasLivePadVoice(voiceId: string): boolean;
+  stopLivePadVoice(voiceId: string, when: number): void;
+  cancelLivePadStop(voiceId: string): void;
+  cancelLivePadVoice(voiceId: string): void;
+}
+
+interface CapturedLivePadInterval {
+  startTick: number;
+  endTick: number | null;
+  trackId: string;
+  bufferId: string;
+  liveSetId: string;
+  slot: number;
+  patch: CapturedArrangementAudioClip["patch"];
+}
+
+interface LivePadVoiceState {
+  voiceId: string;
+  setId: string;
+  slot: number;
+  trackId: string;
+  bufferId: string;
+  sourceDurationSec: number;
+  loop: boolean;
+  phase: "queued-start" | "playing" | "queued-stop";
+  startTick: number;
+  endTick: number | null;
+  stopTick: number | null;
+  interval: CapturedLivePadInterval | null;
+  startUnsubscribe: (() => void) | null;
+  stopUnsubscribe: (() => void) | null;
 }
 
 /** One captured performance event (drum step or note) for the MIDI capture ring. */
@@ -38,7 +99,18 @@ export class ArrangementCaptureController {
   private ringTrackIds = new Set<string>();
   private lastPauseTick: number | null = null;
   private listeners = new Set<() => void>();
-  private snapshot: ArrangementCaptureSnapshot = { capturing: false, launchCount: 0, firstBar: null };
+  private livePadRuntime: LivePadRuntime | null = null;
+  private livePadVoices = new Map<string, LivePadVoiceState>();
+  private capturedLivePads: CapturedLivePadInterval[] = [];
+  private nextLivePadVoiceId = 1;
+  private lastMessage: string | null = null;
+  private snapshot: ArrangementCaptureSnapshot = {
+    capturing: false,
+    launchCount: 0,
+    firstBar: null,
+    livePads: [],
+    message: null,
+  };
 
   constructor(
     private readonly projectRef: () => ProjectDocument,
@@ -52,6 +124,10 @@ export class ArrangementCaptureController {
   };
 
   getSnapshot = (): ArrangementCaptureSnapshot => this.snapshot;
+
+  attachLivePadRuntime(runtime: LivePadRuntime): void {
+    this.livePadRuntime = runtime;
+  }
 
   // ── Passive capture ring (Ableton Capture) ──────────────────────────────
 
@@ -186,8 +262,263 @@ export class ArrangementCaptureController {
     this.capturing = true;
     this.firstBar = null;
     this.launches = [];
+    this.capturedLivePads = [];
+    this.lastMessage = null;
     this.notify();
   };
+
+  /** Queue or toggle a pad voice while arrangement capture is armed. */
+  toggleLivePad = (setId: string, slot: number, trackId: string, sourceDurationSec: number): string => {
+    if (!this.capturing) return "Arm arrangement capture before performing Live Pads.";
+    const runtime = this.livePadRuntime;
+    if (!runtime) return "Live Pad capture runtime is unavailable.";
+    const doc = this.projectRef();
+    const set = doc.liveSets?.find((candidate) => candidate.id === setId);
+    const pad = set?.pads.find((candidate) => candidate.slot === slot);
+    const track = doc.tracks.find((candidate) => candidate.id === trackId && candidate.kind !== "generative");
+    if (!set || !pad) return "This pad assignment is no longer available.";
+    if (!track) return "Choose an audio-capable destination track before performing this pad.";
+    if (!Number.isFinite(sourceDurationSec) || sourceDurationSec <= 0) {
+      return "This pad's sample has no playable audio data.";
+    }
+
+    try {
+      if (!runtime.isPlaying()) runtime.startSongTransport();
+    } catch (error) {
+      return error instanceof Error ? error.message : "Could not start Song transport for Live Pad capture.";
+    }
+    if (!runtime.isPlaying()) return "Song transport could not start; enable audio and try again.";
+
+    const currentTick = Math.max(0, this.getTransportTick());
+    this.discardOrphanedLoopVoices(currentTick);
+    this.pruneLivePadVoices(currentTick);
+    if (pad.loop === true) {
+      const current = [...this.livePadVoices.values()].find(
+        (voice) => voice.loop && voice.setId === setId && voice.slot === slot,
+      );
+      if (current && current.startTick > currentTick) {
+        this.removeLivePadVoice(current, true, true);
+        this.clearOriginIfEmpty();
+        this.lastMessage = `Cancelled the queued start for ${pad.name}.`;
+        this.notify();
+        return this.lastMessage;
+      }
+      if (current?.stopTick !== null && current?.stopTick !== undefined && current.stopTick > currentTick) {
+        const unsubscribe = current.stopUnsubscribe;
+        current.stopTick = null;
+        current.stopUnsubscribe = null;
+        current.phase = "playing";
+        if (current.interval) current.interval.endTick = null;
+        runtime.cancelLivePadStop(current.voiceId);
+        unsubscribe?.();
+        this.lastMessage = `Cancelled the queued stop for ${pad.name}.`;
+        this.notify();
+        return this.lastMessage;
+      }
+      if (current) {
+        const stopTick = this.nextBarTick(currentTick);
+        current.stopTick = stopTick;
+        current.phase = "queued-stop";
+        if (current.interval) current.interval.endTick = stopTick;
+        current.stopUnsubscribe = runtime.subscribeTickBoundary(stopTick, (boundary) => {
+          const state = this.livePadVoices.get(current.voiceId);
+          if (state !== current) return;
+          if (boundary.cancelled) {
+            if (current.stopTick === boundary.tick && current.stopUnsubscribe) {
+              runtime.cancelLivePadStop(current.voiceId);
+            }
+            return;
+          }
+          runtime.stopLivePadVoice(current.voiceId, boundary.audioTime);
+          this.notify();
+        });
+        this.lastMessage = `Queued ${pad.name} to stop at bar ${Math.floor(stopTick / BAR_TICKS) + 1}.`;
+        this.notify();
+        return this.lastMessage;
+      }
+    }
+
+    const startTick = this.nextBarTick(currentTick);
+    const voiceId = `live-pad-${this.nextLivePadVoiceId++}`;
+    const state: LivePadVoiceState = {
+      voiceId,
+      setId,
+      slot,
+      trackId,
+      bufferId: pad.bufferId,
+      sourceDurationSec,
+      loop: pad.loop === true,
+      phase: "queued-start",
+      startTick,
+      endTick: null,
+      stopTick: null,
+      interval: null,
+      startUnsubscribe: null,
+      stopUnsubscribe: null,
+    };
+    this.livePadVoices.set(voiceId, state);
+    this.scheduleLivePadStart(state);
+    this.lastMessage = `Queued ${pad.name} for bar ${Math.floor(startTick / BAR_TICKS) + 1}.`;
+    this.notify();
+    return this.lastMessage;
+  };
+
+  /** Close any active/pending pad intervals on pause while leaving Capture armed. */
+  pauseLivePads = (): void => {
+    if (!this.capturing) return;
+    this.closeLivePadPerformance(Math.max(0, this.getTransportTick()), false);
+    this.notify();
+  };
+
+  private nextBarTick(currentTick: number): number {
+    return (Math.floor(Math.max(0, currentTick) / BAR_TICKS) + 1) * BAR_TICKS;
+  }
+
+  private buildLivePadClip(state: LivePadVoiceState): {
+    clip: AudioClip;
+    patch: CapturedArrangementAudioClip["patch"];
+    endTick: number | null;
+  } {
+    const doc = this.projectRef();
+    const set = doc.liveSets?.find((candidate) => candidate.id === state.setId);
+    const pad = set?.pads.find((candidate) => candidate.slot === state.slot);
+    if (!set || !pad || pad.bufferId !== state.bufferId)
+      throw new Error("This pad assignment changed before its launch.");
+    const track = doc.tracks.find((candidate) => candidate.id === state.trackId && candidate.kind !== "generative");
+    if (!track || (set.trackId && set.trackId !== state.trackId)) {
+      throw new Error("The Live Set destination track changed before its launch.");
+    }
+
+    const startTick = state.startTick;
+    const startBar = startTick / BAR_TICKS;
+    const targetBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, startTick, doc.bpm);
+    const fit = pad.bpm
+      ? fittedLoopPlacement(state.sourceDurationSec, pad.bpm, targetBpm, doc.timeSignature.numerator)
+      : null;
+    const loop = pad.loop === true;
+    const patch: CapturedArrangementAudioClip["patch"] = {
+      ...(loop ? { loop: true } : {}),
+      ...(fit ? { stretchMode: "stretch", stretchRate: fit.rate } : {}),
+      liveSetId: set.id,
+      livePadSlot: pad.slot,
+    };
+    const effectiveBars = sceneSecondsToBars(state.sourceDurationSec * (fit?.rate ?? 1), targetBpm);
+    const lengthBars = loop ? Math.max(set.loopBars, fit?.lengthBars ?? 1) : Math.max(0.25, effectiveBars);
+    const before = new Set((doc.arrangement.audioClips ?? []).map((clip) => clip.id));
+    const next = addAudioClip(doc, state.trackId, pad.bufferId, startBar, lengthBars, patch).execute(doc);
+    const created = (next.arrangement.audioClips ?? []).find((clip) => !before.has(clip.id));
+    if (!created) throw new Error("Could not prepare the Live Pad audio source.");
+    const endTick = loop ? null : startTick + Math.max(1, Math.round(effectiveBars * BAR_TICKS));
+    return { clip: { ...created, id: state.voiceId, fadeIn: 0, fadeOut: 0 }, patch, endTick };
+  }
+
+  private scheduleLivePadStart(state: LivePadVoiceState): void {
+    const runtime = this.livePadRuntime;
+    if (!runtime) return;
+    state.startUnsubscribe = runtime.subscribeTickBoundary(state.startTick, (boundary) => {
+      if (this.livePadVoices.get(state.voiceId) !== state) return;
+      if (boundary.cancelled) {
+        runtime.cancelLivePadVoice(state.voiceId);
+        return;
+      }
+      try {
+        const prepared = this.buildLivePadClip(state);
+        if (!runtime.triggerAudioClip(prepared.clip, boundary.audioTime, state.voiceId, state.loop)) {
+          throw new Error("Audio engine could not start this Live Pad. Check the destination track and audio device.");
+        }
+        state.endTick = prepared.endTick;
+        state.phase = state.stopTick === null ? "playing" : "queued-stop";
+        if (state.interval) {
+          state.interval.patch = prepared.patch;
+          state.interval.endTick = state.stopTick ?? prepared.endTick;
+        } else {
+          state.interval = {
+            startTick: state.startTick,
+            endTick: state.stopTick ?? prepared.endTick,
+            trackId: state.trackId,
+            bufferId: state.bufferId,
+            liveSetId: state.setId,
+            slot: state.slot,
+            patch: prepared.patch,
+          };
+          this.capturedLivePads.push(state.interval);
+        }
+        if (this.firstBar === null) this.firstBar = Math.floor(state.startTick / BAR_TICKS);
+        this.notify();
+      } catch (error) {
+        this.removeLivePadVoice(state, true, true);
+        this.lastMessage = error instanceof Error ? error.message : "Could not start this Live Pad.";
+        this.notify();
+      }
+    });
+  }
+
+  private pruneLivePadVoices(currentTick: number): void {
+    for (const state of [...this.livePadVoices.values()]) {
+      if (state.startTick > currentTick) continue;
+      const endTick = state.stopTick ?? state.endTick;
+      if (endTick !== null && endTick <= currentTick) this.removeLivePadVoice(state, false, false);
+    }
+  }
+
+  private discardOrphanedLoopVoices(currentTick: number): void {
+    const runtime = this.livePadRuntime;
+    if (!runtime) return;
+    for (const state of [...this.livePadVoices.values()]) {
+      if (!state.loop || state.startTick > currentTick || state.stopTick !== null) continue;
+      if (!runtime.hasLivePadVoice(state.voiceId)) this.removeLivePadVoice(state, false, true);
+    }
+  }
+
+  private removeLivePadVoice(state: LivePadVoiceState, stopAudio: boolean, removeInterval: boolean): void {
+    if (this.livePadVoices.get(state.voiceId) !== state) return;
+    this.livePadVoices.delete(state.voiceId);
+    const runtime = this.livePadRuntime;
+    const startUnsubscribe = state.startUnsubscribe;
+    const stopUnsubscribe = state.stopUnsubscribe;
+    state.startUnsubscribe = null;
+    state.stopUnsubscribe = null;
+    state.stopTick = null;
+    startUnsubscribe?.();
+    stopUnsubscribe?.();
+    if (stopAudio) runtime?.cancelLivePadVoice(state.voiceId);
+    if (removeInterval && state.interval) {
+      this.capturedLivePads = this.capturedLivePads.filter((interval) => interval !== state.interval);
+      state.interval = null;
+    }
+  }
+
+  private closeLivePadPerformance(currentTick: number, discard: boolean): void {
+    const runtime = this.livePadRuntime;
+    const now = runtime?.getAudioTime() ?? 0;
+    for (const state of [...this.livePadVoices.values()]) {
+      const interval = state.interval;
+      if (interval) {
+        if (discard || state.startTick > currentTick) {
+          this.capturedLivePads = this.capturedLivePads.filter((candidate) => candidate !== interval);
+          state.interval = null;
+        } else {
+          const completedAt =
+            state.loop && state.stopTick !== null && state.stopTick <= currentTick
+              ? state.stopTick
+              : !state.loop && state.endTick !== null && state.endTick <= currentTick
+                ? state.endTick
+                : currentTick;
+          interval.endTick = Math.max(state.startTick, completedAt);
+        }
+      }
+      this.removeLivePadVoice(state, false, discard);
+      if (!discard && state.startTick <= currentTick) runtime?.stopLivePadVoice(state.voiceId, now);
+      else runtime?.cancelLivePadVoice(state.voiceId);
+    }
+    if (discard) this.capturedLivePads = [];
+  }
+
+  private clearOriginIfEmpty(): void {
+    if (this.launches.length === 0 && this.capturedLivePads.length === 0 && this.livePadVoices.size === 0) {
+      this.firstBar = null;
+    }
+  }
 
   recordSceneLaunch = (sceneId: string, currentTick: number): void => {
     if (!this.capturing || !this.projectRef().scenes.some((scene) => scene.id === sceneId)) return;
@@ -204,11 +535,12 @@ export class ArrangementCaptureController {
 
   finish = (): boolean => {
     if (!this.capturing) return false;
-    if (this.launches.length === 0) {
-      this.reset();
-      return false;
-    }
-    const currentBar = Math.floor(Math.max(0, this.getTransportTick()) / BAR_TICKS);
+    const currentTick = Math.max(0, this.getTransportTick());
+    this.discardOrphanedLoopVoices(currentTick);
+    this.pruneLivePadVoices(currentTick);
+    this.closeLivePadPerformance(currentTick, false);
+    const originBar = this.firstBar ?? Math.floor((this.capturedLivePads[0]?.startTick ?? currentTick) / BAR_TICKS);
+    const currentBar = Math.floor(currentTick / BAR_TICKS);
     const endBar = Math.max(1, currentBar - (this.firstBar ?? 0));
     const captured: CapturedArrangementClip[] = this.launches.map((launch, index) => ({
       sceneId: launch.sceneId,
@@ -220,20 +552,47 @@ export class ArrangementCaptureController {
           : endBar - launch.startBar,
       ),
     }));
-    this.execute(appendCapturedArrangement(this.projectRef(), captured));
+    const capturedAudio: CapturedArrangementAudioClip[] = this.capturedLivePads.flatMap((interval) => {
+      const endTick = interval.endTick ?? currentTick;
+      if (endTick <= interval.startTick) return [];
+      return [
+        {
+          trackId: interval.trackId,
+          bufferId: interval.bufferId,
+          startBar: Math.max(0, (interval.startTick - originBar * BAR_TICKS) / BAR_TICKS),
+          lengthBars: Math.max(1 / BAR_TICKS, (endTick - interval.startTick) / BAR_TICKS),
+          patch: interval.patch,
+        },
+      ];
+    });
+    if (captured.length === 0 && capturedAudio.length === 0) {
+      this.reset();
+      return false;
+    }
+    this.execute(appendCapturedArrangement(this.projectRef(), captured, capturedAudio));
     this.reset();
     return true;
   };
 
   cancel = (): void => {
-    if (!this.capturing && this.launches.length === 0) return;
+    if (
+      !this.capturing &&
+      this.launches.length === 0 &&
+      this.capturedLivePads.length === 0 &&
+      this.livePadVoices.size === 0
+    )
+      return;
+    this.closeLivePadPerformance(Math.max(0, this.getTransportTick()), true);
     this.reset();
   };
 
   private reset(): void {
+    this.closeLivePadPerformance(Math.max(0, this.getTransportTick()), true);
     this.capturing = false;
     this.firstBar = null;
     this.launches = [];
+    this.capturedLivePads = [];
+    this.lastMessage = null;
     this.notify();
   }
 
@@ -242,6 +601,15 @@ export class ArrangementCaptureController {
       capturing: this.capturing,
       launchCount: this.launches.length,
       firstBar: this.firstBar,
+      livePads: [...this.livePadVoices.values()].map((voice) => ({
+        setId: voice.setId,
+        slot: voice.slot,
+        phase: voice.phase,
+        startTick: voice.startTick,
+        endTick: voice.endTick,
+        stopTick: voice.stopTick,
+      })),
+      message: this.lastMessage,
     };
     for (const listener of this.listeners) listener();
   }

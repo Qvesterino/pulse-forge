@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdlib>
 #include <iostream>
+#include <string>
 #include <utility>
 
 namespace {
@@ -84,6 +85,9 @@ void unavailableExactIdsFailWithoutSelectingCurrentDefaults() {
   const auto snapshot = session.snapshot();
   require(snapshot.state == kyx::windows_audio::SharedModeDuplexState::failed,
           "missing endpoint did not become a recoverable failed session");
+  require(std::string(snapshot.startupStage) == "scan-exact-endpoint-id" &&
+              std::string(snapshot.startupEndpoint) == "capture",
+          "missing endpoint did not retain the native startup phase and direction");
   require(snapshot.negotiation.sampleRateHz == 0,
           "missing endpoint unexpectedly returned a successful negotiation");
 }

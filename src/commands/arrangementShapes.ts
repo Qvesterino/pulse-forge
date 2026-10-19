@@ -11,6 +11,7 @@ import type {
   ArrangementClip,
   ArrangementTransition,
   ArrangementTransitionType,
+  AudioClip,
   Marker,
   ProjectDocument,
   SceneRole,
@@ -21,6 +22,7 @@ import { uid } from "../shared/ids";
 import { snapshot } from "./core";
 import { markerClampPatch, unlinkMarkersOfClips } from "./docOps";
 import { clipGroupsWithoutIds } from "./clipGroups";
+import { addAudioClip } from "./audioClips";
 
 /* ---------------- arrangement shapes ---------------- */
 function transitionBetween(doc: ProjectDocument, fromClipId: string, toClipId: string): void {
@@ -353,12 +355,28 @@ export interface CapturedArrangementClip {
   lengthBars: number;
 }
 
-export function appendCapturedArrangement(doc: ProjectDocument, captured: CapturedArrangementClip[]): Command {
-  if (captured.length === 0) throw new Error("No captured scene launches");
+export interface CapturedArrangementAudioClip {
+  trackId: string;
+  bufferId: string;
+  startBar: number;
+  lengthBars: number;
+  patch?: Partial<Omit<AudioClip, "id" | "trackId" | "bufferId" | "startBar" | "lengthBars">>;
+}
+
+export function appendCapturedArrangement(
+  doc: ProjectDocument,
+  captured: CapturedArrangementClip[],
+  capturedAudio: CapturedArrangementAudioClip[] = [],
+): Command {
+  if (captured.length === 0 && capturedAudio.length === 0) throw new Error("No captured performance material");
   for (const entry of captured) {
     if (!doc.scenes.some((scene) => scene.id === entry.sceneId)) throw new Error(`Scene ${entry.sceneId} not found`);
   }
-  const baseBar = doc.arrangement.clips.reduce((max, clip) => Math.max(max, clip.startBar + clip.lengthBars), 0);
+  const sceneEndBar = doc.arrangement.clips.reduce((max, clip) => Math.max(max, clip.startBar + clip.lengthBars), 0);
+  const audioEndBar = capturedAudio.length
+    ? (doc.arrangement.audioClips ?? []).reduce((max, clip) => Math.max(max, clip.startBar + clip.lengthBars), 0)
+    : 0;
+  const baseBar = Math.max(sceneEndBar, audioEndBar);
   // NaN/MAX discipline of addArrangementClip: normalize FILTERS a non-finite
   // or over-length clip, so an unguarded capture entry would silently vanish
   // from the appended block while the command still reports success.
@@ -378,8 +396,28 @@ export function appendCapturedArrangement(doc: ProjectDocument, captured: Captur
   ) {
     throw new Error("Captured arrangement overlaps an existing clip");
   }
-  return snapshot("appendCapturedArrangement", `Capture ${clips.length} scene${clips.length === 1 ? "" : "s"}`, doc, {
+  let next: ProjectDocument = {
     ...doc,
     arrangement: { ...doc.arrangement, clips: allClips },
-  });
+  };
+  for (const entry of capturedAudio) {
+    const command = addAudioClip(
+      next,
+      entry.trackId,
+      entry.bufferId,
+      baseBar + entry.startBar,
+      entry.lengthBars,
+      entry.patch,
+    );
+    next = command.execute(next);
+  }
+  const sceneCount = clips.length;
+  const audioCount = capturedAudio.length;
+  const label =
+    sceneCount > 0 && audioCount > 0
+      ? `Capture ${sceneCount} scene${sceneCount === 1 ? "" : "s"} and ${audioCount} pad clip${audioCount === 1 ? "" : "s"}`
+      : sceneCount > 0
+        ? `Capture ${sceneCount} scene${sceneCount === 1 ? "" : "s"}`
+        : `Capture ${audioCount} pad clip${audioCount === 1 ? "" : "s"}`;
+  return snapshot("appendCapturedArrangement", label, doc, next);
 }

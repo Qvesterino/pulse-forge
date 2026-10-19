@@ -15,8 +15,8 @@
  * Wave 1 (this file + the C probe): STRUCTURAL enumeration — a .vst3 entry
  * is classified (bundle directory vs single module) and its binary modules
  * listed, without loading anything. Factory enumeration and audio processing
- * are Waves 2–3 (ADR 0035) and require the Steinberg VST3 SDK build plus the
- * Steinberg license agreement before any SDK-linked binary ships.
+ * are Waves 2–3 (ADR 0035) and may add a pinned VST SDK 3.8+ build; retain
+ * its applicable license notices before distributing SDK-linked binaries.
  */
 const { spawn: spawnProcess } = require("node:child_process");
 const path = require("node:path");

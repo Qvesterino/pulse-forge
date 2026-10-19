@@ -34,6 +34,30 @@ describe("TopBar", () => {
     expect(screen.getByText("KYX")).toBeInTheDocument();
   });
 
+  it("retries a failed project save with keyboard activation", async () => {
+    const user = userEvent.setup();
+    const services = mockServices();
+    vi.spyOn(services.store, "getSaveStatus").mockReturnValue("error");
+    renderWithContext(<TopBar {...topBarProps()} />, { services });
+
+    const retry = screen.getByRole("button", { name: "Save failed. Retry saving project." });
+    expect(retry).toHaveAttribute("tabindex", "0");
+    expect(retry).toHaveAttribute("aria-keyshortcuts", "Enter Space");
+    retry.focus();
+    await user.keyboard("{Enter}");
+    await user.keyboard(" ");
+
+    expect(services.flushSave).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not expose a retry button for a successfully saved project", () => {
+    const { container } = renderWithContext(<TopBar {...topBarProps()} />);
+    const saveStatus = container.querySelector(".save-status");
+    expect(saveStatus).toHaveAttribute("role", "status");
+    expect(saveStatus).toHaveAttribute("aria-live", "polite");
+    expect(screen.queryByRole("button", { name: /save failed/i })).not.toBeInTheDocument();
+  });
+
   it("renders PROJECTS button", () => {
     renderWithContext(<TopBar {...topBarProps()} />);
     expect(screen.getByText("PROJECTS")).toBeInTheDocument();

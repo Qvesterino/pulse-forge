@@ -34,7 +34,7 @@ export function mockServices(doc?: ProjectDocument): Services {
   const listeners = new Set<() => void>();
   const latency = new LatencyCalibrationController(null);
   const libraryState = { favoriteAssets: [], recentAssets: [], favoritePresets: [], recentPresets: [] };
-  const captureSnapshot = { capturing: false, launchCount: 0, firstBar: null };
+  const captureSnapshot = { capturing: false, launchCount: 0, firstBar: null, livePads: [], message: null };
   const mockTransport = new Transport({ now: () => 0 }, 120);
   let effectIntentPreviewEnded:
     ((reason: "manual" | "projectChanged" | "transportStarted" | "restoreFailed") => void) | undefined;

@@ -7,6 +7,7 @@ import {
   buildClipClipboard,
   cutClips,
   deleteArrangementClip,
+  duplicateClips,
   moveAudioClip,
   pasteClips,
   setArrangementClipLoop,
@@ -145,6 +146,41 @@ describe("C2/C3/C8 paste: fresh ids, deep clones, relative spacing, layering", (
     // Mutating one paste's warp pin leaves the other paste intact.
     store.execute(updateAudioClip(store.doc, p1!.id, { warpMarkers: [{ timeSec: 5, tick: 5 }] }));
     expect(p2 && audioClipsOf(store.doc).find((c) => c.id === p2.id)!.warpMarkers![0]!.timeSec).toBe(0);
+  });
+});
+
+describe("C9 duplicate selected clips", () => {
+  it("duplicates a mixed selected block after its end in one undo step", () => {
+    const { doc, a } = docWithTones();
+    const withSceneClip = addArrangementClip(doc, doc.scenes[0]!.id, 8, 2).execute(doc);
+    const sceneClipId = withSceneClip.arrangement.clips.at(-1)!.id;
+    const arrangementClipIdsBefore = new Set(withSceneClip.arrangement.clips.map((clip) => clip.id));
+    const command = duplicateClips(withSceneClip, [a, sceneClipId]);
+    expect(command).not.toBeNull();
+
+    const store = new ProjectStore(withSceneClip);
+    store.execute(command!);
+    const audio = audioClipsOf(store.doc);
+    const copies = audio.filter((clip) => clip.id !== a && clip.bufferId === "buf-a");
+    const sceneClips = store.doc.arrangement.clips;
+
+    expect(copies).toHaveLength(1);
+    expect(copies[0]!.startBar).toBe(10);
+    expect(sceneClips).toHaveLength(withSceneClip.arrangement.clips.length + 1);
+    expect(sceneClips.find((clip) => !arrangementClipIdsBefore.has(clip.id))!.startBar).toBe(18);
+    expect(store.doc.patterns).toEqual(withSceneClip.patterns);
+    expect(store.undoStackLength).toBe(1);
+
+    store.undo();
+    expect(audioClipsOf(store.doc).map((clip) => clip.id)).toEqual(audioClipsOf(withSceneClip).map((clip) => clip.id));
+    expect(store.doc.arrangement.clips.map((clip) => clip.id)).toEqual(
+      withSceneClip.arrangement.clips.map((clip) => clip.id),
+    );
+  });
+
+  it("returns no command when no selected clip id resolves", () => {
+    const { doc } = docWithTones();
+    expect(duplicateClips(doc, ["stale-clip-id"])).toBeNull();
   });
 });
 

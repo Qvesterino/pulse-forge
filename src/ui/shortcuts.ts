@@ -13,7 +13,7 @@ export type ShortcutKey =
   | "redo"
   | "save"
   | "toggleLoop"
-  | "duplicatePattern"
+  | "duplicateSelection"
   | "copyClips"
   | "cutClips"
   | "pasteClips"
@@ -155,9 +155,9 @@ export const SHORTCUTS: Shortcut[] = [
   { key: "nextPattern", label: "Next pattern", group: "Patterns", keyHint: "PageDown" },
   { key: "prevPattern", label: "Previous pattern", group: "Patterns", keyHint: "PageUp" },
   {
-    key: "duplicatePattern",
-    label: "Duplicate active pattern",
-    group: "Patterns",
+    key: "duplicateSelection",
+    label: "Duplicate selection (clips, range, or pattern)",
+    group: "Clips",
     keyHint: "D",
     ctrl: true,
     altHints: [{ key: "d", ctrl: true }],
@@ -194,16 +194,7 @@ export const SHORTCUTS: Shortcut[] = [
   { key: "toggleHelp", label: "Show / hide this help", group: "Help", keyHint: "?" },
 ];
 
-const SHORTCUT_BY_KEY: Record<string, ShortcutKey> = (() => {
-  const out: Record<string, ShortcutKey> = {};
-  for (const sc of SHORTCUTS) {
-    out[primarySignature(sc)] = sc.key;
-    for (const alt of sc.altHints ?? []) {
-      out[signature(alt.key, alt.ctrl, alt.shift, alt.alt, alt.meta)] = sc.key;
-    }
-  }
-  return out;
-})();
+let shortcutByKey: Record<string, ShortcutKey> = {};
 
 function signature(key: string, ctrl?: boolean, shift?: boolean, alt?: boolean, meta?: boolean): string {
   return `${ctrl ? "C" : "."}${shift ? "S" : "."}${alt ? "A" : "."}${meta ? "M" : "."}|${key.toLowerCase()}`;
@@ -242,11 +233,11 @@ export function matchShortcut(event: KeyboardEvent): ShortcutKey | null {
     event.metaKey,
   );
   // Direct lookup
-  const direct = SHORTCUT_BY_KEY[sig];
+  const direct = shortcutByKey[sig];
   if (direct) return direct;
   // "?" fallback
   if (isQuestionMark) {
-    const alt = SHORTCUT_BY_KEY[signature("?", false, false, false, false)];
+    const alt = shortcutByKey[signature("?", false, false, false, false)];
     if (alt) return alt;
   }
   return null;
@@ -254,9 +245,9 @@ export function matchShortcut(event: KeyboardEvent): ShortcutKey | null {
 
 /** Group shortcuts for the help overlay. */
 export function groupShortcuts(): { group: Shortcut["group"]; items: Shortcut[] }[] {
-  const order: Shortcut["group"][] = ["Transport", "Tracks", "Patterns", "Panels", "Sequencer", "Help"];
+  const order: Shortcut["group"][] = ["Transport", "Tracks", "Patterns", "Clips", "Panels", "Sequencer", "Help"];
   const byGroup = new Map<Shortcut["group"], Shortcut[]>();
-  for (const sc of SHORTCUTS) {
+  for (const sc of getActiveShortcuts()) {
     const list = byGroup.get(sc.group) ?? [];
     list.push(sc);
     byGroup.set(sc.group, list);
@@ -389,6 +380,202 @@ export const EDITOR_SHORTCUTS: EditorShortcut[] = [
   },
 ];
 
+export const SHORTCUT_BINDINGS_STORAGE_KEY = "pf-shortcut-bindings-v1";
+
+export interface ShortcutBindingInput {
+  keyHint: string;
+  ctrl: boolean;
+  shift: boolean;
+  alt: boolean;
+  meta: boolean;
+}
+
+type ShortcutOverrides = Partial<Record<ShortcutKey, ShortcutBindingInput>>;
+type ShortcutBindingResult = { ok: true; persisted: boolean } | { ok: false; message: string };
+
+let shortcutOverrides: ShortcutOverrides = {};
+let activeShortcutsCache: Shortcut[] = [];
+let shortcutRevision = 0;
+const shortcutListeners = new Set<() => void>();
+
+function definitionsWith(overrides: ShortcutOverrides): Shortcut[] {
+  return SHORTCUTS.map((shortcut) => {
+    const binding = overrides[shortcut.key];
+    return binding ? { ...shortcut, ...binding, altHints: undefined } : shortcut;
+  });
+}
+
+function buildShortcutLookup(shortcuts: Shortcut[]): Record<string, ShortcutKey> {
+  const out: Record<string, ShortcutKey> = {};
+  for (const shortcut of shortcuts) {
+    out[primarySignature(shortcut)] = shortcut.key;
+    for (const alt of shortcut.altHints ?? []) {
+      out[signature(alt.key, alt.ctrl, alt.shift, alt.alt, alt.meta)] = shortcut.key;
+    }
+  }
+  return out;
+}
+
+function rebuildShortcutCache(notify = false): void {
+  activeShortcutsCache = definitionsWith(shortcutOverrides);
+  shortcutByKey = buildShortcutLookup(activeShortcutsCache);
+  if (!notify) return;
+  shortcutRevision++;
+  for (const listener of shortcutListeners) listener();
+}
+
+/** The current global bindings, including user overrides. */
+export function getActiveShortcuts(): Shortcut[] {
+  return activeShortcutsCache;
+}
+
+export function subscribeShortcutBindings(listener: () => void): () => void {
+  shortcutListeners.add(listener);
+  return () => shortcutListeners.delete(listener);
+}
+
+export function shortcutBindingsRevision(): number {
+  return shortcutRevision;
+}
+
+/** Capture only modified alphanumeric chords, preserving plain keys for note entry. */
+export function shortcutBindingFromEvent(
+  event: Pick<KeyboardEvent, "key" | "ctrlKey" | "shiftKey" | "altKey" | "metaKey">,
+): ShortcutBindingInput | null {
+  const keyHint = event.key.toLowerCase();
+  if (!/^[a-z0-9]$/.test(keyHint) || !event.shiftKey || event.altKey || (!event.ctrlKey && !event.metaKey)) return null;
+  return {
+    keyHint,
+    ctrl: event.ctrlKey,
+    shift: true,
+    alt: false,
+    meta: event.metaKey,
+  };
+}
+
+function bindingSignature(binding: ShortcutBindingInput): string {
+  return signature(binding.keyHint, binding.ctrl, binding.shift, binding.alt, binding.meta);
+}
+
+function parseEditorBinding(display: string): ShortcutBindingInput | null {
+  const parts = display.split(/\s+\+\s+/);
+  if (parts.length < 2) return null;
+  const keyHint = parts.pop()?.toLowerCase();
+  if (!keyHint || !/^[a-z0-9]$/.test(keyHint)) return null;
+  const modifiers = new Set(parts);
+  if ([...modifiers].some((modifier) => !["Ctrl", "Shift", "Alt", "Meta", "Cmd"].includes(modifier))) return null;
+  return {
+    keyHint,
+    ctrl: modifiers.has("Ctrl"),
+    shift: modifiers.has("Shift"),
+    alt: modifiers.has("Alt"),
+    meta: modifiers.has("Meta") || modifiers.has("Cmd"),
+  };
+}
+
+function safeBindingReason(binding: ShortcutBindingInput): string | null {
+  if (!/^[a-z0-9]$/.test(binding.keyHint)) return "Use one letter or number.";
+  if (!binding.shift || binding.alt || (!binding.ctrl && !binding.meta))
+    return "Use Ctrl/Cmd + Shift + one letter or number. Plain keys stay available for playing notes.";
+  if (["n", "t", "w", "q", "i", "j", "p", "m"].includes(binding.keyHint))
+    return "That chord is reserved by common browser or operating-system commands.";
+  return null;
+}
+
+function collisionFor(key: ShortcutKey, binding: ShortcutBindingInput, overrides: ShortcutOverrides): string | null {
+  const wanted = bindingSignature(binding);
+  for (const shortcut of definitionsWith(overrides)) {
+    if (shortcut.key === key) continue;
+    if (shortcutSignatures(shortcut).includes(wanted)) return `Already used by ${shortcut.label}.`;
+  }
+  for (const shortcut of EDITOR_SHORTCUTS) {
+    if (
+      shortcut.bindings.some((display) => {
+        const editorBinding = parseEditorBinding(display);
+        return editorBinding !== null && bindingSignature(editorBinding) === wanted;
+      })
+    ) {
+      return `Already used by the ${shortcut.label} editor action.`;
+    }
+  }
+  return null;
+}
+
+function isStoredBinding(value: unknown): value is ShortcutBindingInput {
+  if (!value || typeof value !== "object") return false;
+  const binding = value as Partial<ShortcutBindingInput>;
+  return (
+    typeof binding.keyHint === "string" &&
+    typeof binding.ctrl === "boolean" &&
+    typeof binding.shift === "boolean" &&
+    typeof binding.alt === "boolean" &&
+    typeof binding.meta === "boolean"
+  );
+}
+
+function readPersistedOverrides(): ShortcutOverrides {
+  try {
+    const raw = localStorage.getItem(SHORTCUT_BINDINGS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const source = parsed as Record<string, unknown>;
+    const accepted: ShortcutOverrides = {};
+    for (const shortcut of SHORTCUTS) {
+      const binding = source[shortcut.key];
+      if (!isStoredBinding(binding) || safeBindingReason(binding)) continue;
+      const collision = collisionFor(shortcut.key, binding, accepted);
+      if (!collision) accepted[shortcut.key] = binding;
+    }
+    return accepted;
+  } catch {
+    return {};
+  }
+}
+
+function persistOverrides(overrides: ShortcutOverrides): boolean {
+  try {
+    if (Object.keys(overrides).length === 0) localStorage.removeItem(SHORTCUT_BINDINGS_STORAGE_KEY);
+    else localStorage.setItem(SHORTCUT_BINDINGS_STORAGE_KEY, JSON.stringify(overrides));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Save a safe, collision-free binding; null restores that action's default. */
+export function setShortcutBinding(key: ShortcutKey, binding: ShortcutBindingInput | null): ShortcutBindingResult {
+  const next = { ...shortcutOverrides };
+  if (binding) {
+    const unsafe = safeBindingReason(binding);
+    if (unsafe) return { ok: false, message: unsafe };
+    const collision = collisionFor(key, binding, next);
+    if (collision) return { ok: false, message: collision };
+    next[key] = binding;
+  } else {
+    delete next[key];
+  }
+  const persisted = persistOverrides(next);
+  shortcutOverrides = next;
+  rebuildShortcutCache(true);
+  return { ok: true, persisted };
+}
+
+/** Reset every global action binding to its factory shortcut. */
+export function resetShortcutBindings(): boolean {
+  const persisted = persistOverrides({});
+  shortcutOverrides = {};
+  rebuildShortcutCache(true);
+  return persisted;
+}
+
+export function isShortcutCustomized(key: ShortcutKey): boolean {
+  return shortcutOverrides[key] !== undefined;
+}
+
+shortcutOverrides = readPersistedOverrides();
+rebuildShortcutCache();
+
 /**
  * Build a display string for a shortcut, e.g. "Ctrl + Z" or "Alt + M".
  * Uses the primary keyHint and its modifiers.
@@ -415,7 +602,7 @@ export function formatBinding(binding: {
   if (binding.ctrl) parts.push("Ctrl");
   if (binding.alt) parts.push("Alt");
   if (binding.shift) parts.push("Shift");
-  if (binding.meta) parts.push("Meta");
+  if (binding.meta) parts.push("Cmd");
   // Single-character keys display uppercase ("Ctrl + Z"), named keys keep
   // their canonical form ("Escape", "PageDown").
   const key = binding.key === " " ? "Space" : binding.key.length === 1 ? binding.key.toUpperCase() : binding.key;

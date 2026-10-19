@@ -25,7 +25,9 @@ import { addArrangementClip, moveArrangementClip, resizeArrangementClip } from "
  */
 
 function storeWithClip(startBar = 4, lengthBars = 2) {
-  const store = new ProjectStore(normalizeProject({ ...createProjectFromTemplate("house"), arrangement: { clips: [] } }));
+  const store = new ProjectStore(
+    normalizeProject({ ...createProjectFromTemplate("house"), arrangement: { clips: [] } }),
+  );
   const sceneId = store.getDoc().scenes[0]!.id;
   store.execute(addArrangementClip(store.getDoc(), sceneId, startBar, lengthBars));
   return store;
@@ -47,18 +49,18 @@ function deadUndoStep(make: (store: ProjectStore) => void): boolean {
 
 describe("no-op geometry edits push no undo entry (audit 01)", () => {
   it("does not push a history entry when a scene clip is moved onto its own bar", () => {
-    expect(deadUndoStep((s) => s.execute(moveArrangementClip(s.getDoc(), s.getDoc().arrangement.clips[0]!.id, 4)))).toBe(
-      false,
-    );
+    expect(
+      deadUndoStep((s) => s.execute(moveArrangementClip(s.getDoc(), s.getDoc().arrangement.clips[0]!.id, 4))),
+    ).toBe(false);
   });
 
   it("does not push a history entry for the sub-bar drag that rounds back to the origin", () => {
     // The UI-reachable case: 4 → 4.1 passes `finalDrag.startBar !== origStart`
     // (ArrangementPanel.tsx:2749) but rounds back to bar 4 inside the command.
     for (const dragged of [4.1, 4.25, 4.49]) {
-      expect(deadUndoStep((s) => s.execute(moveArrangementClip(s.getDoc(), s.getDoc().arrangement.clips[0]!.id, dragged)))).toBe(
-        false,
-      );
+      expect(
+        deadUndoStep((s) => s.execute(moveArrangementClip(s.getDoc(), s.getDoc().arrangement.clips[0]!.id, dragged))),
+      ).toBe(false);
     }
   });
 

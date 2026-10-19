@@ -129,6 +129,15 @@ struct PreparedEndpoint {
   std::optional<std::uint32_t> reportedLatencyFrames;
 };
 
+std::optional<std::uint32_t> queryStreamLatencyFrames(IAudioClient3* client, std::uint32_t sampleRateHz) {
+  if (!client || sampleRateHz == 0) return std::nullopt;
+  REFERENCE_TIME streamLatency = 0;
+  if (FAILED(client->GetStreamLatency(&streamLatency)) || streamLatency <= 0) return std::nullopt;
+  const long double frames = static_cast<long double>(streamLatency) * sampleRateHz / 10'000'000.0L;
+  if (frames > std::numeric_limits<std::uint32_t>::max()) return std::nullopt;
+  return static_cast<std::uint32_t>(frames + 0.5L);
+}
+
 bool makeFloat32Format(const WAVEFORMATEX* mixFormat,
                        std::uint32_t sampleRateHz,
                        WAVEFORMATEXTENSIBLE* result,
@@ -170,23 +179,33 @@ bool prepareEndpoint(IMMDeviceEnumerator* enumerator,
                      std::uint32_t periodFrames,
                      HANDLE eventHandle,
                      const std::vector<std::uint32_t>& channelMap,
+                     std::atomic<const char*>* startupStage,
+                     std::atomic<const char*>* startupEndpoint,
                      PreparedEndpoint* prepared,
                      std::wstring* error) {
   if (!enumerator || !prepared || !error) return false;
+  const char* endpointName = flow == eCapture ? "capture" : "render";
+  const auto reportStage = [&](const char* stage) {
+    if (startupEndpoint) startupEndpoint->store(endpointName, std::memory_order_release);
+    if (startupStage) startupStage->store(stage, std::memory_order_release);
+  };
 
   ComPtr<IMMDeviceCollection> flowEndpoints;
+  reportStage("enumerate-active-endpoints");
   HRESULT result = enumerator->EnumAudioEndpoints(flow, DEVICE_STATE_ACTIVE, flowEndpoints.GetAddressOf());
   if (FAILED(result)) {
     *error = hresultMessage(L"Could not enumerate active endpoints for the selected audio flow", result);
     return false;
   }
   UINT endpointCount = 0;
+  reportStage("read-active-endpoint-count");
   result = flowEndpoints->GetCount(&endpointCount);
   if (FAILED(result)) {
     *error = hresultMessage(L"Could not read active endpoint count", result);
     return false;
   }
   bool exactEndpointInFlow = false;
+  reportStage("scan-exact-endpoint-id");
   for (UINT index = 0; index < endpointCount; ++index) {
     ComPtr<IMMDevice> candidate;
     if (FAILED(flowEndpoints->Item(index, candidate.GetAddressOf())) || !candidate) continue;
@@ -204,12 +223,14 @@ bool prepareEndpoint(IMMDeviceEnumerator* enumerator,
   }
 
   ComPtr<IMMDevice> device;
+  reportStage("open-exact-endpoint");
   result = enumerator->GetDevice(endpointId.c_str(), device.GetAddressOf());
   if (FAILED(result)) {
     *error = hresultMessage(L"Could not open the exact selected endpoint ID", result);
     return false;
   }
   LPWSTR actualId = nullptr;
+  reportStage("verify-endpoint-id");
   result = device->GetId(&actualId);
   if (FAILED(result) || !actualId) {
     if (actualId) CoTaskMemFree(actualId);
@@ -224,6 +245,7 @@ bool prepareEndpoint(IMMDeviceEnumerator* enumerator,
   }
 
   DWORD state = 0;
+  reportStage("read-endpoint-state");
   result = device->GetState(&state);
   if (FAILED(result)) {
     *error = hresultMessage(L"Could not read selected endpoint state", result);
@@ -234,6 +256,7 @@ bool prepareEndpoint(IMMDeviceEnumerator* enumerator,
     return false;
   }
 
+  reportStage("activate-audio-client");
   result = device->Activate(__uuidof(IAudioClient3), CLSCTX_ALL, nullptr,
                             reinterpret_cast<void**>(prepared->client.GetAddressOf()));
   if (FAILED(result)) {
@@ -246,6 +269,7 @@ bool prepareEndpoint(IMMDeviceEnumerator* enumerator,
   properties.bIsOffload = FALSE;
   properties.eCategory = AudioCategory_Media;
   properties.Options = AUDCLNT_STREAMOPTIONS_NONE;
+  reportStage("set-client-properties");
   result = prepared->client->SetClientProperties(&properties);
   if (FAILED(result)) {
     *error = hresultMessage(L"Could not set shared-mode audio client properties", result);
@@ -253,6 +277,7 @@ bool prepareEndpoint(IMMDeviceEnumerator* enumerator,
   }
 
   ScopedWaveFormat mixFormat;
+  reportStage("get-mix-format");
   result = prepared->client->GetMixFormat(&mixFormat.value);
   if (FAILED(result) || !mixFormat.value) {
     *error = hresultMessage(L"Could not read endpoint mix format", result);
@@ -277,6 +302,7 @@ bool prepareEndpoint(IMMDeviceEnumerator* enumerator,
   UINT32 fundamentalFrames = 0;
   UINT32 minimumFrames = 0;
   UINT32 maximumFrames = 0;
+  reportStage("query-shared-periods");
   result = prepared->client->GetSharedModeEnginePeriod(&prepared->format.Format, &defaultFrames, &fundamentalFrames,
                                                         &minimumFrames, &maximumFrames);
   if (FAILED(result)) {
@@ -290,27 +316,24 @@ bool prepareEndpoint(IMMDeviceEnumerator* enumerator,
     return false;
   }
 
+  reportStage("initialize-shared-stream");
   result = prepared->client->InitializeSharedAudioStream(AUDCLNT_STREAMFLAGS_EVENTCALLBACK, periodFrames,
                                                           &prepared->format.Format, nullptr);
   if (FAILED(result)) {
     *error = hresultMessage(L"Could not initialize the selected shared-mode period", result);
     return false;
   }
+  reportStage("query-endpoint-buffer");
   result = prepared->client->GetBufferSize(&prepared->bufferFrames);
   if (FAILED(result) || prepared->bufferFrames == 0 || prepared->bufferFrames > kMaximumEndpointBufferFrames) {
     *error = hresultMessage(L"Endpoint buffer size is invalid or exceeds the host limit", result);
     return false;
   }
+  reportStage("attach-event-handle");
   result = prepared->client->SetEventHandle(eventHandle);
   if (FAILED(result)) {
     *error = hresultMessage(L"Could not attach the event-driven endpoint handle", result);
     return false;
-  }
-  REFERENCE_TIME streamLatency = 0;
-  if (SUCCEEDED(prepared->client->GetStreamLatency(&streamLatency)) && streamLatency > 0) {
-    const long double frames = static_cast<long double>(streamLatency) * sampleRateHz / 10'000'000.0L;
-    if (frames <= std::numeric_limits<std::uint32_t>::max())
-      prepared->reportedLatencyFrames = static_cast<std::uint32_t>(frames + 0.5L);
   }
   return true;
 }
@@ -347,6 +370,8 @@ struct WasapiSharedDuplexSession::Impl {
   bool startupSucceeded = false;
   std::wstring startupError;
   std::atomic<SharedModeDuplexState> state{SharedModeDuplexState::idle};
+  std::atomic<const char*> startupStage{"idle"};
+  std::atomic<const char*> startupEndpoint{""};
   std::atomic<std::uint64_t> captureOverrunPackets{0};
   std::atomic<std::uint64_t> renderOverrunPackets{0};
   std::atomic<std::uint64_t> renderUnderrunPeriods{0};
@@ -411,6 +436,7 @@ struct WasapiSharedDuplexSession::Impl {
   }
 
   bool start(std::wstring* error) {
+    startupStage.store("validating-request", std::memory_order_release);
     std::wstring validationError;
     if (!validateRequest(&validationError)) {
       if (error) *error = validationError;
@@ -429,6 +455,8 @@ struct WasapiSharedDuplexSession::Impl {
       }
       startCalled = true;
       state.store(SharedModeDuplexState::starting, std::memory_order_release);
+      startupEndpoint.store("", std::memory_order_release);
+      startupStage.store("creating-worker", std::memory_order_release);
       ResetEvent(stopEvent.value);
       ResetEvent(deviceChangedEvent.value);
     }
@@ -475,6 +503,8 @@ struct WasapiSharedDuplexSession::Impl {
   }
 
   void run() noexcept {
+    startupEndpoint.store("", std::memory_order_release);
+    startupStage.store("initializing-com", std::memory_order_release);
     const ScopedComInitialization com;
     if (!com.valid()) {
       finishStartup(false, SharedModeDuplexState::failed, hresultMessage(L"Could not initialize COM MTA", com.result));
@@ -494,6 +524,7 @@ struct WasapiSharedDuplexSession::Impl {
 
   void runSession() {
     ComPtr<IMMDeviceEnumerator> enumerator;
+    startupStage.store("creating-device-enumerator", std::memory_order_release);
     HRESULT result = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
                                       IID_PPV_ARGS(enumerator.GetAddressOf()));
     if (FAILED(result)) {
@@ -502,6 +533,7 @@ struct WasapiSharedDuplexSession::Impl {
     }
 
     ComPtr<IMMNotificationClient> notification;
+    startupStage.store("registering-device-notifications", std::memory_order_release);
     notification.Attach(new EndpointNotification(deviceChangedEvent.value, request.inputEndpointId,
                                                   request.outputEndpointId));
     result = enumerator->RegisterEndpointNotificationCallback(notification.Get());
@@ -514,10 +546,17 @@ struct WasapiSharedDuplexSession::Impl {
     PreparedEndpoint input;
     PreparedEndpoint output;
     std::wstring error;
+    startupEndpoint.store("capture", std::memory_order_release);
     if (!prepareEndpoint(enumerator.Get(), request.inputEndpointId, eCapture, request.sampleRateHz,
-                         request.periodFrames, captureEvent.value, request.inputChannelMap, &input, &error) ||
-        !prepareEndpoint(enumerator.Get(), request.outputEndpointId, eRender, request.sampleRateHz,
-                         request.periodFrames, renderEvent.value, request.outputChannelMap, &output, &error)) {
+                         request.periodFrames, captureEvent.value, request.inputChannelMap,
+                         &startupStage, &startupEndpoint, &input, &error)) {
+      enumerator->UnregisterEndpointNotificationCallback(notification.Get());
+      finishStartup(false, SharedModeDuplexState::failed, error);
+      return;
+    }
+    if (!prepareEndpoint(enumerator.Get(), request.outputEndpointId, eRender, request.sampleRateHz,
+                         request.periodFrames, renderEvent.value, request.outputChannelMap,
+                         &startupStage, &startupEndpoint, &output, &error)) {
       enumerator->UnregisterEndpointNotificationCallback(notification.Get());
       finishStartup(false, SharedModeDuplexState::failed, error);
       return;
@@ -539,6 +578,8 @@ struct WasapiSharedDuplexSession::Impl {
     }
 
     ComPtr<IAudioCaptureClient> capture;
+    startupEndpoint.store("capture", std::memory_order_release);
+    startupStage.store("acquiring-audio-service", std::memory_order_release);
     result = input.client->GetService(IID_PPV_ARGS(capture.GetAddressOf()));
     if (FAILED(result)) {
       enumerator->UnregisterEndpointNotificationCallback(notification.Get());
@@ -546,6 +587,8 @@ struct WasapiSharedDuplexSession::Impl {
       return;
     }
     ComPtr<IAudioRenderClient> render;
+    startupEndpoint.store("render", std::memory_order_release);
+    startupStage.store("acquiring-audio-service", std::memory_order_release);
     result = output.client->GetService(IID_PPV_ARGS(render.GetAddressOf()));
     if (FAILED(result)) {
       enumerator->UnregisterEndpointNotificationCallback(notification.Get());
@@ -559,6 +602,8 @@ struct WasapiSharedDuplexSession::Impl {
       finishStartup(false, SharedModeDuplexState::failed, L"Endpoint scratch-buffer size overflowed");
       return;
     }
+    startupEndpoint.store("", std::memory_order_release);
+    startupStage.store("allocating-pcm-buffers", std::memory_order_release);
     captureScratch.resize(static_cast<std::size_t>(input.bufferFrames) * request.inputChannelMap.size());
     renderScratch.resize(static_cast<std::size_t>(output.bufferFrames) * request.outputChannelMap.size());
 
@@ -584,6 +629,8 @@ struct WasapiSharedDuplexSession::Impl {
     ScopedMmcssTask mmcss;
     const double periodMs = 1000.0 * request.periodFrames / request.sampleRateHz;
     DWORD taskIndex = 0;
+    startupEndpoint.store("", std::memory_order_release);
+    startupStage.store("registering-mmcss", std::memory_order_release);
     mmcss.handle = AvSetMmThreadCharacteristicsW(periodMs < 10.0 ? L"Pro Audio" : L"Audio", &taskIndex);
     if (!mmcss.handle) {
       enumerator->UnregisterEndpointNotificationCallback(notification.Get());
@@ -593,6 +640,8 @@ struct WasapiSharedDuplexSession::Impl {
     }
 
     BYTE* initialRenderData = nullptr;
+    startupEndpoint.store("render", std::memory_order_release);
+    startupStage.store("priming-render-buffer", std::memory_order_release);
     result = render->GetBuffer(output.bufferFrames, &initialRenderData);
     if (FAILED(result)) {
       enumerator->UnregisterEndpointNotificationCallback(notification.Get());
@@ -616,6 +665,8 @@ struct WasapiSharedDuplexSession::Impl {
       finishStartup(false, SharedModeDuplexState::stopped, L"WASAPI session was stopped during startup");
       return;
     }
+    startupEndpoint.store("capture", std::memory_order_release);
+    startupStage.store("starting-capture-client", std::memory_order_release);
     result = input.client->Start();
     if (FAILED(result)) {
       enumerator->UnregisterEndpointNotificationCallback(notification.Get());
@@ -624,6 +675,8 @@ struct WasapiSharedDuplexSession::Impl {
                     hresultMessage(L"Could not start capture endpoint", result));
       return;
     }
+    startupEndpoint.store("render", std::memory_order_release);
+    startupStage.store("starting-render-client", std::memory_order_release);
     result = output.client->Start();
     if (FAILED(result)) {
       input.client->Stop();
@@ -634,7 +687,21 @@ struct WasapiSharedDuplexSession::Impl {
       return;
     }
 
+    startupEndpoint.store("capture", std::memory_order_release);
+    startupStage.store("query-capture-latency", std::memory_order_release);
+    input.reportedLatencyFrames = queryStreamLatencyFrames(input.client.Get(), request.sampleRateHz);
+    startupEndpoint.store("render", std::memory_order_release);
+    startupStage.store("query-render-latency", std::memory_order_release);
+    output.reportedLatencyFrames = queryStreamLatencyFrames(output.client.Get(), request.sampleRateHz);
+    {
+      std::lock_guard<std::mutex> lock(statusMutex);
+      negotiation.reportedInputLatencyFrames = input.reportedLatencyFrames;
+      negotiation.reportedOutputLatencyFrames = output.reportedLatencyFrames;
+    }
+
     finishStartup(true, SharedModeDuplexState::running, L"");
+    startupStage.store("running", std::memory_order_release);
+    startupEndpoint.store("", std::memory_order_release);
     const DWORD waitMs = std::max<DWORD>(25, static_cast<DWORD>(4'000.0 * request.periodFrames / request.sampleRateHz));
     const auto missingEventLimit = std::max(std::chrono::milliseconds(100),
         std::chrono::milliseconds(static_cast<std::int64_t>(4000.0 * request.periodFrames / request.sampleRateHz)));
@@ -783,6 +850,8 @@ struct WasapiSharedDuplexSession::Impl {
   SharedModeDuplexSnapshot snapshot() const {
     SharedModeDuplexSnapshot result;
     result.state = state.load(std::memory_order_acquire);
+    result.startupStage = startupStage.load(std::memory_order_acquire);
+    result.startupEndpoint = startupEndpoint.load(std::memory_order_acquire);
     {
       std::lock_guard<std::mutex> lock(statusMutex);
       result.negotiation = negotiation;

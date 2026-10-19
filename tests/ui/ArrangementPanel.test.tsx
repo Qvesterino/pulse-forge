@@ -4,8 +4,9 @@ import { ArrangementPanel } from "../../src/ui/ArrangementPanel";
 import { SelectionContext } from "../../src/ui/context";
 import { renderWithContext, mockServices } from "../helpers";
 import { SelectionStore } from "../../src/store/SelectionStore";
+import { ProjectStore } from "../../src/store/ProjectStore";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
-import { addAudioClip } from "../../src/commands/commands";
+import { addAudioClip, setBpm } from "../../src/commands/commands";
 import type { ProjectDocument } from "../../src/project-model/types";
 
 const domRect = (left: number, top: number, width: number, height: number) =>
@@ -57,12 +58,123 @@ describe("ArrangementPanel", () => {
     expect(screen.getByText("ROLE")).toBeInTheDocument();
   });
 
+  it("shows the selected song length as an estimated time and bar count at project BPM", async () => {
+    const doc = { ...createProjectFromTemplate("house"), bpm: 124 };
+    const services = mockServices(doc);
+    services.store = new ProjectStore(doc);
+    renderWithContext(<ArrangementPanel />, { services });
+
+    const preview = screen.getByLabelText("Estimated song duration");
+    expect(preview).toHaveTextContent("≈ 3:00 · 93 bars @ 124.0 BPM");
+
+    const user = (await import("@testing-library/user-event")).default.setup();
+    await user.selectOptions(screen.getByLabelText("Auto-arrange target song length"), "4");
+    expect(preview).toHaveTextContent("≈ 4:00 · 124 bars @ 124.0 BPM");
+
+    act(() => services.store.execute(setBpm(services.store.doc, 120)));
+    expect(preview).toHaveTextContent("≈ 4:00 · 120 bars @ 120.0 BPM");
+  });
+
+  it("selects a three-minute song target and clicks AUTO ARRANGE to create a 93-bar form", async () => {
+    const doc = { ...createProjectFromTemplate("house"), bpm: 124 };
+    const services = mockServices(doc);
+    services.store = new ProjectStore(doc);
+    renderWithContext(<ArrangementPanel />, { services });
+
+    const user = (await import("@testing-library/user-event")).default.setup();
+    await user.selectOptions(screen.getByLabelText("Auto-arrange target song length"), "3");
+    await user.click(screen.getByRole("button", { name: "AUTO ARRANGE" }));
+
+    const clips = services.store.doc.arrangement.clips;
+    expect(clips).toHaveLength(7);
+    expect(clips.reduce((sum, clip) => sum + clip.lengthBars, 0)).toBe(93);
+    let nextBar = 0;
+    for (const clip of clips) {
+      expect(clip.startBar).toBe(nextBar);
+      nextBar += clip.lengthBars;
+    }
+  });
+
+  it("changing the target length does not change the arrangement before AUTO ARRANGE is clicked", async () => {
+    const base = createProjectFromTemplate("house");
+    const doc = {
+      ...base,
+      bpm: 124,
+      arrangement: {
+        ...base.arrangement,
+        clips: [{ id: "existing-clip", sceneId: base.scenes[0]!.id, startBar: 0, lengthBars: 8 }],
+      },
+    };
+    const services = mockServices(doc);
+    services.store = new ProjectStore(doc);
+    const before = services.store.doc.arrangement.clips;
+    const execute = vi.spyOn(services.store, "execute");
+    renderWithContext(<ArrangementPanel />, { services });
+
+    const user = (await import("@testing-library/user-event")).default.setup();
+    await user.selectOptions(screen.getByLabelText("Auto-arrange target song length"), "4");
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(services.store.doc.arrangement.clips).toEqual(before);
+    expect(services.store.undoStackLength).toBe(0);
+  });
+
   it("exposes the source rail, quantize state and arrangement role flow", () => {
     renderWithContext(<ArrangementPanel />);
     expect(screen.getByText("SOURCE")).toBeInTheDocument();
     expect(screen.getByText("QUANTIZE")).toBeInTheDocument();
     expect(screen.getByLabelText("Arrangement role flow")).toBeInTheDocument();
   });
+
+  it("requires distinct tracks and input devices for independent recording streams", async () => {
+    const originalMediaDevices = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+    const mediaDevices = {
+      enumerateDevices: vi.fn(
+        async () =>
+          [
+            { kind: "audioinput", deviceId: "volt-input-1", label: "Volt Input 1" },
+            { kind: "audioinput", deviceId: "volt-input-2", label: "Volt Input 2" },
+            { kind: "audiooutput", deviceId: "volt-output", label: "Volt Output" },
+          ] as MediaDeviceInfo[],
+      ),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: mediaDevices });
+
+    try {
+      const doc = createProjectFromTemplate("house");
+      const services = mockServices(doc);
+      services.store = new ProjectStore(doc);
+      renderWithContext(<ArrangementPanel />, { services });
+
+      const user = (await import("@testing-library/user-event")).default.setup();
+      await user.selectOptions(screen.getByLabelText("Arm track for recording"), doc.tracks[0]!.id);
+      await user.click(screen.getByText("CAPTURE SETUP"));
+      await user.click(screen.getByText("INDEPENDENT INPUT STREAMS · 1"));
+      await user.click(screen.getByRole("button", { name: "Add independent input stream" }));
+
+      const recordButton = screen.getByRole("button", { name: "● REC" });
+      expect(recordButton).toBeDisabled();
+
+      await screen.findByRole("option", { name: "Volt Input 1" });
+      await user.selectOptions(screen.getByLabelText("Audio input device"), "volt-input-1");
+      const secondTrackId = doc.tracks.find((track) => track.id !== doc.tracks[0]!.id)!.id;
+      await user.selectOptions(screen.getByLabelText("Independent input 2 track"), secondTrackId);
+
+      const secondDevice = screen.getByLabelText("Independent input 2 device") as HTMLSelectElement;
+      expect(Array.from(secondDevice.options).map((option) => option.value)).not.toContain("volt-input-1");
+      await user.selectOptions(secondDevice, "volt-input-2");
+      expect(recordButton).toBeEnabled();
+
+      await user.selectOptions(screen.getByLabelText("Arm track for recording"), secondTrackId);
+      expect(screen.getByLabelText("Independent input 2 track")).toHaveValue("");
+      expect(recordButton).toBeDisabled();
+    } finally {
+      if (originalMediaDevices) Object.defineProperty(navigator, "mediaDevices", originalMediaDevices);
+      else Reflect.deleteProperty(navigator, "mediaDevices");
+    }
+  }, 20_000);
 
   it("starts capture from the arrangement toolbar", async () => {
     const { services } = renderWithContext(<ArrangementPanel />);

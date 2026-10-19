@@ -14,7 +14,7 @@ function withMidi(state: { connected: boolean; notes: Array<{ pitch: number; pre
   const midi = {
     subscribeMpe: (_l: () => void) => () => {},
     getMpeNotes: () => state.notes,
-    isMpeConnected: () => state.connected,
+    hasMpeActivity: () => state.connected,
   };
   return { services: { midi } } as unknown as { services: Services };
 }
@@ -39,7 +39,7 @@ describe("MpeIndicator", () => {
     );
     const badge = screen.getByText("MPE");
     expect(badge.className).toContain("active");
-    expect(badge.getAttribute("title")).toContain("pitch bend currently applies track-wide");
+    expect(badge.getAttribute("title")).toContain("pitch bend applies track-wide to the first instrument");
     expect(screen.getByText("C4")).toBeTruthy();
     const fills = screen.getAllByTitle("C4 — pressure 75%, timbre 50%");
     expect(fills.length).toBeGreaterThan(0);

@@ -1,7 +1,7 @@
 /**
  * Command Palette — the Ctrl+K action registry.
  *
- * Every keyboard action from the SHORTCUTS table becomes a palette entry
+ * Every keyboard action from the active shortcut table becomes a palette entry
  * automatically (zero duplication: titles, groups and binding hints come
  * from the same source the help overlay uses), plus a few palette-only
  * actions that have no keybinding (snapshot, gallery…).
@@ -10,7 +10,9 @@
  * bonuses for word-start and contiguous hits — good enough to feel instant
  * on a ~40-item registry without pulling in a library.
  */
-import { SHORTCUTS, formatShortcut, type Shortcut, type ShortcutKey } from "./shortcuts";
+import { formatShortcut, getActiveShortcuts, type Shortcut, type ShortcutKey } from "./shortcuts";
+import { DAW_ACTION_MAPPINGS, DAW_PROFILE_OPTIONS, readDawProfile } from "./dawProfile";
+import type { ProjectTransferSourceDaw } from "../project-model/types";
 
 export interface PaletteAction {
   id: string;
@@ -20,6 +22,8 @@ export interface PaletteAction {
   keywords?: string;
   /** Primary keybinding, shown as a hint when the action has one. */
   binding?: string;
+  /** Familiar source-DAW wording for the active profile, shown under the KYX action. */
+  profileHint?: string;
   run: () => void;
 }
 
@@ -29,18 +33,46 @@ export interface PaletteDeps {
   openGallery: () => void;
   toggleHistoryPanel: () => void;
   toggleDiagnostics: () => void;
+  dawProfile?: ProjectTransferSourceDaw | null;
 }
 
 /** Build the full action list from the shortcut table + palette-only extras. */
 export function buildPaletteActions(deps: PaletteDeps): PaletteAction[] {
-  const fromShortcuts: PaletteAction[] = SHORTCUTS.map((sc: Shortcut) => ({
-    id: `shortcut:${sc.key}`,
-    title: sc.label,
-    group: sc.group,
-    keywords: sc.key,
-    binding: formatShortcut(sc),
-    run: () => deps.runShortcut(sc.key),
-  }));
+  const profile = readDawProfile() ?? deps.dawProfile ?? null;
+  const profileLabel = DAW_PROFILE_OPTIONS.find(({ id }) => id === profile)?.label;
+  const mappingsByShortcut = new Map<ShortcutKey, (typeof DAW_ACTION_MAPPINGS)[number][]>();
+  if (profile && profileLabel) {
+    for (const mapping of DAW_ACTION_MAPPINGS) {
+      for (const key of mapping.shortcutKeys ?? []) {
+        const mappings = mappingsByShortcut.get(key) ?? [];
+        mappings.push(mapping);
+        mappingsByShortcut.set(key, mappings);
+      }
+    }
+  }
+
+  const fromShortcuts: PaletteAction[] = getActiveShortcuts().map((sc: Shortcut) => {
+    const mappings = mappingsByShortcut.get(sc.key) ?? [];
+    const familiarTerms = mappings.map((mapping) => mapping.familiarTerm[profile!]);
+    const mappingHint = mappings[0];
+    return {
+      id: `shortcut:${sc.key}`,
+      title: sc.label,
+      group: sc.group,
+      keywords: [
+        sc.key,
+        ...familiarTerms,
+        ...mappings.map((mapping) => mapping.action),
+        ...mappings.map((mapping) => mapping.kyxTerm),
+      ].join(" "),
+      binding: formatShortcut(sc),
+      profileHint:
+        profileLabel && mappingHint
+          ? `${profileLabel}: ${mappingHint.familiarTerm[profile!]} → ${mappingHint.kyxTerm}`
+          : undefined,
+      run: () => deps.runShortcut(sc.key),
+    };
+  });
 
   const extras: PaletteAction[] = [
     {

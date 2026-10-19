@@ -41,6 +41,8 @@ enum class SharedModeDuplexState : std::uint8_t { idle, starting, running, devic
 
 struct SharedModeDuplexSnapshot {
   SharedModeDuplexState state = SharedModeDuplexState::idle;
+  const char* startupStage = "idle";
+  const char* startupEndpoint = "";
   SharedModeDuplexNegotiation negotiation;
   std::uint64_t captureOverrunPackets = 0;
   std::uint64_t renderOverrunPackets = 0;

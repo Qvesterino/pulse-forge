@@ -29,7 +29,7 @@ describe("SMF writer + parser round-trip", () => {
         {
           name: "Lead",
           channel: 1,
-          notes: [{ pitch: 72, startTick: 240, endTick: 960, velocity: 1 }],
+          notes: [{ pitch: 72, startTick: 240, endTick: 960, velocity: 1, releaseVelocity: 0.3 }],
         },
       ],
     });
@@ -45,9 +45,42 @@ describe("SMF writer + parser round-trip", () => {
     expect(drums.notes).toHaveLength(2);
     expect(drums.notes[0]).toMatchObject({ pitch: 36, startTick: 0, endTick: 120 });
     expect(drums.notes[0].velocity).toBeCloseTo(0.9, 2);
+    expect(drums.notes[0]?.releaseVelocity).toBeCloseTo(64 / 127, 4);
 
     const lead = parsed.tracks.find((t) => t.channel === 1)!;
     expect(lead.notes[0]).toMatchObject({ pitch: 72, startTick: 240, endTick: 960 });
+    expect(lead.notes[0]?.releaseVelocity).toBeCloseTo(38 / 127, 4);
+  });
+
+  it("retains volume, pan and expression controllers and bakes sustain pedal into note length", () => {
+    const bytes = writeMidiFile({
+      tracks: [
+        {
+          name: "Sustained Lead",
+          channel: 0,
+          notes: [{ pitch: 60, startTick: 0, endTick: 120, velocity: 0.8, releaseVelocity: 0.7 }],
+          controllers: [
+            { tick: 0, controller: 64, value: 127 },
+            { tick: 0, controller: 7, value: 96 },
+            { tick: 120, controller: 10, value: 0 },
+            { tick: 240, controller: 11, value: 80 },
+            { tick: 480, controller: 64, value: 0 },
+          ],
+        },
+      ],
+    });
+
+    const parsed = parseMidiFile(bytes);
+    const track = parsed.tracks[0];
+
+    expect(track?.notes[0]).toMatchObject({ startTick: 0, endTick: 480, releaseVelocity: 89 / 127 });
+    expect(track?.controllers).toEqual([
+      { tick: 0, controller: 7, value: 96 },
+      { tick: 120, controller: 10, value: 0 },
+      { tick: 240, controller: 11, value: 80 },
+    ]);
+    expect(parsed.sustainPedalEvents).toBe(2);
+    expect(parsed.unsupportedEvents.controlChanges).toBe(0);
   });
 
   it("keeps a valid file under 2 KB for a full pattern (sanity on VLQ encoding)", () => {
@@ -123,6 +156,7 @@ describe("SMF parser edge cases", () => {
     const parsed = parseMidiFile(new Uint8Array([...mthd(480), ...mtrk(payload)]));
     expect(parsed.tracks[0].notes).toHaveLength(1);
     expect(parsed.tracks[0].notes[0].endTick).toBe(96);
+    expect(parsed.tracks[0].notes[0].releaseVelocity).toBeUndefined();
   });
 
   it("closes hanging notes at the last event tick", () => {
@@ -168,7 +202,7 @@ describe("MIDI → project import", () => {
         {
           name: "Bassline",
           channel: 0,
-          notes: [{ pitch: 36, startTick: 0, endTick: 48, velocity: 0.8 }], // low → bass kind
+          notes: [{ pitch: 36, startTick: 0, endTick: 48, velocity: 0.8, releaseVelocity: 0.8 }], // low → bass kind
         },
       ],
     });
@@ -199,7 +233,11 @@ describe("MIDI → project import", () => {
     const notes = pattern.notes[bassTrack.id];
     expect(notes).toHaveLength(1);
     // 96-division tick 0 → 0; duration 48 ticks ×5 = 240.
-    expect(notes[0]).toMatchObject({ pitch: 36, start: 0, duration: 240 });
+    expect(notes[0]).toMatchObject({ pitch: 36, start: 0, duration: 240, expression: { releaseVelocity: 0.8 } });
+
+    const exported = parseMidiFile(patternToMidi(next, pattern.id));
+    const exportedBass = exported.tracks.find((candidate) => candidate.name === "Bassline");
+    expect(exportedBass?.notes[0]?.releaseVelocity).toBeCloseTo(102 / 127, 4);
 
     // Undo restores the original document.
     const undone = command.undo(next);
@@ -285,7 +323,16 @@ describe("project → MIDI export", () => {
               stepCount: 16,
               notes: {
                 ...candidate.notes,
-                [track.id]: [{ id: "export-note", pitch: 41, start: 0, duration: 360, velocity: 0.8 }],
+                [track.id]: [
+                  {
+                    id: "export-note",
+                    pitch: 41,
+                    start: 0,
+                    duration: 360,
+                    velocity: 0.8,
+                    expression: { releaseVelocity: 0.9 },
+                  },
+                ],
               },
             }
           : candidate,
@@ -305,6 +352,38 @@ describe("project → MIDI export", () => {
       [41, 3840, 4200],
       [41, 5760, 6120],
     ]);
+    instrument.notes.forEach((note) => expect(note.releaseVelocity).toBeCloseTo(114 / 127, 4));
+  });
+
+  it("round-trips transferred volume and pan automation as MIDI CC7 and CC10", () => {
+    const source = createProjectFromTemplate("house");
+    const importedBytes = writeMidiFile({
+      bpm: source.bpm,
+      tracks: [
+        {
+          name: "Transfer Lead",
+          channel: 0,
+          notes: [{ pitch: 60, startTick: 0, endTick: 480, velocity: 0.8 }],
+          controllers: [
+            { tick: 0, controller: 7, value: 100 },
+            { tick: 120, controller: 10, value: 32 },
+            { tick: 240, controller: 11, value: 64 },
+          ],
+        },
+      ],
+    });
+    const imported = importMidiCommand(source, importedBytes, "Transfer.mid").execute(source);
+    const importedTrack = imported.tracks.find((track) => track.name === "Transfer Lead");
+    expect(importedTrack?.kind).toBe("instrument");
+
+    const exported = parseMidiFile(arrangementToMidi(imported));
+    const track = exported.tracks.find((candidate) => candidate.name === "Transfer Lead");
+    expect(track?.controllers).toContainEqual({ tick: 0, controller: 7, value: 100 });
+    expect(track?.controllers).toContainEqual({ tick: 120, controller: 10, value: 32 });
+    // KYX combines imported CC7 and CC11 into one gain curve, so export uses
+    // CC7 for that curve and does not invent a separate expression lane.
+    expect(track?.controllers).toContainEqual({ tick: 240, controller: 7, value: 50 });
+    expect(track?.controllers.some((event) => event.controller === 11)).toBe(false);
   });
 });
 

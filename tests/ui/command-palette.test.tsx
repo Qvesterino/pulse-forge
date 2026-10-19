@@ -1,7 +1,7 @@
 /**
  * Command palette — fuzzy filter (pure) + overlay wiring.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
 import { PaletteOverlay } from "../../src/ui/PaletteOverlay";
 import {
@@ -12,6 +12,7 @@ import {
   type PaletteDeps,
 } from "../../src/ui/commandPalette";
 import { renderWithContext } from "../helpers";
+import { resetShortcutBindings, setShortcutBinding } from "../../src/ui/shortcuts";
 
 function action(overrides: Partial<PaletteAction> = {}): PaletteAction {
   return {
@@ -70,6 +71,10 @@ describe("filterActions", () => {
 });
 
 describe("buildPaletteActions", () => {
+  afterEach(() => {
+    resetShortcutBindings();
+  });
+
   it("maps every shortcut to an action plus the palette-only extras", () => {
     const runShortcut = vi.fn();
     const actions = buildPaletteActions({
@@ -87,9 +92,89 @@ describe("buildPaletteActions", () => {
     expect(actions.some((a) => a.id === "extra:snapshot")).toBe(true);
     expect(actions.some((a) => a.id === "extra:gallery")).toBe(true);
   });
+
+  it("uses the current user binding in command action hints", () => {
+    setShortcutBinding("playPause", { keyHint: "u", ctrl: true, shift: true, alt: false, meta: false });
+    const actions = buildPaletteActions({
+      runShortcut: vi.fn(),
+      snapshotNow: vi.fn(),
+      openGallery: vi.fn(),
+      toggleHistoryPanel: vi.fn(),
+      toggleDiagnostics: vi.fn(),
+    });
+    expect(actions.find((candidate) => candidate.id === "shortcut:playPause")?.binding).toBe("Ctrl + Shift + U");
+  });
+
+  it("searches familiar FL Studio terms and shows their KYX path", () => {
+    const previousProfile = window.localStorage.getItem("pf-daw-profile-v1");
+    try {
+      window.localStorage.setItem("pf-daw-profile-v1", "fl-studio");
+      const deps: PaletteDeps = {
+        runShortcut: vi.fn(),
+        snapshotNow: vi.fn(),
+        openGallery: vi.fn(),
+        toggleHistoryPanel: vi.fn(),
+        toggleDiagnostics: vi.fn(),
+      };
+      const actions = buildPaletteActions(deps);
+      const arrangement = filterActions(actions, "playlist").find((candidate) => candidate.id === "shortcut:panelArr");
+      const pattern = filterActions(actions, "channel rack").find(
+        (candidate) => candidate.id === "shortcut:nextPattern",
+      );
+
+      expect(arrangement?.profileHint).toBe("FL Studio: Playlist → Song → Arrangement");
+      expect(pattern?.profileHint).toBe("FL Studio: Pattern / Channel Rack → Pattern");
+    } finally {
+      if (previousProfile === null) window.localStorage.removeItem("pf-daw-profile-v1");
+      else window.localStorage.setItem("pf-daw-profile-v1", previousProfile);
+    }
+  });
+
+  it("uses the imported project's source DAW profile for action search", () => {
+    const deps: PaletteDeps = {
+      runShortcut: vi.fn(),
+      snapshotNow: vi.fn(),
+      openGallery: vi.fn(),
+      toggleHistoryPanel: vi.fn(),
+      toggleDiagnostics: vi.fn(),
+      dawProfile: "cubase",
+    };
+    const actions = buildPaletteActions(deps);
+    const exportAction = filterActions(actions, "export audio mixdown").find(
+      (candidate) => candidate.id === "shortcut:panelExport",
+    );
+
+    expect(exportAction?.profileHint).toBe("Cubase: Export Audio Mixdown → Export panel");
+  });
+
+  it("prefers the currently selected DAW profile over imported project provenance", () => {
+    const previousProfile = window.localStorage.getItem("pf-daw-profile-v1");
+    try {
+      window.localStorage.setItem("pf-daw-profile-v1", "fl-studio");
+      const deps: PaletteDeps = {
+        runShortcut: vi.fn(),
+        snapshotNow: vi.fn(),
+        openGallery: vi.fn(),
+        toggleHistoryPanel: vi.fn(),
+        toggleDiagnostics: vi.fn(),
+        dawProfile: "cubase",
+      };
+      const actions = buildPaletteActions(deps);
+      const arrangement = filterActions(actions, "playlist").find((candidate) => candidate.id === "shortcut:panelArr");
+
+      expect(arrangement?.profileHint).toBe("FL Studio: Playlist → Song → Arrangement");
+    } finally {
+      if (previousProfile === null) window.localStorage.removeItem("pf-daw-profile-v1");
+      else window.localStorage.setItem("pf-daw-profile-v1", previousProfile);
+    }
+  });
 });
 
 describe("PaletteOverlay", () => {
+  afterEach(() => {
+    resetShortcutBindings();
+  });
+
   function paletteDeps(): PaletteDeps & { runShortcut: ReturnType<typeof vi.fn> } {
     return {
       runShortcut: vi.fn(),
@@ -115,6 +200,34 @@ describe("PaletteOverlay", () => {
     fireEvent.change(screen.getByLabelText("Search commands"), { target: { value: "solo" } });
     expect(screen.getByText("Solo selected track")).toBeTruthy();
     expect(screen.queryByText("Play / Pause")).toBeNull();
+  });
+
+  it("shows the source DAW term beside the KYX action when a profile is selected", () => {
+    const deps = paletteDeps();
+    deps.dawProfile = "pro-tools";
+    renderWithContext(<PaletteOverlay open deps={deps} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Search commands"), { target: { value: "bounce mix" } });
+    expect(screen.getByText("Toggle export")).toBeInTheDocument();
+    expect(screen.getByText("Pro Tools: Bounce Mix → Export panel")).toBeInTheDocument();
+  });
+
+  it("does not match a DAW-specific search term from another profile", () => {
+    const deps = paletteDeps();
+    deps.dawProfile = "other";
+    renderWithContext(<PaletteOverlay open deps={deps} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Search commands"), { target: { value: "Bounce Mix" } });
+    expect(screen.getByText('No command matches "Bounce Mix"')).toBeInTheDocument();
+    expect(screen.queryByText("Pro Tools: Bounce Mix → Export panel")).not.toBeInTheDocument();
+  });
+
+  it("refreshes binding hints when a user changes a shortcut", () => {
+    const deps = paletteDeps();
+    const view = renderWithContext(<PaletteOverlay open deps={deps} onClose={vi.fn()} />);
+    expect(screen.getByText("Space")).toBeInTheDocument();
+    setShortcutBinding("playPause", { keyHint: "u", ctrl: true, shift: true, alt: false, meta: false });
+    view.rerender(<PaletteOverlay open deps={deps} onClose={vi.fn()} />);
+    expect(screen.getByText("Ctrl + Shift + U")).toBeInTheDocument();
+    expect(screen.queryByText("Space")).not.toBeInTheDocument();
   });
 
   it("Enter runs the selected action (through the shared shortcut dispatch) and closes", () => {

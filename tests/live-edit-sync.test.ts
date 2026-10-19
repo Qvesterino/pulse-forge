@@ -26,7 +26,9 @@ function docWithAudio(): { doc: ProjectDocument; trackId: string; clipId: string
     ...createProjectFromTemplate("house"),
     arrangement: { clips: [] },
   });
-  const trackId = base.tracks.find((t) => t.kind === "audio")?.id ?? base.tracks[0]!.id;
+  // Audio clips are routed onto an instrument track — `Track` has no "audio"
+  // kind (DrumTrack | InstrumentTrack | GroupTrack | GenerativeTrack).
+  const trackId = base.tracks.find((t) => t.kind === "instrument")!.id;
   const next = addAudioClip(base, trackId, "bufLive", 0, 8, {}).execute(base);
   const clipId = next.arrangement.audioClips![0]!.id;
   return { doc: normalizeProject(next), trackId, clipId };
@@ -41,7 +43,13 @@ function docWithAudio(): { doc: ProjectDocument; trackId: string; clipId: string
  * fake mirrors the real units exactly.
  */
 function harness(doc: ProjectDocument, positionTicks: number) {
-  const triggered: Array<{ clipId: string; when: number; durationSec?: number; resumeOffsetSec: number; clip: unknown }> = [];
+  const triggered: Array<{
+    clipId: string;
+    when: number;
+    durationSec?: number;
+    resumeOffsetSec: number;
+    clip: unknown;
+  }> = [];
   const engine = {
     currentTime: 1,
     cancelOrphanedClipSources: () => new Set<string>(),
@@ -104,7 +112,7 @@ describe("live-edit sync — resumeSpanningAudioClips (audit 01)", () => {
       ...createProjectFromTemplate("house"),
       arrangement: { clips: [] },
     });
-    const trackId = base.tracks.find((t) => t.kind === "audio")?.id ?? base.tracks[0]!.id;
+    const trackId = base.tracks.find((t) => t.kind === "instrument")!.id;
     const next = addAudioClip(base, trackId, "bufFar", 8, 4, {}).execute(base);
     const doc = normalizeProject(next);
     const { triggered, deps } = harness(doc, atBar(0));

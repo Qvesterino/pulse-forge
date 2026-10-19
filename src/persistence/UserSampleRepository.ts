@@ -13,9 +13,9 @@ export interface UserSampleAsset {
   channels: number;
   createdAt: string;
   /**
-   * Detected tempo in BPM (0.1 precision), measured once at import time.
-   * Optional — samples imported before tempo detection simply lack it, and
-   * loops without a steady pulse never get one.
+   * Detected or user-corrected loop tempo in BPM (0.1 precision).
+   * Optional — samples without a reliable pulse can be assigned one in the
+   * loop metadata editor; clearing it disables tempo-aware matching.
    */
   bpm?: number;
   /** User-authored loop catalog metadata; stored with the sample row, not in project state. */
@@ -36,6 +36,13 @@ export interface UserSampleAsset {
     sourceHash?: string;
     prompt?: string;
     providerVersion?: string;
+  };
+  /** First-party optional sample pack that supplied this asset. */
+  factoryPack?: {
+    id: string;
+    version: number;
+    license: "kyx-original";
+    creator: string;
   };
 }
 

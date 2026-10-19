@@ -360,10 +360,23 @@ export class AudioEngine {
       warp: this.warpManager,
       trackOneShot: (source, clipMeta) => {
         this.oneShotSources.add(source);
-        if (clipMeta) this.clipSourceMeta.set(source, clipMeta);
+        if (clipMeta) {
+          this.clipSourceMeta.set(source, clipMeta);
+          if (clipMeta.livePadVoiceId) {
+            this.livePadSources.set(clipMeta.livePadVoiceId, {
+              source,
+              gainNode: clipMeta.gainNode,
+              baseGain: clipMeta.gainNode.gain.value,
+            });
+          }
+        }
       },
       releaseOneShot: (source) => {
         this.oneShotSources.delete(source);
+        const meta = this.clipSourceMeta.get(source);
+        if (meta?.livePadVoiceId && this.livePadSources.get(meta.livePadVoiceId)?.source === source) {
+          this.livePadSources.delete(meta.livePadVoiceId);
+        }
         this.clipSourceMeta.delete(source);
       },
       missAsset: (assetId) => this.missedAssets.add(assetId),
@@ -427,6 +440,11 @@ export class AudioEngine {
    * cues. Bounded: each source removes itself on `onended`.
    */
   private oneShotSources = new Set<AudioScheduledSourceNode>();
+  /** Runtime-only Live Pad sources keyed by the capture controller's voice id. */
+  private livePadSources = new Map<
+    string,
+    { source: AudioScheduledSourceNode; gainNode: GainNode; baseGain: number }
+  >();
   /** Short monitor-only tone routed through the project master chain. */
   private masterMonitorTestTone: {
     context: AudioContext;
@@ -2290,6 +2308,97 @@ export class AudioEngine {
     this.triggerEngine.triggerAudioClip(clip, when, durationSec, resumeOffsetSec);
   }
 
+  /** Start an uncommitted Live Pad clip through the same routed clip renderer. */
+  triggerLivePadAudioClip(
+    clip: import("../project-model/types").AudioClip,
+    when: number,
+    voiceId: string,
+    loopUntilStopped: boolean,
+  ): boolean {
+    const context = this.ctx;
+    const nodes = this.trackNodes.get(clip.trackId) ?? this.groupNodes.get(clip.trackId);
+    if (
+      !context ||
+      context.state === "closed" ||
+      !this.doc ||
+      !this.bank?.get(clip.bufferId) ||
+      !nodes ||
+      (loopUntilStopped && clip.loop !== true)
+    ) {
+      return false;
+    }
+    this.triggerEngine.triggerAudioClip(clip, when, undefined, 0, { voiceId, loopUntilStopped });
+    return true;
+  }
+
+  /** Schedule a short de-click stop for a running or future-scheduled Live Pad voice. */
+  stopLivePadVoice(voiceId: string, when: number): void {
+    const voice = this.livePadSources.get(voiceId);
+    if (!voice) return;
+    const stopAt = Math.max(this.currentTime, Number.isFinite(when) ? when : this.currentTime);
+    const fadeSeconds = 0.015;
+    try {
+      voice.gainNode.gain.cancelScheduledValues(stopAt);
+      voice.gainNode.gain.setValueAtTime(voice.gainNode.gain.value, stopAt);
+      voice.gainNode.gain.linearRampToValueAtTime(0, stopAt + fadeSeconds);
+    } catch {
+      /* context is closing */
+    }
+    try {
+      voice.source.stop(stopAt + fadeSeconds);
+    } catch {
+      /* already stopped */
+    }
+  }
+
+  hasLivePadVoice(voiceId: string): boolean {
+    return this.livePadSources.has(voiceId);
+  }
+
+  /** Cancel a queued stop after a scheduler time-map replan or a repeated pad tap. */
+  cancelLivePadStop(voiceId: string): void {
+    const voice = this.livePadSources.get(voiceId);
+    if (!voice) return;
+    const now = this.currentTime;
+    try {
+      voice.gainNode.gain.cancelAndHoldAtTime(now);
+      voice.gainNode.gain.linearRampToValueAtTime(voice.baseGain, now + 0.02);
+    } catch {
+      try {
+        voice.gainNode.gain.cancelScheduledValues(now);
+        voice.gainNode.gain.setValueAtTime(voice.baseGain, now);
+      } catch {
+        /* context is closing */
+      }
+    }
+    try {
+      // Web Audio replaces an earlier stop time when a later stop is set.
+      voice.source.stop(now + 60 * 60);
+    } catch {
+      /* already ended */
+    }
+  }
+
+  /** Immediately silence a voice whose pending start is cancelled. */
+  cancelLivePadVoice(voiceId: string): void {
+    const voice = this.livePadSources.get(voiceId);
+    if (!voice) return;
+    this.livePadSources.delete(voiceId);
+    this.clipSourceMeta.delete(voice.source);
+    this.oneShotSources.delete(voice.source);
+    try {
+      voice.source.stop(this.currentTime);
+    } catch {
+      /* source did not start or already ended */
+    }
+    try {
+      voice.source.disconnect();
+      voice.gainNode.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+  }
+
   trigger(
     trackId: string,
     pad: DrumPad,
@@ -2702,6 +2811,7 @@ export class AudioEngine {
     }
     this.oneShotSources.clear();
     this.clipSourceMeta.clear();
+    this.livePadSources.clear();
   }
 
   /**
@@ -2727,6 +2837,7 @@ export class AudioEngine {
     }
     const now = this.currentTime;
     for (const [source, meta] of this.clipSourceMeta) {
+      if (meta.livePadVoiceId) continue;
       const current = live.get(meta.clipId);
       // A muted clip no longer reaches this map (audioClipsForPlayback
       // filters it) — current === undefined covers mute-while-playing; the
@@ -2837,6 +2948,16 @@ export class AudioEngine {
   /** The real AudioContext for browser-only APIs (MediaRecorder, media streams). */
   getLiveAudioContext(): AudioContext | null {
     return isLiveAudioContext(this.ctx) ? this.ctx : null;
+  }
+
+  /** Route live master output through an engine-owned host bridge. */
+  setLiveAudioOutputSink(sink: AudioNode | null): void {
+    this.masterChain.setLiveOutputSink(sink);
+  }
+
+  /** Prevent an older bridge cleanup from clearing a newer active output. */
+  clearLiveAudioOutputSink(expected: AudioNode): void {
+    this.masterChain.clearLiveOutputSink(expected);
   }
 
   /** Post-FX tap for one track (the analyser branch carries the full track

@@ -56,6 +56,9 @@ try {
   const outcome = await page.evaluate(() => ({ result: window.__dawTransferResult, error: window.__dawTransferError }));
   if (outcome.error) throw new Error(outcome.error);
   const result = outcome.result;
+  if (result.importedAutomationClips < 2 || result.sustainedMidiNoteDuration !== 1440) {
+    throw new Error("MIDI controller/sustain conversion did not survive the browser transfer acceptance.");
+  }
   console.log(
     `[PASS] ${result.fixtureVersion}: ${result.importedAudioTracks} aligned audio lanes + ${result.importedMidiTracks} editable MIDI lanes`,
   );
@@ -66,6 +69,9 @@ try {
   console.log(`       reopened bar-1 starts: ${result.reopenedAudioStartsAtBar.join(", ")}`);
   console.log(
     `       restored ${result.restoredAudioAssets} audio assets; offline render ${result.renderedFrames} frames`,
+  );
+  console.log(
+    `       MIDI conversion: ${result.importedAutomationClips} automation clips; CC64 sustained note ${result.sustainedMidiNoteDuration} ticks`,
   );
   console.log(
     `       peak ${result.renderedPeak.toFixed(4)}; first-quarter-second peak ${result.firstQuarterSecondPeak.toFixed(4)}`,

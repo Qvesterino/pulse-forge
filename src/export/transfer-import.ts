@@ -100,6 +100,39 @@ function distinctTimelineEvents(events: Array<{ tick: number }>): number {
   return events.length;
 }
 
+function midiEventLossWarning(parsed: ParsedMidi): string | null {
+  const lostEventTypes: Array<[number, string, string]> = [
+    [parsed.unsupportedEvents.controlChanges, "unsupported CC message", "unsupported CC messages"],
+    [parsed.unsupportedEvents.pitchBends, "pitch bend", "pitch bends"],
+    [parsed.unsupportedEvents.programChanges, "program change", "program changes"],
+    [parsed.unsupportedEvents.aftertouch, "aftertouch event", "aftertouch events"],
+    [parsed.unsupportedEvents.systemExclusive, "SysEx message", "SysEx messages"],
+  ];
+  const lostEvents = lostEventTypes.filter(([count]) => count > 0);
+  if (lostEvents.length === 0) return null;
+  const details = lostEvents.map(([count, singular, plural]) => `${count} ${count === 1 ? singular : plural}`);
+  return `MIDI data that will not transfer: ${details.join(", ")}. KYX imports notes, GM drum hits, CC7/10/11 track automation, and bakes CC64 sustain into note lengths.`;
+}
+
+function midiControllerConversionWarning(parsed: ParsedMidi): string | null {
+  const controllers = parsed.tracks.flatMap((track) => track.controllers);
+  const hasVolume = controllers.some((event) => event.controller === 7);
+  const hasPan = controllers.some((event) => event.controller === 10);
+  const hasExpression = controllers.some((event) => event.controller === 11);
+  const messages: string[] = [];
+  if (hasVolume && hasExpression) {
+    messages.push("CC7 volume and CC11 expression become combined track-volume automation");
+  } else if (hasVolume) {
+    messages.push("CC7 volume becomes track-volume automation");
+  } else if (hasExpression) {
+    messages.push("CC11 expression becomes track-volume automation");
+  }
+  if (hasPan) messages.push("CC10 becomes track-pan automation");
+  if (parsed.sustainPedalEvents > 0)
+    messages.push("CC64 sustain extends note lengths and is not retained as an editable pedal lane");
+  return messages.length > 0 ? `MIDI controller conversion: ${messages.join("; ")}.` : null;
+}
+
 /** Classify a multi-file handoff without decoding audio or writing to storage. */
 export async function inspectTransferFiles(files: readonly File[]): Promise<TransferInspection> {
   const audioFiles: File[] = [];
@@ -181,12 +214,12 @@ export async function inspectTransferFiles(files: readonly File[]): Promise<Tran
 
       if (parsedMidi.tempoEvents.length > 1) {
         warnings.push(
-          "MIDI tempo changes are not represented by this transfer yet. KYX will use the first tempo; later MIDI may drift against the audio tracks.",
+          "MIDI tempo changes will be flattened into the chosen project tempo while preserving performance timing; the tempo map will not remain separately editable.",
         );
       }
       if (parsedMidi.timeSignatureEvents.length > 1) {
         warnings.push(
-          "MIDI time-signature changes are not represented by this transfer yet. KYX will use the first meter.",
+          "MIDI time-signature changes will be flattened to the chosen project meter; meter changes will not remain separately editable.",
         );
       }
       if (parsedMidi.bpm !== null && (parsedMidi.bpm < 20 || parsedMidi.bpm > 300)) {
@@ -204,12 +237,10 @@ export async function inspectTransferFiles(files: readonly File[]): Promise<Tran
       ) {
         warnings.push("MIDI's starting time signature is outside KYX's supported range; choose a supported meter.");
       }
-      const unsupportedCount = Object.values(parsedMidi.unsupportedEvents).reduce((sum, count) => sum + count, 0);
-      if (unsupportedCount > 0) {
-        warnings.push(
-          `MIDI contains ${unsupportedCount} controller, pitch-bend, program, aftertouch or SysEx event(s); KYX imports notes and GM drum hits only.`,
-        );
-      }
+      const eventLossWarning = midiEventLossWarning(parsedMidi);
+      if (eventLossWarning) warnings.push(eventLossWarning);
+      const controllerWarning = midiControllerConversionWarning(parsedMidi);
+      if (controllerWarning) warnings.push(controllerWarning);
       if (drumTracks.length > 0) {
         warnings.push("GM drum notes are mapped to KYX kit pads on a 16th-note grid.");
       }
@@ -332,7 +363,31 @@ export function buildTransferProject(options: BuildTransferProjectOptions): Tran
   const warnings: string[] = [];
   if (options.midiBytes && options.parsedMidi) {
     const priorTrackIds = new Set(doc.tracks.map((track) => track.id));
-    const midiCommand = importMidiCommand(doc, options.midiBytes, fileBaseName(options.midiFileName ?? "MIDI Import"));
+    const midiCommand = importMidiCommand(doc, options.midiBytes, fileBaseName(options.midiFileName ?? "MIDI Import"), {
+      targetBpm: options.bpm,
+    });
+    const importSummary = (
+      midiCommand as typeof midiCommand & {
+        summary?: {
+          droppedNotes?: number;
+          droppedDrumHits?: number;
+          truncatedNotes?: number;
+          droppedControllerEvents?: number;
+          drumHits?: number;
+        };
+      }
+    ).summary;
+    const omitted: string[] = [];
+    if (importSummary?.droppedNotes) omitted.push(`${importSummary.droppedNotes} melodic note(s)`);
+    if (importSummary?.droppedDrumHits) omitted.push(`${importSummary.droppedDrumHits} GM drum hit(s)`);
+    if (importSummary?.truncatedNotes) omitted.push(`${importSummary.truncatedNotes} MIDI note tail(s)`);
+    if (importSummary?.droppedControllerEvents)
+      omitted.push(`${importSummary.droppedControllerEvents} MIDI controller event(s)`);
+    if (omitted.length > 0) {
+      throw new Error(
+        `This tempo would omit ${omitted.join(" and ")} from the MIDI transfer. Choose a lower project tempo or export the affected parts as aligned audio.`,
+      );
+    }
     const imported = midiCommand.execute(doc);
     const importedTracks = imported.tracks.filter(
       (track): track is InstrumentTrack => !priorTrackIds.has(track.id) && track.kind === "instrument",
@@ -351,16 +406,17 @@ export function buildTransferProject(options: BuildTransferProjectOptions): Tran
       arrangement: { ...imported.arrangement, clips: [] },
     });
     const currentSourcePattern = doc.patterns.find((pattern) => pattern.id === sourcePattern.id) ?? sourcePattern;
-    for (const track of importedTracks) {
+    const melodicSources = options.parsedMidi.tracks.filter((track) => track.channel !== 9).slice(0, 8);
+    for (const [index, track] of importedTracks.entries()) {
       const notes = currentSourcePattern.notes[track.id] ?? [];
       const maxEnd = notes.reduce((latest, note) => Math.max(latest, note.start + note.duration), 0);
       if (maxEnd > 0) {
         doc = addMidiClip(doc, track.id, currentSourcePattern.id, 0, Math.min(MAX_MIDI_TICK, maxEnd)).execute(doc);
-        midiTrackNames.push(track.name);
       }
+      if (maxEnd > 0 || (melodicSources[index]?.controllers.length ?? 0) > 0) midiTrackNames.push(track.name);
     }
 
-    if (importedDrums.length > 0) {
+    if (importedDrums.length > 0 && (importSummary?.drumHits ?? 0) > 0) {
       const percussionPattern = drumOnlyPattern(currentSourcePattern, fileBaseName(options.midiFileName ?? "MIDI"));
       doc = normalizeProject({
         ...doc,
@@ -372,23 +428,23 @@ export function buildTransferProject(options: BuildTransferProjectOptions): Tran
       if (!scene) throw new Error("Could not create the imported drum scene.");
       const drumBars = Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(1, Math.ceil(percussionPattern.stepCount / 16)));
       doc = addArrangementClip(doc, scene.id, 0, drumBars).execute(doc);
-      midiTrackNames.push(...importedDrums.map((track) => track.name));
     }
+    if (importedDrums.length > 0) midiTrackNames.push(...importedDrums.map((track) => track.name));
 
     const parsed = options.parsedMidi;
-    if (parsed.tempoEvents.length > 1 || parsed.timeSignatureEvents.length > 1) {
+    if (parsed.tempoEvents.length > 1) {
       warnings.push(
-        "This MIDI file contains timeline changes that KYX v1 does not model on a global song map; the first tempo and meter were applied.",
+        `The MIDI tempo map was flattened into ${options.bpm} BPM while preserving performance timing; tempo changes are not separately editable.`,
       );
     }
-    const unsupportedCount = Object.values(parsed.unsupportedEvents).reduce((sum, count) => sum + count, 0);
-    if (unsupportedCount > 0)
+    if (parsed.timeSignatureEvents.length > 1)
       warnings.push(
-        `${unsupportedCount} MIDI controller/program/pitch-bend/aftertouch/SysEx event(s) were not imported.`,
+        `The MIDI time-signature map was flattened to ${options.timeSignature.numerator}/${options.timeSignature.denominator}; meter changes are not separately editable.`,
       );
-    const importSummary = (midiCommand as typeof midiCommand & { summary?: { droppedNotes?: number } }).summary;
-    if (importSummary?.droppedNotes)
-      warnings.push(`${importSummary.droppedNotes} MIDI note(s) exceeded KYX's arrangement range and were omitted.`);
+    const eventLossWarning = midiEventLossWarning(parsed);
+    if (eventLossWarning) warnings.push(eventLossWarning);
+    const controllerWarning = midiControllerConversionWarning(parsed);
+    if (controllerWarning) warnings.push(controllerWarning);
   }
 
   doc = normalizeProject({
@@ -409,20 +465,18 @@ export function midiImportWarnings(parsed: ParsedMidi | null): string[] {
   const warnings: string[] = [];
   if (distinctTimelineEvents(parsed.tempoEvents) > 1) {
     warnings.push(
-      "MIDI tempo changes are not represented by this transfer yet. KYX will use the first tempo; later MIDI may drift against the audio tracks.",
+      "MIDI tempo changes will be flattened into the chosen project tempo while preserving performance timing; the tempo map will not remain separately editable.",
     );
   }
   if (distinctTimelineEvents(parsed.timeSignatureEvents) > 1) {
     warnings.push(
-      "MIDI time-signature changes are not represented by this transfer yet. KYX will use the first meter.",
+      "MIDI time-signature changes will be flattened to the chosen project meter; meter changes will not remain separately editable.",
     );
   }
-  const unsupportedCount = Object.values(parsed.unsupportedEvents).reduce((sum, count) => sum + count, 0);
-  if (unsupportedCount > 0) {
-    warnings.push(
-      `MIDI contains ${unsupportedCount} controller, pitch-bend, program, aftertouch or SysEx event(s); KYX imports notes and GM drum hits only.`,
-    );
-  }
+  const eventLossWarning = midiEventLossWarning(parsed);
+  if (eventLossWarning) warnings.push(eventLossWarning);
+  const controllerWarning = midiControllerConversionWarning(parsed);
+  if (controllerWarning) warnings.push(controllerWarning);
   if (parsed.tracks.some((track) => track.channel === 9))
     warnings.push("GM drum notes are mapped to KYX kit pads on a 16th-note grid.");
   return warnings;

@@ -6,6 +6,7 @@ import type { IncompatibleProjectMeta, SavedProjectMeta } from "../../src/persis
 import { CrashJournalRepository } from "../../src/persistence/crashJournal";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import type { ProjectDocument } from "../../src/project-model/types";
+import { INTENT_PREFILL_KEY, peekSongStarter, takeIntentPrefill } from "../../src/landing/handoff";
 
 /**
  * Import/export robustness audit regression: importing a project file used
@@ -57,6 +58,7 @@ function makeCore(saved: ProjectDocument[]): CoreServices {
 describe("ProjectBrowser — import does not overwrite by embedded id", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
   });
 
   it("saves an imported file under a FRESH id and opens the fresh copy", async () => {
@@ -75,6 +77,42 @@ describe("ProjectBrowser — import does not overwrite by embedded id", () => {
     expect(saved[0].name).toBe("Imported Copy");
     expect(onOpen).toHaveBeenCalledTimes(1);
     expect((onOpen.mock.calls[0][0] as ProjectDocument).id).toBe(saved[0].id);
+  });
+
+  it("creates a saved song starter and hands its intent and loop filters into the studio", async () => {
+    const saved: ProjectDocument[] = [];
+    const onOpen = vi.fn();
+    render(<ProjectBrowser core={makeCore(saved)} onOpen={onOpen} />);
+
+    await screen.findByRole("button", { name: "CREATE SONG STARTER" });
+    fireEvent.change(screen.getByLabelText("Song starter genre"), { target: { value: "techno" } });
+    fireEvent.change(screen.getByLabelText("Song starter mood"), { target: { value: "dark" } });
+    fireEvent.change(screen.getByLabelText("Song starter tempo BPM"), { target: { value: "145" } });
+    fireEvent.click(screen.getByRole("button", { name: "CREATE SONG STARTER" }));
+
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect(saved[0]).toMatchObject({ name: "Techno Song Starter", bpm: 145 });
+    expect(onOpen).toHaveBeenCalledWith(saved[0]);
+    expect(peekSongStarter()).toEqual({ genre: "Techno", mood: "dark", bpm: 145 });
+    expect(sessionStorage.getItem(INTENT_PREFILL_KEY)).toContain("full Techno song with a dark mood at 145 BPM");
+    expect(takeIntentPrefill()).toContain("Include an intro, build, drop, break, final drop, and outro.");
+  });
+
+  it("does not save or open the project when tempo exceeds 240 BPM", async () => {
+    const saved: ProjectDocument[] = [];
+    const onOpen = vi.fn();
+    const core = makeCore(saved);
+    render(<ProjectBrowser core={core} onOpen={onOpen} />);
+
+    await screen.findByRole("button", { name: "CREATE SONG STARTER" });
+    fireEvent.change(screen.getByLabelText("Song starter tempo BPM"), { target: { value: "241" } });
+    const createButton = screen.getByRole("button", { name: "CREATE SONG STARTER" });
+    expect(createButton).toBeDisabled();
+    fireEvent.click(createButton);
+
+    expect(core.repo.save).not.toHaveBeenCalled();
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(peekSongStarter()).toBeNull();
   });
 
   it("shows newer-version projects without offering open, and still allows explicit deletion", async () => {

@@ -88,6 +88,54 @@ describe("MasterChain (Wave 4b)", () => {
   });
 });
 
+describe("MasterChain live output sink", () => {
+  it("routes the live monitor output to the selected sink and only clears the current owner", () => {
+    class FakeNode {
+      connections: unknown[] = [];
+      disconnect = vi.fn(() => {
+        this.connections = [];
+      });
+      constructor(readonly context: FakeContext) {}
+      connect(destination: unknown) {
+        this.connections.push(destination);
+        return destination;
+      }
+    }
+    class FakeContext {
+      currentTime = 0;
+      sampleRate = 48_000;
+      destination = new FakeNode(this);
+    }
+    vi.stubGlobal("AudioContext", FakeContext);
+    try {
+      const context = new FakeContext();
+      const output = new FakeNode(context);
+      const selectedSink = new FakeNode(context);
+      const staleSink = new FakeNode(context);
+      const chain = new MasterChain({
+        ctx: () => context as unknown as BaseAudioContext,
+        doc: () => null,
+        metering: {} as MeteringRig,
+        masterInsertLatencySec: () => 0,
+      });
+      Object.assign(chain, { monitorLowpass: output });
+
+      chain.setLiveOutputSink(selectedSink as unknown as AudioNode);
+      expect(output.connections).toEqual([selectedSink]);
+      chain.clearLiveOutputSink(staleSink as unknown as AudioNode);
+      expect(output.connections).toEqual([selectedSink]);
+      chain.clearLiveOutputSink(selectedSink as unknown as AudioNode);
+      expect(output.connections).toEqual([context.destination]);
+
+      expect(() => chain.setLiveOutputSink(new FakeNode(new FakeContext()) as unknown as AudioNode)).toThrow(
+        /active AudioContext/,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 describe("MasterChain monitor bypass", () => {
   type ParamCall = { method: string; args: number[] };
   const makeParam = (value = 0) => {

@@ -87,6 +87,8 @@ export class MasterChain {
   private monitorHighpassHz: number | null = null;
   private monitorLowpass: BiquadFilterNode | null = null;
   private monitorBandHz: number | null = null;
+  /** Optional live-only output sink (e.g. the native Windows PCM bridge). */
+  private liveOutputSink: AudioNode | null = null;
   /** Aligns the raw audition branch with reported latency in the master path. */
   private masterBypassDelay: DelayNode | null = null;
   /** Mirrors our private wet/dry automation so rapid toggles do not rely on AudioParam.value. */
@@ -376,6 +378,31 @@ export class MasterChain {
     this.monitorLowpass?.frequency.setTargetAtTime(lowpass, ctx.currentTime, 0.02);
   }
 
+  /**
+   * Route the post-monitor live signal into a host-owned sink. Offline renders
+   * always keep their own destination, and a sink from another context is
+   * rejected before Web Audio can create an invalid cross-context edge.
+   */
+  setLiveOutputSink(sink: AudioNode | null): void {
+    const ctx = this.deps.ctx();
+    if (!ctx || !isLiveAudioContext(ctx)) throw new Error("A live AudioContext is required for an output sink");
+    if (sink && sink.context !== ctx) throw new Error("The live output sink must belong to the active AudioContext");
+    const output = this.monitorLowpass;
+    if (!output) throw new Error("The live master output is not initialized");
+    try {
+      output.disconnect();
+    } catch {
+      /* the master output may not be connected yet */
+    }
+    output.connect(sink ?? ctx.destination);
+    this.liveOutputSink = sink;
+  }
+
+  /** Clear the sink only when this owner still has the active route. */
+  clearLiveOutputSink(expected: AudioNode): void {
+    if (this.liveOutputSink === expected) this.setLiveOutputSink(null);
+  }
+
   /** Entry and exit of the user insert slot before the final safety stages. */
   get insertInput(): GainNode | null {
     return this.masterInsertInput;
@@ -400,6 +427,7 @@ export class MasterChain {
   build(): void {
     const ctx = this.deps.ctx();
     if (!ctx) return;
+    if (this.liveOutputSink && this.liveOutputSink.context !== ctx) this.liveOutputSink = null;
     this.deps.metering.resetMeterHistory();
     // Disconnect old master chain if re-invoked (e.g. useContext with new context).
     this.deps.metering.disconnectMasterTaps();
@@ -922,7 +950,7 @@ export class MasterChain {
     if (isLiveAudioContext(ctx)) {
       this.monitorBypassOutputGain.connect(this.monitorHighpass);
       this.monitorHighpass.connect(this.monitorLowpass);
-      this.monitorLowpass.connect(ctx.destination);
+      this.monitorLowpass.connect(this.liveOutputSink ?? ctx.destination);
     } else {
       this.monitorBypassOutputGain.connect(ctx.destination);
     }

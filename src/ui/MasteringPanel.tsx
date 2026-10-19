@@ -412,7 +412,7 @@ export function MasteringPanel() {
           </button>
         </div>
       </section>
-      <StableMasterMeter />
+      <StableMasterMeter integratedEq />
       <MasteringSignalFlow master={master} onShowAdvanced={showAdvancedControls} />
       <section className="mastering-core-controls" aria-labelledby="mastering-core-controls-title">
         <div className="mastering-core-controls-heading">

@@ -20,23 +20,23 @@ export function MpeIndicator() {
     return midi.subscribeMpe(() => setTick((t) => t + 1));
   }, [midi]);
 
-  const connected = typeof midi.isMpeConnected === "function" && midi.isMpeConnected();
+  const activitySeen = typeof midi.hasMpeActivity === "function" && midi.hasMpeActivity();
   const notes = typeof midi.getMpeNotes === "function" ? midi.getMpeNotes() : [];
 
   return (
     <div className="mpe-indicator" role="status" aria-label="MPE-related MIDI input activity">
       <span
-        className={`mpe-badge${connected ? " active" : ""}`}
+        className={`mpe-badge${activitySeen ? " active" : ""}`}
         title={
-          connected
-            ? "MPE-related input seen — pressure and CC74 are received; pitch bend currently applies track-wide"
+          activitySeen
+            ? "MPE-related input seen — pressure and CC74 are received; pitch bend applies track-wide to the first instrument"
             : "No MPE-related pressure or CC74 input seen; this indicator does not detect or negotiate an MPE zone"
         }
       >
         MPE
       </span>
       {notes.length === 0 ? (
-        <span className="mpe-hint">{connected ? "touch a note" : "no MPE expression seen"}</span>
+        <span className="mpe-hint">{activitySeen ? "touch a note" : "no MPE expression seen"}</span>
       ) : (
         notes.slice(0, 8).map((n) => (
           <span

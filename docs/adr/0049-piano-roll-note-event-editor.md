@@ -1,7 +1,7 @@
 # ADR 0049 — Piano Roll per-note Event Editor
 
 - **Date:** 2026-10-17
-- **Status:** accepted for the schema and first runtime slice; instrument coverage remains open
+- **Status:** accepted; a fresh 2026-10-19 live/offline matrix passed in Chromium, Firefox and Edge. Safari remains unverified, and FL-style note-color groups and full MPE/MIDI-file expression interchange are not implemented.
 - **Scope:** per-note event data, Piano Roll editing, shared live/offline note dispatch
 
 ## Context
@@ -80,13 +80,34 @@ per-note expression by assigning notes to member channels in a configured
 zone. KYX's Web MIDI receiver currently accepts poly pressure, CC74 timbre and
 pitch bend, but does not parse MPE zone configuration, keep expression state
 keyed by member channel, or apply pitch bend per note. Poly pressure is keyed
-by pitch, CC74 is associated with the last note seen on that channel, and pitch
-bend is routed track-wide. The current MIDI-file importer skips CC, pitch bend,
-program-change and aftertouch messages. Therefore its live input indicator is
-an activity display for a subset of MPE-related messages, not proof that a
-controller negotiated a complete MPE connection. These limits must remain
-visible until channel-zone handling and MIDI round-trip behavior are specified
-and tested.
+by pitch, CC74 is associated with the last note seen on that channel, and all
+three inputs route to the first instrument track; pitch bend is track-wide.
+The current MIDI-file importer skips CC, pitch bend, program-change and
+aftertouch messages. Therefore its live input indicator is an activity display
+for a subset of MPE-related messages, not proof that a controller negotiated a
+complete MPE connection. These limits must remain visible until channel-zone
+handling and MIDI round-trip behavior are specified and tested.
+
+### Supported targets and explicit boundaries
+
+| Target or workflow               | Current scope                                                           | Evidence and limit                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| -------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Velocity and fine pitch          | Piano Roll event targets on all 25 registered built-in instrument kinds | Isolated live/offline case per target and instrument; the offline audio sweep separately proves audible response.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Per-note pan                     | 22 declared instrument kinds                                            | Isolated live/offline case per instrument; TSAR and KOPA do not declare voice-level pan.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Cutoff and resonance             | 16 declared instrument kinds                                            | Separate direct cutoff, direct resonance, Mod X, and Mod Y cases for each capable runtime.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Release velocity                 | 19 declared instrument kinds                                            | Isolated live/offline case per instrument; absence keeps the instrument's ordinary release behavior.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Held slide note                  | 808 and Acid 303 only                                                   | One held-voice slide case per runtime; no new attack, and no color-group matching. Legacy `slide` remains portamento.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Note-color groups                | Not implemented                                                         | `NoteEvent` has no persisted color/group identity, and KYX does not provide FL-style color-scoped mono/slide behavior or per-color MIDI channel routing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Live MIDI poly pressure          | Partial input only                                                      | Current runtime routes by pitch to the first instrument track; member channel is not preserved in expression state.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Live MIDI CC74 timbre            | Partial input only                                                      | Routed to the first instrument track for the most recent note on that MIDI channel; no MPE-zone negotiation or per-note channel identity.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Live MIDI pitch bend             | Track-wide input only                                                   | The channel is ignored and bend is applied to the first instrument track; this is not per-note MPE pitch bend.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| MIDI-file expression interchange | Partial: release velocity plus selected song-transfer controllers       | Explicit MIDI note-off velocity imports into `NoteEvent.expression.releaseVelocity` and exports from pattern/song MIDI. In **BRING A SONG**, CC7/10/11 become track-volume/pan automation and CC64 sustain is baked into note lengths; these controller conversions do not yet round-trip as CC events in MIDI export. Velocity-zero note-ons remain ordinary note-offs without an explicit release value. Other CC, pitch bend, program change, aftertouch, SysEx and time-varying per-note expression are not imported; internal `NoteEvent.expression` is not generally promised to round-trip through Standard MIDI files. |
+
+The live MPE activity badge means only that poly pressure or CC74 input was
+observed. It does not assert MPE zone configuration, channel/member tracking,
+per-note pitch bend, or MIDI-file interchange. The MIDI boundary test locks the
+current pitch-keyed state and first-instrument routing so this partial behavior
+cannot be mistaken for full MPE support.
 
 References:
 
@@ -168,18 +189,35 @@ References:
   now forwards it, with scheduler-entry and service-wiring specs including the
   no-expression case. The focused command is
   `npm run test:browser:note-expression`; `npm run
-test:browser:note-expression:all` runs it in Chromium, Firefox and WebKit.
-  The current verifier covers all 24 instrument runtimes in the Chromium
-  OfflineAudioContext sweep, ten selected live/offline parity cases, and the
-  Wavetable/Granular release-response parity audit. The 2026-10-18 Chromium run
-  passed 85/85 top-level checks. Selected parity cases include pan on Drum
-  Synth, Spectral, Wavetable and Granular, combined expression and Mod X/Y on
-  Analog, and held slides on 808 and Acid; matched cases have strict waveform
-  nulls and deterministic repeated renders. Wavetable and Granular now use
-  the same worklet voice path in both live and offline graphs. Chromium and
-  Firefox both pass the current 85/85 audit after the routing change.
-  Playwright's Windows WebKit build exposes none of `AudioContext`,
-  `OfflineAudioContext` or `AudioWorkletNode`; this is not Safari evidence.
+test:browser:note-expression:all` runs the supported Chromium, Firefox and Edge
+  targets. WebKit remains an explicit diagnostic target because this Windows
+  build does not expose Web Audio.
+  The 2026-10-18 full verifier run passed 85/85 top-level checks in Chromium
+  and Firefox. That run covered the 24-instrument Chromium OfflineAudioContext
+  sweep, ten selected live/offline parity cases, and the Wavetable/Granular
+  release-response audit; it did not yet exercise the full registry-derived
+  parity matrix. The registry-derived live/offline parity matrix now changes
+  one target at a time. A fresh run on 2026-10-19 using
+  `npm run test:browser:note-expression:all -- --parity-only` passed all 157
+  cases in Chromium, Firefox and Edge, with one full-matrix checker per
+  browser. Earlier Edge evidence also passed across four bounded instrument
+  batches (41 + 47 + 48 + 21):
+  velocity and fine pitch on all 25 registered instruments; pan on all 22
+  declaring it; release velocity on all 19; direct cutoff and resonance plus
+  Mod X and Mod Y on each of the 16 filter runtimes; and held slide notes on
+  808 and Acid. Every target/instrument pair has an independent live-to-offline
+  comparison with deterministic offline controls and the declared spectral and
+  RMS bounds. Exact target-level membership is locked by
+  `tests/parity-obligation.test.ts`. Playwright's Windows WebKit build exposes
+  none of `AudioContext`, `OfflineAudioContext` or `AudioWorkletNode`; Safari
+  remains unverified.
+- Pluck's recursive delay feedback now runs in
+  `src/audio-worklets/karplus-strong-processor.js` whenever the core worklets
+  are ready; the existing native graph remains a startup fallback. The
+  sample-clocked loop makes fractional-pitch feedback bit-identical across
+  both live captures and the offline render. The browser parity harness also
+  detaches its sample bank and disposes each temporary `AudioEngine` in a
+  `finally` block before closing the context, including when a render fails.
 - `tests/per-note-pan.test.ts` now routes overlapping notes independently on
   Texture Synth and Vocal Chop as well as the 16 previously supported voice
   instruments, Drum Synth and Spectral Pad. Drum Synth inserts a voice-local
@@ -201,39 +239,39 @@ test:browser:note-expression:all` runs it in Chromium, Firefox and WebKit.
   Graph tests separately verify that those events add no voice/oscillator and
   are ignored when no matching held voice exists. Other runtimes' legacy
   portamento paths do not yet imply FL-style no-retrigger slide-note support.
-- The browser verifier now selects Chromium, Firefox, WebKit, or all three.
-  Chromium and Firefox each pass 85/85 top-level checks, including the
-  registry-derived live/offline parity matrix. The matrix covers velocity and
-  fine pitch on every registered instrument, pan and release velocity where
-  declared, direct filter and Mod X/Y on every declared filtered instrument,
-  and held-voice slide on 808 and Acid. The Playwright WebKit build available
-  on this Windows host has no Web Audio API, so Safari remains an open
-  verification target. The parity matrix has 59 cases derived from the
-  25-instrument registry and capability map; its exact membership is locked by
-  `tests/parity-obligation.test.ts`.
+- The browser verifier selects Chromium, Firefox, Edge, WebKit, or all three
+  supported browser targets. Its
+  157-case parity matrix is derived from the 25-instrument registry and
+  capability map, with every target tested separately and exact membership
+  locked by `tests/parity-obligation.test.ts`. Windows Playwright WebKit has no
+  Web Audio API, so Safari remains an open verification target.
 - `tests/ui/piano-roll-event-editor.test.tsx` enters the real selector and
   pointer handlers against a real `ProjectStore`, including no-move and
   `pointercancel` negatives; it also edits Mod X from the lane and verifies
   undo restores the centered default.
 
-## Acceptance gates for further coverage
+## Remaining scope and regression gates
 
-- Extend voice-specific pan to the remaining TSAR and
-  KOPA runtimes, and extend
-  direct cutoff/resonance, release velocity and held-voice slide only after
-  mapping them to each runtime's actual voice controls. The current slide-note
-  slice covers 808 and mono Acid 303; other suitable instruments remain open.
-- Add audio assertions for each target family; parameter storage alone does
-  not prove an audible result. Chromium OfflineAudioContext measures Acid
-  slide-note energy at the source and target fundamentals before and after the
-  bend, and now sweeps cutoff/Mod X/Mod Y on all 16 declared filter instruments
-  plus release velocity on all 19 declared release instruments. Prove those
-  same paths through live playback and offline rendering, and repeat the audio
-  sweeps in Firefox and Safari.
-- Prove live and offline render parity for pitch and each implemented target.
-- Add independent overlapping slide-note and portamento semantics with
-  deterministic voice selection for each supported instrument. The 808 and
-  mono Acid 303 ignore a slide note without an overlapping held voice; FL-style
-  note-color groups and chord reference selection remain unimplemented.
-- Implement MPE zone/member-channel handling, per-note pitch bend, and MIDI
-  expression import/export before claiming per-note expression interchange.
+- The registry-derived matrix covers 157 target/instrument cases: velocity and
+  fine pitch on all 25 built-in instruments; pan on all 22 declaring it; release
+  velocity on all 19 declaring it; cutoff, resonance, Mod X and Mod Y on all 16
+  filter runtimes; and held slide notes on 808 and mono Acid 303. A fresh
+  2026-10-19 run passed all 157 cases in Chromium, Firefox and Edge.
+  `tests/parity-obligation.test.ts` locks exact target
+  membership. Rerun the matrix in Chromium, Firefox and Edge whenever an
+  instrument or expression target changes.
+- Safari remains unverified. The Windows Playwright WebKit runtime exposes none
+  of `AudioContext`, `OfflineAudioContext` or `AudioWorkletNode`, so it cannot
+  execute this audio parity matrix. Do not describe this as Safari parity.
+- TSAR and KOPA do not declare per-note pan. Other instruments do not gain a
+  target until their runtime has a corresponding voice control and an audible
+  live/offline assertion.
+- Held slide-note evidence covers only 808 and mono Acid 303. Independent
+  overlapping slide-note and portamento voice selection remain open. A slide
+  without a matching held voice follows the documented ordinary-note behavior.
+- FL-style note-color groups and chord reference selection remain
+  unimplemented. Live MIDI poly pressure and CC74 are partial and pitch-keyed;
+  pitch bend remains track-wide on the first instrument. MPE zone/member-channel
+  handling and MIDI-file expression import/export are not implemented. Keep
+  these boundaries explicit until their data model, routing and round-trip
+  behavior have dedicated acceptance tests.

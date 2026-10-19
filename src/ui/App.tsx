@@ -11,7 +11,7 @@ import { SelectionStore } from "../store/SelectionStore";
 import { ToolStore } from "../store/ToolStore";
 import { SelectionContext, ServicesContext, ToolContext } from "./context";
 import { useClipSelectionInvariant } from "./useClipSelectionInvariant";
-import { peekRegenFlag } from "../landing/handoff";
+import { clearSongStarter, peekRegenFlag, peekSongStarter } from "../landing/handoff";
 import { ContextMenu, deriveContext, type ContextMenuState } from "./ContextMenu";
 import { TopBar } from "./TopBar";
 import { TrackTabs } from "./TrackTabs";
@@ -42,6 +42,7 @@ const ReferenceMapPanel = lazy(() => import("./ReferenceMapPanel").then((m) => (
 const MasteringPanel = lazy(() => import("./MasteringPanel").then((m) => ({ default: m.MasteringPanel })));
 const TsarPanel = lazy(() => import("./TsarPanel").then((m) => ({ default: m.TsarPanel })));
 const ChoralPanel = lazy(() => import("./ChoralPanel").then((m) => ({ default: m.ChoralPanel })));
+const IoPanel = lazy(() => import("./IoPanel").then((m) => ({ default: m.IoPanel })));
 import { InstallPrompt } from "./InstallPrompt";
 import { ErrorBoundary } from "./ErrorBoundary";
 import {
@@ -65,6 +66,7 @@ import { snapController } from "./snap";
 import {
   buildClipClipboard,
   cutClips,
+  duplicateClips,
   groupClips,
   nudgeClips,
   pasteClips,
@@ -111,7 +113,6 @@ import {
 import { DockChrome } from "./DockChrome";
 import { ResizeGrip } from "./ResizeGrip";
 import { BrowserStrip } from "./BrowserStrip";
-import { IoPanel } from "./IoPanel";
 import { isPadKey, padKeysArmed, setPadKeysArmed } from "./padKeys";
 import { melodicKeys } from "./melodicKeys";
 import { JamGate } from "./JamGate";
@@ -456,6 +457,7 @@ export function App({
     return () => window.removeEventListener("resize", onResize);
   }, []);
   const [dock, setDock] = useDockLayout(viewportMax);
+  const [songStarter] = useState(peekSongStarter);
   /** Dense panels get enough room for their primary controls on desktop open,
       while the sequencer keeps priority. On phones, opening a dock tab leaves
       its current height alone so the sheet does not jump over the editor;
@@ -511,8 +513,14 @@ export function App({
   useEffect(() => {
     if (firstRunIntentRef.current) return;
     firstRunIntentRef.current = true;
+    if (songStarter) {
+      intentPanelFirstRun();
+      clearSongStarter();
+      setBottomPanel("intent");
+      return;
+    }
     if (intentPanelFirstRun() || peekRegenFlag()) setBottomPanel("intent");
-  }, []);
+  }, [songStarter]);
   const startDockResize = (event: React.PointerEvent) => {
     event.preventDefault();
     const startY = event.clientY;
@@ -768,14 +776,22 @@ export function App({
         if (next) services.store.execute(setActivePattern(doc, next.id));
         return;
       }
-      case "duplicatePattern": {
+      case "duplicateSelection": {
         event?.preventDefault();
+        if (selection.clipIds.length > 0) {
+          try {
+            const command = duplicateClips(doc, selection.clipIds);
+            if (command) services.store.execute(command);
+          } catch (e) {
+            window.dispatchEvent(new CustomEvent("pf-arrangement-action-error", { detail: String(e) }));
+          }
+          return;
+        }
         if (selection.timeRange) {
           try {
             services.store.execute(duplicateTimeRange(doc, selection.timeRange.fromTick, selection.timeRange.toTick));
           } catch (e) {
-            // fall back to pattern duplicate if zone empty
-            services.store.execute(duplicatePattern(doc, doc.activePatternId));
+            window.dispatchEvent(new CustomEvent("pf-arrangement-action-error", { detail: String(e) }));
           }
         } else {
           services.store.execute(duplicatePattern(doc, doc.activePatternId));
@@ -1138,7 +1154,7 @@ export function App({
           "button, a[href], area[href], input, select, textarea, summary, audio[controls], video[controls], iframe, [tabindex], [contenteditable]",
         );
       if (event.key === "Tab" && !event.ctrlKey && !event.metaKey && !event.altKey && !tabNavigationTarget) {
-        const clips = doc.arrangement.audioClips ?? [];
+        const clips = (doc.arrangement.audioClips ?? []).filter((clip) => selection.clipIds.includes(clip.id));
         if (clips.length > 0) {
           const pos = services.transport.position;
           // Prefer clip under playhead, else nearest
@@ -1702,6 +1718,7 @@ export function App({
       openGallery: () => window.open("/gallery", "_blank", "noopener"),
       toggleHistoryPanel: () => setHistoryOpen((v) => !v),
       toggleDiagnostics: () => setDiagnosticsOpen((v) => !v),
+      dawProfile: doc.transferOrigin?.sourceDaw ?? null,
     }),
     [services, doc],
   );
@@ -1713,7 +1730,7 @@ export function App({
           <ToolContext.Provider value={toolStore}>
             <AudioUnlock />
             <JamGate services={services} jamActive={jamActive} />
-            <OnboardingTour />
+            <OnboardingTour sourceDaw={doc.transferOrigin?.sourceDaw} songStarter={songStarter} />
             <div className={`app${diagnosticsOpen ? " diagnostics-open" : ""}`}>
               <TopBar
                 diagnosticsOpen={diagnosticsOpen}
@@ -1740,7 +1757,7 @@ export function App({
                 {/* Left sounds strip (V4) — always one glance away; the
                     selection (pad → instrument) is its assign target. */}
                 <ErrorBoundary panel="browser-strip">
-                  <BrowserStrip track={track} selectedPadId={padId} />
+                  <BrowserStrip track={track} selectedPadId={padId} songStarter={songStarter} />
                 </ErrorBoundary>
                 <div className="workspace-main">
                   {track.kind === "drum" ? (
@@ -1883,7 +1900,9 @@ export function App({
               {ioOpen && (
                 <div className="io-popover" role="dialog" aria-label="Studio I/O settings">
                   <ErrorBoundary panel="io-panel">
-                    <IoPanel />
+                    <Suspense fallback={<div className="panel-loading">Loading panel…</div>}>
+                      <IoPanel />
+                    </Suspense>
                   </ErrorBoundary>
                 </div>
               )}
@@ -1926,7 +1945,11 @@ export function App({
               )}
               <UndoHistoryPanel open={historyOpen} />
               <InstallPrompt />
-              <HelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
+              <HelpOverlay
+                open={helpOpen}
+                onClose={() => setHelpOpen(false)}
+                profileSourceDaw={doc.transferOrigin?.sourceDaw}
+              />
               <ErrorBoundary panel="palette">
                 <Suspense fallback={null}>
                   <PaletteOverlay open={paletteOpen} deps={paletteDeps} onClose={() => setPaletteOpen(false)} />

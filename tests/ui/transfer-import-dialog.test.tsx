@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { CoreServices } from "../../src/services";
 import type { ProjectDocument } from "../../src/project-model/types";
+import { writeMidiFile } from "../../src/midi/midiFile";
+import { BAR_TICKS } from "../../src/project-model/types";
 import { TransferImportDialog } from "../../src/ui/TransferImportDialog";
 
 const importAudioFileMock = vi.hoisted(() => vi.fn());
@@ -12,6 +14,52 @@ vi.mock("../../src/persistence/UserSampleRepository", () => ({
     remove = removeSampleMock;
   },
 }));
+
+function midiWithUnsupportedEvents(): File {
+  const track = Uint8Array.from([
+    0x00,
+    0xc0,
+    0x08, // program change
+    0x00,
+    0xb0,
+    0x4a,
+    0x64, // control change
+    0x00,
+    0xe0,
+    0x00,
+    0x40, // pitch bend
+    0x00,
+    0xa0,
+    0x3c,
+    0x20, // polyphonic aftertouch
+    0x00,
+    0xd0,
+    0x30, // channel aftertouch
+    0x00,
+    0xf0,
+    0x02,
+    0x7e,
+    0x7f, // SysEx
+    0x00,
+    0x90,
+    0x3c,
+    0x64, // note on
+    0x83,
+    0x60,
+    0x80,
+    0x3c,
+    0x60, // note off at tick 480, release velocity 96
+    0x00,
+    0xff,
+    0x2f,
+    0x00, // end of track
+  ]);
+  const midi = new Uint8Array(22 + track.length);
+  midi.set([0x4d, 0x54, 0x68, 0x64, 0x00, 0x00, 0x00, 0x06, 0x00, 0x01, 0x00, 0x01, 0x01, 0xe0]);
+  midi.set([0x4d, 0x54, 0x72, 0x6b, 0x00, 0x00, 0x00, track.length], 14);
+  midi.set(track, 22);
+  return new File([midi.buffer], "Session.mid", { type: "audio/midi" });
+}
 
 describe("TransferImportDialog", () => {
   beforeEach(() => {
@@ -124,6 +172,149 @@ describe("TransferImportDialog", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: /I have reviewed the transfer limits/i }));
     expect(screen.getByRole("button", { name: /IMPORT AS NEW KYX PROJECT/i })).toBeEnabled();
     expect(save).not.toHaveBeenCalled();
+  });
+
+  it("shows exact MIDI loss counts and requires acknowledgement before importing", async () => {
+    const save = vi.fn(async (_doc: ProjectDocument) => undefined);
+    const core = { repo: { save } } as unknown as CoreServices;
+    const onImported = vi.fn();
+    const { container } = render(<TransferImportDialog core={core} onCancel={vi.fn()} onImported={onImported} />);
+    const fileInput = container.querySelector('input[type="file"]');
+    if (!fileInput) throw new Error("transfer file picker was not rendered");
+
+    fireEvent.change(fileInput, { target: { files: [midiWithUnsupportedEvents()] } });
+    expect(
+      await screen.findByText(
+        "MIDI data that will not transfer: 1 unsupported CC message, 1 pitch bend, 1 program change, 2 aftertouch events, 1 SysEx message. KYX imports notes, GM drum hits, CC7/10/11 track automation, and bakes CC64 sustain into note lengths.",
+      ),
+    ).toBeInTheDocument();
+
+    const importButton = screen.getByRole("button", { name: /IMPORT AS NEW KYX PROJECT/i });
+    expect(importButton).toBeDisabled();
+    expect(save).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /I have reviewed the transfer limits/i }));
+    expect(importButton).toBeEnabled();
+    fireEvent.click(importButton);
+
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    expect(onImported).toHaveBeenCalledOnce();
+    const imported = onImported.mock.calls[0]?.[0] as ProjectDocument | undefined;
+    const track = imported?.tracks.find((candidate) => candidate.kind === "instrument");
+    const pattern = imported?.patterns.find((candidate) => candidate.id === imported.activePatternId);
+    expect(pattern?.notes[track?.id ?? ""]?.[0]?.expression?.releaseVelocity).toBe(0.76);
+  });
+
+  it("shows supported controller conversions and imports automation plus sustain-adjusted note lengths", async () => {
+    const bytes = writeMidiFile({
+      bpm: 120,
+      tracks: [
+        {
+          name: "Expressive Lead",
+          channel: 0,
+          notes: [{ pitch: 60, startTick: 0, endTick: 480, velocity: 0.8 }],
+          controllers: [
+            { tick: 0, controller: 64, value: 127 },
+            { tick: 0, controller: 7, value: 127 },
+            { tick: 0, controller: 10, value: 0 },
+            { tick: 480, controller: 11, value: 64 },
+            { tick: 960, controller: 64, value: 0 },
+          ],
+        },
+      ],
+    });
+    const midiData = new Uint8Array(bytes.byteLength);
+    midiData.set(bytes);
+    const midiFile = new File([midiData.buffer], "Controller Map.mid", { type: "audio/midi" });
+    const save = vi.fn(async (_doc: ProjectDocument) => undefined);
+    const core = { repo: { save } } as unknown as CoreServices;
+    const onImported = vi.fn();
+    const { container } = render(<TransferImportDialog core={core} onCancel={vi.fn()} onImported={onImported} />);
+    const fileInput = container.querySelector('input[type="file"]');
+    if (!fileInput) throw new Error("transfer file picker was not rendered");
+
+    fireEvent.change(fileInput, { target: { files: [midiFile] } });
+    expect(await screen.findByText(/MIDI controller conversion:/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/CC7 volume and CC11 expression become combined track-volume automation/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/CC10 becomes track-pan automation/)).toBeInTheDocument();
+    expect(screen.getByText(/CC64 sustain extends note lengths/)).toBeInTheDocument();
+    const importButton = screen.getByRole("button", { name: /IMPORT AS NEW KYX PROJECT/i });
+    expect(importButton).toBeDisabled();
+    expect(save).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /I have reviewed the transfer limits/i }));
+    fireEvent.click(importButton);
+
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    const imported = onImported.mock.calls[0]?.[0] as ProjectDocument | undefined;
+    const track = imported?.tracks.find((candidate) => candidate.name === "Expressive Lead");
+    const pattern = imported?.patterns.find((candidate) => candidate.id === imported.activePatternId);
+    const note = track && pattern?.notes[track.id]?.[0];
+    const automation = imported?.arrangement.automationClips?.filter((clip) => clip.target.trackId === track?.id) ?? [];
+
+    expect(note).toMatchObject({ duration: 960 });
+    expect(automation.some((clip) => clip.target.kind === "trackGain")).toBe(true);
+    expect(automation.some((clip) => clip.target.kind === "trackPan" && clip.points[0]?.value === -1)).toBe(true);
+  });
+
+  it("does not save the transfer until the user acknowledges tempo-map flattening, then preserves later MIDI timing", async () => {
+    const bytes = writeMidiFile({
+      bpm: 120,
+      timeSignature: { num: 4, den: 4 },
+      tempoChanges: [
+        { tick: 0, bpm: 120 },
+        { tick: BAR_TICKS * 4, bpm: 100 },
+      ],
+      tracks: [
+        {
+          name: "Lead",
+          channel: 0,
+          notes: [
+            {
+              pitch: 72,
+              startTick: BAR_TICKS * 8,
+              endTick: BAR_TICKS * 8 + 480,
+              velocity: 0.8,
+              releaseVelocity: 0.8,
+            },
+          ],
+        },
+      ],
+    });
+    const midiData = new Uint8Array(bytes.byteLength);
+    midiData.set(bytes);
+    const midiFile = new File([midiData.buffer], "Tempo Map.mid", { type: "audio/midi" });
+    const save = vi.fn(async (_doc: ProjectDocument) => undefined);
+    const core = { repo: { save } } as unknown as CoreServices;
+    const onImported = vi.fn();
+    const { container } = render(<TransferImportDialog core={core} onCancel={vi.fn()} onImported={onImported} />);
+    const fileInput = container.querySelector('input[type="file"]');
+    if (!fileInput) throw new Error("transfer file picker was not rendered");
+
+    fireEvent.change(fileInput, { target: { files: [midiFile] } });
+    expect(
+      await screen.findByText(
+        /MIDI tempo changes will be flattened into the chosen project tempo while preserving performance timing/,
+      ),
+    ).toBeInTheDocument();
+    const importButton = screen.getByRole("button", { name: /IMPORT AS NEW KYX PROJECT/i });
+    expect(importButton).toBeDisabled();
+    expect(save).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /I have reviewed the transfer limits/i }));
+    fireEvent.click(importButton);
+
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    const imported = onImported.mock.calls[0]?.[0] as ProjectDocument | undefined;
+    const track = imported?.tracks.find((candidate) => candidate.name === "Lead");
+    const pattern = imported?.patterns.find((candidate) => candidate.id === imported.activePatternId);
+    expect(pattern?.notes[track?.id ?? ""]?.[0]).toMatchObject({
+      start: 16_896,
+      duration: 576,
+      expression: { releaseVelocity: 0.8 },
+    });
   });
 
   it("rolls back every staged sample when a later track fails to decode", async () => {

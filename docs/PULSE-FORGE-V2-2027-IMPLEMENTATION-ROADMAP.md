@@ -1,8 +1,11 @@
 # Pulse Forge — implementačná roadmapa KYX v2 pre rok 2027
 
-**Dátum:** 2026-10-17  
-**Stav:** používateľom schválený produktový smer; implementačný plán s otvorenými realizačnými úlohami  
-**Produkt:** KYX Web a KYX Studio; interný projekt Pulse Forge  
+**Vytvorené:** 2026-10-17 · **Aktualizované:** 2026-10-19
+
+**Stav:** používateľom schválený produktový smer; implementačný plán s otvorenými realizačnými úlohami
+
+**Produkt:** KYX Web a KYX Studio; interný projekt Pulse Forge
+
 **Hlavná téza:** z vlastného zvuku vytvoriť rodinu hrateľných zvukov, použiť ju v beate a zahrať jej premenu.
 
 ## 1. Účel a spôsob používania
@@ -22,6 +25,15 @@ Dokument plánuje budúcu implementáciu. Označenie fázy ani opis cieľového 
 
 KYX v2 označuje produktové vydanie celého DAW. KOPA/KOREŇ V2 a TSAR R1–R8 sú samostatné vývojové označenia modulov; ich číslovanie nemusí zodpovedať číslu vydania KYX. Tento dokument nemení verziu balíka, schému projektu ani existujúce ADR.
 
+### Rýchla orientácia
+
+| Potrebujem zistiť                                                 | Kde začať                                                               |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Čo má KYX v2 priniesť používateľovi a čo patrí do prvého vydania. | Kapitoly 2–4.                                                           |
+| V akom poradí implementovať a od čoho jednotlivé časti závisia.   | Prehľad v kapitole 6, kroky F0–F10 v kapitolách 7–17.                   |
+| Ako posúdiť kvalitu a kam zmenu zapojiť v kóde.                   | Akceptačná matica, technická mapa a ADR rozhodnutia v kapitolách 18–20. |
+| Čím začať teraz a ako evidovať dokončenie.                        | Realizačný rad a záznam dôkazov v kapitolách 23–24.                     |
+
 ## 2. Produktový zámer a cieľový zážitok
 
 **Pracovná produktová veta: „Z jedného zvuku si postav vlastný svet.“**
@@ -39,6 +51,8 @@ KYX v2 má pomáhať producentovi vytvoriť osobitý materiál, zahrať ho a dok
 
 Táto ukážka je integračný scenár. V prvom prototype používa ručne pripravené noty a existujúce aranžovacie nástroje; automatické komponovanie celej skladby nie je jej predpokladom.
 
+Prototyp F2 overí import, tri zvukové roly, ich použitie v beate a uloženie/export. Afterimage a zaznamenanú Performance Scene doplnia fázy F6 a F7. Celú cieľovú ukážku overí beta vo F10; prvý prototyp tak nezávisí od ešte nepostavených neskorších funkcií.
+
 ### Čo má používateľ cítiť
 
 - **Vlastníctvo zvuku:** výsledok má počuteľnú súvislosť s jeho zdrojom a dá sa ďalej pretvárať.
@@ -53,15 +67,15 @@ Táto ukážka je integračný scenár. V prvom prototype používa ručne pripr
 
 Existujúci kód poskytuje nástroje na realizáciu tejto vízie. Podrobné aktuálne počty patria výhradne do `CURRENT-STATE.md`; táto roadmapa ich nekopíruje.
 
-| Oblasť | Základ, na ktorý nadviazať | Čo treba pre v2 dokončiť alebo vybudovať |
-| --- | --- | --- |
-| TSAR | Hybridný engine, zdroje A/B, Forge, modulácie, presetový a workletový základ. | Spoľahlivý celý používateľský priechod, knižnica zdrojov, audition, výrazová cesta a riadený grain engine. |
-| KOPA | Samostatný kick-design nástroj s telom, clickom, subom a harmonickou vrstvou. | Úplný MIDI/fallback kontrakt, merania, kurátorované zvuky a prípadná zdrojová click vrstva. |
-| KOREŇ | Samostatný basový harmonický procesor s odhadom fundamentu. | Istota trackingu, gain/mono/alias/CPU dôkazy, vysvetlené ovládanie a porovnanie v mixe. |
-| Knižnica | Syntetické factory zdroje, curated WAV-y a voliteľné nástrojové balíky. | Vlastné nahrávky, prirodzené artikulácie a súvisiace zvukové rodiny. |
-| Aranžmán a výraz | Existujúce scény, automatizácia a rozvíjané note-expression schopnosti. | Spoločné mapovanie performance scén a overenie jednotlivých podporovaných ciest. |
-| AI | Intent pipeline, návrhy, preferenčná pamäť a evaluačná infraštruktúra. | Pluginové adaptéry, vypočuteľné varianty a doklad prínosu pri chránenom obsahu. |
-| Distribúcia | Web, desktopové balenie a samostatný smer Qvester Hubu. | Testovaná podpora platforiem, verzované balíky, aktualizácie a obnova po zlyhaní. |
+| Oblasť           | Základ, na ktorý nadviazať                                                    | Čo treba pre v2 dokončiť alebo vybudovať                                                                   |
+| ---------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| TSAR             | Hybridný engine, zdroje A/B, Forge, modulácie, presetový a workletový základ. | Spoľahlivý celý používateľský priechod, knižnica zdrojov, audition, výrazová cesta a riadený grain engine. |
+| KOPA             | Samostatný kick-design nástroj s telom, clickom, subom a harmonickou vrstvou. | Úplný MIDI/fallback kontrakt, merania, kurátorované zvuky a prípadná zdrojová click vrstva.                |
+| KOREŇ            | Samostatný basový harmonický procesor s odhadom fundamentu.                   | Istota trackingu, gain/mono/alias/CPU dôkazy, vysvetlené ovládanie a porovnanie v mixe.                    |
+| Knižnica         | Syntetické factory zdroje, curated WAV-y a voliteľné nástrojové balíky.       | Vlastné nahrávky, prirodzené artikulácie a súvisiace zvukové rodiny.                                       |
+| Aranžmán a výraz | Existujúce scény, automatizácia a rozvíjané note-expression schopnosti.       | Spoločné mapovanie performance scén a overenie jednotlivých podporovaných ciest.                           |
+| AI               | Intent pipeline, návrhy, preferenčná pamäť a evaluačná infraštruktúra.        | Pluginové adaptéry, vypočuteľné varianty a doklad prínosu pri chránenom obsahu.                            |
+| Distribúcia      | Web, desktopové balenie a samostatný smer Qvester Hubu.                       | Testovaná podpora platforiem, verzované balíky, aktualizácie a obnova po zlyhaní.                          |
 
 Sound Seed, Afterimage a spoločné Performance Scenes sa tu plánujú ako nové integračné schopnosti. Existujúce Forge, scene alebo morph funkcie samy osebe nepotvrdzujú ich dodanie.
 
@@ -97,7 +111,7 @@ Web v2 a Studio v2 majú spoločnú zvukovú víziu. Natívne I/O a hosting sa v
 
 ## 5. Architektonické pravidlá programu
 
-Základom sú [ARCHITECTURE.md](../ARCHITECTURE.md), [AGENTS.md](../AGENTS.md) a relevantné ADR.
+Základom sú [ARCHITECTURE.md](../ARCHITECTURE.md), [AGENTS.md](../AGENTS.md), [AGENT-MAP.md](AGENT-MAP.md) a relevantné ADR.
 
 1. UI vyjadruje zámer; commands menia serializovateľný projekt; Transport určuje hudobný čas; Scheduler plánuje; AudioEngine vykonáva; DSP spracúva zvuk.
 2. Vlastné realtime DSP zostáva v AudioWorklete. Ťažká analýza, príprava zdrojov a modelová inferencia bežia mimo audio callbacku.
@@ -109,6 +123,7 @@ Základom sú [ARCHITECTURE.md](../ARCHITECTURE.md), [AGENTS.md](../AGENTS.md) a
 8. Funkcie, worklety, audio a modely sa načítavajú podľa potreby. Aktuálne bundle limity určuje `scripts/check-bundle-size.mjs`; ich zvýšenie vyžaduje meranie a odôvodnenie.
 9. Každá dlhšia operácia má zrušenie, ohraničené zdroje a ochranu pred použitím zastaraného výsledku.
 10. Aktívne procesy, workery, náhľady a buffery majú vlastníka. Ich uvoľnenie je súčasťou dokončenia funkcie aj overovacieho behu.
+11. Používateľské audio a preferenčná pamäť zostávajú predvolene lokálne. Vzdialené spracovanie vyžaduje vedome zvoleného poskytovateľa a zrozumiteľný rozsah prenášaných dát; projekty sa automaticky nepoužijú na tréning.
 
 ### Spoločná cesta nových schopností
 
@@ -128,19 +143,19 @@ AI môže pripraviť alebo zoradiť kandidátov vo vhodnom bode tejto cesty. Pri
 
 ## 6. Prehľad fáz a závislostí
 
-| ID | Fáza | Hlavný výsledok | Predpoklady |
-| --- | --- | --- | --- |
-| F0 | Baseline a spoľahlivosť | Overiteľný stav jadra a pevný merací korpus. | Audit aktuálneho HEAD a existujúcich backlogov. |
-| F1 | Zdroje, recepty a audition | Spoločná vrstva pre uloženie, náhľad a prijatie zvuku. | F0. |
-| F2 | Sound Seed prototyp | Prvá úplná cesta od zdroja po rodinu zvukov a beat. | F1 a spoľahlivý TSAR základ. |
-| F3 | KYX Originals a signature banka | Vlastný materiál a kurátorované rodiny. | Zdrojový kontrakt F1; zvukové poznatky F2. |
-| F4 | TSAR: výraz a zdrojový engine | Hrateľné patche, riadené zrná a overený MIDI/event priechod. | F1–F2; zafixovaný výkonový rozpočet. |
-| F5 | KOPA/KOREŇ a súhra basy | Dokončené pluginy a porovnateľné low-end návrhy. | F0–F1; pre zdrojový click aj F2. |
-| F6 | Afterimage | Uložená zvuková pamäť reagujúca na hudobný kontext. | F1–F2 a stabilné časovanie. |
-| F7 | Performance Scenes | Zahraná premena s uloženým mapovaním a automatizáciou. | Stabilné ciele F4–F6 a existujúce scene/automation vrstvy. |
-| F8 | AI producent v kontexte | Ohraničené návrhy → porovnanie → prijatie. | F1–F2 a dokončené adaptéry príslušných pluginov. |
-| F9 | Web, Studio a Qvester Hub | Podpora platforiem a bezpečne aktualizovateľné balíky. | Verzionovanie assetov/receptov; príslušné desktopové ADR. |
-| F10 | Beta a vydanie | Doložená technická aj hudobná kvalita. | Povinné funkcie a ich dôkazy. |
+| ID  | Fáza                            | Hlavný výsledok                                              | Predpoklady                                                |
+| --- | ------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------- |
+| F0  | Baseline a spoľahlivosť         | Overiteľný stav jadra a pevný merací korpus.                 | Audit aktuálneho HEAD a existujúcich backlogov.            |
+| F1  | Zdroje, recepty a audition      | Spoločná vrstva pre uloženie, náhľad a prijatie zvuku.       | F0.                                                        |
+| F2  | Sound Seed prototyp             | Prvá úplná cesta od zdroja po rodinu zvukov a beat.          | F1 a spoľahlivý TSAR základ.                               |
+| F3  | KYX Originals a signature banka | Vlastný materiál a kurátorované rodiny.                      | Zdrojový kontrakt F1; zvukové poznatky F2.                 |
+| F4  | TSAR: výraz a zdrojový engine   | Hrateľné patche, riadené zrná a overený MIDI/event priechod. | F1–F2; zafixovaný výkonový rozpočet.                       |
+| F5  | KOPA/KOREŇ a súhra basy         | Dokončené pluginy a porovnateľné low-end návrhy.             | F0–F1; pre zdrojový click aj F2.                           |
+| F6  | Afterimage                      | Uložená zvuková pamäť reagujúca na hudobný kontext.          | F1–F2 a stabilné časovanie.                                |
+| F7  | Performance Scenes              | Zahraná premena s uloženým mapovaním a automatizáciou.       | Stabilné ciele F4–F6 a existujúce scene/automation vrstvy. |
+| F8  | AI producent v kontexte         | Ohraničené návrhy → porovnanie → prijatie.                   | F1–F2 a dokončené adaptéry príslušných pluginov.           |
+| F9  | Web, Studio a Qvester Hub       | Podpora platforiem a bezpečne aktualizovateľné balíky.       | Verzionovanie assetov/receptov; príslušné desktopové ADR.  |
+| F10 | Beta a vydanie                  | Doložená technická aj hudobná kvalita.                       | Povinné funkcie a ich dôkazy.                              |
 
 Implementáciu viesť sekvenčne po malých uzavretých celkoch. Nahrávaciu prípravu F3 alebo návrh distribučného kontraktu F9 možno pripraviť skôr, ale ich integrácia musí rešpektovať závislosti tabuľky.
 
@@ -164,6 +179,8 @@ Implementáciu viesť sekvenčne po malých uzavretých celkoch. Nahrávaciu pr�
 **Brána:** rovnaký vstup a seed dávajú reprodukovateľné výsledky; referenčné projekty sa uložia a znovu otvoria; zamýšľaná DSP cesta funguje pri hraní aj exporte. Nové rozpočty sa určia pred ladením novej funkcie.
 
 **Odporúčanie:** najprv odstrániť neistotu v existujúcich ovládačoch a zdrojoch. Pred pridaním anti-alias techniky alebo ďalších hlasov porovnať jej zvukový prínos a náklady.
+
+F0 rieši existujúce chyby, ktoré blokujú prvý spoľahlivý priechod. Nové DSP schopnosti a úplné rozšírenie pluginov zostávajú vo F4/F5; ich budovanie nie je podmienkou začatia jednoduchého Sound Seed prototypu.
 
 ## 8. Fáza F1 — spoločné zdroje, recepty a audition
 
@@ -257,7 +274,7 @@ Začať tromi výstupnými rolami: **perkusívny one-shot, hrateľný TSAR patch
 
 ## 12. Fáza F5 — KOPA, KOREŇ a súhra kicku s basou
 
-**Cieľ:** samostatne použiteľné pluginy a spoločné pracovisko, na ktorom producent počuje ich súhru v konkrétnom patternе.
+**Cieľ:** samostatne použiteľné pluginy a spoločné pracovisko, na ktorom producent počuje ich súhru v konkrétnom patterne.
 
 ### Kroky
 
@@ -267,7 +284,7 @@ Začať tromi výstupnými rolami: **perkusívny one-shot, hrateľný TSAR patch
 - [ ] **F5.4:** pre KOREŇ rozšíriť korpus o harmonicky bohaté basy, glissando, kick nad basou a nejednoznačný vstup. Zmerať chybu, lock/unlock a ústup syntézy pri strate istoty.
 - [ ] **F5.5:** v spoločnom view vybrať konkrétne kick a bass tracky, slučku a cieľ: punch, zachovanie subu, priestor pri nástupe alebo telefónna čitateľnosť.
 - [ ] **F5.6:** pripraviť ohraničené návrhy existujúcimi ovládačmi: dĺžka tela kicku, obálka basy, cielené ducking nastavenie a harmonický charakter KOREŇA.
-- [ ] **F5.7:** všetky varianty porovnať pri zrovnanej hlasitosti v patternе aj mono fold-down. PHONE CHECK zostáva iba monitorovací filter.
+- [ ] **F5.7:** všetky varianty porovnať pri zrovnanej hlasitosti v patterne aj mono fold-down. PHONE CHECK zostáva iba monitorovací filter.
 - [ ] **F5.8:** po F1/F2 preveriť použitie vlastného transientu ako KOPA click vrstvy: asset referencia, obálka, ladenie podľa zmyslu zdroja a kompatibilita presetov.
 - [ ] **F5.9:** vybraný návrh použiť ako jeden command; zmeny časovania alebo samotných nôt musia byť viditeľnou súčasťou návrhu.
 
@@ -329,12 +346,12 @@ Začať dvoma receptmi: **harmonický dozvuk z konkrétneho zachyteného úseku*
 
 ### Prvé podporované zámery
 
-| Nástroj / oblasť | Prvý brief | Čo musí zostať chránené |
-| --- | --- | --- |
-| KOPA | „Kratší kick, viac punch, zachovaj ladenie.“ | Tónový cieľ a explicitne uzamknuté vrstvy. |
-| KOREŇ | „808 čitateľnejšia na telefóne, zachovaj sub.“ | Basové noty a deklarovaná sub charakteristika. |
-| TSAR / Sound Seed | „Vzdušný pad z tohto zdroja, zachovaj jeho charakter.“ | Pôvodný asset a uzamknuté zdrojové skupiny. |
-| Afterimage / sekcia | „Hook nech sa otvorí, bicie a 808 nechaj.“ | Obsah a povolený zvukový rozsah chránených trackov. |
+| Nástroj / oblasť    | Prvý brief                                             | Čo musí zostať chránené                             |
+| ------------------- | ------------------------------------------------------ | --------------------------------------------------- |
+| KOPA                | „Kratší kick, viac punch, zachovaj ladenie.“           | Tónový cieľ a explicitne uzamknuté vrstvy.          |
+| KOREŇ               | „808 čitateľnejšia na telefóne, zachovaj sub.“         | Basové noty a deklarovaná sub charakteristika.      |
+| TSAR / Sound Seed   | „Vzdušný pad z tohto zdroja, zachovaj jeho charakter.“ | Pôvodný asset a uzamknuté zdrojové skupiny.         |
+| Afterimage / sekcia | „Hook nech sa otvorí, bicie a 808 nechaj.“             | Obsah a povolený zvukový rozsah chránených trackov. |
 
 ### Kroky
 
@@ -397,7 +414,7 @@ Začať dvoma receptmi: **harmonický dozvuk z konkrétneho zachyteného úseku*
 - [ ] **F10.2:** pripraviť anonymizované hlasitostne zrovnané ukážky: originál, jednoduchý existujúci postup a nový postup. Hodnotiť konkrétnu úlohu každého zvuku.
 - [ ] **F10.3:** prvé použiteľnostné kolo navrhnúť s malou skupinou približne 5–8 producentov rôznej skúsenosti. Jeho účelom je nájsť problémy; veľkosť následnej zvukovej evaluácie určiť podľa variability výsledkov.
 - [ ] **F10.4:** sledovať čas k prvému použiteľnému výsledku, počet ponechaných rodín, úspešné dokončenie beatu, vratky a miesta, kde sa používateľ stratí.
-- [ ] **F10.5:** zverejniť aj neúspešné briefy, odmietnuté patche a hranice podpory. Používateľské skóre neprezentovať ako všeobecný dôkaz pri malej alebo zaujat ej vzorke.
+- [ ] **F10.5:** zverejniť aj neúspešné briefy, odmietnuté patche a hranice podpory. Používateľské skóre neprezentovať ako všeobecný dôkaz pri malej alebo zaujatej vzorke.
 - [ ] **F10.6:** uzavrieť relevantné testové, drift, seam, bundle, audio, recovery a bezpečnostné brány. Opravené aj nové zlyhania riadne zohľadniť v suite expectations.
 - [ ] **F10.7:** prejsť reálnu inštaláciu, import, nový projekt, uloženie, update, znovuotvorenie, export a podporovaný prenos medzi zariadeniami.
 - [ ] **F10.8:** doplniť vstupný návod, tri krátke ukážkové workflowy, popisy pluginov, podporu modelov a zrozumiteľné obmedzenia.
@@ -411,16 +428,16 @@ Začať dvoma receptmi: **harmonický dozvuk z konkrétneho zachyteného úseku*
 
 Číselné ciele výkonu a odozvy nových funkcií sa zafixujú vo F0 pred ladením. Existujúce povinné limity z `AGENTS.md` a build skriptov zostávajú v platnosti.
 
-| Oblasť | Povinný dôkaz | Negatívny alebo hraničný prípad |
-| --- | --- | --- |
-| Používateľský vstup | Test vstúpi cez reálny import, gesto alebo dispatch a overí výsledok. | Klik bez pohybu, cancel, stale výsledok, odstránený target. |
-| Zdroj a recept | Uloženie, opakovanie a prenos vrátia správne médium a interpretáciu. | Chýbajúci asset, nesediaci hash, starý algoritmus, quota chyba. |
-| DSP | Zvolený parameter mení určenú metriku a podporuje automatizáciu. | Extrémy, neplatné dáta, ticho, nejednoznačná výška, zmena sample rate. |
-| Live/offline | Rovnaký patch, eventy a seed sa porovnajú po zohľadnení deklarovaného začiatku/latencie. | Seek, loop, preroll, tail a reset workletu. |
-| Zvuková kvalita | Posluch pri zrovnanej hlasitosti, v mixe aj mono, s konkrétnou otázkou. | Prínos zmizne po dorovnaní hlasitosti alebo zhorší chránený sub/transient. |
-| Výkon | Cena najdrahšieho podporovaného nastavenia, percentily, dropouty, heap a uzly. | Dlhý soak, opakovaný load/unload, viac preview, zatvorený panel. |
-| AI | Kontrakt, platný kandidát, audio náhľad, chránené cesty a jedno Apply. | Timeout, bez modelu, žiadny vhodný kandidát, zmena projektu počas renderu. |
-| Distribúcia | Overená platforma, integrita balíka a funkčný update/rollback postup. | Prerušenie, poškodenie, nedostatok miesta a novšia projektová schéma. |
+| Oblasť              | Povinný dôkaz                                                                            | Negatívny alebo hraničný prípad                                            |
+| ------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Používateľský vstup | Test vstúpi cez reálny import, gesto alebo dispatch a overí výsledok.                    | Klik bez pohybu, cancel, stale výsledok, odstránený target.                |
+| Zdroj a recept      | Uloženie, opakovanie a prenos vrátia správne médium a interpretáciu.                     | Chýbajúci asset, nesediaci hash, starý algoritmus, quota chyba.            |
+| DSP                 | Zvolený parameter mení určenú metriku a podporuje automatizáciu.                         | Extrémy, neplatné dáta, ticho, nejednoznačná výška, zmena sample rate.     |
+| Live/offline        | Rovnaký patch, eventy a seed sa porovnajú po zohľadnení deklarovaného začiatku/latencie. | Seek, loop, preroll, tail a reset workletu.                                |
+| Zvuková kvalita     | Posluch pri zrovnanej hlasitosti, v mixe aj mono, s konkrétnou otázkou.                  | Prínos zmizne po dorovnaní hlasitosti alebo zhorší chránený sub/transient. |
+| Výkon               | Cena najdrahšieho podporovaného nastavenia, percentily, dropouty, heap a uzly.           | Dlhý soak, opakovaný load/unload, viac preview, zatvorený panel.           |
+| AI                  | Kontrakt, platný kandidát, audio náhľad, chránené cesty a jedno Apply.                   | Timeout, bez modelu, žiadny vhodný kandidát, zmena projektu počas renderu. |
+| Distribúcia         | Overená platforma, integrita balíka a funkčný update/rollback postup.                    | Prerušenie, poškodenie, nedostatok miesta a novšia projektová schéma.      |
 
 Pri nových používateľských seams aktualizovať [seam manifest](../tests/seam-manifest.json). Podľa pravidiel repozitára musí test vstúpiť cez skutočný entry point, overiť no-op a prejsť mutačným overením citlivosti v izolovanom prostredí. Označenie `OPEN` je prípustné pri otvorenej práci; deklarácia `COVERED` musí mať doložené správanie.
 
@@ -442,30 +459,30 @@ Spustiť konečný beh → zaznamenať vlastný proces/session → zachytiť vý
 
 Nasledujúce cesty sú orientačné integračné body overené pri písaní plánu. Zmena ich hranice vyžaduje najprv posúdenie príslušného ADR.
 
-| Oblasť | Existujúce body | Odporúčaný spôsob rozšírenia |
-| --- | --- | --- |
-| TSAR | `src/tsar/forge.ts`, `params.ts`, `mutations.ts`, `dsp/tsarProcessor.ts`, `src/instruments/tsarNode.ts`, `src/commands/tsar.ts`. | Zachovať spoločný interpret udalostí; analýzu a rodiny oddeliť od realtime hlasov. |
-| KOPA | `src/kopa/dsp/kopaProcessor.ts`, `src/instruments/kopaNode.ts`, `src/presets/kopa-factory.ts`. | Najprv dokončiť kontrakt a merania; nový zdrojový click pripojiť cez F1 assety. |
-| KOREŇ | `src/audio-worklets/bass-harmonic-processor.js`, `bass-harmonic-node.ts`, `src/commands/korenScene.ts`. | Udržať tracker a syntézu vo worklete, plán porovnania mimo callbacku. |
-| Rodiny a obsah | `src/sample-library/`, `src/presets/`, `src/persistence/`. | Nový Sound Seed modul navrhnúť nad existujúcimi médiami a receptami; navrhovaný nový priestor je `src/sound-seed/`. |
-| Afterimage | Existujúce efekty, `src/rendering/`, source kontrakt a automatizácia. | Najprv uložená vrstva s receptom; vlastný procesor iba pre chýbajúcu merateľnú schopnosť. |
-| Performance | `src/project-model/scene-performance.ts`, `scene-time.ts`, `automation.ts`, `src/commands/sceneAutomation.ts`, `src/audio-engine/automationBridge.ts`. | Rozšíriť existujúce časovanie a commands; rAF slúži iba na vizuálny priebeh. |
-| Note expression | `src/instruments/noteExpressionCapabilities.ts`, scheduler, trigger engine, projektové eventy. | Podporu deklarovať po konkrétnych nástrojoch a transportoch. |
-| AI | `src/intent/`, `src/ai/`, `src/intent/audition.ts`, existujúce preference/evaluation moduly. | Adaptéry produkujú validované plány a kandidátov, prijatie používa command cestu. |
-| Platformy | `desktop/`, release skripty, support matrix a samostatný Hub projekt. | Oddeliť distribučný kontrakt od schopností konkrétneho audio backendu. |
+| Oblasť          | Existujúce body                                                                                                                                        | Odporúčaný spôsob rozšírenia                                                                                        |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| TSAR            | `src/tsar/forge.ts`, `params.ts`, `mutations.ts`, `dsp/tsarProcessor.ts`, `src/instruments/tsarNode.ts`, `src/commands/tsar.ts`.                       | Zachovať spoločný interpret udalostí; analýzu a rodiny oddeliť od realtime hlasov.                                  |
+| KOPA            | `src/kopa/dsp/kopaProcessor.ts`, `src/instruments/kopaNode.ts`, `src/presets/kopa-factory.ts`.                                                         | Najprv dokončiť kontrakt a merania; nový zdrojový click pripojiť cez F1 assety.                                     |
+| KOREŇ           | `src/audio-worklets/bass-harmonic-processor.js`, `bass-harmonic-node.ts`, `src/commands/korenScene.ts`.                                                | Udržať tracker a syntézu vo worklete, plán porovnania mimo callbacku.                                               |
+| Rodiny a obsah  | `src/sample-library/`, `src/presets/`, `src/persistence/`.                                                                                             | Nový Sound Seed modul navrhnúť nad existujúcimi médiami a receptami; navrhovaný nový priestor je `src/sound-seed/`. |
+| Afterimage      | Existujúce efekty, `src/rendering/`, source kontrakt a automatizácia.                                                                                  | Najprv uložená vrstva s receptom; vlastný procesor iba pre chýbajúcu merateľnú schopnosť.                           |
+| Performance     | `src/project-model/scene-performance.ts`, `scene-time.ts`, `automation.ts`, `src/commands/sceneAutomation.ts`, `src/audio-engine/automationBridge.ts`. | Rozšíriť existujúce časovanie a commands; rAF slúži iba na vizuálny priebeh.                                        |
+| Note expression | `src/instruments/noteExpressionCapabilities.ts`, scheduler, trigger engine, projektové eventy.                                                         | Podporu deklarovať po konkrétnych nástrojoch a transportoch.                                                        |
+| AI              | `src/intent/`, `src/ai/`, `src/intent/audition.ts`, existujúce preference/evaluation moduly.                                                           | Adaptéry produkujú validované plány a kandidátov, prijatie používa command cestu.                                   |
+| Platformy       | `desktop/`, release skripty, support matrix a samostatný Hub projekt.                                                                                  | Oddeliť distribučný kontrakt od schopností konkrétneho audio backendu.                                              |
 
 ## 20. Rozhodnutia a ADR pred implementáciou
 
-| Rozhodnutie | Odporúčané východisko | Rozhodnúť pred |
-| --- | --- | --- |
-| Source/recept/asset kompatibilita | Zachovať originál, stabilnú identitu, verziu receptu a dostupný odvodený render. | F1 persistence a migrácia. |
-| Audition a Apply | Izolovaná cesta, platnosť na revíziu projektu, jedna undoable transakcia. | F1 preview integrácia. |
-| Afterimage reprezentácia | Uložený capture/recept a bežná editovateľná vrstva ako prvý rozsah. | F6 runtime. |
-| Performance automatizácia | Existujúca hudobná časová os s explicitnou prioritou voči ostatnej modulácii. | F7 nahrávanie. |
-| Granular kompatibilita a výkon | Ohraničené hlasy/grainy, eventové seedy, zmerané staré aj nové patche. | F4 výmena zdrojového režimu. |
-| AI zásahy do chráneného obsahu | Kontrakt zahŕňa obsah aj povolený audio routing a spoločné processing cesty. | F8 adaptér. |
-| Modelové a obsahové balíky | Hash, verzia, kompatibilita, zrušiteľný download a overená aktivácia. | F9 Hub integrácia. |
-| Natívne audio a hosting | Rozhodnutie podľa nameraného backendu, licencie a support matrix. | Konkrétny Studio míľnik. |
+| Rozhodnutie                       | Odporúčané východisko                                                            | Rozhodnúť pred               |
+| --------------------------------- | -------------------------------------------------------------------------------- | ---------------------------- |
+| Source/recept/asset kompatibilita | Zachovať originál, stabilnú identitu, verziu receptu a dostupný odvodený render. | F1 persistence a migrácia.   |
+| Audition a Apply                  | Izolovaná cesta, platnosť na revíziu projektu, jedna undoable transakcia.        | F1 preview integrácia.       |
+| Afterimage reprezentácia          | Uložený capture/recept a bežná editovateľná vrstva ako prvý rozsah.              | F6 runtime.                  |
+| Performance automatizácia         | Existujúca hudobná časová os s explicitnou prioritou voči ostatnej modulácii.    | F7 nahrávanie.               |
+| Granular kompatibilita a výkon    | Ohraničené hlasy/grainy, eventové seedy, zmerané staré aj nové patche.           | F4 výmena zdrojového režimu. |
+| AI zásahy do chráneného obsahu    | Kontrakt zahŕňa obsah aj povolený audio routing a spoločné processing cesty.     | F8 adaptér.                  |
+| Modelové a obsahové balíky        | Hash, verzia, kompatibilita, zrušiteľný download a overená aktivácia.            | F9 Hub integrácia.           |
+| Natívne audio a hosting           | Rozhodnutie podľa nameraného backendu, licencie a support matrix.                | Konkrétny Studio míľnik.     |
 
 Nové ADR sa čísluje podľa aktuálneho stavu repozitára až pri otvorení konkrétneho rozhodnutia. Tento plán nerezervuje čísla ani nepredstiera schválenú technológiu natívneho backendu.
 
@@ -473,31 +490,31 @@ Nové ADR sa čísluje podľa aktuálneho stavu repozitára až pri otvorení ko
 
 Nasledujúce obdobia určujú zámerné poradie. Kapacitný odhad sa spresní po F0 a úplnom prototype F2; dokončenie technických a posluchových brán rozhoduje o vydaní.
 
-| Obdobie | Hlavné sústredenie | Výsledok pre rozhodnutie |
-| --- | --- | --- |
-| Zvyšok 2026 | F0, kontrakty F1 a malý F2 prototyp. | Dôkaz, že zdroj → rodina → beat → export stojí za hlavný smer v2. |
-| Q1 2027 | Dokončenie source/audition vrstvy, Sound Seed a prvá Originals session. | Použiteľný vlastný materiál a opakovateľné zvukové rodiny. |
-| Q2 2027 | TSAR výrazový engine, KOPA/KOREŇ a prvý Afterimage rozsah. | Nástroje fungujú samostatne aj v hudobnom kontexte. |
-| Q3 2027 | Performance Scenes, obmedzený AI pilot a uzavretá beta. | Zahraná premena, meraný prínos návrhov a spätná väzba producentov. |
-| Q4 2027 | Hardening, dokumentácia, podporované distribučné profily a release rozhodnutie. | Vydanie iba toho rozsahu, ktorý prešiel technickými aj používateľskými bránami. |
+| Obdobie     | Hlavné sústredenie                                                              | Výsledok pre rozhodnutie                                                        |
+| ----------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Zvyšok 2026 | F0, kontrakty F1 a malý F2 prototyp.                                            | Dôkaz, že zdroj → rodina → beat → export stojí za hlavný smer v2.               |
+| Q1 2027     | Dokončenie source/audition vrstvy, Sound Seed a prvá Originals session.         | Použiteľný vlastný materiál a opakovateľné zvukové rodiny.                      |
+| Q2 2027     | TSAR výrazový engine, KOPA/KOREŇ a prvý Afterimage rozsah.                      | Nástroje fungujú samostatne aj v hudobnom kontexte.                             |
+| Q3 2027     | Performance Scenes, obmedzený AI pilot a uzavretá beta.                         | Zahraná premena, meraný prínos návrhov a spätná väzba producentov.              |
+| Q4 2027     | Hardening, dokumentácia, podporované distribučné profily a release rozhodnutie. | Vydanie iba toho rozsahu, ktorý prešiel technickými aj používateľskými bránami. |
 
 Natívne I/O a hosting sledujú vlastnú kapacitu a hardware gate-y v súlade s Full DAW roadmapou. Výskum materiálov môže pokračovať po základnom vydaní. Pri sklze najprv zúžiť experimentálny rozsah a ponechať celý základný používateľský priechod dokončiteľný.
 
 ## 22. Riziká a odporúčané reakcie
 
-| Riziko | Skorý signál | Reakcia |
-| --- | --- | --- |
-| Veľa nových funkcií bez použiteľného celku | Každý modul má demo, ale 45-sekundový projekt sa nedá dokončiť. | Uprednostniť integračný scenár a dokončiť jednu celú cestu. |
-| Rodina znie ako generický preset | Posluch nerozpozná súvislosť so zdrojom. | Upraviť recept alebo vhodnosť zdroja; pomenovať zachovávanú vlastnosť. |
-| Dojem kvality spôsobuje hlasitosť | Preferencia zmizne po dorovnaní levelu. | Použiť kontrolovaný A/B a oddelený audition gain. |
-| Granular alebo scény prekročia CPU | Dropouty pri plnej polyfónii alebo prechode vrstiev. | Ohraničiť aktívne hlasy/grainy, zjednodušiť prechod a zmerať freeze/render cestu. |
-| Nestabilná basová syntéza | Oktávové skoky, pumping, strata mono subu. | Zlepšiť istotu a release trackera, obmedziť syntézu a overiť vhodnosť vstupu. |
-| Zvuk sa po update zmení | Starý projekt používa nový význam receptu alebo engine režimu. | Verzionovať kontrakt, zachovať render/interpret a pokryť staré fixture projekty. |
-| AI poruší zachovanie skladby | Zmení sa chránený obsah alebo jeho spoločná processing cesta. | Kontrolovať celý povolený rozsah a zneplatniť kandidáta pred Apply. |
-| Preview poškodí prácu | Výber, cancel alebo neskorý worker zapíše do projektu. | Izolovať náhľad, revízie a transakčné prijatie; vstúpiť testom cez skutočný seam. |
-| Nové audio sa nedá distribuovať | Chýbajú práva alebo dohľadateľný pôvod. | Viesť asset manifest od nahrávania a publikovať iba vyriešené položky. |
-| Hub/update poškodí kompatibilitu | Starý runtime otvorí novšiu schému alebo načíta nesprávny model. | Overiť kompatibilitu pred aktiváciou a zachovať obnoviteľné zálohy. |
-| Overovanie zaberie zariadenie aj po skončení | Zostanú test runnery, workery alebo preview runtimy. | Vlastníctvo, konečné behy a povinné overené ukončenie podľa AGENTS.md. |
+| Riziko                                       | Skorý signál                                                     | Reakcia                                                                           |
+| -------------------------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Veľa nových funkcií bez použiteľného celku   | Každý modul má demo, ale 45-sekundový projekt sa nedá dokončiť.  | Uprednostniť integračný scenár a dokončiť jednu celú cestu.                       |
+| Rodina znie ako generický preset             | Posluch nerozpozná súvislosť so zdrojom.                         | Upraviť recept alebo vhodnosť zdroja; pomenovať zachovávanú vlastnosť.            |
+| Dojem kvality spôsobuje hlasitosť            | Preferencia zmizne po dorovnaní levelu.                          | Použiť kontrolovaný A/B a oddelený audition gain.                                 |
+| Granular alebo scény prekročia CPU           | Dropouty pri plnej polyfónii alebo prechode vrstiev.             | Ohraničiť aktívne hlasy/grainy, zjednodušiť prechod a zmerať freeze/render cestu. |
+| Nestabilná basová syntéza                    | Oktávové skoky, pumping, strata mono subu.                       | Zlepšiť istotu a release trackera, obmedziť syntézu a overiť vhodnosť vstupu.     |
+| Zvuk sa po update zmení                      | Starý projekt používa nový význam receptu alebo engine režimu.   | Verzionovať kontrakt, zachovať render/interpret a pokryť staré fixture projekty.  |
+| AI poruší zachovanie skladby                 | Zmení sa chránený obsah alebo jeho spoločná processing cesta.    | Kontrolovať celý povolený rozsah a zneplatniť kandidáta pred Apply.               |
+| Preview poškodí prácu                        | Výber, cancel alebo neskorý worker zapíše do projektu.           | Izolovať náhľad, revízie a transakčné prijatie; vstúpiť testom cez skutočný seam. |
+| Nové audio sa nedá distribuovať              | Chýbajú práva alebo dohľadateľný pôvod.                          | Viesť asset manifest od nahrávania a publikovať iba vyriešené položky.            |
+| Hub/update poškodí kompatibilitu             | Starý runtime otvorí novšiu schému alebo načíta nesprávny model. | Overiť kompatibilitu pred aktiváciou a zachovať obnoviteľné zálohy.               |
+| Overovanie zaberie zariadenie aj po skončení | Zostanú test runnery, workery alebo preview runtimy.             | Vlastníctvo, konečné behy a povinné overené ukončenie podľa AGENTS.md.            |
 
 ## 23. Najbližší realizačný rad
 

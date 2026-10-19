@@ -162,6 +162,12 @@ bool setNumber(napi_env env, napi_value object, const char* name, double value) 
          napi_set_named_property(env, object, name, number) == napi_ok;
 }
 
+bool setCString(napi_env env, napi_value object, const char* name, const char* value) {
+  napi_value string = nullptr;
+  return napi_create_string_utf8(env, value ? value : "", NAPI_AUTO_LENGTH, &string) == napi_ok &&
+         napi_set_named_property(env, object, name, string) == napi_ok;
+}
+
 bool setUint64(napi_env env, napi_value object, const char* name, std::uint64_t value) {
   napi_value number = nullptr;
   return napi_create_double(env, static_cast<double>(value), &number) == napi_ok &&
@@ -203,6 +209,8 @@ napi_value createSnapshot(napi_env env, const SharedModeDuplexSnapshot& snapshot
   if (napi_create_object(env, &result) != napi_ok ||
       napi_create_string_utf8(env, stateName(snapshot.state), NAPI_AUTO_LENGTH, &state) != napi_ok ||
       napi_set_named_property(env, result, "state", state) != napi_ok ||
+      !setCString(env, result, "startupStage", snapshot.startupStage) ||
+      !setCString(env, result, "startupEndpoint", snapshot.startupEndpoint) ||
       !setWideString(env, result, "lastError", snapshot.lastError))
     return nullptr;
 
@@ -384,6 +392,39 @@ napi_value readCapture(napi_env env, napi_callback_info info) {
   return result;
 }
 
+napi_value readCaptureInto(napi_env env, napi_callback_info info) {
+  std::size_t argc = 1;
+  napi_value argv[1]{};
+  napi_value receiver = nullptr;
+  if (napi_get_cb_info(env, info, &argc, argv, &receiver, nullptr) != napi_ok || argc != 1) {
+    napi_throw_type_error(env, nullptr, "readCaptureInto requires one bounded Float32Array");
+    return nullptr;
+  }
+  SessionWrap* session = unwrapSession(env, receiver);
+  if (!session) return nullptr;
+  bool isTypedArray = false;
+  napi_typedarray_type arrayType = napi_uint8_array;
+  std::size_t length = 0;
+  void* data = nullptr;
+  if (napi_is_typedarray(env, argv[0], &isTypedArray) != napi_ok || !isTypedArray ||
+      napi_get_typedarray_info(env, argv[0], &arrayType, &length, &data, nullptr, nullptr) != napi_ok ||
+      arrayType != napi_float32_array || !data || session->inputChannels == 0 || length == 0 ||
+      length % session->inputChannels != 0) {
+    napi_throw_type_error(env, nullptr, "capture target must be an interleaved Float32Array");
+    return nullptr;
+  }
+  const std::size_t maxFrames = length / session->inputChannels;
+  if (maxFrames > session->ringCapacityFrames) {
+    napi_throw_range_error(env, nullptr, "capture target exceeds the native ring capacity");
+    return nullptr;
+  }
+  const std::size_t available = std::min<std::size_t>(session->session->captureQueuedFrames(), maxFrames);
+  const std::size_t frames = available == 0 ? 0 : session->session->readCapture(static_cast<float*>(data), available);
+  napi_value result = nullptr;
+  if (napi_create_uint32(env, static_cast<std::uint32_t>(frames), &result) != napi_ok) return nullptr;
+  return result;
+}
+
 napi_value writeRender(napi_env env, napi_callback_info info) {
   std::size_t argc = 1;
   napi_value argv[1]{};
@@ -444,6 +485,7 @@ napi_value createSession(napi_env env, napi_callback_info info) {
         {"start", nullptr, startSession, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"stop", nullptr, stopSession, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"readCapture", nullptr, readCapture, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"readCaptureInto", nullptr, readCaptureInto, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"writeRender", nullptr, writeRender, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"snapshot", nullptr, getSnapshot, nullptr, nullptr, nullptr, napi_default, nullptr},
     };

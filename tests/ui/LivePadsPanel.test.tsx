@@ -110,4 +110,30 @@ describe("LivePadsPanel", () => {
     const command = vi.mocked(services.store.execute).mock.calls.at(-1)?.[0];
     expect(command!.execute(doc).arrangement.audioClips?.[0]?.startBar).toBe(3);
   });
+
+  it("routes pad presses through live performance capture without writing a clip early", async () => {
+    const base = createProjectFromTemplate("house");
+    const withSet = createLiveSet(base, "Capture Set").execute(base);
+    const set = withSet.liveSets![0]!;
+    const doc = assignLivePad(withSet, set.id, {
+      slot: 0,
+      bufferId: "user.loop-capture",
+      name: "Capture Loop",
+      bpm: 120,
+      loop: true,
+    }).execute(withSet);
+    const services = mockServices(doc);
+    services.bank.add("user.loop-capture", { duration: 2 } as AudioBuffer);
+    Object.assign(services.capture.getSnapshot(), { capturing: true, livePads: [] });
+    const toggleLivePad = vi.fn(() => "Queued Capture Loop for bar 1.");
+    Object.assign(services.capture, { toggleLivePad });
+    Object.defineProperty(services.transport, "playing", { configurable: true, value: true });
+    renderWithContext(<LivePadsPanel />, { services });
+
+    await userEvent.setup().click(screen.getByRole("button", { name: /Toggle pad 1, Capture Loop/i }));
+
+    expect(toggleLivePad).toHaveBeenCalledWith(set.id, 0, expect.any(String), 2);
+    expect(services.store.execute).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Queued Capture Loop for bar 1/i)).toBeInTheDocument();
+  });
 });

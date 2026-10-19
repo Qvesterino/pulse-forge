@@ -10,8 +10,20 @@ async function ensureArrangementVisible(page: Page): Promise<void> {
   // not have mounted yet even though ARR is already the active dock panel; a
   // blind toggle in that window closes it before the chunk can render.
   const dockTab = page.locator('.dock-tabs button[aria-label="Toggle arrangement and scenes"]').first();
-  if ((await dockTab.getAttribute("aria-selected")) !== "true") await dockTab.click();
+  if ((await dockTab.getAttribute("aria-expanded")) !== "true") await dockTab.click();
   await expect(timeline).toBeVisible({ timeout: 15_000 });
+}
+
+async function openCaptureSetup(page: Page): Promise<void> {
+  const setup = page.locator("details.arr-capture-setup");
+  await expect(setup).toBeVisible();
+  if ((await setup.getAttribute("open")) === null) await setup.locator("summary").first().click();
+}
+
+async function openInputChannelRouting(page: Page): Promise<void> {
+  const routing = page.locator("details.arr-input-channel-routing");
+  await expect(routing).toBeVisible();
+  if ((await routing.getAttribute("open")) === null) await routing.locator("summary").click();
 }
 
 async function installSyntheticInput(page: Page, channels = 2, captureFrequencies: number[][] = []): Promise<void> {
@@ -181,6 +193,7 @@ test.describe("11 — audio-input recording", () => {
     await clickPanelAction(page, "ARR");
     await expect(page.locator(".arr-timeline")).toBeVisible();
     await page.getByLabel("Arm track for recording").selectOption({ index: 1 });
+    await openCaptureSetup(page);
     await page.getByLabel("Captured channel 2 destination").selectOption({ index: 1 });
     await page.getByRole("button", { name: /REC$/ }).click();
     await expect(page.getByRole("button", { name: /STOP/ })).toBeVisible({ timeout: 15_000 });
@@ -290,6 +303,7 @@ test.describe("11 — audio-input recording", () => {
     await expect(page.locator(".sequencer")).toBeVisible({ timeout: 30_000 });
     await ensureArrangementVisible(page);
     await page.getByLabel("Arm track for recording").selectOption({ index: 1 });
+    await openCaptureSetup(page);
     const takeMode = page.getByLabel("Recording take mode");
     await takeMode.selectOption("new");
 
@@ -592,6 +606,19 @@ test.describe("11 — audio-input recording", () => {
     await expect.poll(readPersistedCompWarp, { timeout: 20_000, intervals: [250, 500, 1_000] }).toHaveLength(1);
     const originalWarp = (await readPersistedCompWarp())[0];
     if (!originalWarp) throw new Error("The captured-PCM comp warp pin was not persisted");
+    // The take-lane panel can leave the arrangement dock scrolled to the
+    // bottom. scrollIntoViewIfNeeded sees the clip inside .arr-panel, even
+    // though that panel itself is above the dock's visible scrollport. Move
+    // the dock explicitly so the later pointer drag hits the waveform instead
+    // of the sequencer underneath it.
+    await page.locator("#dock-panel-arr").evaluate((dock, selector) => {
+      const target = dock.querySelector<HTMLElement>(selector);
+      if (!target) throw new Error("The captured-PCM comp clip is missing from the arrangement dock");
+      const dockRect = dock.getBoundingClientRect();
+      const clipRect = target.getBoundingClientRect();
+      if (clipRect.top < dockRect.top) dock.scrollTop += clipRect.top - dockRect.top;
+      else if (clipRect.bottom > dockRect.bottom) dock.scrollTop += clipRect.bottom - dockRect.bottom;
+    }, ".arr-audio-clip.comp");
     const warpHandle = warpedCompClip.locator(".warp-pin-handle").first();
     const warpHandleBox = await warpHandle.boundingBox();
     if (!warpHandleBox) throw new Error("The captured-PCM warp pin handle is not visible for dragging");
@@ -1241,9 +1268,11 @@ test.describe("11 — audio-input recording", () => {
     );
     expect(trackIds).toHaveLength(4);
     await armTrack.selectOption(trackIds[0]!);
+    await openCaptureSetup(page);
     await page.getByLabel("Capture input channel count").selectOption("4");
+    await openCaptureSetup(page);
     await page.getByLabel("Captured channel 2 destination").selectOption(trackIds[1]!);
-    await page.getByText("INPUT ROUTING · 4 CHANNELS").click();
+    await openInputChannelRouting(page);
     await page.getByLabel("Captured channel 3 destination").selectOption(trackIds[2]!);
     await page.getByLabel("Captured channel 4 destination").selectOption(trackIds[3]!);
 
@@ -1355,9 +1384,11 @@ test.describe("11 — audio-input recording", () => {
     );
     expect(trackIds).toHaveLength(4);
     await armTrack.selectOption(trackIds[0]!);
+    await openCaptureSetup(page);
     await page.getByLabel("Capture input channel count").selectOption("4");
+    await openCaptureSetup(page);
     await page.getByLabel("Captured channel 2 destination").selectOption(trackIds[1]!);
-    await page.getByText("INPUT ROUTING · 4 CHANNELS").click();
+    await openInputChannelRouting(page);
     await page.getByLabel("Captured channel 3 destination").selectOption(trackIds[2]!);
     await page.getByLabel("Captured channel 4 destination").selectOption(trackIds[3]!);
     await page.getByRole("button", { name: "Arm punch-in and punch-out recording" }).click();
@@ -1517,6 +1548,7 @@ test.describe("11 — audio-input recording", () => {
     await clickPanelAction(page, "ARR");
     await expect(page.locator(".arr-timeline")).toBeVisible();
     await page.getByLabel("Arm track for recording").selectOption({ index: 1 });
+    await openCaptureSetup(page);
     await page.getByLabel("Captured channel 2 destination").selectOption({ index: 1 });
     await page.getByRole("button", { name: /REC$/ }).click();
     await expect(page.getByRole("button", { name: /STOP/ })).toBeVisible({ timeout: 15_000 });

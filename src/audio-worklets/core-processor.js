@@ -29,3 +29,4 @@ import "./apeks-processor.js";
 import "./sirka-processor.js";
 import "./prud-processor.js";
 import "./bassbuss-sub-processor.js";
+import "./karplus-strong-processor.js";

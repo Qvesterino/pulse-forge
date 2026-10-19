@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { render as rtlRender, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HelpOverlay } from "../../src/ui/HelpOverlay";
+import { resetShortcutBindings } from "../../src/ui/shortcuts";
 
 describe("HelpOverlay", () => {
   it("renders nothing when closed", () => {
@@ -49,11 +50,105 @@ describe("HelpOverlay", () => {
     expect(screen.getByText("TRANSPORT")).toBeInTheDocument();
   });
 
+  it("does not hide registered clip actions from the Help overlay", () => {
+    rtlRender(<HelpOverlay open={true} onClose={vi.fn()} />);
+    expect(screen.getByText("CLIPS")).toBeInTheDocument();
+    expect(screen.getByText("Copy clips")).toBeInTheDocument();
+    expect(screen.getByText("Paste clips at playhead")).toBeInTheDocument();
+    expect(screen.getByText("Duplicate selection (clips, range, or pattern)")).toBeInTheDocument();
+  });
+
   it("shows alternative bindings (Redo also answers Ctrl+Shift+Z)", () => {
     rtlRender(<HelpOverlay open={true} onClose={vi.fn()} />);
     expect(screen.getByText("Ctrl + Y")).toBeInTheDocument();
     expect(screen.getByText("Ctrl + Shift + Z")).toBeInTheDocument();
     expect(screen.getAllByText("or").length).toBeGreaterThan(0);
+  });
+
+  it("does not show profile-specific mappings before a DAW profile is selected, then maps Cubase actions", async () => {
+    const previousProfile = window.localStorage.getItem("pf-daw-profile-v1");
+    window.localStorage.removeItem("pf-daw-profile-v1");
+    const user = userEvent.setup();
+    const view = rtlRender(<HelpOverlay open={true} onClose={vi.fn()} />);
+
+    try {
+      expect(screen.queryByText("MIDI part / Key Editor → Pattern")).not.toBeInTheDocument();
+      await user.selectOptions(screen.getByLabelText("Show familiar terms for"), "cubase");
+
+      expect(screen.getByText("MIDI part / Key Editor → Pattern")).toBeInTheDocument();
+      expect(screen.getByText("Project window → Song → Arrangement")).toBeInTheDocument();
+      expect(screen.getByText("Export Audio Mixdown → Export panel")).toBeInTheDocument();
+      expect(screen.getByText("Track list → Tracks → Track tabs")).toBeInTheDocument();
+      expect(screen.getByText("MediaBay preview → Sounds → Preview")).toBeInTheDocument();
+      expect(screen.getByText("MIDI recording → Top bar → Record MIDI")).toBeInTheDocument();
+      expect(screen.getByText("Audio track recording → Song → Arrangement → ● REC")).toBeInTheDocument();
+      expect(screen.getByText("Audio comping → Arrangement → Take Lanes → Comp")).toBeInTheDocument();
+      expect(
+        screen.getByText("Tab / Shift+Tab moves between tracks; 1–9 selects a track by position."),
+      ).toBeInTheDocument();
+      expect(screen.getAllByText("Alt + 4").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Alt + 3").length).toBeGreaterThan(0);
+      expect(window.localStorage.getItem("pf-daw-profile-v1")).toBe("cubase");
+    } finally {
+      view.unmount();
+      if (previousProfile === null) window.localStorage.removeItem("pf-daw-profile-v1");
+      else window.localStorage.setItem("pf-daw-profile-v1", previousProfile);
+    }
+  });
+
+  it.each([
+    [
+      "FL Studio",
+      "fl-studio",
+      "Channel Rack / Playlist track",
+      "Browser preview",
+      "Playlist audio recording",
+      "Playlist take lanes",
+    ],
+    ["Pro Tools", "pro-tools", "Track list", "Workspace preview", "Track record-enable", "Playlists / comping"],
+  ])(
+    "shows existing KYX routes alongside %s terminology",
+    async (_name, profile, tracks, audition, recording, comp) => {
+      const previousProfile = window.localStorage.getItem("pf-daw-profile-v1");
+      window.localStorage.removeItem("pf-daw-profile-v1");
+      const user = userEvent.setup();
+      const view = rtlRender(<HelpOverlay open={true} onClose={vi.fn()} />);
+
+      try {
+        await user.selectOptions(screen.getByLabelText("Show familiar terms for"), profile);
+        expect(screen.getByText(`${tracks} → Tracks → Track tabs`)).toBeInTheDocument();
+        expect(screen.getByText(`${audition} → Sounds → Preview`)).toBeInTheDocument();
+        expect(screen.getByText(`${recording} → Song → Arrangement → ● REC`)).toBeInTheDocument();
+        expect(screen.getByText(`${comp} → Arrangement → Take Lanes → Comp`)).toBeInTheDocument();
+      } finally {
+        view.unmount();
+        if (previousProfile === null) window.localStorage.removeItem("pf-daw-profile-v1");
+        else window.localStorage.setItem("pf-daw-profile-v1", previousProfile);
+      }
+    },
+  );
+
+  it("allows a user to change a global shortcut but rejects colliding chords", async () => {
+    const user = userEvent.setup();
+    const view = rtlRender(<HelpOverlay open={true} onClose={vi.fn()} />);
+
+    try {
+      await user.click(screen.getByRole("button", { name: "Change shortcut for Play / Pause" }));
+      fireEvent.keyDown(window, { key: "Z", ctrlKey: true, shiftKey: true });
+      expect(screen.getByText("Already used by Redo.")).toBeInTheDocument();
+      expect(screen.getByText("Space")).toBeInTheDocument();
+
+      fireEvent.keyDown(window, { key: "U", ctrlKey: true, shiftKey: true });
+      expect(screen.getByText("Ctrl + Shift + U")).toBeInTheDocument();
+      expect(screen.getByText("Saved Ctrl + Shift + U for Play / Pause.")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Restore default shortcut for Play / Pause" }));
+      expect(screen.getByText("Space")).toBeInTheDocument();
+      expect(screen.queryByText("Ctrl + Shift + U")).not.toBeInTheDocument();
+    } finally {
+      view.unmount();
+      resetShortcutBindings();
+    }
   });
 
   it("shows mouse & touch gestures for every area", () => {

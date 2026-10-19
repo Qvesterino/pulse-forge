@@ -493,6 +493,11 @@ export function ArrangementPanel() {
   // `doc` is still needed for the BPM scalar, the project id, and command
   // arguments. It's a plain getter (no React subscription).
   const doc = services.store.getDoc();
+  const projectBpm = useSyncExternalStore(
+    services.store.subscribe,
+    () => services.store.getDoc().bpm,
+    () => services.store.getDoc().bpm,
+  );
   const capture = useArrangementCapture();
   const [selectedSceneId, setSelectedSceneId] = useState(scenes[0]?.id ?? "");
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
@@ -535,6 +540,10 @@ export function ArrangementPanel() {
   }, []);
   const [showSkeletonPreview, setShowSkeletonPreview] = useState(false);
   const [autoArrangeMinutes, setAutoArrangeMinutes] = useState(3);
+  const autoArrangeTargetBars = Math.max(7, Math.round(sceneSecondsToBars(autoArrangeMinutes * 60, projectBpm)));
+  const autoArrangeEstimatedSeconds = sceneBarsToSeconds(autoArrangeTargetBars, projectBpm);
+  const autoArrangeRoundedSeconds = Math.round(autoArrangeEstimatedSeconds);
+  const autoArrangeDuration = `${Math.floor(autoArrangeRoundedSeconds / 60)}:${String(autoArrangeRoundedSeconds % 60).padStart(2, "0")}`;
   const [transitionBoundary, setTransitionBoundary] = useState<TransitionBoundary | null>(null);
   const [transitionDraft, setTransitionDraft] = useState<TransitionDraft>({
     type: "custom",
@@ -645,6 +654,9 @@ export function ArrangementPanel() {
   const [armedTrackId, setArmedTrackId] = useState<string>("");
   const [armedSecondTrackId, setArmedSecondTrackId] = useState<string>("");
   const [armedAdditionalTrackIds, setArmedAdditionalTrackIds] = useState<string[]>([]);
+  const [independentInputRoutes, setIndependentInputRoutes] = useState<
+    Array<{ trackId: string; deviceId: string; monitoring: boolean }>
+  >([]);
   const [requestedChannelCount, setRequestedChannelCount] = useState<number | null>(null);
   const [recordingTakeGroupSelection, setRecordingTakeGroupSelection] = useState("");
   const [loopTakeCapture, setLoopTakeCapture] = useState(false);
@@ -661,13 +673,26 @@ export function ArrangementPanel() {
   const [recordingInputDeviceId, setRecordingInputDeviceId] = useState(loadRecordingInputDeviceId);
   const [recordingInputDevices, setRecordingInputDevices] = useState<RecordingInputDevice[]>([]);
   const [recordingInputListError, setRecordingInputListError] = useState(false);
+  const independentInputTrackIds = [armedTrackId, ...independentInputRoutes.map((route) => route.trackId)];
+  const independentInputDeviceIds = [recordingInputDeviceId, ...independentInputRoutes.map((route) => route.deviceId)];
+  const independentInputReady =
+    independentInputRoutes.length === 0 ||
+    (independentInputTrackIds.every(Boolean) &&
+      independentInputDeviceIds.every(Boolean) &&
+      new Set(independentInputTrackIds).size === independentInputTrackIds.length &&
+      new Set(independentInputDeviceIds).size === independentInputDeviceIds.length);
   const [lastCaptureInfo, setLastCaptureInfo] = useState<PcmCaptureInfo | null>(null);
   const routingChannelCount = Math.min(8, requestedChannelCount ?? lastCaptureInfo?.capturedChannels ?? 2);
   // Publish the recording-adjacent axes to the global session state surface
   // (footer indicator) — other views must see what is armed/hot. Publish
   // merges shallowly and skips no-op notifications.
   useEffect(() => {
-    const names = [armedTrackId, armedSecondTrackId, ...armedAdditionalTrackIds]
+    const names = [
+      armedTrackId,
+      armedSecondTrackId,
+      ...armedAdditionalTrackIds,
+      ...independentInputRoutes.map((route) => route.trackId),
+    ]
       .filter(Boolean)
       .map((id) => doc.tracks.find((t) => t.id === id)?.name ?? "?");
     publishSessionRecordingState({
@@ -685,6 +710,7 @@ export function ArrangementPanel() {
     armedTrackId,
     armedSecondTrackId,
     armedAdditionalTrackIds.join(","),
+    independentInputRoutes.map((route) => route.trackId).join(","),
     recState,
     punchCapture,
     loopTakeCapture,
@@ -708,6 +734,7 @@ export function ArrangementPanel() {
   /** Post-placement informational line (e.g. "phrase aligned +38 ms"). */
   const [recNotice, setRecNotice] = useState<string | null>(null);
   const recRef = useRef<import("../audio-engine/PcmMicRecorder").PcmMicRecorder | null>(null);
+  const recGroupRef = useRef<import("../audio-engine/PcmMicRecorderGroup").PcmMicRecorderGroup | null>(null);
   const recStartPendingRef = useRef(false);
   const recStartAttemptRef = useRef(0);
   const recPanelMountedRef = useRef(true);
@@ -765,14 +792,19 @@ export function ArrangementPanel() {
     }
     const timer = setInterval(() => {
       const recorder = recRef.current;
+      const group = recGroupRef.current;
       // Feature-detect: the input meter is PcmMicRecorder-specific, and a
       // recorder substitute (test mock, MediaRecorder fallback) may not
       // implement it — a UI poll timer must never throw.
-      if (!recorder || typeof recorder.getInputLevel !== "function") {
+      if (!recorder && !group) {
         setMicPeak(0);
         return;
       }
-      const { peak } = recorder.getInputLevel();
+      const recorders = group ? group.inputIds.map((id) => group.getRecorder(id)).filter(Boolean) : [recorder];
+      const peak = recorders.reduce((max, input) => {
+        if (!input || typeof input.getInputLevel !== "function") return max;
+        return Math.max(max, input.getInputLevel().peak);
+      }, 0);
       setMicPeak((prev) => (Math.abs(prev - peak) > 0.01 ? peak : prev));
       if (peak >= 0.99 && !micClippedRef.current) {
         micClippedRef.current = true;
@@ -792,6 +824,7 @@ export function ArrangementPanel() {
     setInputGainDb(clamped);
     saveRecordingInputGainDb(clamped);
     recRef.current?.setInputGainDb(clamped);
+    recGroupRef.current?.setInputGainDb(clamped);
     resetMicClip();
   };
 
@@ -906,6 +939,8 @@ export function ArrangementPanel() {
       recStartPendingRef.current = false;
       const recorder = recRef.current;
       recRef.current = null;
+      const group = recGroupRef.current;
+      recGroupRef.current = null;
       loopBoundaryUnsubscribeRef.current?.();
       loopBoundaryUnsubscribeRef.current = null;
       punchBoundaryUnsubscribeRef.current?.();
@@ -915,6 +950,7 @@ export function ArrangementPanel() {
         recorder.onPunchOut = null;
         void recorder.cancel();
       }
+      if (group) void group.cancel();
       sliceAnalysisRef.current?.abort();
       sliceAnalysisRef.current = null;
     };
@@ -923,6 +959,7 @@ export function ArrangementPanel() {
   const cancelRecStart = () => {
     if (recState !== "starting") return;
     const recorder = recRef.current;
+    const group = recGroupRef.current;
     recStartAttemptRef.current++;
     recStartPendingRef.current = false;
     if (recorder) {
@@ -931,12 +968,17 @@ export function ArrangementPanel() {
       recorder.onPunchOut = null;
       void recorder.cancel();
     }
+    if (group) {
+      if (recGroupRef.current === group) recGroupRef.current = null;
+      void group.cancel();
+    }
     setRecState("idle");
     setRecError(null);
   };
 
   const startRec = async () => {
-    if (!armedTrackId || recState !== "idle" || recRef.current || recStartPendingRef.current) return;
+    if (!armedTrackId || recState !== "idle" || recRef.current || recGroupRef.current || recStartPendingRef.current)
+      return;
     recStartPendingRef.current = true;
     const attempt = ++recStartAttemptRef.current;
     setRecState("starting");
@@ -945,7 +987,117 @@ export function ArrangementPanel() {
     setRecStorageWarning(null);
     setLastCaptureInfo(null);
     let recorder: import("../audio-engine/PcmMicRecorder").PcmMicRecorder | null = null;
+    let recorderGroup: import("../audio-engine/PcmMicRecorderGroup").PcmMicRecorderGroup | null = null;
     try {
+      if (independentInputRoutes.length > 0) {
+        if (!independentInputReady) {
+          throw new Error("Choose a different track and explicit audio input for every independent stream");
+        }
+        if (loopTakeCapture || punchCapture || recordingTakeMode) {
+          throw new Error(
+            "Independent input groups currently record standalone takes; turn off loop, punch and alternate takes",
+          );
+        }
+        if (armedSecondTrackId || armedAdditionalTrackIds.some(Boolean)) {
+          throw new Error("Clear the split-channel routes before arming independent input streams");
+        }
+        const mediaDevices = typeof navigator !== "undefined" ? navigator.mediaDevices : undefined;
+        const getUserMedia = mediaDevices?.getUserMedia?.bind(mediaDevices);
+        if (!getUserMedia) throw new Error("Independent input streams need browser audio-input support");
+        services.engine.ensureContext();
+        const ctx = services.engine.getLiveAudioContext();
+        if (!ctx) throw new Error("Audio engine is not ready");
+        const [nativeBridge, { PcmMicRecorderGroup }] = await Promise.all([
+          import("../audio-engine/windowsAudioIoBridge"),
+          import("../audio-engine/PcmMicRecorderGroup"),
+        ]);
+        if (!recPanelMountedRef.current || attempt !== recStartAttemptRef.current) return;
+        if (nativeBridge.getWindowsAudioIoEngineConnection(services.engine)) {
+          throw new Error(
+            "The active native WASAPI session owns one capture endpoint. Stop it before opening separate browser input streams.",
+          );
+        }
+        const routes = [
+          { trackId: armedTrackId, deviceId: recordingInputDeviceId, monitoring: micMonitoring },
+          ...independentInputRoutes,
+        ];
+        const currentDoc = services.store.doc;
+        const leadInTicks = services.transport.leadInTicks();
+        const leadInWillApply =
+          !services.transport.playing &&
+          !services.transport.paused &&
+          leadInTicks > 0 &&
+          services.transport.position >= leadInTicks;
+        recorderGroup = new PcmMicRecorderGroup(
+          routes.map((route) => ({
+            id: route.trackId,
+            dependencies: {
+              ctx,
+              recovery: recoveryRepoRef.current!,
+              inputDeviceId: route.deviceId,
+              getUserMedia,
+              inputGainDb,
+              ...(requestedChannelCount !== null ? { requestedChannelCount } : {}),
+              routeMonitorOutput: (monitorOutput) =>
+                services.engine.attachDryInputMonitor(route.trackId, monitorOutput),
+              refreshStartBar: (scheduledStartDelaySec = 0) => {
+                const ticks =
+                  services.transport.position +
+                  (services.transport.playing ? scheduledStartDelaySec / services.transport.secondsPerTick : 0);
+                return Number.isFinite(ticks) && ticks >= 0 ? recordingStartBar(ticks) : null;
+              },
+            },
+            getMetadata: () => {
+              const latestDoc = services.store.doc;
+              const track = latestDoc.tracks.find((item) => item.id === route.trackId);
+              if (!track || latestDoc.id !== currentDoc.id) return null;
+              const ticks = services.transport.position;
+              return {
+                projectId: latestDoc.id,
+                trackId: track.id,
+                trackName: track.name,
+                placeOnTimeline: true,
+                startBar: recordingStartBar(ticks),
+                bpm: latestDoc.bpm,
+                recordingInputOffsetMs: recordingAlignment.getSnapshot(),
+                leadInSec: leadInWillApply ? leadInTicks * services.transport.secondsPerTick : 0,
+              };
+            },
+          })),
+        );
+        for (const route of routes) recorderGroup.setInputMonitoring(route.trackId, route.monitoring);
+        recGroupRef.current = recorderGroup;
+        recorderGroup.onFailure = (inputId, message, results) => {
+          if (recGroupRef.current !== recorderGroup || stoppingRecRef.current) return;
+          const trackName = services.store.doc.tracks.find((track) => track.id === inputId)?.name ?? inputId;
+          const recoverableCount = results.filter((result) => result.take).length;
+          recGroupRef.current = null;
+          stoppingRecRef.current = false;
+          if (recPanelMountedRef.current) {
+            setRecError(
+              `${trackName} input failed: ${message}. All streams stopped; ${recoverableCount} take(s) are available for recovery.`,
+            );
+            setRecState("idle");
+            void refreshRecoverableTakes();
+          }
+        };
+        await recorderGroup.start();
+        if (
+          !recPanelMountedRef.current ||
+          attempt !== recStartAttemptRef.current ||
+          recGroupRef.current !== recorderGroup
+        ) {
+          void recorderGroup.cancel();
+          return;
+        }
+        setRecSeconds(0);
+        setLastCaptureInfo(recorderGroup.getRecorder(armedTrackId)?.captureInfo ?? null);
+        setRecState("recording");
+        notifyOnboardingProgress("recorded");
+        void refreshRecordingInputs();
+        if (!services.transport.playing) services.playback.playPause();
+        return;
+      }
       if (loopTakeCapture && !services.transport.loopEnabled) {
         throw new Error("Enable the transport loop and set its locators before recording loop passes");
       }
@@ -1244,6 +1396,10 @@ export function ArrangementPanel() {
         if (recRef.current === recorder) recRef.current = null;
         void recorder.cancel();
       }
+      if (recorderGroup) {
+        if (recGroupRef.current === recorderGroup) recGroupRef.current = null;
+        void recorderGroup.cancel();
+      }
       if (recPanelMountedRef.current && attempt === recStartAttemptRef.current) {
         setRecState("idle");
         setRecError(error instanceof Error ? error.message : String(error));
@@ -1253,9 +1409,96 @@ export function ArrangementPanel() {
     }
   };
 
+  const placeIndependentGroupTakes = async (
+    results: import("../audio-engine/PcmMicRecorderGroup").PcmMicRecorderGroupStopResult[],
+  ): Promise<void> => {
+    const warnings = results.flatMap((result) =>
+      result.error ? [`${result.inputId}: ${result.error}. Its committed audio remains in recovery.`] : [],
+    );
+    const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const commands: import("../commands/types").Command[] = [];
+    let projectedDoc = services.store.doc;
+
+    for (const result of results) {
+      const take = result.take;
+      if (!take) {
+        if (!result.error) warnings.push(`${result.inputId}: no audio was captured; staged audio remains in recovery.`);
+        continue;
+      }
+      const bufferId = recordedTakeSampleId(take.session.id);
+      const asset = {
+        id: bufferId,
+        name: `REC ${stamp} · ${take.session.trackName}`,
+        fileName: `${bufferId}.wav`,
+        category: "Custom" as const,
+        duration: take.buffer.duration,
+        sampleRate: take.buffer.sampleRate,
+        channels: take.buffer.numberOfChannels,
+        createdAt: new Date().toISOString(),
+      };
+      try {
+        await recoveryRepoRef.current!.finalize(take.session.id, asset);
+        services.userSamples.invalidateCache();
+      } catch (error) {
+        const detail = error instanceof Error ? ` (${error.message})` : "";
+        warnings.push(`${take.session.trackName}: sample-library save failed${detail}; PCM remains recoverable.`);
+      }
+      services.bank.add(bufferId, take.buffer);
+
+      try {
+        if (projectedDoc.id !== take.session.projectId) {
+          throw new Error("The original project is no longer open");
+        }
+        const track = projectedDoc.tracks.find((item) => item.id === take.session.trackId);
+        if (!track) throw new Error("The armed destination track no longer exists");
+        const startBar = compensateRecordingStartBar(
+          take.session.startBar,
+          take.session.recordingInputOffsetMs ?? 0,
+          projectedDoc.bpm,
+        );
+        const leadInSec = take.session.leadInSec ?? 0;
+        const lengthBars = clipLengthBars(take.buffer.duration - leadInSec, projectedDoc.bpm);
+        const alignmentChannels: Float32Array[] = [];
+        try {
+          for (let channel = 0; channel < take.buffer.numberOfChannels; channel += 1) {
+            const data = take.buffer.getChannelData(channel);
+            if (data != null && data.length > 0) alignmentChannels.push(data);
+          }
+        } catch {
+          /* onset alignment is best-effort; placement still proceeds */
+        }
+        const alignShiftSec = autoAlignShiftSec(measurePhraseOnset(alignmentChannels, take.buffer.sampleRate));
+        const command = addRecordedAudioClips(projectedDoc, [{ trackId: track.id }], bufferId, startBar, lengthBars, {
+          fadeIn: 0.005,
+          fadeOut: 0.02,
+          offsetSec: Math.max(0, leadInSec + alignShiftSec),
+        });
+        projectedDoc = command.execute(projectedDoc);
+        commands.push(command);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        warnings.push(`${take.session.trackName}: saved as a sample but not placed on the timeline (${detail}).`);
+      }
+    }
+
+    if (commands.length > 0) {
+      const compound: import("../commands/types").Command = {
+        type: "recordIndependentInputGroup",
+        label: `Record ${commands.length} input takes`,
+        execute: (doc) => commands.reduce((next, command) => command.execute(next), doc),
+        undo: (doc) => [...commands].reverse().reduce((next, command) => command.undo(next), doc),
+      };
+      services.store.execute(compound);
+    }
+    if (warnings.length > 0) setRecError(warnings.join(" "));
+    else setRecError(null);
+    await refreshRecoverableTakes();
+  };
+
   const stopRec = async () => {
     const rec = recRef.current;
-    if (!rec || stoppingRecRef.current) return;
+    const group = recGroupRef.current;
+    if ((!rec && !group) || stoppingRecRef.current) return;
     stoppingRecRef.current = true;
     loopBoundaryUnsubscribeRef.current?.();
     loopBoundaryUnsubscribeRef.current = null;
@@ -1263,6 +1506,12 @@ export function ArrangementPanel() {
     punchBoundaryUnsubscribeRef.current = null;
     setRecState("saving");
     try {
+      if (group) {
+        const results = await group.stop();
+        await placeIndependentGroupTakes(results);
+        return;
+      }
+      if (!rec) return;
       const take = await rec.stop();
       if (!take) {
         setRecError("No audio was captured. Any staged audio remains available in recovery.");
@@ -1439,6 +1688,7 @@ export function ArrangementPanel() {
       await refreshRecoverableTakes();
     } finally {
       if (recRef.current === rec) recRef.current = null;
+      if (recGroupRef.current === group) recGroupRef.current = null;
       setRecState("idle");
       stoppingRecRef.current = false;
     }
@@ -1577,7 +1827,7 @@ export function ArrangementPanel() {
   useEffect(() => {
     if (recState !== "recording") return;
     const timer = setInterval(() => {
-      setRecSeconds(recRef.current?.elapsedSeconds ?? 0);
+      setRecSeconds(recRef.current?.elapsedSeconds ?? recGroupRef.current?.elapsedSeconds ?? 0);
     }, 200);
     return () => clearInterval(timer);
   }, [recState]);
@@ -3642,6 +3892,10 @@ export function ArrangementPanel() {
                   setArmedTrackId(trackId);
                   if (trackId === armedSecondTrackId) setArmedSecondTrackId("");
                   if (trackId) setArmedAdditionalTrackIds((current) => current.map((id) => (id === trackId ? "" : id)));
+                  if (trackId)
+                    setIndependentInputRoutes((current) =>
+                      current.map((route) => (route.trackId === trackId ? { ...route, trackId: "" } : route)),
+                    );
                 }}
               >
                 <option value="">ARM: pick track…</option>
@@ -3661,7 +3915,9 @@ export function ArrangementPanel() {
                         ? "PUNCH"
                         : recordingTakeMode
                           ? "ALT TAKE"
-                          : `${requestedChannelCount ?? "AUTO"} CH`}
+                          : independentInputRoutes.length > 0
+                            ? `${independentInputRoutes.length + 1} INPUTS`
+                            : `${requestedChannelCount ?? "AUTO"} CH`}
                   </span>
                 </summary>
                 <div className="arr-capture-setup-grid">
@@ -3836,6 +4092,10 @@ export function ArrangementPanel() {
                     onChange={(event) => {
                       const deviceId = event.target.value;
                       setRecordingInputDeviceId(deviceId);
+                      if (deviceId)
+                        setIndependentInputRoutes((current) =>
+                          current.map((route) => (route.deviceId === deviceId ? { ...route, deviceId: "" } : route)),
+                        );
                       setLastCaptureInfo(null);
                       saveRecordingInputDeviceId(deviceId);
                     }}
@@ -3851,6 +4111,152 @@ export function ArrangementPanel() {
                       </option>
                     ))}
                   </select>
+                  <details className="arr-input-channel-routing" open={independentInputRoutes.length > 0}>
+                    <summary>INDEPENDENT INPUT STREAMS · {independentInputRoutes.length + 1}</summary>
+                    <p className="arr-independent-input-note">
+                      Each stream records to its own track. Select a distinct browser input for every row. Native WASAPI
+                      capture currently exposes one input endpoint at a time.
+                    </p>
+                    {independentInputRoutes.map((route, routeIndex) => {
+                      const inputNumber = routeIndex + 2;
+                      const assignedTrackIds = new Set([
+                        armedTrackId,
+                        ...independentInputRoutes
+                          .filter((_, index) => index !== routeIndex)
+                          .map((item) => item.trackId),
+                      ]);
+                      const assignedDeviceIds = new Set([
+                        recordingInputDeviceId,
+                        ...independentInputRoutes
+                          .filter((_, index) => index !== routeIndex)
+                          .map((item) => item.deviceId),
+                      ]);
+                      const selectedTrackName =
+                        tracks.find((track) => track.id === route.trackId)?.name ?? `Input ${inputNumber}`;
+                      return (
+                        <div className="arr-independent-input-route" key={routeIndex}>
+                          <span className="arr-independent-input-label">INPUT {inputNumber}</span>
+                          <select
+                            className="arr-arm-select"
+                            aria-label={`Independent input ${inputNumber} track`}
+                            value={route.trackId}
+                            disabled={recState !== "idle"}
+                            onChange={(event) => {
+                              const trackId = event.target.value;
+                              setIndependentInputRoutes((current) =>
+                                current.map((item, index) =>
+                                  index === routeIndex
+                                    ? { ...item, trackId }
+                                    : trackId && item.trackId === trackId
+                                      ? { ...item, trackId: "" }
+                                      : item,
+                                ),
+                              );
+                            }}
+                          >
+                            <option value="">Track: select destination…</option>
+                            {tracks
+                              .filter((track) => track.id === route.trackId || !assignedTrackIds.has(track.id))
+                              .map((track) => (
+                                <option key={track.id} value={track.id}>
+                                  {track.name}
+                                </option>
+                              ))}
+                          </select>
+                          <select
+                            className="arr-arm-select"
+                            aria-label={`Independent input ${inputNumber} device`}
+                            value={route.deviceId}
+                            disabled={recState !== "idle"}
+                            onChange={(event) => {
+                              const deviceId = event.target.value;
+                              setIndependentInputRoutes((current) =>
+                                current.map((item, index) =>
+                                  index === routeIndex
+                                    ? { ...item, deviceId }
+                                    : deviceId && item.deviceId === deviceId
+                                      ? { ...item, deviceId: "" }
+                                      : item,
+                                ),
+                              );
+                            }}
+                          >
+                            <option value="">Input: select distinct device…</option>
+                            {route.deviceId &&
+                              !recordingInputDevices.some((device) => device.deviceId === route.deviceId) && (
+                                <option value={route.deviceId}>Saved input (not listed)</option>
+                              )}
+                            {recordingInputDevices
+                              .filter(
+                                (device) =>
+                                  device.deviceId === route.deviceId || !assignedDeviceIds.has(device.deviceId),
+                              )
+                              .map((device) => (
+                                <option key={device.deviceId} value={device.deviceId}>
+                                  {device.label}
+                                </option>
+                              ))}
+                          </select>
+                          <label className="arr-independent-input-monitor">
+                            <input
+                              type="checkbox"
+                              aria-label={`Monitor ${selectedTrackName} input`}
+                              checked={route.monitoring}
+                              disabled={recState === "saving"}
+                              onChange={(event) => {
+                                const enabled = event.target.checked;
+                                setIndependentInputRoutes((current) =>
+                                  current.map((item, index) =>
+                                    index === routeIndex ? { ...item, monitoring: enabled } : item,
+                                  ),
+                                );
+                                if (route.trackId) recGroupRef.current?.setInputMonitoring(route.trackId, enabled);
+                              }}
+                            />
+                            MON
+                          </label>
+                          <button
+                            type="button"
+                            className="btn btn-small"
+                            aria-label={`Remove independent input ${inputNumber}`}
+                            disabled={recState !== "idle"}
+                            onClick={() =>
+                              setIndependentInputRoutes((current) => current.filter((_, index) => index !== routeIndex))
+                            }
+                          >
+                            REMOVE
+                          </button>
+                        </div>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      className="btn btn-small"
+                      aria-label="Add independent input stream"
+                      disabled={
+                        recState !== "idle" ||
+                        independentInputRoutes.length >= 7 ||
+                        !!recordingTakeMode ||
+                        loopTakeCapture ||
+                        punchCapture
+                      }
+                      onClick={() => {
+                        setArmedSecondTrackId("");
+                        setArmedAdditionalTrackIds([]);
+                        setIndependentInputRoutes((current) => [
+                          ...current,
+                          { trackId: "", deviceId: "", monitoring: false },
+                        ]);
+                      }}
+                    >
+                      + ADD INPUT STREAM
+                    </button>
+                    {independentInputRoutes.length > 0 && !independentInputReady && (
+                      <span className="arr-rec-saving" role="status">
+                        Assign a different track and explicit device to every stream before REC.
+                      </span>
+                    )}
+                  </details>
                 </div>
               </details>
               <button
@@ -3862,6 +4268,7 @@ export function ArrangementPanel() {
                   const next = !micMonitoring;
                   setMicMonitoring(next);
                   recRef.current?.setMonitoring(next);
+                  if (armedTrackId) recGroupRef.current?.setInputMonitoring(armedTrackId, next);
                 }}
               >
                 {micMonitoring ? "DRY SOFT MON ON" : "DRY SOFT MON OFF"}
@@ -3949,7 +4356,12 @@ export function ArrangementPanel() {
                   type="button"
                   className="btn btn-small btn-rec"
                   title="Record the selected audio input onto the armed track at the playhead (rolls the transport)"
-                  disabled={!armedTrackId || recState !== "idle" || (punchCapture && services.transport.playing)}
+                  disabled={
+                    !armedTrackId ||
+                    recState !== "idle" ||
+                    !independentInputReady ||
+                    (punchCapture && services.transport.playing)
+                  }
                   onClick={() => void startRec()}
                 >
                   ● REC
@@ -4293,6 +4705,14 @@ export function ArrangementPanel() {
                 <option value={3}>SONG · 3:00</option>
                 <option value={4}>SONG · 4:00</option>
               </select>
+              <span
+                className="arr-song-length-preview"
+                aria-label="Estimated song duration"
+                aria-live="polite"
+                title="Estimate at the project BPM. Scenes with their own tempo can change the final duration."
+              >
+                ≈ {autoArrangeDuration} · {autoArrangeTargetBars} bars @ {projectBpm.toFixed(1)} BPM
+              </span>
               <button
                 type="button"
                 className="btn btn-small btn-export btn-primary"

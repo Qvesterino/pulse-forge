@@ -36,8 +36,15 @@ import type { Transport } from "../transport/Transport";
  * the browser live-editing pass, so the verified path IS the shipped path.
  */
 
-/** Ticks the resume pass reaches past the playhead to catch split seams. */
-const RESUME_FORWARD_SLACK_SEC = 0.07;
+/**
+ * Ticks the resume pass reaches past the playhead to catch split seams.
+ *
+ * Exported so the double-fire guard is tested against the REAL value rather
+ * than a copy: this number is only safe because it stays below the scheduler's
+ * `HORIZON_SECONDS` minus its tick cadence (120 ms − 25 ms = 95 ms). A test
+ * that re-declares the literal silently drifts and cannot catch a raise.
+ */
+export const RESUME_FORWARD_SLACK_SEC = 0.07;
 /** Geometry epsilon for "tick sits exactly on the playhead". */
 const CLIP_EPS_TICKS = 1e-6;
 

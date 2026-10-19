@@ -16,7 +16,7 @@ interface CommandPaletteProps {
 export function PaletteOverlay({ open, deps, onClose }: CommandPaletteProps) {
   const overlayRef = useFocusRestore<HTMLDivElement>(open);
   // Built inside the lazy chunk so the registry never touches the entry bundle.
-  const actions = useMemo(() => buildPaletteActions(deps), [deps]);
+  const actions = buildPaletteActions(deps);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const [query, setQuery] = useState("");
@@ -110,7 +110,10 @@ export function PaletteOverlay({ open, deps, onClose }: CommandPaletteProps) {
                 onMouseEnter={() => setSelected(idx)}
                 onClick={() => runAction(action)}
               >
-                <span className="palette-title">{action.title}</span>
+                <span className="palette-copy">
+                  <span className="palette-title">{action.title}</span>
+                  {action.profileHint && <span className="palette-profile-hint">{action.profileHint}</span>}
+                </span>
                 {action.binding && (
                   <kbd className="help-kbd palette-kbd" aria-label={action.binding}>
                     {action.binding}

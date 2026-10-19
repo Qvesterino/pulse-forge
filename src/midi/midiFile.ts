@@ -6,8 +6,10 @@
  *    (SMPTE timing is rejected with a clear error — no browser DAW needs it)
  *  - note on/off pairing (velocity-0 note-ons count as offs), running status
  *  - tempo (0x51) + time signature (0x58) + track name (0x03) meta
- *  - CC / pitch bend / program change are skipped on import; the writer
- *    emits only what the project model can represent: tempo + notes.
+ *  - note-on velocity and explicit note-off release velocity
+ *  - CC7/10/11 are retained as track volume/pan/expression events; CC64
+ *    sustain is represented by extending note durations. Other CC / pitch
+ *    bend / program-change events are counted as unsupported.
  *
  * Ticks everywhere are "per quarter note" — the project runs on PPQ=480, and
  * the writer defaults to division 480 so project patterns round-trip 1:1.
@@ -19,6 +21,8 @@ export interface MidiNote {
   endTick: number; // > startTick
   /** 0..1 (MIDI 1..127 scaled). */
   velocity: number;
+  /** 0..1 note-off velocity when the source used an explicit note-off event. */
+  releaseVelocity?: number;
 }
 
 export interface MidiTrackData {
@@ -26,10 +30,25 @@ export interface MidiTrackData {
   /** 0..15. Channel 9 (0-based) is the GM drum channel. */
   channel: number;
   notes: MidiNote[];
+  /** Supported continuous controllers retained for track automation. */
+  controllers: MidiControllerEvent[];
+}
+
+export interface MidiControllerEvent {
+  tick: number;
+  controller: 7 | 10 | 11;
+  value: number;
+}
+
+export interface MidiExportControllerEvent {
+  tick: number;
+  controller: number;
+  value: number;
 }
 
 export interface MidiTempoEvent {
   tick: number;
+  /** Exact BPM implied by the MIDI microseconds-per-quarter value. */
   bpm: number;
 }
 
@@ -58,7 +77,9 @@ export interface ParsedMidi {
   timeSignatureEvents: MidiTimeSignatureEvent[];
   /** MIDI event classes this note-focused importer does not preserve. */
   unsupportedEvents: MidiUnsupportedEvents;
-  /** One entry per chunk×channel that contains at least one note. */
+  /** Number of CC64 pedal events whose held-note timing is baked into note ends. */
+  sustainPedalEvents: number;
+  /** One entry per chunk×channel that contains notes or supported controllers. */
   tracks: MidiTrackData[];
 }
 
@@ -110,6 +131,8 @@ export function parseMidiFile(data: Uint8Array): ParsedMidi {
     aftertouch: 0,
     systemExclusive: 0,
   };
+  let sustainPedalEvents = 0;
+  let controllerEventCount = 0;
 
   // Audit 10 D3: hard cap on retained notes. A machine-generated 10 MB .mid
   // (just under the file cap) packs ~2.5 M note events — the parse used to
@@ -120,7 +143,15 @@ export function parseMidiFile(data: Uint8Array): ParsedMidi {
 
   /** Per chunk: name + per-channel note-open stacks + finished note lists. */
   type OpenNote = { startTick: number; velocity: number };
-  const chunks: { name: string; open: Map<number, OpenNote[]>; notes: Map<number, MidiNote[]> }[] = [];
+  type SustainedNote = { pitch: number; open: OpenNote; releaseVelocity?: number };
+  const chunks: {
+    name: string;
+    open: Map<number, OpenNote[]>;
+    notes: Map<number, MidiNote[]>;
+    controllers: Map<number, MidiControllerEvent[]>;
+    sustainDown: Set<number>;
+    sustained: Map<number, SustainedNote[]>;
+  }[] = [];
 
   let pos = 8 + headerLen;
   for (let chunk = 0; chunk < trackCount; chunk++) {
@@ -132,7 +163,14 @@ export function parseMidiFile(data: Uint8Array): ParsedMidi {
       pos = end;
       continue;
     }
-    const entry = { name: `Track ${chunk + 1}`, open: new Map(), notes: new Map() };
+    const entry = {
+      name: `Track ${chunk + 1}`,
+      open: new Map<number, OpenNote[]>(),
+      notes: new Map<number, MidiNote[]>(),
+      controllers: new Map<number, MidiControllerEvent[]>(),
+      sustainDown: new Set<number>(),
+      sustained: new Map<number, SustainedNote[]>(),
+    };
     chunks.push(entry);
 
     let cursor = pos + 8;
@@ -143,11 +181,15 @@ export function parseMidiFile(data: Uint8Array): ParsedMidi {
       if (!list) entry.notes.set(channel, (list = []));
       return list;
     };
-    const closeNote = (channel: number, pitch: number, endT: number, velocity = 1) => {
-      const stack = entry.open.get(channel + (pitch << 4));
-      const open = stack?.pop();
-      if (!open) return;
-      if (endT <= open.startTick) return;
+    const finishNote = (
+      channel: number,
+      pitch: number,
+      open: OpenNote,
+      endT: number,
+      releaseVelocity?: number,
+      keepZeroLength = false,
+    ) => {
+      if (endT < open.startTick || (endT === open.startTick && !keepZeroLength)) return;
       if (++noteCount > MAX_NOTES) {
         throw new MidiParseError(
           `MIDI file contains too many notes (over ${MAX_NOTES}) — likely machine-generated data`,
@@ -158,8 +200,26 @@ export function parseMidiFile(data: Uint8Array): ParsedMidi {
         startTick: open.startTick,
         endTick: endT,
         velocity: Math.min(1, Math.max(0.01, open.velocity / 127)),
+        ...(releaseVelocity === undefined ? {} : { releaseVelocity: Math.max(0, Math.min(1, releaseVelocity)) }),
       });
-      void velocity;
+    };
+    const closeNote = (channel: number, pitch: number, endT: number, releaseVelocity?: number) => {
+      const stack = entry.open.get(channel + (pitch << 4));
+      const open = stack?.pop();
+      if (!open) return;
+      if (entry.sustainDown.has(channel)) {
+        let held = entry.sustained.get(channel);
+        if (!held) entry.sustained.set(channel, (held = []));
+        held.push({ pitch, open, ...(releaseVelocity === undefined ? {} : { releaseVelocity }) });
+      } else {
+        finishNote(channel, pitch, open, endT, releaseVelocity);
+      }
+    };
+    const releaseSustain = (channel: number, endT: number) => {
+      const held = entry.sustained.get(channel);
+      if (!held) return;
+      for (const note of held) finishNote(channel, note.pitch, note.open, endT, note.releaseVelocity);
+      entry.sustained.delete(channel);
     };
 
     while (cursor < end) {
@@ -184,7 +244,7 @@ export function parseMidiFile(data: Uint8Array): ParsedMidi {
         cursor += meta.value;
         if (type === 0x51 && meta.value === 3) {
           const usPerQuarter = (payload[0] << 16) | (payload[1] << 8) | payload[2];
-          if (usPerQuarter > 0) tempoEvents.push({ tick, bpm: Math.round(60_000_000 / usPerQuarter) });
+          if (usPerQuarter > 0) tempoEvents.push({ tick, bpm: 60_000_000 / usPerQuarter });
         } else if (type === 0x58 && meta.value >= 2) {
           const den = Math.round(Math.pow(2, payload[1]));
           if (den > 0 && payload[0] > 0) timeSignatureEvents.push({ tick, num: payload[0], den });
@@ -219,9 +279,22 @@ export function parseMidiFile(data: Uint8Array): ParsedMidi {
           stack.push({ startTick: tick, velocity: data2 });
         }
       } else if (kind === 0x80) {
-        closeNote(channel, data1, tick);
+        closeNote(channel, data1, tick, data2 / 127);
       } else if (kind === 0xb0) {
-        unsupportedEvents.controlChanges++;
+        if (data1 === 64) {
+          sustainPedalEvents++;
+          if (data2 >= 64) entry.sustainDown.add(channel);
+          else if (entry.sustainDown.delete(channel)) releaseSustain(channel, tick);
+        } else if (data1 === 7 || data1 === 10 || data1 === 11) {
+          if (++controllerEventCount > 200_000) {
+            throw new MidiParseError("MIDI file contains too many supported controller events (over 200,000)");
+          }
+          let list = entry.controllers.get(channel);
+          if (!list) entry.controllers.set(channel, (list = []));
+          list.push({ tick, controller: data1, value: data2 });
+        } else {
+          unsupportedEvents.controlChanges++;
+        }
       } else if (kind === 0xe0) {
         unsupportedEvents.pitchBends++;
       } else if (kind === 0xc0) {
@@ -229,7 +302,7 @@ export function parseMidiFile(data: Uint8Array): ParsedMidi {
       } else if (kind === 0xa0 || kind === 0xd0) {
         unsupportedEvents.aftertouch++;
       }
-      // CC/PB/program/aftertouch are intentionally skipped, but counted so
+      // Unsupported CC/PB/program/aftertouch events are counted so
       // interchange workflows can disclose the loss before committing.
     }
 
@@ -239,30 +312,26 @@ export function parseMidiFile(data: Uint8Array): ParsedMidi {
     // floods through THIS loop otherwise (event-driven closes cap first).
     for (const [key, stack] of entry.open) {
       for (const open of stack) {
-        if (++noteCount > MAX_NOTES) {
-          throw new MidiParseError(`MIDI file contains too many notes (over ${MAX_NOTES})`);
-        }
         const channel = key & 0x0f;
         const pitch = key >> 4;
-        notesOf(channel).push({
-          pitch,
-          startTick: open.startTick,
-          endTick: tick,
-          velocity: Math.min(1, Math.max(0.01, open.velocity / 127)),
-        });
+        finishNote(channel, pitch, open, tick, undefined, true);
       }
     }
     entry.open.clear();
+    for (const [channel] of entry.sustained) releaseSustain(channel, tick);
 
     pos = end;
   }
 
   const tracks: MidiTrackData[] = [];
   for (const entry of chunks) {
-    for (const [channel, notes] of entry.notes) {
-      if (notes.length === 0) continue;
+    const channels = new Set([...entry.notes.keys(), ...entry.controllers.keys()]);
+    for (const channel of channels) {
+      const notes = entry.notes.get(channel) ?? [];
+      const controllers = entry.controllers.get(channel) ?? [];
+      if (notes.length === 0 && controllers.length === 0) continue;
       notes.sort((a, b) => a.startTick - b.startTick || a.pitch - b.pitch);
-      tracks.push({ name: entry.name, channel, notes });
+      tracks.push({ name: entry.name, channel, notes, controllers });
     }
   }
 
@@ -289,11 +358,12 @@ export function parseMidiFile(data: Uint8Array): ParsedMidi {
   const firstSignature = signatures[0];
   return {
     division,
-    bpm: firstTempo?.bpm ?? null,
+    bpm: firstTempo ? Math.round(firstTempo.bpm) : null,
     timeSignature: firstSignature ? { num: firstSignature.num, den: firstSignature.den } : null,
     tempoEvents: tempos,
     timeSignatureEvents: signatures,
     unsupportedEvents,
+    sustainPedalEvents,
     tracks,
   };
 }
@@ -329,6 +399,8 @@ export interface MidiExportNote {
   endTick: number;
   /** 0..1 */
   velocity: number;
+  /** 0..1; omitted uses the neutral MIDI note-off velocity. */
+  releaseVelocity?: number;
 }
 
 export interface MidiExportTrack {
@@ -336,6 +408,7 @@ export interface MidiExportTrack {
   /** 0..15. */
   channel: number;
   notes: MidiExportNote[];
+  controllers?: MidiExportControllerEvent[];
 }
 
 export function writeMidiFile(options: {
@@ -411,8 +484,27 @@ export function writeMidiFile(options: {
       const start = Math.max(0, Math.round(note.startTick));
       const end = Math.max(start + 1, Math.round(note.endTick));
       const vel = Math.max(1, Math.min(127, Math.round(note.velocity * 127)));
-      events.push({ tick: start, order: 1, bytes: [0x90 | channel, pitch, vel] });
-      events.push({ tick: end, order: 0, bytes: [0x80 | channel, pitch, 0] });
+      events.push({ tick: start, order: 2, bytes: [0x90 | channel, pitch, vel] });
+      const releaseVelocity =
+        note.releaseVelocity === undefined ? 64 : Math.max(0, Math.min(127, Math.round(note.releaseVelocity * 127)));
+      events.push({ tick: end, order: 0, bytes: [0x80 | channel, pitch, releaseVelocity] });
+    }
+    for (const controller of track.controllers ?? []) {
+      if (
+        !Number.isFinite(controller.tick) ||
+        controller.tick < 0 ||
+        !Number.isInteger(controller.controller) ||
+        controller.controller < 0 ||
+        controller.controller > 127 ||
+        !Number.isFinite(controller.value)
+      ) {
+        continue;
+      }
+      events.push({
+        tick: Math.round(controller.tick),
+        order: 1,
+        bytes: [0xb0 | channel, controller.controller, Math.max(0, Math.min(127, Math.round(controller.value)))],
+      });
     }
     events.sort((a, b) => a.tick - b.tick || a.order - b.order);
     let lastTick = 0;

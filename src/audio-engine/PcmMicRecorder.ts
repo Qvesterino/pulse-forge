@@ -42,6 +42,84 @@ export interface PcmRecordingMetadata {
 
 export type PcmRecorderState = "idle" | "starting" | "recording" | "stopping";
 
+/**
+ * One-shot sample-clock gate shared by every recorder in a coordinated input
+ * group. Each recorder joins only after its device graph and recovery session
+ * are ready; the group then releases them at the same AudioWorklet frame.
+ */
+export class PcmCaptureStartBarrier {
+  private preparedCount = 0;
+  private settled = false;
+  private preparedResolve: (() => void) | null = null;
+  private preparedReject: ((error: Error) => void) | null = null;
+  private frameResolve: ((frame: number) => void) | null = null;
+  private frameReject: ((error: Error) => void) | null = null;
+  private readonly preparedPromise: Promise<void>;
+  private readonly framePromise: Promise<number>;
+
+  constructor(private readonly expectedParticipants: number) {
+    if (!Number.isSafeInteger(expectedParticipants) || expectedParticipants < 2) {
+      throw new Error("A coordinated capture group needs at least two input streams");
+    }
+    this.preparedPromise = new Promise<void>((resolve, reject) => {
+      this.preparedResolve = resolve;
+      this.preparedReject = reject;
+    });
+    this.framePromise = new Promise<number>((resolve, reject) => {
+      this.frameResolve = resolve;
+      this.frameReject = reject;
+    });
+    // The barrier can be aborted before every recorder has joined. Observe its
+    // internal promises here; each participating recorder still receives the
+    // same rejection from waitForStartFrame().
+    void this.preparedPromise.catch(() => {});
+    void this.framePromise.catch(() => {});
+  }
+
+  waitForAllPrepared(): Promise<void> {
+    return this.preparedPromise;
+  }
+
+  async waitForStartFrame(): Promise<number> {
+    if (this.settled) throw new Error("The coordinated capture start was already released or cancelled");
+    this.preparedCount += 1;
+    if (this.preparedCount > this.expectedParticipants) {
+      throw new Error("Too many recorders joined the coordinated capture start");
+    }
+    if (this.preparedCount === this.expectedParticipants) {
+      this.preparedResolve?.();
+      this.preparedResolve = null;
+      this.preparedReject = null;
+    }
+    return this.framePromise;
+  }
+
+  releaseAt(frame: number): void {
+    if (this.settled) throw new Error("The coordinated capture start was already released or cancelled");
+    if (this.preparedCount !== this.expectedParticipants) {
+      throw new Error("Cannot release a coordinated capture before every input is ready");
+    }
+    if (!Number.isSafeInteger(frame) || frame < 0)
+      throw new Error("The capture start frame must be a non-negative integer");
+    this.settled = true;
+    this.frameResolve?.(frame);
+    this.frameResolve = null;
+    this.frameReject = null;
+  }
+
+  abort(reason: unknown): void {
+    if (this.settled) return;
+    this.settled = true;
+    const error = reason instanceof Error ? reason : new Error(String(reason));
+    this.preparedReject?.(error);
+    this.preparedResolve = null;
+    this.preparedReject = null;
+    this.frameReject?.(error);
+    this.frameResolve = null;
+    this.frameReject = null;
+  }
+}
+
 export interface PcmCaptureInfo {
   /** Channels and sample rate actually delivered to the PCM capture worklet. */
   capturedChannels: number;
@@ -93,17 +171,18 @@ const RESUME_TIMEOUT_MS = 10_000;
 const STORAGE_ESTIMATE_TIMEOUT_MS = 1_500;
 const moduleLoads = new WeakMap<BaseAudioContext, Promise<void>>();
 
-// One non-cancelled audio-input start/capture per tab. ArrangementPanel takes
-// and ExportPanel resamples each construct their own recorder instance; without
-// this claim both could open parallel getUserMedia streams and interleave
-// monitoring/capture. A cancelled permission request releases the claim so
-// the UI can retry; its start token rejects a late stream before graph setup.
-let activeCapture: PcmMicRecorder | null = null;
+// Normally one audio-input start/capture is allowed per tab. The explicit
+// opaque group token is reserved for a coordinator that owns several distinct
+// track/input pairs; unrelated recorders still cannot overlap or steal routes.
+// Cancelled permission requests release their own claim, and the start token
+// rejects a late stream before graph setup.
+const activeCaptures = new Set<PcmMicRecorder>();
+let activeCaptureGroup: object | null = null;
 
 /** Audit 14 D2: true while an input take is live - used by the SW-update banner
  * to avoid a mid-recording reload. */
 export function isMicRecordingActive(): boolean {
-  return activeCapture !== null;
+  return activeCaptures.size > 0;
 }
 
 /** Bound an awaited step so a hung browser API cannot wedge start() forever. */
@@ -142,6 +221,10 @@ export interface PcmMicRecorderDependencies {
   routeMonitorOutput?: (monitorOutput: AudioNode, channelIndex: number) => (() => void) | null;
   /** Split this many input channels into isolated mono monitor routes when routing is enabled. */
   monitorChannelCount?: number;
+  /** Opaque shared identity for recorders coordinated as one multi-input take. */
+  captureGroupToken?: object;
+  /** Wait for every group member, then arm this recorder at their shared frame. */
+  captureStartBarrier?: PcmCaptureStartBarrier;
   /**
    * Optional side-effect-free re-read of the transport position, invoked
    * immediately before capture arms. The metadata snapshot (including
@@ -150,7 +233,7 @@ export interface PcmMicRecorderDependencies {
    * baked into the placed clip as a per-take start-offset error. Return
    * null/non-finite to keep the snapshot anchor.
    */
-  refreshStartBar?: () => number | null;
+  refreshStartBar?: (scheduledStartDelaySec?: number) => number | null;
 }
 
 /** Input trim clamps — must mirror the UI slider. */
@@ -185,6 +268,7 @@ export class PcmMicRecorder {
   private onTrackEnded: (() => void) | null = null;
   private onTrackMuted: (() => void) | null = null;
   private onContextStateChange: (() => void) | null = null;
+  private nativeCaptureFailureUnsubscribe: (() => void) | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
   private node: AudioWorkletNode | null = null;
   private muteGain: GainNode | null = null;
@@ -358,7 +442,8 @@ export class PcmMicRecorder {
         this.state_ === "starting" || this.startInFlight ? "A recording start is still settling" : "Already recording",
       );
     }
-    if (activeCapture && activeCapture !== this) {
+    const captureGroup = this.deps.captureGroupToken ?? this;
+    if (activeCaptures.size > 0 && activeCaptureGroup !== captureGroup) {
       throw new Error("The audio input is already in use by another recording — stop that recording first");
     }
     const requestedChannelCount = this.deps.requestedChannelCount;
@@ -375,7 +460,8 @@ export class PcmMicRecorder {
     ) {
       throw new Error("Monitored audio input channel count must be a whole number from 1 to 32");
     }
-    activeCapture = this;
+    activeCaptureGroup = captureGroup;
+    activeCaptures.add(this);
     this.startInFlight = true;
     const token = ++this.startToken;
     this.state_ = "starting";
@@ -403,11 +489,26 @@ export class PcmMicRecorder {
       await (this.deps.addWorkletModule ?? loadCaptureWorklet)(ctx);
       this.assertStartIsCurrent(token);
 
+      const nativeAudioIoBridge = this.deps.getUserMedia ? null : await import("./windowsAudioIoBridge");
+      const nativeCaptureStream = nativeAudioIoBridge?.getWindowsAudioCaptureStream(ctx) ?? null;
       const getUserMedia =
         this.deps.getUserMedia ??
-        (typeof navigator !== "undefined"
-          ? navigator.mediaDevices?.getUserMedia?.bind(navigator.mediaDevices)
-          : undefined);
+        (nativeCaptureStream
+          ? async () => {
+              const tracks = nativeCaptureStream.getAudioTracks();
+              if (tracks.length === 0 || tracks.some((track) => track.readyState === "ended"))
+                throw new Error("The selected native Windows capture stream is unavailable");
+              try {
+                return new MediaStream(tracks.map((track) => track.clone()));
+              } catch (error) {
+                throw new Error(
+                  `Could not attach the selected native Windows capture stream${error instanceof Error ? `: ${error.message}` : ""}`,
+                );
+              }
+            }
+          : typeof navigator !== "undefined"
+            ? navigator.mediaDevices?.getUserMedia?.bind(navigator.mediaDevices)
+            : undefined);
       if (!getUserMedia) throw new Error("Audio input capture is not available in this browser");
       try {
         const audio: MediaTrackConstraints = {
@@ -603,6 +704,11 @@ export class PcmMicRecorder {
       this.onTrackMuted = () =>
         this.reportError("Audio input was interrupted — the captured take is being stopped and kept for recovery");
       this.track.addEventListener("mute", this.onTrackMuted);
+      if (nativeCaptureStream && nativeAudioIoBridge) {
+        this.nativeCaptureFailureUnsubscribe = nativeAudioIoBridge.subscribeWindowsAudioCaptureFailure(ctx, (message) =>
+          this.reportError(`Native Windows capture stopped: ${message}. The take is being kept for recovery`),
+        );
+      }
       if (isTrackEnded(this.track)) throw new Error("The audio input disconnected before recording began");
       if (this.track.muted) throw new Error("The selected audio input is not delivering audio");
       this.onContextStateChange = () => {
@@ -615,7 +721,13 @@ export class PcmMicRecorder {
       if (ctx.state !== "running") {
         throw new Error(`Audio context became ${String(ctx.state)} before recording began`);
       }
-      this.startedAt = ctx.currentTime;
+      const scheduledStartFrame = this.deps.captureStartBarrier
+        ? await this.deps.captureStartBarrier.waitForStartFrame()
+        : null;
+      this.assertStartIsCurrent(token);
+      if (isTrackEnded(this.track)) throw new Error("The audio input disconnected before the coordinated take began");
+      if (this.track.muted) throw new Error("The selected audio input stopped delivering audio before the take began");
+      this.startedAt = scheduledStartFrame === null ? ctx.currentTime : scheduledStartFrame / ctx.sampleRate;
       this.state_ = "recording";
       // Refresh the placement anchor as late as possible: the worklet arms on
       // the render quantum after this post (~ms), while the metadata snapshot
@@ -623,7 +735,9 @@ export class PcmMicRecorder {
       // that would otherwise land on the timeline when the transport rolls).
       let refreshedStartBar: number | null = null;
       try {
-        refreshedStartBar = this.deps.refreshStartBar?.() ?? null;
+        const scheduledStartDelaySec =
+          scheduledStartFrame === null ? 0 : Math.max(0, scheduledStartFrame / ctx.sampleRate - ctx.currentTime);
+        refreshedStartBar = this.deps.refreshStartBar?.(scheduledStartDelaySec) ?? null;
       } catch {
         refreshedStartBar = null;
       }
@@ -641,6 +755,7 @@ export class PcmMicRecorder {
       }
       this.node.port.postMessage({
         type: "start",
+        ...(scheduledStartFrame !== null ? { startFrame: scheduledStartFrame } : {}),
         ...(session.loopCapture ? { loopCapture: true } : {}),
         ...(session.punchCapture && (session.leadInSec ?? 0) === 0 ? { punchInNow: true } : {}),
       });
@@ -694,7 +809,8 @@ export class PcmMicRecorder {
   }
 
   private releaseCaptureClaim(): void {
-    if (activeCapture === this) activeCapture = null;
+    activeCaptures.delete(this);
+    if (activeCaptures.size === 0) activeCaptureGroup = null;
   }
 
   private assertStartIsCurrent(token: number): void {
@@ -882,6 +998,8 @@ export class PcmMicRecorder {
     if (this.onContextStateChange) this.deps.ctx.removeEventListener("statechange", this.onContextStateChange);
     this.onTrackEnded = null;
     this.onTrackMuted = null;
+    this.nativeCaptureFailureUnsubscribe?.();
+    this.nativeCaptureFailureUnsubscribe = null;
     this.onContextStateChange = null;
     if (this.source && this.inputGainNode) {
       try {

@@ -524,6 +524,9 @@ html {
 .arr-audio-clip.comp {
   background: linear-gradient(180deg, rgba(20, 184, 166, 0.24), rgba(20, 184, 166, 0.1));
   border-color: rgba(45, 212, 191, 0.72);
+  /* The rendered comp is the audible take over its source takes. Keep it on
+     top so overlapped source trim handles cannot steal its edit gestures. */
+  z-index: 5;
 }
 /* Chord track (v17): the harmonic skeleton lane above the arrangement. */
 .arr-chord-lane {

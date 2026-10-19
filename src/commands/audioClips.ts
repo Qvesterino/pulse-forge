@@ -11,7 +11,7 @@ import type { Command } from "./types";
 import type { AudioClip, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, PPQ } from "../project-model/types";
 import { tempoAtTick } from "../project-model/scene-time";
-import { normalizeProject } from "../project-model/schema";
+import { MAX_ARRANGEMENT_CLIP_BARS, normalizeProject } from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
 import { assertClipEditable, clipGroupsWithoutIds } from "./clipGroups";
@@ -625,7 +625,12 @@ export function stretchAudioClip(
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
   assertClipEditable(clip, "stretch");
   if (!Number.isFinite(lengthBars)) return snapshot("stretchAudioClip", "Stretch audio clip (no-op)", doc, doc);
-  const bars = Math.max(0.25, quantizeAudioBar(lengthBars));
+  // Clamp to the document's own ceiling (same invariant as resizeArrangementClip,
+  // arrangement.ts:45). sanitizeAudioClips DROPS any clip past
+  // MAX_ARRANGEMENT_CLIP_BARS, and ProjectStore.applyCommand normalizes after
+  // every command — so an unclamped value here did not store an oversized clip,
+  // it silently DELETED the user's clip with no error and no undo entry.
+  const bars = Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(0.25, quantizeAudioBar(lengthBars)));
   const rate = Number.isFinite(stretchRate) ? Math.round(Math.min(4, Math.max(0.25, stretchRate)) * 100) / 100 : 1;
   // Fades must stay inside the clip (clampClipFades) — same rule as resize.
   const { fadeIn, fadeOut } = clampClipFades(doc, clip, bars, clip.startBar);
@@ -646,7 +651,12 @@ export function resizeAudioClip(doc: ProjectDocument, clipId: string, lengthBars
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
   assertClipEditable(clip, "resize");
   if (!Number.isFinite(lengthBars)) return snapshot("resizeAudioClip", "Resize audio clip (no-op)", doc, doc);
-  const bars = Math.max(0.25, quantizeAudioBar(lengthBars));
+  // Same ceiling as the scene-clip commands: the stored value must be one
+  // normalizeProject keeps. Past MAX_ARRANGEMENT_CLIP_BARS sanitizeAudioClips
+  // drops the clip outright, and because normalization runs inside
+  // applyCommand the clip vanished from the store with no error and no undo —
+  // a drag past the limit destroyed the user's take.
+  const bars = Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(0.25, quantizeAudioBar(lengthBars)));
   // Fades must stay inside the resized clip (audit §8): the engine clamps
   // audibly, but out-of-bounds state desyncs the fade handles from the
   // visual clip width.

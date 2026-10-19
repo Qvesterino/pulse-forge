@@ -23,6 +23,20 @@ ipcRenderer.on("kyx:audio:bridge-port", (event, metadata) => {
     port.close();
   }
 });
+ipcRenderer.on("kyx:audio:windows-session-port", (event, metadata) => {
+  const port = event.ports?.[0];
+  const sessionId = metadata && typeof metadata.sessionId === "string" ? metadata.sessionId : "";
+  if (!port || !sessionId) {
+    port?.close();
+    return;
+  }
+  try {
+    window.postMessage({ type: "kyx:audio:windows-session-port", sessionId, port }, window.location.origin, [port]);
+  } catch (error) {
+    port.close();
+    console.error("Could not forward the Windows audio session port to the app page", error);
+  }
+});
 
 contextBridge.exposeInMainWorld("kyxDesktop", {
   isDesktop: true,
@@ -58,6 +72,29 @@ contextBridge.exposeInMainWorld("kyxDesktop", {
   audio: {
     /** Windows Core Audio endpoint discovery only; this does not start a stream. */
     listWindowsEndpoints: () => ipcRenderer.invoke("kyx:audio:windows-endpoints"),
+    /** Start an exact shared-mode duplex session and transfer PCM over a dedicated port. */
+    startWindowsSession: (request) => ipcRenderer.invoke("kyx:audio:windows-start", request),
+    stopWindowsSession: (sessionId) => ipcRenderer.invoke("kyx:audio:windows-stop", { sessionId }),
+    /** Observe bounded startup diagnostics for a native session owned by this window. */
+    onWindowsSessionStage: (listener) => {
+      if (typeof listener !== "function") throw new TypeError("Windows audio stage listener must be a function");
+      const handler = (_event, payload) => {
+        if (
+          !payload ||
+          typeof payload !== "object" ||
+          typeof payload.sessionId !== "string" ||
+          payload.sessionId.length === 0 ||
+          payload.sessionId.length > 128 ||
+          typeof payload.stage !== "string" ||
+          payload.stage.length === 0 ||
+          payload.stage.length > 256
+        )
+          return;
+        listener({ sessionId: payload.sessionId, stage: payload.stage });
+      };
+      ipcRenderer.on("kyx:audio:windows-session-stage", handler);
+      return () => ipcRenderer.removeListener("kyx:audio:windows-session-stage", handler);
+    },
   },
   pcm: {
     /** External PCM source: main spawns the host, frames land in the shared ring. */

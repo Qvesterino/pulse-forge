@@ -33,20 +33,38 @@ function categoryTargets(): Record<string, number> {
 }
 
 /* ── minimal 24-bit WAV decode (the seeds are pcm24/dual-mono by contract) ── */
-function decodeWav24(file: string): { left: Float32Array; right: Float32Array; bits: number; channels: number } {
+function decodeWav24(file: string): {
+  left: Float32Array;
+  right: Float32Array;
+  format: number;
+  sampleRate: number;
+  byteRate: number;
+  blockAlign: number;
+  bits: number;
+  channels: number;
+  dataBytes: number;
+} {
   const buf = readFileSync(path.join(samplesDir, file));
   expect(buf.toString("ascii", 0, 4), `${file} RIFF`).toBe("RIFF");
   expect(buf.toString("ascii", 8, 12), `${file} WAVE`).toBe("WAVE");
   let pos = 12;
   let dataStart = -1;
   let dataBytes = 0;
+  let format = 0;
+  let sampleRate = 0;
+  let byteRate = 0;
+  let blockAlign = 0;
   let bits = 0;
   let channels = 0;
   while (pos + 8 <= buf.length) {
     const id = buf.toString("ascii", pos, pos + 4);
     const size = buf.readUInt32LE(pos + 4);
     if (id === "fmt ") {
+      format = buf.readUInt16LE(pos + 8);
       channels = buf.readUInt16LE(pos + 8 + 2);
+      sampleRate = buf.readUInt32LE(pos + 8 + 4);
+      byteRate = buf.readUInt32LE(pos + 8 + 8);
+      blockAlign = buf.readUInt16LE(pos + 8 + 12);
       bits = buf.readUInt16LE(pos + 8 + 14);
     } else if (id === "data") {
       dataStart = pos + 8;
@@ -71,7 +89,14 @@ function decodeWav24(file: string): { left: Float32Array; right: Float32Array; b
       right[f] = left[f];
     }
   }
-  return { left, right, bits, channels };
+  return { left, right, format, sampleRate, byteRate, blockAlign, bits, channels, dataBytes };
+}
+
+function spatialFieldIds(): string[] {
+  const source = readFileSync(path.resolve(__dirname, "..", "scripts", "render-curated-seeds.mjs"), "utf8");
+  const match = source.match(/const SPATIAL_FIELD_IDS = new Set\(\[([\s\S]*?)\]\);/);
+  if (!match) throw new Error("Could not read SPATIAL_FIELD_IDS from the curated seed renderer");
+  return [...match[1].matchAll(/"([^"]+)"/g)].map((entry) => entry[1]);
 }
 
 /* ── BS.177-0 K-weighting + tiled momentary (the seed-script convention) ──── */
@@ -170,15 +195,64 @@ describe("sound library gate — every curated WAV on contract", () => {
     for (const category of used) expect(targets[category], `target for ${category}`).toBeDefined();
   });
 
-  it("format: every file is 44.1 kHz / 24-bit / dual-mono and at least 0.4 s", () => {
+  it("format: every file is PCM 44.1 kHz / 24-bit / 2-channel and at least 0.4 s", () => {
     const bad: string[] = [];
     for (const sample of CURATED_SAMPLES) {
       const wav = decodeWav24(sample.file);
       const frames = wav.left.length;
+      if (wav.format !== 1) bad.push(`${sample.file}: WAV format ${wav.format}, expected PCM`);
+      if (wav.sampleRate !== SR) bad.push(`${sample.file}: ${wav.sampleRate} Hz, expected ${SR} Hz`);
       if (wav.bits !== 24 || wav.channels !== 2) bad.push(`${sample.file}: ${wav.bits}bit/${wav.channels}ch`);
+      if (wav.blockAlign !== 6 || wav.byteRate !== SR * 6)
+        bad.push(`${sample.file}: ${wav.byteRate} byte/s, block align ${wav.blockAlign}`);
+      if (wav.dataBytes % wav.blockAlign !== 0) bad.push(`${sample.file}: partial PCM frame`);
       if (frames < Math.ceil(0.4 * SR)) bad.push(`${sample.file}: ${(frames / SR).toFixed(2)}s < 0.4s contract`);
     }
     expect(bad).toEqual([]);
+  });
+
+  it("stereo identity: intentional field width stays centered enough for mono", () => {
+    const spatialIds = new Set(spatialFieldIds());
+    const curatedIds = new Set(CURATED_SAMPLES.map((sample) => sample.id));
+    for (const id of spatialIds) {
+      expect(categoryOf.get(id), `${id} exists in the sound manifest`).toBe("Field");
+      expect(curatedIds.has(id), `${id} has a curated WAV`).toBe(true);
+    }
+
+    const unexpectedStereo: string[] = [];
+    const weakSpatial: string[] = [];
+    for (const sample of CURATED_SAMPLES) {
+      const { left, right } = decodeWav24(sample.file);
+      let midEnergy = 0;
+      let sideEnergy = 0;
+      let leftEnergy = 0;
+      let rightEnergy = 0;
+      let crossEnergy = 0;
+      let monoPeak = 0;
+      for (let i = 0; i < left.length; i++) {
+        const l = left[i];
+        const r = right[i];
+        const mid = (l + r) * 0.5;
+        const side = (l - r) * 0.5;
+        midEnergy += mid * mid;
+        sideEnergy += side * side;
+        leftEnergy += l * l;
+        rightEnergy += r * r;
+        crossEnergy += l * r;
+        monoPeak = Math.max(monoPeak, Math.abs(mid));
+      }
+      const sideToMid = Math.sqrt(sideEnergy / Math.max(midEnergy, 1e-18));
+      const correlation = crossEnergy / Math.sqrt(Math.max(leftEnergy * rightEnergy, 1e-18));
+      if (monoPeak >= 0.9995) unexpectedStereo.push(`${sample.file}: mono fold-down reaches ${monoPeak.toFixed(4)}`);
+      if (spatialIds.has(sample.id)) {
+        if (sideToMid < 0.1 || sideToMid > 0.2 || correlation < 0.9)
+          weakSpatial.push(`${sample.file}: side/mid ${sideToMid.toFixed(3)}, correlation ${correlation.toFixed(3)}`);
+      } else if (sideToMid > 1e-4) {
+        unexpectedStereo.push(`${sample.file}: unregistered side/mid ${sideToMid.toExponential(2)}`);
+      }
+    }
+    expect(unexpectedStereo).toEqual([]);
+    expect(weakSpatial).toEqual([]);
   });
 
   it("purity: no clipping, no non-finite samples, no DC, grid-aligned start", () => {

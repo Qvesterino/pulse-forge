@@ -868,8 +868,21 @@ export function TopBar({
                     ? "Saving…"
                     : "Save failed — click to retry"
             }
-            role={saveStatus === "error" ? "button" : undefined}
+            role={saveStatus === "error" ? "button" : "status"}
+            aria-live="polite"
+            aria-label={saveStatus === "error" ? "Save failed. Retry saving project." : undefined}
+            aria-keyshortcuts={saveStatus === "error" ? "Enter Space" : undefined}
+            tabIndex={saveStatus === "error" ? 0 : undefined}
             onClick={saveStatus === "error" ? () => void services.flushSave() : undefined}
+            onKeyDown={
+              saveStatus === "error"
+                ? (event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    void services.flushSave();
+                  }
+                : undefined
+            }
           >
             {saveStatus === "saved" && `SAVED${lastSavedAt ? ` ${formatClock(lastSavedAt)}` : ""}`}
             {saveStatus === "dirty" && "UNSAVED"}

@@ -108,10 +108,12 @@ its own evidence lane:
    measure analog round-trip latency and run a sustained device-loss/recovery
    soak. Assess real ASIO streaming only after the SDK and licensing route is
    clear.
-5. **Decide before building a native backend.** Use the measurements to write
-   a dedicated audio I/O ADR covering API choice, realtime boundary, licensing, failure/recovery
-   behavior and Web fallback. Then implement and certify one physical
-   record → recover → edit → save/reopen → export slice before scaling channels.
+5. **Qualify the integrated native backend.** ADR 0050 now records the WASAPI
+   shared-mode choice and the AudioWorklet/utility PCM bridge. On the Volt 276,
+   verify the physical channel map, device-clocked latency and dropouts,
+   unplug/reconnect recovery, and a 30-minute duplex soak. Keep Web Audio as the
+   documented fallback and certify one physical record → recover → edit →
+   save/reopen → export slice before broadening device support.
 6. **Run release and beat-workflow tracks alongside recording.** Inventory
    release blockers, licensing/privacy and update/signing needs. Once recording
    is reliable, prioritize loop-to-song onboarding and mix/export confidence;
@@ -161,6 +163,20 @@ array, and MSI display audio output, with no Volt 276 endpoints. No stream was
 opened. The 2026-10-15 Volt result remains historical evidence; continue with
 software bridge work until the device is present for physical qualification.
 See the [2026-10-19 endpoint check](./WINDOWS-AUDIO-SPIKE-2026-09.md#current-endpoint-check--2026-10-19).
+
+**Execution checkpoint (2026-10-19, integrated bridge):** the opt-in Electron
+smoke reached the production WASAPI utility and AudioWorklet bridge on active
+non-Volt endpoints. A 30-second zero-render run had no worklet drops or
+utility packet rejections, but one native render underrun, one capture
+discontinuity, and only two capture packets; shutdown required killing the
+owned utility. A later run with the worklet-ready startup handshake stalled
+inside native startup beyond 20 seconds. This is failed qualification, not
+support evidence. It revealed and fixed a wrong AudioNode output index, a
+non-power-of-two ring size, and invalid Electron `MessagePortMain` transfer
+lists for `ArrayBuffer`; packets now use bounded copies and sequence-based pool
+recycling. The next software gate is reliable native startup, sustained capture
+delivery and graceful stop through the AudioEngine connection. The Volt remains
+absent for channel mapping, analog latency, recovery and the 30-minute soak.
 
 ## Phase 0 — make the target and baseline truthful
 
@@ -291,6 +307,12 @@ shared/exclusive fallbacks. Record raw measurements with each test result.
       physical routing and device latency still require hardware qualification.
 - [ ] Extend from one active capture to several simultaneously armed capture
       streams, with per-track input monitoring modes and explicit source maps.
+      `PcmMicRecorderGroup` now prepares members together and arms their
+      AudioWorklets on one future frame of the shared `AudioContext`. A failed
+      member cancels startup or stops the live group while retaining each
+      committed take for recovery; unrelated recording flows remain exclusive.
+      The arrangement coordinator, per-track source UI, placement as one undo
+      step, and arrangement-level end-to-end multi-input tests are still open.
 - [x] Preserve source-channel identity and timeline placement through durable
       block staging, recovery, project reload and channel-specific playback.
 - [x] Add an explicit loop-pass capture mode: AudioWorklet-scheduled frame

@@ -12,10 +12,10 @@ matrix". This ADR is that follow-up for plug-in formats, and records the
 decision made there: **CLAP first**.
 
 CLAP (Cleave Audio Plugin API) is MIT-licensed, has no certification gate
-unlike AAX/AU, is the format modern DAWs converge on, and its C ABI is
-loadable from a minimal host without any SDK runtime. VST3 would additionally
-require GPLv3/proprietary dual-licensing decisions and Steinberg's agreement
-track; AU is macOS-only. The desktop shell today is a thin Web Audio shell
+unlike AAX/AU, and its C ABI is loadable from a minimal host without an SDK
+runtime. It remains the first selected format because its scan and host
+boundary are small. VST 3.8 is also MIT-licensed, but its SDK and host surface
+are substantially larger (see ADR 0035); AU is macOS-only. The desktop shell today is a thin Web Audio shell
 (ADR 0010/0011); the browser cannot load native binaries at all, so hosting
 is desktop-only by construction.
 

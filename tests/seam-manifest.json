@@ -426,6 +426,15 @@
       "note": "Renders the first-run migration contract from the Project Browser, enters the existing transfer dialog through its CTA, and proves a failed project-library read is not misrepresented as a new-user state."
     },
     {
+      "id": "daw-transfer-onboarding-tour",
+      "status": "COVERED",
+      "entryPoint": "src/ui/App.tsx transfer provenance passed to src/ui/OnboardingTour.tsx",
+      "spec": "tests/ui/OnboardingTour.test.tsx",
+      "seamEvent": "getByText(/1\\/4 — CUBASE TO KYX/)",
+      "negativeSpec": "does not show drum-programming instructions",
+      "note": "A transferred Cubase project gets a source-aware continue-in-KYX walkthrough and a separate one-time completion key, while the general first-run tour remains complete."
+    },
+    {
       "id": "daw-transfer-track-name-mapping",
       "status": "COVERED",
       "entryPoint": "src/ui/TransferImportDialog.tsx per-file output track name",
@@ -453,6 +462,33 @@
       "note": "Drives a real five-file selection above 100 MB, verifies aggregate size and the pre-commit memory warning, and proves the warning must be acknowledged before the import button enables."
     },
     {
+      "id": "daw-transfer-midi-loss-report",
+      "status": "COVERED",
+      "entryPoint": "src/ui/TransferImportDialog.tsx MIDI preflight loss report",
+      "spec": "tests/ui/transfer-import-dialog.test.tsx",
+      "seamEvent": "MIDI data that will not transfer",
+      "negativeSpec": "shows exact MIDI loss counts and requires acknowledgement before importing",
+      "note": "Imports a real synthetic Standard MIDI file through the transfer dialog with CC, pitch bend, program, aftertouch and SysEx events; the user sees per-type loss counts, cannot create the project until acknowledging them, and verifies melodic note-off release velocity is preserved."
+    },
+    {
+      "id": "daw-transfer-midi-controller-conversion",
+      "status": "COVERED",
+      "entryPoint": "src/ui/TransferImportDialog.tsx MIDI controller conversion preflight and import",
+      "spec": "tests/ui/transfer-import-dialog.test.tsx",
+      "seamEvent": "MIDI controller conversion:",
+      "negativeSpec": "shows supported controller conversions and imports automation plus sustain-adjusted note lengths",
+      "note": "Imports a synthetic Standard MIDI file through the transfer dialog, requires acknowledgement of the CC7/10/11 and CC64 mappings, then verifies track automation and the sustained note duration in the resulting project."
+    },
+    {
+      "id": "daw-transfer-midi-tempo-preservation",
+      "status": "COVERED",
+      "entryPoint": "src/ui/TransferImportDialog.tsx tempo-map preflight and MIDI import",
+      "spec": "tests/ui/transfer-import-dialog.test.tsx",
+      "seamEvent": "MIDI tempo changes will be flattened into the chosen project tempo",
+      "negativeSpec": "does not save the transfer until the user acknowledges tempo-map flattening",
+      "note": "Uses a real tempo-mapped Standard MIDI file through the transfer dialog, requires acknowledgement, then verifies a note after a source tempo change lands at the source's elapsed-time position in the selected constant-tempo project."
+    },
+    {
       "id": "studio-io-missing-device",
       "status": "COVERED",
       "entryPoint": "src/ui/IoPanel.tsx input/output device selectors after device enumeration",
@@ -475,9 +511,9 @@
       "status": "COVERED",
       "entryPoint": "src/ui/IoPanel.tsx Windows endpoint listing through the desktop preload bridge",
       "spec": "tests/ui/io-panel.test.tsx",
-      "seamEvent": "shows native Windows endpoint discovery as read-only metadata",
-      "negativeSpec": "expect(screen.queryByRole(\"option\", { name: \"UA Volt Capture\" })).not.toBeInTheDocument()",
-      "note": "The actual I/O panel displays validated native endpoint names, flow, state, console-default status, current engine mix format and queried shared-period range while keeping browser selectors separate until native stream routing is implemented."
+      "seamEvent": "shows native Windows endpoint discovery with metadata and separate selectors",
+      "negativeSpec": "not.toContain(\"opaque-input-id\")",
+      "note": "The actual I/O panel displays validated native endpoint names, flow, state, console-default status, engine mix format and shared-period range, then exposes separate native input/output selectors. Native sessions have a distinct start/stop path; hardware mapping and stability remain qualification work."
     },
     {
       "id": "desktop-pcm-playback",
@@ -549,6 +585,15 @@
       "note": "The real browser controls preview tempo and dispatches addAudioClip; the refusal case proves an unavailable loop buffer cannot mutate the arrangement."
     },
     {
+      "id": "sample-browser-beat-context-audition",
+      "status": "COVERED",
+      "entryPoint": "src/ui/SampleBrowser.tsx one-shot preview while the transport plays",
+      "spec": "tests/ui/SampleBrowser.test.tsx",
+      "seamEvent": "current mix (next beat while playing)",
+      "negativeSpec": "auditions one-shots on the next beat over the running mix without mutating the project",
+      "note": "Uses the real SampleBrowser row for a factory one-shot; the preview is quantized through the current master mix while transport plays, and the project document remains byte-for-byte equal."
+    },
+    {
       "id": "add-track-instrument-parity",
       "status": "COVERED",
       "entryPoint": "src/ui/TrackTabs.tsx add-track select -> createInstrumentTrack",
@@ -565,6 +610,114 @@
       "seamEvent": "Edit note properties in 2 objects…",
       "negativeSpec": "does not show the batch note editor for a single MIDI clip",
       "note": "The UI keeps single-object edits on the existing source-pattern path and sends a multi-object transform through one command. The regression also verifies undo/redo and isolation of an unselected shared source."
+    },
+    {
+      "id": "master-spectrum-eq",
+      "status": "COVERED",
+      "entryPoint": "src/ui/MasterSpectrumEq.tsx Add EQ and EQ curve drag actions",
+      "spec": "tests/ui/MasterSpectrumEq.test.tsx",
+      "seamEvent": "Add master EQ",
+      "negativeSpec": "does not add EQ before user asks for it",
+      "note": "The live master spectrum and editable EQ curve share one view. The standard master insert, bypass and band edits all use existing undoable commands."
+    },
+    {
+      "id": "arrangement-auto-arrange-song-duration",
+      "status": "COVERED",
+      "entryPoint": "src/ui/ArrangementPanel.tsx SONG LENGTH selector → AUTO ARRANGE → ProjectStore",
+      "spec": "tests/ui/ArrangementPanel.test.tsx",
+      "seamEvent": "selects a three-minute song target and clicks AUTO ARRANGE",
+      "negativeSpec": "does not change the arrangement before AUTO ARRANGE is clicked",
+      "note": "The real arrangement control creates a contiguous 93-bar form at 124 BPM. Changing the target is preview-only and leaves existing clips untouched until the user applies AUTO ARRANGE."
+    },
+    {
+      "id": "project-browser-song-starter",
+      "status": "COVERED",
+      "entryPoint": "src/ui/ProjectBrowser.tsx START A SONG",
+      "spec": "tests/ui/ProjectBrowser.test.tsx",
+      "seamEvent": "CREATE SONG STARTER",
+      "negativeSpec": "does not save or open the project when tempo exceeds 240 BPM",
+      "note": "Enters the real Project Browser song-starter controls, verifies the saved template and session handoff, and proves an invalid tempo leaves the project library untouched. Loop filtering and arrangement placement are verified at the BrowserStrip seam."
+    },
+    {
+      "id": "song-starter-onboarding-tour",
+      "status": "COVERED",
+      "entryPoint": "src/ui/ProjectBrowser.tsx CREATE SONG STARTER → src/ui/App.tsx → src/ui/OnboardingTour.tsx",
+      "spec": "tests/ui/App.test.tsx",
+      "seamEvent": "getByText(/1\\/4 — YOUR TECHNO STARTER/)",
+      "negativeSpec": "does not show the song-starter walkthrough on an ordinary first run",
+      "note": "A real session handoff opens a dedicated first-song tour with its genre, mood, tempo and optional DAW vocabulary; an ordinary first run keeps the existing general tour."
+    },
+    {
+      "id": "topbar-save-status-keyboard-retry",
+      "status": "COVERED",
+      "entryPoint": "src/ui/TopBar.tsx save-status retry affordance",
+      "spec": "tests/ui/TopBar.test.tsx",
+      "seamEvent": "getByRole(\"button\", { name: \"Save failed. Retry saving project.\" })",
+      "negativeSpec": "does not expose a retry button for a successfully saved project",
+      "note": "Save state changes are announced politely, and a failed autosave can be retried with a click, Enter or Space; successful status remains informational instead of becoming a fake button."
+    },
+    {
+      "id": "ctrl-d-contextual-duplicate",
+      "status": "COVERED",
+      "entryPoint": "src/ui/App.tsx Ctrl+D duplicate-selection shortcut",
+      "spec": "tests/ui/App.test.tsx",
+      "seamEvent": "user.keyboard(\"{Control>}d{/Control}\")",
+      "negativeSpec": "does not duplicate the active pattern when Ctrl+D targets a selected timeline clip",
+      "note": "The real app selects an arrangement clip and sends Ctrl+D; the resulting one-step clip command duplicates that selection while leaving the pattern list unchanged."
+    },
+    {
+      "id": "help-overlay-clip-shortcuts",
+      "status": "COVERED",
+      "entryPoint": "src/ui/HelpOverlay.tsx keyboard shortcut groups",
+      "spec": "tests/ui/HelpOverlay.test.tsx",
+      "seamEvent": "screen.getByText(\"CLIPS\")",
+      "negativeSpec": "does not hide registered clip actions from the Help overlay",
+      "note": "Copy, paste and contextual duplicate shortcuts were registered but the Help group order omitted the Clips category, making every one of them invisible to users searching the built-in shortcut reference."
+    },
+    {
+      "id": "daw-profile-action-map",
+      "status": "COVERED",
+      "entryPoint": "src/ui/HelpOverlay.tsx DAW terminology guide",
+      "spec": "tests/ui/HelpOverlay.test.tsx",
+      "seamEvent": "getByText(\"Project window → Song → Arrangement\")",
+      "negativeSpec": "does not show profile-specific mappings before a DAW profile is selected",
+      "note": "A profile selection persists and adds familiar Cubase terms beside the KYX actions and current shortcut; without a profile the mapping list stays hidden."
+    },
+    {
+      "id": "profile-aware-command-search",
+      "status": "COVERED",
+      "entryPoint": "src/ui/PaletteOverlay.tsx Ctrl+K search",
+      "spec": "tests/ui/command-palette.test.tsx",
+      "seamEvent": "fireEvent.change(screen.getByLabelText(\"Search commands\"), { target: { value: \"bounce mix\" } })",
+      "negativeSpec": "does not match a DAW-specific search term from another profile",
+      "note": "A Pro Tools user can search 'Bounce Mix' to reach KYX's Export panel action with the active shortcut beside it; the same vocabulary stays out of results when another DAW profile is selected."
+    },
+    {
+      "id": "global-shortcut-remapping",
+      "status": "COVERED",
+      "entryPoint": "src/ui/HelpOverlay.tsx GLOBAL SHORTCUTS → CHANGE",
+      "spec": "tests/ui/HelpOverlay.test.tsx",
+      "seamEvent": "fireEvent.keyDown(window, { key: \"U\", ctrlKey: true, shiftKey: true })",
+      "negativeSpec": "rejects colliding chords",
+      "note": "Users can remap central actions with safe modified chords; collisions with another global action are rejected and the original binding remains active until a valid chord is captured."
+    },
+    {
+      "id": "live-shortcut-remap-dispatch",
+      "status": "COVERED",
+      "entryPoint": "src/ui/App.tsx global keyboard handler → matchShortcut",
+      "spec": "tests/ui/App.test.tsx",
+      "seamEvent": "fireEvent.keyDown(document.body, { key: \"U\", ctrlKey: true, shiftKey: true })",
+      "negativeSpec": "does not open Arrangement before the chord is assigned",
+      "note": "The custom chord does nothing before assignment, then opens the actual Arrangement panel through the live app keyboard handler once registered."
+    },
+    {
+      "id": "tab-track-navigation-with-audio",
+      "status": "COVERED",
+      "entryPoint": "src/ui/App.tsx Tab-to-Transient guard → matchShortcut",
+      "spec": "tests/ui/App.test.tsx",
+      "seamEvent": "fireEvent.keyDown(document.body, { key: \"Tab\" })",
+      "negativeSpec": "does not let an unselected audio clip hijack Tab track navigation",
+      "note": "An audio clip elsewhere in the project must not consume Tab; transient navigation only applies when an audio clip is selected."
     }
   ]
 }

@@ -12,10 +12,9 @@
  *
  * or, rarely, a single-file module. The probe prints one JSON line per
  * discovered module binary to stdout, then exits. Factory enumeration and
- * audio processing are Waves 2–3 (ADR 0035) and REQUIRE the Steinberg VST3
- * SDK build plus the Steinberg VST3 license agreement before any
- * SDK-linked binary is distributed — the structural scan ships without the
- * SDK on purpose.
+ * audio processing are Waves 2–3 (ADR 0035) and may add a pinned VST SDK 3.8+
+ * build with its applicable license notices. The structural scan ships
+ * without the SDK on purpose.
  *
  * Usage:   vst3-probe.exe <path-to-.vst3 entry>
  * Stdout:  one JSON object per module binary (UTF-8)

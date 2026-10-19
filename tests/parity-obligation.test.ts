@@ -4,6 +4,7 @@ import {
   PARITY_INSTRUMENT_EXCLUSIONS,
   PARITY_ALIGN_TOLERANCE,
   PARITY_NULL_FLOOR_DB,
+  PARITY_MIN_SPECTRAL_COSINE_KEYS,
   comparePhaseInsensitiveParity,
   noteExpressionParityAgrees,
   noteExpressionParityMatrix,
@@ -68,28 +69,33 @@ describe("live↔offline parity obligation", () => {
 
   it("maps every declared Piano Roll target and slide-note capability to a live/offline parity case", () => {
     const matrix = noteExpressionParityMatrix();
-    const obligationIds = matrix.map(({ kind, family }) => `${kind}:${family}`);
+    const obligationIds = matrix.map(({ kind, family, targetKeys }) => `${kind}:${family}:${targetKeys.join(",")}`);
     expect(new Set(obligationIds).size).toBe(obligationIds.length);
 
     for (const kind of INSTRUMENT_ORDER) {
       const declared = noteExpressionTargetsForInstrument(kind);
       const rows = matrix.filter((row) => row.kind === kind);
-      const noteOn = rows.find((row) => row.family === "note-on");
-      expect(noteOn?.targetKeys).toEqual([
-        "velocity",
-        "pitchOffsetSemitones",
-        ...declared.filter((target) => target === "pan" || target === "releaseVelocity"),
+      const noteOn = rows.filter((row) => row.family === "note-on");
+      expect(noteOn.map((row) => row.targetKeys)).toEqual([
+        ["velocity"],
+        ["pitchOffsetSemitones"],
+        ...declared.filter((target) => target === "pan" || target === "releaseVelocity").map((target) => [target]),
       ]);
 
-      const directFilter = rows.find((row) => row.family === "direct-filter");
-      expect(directFilter?.targetKeys ?? []).toEqual(
-        declared.filter((target) => target === "filterCutoffHz" || target === "filterResonance"),
+      const directFilter = rows.filter((row) => row.family === "direct-filter");
+      expect(directFilter.map((row) => row.targetKeys)).toEqual(
+        declared
+          .filter((target) => target === "filterCutoffHz" || target === "filterResonance")
+          .map((target) => [target]),
       );
 
-      const modulation = rows.find((row) => row.family === "modulation");
-      expect(modulation?.targetKeys ?? []).toEqual(declared.filter((target) => target === "modX" || target === "modY"));
+      const modulation = rows.filter((row) => row.family === "modulation");
+      expect(modulation.map((row) => row.targetKeys)).toEqual(
+        declared.filter((target) => target === "modX" || target === "modY").map((target) => [target]),
+      );
 
-      expect(rows.some((row) => row.family === "held-slide")).toBe(supportsHeldVoiceSlideNote(kind));
+      const heldSlide = rows.filter((row) => row.family === "held-slide");
+      expect(heldSlide.map((row) => row.targetKeys)).toEqual(supportsHeldVoiceSlideNote(kind) ? [["slideNote"]] : []);
     }
   });
 
@@ -154,6 +160,14 @@ describe("live↔offline parity obligation", () => {
     expect(comparison.spectralCosine).toBeGreaterThanOrEqual(0.98);
     expect(comparison.rmsRatio).toBeGreaterThan(1.1);
     expect(phaseInsensitiveParityAgrees(comparison, comparison, comparison, -76)).toBe(false);
+  });
+
+  it("keeps the Keys spectral tolerance local without loosening other instruments", () => {
+    const keysSpectrum = { spectralCosine: 0.975, rmsRatio: 1, windows: 12 };
+    expect(phaseInsensitiveParityAgrees(keysSpectrum, keysSpectrum, keysSpectrum, -76)).toBe(false);
+    expect(
+      phaseInsensitiveParityAgrees(keysSpectrum, keysSpectrum, keysSpectrum, -76, PARITY_MIN_SPECTRAL_COSINE_KEYS),
+    ).toBe(true);
   });
 
   it("rejects a silent or divergent second live capture even when the first live null passes", () => {

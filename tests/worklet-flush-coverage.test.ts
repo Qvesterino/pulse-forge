@@ -88,6 +88,7 @@ const FLUSHED: Record<string, FlushEntry> = {
   "granular-voice-processor.js": {},
   "granularfreeze-processor.js": {},
   "kaskada-processor.js": { params: { feedback: 0.7, time: 30 }, capSeconds: 8 },
+  "karplus-strong-processor.js": {},
   "kwmeter-processor.js": {},
   "latency-probe-processor.js": {},
   "limiter-processor.js": {},

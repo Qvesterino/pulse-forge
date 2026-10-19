@@ -67,7 +67,11 @@ describe("independent AudioClip pitch", () => {
     const { doc, trackId } = docWithAudioClip();
     const sourceBuffer = makeAudioBuffer(1, 44100, 44100);
     const clip = { ...doc.arrangement.audioClips![0]!, pitchSemitones: 7 };
-    const sources: Array<{ buffer: ReturnType<typeof makeAudioBuffer> | null }> = [];
+    const sources: Array<{
+      buffer: ReturnType<typeof makeAudioBuffer> | null;
+      loop: boolean;
+      stop: ReturnType<typeof vi.fn>;
+    }> = [];
     const cache = new Map<string, ReturnType<typeof makeAudioBuffer>>();
     const ctx = {
       createBuffer: makeAudioBuffer,
@@ -122,12 +126,22 @@ describe("independent AudioClip pitch", () => {
 
     engine.triggerAudioClip(clip, 0, 1);
     engine.triggerAudioClip(clip, 1, 1);
+    engine.triggerAudioClip({ ...clip, loop: true, pitchSemitones: undefined }, 2, 1, 0, {
+      voiceId: "live-pad-test",
+      loopUntilStopped: true,
+    });
     const first = sources[0]!.buffer!;
     const second = sources[1]!.buffer!;
     expect(first).not.toBe(sourceBuffer);
     expect(first.duration).toBe(sourceBuffer.duration);
     expect(first).toBe(second);
     expect(first.getChannelData(0)).not.toEqual(sourceBuffer.getChannelData(0));
+    expect(sources[2]!.loop).toBe(true);
+    expect(sources[2]!.stop).not.toHaveBeenCalled();
+    expect(deps.trackOneShot).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ livePadVoiceId: "live-pad-test" }),
+    );
   });
 
   it("exposes independent pitch in the stretch dialog and applies it with the timing settings", () => {

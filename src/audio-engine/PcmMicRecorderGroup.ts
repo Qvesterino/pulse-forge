@@ -1,0 +1,184 @@
+import {
+  PcmCaptureStartBarrier,
+  PcmMicRecorder,
+  type PcmMicRecorderDependencies,
+  type PcmRecordingMetadata,
+} from "./PcmMicRecorder";
+import type { MaterializedPcmTake } from "./pcmRecording";
+
+const PREPARE_TIMEOUT_MS = 20_000;
+const RENDER_QUANTUM_FRAMES = 128;
+const START_LEAD_SEC = 0.02;
+
+export type PcmMicRecorderGroupDependencies = Omit<
+  PcmMicRecorderDependencies,
+  "captureGroupToken" | "captureStartBarrier"
+>;
+
+export interface PcmMicRecorderGroupInput {
+  /** Stable per-track identity used by the arrangement UI and stop results. */
+  id: string;
+  dependencies: PcmMicRecorderGroupDependencies;
+  getMetadata: () => PcmRecordingMetadata | null;
+}
+
+export interface PcmMicRecorderGroupStopResult {
+  inputId: string;
+  take: MaterializedPcmTake | null;
+  error: string | null;
+}
+
+/**
+ * Coordinates independent input devices as one arrangement recording.
+ * Every member prepares its stream, worklet and recovery session first; only
+ * then are all capture worklets armed on one future frame of their shared
+ * AudioContext. Startup failure cancels every member, leaving committed PCM
+ * in recovery instead of silently recording only part of the armed group.
+ */
+export class PcmMicRecorderGroup {
+  private readonly entries: Array<{
+    id: string;
+    recorder: PcmMicRecorder;
+    getMetadata: () => PcmRecordingMetadata | null;
+  }>;
+  private readonly startBarrier: PcmCaptureStartBarrier;
+  private readonly captureGroupToken = {};
+  private readonly context: AudioContext;
+  private state_: "idle" | "starting" | "recording" | "stopping" | "complete" = "idle";
+  private stopPromise: Promise<PcmMicRecorderGroupStopResult[]> | null = null;
+
+  /** Called when an input fails after its group has started. */
+  onFailure: ((inputId: string, message: string, results: PcmMicRecorderGroupStopResult[]) => void) | null = null;
+
+  constructor(inputs: readonly PcmMicRecorderGroupInput[]) {
+    if (inputs.length < 2) throw new Error("A coordinated capture group needs at least two input streams");
+    if (new Set(inputs.map((input) => input.id)).size !== inputs.length) {
+      throw new Error("Every coordinated input needs a different track identity");
+    }
+    const context = inputs[0]?.dependencies.ctx;
+    if (!context || inputs.some((input) => input.dependencies.ctx !== context)) {
+      throw new Error("All coordinated input streams must use the same live AudioContext");
+    }
+    this.context = context;
+
+    this.startBarrier = new PcmCaptureStartBarrier(inputs.length);
+    this.entries = inputs.map((input) => {
+      const recorder = new PcmMicRecorder({
+        ...input.dependencies,
+        captureGroupToken: this.captureGroupToken,
+        captureStartBarrier: this.startBarrier,
+      });
+      recorder.onError = (message) => this.handleMemberFailure(input.id, message);
+      return { id: input.id, recorder, getMetadata: input.getMetadata };
+    });
+  }
+
+  get state(): "idle" | "starting" | "recording" | "stopping" | "complete" {
+    return this.state_;
+  }
+
+  get elapsedSeconds(): number {
+    return this.entries.reduce((elapsed, entry) => Math.max(elapsed, entry.recorder.elapsedSeconds), 0);
+  }
+
+  get inputIds(): string[] {
+    return this.entries.map((entry) => entry.id);
+  }
+
+  getRecorder(inputId: string): PcmMicRecorder | null {
+    return this.entries.find((entry) => entry.id === inputId)?.recorder ?? null;
+  }
+
+  setMonitoring(enabled: boolean): void {
+    for (const { recorder } of this.entries) recorder.setMonitoring(enabled);
+  }
+
+  setInputMonitoring(inputId: string, enabled: boolean): void {
+    this.getRecorder(inputId)?.setMonitoring(enabled);
+  }
+
+  setInputGainDb(db: number): void {
+    for (const { recorder } of this.entries) recorder.setInputGainDb(db);
+  }
+
+  async start(): Promise<void> {
+    if (this.state_ !== "idle") throw new Error("This coordinated recording group has already been used");
+    this.state_ = "starting";
+
+    const startAttempts = this.entries.map((entry) => entry.recorder.start(entry.getMetadata));
+    // Each task is also observed independently. If one input rejects before
+    // reaching the barrier, peers must not remain waiting for a member that
+    // can never become ready.
+    for (const attempt of startAttempts) void attempt.catch(() => {});
+    const firstStartFailure = new Promise<never>((_resolve, reject) => {
+      for (const attempt of startAttempts) void attempt.catch(reject);
+    });
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    const preparationTimeout = new Promise<never>((_resolve, reject) => {
+      timeout = setTimeout(
+        () => reject(new Error("Not every armed audio input became ready within 20 seconds")),
+        PREPARE_TIMEOUT_MS,
+      );
+    });
+
+    try {
+      await Promise.race([this.startBarrier.waitForAllPrepared(), firstStartFailure, preparationTimeout]);
+      if (this.context.state !== "running")
+        throw new Error("The shared audio engine stopped before the input group was ready");
+      const firstFrame = Math.ceil(
+        ((this.context.currentTime + START_LEAD_SEC) * this.context.sampleRate) / RENDER_QUANTUM_FRAMES,
+      );
+      this.startBarrier.releaseAt(firstFrame * RENDER_QUANTUM_FRAMES);
+      await Promise.all(startAttempts);
+      this.state_ = "recording";
+    } catch (error) {
+      this.startBarrier.abort(error);
+      this.state_ = "stopping";
+      await Promise.allSettled(this.entries.map((entry) => entry.recorder.cancel()));
+      this.state_ = "complete";
+      throw error;
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+  }
+
+  async stop(): Promise<PcmMicRecorderGroupStopResult[]> {
+    if (this.stopPromise) return this.stopPromise;
+    if (this.state_ === "starting") {
+      await this.cancel();
+      return [];
+    }
+    if (this.state_ !== "recording") return [];
+    this.state_ = "stopping";
+    this.stopPromise = Promise.all(
+      this.entries.map(async ({ id, recorder }) => {
+        try {
+          return { inputId: id, take: await recorder.stop(), error: null };
+        } catch (error) {
+          return { inputId: id, take: null, error: error instanceof Error ? error.message : String(error) };
+        }
+      }),
+    ).finally(() => {
+      this.state_ = "complete";
+      this.stopPromise = null;
+    });
+    return this.stopPromise;
+  }
+
+  async cancel(): Promise<void> {
+    if (this.state_ === "complete") return;
+    this.startBarrier.abort(new Error("The coordinated recording was cancelled"));
+    this.state_ = "stopping";
+    await Promise.allSettled(this.entries.map((entry) => entry.recorder.cancel()));
+    this.state_ = "complete";
+  }
+
+  private handleMemberFailure(inputId: string, message: string): void {
+    if (this.state_ === "starting") {
+      void this.cancel();
+      return;
+    }
+    if (this.state_ !== "recording") return;
+    void this.stop().then((results) => this.onFailure?.(inputId, message, results));
+  }
+}

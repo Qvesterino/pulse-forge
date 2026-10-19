@@ -55,6 +55,12 @@ describe("MasterMeter", () => {
     expect(screen.getByRole("group", { name: /Master meter/ })).toBeInTheDocument();
   });
 
+  it("can put the editable master EQ on the live spectrum in the mastering workspace", () => {
+    renderWithContext(<MasterMeter integratedEq />);
+    expect(screen.getByRole("group", { name: "Master spectrum and EQ" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add master EQ" })).toBeInTheDocument();
+  });
+
   it("shows the buss-glue gain reduction separately", () => {
     renderWithContext(<MasterMeter />);
     expect(screen.getByText(/GLUE 0\.0 dB/)).toBeInTheDocument();

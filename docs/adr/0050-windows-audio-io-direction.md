@@ -1,7 +1,7 @@
 # ADR 0050 — Windows audio I/O direction
 
 - **Date:** 2026-10-17
-- **Status:** Accepted evaluation policy; native stream implementation remains gated
+- **Status:** Accepted evaluation policy; native shared-WASAPI path implemented with hardware qualification open
 - **Scope:** KYX Studio for Windows, with the UA Volt 276 as the first reference interface
 
 ## Context
@@ -38,8 +38,15 @@ The Windows probe evidence is intentionally bounded:
   not the Volt driver. ASIO discovery and the fixture are documented in
   [ADR 0017](./0017-smpte-asio-discovery.md) and [ADR 0018](./0018-pcm-pipe-transport.md).
 - Read-only endpoint enumerations on 2026-10-17 and 2026-10-19 did not find
-  the Volt connected. The 2026-10-15 result is retained as historical smoke
-  evidence; no new hardware stream was opened in either enumeration.
+  the Volt connected. A fresh metadata-only list at 2026-10-19 12:36 +02:00
+  still reports all Volt capture/render endpoints as `not-present`; active
+  capture endpoints are Creative Live! Cam Sync and Realtek Array, and active
+  render endpoints are MSI MP273Q E2 and Realtek Speakers. The active endpoints
+  report 48 kHz float32, with 480-frame shared periods except Realtek render at
+  512 frames. AudioSrv and AudioEndpointBuilder are running. This probe only
+  enumerates metadata and opens no stream. The 2026-10-15 result is retained as
+  historical smoke evidence; no hardware stream was opened in these latest
+  enumerations.
 
 Microsoft documents `IAudioClient3` as the shared-mode API for querying legal
 engine periods and initializing a stream at one of those periods. The period
@@ -238,20 +245,169 @@ and [recovering from an invalid device](https://learn.microsoft.com/en-us/window
   transport as unavailable across this boundary. The 100-block copied-
   `ArrayBuffer` AudioWorklet round-trip passed, but observed p95/max ranged from
   2/2 ms to 121/171 ms across runs; that variability is not a low-latency
-  qualification. The typed contract now uses bounded 1 MiB maximum PCM packets
-  over a dedicated MessagePort; this packet path is only a candidate and is
-  not yet connected to WASAPI or AudioEngine.
-- Native Windows I/O remains **not shipped**. The decision records an evidence-
-  led direction, not a user-facing support claim.
-- The next engineering step is to connect the utility-process adapter's native
-  rings to a bounded sequenced PCM packet bridge and measure its sustained
-  jitter and underruns. If copied packets cannot meet the monitoring target,
-  select a native boundary that can share memory with the renderer before
-  claiming low-latency support. Then add clock-drift handling for independent
-  endpoints and verify actual
-  endpoint negotiation, bounded buffering, device-loss recovery, acoustic
-  round-trip latency and a 30-minute Volt duplex soak. Until those checks pass,
-  native Windows I/O remains not shipped.
+  qualification. The typed contract uses bounded 1 MiB maximum PCM packets
+  over a dedicated MessagePort.
+- **AudioEngine integration checkpoint (2026-10-19):** the packaged Windows
+  Studio now connects the exact-endpoint shared-WASAPI utility session to the
+  live `AudioEngine` master through a bounded AudioWorklet packet bridge. The
+  utility drains render packets to the native SPSC ring and copies native
+  capture into preallocated, recycled packets; the worklet routes captured PCM
+  through a `MediaStreamDestination` used by arrangement recording. The live
+  output sink is scoped to the current `AudioContext`; offline rendering stays
+  on the shared engine's ordinary offline destination. Selected endpoint IDs,
+  sample rate, shared period and mono/stereo input plus stereo output channel
+  maps are validated with no fallback. Device loss or context replacement
+  stops the native session and keeps the live output muted until the user
+  explicitly stops/retries, while active recording enters the existing recovery
+  path. `npm run build:windows-audio-host` and the C++ channel-map, bounded-ring,
+  shared-period and duplex-request checks pass. This completes the product
+  connection, not hardware qualification: the Volt 276 endpoints were not
+  present in the 2026-10-19 metadata-only enumeration, and the older 2026-10-15
+  hardware smoke predates this connection. The current integration has no
+  sustained device-clocked measurement through the AudioEngine/worklet/MessagePort
+  path, no analog loopback result, and no independent endpoint clock-drift
+  correction.
+- **Offline AudioWorklet PCM smoke (2026-10-19):**
+  `npm run test:browser:windows-audio-worklet-bridge` passes in Chromium using
+  an `OfflineAudioContext`, a project-synchronized AudioEngine master graph,
+  a synthetic 48 kHz / 480-frame session and a `MessageChannel`. Six render
+  packets reached the bridge; five carried non-zero post-master audio (maximum
+  packet RMS 0.0826). Six of six capture packets reached the offline output
+  (RMS 0.178). The bridge reported six render periods, zero render drops, zero
+  invalid or dropped capture packets and an empty in-flight render pool after
+  acknowledgement. This verifies the offline AudioEngine master signal path
+  into the public AudioWorklet and the capture/packet mechanics. The offline
+  test reconnects the master output directly because the production
+  `setLiveAudioOutputSink` contract deliberately requires a live context. It
+  does not exercise that live sink method, the Electron utility process,
+  WASAPI, device clocks, live scheduling or physical latency.
+- **Native recording disconnect recovery (2026-10-19):**
+  `tests/pcm-mic-recorder.test.ts` builds the native capture-stream connection,
+  commits a PCM block, injects the bridge's `device-lost` event, then verifies
+  that recording stops and the committed block remains in a recoverable
+  session. This covers the software event path; it does not verify physical
+  device removal or driver recovery.
+- **Packaged desktop smoke (2026-10-19):** `npm run desktop:smoke` passes on
+  `app://bundle` with the renderer sandbox and cross-origin isolation enabled.
+  The synthetic 48 kHz / 480-frame probe ran for 30 seconds and delivered
+  3,000/3,000 packets with zero missing packets; measured median/p95/maximum
+  round-trip was 0.667/2/2 ms in this run. The native addon rejected
+  deliberately unknown endpoint IDs without substitution. SharedArrayBuffer
+  did not cross the utility boundary, so this continues to use copied
+  ArrayBuffer packets. The result verifies synthetic transport and exact-ID
+  failure behavior only; it does not qualify real endpoint timing, AudioEngine
+  packet jitter under a device clock, acoustic latency or audio output.
+- **Device-clocked native adapter soak (2026-10-19):** the built N-API adapter
+  was run directly against the active Creative Live! Cam Sync capture endpoint
+  and MSI MP273Q render endpoint, using exact IDs, 48 kHz float32, a 480-frame
+  period, and zero-valued render buffers. Two 30.2-second sessions started in
+  234/285 ms and each accepted 3003/3003 render writes. They reported 0/1
+  render underruns, 0 capture overruns, 1 capture discontinuity per run, 0
+  timestamp errors, 0 rejected writes, and 0 non-finite captured samples.
+  Maximum queued capture/render frames were 480/1920; each endpoint negotiated
+  a 1056-frame buffer (22 ms at 48 kHz). The adapter surfaced no positive
+  `GetStreamLatency` values. Captured audio was only counted and was not saved.
+  This is native-adapter evidence only: it does not measure the
+  AudioEngine/worklet/MessagePort path, analog latency, Volt channel identity,
+  device-loss recovery, or the required 30-minute Volt soak.
+- **Integrated utility/AudioWorklet smoke (2026-10-19, failed qualification):**
+  an opt-in Electron smoke now opens exact active endpoints through the
+  production utility host and public AudioWorklet bridge. It sends zero-valued
+  render data and counts capture only; samples are not saved. On the Creative
+  webcam microphone + MSI display output at 48 kHz / 480 frames, the first
+  30-second run negotiated a 1,056-frame endpoint buffer and processed 3,113
+  worklet render periods with zero worklet drops or utility rejections, but
+  reported one WASAPI render underrun, one capture discontinuity, and only two
+  capture packets (960 frames) across the run. `GetStreamLatency` remained
+  unavailable, and shutdown required terminating the owned utility process.
+  The run is not a pass and does not use AudioEngine master audio or qualify
+  physical latency. It exposed and fixed the capture-output connection index,
+  the non-power-of-two ring capacity, and unsupported `ArrayBuffer` transfer
+  lists on Electron `MessagePortMain`; PCM now uses copied bounded packets with
+  sequence acknowledgements for the fixed pools. A subsequent run after adding
+  the worklet-ready handshake stalled inside native WASAPI startup for more
+  than 20 seconds and never became ready. The Volt was absent, so these tests
+  used other active endpoints and do not establish its channel map. Native
+  startup snapshots now expose the last WASAPI phase and direction through
+  utility diagnostics. Instrumented attempts with the active MSI render
+  endpoint stalled at different calls on the input side: Realtek Array reached
+  `capture/starting-audio-client`; Creative Live! Cam Sync first remained at
+  `capture/initialize-shared-stream`, then after AudioSrv recovery reached
+  `capture/starting-audio-client`. The utility now reports the last phase and
+  terminates its isolated process after a 7-second native-start timeout. One
+  post-recovery attempt exercised this watchdog at 7.17 seconds; AudioSrv
+  remained running, the active endpoints enumerated again, and no new service
+  hang was recorded during the following two minutes. The run sent silence
+  and saved no captured audio. Windows logs contain four AudioSrv AppHang /
+  unexpected-termination events at 10:14, 10:58, 11:11 and 11:26 (one
+  cross-process report references `audiodg.exe`). The 11:26 smoke found its
+  selected capture endpoint inactive before stream initialization; the
+  matching WER event records another AudioSrv hang. A manual `Start-Service`
+  attempt failed because this session could not open the service. At
+  2026-10-19 11:32:39, metadata-only enumeration confirmed Windows had
+  restarted AudioSrv and restored active endpoints: Creative and Realtek
+  capture, MSI and Realtek render. All reported 48 kHz float32; the active
+  shared periods were 480 frames except Realtek render at 512 frames. The
+  Volt endpoints remained `not-present`. This read did not open a stream, and
+  no later AudioSrv event was present at 11:32. The repeated service hangs
+  remain unexplained; the records do not identify the root cause or one
+  specific client call.
+- The startup watchdog remains armed while the native start promise is pending,
+  including after a stop request. This covers renderer teardown during a stuck
+  driver call; a completed or replaced session cancels the watchdog. Focused
+  watchdog and utility-manager tests pass. This lifecycle fix does not explain
+  the AudioSrv hang or qualify device streaming.
+- The startup diagnostic previously grouped both `IAudioClient3::Start` calls
+  and both `GetStreamLatency` calls under `starting-audio-client`, so a timeout
+  there could not identify which native call remained blocked. Startup
+  snapshots now distinguish capture start, render start, capture latency query
+  and render latency query. This is passive diagnostic instrumentation; it
+  does not open a device stream. A read-only Application/WER query on
+  2026-10-19 reconfirmed the four documented AudioSrv hang reports (including
+  one cross-process `audiodg.exe` report); it did not identify a root cause or
+  add a later report after the 11:26 event.
+- A read-only recovery check on 2026-10-19 found `Audiosrv` running, no
+  warning/error entries in the Audio Operational or PlaybackManager logs from
+  10:00–12:00, and no WER event later than 11:26. The archived WER report
+  folders exist, but reading their contents returned `UnauthorizedAccess`; no
+  hang dump or report payload could be inspected from this session. A static
+  call-order review against Microsoft's
+  [InitializeSharedAudioStream contract](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudioclient3-initializesharedaudiostream)
+  and [Start guidance](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudioclient-start)
+  found the required period validation, event-driven initialization, event
+  handle attachment and render-buffer priming before `Start()`. This finds no
+  source-level ordering defect; it is not runtime evidence and does not explain
+  the service hang.
+- The I/O panel now retains the validated ready negotiation on the engine
+  connection and displays endpoint-reported input/output stream latency in
+  frames and milliseconds when the driver supplies it. It labels acoustic
+  loopback as unmeasured; it does not reinterpret driver latency as a measured
+  round trip. The ready notification arrives before the UI subscribes, so the
+  connection snapshot is the durable source for these negotiated values.
+- Startup phase diagnostics now flow from the utility host through the main
+  process and the validated preload bridge to the I/O panel. The panel subscribes
+  before requesting session startup, buffers an early phase until the session
+  ID is returned, then ignores events from other sessions. The manager test
+  covers valid, mismatched-session and oversized phase messages. This improves
+  visibility into a pending native startup without opening a device or changing
+  the WASAPI call path.
+- Stopping or unmounting the I/O panel invalidates an in-flight startup. If the
+  utility returns a session after cancellation, the panel discards that
+  session's transferred PCM port and stops the exact session before it can
+  connect to the AudioEngine. A pending port wait is rejected immediately, and
+  a port arriving after cancellation is closed. Bridge and UI regression tests
+  cover both the late transfer and Stop winning the delayed IPC response race;
+  this is lifecycle hardening and does not qualify hardware streaming.
+- Native Windows audio I/O is **implemented with qualification open**. The
+  next step is to investigate the service hang without opening another stream
+  until Windows audio recovers and the cause is better understood. Preserve
+  the bounded utility recovery. After the underlying issue is fixed, verify
+  graceful stop/retry and measure sustained jitter, queue depth, underruns and
+  capture discontinuities through AudioEngine. After that,
+  run the exact Volt connector map, analog round-trip measurement,
+  device-loss/reconnect procedure and 30-minute duplex soak when the interface
+  is present. If copied packets cannot meet the monitoring target, revisit the
+  process boundary before claiming low latency.
 - The Volt reference setup stays **Open** while the device is absent and until
   physical channel mapping, analog latency, recovery and the sustained soak
   have evidence. The current record is in the

@@ -6,6 +6,7 @@ import { evaluateMasterVerdict, evaluateMixCheck, MIN_DB } from "../audio-engine
 import { Goniometer } from "./Goniometer";
 import { LoudnessHistory } from "./LoudnessHistory";
 import { SpectrumAnalyzer } from "./SpectrumAnalyzer";
+import { MasterSpectrumEq } from "./MasterSpectrumEq";
 import { Spectrogram } from "./Spectrogram";
 import { setMasterConfig } from "../commands/commands";
 import { MASTER_PROFILES, profileFor, resolveDeliveryTarget, type MasterProfileId } from "../mastering/profiles";
@@ -52,7 +53,7 @@ function sameMixWarnings(previous: ReadState["warnings"], next: ReadState["warni
  * ~30 Hz loop so the UI is light. The stereo indicators (L/R + GR, correlation,
  * headroom) live in the MASTER channel strip — see MasterStereoMeters.
  */
-export function MasterMeter() {
+export function MasterMeter({ integratedEq = false }: { integratedEq?: boolean } = {}) {
   const services = useServices();
   // Fine-grained selector (GOAL 04): MasterMeter only reads master config.
   const master = useMaster();
@@ -206,17 +207,28 @@ export function MasterMeter() {
   return (
     <div className="master-meter" role="group" aria-label="Master meter">
       <div className="master-zone-center">
-        <SpectrumAnalyzer
-          analyser={
-            (
-              services.engine as unknown as { getMasterSpectrumAnalyser?: () => AnalyserNode | null }
-            ).getMasterSpectrumAnalyser?.() ?? null
-          }
-          height={72}
-          accent="#f59e0b"
-          id="master"
-          fillHeight
-        />
+        {integratedEq ? (
+          <MasterSpectrumEq
+            analyser={
+              (
+                services.engine as unknown as { getMasterSpectrumAnalyser?: () => AnalyserNode | null }
+              ).getMasterSpectrumAnalyser?.() ?? null
+            }
+            id="master-integrated-eq"
+          />
+        ) : (
+          <SpectrumAnalyzer
+            analyser={
+              (
+                services.engine as unknown as { getMasterSpectrumAnalyser?: () => AnalyserNode | null }
+              ).getMasterSpectrumAnalyser?.() ?? null
+            }
+            height={72}
+            accent="#f59e0b"
+            id="master"
+            fillHeight
+          />
+        )}
         <Spectrogram
           analyser={
             (

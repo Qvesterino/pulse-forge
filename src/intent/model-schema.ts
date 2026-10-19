@@ -173,15 +173,6 @@ export const VOCAB = {
     "drumsynth",
     "tsar",
     "kopa",
-    // CHORAL (c75b2fbf) added the instrument + panel but not this mirror.
-    // Adding it here is index-safe: model-decoder.ts resolves a head class by
-    // NAME through the manifest (argmaxClass → head.classes[i]), never through
-    // this list, and the tokenizer's vocabSha256 covers a different file
-    // (public/models/intent-model-v1.vocab.json). So the grammar can already
-    // accept "choral"; the shipped ONNX head has no such logit until it is
-    // retrained, and until then it simply never emits one — the deterministic
-    // parser still resolves choral every time.
-    "choral",
   ] as const,
   arrangeRole: ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"] as const,
   arrangeOp: ["addRole", "remove", "duplicate", "reorder", "resize", "autoArrange"] as const,

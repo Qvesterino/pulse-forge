@@ -146,12 +146,53 @@ describe("local intent model schema", () => {
   });
 
   it("keeps instrument slots in sync with the shipped instrument registry and Python trainer", () => {
-    expect([...VOCAB.instrument].sort()).toEqual(Object.keys(INSTRUMENT_DEFS).sort());
+    // THE INVARIANT THAT MATTERS: the model vocabulary is exactly what the
+    // SHIPPED model can emit. `grammarSha256` in the model manifest is a hash
+    // of this schema, and `instrument` is a fixed softmax head — a class here
+    // that the head does not have is a class the model can never produce.
+    //
+    // The old assertion demanded equality with INSTRUMENT_DEFS, which is not
+    // achievable when an instrument ships before its model is retrained
+    // (choral, c75b2fbf). "Solve" that by adding choral here and re-pinning
+    // grammarSha256 and the artifact lock would be a manifest that lies about
+    // its own model — the exact failure a lock exists to prevent.
+    //
+    // So the lag is made EXPLICIT and its dangerous direction stays closed:
+    const manifest = JSON.parse(
+      readFileSync(path.join(process.cwd(), "public", "models", "intent-model-v1.manifest.json"), "utf8"),
+    ) as { features: { heads: Array<{ name: string; classes: string[] }> } };
+    const head = manifest.features.heads.find((candidate) => candidate.name === "instrument");
+    expect(head, "the model manifest must declare an instrument head").toBeDefined();
+    const modelClasses = (head!.classes ?? []).filter((name) => name !== "__absent__").sort();
+    expect([...VOCAB.instrument].sort(), "model vocab must match the model's own head classes").toEqual(modelClasses);
+
+    // No phantom instruments: the model must never name a kind the DAW lacks.
+    const registry = Object.keys(INSTRUMENT_DEFS).sort();
+    for (const instrument of VOCAB.instrument) {
+      expect(registry, `model vocab names "${instrument}", which INSTRUMENT_DEFS does not ship`).toContain(instrument);
+    }
+
+    // The registry is allowed to LEAD the model until the next training run.
+    const lagging = registry.filter((kind) => !(VOCAB.instrument as readonly string[]).includes(kind));
+    // The Python trainer defines the NEXT run, so it must already cover
+    // everything the shipped model knows — and may run ahead of it.
     const trainer = readFileSync(path.join(process.cwd(), "scripts", "train-intent-model.py"), "utf8");
     const block = trainer.match(/INSTRUMENTS\s*=\s*sorted\(\s*\[([\s\S]*?)\]\s*\)/u)?.[1];
     expect(block).toBeDefined();
     const trainerInstruments = Array.from(block!.matchAll(/"([^"]+)"/gu), (match) => match[1]);
-    expect(trainerInstruments.sort()).toEqual([...VOCAB.instrument].sort());
+    for (const instrument of VOCAB.instrument) {
+      expect(trainerInstruments, `trainer must know every shipped class; missing "${instrument}"`).toContain(
+        instrument,
+      );
+    }
+    // Anything the registry leads with MUST already be queued in the trainer,
+    // otherwise the next training run would silently drop it.
+    for (const kind of lagging) {
+      expect(
+        trainerInstruments,
+        `${kind} ships in INSTRUMENT_DEFS but is not queued in the trainer — the next run would lose it`,
+      ).toContain(kind);
+    }
   });
 
   it("keeps new intent heads in sync with the TypeScript schema", () => {

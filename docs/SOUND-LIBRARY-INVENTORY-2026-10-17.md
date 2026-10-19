@@ -92,3 +92,10 @@ After the source identity is established, add a short, high-quality set rather t
 
 Keep the technically clean core and the existing 808/kick foundations. The highest-value investment is **source identity + human recordings + an arrangement-aware atmosphere layer**. Refine any near-neighbour samples by ear, and add only the few kick, bass, synth, and loop designs that prove a distinct role in a real beat.
 
+## Recheck — 2026-10-19
+
+- The current manifest still contains 155 factory assets in 15 categories, with 146 curated WAV overrides and nine procedural voices.
+- `npx vitest run tests/sound-library-gate.test.ts` passes all 5 checks for format, loudness, clipping, DC, leading silence, and mono-safe stereo behavior.
+- A fresh SHA-256 scan found no duplicate factory WAVs. Drum one-shots range from about 0.40 to 1.95 s; tonal/mallet voices reach 3.25 s; the longest Field/texture FX beds are about 4.06 s. Those long beds have a clear texture role and are not accidental tails.
+- No current asset met a safe, evidence-based threshold for processing or removal. The next audible gain still comes from genuine performances and a few phrase-scale loops, rather than another round of normalization or near-duplicate synthetic hits.
+

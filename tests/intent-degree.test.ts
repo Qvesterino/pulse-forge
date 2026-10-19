@@ -305,13 +305,12 @@ describe("context and reference resolution — comparative follow-ups", () => {
     // A repeat is a phrasing of the same intent, not a memory lookup: the
     // degree says how much, the direction says which way.
     const again = parseFaderIntent("make it a little less again on the bass");
-    const once = parseFaderIntent("make it a little less on the bass");
     expect(again).not.toBeNull();
     expect(again!.direction).toBe("down");
     expect(again!.degree?.level).toBe(3);
-    // Identical magnitude to the non-repeat phrasing — "again" must not add
-    // a second step on top of the degree.
-    expect(again!.degree?.value).toBe(once!.degree?.value);
+    // "again" must not stack a SECOND step on top of the degree — the factor
+    // is exactly the level-3 one (measured 0.92), not 0.92².
+    expect(calibrateFaderFactor(again!.degree!.value, "down")).toBe(0.92);
   });
 });
 

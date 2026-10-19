@@ -1,15 +1,17 @@
 /** Source for the silent AudioWorklet side of the Electron PCM bridge probe. */
 module.exports = `
 class KyxAudioBridgeSmokeProcessor extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super();
+    const configuredBlockCount = options.processorOptions?.blockCount;
+    this.blockCount = Number.isSafeInteger(configuredBlockCount) && configuredBlockCount >= 1 ? configuredBlockCount : 100;
     this.bridge = null;
     this.buffer = new Float32Array(480 * 2);
     this.writeFrame = 0;
     this.nextSequence = 0;
     this.received = 0;
-    this.sentFrame = new Float64Array(100);
-    this.latencyMs = new Float64Array(100);
+    this.sentFrame = new Float64Array(this.blockCount);
+    this.latencyMs = new Float64Array(this.blockCount);
     this.failed = false;
     this.port.onmessage = (event) => {
       const message = event.data;
@@ -48,7 +50,7 @@ class KyxAudioBridgeSmokeProcessor extends AudioWorkletProcessor {
     }
     this.latencyMs[sequence] = ((currentFrame - this.sentFrame[sequence]) / sampleRate) * 1000;
     this.received += 1;
-    if (this.received === 100) this.finish();
+    if (this.received === this.blockCount) this.finish();
   }
 
   finish() {
@@ -58,10 +60,13 @@ class KyxAudioBridgeSmokeProcessor extends AudioWorkletProcessor {
       ok: true,
       sent: this.nextSequence,
       received: this.received,
+      missingPackets: this.blockCount - this.received,
       framesPerBlock: 480,
       channels: 2,
       sampleRateHz: sampleRate,
       periodMs: (480 / sampleRate) * 1000,
+      nominalDurationSec: Number(((this.blockCount * 480) / sampleRate).toFixed(3)),
+      medianRoundTripMs: Number(ordered[Math.ceil(ordered.length * 0.5) - 1].toFixed(3)),
       p95RoundTripMs: Number(ordered[Math.ceil(ordered.length * 0.95) - 1].toFixed(3)),
       maxRoundTripMs: Number(ordered[ordered.length - 1].toFixed(3)),
     };
@@ -71,10 +76,10 @@ class KyxAudioBridgeSmokeProcessor extends AudioWorkletProcessor {
 
   process(_inputs, outputs) {
     for (const channel of outputs[0] || []) channel.fill(0);
-    if (!this.bridge || this.failed || this.nextSequence >= 100) return true;
+    if (!this.bridge || this.failed || this.nextSequence >= this.blockCount) return true;
     const frames = outputs[0]?.[0]?.length || 128;
     let offset = 0;
-    while (offset < frames && this.nextSequence < 100) {
+    while (offset < frames && this.nextSequence < this.blockCount) {
       const count = Math.min(480 - this.writeFrame, frames - offset);
       const marker = this.nextSequence + 1;
       this.buffer.fill(marker, this.writeFrame * 2, (this.writeFrame + count) * 2);

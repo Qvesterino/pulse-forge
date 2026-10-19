@@ -1,9 +1,10 @@
 {
   "version": 1,
   "assets": {
-    "bass-harmonic-worklet.js": "2a62558b801b6e2f244069dd4d8c34b5027bb2a4faff5f1b1a349b93c1a89804",
+    "bass-harmonic-worklet.js": "38ca70e3f89a2e53c399ae57f6eb0b7e6dc10b29cf245aa32d2496e0fbba230a",
     "bitcrusher-worklet.js": "8cc87639d6d10ea3474bb043bdff8bd979c1b41a65dfbf1d5b90d34f555be0d6",
-    "core-worklet.js": "747196cabd2b1a68067fbdbf07e65511a69f30c4992f6273f429c42c444a102f",
+    "choral-worklet.js": "1cbb5d1a71b2532350cf7d3cc2d3e56abd5c67fda9a4eb7767e3619bbc6b9f5e",
+    "core-worklet.js": "b6d3e7391806ca1a9df337aecd2b10d62a63947da0c28e3d7ca649bb243e67f3",
     "fx-extra-worklet.js": "4a4ec2ab7419b277a1cd4fad442686bad7e574b207329bdd66be89a5a6913dbb",
     "fxeq-worklet.js": "5a06b7f37c05bbe5a35adbc8a4c99a4e5230428d53511b78e551511cbae0aa1d",
     "generative-player-worklet.js": "e6b9c29e46bfe293b3562734ce0d8f424f50b5bc483261d167c569e1bf812de0",
@@ -13,7 +14,7 @@
     "parity-capture-worklet.js": "07b1c280d74b03ba009d1e325414ab48f9cfefee2e19e36a93959225c5cd249b",
     "pcm-playback-worklet.js": "8eef507090191ea9feda50c0bbcc14c6ea1d3961a8eff3ca44c5607d1ca65339",
     "recording-capture-worklet.js": "1399136446da864ba1b930d5e01f110a499d33d18c053f97642cbf1007e27a0b",
-    "rezonans-worklet.js": "b8350f2c8821d747881364b87cf55f5101dfe71de7d069bf3e23bd80b0263cdc",
+    "rezonans-worklet.js": "33c21bf8421a4d2e4b4c5acdb94e8bfaf9b4e2f27571901e53080a3e53675afb",
     "skrutka-worklet.js": "62f4a27b9e499ff4b05fb9601b4e8ce0dec793bc6eea070042356b93b00f243c",
     "spectral-worklet.js": "76d562921c2e34ad8880a9a41bdb545cbb2da6e2460548fde912974fe2571784",
     "tsar-worklet.js": "9221c6e277a5c2179a15a7b5802ef862137f38f744ad7eecf3d302cc2ffc20f0",

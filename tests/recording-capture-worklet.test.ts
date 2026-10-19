@@ -114,6 +114,34 @@ describe("recording AudioWorklet PCM protocol", () => {
     expect(processor.takeBoundaryFrames).toEqual([0]);
   });
 
+  it("begins a coordinated take at the requested shared frame inside the render quantum", () => {
+    const processor = createProcessor();
+    renderQuantum(processor, new Float32Array(128));
+    processor.port.onmessage!({ data: { type: "start", startFrame: 192 } });
+    processor.setCurrentFrame(128);
+    processor.process([[new Float32Array(128).fill(0.25)]], [[new Float32Array(128), new Float32Array(128)]]);
+
+    expect(processor.messages.filter((message: any) => message.type === "chunk")).toHaveLength(0);
+    processor.setCurrentFrame(256);
+    processor.process([[new Float32Array(128).fill(0.5)]], [[new Float32Array(128), new Float32Array(128)]]);
+    processor.port.onmessage!({ data: { type: "stop" } });
+    const chunks = processor.messages.filter((message: any) => message.type === "chunk");
+    expect(chunks).toHaveLength(2);
+    expect(chunks[1].frames).toBe(64);
+    expect(Array.from(new Float32Array(chunks[1].channels[0]))).toEqual(new Array(64).fill(0.5));
+  });
+
+  it("fails closed when a coordinated start misses its shared audio frame", () => {
+    const processor = createProcessor();
+    renderQuantum(processor, new Float32Array(128));
+    processor.setCurrentFrame(256);
+    processor.port.onmessage!({ data: { type: "start", startFrame: 128 } });
+
+    expect(processor.stopped).toBe(true);
+    expect(processor.messages.find((message: any) => message.type === "error")?.reason).toMatch(/too late/i);
+    expect(processor.messages.filter((message: any) => message.type === "chunk")).toHaveLength(0);
+  });
+
   it("retracts a queued loop boundary before the capture frame reaches it", () => {
     const processor = createProcessor();
     renderQuantum(processor, new Float32Array(128));

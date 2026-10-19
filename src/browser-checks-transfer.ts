@@ -10,7 +10,7 @@ import { writeMidiFile } from "./midi/midiFile";
 import { midiClipEventsInWindow } from "./project-model/events";
 import { renderProject } from "./rendering/renderer";
 
-export const DAW_TRANSFER_FIXTURE_VERSION = "daw-transfer-v1";
+export const DAW_TRANSFER_FIXTURE_VERSION = "daw-transfer-v2";
 
 function makeWav(sampleRate: number, frequency: number): Uint8Array<ArrayBuffer> {
   const frames = Math.floor(sampleRate / 4);
@@ -48,6 +48,17 @@ function midiFixtureFile(): { file: File; bytes: Uint8Array<ArrayBuffer> } {
       name: `Fixture MIDI ${index + 1}`,
       channel: index,
       notes: [{ pitch: 60 + index * 3, startTick: 0, endTick: 960, velocity: 0.25 }],
+      controllers:
+        index === 0
+          ? [
+              { tick: 0, controller: 64, value: 127 },
+              { tick: 0, controller: 7, value: 127 },
+              { tick: 0, controller: 10, value: 64 },
+              { tick: 480, controller: 7, value: 96 },
+              { tick: 960, controller: 11, value: 100 },
+              { tick: 1440, controller: 64, value: 0 },
+            ]
+          : [],
     })),
   });
   const bytes = new Uint8Array(source.byteLength);
@@ -60,6 +71,8 @@ export async function runDawTransferAcceptance(): Promise<{
   fixtureVersion: string;
   importedAudioTracks: number;
   importedMidiTracks: number;
+  importedAutomationClips: number;
+  sustainedMidiNoteDuration: number;
   reopenedProjectMetadata: {
     name: string;
     bpm: number;
@@ -132,7 +145,7 @@ export async function runDawTransferAcceptance(): Promise<{
     }
 
     const transfer = buildTransferProject({
-      projectName: "DAW Transfer Fixture v1",
+      projectName: "DAW Transfer Fixture v2",
       sourceDaw: "cubase",
       bpm: 120,
       timeSignature: { numerator: 4, denominator: 4 },
@@ -148,7 +161,7 @@ export async function runDawTransferAcceptance(): Promise<{
     if (!reopened) throw new Error("Saved fixture project could not be reopened from IndexedDB.");
     const reopenedMeta = (await projectRepo.listAll()).find((project) => project.id === reopened.id);
     if (
-      reopened.name !== "DAW Transfer Fixture v1" ||
+      reopened.name !== "DAW Transfer Fixture v2" ||
       reopened.bpm !== 120 ||
       reopened.timeSignature.numerator !== 4 ||
       reopened.timeSignature.denominator !== 4 ||
@@ -176,6 +189,24 @@ export async function runDawTransferAcceptance(): Promise<{
     const expectedMidiNames = Array.from({ length: 4 }, (_, index) => `Fixture MIDI ${index + 1}`);
     if (expectedMidiNames.some((name) => !reopened.tracks.some((track) => track.name === name))) {
       throw new Error("Reopened fixture lost one or more MIDI track names.");
+    }
+    const firstMidiTrack = reopened.tracks.find((track) => track.name === expectedMidiNames[0]);
+    const firstMidiPattern = reopened.patterns.find((pattern) => pattern.id === reopened.activePatternId);
+    const firstMidiNote = firstMidiTrack && firstMidiPattern?.notes[firstMidiTrack.id]?.[0];
+    const automationClips = reopened.arrangement.automationClips ?? [];
+    const firstGainAutomation = automationClips.find(
+      (clip) => clip.target.kind === "trackGain" && clip.target.trackId === firstMidiTrack?.id,
+    );
+    const firstPanAutomation = automationClips.find(
+      (clip) => clip.target.kind === "trackPan" && clip.target.trackId === firstMidiTrack?.id,
+    );
+    if (
+      !firstMidiNote ||
+      firstMidiNote.duration !== 1440 ||
+      firstGainAutomation?.points.length !== 3 ||
+      firstPanAutomation?.points[0]?.value !== 0
+    ) {
+      throw new Error("Reopened fixture lost CC7/10/11 automation or CC64 sustained note timing.");
     }
     const expectedAudioNames = Array.from(
       { length: audioFiles.length },
@@ -297,6 +328,8 @@ export async function runDawTransferAcceptance(): Promise<{
       fixtureVersion: DAW_TRANSFER_FIXTURE_VERSION,
       importedAudioTracks: audioClips.length,
       importedMidiTracks: midiClips.length,
+      importedAutomationClips: automationClips.length,
+      sustainedMidiNoteDuration: firstMidiNote.duration,
       reopenedProjectMetadata: {
         name: reopened.name,
         bpm: reopened.bpm,

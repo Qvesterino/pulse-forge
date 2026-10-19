@@ -10,7 +10,13 @@ import { SelectionStore } from "../store/SelectionStore";
 import type { Tool } from "../store/ToolStore";
 import { ToolStore } from "../store/ToolStore";
 
-const EMPTY_CAPTURE_SNAPSHOT: ArrangementCaptureSnapshot = { capturing: false, launchCount: 0, firstBar: null };
+const EMPTY_CAPTURE_SNAPSHOT: ArrangementCaptureSnapshot = {
+  capturing: false,
+  launchCount: 0,
+  firstBar: null,
+  livePads: [],
+  message: null,
+};
 const EMPTY_GENERATIVE_STATUS: GenerativeStatus = { state: "idle" };
 const EMPTY_GENERATIVE_RUNTIME = {
   subscribe: (_listener: (trackId: string, status: GenerativeStatus) => void) => () => undefined,

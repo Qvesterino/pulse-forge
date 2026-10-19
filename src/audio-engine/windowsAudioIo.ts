@@ -1,12 +1,12 @@
 /**
- * Windows Studio audio-I/O boundary (ADR 0050).
+ * Windows Studio WASAPI I/O request/session contract (ADR 0050).
  *
- * This is a control/session contract, not a shipped device backend. Device
- * identities and channel maps are exact user intent. The Electron utility
- * process cannot currently receive the renderer's SharedArrayBuffer, so the
- * candidate PCM protocol uses bounded Float32Array packets over a dedicated
- * MessagePort. No native device stream is shipped yet. Do not send audio in
- * invoke payloads or through React state.
+ * The exact-endpoint shared-mode path is implemented and connected to the
+ * AudioEngine. Its physical-device latency, dropout and recovery qualification
+ * remains open. Device identities and channel maps are exact user intent. The
+ * Electron utility process cannot receive the renderer's SharedArrayBuffer,
+ * so PCM uses bounded Float32Array packets over a dedicated MessagePort. Do
+ * not send audio in invoke payloads or through React state.
  */
 
 export type WindowsAudioBackend = "wasapi-shared" | "wasapi-exclusive" | "asio";

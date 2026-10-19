@@ -1,7 +1,7 @@
 # ADR 0035 — VST3 hosting policy (scan → offline render-through → real-time)
 
 Date: 2026-10-07
-Status: Wave 1 shipped (structural scan); Waves 2–3 planned
+Status: Wave 1 shipped (structural scan); SDK licensing reviewed 2026-10-19; Waves 2–3 planned
 
 ## Context
 
@@ -14,14 +14,25 @@ isolation), and external PCM pipes. VST3 hosting follows the same discipline.
 The web build CANNOT host VST3 — Web Audio cannot load native binaries. VST3
 is desktop-only, forever, by architecture (ADR 0010/0011).
 
-## Licensing gate (owner decision required before Wave 2 distribution)
+## Licensing review (updated 2026-10-19)
 
-The Steinberg VST3 SDK is dual-licensed: GPLv3 OR the Steinberg VST3 license
-agreement. KYX is proprietary (all-rights reserved, see LICENSE), so shipping
-SDK-linked binaries requires signing the free Steinberg VST3 agreement. The
-Wave 1 structural scan links NO SDK code and ships freely; **any Wave 2+
-SDK-linked distribution is blocked until the owner signs the agreement**.
-Local development and testing are unaffected.
+The 2026-10-07 draft treated the SDK as dual-licensed and made a signed
+Steinberg agreement an owner gate. Steinberg's current developer portal says
+VST 3 has been under the MIT License since SDK version 3.8. For a Wave 2
+implementation, pin VST SDK 3.8 or later and retain the applicable copyright
+notice and license text in distributed copies or substantial portions. The
+portal says most SDK files are MIT-licensed, with VSTGUI and mda files under a
+BSD-like license, so inventory the exact files and notices used by the host.
+Use of the VST name or logo is optional; if KYX uses either mark, follow
+Steinberg's trademark rules. An older SDK or component outside those terms
+requires its own review.
+
+Sources: [VST 3 licensing](https://steinbergmedia.github.io/vst3_dev_portal/pages/VST%2B3%2BLicensing/Index.html),
+[Steinberg VST SDK information](https://www.steinberg.net/developers/vstsdk/).
+This licensing update removes the outdated signed-agreement prerequisite for
+SDK 3.8+, but it does not implement or qualify VST processing, authorize a
+specific SDK distribution, or change the host-isolation and acceptance gates
+below. Wave 1 still links no SDK code.
 
 ## Waves
 
@@ -45,8 +56,8 @@ clip (bounce-through-plugin, like the existing Audio Canvas handoff shape).
 No real-time monitoring, no GUI hosting: parameters are driven from KYX UI.
 Plugin state (chunk) persists in the project document.
 
-Wave 2 is gated by the Steinberg license agreement and the native host build
-(msvc; per-plugin crash isolation stays out-of-process).
+Wave 2 is gated by the pinned SDK/file-license and notice audit, plus the
+native host build (MSVC; per-plugin crash isolation stays out-of-process).
 
 ### Wave 3 — real-time hosting (planned, large)
 

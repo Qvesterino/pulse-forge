@@ -6,6 +6,7 @@ import { FACTORY_ASSETS } from "../sample-library/manifest";
 import { BAR_TICKS, PPQ, type Track } from "../project-model/types";
 import { sceneSecondsToBars, tempoAtTick } from "../project-model/scene-time";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
+import type { SongStarterHandoff } from "../landing/handoff";
 
 const SampleBrowser = lazy(() => import("./SampleBrowser").then((m) => ({ default: m.SampleBrowser })));
 
@@ -30,9 +31,17 @@ function loadStripOpen(): boolean {
  * first expand — a session that never opens sounds pays nothing. The
  * collapsed state is a slim labelled rail, so reopening is one click.
  */
-export function BrowserStrip({ track, selectedPadId }: { track: Track; selectedPadId: string }) {
+export function BrowserStrip({
+  track,
+  selectedPadId,
+  songStarter = null,
+}: {
+  track: Track;
+  selectedPadId: string;
+  songStarter?: SongStarterHandoff | null;
+}) {
   const services = useServices();
-  const [open, setOpen] = useState(loadStripOpen);
+  const [open, setOpen] = useState(() => Boolean(songStarter) || loadStripOpen());
 
   useEffect(() => {
     try {
@@ -155,6 +164,7 @@ export function BrowserStrip({ track, selectedPadId }: { track: Track; selectedP
             showDropZone
             onPreviewLoop={previewLoop}
             onAddLoop={arrangementTarget ? addLoopToArrangement : undefined}
+            loopStarter={songStarter}
           />
         </Suspense>
       </div>

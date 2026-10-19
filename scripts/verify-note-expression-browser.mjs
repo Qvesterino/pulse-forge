@@ -17,21 +17,26 @@ const server = await createServer({
 let exitCode = 0;
 try {
   await server.listen();
-  const availableEngines = { chromium, firefox, webkit };
+  const availableEngines = {
+    chromium: { browserType: chromium, launchOptions: {} },
+    firefox: { browserType: firefox, launchOptions: {} },
+    edge: { browserType: chromium, launchOptions: { channel: "msedge" } },
+    webkit: { browserType: webkit, launchOptions: {} },
+  };
   const requestedEngine = process.argv[2] ?? process.env.KYX_BROWSER_ENGINE ?? "chromium";
   const selectedEngines =
     requestedEngine === "all"
-      ? Object.entries(availableEngines)
+      ? Object.entries(availableEngines).filter(([name]) => name !== "webkit")
       : Object.entries(availableEngines).filter(([name]) => name === requestedEngine);
   if (selectedEngines.length === 0) {
-    throw new Error(`Unknown browser engine "${requestedEngine}". Choose chromium, firefox, webkit, or all.`);
+    throw new Error(`Unknown browser engine "${requestedEngine}". Choose chromium, firefox, edge, webkit, or all.`);
   }
 
-  for (const [engineName, browserType] of selectedEngines) {
+  for (const [engineName, engine] of selectedEngines) {
     let browser;
     try {
       console.log(`\n=== ${engineName}: note-expression verification ===`);
-      browser = await browserType.launch({ headless: true });
+      browser = await engine.browserType.launch({ headless: true, ...engine.launchOptions });
       const page = await browser.newPage();
       await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "commit", timeout: 120_000 });
       const audioApi = await page.evaluate(() => ({
@@ -45,18 +50,18 @@ try {
         continue;
       }
       const results = await page.evaluate(
-        async ({ parityOnly, granularOnly }) => {
+        async ({ parityOnly, granularOnly, parityLabels, parityInstruments }) => {
           const { SampleBank } = await import("/src/sample-library/factory.ts");
           const { auditNoteExpressionLiveOfflineParity, auditWorkletReleaseResponseParity } =
             await import("/src/testing/live-offline-parity.ts");
           const bank = new SampleBank();
-          if (parityOnly) return [await auditNoteExpressionLiveOfflineParity(bank)];
+          if (parityOnly) {
+            return [await auditNoteExpressionLiveOfflineParity(bank, parityLabels, parityInstruments)];
+          }
           const { runNoteExpressionAudioChecks } = await import("/src/testing/noteExpressionAudioChecks.ts");
           if (granularOnly) {
             const offline = await runNoteExpressionAudioChecks(["granular"]);
-            const parity = await auditNoteExpressionLiveOfflineParity(bank, [
-              "granular: velocity + fine pitch + pan + releaseVelocity",
-            ]);
+            const parity = await auditNoteExpressionLiveOfflineParity(bank, undefined, ["granular"]);
             const releaseParity = await auditWorkletReleaseResponseParity(bank, ["granular"]);
             return [...offline, parity, releaseParity];
           }
@@ -65,7 +70,20 @@ try {
           const workletReleaseParity = await auditWorkletReleaseResponseParity(bank);
           return [...offline, parity, workletReleaseParity];
         },
-        { parityOnly: process.argv.includes("--parity-only"), granularOnly: process.argv.includes("--granular-only") },
+        {
+          parityOnly: process.argv.includes("--parity-only"),
+          granularOnly: process.argv.includes("--granular-only"),
+          parityLabels: process.argv
+            .find((argument) => argument.startsWith("--parity-labels="))
+            ?.split("=")[1]
+            ?.split(",")
+            .filter(Boolean),
+          parityInstruments: process.argv
+            .find((argument) => argument.startsWith("--parity-instruments="))
+            ?.split("=")[1]
+            ?.split(",")
+            .filter(Boolean),
+        },
       );
 
       let failed = 0;

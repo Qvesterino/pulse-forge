@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { buildTransferProject, inspectTransferFiles } from "../src/export/transfer-import";
+import { buildTransferProject, inspectTransferFiles, midiImportWarnings } from "../src/export/transfer-import";
 import { parseMidiFile, writeMidiFile } from "../src/midi/midiFile";
+import { MAX_ARRANGEMENT_CLIP_TICKS } from "../src/project-model/schema";
 import { BAR_TICKS } from "../src/project-model/types";
 
 type MidiFixtureOptions = Omit<Parameters<typeof writeMidiFile>[0], "tracks"> & {
@@ -90,6 +91,88 @@ describe("DAW transfer import", () => {
     expect(result.doc.arrangement.clips[0]?.lengthBars).toBe(1);
   });
 
+  it("imports CC7/10/11 as editable automation and applies sustain to MIDI note timing", async () => {
+    const bytes = midiBytes({
+      tempoChanges: [
+        { tick: 0, bpm: 120 },
+        { tick: 480, bpm: 60 },
+      ],
+      tracks: [
+        {
+          name: "Expressive Lead",
+          channel: 0,
+          notes: [{ pitch: 60, startTick: 0, endTick: 480, velocity: 0.8, releaseVelocity: 0.7 }],
+          controllers: [
+            { tick: 0, controller: 64, value: 127 },
+            { tick: 0, controller: 7, value: 127 },
+            { tick: 0, controller: 10, value: 64 },
+            { tick: 480, controller: 7, value: 64 },
+            { tick: 960, controller: 11, value: 64 },
+            { tick: 1920, controller: 64, value: 0 },
+          ],
+        },
+      ],
+    });
+    const result = buildTransferProject({
+      projectName: "Controller Transfer",
+      sourceDaw: "cubase",
+      bpm: 120,
+      timeSignature: { numerator: 4, denominator: 4 },
+      audioAssets: [],
+      midiBytes: bytes,
+      parsedMidi: parseMidiFile(bytes),
+    });
+    const inspection = await inspectTransferFiles([fileFromMidi("Controller Transfer.mid", bytes)]);
+    const track = result.doc.tracks.find((candidate) => candidate.name === "Expressive Lead");
+    const pattern = result.doc.patterns.find((candidate) => candidate.id === result.doc.activePatternId);
+    const note = track && pattern?.notes[track.id]?.[0];
+    const clips = result.doc.arrangement.automationClips?.filter((clip) => clip.target.trackId === track?.id) ?? [];
+    const volume = clips.find((clip) => clip.target.kind === "trackGain");
+    const pan = clips.find((clip) => clip.target.kind === "trackPan");
+
+    expect(note).toMatchObject({ duration: 3360, expression: { releaseVelocity: 0.7 } });
+    expect(volume?.points.map((point) => point.tick)).toEqual([0, 480, 1440]);
+    expect(volume?.points[0]?.value).toBeCloseTo(1);
+    expect(volume?.points[1]?.value).toBeCloseTo(64 / 127);
+    expect(volume?.points[2]?.value).toBeCloseTo((64 / 127) ** 2);
+    expect(pan?.points.map((point) => point.tick)).toEqual([0]);
+    expect(pan?.points[0]?.value).toBe(0);
+    expect(result.warnings.join(" ")).toContain(
+      "CC7 volume and CC11 expression become combined track-volume automation",
+    );
+    expect(result.warnings.join(" ")).toContain("CC64 sustain extends note lengths");
+    expect(inspection.warnings.join(" ")).toContain(
+      "CC7 volume and CC11 expression become combined track-volume automation",
+    );
+    expect(inspection.warnings.join(" ")).toContain("CC64 sustain extends note lengths");
+  });
+
+  it("creates an editable automation lane for a MIDI track with controllers and no notes", () => {
+    const bytes = midiBytes({
+      tracks: [
+        { name: "Automation Only", channel: 0, notes: [], controllers: [{ tick: 240, controller: 10, value: 127 }] },
+      ],
+    });
+    const result = buildTransferProject({
+      projectName: "Automation Only Transfer",
+      sourceDaw: "other",
+      bpm: 120,
+      timeSignature: { numerator: 4, denominator: 4 },
+      audioAssets: [],
+      midiBytes: bytes,
+      parsedMidi: parseMidiFile(bytes),
+    });
+    const track = result.doc.tracks.find((candidate) => candidate.name === "Automation Only");
+    const clip = result.doc.arrangement.automationClips?.find(
+      (candidate) => candidate.target.kind === "trackPan" && candidate.target.trackId === track?.id,
+    );
+
+    expect(track?.kind).toBe("instrument");
+    expect(result.midiTrackNames).toContain("Automation Only");
+    expect(result.doc.arrangement.midiClips ?? []).toHaveLength(0);
+    expect(clip?.points.at(-1)).toEqual({ tick: 240, value: 1 });
+  });
+
   it("keeps a larger song handoff's track mapping intact", () => {
     const tracks = Array.from({ length: 4 }, (_, index) => ({
       name: `Instrument ${index + 1}`,
@@ -134,7 +217,7 @@ describe("DAW transfer import", () => {
     expect(inspection.errors.join(" ")).toContain("32-bar drum-pattern import limit");
   });
 
-  it("reports when a MIDI tempo map cannot be preserved", async () => {
+  it("discloses when the MIDI tempo map will be flattened before import", async () => {
     const bytes = midiBytes({
       tempoChanges: [
         { tick: 0, bpm: 120 },
@@ -143,11 +226,146 @@ describe("DAW transfer import", () => {
     });
     const inspection = await inspectTransferFiles([fileFromMidi("Tempo Map.mid", bytes)]);
     expect(inspection.errors).toEqual([]);
-    expect(inspection.warnings.join(" ")).toContain("tempo changes are not represented");
+    expect(inspection.warnings.join(" ")).toContain("flattened into the chosen project tempo");
     expect(inspection.parsedMidi?.tempoEvents).toEqual([
       { tick: 0, bpm: 120 },
       { tick: BAR_TICKS * 4, bpm: 100 },
     ]);
+  });
+
+  it("preserves MIDI performance timing when flattening a tempo map into the chosen project BPM", () => {
+    const bytes = midiBytes({
+      tempoChanges: [
+        { tick: 0, bpm: 120 },
+        { tick: BAR_TICKS * 4, bpm: 100 },
+      ],
+      tracks: [
+        {
+          name: "Lead",
+          channel: 0,
+          notes: [
+            {
+              pitch: 72,
+              startTick: BAR_TICKS * 8,
+              endTick: BAR_TICKS * 8 + 480,
+              velocity: 0.8,
+              releaseVelocity: 0.8,
+            },
+          ],
+        },
+      ],
+    });
+    const parsed = parseMidiFile(bytes);
+    const result = buildTransferProject({
+      projectName: "Tempo Map Transfer",
+      sourceDaw: "cubase",
+      bpm: 125,
+      timeSignature: { numerator: 4, denominator: 4 },
+      audioAssets: [],
+      midiBytes: bytes,
+      parsedMidi: parsed,
+    });
+    const track = result.doc.tracks.find((candidate) => candidate.name === "Lead");
+    const pattern = result.doc.patterns.find((candidate) => candidate.id === result.doc.activePatternId);
+    const note = track && pattern?.notes[track.id]?.[0];
+
+    expect(result.doc.bpm).toBe(125);
+    expect(note).toMatchObject({ start: 17_600, duration: 600, expression: { releaseVelocity: 0.8 } });
+    expect(result.warnings.join(" ")).toContain("while preserving performance timing");
+  });
+
+  it("uses the exact MIDI tempo value when preserving performance timing", () => {
+    const bytes = midiBytes({
+      bpm: 123.4,
+      tracks: [{ name: "Lead", channel: 0, notes: [{ pitch: 60, startTick: 480, endTick: 960, velocity: 0.8 }] }],
+    });
+    const parsed = parseMidiFile(bytes);
+    const result = buildTransferProject({
+      projectName: "Fractional Tempo Transfer",
+      sourceDaw: "fl-studio",
+      bpm: 120,
+      timeSignature: { numerator: 4, denominator: 4 },
+      audioAssets: [],
+      midiBytes: bytes,
+      parsedMidi: parsed,
+    });
+    const track = result.doc.tracks.find((candidate) => candidate.name === "Lead");
+    const pattern = result.doc.patterns.find((candidate) => candidate.id === result.doc.activePatternId);
+
+    expect(parsed.tempoEvents[0]?.bpm).toBeCloseTo(123.4, 2);
+    expect(pattern?.notes[track?.id ?? ""]?.[0]?.start).toBe(467);
+  });
+
+  it("refuses a project tempo that would silently drop MIDI drum hits", () => {
+    const bytes = midiBytes({
+      tracks: [
+        {
+          name: "Drums",
+          channel: 9,
+          notes: [{ pitch: 36, startTick: BAR_TICKS * 16, endTick: BAR_TICKS * 16 + 120, velocity: 0.9 }],
+        },
+      ],
+    });
+
+    expect(() =>
+      buildTransferProject({
+        projectName: "Too Slow Transfer",
+        sourceDaw: "other",
+        bpm: 300,
+        timeSignature: { numerator: 4, denominator: 4 },
+        audioAssets: [],
+        midiBytes: bytes,
+        parsedMidi: parseMidiFile(bytes),
+      }),
+    ).toThrow(/would omit 1 GM drum hit/);
+  });
+
+  it("refuses a project tempo that would truncate a MIDI note tail", () => {
+    const sourceStartTick = (MAX_ARRANGEMENT_CLIP_TICKS - 60) / 2.5;
+    const bytes = midiBytes({
+      tracks: [
+        {
+          name: "Long Sustain",
+          channel: 0,
+          notes: [{ pitch: 48, startTick: sourceStartTick, endTick: sourceStartTick + 480, velocity: 0.8 }],
+        },
+      ],
+    });
+
+    expect(() =>
+      buildTransferProject({
+        projectName: "Long Tail Transfer",
+        sourceDaw: "pro-tools",
+        bpm: 300,
+        timeSignature: { numerator: 4, denominator: 4 },
+        audioAssets: [],
+        midiBytes: bytes,
+        parsedMidi: parseMidiFile(bytes),
+      }),
+    ).toThrow(/would omit 1 MIDI note tail/);
+  });
+
+  it("reports the count of each MIDI event type that will be lost", () => {
+    const parsed = {
+      division: 480,
+      bpm: 120,
+      timeSignature: { num: 4, den: 4 },
+      tempoEvents: [],
+      timeSignatureEvents: [],
+      unsupportedEvents: {
+        controlChanges: 12,
+        pitchBends: 2,
+        programChanges: 1,
+        aftertouch: 0,
+        systemExclusive: 3,
+      },
+      sustainPedalEvents: 0,
+      tracks: [],
+    } as ReturnType<typeof parseMidiFile>;
+
+    expect(midiImportWarnings(parsed)).toContain(
+      "MIDI data that will not transfer: 12 unsupported CC messages, 2 pitch bends, 1 program change, 3 SysEx messages. KYX imports notes, GM drum hits, CC7/10/11 track automation, and bakes CC64 sustain into note lengths.",
+    );
   });
 
   it("rejects unsupported files and multiple MIDI files before any import work", async () => {

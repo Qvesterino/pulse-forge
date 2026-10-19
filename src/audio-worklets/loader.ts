@@ -201,6 +201,7 @@ const CORE_TYPES = [
   "wtVoice",
   "grainVoice",
   "ringMod",
+  "karplusString",
 ] as const;
 
 export type WorkletType = (typeof CORE_TYPES)[number] | LazyWorkletType | "generativePlayer";

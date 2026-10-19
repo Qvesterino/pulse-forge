@@ -20,7 +20,11 @@
     pcm = null;
     pcmRootHz = 261.63;
     scaleMask = CHROMATIC;
+    /** Sorted, capped chord lane (chord-refined TRIAD reads it). */
     chords = [];
+    // The chord lane is ACCEPTED in the context shape (the host sends it) but
+    // v1 voicing reads only the scale mask — chord-refined stacking is the
+    // follow-up wave (ADR 0054 §3 scope line).
     events = [];
     streams = [];
     streamCounter = 0;
@@ -47,7 +51,10 @@
           spawnPhase: 0,
           lcg: 1,
           startFrame: 0,
-          rate: 1
+          rate: 1,
+          tiltState: 0,
+          formantState: new Float32Array(8),
+          formantCoef: new Float32Array(10)
         });
       }
       if (options.events) for (const event of options.events) this.postEvent(event);
@@ -89,42 +96,53 @@
         this.events[i] = tmp;
       }
     }
-    /** Nearest in-mask pitch, scanning outward; ties resolve upward. */
-    snapPitch(pitch, mask) {
-      if (mask <= 0 || mask >= CHROMATIC) return pitch;
-      const pc = (Math.round(pitch) % 12 + 12) % 12;
-      if (mask & 1 << pc) return pitch;
-      for (let delta = 1; delta <= 6; delta++) {
-        if (mask & 1 << (pc + delta) % 12) return pitch + delta;
-        if (mask & 1 << (pc - delta + 144) % 12) return pitch - delta;
-      }
-      return pitch;
-    }
-    /** The mask sounding at `bar`: chord if covered, else the scale. */
-    maskAtBar(bar) {
+    /**
+     * Harmony intervals above the played note. TRIAD's third is CONTEXTUAL —
+     * chosen against the SCALE mask: +4 when the scale agrees, else +3 — so a
+     * C-major song turns a C into C-E-G and hands a D the F (a minor third),
+     * while the same key over A gives C-E. The chord lane refines voicing in
+     * a follow-up wave; thirds from a three-tone chord mask kept failing for
+     * notes whose third is not a chord tone (D over a C triad — measured).
+     */
+    /** The chord mask sounding at `bar`, or 0 when no chord covers it. */
+    chordMaskAtBar(bar) {
       for (let i = this.chords.length - 1; i >= 0; i--) {
         const chord = this.chords[i];
         if (bar >= chord.startBar && bar < chord.startBar + chord.lengthBars) {
-          return chord.mask > 0 ? chord.mask : this.scaleMask;
+          return chord.mask & CHROMATIC;
         }
         if (chord.startBar <= bar) break;
       }
-      return this.scaleMask;
+      return 0;
     }
     /**
-     * Harmony intervals above the played note. TRIAD's third is CONTEXTUAL:
-     * +4 when the mask agrees, else +3 — so a C-major song turns a C into a
-     * C-major triad while the same key hands a D a minor third.
+     * Harmony intervals above the played note. TRIAD is CHORD-REFINED: when
+     * the played pitch class belongs to the sounding chord, the stack
+     * completes the chord upward (the next two chord pitch classes above) —
+     * F over C major voices F-G-C, the sus flavor the harmony implies. When
+     * the note is NOT a chord tone (or no chord covers the bar), the stack
+     * falls back to the SCALE's third and fifth — D over a C triad gets
+     * D-F-C, never a guessed F# (the naive chord-third measured wrong both
+     * ways before this rule).
      */
     stackIntervals(basePitch, bar) {
       const mode = Math.round(clamp(this.params.stackMode ?? 0, 0, 3));
       if (mode === 0) return [0];
       if (mode === 1) return [0, -12, 12];
       if (mode === 2) return [0, 7, -5];
-      const mask = this.maskAtBar(bar);
+      const pc = (Math.round(basePitch) % 12 + 12) % 12;
+      const chord = this.chordMaskAtBar(bar);
+      if (chord > 0 && chord & 1 << pc) {
+        const above = [];
+        for (let delta = 1; delta <= 11 && above.length < 2; delta++) {
+          if (chord & 1 << (pc + delta) % 12) above.push(delta);
+        }
+        if (above.length >= 2) return [0, above[0], above[1]];
+      }
+      const scale = this.scaleMask;
       let third = 4;
-      if (!(mask & 1 << (Math.round(basePitch) + 4) % 12)) {
-        third = mask & 1 << (Math.round(basePitch) + 3) % 12 ? 3 : 4;
+      if (!(scale & 1 << (pc + 4) % 12)) {
+        third = scale & 1 << (pc + 3) % 12 ? 3 : 4;
       }
       return [0, third, 7];
     }
@@ -154,7 +172,39 @@
         stream.rate = midiToHz(stream.pitch) / this.pcmRootHz;
         stream.lcg = (2654435769 ^ Math.imul(Math.round(stream.pitch) + 1, 2654435761) ^ Math.imul(this.streamCounter, 40503)) >>> 0;
         this.streamCounter += 1;
+        this.computeFormantCoeffs(stream);
       }
+    }
+    /**
+     * Two RBJ peaking biquads at the choir "aah" pair (700/1080 Hz at rate 1),
+     * scaled by the playback rate × the FORMANT knob: formant 1 follows the
+     * natural resampling shift, <1 darkens, >1 brightens. Coefficients are
+     * per-note constants (rate is captured at noteOn).
+     */
+    computeFormantCoeffs(stream) {
+      const sr = this.sampleRate;
+      const formantScale = clamp(this.params.formant ?? 1, 0.5, 2);
+      const rate = Math.max(0.05, stream.rate);
+      for (let b = 0; b < 2; b++) {
+        const baseHz = b === 0 ? 700 : 1080;
+        const fc = clamp(baseHz * rate * formantScale, 80, sr * 0.45);
+        const q = b === 0 ? 3.2 : 4.2;
+        const gainDb = b === 0 ? 5 : 3.5;
+        const A = Math.pow(10, gainDb / 40);
+        const w = 2 * Math.PI * fc / sr;
+        const cw = Math.cos(w);
+        const alpha = Math.sin(w) / (2 * q);
+        const a0 = 1 + alpha / A;
+        const c = b * 5;
+        this.streamFormantCoef(stream)[c] = (1 + alpha * A) / a0;
+        this.streamFormantCoef(stream)[c + 1] = -2 * cw / a0;
+        this.streamFormantCoef(stream)[c + 2] = (1 - alpha * A) / a0;
+        this.streamFormantCoef(stream)[c + 3] = -2 * cw / a0;
+        this.streamFormantCoef(stream)[c + 4] = (1 - alpha / A) / a0;
+      }
+    }
+    streamFormantCoef(stream) {
+      return stream.formantCoef;
     }
     noteOff(pitch) {
       for (const stream of this.streams) {
@@ -235,7 +285,27 @@
         sum += (pcm[i0] * (1 - frac) + pcm[(i0 + 1) % len] * frac) * window;
       }
       const overlap = Math.max(1, durSamples / sr * density * 0.5);
-      return sum / Math.sqrt(overlap);
+      let out = sum / Math.sqrt(overlap);
+      const tone = clamp(this.params.tone ?? 0, -1, 1);
+      if (tone !== 0) {
+        const coef = 1 - Math.exp(-2 * Math.PI * 1200 / sr);
+        stream.tiltState += coef * (out - stream.tiltState);
+        const hp = out - stream.tiltState;
+        out = tone >= 0 ? stream.tiltState * tone + out * (1 - tone) : out * (1 + tone) - hp * tone;
+      }
+      const fs = stream.formantCoef;
+      const st = stream.formantState;
+      for (let b = 0; b < 2; b++) {
+        const c = b * 5;
+        const sbase = b * 4;
+        const y = fs[c] * out + fs[c + 1] * st[sbase] + fs[c + 2] * st[sbase + 1] - fs[c + 3] * st[sbase + 2] - fs[c + 4] * st[sbase + 3];
+        st[sbase + 1] = st[sbase];
+        st[sbase] = out;
+        st[sbase + 3] = st[sbase + 2];
+        st[sbase + 2] = y;
+        out = y;
+      }
+      return out;
     }
     /**
      * Render one block. Events apply at their own sample boundary; every

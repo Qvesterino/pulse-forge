@@ -435,11 +435,13 @@ export class Scheduler {
         if (subscription.pendingAudioTime <= now) {
           subscription.pendingAudioTime = null;
           subscription.fired = true;
+          this.tickBoundarySubscriptions.delete(subscription);
         }
         continue;
       }
       if (subscription.fired || transport.position >= subscription.tick) {
         subscription.fired = true;
+        this.tickBoundarySubscriptions.delete(subscription);
         continue;
       }
       if (audioTime > now && audioTime <= horizon) {

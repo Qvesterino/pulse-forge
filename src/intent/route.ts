@@ -92,8 +92,24 @@ const COMPARATIVE =
   /\bdarker\b|\bbrighter\b|\bwarmer\b|\bcolder\b|\btmavsi|\bsvetlejsi|\bteplejsi|\bstudenlejsi|\brazantnejsi/;
 const HYPOTHETICAL_ACTION_QUESTION =
   /^\s*(?:(?:would|could|might)\s+(?:(?!you\b)(?:(?:a|an|the|this|that)\s+|[a-z]+ing\b|we\b))|should\s+(?:we|i|you)\b|what\s+if\b|maybe\b)[\s\S]*\b(?:help|make|improve|work|sound|feel|add|remove|delete|change|raise|lower|increase|decrease|mute|unmute|pan|move|set|turn|bypass|apply|insert)\b[\s\S]*\?\s*$/i;
+/**
+ * A fence — "turn down the drums and DON'T TOUCH the bass" — must stop the
+ * command, not narrow it.
+ *
+ * This is an ALLOWLIST of mutation verbs, so any fence whose verb is missing
+ * here simply does not fire and the sentence mutates everything it named. The
+ * audit (2026-10-19) found exactly that: "don't touch the bass" was invisible
+ * because the list ended at `record` and never learned that "touch" (or
+ * "leave", "affect", "touch up") is the most natural way to fence a track in
+ * this product. Measured: the sentence routed to `fader` with targets
+ * ["bass","drums"], direction down — the user's explicit carve-out executed.
+ *
+ * When a fence is present the whole sentence declines, which is deliberate:
+ * splitting the clause to apply only the first half is a guess about which
+ * half the user meant, and the product rule is to ask rather than mutate.
+ */
 const NEGATED_MUTATION_COMMAND =
-  /(?:^|[,;.!?]\s*|\b(?:and|but|while)\s+)(?:please\s+)?(?:do\s+not|don't|dont|never)\b[\s\S]*?\b(?:mute|unmute|solo|delete|remove|add|raise|lower|turn|change|set|increase|decrease|move|pan|bypass|apply|insert|undo|redo|start|stop|record)\b/i;
+  /(?:^|[,;.!?]\s*|\b(?:and|but|while)\s+)(?:please\s+)?(?:do\s+not|don't|dont|never)\b[\s\S]*?\b(?:touch|touches|touching|leave|leaves|affect|affects|mute|unmute|solo|delete|remove|add|raise|lower|turn|change|set|increase|decrease|move|pan|bypass|apply|insert|undo|redo|start|stop|record)\b/i;
 
 export function isMixIntentText(text: string): boolean {
   // Same normalization parseMixIntent applies — the guard must never be

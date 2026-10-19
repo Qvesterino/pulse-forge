@@ -98,7 +98,7 @@ declare global {
         }>;
       };
       audio?: {
-        /** Native Windows endpoint metadata; it does not select devices or start streams. */
+        /** Native Windows endpoint metadata. */
         listWindowsEndpoints: () => Promise<{
           status: "ok" | "unsupported" | "no-probe" | "timeout" | "invalid-output" | "error";
           schemaVersion?: 2;
@@ -125,6 +125,11 @@ declare global {
           }>;
           message?: string;
         }>;
+        startWindowsSession: (
+          request: import("./audio-engine/windowsAudioIo").WindowsAudioIoRequest,
+        ) => Promise<{ status: "starting"; sessionId: string }>;
+        stopWindowsSession: (sessionId: string) => Promise<{ status: "stopped" }>;
+        onWindowsSessionStage: (listener: (event: { sessionId: string; stage: string }) => void) => () => void;
       };
       mrt2?: {
         getAvailability: () => Promise<{

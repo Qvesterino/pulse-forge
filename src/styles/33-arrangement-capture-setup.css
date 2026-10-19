@@ -97,6 +97,38 @@
   letter-spacing: 0.06em;
 }
 
+.arr-independent-input-note {
+  margin: 6px 0;
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+}
+
+.arr-independent-input-route {
+  display: grid;
+  grid-template-columns: auto minmax(140px, 1fr) minmax(140px, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+}
+
+.arr-independent-input-label,
+.arr-independent-input-monitor {
+  color: var(--text-dim);
+  font: 700 var(--fs-xs) var(--mono);
+  white-space: nowrap;
+}
+
+.arr-independent-input-monitor {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
 /* Give the timeline toolbar a compact hierarchy instead of one long wrapping
    strip: capture stays together, while edit and song-building actions read as
    separate workflows. */
@@ -175,6 +207,13 @@
   border-left: 1px solid var(--border-soft);
 }
 
+.arr-song-length-preview {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .arr-record-toolbar > .arr-rec-input-report,
 .arr-record-toolbar > .arr-rec-saving,
 .arr-record-toolbar > .arr-rec-error,
@@ -207,6 +246,10 @@
     padding-left: 0;
     border-top: 1px solid var(--border-soft);
     border-left: 0;
+  }
+
+  .arr-song-length-preview {
+    flex-basis: 100%;
   }
 
   .arr-edit-toolbar {

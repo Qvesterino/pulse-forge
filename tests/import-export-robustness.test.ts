@@ -174,8 +174,9 @@ describe("MIDI import: malformed files fail with named errors", () => {
           { pitch: 60, startTick: 0, endTick: 240, velocity: 0.8 },
           { pitch: 64, startTick: 240, endTick: 480, velocity: 0.6 },
         ],
+        controllers: [],
       },
-      { name: "Drums", channel: 9, notes: [{ pitch: 36, startTick: 0, endTick: 120, velocity: 1 }] },
+      { name: "Drums", channel: 9, notes: [{ pitch: 36, startTick: 0, endTick: 120, velocity: 1 }], controllers: [] },
     ];
     const bytes = writeMidiFile({ division: 480, tracks });
     const parsed = parseMidiFile(bytes);

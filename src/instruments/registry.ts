@@ -3705,27 +3705,46 @@ const pluck: InstrumentDefinition = {
 
         const input = ctx.createGain();
         input.gain.value = 1;
-        const delay = ctx.createDelay(1);
-        delay.delayTime.value = Math.max(0.001, 1 / freq);
+        const delayTimeSec = Math.max(0.001, 1 / freq);
+        const feedbackValue = Math.max(
+          0.82,
+          Math.min(0.995, 0.97 - damp * 0.09 + (p.decay ?? 0.9) * 0.02 + (velocity - 0.8) * 0.04),
+        );
+        let delay: AudioNode;
+        let feedback: GainNode | null = null;
+        if (isWorkletReady("karplusString", ctx)) {
+          delay = new AudioWorkletNode(ctx, "karplus-strong-processor", {
+            numberOfInputs: 1,
+            numberOfOutputs: 1,
+            outputChannelCount: [2],
+            channelCount: 2,
+            channelCountMode: "explicit",
+            processorOptions: { delaySamples: delayTimeSec * ctx.sampleRate, feedback: feedbackValue },
+          });
+        } else {
+          delay = ctx.createDelay(1);
+          (delay as DelayNode).delayTime.value = delayTimeSec;
+          feedback = ctx.createGain();
+          feedback.gain.value = feedbackValue;
+        }
         const toneFilter = ctx.createBiquadFilter();
         toneFilter.type = "lowpass";
         // Tone + damp shape the feedback brightness
         toneFilter.frequency.value = Math.max(300, Math.min(8000, (p.tone ?? 3500) * (1 - damp * 0.25)));
         toneFilter.Q.value = 0.7;
-        const feedback = ctx.createGain();
-        // Damp shortens decay: 0.96 long, 0.88 short
-        // Harder hits ring longer — velocity drives KS feedback
-        feedback.gain.value = Math.max(
-          0.82,
-          Math.min(0.995, 0.97 - damp * 0.09 + (p.decay ?? 0.9) * 0.02 + (velocity - 0.8) * 0.04),
-        );
-        // Feedback loop: input -> delay -> feedback -> input; the tone filter
-        // remains on the audible tap so browser-specific filter gain cannot
-        // make the recirculating loop unstable.
-        input.connect(delay);
-        delay.connect(feedback);
-        delay.connect(toneFilter);
-        feedback.connect(input);
+        if (feedback) {
+          // Native feedback remains as a fallback before the core worklet loads.
+          input.connect(delay);
+          delay.connect(feedback);
+          delay.connect(toneFilter);
+          feedback.connect(input);
+        } else {
+          // Keep the recursive delay sample-clocked in one processor. Native
+          // DelayNode feedback varied between realtime contexts at fractional
+          // pitches, which made live note expression disagree with offline.
+          input.connect(delay);
+          delay.connect(toneFilter);
+        }
         toneFilter.connect(postFilter.input);
 
         // Excitation: short noise burst shaped by pick (brightness) + body (level)
@@ -3825,7 +3844,7 @@ const pluck: InstrumentDefinition = {
             /* already */
           }
           try {
-            feedback.disconnect();
+            feedback?.disconnect();
           } catch {
             /* already */
           }

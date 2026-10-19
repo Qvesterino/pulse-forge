@@ -291,3 +291,34 @@ export function pasteClips(doc: ProjectDocument, clipboard: ClipClipboard, playh
     undo: () => doc,
   };
 }
+
+/**
+ * Duplicate a mixed timeline selection immediately after its occupied range.
+ * It reuses paste's validation and per-kind placement rules, but commits as a
+ * single, clearly labelled undo step. Bar-based clips advance by whole bars;
+ * a MIDI/automation-only selection keeps its exact tick duration.
+ */
+export function duplicateClips(doc: ProjectDocument, clipIds: readonly string[]): Command | null {
+  const clipboard = buildClipClipboard(doc, [...new Set(clipIds)]);
+  if (!clipboard) return null;
+
+  const barBased = clipboard.audioClips.length > 0 || clipboard.arrangementClips.length > 0;
+  const endTicks = [
+    ...clipboard.audioClips.map((clip) => (clip.startBar + clip.lengthBars) * BAR_TICKS),
+    ...clipboard.arrangementClips.map((clip) => (clip.startBar + clip.lengthBars) * BAR_TICKS),
+    ...clipboard.midiClips.map((clip) => clip.startTick + clip.lengthTicks),
+    ...clipboard.automationClips.map((clip) => clip.startTick + clip.lengthTicks),
+  ];
+  const latestEnd = Math.max(...endTicks);
+  if (!Number.isFinite(latestEnd) || latestEnd <= clipboard.anchorTick) return null;
+
+  const selectionSpan = latestEnd - clipboard.anchorTick;
+  const duplicateSpan = barBased ? Math.ceil(selectionSpan / BAR_TICKS) * BAR_TICKS : selectionSpan;
+  const command = pasteClips(doc, clipboard, clipboard.anchorTick + duplicateSpan);
+  return {
+    ...command,
+    type: "duplicateClips",
+    label: "Duplicate selected clips",
+    detail: "Copy placed after the selected clips",
+  };
+}

@@ -69,6 +69,15 @@ export interface PackCredits {
 
 export const PACK_CREDITS: PackCredits[] = [
   {
+    pack: "KYX Starter Loops v1",
+    license: "kyx-original",
+    credits: [
+      "Eight four-bar loop compositions, procedural sound design and WAV renders authored for KYX.",
+      "No third-party samples or recordings are included.",
+    ],
+    sourceUrl: "https://kyx.app/",
+  },
+  {
     pack: "VSCO 2 Community Edition (orchestral subset)",
     license: "cc0",
     credits: [

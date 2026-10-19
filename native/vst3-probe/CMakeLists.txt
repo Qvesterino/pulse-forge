@@ -8,9 +8,8 @@
 #
 # Wave 1 requires ONLY the C toolchain — no Steinberg SDK is linked (the
 # structural scan never loads plugin code). Factory enumeration and audio
-# processing (ADR 0035 Waves 2–3) add the Steinberg VST3 SDK behind the
-# KYX_HAS_VST3SDK build option and are gated by the Steinberg license
-# agreement before distribution.
+# processing (ADR 0035 Waves 2–3) may add a pinned VST SDK 3.8+ dependency;
+# retain the applicable MIT/BSD-like notices as recorded in ADR 0035.
 cmake_minimum_required(VERSION 3.20)
 project(kyx-vst3-probe C)
 

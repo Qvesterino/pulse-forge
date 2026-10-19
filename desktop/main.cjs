@@ -39,6 +39,7 @@ const { registerAsioIpcHandlers } = require("./asio-host-manager.cjs");
 const { registerMcpIpcHandlers } = require("./mcp-host-manager.cjs");
 const { registerPcmIpcHandlers } = require("./pcm-desktop.cjs");
 const { registerWindowsAudioEndpointHandlers } = require("./windows-audio-devices.cjs");
+const { registerWindowsAudioIoHandlers } = require("./windows-audio-io.cjs");
 const { Mrt2NativeHostManager } = require("./mrt2-host-manager.cjs");
 const { Mrt2WindowsHostManager } = require("./mrt2-windows-host-manager.cjs");
 const { Mrt2Wsl2HostManager } = require("./mrt2-wsl2-host-manager.cjs");
@@ -48,10 +49,15 @@ const AUDIO_BRIDGE_SMOKE_WORKLET = require("./audio-bridge-smoke-worklet.cjs");
 const DIST_DIR = path.join(__dirname, "..", "dist");
 const APP_URL = "app://bundle/index.html";
 const IS_SMOKE = process.env.KYX_SMOKE === "1";
-if (IS_SMOKE) app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+const IS_WINDOWS_AUDIO_DEVICE_SMOKE = process.env.KYX_WINDOWS_AUDIO_DEVICE_SMOKE === "1";
+const AUDIO_BRIDGE_SMOKE_BLOCKS = 3_000;
+const AUDIO_BRIDGE_SMOKE_TIMEOUT_MS = 45_000;
+if (IS_SMOKE || IS_WINDOWS_AUDIO_DEVICE_SMOKE) app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
 let mainWindow = null;
 let quittingAfterMrt2Stop = false;
+let quittingAfterWindowsAudioStop = false;
+let windowsAudioIo = null;
 const mrt2NativeHost =
   process.platform === "win32"
     ? process.env.KYX_MRT2_WINDOWS_BACKEND === "wsl2"
@@ -201,10 +207,17 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", (event) => {
-  if (quittingAfterMrt2Stop || !mrt2NativeHost.isRunning()) return;
-  event.preventDefault();
-  quittingAfterMrt2Stop = true;
-  void mrt2NativeHost.stop().finally(() => app.quit());
+  if (!quittingAfterMrt2Stop && mrt2NativeHost.isRunning()) {
+    event.preventDefault();
+    quittingAfterMrt2Stop = true;
+    void mrt2NativeHost.stop().finally(() => app.quit());
+    return;
+  }
+  if (!quittingAfterWindowsAudioStop && windowsAudioIo?.activeSessions().length) {
+    event.preventDefault();
+    quittingAfterWindowsAudioStop = true;
+    void windowsAudioIo.stopAll().finally(() => app.quit());
+  }
 });
 
 app.whenReady().then(() => {
@@ -224,6 +237,11 @@ app.whenReady().then(() => {
   registerWindowsAudioEndpointHandlers(ipcMain, {
     ...(app.isPackaged ? { resourcesPath: process.resourcesPath } : {}),
   });
+  windowsAudioIo = registerWindowsAudioIoHandlers(ipcMain, {
+    utilityProcess,
+    MessageChannelMain,
+    isTrustedSender: isTrustedMrt2Frame,
+  });
   // MCP (Phase D2): opt-in loopback bridge + stdio forwarder lifecycle. Tool
   // calls execute in the renderer through the deterministic command layer.
   registerMcpIpcHandlers(ipcMain, {
@@ -237,7 +255,10 @@ app.whenReady().then(() => {
   createWindow();
   scheduleUpdateChecks();
 
-  if (IS_SMOKE) runSmoke();
+  if (IS_WINDOWS_AUDIO_DEVICE_SMOKE) {
+    const { runWindowsAudioDeviceSmoke } = require("./windows-audio-device-smoke.cjs");
+    void runWindowsAudioDeviceSmoke({ app, mainWindow, utilityProcess, MessageChannelMain });
+  } else if (IS_SMOKE) runSmoke();
 });
 
 /** Default menu + a manual update check under Help. */
@@ -339,7 +360,7 @@ function runSmoke() {
   const win = mainWindow;
   const errors = [];
   let finished = false;
-  const timeout = setTimeout(() => finish("timeout"), 30_000);
+  const timeout = setTimeout(() => finish("timeout"), 60_000);
   win.webContents.on("console-message", (event) => {
     // Electron ≥32 passes the details as event params; the legacy
     // (level, message) positional args are deprecated.
@@ -568,6 +589,7 @@ function runSmoke() {
             numberOfInputs: 0,
             numberOfOutputs: 1,
             outputChannelCount: [2],
+            processorOptions: { blockCount: ${AUDIO_BRIDGE_SMOKE_BLOCKS} },
           });
           const silent = context.createGain();
           silent.gain.value = 0;
@@ -606,7 +628,7 @@ function runSmoke() {
       if (setupResult?.status !== "ready") throw new Error("AudioWorklet setup timed out");
 
       const { port1, port2 } = new MessageChannelMain();
-      host.postMessage({ type: "attach" }, [port1]);
+      host.postMessage({ type: "attach", blockCount: AUDIO_BRIDGE_SMOKE_BLOCKS }, [port1]);
       win.webContents.postMessage("kyx:audio:bridge-port", { requestId }, [port2]);
       let resultTimeout;
       let result;
@@ -614,7 +636,10 @@ function runSmoke() {
         result = await Promise.race([
           probeResult,
           new Promise((_, reject) => {
-            resultTimeout = setTimeout(() => reject(new Error("PCM MessagePort probe result timed out")), 13_000);
+            resultTimeout = setTimeout(
+              () => reject(new Error("PCM MessagePort probe result timed out")),
+              AUDIO_BRIDGE_SMOKE_TIMEOUT_MS,
+            );
           }),
         ]);
       } catch (error) {
@@ -627,7 +652,7 @@ function runSmoke() {
       } finally {
         clearTimeout(resultTimeout);
       }
-      if (!result?.ok || result.sent !== 100 || result.received !== 100) {
+      if (!result?.ok || result.sent !== AUDIO_BRIDGE_SMOKE_BLOCKS || result.received !== AUDIO_BRIDGE_SMOKE_BLOCKS) {
         throw new Error("PCM MessagePort probe did not complete every 10 ms block");
       }
       let nativeProbeTimeout;

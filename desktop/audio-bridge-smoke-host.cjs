@@ -8,10 +8,12 @@ const path = require("node:path");
 const PERIOD_FRAMES = 480;
 const CHANNELS = 2;
 const PERIOD_SAMPLES = PERIOD_FRAMES * CHANNELS;
-const MAX_SEQUENCE = 100;
+const DEFAULT_BLOCK_COUNT = 100;
+const MAX_BLOCK_COUNT = 120_000;
 
 let activePort = null;
 let nativeAddon = null;
+let maxSequence = DEFAULT_BLOCK_COUNT;
 
 async function runNativeHostProbe() {
   const addonName = "kyx_windows_audio_host.node";
@@ -61,11 +63,15 @@ void runNativeHostProbe()
     }),
   );
 
-function attach(port) {
+function attach(port, blockCount) {
   if (activePort) {
     port.close();
     return;
   }
+  maxSequence =
+    Number.isSafeInteger(blockCount) && blockCount >= DEFAULT_BLOCK_COUNT && blockCount <= MAX_BLOCK_COUNT
+      ? blockCount
+      : DEFAULT_BLOCK_COUNT;
   activePort = port;
   let sharedBufferMessageReceived = false;
   port.on("message", (event) => {
@@ -134,7 +140,7 @@ function attach(port) {
     if (
       !Number.isSafeInteger(sequence) ||
       sequence < 0 ||
-      sequence >= MAX_SEQUENCE ||
+      sequence >= maxSequence ||
       !(samples instanceof ArrayBuffer) ||
       samples.byteLength !== PERIOD_SAMPLES * Float32Array.BYTES_PER_ELEMENT
     ) {
@@ -164,7 +170,7 @@ function attach(port) {
 process.parentPort.on("message", (event) => {
   const message = event.data;
   if (message?.type === "attach" && event.ports?.length === 1) {
-    attach(event.ports[0]);
+    attach(event.ports[0], message.blockCount);
     process.parentPort.postMessage({ type: "port-attached" });
     return;
   }

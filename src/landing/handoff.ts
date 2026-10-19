@@ -16,6 +16,13 @@
 
 const HANDOFF_KEY = "pf-handoff";
 export const INTENT_PREFILL_KEY = "pf-intent-prefill";
+const SONG_STARTER_KEY = "pf-song-starter";
+
+export interface SongStarterHandoff {
+  genre: string;
+  mood: string | null;
+  bpm: number;
+}
 
 export interface LandingHandoff {
   /** Share code of the generated project (encodeShareCode output). */
@@ -122,6 +129,56 @@ export function takeIntentPrefill(): string | null {
     return null;
   }
   return raw && raw.trim() ? raw : null;
+}
+
+/** Pass the selected song-starter filters from the project browser into KYX Studio. */
+export function stashSongStarter(starter: SongStarterHandoff): void {
+  const storage = session();
+  if (!storage || !starter.genre.trim() || !Number.isFinite(starter.bpm) || starter.bpm < 40 || starter.bpm > 240)
+    return;
+  try {
+    storage.setItem(SONG_STARTER_KEY, JSON.stringify(starter));
+  } catch {
+    /* The project and prompt still open when session storage is unavailable. */
+  }
+}
+
+/** Read the current song-starter handoff without consuming it. */
+export function peekSongStarter(): SongStarterHandoff | null {
+  const storage = session();
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(SONG_STARTER_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const value = parsed as Partial<SongStarterHandoff>;
+    if (
+      typeof value.genre !== "string" ||
+      !value.genre.trim() ||
+      !(value.mood === null || typeof value.mood === "string") ||
+      typeof value.bpm !== "number" ||
+      !Number.isFinite(value.bpm) ||
+      value.bpm < 40 ||
+      value.bpm > 240
+    ) {
+      return null;
+    }
+    return { genre: value.genre, mood: value.mood, bpm: value.bpm };
+  } catch {
+    return null;
+  }
+}
+
+/** Clear a song starter once the studio has read it. */
+export function clearSongStarter(): void {
+  const storage = session();
+  if (!storage) return;
+  try {
+    storage.removeItem(SONG_STARTER_KEY);
+  } catch {
+    /* best-effort */
+  }
 }
 
 // ── Regenerate-with-intent (viral growth plan B1) ──────────────────────────

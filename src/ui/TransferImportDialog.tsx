@@ -21,11 +21,11 @@ interface TransferImportDialogProps {
 
 const DAW_GUIDANCE: Record<TransferSourceDaw, string> = {
   "fl-studio":
-    "Export a full-song MIDI file and aligned full-length mixer-track WAVs. MIDI automation, channel effects and plug-in state are not transferred.",
+    "Export a full-song MIDI file and aligned full-length mixer-track WAVs. CC7/10/11 become track automation and CC64 sustain extends note lengths; pitch bend, other controllers, channel effects and plug-in state are not transferred.",
   cubase:
-    "Export one combined MIDI file and full-range audio track renders. Keep every render aligned to the same project start.",
+    "Export one combined MIDI file and full-range audio track renders. CC7/10/11 become track automation and CC64 sustain extends note lengths; pitch bend and other controllers are reported before import.",
   "pro-tools":
-    "Consolidate or export full-range track-outs from session start, then export MIDI if the session contains editable instrument parts.",
+    "Consolidate or export full-range track-outs from session start, then export MIDI if the session contains editable instrument parts. CC7/10/11 and sustain are mapped to KYX track automation and note lengths.",
   other:
     "Choose audio track-outs and one combined Standard MIDI file. All audio renders must begin at the same song origin.",
 };
@@ -401,14 +401,16 @@ export function TransferImportDialog({ core, onCancel, onImported }: TransferImp
             </p>
             <strong>What transfers</strong>
             <p>
-              Audio clips, file/track names, MIDI notes, GM drum hits, project tempo and one time signature. Reference
-              mixes are imported muted when marked above.
+              Audio clips, file/track names, MIDI notes including melodic release velocity, GM drum hits, project tempo
+              and one time signature. Reference mixes are imported muted when marked above.
             </p>
             <strong>What stays behind</strong>
             <p>
               Native project layout, source mixer fader/pan controls, plug-in state, instrument patches, routing,
-              automation, tempo maps and MIDI CC/pitch-bend/program data. Levels and effects already printed into WAVs
-              stay in the audio.
+              automation, editable tempo maps and MIDI CC, pitch-bend, program, aftertouch and SysEx data. MIDI note
+              timing is converted into the chosen project tempo so it stays aligned with the exported audio; tempo
+              changes are not editable after import. The MIDI preflight lists the event types and counts that will be
+              skipped. Levels and effects already printed into WAVs stay in the audio.
             </p>
           </div>
 

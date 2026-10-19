@@ -17,6 +17,9 @@ type EqCurveCanvasProps = {
   onCommit: (paramId: string, gainDb: number) => void;
   width?: number;
   height?: number;
+  /** Fill the containing chart instead of using the compact fixed-height layout. */
+  fillHeight?: boolean;
+  className?: string;
 };
 
 type DragState = {
@@ -58,7 +61,14 @@ type DragState = {
  * they could be seen but not grabbed. Measured with `getBoundingClientRect` in
  * Chromium 1600x1000, not read off a screenshot.
  */
-export function EqCurveCanvas({ params, onCommit, width = 236, height = 34 }: EqCurveCanvasProps) {
+export function EqCurveCanvas({
+  params,
+  onCommit,
+  width = 236,
+  height = 34,
+  fillHeight = false,
+  className,
+}: EqCurveCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // Refs, not state: pointer events are the authority for WHERE the pointer is.
   // React 18 flushes `pointermove` from a Scheduler macrotask, so a fast flick
@@ -249,8 +259,8 @@ export function EqCurveCanvas({ params, onCommit, width = 236, height = 34 }: Eq
   return (
     <canvas
       ref={canvasRef}
-      className={`kit-eq-curve${drag ? " is-dragging" : ""}${hovered && !drag ? " is-hovering" : ""}`}
-      style={{ width: "100%", height: `${height}px` }}
+      className={`kit-eq-curve${drag ? " is-dragging" : ""}${hovered && !drag ? " is-hovering" : ""}${className ? ` ${className}` : ""}`}
+      style={{ width: "100%", height: fillHeight ? "100%" : `${height}px` }}
       role="application"
       aria-label="EQ response curve — drag a band to change its gain"
       onPointerDown={onPointerDown}

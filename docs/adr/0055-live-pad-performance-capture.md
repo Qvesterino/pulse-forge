@@ -46,7 +46,8 @@ project document.
    finite `AudioClip`s with their source reference, tempo-fit settings,
    `liveSetId` and `livePadSlot`. Existing undo/redo, autosave, editing and
    offline rendering then apply. The first captured launch boundary is the
-   arrangement origin; audio clip start and end ticks retain sub-bar precision.
+   arrangement origin; audio clip positions retain tick precision, subject to
+   the existing `AudioClip` minimum length of 0.25 bars.
    Do not render the whole performance into a new audio file.
 6. CANCEL, panic, project replacement/close and audio-device loss silence all
    live pad voices and discard the uncommitted pad intervals. No partial clips
@@ -67,8 +68,10 @@ project document.
   existing tempo-fit renderer, de-clicks stops and releases every source on
   normal stop, cancel, panic, project switch and device loss.
 - FINISH and transport stop commit scene and audio clips in one undoable
-  command. Their clip boundaries match the recorded ticks and reopen through
-  persistence for live and offline playback.
+  command. Their clip boundaries match the recorded ticks when the interval is
+  at least 0.25 bars; shorter intervals follow the existing `AudioClip`
+  minimum-length rule. Saved clips reopen through persistence for live and
+  offline playback.
 - Missing samples/tracks and cancelled subscriptions create neither ghost
   voices nor arrangement clips. React does not own any realtime audio state.
 - Existing non-capture one-tap pad behavior and its tests remain unchanged.
@@ -77,6 +80,9 @@ project document.
 
 - v1 has a one-bar grid. A finer launch/stop grid can be added after measured
   use, without changing loop length or capture ownership.
+- The existing 0.25-bar minimum for `AudioClip` geometry can lengthen a very
+  short captured loop interval; reducing that minimum requires a separate
+  project-model and editor wave.
 - A tempo-less sample can be captured but cannot be automatically tempo-fitted.
 - A live voice keeps the tempo fit selected at its launch. A later tempo-map
   change affects future launches; dynamic time-stretch retuning of an already

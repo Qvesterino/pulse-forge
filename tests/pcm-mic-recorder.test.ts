@@ -2,7 +2,8 @@ import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
-import { PcmMicRecorder } from "../src/audio-engine/PcmMicRecorder";
+import { isMicRecordingActive, PcmMicRecorder } from "../src/audio-engine/PcmMicRecorder";
+import { PcmMicRecorderGroup } from "../src/audio-engine/PcmMicRecorderGroup";
 import { RecordingRecoveryRepository } from "../src/persistence/RecordingRecoveryRepository";
 import { openDb, STORE_RECORDING_CHUNKS, STORE_RECORDING_SESSIONS } from "../src/persistence/db";
 
@@ -10,11 +11,14 @@ let lastNode: FakeWorkletNode | null = null;
 let acknowledgeStop = true;
 
 class FakeWorkletNode {
+  static instances: FakeWorkletNode[] = [];
+  readonly context: unknown;
   sent: Array<Record<string, unknown>> = [];
   options: Record<string, unknown> | undefined;
   onprocessorerror: (() => void) | null = null;
   port = {
     onmessage: null as ((event: MessageEvent) => void) | null,
+    start: vi.fn(),
     postMessage: (message: Record<string, unknown>) => {
       this.sent.push(message);
       if (message.type === "stop" && acknowledgeStop) queueMicrotask(() => this.emit({ type: "stopped" }));
@@ -23,8 +27,10 @@ class FakeWorkletNode {
   };
 
   constructor(...args: unknown[]) {
+    this.context = args[0];
     this.options = args[2] as Record<string, unknown> | undefined;
     lastNode = this;
+    FakeWorkletNode.instances.push(this);
   }
 
   connect = vi.fn();
@@ -38,7 +44,12 @@ class FakeWorkletNode {
 function createRecorder(
   options: {
     deferMicrophonePermission?: boolean;
+    useNativeCapture?: boolean;
+    context?: AudioContext;
     inputDeviceId?: string;
+    captureGroupToken?: object;
+    trackId?: string;
+    trackName?: string;
     inputGainDb?: number;
     requestedChannelCount?: number;
     workletChannels?: number;
@@ -60,6 +71,15 @@ function createRecorder(
     channelCount: { min: 1, max: options.workletChannels && options.workletChannels > 2 ? 8 : 2 },
   }));
   track.stop = vi.fn();
+  track.clone = vi.fn(() => {
+    const clone = new EventTarget() as MediaStreamTrack;
+    Object.defineProperty(clone, "readyState", { value: "live" });
+    Object.defineProperty(clone, "muted", { value: false });
+    clone.getSettings = track.getSettings;
+    clone.getCapabilities = track.getCapabilities;
+    clone.stop = vi.fn();
+    return clone;
+  });
   const stream = {
     getAudioTracks: () => [track],
     getTracks: () => [track],
@@ -83,12 +103,16 @@ function createRecorder(
   const splitters: Array<{ connect: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> }> = [];
   const samples = [new Float32Array(0)];
   const contextStateEvents = new EventTarget();
-  const context = {
+  const createdContext = {
     state: "running",
     sampleRate: 48_000,
     currentTime: 1,
     destination: {},
-    audioWorklet: {},
+    audioWorklet: { addModule: vi.fn(async () => {}) },
+    createMediaStreamDestination: vi.fn(() => ({
+      stream: { getAudioTracks: () => [track], getTracks: () => [track] },
+      disconnect: vi.fn(),
+    })),
     addEventListener: contextStateEvents.addEventListener.bind(contextStateEvents),
     removeEventListener: contextStateEvents.removeEventListener.bind(contextStateEvents),
     createMediaStreamSource: vi.fn(() => source),
@@ -103,10 +127,12 @@ function createRecorder(
         // "ready" fires once the trim stage chains into the capture node:
         // source → trim gain → worklet (post-trim graph complete).
         connect: vi.fn((node: unknown) => {
-          if (node === lastNode)
+          if (node instanceof FakeWorkletNode) {
+            const workletNode = node;
             queueMicrotask(() =>
-              lastNode?.emit({ type: "ready", channels: options.workletChannels ?? 1, sampleRate: 48_000 }),
+              workletNode.emit({ type: "ready", channels: options.workletChannels ?? 1, sampleRate: 48_000 }),
             );
+          }
         }),
         disconnect: vi.fn(),
       };
@@ -124,35 +150,39 @@ function createRecorder(
     })),
     createBuffer: (channels: number, frames: number, sampleRate: number) => {
       expect([channels, frames, sampleRate]).toEqual([1, 2, 48_000]);
-      samples[0] = new Float32Array(frames);
+      const channelData = new Float32Array(frames);
+      samples[0] = channelData;
       return {
         numberOfChannels: channels,
         length: frames,
         sampleRate,
         duration: frames / sampleRate,
-        getChannelData: () => samples[0],
+        getChannelData: () => channelData,
       } as unknown as AudioBuffer;
     },
     resume: vi.fn(async () => {}),
   } as unknown as AudioContext;
+  const context = options.context ?? createdContext;
 
-  const recorder = new PcmMicRecorder({
+  const dependencies = {
     ctx: context,
     recovery,
     inputDeviceId: options.inputDeviceId ?? "",
+    captureGroupToken: options.captureGroupToken,
     inputGainDb: options.inputGainDb,
     requestedChannelCount: options.requestedChannelCount,
     addWorkletModule: vi.fn(async () => {}),
-    getUserMedia,
+    ...(options.useNativeCapture ? {} : { getUserMedia }),
     estimateStorage: options.estimateStorage,
     routeMonitorOutput: options.routeMonitorOutput,
     monitorChannelCount: options.monitorChannelCount,
     refreshStartBar: options.refreshStartBar,
-  });
+  };
+  const recorder = new PcmMicRecorder(dependencies);
   const metadata = () => ({
     projectId: "project-1",
-    trackId: "vocal-1",
-    trackName: "Lead Vocal",
+    trackId: options.trackId ?? "vocal-1",
+    trackName: options.trackName ?? "Lead Vocal",
     placeOnTimeline: true,
     ...(options.takeGroupId && options.takeId ? { takeGroupId: options.takeGroupId, takeId: options.takeId } : {}),
     ...(options.loopCapture ? { loopCapture: true } : {}),
@@ -167,6 +197,7 @@ function createRecorder(
   };
   return {
     recorder,
+    dependencies,
     recovery,
     metadata,
     samples,
@@ -203,6 +234,7 @@ async function clearRecordingStores(): Promise<void> {
 afterEach(async () => {
   vi.unstubAllGlobals();
   lastNode = null;
+  FakeWorkletNode.instances = [];
   acknowledgeStop = true;
   await clearRecordingStores();
 });
@@ -706,6 +738,79 @@ describe("PcmMicRecorder", () => {
     expect(track.stop).toHaveBeenCalledOnce();
   });
 
+  it("stops native capture after WASAPI device loss and preserves committed PCM for recovery", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    class TestMediaStream {
+      constructor(private readonly tracks: MediaStreamTrack[]) {}
+      getAudioTracks() {
+        return this.tracks;
+      }
+      getTracks() {
+        return this.tracks;
+      }
+    }
+    vi.stubGlobal("MediaStream", TestMediaStream);
+    const { recorder, recovery, metadata, context } = createRecorder({ useNativeCapture: true });
+    const { connectWindowsAudioIoToEngine } = await import("../src/audio-engine/windowsAudioIoBridge");
+    const nativePort = { postMessage: vi.fn(), start: vi.fn(), close: vi.fn() } as unknown as MessagePort;
+    const request = {
+      backend: "wasapi-shared" as const,
+      inputEndpointId: "capture-endpoint",
+      outputEndpointId: "render-endpoint",
+      sampleRateHz: 48_000,
+      periodFrames: 480,
+      inputChannelMap: [0, 1],
+      outputChannelMap: [0, 1],
+      exclusiveAcknowledged: false,
+    };
+    const negotiation = {
+      backend: "wasapi-shared" as const,
+      inputEndpointId: request.inputEndpointId,
+      outputEndpointId: request.outputEndpointId,
+      sampleRateHz: request.sampleRateHz,
+      periodFrames: request.periodFrames,
+      nativeSampleFormat: "f32le" as const,
+      ringSampleFormat: "f32le" as const,
+      inputChannelCount: 2,
+      outputChannelCount: 2,
+      inputChannelMap: [0, 1],
+      outputChannelMap: [0, 1],
+      inputBufferFrames: 960,
+      outputBufferFrames: 960,
+      sharedPeriods: { minFrames: 480, maxFrames: 960, fundamentalFrames: 480 },
+    };
+    const engine = {
+      getLiveAudioContext: () => context,
+      setLiveAudioOutputSink: vi.fn(),
+      clearLiveAudioOutputSink: vi.fn(),
+      subscribeLiveContext: () => () => undefined,
+    };
+    const connecting = connectWindowsAudioIoToEngine(engine as never, "native-recording-loss", nativePort, request);
+    await vi.waitFor(() => expect(lastNode).not.toBeNull());
+    const bridgeNode = lastNode!;
+    bridgeNode.emit({ type: "ready", negotiation });
+    const connection = await connecting;
+
+    const onError = vi.fn();
+    recorder.onError = onError;
+    await recorder.start(metadata);
+    const recordingNode = lastNode!;
+    const pcm = new Float32Array([0.125, -0.25]);
+    recordingNode.emit({ type: "chunk", sequence: 0, frames: 2, channels: [pcm.buffer] });
+    await waitForAck(recordingNode);
+
+    bridgeNode.emit({ type: "device-lost", message: "USB disconnected" });
+    const take = await recorder.stop();
+    connection.stop();
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.stringMatching(/native windows capture stopped.*usb disconnected.*recovery/i),
+    );
+    expect(take?.session.totalFrames).toBe(2);
+    await expect(recovery.get(take!.session.id)).resolves.toMatchObject({ status: "recoverable", totalFrames: 2 });
+    expect(recorder.state).toBe("idle");
+  });
+
   it("stops and preserves the take when the AudioContext is suspended", async () => {
     vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
     const { recorder, recovery, metadata, track, changeContextState } = createRecorder();
@@ -869,6 +974,193 @@ describe("PcmMicRecorder", () => {
     await second.recorder.start(second.metadata);
     expect(second.recorder.state).toBe("recording");
     await second.recorder.cancel();
+  });
+
+  it("allows independent track inputs only inside one explicit capture group", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const captureGroupToken = {};
+    const detachLead = vi.fn();
+    const detachBass = vi.fn();
+    const leadMonitorRoute = vi.fn(() => detachLead);
+    const bassMonitorRoute = vi.fn(() => detachBass);
+    const lead = createRecorder({
+      captureGroupToken,
+      inputDeviceId: "input-lead",
+      trackId: "track-lead",
+      trackName: "Lead",
+      routeMonitorOutput: leadMonitorRoute,
+    });
+    const bass = createRecorder({
+      context: lead.context,
+      captureGroupToken,
+      inputDeviceId: "input-bass",
+      trackId: "track-bass",
+      trackName: "Bass",
+      routeMonitorOutput: bassMonitorRoute,
+    });
+    lead.recorder.setMonitoring(true);
+    bass.recorder.setMonitoring(true);
+
+    const nodeCountBeforeStart = FakeWorkletNode.instances.length;
+    await Promise.all([lead.recorder.start(lead.metadata), bass.recorder.start(bass.metadata)]);
+    const [leadNode, bassNode] = FakeWorkletNode.instances.slice(nodeCountBeforeStart);
+    if (!leadNode || !bassNode) throw new Error("Independent input streams did not get separate capture worklets");
+    expect(leadNode.context).toBe(bassNode.context);
+    expect(lead.getUserMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ audio: expect.objectContaining({ deviceId: { exact: "input-lead" } }) }),
+    );
+    expect(bass.getUserMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ audio: expect.objectContaining({ deviceId: { exact: "input-bass" } }) }),
+    );
+    expect(leadMonitorRoute).toHaveBeenCalledWith(expect.anything(), 0);
+    expect(bassMonitorRoute).toHaveBeenCalledWith(expect.anything(), 0);
+    expect(isMicRecordingActive()).toBe(true);
+    expect(lead.recorder.state).toBe("recording");
+    expect(bass.recorder.state).toBe("recording");
+
+    const unrelated = createRecorder({ inputDeviceId: "other-input" });
+    await expect(unrelated.recorder.start(unrelated.metadata)).rejects.toThrow(/already in use/i);
+    expect(unrelated.getUserMedia).not.toHaveBeenCalled();
+
+    const leadPcm = new Float32Array([0.25, -0.5]);
+    const bassPcm = new Float32Array([-0.125, 0.75]);
+    leadNode.emit({ type: "chunk", sequence: 0, frames: 2, channels: [leadPcm.buffer] });
+    bassNode.emit({ type: "chunk", sequence: 0, frames: 2, channels: [bassPcm.buffer] });
+    await Promise.all([waitForAck(leadNode), waitForAck(bassNode)]);
+    const leadTake = await lead.recorder.stop();
+    if (!leadTake) throw new Error("The lead input session should materialize a take");
+    expect(bass.recorder.state).toBe("recording");
+    expect(isMicRecordingActive()).toBe(true);
+    expect(detachLead).toHaveBeenCalledOnce();
+    expect(detachBass).not.toHaveBeenCalled();
+    const bassTake = await bass.recorder.stop();
+    if (!bassTake) throw new Error("The bass input session should materialize a take");
+
+    expect(leadTake.session.trackId).toBe("track-lead");
+    expect(bassTake.session.trackId).toBe("track-bass");
+    expect(Array.from(leadTake.buffer.getChannelData(0))).toEqual([0.25, -0.5]);
+    expect(Array.from(bassTake.buffer.getChannelData(0))).toEqual([-0.125, 0.75]);
+    expect(detachLead).toHaveBeenCalledOnce();
+    expect(detachBass).toHaveBeenCalledOnce();
+    expect(isMicRecordingActive()).toBe(false);
+  });
+
+  it("arms independent input worklets on one shared audio frame and returns separate takes", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const lead = createRecorder({ inputDeviceId: "input-lead", trackId: "track-lead", trackName: "Lead" });
+    const bass = createRecorder({
+      context: lead.context,
+      inputDeviceId: "input-bass",
+      trackId: "track-bass",
+      trackName: "Bass",
+    });
+    const createSource = lead.context.createMediaStreamSource as unknown as ReturnType<typeof vi.fn>;
+    createSource.mockReturnValueOnce(lead.source).mockReturnValueOnce(bass.source);
+    const nodeCountBeforeStart = FakeWorkletNode.instances.length;
+    const group = new PcmMicRecorderGroup([
+      { id: "track-lead", dependencies: lead.dependencies, getMetadata: lead.metadata },
+      { id: "track-bass", dependencies: bass.dependencies, getMetadata: bass.metadata },
+    ]);
+
+    await group.start();
+    expect(group.state).toBe("recording");
+    const [leadNode, bassNode] = FakeWorkletNode.instances.slice(nodeCountBeforeStart);
+    if (!leadNode || !bassNode) throw new Error("The input group did not create one capture worklet per device");
+    const leadStart = leadNode.sent.find((message) => message.type === "start");
+    const bassStart = bassNode.sent.find((message) => message.type === "start");
+    expect(leadStart?.startFrame).toBeGreaterThan(0);
+    expect(bassStart?.startFrame).toBe(leadStart?.startFrame);
+    expect(isMicRecordingActive()).toBe(true);
+
+    const leadPcm = new Float32Array([0.25, -0.5]);
+    const bassPcm = new Float32Array([-0.125, 0.75]);
+    leadNode.emit({ type: "chunk", sequence: 0, frames: 2, channels: [leadPcm.buffer] });
+    bassNode.emit({ type: "chunk", sequence: 0, frames: 2, channels: [bassPcm.buffer] });
+    await Promise.all([waitForAck(leadNode), waitForAck(bassNode)]);
+
+    const takes = await group.stop();
+    expect(takes.map((result) => [result.inputId, result.take?.session.trackId, result.error])).toEqual([
+      ["track-lead", "track-lead", null],
+      ["track-bass", "track-bass", null],
+    ]);
+    expect(Array.from(takes[0]!.take!.buffer.getChannelData(0))).toEqual([0.25, -0.5]);
+    expect(Array.from(takes[1]!.take!.buffer.getChannelData(0))).toEqual([-0.125, 0.75]);
+    expect(group.state).toBe("complete");
+    expect(isMicRecordingActive()).toBe(false);
+  });
+
+  it("cancels every member and releases the shared claim when one device fails during preparation", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const lead = createRecorder({ inputDeviceId: "input-lead", trackId: "track-lead", trackName: "Lead" });
+    const bass = createRecorder({
+      context: lead.context,
+      inputDeviceId: "input-bass",
+      trackId: "track-bass",
+      trackName: "Bass",
+    });
+    const createSource = lead.context.createMediaStreamSource as unknown as ReturnType<typeof vi.fn>;
+    createSource.mockReturnValueOnce(lead.source).mockReturnValueOnce(bass.source);
+    vi.mocked(bass.getUserMedia).mockRejectedValueOnce(
+      Object.assign(new Error("device unavailable"), { name: "NotFoundError" }),
+    );
+    const group = new PcmMicRecorderGroup([
+      { id: "track-lead", dependencies: lead.dependencies, getMetadata: lead.metadata },
+      { id: "track-bass", dependencies: bass.dependencies, getMetadata: bass.metadata },
+    ]);
+
+    await expect(group.start()).rejects.toThrow(/selected audio input is unavailable/i);
+    expect(group.state).toBe("complete");
+    expect(isMicRecordingActive()).toBe(false);
+    expect(lead.track.stop).toHaveBeenCalled();
+    expect(lead.recorder.state).toBe("idle");
+
+    const unrelated = createRecorder();
+    await unrelated.recorder.start(unrelated.metadata);
+    await unrelated.recorder.cancel();
+  });
+
+  it("stops the whole live group and returns every recoverable take when one input fails", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const lead = createRecorder({ inputDeviceId: "input-lead", trackId: "track-lead", trackName: "Lead" });
+    const bass = createRecorder({
+      context: lead.context,
+      inputDeviceId: "input-bass",
+      trackId: "track-bass",
+      trackName: "Bass",
+    });
+    const createSource = lead.context.createMediaStreamSource as unknown as ReturnType<typeof vi.fn>;
+    createSource.mockReturnValueOnce(lead.source).mockReturnValueOnce(bass.source);
+    const group = new PcmMicRecorderGroup([
+      { id: "track-lead", dependencies: lead.dependencies, getMetadata: lead.metadata },
+      { id: "track-bass", dependencies: bass.dependencies, getMetadata: bass.metadata },
+    ]);
+    const failed = new Promise<{
+      inputId: string;
+      message: string;
+      results: Awaited<ReturnType<PcmMicRecorderGroup["stop"]>>;
+    }>((resolve) => {
+      group.onFailure = (inputId, message, results) => resolve({ inputId, message, results });
+    });
+
+    const nodeCountBeforeStart = FakeWorkletNode.instances.length;
+    await group.start();
+    const [leadNode, bassNode] = FakeWorkletNode.instances.slice(nodeCountBeforeStart);
+    if (!leadNode || !bassNode) throw new Error("The input group did not create one capture worklet per device");
+    leadNode.emit({ type: "chunk", sequence: 0, frames: 2, channels: [new Float32Array([0.25, 0.5]).buffer] });
+    bassNode.emit({ type: "chunk", sequence: 0, frames: 2, channels: [new Float32Array([-0.25, -0.5]).buffer] });
+    await Promise.all([waitForAck(leadNode), waitForAck(bassNode)]);
+
+    leadNode.emit({ type: "error", reason: "input device disconnected" });
+    const failure = await failed;
+
+    expect(failure).toMatchObject({ inputId: "track-lead", message: "input device disconnected" });
+    expect(failure.results.map((result) => [result.inputId, result.take?.session.trackId, result.error])).toEqual([
+      ["track-lead", "track-lead", null],
+      ["track-bass", "track-bass", null],
+    ]);
+    expect(failure.results.every((result) => result.take?.session.totalFrames === 2)).toBe(true);
+    expect(group.state).toBe("complete");
+    expect(isMicRecordingActive()).toBe(false);
   });
 
   it("gives up when the audio context never resumes and frees the mic claim", async () => {

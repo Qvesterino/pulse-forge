@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KYX Starter Loops v1 — Listening Review</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+        background: #101114;
+        color: #f1f2f4;
+      }
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 32px 20px 64px;
+      }
+      h1,
+      h2,
+      h3 {
+        line-height: 1.2;
+      }
+      h1 {
+        margin-bottom: 8px;
+      }
+      p,
+      .meta {
+        color: #b9bdc7;
+      }
+      .notice {
+        border: 1px solid #48515f;
+        background: #191c22;
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin: 20px 0 28px;
+      }
+      .genre {
+        border-top: 1px solid #30343d;
+        padding: 20px 0;
+      }
+      .layers {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 12px;
+      }
+      .layer,
+      .pair {
+        background: #191c22;
+        border: 1px solid #30343d;
+        border-radius: 10px;
+        padding: 14px;
+      }
+      .layer h3,
+      .pair h3 {
+        margin: 0 0 4px;
+      }
+      audio {
+        display: block;
+        width: 100%;
+        margin-top: 10px;
+      }
+      a {
+        color: #9bc7ff;
+      }
+      small {
+        color: #9da3ae;
+      }
+      @media (max-width: 560px) {
+        body {
+          padding: 20px 14px 40px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>KYX Starter Loops v1</h1>
+    <p>Local audition page · 8 original four-bar loops · 19 October 2026</p>
+    <div class="notice">
+      <strong>How to review:</strong> listen to each layer on its own, then play the paired preview. Repeat the preview
+      across its loop boundary and note any unwanted click or balance issue. Paired previews preserve the layer balance
+      and apply one safe overall gain per pair; original loops are unchanged. <br /><a href="report.md"
+        >Open the technical report and notes</a
+      >
+    </div>
+
+    <section class="genre">
+      <h2>House · 124 BPM</h2>
+      <div class="layers">
+        <article class="layer">
+          <h3>Midnight House Drums</h3>
+          <div class="meta">Drums · Deep · Any key</div>
+          <audio
+            controls
+            preload="none"
+            src="../../../public/samples/kyx-starter-loops/house-midnight-drums.wav"
+          ></audio>
+        </article>
+        <article class="layer">
+          <h3>Afterhours Keys</h3>
+          <div class="meta">Keys · Warm · C minor</div>
+          <audio
+            controls
+            preload="none"
+            src="../../../public/samples/kyx-starter-loops/house-afterhours-keys.wav"
+          ></audio>
+        </article>
+        <article class="pair">
+          <h3>House pair preview</h3>
+          <div class="meta">Both layers · whole-pair gain +0.51 dB</div>
+          <audio controls preload="none" src="house-pair-preview.wav"></audio>
+        </article>
+      </div>
+    </section>
+
+    <section class="genre">
+      <h2>Techno · 132 BPM</h2>
+      <div class="layers">
+        <article class="layer">
+          <h3>Warehouse Drums</h3>
+          <div class="meta">Drums · Aggressive · Any key</div>
+          <audio
+            controls
+            preload="none"
+            src="../../../public/samples/kyx-starter-loops/techno-warehouse-drums.wav"
+          ></audio>
+        </article>
+        <article class="layer">
+          <h3>Acid Pulse</h3>
+          <div class="meta">Bass · Dark · E minor</div>
+          <audio controls preload="none" src="../../../public/samples/kyx-starter-loops/techno-acid-pulse.wav"></audio>
+        </article>
+        <article class="pair">
+          <h3>Techno pair preview</h3>
+          <div class="meta">Both layers · whole-pair gain −0.73 dB</div>
+          <audio controls preload="none" src="techno-pair-preview.wav"></audio>
+        </article>
+      </div>
+    </section>
+
+    <section class="genre">
+      <h2>UK Garage · 132 BPM</h2>
+      <div class="layers">
+        <article class="layer">
+          <h3>Two-Step Drums</h3>
+          <div class="meta">Drums · Bright · Any key</div>
+          <audio controls preload="none" src="../../../public/samples/kyx-starter-loops/ukg-two-step-drums.wav"></audio>
+        </article>
+        <article class="layer">
+          <h3>Soul Stabs</h3>
+          <div class="meta">Keys · Warm · F minor</div>
+          <audio controls preload="none" src="../../../public/samples/kyx-starter-loops/ukg-soul-stabs.wav"></audio>
+        </article>
+        <article class="pair">
+          <h3>UK Garage pair preview</h3>
+          <div class="meta">Both layers · whole-pair gain +0.40 dB</div>
+          <audio controls preload="none" src="uk-garage-pair-preview.wav"></audio>
+        </article>
+      </div>
+    </section>
+
+    <section class="genre">
+      <h2>Trap · 140 BPM</h2>
+      <div class="layers">
+        <article class="layer">
+          <h3>Half-Time Drums</h3>
+          <div class="meta">Drums · Dark · Any key</div>
+          <audio
+            controls
+            preload="none"
+            src="../../../public/samples/kyx-starter-loops/trap-half-time-drums.wav"
+          ></audio>
+        </article>
+        <article class="layer">
+          <h3>Soft 808 Phrase</h3>
+          <div class="meta">808 Bass · Deep · C minor</div>
+          <audio controls preload="none" src="../../../public/samples/kyx-starter-loops/trap-soft-808.wav"></audio>
+        </article>
+        <article class="pair">
+          <h3>Trap pair preview</h3>
+          <div class="meta">Both layers · whole-pair gain −1.97 dB to avoid digital clipping</div>
+          <audio controls preload="none" src="trap-pair-preview.wav"></audio>
+        </article>
+      </div>
+    </section>
+
+    <p>
+      <small
+        >Source loops are served from the project's public sample pack. If direct file playback is blocked by the
+        browser, open the WAV through the DAW's Loop Browser or run the project's local Vite server.</small
+      >
+    </p>
+  </body>
+</html>

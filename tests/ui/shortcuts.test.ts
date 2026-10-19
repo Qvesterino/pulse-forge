@@ -1,5 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { matchShortcut, panelIdOfShortcut, SHORTCUTS } from "../../src/ui/shortcuts";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  getActiveShortcuts,
+  matchShortcut,
+  panelIdOfShortcut,
+  resetShortcutBindings,
+  setShortcutBinding,
+  shortcutDisplayBindings,
+  SHORTCUTS,
+} from "../../src/ui/shortcuts";
 
 function key(
   k: string,
@@ -16,6 +24,10 @@ function key(
 }
 
 describe("shortcut bindings", () => {
+  afterEach(() => {
+    resetShortcutBindings();
+  });
+
   it("bare digits 1–9 select tracks", () => {
     // Regression: bare 1–5 used to be double-bound (track select AND panel
     // toggle) — the panel entries silently overwrote the track entries in
@@ -39,6 +51,68 @@ describe("shortcut bindings", () => {
     // Regression: "stop" and "clearSelection" were both bound to Escape;
     // the later entry overwrote the former, so Esc never stopped transport.
     expect(matchShortcut(key("Escape"))).toBe("stop");
+  });
+
+  it("Ctrl+D resolves to contextual duplicate selection", () => {
+    expect(matchShortcut(key("d", { ctrlKey: true }))).toBe("duplicateSelection");
+  });
+
+  it("remaps a global action and resets it to its original binding", () => {
+    const result = setShortcutBinding("playPause", {
+      keyHint: "u",
+      ctrl: true,
+      shift: true,
+      alt: false,
+      meta: false,
+    });
+    expect(result).toMatchObject({ ok: true, persisted: true });
+    expect(matchShortcut(key("U", { ctrlKey: true, shiftKey: true }))).toBe("playPause");
+    expect(matchShortcut(key(" "))).toBeNull();
+    const play = getActiveShortcuts().find(({ key: shortcutKey }) => shortcutKey === "playPause");
+    expect(play).toBeDefined();
+    expect(shortcutDisplayBindings(play!)).toEqual(["Ctrl + Shift + U"]);
+
+    expect(setShortcutBinding("playPause", null)).toMatchObject({ ok: true, persisted: true });
+    expect(matchShortcut(key(" "))).toBe("playPause");
+  });
+
+  it("rejects plain keys, browser-reserved chords, global collisions and editor collisions", () => {
+    const plain = setShortcutBinding("playPause", {
+      keyHint: "u",
+      ctrl: false,
+      shift: false,
+      alt: false,
+      meta: false,
+    });
+    expect(plain).toMatchObject({ ok: false });
+
+    const browser = setShortcutBinding("playPause", {
+      keyHint: "t",
+      ctrl: true,
+      shift: true,
+      alt: false,
+      meta: false,
+    });
+    expect(browser).toMatchObject({ ok: false, message: expect.stringContaining("browser") });
+
+    const global = setShortcutBinding("playPause", {
+      keyHint: "z",
+      ctrl: true,
+      shift: true,
+      alt: false,
+      meta: false,
+    });
+    expect(global).toMatchObject({ ok: false, message: expect.stringContaining("Redo") });
+
+    const editor = setShortcutBinding("playPause", {
+      keyHint: "v",
+      ctrl: true,
+      shift: true,
+      alt: false,
+      meta: false,
+    });
+    expect(editor).toMatchObject({ ok: false, message: expect.stringContaining("editor action") });
+    expect(matchShortcut(key(" "))).toBe("playPause");
   });
 
   it("no two primary bindings collide", () => {

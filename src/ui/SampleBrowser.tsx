@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLibrary, useServices } from "./context";
 import type { FactoryAsset } from "../sample-library/manifest";
 import { ASSET_MOODS } from "../sample-library/manifest";
@@ -10,6 +10,8 @@ import { categoryColor } from "./kitColors";
 import { DropZone } from "./DropZone";
 import { IntakeTray } from "./IntakeTray";
 import { FreesoundSection } from "./FreesoundSection";
+import type { SongStarterHandoff } from "../landing/handoff";
+import { installKyxStarterLoops } from "../sample-library/kyx-starter-loops";
 
 /** Unified asset type — factory or user-imported. */
 export type SampleAsset = FactoryAsset | UserSampleAsset;
@@ -32,7 +34,7 @@ export function sampleIdFromDrag(dt: DataTransfer): string | null {
 type CategoryFilter = "all" | string;
 type MoodFilter = "all" | (typeof ASSET_MOODS)[number];
 type LoopMetadata = NonNullable<UserSampleAsset["loopMetadata"]>;
-type LoopDraft = { isLoop: boolean; genre: string; mood: string; instrument: string; key: string };
+type LoopDraft = { isLoop: boolean; bpm: string; genre: string; mood: string; instrument: string; key: string };
 
 function isFactoryAsset(a: SampleAsset): a is FactoryAsset {
   return "character" in a;
@@ -42,6 +44,14 @@ function hasValidLoopBpm(asset: UserSampleAsset): asset is UserSampleAsset & { b
   return Number.isFinite(asset.bpm) && asset.bpm! >= 40 && asset.bpm! <= 240;
 }
 
+/** Returns undefined for an intentionally cleared tempo and null for invalid input. */
+function parseLoopBpm(value: string): number | undefined | null {
+  if (!value.trim()) return undefined;
+  const bpm = Number(value);
+  if (!Number.isFinite(bpm) || bpm < 40 || bpm > 240) return null;
+  return Math.round(bpm * 10) / 10;
+}
+
 function isLoopAsset(asset: UserSampleAsset): boolean {
   if (asset.loopMetadata?.isLoop !== undefined) return asset.loopMetadata.isLoop;
   return hasValidLoopBpm(asset);
@@ -49,6 +59,12 @@ function isLoopAsset(asset: UserSampleAsset): boolean {
 
 function normalizedText(value: unknown): string {
   return typeof value === "string" ? value.trim().toLocaleLowerCase() : "";
+}
+
+function matchesSearchQuery(haystack: string, query: string): boolean {
+  const normalizedHaystack = normalizedText(haystack);
+  const terms = normalizedText(query).split(/\s+/).filter(Boolean);
+  return terms.every((term) => normalizedHaystack.includes(term));
 }
 
 function uniqueMetadataValues(assets: UserSampleAsset[], field: "genre" | "mood" | "instrument" | "key"): string[] {
@@ -74,6 +90,7 @@ export function SampleBrowser({
   onBatchImport,
   onPreviewLoop,
   onAddLoop,
+  loopStarter = null,
 }: {
   assets: FactoryAsset[];
   userAssets?: UserSampleAsset[];
@@ -84,19 +101,24 @@ export function SampleBrowser({
   onBatchImport?: (assets: UserSampleAsset[]) => void;
   onPreviewLoop?: (asset: UserSampleAsset) => void;
   onAddLoop?: (asset: UserSampleAsset) => Promise<void> | void;
+  loopStarter?: SongStarterHandoff | null;
 }) {
   const services = useServices();
   const library = useLibrary();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryFilter>("all");
   const [mood, setMood] = useState<MoodFilter>("all");
-  const [loopView, setLoopView] = useState(false);
-  const [loopGenre, setLoopGenre] = useState("all");
-  const [loopMood, setLoopMood] = useState("all");
+  const [loopView, setLoopView] = useState(() => Boolean(loopStarter));
+  const [loopGenre, setLoopGenre] = useState(() => loopStarter?.genre ?? "all");
+  const [loopMood, setLoopMood] = useState(() => loopStarter?.mood ?? "all");
   const [loopInstrument, setLoopInstrument] = useState("all");
   const [loopKey, setLoopKey] = useState("all");
-  const [minBpm, setMinBpm] = useState("");
-  const [maxBpm, setMaxBpm] = useState("");
+  const [minBpm, setMinBpm] = useState(() =>
+    loopStarter ? String(Math.max(40, Math.floor(loopStarter.bpm * 0.9))) : "",
+  );
+  const [maxBpm, setMaxBpm] = useState(() =>
+    loopStarter ? String(Math.min(240, Math.ceil(loopStarter.bpm * 1.1))) : "",
+  );
   const [allUserAssets, setAllUserAssets] = useState<UserSampleAsset[]>(userAssets);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [loopMessage, setLoopMessage] = useState<string | null>(null);
@@ -104,6 +126,12 @@ export function SampleBrowser({
   const [loopDraft, setLoopDraft] = useState<LoopDraft | null>(null);
   const [savingLoopId, setSavingLoopId] = useState<string | null>(null);
   const [addingLoopId, setAddingLoopId] = useState<string | null>(null);
+  const [installingStarterPack, setInstallingStarterPack] = useState(false);
+  const [starterPackProgress, setStarterPackProgress] = useState<string | null>(null);
+  const installLock = useRef(false);
+  const starterPackInstalledCount = allUserAssets.filter(
+    (asset) => asset.factoryPack?.id === "kyx-starter-loops",
+  ).length;
 
   const reportLibraryFailure = (operation: Promise<unknown> | void): void => {
     setLibraryError(null);
@@ -163,11 +191,10 @@ export function SampleBrowser({
         if (!matchesMood) return false;
       }
       if (query.trim().length > 0) {
-        const q = query.trim().toLocaleLowerCase();
         const haystack = isFactoryAsset(asset)
-          ? `${asset.name} ${asset.character} ${asset.tags.join(" ")} ${asset.category}`.toLocaleLowerCase()
-          : `${asset.name} ${asset.fileName} ${asset.category} ${asset.loopMetadata?.genre ?? ""} ${asset.loopMetadata?.mood ?? ""} ${asset.loopMetadata?.instrument ?? ""} ${asset.loopMetadata?.key ?? ""}`.toLocaleLowerCase();
-        if (!haystack.includes(q)) return false;
+          ? `${asset.name} ${asset.character} ${asset.tags.join(" ")} ${asset.mood.join(" ")} ${asset.category}`
+          : `${asset.name} ${asset.fileName} ${asset.category} ${asset.loopMetadata?.genre ?? ""} ${asset.loopMetadata?.mood ?? ""} ${asset.loopMetadata?.instrument ?? ""} ${asset.loopMetadata?.key ?? ""}`;
+        if (!matchesSearchQuery(haystack, query)) return false;
       }
       return true;
     });
@@ -182,10 +209,8 @@ export function SampleBrowser({
       if (!matchesFilter(asset.loopMetadata?.instrument, loopInstrument)) return false;
       if (!matchesFilter(asset.loopMetadata?.key, loopKey)) return false;
       if (query.trim().length > 0) {
-        const q = query.trim().toLocaleLowerCase();
-        const haystack =
-          `${asset.name} ${asset.fileName} ${asset.loopMetadata?.genre ?? ""} ${asset.loopMetadata?.mood ?? ""} ${asset.loopMetadata?.instrument ?? ""} ${asset.loopMetadata?.key ?? ""} ${asset.bpm ?? ""}`.toLocaleLowerCase();
-        if (!haystack.includes(q)) return false;
+        const haystack = `${asset.name} ${asset.fileName} ${asset.loopMetadata?.genre ?? ""} ${asset.loopMetadata?.mood ?? ""} ${asset.loopMetadata?.instrument ?? ""} ${asset.loopMetadata?.key ?? ""} ${asset.bpm ?? ""}`;
+        if (!matchesSearchQuery(haystack, query)) return false;
       }
       if (minimum !== null && (!Number.isFinite(asset.bpm) || asset.bpm! < minimum)) return false;
       if (maximum !== null && (!Number.isFinite(asset.bpm) || asset.bpm! > maximum)) return false;
@@ -194,6 +219,17 @@ export function SampleBrowser({
   }, [loopAssets, loopGenre, loopMood, loopInstrument, loopKey, minBpm, maxBpm, query]);
 
   const filtered = loopView ? loopFiltered : soundFiltered;
+  const sourceCount = loopView ? loopAssets.length : allAssets.length;
+  const resultNoun = loopView ? (sourceCount === 1 ? "loop" : "loops") : sourceCount === 1 ? "sound" : "sounds";
+  const hasActiveFilters = loopView
+    ? query.trim().length > 0 ||
+      loopGenre !== "all" ||
+      loopMood !== "all" ||
+      loopInstrument !== "all" ||
+      loopKey !== "all" ||
+      minBpm.trim().length > 0 ||
+      maxBpm.trim().length > 0
+    : query.trim().length > 0 || category !== "all" || mood !== "all";
   const filteredIds = new Set(filtered.map((asset) => asset.id));
   const recent = loopView ? [] : library.recentAssets.filter((id) => filteredIds.has(id));
   const favorites = loopView ? [] : library.favoriteAssets.filter((id) => filteredIds.has(id) && !recent.includes(id));
@@ -203,8 +239,17 @@ export function SampleBrowser({
     onSelect(id);
     if (id) {
       reportLibraryFailure(services.library.recordAsset(id));
-      services.engine.previewAsset(id);
+      previewAssetInContext(id);
     }
+  };
+
+  const previewAssetInContext = (assetId: string): void => {
+    if (services.transport.playing) {
+      services.engine.stopPreview();
+      services.engine.previewAssetSynced(assetId, 1, false);
+      return;
+    }
+    services.engine.previewAsset(assetId);
   };
 
   const handleImport = (asset: UserSampleAsset) => {
@@ -221,6 +266,7 @@ export function SampleBrowser({
     setEditingLoopId(asset.id);
     setLoopDraft({
       isLoop: isLoopAsset(asset),
+      bpm: Number.isFinite(asset.bpm) ? asset.bpm!.toFixed(1) : "",
       genre: metadata.genre ?? "",
       mood: metadata.mood ?? "",
       instrument: metadata.instrument ?? "",
@@ -232,6 +278,11 @@ export function SampleBrowser({
 
   const saveLoopMetadata = async (asset: UserSampleAsset) => {
     if (!loopDraft) return;
+    const bpm = parseLoopBpm(loopDraft.bpm);
+    if (bpm === null) {
+      setLibraryError("Loop tempo must be between 40 and 240 BPM.");
+      return;
+    }
     const metadata: LoopMetadata = {
       isLoop: loopDraft.isLoop,
       genre: loopDraft.genre.trim() || undefined,
@@ -239,7 +290,7 @@ export function SampleBrowser({
       instrument: loopDraft.instrument.trim() || undefined,
       key: loopDraft.key.trim() || undefined,
     };
-    const updated: UserSampleAsset = { ...asset, loopMetadata: metadata };
+    const updated: UserSampleAsset = { ...asset, bpm, loopMetadata: metadata };
     setSavingLoopId(asset.id);
     setLibraryError(null);
     setLoopMessage(null);
@@ -268,7 +319,7 @@ export function SampleBrowser({
       } else services.engine.previewAsset(asset.id);
       return;
     }
-    services.engine.previewAsset(asset.id);
+    previewAssetInContext(asset.id);
   };
 
   const addLoop = async (asset: UserSampleAsset) => {
@@ -286,8 +337,62 @@ export function SampleBrowser({
     }
   };
 
+  const installStarterPack = async () => {
+    if (installLock.current) return;
+    installLock.current = true;
+    setInstallingStarterPack(true);
+    setLibraryError(null);
+    setLoopMessage(null);
+    setStarterPackProgress("Preparing download…");
+    try {
+      await services.core.initialSampleBankHydration;
+      const installed = await installKyxStarterLoops(services.bank, services.userSamples, {
+        onProgress: ({ completed, total, name }) => setStarterPackProgress(`${completed}/${total} · ${name}`),
+      });
+      const refreshed = await services.userSamples.list();
+      setAllUserAssets((current) => {
+        const merged = new Map<string, UserSampleAsset>();
+        for (const asset of [...refreshed, ...current, ...installed]) merged.set(asset.id, asset);
+        return [...merged.values()];
+      });
+      setLoopMessage(
+        installed.length > 0
+          ? `${installed.length} original KYX loops added to your library.`
+          : "KYX Starter Loops are already installed.",
+      );
+    } catch (error) {
+      const refreshed = await services.userSamples.list().catch(() => []);
+      setAllUserAssets((current) => {
+        const merged = new Map<string, UserSampleAsset>();
+        for (const asset of [...refreshed, ...current]) merged.set(asset.id, asset);
+        return [...merged.values()];
+      });
+      setLibraryError(error instanceof Error ? error.message : "Could not install KYX Starter Loops");
+    } finally {
+      installLock.current = false;
+      setInstallingStarterPack(false);
+      setStarterPackProgress(null);
+    }
+  };
+
+  const clearFilters = () => {
+    setQuery("");
+    if (loopView) {
+      setLoopGenre("all");
+      setLoopMood("all");
+      setLoopInstrument("all");
+      setLoopKey("all");
+      setMinBpm("");
+      setMaxBpm("");
+    } else {
+      setCategory("all");
+      setMood("all");
+    }
+  };
+
   const renderRow = (asset: SampleAsset, fav: boolean) => {
     const userAsset = isFactoryAsset(asset) ? null : asset;
+    const soundCharacter = isFactoryAsset(asset) ? asset.character : null;
     const isEditing = userAsset !== null && editingLoopId === userAsset.id;
     return (
       <div key={asset.id} className="sample-result">
@@ -307,11 +412,15 @@ export function SampleBrowser({
           <button
             type="button"
             className="sample-preview"
-            title={loopView && userAsset && hasValidLoopBpm(userAsset) ? "Preview matched to project tempo" : "Preview"}
+            title={
+              loopView && userAsset && hasValidLoopBpm(userAsset)
+                ? "Preview matched to project tempo"
+                : "Preview now while stopped, or on the next beat over the mix while playing"
+            }
             aria-label={
               loopView && userAsset && hasValidLoopBpm(userAsset)
                 ? `Preview loop in project tempo ${asset.name}`
-                : `Preview ${asset.name}`
+                : `Preview ${asset.name} in the current mix (next beat while playing)`
             }
             onClick={() => preview(asset)}
           >
@@ -327,6 +436,11 @@ export function SampleBrowser({
           >
             {asset.name}
           </button>
+          {soundCharacter && (
+            <span className="sample-character" title={soundCharacter}>
+              {soundCharacter}
+            </span>
+          )}
           {userAsset && hasValidLoopBpm(userAsset) && (
             <span className="sample-bpm" title="Detected tempo in BPM">
               {Math.round(userAsset.bpm)} BPM
@@ -390,6 +504,24 @@ export function SampleBrowser({
               />
               Include in loop browser
             </label>
+            <label className="loop-tag-field">
+              <span>Tempo (BPM)</span>
+              <input
+                type="number"
+                min={40}
+                max={240}
+                step={0.1}
+                value={loopDraft.bpm}
+                aria-label="Loop tempo BPM"
+                aria-invalid={parseLoopBpm(loopDraft.bpm) === null}
+                onChange={(event) => setLoopDraft({ ...loopDraft, bpm: event.target.value })}
+              />
+            </label>
+            {parseLoopBpm(loopDraft.bpm) === null && (
+              <span className="loop-tag-error" role="alert">
+                Enter a tempo from 40 to 240 BPM.
+              </span>
+            )}
             {(
               [
                 ["genre", "Genre"],
@@ -412,7 +544,7 @@ export function SampleBrowser({
               <button
                 type="button"
                 className="preset-chip"
-                disabled={savingLoopId === userAsset.id}
+                disabled={savingLoopId === userAsset.id || parseLoopBpm(loopDraft.bpm) === null}
                 onClick={() => void saveLoopMetadata(userAsset)}
               >
                 {savingLoopId === userAsset.id ? "SAVING…" : "SAVE TAGS"}
@@ -435,23 +567,28 @@ export function SampleBrowser({
     );
   };
 
-  const selectFilter = (label: string, value: string, values: string[], onChange: (value: string) => void) => (
-    <label className="loop-filter">
-      <span>{label}</span>
-      <select
-        aria-label={`Filter by ${label.toLocaleLowerCase()}`}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        <option value="all">All</option>
-        {values.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
+  const selectFilter = (label: string, value: string, values: string[], onChange: (value: string) => void) => {
+    const matchingValue = values.find((option) => normalizedText(option) === normalizedText(value));
+    const selectedValue = value === "all" ? "all" : (matchingValue ?? value);
+    return (
+      <label className="loop-filter">
+        <span>{label}</span>
+        <select
+          aria-label={`Filter by ${label.toLocaleLowerCase()}`}
+          value={selectedValue}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          <option value="all">All</option>
+          {!matchingValue && value !== "all" && <option value={value}>{value}</option>}
+          {values.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  };
 
   return (
     <div className="sample-browser">
@@ -493,6 +630,33 @@ export function SampleBrowser({
           {loopMessage}
         </div>
       )}
+      {loopView && (
+        <section className="sample-starter-pack" aria-label="KYX Starter Loops pack">
+          <div>
+            <strong>KYX STARTER LOOPS</strong>
+            <span>8 original four-bar loops · 4.9 MB · install once for offline use</span>
+          </div>
+          <button
+            type="button"
+            className="btn btn-small"
+            disabled={installingStarterPack}
+            onClick={() => void installStarterPack()}
+          >
+            {installingStarterPack
+              ? "INSTALLING…"
+              : starterPackInstalledCount >= 8
+                ? "INSTALLED"
+                : starterPackInstalledCount > 0
+                  ? `ADD ${8 - starterPackInstalledCount} MISSING`
+                  : "INSTALL PACK"}
+          </button>
+          {starterPackProgress && (
+            <span className="sample-starter-pack-progress" role="status">
+              {starterPackProgress}
+            </span>
+          )}
+        </section>
+      )}
       {!loopView ? (
         <>
           <div className="preset-chips">
@@ -507,6 +671,7 @@ export function SampleBrowser({
               <button
                 key={cat}
                 type="button"
+                aria-pressed={category === cat}
                 className={`preset-chip${category === cat ? " active" : ""}`}
                 style={
                   category === cat
@@ -524,6 +689,7 @@ export function SampleBrowser({
               <button
                 key={m}
                 type="button"
+                aria-pressed={mood === m}
                 className={`preset-chip${mood === m ? " active" : ""}`}
                 onClick={() => setMood(mood === m ? "all" : m)}
               >
@@ -562,6 +728,23 @@ export function SampleBrowser({
           </label>
         </div>
       )}
+      {loopView && loopStarter && (
+        <p className="sample-loop-starter-hint">
+          {loopStarter.genre} · {loopStarter.mood ?? "any mood"} · {loopStarter.bpm} BPM. Choose a key above, preview at
+          project tempo, then add loops as editable arrangement clips.
+        </p>
+      )}
+
+      <div className="sample-result-summary">
+        <span role="status">
+          {filtered.length} of {sourceCount} {resultNoun}
+        </span>
+        {hasActiveFilters && (
+          <button type="button" className="sample-clear-filters" onClick={clearFilters}>
+            Clear {loopView ? "loop" : "sound"} filters
+          </button>
+        )}
+      </div>
 
       <div className="sample-list">
         {!loopView && allowNone && (

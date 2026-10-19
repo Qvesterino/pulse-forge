@@ -71,11 +71,13 @@ describe("audit 13 — hum-to-melody analyze cancellation", () => {
 });
 
 describe("audit 13 — prior fixes still pinned", () => {
-  it("mic claim: PcmMicRecorder keeps a single-capture guard at module level", () => {
+  it("mic claim: PcmMicRecorder only permits concurrent streams inside one explicit capture group", () => {
     const src = read("src/audio-engine/PcmMicRecorder.ts");
-    expect(src).toContain("let activeCapture: PcmMicRecorder | null = null;");
-    // The HUM panel reaches the mic through the same guarded entry — no
-    // parallel getUserMedia path exists in the panel code.
+    expect(src).toContain("const activeCaptures = new Set<PcmMicRecorder>();");
+    expect(src).toContain("let activeCaptureGroup: object | null = null;");
+    expect(src).toContain("if (activeCaptures.size > 0 && activeCaptureGroup !== captureGroup)");
+    // The HUM panel still reaches the mic through the exclusive default entry;
+    // it cannot join an arrangement capture group or open a parallel stream.
     const panel = read("src/ui/HumToMelody.tsx");
     expect(panel).not.toMatch(/getUserMedia/);
     expect(panel).toContain("new PcmMicRecorder(");

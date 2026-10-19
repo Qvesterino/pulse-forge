@@ -66,8 +66,8 @@ export class MidiInput {
   /** Live MPE dimension state per held note — drives the MpeIndicator UI. */
   private mpeNotes = new Map<number, { pressure: number; timbre: number }>();
   private mpeListeners = new Set<() => void>();
-  /** True once any per-note pressure or CC74 timbre message has arrived. */
-  private mpeConnected = false;
+  /** True after poly pressure or CC74 activity has been observed; no zone negotiation is implied. */
+  private mpeActivitySeen = false;
   /** Coalesced macro CC values (macroId → latest normalized), flushed at ~30 Hz. */
   private pendingMacroValues = new Map<string, number>();
   private macroFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -104,8 +104,8 @@ export class MidiInput {
     return [...this.mpeNotes.entries()].map(([pitch, d]) => ({ pitch, ...d })).sort((a, b) => a.pitch - b.pitch);
   }
 
-  isMpeConnected(): boolean {
-    return this.mpeConnected;
+  hasMpeActivity(): boolean {
+    return this.mpeActivitySeen;
   }
 
   private notifyMpe(): void {
@@ -495,7 +495,7 @@ export class MidiInput {
     // this degenerates to monophonic timbre expression.
     if (cc === 74 && this.engine) {
       // MPE indicator: the timbre dimension is alive.
-      this.mpeConnected = true;
+      this.mpeActivitySeen = true;
       const note = this.channelLastNote.get(channel);
       if (note !== undefined) {
         const held = this.mpeNotes.get(note);
@@ -582,7 +582,7 @@ export class MidiInput {
 
   private handlePolyPressure(note: number, pressure: number, channel: number, config: MidiConfig): void {
     // MPE indicator: per-note pressure dimension is alive.
-    this.mpeConnected = true;
+    this.mpeActivitySeen = true;
     const held = this.mpeNotes.get(note);
     if (held) {
       held.pressure = Math.max(0, Math.min(1, pressure / 127));

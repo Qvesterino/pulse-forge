@@ -1,7 +1,8 @@
 /**
- * Windows Core Audio endpoint discovery (ADR 0050). This is metadata-only:
- * it does not open streams or choose a fallback device. Native streaming is
- * a later, separate implementation gate.
+ * Windows Core Audio endpoint discovery (ADR 0050). This module is
+ * metadata-only: it does not open streams or choose a fallback device. Native
+ * streaming is managed separately by windows-audio-io.cjs and its utility
+ * process host.
  */
 const { spawn: spawnProcess } = require("node:child_process");
 const path = require("node:path");

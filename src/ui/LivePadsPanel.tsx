@@ -16,7 +16,7 @@ import type { LiveSet, LiveSetPad } from "../project-model/types";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
 import { KYX_SAMPLE_MIME } from "./SampleBrowser";
-import { useDoc, useServices } from "./context";
+import { useArrangementCapture, useDoc, useServices } from "./context";
 import { usePlayheadBar } from "./playhead";
 
 const EMPTY_USER_ASSETS: UserSampleAsset[] = [];
@@ -54,6 +54,7 @@ function padFromAsset(id: string, userAssets: readonly UserSampleAsset[]): LiveS
 export function LivePadsPanel() {
   const services = useServices();
   const doc = useDoc();
+  const capture = useArrangementCapture();
   const playheadBar = usePlayheadBar(services.transport);
   const [userAssets, setUserAssets] = useState<UserSampleAsset[]>(EMPTY_USER_ASSETS);
   const [nameDraft, setNameDraft] = useState("");
@@ -80,6 +81,10 @@ export function LivePadsPanel() {
   useEffect(() => {
     setNameDraft(liveSet?.name ?? "");
   }, [liveSet?.id, liveSet?.name]);
+
+  useEffect(() => {
+    if (capture.message) setMessage(capture.message);
+  }, [capture.message]);
 
   const assetName = (id: string): string =>
     userAssets.find((asset) => asset.id === id)?.name ?? factoryAssetsById.get(id)?.name ?? id;
@@ -108,6 +113,11 @@ export function LivePadsPanel() {
       if (!source) throw new Error("This loop is still loading or its audio could not be restored.");
 
       const currentDoc = services.store.getDoc();
+      if (capture.capturing) {
+        const captureMessage = services.capture.toggleLivePad(liveSet.id, pad.slot, destinationId, source.duration);
+        setMessage(captureMessage);
+        return;
+      }
       const barTick = Math.max(0, services.transport.position);
       const startBar = services.transport.playing
         ? Math.floor(barTick / BAR_TICKS) + 1
@@ -145,14 +155,35 @@ export function LivePadsPanel() {
     }
   };
 
+  const liveCaptureState = (slot: number) => {
+    const tick = Math.max(0, services.transport.position);
+    return capture.livePads.find(
+      (voice) =>
+        voice.setId === liveSet?.id &&
+        voice.slot === slot &&
+        (voice.endTick === null || tick < voice.endTick) &&
+        (voice.stopTick === null || tick < voice.stopTick),
+    );
+  };
+
   const setPlaying = (slot: number): boolean => {
     if (!services.transport.playing || !liveSet) return false;
-    return clips.some(
-      (clip) =>
-        clip.liveSetId === liveSet.id &&
-        clip.livePadSlot === slot &&
-        playheadBar >= clip.startBar &&
-        playheadBar < clip.startBar + clip.lengthBars,
+    const tick = Math.max(0, services.transport.position);
+    const liveState = liveCaptureState(slot);
+    const capturedVoicePlaying =
+      liveState !== undefined &&
+      tick >= liveState.startTick &&
+      (liveState.endTick === null || tick < liveState.endTick) &&
+      (liveState.stopTick === null || tick < liveState.stopTick);
+    return (
+      capturedVoicePlaying ||
+      clips.some(
+        (clip) =>
+          clip.liveSetId === liveSet.id &&
+          clip.livePadSlot === slot &&
+          playheadBar >= clip.startBar &&
+          playheadBar < clip.startBar + clip.lengthBars,
+      )
     );
   };
 
@@ -267,7 +298,9 @@ export function LivePadsPanel() {
               </select>
             </label>
             <span className="live-pads-mode-hint">
-              LOOPS LAUNCH ON THE NEXT BAR · AUDIO CLIPS APPEAR IN SONG ARRANGEMENT
+              {capture.capturing
+                ? "CAPTURE: LOOP PADS TOGGLE ON BAR LINES · ONE-SHOTS STAY FINITE"
+                : "LOOPS LAUNCH ON THE NEXT BAR · AUDIO CLIPS APPEAR IN SONG ARRANGEMENT"}
             </span>
           </div>
 
@@ -275,9 +308,19 @@ export function LivePadsPanel() {
             {Array.from({ length: 16 }, (_, slot) => {
               const pad = liveSet.pads.find((candidate) => candidate.slot === slot);
               const active = setPlaying(slot);
+              const captureState = liveCaptureState(slot);
+              const queuedStart = captureState !== undefined && services.transport.position < captureState.startTick;
+              const queuedStop = captureState?.stopTick !== null && captureState?.stopTick !== undefined;
+              const buttonStatus = queuedStart
+                ? "queued to start"
+                : queuedStop
+                  ? "stop queued"
+                  : active
+                    ? "playing"
+                    : "";
               return (
                 <div
-                  className={`live-pad-cell${pad ? " assigned" : " empty"}${active ? " playing" : ""}`}
+                  className={`live-pad-cell${pad ? " assigned" : " empty"}${active ? " playing" : ""}${queuedStart || queuedStop ? " queued" : ""}`}
                   key={slot}
                   role="gridcell"
                   onDragOver={(event) => {
@@ -303,10 +346,20 @@ export function LivePadsPanel() {
                     onClick={() => pad && void launch(pad)}
                     aria-label={
                       pad
-                        ? `Launch pad ${slot + 1}, ${pad.name}${active ? ", playing" : ""}`
+                        ? `${capture.capturing && pad.loop ? "Toggle" : "Launch"} pad ${slot + 1}, ${pad.name}${buttonStatus ? `, ${buttonStatus}` : ""}`
                         : `Empty pad ${slot + 1}, drop a sample loop here`
                     }
-                    title={pad ? `Launch ${pad.name} at the next bar` : "Drag a loop or sample here"}
+                    title={
+                      !pad
+                        ? "Drag a loop or sample here"
+                        : queuedStart && capture.capturing
+                          ? "Press again to cancel the queued start"
+                          : queuedStop && capture.capturing
+                            ? "Press again to cancel the queued stop"
+                            : active && capture.capturing && pad.loop
+                              ? `Queue ${pad.name} to stop at the next bar`
+                              : `Launch ${pad.name} at the next bar`
+                    }
                   >
                     <span className="live-pad-number">{String(slot + 1).padStart(2, "0")}</span>
                     <span className="live-pad-name">{pad ? assetName(pad.bufferId) : "DROP LOOP"}</span>
@@ -316,6 +369,11 @@ export function LivePadsPanel() {
                       </span>
                     )}
                     {busyPad === slot && <span className="live-pad-meta">LOADING…</span>}
+                    {capture.capturing && captureState && (
+                      <span className="live-pad-meta">
+                        {queuedStart ? "QUEUED" : queuedStop ? "STOP QUEUED" : active ? "CAPTURING" : ""}
+                      </span>
+                    )}
                   </button>
                   {pad && (
                     <button

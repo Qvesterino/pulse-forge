@@ -78,6 +78,8 @@ export interface ClipSourceMeta {
   clipId: string;
   startBar: number;
   lengthBars: number;
+  /** Runtime-only Live Pad voice identity; these sources are not persisted clips yet. */
+  livePadVoiceId?: string;
   /** Mute state at trigger time — muting a sounding clip makes it an orphan too. */
   muted: boolean;
   /** The node whose gain envelope owns this source's audibility (per-segment for warp clips). */
@@ -457,6 +459,7 @@ export class TriggerEngine {
     when: number,
     durationSec?: number,
     resumeOffsetSec = 0,
+    livePad?: { voiceId: string; loopUntilStopped: boolean },
   ): void {
     const ctx = this.deps.ctx();
     const doc = this.deps.doc();
@@ -783,7 +786,7 @@ export class TriggerEngine {
           // The optional duration argument counts source-buffer seconds, so
           // stop() owns the arrangement-time boundary for repeated loops.
           source.start(when, effOffset);
-          source.stop(when + effWallDuration + 0.01);
+          if (!livePad?.loopUntilStopped) source.stop(when + effWallDuration + 0.01);
         } else {
           source.start(when, effOffset, effBufferDuration);
           source.stop(when + effWallDuration + 0.01);
@@ -795,6 +798,7 @@ export class TriggerEngine {
         clipId: clip.id,
         startBar: clip.startBar,
         lengthBars: clip.lengthBars,
+        ...(livePad ? { livePadVoiceId: livePad.voiceId } : {}),
         muted: clip.muted === true,
         gainNode: gain,
       });
