@@ -99,17 +99,18 @@ function param(initial = 0) {
 }
 
 function mockNode() {
+  const connections = new Set<unknown>();
   const node: Record<string, unknown> = {
-    connections: new Set<unknown>(),
+    connections,
     gain: param(1),
     pan: param(0),
     connect(destination?: unknown) {
-      if (destination !== undefined) node.connections.add(destination);
+      if (destination !== undefined) connections.add(destination);
       return node;
     },
     disconnect(destination?: unknown) {
-      if (destination === undefined) node.connections.clear();
-      else node.connections.delete(destination);
+      if (destination === undefined) connections.clear();
+      else connections.delete(destination);
     },
   };
   return {
