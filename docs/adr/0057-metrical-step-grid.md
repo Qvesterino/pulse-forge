@@ -110,33 +110,44 @@ the user snaps it to a whole bar.
 - `src/mcp/audio-preview.ts` — the one place that already computed the
   formula now imports it.
 - `src/export/transfer-import.ts` — the disclosure, re-worded.
+- **The producers that create a pattern with no content of its own** — a new
+  pattern is one metrical bar, because it has no groove to preserve:
+  `src/commands/patterns.ts` (the user's "new pattern"),
+  `src/commands/padOps.ts` (a pad chop) and `src/intent/song.ts` (an empty
+  section of N bars). In 4/4 these are 16 steps, exactly as before.
+
+  The producers whose output has CONTENT are deliberately not in this stage:
+  the templates (their grooves are 4/4 by composition), the MIDI import
+  (`src/midi/midiProject.ts` rounds an imported phrase up to a 16-multiple) and
+  live capture (`src/arrangement/capture.ts` wraps a take into a 16-slot
+  grid). Resizing those would delete or stretch a user's material.
 
 ## Stage 2 — what is still open (and where)
 
-The grid now tells the truth; **the pattern's LENGTH is what still drifts**. A
-16-step pattern in a 6/8 project is still 1.33 bars, and the grid now SHOWS
-that instead of hiding it. Making new patterns right is the next stage. The
-highest-risk sites, mapped (read-only sweep, 2026-10-20):
+The grid now tells the truth, and a NEW pattern is right. What still drifts is
+a pattern that was authored in another meter — a 16-step pattern in a 6/8
+project is 1.33 bars, and the grid now SHOWS that instead of hiding it. The
+remaining work is to make every producer and every contract speak the
+document's meter. The highest-risk sites, mapped (read-only sweep,
+2026-10-20):
 
-1. **The producers.** `STEPS_PER_PATTERN` (16) is the default in
-   `createPatternForDoc`, `emptyPattern`, `templates.ts` and
-   `FALLBACK_STEP_COUNT`; `src/midi/midiProject.ts:258` rounds every imported
-   pattern up to a 16-multiple; `src/arrangement/capture.ts` wraps live
-   capture into a 16-slot grid. A pattern created in a 3/4 project should be 12
-   steps.
-2. **The AI layer.** `src/ai/phrase.ts` cuts the phrase on 16-step boundaries
+1. **The AI layer.** `src/ai/phrase.ts` cuts the phrase on 16-step boundaries
    and anchors the kick/snare with `step % 4` / `step % 8 === 4`; `src/ai/markov.ts`
    wraps its state machine `mod 16`; `src/ai/quality.ts` and
    `src/ai/features/pattern-features.ts` detect downbeats with `step % 16`.
    Changing these changes generated output at a fixed seed — a determinism
    invariant, so it needs its own measured baseline.
-3. **The intent / brief contracts.** Five independent gates demand a length
+2. **The intent / brief contracts.** Five independent gates demand a length
    that is a multiple of 16 (`src/intent/schema.ts`, `project-brief.ts`,
    `creative-task-contract.ts`, `src/project-model/producer-brief.ts`,
    `src/intent/normalize.ts`). They would reject a metrical 12/20/24.
-4. **The MCP surface.** `src/mcp/tools.ts` rejects any `setPatternLength`
+3. **The MCP surface.** `src/mcp/tools.ts` rejects any `setPatternLength`
    outside 16..128, and maps `bars → length: bars * 16`. For a platform that
    AI agents drive, this is the surface that must speak bars.
+4. **Content-shaped producers.** The MIDI import's 16-rounding
+   (`src/midi/midiProject.ts`), live capture's 16-slot grid
+   (`src/arrangement/capture.ts`) and the 4/4 templates
+   (`src/project-model/templates.ts`, `template-pack2.ts`).
 5. **The ONNX feature vectors.** `src/ai/symbolic/*` encodes a fixed 16-step
    bar into a fixed-width feature row; moving the grid means re-validating the
    pinned model manifests under `public/models/`.

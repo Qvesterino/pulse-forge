@@ -32,6 +32,7 @@ import { canonicalizePattern, contentHash } from "../ai/evaluation";
 import type { Command } from "../commands/types";
 import { addEffect, setBeatManglerSteps, setEffectParam, snapshot, trackEffectsOf } from "../commands/commands";
 import { createInstrumentTrackModel, sceneRoleOf, ticksPerBar } from "../project-model/schema";
+import { stepsPerBar } from "../project-model/grid";
 import type { IntentInput, IntentRole, IntentSpec } from "./types";
 import type { CandidateSearchInfo, SearchLane } from "./candidate-search";
 import {
@@ -2930,8 +2931,11 @@ export async function buildSong(
       if (!sectionRoles.includes("drums") && !melodicTargetsExist) {
         sections.push({
           ...section,
-          pattern: emptyPattern(`${section.label} (empty)`, [], section.bars * 16),
-          stepCount: section.bars * 16,
+          // A section is a number of BARS, and a bar is the document's
+          // metrical bar (ADR 0057) — so its step count follows the meter
+          // instead of assuming 4/4's sixteen steps.
+          pattern: emptyPattern(`${section.label} (empty)`, [], section.bars * stepsPerBar(doc)),
+          stepCount: section.bars * stepsPerBar(doc),
           roles: sectionRoles,
         });
         options.onProgress?.(index + 1, section.label, form.sections.length);

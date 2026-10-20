@@ -14,6 +14,7 @@ import type { Command } from "./types";
 import type { DrumTrack, ProjectDocument } from "../project-model/types";
 import { withPad } from "../project-model/transform";
 import { createPatternForDoc } from "../project-model/schema";
+import { stepsPerBar } from "../project-model/grid";
 import { snapshot } from "./core";
 
 /* ---------------- pad ops ---------------- */
@@ -50,7 +51,9 @@ export function chopSampleToPads(doc: ProjectDocument, options: ChopSampleOption
   let next = sliceToPads(doc, options.trackId, options.assetId, fit, options.sourceName).execute(doc);
 
   if (options.createPattern) {
-    const pattern = createPatternForDoc(next, `${options.sourceName} Chop`, 16);
+    // A chop is one bar of the document's meter (ADR 0057) — 16 sixteenth
+    // steps only in 4/4-like meters.
+    const pattern = createPatternForDoc(next, `${options.sourceName} Chop`, stepsPerBar(next));
     const rows = { ...pattern.rows };
     fit.forEach((_, index) => {
       const pad = track.pads[index];

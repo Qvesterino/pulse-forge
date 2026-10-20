@@ -15,6 +15,7 @@ import {
 import type { Pattern } from "../project-model/types";
 import { uid } from "../shared/ids";
 import { ticksPerBar } from "../project-model/schema";
+import { stepsPerBar } from "../project-model/grid";
 import { snapshot } from "./core";
 import { cloneStepMeta, markerClampPatch, unlinkMarkersOfClips } from "./docOps";
 import { clipGroupsWithoutIds } from "./clipGroups";
@@ -22,7 +23,10 @@ import { clipGroupsWithoutIds } from "./clipGroups";
 /* ---------------- patterns ---------------- */
 
 export function createPattern(doc: ProjectDocument, name?: string): Command {
-  const pattern = createPatternForDoc(doc, name ?? `Pattern ${patternLetter(doc.patterns.length)}`);
+  // A new pattern is ONE BAR of the document's meter (ADR 0057) — in 3/4 that
+  // is twelve sixteenth steps, not sixteen. The user's "new pattern" must not
+  // hand them a 1⅓-bar grid.
+  const pattern = createPatternForDoc(doc, name ?? `Pattern ${patternLetter(doc.patterns.length)}`, stepsPerBar(doc));
   const next: ProjectDocument = {
     ...doc,
     patterns: [...doc.patterns, pattern],

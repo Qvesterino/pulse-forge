@@ -57,6 +57,7 @@ import {
   stepsPerBeatFor,
 } from "../src/project-model/grid";
 import { patternPhaseOffsetAtTick } from "../src/project-model/events";
+import { createPattern } from "../src/commands/patterns";
 import type { ProjectDocument, TimeSignature } from "../src/project-model/types";
 
 const FOUR_FOUR: TimeSignature = { numerator: 4, denominator: 4 };
@@ -181,6 +182,30 @@ describe("ADR 0057 — the grid's bar is the metrical bar", () => {
     expect(patternLengthOptions(docWithMeter(THREE_FOUR)).map((o) => o.steps)).toEqual([12, 24, 48, 96]);
     expect(patternLengthOptions(docWithMeter(SIX_EIGHT)).map((o) => o.steps)).toEqual([12, 24, 48, 96]);
     expect(patternLengthOptions(docWithMeter(FOUR_TWO)).map((o) => o.steps)).toEqual([32, 64, 128, 256]);
+  });
+});
+
+describe("ADR 0057 — a NEW pattern is one metrical bar", () => {
+  it("NEGATIVE CONTROL: in 4/4 a new pattern is 16 steps, as it always was", () => {
+    const doc = docWithMeter(FOUR_FOUR);
+    const next = createPattern(doc, "New Pattern").execute(doc);
+    const created = next.patterns[next.patterns.length - 1]!;
+    expect(created.stepCount).toBe(16);
+  });
+
+  it("in 3/4 and 6/8 a new pattern is 12 steps, in 4/2 it is 32", () => {
+    for (const [sig, expected] of [
+      [THREE_FOUR, 12],
+      [SIX_EIGHT, 12],
+      [FOUR_TWO, 32],
+    ] as [TimeSignature, number][]) {
+      const doc = docWithMeter(sig);
+      const next = createPattern(doc, "New Pattern").execute(doc);
+      const created = next.patterns[next.patterns.length - 1]!;
+      expect(created.stepCount, `${sig.numerator}/${sig.denominator} new pattern`).toBe(expected);
+      // And it is a WHOLE number of bars, so it does not drift.
+      expect(isWholeBarPattern(doc, created.stepCount)).toBe(true);
+    }
   });
 });
 
