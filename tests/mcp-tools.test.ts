@@ -351,12 +351,56 @@ describe("mcp structured tools", async () => {
 
   it("kyx_markers add/remove at 1-based bars", async () => {
     const store = new ProjectStore(datasetDoc());
-    await executeMcpTool(storeCtx(store), "kyx_markers", { op: "add", bar: 9, name: "Outro" });
+    const ctx = storeCtx(store);
+    const created = await executeMcpTool(ctx, "kyx_markers", { op: "add", bar: 9, name: "Outro" });
+    expect(created.data).toMatchObject({
+      status: "created",
+      name: "Outro",
+      markerType: "cue",
+      tick: 8 * 4 * 480,
+      bar: 9,
+      undoSteps: 1,
+    });
     expect(store.doc.markers).toHaveLength(1);
     expect(store.doc.markers[0].tick).toBe(8 * 4 * 480);
     expect(store.undoStackLength).toBe(1);
+    const markerId = (created.data as { markerId: string }).markerId;
+    const listed = await executeMcpTool(ctx, "kyx_markers", { op: "list" });
+    expect(listed.data).toEqual({
+      status: "listed",
+      markers: [{ id: markerId, name: "Outro", type: "cue", tick: 8 * 4 * 480, bar: 9 }],
+    });
+    const removed = await executeMcpTool(ctx, "kyx_markers", { op: "remove", markerId });
+    expect(removed.data).toMatchObject({ status: "removed", markerId, name: "Outro", undoSteps: 1 });
+    expect(store.doc.markers).toHaveLength(0);
+    expect(store.undoStackLength).toBe(2);
+    store.undo();
+    expect(store.doc.markers[0]?.id).toBe(markerId);
     store.undo();
     expect(store.doc.markers).toHaveLength(0);
+  });
+
+  it("kyx_markers rejects invalid ops and non-integral bars without falling through to deletion", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    await executeMcpTool(ctx, "kyx_markers", { op: "add", bar: 5, name: "Verse" });
+    const markerId = store.doc.markers[0]!.id;
+    const unknown = await executeMcpTool(ctx, "kyx_markers", { op: "destroy", bar: 5 });
+    expect(unknown.errorCode).toBe("UNKNOWN_REQUEST");
+    const fractional = await executeMcpTool(ctx, "kyx_markers", { op: "remove", bar: 5.5 });
+    expect(fractional.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(store.doc.markers.map((marker) => marker.id)).toEqual([markerId]);
+    expect(store.undoStackLength).toBe(1);
+  });
+
+  it("kyx_markers nearest-bar fallback chooses the closest marker, not the first in document order", async () => {
+    const doc = datasetDoc();
+    const far = { id: "marker-far", name: "Far", type: "cue" as const, tick: 6500 };
+    const near = { id: "marker-near", name: "Near", type: "drop" as const, tick: 7600 };
+    const ctx = makeCtx({ ...doc, markers: [far, near] });
+    const removed = await executeMcpTool(ctx, "kyx_markers", { op: "remove", bar: 5 });
+    expect(removed.data).toMatchObject({ status: "removed", markerId: near.id, name: near.name });
+    expect(ctx.getDoc().markers.map((marker) => marker.id)).toEqual([far.id]);
   });
 
   it("kyx_tracks addInstrument/remove round-trip", async () => {
@@ -2599,15 +2643,22 @@ describe("mcp finishing — marker rename", async () => {
   it("renames the marker nearest the anchor bar", async () => {
     const store = new ProjectStore(datasetDoc());
     const ctx = storeCtx(store);
-    await executeMcpTool(ctx, "kyx_markers", { op: "add", bar: 5, name: "Old Name" });
-    const renamed = await executeMcpTool(ctx, "kyx_markers", { op: "rename", bar: 5, name: "Drop Start" });
+    const created = await executeMcpTool(ctx, "kyx_markers", { op: "add", bar: 5, name: "Old Name" });
+    const markerId = (created.data as { markerId: string }).markerId;
+    const renamed = await executeMcpTool(ctx, "kyx_markers", { op: "rename", markerId, name: "Drop Start" });
     expect(renamed.mutated).toBe(true);
     expect(renamed.text).toContain('renamed marker "Old Name" → "Drop Start"');
+    expect(renamed.data).toMatchObject({ status: "renamed", markerId, name: "Drop Start", undoSteps: 1 });
     expect(store.doc.markers[0].name).toBe("Drop Start");
 
-    const noName = await executeMcpTool(ctx, "kyx_markers", { op: "rename", bar: 5 });
+    const alreadyNamed = await executeMcpTool(ctx, "kyx_markers", { op: "rename", markerId, name: "Drop Start" });
+    expect(alreadyNamed.mutated).toBe(false);
+    expect(alreadyNamed.data).toMatchObject({ status: "already_named", markerId, undoSteps: 0 });
+    expect(store.undoStackLength).toBe(2);
+
+    const noName = await executeMcpTool(ctx, "kyx_markers", { op: "rename", markerId });
     expect(noName.mutated).toBe(false);
-    expect(noName.text).toContain("rename needs a name");
+    expect(noName.errorCode).toBe("INVALID_ARGUMENTS");
   });
 });
 

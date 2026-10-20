@@ -774,22 +774,29 @@ export const MCP_TOOL_DEFS = [
   },
   {
     name: "kyx_markers",
-    description: "Add a cue marker at a bar, or remove the marker nearest a bar.",
+    description:
+      "List timeline markers, add a cue at a 1-based bar, or rename/remove one. Exact markerId wins when provided; otherwise rename/remove target the nearest marker to bar. Writes return the committed marker read-back and explicit no-op status.",
     inputSchema: {
       type: "object",
       properties: {
         op: {
           type: "string",
-          enum: ["add", "remove", "rename"],
+          enum: ["list", "add", "remove", "rename"],
+        },
+        markerId: {
+          type: "string",
+          maxLength: 128,
+          description: "Exact target for rename/remove; overrides bar",
         },
         bar: {
           type: "integer",
           minimum: 1,
-          description: "1-based bar",
+          description: "1-based bar for add, or nearest-marker anchor",
         },
         name: {
           type: "string",
-          description: "Optional marker name",
+          maxLength: 40,
+          description: "Optional for add; required for rename",
         },
         requestId: {
           type: "string",
@@ -803,7 +810,75 @@ export const MCP_TOOL_DEFS = [
             "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
-      required: ["op", "bar"],
+      required: ["op"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        status: {
+          type: "string",
+          enum: ["listed", "created", "renamed", "already_named", "removed", "missing", "partial"],
+        },
+        markers: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              id: {
+                type: "string",
+              },
+              name: {
+                type: "string",
+              },
+              type: {
+                type: "string",
+                enum: ["drop", "buildup", "riser", "impact", "cue", "custom"],
+              },
+              tick: {
+                type: "integer",
+                minimum: 0,
+              },
+              bar: {
+                type: "integer",
+                minimum: 1,
+              },
+              linkedClipId: {
+                type: "string",
+              },
+            },
+            required: ["id", "name", "type", "tick", "bar"],
+          },
+        },
+        markerId: {
+          type: "string",
+        },
+        name: {
+          type: "string",
+        },
+        markerType: {
+          type: "string",
+          enum: ["drop", "buildup", "riser", "impact", "cue", "custom"],
+        },
+        tick: {
+          type: "integer",
+          minimum: 0,
+        },
+        bar: {
+          type: "integer",
+          minimum: 1,
+        },
+        linkedClipId: {
+          type: "string",
+        },
+        undoSteps: {
+          type: "integer",
+          minimum: 0,
+          maximum: 1,
+        },
+      },
+      required: ["status"],
     },
     annotations: {
       readOnlyHint: false,

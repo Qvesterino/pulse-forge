@@ -715,6 +715,41 @@ const OUTPUT_ROUTING: McpOutputSchema = {
   },
   required: ["status"],
 };
+/** kyx_markers — compact timeline cues with stable marker IDs. */
+const OUTPUT_MARKERS: McpOutputSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    status: {
+      type: "string",
+      enum: ["listed", "created", "renamed", "already_named", "removed", "missing", "partial"],
+    },
+    markers: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          id: { type: "string" },
+          name: { type: "string" },
+          type: { type: "string", enum: ["drop", "buildup", "riser", "impact", "cue", "custom"] },
+          tick: { type: "integer", minimum: 0 },
+          bar: { type: "integer", minimum: 1 },
+          linkedClipId: { type: "string" },
+        },
+        required: ["id", "name", "type", "tick", "bar"],
+      },
+    },
+    markerId: { type: "string" },
+    name: { type: "string" },
+    markerType: { type: "string", enum: ["drop", "buildup", "riser", "impact", "cue", "custom"] },
+    tick: { type: "integer", minimum: 0 },
+    bar: { type: "integer", minimum: 1 },
+    linkedClipId: { type: "string" },
+    undoSteps: { type: "integer", minimum: 0, maximum: 1 },
+  },
+  required: ["status"],
+};
 export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_intent",
@@ -1051,16 +1086,21 @@ export const MCP_TOOLS: McpToolDef[] = [
   },
   {
     name: "kyx_markers",
-    description: "Add a cue marker at a bar, or remove the marker nearest a bar.",
+    description:
+      "List timeline markers, add a cue at a 1-based bar, or rename/remove one. " +
+      "Exact markerId wins when provided; otherwise rename/remove target the nearest marker to bar. " +
+      "Writes return the committed marker read-back and explicit no-op status.",
     inputSchema: {
       type: "object",
       properties: {
-        op: { type: "string", enum: ["add", "remove", "rename"] },
-        bar: { type: "integer", minimum: 1, description: "1-based bar" },
-        name: { type: "string", description: "Optional marker name" },
+        op: { type: "string", enum: ["list", "add", "remove", "rename"] },
+        markerId: { type: "string", maxLength: 128, description: "Exact target for rename/remove; overrides bar" },
+        bar: { type: "integer", minimum: 1, description: "1-based bar for add, or nearest-marker anchor" },
+        name: { type: "string", maxLength: 40, description: "Optional for add; required for rename" },
       },
-      required: ["op", "bar"],
+      required: ["op"],
     },
+    outputSchema: OUTPUT_MARKERS,
   },
   {
     name: "kyx_tracks",
@@ -3529,26 +3569,154 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       }
     }
     case "kyx_markers": {
-      const op = String(record.op ?? "add");
-      const bar = Math.max(1, Number(record.bar ?? 1));
-      const tick = (bar - 1) * TICKS_PER_BAR;
+      if (record.op !== undefined && typeof record.op !== "string") {
+        return mcpError("INVALID_ARGUMENTS", "op must be one of: list, add, rename, remove");
+      }
+      const op = typeof record.op === "string" ? record.op : "add";
+      if (!["list", "add", "rename", "remove"].includes(op)) {
+        return mcpError("UNKNOWN_REQUEST", `unknown marker op: ${op} (list | add | rename | remove)`);
+      }
+      if (record.markerId !== undefined && (typeof record.markerId !== "string" || record.markerId.length > 128)) {
+        return mcpError("INVALID_ARGUMENTS", "markerId must be a string of at most 128 characters");
+      }
+      const markerId = typeof record.markerId === "string" ? record.markerId.trim() : "";
+      if (record.markerId !== undefined && markerId === "") {
+        return mcpError("INVALID_ARGUMENTS", "markerId must not be empty");
+      }
+      const hasBar = record.bar !== undefined;
+      if (hasBar && (typeof record.bar !== "number" || !Number.isInteger(record.bar) || record.bar < 1)) {
+        return mcpError("INVALID_ARGUMENTS", "bar must be a 1-based positive integer");
+      }
+      const bar = hasBar ? (record.bar as number) : undefined;
+      const tick = bar === undefined ? undefined : (bar - 1) * TICKS_PER_BAR;
+      if (record.name !== undefined && (typeof record.name !== "string" || record.name.length > 40)) {
+        return mcpError("INVALID_ARGUMENTS", "name must be a string of at most 40 characters");
+      }
+      const name = typeof record.name === "string" ? record.name.trim() : "";
+      const markerReadback = (marker: ProjectDocument["markers"][number]) => ({
+        id: marker.id,
+        name: marker.name,
+        type: marker.type,
+        tick: marker.tick,
+        bar: Math.floor(marker.tick / TICKS_PER_BAR) + 1,
+        ...(marker.linkedClipId !== undefined ? { linkedClipId: marker.linkedClipId } : {}),
+      });
+      const markerMutationReadback = (marker: ProjectDocument["markers"][number]) => ({
+        markerId: marker.id,
+        name: marker.name,
+        markerType: marker.type,
+        tick: marker.tick,
+        bar: Math.floor(marker.tick / TICKS_PER_BAR) + 1,
+        ...(marker.linkedClipId !== undefined ? { linkedClipId: marker.linkedClipId } : {}),
+      });
+      const doc = ctx.getDoc();
+      if (op === "list") {
+        const markers = doc.markers.map(markerReadback);
+        return {
+          text:
+            markers
+              .map((marker) => `${marker.name} (id=${marker.id}) — bar ${marker.bar}, ${marker.type}`)
+              .join("\n") || "no markers",
+          mutated: false,
+          data: { status: "listed", markers },
+        };
+      }
       if (op === "add") {
-        const name = typeof record.name === "string" && record.name.trim() !== "" ? record.name.trim() : undefined;
-        const command = addMarker(ctx.getDoc(), { tick, name });
-        ctx.execute(command);
-        return { text: `marker at bar ${bar}`, mutated: true };
+        if (tick === undefined || bar === undefined) return mcpError("INVALID_ARGUMENTS", "add needs bar (1-based)");
+        const beforeIds = new Set(doc.markers.map((marker) => marker.id));
+        const expectedName = name || `Marker ${doc.markers.length + 1}`;
+        ctx.execute(addMarker(doc, { tick, ...(name !== "" ? { name } : {}) }));
+        const committed = ctx.getDoc();
+        const created = committed.markers.filter((marker) => !beforeIds.has(marker.id));
+        const marker = created.length === 1 ? created[0] : undefined;
+        const matches = marker != null && marker.name === expectedName && marker.tick === tick && marker.type === "cue";
+        const data = {
+          status: matches ? "created" : "partial",
+          ...(marker !== undefined
+            ? { markerId: marker.id, name: marker.name, markerType: marker.type, tick: marker.tick, bar }
+            : {}),
+          undoSteps: created.length > 0 ? 1 : 0,
+        };
+        if (!matches) {
+          return mcpError("PARTIAL_FAILURE", "marker creation did not match one new marker in the project read-back", {
+            mutated: created.length > 0,
+            data,
+          });
+        }
+        return {
+          text: `created marker "${marker.name}" (id=${marker.id}) at bar ${bar} — one undo step`,
+          mutated: true,
+          data,
+        };
       }
-      const nearest = ctx.getDoc().markers.find((marker) => Math.abs(marker.tick - tick) < TICKS_PER_BAR);
-      if (nearest == null) return { text: `no marker near bar ${bar}`, mutated: false };
+
+      let target = markerId !== "" ? doc.markers.find((marker) => marker.id === markerId) : undefined;
+      if (markerId !== "" && target === undefined) {
+        return mcpError("UNKNOWN_TARGET", `marker ${markerId} not found — use kyx_markers op:list for marker IDs`);
+      }
+      if (target === undefined) {
+        if (tick === undefined || bar === undefined) {
+          return mcpError("INVALID_ARGUMENTS", `${op} needs markerId or bar (1-based)`);
+        }
+        target = doc.markers
+          .filter((marker) => Math.abs(marker.tick - tick) < TICKS_PER_BAR)
+          .sort((a, b) => Math.abs(a.tick - tick) - Math.abs(b.tick - tick))[0];
+      }
+      if (target === undefined) {
+        return {
+          text: `no marker near bar ${bar}`,
+          mutated: false,
+          data: { status: "missing", ...(bar !== undefined ? { bar } : {}), undoSteps: 0 },
+        };
+      }
       if (op === "rename") {
-        const name = typeof record.name === "string" ? record.name.trim().slice(0, 40) : "";
-        if (name === "") return { text: "rename needs a name (bar anchors the nearest match)", mutated: false };
-        const previous = nearest.name;
-        ctx.execute(renameMarker(ctx.getDoc(), nearest.id, name));
-        return { text: `renamed marker "${previous}" → "${name}" — one undo step`, mutated: true };
+        if (name === "") return mcpError("INVALID_ARGUMENTS", "rename needs a non-empty name");
+        if (target.name === name) {
+          return {
+            text: `marker "${target.name}" is already named that — no change`,
+            mutated: false,
+            data: { status: "already_named", ...markerMutationReadback(target), undoSteps: 0 },
+          };
+        }
+        const previous = target.name;
+        ctx.execute(renameMarker(doc, target.id, name));
+        const committed = ctx.getDoc().markers.find((marker) => marker.id === target!.id);
+        const correct = committed?.name === name;
+        const stateChanged = committed !== undefined && committed.name !== previous;
+        const data = {
+          status: correct ? "renamed" : "partial",
+          ...(committed !== undefined ? markerMutationReadback(committed) : {}),
+          undoSteps: stateChanged ? 1 : 0,
+        };
+        if (!correct) {
+          return mcpError("PARTIAL_FAILURE", "marker rename did not match the committed project read-back", {
+            mutated: stateChanged,
+            data,
+          });
+        }
+        return { text: `renamed marker "${previous}" → "${name}" — one undo step`, mutated: true, data };
       }
-      ctx.execute(removeMarker(ctx.getDoc(), nearest.id));
-      return { text: `marker "${nearest.name}" removed`, mutated: true };
+
+      const removed = markerReadback(target);
+      ctx.execute(removeMarker(doc, target.id));
+      const stillExists = ctx.getDoc().markers.some((marker) => marker.id === target!.id);
+      const correct = !stillExists;
+      const data = {
+        status: correct ? "removed" : "partial",
+        markerId: target.id,
+        name: target.name,
+        markerType: target.type,
+        tick: target.tick,
+        bar: removed.bar,
+        undoSteps: correct ? 1 : 0,
+      };
+      if (!correct) {
+        return mcpError("PARTIAL_FAILURE", "marker removal did not match the committed project read-back", {
+          mutated: false,
+          data,
+        });
+      }
+      return { text: `marker "${target.name}" (id=${target.id}) removed — one undo step`, mutated: true, data };
     }
     case "kyx_tracks": {
       const op = String(record.op ?? "");
