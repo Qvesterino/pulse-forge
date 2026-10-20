@@ -25,6 +25,26 @@
           "backgroundNote": "row-pad paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "channelNameRow",
+            "textPixels": 138,
+            "surfaces": 40,
+            "minSurfacePixels": 13.8,
+            "worstBackground": "rgb(38, 42, 50)",
+            "worstTextColor": "rgb(217, 219, 225)",
+            "worstSurfacePixels": 14,
+            "worstPixel": {
+              "x": 40,
+              "y": 7
+            },
+            "sliverContrast": 9.45,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 10.39,
+            "meanContrast": 10.2
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -57,6 +77,27 @@
           "backgroundNote": "track-header-name paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "channelNameHeader",
+            "textPixels": 155,
+            "surfaces": 46,
+            "minSurfacePixels": 15.5,
+            "worstBackground": "rgb(38, 42, 50)",
+            "worstTextColor": "rgb(217, 219, 225)",
+            "worstSurfacePixels": 16,
+            "worstPixel": {
+              "x": 72,
+              "y": 11
+            },
+            "sliverContrast": 5.05,
+            "sliverPixels": 4,
+            "textColors": [
+              "rgb(217, 219, 225)",
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 10.39,
+            "meanContrast": 10.54
+          },
           "accentCount": 1,
           "accentColors": [
             "rgb(245, 158, 11)"
@@ -93,6 +134,26 @@
           "backgroundNote": "row-pad paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "rowIndex",
+            "textPixels": 10,
+            "surfaces": 4,
+            "minSurfacePixels": 2,
+            "worstBackground": "rgb(55, 50, 42)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 5,
+            "worstPixel": {
+              "x": 7,
+              "y": 1
+            },
+            "sliverContrast": 3.33,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 3.28,
+            "meanContrast": 3.3
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -125,6 +186,21 @@
           "backgroundNote": "step paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "stepCell",
+            "textPixels": 0,
+            "surfaces": 0,
+            "minSurfacePixels": 2,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [],
+            "minContrast": null,
+            "meanContrast": null
+          },
           "accentCount": 11,
           "accentColors": [
             "rgb(178, 238, 216)",
@@ -173,6 +249,7 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": null,
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -205,6 +282,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "rulerTick",
+            "textPixels": 22,
+            "surfaces": 1,
+            "minSurfacePixels": 2.2,
+            "worstBackground": "rgb(18, 20, 26)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 22,
+            "worstPixel": {
+              "x": 17,
+              "y": 4
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 6.04,
+            "meanContrast": 6.04
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -237,6 +334,27 @@
           "backgroundNote": "track-tab paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "trackTab",
+            "textPixels": 93,
+            "surfaces": 58,
+            "minSurfacePixels": 9.3,
+            "worstBackground": "rgb(11, 12, 16)",
+            "worstTextColor": "rgb(238, 242, 246)",
+            "worstSurfacePixels": 19,
+            "worstPixel": {
+              "x": 18,
+              "y": 13
+            },
+            "sliverContrast": 2.69,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(238, 242, 246)",
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 17.38,
+            "meanContrast": 11.03
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -269,6 +387,27 @@
           "backgroundNote": "row-pad paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "rowPad",
+            "textPixels": 158,
+            "surfaces": 55,
+            "minSurfacePixels": 15.8,
+            "worstBackground": "rgb(37, 41, 49)",
+            "worstTextColor": "rgb(217, 219, 225)",
+            "worstSurfacePixels": 18,
+            "worstPixel": {
+              "x": 67,
+              "y": 11
+            },
+            "sliverContrast": 3.28,
+            "sliverPixels": 5,
+            "textColors": [
+              "rgb(122, 130, 144)",
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 10.53,
+            "meanContrast": 9.16
+          },
           "accentCount": 1,
           "accentColors": [
             "rgb(245, 158, 11)"
@@ -305,6 +444,26 @@
           "backgroundNote": "dock-tabs paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "dockTab",
+            "textPixels": 125,
+            "surfaces": 25,
+            "minSurfacePixels": 12.5,
+            "worstBackground": "rgb(79, 82, 87)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 23,
+            "worstPixel": {
+              "x": 25,
+              "y": 11
+            },
+            "sliverContrast": 1.99,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 2.03,
+            "meanContrast": 2.03
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -337,6 +496,23 @@
           "backgroundNote": "pattern-chip paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "patternChip",
+            "textPixels": 160,
+            "surfaces": 129,
+            "minSurfacePixels": 16,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": 4.25,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(245, 158, 11)"
+            ],
+            "minContrast": 0,
+            "meanContrast": 5.37
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -369,6 +545,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "btn",
+            "textPixels": 198,
+            "surfaces": 1,
+            "minSurfacePixels": 19.8,
+            "worstBackground": "rgb(31, 35, 43)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 198,
+            "worstPixel": {
+              "x": 12,
+              "y": 12
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 5.17,
+            "meanContrast": 5.17
+          },
           "accentCount": 1,
           "accentColors": [
             "rgba(90, 54, 16, 0.2)"
@@ -405,6 +601,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "btnSmall",
+            "textPixels": 138,
+            "surfaces": 1,
+            "minSurfacePixels": 13.8,
+            "worstBackground": "rgb(31, 35, 43)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 138,
+            "worstPixel": {
+              "x": 66,
+              "y": 9
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 5.17,
+            "meanContrast": 5.17
+          },
           "accentCount": 1,
           "accentColors": [
             "rgba(90, 54, 16, 0.2)"
@@ -441,6 +657,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "presetChip",
+            "textPixels": 41,
+            "surfaces": 1,
+            "minSurfacePixels": 4.1000000000000005,
+            "worstBackground": "rgb(55, 45, 31)",
+            "worstTextColor": "rgb(245, 158, 11)",
+            "worstSurfacePixels": 41,
+            "worstPixel": {
+              "x": 11,
+              "y": 5
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(245, 158, 11)"
+            ],
+            "minContrast": 6.28,
+            "meanContrast": 6.28
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -473,6 +709,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "transportBtn",
+            "textPixels": 215,
+            "surfaces": 1,
+            "minSurfacePixels": 21.5,
+            "worstBackground": "rgb(31, 35, 43)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 215,
+            "worstPixel": {
+              "x": 11,
+              "y": 11
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 5.17,
+            "meanContrast": 5.17
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -505,6 +761,23 @@
           "backgroundNote": "position-display paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "positionReadout",
+            "textPixels": 170,
+            "surfaces": 49,
+            "minSurfacePixels": 17,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": 13.46,
+            "sliverPixels": 12,
+            "textColors": [
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 0,
+            "meanContrast": 13.8
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -537,6 +810,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "patternBarLabel",
+            "textPixels": 97,
+            "surfaces": 1,
+            "minSurfacePixels": 9.700000000000001,
+            "worstBackground": "rgb(11, 12, 16)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 97,
+            "worstPixel": {
+              "x": 0,
+              "y": 0
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 6.41,
+            "meanContrast": 6.41
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -569,6 +862,7 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": null,
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -601,6 +895,23 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "panelTitleLocal",
+            "textPixels": 0,
+            "surfaces": 0,
+            "minSurfacePixels": 2,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": null,
+            "meanContrast": null
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -633,6 +944,28 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "statusbar",
+            "textPixels": 1050,
+            "surfaces": 8,
+            "minSurfacePixels": 105,
+            "worstBackground": "rgb(18, 20, 26)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 923,
+            "worstPixel": {
+              "x": 16,
+              "y": 13
+            },
+            "sliverContrast": 3.51,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(122, 130, 144)",
+              "rgb(141, 148, 162)",
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 4.75,
+            "meanContrast": 5.28
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -672,6 +1005,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "channelNameRow",
+            "textPixels": 107,
+            "surfaces": 1,
+            "minSurfacePixels": 10.700000000000001,
+            "worstBackground": "rgb(24, 27, 34)",
+            "worstTextColor": "rgb(217, 219, 225)",
+            "worstSurfacePixels": 107,
+            "worstPixel": {
+              "x": 10,
+              "y": 4
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 12.45,
+            "meanContrast": 12.45
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -704,6 +1057,27 @@
           "backgroundNote": "track-header-name paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "channelNameHeader",
+            "textPixels": 155,
+            "surfaces": 46,
+            "minSurfacePixels": 15.5,
+            "worstBackground": "rgb(38, 42, 50)",
+            "worstTextColor": "rgb(217, 219, 225)",
+            "worstSurfacePixels": 16,
+            "worstPixel": {
+              "x": 72,
+              "y": 11
+            },
+            "sliverContrast": 5.05,
+            "sliverPixels": 4,
+            "textColors": [
+              "rgb(217, 219, 225)",
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 10.39,
+            "meanContrast": 10.54
+          },
           "accentCount": 1,
           "accentColors": [
             "rgb(245, 158, 11)"
@@ -740,6 +1114,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "rowIndex",
+            "textPixels": 8,
+            "surfaces": 1,
+            "minSurfacePixels": 2,
+            "worstBackground": "rgb(24, 27, 34)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 8,
+            "worstPixel": {
+              "x": 7,
+              "y": 1
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 4.45,
+            "meanContrast": 4.45
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -772,6 +1166,21 @@
           "backgroundNote": "step paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "stepCell",
+            "textPixels": 0,
+            "surfaces": 0,
+            "minSurfacePixels": 2,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [],
+            "minContrast": null,
+            "meanContrast": null
+          },
           "accentCount": 11,
           "accentColors": [
             "rgb(178, 238, 216)",
@@ -820,6 +1229,7 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": null,
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -852,6 +1262,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "rulerTick",
+            "textPixels": 22,
+            "surfaces": 1,
+            "minSurfacePixels": 2.2,
+            "worstBackground": "rgb(18, 20, 26)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 22,
+            "worstPixel": {
+              "x": 17,
+              "y": 4
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 6.04,
+            "meanContrast": 6.04
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -884,6 +1314,27 @@
           "backgroundNote": "track-tab paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "trackTab",
+            "textPixels": 93,
+            "surfaces": 58,
+            "minSurfacePixels": 9.3,
+            "worstBackground": "rgb(11, 12, 16)",
+            "worstTextColor": "rgb(238, 242, 246)",
+            "worstSurfacePixels": 19,
+            "worstPixel": {
+              "x": 18,
+              "y": 13
+            },
+            "sliverContrast": 2.69,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(238, 242, 246)",
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 17.38,
+            "meanContrast": 11.03
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -916,6 +1367,27 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "rowPad",
+            "textPixels": 125,
+            "surfaces": 2,
+            "minSurfacePixels": 12.5,
+            "worstBackground": "rgb(24, 27, 34)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 20,
+            "worstPixel": {
+              "x": 18,
+              "y": 9
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(122, 130, 144)",
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 4.45,
+            "meanContrast": 11.17
+          },
           "accentCount": 1,
           "accentColors": [
             "rgb(245, 158, 11)"
@@ -952,6 +1424,26 @@
           "backgroundNote": "dock-tabs paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "dockTab",
+            "textPixels": 125,
+            "surfaces": 25,
+            "minSurfacePixels": 12.5,
+            "worstBackground": "rgb(79, 82, 87)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 23,
+            "worstPixel": {
+              "x": 25,
+              "y": 11
+            },
+            "sliverContrast": 1.99,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 2.03,
+            "meanContrast": 2.03
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -984,6 +1476,23 @@
           "backgroundNote": "pattern-chip paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "patternChip",
+            "textPixels": 160,
+            "surfaces": 129,
+            "minSurfacePixels": 16,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": 4.25,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(245, 158, 11)"
+            ],
+            "minContrast": 0,
+            "meanContrast": 5.37
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1016,6 +1525,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "btn",
+            "textPixels": 198,
+            "surfaces": 1,
+            "minSurfacePixels": 19.8,
+            "worstBackground": "rgb(31, 35, 43)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 198,
+            "worstPixel": {
+              "x": 12,
+              "y": 12
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 5.17,
+            "meanContrast": 5.17
+          },
           "accentCount": 1,
           "accentColors": [
             "rgba(90, 54, 16, 0.2)"
@@ -1052,6 +1581,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "btnSmall",
+            "textPixels": 138,
+            "surfaces": 1,
+            "minSurfacePixels": 13.8,
+            "worstBackground": "rgb(31, 35, 43)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 138,
+            "worstPixel": {
+              "x": 66,
+              "y": 9
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 5.17,
+            "meanContrast": 5.17
+          },
           "accentCount": 1,
           "accentColors": [
             "rgba(90, 54, 16, 0.2)"
@@ -1088,6 +1637,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "presetChip",
+            "textPixels": 41,
+            "surfaces": 1,
+            "minSurfacePixels": 4.1000000000000005,
+            "worstBackground": "rgb(55, 45, 31)",
+            "worstTextColor": "rgb(245, 158, 11)",
+            "worstSurfacePixels": 41,
+            "worstPixel": {
+              "x": 11,
+              "y": 5
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(245, 158, 11)"
+            ],
+            "minContrast": 6.28,
+            "meanContrast": 6.28
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1120,6 +1689,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "transportBtn",
+            "textPixels": 215,
+            "surfaces": 1,
+            "minSurfacePixels": 21.5,
+            "worstBackground": "rgb(31, 35, 43)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 215,
+            "worstPixel": {
+              "x": 11,
+              "y": 11
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 5.17,
+            "meanContrast": 5.17
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1152,6 +1741,23 @@
           "backgroundNote": "position-display paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "positionReadout",
+            "textPixels": 170,
+            "surfaces": 49,
+            "minSurfacePixels": 17,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": 13.46,
+            "sliverPixels": 12,
+            "textColors": [
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 0,
+            "meanContrast": 13.8
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1184,6 +1790,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "patternBarLabel",
+            "textPixels": 97,
+            "surfaces": 1,
+            "minSurfacePixels": 9.700000000000001,
+            "worstBackground": "rgb(11, 12, 16)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 97,
+            "worstPixel": {
+              "x": 0,
+              "y": 0
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 6.41,
+            "meanContrast": 6.41
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1216,6 +1842,7 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": null,
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1248,6 +1875,23 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "panelTitleLocal",
+            "textPixels": 0,
+            "surfaces": 0,
+            "minSurfacePixels": 2,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": null,
+            "meanContrast": null
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1280,6 +1924,28 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "statusbar",
+            "textPixels": 1050,
+            "surfaces": 8,
+            "minSurfacePixels": 105,
+            "worstBackground": "rgb(18, 20, 26)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 923,
+            "worstPixel": {
+              "x": 16,
+              "y": 13
+            },
+            "sliverContrast": 3.51,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(122, 130, 144)",
+              "rgb(141, 148, 162)",
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 4.75,
+            "meanContrast": 5.28
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1319,6 +1985,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "channelNameRow",
+            "textPixels": 107,
+            "surfaces": 1,
+            "minSurfacePixels": 10.700000000000001,
+            "worstBackground": "rgb(24, 27, 34)",
+            "worstTextColor": "rgb(217, 219, 225)",
+            "worstSurfacePixels": 107,
+            "worstPixel": {
+              "x": 10,
+              "y": 4
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 12.45,
+            "meanContrast": 12.45
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1341,9 +2027,9 @@
           "topLight": 0.11,
           "bottomLight": null,
           "hasAccent": true,
-          "accent": "rgb(74, 222, 128)",
+          "accent": "rgb(245, 158, 11)",
           "background": "rgb(31, 35, 43)",
-          "color": "rgb(74, 222, 128)",
+          "color": "rgb(217, 219, 225)",
           "sample": "DRDrums",
           "contrast": null,
           "compositedBackground": null,
@@ -1351,9 +2037,30 @@
           "backgroundNote": "track-header-name paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "channelNameHeader",
+            "textPixels": 337,
+            "surfaces": 97,
+            "minSurfacePixels": 33.7,
+            "worstBackground": "rgb(245, 158, 11)",
+            "worstTextColor": "rgb(74, 222, 128)",
+            "worstSurfacePixels": 37,
+            "worstPixel": {
+              "x": 2,
+              "y": 2
+            },
+            "sliverContrast": 1.11,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(74, 222, 128)",
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 1.23,
+            "meanContrast": 6.61
+          },
           "accentCount": 1,
           "accentColors": [
-            "rgb(74, 222, 128)"
+            "rgb(245, 158, 11)"
           ],
           "accentIndexes": [
             0
@@ -1363,7 +2070,7 @@
           "outlineCount": 0,
           "outlineAccent": null,
           "outlineWidth": null,
-          "borderAccent": "rgb(59, 138, 93)",
+          "borderAccent": "rgb(229, 175, 83)",
           "borderAccentCount": 1,
           "borderAccentSample": "DRDrums"
         },
@@ -1387,6 +2094,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "rowIndex",
+            "textPixels": 8,
+            "surfaces": 1,
+            "minSurfacePixels": 2,
+            "worstBackground": "rgb(24, 27, 34)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 8,
+            "worstPixel": {
+              "x": 7,
+              "y": 1
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 4.45,
+            "meanContrast": 4.45
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1419,43 +2146,42 @@
           "backgroundNote": "step paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
-          "accentCount": 42,
+          "pixelContrast": {
+            "id": "stepCell",
+            "textPixels": 0,
+            "surfaces": 0,
+            "minSurfacePixels": 2,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [],
+            "minContrast": null,
+            "meanContrast": null
+          },
+          "accentCount": 11,
           "accentColors": [
             "rgb(178, 238, 216)",
             "rgb(251, 201, 227)",
-            "rgb(251, 218, 162)",
-            "rgba(245, 158, 11, 0.16)",
-            "rgba(245, 158, 11, 0.249)",
-            "rgba(252, 222, 171, 0.862)"
+            "rgb(251, 218, 162)"
           ],
           "accentIndexes": [
             0,
             4,
-            7,
             8,
             12,
-            23,
-            24,
-            39,
-            40,
-            55,
-            56,
-            71,
-            72,
-            87,
-            88,
             100,
-            103,
-            104,
             108,
-            119,
-            120,
             130,
             134,
-            135
+            138,
+            142,
+            174
           ],
           "accentSample": null,
-          "ringCount": 31,
+          "ringCount": 0,
           "outlineCount": 0,
           "outlineAccent": null,
           "outlineWidth": null,
@@ -1470,49 +2196,44 @@
           "fontSize": 13.3,
           "fontWeight": 400,
           "letterSpacing": "normal",
-          "topLight": 0.86155,
+          "topLight": null,
           "bottomLight": null,
-          "hasAccent": true,
-          "accent": "rgba(252, 222, 171, 0.862)",
-          "background": "rgba(0, 0, 0, 0)",
+          "hasAccent": false,
+          "accent": null,
+          "background": "rgb(11, 12, 16)",
           "color": "rgb(217, 219, 225)",
           "sample": null,
-          "contrast": null,
-          "compositedBackground": null,
-          "backgroundResolved": false,
-          "backgroundNote": "step paints a background-image",
+          "contrast": 14.12,
+          "compositedBackground": "rgb(11, 12, 16)",
+          "backgroundResolved": true,
+          "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
-          "accentCount": 16,
-          "accentColors": [
-            "rgba(245, 158, 11, 0.16)",
-            "rgba(252, 222, 171, 0.862)"
-          ],
-          "accentIndexes": [
-            0,
-            1,
-            2,
-            3,
-            4,
-            5,
-            6,
-            7,
-            8,
-            9,
-            10,
-            11,
-            12,
-            13,
-            14,
-            15
-          ],
+          "pixelContrast": {
+            "id": "stepPlayhead",
+            "textPixels": 0,
+            "surfaces": 0,
+            "minSurfacePixels": 2,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [],
+            "minContrast": null,
+            "meanContrast": null
+          },
+          "accentCount": 0,
+          "accentColors": [],
+          "accentIndexes": [],
           "accentSample": null,
-          "ringCount": 15,
+          "ringCount": 0,
           "outlineCount": 0,
           "outlineAccent": null,
           "outlineWidth": null,
-          "borderAccent": "rgb(250, 200, 119)",
-          "borderAccentCount": 1,
+          "borderAccent": null,
+          "borderAccentCount": 0,
           "borderAccentSample": null
         },
         {
@@ -1535,6 +2256,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "rulerTick",
+            "textPixels": 22,
+            "surfaces": 1,
+            "minSurfacePixels": 2.2,
+            "worstBackground": "rgb(18, 20, 26)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 22,
+            "worstPixel": {
+              "x": 17,
+              "y": 4
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 6.04,
+            "meanContrast": 6.04
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1545,7 +2286,7 @@
           "outlineWidth": null,
           "borderAccent": null,
           "borderAccentCount": 1,
-          "borderAccentSample": "3"
+          "borderAccentSample": "·"
         },
         {
           "roleId": "trackTab",
@@ -1567,6 +2308,27 @@
           "backgroundNote": "track-tab paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "trackTab",
+            "textPixels": 93,
+            "surfaces": 58,
+            "minSurfacePixels": 9.3,
+            "worstBackground": "rgb(11, 12, 16)",
+            "worstTextColor": "rgb(238, 242, 246)",
+            "worstSurfacePixels": 19,
+            "worstPixel": {
+              "x": 18,
+              "y": 13
+            },
+            "sliverContrast": 2.69,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(238, 242, 246)",
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 17.38,
+            "meanContrast": 11.03
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1599,6 +2361,27 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "rowPad",
+            "textPixels": 125,
+            "surfaces": 2,
+            "minSurfacePixels": 12.5,
+            "worstBackground": "rgb(24, 27, 34)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 20,
+            "worstPixel": {
+              "x": 18,
+              "y": 9
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(122, 130, 144)",
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 4.45,
+            "meanContrast": 11.17
+          },
           "accentCount": 1,
           "accentColors": [
             "rgb(245, 158, 11)"
@@ -1635,6 +2418,26 @@
           "backgroundNote": "dock-tabs paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "dockTab",
+            "textPixels": 125,
+            "surfaces": 25,
+            "minSurfacePixels": 12.5,
+            "worstBackground": "rgb(79, 82, 87)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 23,
+            "worstPixel": {
+              "x": 25,
+              "y": 11
+            },
+            "sliverContrast": 1.99,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 2.03,
+            "meanContrast": 2.03
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1667,6 +2470,23 @@
           "backgroundNote": "pattern-chip paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "patternChip",
+            "textPixels": 160,
+            "surfaces": 129,
+            "minSurfacePixels": 16,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": 4.25,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(245, 158, 11)"
+            ],
+            "minContrast": 0,
+            "meanContrast": 5.37
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1699,6 +2519,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "btn",
+            "textPixels": 198,
+            "surfaces": 1,
+            "minSurfacePixels": 19.8,
+            "worstBackground": "rgb(31, 35, 43)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 198,
+            "worstPixel": {
+              "x": 12,
+              "y": 12
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 5.17,
+            "meanContrast": 5.17
+          },
           "accentCount": 1,
           "accentColors": [
             "rgba(90, 54, 16, 0.2)"
@@ -1735,6 +2575,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "btnSmall",
+            "textPixels": 138,
+            "surfaces": 1,
+            "minSurfacePixels": 13.8,
+            "worstBackground": "rgb(31, 35, 43)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 138,
+            "worstPixel": {
+              "x": 66,
+              "y": 9
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 5.17,
+            "meanContrast": 5.17
+          },
           "accentCount": 1,
           "accentColors": [
             "rgba(90, 54, 16, 0.2)"
@@ -1771,6 +2631,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "presetChip",
+            "textPixels": 41,
+            "surfaces": 1,
+            "minSurfacePixels": 4.1000000000000005,
+            "worstBackground": "rgb(55, 45, 31)",
+            "worstTextColor": "rgb(245, 158, 11)",
+            "worstSurfacePixels": 41,
+            "worstPixel": {
+              "x": 11,
+              "y": 5
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(245, 158, 11)"
+            ],
+            "minContrast": 6.28,
+            "meanContrast": 6.28
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1803,6 +2683,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "transportBtn",
+            "textPixels": 215,
+            "surfaces": 1,
+            "minSurfacePixels": 21.5,
+            "worstBackground": "rgb(31, 35, 43)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 215,
+            "worstPixel": {
+              "x": 11,
+              "y": 11
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 5.17,
+            "meanContrast": 5.17
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1828,13 +2728,30 @@
           "accent": null,
           "background": "rgba(0, 0, 0, 0)",
           "color": "rgb(217, 219, 225)",
-          "sample": "1.3.1",
+          "sample": "1.3.4",
           "contrast": null,
           "compositedBackground": null,
           "backgroundResolved": false,
           "backgroundNote": "position-display paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "positionReadout",
+            "textPixels": 179,
+            "surfaces": 59,
+            "minSurfacePixels": 17.900000000000002,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": 13.24,
+            "sliverPixels": 3,
+            "textColors": [
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 0,
+            "meanContrast": 13.72
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1867,6 +2784,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "patternBarLabel",
+            "textPixels": 97,
+            "surfaces": 1,
+            "minSurfacePixels": 9.700000000000001,
+            "worstBackground": "rgb(11, 12, 16)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 97,
+            "worstPixel": {
+              "x": 0,
+              "y": 0
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 6.41,
+            "meanContrast": 6.41
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1899,6 +2836,7 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": null,
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1931,6 +2869,23 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "panelTitleLocal",
+            "textPixels": 0,
+            "surfaces": 0,
+            "minSurfacePixels": 2,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": null,
+            "meanContrast": null
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -1963,6 +2918,28 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "statusbar",
+            "textPixels": 1058,
+            "surfaces": 10,
+            "minSurfacePixels": 105.80000000000001,
+            "worstBackground": "rgb(18, 20, 26)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 898,
+            "worstPixel": {
+              "x": 16,
+              "y": 13
+            },
+            "sliverContrast": 2.15,
+            "sliverPixels": 4,
+            "textColors": [
+              "rgb(122, 130, 144)",
+              "rgb(141, 148, 162)",
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 4.75,
+            "meanContrast": 5.24
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2002,6 +2979,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "channelNameRow",
+            "textPixels": 107,
+            "surfaces": 1,
+            "minSurfacePixels": 10.700000000000001,
+            "worstBackground": "rgb(24, 27, 34)",
+            "worstTextColor": "rgb(217, 219, 225)",
+            "worstSurfacePixels": 107,
+            "worstPixel": {
+              "x": 10,
+              "y": 4
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 12.45,
+            "meanContrast": 12.45
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2034,6 +3031,27 @@
           "backgroundNote": "track-header-name paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "channelNameHeader",
+            "textPixels": 155,
+            "surfaces": 46,
+            "minSurfacePixels": 15.5,
+            "worstBackground": "rgb(38, 42, 50)",
+            "worstTextColor": "rgb(217, 219, 225)",
+            "worstSurfacePixels": 16,
+            "worstPixel": {
+              "x": 72,
+              "y": 11
+            },
+            "sliverContrast": 5.05,
+            "sliverPixels": 4,
+            "textColors": [
+              "rgb(217, 219, 225)",
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 10.39,
+            "meanContrast": 10.54
+          },
           "accentCount": 1,
           "accentColors": [
             "rgb(245, 158, 11)"
@@ -2070,6 +3088,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "rowIndex",
+            "textPixels": 8,
+            "surfaces": 1,
+            "minSurfacePixels": 2,
+            "worstBackground": "rgb(24, 27, 34)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 8,
+            "worstPixel": {
+              "x": 7,
+              "y": 1
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 4.45,
+            "meanContrast": 4.45
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2102,6 +3140,21 @@
           "backgroundNote": "step paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "stepCell",
+            "textPixels": 0,
+            "surfaces": 0,
+            "minSurfacePixels": 2,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [],
+            "minContrast": null,
+            "meanContrast": null
+          },
           "accentCount": 11,
           "accentColors": [
             "rgb(178, 238, 216)",
@@ -2150,6 +3203,7 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": null,
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2182,6 +3236,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "rulerTick",
+            "textPixels": 22,
+            "surfaces": 1,
+            "minSurfacePixels": 2.2,
+            "worstBackground": "rgb(18, 20, 26)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 22,
+            "worstPixel": {
+              "x": 17,
+              "y": 4
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 6.04,
+            "meanContrast": 6.04
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2214,6 +3288,27 @@
           "backgroundNote": "track-tab paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "trackTab",
+            "textPixels": 93,
+            "surfaces": 58,
+            "minSurfacePixels": 9.3,
+            "worstBackground": "rgb(11, 12, 16)",
+            "worstTextColor": "rgb(238, 242, 246)",
+            "worstSurfacePixels": 19,
+            "worstPixel": {
+              "x": 18,
+              "y": 13
+            },
+            "sliverContrast": 2.69,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(238, 242, 246)",
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 17.38,
+            "meanContrast": 11.03
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2246,6 +3341,27 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "rowPad",
+            "textPixels": 125,
+            "surfaces": 2,
+            "minSurfacePixels": 12.5,
+            "worstBackground": "rgb(24, 27, 34)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 20,
+            "worstPixel": {
+              "x": 18,
+              "y": 9
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(122, 130, 144)",
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 4.45,
+            "meanContrast": 11.17
+          },
           "accentCount": 1,
           "accentColors": [
             "rgb(245, 158, 11)"
@@ -2282,6 +3398,26 @@
           "backgroundNote": "dock-tabs paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "dockTab",
+            "textPixels": 125,
+            "surfaces": 25,
+            "minSurfacePixels": 12.5,
+            "worstBackground": "rgb(79, 82, 87)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 23,
+            "worstPixel": {
+              "x": 25,
+              "y": 11
+            },
+            "sliverContrast": 1.99,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 2.03,
+            "meanContrast": 2.03
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2314,6 +3450,23 @@
           "backgroundNote": "pattern-chip paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "patternChip",
+            "textPixels": 160,
+            "surfaces": 129,
+            "minSurfacePixels": 16,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": 4.25,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(245, 158, 11)"
+            ],
+            "minContrast": 0,
+            "meanContrast": 5.37
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2346,6 +3499,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "btn",
+            "textPixels": 198,
+            "surfaces": 1,
+            "minSurfacePixels": 19.8,
+            "worstBackground": "rgb(31, 35, 43)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 198,
+            "worstPixel": {
+              "x": 12,
+              "y": 12
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 5.17,
+            "meanContrast": 5.17
+          },
           "accentCount": 1,
           "accentColors": [
             "rgba(90, 54, 16, 0.2)"
@@ -2382,6 +3555,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "btnSmall",
+            "textPixels": 138,
+            "surfaces": 1,
+            "minSurfacePixels": 13.8,
+            "worstBackground": "rgb(31, 35, 43)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 138,
+            "worstPixel": {
+              "x": 66,
+              "y": 9
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 5.17,
+            "meanContrast": 5.17
+          },
           "accentCount": 1,
           "accentColors": [
             "rgba(90, 54, 16, 0.2)"
@@ -2418,6 +3611,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "presetChip",
+            "textPixels": 41,
+            "surfaces": 1,
+            "minSurfacePixels": 4.1000000000000005,
+            "worstBackground": "rgb(55, 45, 31)",
+            "worstTextColor": "rgb(245, 158, 11)",
+            "worstSurfacePixels": 41,
+            "worstPixel": {
+              "x": 11,
+              "y": 5
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(245, 158, 11)"
+            ],
+            "minContrast": 6.28,
+            "meanContrast": 6.28
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2450,6 +3663,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "transportBtn",
+            "textPixels": 219,
+            "surfaces": 1,
+            "minSurfacePixels": 21.900000000000002,
+            "worstBackground": "rgb(31, 35, 43)",
+            "worstTextColor": "rgb(217, 219, 225)",
+            "worstSurfacePixels": 219,
+            "worstPixel": {
+              "x": 11,
+              "y": 11
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 11.38,
+            "meanContrast": 11.38
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2482,6 +3715,23 @@
           "backgroundNote": "position-display paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "positionReadout",
+            "textPixels": 170,
+            "surfaces": 49,
+            "minSurfacePixels": 17,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": 13.46,
+            "sliverPixels": 12,
+            "textColors": [
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 0,
+            "meanContrast": 13.8
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2514,6 +3764,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "patternBarLabel",
+            "textPixels": 97,
+            "surfaces": 1,
+            "minSurfacePixels": 9.700000000000001,
+            "worstBackground": "rgb(11, 12, 16)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 97,
+            "worstPixel": {
+              "x": 0,
+              "y": 0
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 6.41,
+            "meanContrast": 6.41
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2546,6 +3816,7 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": null,
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2578,6 +3849,23 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "panelTitleLocal",
+            "textPixels": 0,
+            "surfaces": 0,
+            "minSurfacePixels": 2,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": null,
+            "meanContrast": null
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2610,6 +3898,28 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "statusbar",
+            "textPixels": 1060,
+            "surfaces": 9,
+            "minSurfacePixels": 106,
+            "worstBackground": "rgb(18, 20, 26)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 898,
+            "worstPixel": {
+              "x": 16,
+              "y": 13
+            },
+            "sliverContrast": 3.51,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(122, 130, 144)",
+              "rgb(141, 148, 162)",
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 4.75,
+            "meanContrast": 5.36
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2649,6 +3959,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "channelNameRow",
+            "textPixels": 107,
+            "surfaces": 1,
+            "minSurfacePixels": 10.700000000000001,
+            "worstBackground": "rgb(24, 27, 34)",
+            "worstTextColor": "rgb(217, 219, 225)",
+            "worstSurfacePixels": 107,
+            "worstPixel": {
+              "x": 10,
+              "y": 4
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 12.45,
+            "meanContrast": 12.45
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2681,6 +4011,27 @@
           "backgroundNote": "track-header-name paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "channelNameHeader",
+            "textPixels": 155,
+            "surfaces": 46,
+            "minSurfacePixels": 15.5,
+            "worstBackground": "rgb(38, 42, 50)",
+            "worstTextColor": "rgb(217, 219, 225)",
+            "worstSurfacePixels": 16,
+            "worstPixel": {
+              "x": 72,
+              "y": 11
+            },
+            "sliverContrast": 5.05,
+            "sliverPixels": 4,
+            "textColors": [
+              "rgb(217, 219, 225)",
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 10.39,
+            "meanContrast": 10.54
+          },
           "accentCount": 1,
           "accentColors": [
             "rgb(245, 158, 11)"
@@ -2717,6 +4068,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "rowIndex",
+            "textPixels": 8,
+            "surfaces": 1,
+            "minSurfacePixels": 2,
+            "worstBackground": "rgb(24, 27, 34)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 8,
+            "worstPixel": {
+              "x": 7,
+              "y": 1
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 4.45,
+            "meanContrast": 4.45
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2749,6 +4120,21 @@
           "backgroundNote": "step paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "stepCell",
+            "textPixels": 0,
+            "surfaces": 0,
+            "minSurfacePixels": 2,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [],
+            "minContrast": null,
+            "meanContrast": null
+          },
           "accentCount": 11,
           "accentColors": [
             "rgb(178, 238, 216)",
@@ -2797,6 +4183,7 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": null,
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2829,6 +4216,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "rulerTick",
+            "textPixels": 22,
+            "surfaces": 1,
+            "minSurfacePixels": 2.2,
+            "worstBackground": "rgb(18, 20, 26)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 22,
+            "worstPixel": {
+              "x": 17,
+              "y": 4
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 6.04,
+            "meanContrast": 6.04
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2861,6 +4268,27 @@
           "backgroundNote": "track-tab paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "trackTab",
+            "textPixels": 93,
+            "surfaces": 58,
+            "minSurfacePixels": 9.3,
+            "worstBackground": "rgb(11, 12, 16)",
+            "worstTextColor": "rgb(238, 242, 246)",
+            "worstSurfacePixels": 19,
+            "worstPixel": {
+              "x": 18,
+              "y": 13
+            },
+            "sliverContrast": 2.69,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(238, 242, 246)",
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 17.38,
+            "meanContrast": 11.03
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2893,6 +4321,27 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "rowPad",
+            "textPixels": 125,
+            "surfaces": 2,
+            "minSurfacePixels": 12.5,
+            "worstBackground": "rgb(24, 27, 34)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 20,
+            "worstPixel": {
+              "x": 18,
+              "y": 9
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(122, 130, 144)",
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 4.45,
+            "meanContrast": 11.17
+          },
           "accentCount": 1,
           "accentColors": [
             "rgb(245, 158, 11)"
@@ -2929,6 +4378,26 @@
           "backgroundNote": "dock-tabs paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "dockTab",
+            "textPixels": 125,
+            "surfaces": 25,
+            "minSurfacePixels": 12.5,
+            "worstBackground": "rgb(79, 82, 87)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 23,
+            "worstPixel": {
+              "x": 25,
+              "y": 11
+            },
+            "sliverContrast": 1.99,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 2.03,
+            "meanContrast": 2.03
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2961,6 +4430,23 @@
           "backgroundNote": "pattern-chip paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "patternChip",
+            "textPixels": 160,
+            "surfaces": 129,
+            "minSurfacePixels": 16,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": 4.25,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(245, 158, 11)"
+            ],
+            "minContrast": 0,
+            "meanContrast": 5.37
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -2993,6 +4479,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "btn",
+            "textPixels": 198,
+            "surfaces": 1,
+            "minSurfacePixels": 19.8,
+            "worstBackground": "rgb(31, 35, 43)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 198,
+            "worstPixel": {
+              "x": 12,
+              "y": 12
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 5.17,
+            "meanContrast": 5.17
+          },
           "accentCount": 1,
           "accentColors": [
             "rgba(90, 54, 16, 0.2)"
@@ -3029,6 +4535,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "btnSmall",
+            "textPixels": 138,
+            "surfaces": 1,
+            "minSurfacePixels": 13.8,
+            "worstBackground": "rgb(31, 35, 43)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 138,
+            "worstPixel": {
+              "x": 66,
+              "y": 9
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 5.17,
+            "meanContrast": 5.17
+          },
           "accentCount": 1,
           "accentColors": [
             "rgba(90, 54, 16, 0.2)"
@@ -3065,6 +4591,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "presetChip",
+            "textPixels": 41,
+            "surfaces": 1,
+            "minSurfacePixels": 4.1000000000000005,
+            "worstBackground": "rgb(55, 45, 31)",
+            "worstTextColor": "rgb(245, 158, 11)",
+            "worstSurfacePixels": 41,
+            "worstPixel": {
+              "x": 11,
+              "y": 5
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(245, 158, 11)"
+            ],
+            "minContrast": 6.28,
+            "meanContrast": 6.28
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -3097,6 +4643,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "transportBtn",
+            "textPixels": 215,
+            "surfaces": 1,
+            "minSurfacePixels": 21.5,
+            "worstBackground": "rgb(31, 35, 43)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 215,
+            "worstPixel": {
+              "x": 11,
+              "y": 11
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 5.17,
+            "meanContrast": 5.17
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -3129,6 +4695,23 @@
           "backgroundNote": "position-display paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "positionReadout",
+            "textPixels": 170,
+            "surfaces": 49,
+            "minSurfacePixels": 17,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": 13.46,
+            "sliverPixels": 12,
+            "textColors": [
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 0,
+            "meanContrast": 13.8
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -3161,6 +4744,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "patternBarLabel",
+            "textPixels": 97,
+            "surfaces": 1,
+            "minSurfacePixels": 9.700000000000001,
+            "worstBackground": "rgb(11, 12, 16)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 97,
+            "worstPixel": {
+              "x": 0,
+              "y": 0
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 6.41,
+            "meanContrast": 6.41
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -3193,6 +4796,7 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": null,
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -3225,6 +4829,23 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "panelTitleLocal",
+            "textPixels": 0,
+            "surfaces": 0,
+            "minSurfacePixels": 2,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": null,
+            "meanContrast": null
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -3257,6 +4878,28 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "statusbar",
+            "textPixels": 1060,
+            "surfaces": 9,
+            "minSurfacePixels": 106,
+            "worstBackground": "rgb(18, 20, 26)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 898,
+            "worstPixel": {
+              "x": 16,
+              "y": 13
+            },
+            "sliverContrast": 3.51,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(122, 130, 144)",
+              "rgb(141, 148, 162)",
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 4.75,
+            "meanContrast": 5.36
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -3296,6 +4939,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "channelNameRow",
+            "textPixels": 107,
+            "surfaces": 1,
+            "minSurfacePixels": 10.700000000000001,
+            "worstBackground": "rgb(24, 27, 34)",
+            "worstTextColor": "rgb(217, 219, 225)",
+            "worstSurfacePixels": 107,
+            "worstPixel": {
+              "x": 10,
+              "y": 4
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 12.45,
+            "meanContrast": 12.45
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -3318,9 +4981,9 @@
           "topLight": 0.11,
           "bottomLight": null,
           "hasAccent": true,
-          "accent": "rgb(245, 158, 11)",
+          "accent": "rgb(74, 222, 128)",
           "background": "rgb(31, 35, 43)",
-          "color": "rgb(217, 219, 225)",
+          "color": "rgb(74, 222, 128)",
           "sample": "DRDrums",
           "contrast": null,
           "compositedBackground": null,
@@ -3328,9 +4991,27 @@
           "backgroundNote": "track-header-name paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "channelNameHeader",
+            "textPixels": 250,
+            "surfaces": 58,
+            "minSurfacePixels": 25,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": 3.45,
+            "sliverPixels": 2,
+            "textColors": [
+              "rgb(74, 222, 128)",
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 0,
+            "meanContrast": 7.79
+          },
           "accentCount": 1,
           "accentColors": [
-            "rgb(245, 158, 11)"
+            "rgb(74, 222, 128)"
           ],
           "accentIndexes": [
             0
@@ -3340,7 +5021,7 @@
           "outlineCount": 0,
           "outlineAccent": null,
           "outlineWidth": null,
-          "borderAccent": "rgb(229, 175, 83)",
+          "borderAccent": "rgb(59, 138, 93)",
           "borderAccentCount": 1,
           "borderAccentSample": "DRDrums"
         },
@@ -3364,6 +5045,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "rowIndex",
+            "textPixels": 8,
+            "surfaces": 1,
+            "minSurfacePixels": 2,
+            "worstBackground": "rgb(24, 27, 34)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 8,
+            "worstPixel": {
+              "x": 7,
+              "y": 1
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 4.45,
+            "meanContrast": 4.45
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -3396,48 +5097,62 @@
           "backgroundNote": "step paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
-          "accentCount": 42,
+          "pixelContrast": {
+            "id": "stepCell",
+            "textPixels": 0,
+            "surfaces": 0,
+            "minSurfacePixels": 2,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [],
+            "minContrast": null,
+            "meanContrast": null
+          },
+          "accentCount": 26,
           "accentColors": [
             "rgb(178, 238, 216)",
             "rgb(251, 201, 227)",
             "rgb(251, 218, 162)",
-            "rgba(186, 239, 215, 0.927)",
-            "rgba(245, 158, 11, 0.084)",
-            "rgba(245, 158, 11, 0.425)"
+            "rgba(245, 158, 11, 0.161)",
+            "rgba(252, 222, 171, 0.861)"
           ],
           "accentIndexes": [
             0,
             4,
-            6,
-            7,
             8,
             12,
-            22,
-            23,
-            38,
-            39,
-            54,
-            55,
-            70,
-            71,
-            86,
-            87,
+            24,
+            40,
+            56,
+            72,
+            88,
             100,
-            102,
-            103,
+            104,
             108,
-            118,
-            119,
+            120,
             130,
-            134
+            134,
+            136,
+            138,
+            142,
+            152,
+            168,
+            174,
+            184,
+            200,
+            216
           ],
           "accentSample": null,
-          "ringCount": 31,
+          "ringCount": 15,
           "outlineCount": 0,
           "outlineAccent": null,
           "outlineWidth": null,
           "borderAccent": "rgb(247, 181, 70)",
-          "borderAccentCount": 27,
+          "borderAccentCount": 11,
           "borderAccentSample": null
         },
         {
@@ -3449,8 +5164,8 @@
           "letterSpacing": "normal",
           "topLight": null,
           "bottomLight": null,
-          "hasAccent": true,
-          "accent": "rgba(245, 158, 11, 0.425)",
+          "hasAccent": false,
+          "accent": null,
           "background": "rgb(11, 12, 16)",
           "color": "rgb(217, 219, 225)",
           "sample": null,
@@ -3460,35 +5175,35 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
-          "accentCount": 16,
+          "pixelContrast": {
+            "id": "stepPlayhead",
+            "textPixels": 0,
+            "surfaces": 0,
+            "minSurfacePixels": 2,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [],
+            "minContrast": null,
+            "meanContrast": null
+          },
+          "accentCount": 1,
           "accentColors": [
-            "rgba(245, 158, 11, 0.425)"
+            "rgb(178, 238, 216)"
           ],
           "accentIndexes": [
-            0,
-            1,
-            2,
-            3,
-            4,
-            5,
-            6,
-            7,
-            8,
-            9,
-            10,
-            11,
-            12,
-            13,
-            14,
-            15
+            8
           ],
           "accentSample": null,
-          "ringCount": 16,
+          "ringCount": 0,
           "outlineCount": 0,
           "outlineAccent": null,
           "outlineWidth": null,
-          "borderAccent": "rgba(123, 90, 40, 0.956)",
-          "borderAccentCount": 16,
+          "borderAccent": null,
+          "borderAccentCount": 1,
           "borderAccentSample": null
         },
         {
@@ -3511,6 +5226,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "rulerTick",
+            "textPixels": 22,
+            "surfaces": 1,
+            "minSurfacePixels": 2.2,
+            "worstBackground": "rgb(18, 20, 26)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 22,
+            "worstPixel": {
+              "x": 17,
+              "y": 4
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 6.04,
+            "meanContrast": 6.04
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -3543,6 +5278,27 @@
           "backgroundNote": "track-tab paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "trackTab",
+            "textPixels": 93,
+            "surfaces": 58,
+            "minSurfacePixels": 9.3,
+            "worstBackground": "rgb(11, 12, 16)",
+            "worstTextColor": "rgb(238, 242, 246)",
+            "worstSurfacePixels": 19,
+            "worstPixel": {
+              "x": 18,
+              "y": 13
+            },
+            "sliverContrast": 2.69,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(238, 242, 246)",
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 17.38,
+            "meanContrast": 11.03
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -3575,6 +5331,27 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "rowPad",
+            "textPixels": 128,
+            "surfaces": 3,
+            "minSurfacePixels": 12.8,
+            "worstBackground": "rgb(24, 27, 34)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 20,
+            "worstPixel": {
+              "x": 18,
+              "y": 9
+            },
+            "sliverContrast": 1.54,
+            "sliverPixels": 3,
+            "textColors": [
+              "rgb(122, 130, 144)",
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 4.45,
+            "meanContrast": 10.94
+          },
           "accentCount": 1,
           "accentColors": [
             "rgb(245, 158, 11)"
@@ -3611,6 +5388,26 @@
           "backgroundNote": "dock-tabs paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "dockTab",
+            "textPixels": 125,
+            "surfaces": 25,
+            "minSurfacePixels": 12.5,
+            "worstBackground": "rgb(79, 82, 87)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 23,
+            "worstPixel": {
+              "x": 25,
+              "y": 11
+            },
+            "sliverContrast": 1.99,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(122, 130, 144)"
+            ],
+            "minContrast": 2.03,
+            "meanContrast": 2.03
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -3643,6 +5440,23 @@
           "backgroundNote": "pattern-chip paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "patternChip",
+            "textPixels": 160,
+            "surfaces": 129,
+            "minSurfacePixels": 16,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": 4.25,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(245, 158, 11)"
+            ],
+            "minContrast": 0,
+            "meanContrast": 5.37
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -3675,6 +5489,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "btn",
+            "textPixels": 198,
+            "surfaces": 1,
+            "minSurfacePixels": 19.8,
+            "worstBackground": "rgb(31, 35, 43)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 198,
+            "worstPixel": {
+              "x": 12,
+              "y": 12
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 5.17,
+            "meanContrast": 5.17
+          },
           "accentCount": 1,
           "accentColors": [
             "rgba(90, 54, 16, 0.2)"
@@ -3711,6 +5545,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "btnSmall",
+            "textPixels": 138,
+            "surfaces": 1,
+            "minSurfacePixels": 13.8,
+            "worstBackground": "rgb(31, 35, 43)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 138,
+            "worstPixel": {
+              "x": 66,
+              "y": 9
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 5.17,
+            "meanContrast": 5.17
+          },
           "accentCount": 1,
           "accentColors": [
             "rgba(90, 54, 16, 0.2)"
@@ -3747,6 +5601,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "presetChip",
+            "textPixels": 41,
+            "surfaces": 1,
+            "minSurfacePixels": 4.1000000000000005,
+            "worstBackground": "rgb(55, 45, 31)",
+            "worstTextColor": "rgb(245, 158, 11)",
+            "worstSurfacePixels": 41,
+            "worstPixel": {
+              "x": 11,
+              "y": 5
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(245, 158, 11)"
+            ],
+            "minContrast": 6.28,
+            "meanContrast": 6.28
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -3779,6 +5653,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "transportBtn",
+            "textPixels": 215,
+            "surfaces": 1,
+            "minSurfacePixels": 21.5,
+            "worstBackground": "rgb(31, 35, 43)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 215,
+            "worstPixel": {
+              "x": 11,
+              "y": 11
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 5.17,
+            "meanContrast": 5.17
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -3804,13 +5698,30 @@
           "accent": null,
           "background": "rgba(0, 0, 0, 0)",
           "color": "rgb(217, 219, 225)",
-          "sample": "1.2.4",
+          "sample": "1.3.3",
           "contrast": null,
           "compositedBackground": null,
           "backgroundResolved": false,
           "backgroundNote": "position-display paints a background-image",
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "positionReadout",
+            "textPixels": 189,
+            "surfaces": 63,
+            "minSurfacePixels": 18.900000000000002,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": 13.24,
+            "sliverPixels": 3,
+            "textColors": [
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 0,
+            "meanContrast": 13.71
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -3843,6 +5754,26 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "patternBarLabel",
+            "textPixels": 97,
+            "surfaces": 1,
+            "minSurfacePixels": 9.700000000000001,
+            "worstBackground": "rgb(11, 12, 16)",
+            "worstTextColor": "rgb(141, 148, 162)",
+            "worstSurfacePixels": 97,
+            "worstPixel": {
+              "x": 0,
+              "y": 0
+            },
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": 6.41,
+            "meanContrast": 6.41
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -3875,6 +5806,7 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": null,
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -3907,6 +5839,23 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "panelTitleLocal",
+            "textPixels": 0,
+            "surfaces": 0,
+            "minSurfacePixels": 2,
+            "worstBackground": null,
+            "worstTextColor": null,
+            "worstSurfacePixels": 0,
+            "worstPixel": null,
+            "sliverContrast": null,
+            "sliverPixels": 0,
+            "textColors": [
+              "rgb(141, 148, 162)"
+            ],
+            "minContrast": null,
+            "meanContrast": null
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],
@@ -3939,6 +5888,28 @@
           "backgroundNote": null,
           "contrastFloor": 4.5,
           "largeText": false,
+          "pixelContrast": {
+            "id": "statusbar",
+            "textPixels": 1048,
+            "surfaces": 8,
+            "minSurfacePixels": 104.80000000000001,
+            "worstBackground": "rgb(18, 20, 26)",
+            "worstTextColor": "rgb(122, 130, 144)",
+            "worstSurfacePixels": 898,
+            "worstPixel": {
+              "x": 16,
+              "y": 13
+            },
+            "sliverContrast": 3.51,
+            "sliverPixels": 1,
+            "textColors": [
+              "rgb(122, 130, 144)",
+              "rgb(141, 148, 162)",
+              "rgb(217, 219, 225)"
+            ],
+            "minContrast": 4.75,
+            "meanContrast": 5.27
+          },
           "accentCount": 0,
           "accentColors": [],
           "accentIndexes": [],

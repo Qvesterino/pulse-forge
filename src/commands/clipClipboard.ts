@@ -36,6 +36,7 @@ import { addAudioClip, deleteAudioClip } from "./audioClips";
 import { clipsOverlap, deleteArrangementClip } from "./arrangement";
 import { deleteAutomationClip } from "./automationClips";
 import { deleteMidiClip } from "./midiClips";
+import { snapshot } from "./core";
 
 export interface ClipClipboard {
   /** Clip references are valid only in the project they were copied from. */
@@ -122,8 +123,7 @@ export function cutClips(doc: ProjectDocument, clipIds: readonly string[]): Comm
     type: "cutClips",
     label: "Cut clips",
     detail: "Copied to clipboard — Ctrl+V pastes at the playhead",
-    execute: () => next,
-    undo: () => doc,
+    ...snapshot("cutClips", "Cut clips", doc, next),
   };
 }
 
@@ -286,8 +286,7 @@ export function pasteClips(doc: ProjectDocument, clipboard: ClipClipboard, playh
   return {
     type: "pasteClips",
     label: "Paste clips",
-    execute: () => pasted,
-    undo: () => doc,
+    ...snapshot("pasteClips", "Paste clips", doc, pasted),
   };
 }
 

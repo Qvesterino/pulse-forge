@@ -118,8 +118,10 @@
 }
 
 /* The 1-based index is metadata about the row, not the row's name. It stays on
-   the bottom step deliberately: its low contrast and small size are what keep
-   it from competing with the pad name for the eye. */
+   the bottom step deliberately: its small size keeps it from competing with
+   the pad name for the eye. Its CONTRAST is a separate question — 60-contrast-legibility.css
+   raised it, because the measured 4.45:1 on the plain row and 3.09:1 on the
+   selected row's amber pulse meant the digits were hard to read at all. */
 .row-pad-index {
   font-size: var(--fs-2xs);
 }

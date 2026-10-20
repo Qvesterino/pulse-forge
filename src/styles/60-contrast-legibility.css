@@ -1,0 +1,71 @@
+/* 60-contrast-legibility.css — the text the shell has to be able to READ.
+ *
+ * MEASURED, NOT ASSUMED (scripts/state-matrix.mts --pixels, 1440x900, House)
+ * -----------------------------------------------------------------------
+ * Phase D measured every role's text against the surface it actually sits
+ * on: the composited background from the DOM where that background is solid,
+ * and the RENDERED PIXELS under the glyphs where an ancestor paints a
+ * gradient. One role failed:
+ *
+ *   .row-pad-index — 8px metadata, the 1-based row number
+ *     plain row       rgb(24, 27, 34)   4.45:1   (AA floor 4.5)
+ *     selected row    rgb(59, 54, 46)   3.09:1
+ *
+ * The plain-row number is a hair under AA. The selected-row number is not a
+ * hair under anything: the whole glyph sits on it, across seven surfaces
+ * that differ by one or two units of the gradient.
+ *
+ * Two facts produced the second number, and neither is a rendering artefact:
+ *
+ *   1. The index sits on the sequencer's RAISED row surface, which is
+ *      lighter than the panel the other faint labels sit on. --text-faint is
+ *      calibrated for the panel; it was never calibrated for this surface.
+ *   2. The selected row paints an amber pulse (--kyx-pulse-soft =
+ *      rgba(245,158,11,0.14)) that starts at the LEFT edge — which is
+ *      exactly where the index column is.
+ *
+ * The pulse is the brand signal. It is not weakened for the sake of an 8px
+ * digit, and the amber border that marks the selection is not touched. The
+ * digit moves instead.
+ *
+ * WHAT THIS SHEET DOES
+ * --------------------
+ * One token, and one rule:
+ *
+ *   --text-index   the dimmest text colour that still clears AA (4.5:1) on
+ *                  BOTH the plain row and the pulsed row.
+ *
+ * It is DERIVED from the theme's own --text-dim and --text, so it follows
+ * every palette instead of being a fourth hard-coded grey:
+ *
+ *   color-mix(in srgb, var(--text-dim) 80%, var(--text))
+ *
+ * 80/20 is the smallest mix that clears the pulsed row. Measured per palette
+ * (the state matrix measures the default one; the others come from the same
+ * formula and the same surfaces):
+ *
+ *   Signal Glass   rgb(156,162,175)    6.71:1 plain    4.66:1 pulsed
+ *   Forge          rgb(153,158,167)    6.34:1 plain    4.54:1 pulsed
+ *   High Contrast  rgb(212,215,221)   13.10:1 plain    6.96:1 pulsed
+ *
+ * WHAT THIS SHEET DELIBERATELY DOES NOT TOUCH
+ * --------------------------------------------
+ * The 8px SIZE stays. The index is separated from the channel name by its
+ * size (8px against a 13px semibold name) and by being a monospaced digit,
+ * not by being illegible.
+ *
+ * That narrows a rule 58-typography-scale.css stated: it used to say the
+ * index's "low contrast and small size" keep it from competing. The low
+ * contrast is gone, on purpose, because what it cost was a number nobody
+ * could read — the measured 4.45:1 and 3.09:1, and a screenshot in which
+ * the digits 1, 3, 4 and 5 were hard to make out at all. The size does the
+ * remaining work.
+ */
+
+:root {
+  --text-index: color-mix(in srgb, var(--text-dim) 80%, var(--text));
+}
+
+.row-pad-index {
+  color: var(--text-index);
+}

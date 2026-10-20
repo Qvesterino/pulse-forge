@@ -49,8 +49,12 @@ const GATE = argv.includes("--gate");
 /**
  * Phase D: measure the contrast FROM THE PIXELS, for the roles whose
  * background the DOM cannot answer (a gradient ancestor).
+ *
+ * The gate always needs it: nine of the nineteen roles paint a gradient, and
+ * a gate that cannot see those surfaces is a gate that checks a third of the
+ * shell and calls it coverage.
  */
-const PIXELS = argv.includes("--pixels");
+const PIXELS = argv.includes("--pixels") || GATE;
 
 const EXIT_GATE = 1;
 const EXIT_STATE_UNREACHED = 1;
@@ -118,24 +122,66 @@ const measure = async () => await page.evaluate(readStateMatrix, STATE_ROLES);
  * would measure a colour that is not on the screen, and the pixel test would
  * then reject every glyph as "not text".
  */
-const textColorsOf = async (selector: string): Promise<string[]> =>
-  await page.evaluate((sel) => {
-    const el = document.querySelector(sel);
-    if (!el) return [] as string[];
-    const out: string[] = [];
-    const seen = new Set<string>();
-    for (const node of [el, ...el.querySelectorAll("*")]) {
-      const ownsText = [...node.childNodes].some(
-        (child) => child.nodeType === 3 && (child.textContent ?? "").trim().length > 0,
-      );
-      if (!ownsText) continue;
-      const color = getComputedStyle(node).color;
-      if (seen.has(color)) continue;
-      seen.add(color);
-      out.push(color);
+/**
+ * The regions every role occupies, with the colours of its text.
+ *
+ * ONE evaluate for all roles, and it uses the SAME "first VISIBLE match" rule
+ * as the static reader. The first version took the first match in DOM order —
+ * which for `h3.panel-title` is a heading inside a panel that is not open, so
+ * the pixel measurement looked at a hidden heading while the static reader
+ * measured the visible one. Two methods, two elements, two different numbers.
+ *
+ * The text colours are those of the elements that OWN TEXT, not the element's
+ * own `color`: a `.row-pad` owns no text itself — its `.row-pad-name` child
+ * does, and that child may wear a DIFFERENT colour (a selected row's name
+ * goes amber). Reading the parent's inherited colour would measure a colour
+ * that is not on the screen, and the pixel test would then reject every glyph
+ * as "not text".
+ */
+const collectRoleRegions = async (): Promise<RoleRegion[]> =>
+  await page.evaluate((roles) => {
+    const visible = (el: Element) => {
+      const cs = getComputedStyle(el);
+      if (cs.display === "none" || cs.visibility === "hidden") return false;
+      return el.getBoundingClientRect().height > 0;
+    };
+    const out: {
+      id: string;
+      selector: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      colors: string[];
+    }[] = [];
+    for (const role of roles) {
+      const el = [...document.querySelectorAll(role.selector)].filter(visible)[0];
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      const colors: string[] = [];
+      const seen = new Set<string>();
+      for (const node of [el, ...el.querySelectorAll("*")]) {
+        const ownsText = [...node.childNodes].some(
+          (child) => child.nodeType === 3 && (child.textContent ?? "").trim().length > 0,
+        );
+        if (!ownsText) continue;
+        const color = getComputedStyle(node).color;
+        if (seen.has(color)) continue;
+        seen.add(color);
+        colors.push(color);
+      }
+      out.push({
+        id: role.id,
+        selector: role.selector,
+        x: rect.x,
+        y: rect.y,
+        w: rect.width,
+        h: rect.height,
+        colors,
+      });
     }
     return out;
-  }, selector);
+  }, STATE_ROLES);
 
 /** One role's region on the viewport, with the colours of its text. */
 interface RoleRegion {
@@ -160,11 +206,16 @@ interface RoleRegion {
  * screenshots per role, and on the software-rendered canvas that cost 200
  * seconds PER STATE. Two screenshots per state is the same measurement.
  */
-const hideRoleText = async (selectors: string[]): Promise<boolean> =>
-  await page.evaluate((sels) => {
+const hideRoleText = async (): Promise<boolean> =>
+  await page.evaluate((roles) => {
+    const visible = (el: Element) => {
+      const cs = getComputedStyle(el);
+      if (cs.display === "none" || cs.visibility === "hidden") return false;
+      return el.getBoundingClientRect().height > 0;
+    };
     const targets: HTMLElement[] = [];
-    for (const sel of sels) {
-      const el = document.querySelector(sel);
+    for (const role of roles) {
+      const el = [...document.querySelectorAll(role.selector)].filter(visible)[0];
       if (el) targets.push(el as HTMLElement);
     }
     if (!targets.length) return false;
@@ -193,7 +244,7 @@ const hideRoleText = async (selectors: string[]): Promise<boolean> =>
       }
     };
     return true;
-  }, selectors);
+  }, STATE_ROLES);
 
 async function measureContrastByPixels(): Promise<Map<string, PixelContrast>> {
   const result = new Map<string, PixelContrast>();
@@ -201,26 +252,21 @@ async function measureContrastByPixels(): Promise<Map<string, PixelContrast>> {
   if (!viewport) return result;
 
   // 1. Where each role is, and what colours its text wears.
-  const regions: RoleRegion[] = [];
-  for (const role of STATE_ROLES) {
-    const locator = page.locator(role.selector).first();
-    if ((await locator.count()) === 0) continue;
-    const box = await locator.boundingBox();
-    if (!box || box.width < 2 || box.height < 2) continue;
-    const x = Math.max(0, box.x);
-    const y = Math.max(0, box.y);
-    const w = Math.min(box.width, viewport.width - x);
-    const h = Math.min(box.height, viewport.height - y);
-    if (w < 2 || h < 2) continue;
-    const colors = await textColorsOf(role.selector);
-    if (!colors.length) continue; // no text on screen -> no contrast to measure
-    regions.push({ id: role.id, selector: role.selector, x, y, w, h, colors });
-  }
-  if (!regions.length) return result;
+  const regions = await collectRoleRegions();
+  const clipped = regions
+    .map((r) => {
+      const x = Math.max(0, r.x);
+      const y = Math.max(0, r.y);
+      const w = Math.min(r.w, viewport.width - x);
+      const h = Math.min(r.h, viewport.height - y);
+      return { ...r, x, y, w, h };
+    })
+    .filter((r) => r.w >= 2 && r.h >= 2 && r.colors.length > 0);
+  if (!clipped.length) return result;
 
   // 2. The whole viewport, twice: with the text, and without it.
   const withText = (await page.screenshot({ scale: "css" })).toString("base64");
-  const hidden = await hideRoleText(regions.map((r) => r.selector));
+  const hidden = await hideRoleText();
   if (!hidden) return result;
   await page.waitForTimeout(80);
   const withoutText = (await page.screenshot({ scale: "css" })).toString("base64");
@@ -354,18 +400,37 @@ async function measureContrastByPixels(): Promise<Map<string, PixelContrast>> {
         }
 
         let worst: { count: number; ratio: number; bg: number[]; text: string; x: number; y: number } | null = null;
+        let sliver: { count: number; ratio: number; bg: number[]; text: string; x: number; y: number } | null = null;
+        const total = [...groups.values()].reduce((n, g) => n + g.count, 0);
+        /**
+         * A surface only counts as "the surface the text is read against" if
+         * it carries a REAL SHARE of the text: at least 10% of the role's
+         * text pixels, and never fewer than two.
+         *
+         * The 10% is not a fudge factor — it sits in the gap the measurement
+         * actually shows. A real surface carries 45–100% of the text (the
+         * index on the selected row: 10 of 22 pixels on one tint). A stray
+         * pixel carries 0.6–2.6% (the top of a glyph grazing a 1px top-light,
+         * a moving meter edge). Nothing lands between 3% and 45%.
+         */
+        const minShare = Math.max(2, total * 0.1);
         for (const group of groups.values()) {
-          if (!worst || group.ratio < worst.ratio) worst = group;
+          if (group.count >= minShare) {
+            if (!worst || group.ratio < worst.ratio) worst = group;
+          } else if (!sliver || group.ratio < sliver.ratio) sliver = group;
         }
 
         const shape = {
           id: region.id,
           textPixels: count,
           surfaces: groups.size,
+          minSurfacePixels: minShare,
           worstBackground: worst ? `rgb(${worst.bg[0]}, ${worst.bg[1]}, ${worst.bg[2]})` : null,
           worstTextColor: worst ? worst.text : null,
           worstSurfacePixels: worst ? worst.count : 0,
           worstPixel: worst ? { x: worst.x, y: worst.y } : null,
+          sliverContrast: sliver ? Math.round(sliver.ratio * 100) / 100 : null,
+          sliverPixels: sliver ? sliver.count : 0,
           textColors: region.colors,
         };
         if (count === 0) out.push({ ...shape, minContrast: null, meanContrast: null });
@@ -410,11 +475,13 @@ async function record(stateId: string, entered: boolean, note?: string) {
   // measurement taken after the transport moved would be measuring another
   // state than the one the snapshot describes.
   if (PIXELS) {
+    const started = Date.now();
     const pixels = await measureContrastByPixels();
     for (const r of readings) {
       const p = pixels.get(r.roleId);
       if (p) r.pixelContrast = p;
     }
+    console.log(`      (pixel measurement: ${Date.now() - started} ms)`);
   }
   const accents = readings.filter((r) => r.hasAccent).map((r) => r.roleId);
   const marked = readings.filter((r) => r.accentCount > 0).map((r) => `${r.roleId}(${r.accentCount})`);
@@ -454,9 +521,13 @@ async function record(stateId: string, entered: boolean, note?: string) {
       const pxCount = r.pixelContrast ? ` ${r.pixelContrast.textPixels}px` : "";
       const surf = r.pixelContrast ? ` s${r.pixelContrast.surfaces}` : "";
       const surfPx = r.pixelContrast ? ` worst${r.pixelContrast.worstSurfacePixels}px` : "";
+      const sliver =
+        r.pixelContrast?.sliverContrast != null
+          ? `  (stray ${r.pixelContrast.sliverContrast}:1 on ${r.pixelContrast.sliverPixels}px)`
+          : "";
       console.log(
         `      ${r.roleId.padEnd(20)} static ${staticText.padStart(9)}   pixel ${pixelText.padStart(6)}${pxCount.padStart(8)}${surf.padStart(4)}${surfPx.padStart(12)}   ` +
-          `floor ${r.contrastFloor}   ${who} on ${bg}${flag}`,
+          `floor ${r.contrastFloor}   ${who} on ${bg}${flag}${sliver}`,
       );
     }
   }

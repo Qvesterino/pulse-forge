@@ -799,6 +799,19 @@ export interface PixelContrast {
   worstSurfacePixels: number;
   /** Where the worst pixel was, relative to the role's box. */
   worstPixel: { x: number; y: number } | null;
+  /**
+   * The worst contrast among the surfaces that carry only a STRAY share of
+   * the text — a glyph grazing a 1px highlight, a moving meter edge.
+   *
+   * Reported, not gated: one pixel is a rendering detail, not a surface the
+   * text is read against. A gate that fired on these would cry wolf on every
+   * run and be switched off within a week.
+   */
+  sliverContrast: number | null;
+  /** How many pixels the sliver covered. */
+  sliverPixels: number;
+  /** The minimum pixel count a surface needs to count as a real surface. */
+  minSurfacePixels: number;
 }
 
 /** A snapshot of one state: the readings plus the state's identity. */

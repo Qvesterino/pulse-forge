@@ -29,6 +29,7 @@ import { planBlindPairGains, recordBlindAbTrial, resetBlindAbTrials, summarizeBl
 import type { Command } from "../commands/types";
 import { routeIntentText, type RoutedIntent } from "../intent/route";
 import { clarifyMessage } from "../intent/clarify-messages";
+import { isDescriptiveStatement } from "../intent/declarative";
 import { routeIsDestructive } from "../intent/route-guard";
 import { presetsForEffect } from "../effects/presets";
 import { planMasterSettings, planReferenceMastering, resolveMasterAssistantStepValue } from "./master-assistant";
@@ -2639,6 +2640,12 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         }
         const modelRoute = await tryModelRoute(trimmed, ctx.getDoc(), deterministic);
         if (modelRoute != null) {
+          // P0 SAFETY: a model route may not override the deterministic
+          // description guard with a mutation.
+          if (isDescriptiveStatement(trimmed) && modelRoute.kind !== "clarify" && modelRoute.kind !== "queryIntent") {
+            logIntentMiningEvent({ prompt: trimmed, outcome: "clarify", reason: "descriptive-not-a-command" });
+            return { text: clarifyMessage("descriptive-not-a-command"), mutated: false };
+          }
           logIntentMiningEvent({ prompt: trimmed, outcome: "model-hit", routeKind: modelRoute.kind });
           const result = executeRoutedIntent(ctx, modelRoute);
           return { ...result, text: `🤖 local model — ${result.text}` };
