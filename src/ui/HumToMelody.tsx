@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { InstrumentTrack, MusicalKey, NoteEvent, Pattern } from "../project-model/types";
-import { BAR_TICKS, PPQ, pitchName } from "../project-model/types";
+import { PATTERN_TICKS, PPQ, pitchName } from "../project-model/types";
 import { useServices } from "./context";
 import { PcmMicRecorder } from "../audio-engine/PcmMicRecorder";
 import { detectHumReAttacks } from "../audio-workers/hum-onsets";
@@ -121,7 +121,7 @@ export function humContourLayout(
   }));
 
   const barLines: number[] = [];
-  for (let tick = BAR_TICKS; tick < len; tick += BAR_TICKS) {
+  for (let tick = PATTERN_TICKS; tick < len; tick += PATTERN_TICKS) {
     barLines.push((tick / len) * options.width);
   }
 
@@ -502,7 +502,7 @@ export function HumToMelodyPanel({
     const lastEnd = Math.max(...notes.map((n) => n.start + n.duration));
     const span = lastEnd - first;
     if (span <= 0) return 1;
-    const period = Math.max(1, Math.ceil(span / BAR_TICKS)) * BAR_TICKS;
+    const period = Math.max(1, Math.ceil(span / PATTERN_TICKS)) * PATTERN_TICKS;
     return Math.max(1, Math.ceil((len - first) / period));
   })();
   const canFill = notes.length > 0 && fillCopies > 1;

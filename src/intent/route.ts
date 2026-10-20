@@ -71,6 +71,7 @@ import { parsePresetIntent, type PresetIntent } from "./preset-intent";
 import { typoCorrections } from "./typo";
 import { parseSectionRequests } from "./sections";
 import { parseSelectedStepIntent, type SelectedStepIntent } from "../assist/selected-step-intent";
+import { isPriorDeltaReference, stripPriorDeltaReference } from "./reference-delta";
 
 /**
  * Mix-intent vocabulary (INTENT_ENGINE.md D1): words that mean "change the
@@ -110,7 +111,7 @@ const HYPOTHETICAL_ACTION_QUESTION =
  * half the user meant, and the product rule is to ask rather than mutate.
  */
 const NEGATED_MUTATION_COMMAND =
-  /(?:^|[,;.!?]\s*|\b(?:and|but|while)\s+)(?:please\s+)?(?:do\s+not|don't|dont|never)\b[\s\S]*?\b(?:touch|touches|touching|leave|leaves|affect|affects|mute|unmute|solo|delete|remove|add|raise|lower|turn|change|set|increase|decrease|move|pan|bypass|apply|insert|undo|redo|start|stop|record)\b/i;
+  /(?:^|[,;.!?]\s*|\b(?:and|but|while)\s+)(?:please\s+)?(?:do\s+not|don't|dont|never)\b[\s\S]*?\b(?:touch|touches|touching|leave|leaves|affect|affects|make|makes|boost|cut|drop|push|pull|dial|adjust|mute|unmute|solo|delete|remove|add|raise|lower|turn|change|set|increase|decrease|move|pan|bypass|apply|insert|undo|redo|start|stop|record)\b/i;
 
 /**
  * The command half of a fenced sentence, as standalone executable prompts.
@@ -507,6 +508,36 @@ function ambiguousSendReturnChoices(text: string, doc: ProjectDocument): IntentC
     });
   }
   return choices;
+}
+
+/**
+ * PRIOR-DELTA DECLINE — "a little less than last time", "half that
+ * adjustment", "do the same on track two".
+ *
+ * These asks need the magnitude (and sometimes the target) of an EARLIER
+ * command. The engine does not persist that ledger yet, so there are exactly
+ * two honest outcomes: clarify, or silently guess. Before this guard the fader
+ * parser silently guessed the phrase's own step ("…a little less than last
+ * time" applied a level-3 step), and the correction/reuse forms fell through
+ * to PATTERN GENERATION, which replaces the song.
+ *
+ * The suggestion is the producer's own sentence with the reference phrase
+ * removed, and only when that sentence actually re-parses as an executable
+ * intent — a chip must never be a guess. Everything else is declared ADVICE.
+ */
+function clarifyPriorDeltaReference(text: string): Extract<RoutedIntent, { kind: "clarify" }> | null {
+  if (!isPriorDeltaReference(text)) return null;
+  const stripped = stripPriorDeltaReference(text);
+  const suggestions: string[] = [];
+  if (stripped && stripped !== text.trim()) {
+    const executable =
+      parseFaderIntent(stripped) !== null ||
+      parseParamIntent(stripped) !== null ||
+      parseEffectIntent(stripped) !== null;
+    if (executable) suggestions.push(stripped);
+  }
+  const advice = ["Name the target and the amount you want", "Say 'undo that' to remove the last change"];
+  return { kind: "clarify", reason: "last-adjustment-reference", suggestions, advice };
 }
 
 function clarifyAmbiguousCommand(text: string, doc: ProjectDocument): RoutedIntent | null {
@@ -963,6 +994,10 @@ export function routeIntentText(
   if (sendIntent) {
     return { kind: "sendIntent", intent: sendIntent };
   }
+  // A reference to an EARLIER adjustment is not resolvable from the document;
+  // decline before any parser can apply the phrase's own step as a guess.
+  const priorDelta = clarifyPriorDeltaReference(text);
+  if (priorDelta) return priorDelta;
   const fader = parseFaderIntent(text);
   if (fader) {
     return { kind: "fader", intent: fader };

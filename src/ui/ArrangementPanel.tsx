@@ -2067,7 +2067,7 @@ export function ArrangementPanel() {
   );
   // Playhead leaves own the 1/8-bar rAF subscription (see ArrPlayheadLine);
   // the panel itself only re-renders when the playhead CROSSES a clip.
-  const currentClipId = useCurrentItemId(clips, services.transport);
+  const currentClipId = useCurrentItemId(clips, services.transport, barUnit);
   /**
    * Timeline extent, in bars, used for the ruler and the grid.
    *
@@ -5142,7 +5142,12 @@ export function ArrangementPanel() {
                 }}
               />
             )}
-            <ArrPlayheadLine transport={services.transport} barWidth={barWidth} className="arr-playhead" />
+            <ArrPlayheadLine
+              transport={services.transport}
+              barWidth={barWidth}
+              className="arr-playhead"
+              barUnitTicks={barUnit}
+            />
           </div>
           <div
             className="arr-chord-lane"
@@ -5476,6 +5481,7 @@ export function ArrangementPanel() {
               transport={services.transport}
               barWidth={barWidth}
               className="arr-playhead arr-playhead-lane"
+              barUnitTicks={barUnit}
             />
             {selection.timeRange && (
               <div
@@ -7113,12 +7119,15 @@ function ArrPlayheadLine({
   transport,
   barWidth,
   className,
+  barUnitTicks,
 }: {
   transport: Transport;
   barWidth: number;
   className: string;
+  /** The document's bar length in ticks (ADR 0056). */
+  barUnitTicks: number;
 }) {
-  const playheadBar = usePlayheadBar(transport);
+  const playheadBar = usePlayheadBar(transport, barUnitTicks);
   return <div className={className} style={{ left: playheadBar * barWidth }} />;
 }
 
@@ -7312,7 +7321,7 @@ function IntensityLane({
 
   // The lane owns its playhead subscription: only this small subtree
   // re-renders at the playhead cadence (quality backlog B4).
-  const playheadBar = usePlayheadBar(transport);
+  const playheadBar = usePlayheadBar(transport, barUnit);
   // Live value readout at the playhead (the number the engine feeds macros).
   const activeClip = clips.find(
     (clip) => playheadBar >= clip.startBar && playheadBar < clip.startBar + clip.lengthBars,

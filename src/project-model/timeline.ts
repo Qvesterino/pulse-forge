@@ -1,5 +1,5 @@
 import type { ProjectDocument } from "./types";
-import { BAR_TICKS } from "./types";
+import { ticksPerBar } from "./schema";
 
 /**
  * ADR 0025/0044/0045 — the unified timeline projection. Clip storage remains
@@ -20,7 +20,12 @@ export interface TimelineItem {
   lengthBars: number;
 }
 
-export function timelineItemsOf(doc: Pick<ProjectDocument, "arrangement">): TimelineItem[] {
+export function timelineItemsOf(doc: Pick<ProjectDocument, "arrangement" | "timeSignature">): TimelineItem[] {
+  // Tick-based clips (MIDI, automation) are projected into the document's
+  // musical bar space (ADR 0056) — a 6/8 bar is three quarter notes, so their
+  // bar positions must be read against the same bar the rest of the timeline
+  // draws.
+  const barUnit = ticksPerBar(doc);
   return [
     ...doc.arrangement.clips.map((c) => ({
       id: c.id,
@@ -37,14 +42,14 @@ export function timelineItemsOf(doc: Pick<ProjectDocument, "arrangement">): Time
     ...(doc.arrangement.midiClips ?? []).map((c) => ({
       id: c.id,
       kind: "midi" as const,
-      startBar: c.startTick / BAR_TICKS,
-      lengthBars: c.lengthTicks / BAR_TICKS,
+      startBar: c.startTick / barUnit,
+      lengthBars: c.lengthTicks / barUnit,
     })),
     ...(doc.arrangement.automationClips ?? []).map((c) => ({
       id: c.id,
       kind: "automation" as const,
-      startBar: c.startTick / BAR_TICKS,
-      lengthBars: c.lengthTicks / BAR_TICKS,
+      startBar: c.startTick / barUnit,
+      lengthBars: c.lengthTicks / barUnit,
     })),
   ];
 }

@@ -7,7 +7,8 @@
  * be copied onto every isolated stem and still sum back to the master.
  */
 import type { ProjectDocument, Track } from "../project-model/types";
-import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
+import { PPQ, STEP_TICKS } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { buildStemProject } from "../rendering/stems";
 import { buildTempoMap, renderProject, type ClipWindow, type ExportQuality } from "../rendering/renderer";
 import { createBextMetadata, encodeWav, sanitizeFilename } from "../rendering/wav";
@@ -300,12 +301,12 @@ function collectSongWindows(doc: ProjectDocument): ClipWindow[] {
     const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
     const pattern = scene && doc.patterns.find((candidate) => candidate.id === scene.patternId);
     if (!scene || !pattern) continue;
-    const base = clip.startBar * BAR_TICKS;
+    const base = clip.startBar * ticksPerBar(doc);
     windows.push({
       pattern,
       base,
       from: base,
-      to: base + clip.lengthBars * BAR_TICKS,
+      to: base + clip.lengthBars * ticksPerBar(doc),
       bpm: scene.bpm ?? doc.bpm,
       sceneId: scene.id,
     });
@@ -351,8 +352,8 @@ function buildSections(doc: ProjectDocument, timeAt: (tick: number) => number): 
     .flatMap((clip, index) => {
       const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
       if (!scene) return [];
-      const startTick = clip.startBar * BAR_TICKS;
-      const endTick = (clip.startBar + clip.lengthBars) * BAR_TICKS;
+      const startTick = clip.startBar * ticksPerBar(doc);
+      const endTick = (clip.startBar + clip.lengthBars) * ticksPerBar(doc);
       return [
         {
           id: `section_${index + 1}`,

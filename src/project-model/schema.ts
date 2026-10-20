@@ -3647,12 +3647,12 @@ export function ticksPerBarFor(sig: TimeSignature): number {
   return PPQ * (4 / sig.denominator) * sig.numerator;
 }
 
-export function ticksPerBar(doc: ProjectDocument): number {
+export function ticksPerBar(doc: Pick<ProjectDocument, "timeSignature">): number {
   return ticksPerBarFor(doc.timeSignature);
 }
 
 /** Ticks per beat (one quarter note in 4/4, one eighth note in 6/8). */
-export function ticksPerBeat(doc: ProjectDocument): number {
+export function ticksPerBeat(doc: Pick<ProjectDocument, "timeSignature">): number {
   return PPQ * (4 / doc.timeSignature.denominator);
 }
 

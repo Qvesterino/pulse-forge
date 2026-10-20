@@ -1,5 +1,5 @@
 import type { NoteEvent, MusicalKey, Pattern, ProjectDocument } from "../project-model/types";
-import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
+import { PATTERN_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { snapToScale } from "../project-model/scales";
 import { writeMidiFile } from "./midiFile";
 import { uid } from "../shared/ids";
@@ -404,7 +404,7 @@ export function tileNotesAcrossPattern(notes: readonly NoteEvent[], patternLengt
   const lastEnd = Math.max(...notes.map((note) => note.start + note.duration));
   const span = lastEnd - first;
   if (span <= 0 || first + span >= patternLengthTicks) return [...notes];
-  const period = Math.max(1, Math.ceil(span / BAR_TICKS)) * BAR_TICKS;
+  const period = Math.max(1, Math.ceil(span / PATTERN_TICKS)) * PATTERN_TICKS;
   const out: NoteEvent[] = [];
   let copy = 0;
   for (let offset = 0; offset < patternLengthTicks; offset += period) {

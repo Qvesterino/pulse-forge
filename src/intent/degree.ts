@@ -46,6 +46,19 @@ export type DegreeLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 export type DegreeName = "minimal" | "verySmall" | "small" | "moderate" | "large" | "veryLarge" | "maximum";
 
+/**
+ * How a band was resolved.
+ *
+ * `single` is the ordinary case: one band word ("slightly", "a lot").
+ * `intensifiedDiminisher` is the composition case — an intensifier placed in
+ * front of a diminisher ATTENUATES it ("very slightly" is weaker than
+ * "slightly"; "extremely barely" is weaker than "barely"). Without this the
+ * stronger-looking "really"/"extremely" token won the scan and the sentence
+ * inverted: "really slightly quieter" resolved to level 6 (a ×0.70 fader move)
+ * while "slightly quieter" resolved to level 3 (×0.92).
+ */
+export type DegreeComposition = "single" | "intensifiedDiminisher";
+
 export interface Degree {
   level: DegreeLevel;
   name: DegreeName;
@@ -53,6 +66,9 @@ export interface Degree {
   value: number;
   /** The exact text that matched, for the inspectable plan / read-back. */
   matched: string;
+  /** How the band was resolved. Absent means `single` (kept optional so every
+   * pre-existing consumer and pinned fixture keeps its exact shape). */
+  composition?: DegreeComposition;
 }
 
 interface DegreeBand {
@@ -83,7 +99,7 @@ const DEGREE_BANDS: readonly DegreeBand[] = [
     name: "minimal",
     value: 0.2,
     words:
-      /\b(?:barely|hardly|scarcely|minimally|takmer|minimalne|almost imperceptibly|nearly imperceptibly|the tiniest bit|tiny bit|a hair's breadth)\b/,
+      /\b(?:barely|hardly|scarcely|minimally|takmer|minimalne|almost imperceptibly|nearly imperceptibly|the tiniest bit|tiny bit|a hair's breadth|as little(?:\s+[a-z-]+){0,3}\s+as possible|as little as you can|as small(?:\s+[a-z-]+){0,3}\s+as possible|as minimally as possible|the least possible)\b/,
   },
   {
     level: 2,
@@ -138,9 +154,15 @@ const DEGREE_BANDS: readonly DegreeBand[] = [
     level: 7,
     name: "maximum",
     // 0.95 — production.ts's "max / fully / completely" band.
+    //
+    // The outcome phrases are DIRECTIONAL at the caller: "as quiet/soft/low as
+    // possible" is a maximum move toward quiet, so a fader parser must read it
+    // as DOWN. "As little as possible" is NOT here: it names the minimum
+    // magnitude, which is band 1 ("turn the bass up as little as possible" is
+    // a barely-up move, not a maximum-up one).
     value: 0.95,
     words:
-      /\b(?:max(?:imal|imum)?|fully|totally|completely|complete|plne|upln|uplne|naplno|extrem\w*|as far as possible|as much as possible|to the limit|all the way|nast maximum|maximalne)\b/,
+      /\b(?:max(?:imal|imum)?|fully|totally|completely|complete|plne|upln|uplne|naplno|extrem\w*|as far as possible|as much(?:\s+[a-z-]+){0,3}\s+as possible|as much as you can|as loud(?:\s+[a-z-]+){0,3}\s+as possible|as loudly as possible|as quiet(?:\s+[a-z-]+){0,3}\s+as possible|as quietly as possible|as quiet as you can|as soft(?:\s+[a-z-]+){0,3}\s+as possible|as low(?:\s+[a-z-]+){0,3}\s+as possible|as far down as possible|as (?:dry|wet|short|long|dark|bright|warm|cold)(?:\s+[a-z-]+){0,3}\s+as possible|to the limit|to the minimum|to the max|all the way|nast maximum|maximalne)\b/,
   },
 ];
 
@@ -164,6 +186,72 @@ const SOFTENER_BEFORE_TOO_MUCH =
   /\b(?:slightly|a bit|a little|a touch|a tad|trochu|mierne|jemne|barely|naputok)\s+too\s+much\b/;
 
 /**
+ * COMPOSITION — an intensifier in front of a diminisher.
+ *
+ * English composition is not additive here. "very slightly" is WEAKER than
+ * "slightly"; "extremely slightly" is weaker still. The band scan alone cannot
+ * see this: it compares distances, and "extremely" (band 7) sits exactly where
+ * "slightly" does, so the tie/no-anchor scan let the stronger token win and a
+ * polite ask became a maximum one (measured: "really slightly quieter" → ×0.70
+ * instead of ×0.92+).
+ *
+ * The exception is "quite a bit", which is an idiom meaning MORE than a bit —
+ * it must fall through to the ordinary scan (band 5, "quite"). Likewise
+ * "pretty much", "a little bit" with no leading intensifier, and "too much"
+ * (handled by the softener above).
+ */
+const DIMINISHING_INTENSIFIER =
+  /\b(very|really|extremely|incredibly|insanely|super|so|quite|rather|pretty|fairly|truly|seriously)\s+(?:(?:just|only)\s+)?(?:a\s+)?(?:tiny\s+|little\s+)?(barely|hardly|scarcely|minimally|slightly|subtle|bit|little|touch|tad|hair|jot|smidge)\b/;
+
+const DIMINISHER_LEVELS: ReadonlyArray<readonly [RegExp, DegreeLevel]> = [
+  [/\b(?:barely|hardly|scarcely|minimally|tiny|tiniest)\b/, 1],
+  [/\b(?:touch|tad|hair|jot|smidge)\b/, 2],
+  [/\b(?:slightly|subtle|bit|little)\b/, 3],
+];
+
+function diminisherLevel(token: string): DegreeLevel {
+  for (const [pattern, level] of DIMINISHER_LEVELS) {
+    if (pattern.test(token)) return level;
+  }
+  return 3;
+}
+
+/**
+ * Resolve an "intensifier + diminisher" phrase to its composed band, or null
+ * when the text has no such phrase (the ordinary scan then owns it).
+ *
+ * `anchor` follows the same contract as {@link parseDegree}: the phrase only
+ * composes when it sits near the concept being qualified, so "very slightly
+ * deeper bass, much punchier drums" does not attenuate the drums.
+ */
+export function parseDegreeComposition(text: string, anchor?: number): Degree | null {
+  const lower = deaccentLower(text);
+  if (/\bquite\s+(?:a\s+)?(?:bit|little|few)\b/.test(lower)) return null;
+  const hit = DIMINISHING_INTENSIFIER.exec(lower);
+  if (!hit) return null;
+  if (anchor !== undefined) {
+    const target = deaccentLower(text.slice(0, Math.max(0, anchor))).length - 1;
+    const start = hit.index;
+    const end = hit.index + hit[0].length;
+    if (end < target - 48 || start > target + 48) return null;
+  }
+  const base = diminisherLevel(hit[2] ?? "");
+  // "extremely/incredibly/insanely slightly" is one rung below "very slightly";
+  // the floor is band 1, where the scale saturates (documented, not hidden).
+  const steps = /^(?:extremely|incredibly|insanely)$/i.test(hit[1] ?? "") ? 2 : 1;
+  const level = Math.max(1, base - steps) as DegreeLevel;
+  const band = DEGREE_BANDS.find((candidate) => candidate.level === level);
+  if (!band) return null;
+  return {
+    level,
+    name: band.name,
+    value: band.value,
+    matched: hit[0].trim(),
+    composition: "intensifiedDiminisher",
+  };
+}
+
+/**
  * Resolve the degree named in `text`.
  *
  * `anchor` is an optional index into `text` (a concept/param match position).
@@ -180,6 +268,11 @@ const SOFTENER_BEFORE_TOO_MUCH =
  */
 export function parseDegree(text: string, anchor?: number): Degree | null {
   const lower = deaccentLower(text);
+  // Composition wins before the softener: "very slightly too much" is the
+  // attenuation of "slightly too much", not a level-3 phrase with a stray
+  // intensifier.
+  const composed = parseDegreeComposition(text, anchor);
+  if (composed) return composed;
   const soft = SOFTENER_BEFORE_TOO_MUCH.exec(lower);
   if (soft) {
     const band = DEGREE_BANDS.find((b) => b.words.test(soft[0]));
@@ -331,6 +424,30 @@ export function degreeToEffectAmount(level: DegreeLevel): EffectAmountName {
   if (level <= 3) return "subtle";
   if (level <= 5) return "medium";
   return "huge";
+}
+
+/**
+ * PRODUCTION AMOUNT — the 0..1 scale production.ts has always used.
+ *
+ * production.ts keeps its own concept-window scoping, but its numeric ladder is
+ * now expressed through this map (and through `parseDegreeComposition`), so a
+ * composed phrase resolves to the same number in every layer. The anchors are
+ * the pre-existing ladder values; 0.27 is the level-2 rung "a touch / a tad"
+ * already had in the shared taxonomy (and now has here too — "a touch" is
+ * weaker than "slightly", which the old 0.35 bucket could not express).
+ */
+const PRODUCTION_AMOUNTS: Record<DegreeLevel, number> = {
+  1: 0.2,
+  2: 0.27,
+  3: 0.35,
+  4: 0.55,
+  5: 0.7,
+  6: 0.85,
+  7: 0.95,
+};
+
+export function degreeToProductionAmount(level: DegreeLevel): number {
+  return PRODUCTION_AMOUNTS[level];
 }
 
 /** Every band's words, for the taxonomy documentation test. */

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
+import { STEP_TICKS } from "../project-model/types";
 import type { Transport } from "../transport/Transport";
 import type { ProjectDocument } from "../project-model/types";
 import { getActivePattern } from "../project-model/types";
@@ -70,13 +70,13 @@ export function usePlayheadStep(transport: Transport, doc: ProjectDocument): num
  * Fractional bar position of the transport (0 = bar 1). Throttled to bar
  * resolution changes so the arrangement ruler playhead stays cheap.
  */
-export function usePlayheadBar(transport: Transport): number {
+export function usePlayheadBar(transport: Transport, barUnitTicks: number): number {
   const [bar, setBar] = useState(0);
   const rafId = useId();
   useEffect(() => {
     let last = -1;
     registerRaf(rafId, () => {
-      const next = Math.max(0, transport.position) / BAR_TICKS;
+      const next = Math.max(0, transport.position) / barUnitTicks;
       const quantized = Math.floor(next * 8) / 8;
       if (quantized !== last) {
         last = quantized;
@@ -84,7 +84,7 @@ export function usePlayheadBar(transport: Transport): number {
       }
     });
     return () => unregisterRaf(rafId);
-  }, [transport, rafId]);
+  }, [transport, rafId, barUnitTicks]);
   return bar;
 }
 
@@ -98,6 +98,7 @@ export function usePlayheadBar(transport: Transport): number {
 export function useCurrentItemId<T extends { id: string; startBar: number; lengthBars: number }>(
   items: T[],
   transport: Transport,
+  barUnitTicks: number,
 ): string | null {
   const [currentId, setCurrentId] = useState<string | null>(null);
   const rafId = useId();
@@ -106,7 +107,7 @@ export function useCurrentItemId<T extends { id: string; startBar: number; lengt
   useEffect(() => {
     let last: string | null = null;
     registerRaf(rafId, () => {
-      const bar = Math.max(0, transport.position) / BAR_TICKS;
+      const bar = Math.max(0, transport.position) / barUnitTicks;
       const hit = itemsRef.current.find((item) => bar >= item.startBar && bar < item.startBar + item.lengthBars);
       const id = hit?.id ?? null;
       if (id !== last) {
@@ -115,6 +116,6 @@ export function useCurrentItemId<T extends { id: string; startBar: number; lengt
       }
     });
     return () => unregisterRaf(rafId);
-  }, [transport, rafId]);
+  }, [transport, rafId, barUnitTicks]);
   return currentId;
 }

@@ -17,7 +17,12 @@ import type {
   SceneRole,
 } from "../project-model/types";
 import { BAR_TICKS } from "../project-model/types";
-import { clampArrangementTransitionType, MAX_ARRANGEMENT_CLIP_BARS, sceneRoleOf } from "../project-model/schema";
+import {
+  clampArrangementTransitionType,
+  MAX_ARRANGEMENT_CLIP_BARS,
+  sceneRoleOf,
+  ticksPerBar,
+} from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
 import { markerClampPatch, unlinkMarkersOfClips } from "./docOps";
@@ -293,11 +298,17 @@ export function autoArrangeSong(doc: ProjectDocument, targetBars?: number): Comm
   // restores the pre-arrange markers verbatim.
   const unlinked = unlinkMarkersOfClips(doc.markers, new Set(doc.arrangement.clips.map((c) => c.id)));
   const mergedMarkers = [...(unlinked ?? doc.markers), ...markers];
-  const clamp = markerClampPatch(mergedMarkers, doc.scenes, doc.patterns, {
-    ...doc.arrangement,
-    clips,
-    transitions,
-  });
+  const clamp = markerClampPatch(
+    mergedMarkers,
+    doc.scenes,
+    doc.patterns,
+    {
+      ...doc.arrangement,
+      clips,
+      transitions,
+    },
+    ticksPerBar(doc),
+  );
   const clipGroups = clipGroupsWithoutIds(
     doc.arrangement.clipGroups,
     doc.arrangement.clips.map((clip) => clip.id),

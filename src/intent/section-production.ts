@@ -1,8 +1,8 @@
 import type { Command } from "../commands/types";
 import { addEffect, setBeatManglerSteps, setEffectParam, snapshot, trackEffectsOf } from "../commands/commands";
 import { auditionDoc as makeAuditionDoc } from "./audition";
-import { sceneRoleOf } from "../project-model/schema";
-import { BAR_TICKS, STEP_TICKS, type ProjectDocument, type SceneRole } from "../project-model/types";
+import { sceneRoleOf, ticksPerBar } from "../project-model/schema";
+import { STEP_TICKS, type ProjectDocument, type SceneRole } from "../project-model/types";
 import { uid } from "../shared/ids";
 import { planProductionActions, type ProductionAction, type ProductionIntent } from "./production";
 
@@ -101,7 +101,7 @@ export function reviseSectionProduction(
     const clipBars = (doc.arrangement.clips ?? [])
       .filter((clip) => clip.sceneId === scene.id)
       .reduce((max, clip) => Math.max(max, clip.lengthBars), 0);
-    const sectionEndTick = Math.max(pattern.stepCount * STEP_TICKS, clipBars * BAR_TICKS, STEP_TICKS);
+    const sectionEndTick = Math.max(pattern.stepCount * STEP_TICKS, clipBars * ticksPerBar(doc), STEP_TICKS);
 
     for (const action of actions) {
       const reusable = isolatedEffectForScene(next, action, scene.id);

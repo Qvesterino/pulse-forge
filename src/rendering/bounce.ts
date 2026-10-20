@@ -79,9 +79,9 @@ export function buildBounceZoneDoc(
     const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
     const pattern = scene ? doc.patterns.find((candidate) => candidate.id === scene.patternId) : undefined;
     const phaseOffsetTicks = pattern
-      ? patternPhaseOffsetAtTick(clip, pattern, overlapStart)
+      ? patternPhaseOffsetAtTick(clip, pattern, overlapStart, barUnit)
       : (clip.phaseOffsetTicks ?? 0);
-    const sceneOffsetTicks = sceneOffsetAtTick(clip, overlapStart);
+    const sceneOffsetTicks = sceneOffsetAtTick(clip, overlapStart, barUnit);
     const { phaseOffsetTicks: _oldPhaseOffset, sceneOffsetTicks: _oldSceneOffset, ...clipWithoutPhase } = clip;
     zoneRelativeClips.push({
       ...clipWithoutPhase,

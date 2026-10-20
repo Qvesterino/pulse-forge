@@ -5,7 +5,7 @@ import {
   type Pattern,
   type ProjectDocument,
 } from "../project-model/types";
-import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
+import { STEP_TICKS } from "../project-model/types";
 
 /**
  * Document-shape helpers shared by more than one command domain.
@@ -94,12 +94,14 @@ export function markerClampPatch(
   scenes: ProjectDocument["scenes"],
   patterns: ProjectDocument["patterns"],
   arrangement: ProjectDocument["arrangement"],
+  /** The document's bar length in ticks (ADR 0056) — clip ends are metrical. */
+  barUnitTicks: number,
 ): Partial<ProjectDocument> {
   if (markers.length === 0) return {};
   const totalProjectTicks = Math.max(
     0,
     ...scenes.map((sc) => (patterns.find((p) => p.id === sc.patternId)?.stepCount ?? 0) * STEP_TICKS),
-    ...(arrangement.clips?.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS) ?? []),
+    ...(arrangement.clips?.map((c) => (c.startBar + c.lengthBars) * barUnitTicks) ?? []),
     ...(arrangement.midiClips?.map((c) => c.startTick + c.lengthTicks) ?? []),
     ...(arrangement.automationClips?.map((c) => c.startTick + c.lengthTicks) ?? []),
   );

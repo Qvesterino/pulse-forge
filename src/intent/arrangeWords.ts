@@ -1,11 +1,11 @@
 import type { Command } from "../commands/types";
 import {
-  BAR_TICKS,
   type ArrangementClip,
   type ProjectDocument,
   type Scene,
   type SceneRole,
 } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { effectWordIn } from "./mix";
 import {
   addArrangementClip,
@@ -885,12 +885,13 @@ export function selectedTimeRangeIntentError(
   if (!Number.isInteger(fromTick) || !Number.isInteger(toTick) || fromTick < 0 || toTick <= fromTick) {
     return "Select a valid, non-empty time range.";
   }
-  if (fromTick % BAR_TICKS !== 0 || toTick % BAR_TICKS !== 0) {
+  const barUnit = ticksPerBar(doc);
+  if (fromTick % barUnit !== 0 || toTick % barUnit !== 0) {
     return "Producer range edits currently require a selection aligned to complete bars.";
   }
 
-  const fromBar = fromTick / BAR_TICKS;
-  const toBar = toTick / BAR_TICKS;
+  const fromBar = fromTick / barUnit;
+  const toBar = toTick / barUnit;
   const audioClips = doc.arrangement.audioClips ?? [];
   if (
     operation === "duplicate" &&

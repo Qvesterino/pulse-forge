@@ -23,6 +23,7 @@ import { EFFECT_META, clampEffectParam, defaultParamsOf } from "../effects/defin
 import type { Command } from "../commands/types";
 import { effectWordIn, applyMixIntent, TARGET_WORDS, EFFECT_KNOB, type MixDecision, type MixTarget } from "./mix";
 import { calibrateParamFraction, degreeToEffectAmount, parseDegree, type Degree } from "./degree";
+import { isPriorDeltaReference } from "./reference-delta";
 
 export type ParamRole = "mix" | "time" | "tone" | "drive" | "width";
 
@@ -190,6 +191,9 @@ function toParamUnit(value: number, unit: UnitValue["unit"], param: ParamDef): n
  */
 export function parseParamIntent(text: string): ParamIntent | null {
   const lower = deaccentLower(text);
+  // "a little less than last time" must not resolve here (or anywhere) with a
+  // guessed fraction — the prior delta is not available to this layer.
+  if (isPriorDeltaReference(lower)) return null;
 
   // The role must be named; the effect comes from an effect noun or the
   // role's implied effect ("wider stereo" implies the widener).
@@ -269,12 +273,13 @@ export function parseParamIntent(text: string): ParamIntent | null {
   // mix role's direction: without them "suchšia saturácia" fell through to
   // the default MORE and turned the wet UP (caught by the real-audio
   // readback — the measured RMS went +268 % on a drier ask).
-  const drier = /\bsuch|\bdrier\b|\bdry\b/.test(lower);
-  const wetter = /\bmokr|\bwetter\b/.test(lower);
+  const drier = /\bsuch|\bdrier\b|\bdry\b|\bas dry as (?:possible|you can)\b/.test(lower);
+  const wetter = /\bmokr|\bwetter\b|\bas wet as (?:possible|you can)\b/.test(lower);
   const less =
-    (/\bless\b|\bmenej|\bzniz|\bdown\b|\bdole\b|\bspomals/.test(lower) && role !== "time") ||
+    (/\bless\b|\bmenej|\bzniz|\bdown\b|\bdole\b|\bspomals|\bas little\b|\bas small as possible\b/.test(lower) &&
+      role !== "time") ||
     (role === "mix" && drier && !wetter);
-  const timeShorter = /\bkrats|\bshort/.test(lower);
+  const timeShorter = /\bkrats|\bshort|\bas short as (?:possible|you can)\b/.test(lower);
   const direction: "more" | "less" = role === "time" ? (timeShorter ? "less" : "more") : less ? "less" : "more";
   // Graduated degree, resolved through the shared taxonomy (intent/degree.ts).
   // The regexes this replaced (`subtle|trochu|malic` / `huge|a lot|obri|vela|
@@ -385,11 +390,71 @@ export function trackIdsForMixTarget(doc: Parameters<typeof applyMixIntent>[0], 
 }
 
 /**
+ * INSPECTABLE MOVE — the arithmetic the command is about to perform.
+ *
+ * The degree ladder only says "small"; the delta a producer can check is a
+ * fraction of THIS param's range, applied in the param's OWN domain. For a
+ * log-tapered knob (delay.time, reverb.tone) the fraction is geometric, so the
+ * same "slightly" is a constant RATIO; for a linear knob (reverb.decay) it is a
+ * constant ADDITIVE step. Exposing that lets the plan/read-back say what will
+ * happen, and lets tests prove the two domains do not get swapped.
+ */
+export interface ParamMovePreview {
+  effectType: EffectType;
+  paramId: string;
+  mode: ParamIntent["mode"];
+  domain: "log" | "linear";
+  /** Fraction of the param's range in its own domain; null for an absolute set. */
+  fraction: number | null;
+  current: number;
+  /** Destination before the ParamDef clamp. */
+  proposed: number;
+  /** What the command actually writes (clamped). */
+  next: number;
+}
+
+export function paramMovePreview(intent: ParamIntent, current: number): ParamMovePreview | null {
+  const param = paramDefOf(intent.effectType, intent.paramId);
+  if (!param) return null;
+  const domain: ParamMovePreview["domain"] = param.taper === "log" ? "log" : "linear";
+  if (intent.mode === "set") {
+    const proposed = intent.value ?? current;
+    return {
+      effectType: intent.effectType,
+      paramId: intent.paramId,
+      mode: "set",
+      domain,
+      fraction: null,
+      current,
+      proposed,
+      next: clampEffectParam(intent.effectType, intent.paramId, proposed),
+    };
+  }
+  const fraction =
+    intent.percent != null
+      ? intent.percent / 100
+      : intent.degree
+        ? calibrateParamFraction(intent.degree.value)
+        : AMOUNT_FRACTION[intent.amount];
+  const step = intent.mode === "less" ? -fraction : fraction;
+  const proposed = valueAtFraction(param, fractionOf(param, current) + step);
+  return {
+    effectType: intent.effectType,
+    paramId: intent.paramId,
+    mode: intent.mode,
+    domain,
+    fraction,
+    current,
+    proposed,
+    next: clampEffectParam(intent.effectType, intent.paramId, proposed),
+  };
+}
+
+/**
  * Apply a param intent → ONE undoable snapshot (the mix layer's apply owns
  * add-if-missing, clamping and idempotency; "changed nothing" propagates).
  */
 export function applyParamIntent(doc: Parameters<typeof applyMixIntent>[0], intent: ParamIntent): Command {
-  const param = paramDefOf(intent.effectType, intent.paramId);
   const decisions: MixDecision[] = [];
   for (const target of intent.targets) {
     // One decision per target: resolve the CURRENT value on that target's
@@ -399,20 +464,10 @@ export function applyParamIntent(doc: Parameters<typeof applyMixIntent>[0], inte
       trackIds.length > 0
         ? currentParamValue(doc, trackIds[0] as string, intent.effectType, intent.paramId)
         : (defaultParamsOf(intent.effectType)[intent.paramId] ?? 0);
-    let next: number;
-    if (intent.mode === "set") {
-      next = intent.value ?? current;
-    } else {
-      const fraction =
-        intent.percent != null
-          ? intent.percent / 100
-          : intent.degree
-            ? calibrateParamFraction(intent.degree.value)
-            : AMOUNT_FRACTION[intent.amount];
-      const step = intent.mode === "less" ? -fraction : fraction;
-      next = param ? valueAtFraction(param, fractionOf(param, current) + step) : current;
-    }
-    const clamped = clampEffectParam(intent.effectType, intent.paramId, next);
+    const preview = paramMovePreview(intent, current);
+    const clamped = preview
+      ? preview.next
+      : clampEffectParam(intent.effectType, intent.paramId, intent.value ?? current);
     decisions.push({ target, effectType: intent.effectType, params: { [intent.paramId]: clamped } });
   }
   return applyMixIntent(doc, {
@@ -441,7 +496,11 @@ export function paramReadback(
     const afterValue = afterInstance?.params[intent.paramId];
     if (afterValue === undefined || beforeValue === afterValue) continue;
     const fmt = (value: number): string =>
-      param?.unit ? `${value.toFixed(param.max <= 1 ? 2 : 0)} ${param.unit}` : `${value.toFixed(2)}`;
+      param?.format
+        ? param.format(value)
+        : param?.unit
+          ? `${param.max <= 1 ? value.toFixed(2) : value.toFixed(1)} ${param.unit}`
+          : value.toFixed(2);
     entries.push(`${target} ${intent.paramId} ${fmt(beforeValue)}→${fmt(afterValue)}`);
   }
   if (entries.length === 0) return "";

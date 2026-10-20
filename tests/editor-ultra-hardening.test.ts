@@ -632,11 +632,13 @@ describe("splitArrangementClipAtTick (ADR 0025 — scene split)", () => {
     const pattern = next.patterns.find((p) => p.id === next.scenes.find((s) => s.id === right.sceneId)!.patternId)!;
     // Pattern phase at the seam is IDENTICAL before and after the split —
     // the right fragment plays exactly what the original played there.
-    expect(patternPhaseOffsetAtTick(right, pattern, splitTick)).toBe(
-      patternPhaseOffsetAtTick(original, pattern, splitTick),
+    expect(patternPhaseOffsetAtTick(right, pattern, splitTick, BAR_TICKS)).toBe(
+      patternPhaseOffsetAtTick(original, pattern, splitTick, BAR_TICKS),
     );
     // Scene automation time does not loop — it keeps elapsing.
-    expect(sceneOffsetAtTick(right, splitTick)).toBe(sceneOffsetAtTick(original, splitTick));
+    expect(sceneOffsetAtTick(right, splitTick, BAR_TICKS)).toBe(
+      sceneOffsetAtTick(original, splitTick, BAR_TICKS),
+    );
     expect(right.loop).toBe(true);
   });
 

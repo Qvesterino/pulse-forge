@@ -19,9 +19,9 @@ import {
   createPatternForDoc,
   normalizeProject,
   MAX_ARRANGEMENT_CLIP_TICKS,
+  ticksPerBar,
 } from "../project-model/schema";
 import {
-  BAR_TICKS,
   PPQ,
   STEP_TICKS,
   type AutomationTarget,
@@ -489,6 +489,9 @@ export function arrangementToMidi(doc: ProjectDocument): Uint8Array {
   const notesByTrack = new Map<string, MidiExportTrack["notes"]>();
   const controllersByTrack = new Map<string, MidiControllerEvent[]>();
   const channelsByTrack = new Map<string, number>();
+  // The document's bar length in ticks (ADR 0056) — the MIDI export walks the
+  // arrangement in musical bars, and the pattern base is anchored to them.
+  const barUnit = ticksPerBar(doc);
   let totalNotes = 0;
   let nextChannel = 0;
   for (const track of doc.tracks) {
@@ -523,11 +526,11 @@ export function arrangementToMidi(doc: ProjectDocument): Uint8Array {
     const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
     const pattern = scene ? doc.patterns.find((candidate) => candidate.id === scene.patternId) : undefined;
     if (!scene || !pattern) continue;
-    const from = clip.startBar * BAR_TICKS;
-    const to = from + clip.lengthBars * BAR_TICKS;
-    const base = patternBaseTickForClip(clip);
-    for (let cursor = from; cursor < to; cursor += BAR_TICKS) {
-      const windowEnd = Math.min(to, cursor + BAR_TICKS);
+    const from = clip.startBar * barUnit;
+    const to = from + clip.lengthBars * barUnit;
+    const base = patternBaseTickForClip(clip, barUnit);
+    for (let cursor = from; cursor < to; cursor += barUnit) {
+      const windowEnd = Math.min(to, cursor + barUnit);
       for (const hit of drumHitsInWindow(doc, pattern, base, cursor, windowEnd)) {
         appendNote(hit.trackId, gmNoteForPad(hit.pad), hit.tick, Math.min(to, hit.tick + STEP_TICKS), hit.velocity);
       }
@@ -547,8 +550,8 @@ export function arrangementToMidi(doc: ProjectDocument): Uint8Array {
   }
   for (const clip of doc.arrangement.midiClips ?? []) {
     const clipEnd = clip.startTick + clip.lengthTicks;
-    for (let cursor = clip.startTick; cursor < clipEnd; cursor += BAR_TICKS) {
-      for (const event of midiClipEventsInWindow(doc, clip, cursor, Math.min(clipEnd, cursor + BAR_TICKS))) {
+    for (let cursor = clip.startTick; cursor < clipEnd; cursor += barUnit) {
+      for (const event of midiClipEventsInWindow(doc, clip, cursor, Math.min(clipEnd, cursor + barUnit))) {
         appendNote(
           event.trackId,
           event.note.pitch,

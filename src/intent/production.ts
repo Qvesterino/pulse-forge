@@ -1,5 +1,6 @@
 import type { EffectType, ProjectDocument } from "../project-model/types";
 import { hashString } from "../shared/rng";
+import { degreeToProductionAmount, parseDegreeComposition } from "./degree";
 
 /**
  * Production Intent layer (KYX_PRODUCTION_INTENT_ENGINE_MASTER.md §4.3, §19,
@@ -443,7 +444,12 @@ const DEGREE_LADDER: readonly (readonly [RegExp, number])[] = [
   // --- the default band ---
   [/\b(?:somewhat|fairly|moderately|reasonably|rather|stredne|primerane|pomerne)\b/, 0.55],
   // --- attenuated ---
-  [/\b(?:slightly|a bit|a little|a touch|a tad|trochu|mierne|jemne|napútok)\b/, 0.35],
+  // Level 2 is its own rung: "a touch / a tad" is weaker than "slightly".
+  // Before this, production.ts bucketed them with "a bit" at 0.35 while the
+  // shared taxonomy already called them level 2 — the same sentence had two
+  // magnitudes depending on which layer owned it.
+  [/\b(?:a touch|a tad|a hair|a jot|a smidge|just a tiny bit)\b/, 0.27],
+  [/\b(?:slightly|a bit|a little|trochu|mierne|jemne|napútok)\b/, 0.35],
   [/\b(?:barely|hardly|scarcely|minimally|takmer|minimálne)\b/, 0.2],
 ];
 
@@ -478,6 +484,17 @@ function detectAmount(text: string, conceptIndex: number, conceptLength: number)
   const start = Math.max(0, conceptIndex - 48);
   const end = Math.min(text.length, conceptIndex + conceptLength + 48);
   const window = text.slice(start, end);
+  // COMPOSITION first: "very slightly" / "really slightly" is weaker than
+  // "slightly". The ladder below would otherwise read the intensifier or the
+  // diminisher depending on distance ("really slightly" resolved to 0.35 here
+  // but to 0.85 in the shared taxonomy). Only the composed phrase is consumed;
+  // every ordinary degree word still goes through the ladder unchanged.
+  const composed = parseDegreeComposition(window, conceptIndex - start);
+  if (composed) return degreeToProductionAmount(composed.level);
+  // "Quite a bit" is an idiom meaning MORE than a bit, not an attenuated
+  // "a bit". The nearest-match ladder would otherwise pick the nearer "a bit"
+  // (0.35) and contradict the shared taxonomy's "quite" (level 5).
+  if (/\bquite\s+(?:a\s+)?bit\b/.test(window)) return degreeToProductionAmount(5);
   // Treat a softener before "too much" as one phrase, not as two competing
   // degree tokens; otherwise the nearer "much" masks the user's attenuation.
   if (/\b(?:slightly|a bit|a little|a touch|a tad|trochu|mierne|jemne|napútok)\s+too\s+much\b/.test(window)) {

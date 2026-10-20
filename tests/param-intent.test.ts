@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { parseParamIntent, applyParamIntent, paramReadback, type ParamIntent } from "../src/intent/param-intent";
+import {
+  parseParamIntent,
+  applyParamIntent,
+  paramMovePreview,
+  paramReadback,
+  type ParamIntent,
+} from "../src/intent/param-intent";
 import { routeIntentText } from "../src/intent/route";
 import { testDoc } from "./fixtures/doc";
 
@@ -91,6 +97,52 @@ describe("parseParamIntent — domain-true interpolation", () => {
     const half = mustParse("set delay time to 50 % na leade");
     expect(half.value).toBeGreaterThan(200);
     expect(half.value).toBeLessThan(300);
+  });
+
+  it("a relative degree is a constant RATIO on a log knob", () => {
+    const intent = mustParse("slightly longer delay time on the lead");
+    const quiet = paramMovePreview(intent, 100)!;
+    const loud = paramMovePreview(intent, 1000)!;
+    expect(quiet.domain).toBe("log");
+    expect(quiet.fraction).toBeCloseTo(0.08, 6);
+    // Same fraction, same ratio — no matter where the knob currently sits.
+    expect(quiet.next / 100).toBeCloseTo(loud.next / 1000, 6);
+    expect(quiet.next).toBeGreaterThan(100);
+  });
+
+  it("a relative degree is a constant ADDITIVE step on a linear knob", () => {
+    const intent = mustParse("slightly longer reverb decay on the lead");
+    const low = paramMovePreview(intent, 1)!;
+    const high = paramMovePreview(intent, 10)!;
+    expect(low.domain).toBe("linear");
+    expect(low.next - 1).toBeCloseTo(high.next - 10, 6);
+    expect(high.next).toBeLessThanOrEqual(20);
+  });
+
+  it("the inferred fraction is monotone in the spoken degree", () => {
+    const fraction = (text: string): number => paramMovePreview(mustParse(text), 1.8)!.fraction as number;
+    const barely = fraction("barely longer reverb decay on the lead");
+    const little = fraction("a little longer reverb decay on the lead");
+    const much = fraction("much longer reverb decay on the lead");
+    expect(little).toBeGreaterThan(barely);
+    expect(much).toBeGreaterThan(little);
+  });
+
+  it("an absolute set reports the destination and the clamp, not a fraction", () => {
+    const intent = mustParse("set reverb decay na 19 s na 808");
+    const preview = paramMovePreview(intent, 1.8)!;
+    expect(preview.mode).toBe("set");
+    expect(preview.fraction).toBeNull();
+    expect(preview.proposed).toBe(19);
+    expect(preview.next).toBe(19);
+  });
+
+  it("'as little reverb as possible' is the minimal param fraction", () => {
+    // reverb.mix is the PRIMARY knob, so the param layer declines that exact
+    // ask; the same phrase on a non-primary knob (saturation mix) is a param.
+    const intent = mustParse("as little dry saturation as possible on the lead");
+    expect(intent.mode).toBe("less");
+    expect(intent.degree?.level).toBe(1);
   });
 });
 

@@ -392,8 +392,8 @@ function collectClipWindows(doc: ProjectDocument, mode: PlayMode, arrangementOnl
       const pattern = doc.patterns.find((p) => p.id === scene.patternId);
       if (!pattern) continue;
       const visibleStart = clip.startBar * barUnit;
-      const sceneBase = sceneBaseTickForClip(clip);
-      const base = patternBaseTickForClip(clip);
+      const sceneBase = sceneBaseTickForClip(clip, barUnit);
+      const base = patternBaseTickForClip(clip, barUnit);
       windows.push({
         pattern,
         base,

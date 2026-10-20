@@ -324,7 +324,7 @@ export function conformInstrumentClipsToChordTrack(doc: ProjectDocument, clipIds
     const scene = doc.scenes.find((s) => s.id === clip.sceneId);
     const patternId = scene?.patternId;
     if (!patternId || anchorBaseByPattern.has(patternId)) continue;
-    anchorBaseByPattern.set(patternId, patternBaseTickForClip(clip));
+    anchorBaseByPattern.set(patternId, patternBaseTickForClip(clip, ticksPerBar(doc)));
   }
   if (anchorBaseByPattern.size === 0) throw new Error("The selected clips have no melodic content to conform");
 

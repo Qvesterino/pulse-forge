@@ -1,0 +1,55 @@
+feat(ui): declare what each interaction state should look like — and gate it
+
+Phase B and C of the state matrix (docs/STUDIO-STATE-MATRIX.md §7b).
+
+THE DECLARATION
+---------------
+STATE_EXPECTATIONS in src/ui/stateMatrix.ts: 17 rows, each with a `because`.
+One declaration, two readers — the gate and, next, the Diagnostics panel's
+STATE tab — so they cannot drift apart.
+
+Only SHELL RULES are declared. Two things it deliberately does NOT say:
+
+  "the track header turns green while playing" — FALSE as a shell rule. It
+  turns green when THAT TRACK IS SOUNDING; a silent track stays amber. The
+  phase A run measured green because the House template's drum track was
+  sounding. Declaring it would pin a project fact to a shell rule.
+
+  "the playhead rings exactly 32 cells" — FALSE as a number. The grid animates
+  box-shadow, so the column the playhead left keeps a fading ring: 31 in one
+  run, 32 in the next, 16 in another. Ranges, not counts, where the CSS
+  transitions.
+
+THE GATE
+--------
+scripts/state-matrix.mts --gate asserts the declaration against the recording
+it just took. A RULE WHOSE STATE WAS NOT ENTERED IS A FAILURE, not a skipped
+check — a gate that quietly skips what it could not reach is exactly the
+failure this project keeps paying for. The gate runs BEFORE the unreached-state
+exit so one run reports both.
+
+FALSIFIED: with the chromatic test disabled (return s >= 0.35 -> false), 7 of
+the 17 expectations fail and the gate exits 1. Both failure modes fired in
+that one run — "an expectation failed" AND "the state was not entered, so the
+rule was never checked". Reverted, all 17 hold and the gate exits 0.
+
+THE FIXED FOCUS STATE
+---------------------
+Measured: Tab does not move focus in this app (activeElement stays BODY), and
+element.focus() only arms :focus-visible once the last interaction was the
+keyboard. The recorder now presses Shift for the keyboard modality, focuses a
+transport control, and ASSERTS that a ring was painted — because the ring is
+an OUTLINE, invisible to a shadow-only reader. It also drops the focus before
+the next state, so the ring does not leak into the recording snapshot.
+
+ONE COMMAND
+-----------
+scripts/gate.mjs (npm run gate) runs all four gates against `vite preview` over
+dist — a frozen build, not the live dev server. On a shared working tree the
+dev server measures somebody else's in-flight work: twice in one afternoon a
+parallel session's duplicated `const MIN_BPM` (a PARSE error) took down every
+gate at once and the failure looked like a harness error.
+
+Tests: tests/state-matrix-declaration.test.ts (13) pins the declaration in
+BOTH directions and the pure evaluator; tests/state-matrix-color.test.ts (10)
+pins the colour reader against real computed strings.

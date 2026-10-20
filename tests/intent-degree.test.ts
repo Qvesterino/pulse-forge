@@ -11,6 +11,8 @@ import {
 import { applyFaderIntent, parseFaderIntent } from "../src/intent/conversation";
 import { effectKnobDelta, parseEffectIntent } from "../src/intent/mix";
 import { parseParamIntent } from "../src/intent/param-intent";
+import { parseProductionIntent } from "../src/intent/production";
+import { routeIntentText } from "../src/intent/route";
 import { testDoc } from "./fixtures/doc";
 
 /**
@@ -345,6 +347,8 @@ describe("false-positive guard — descriptive sentences stay descriptive", () =
     "the kick is a little bit clicky but that is fine",
     "this is very slightly brighter",
     "the mix is somewhat louder than the reference",
+    "the bass is as quiet as possible",
+    "the bass is much less loud than the lead",
   ];
 
   it("none of them resolve to a mutating intent", () => {
@@ -362,5 +366,206 @@ describe("false-positive guard — descriptive sentences stay descriptive", () =
     expect(parseFaderIntent("turn down the master barely")?.degree?.level).toBe(1);
     expect(parseEffectIntent("slightly more reverb on the pads")?.degree?.level).toBe(3);
     expect(parseEffectIntent("much more reverb on the pads")?.degree?.level).toBe(6);
+  });
+
+  it("a negated command does not mutate, even when the verb is 'make'", () => {
+    // The fence's mutation-verb allowlist did not contain "make", so
+    // "don't make the bass quieter" was invisible to it and the fader moved.
+    for (const text of [
+      "don't make the bass quieter",
+      "do not make the master louder",
+      "never make the kick quieter",
+    ]) {
+      const route = routeIntentText(text, testDoc());
+      expect(route.kind, text).toBe("clarify");
+    }
+  });
+});
+
+/**
+ * COMPOSITION — audit 2026-10-20 (semantic precision).
+ *
+ * "Very slightly" is weaker than "slightly", and "extremely slightly" weaker
+ * still. The band scan alone compared distances, so an intensifier sitting
+ * near the concept could win outright: measured "really slightly quieter" →
+ * level 6 (×0.70 fader) and "extremely slightly quieter" → level 7 (×0.50),
+ * i.e. a polite ask became a maximum one. The shared composition rule fixes
+ * the direction of composition without renumbering any single word.
+ */
+describe("composition — an intensifier in front of a diminisher attenuates", () => {
+  it("very/really/extremely slightly are all weaker than slightly", () => {
+    const slightly = parseDegree("make it slightly quieter")!;
+    const very = parseDegree("make it very slightly quieter")!;
+    const really = parseDegree("make it really slightly quieter")!;
+    const extremely = parseDegree("make it extremely slightly quieter")!;
+    expect(very.level).toBe(2);
+    expect(really.level).toBe(2);
+    expect(extremely.level).toBe(1);
+    expect(very.value).toBeLessThan(slightly.value);
+    expect(really.value).toBeLessThan(slightly.value);
+    expect(extremely.value).toBeLessThan(very.value);
+    expect(really.composition).toBe("intensifiedDiminisher");
+    expect(really.matched).toContain("really slightly");
+  });
+
+  it("the composed phrase is ordered through the real fader command", () => {
+    const doc = testDoc();
+    const gainFor = (text: string): number => {
+      const intent = parseFaderIntent(text);
+      expect(intent, text).not.toBeNull();
+      return applyFaderIntent(doc, intent!)!.execute(doc).master?.masterGain ?? Number.NaN;
+    };
+    const slightly = gainFor("turn down the master slightly");
+    const verySlightly = gainFor("turn down the master very slightly");
+    const extremelySlightly = gainFor("turn down the master extremely slightly");
+    // Less reduction = a higher remaining gain.
+    expect(verySlightly).toBeGreaterThan(slightly);
+    expect(extremelySlightly).toBeGreaterThan(verySlightly);
+  });
+
+  it("production.ts resolves the same composed phrases to the same rung", () => {
+    const amount = (text: string): number | undefined =>
+      parseProductionIntent(text)?.goals.find((goal) => goal.concept === "deeper")?.amount;
+    expect(amount("make the bass slightly deeper")).toBe(0.35);
+    expect(amount("make the bass very slightly deeper")).toBe(0.27);
+    expect(amount("make the bass really slightly deeper")).toBe(0.27);
+    expect(amount("make the bass extremely slightly deeper")).toBe(0.2);
+    // A touch is the same level-2 rung in every layer, not a level-3 one.
+    expect(amount("make the bass a touch deeper")).toBe(0.27);
+  });
+
+  it("'quite a bit' is an idiom for MORE, not an attenuated 'a bit'", () => {
+    expect(parseDegree("make the bass quite a bit quieter")!.level).toBe(5);
+    const amount = parseProductionIntent("make the bass quite a bit deeper")!.goals.find(
+      (goal) => goal.concept === "deeper",
+    )!.amount;
+    expect(amount).toBe(0.7);
+  });
+});
+
+/**
+ * OUTCOME AND MAGNITUDE PHRASES — audit 2026-10-20.
+ *
+ * "As little as possible" names the SMALLEST magnitude, so it is level 1 even
+ * when the direction is up ("turn it up as little as possible"). "As quiet as
+ * possible" names a maximum move toward quiet, so it is level 7 AND a down
+ * direction. Conflating the two is how a "barely up" ask became an up step.
+ */
+describe("outcome and magnitude phrases", () => {
+  it("'as little as possible' is the minimal magnitude in either direction", () => {
+    const up = parseFaderIntent("turn the bass up as little as possible")!;
+    expect(up.direction).toBe("up");
+    expect(up.degree?.level).toBe(1);
+    const little = parseEffectIntent("use as little reverb as possible on the pads")!;
+    expect(little.direction).toBe("less");
+    expect(little.degree?.level).toBe(1);
+    // Ordered against the neighbouring rung: minimal < a little.
+    expect(Math.abs(effectKnobDelta(little))).toBeLessThan(
+      Math.abs(effectKnobDelta(parseEffectIntent("a little less reverb on the pads")!)),
+    );
+  });
+
+  it("'as quiet/completely quiet as possible' is a maximum DOWN move", () => {
+    for (const text of [
+      "make the bass as quiet as possible",
+      "make the bass as quiet as you can",
+      "make the bass completely quiet",
+    ]) {
+      const intent = parseFaderIntent(text);
+      expect(intent, text).not.toBeNull();
+      expect(intent!.direction, text).toBe("down");
+      expect(intent!.degree?.level, text).toBe(7);
+    }
+  });
+});
+
+/**
+ * COMPARATIVE AND LESS-MAGNITUDE COVERAGE — audit 2026-10-20.
+ *
+ * "much less bass" matched no direction stem and fell through to generation;
+ * "even less reverb on the bass" matched the FADER comparative and moved the
+ * bass fader instead of the reverb (the fader parser ran first and had no
+ * effect-noun guard). Both are fixed at the parser, with negative controls for
+ * the descriptive forms.
+ */
+describe("comparative and less-magnitude phrases", () => {
+  const doc = testDoc();
+  const gainAfter = (text: string): number => {
+    const intent = parseFaderIntent(text);
+    expect(intent, text).not.toBeNull();
+    return applyFaderIntent(doc, intent!)!.execute(doc).master?.masterGain ?? Number.NaN;
+  };
+
+  it("much/way/a little less resolve DOWN with the named magnitude", () => {
+    expect(parseFaderIntent("make the bass much less loud")?.direction).toBe("down");
+    expect(parseFaderIntent("make the bass much less loud")?.degree?.level).toBe(6);
+    expect(parseFaderIntent("make the bass way less")?.direction).toBe("down");
+    expect(parseFaderIntent("make the bass a little less")?.degree?.level).toBe(3);
+    expect(parseFaderIntent("less bass")?.direction).toBe("down");
+  });
+
+  it("the magnitude is ordered end to end through the command", () => {
+    const plain = gainAfter("turn down the master less loud");
+    const much = gainAfter("turn down the master much less loud");
+    expect(plain).toBeGreaterThan(much);
+  });
+
+  it("an effect noun after 'less' belongs to the effect layer, not the fader", () => {
+    const doc2 = testDoc();
+    for (const text of [
+      "even less reverb on the bass",
+      "much less reverb on the bass",
+      "a little less delay on the bass",
+    ]) {
+      expect(parseFaderIntent(text), `fader must decline: "${text}"`).toBeNull();
+      const effect = parseEffectIntent(text);
+      expect(effect, `effect must claim: "${text}"`).not.toBeNull();
+      expect(effect!.direction, text).toBe("less");
+      expect(routeIntentText(text, doc2).kind, text).toBe("effectIntent");
+    }
+  });
+
+  it("descriptive comparisons do not mutate", () => {
+    expect(parseFaderIntent("the bass is less loud than the lead")).toBeNull();
+    expect(parseFaderIntent("the bass is much less loud than the lead")).toBeNull();
+  });
+});
+
+/**
+ * PRIOR-DELTA REFERENCES — audit 2026-10-20.
+ *
+ * The engine has no durable adjustment ledger. These asks therefore get a
+ * focused clarification; the one thing they may never do is apply the phrase's
+ * own step as if it were the remembered delta, or fall through to generation
+ * (which replaces the song). A repeat ("a little less again") is a phrasing of
+ * the same intent and still applies.
+ */
+describe("prior-delta references are declined, never guessed", () => {
+  it("'a little less than last time' does not silently apply a level-3 step", () => {
+    const text = "turn the bass down a little less than last time";
+    expect(parseFaderIntent(text)).toBeNull();
+    const route = routeIntentText(text, testDoc());
+    expect(route.kind).toBe("clarify");
+    if (route.kind !== "clarify") return;
+    expect(route.reason).toBe("last-adjustment-reference");
+    // The offered chip is the producer's own sentence minus the reference, and
+    // it must be executable — never a guess.
+    expect(route.suggestions.length).toBeGreaterThan(0);
+    for (const suggestion of route.suggestions) expect(parseFaderIntent(suggestion)).not.toBeNull();
+  });
+
+  it("correction and reuse forms clarify instead of generating a new beat", () => {
+    for (const text of ["no, half that adjustment", "do the same on track two"]) {
+      const route = routeIntentText(text, testDoc());
+      expect(route.kind, text).toBe("clarify");
+      if (route.kind === "clarify") expect(route.reason, text).toBe("last-adjustment-reference");
+    }
+  });
+
+  it("a plain repeat is still a repeat, not a memory lookup", () => {
+    const again = parseFaderIntent("make it a little less again on the bass");
+    expect(again).not.toBeNull();
+    expect(again!.direction).toBe("down");
+    expect(again!.degree?.level).toBe(3);
   });
 });

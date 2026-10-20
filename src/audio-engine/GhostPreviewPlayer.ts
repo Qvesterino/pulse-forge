@@ -2,7 +2,8 @@ import { Transport } from "../transport/Transport";
 import type { AudioEngine } from "./AudioEngine";
 import type { SampleBank } from "../sample-library/factory";
 import type { DrumPad, Pattern, ProjectDocument } from "../project-model/types";
-import { BAR_TICKS, PPQ } from "../project-model/types";
+import { PPQ } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { drumHitsInWindow } from "../project-model/groove";
 import { noteEventsInWindow } from "../project-model/events";
 
@@ -22,7 +23,12 @@ export class GhostPreviewPlayer {
   private ghostDoc: ProjectDocument | null = null;
   private pattern: Pattern | null = null;
   private playing = false;
-  private loopTicks = BAR_TICKS;
+  /**
+   * Loop length in ticks. Set by `play()` from the live document's bar length
+   * (ADR 0056) — 0 means "not started yet" and the scheduler treats it as a
+   * no-op rather than guessing a 4/4 bar.
+   */
+  private loopTicks = 0;
 
   constructor(
     private engine: AudioEngine,
@@ -66,7 +72,7 @@ export class GhostPreviewPlayer {
       activePatternId: pattern.id,
     } as ProjectDocument;
     this.pattern = pattern;
-    this.loopTicks = (opts?.loopBars ?? 1) * BAR_TICKS;
+    this.loopTicks = (opts?.loopBars ?? 1) * ticksPerBar(live);
     // Ghost transport runs off engine.currentTime
     this.transport = new Transport({ now: () => this.engine.currentTime }, live.bpm);
     this.transport.seek(0);
@@ -102,6 +108,7 @@ export class GhostPreviewPlayer {
 
   private tick(): void {
     if (!this.playing || !this.ghostDoc || !this.pattern || !this.transport) return;
+    if (this.loopTicks <= 0) return;
     const now = this.engine.currentTime;
     const horizon = now + 0.12;
     // Handle loop wrap

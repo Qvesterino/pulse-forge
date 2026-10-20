@@ -670,8 +670,8 @@ export function consolidateTimeRangeToAudio(
         id: hasLeftRemainder ? uid("clip") : clip.id,
         startBar: overlapEndBar,
         lengthBars: clipEndBar - overlapEndBar,
-        phaseOffsetTicks: patternPhaseOffsetAtTick(clip, pattern, rightStartTick),
-        sceneOffsetTicks: sceneOffsetAtTick(clip, rightStartTick),
+        phaseOffsetTicks: patternPhaseOffsetAtTick(clip, pattern, rightStartTick, barUnit),
+        sceneOffsetTicks: sceneOffsetAtTick(clip, rightStartTick, barUnit),
       });
     }
 

@@ -55,7 +55,7 @@ export function LivePadsPanel() {
   const services = useServices();
   const doc = useDoc();
   const capture = useArrangementCapture();
-  const playheadBar = usePlayheadBar(services.transport);
+  const playheadBar = usePlayheadBar(services.transport, ticksPerBar(doc));
   const [userAssets, setUserAssets] = useState<UserSampleAsset[]>(EMPTY_USER_ASSETS);
   const [nameDraft, setNameDraft] = useState("");
   const [message, setMessage] = useState("");

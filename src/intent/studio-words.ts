@@ -399,7 +399,7 @@ function undoStepsFromTail(tail: string): number | null {
   const remainder = normalized
     .replace(NUMBER_TOKEN, " ")
     .replace(
-      /\b(?:the|my|that|this|what|i|most|recent|recently|latest|last|previous|project|session|by|performed|revision\w*|operation\w*|posledn\w*|predchadzajuc\w*|action|akci\w*|change\w*|edit\w*|tweak\w*|step|steps|krok\w*|zmen\w*|to|o|spat|znova)\b/gi,
+      /\b(?:the|my|that|this|what|i|most|recent|recently|latest|last|previous|project|session|by|performed|revision\w*|operation\w*|posledn\w*|predchadzajuc\w*|action|akci\w*|change\w*|edit\w*|adjustment\w*|tweak\w*|step|steps|krok\w*|zmen\w*|uprav\w*|to|o|spat|znova)\b/gi,
       " ",
     )
     .replace(/\s+/g, " ")

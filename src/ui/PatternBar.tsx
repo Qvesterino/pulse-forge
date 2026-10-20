@@ -61,7 +61,11 @@ export function PatternBar({
   const groove = grooveOf(doc);
   // Clip-crossing granularity: the launcher bar highlights the current
   // scene, which changes only when the playhead crosses a clip.
-  const currentClipId = useCurrentItemId(services.store.doc.arrangement.clips, services.transport);
+  const currentClipId = useCurrentItemId(
+    services.store.doc.arrangement.clips,
+    services.transport,
+    ticksPerBar(services.store.doc),
+  );
   const chipsRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const dragRef = useRef<DragState | null>(null);

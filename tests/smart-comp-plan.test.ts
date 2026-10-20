@@ -202,10 +202,19 @@ describe("applySmartComp — one undoable command for the whole plan", () => {
   });
 
   it("converts bar segments to the ticks the comp command speaks", () => {
-    expect(segmentTicks({ sourceTakeId: "t", startBar: 2, endBar: 4 })).toEqual({
+    expect(segmentTicks({ sourceTakeId: "t", startBar: 2, endBar: 4 }, BAR_TICKS)).toEqual({
       startTick: 2 * BAR_TICKS,
       endTick: 4 * BAR_TICKS,
     });
+  });
+
+  it("reads the segment in the document's meter (ADR 0056)", () => {
+    // A 6/8 bar is 1440 ticks — the comp command's range must be metrical.
+    expect(segmentTicks({ sourceTakeId: "t", startBar: 2, endBar: 4 }, 1440)).toEqual({
+      startTick: 2880,
+      endTick: 5760,
+    });
+    expect(segmentTicks({ sourceTakeId: "t", startBar: 2, endBar: 4 }, BAR_TICKS).startTick).toBe(2 * BAR_TICKS);
   });
 
   it("refuses to apply an empty plan rather than dispatching a no-op", () => {

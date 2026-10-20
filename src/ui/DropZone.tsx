@@ -2,7 +2,6 @@ import { useCallback, useRef, useState } from "react";
 import { useServices } from "./context";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
 import { addAudioClip, fittedLoopPlacement, type FittedLoopPlacement } from "../commands/commands";
-import { BAR_TICKS } from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
 import { importAudioFile } from "./sample-import";
 import {
@@ -52,7 +51,7 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
         setError("No track in project");
         return;
       }
-      const atBar = Math.max(0, Math.floor(services.transport.position / BAR_TICKS));
+      const atBar = Math.max(0, Math.floor(services.transport.position / ticksPerBar(doc)));
       services.store.execute(
         addAudioClip(doc, track.id, fitOffer.asset.id, atBar, fitOffer.placement.lengthBars, {
           gain: 1,

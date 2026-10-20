@@ -41,6 +41,22 @@ describe("parseExactIntent", () => {
     });
   });
 
+  it("absolute gain with the word 'gain': 'set the bass gain to -9 dB'", () => {
+    expect(parseExactIntent("set the bass gain to -9 dB")!.ops).toContainEqual({
+      kind: "gainDbAbsolute",
+      target: "bass",
+      absDb: -9,
+    });
+  });
+
+  it("delta gain with the word 'gain': 'lower the bass gain by 2 dB'", () => {
+    expect(parseExactIntent("lower the bass gain by 2 dB")!.ops).toContainEqual({
+      kind: "gainDb",
+      target: "bass",
+      deltaDb: -2,
+    });
+  });
+
   it("absolute gain SK: 'basa na -6 db' → gainDbAbsolute -6", () => {
     expect(parseExactIntent("basa na -6 db")!.ops).toContainEqual({
       kind: "gainDbAbsolute",

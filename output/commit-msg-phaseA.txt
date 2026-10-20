@@ -1,0 +1,50 @@
+feat(ui): make the state matrix measurable — one boot, a colour reader that sees oklab, a focus ring
+
+Phase A of the state matrix (docs/STUDIO-STATE-MATRIX.md): the recorder drives
+the studio through six interaction states and writes down what each one
+actually looks like. It declares nothing — the output is data, and phase B
+decides what each state SHOULD be from this data, with a human in the loop.
+
+THE FIRST VERSION MEASURED NOTHING
+---------------------------------
+It booted four times over, once per script: `button.pb-template-start` was
+renamed away in an app commit and took all four gates down with it. Now one
+helper owns the boot (scripts/lib/studio-boot.mjs) and refuses to measure a
+boot that did not settle.
+
+It sampled the FIRST matching element of every role. For a role whose state
+sits on ONE of many — 256 step cells, 16 channel rows — that makes every
+state look identical: six states, byte-identical readings. The reader now
+reports the DISTRIBUTION over the visible set, so a state whose signal is
+spread over a set can be seen at all.
+
+Its colour test asked "do the channels differ by more than 5/255?", which
+PASSES the neutral dark bevel every `.track-tab` carries — half the shell
+claimed a coloured accent that is not there. HSL saturation separates them.
+
+It could not parse `color(srgb …)` — SPACE separated, not comma separated —
+nor `oklab(…)`, 192 colours in this shell including the playhead's own ring.
+Every surface whose mark came from a `color-mix()` read as UNMARKED while it
+visibly glowed. OKLab is converted to sRGB so all four formats compare in one
+space.
+
+It read no outlines, and this shell's focus ring IS an outline. The "focus"
+recording was pixel-identical to "idle" — a state that measured nothing.
+
+Its "selected" state clicked the ALREADY selected row, so the selection never
+moved and the state was indistinguishable from idle. It now clicks an
+unselected row and proves the mark moved.
+
+WHAT IT RECORDS NOW
+-------------------
+6/6 states entered, each with its own signature: the playhead column (16
+cells), the moved selection ("1Kick Deep" -> "2Kick Punch"), the green playing
+header, the hovered transport button, the focus outline, the armed record
+button, and the advancing position readout.
+
+A state that could not be entered is reported as NOT ENTERED (exit 1); a
+harness failure is exit 2 and is explicitly not a result.
+
+tests/state-matrix-color.test.ts pins the colour reader against real computed
+strings, because three measurement runs in a row each produced a clean,
+plausible, wrong number.

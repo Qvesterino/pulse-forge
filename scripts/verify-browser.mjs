@@ -8,10 +8,29 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // verify loop, a stuck dev server). StrictPort keeps behaviour deterministic.
 const PORT = Number(process.env.PORT) || 5199;
 
+/**
+ * Boot budget for the app page.
+ *
+ * The first navigation transforms the WHOLE module graph of a browser-first
+ * DAW through Vite, and the page cannot fire domcontentloaded until that
+ * graph has loaded. Measured on this machine (2026-10-24): 198.4 s on an
+ * otherwise idle box — the old 120 s budget could not reach the checks at
+ * all, so the gate failed on `page.goto` before a single check ran. A gate
+ * that never reaches its assertions tells you nothing; the budget has to fit
+ * the app it boots.
+ */
+const BOOT_TIMEOUT_MS = 300_000;
+
 const server = await createServer({
   root,
   logLevel: "error",
-  server: { port: PORT, host: "127.0.0.1", strictPort: true },
+  // No HMR, no file watcher: a concurrent agent's save would otherwise turn
+  // into a Vite FULL PAGE RELOAD, which destroys the execution context the
+  // checks are running in ("Execution context was destroyed") — the retry
+  // loop then re-runs the whole 20-minute suite and can still lose. The
+  // plugin-audit runner already boots its server the same way. The checks
+  // read the modules once, at import time, so nothing needs to hot-reload.
+  server: { port: PORT, host: "127.0.0.1", strictPort: true, hmr: false, watch: null },
 });
 await server.listen();
 
@@ -67,7 +86,7 @@ try {
   // which interrupts the navigation — retry like the evaluate below.
   for (let attempt = 1; ; attempt++) {
     try {
-      await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+      await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: BOOT_TIMEOUT_MS });
       break;
     } catch (error) {
       if (attempt >= 3 || !/interrupted|context was destroyed|navigation/i.test(String(error))) throw error;
@@ -97,7 +116,7 @@ try {
       // which interrupts the navigation — retry like the evaluate below.
       for (let attempt = 1; ; attempt++) {
         try {
-          await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+          await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: BOOT_TIMEOUT_MS });
           break;
         } catch (error) {
           if (attempt >= 3 || !/interrupted|context was destroyed|navigation/i.test(String(error))) throw error;
@@ -122,7 +141,7 @@ try {
     if (msg.type() === "error") appErrors.push(msg.text());
   });
   appPage.on("pageerror", (err) => appErrors.push(String(err)));
-  await appPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+  await appPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: BOOT_TIMEOUT_MS });
   // Mount-retry: under concurrent load (a second dev session transforming
   // files), the first lazy-chunk load can outrun the 30 s selector window.
   // One reload gives Vite a second chance without masking real mount errors
@@ -135,7 +154,7 @@ try {
     await appPage.waitForSelector(".landing, .project-browser", { timeout: 60_000 }).catch(async () => {
       if (mountRetry) throw new Error("mount retry also timed out");
       mountRetry = true;
-      await appPage.reload({ waitUntil: "domcontentloaded", timeout: 120_000 });
+      await appPage.reload({ waitUntil: "domcontentloaded", timeout: BOOT_TIMEOUT_MS });
       return appPage.waitForSelector(".landing, .project-browser", { timeout: 60_000 });
     });
     const onLanding = await appPage.$(".landing");
@@ -250,7 +269,7 @@ try {
       );
     }
     await appPage.waitForTimeout(1200); // allow autosave to settle before reload
-    await appPage.reload({ waitUntil: "domcontentloaded", timeout: 120_000 });
+    await appPage.reload({ waitUntil: "domcontentloaded", timeout: BOOT_TIMEOUT_MS });
     await appPage.waitForSelector(".project-browser", { timeout: 30_000 });
     const continueCard = appPage.locator(".pb-continue-card").first();
     if (await continueCard.count()) {
@@ -421,8 +440,8 @@ try {
     const ROOM = `e2e-${Date.now().toString(36)}`;
     const pageA = await browser.newPage();
     const pageB = await browser.newPage();
-    await pageA.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 120_000 });
-    await pageB.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+    await pageA.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: BOOT_TIMEOUT_MS });
+    await pageB.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: BOOT_TIMEOUT_MS });
     await setup(pageA, ROOM, "Producer A");
     await setup(pageB, ROOM, "Producer B");
     await new Promise((r) => setTimeout(r, 1000));
@@ -489,7 +508,7 @@ try {
 
     const room = `jam-${Date.now().toString(36)}`;
     const probe = await browser.newPage();
-    await probe.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+    await probe.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: BOOT_TIMEOUT_MS });
     const jamCode = await probe.evaluate(async () => {
       const { encodeShareCode } = await import("/src/export/shareCode.ts");
       const { createProjectFromTemplate } = await import("/src/project-model/templates.ts");
@@ -643,7 +662,7 @@ try {
     const touchContext = await browser.newContext({ hasTouch: true, viewport: { width: 900, height: 800 } });
     const touchPage = await touchContext.newPage();
     await touchPage.addInitScript(SKIP_FLAGS);
-    await touchPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+    await touchPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: BOOT_TIMEOUT_MS });
     await touchPage.waitForSelector(".project-browser", { timeout: 15_000 });
     await touchPage.locator('.pb-template:has-text("HOUSE")').first().click();
     await touchPage.waitForSelector(".sequencer", { timeout: 15_000 });
@@ -664,7 +683,7 @@ try {
     const plugContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     const plugPage = await plugContext.newPage();
     await plugPage.addInitScript(SKIP_FLAGS);
-    await plugPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+    await plugPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: BOOT_TIMEOUT_MS });
     await plugPage.waitForSelector(".project-browser", { timeout: 15_000 });
     await plugPage.locator('.pb-template:has-text("HOUSE")').first().click();
     await plugPage.waitForSelector(".sequencer", { timeout: 15_000 });
@@ -768,7 +787,7 @@ try {
     // Reload is the user-facing persistence boundary: source, both snapshots
     // and the enabled morph control must survive the project rehydrate.
     await plugPage.waitForTimeout(1200); // allow command autosave to settle before reload
-    await plugPage.reload({ waitUntil: "domcontentloaded", timeout: 120_000 });
+    await plugPage.reload({ waitUntil: "domcontentloaded", timeout: BOOT_TIMEOUT_MS });
     await plugPage.waitForSelector(".project-browser", { timeout: 30_000 });
     const continueCard = plugPage.locator(".pb-continue-card").first();
     if (await continueCard.count()) {

@@ -21,6 +21,7 @@ import type { Command } from "../commands/types";
 import { setBpm, setMasterConfig, setPadParams, setReturnGain, setTrackParams, snapshot } from "../commands/commands";
 import { parsePercent, parsePercentAllowingZero } from "./percent";
 import { calibrateFaderFactor, degreeToFaderAmount, parseDegree, type Degree } from "./degree";
+import { isPriorDeltaReference } from "./reference-delta";
 import { stripReferenceClauses } from "./reference-clause";
 import { intentCarriesGenreSignal } from "./exact";
 import { inferPadRole } from "../ai/pad-roles";
@@ -108,6 +109,34 @@ const FADER_DOWN =
  */
 const FADER_DOWN_COMPARATIVE =
   /\b(?:even|still)\s+(?:less|fewer|menej)\b|\beste\s+menej\b|\b(?:less|fewer|menej)\b.{0,16}\b(?:again|once more|znova|znovu)\b/;
+
+/**
+ * INTENSIFIED COMPARATIVE ("much less", "way less", "a little less").
+ *
+ * The bare comparative above only knew "even/still"; "much less bass" matched
+ * no direction stem at all and fell through to generation. Deliberately NOT a
+ * bare "less": that word is also the primary effect-reduction verb ("less
+ * reverb on the pads"), and the fader runs first — see `effectNounNamed`.
+ */
+const FADER_DOWN_INTENSIFIED = /\b(?:much|way|far|a\s+lot|lots|a\s+little|a\s+bit|slightly)\s+(?:less|fewer|menej)\b/;
+
+/** "less loud/volume/level" — a fader magnitude phrase, not an effect ask. */
+const FADER_DOWN_LESS_MAGNITUDE = /\bless\s+(?:loud|volume|level|noise|noisy)\b/;
+
+/** "less bass", "less kick" — the noun itself names the fader. */
+const FADER_DOWN_LESS_NOUN =
+  /\bless\s+(?:bass|808|drums?|kick|snare|claps?|hats?|lead|vocals?|vox|chords?|keys?|master)\b/;
+
+/**
+ * OUTCOME asks ("as quiet as possible", "completely quiet"). They name the
+ * destination, not a comparative, so they need an imperative verb: the
+ * descriptive "the bass is as quiet as possible" must stay a description.
+ */
+const FADER_DOWN_OUTCOME =
+  /\b(?:as quiet|as quietly|as soft|as low|as far down)\s+as\s+(?:possible|you can)\b|\b(?:completely|totally|fully|entirely)\s+quiet\b/;
+
+const IMPERATIVE_VERB =
+  /\b(?:make|turn|bring|push|pull|drop|lower|raise|lift|take|cut|boost|reduce|increase|decrease|give|set|keep|leave|apply|add|use|want|need|ease)\b/;
 /**
  * COMPARATIVE UP ("even more", "still more") — the mirror of
  * FADER_DOWN_COMPARATIVE. Bare "more" is deliberately NOT an up stem (it is
@@ -203,6 +232,11 @@ export function parseFaderIntent(text: string): FaderIntent | null {
   // treated as another fader target.
   const finalClause = lower.split(";").at(-1)?.trim();
   const commandText = finalClause && (FADER_DOWN.test(finalClause) || FADER_UP.test(finalClause)) ? finalClause : lower;
+  // A reference to an EARLIER adjustment ("a little less than last time",
+  // "half that adjustment") needs the previous delta, which this layer does
+  // not have. Decline rather than silently applying the phrase's own step —
+  // the router turns this into a focused clarification.
+  if (isPriorDeltaReference(lower)) return null;
   // LUFS is an absolute mastering target, never a track-fader unit. Let the
   // loudness route handle it instead of applying a generic relative nudge.
   if (/\blufs\b/.test(lower)) return null;
@@ -227,7 +261,24 @@ export function parseFaderIntent(text: string): FaderIntent | null {
     // "set X to N%" without a fader family → not a fader ask (tempo/effects
     // own their own set-modes); fall through below for the relative stems.
   }
-  const down = FADER_DOWN.test(commandText) || FADER_DOWN_COMPARATIVE.test(commandText);
+  // Comparative and magnitude phrases. An EFFECT NOUN after "less" belongs to
+  // the effect layer ("even less reverb on the bass" was measured routing to a
+  // BASS FADER because the bare comparative ran before the effect parser), so
+  // the fader only claims them when no effect was named.
+  const effectNounNamed = EFFECT_NOUN.test(lower);
+  const imperative = IMPERATIVE_VERB.test(lower);
+  const bareLessFragment = /^\s*less\b/.test(commandText);
+  const comparativeDown = FADER_DOWN_COMPARATIVE.test(commandText) && !effectNounNamed;
+  const intensifiedDown =
+    FADER_DOWN_INTENSIFIED.test(commandText) &&
+    !effectNounNamed &&
+    (imperative ||
+      /^\s*(?:much|way|far|a\s+lot|lots|a\s+little|a\s+bit|slightly)\s+(?:less|fewer|menej)\b/.test(commandText));
+  const magnitudeDown =
+    (FADER_DOWN_LESS_MAGNITUDE.test(commandText) || FADER_DOWN_LESS_NOUN.test(commandText)) &&
+    (imperative || bareLessFragment);
+  const outcomeDown = FADER_DOWN_OUTCOME.test(commandText) && imperative;
+  const down = FADER_DOWN.test(commandText) || comparativeDown || intensifiedDown || magnitudeDown || outcomeDown;
   const up =
     !down && (FADER_UP.test(commandText) || FADER_UP_COMPARATIVE.test(commandText) || SK_ADD_FADER.test(commandText));
   if (!down && !up) return null;
@@ -374,7 +425,19 @@ export function declinedFaderClarification(text: string): DeclinedIntentClarific
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")} `;
-  const down = FADER_DOWN.test(lower);
+  // The clarification must recognise every direction stem the parser does,
+  // including the comparative/magnitude/outcome families added above — a
+  // "less volume" fragment used to reach generation because only FADER_DOWN
+  // was probed here.
+  const effectNounNamed = EFFECT_NOUN.test(lower);
+  const imperative = IMPERATIVE_VERB.test(lower);
+  const down =
+    FADER_DOWN.test(lower) ||
+    (FADER_DOWN_COMPARATIVE.test(lower) && !effectNounNamed) ||
+    (FADER_DOWN_INTENSIFIED.test(lower) && !effectNounNamed) ||
+    ((FADER_DOWN_LESS_MAGNITUDE.test(lower) || FADER_DOWN_LESS_NOUN.test(lower)) &&
+      (imperative || /^\s*less\b/.test(lower))) ||
+    (FADER_DOWN_OUTCOME.test(lower) && imperative);
   const up = FADER_UP.test(lower) || SK_ADD_FADER.test(lower);
   if (!down && !up) return null;
 
@@ -392,7 +455,7 @@ export function declinedFaderClarification(text: string): DeclinedIntentClarific
   const hasTarget =
     FADER_TARGETS.some(([pattern]) => pattern.test(lower)) || FADER_PADS.some(([pattern]) => pattern.test(lower));
   if (hasTarget) return null;
-  const en = /\b(turn|raise|lower|push|bring|dial|louder|quieter)\b/.test(lower);
+  const en = /\b(turn|raise|lower|push|bring|dial|louder|quieter|volume|level|fader|less|more)\b/.test(lower);
   const suggestions = en
     ? down
       ? [

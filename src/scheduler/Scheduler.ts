@@ -986,7 +986,7 @@ export class Scheduler {
           const scene = scenesById.get(clip.sceneId);
           if (scene) {
             activeScene = scene;
-            activeClipStart = sceneBaseTickForClip(clip);
+            activeClipStart = sceneBaseTickForClip(clip, barUnit);
           }
           break;
         }
@@ -1079,7 +1079,7 @@ export class Scheduler {
         const pattern = patternsById.get(scene.patternId);
         if (!pattern) continue;
         const patternTicks = STEP_TICKS * pattern.stepCount;
-        const patternBase = patternBaseTickForClip(clip);
+        const patternBase = patternBaseTickForClip(clip, barUnit);
         this.schedulePatternWindow(
           pattern,
           patternBase,
@@ -1121,7 +1121,7 @@ export class Scheduler {
           const scene = scenesById.get(covering.sceneId);
           const pattern = scene ? patternsById.get(scene.patternId) : undefined;
           const patternTicks = pattern ? STEP_TICKS * pattern.stepCount : STEP_TICKS * 16;
-          automationCtx = { base: patternBaseTickForClip(covering), patternTicks };
+          automationCtx = { base: patternBaseTickForClip(covering, barUnit), patternTicks };
         }
       }
       // Marker firing: queue cues for any marker whose tick falls within the
@@ -1415,7 +1415,7 @@ function sceneIntensityPointsForWindow(
     if (!scene) {
       points.push({ tick: from, value: 0.7 }, { tick: to, value: 0.7 });
     } else {
-      const sceneBase = sceneBaseTickForClip(clip);
+      const sceneBase = sceneBaseTickForClip(clip, barUnitTicks);
       const withScene = scenePerformanceOf(scene) ?? {};
       points.push({ tick: from, value: computeSceneIntensity(scene, sceneBase, from), ...withScene });
       for (const curvePoint of scene.intensityCurve ?? []) {

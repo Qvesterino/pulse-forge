@@ -8,22 +8,38 @@ import type {
   Pattern,
   ProjectDocument,
 } from "./types";
-import { BAR_TICKS, STEP_TICKS } from "./types";
+import { STEP_TICKS } from "./types";
 import { drumHitsInWindow, type DrumHit } from "./groove";
 import { valueAt } from "./automation";
 import { midiPhraseLengthTicks } from "./midiTime";
 import { automationTargetKey, automationTargetsOfClip } from "./targets";
 
+/**
+ * A clip's absolute tick origin.
+ *
+ * `barUnitTicks` is the document's bar length in ticks (ADR 0056): a clip at
+ * musical bar 2 of a 6/8 project starts at tick 2880, not 3840. The unit is a
+ * required argument — a default would keep every pattern phase and scene
+ * offset anchored to the 4/4 grid while the clip itself sits on the metrical
+ * bar, so the pattern would play from the wrong point.
+ */
+
 /** Resolve the absolute tick origin shared by live and offline pattern events. */
-export function patternBaseTickForClip(clip: Pick<ArrangementClip, "startBar" | "phaseOffsetTicks">): number {
+export function patternBaseTickForClip(
+  clip: Pick<ArrangementClip, "startBar" | "phaseOffsetTicks">,
+  barUnitTicks: number,
+): number {
   const phaseOffset = Number.isFinite(clip.phaseOffsetTicks) ? (clip.phaseOffsetTicks ?? 0) : 0;
-  return clip.startBar * BAR_TICKS - phaseOffset;
+  return clip.startBar * barUnitTicks - phaseOffset;
 }
 
 /** Resolve the absolute tick origin for scene-relative automation and intensity. */
-export function sceneBaseTickForClip(clip: Pick<ArrangementClip, "startBar" | "sceneOffsetTicks">): number {
+export function sceneBaseTickForClip(
+  clip: Pick<ArrangementClip, "startBar" | "sceneOffsetTicks">,
+  barUnitTicks: number,
+): number {
   const sceneOffset = Number.isFinite(clip.sceneOffsetTicks) ? (clip.sceneOffsetTicks ?? 0) : 0;
-  return clip.startBar * BAR_TICKS - sceneOffset;
+  return clip.startBar * barUnitTicks - sceneOffset;
 }
 
 /** Pattern phase at an absolute arrangement tick, wrapped to the source pattern's loop. */
@@ -31,18 +47,23 @@ export function patternPhaseOffsetAtTick(
   clip: Pick<ArrangementClip, "startBar" | "phaseOffsetTicks">,
   pattern: Pick<Pattern, "stepCount">,
   tick: number,
+  barUnitTicks: number,
 ): number {
   const patternTicks = pattern.stepCount * STEP_TICKS;
   const phaseOffset = Number.isFinite(clip.phaseOffsetTicks) ? (clip.phaseOffsetTicks ?? 0) : 0;
-  const elapsed = phaseOffset + tick - clip.startBar * BAR_TICKS;
+  const elapsed = phaseOffset + tick - clip.startBar * barUnitTicks;
   if (patternTicks <= 0) return Math.max(0, elapsed);
   return ((elapsed % patternTicks) + patternTicks) % patternTicks;
 }
 
 /** Scene-relative time at an absolute tick; unlike pattern phase, it does not loop. */
-export function sceneOffsetAtTick(clip: Pick<ArrangementClip, "startBar" | "sceneOffsetTicks">, tick: number): number {
+export function sceneOffsetAtTick(
+  clip: Pick<ArrangementClip, "startBar" | "sceneOffsetTicks">,
+  tick: number,
+  barUnitTicks: number,
+): number {
   const sceneOffset = Number.isFinite(clip.sceneOffsetTicks) ? (clip.sceneOffsetTicks ?? 0) : 0;
-  return Math.max(0, sceneOffset + tick - clip.startBar * BAR_TICKS);
+  return Math.max(0, sceneOffset + tick - clip.startBar * barUnitTicks);
 }
 
 // GOAL 08/B6: notes arrays are immutable (untouched patterns keep the same

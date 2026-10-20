@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BAR_TICKS } from "../../project-model/types";
+import { ticksPerBar } from "../../project-model/schema";
 import type { ProjectDocument } from "../../project-model/types";
 import { timelineItemsOf } from "../../project-model/timeline";
 
@@ -23,7 +23,7 @@ export function publishTimelineGroupDragPreview(
   const startTicks = Object.fromEntries(
     timelineItemsOf(doc)
       .filter((item) => memberIds.has(item.id))
-      .map((item) => [item.id, item.startBar * BAR_TICKS]),
+      .map((item) => [item.id, item.startBar * ticksPerBar(doc)]),
   );
   const detail: TimelineGroupDragPreview = {
     projectId: doc.id,

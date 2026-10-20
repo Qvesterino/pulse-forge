@@ -10,7 +10,7 @@ import type {
   ProjectDocument,
   Scene,
 } from "./types";
-import { BAR_TICKS, PPQ, STEPS_PER_PATTERN } from "./types";
+import { PPQ, STEPS_PER_PATTERN } from "./types";
 import { uid } from "../shared/ids";
 import {
   buildBoomBap,
@@ -29,6 +29,7 @@ import {
   createInstrumentTrackModel,
   defaultMacros,
   defaultMasterConfig,
+  ticksPerBar,
 } from "./schema";
 
 export type TemplateId =
@@ -782,20 +783,29 @@ function buildSceneScore(): ProjectDocument {
   doc.macros = performanceMacros(drums.id, bass.id, texture.id);
   // Named timeline markers — auto-trigger their typed FX cue during playback.
   // Bar 1 (BUILD), bar 9 (DROP), bar 21 (OUTRO) align 1 tick AT each clip start.
+  // The ticks are the document's own musical bar (ADR 0056) — every template
+  // ships 4/4 today, so this equals the old fixed BAR_TICKS.
+  const markerBar = ticksPerBar(doc);
   doc.markers = [
     {
       id: uid("marker"),
       name: "Lift",
       type: "buildup",
-      tick: 4 * BAR_TICKS,
+      tick: 4 * markerBar,
       linkedClipId: doc.arrangement.clips[1].id,
     },
-    { id: uid("marker"), name: "Hit", type: "drop", tick: 8 * BAR_TICKS, linkedClipId: doc.arrangement.clips[2].id },
+    {
+      id: uid("marker"),
+      name: "Hit",
+      type: "drop",
+      tick: 8 * markerBar,
+      linkedClipId: doc.arrangement.clips[2].id,
+    },
     {
       id: uid("marker"),
       name: "Outro",
       type: "riser",
-      tick: 20 * BAR_TICKS,
+      tick: 20 * markerBar,
       linkedClipId: doc.arrangement.clips[4].id,
     },
   ];

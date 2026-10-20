@@ -9,7 +9,7 @@
  */
 import type { Command } from "./types";
 import type { AudioClip, IntensityPoint, ProjectDocument } from "../project-model/types";
-import { MAX_ARRANGEMENT_CLIP_BARS } from "../project-model/schema";
+import { MAX_ARRANGEMENT_CLIP_BARS, ticksPerBar } from "../project-model/schema";
 import { snapshot } from "./core";
 import { markerClampPatch, unlinkMarkersOfClips } from "./docOps";
 import { assertClipEditable } from "./clipGroups";
@@ -216,7 +216,13 @@ export function deleteArrangementClipRipple(doc: ProjectDocument, clipId: string
     .map((c) => (c.startBar >= oldEnd ? { ...c, startBar: Math.max(0, c.startBar - clip.lengthBars) } : c))
     .sort((a, b) => a.startBar - b.startBar);
   const unlinked = unlinkMarkersOfClips(doc.markers, new Set([clipId]));
-  const clamp = markerClampPatch(unlinked ?? doc.markers, doc.scenes, doc.patterns, { ...doc.arrangement, clips });
+  const clamp = markerClampPatch(
+    unlinked ?? doc.markers,
+    doc.scenes,
+    doc.patterns,
+    { ...doc.arrangement, clips },
+    ticksPerBar(doc),
+  );
   const markersPatch =
     clamp.markers !== undefined ? { markers: clamp.markers } : unlinked !== undefined ? { markers: unlinked } : {};
   const next: ProjectDocument = {

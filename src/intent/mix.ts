@@ -16,6 +16,7 @@ import { artistMixProfileOf } from "./artist-mix";
 import { roleForTrack } from "./favorites";
 import { parsePercent, parsePercentAllowingZero } from "./percent";
 import { stripReferenceClauses } from "./reference-clause";
+import { isPriorDeltaReference } from "./reference-delta";
 import { calibrateKnobScale, degreeToEffectAmount, parseDegree, type Degree } from "./degree";
 import type { IntentSpec } from "./types";
 
@@ -952,12 +953,18 @@ const SET_VALUE = /\b(?:to|na)\s*(\d{1,3})\s*(?:%|percent\w*|procent\w*)/;
 /** Parse a TARGETED effect request. Null when no effect×sentence is present. */
 export function parseEffectIntent(text: string): EffectIntent | null {
   const lower = deaccentLower(text);
+  // A reference to an earlier adjustment cannot be resolved here; decline so
+  // the router can clarify instead of applying a guessed step.
+  if (isPriorDeltaReference(lower)) return null;
   const named = effectWordIn(lower);
   const moveMatch = effectMoveFor(lower, named);
   const effectType = moveMatch?.effectType ?? named;
   if (!effectType) return null;
 
   // remove wins over add (explicit "remove X" / "bez X" / "menej X")
+  const asLittle = /\bas little\b|\bas small as possible\b/.test(lower);
+  const asDry = /\bas dry as (?:possible|you can)\b/.test(lower);
+  const asWet = /\bas wet as (?:possible|you can)\b/.test(lower);
   let direction: EffectIntent["direction"] = "more";
   if (
     /\bremove\b|\btake out\b|\bodstran|\bvyhod|\bbez (?:delay|reverb|ozven|dozvuk|pump|chorus|filtr|eq)\w*|\bmenej (?:delay|dozvuk|ozven)/.test(
@@ -968,9 +975,13 @@ export function parseEffectIntent(text: string): EffectIntent | null {
   } else if (
     /\bless\b|\bmenej|\bease off\b|\bdial back\b|\bback off\b|\bpull\b.{0,36}\bback\b|\breduce\b|\breducing\b|\bturn(?:ing)? down\b|\bcut back\b/.test(
       lower,
-    )
+    ) ||
+    asLittle ||
+    asDry
   ) {
     direction = "less";
+  } else if (asWet) {
+    direction = "more";
   }
 
   // TARGET resolution runs on the reference-stripped residue: a track named

@@ -4,8 +4,8 @@
  */
 import type { Command } from "./types";
 import type { ArrangementClip, ArrangementTransition, ProjectDocument, SceneRole } from "../project-model/types";
-import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
-import { MAX_ARRANGEMENT_CLIP_BARS, sanitizeArrangementTransitions } from "../project-model/schema";
+import { STEP_TICKS } from "../project-model/types";
+import { MAX_ARRANGEMENT_CLIP_BARS, sanitizeArrangementTransitions, ticksPerBar } from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
 import { makeSceneVariation } from "./scenes";
@@ -159,10 +159,16 @@ export function deleteArrangementClip(doc: ProjectDocument, clipId: string): Com
   // stale id would survive every save (schema keeps any string) and undo
   // could not restore the link if it were left to a post-apply normalize.
   const unlinked = unlinkMarkersOfClips(doc.markers, new Set([clipId]));
-  const clamp = markerClampPatch(unlinked ?? doc.markers, doc.scenes, doc.patterns, {
-    ...doc.arrangement,
-    clips: remainingClips,
-  });
+  const clamp = markerClampPatch(
+    unlinked ?? doc.markers,
+    doc.scenes,
+    doc.patterns,
+    {
+      ...doc.arrangement,
+      clips: remainingClips,
+    },
+    ticksPerBar(doc),
+  );
   const markersPatch =
     clamp.markers !== undefined ? { markers: clamp.markers } : unlinked !== undefined ? { markers: unlinked } : {};
   const next: ProjectDocument = {
@@ -209,16 +215,16 @@ export function splitArrangementClipAtTick(doc: ProjectDocument, clipId: string,
   if (!clip) throw new Error(`Clip ${clipId} not found`);
   if (!Number.isFinite(splitTick)) throw new Error("Split point must be a finite arrangement tick");
   assertClipEditable(clip, "split");
-  const startTick = clip.startBar * BAR_TICKS;
-  const endTick = startTick + clip.lengthBars * BAR_TICKS;
+  const startTick = clip.startBar * ticksPerBar(doc);
+  const endTick = startTick + clip.lengthBars * ticksPerBar(doc);
   if (splitTick <= startTick || splitTick >= endTick) throw new Error("Split point outside clip");
-  const splitBar = Math.floor(splitTick / BAR_TICKS);
+  const splitBar = Math.floor(splitTick / ticksPerBar(doc));
   const leftBars = splitBar - clip.startBar;
   const rightBars = clip.lengthBars - leftBars;
   if (leftBars < 1 || rightBars < 1) {
     throw new Error("Scene clips split at bar lines — playhead must leave a whole bar on each side");
   }
-  const leftTicks = leftBars * BAR_TICKS;
+  const leftTicks = leftBars * ticksPerBar(doc);
   const scene = doc.scenes.find((s) => s.id === clip.sceneId);
   const pattern = scene ? doc.patterns.find((p) => p.id === scene.patternId) : undefined;
   const patternTicks = pattern ? pattern.stepCount * STEP_TICKS : 0;
@@ -311,7 +317,7 @@ export function trimArrangementClipStart(doc: ProjectDocument, clipId: string, n
     throw new Error("Trim start must move the clip's start right (extend-left is a separate verb)");
   }
   if (startBar >= endBar) throw new Error("Trim start must leave at least one whole bar");
-  const elapsedTicks = (startBar - clip.startBar) * BAR_TICKS;
+  const elapsedTicks = (startBar - clip.startBar) * ticksPerBar(doc);
   const scene = doc.scenes.find((s) => s.id === clip.sceneId);
   const pattern = scene ? doc.patterns.find((p) => p.id === scene.patternId) : undefined;
   const patternTicks = pattern ? pattern.stepCount * STEP_TICKS : 0;

@@ -1,5 +1,6 @@
 import type { AudioClip, ProjectDocument } from "../project-model/types";
-import { BAR_TICKS, PPQ } from "../project-model/types";
+import { PPQ } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import type { SampleBank } from "../sample-library/factory";
 import { hashString } from "../shared/rng";
 import { phaseVocoderWarpChannel, warpRateEnvelope, type WarpRateInterval } from "./phase-vocoder";
@@ -153,9 +154,10 @@ export class WarpManager {
    * re-warms). Called after warp edits so the next play is already exact.
    */
   warmWarpForClip(clip: AudioClip): void {
-    const bpm = this.deps.doc()?.bpm;
-    if (!bpm || !(bpm > 0)) return;
-    this.warmWarp(clip, (clip.lengthBars * BAR_TICKS * 60) / (bpm * PPQ));
+    const doc = this.deps.doc();
+    const bpm = doc?.bpm;
+    if (!bpm || !(bpm > 0) || !doc) return;
+    this.warmWarp(clip, (clip.lengthBars * ticksPerBar(doc) * 60) / (bpm * PPQ));
   }
 
   /** Clear the time-stretch buffer cache (project swap). */
@@ -325,13 +327,18 @@ export class WarpManager {
     if (markers.length === 0 || clip.reverse || clip.loop) return null;
     if (clip.stretchMode !== "stretch") return null;
     if (!Number.isFinite(wallSec) || wallSec <= 0) return null;
-    const clipTicks = clip.lengthBars * BAR_TICKS;
+    const doc = this.deps.doc();
+    if (!doc) return null;
+    // The document's bar length in ticks (ADR 0056) — the warp map's geometry
+    // is metrical, so a 6/8 clip's pins land on its own bar lines.
+    const barUnit = ticksPerBar(doc);
+    const clipTicks = clip.lengthBars * barUnit;
     if (!(clipTicks > 0)) return null;
     const spt = wallSec / clipTicks;
     const { playOffset, contentDur } = audioClipPlayWindow(clip, src.duration, Infinity, 1);
     const segs = buildWarpSegments({
       markers,
-      clipStartTick: clip.startBar * BAR_TICKS,
+      clipStartTick: clip.startBar * barUnit,
       clipTicks,
       spt,
       contentStartSec: playOffset,

@@ -14,6 +14,7 @@ import {
 } from "../project-model/schema";
 import type { Pattern } from "../project-model/types";
 import { uid } from "../shared/ids";
+import { ticksPerBar } from "../project-model/schema";
 import { snapshot } from "./core";
 import { cloneStepMeta, markerClampPatch, unlinkMarkersOfClips } from "./docOps";
 import { clipGroupsWithoutIds } from "./clipGroups";
@@ -130,7 +131,7 @@ export function deletePattern(doc: ProjectDocument, patternId: string): Command 
     ...(markers ? { markers } : {}),
     // Audit 08 D3: clamp markers to the shrunken project end IN-COMMAND so
     // undo restores their ticks (normalize clamps them outside any delta).
-    ...markerClampPatch(doc.markers, finalScenes, remaining, arrangement),
+    ...markerClampPatch(doc.markers, finalScenes, remaining, arrangement, ticksPerBar(doc)),
     arrangement,
     activePatternId: doc.activePatternId === patternId ? remaining[0].id : doc.activePatternId,
   };

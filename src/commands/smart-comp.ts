@@ -49,7 +49,7 @@
 
 import { scoreTake, measureTake, type TakeScore } from "../audio-engine/take-scoring";
 import type { AudioClip, AudioTakeGroup, ProjectDocument } from "../project-model/types";
-import { BAR_TICKS } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { planCompCore, type CompCoreTake } from "../shared/comp-core";
 import { compAudioTakeRange } from "./audioClips";
 import type { Command } from "./types";
@@ -246,10 +246,14 @@ function scoreMissingTake(): TakeScore {
  * Tick bounds for one segment (the comp command speaks ticks, the plan speaks
  * bars; this is the single conversion point).
  */
-export function segmentTicks(segment: CompSegment): { startTick: number; endTick: number } {
+export function segmentTicks(
+  segment: CompSegment,
+  /** The document's bar length in ticks (ADR 0056). */
+  barUnitTicks: number,
+): { startTick: number; endTick: number } {
   return {
-    startTick: segment.startBar * BAR_TICKS,
-    endTick: segment.endBar * BAR_TICKS,
+    startTick: segment.startBar * barUnitTicks,
+    endTick: segment.endBar * barUnitTicks,
   };
 }
 
@@ -287,7 +291,7 @@ export function applySmartComp(
   const segmentCommands: Command[] = [];
   let running = doc;
   for (const segment of plan.segments) {
-    const { startTick, endTick } = segmentTicks(segment);
+    const { startTick, endTick } = segmentTicks(segment, ticksPerBar(doc));
     const command = compAudioTakeRange(running, groupId, segment.sourceTakeId, startTick, endTick, crossfadeTicks);
     segmentCommands.push(command);
     running = command.execute(running);

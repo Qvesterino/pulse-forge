@@ -79,7 +79,7 @@ const fixture = (): Fixture => {
 const valueAt = (doc: ProjectDocument, clipId: string, absoluteTick: number): number => {
   const clip = doc.arrangement.clips.find((c) => c.id === clipId)!;
   const lane = (doc.sceneAutomation ?? []).find((l) => l.sceneId === clip.sceneId)!;
-  const local = absoluteTick - sceneBaseTickForClip(clip);
+  const local = absoluteTick - sceneBaseTickForClip(clip, BAR);
   const points = lane.points;
   if (local <= points[0]!.tick) return points[0]!.value;
   if (local >= points[points.length - 1]!.tick) return points[points.length - 1]!.value;
@@ -103,7 +103,7 @@ describe("A1 move/nudge: the curve follows the clip", () => {
     // Now audible at 1920 + 2*BAR — same scene-local position, same value.
     expect(valueAt(f.store.doc, f.clipId, 1920 + 2 * BAR)).toBeCloseTo(0.9, 6);
     // And the OLD absolute tick no longer sees the lane (clip moved away).
-    expect(sceneBaseTickForClip(f.store.doc.arrangement.clips[0]!)).toBe(2 * BAR);
+    expect(sceneBaseTickForClip(f.store.doc.arrangement.clips[0]!, BAR)).toBe(2 * BAR);
   });
 
   it("nudge behaves identically (same startBar mutation)", () => {
@@ -119,7 +119,7 @@ describe("A2 trim-left: absolute curve position is invariant", () => {
     const baseBefore = sceneBaseTickForClip(f.doc.arrangement.clips[0]!);
     f.store.execute(trimArrangementClipStart(f.store.doc, f.clipId, 1));
     const clip = f.store.doc.arrangement.clips[0]!;
-    const baseAfter = sceneBaseTickForClip(clip);
+    const baseAfter = sceneBaseTickForClip(clip, BAR);
     expect(baseAfter).toBe(baseBefore); // content base invariant
     // The clip now STARTS at bar 1 — the first audible value is the value at
     // scene-tick 1920 (0.9), NOT a restart from point[0] (0.2).
@@ -136,7 +136,7 @@ describe("A3 split: the curve is seamless across the seam", () => {
     f.store.execute(splitArrangementClipAtTick(f.store.doc, f.clipId, 2 * BAR));
     const [left, right] = f.store.doc.arrangement.clips;
     // Same content base → the curve does not jump at the seam.
-    expect(sceneBaseTickForClip(right!)).toBe(sceneBaseTickForClip(left!));
+    expect(sceneBaseTickForClip(right!, BAR)).toBe(sceneBaseTickForClip(left!, BAR));
     const justBefore = valueAt(f.store.doc, left.id, 2 * BAR - 1);
     const justAfter = valueAt(f.store.doc, right!.id, 2 * BAR + 1);
     expect(Math.abs(justAfter - justBefore)).toBeLessThan(0.002);
@@ -148,7 +148,7 @@ describe("A4 duplicate: shifted copy, shared lane by design", () => {
     const f = fixture();
     f.store.execute(duplicateArrangementClip(f.store.doc, f.clipId));
     const copy = f.store.doc.arrangement.clips[1]!;
-    expect(sceneBaseTickForClip(copy)).toBe(sceneBaseTickForClip(f.store.doc.arrangement.clips[0]!) + 8 * BAR);
+    expect(sceneBaseTickForClip(copy, BAR)).toBe(sceneBaseTickForClip(f.store.doc.arrangement.clips[0]!, BAR) + 8 * BAR);
     // Same sceneId → the SAME lane plays inside both windows (scene-keyed by
     // design: a duplicate plays the same scene content, automation included).
     expect(copy.sceneId).toBe(f.store.doc.arrangement.clips[0]!.sceneId);
@@ -200,7 +200,7 @@ describe("A7 combined chain through a real store", () => {
     const afterChain = f.store.doc;
     // Continuity across the seam of the trimmed+split chain.
     const [left, right] = afterChain.arrangement.clips;
-    expect(sceneBaseTickForClip(right!)).toBe(sceneBaseTickForClip(left!));
+    expect(sceneBaseTickForClip(right!, BAR)).toBe(sceneBaseTickForClip(left!, BAR));
     const before = valueAt(afterChain, left!.id, 3 * BAR - 1);
     const after = valueAt(afterChain, right!.id, 3 * BAR + 1);
     expect(Math.abs(after - before)).toBeLessThan(0.002);

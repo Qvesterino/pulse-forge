@@ -8,7 +8,7 @@
  */
 import type { Command } from "./types";
 import type { ProjectDocument, Scene, SceneRole } from "../project-model/types";
-import { patternLetter, sceneRoleOf } from "../project-model/schema";
+import { patternLetter, sceneRoleOf, ticksPerBar } from "../project-model/schema";
 import type { Pattern } from "../project-model/types";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
@@ -367,10 +367,16 @@ export function deleteScene(doc: ProjectDocument, sceneId: string): Command {
     scenes: remainingScenes,
     ...(sceneAutomation ? { sceneAutomation } : {}),
     // Audit 08 D3: markers clamp to the shrunken project end in-command.
-    ...markerClampPatch(doc.markers, remainingScenes, doc.patterns, {
-      ...doc.arrangement,
-      clips: remainingClips,
-    }),
+    ...markerClampPatch(
+      doc.markers,
+      remainingScenes,
+      doc.patterns,
+      {
+        ...doc.arrangement,
+        clips: remainingClips,
+      },
+      ticksPerBar(doc),
+    ),
     arrangement: {
       ...doc.arrangement,
       clips: remainingClips,

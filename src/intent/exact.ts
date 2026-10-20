@@ -356,7 +356,7 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
   // target alternation is wider than EN (bas*/bic*/synth*) because
   // firstTarget resolves the SK inflections.
   const gainDb =
-    /(lower|reduce|drop|cut|raise|boost|increase|zniz\w*|ztichn\w*|stis|ztlm\w*|zvys\w*|zosiln\w*|posiln\w*|hlasnejs\w*|tichs\w*|prihlas)\s+(?:the\s+)?(drums?|bass|bas\w*|808|lead|synth\w*|chords?|keys?|bic\w*|mix|master)\b(?:\s+(?:by|o)\s+)?\s*(\d+(?:\.\d+)?)?\s*db/.exec(
+    /(lower|reduce|drop|cut|raise|boost|increase|zniz\w*|ztichn\w*|stis|ztlm\w*|zvys\w*|zosiln\w*|posiln\w*|hlasnejs\w*|tichs\w*|prihlas)\s+(?:the\s+)?(drums?|bass|bas\w*|808|lead|synth\w*|chords?|keys?|bic\w*|mix|master)\b(?:\s+(?:gain|fader|level|volume|hlasitost\w*))?(?:\s+(?:by|o)\s+)?\s*(\d+(?:\.\d+)?)?\s*db/.exec(
       lower,
     );
   if (gainDb) {
@@ -375,7 +375,7 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
   // Absolute fader set: "set bass to -6 dB", "basa na -6 dB". Checked AFTER
   // the delta (delta verbs never pair with "na"/"to", so no ambiguity).
   const gainAbs =
-    /(?:nastav|set)?\s*(?:the\s+)?(drums?|bass|bas\w*|808|lead|synth\w*|chords?|keys?|mix|master)\b\s*(?:na|to)\s*(-?\d+(?:\.\d+)?)\s*db/.exec(
+    /(?:nastav|set)?\s*(?:the\s+)?(drums?|bass|bas\w*|808|lead|synth\w*|chords?|keys?|mix|master)\b(?:\s+(?:gain|fader|level|volume|hlasitost\w*))?\s*(?:na|to)\s*(-?\d+(?:\.\d+)?)\s*db/.exec(
       lower,
     );
   if (gainAbs) {
