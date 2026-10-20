@@ -1,9 +1,10 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useArrangement, usePatterns, useScenes, useServices, useTracks } from "./context";
 import type { InstrumentTrack, NoteEvent, Pattern, ProjectDocument } from "../project-model/types";
-import { PATTERN_TICKS, STEP_TICKS, pitchName } from "../project-model/types";
+import { STEP_TICKS, pitchName } from "../project-model/types";
 import { midiPhraseLengthTicks } from "../project-model/midiTime";
 import { MAX_ARRANGEMENT_CLIP_TICKS, ticksPerBar } from "../project-model/schema";
+import { stepsPerBar, stepsPerBeat } from "../project-model/grid";
 import {
   addNote,
   applyMidiCreativeTool,
@@ -44,26 +45,30 @@ const BLACK_KEYS = new Set([1, 3, 6, 8, 10]);
 const MAX_PIANO_ROLL_STEPS = Math.floor(MAX_ARRANGEMENT_CLIP_TICKS / STEP_TICKS);
 const MIN_PIANO_ROLL_STEP_PX = 24;
 /**
- * New-note length menu. The note lengths are PATTERN-grid ticks: a pattern is
- * 16 sixteenth steps (PATTERN_TICKS), so "1 BAR" here is the pattern's own bar
- * — which is one musical bar only in 4/4-like meters. In 6/8 the arrangement
- * bar is 1440 ticks while the pattern grid is 1920, and a note cannot be
- * measured against a unit its own grid does not use. Recorded in ADR 0056.
+ * New-note length menu. The bar lengths are the DOCUMENT'S metrical bar
+ * (ADR 0057): the note lengths used to be PATTERN-grid ticks, so "1 BAR" was
+ * 1920 ticks — one musical bar only in 4/4-like meters. In 6/8 the bar is
+ * 1440 ticks and a note measured against the pattern grid could not be
+ * measured against the ruler above it. In 4/4 this list is byte-identical to
+ * the old one.
  */
-const NOTE_LENGTH_OPTIONS = [
-  { label: "1/16", ticks: STEP_TICKS },
-  { label: "1/8", ticks: STEP_TICKS * 2 },
-  { label: "1/4", ticks: STEP_TICKS * 4 },
-  { label: "1/2", ticks: STEP_TICKS * 8 },
-  { label: "1 BAR", ticks: PATTERN_TICKS },
-  { label: "2 BARS", ticks: PATTERN_TICKS * 2 },
-  { label: "4 BARS", ticks: PATTERN_TICKS * 4 },
-  { label: "8 BARS", ticks: PATTERN_TICKS * 8 },
-  { label: "12 BARS", ticks: PATTERN_TICKS * 12 },
-  { label: "16 BARS", ticks: PATTERN_TICKS * 16 },
-  { label: "32 BARS", ticks: PATTERN_TICKS * 32 },
-  { label: "64 BARS", ticks: PATTERN_TICKS * 64 },
-] as const;
+function noteLengthOptions(doc: Pick<ProjectDocument, "timeSignature">): { label: string; ticks: number }[] {
+  const barTicks = ticksPerBar(doc);
+  return [
+    { label: "1/16", ticks: STEP_TICKS },
+    { label: "1/8", ticks: STEP_TICKS * 2 },
+    { label: "1/4", ticks: STEP_TICKS * 4 },
+    { label: "1/2", ticks: STEP_TICKS * 8 },
+    { label: "1 BAR", ticks: barTicks },
+    { label: "2 BARS", ticks: barTicks * 2 },
+    { label: "4 BARS", ticks: barTicks * 4 },
+    { label: "8 BARS", ticks: barTicks * 8 },
+    { label: "12 BARS", ticks: barTicks * 12 },
+    { label: "16 BARS", ticks: barTicks * 16 },
+    { label: "32 BARS", ticks: barTicks * 32 },
+    { label: "64 BARS", ticks: barTicks * 64 },
+  ];
+}
 
 export interface SelectedNotes {
   trackId: string;
@@ -539,6 +544,12 @@ export function PianoRollTrack({
   const patterns = usePatterns();
   const tracks = useTracks();
   const doc = services.store.getDoc();
+  // The grid's bar and beat follow the document's meter (ADR 0057). A pattern
+  // is a musical duration in sixteenth notes; how many of them make a BAR is
+  // the meter's business — and the bar lines drawn under the notes have to
+  // agree with the arrangement ruler above them.
+  const meterStepsPerBar = stepsPerBar(doc);
+  const meterStepsPerBeat = stepsPerBeat(doc);
   const gridRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const velocityScrollRef = useRef<HTMLDivElement>(null);
@@ -1807,7 +1818,7 @@ export function PianoRollTrack({
             className="pr-source-shared"
             title="Sparse MIDI notes extend beyond the bounded step grid. The step arrays stay unchanged."
           >
-            NOTE PHRASE · {Math.ceil(editorStepCount / 16)} BARS
+            NOTE PHRASE · {Math.ceil(editorStepCount / meterStepsPerBar)} BARS
           </span>
         )}
         {onToggleFullscreen && (
@@ -1838,7 +1849,7 @@ export function PianoRollTrack({
             value={drawDurationTicks}
             onChange={(event) => setDrawDurationTicks(Number(event.target.value))}
           >
-            {!NOTE_LENGTH_OPTIONS.some((option) => option.ticks === drawDurationTicks) && (
+            {!noteLengthOptions(doc).some((option) => option.ticks === drawDurationTicks) && (
               <option value={drawDurationTicks}>
                 CUSTOM ·{" "}
                 {drawDurationTicks % STEP_TICKS === 0
@@ -1846,7 +1857,7 @@ export function PianoRollTrack({
                   : `${drawDurationTicks} TICKS`}
               </option>
             )}
-            {NOTE_LENGTH_OPTIONS.map((option) => (
+            {noteLengthOptions(doc).map((option) => (
               <option key={option.ticks} value={option.ticks}>
                 {option.label}
               </option>
@@ -2388,18 +2399,22 @@ export function PianoRollTrack({
               { length: Math.max(0, visibleStepRange.to - visibleStepRange.from) },
               (_, offset) => visibleStepRange.from + offset,
             ).map((i) =>
-              i % 4 === 0 ? <div key={i} className="pr-beatline" style={{ left: `${stepPct(i)}%` }} /> : null,
+              i % meterStepsPerBeat === 0 ? (
+                <div key={i} className="pr-beatline" style={{ left: `${stepPct(i)}%` }} />
+              ) : null,
             )}
             {/* Bar lines + numbers for multi-bar patterns (FL orientation for long pads) */}
-            {editorStepCount > 16 &&
+            {editorStepCount > meterStepsPerBar &&
               Array.from(
                 {
                   length:
-                    Math.ceil(visibleStepRange.to / 16) - Math.max(0, Math.floor(visibleStepRange.from / 16) - 1) + 1,
+                    Math.ceil(visibleStepRange.to / meterStepsPerBar) -
+                    Math.max(0, Math.floor(visibleStepRange.from / meterStepsPerBar) - 1) +
+                    1,
                 },
-                (_, offset) => Math.max(0, Math.floor(visibleStepRange.from / 16) - 1) + offset,
+                (_, offset) => Math.max(0, Math.floor(visibleStepRange.from / meterStepsPerBar) - 1) + offset,
               ).map((bar) => {
-                const step = bar * 16;
+                const step = bar * meterStepsPerBar;
                 if (step > editorStepCount) return null;
                 return (
                   <div key={`bar-${bar}`} className="pr-barline" style={{ left: `${stepPct(step)}%` }}>

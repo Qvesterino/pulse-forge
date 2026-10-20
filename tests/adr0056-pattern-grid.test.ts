@@ -1,5 +1,5 @@
 /**
- * ADR 0056 — the PATTERN grid is the one unit that did not follow the meter.
+ * ADR 0056 — a pattern that is not a whole number of BARS drifts against the ruler.
  *
  * Stage 2 moved the whole arrangement onto the document's meter: the ruler, clip
  * placement, loop regions, the metronome and the bar readouts all measure the
@@ -7,11 +7,17 @@
  * sixteenth steps (`PATTERN_TICKS` = four quarter notes) whatever the meter
  * declares.
  *
- * That is not a cosmetic difference. In 6/8 a bar is 1440 ticks and a pattern is
- * 1920, so the pattern's phrase is 1.33 bars long: its downbeat reaches the bar
- * line only every fourth bar and is a quarter note late in between. A groove
- * whose "one" drifts against the ruler is a real defect, so it is measured here
- * rather than assumed, and the transfer dialog discloses it.
+ * That is not a cosmetic difference. In 6/8 a bar is 1440 ticks and a 16-step
+ * pattern is 1920, so the pattern's phrase is 1.33 bars long: its downbeat
+ * reaches the bar line only every fourth bar and is a quarter note late in
+ * between. A groove whose "one" drifts against the ruler is a real defect, so
+ * it is measured here rather than assumed.
+ *
+ * ADR 0057 moved the GRID onto the meter (one bar is `ticksPerBar(doc) /
+ * STEP_TICKS` steps, and the grid draws that bar line), so the defect has
+ * MOVED: it is no longer the grid's fault, it is the PATTERN'S LENGTH. A
+ * 12-step pattern in 6/8 is one bar and does not drift — the measurement below
+ * is now about the length, and the whole-bar contrast is the negative control.
  *
  * The 4/4 case is the negative control and it is not optional: the pattern grid
  * is correct in 4/4-like meters, and a guard that fired there would be wrong.
@@ -19,6 +25,7 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { normalizeProject, patternGridIsOneBar, ticksPerBar } from "../src/project-model/schema";
+import { stepsPerBar } from "../src/project-model/grid";
 import { patternPhaseOffsetAtTick } from "../src/project-model/events";
 import { PATTERN_TICKS } from "../src/project-model/types";
 import type { ProjectDocument, TimeSignature } from "../src/project-model/types";
@@ -35,19 +42,20 @@ function docWithMeter(sig: TimeSignature): ProjectDocument {
   });
 }
 
-/** The pattern's phase (ticks into its 16-step cycle) at each musical bar line. */
-function patternPhasesAtBarLines(doc: ProjectDocument, bars: number): number[] {
+/** The pattern's phase (ticks into its cycle) at each musical bar line. */
+function patternPhasesAtBarLines(doc: ProjectDocument, bars: number, stepCount?: number): number[] {
   const bar = ticksPerBar(doc);
   const pattern = doc.patterns[0]!;
+  const measured = stepCount === undefined ? pattern : { ...pattern, stepCount };
   const clip = { startBar: 0, phaseOffsetTicks: 0 };
   const phases: number[] = [];
   for (let b = 0; b < bars; b++) {
-    phases.push(patternPhaseOffsetAtTick(clip, pattern, b * bar, bar));
+    phases.push(patternPhaseOffsetAtTick(clip, measured, b * bar, bar));
   }
   return phases;
 }
 
-describe("ADR 0056 — the pattern grid is 16 steps, and that is not metrical", () => {
+describe("ADR 0056/0057 — a pattern that is not a whole number of bars drifts", () => {
   it("NEGATIVE CONTROL: in 4/4 the pattern's downbeat lands on every bar line", () => {
     const doc = docWithMeter(FOUR_FOUR);
     expect(ticksPerBar(doc)).toBe(PATTERN_TICKS);
@@ -56,7 +64,7 @@ describe("ADR 0056 — the pattern grid is 16 steps, and that is not metrical", 
     expect(patternPhasesAtBarLines(doc, 8)).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
   });
 
-  it("in 6/8 the pattern's downbeat drifts and only reaches the bar every 4th bar", () => {
+  it("in 6/8 a 16-step pattern drifts and only reaches the bar every 4th bar", () => {
     const doc = docWithMeter(SIX_EIGHT);
     expect(ticksPerBar(doc)).toBe(1440);
     expect(patternGridIsOneBar(SIX_EIGHT)).toBe(false);
@@ -64,6 +72,13 @@ describe("ADR 0056 — the pattern grid is 16 steps, and that is not metrical", 
     // the phase advances 1440, then 960, then 480, and returns to 0 on the
     // fourth bar. This is the number the disclosure quotes.
     expect(patternPhasesAtBarLines(doc, 8)).toEqual([0, 1440, 960, 480, 0, 1440, 960, 480]);
+  });
+
+  it("NEGATIVE CONTROL: a WHOLE-BAR pattern in 6/8 never drifts (ADR 0057)", () => {
+    const doc = docWithMeter(SIX_EIGHT);
+    // One 6/8 bar is 12 sixteenth steps. A 12-step pattern is exactly one bar.
+    expect(stepsPerBar(doc)).toBe(12);
+    expect(patternPhasesAtBarLines(doc, 8, 12)).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
   });
 
   it("knows which meters make one pattern exactly one bar", () => {

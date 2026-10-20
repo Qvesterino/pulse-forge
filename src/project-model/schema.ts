@@ -3652,8 +3652,12 @@ export function ticksPerBar(doc: Pick<ProjectDocument, "timeSignature">): number
 }
 
 /** Ticks per beat (one quarter note in 4/4, one eighth note in 6/8). */
+export function ticksPerBeatFor(sig: TimeSignature): number {
+  return PPQ * (4 / sig.denominator);
+}
+
 export function ticksPerBeat(doc: Pick<ProjectDocument, "timeSignature">): number {
-  return PPQ * (4 / doc.timeSignature.denominator);
+  return ticksPerBeatFor(doc.timeSignature);
 }
 
 /**

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState } from "react";
+import { lazy, Suspense, useMemo, useRef, useState } from "react";
 import { useActivePatternId, usePatterns, useServices } from "./context";
 import {
   clearPattern,
@@ -20,6 +20,7 @@ import {
 import type { PatternClipboard } from "../commands/commands";
 import { grooveOf, GRID_8TH, GRID_16TH, GRID_32ND } from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
+import { barsPerPattern, patternLengthOptions, stepsPerBar } from "../project-model/grid";
 import { DragNumber } from "./controls";
 // F2 eager diet: the dialog mounts its intent-generation graph — load it
 // when the user opens it, not with the pattern bar at boot.
@@ -31,6 +32,12 @@ import { ACTIVE_PATTERN_PANEL_ID, patternTabDomId } from "./patternDomIds";
 /** Byte ceiling for .mid imports — mirrors MAX_PROJECT_IMPORT_BYTES. Kept
  * local (not in the lazy midi chunk) so checking it never pulls the chunk. */
 const MAX_MIDI_IMPORT_BYTES = 10 * 1024 * 1024;
+
+/** A bar count said out loud: "1 bar", "2 bars", "1.33 bars". */
+function formatBars(bars: number): string {
+  const rounded = Math.round(bars * 100) / 100;
+  return `${rounded} bar${rounded === 1 ? "" : "s"}`;
+}
 
 interface DragState {
   patternId: string;
@@ -60,6 +67,17 @@ export function PatternBar({
   const [draft, setDraft] = useState("");
   const active = patterns.find((p) => p.id === activePatternId)!;
   const groove = grooveOf(doc);
+  // The length control is stated in BARS and the steps follow the meter
+  // (ADR 0057). A pattern whose step count is not a whole number of bars — an
+  // imported 4/4 pattern in a 6/8 project, say — keeps its own entry, labelled
+  // honestly: the control must always show the pattern's real length.
+  const lengthOptions = useMemo(() => {
+    const options = patternLengthOptions(doc);
+    if (!options.some((option) => option.steps === active.stepCount)) {
+      options.unshift({ bars: barsPerPattern(doc, active.stepCount), steps: active.stepCount });
+    }
+    return options;
+  }, [doc.timeSignature, active.stepCount]);
   // Clip-crossing granularity: the launcher bar highlights the current
   // scene, which changes only when the playhead crosses a clip.
   const currentClipId = useCurrentItemId(
@@ -224,7 +242,7 @@ export function PatternBar({
                 else tabRefs.current.delete(pattern.id);
               }}
               className={`pattern-chip${isActive ? " active" : ""}${isDragging ? " dragging" : ""}`}
-              title={`${pattern.name} (${pattern.stepCount} steps = ${pattern.stepCount / 16} bar${pattern.stepCount === 16 ? "" : "s"}) — click to select, double-click or F2 to rename, drag to reorder`}
+              title={`${pattern.name} (${pattern.stepCount} steps = ${formatBars(barsPerPattern(doc, pattern.stepCount))}) — click to select, double-click or F2 to rename, drag to reorder`}
               onClick={() => {
                 if (!dragRef.current) services.store.execute(setActivePattern(doc, pattern.id));
               }}
@@ -440,16 +458,17 @@ export function PatternBar({
         <select
           className="pattern-length"
           aria-label="Pattern length"
-          title="Pattern length — 16 steps = 1 bar; max 128 steps = 8 bars. Use SONG + ARR for a full track."
+          title={`Pattern length — one bar is ${stepsPerBar(doc)} steps in ${doc.timeSignature.numerator}/${doc.timeSignature.denominator}; max 128 steps. Use SONG + ARR for a full track.`}
           value={active.stepCount}
           onChange={(event) =>
             services.store.execute(setPatternLength(doc, activePatternId, Number(event.target.value)))
           }
         >
-          <option value={16}>16 · 1 bar</option>
-          <option value={32}>32 · 2 bars</option>
-          <option value={64}>64 · 4 bars</option>
-          <option value={128}>128 · 8 bars</option>
+          {lengthOptions.map((option) => (
+            <option key={option.steps} value={option.steps}>
+              {option.steps} · {option.bars} bar{option.bars === 1 ? "" : "s"}
+            </option>
+          ))}
         </select>
         <select
           className="pattern-length"

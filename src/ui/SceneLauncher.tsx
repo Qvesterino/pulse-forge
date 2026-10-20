@@ -1,8 +1,9 @@
 import { useRef, useState, useSyncExternalStore } from "react";
 import { useActivePatternId, useArrangement, usePatterns, useScenes, useServices } from "./context";
 import { sceneRoleOf } from "../project-model/schema";
+import { barsPerPattern } from "../project-model/grid";
 import { assistVary } from "../commands/commands";
-import type { Pattern, Scene } from "../project-model/types";
+import type { Pattern, ProjectDocument, Scene } from "../project-model/types";
 import type { PlayMode } from "../project-model/types";
 
 export interface SceneLauncherProps {
@@ -45,9 +46,12 @@ export function useSceneRuntimeState(): SceneRuntimeState {
   };
 }
 
-function patternLengthLabel(pattern: Pattern | undefined): string {
+function patternLengthLabel(pattern: Pattern | undefined, doc: ProjectDocument): string {
   if (!pattern) return "PATTERN MISSING";
-  const bars = Math.max(1, Math.ceil(pattern.stepCount / 16));
+  // The bar count follows the document's meter (ADR 0057): a pattern is a
+  // musical duration in sixteenth notes, and how many of them make a bar is
+  // the meter's business.
+  const bars = Math.max(1, Math.ceil(barsPerPattern(doc, pattern.stepCount)));
   return `${bars} ${bars === 1 ? "BAR" : "BARS"} · ${pattern.stepCount} STEP`;
 }
 
@@ -82,6 +86,11 @@ export function SceneLauncher({
   const scenes = useScenes();
   const arrangement = useArrangement();
   const patterns = usePatterns();
+  // The meter's bar length, for the pattern length label (ADR 0057). A plain
+  // getter, not a subscription: the strip must not re-render on every
+  // unrelated store mutation, and a meter change arrives with a project
+  // change that re-renders the shell anyway.
+  const doc = services.store.getDoc();
   const activePatternId = useActivePatternId();
   const runtime = useSceneRuntimeState();
   const [localSelectedSceneId, setLocalSelectedSceneId] = useState<string | null>(null);
@@ -254,7 +263,7 @@ export function SceneLauncher({
                   </span>
                   <span className="scene-select-meta">
                     <span>{pattern?.name ?? "PATTERN MISSING"}</span>
-                    <span>{patternLengthLabel(pattern)}</span>
+                    <span>{patternLengthLabel(pattern, doc)}</span>
                     <span className={useCount > 1 ? "scene-shared" : ""}>
                       {useCount > 1 ? `SHARED ${useCount}x` : `USE 1x`}
                     </span>

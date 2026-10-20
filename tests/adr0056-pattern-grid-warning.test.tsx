@@ -34,7 +34,7 @@ vi.mock("../src/persistence/UserSampleRepository", () => ({
   },
 }));
 
-const GRID_WARNING = /16-step pattern grid is fixed/i;
+const GRID_WARNING = /step grid follows the meter/i;
 
 function midiFile(sig?: { num: number; den: number }): File {
   const bytes = writeMidiFile({

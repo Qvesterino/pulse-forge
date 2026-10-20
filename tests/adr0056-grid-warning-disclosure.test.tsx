@@ -29,7 +29,7 @@ import type { CoreServices } from "../src/services";
 import { TransferImportDialog } from "../src/ui/TransferImportDialog";
 import { PATTERN_TICKS } from "../src/project-model/types";
 
-const GRID_WARNING = /16-step pattern grid is fixed/i;
+const GRID_WARNING = /step grid follows the meter/i;
 
 function renderDialog(): { container: HTMLElement } {
   const core = { repo: { save: vi.fn() }, bank: { remove: vi.fn() }, engine: {} } as unknown as CoreServices;

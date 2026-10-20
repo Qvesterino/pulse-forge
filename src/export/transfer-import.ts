@@ -9,7 +9,6 @@ import {
   createGroupTrackModel,
   createInstrumentTrackModel,
   normalizeProject,
-  patternGridIsOneBar,
   ticksPerBarFor,
 } from "../project-model/schema";
 import {
@@ -486,36 +485,44 @@ export function midiImportWarnings(parsed: ParsedMidi | null): string[] {
 }
 
 /**
- * The ARRANGEMENT now follows the document's meter (ADR 0056 Stage 2): the
- * ruler, clip placement, loop regions, the metronome and the bar readouts all
- * measure the metrical bar, so there is no grid mismatch left to disclose.
+ * The ARRANGEMENT follows the document's meter (ADR 0056 Stage 2): the ruler,
+ * clip placement, loop regions, the metronome and the bar readouts all measure
+ * the metrical bar. The PATTERN grid follows it too now (ADR 0057): one bar is
+ * `ticksPerBar(doc) / STEP_TICKS` sixteenth steps, and the grid draws that bar
+ * line.
  *
- * The one unit that did NOT move is the PATTERN grid: a pattern is 16 sixteenth
- * steps — four quarter notes, `PATTERN_TICKS` — whatever the meter declares. In
- * 6/8 one pattern is 1.33 bars long, so the pattern's downbeat reaches the bar
- * line only every fourth bar and is a quarter note late in between. That is
- * measured, not assumed (see `tests/adr0056-pattern-grid.test.ts`), and the
- * dialog discloses it BEFORE the song is imported rather than shipping a
+ * What still needs disclosing is the IMPORTED PATTERN'S OWN LENGTH. A pattern
+ * is a musical duration in sixteenth notes, and the imported one carries the
+ * source project's length — a 4/4 bar of 16 sixteenth notes (1920 ticks), which
+ * is 1.33 bars of 6/8. A pattern that is not a whole number of bars drifts
+ * against the ruler: its downbeat reaches the bar line only every fourth bar.
+ * That is measured, not assumed (see `tests/adr0056-pattern-grid.test.ts`), and
+ * the dialog discloses it BEFORE the song is imported rather than shipping a
  * project whose grooves quietly drift against its own ruler.
  *
- * `null` when one pattern is exactly one bar of the chosen meter (4/4, 2/2, 8/8).
+ * `null` when a 16-step pattern is exactly a whole number of bars of the
+ * chosen meter (4/4, 2/2, 8/8, 2/4).
  */
 export function patternGridWarning(sig: TimeSignature): string | null {
-  if (patternGridIsOneBar(sig)) return null;
   const barTicks = ticksPerBarFor(sig);
   const patternTicks = PATTERN_TICKS;
-  // How many bars one pattern spans (fractional in 3/4 and 6/8).
+  const stepsPerBar = Math.max(1, Math.round(barTicks / STEP_TICKS));
+  // A 16-step pattern is a whole number of bars only when the metrical bar
+  // divides it. In 6/8 the bar is 12 steps and 16 is not a multiple of 12.
+  if ((PATTERN_TICKS / STEP_TICKS) % stepsPerBar === 0) return null;
+  // How many bars one 4/4 bar of pattern spans (fractional in 3/4 and 6/8).
   const barsPerPattern = patternTicks / barTicks;
   // How many bars pass between two pattern downbeats that land on a bar line.
   const downbeatEveryBars = patternTicks / greatestCommonDivisor(patternTicks, barTicks);
   return (
     `KYX's arrangement follows your ${sig.numerator}/${sig.denominator} meter — every ruler bar, ` +
-    `clip placement and loop region is ${barTicks} ticks. But the 16-step pattern grid is fixed at ` +
-    `16 sixteenth notes (${patternTicks} ticks = four quarter notes) whatever the meter, so one ` +
-    `pattern spans ${barsPerPattern.toFixed(2)} bars of ${sig.numerator}/${sig.denominator} and a ` +
-    `pattern's downbeat reaches the bar line only every ${downbeatEveryBars} ` +
-    `${downbeatEveryBars === 1 ? "bar" : "bars"}. Making the step grid follow the meter is a ` +
-    `separate change that has not been made yet.`
+    `clip placement and loop region is ${barTicks} ticks, and the step grid follows the meter as well. ` +
+    `But the imported pattern keeps its own length: 16 sixteenth notes (${patternTicks} ticks = four ` +
+    `quarter notes) is ${barsPerPattern.toFixed(2)} bars of ${sig.numerator}/${sig.denominator}, so a ` +
+    `pattern that is not a whole number of bars drifts against the ruler — its downbeat reaches the bar ` +
+    `line only every ${downbeatEveryBars} ${downbeatEveryBars === 1 ? "bar" : "bars"}. The grid draws ` +
+    `that bar line now, and the pattern length control offers whole bars (${stepsPerBar} steps) if you ` +
+    `want the groove to land on the downbeat.`
   );
 }
 

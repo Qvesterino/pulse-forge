@@ -1,6 +1,7 @@
 import type { Services } from "../services";
-import { getActivePattern, STEP_TICKS, type ProjectDocument } from "../project-model/types";
+import { getActivePattern, type ProjectDocument } from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
+import { stepsPerBar } from "../project-model/grid";
 import { encodeWavAsync } from "../rendering/wav";
 
 const MAX_PREVIEW_BARS = 4;
@@ -57,10 +58,11 @@ export function createMcpPreviewDocument(doc: ProjectDocument, bars: number): Pr
   }
 
   const active = getActivePattern(doc);
-  // The document's bar length in ticks (ADR 0056): an arrangement bar holds a
-  // different number of 16th steps in 6/8 (12) than in 4/4 (16).
-  const stepsPerBar = ticksPerBar(doc) / STEP_TICKS;
-  const bounded = { ...active, stepCount: Math.min(active.stepCount, bars * stepsPerBar) };
+  // The document's bar length in sixteenth steps (ADR 0057): an arrangement bar
+  // holds a different number of 16th steps in 6/8 (12) than in 4/4 (16). The
+  // formula lives in ONE module — `stepsPerBar` — so this surface and the grid
+  // cannot drift apart.
+  const bounded = { ...active, stepCount: Math.min(active.stepCount, bars * stepsPerBar(doc)) };
   return {
     ...doc,
     arrangement,

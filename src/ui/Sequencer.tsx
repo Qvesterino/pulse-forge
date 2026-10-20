@@ -7,6 +7,7 @@ import {
 import { fireGestureHint } from "./gestureHints";
 import { useLayout } from "./layout";
 import { STEP_TICKS } from "../project-model/types";
+import { beatNumberAtStep, stepsPerBeat } from "../project-model/grid";
 import type { DrumTrack, StepMeta, Track } from "../project-model/types";
 import type { Transport } from "../transport/Transport";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
@@ -1037,17 +1038,26 @@ export function Sequencer({
           {(colWindow
             ? Array.from({ length: colWindow.to - colWindow.from }, (_, k) => colWindow.from + k)
             : Array.from({ length: pattern.stepCount }, (_, i) => i)
-          ).map((i) => (
-            <span
-              key={i}
-              /* +2: ruler column 1 is the sticky label track, step i lives in column i+2. */
-              style={colWindow ? { gridColumn: `${i + 2}` } : undefined}
-              className={`ruler-tick${playheadStep === i ? " current" : ""}${i % 4 === 0 ? " beat-start" : ""}`}
-              aria-label={`Step ${i + 1}${i % 4 === 0 ? `, beat ${i / 4 + 1}` : ""}`}
-            >
-              {i % 4 === 0 ? i / 4 + 1 : "·"}
-            </span>
-          ))}
+          ).map((i) => {
+            // The ruler counts the BEATS of the document's meter, and the count
+            // RESETS at every metrical bar (ADR 0057). It used to be four steps
+            // per beat — which is 4/4's beat and nothing else: in 3/4 it showed
+            // a "4" that does not exist, and in 6/8 the eighth-note pulse the
+            // metronome actually clicks was never marked. The reset IS the bar
+            // line, so no new chrome is needed.
+            const beat = beatNumberAtStep(doc, i);
+            return (
+              <span
+                key={i}
+                /* +2: ruler column 1 is the sticky label track, step i lives in column i+2. */
+                style={colWindow ? { gridColumn: `${i + 2}` } : undefined}
+                className={`ruler-tick${playheadStep === i ? " current" : ""}${beat !== null ? " beat-start" : ""}`}
+                aria-label={`Step ${i + 1}${beat !== null ? `, beat ${beat}` : ""}`}
+              >
+                {beat ?? "·"}
+              </span>
+            );
+          })}
           <RulerLoopOverlay transport={services.transport} stepCount={pattern.stepCount} stepsPx={stepsPx} />
         </div>
         <div style={{ height: totalHeight, position: "relative" }}>
@@ -1657,6 +1667,8 @@ function PadRow({
   const services = useServices();
   // `doc` is only consumed as a command argument (setPadParams).
   const doc = services.store.getDoc();
+  // The beat separator between step cells follows the document's meter.
+  const beatEvery = stepsPerBeat(doc);
   const row = pattern.rows[pad.id] ?? [];
   // A 256-step row renders 256 memoized StepCells — their shallow prop
   // compare only skips a re-render when every callback prop is referentially
@@ -1904,6 +1916,7 @@ function PadRow({
               trackId={trackId}
               padId={pad.id}
               stepIndex={stepIndex}
+              beatEvery={beatEvery}
               gridColumn={colWindow ? stepIndex + 1 : null}
               velocity={velocity}
               active={active}
@@ -1939,6 +1952,7 @@ const StepCell = memo(function StepCell({
   trackId,
   padId,
   stepIndex,
+  beatEvery,
   gridColumn,
   velocity,
   active,
@@ -1956,6 +1970,10 @@ const StepCell = memo(function StepCell({
   trackId: string;
   padId: string;
   stepIndex: number;
+  /** Steps per beat of the document's meter — the cell's beat separator
+   *  follows the METER, not a hardcoded four (ADR 0057). A number, so the
+   *  memoized cells only re-render when the meter itself changes. */
+  beatEvery: number;
   /** 1-based grid column when the row is windowed — keeps the cell in its
    * track while the empty tracks preserve the full row width. */
   gridColumn: number | null;
@@ -2025,7 +2043,7 @@ const StepCell = memo(function StepCell({
       type="button"
       data-pad={padId}
       data-step={stepIndex}
-      className={`step${active ? " active" : ""}${stepIndex % 4 === 0 ? " beat-start" : ""}${playhead ? " playhead" : ""}${inSelection ? " in-selection" : ""}${meta?.probability !== undefined && meta.probability < 1 ? " has-probability" : ""}${meta?.microtiming !== undefined && meta.microtiming !== 0 ? (meta.microtiming < 0 ? " micro-early" : " micro-late") : ""}${hasLocks ? " has-locks" : ""}${amount < 0.99 ? " has-amount" : ""}`}
+      className={`step${active ? " active" : ""}${stepIndex % beatEvery === 0 ? " beat-start" : ""}${playhead ? " playhead" : ""}${inSelection ? " in-selection" : ""}${meta?.probability !== undefined && meta.probability < 1 ? " has-probability" : ""}${meta?.microtiming !== undefined && meta.microtiming !== 0 ? (meta.microtiming < 0 ? " micro-early" : " micro-late") : ""}${hasLocks ? " has-locks" : ""}${amount < 0.99 ? " has-amount" : ""}`}
       style={
         {
           gridColumn: gridColumn ? `${gridColumn}` : undefined,
