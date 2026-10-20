@@ -23,6 +23,7 @@ import { addEffect, createDrumTrack, createInstrumentTrack, deleteTrack, duplica
 import { setBpm, setPadParams, setTrackParams } from "./project";
 import { setProjectKey, setTimeSignature } from "./metadata";
 import { setPatternLength } from "./patterns";
+import { barsPerPattern, stepsPerBar } from "../project-model/grid";
 import { setGroove } from "./groove";
 import { setMasterConfig } from "./master";
 import { setBeatManglerSteps, setEffectParam } from "./effectParams";
@@ -130,9 +131,20 @@ export function applyExactIntentCommand(doc: ProjectDocument, plan: ExactIntentP
     }
     if (op.kind === "patternLengthDelta") {
       // "4 bars longer" / "o 2 takty kratsie" — relative on the ACTIVE
-      // pattern's current length (1 bar = 16 steps on the 4/4 grid).
-      const current = next.patterns.find((p) => p.id === next.activePatternId)?.stepCount ?? 16;
-      const target = Math.max(2, Math.min(128, current + op.bars * 16));
+      // pattern's current length. A bar is the DOCUMENT'S metrical bar
+      // (ADR 0057): 16 steps in 4/4, 12 in 3/4 and 6/8, 32 in 4/2. The old
+      // "bars * 16" added four beats' worth of steps to a 3/4 groove.
+      const perBar = stepsPerBar(next);
+      const current = next.patterns.find((p) => p.id === next.activePatternId)?.stepCount ?? perBar;
+      const target = Math.max(1, Math.min(128, current + op.bars * perBar));
+      next = setPatternLength(next, next.activePatternId, target).execute(next);
+      continue;
+    }
+    if (op.kind === "patternLengthBars") {
+      // "make the loop 4 bars" — an absolute length in BARS, which the
+      // document's meter turns into steps.
+      const perBar = stepsPerBar(next);
+      const target = Math.max(1, Math.min(128, op.bars * perBar));
       next = setPatternLength(next, next.activePatternId, target).execute(next);
       continue;
     }
@@ -255,6 +267,16 @@ export function applyExactIntentCommand(doc: ProjectDocument, plan: ExactIntentP
  * the op vocabulary; keeping the intent module import-free of command values
  * preserves the acyclic layering.
  */
+/**
+ * A pattern's length in the document's BARS — "1 bar", "3 bars", "1.33 bars".
+ * The read-back speaks the musical unit (ADR 0057): "48 steps" alone does not
+ * tell an agent whether the groove lands on the downbeat.
+ */
+function barsLabel(doc: ProjectDocument, steps: number): string {
+  const bars = Math.round(barsPerPattern(doc, steps) * 100) / 100;
+  return `${bars} bar${bars === 1 ? "" : "s"}`;
+}
+
 export function exactReadback(before: ProjectDocument, after: ProjectDocument, plan: ExactIntentPlan): string {
   const fmt = (value: number): number => Math.round(value * 100) / 100;
   const entries: string[] = [];
@@ -265,7 +287,7 @@ export function exactReadback(before: ProjectDocument, after: ProjectDocument, p
       if (before.key !== after.key) entries.push(`key ${after.key}`);
     } else if (op.kind === "patternLength") {
       const steps = after.patterns.find((p) => p.id === after.activePatternId)?.stepCount;
-      if (steps != null) entries.push(`length ${steps}`);
+      if (steps != null) entries.push(`length ${steps} steps (${barsLabel(after, steps)})`);
     } else if (op.kind === "addTrack") {
       const added = after.tracks[after.tracks.length - 1];
       if (added) entries.push(`+ ${added.name}`);
@@ -286,11 +308,12 @@ export function exactReadback(before: ProjectDocument, after: ProjectDocument, p
           if (b != null && a != null && b !== a) entries.push(`gain ${fmt(b)}→${fmt(a)}`);
         }
       }
-    } else if (op.kind === "patternLengthDelta") {
+    } else if (op.kind === "patternLengthDelta" || op.kind === "patternLengthBars") {
+      const beforeSteps = before.patterns.find((p) => p.id === before.activePatternId)?.stepCount;
       const steps = after.patterns.find((p) => p.id === after.activePatternId)?.stepCount;
       if (steps != null)
         entries.push(
-          `length ${before.patterns.find((p) => p.id === before.activePatternId)?.stepCount ?? "?"}→${steps}`,
+          `length ${beforeSteps ?? "?"}→${steps} steps (${beforeSteps != null ? `${barsLabel(before, beforeSteps)}→` : ""}${barsLabel(after, steps)})`,
         );
     } else if (op.kind === "swing") {
       const b = Math.round((before.groove?.swing ?? 0) * 100);

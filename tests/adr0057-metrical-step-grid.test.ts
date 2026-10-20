@@ -58,6 +58,8 @@ import {
 } from "../src/project-model/grid";
 import { patternPhaseOffsetAtTick } from "../src/project-model/events";
 import { createPattern } from "../src/commands/patterns";
+import { applyExactIntentCommand, exactReadback } from "../src/commands/intentRouting";
+import { parseExactIntent } from "../src/intent/exact";
 import type { ProjectDocument, TimeSignature } from "../src/project-model/types";
 
 const FOUR_FOUR: TimeSignature = { numerator: 4, denominator: 4 };
@@ -182,6 +184,65 @@ describe("ADR 0057 — the grid's bar is the metrical bar", () => {
     expect(patternLengthOptions(docWithMeter(THREE_FOUR)).map((o) => o.steps)).toEqual([12, 24, 48, 96]);
     expect(patternLengthOptions(docWithMeter(SIX_EIGHT)).map((o) => o.steps)).toEqual([12, 24, 48, 96]);
     expect(patternLengthOptions(docWithMeter(FOUR_TWO)).map((o) => o.steps)).toEqual([32, 64, 128, 256]);
+  });
+});
+
+describe("ADR 0057 — the intent engine speaks the document's BARS", () => {
+  it("'4 bars longer' adds four METRICAL bars, not four 4/4 bars", () => {
+    const doc = docWithMeter(THREE_FOUR);
+    const plan = parseExactIntent("4 bars longer")!;
+    const next = applyExactIntentCommand(doc, plan).execute(doc);
+    const steps = next.patterns.find((p) => p.id === next.activePatternId)!.stepCount;
+    // The house pattern is 16 steps; a 3/4 bar is 12, so four bars are 48.
+    expect(steps).toBe(16 + 4 * 12);
+  });
+
+  it("NEGATIVE CONTROL: in 4/4 the same sentence adds four bars of 16 (unchanged)", () => {
+    const doc = docWithMeter(FOUR_FOUR);
+    const plan = parseExactIntent("4 bars longer")!;
+    const next = applyExactIntentCommand(doc, plan).execute(doc);
+    const steps = next.patterns.find((p) => p.id === next.activePatternId)!.stepCount;
+    expect(steps).toBe(16 + 4 * 16);
+  });
+
+  it("'make the loop 4 bars' is an ABSOLUTE length in the document's bars", () => {
+    for (const [sig, expected] of [
+      [FOUR_FOUR, 64],
+      [THREE_FOUR, 48],
+      [SIX_EIGHT, 48],
+      [FOUR_TWO, 128],
+    ] as [TimeSignature, number][]) {
+      const doc = docWithMeter(sig);
+      const plan = parseExactIntent("make the loop 4 bars")!;
+      expect(plan.ops, `${sig.numerator}/${sig.denominator} parse`).toContainEqual({
+        kind: "patternLengthBars",
+        bars: 4,
+      });
+      const next = applyExactIntentCommand(doc, plan).execute(doc);
+      const steps = next.patterns.find((p) => p.id === next.activePatternId)!.stepCount;
+      expect(steps, `${sig.numerator}/${sig.denominator} length`).toBe(expected);
+    }
+  });
+
+  it("the relative and the absolute reading never fire together", () => {
+    // "4 bars longer" is the RELATIVE op. A parser that also claimed it as an
+    // absolute length would set the pattern twice, and the second one would
+    // silently win.
+    expect(parseExactIntent("4 bars longer")!.ops).toEqual([{ kind: "patternLengthDelta", bars: 4 }]);
+    expect(parseExactIntent("4 bars long")!.ops).toEqual([{ kind: "patternLengthBars", bars: 4 }]);
+  });
+
+  it("a step count is still a step count: '32 steps loop length' means 32 steps", () => {
+    expect(parseExactIntent("32 steps loop length")!.ops).toEqual([{ kind: "patternLength", steps: 32 }]);
+  });
+
+  it("the read-back speaks bars, because '48 steps' alone does not say whether the groove lands", () => {
+    const doc = docWithMeter(THREE_FOUR);
+    const plan = parseExactIntent("make the loop 4 bars")!;
+    const after = applyExactIntentCommand(doc, plan).execute(doc);
+    const readback = exactReadback(doc, after, plan);
+    expect(readback).toContain("48 steps");
+    expect(readback).toContain("4 bars");
   });
 });
 

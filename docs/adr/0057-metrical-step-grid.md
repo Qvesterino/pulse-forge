@@ -115,6 +115,11 @@ the user snaps it to a whole bar.
   `src/commands/patterns.ts` (the user's "new pattern"),
   `src/commands/padOps.ts` (a pad chop) and `src/intent/song.ts` (an empty
   section of N bars). In 4/4 these are 16 steps, exactly as before.
+- **The exact-intent path** (`src/intent/exact.ts`, `src/commands/intentRouting.ts`)
+  — the engine speaks the document's BARS: "4 bars longer" adds four metrical
+  bars (48 steps in 3/4, not 64), "make the loop 4 bars" is an absolute length
+  in bars, and the read-back states both units ("48 steps (4 bars)"). This is
+  the path the MCP surface calls, so the agent-facing surface inherits it.
 
   The producers whose output has CONTENT are deliberately not in this stage:
   the templates (their grooves are 4/4 by composition), the MIDI import
@@ -141,6 +146,10 @@ document's meter. The highest-risk sites, mapped (read-only sweep,
    that is a multiple of 16 (`src/intent/schema.ts`, `project-brief.ts`,
    `creative-task-contract.ts`, `src/project-model/producer-brief.ts`,
    `src/intent/normalize.ts`). They would reject a metrical 12/20/24.
+   **The exact-intent path is done** (Stage 1b): the applier and the parser
+   speak the document's bars — "4 bars longer" adds four METRICAL bars, and
+   "make the loop 4 bars" is an absolute length in bars. The BRIEF contracts
+   are still open: they validate a request with no document in hand.
 3. **The MCP surface.** `src/mcp/tools.ts` rejects any `setPatternLength`
    outside 16..128, and maps `bars → length: bars * 16`. For a platform that
    AI agents drive, this is the surface that must speak bars.

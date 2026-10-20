@@ -15,6 +15,11 @@ import { parseIntentText } from "./text-parser";
 
 export type ExactTarget = "drums" | "bass" | "lead" | "chords" | "vocal" | "mix" | "kick" | "snare" | "hats";
 
+/** The pattern-length ceiling (the model's own hard limit on a pattern's steps). */
+const MAX_PATTERN_STEPS = 128;
+/** The bar ceiling for an absolute "N bars" length. */
+const MAX_PATTERN_BARS = 16;
+
 export type ExactOp =
   | { kind: "tempo"; bpm: number }
   | { kind: "key"; key: MusicalKey }
@@ -34,6 +39,12 @@ export type ExactOp =
   | { kind: "patternLength"; steps: number }
   /** Relative pattern length: "4 bars longer", "o 2 takty kratsie". */
   | { kind: "patternLengthDelta"; bars: number }
+  /**
+   * Absolute pattern length in BARS: "make the loop 4 bars", "pattern 2 bars
+   * long". The document's meter turns bars into steps (ADR 0057), so this
+   * carries the MUSICAL unit and the applier owns the conversion.
+   */
+  | { kind: "patternLengthBars"; bars: number }
   /** Project groove swing: "swing 60 percent", "vypni swing" — 0..100 maps to groove.swing 0..1. */
   | { kind: "swing"; percent: number }
   /** GAP-12 (control-surface audit 2026-10-13): "time signature 3/4". */
@@ -492,13 +503,35 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
     ops.push({ kind: "patternLengthDelta", bars: down ? -count : count });
   }
 
-  // Pattern length: "pattern length to 32", "length to 64"
-  const length =
-    /(?:use|set|make|change)?\s*(\d{1,3})\s*[- ]?steps?\s+(?:loop|pattern)\s+length\b/.exec(lower) ||
-    /(?:pattern\s+)?(?:loop\s+)?length\s*(?:to|=|:)?\s*(\d{1,3})\b/.exec(lower);
-  if (length) {
-    const steps = Number(length[2] ?? length[1]);
-    if ([16, 32, 64, 128, 256].includes(steps)) ops.push({ kind: "patternLength", steps });
+  // Pattern length in STEPS: "pattern length to 32", "32 steps loop length".
+  // The word "steps" names the unit, so any legal step count is accepted —
+  // 12 is a 3/4 bar, 20 a 5/4 bar (ADR 0057). The unit-less phrasing
+  // ("length to 64") keeps the old 4/4-multiple whitelist: there the number
+  // alone cannot say which unit it means, and guessing is how a DAW ends up
+  // with a pattern the user never asked for.
+  const stepsLength = /(?:use|set|make|change)?\s*(\d{1,3})\s*[- ]?steps?\s+(?:loop|pattern)\s+length\b/.exec(lower);
+  if (stepsLength) {
+    const steps = Number(stepsLength[1]);
+    if (steps >= 1 && steps <= MAX_PATTERN_STEPS) ops.push({ kind: "patternLength", steps });
+  } else {
+    const bareLength = /(?:pattern\s+)?(?:loop\s+)?length\s*(?:to|=|:)?\s*(\d{1,3})\b/.exec(lower);
+    if (bareLength) {
+      const steps = Number(bareLength[1]);
+      if ([16, 32, 64, 128, 256].includes(steps)) ops.push({ kind: "patternLength", steps });
+    }
+  }
+
+  // Pattern length in BARS: "make the loop 4 bars", "4 bar loop", "pattern
+  // length of 2 bars". The frames are explicit on purpose — a bare "4 bars"
+  // is too generic to claim as a length change, and "4 bars LONGER" is the
+  // relative op above (the \b after "long" keeps the two apart).
+  const barsLength =
+    /(?:loop|pattern)\s+length\s+(?:of|=|:)?\s*(\d{1,2})\s*[- ]?bars?\b/.exec(lower) ||
+    /(?:loop|pattern)\s+(\d{1,2})\s*[- ]?bars?\b(?!\s+(?:longer|shorter|dlhsie|kratsie))/.exec(lower) ||
+    /(\d{1,2})\s*[- ]?bars?\s+(?:long|loop|pattern)\b/.exec(lower);
+  if (barsLength) {
+    const bars = Number(barsLength[1]);
+    if (bars >= 1 && bars <= MAX_PATTERN_BARS) ops.push({ kind: "patternLengthBars", bars });
   }
 
   if (ops.length === 0) return null;
@@ -521,6 +554,7 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
       if (op.kind === "gainDbAbsolute") return `${op.target} fader na ${op.absDb} dB`;
       if (op.kind === "swing") return `swing ${op.percent} %`;
       if (op.kind === "patternLengthDelta") return `length ${op.bars > 0 ? "+" : ""}${op.bars} bars`;
+      if (op.kind === "patternLengthBars") return `length ${op.bars} bars`;
       if (op.kind === "timeSignature") return `time signature ${op.numerator}/${op.denominator}`;
       return `length ${op.steps}`;
     })
