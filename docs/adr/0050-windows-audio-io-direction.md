@@ -355,8 +355,21 @@ and [recovering from an invalid device](https://learn.microsoft.com/en-us/window
 - The startup watchdog remains armed while the native start promise is pending,
   including after a stop request. This covers renderer teardown during a stuck
   driver call; a completed or replaced session cancels the watchdog. Focused
-  watchdog and utility-manager tests pass. This lifecycle fix does not explain
-  the AudioSrv hang or qualify device streaming.
+  watchdog and utility-manager tests pass. Synthetic utility-host lifecycle
+  tests now also cover Stop before worklet attachment, clean stop of a running
+  session, native Start rejection and Stop while native Start never settles on
+  both capture and render endpoint Start phases; these cases verify endpoint-
+  specific timeout reporting and termination of the isolated utility. The
+  manager test verifies that an unexpected utility exit clears the
+  active session and permits a retry through a fresh host. The AudioEngine
+  bridge test injects its two-second missing-status error and verifies capture
+  teardown plus restoration of normal master output on Stop. A native lifecycle
+  review found that the N-API start worker could overlap JavaScript Stop while
+  both touched the same `std::thread`; worker creation now shares the startup
+  lock with Stop, and every join is serialized through a dedicated mutex. A
+  CTest case overlaps Stop with startup using nonexistent exact endpoint IDs,
+  so it opens no physical stream. This lifecycle evidence does not explain the
+  AudioSrv hang or qualify device streaming.
 - The startup diagnostic previously grouped both `IAudioClient3::Start` calls
   and both `GetStreamLatency` calls under `starting-audio-client`, so a timeout
   there could not identify which native call remained blocked. Startup

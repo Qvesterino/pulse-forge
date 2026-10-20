@@ -305,14 +305,16 @@ shared/exclusive fallbacks. Record raw measurements with each test result.
       Chromium E2E observes all four monitor destinations while capturing four
       distinct channels. The capture PCM remains in its original channel layout;
       physical routing and device latency still require hardware qualification.
-- [ ] Extend from one active capture to several simultaneously armed capture
-      streams, with per-track input monitoring modes and explicit source maps.
-      `PcmMicRecorderGroup` now prepares members together and arms their
-      AudioWorklets on one future frame of the shared `AudioContext`. A failed
-      member cancels startup or stops the live group while retaining each
-      committed take for recovery; unrelated recording flows remain exclusive.
-      The arrangement coordinator, per-track source UI, placement as one undo
-      step, and arrangement-level end-to-end multi-input tests are still open.
+- [x] Add simultaneous independent browser input streams with per-track dry
+      monitoring and explicit track/device maps. `PcmMicRecorderGroup` prepares
+      every member and arms its AudioWorklet on one future frame of the shared
+      `AudioContext`. A failed member cancels startup or stops the live group
+      while retaining committed PCM for recovery; unrelated recording flows
+      remain exclusive. The arrangement UI validates unique destinations and
+      devices, and places completed takes as one undo step. Engine and UI setup
+      behavior are covered by software tests. Native WASAPI independent-device
+      support, drift correction, physical connector maps and device QA remain
+      open.
 - [x] Preserve source-channel identity and timeline placement through durable
       block staging, recovery, project reload and channel-specific playback.
 - [x] Add an explicit loop-pass capture mode: AudioWorklet-scheduled frame

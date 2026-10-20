@@ -400,6 +400,8 @@
   flex: none;
 }
 .browser-strip-target {
+  display: grid;
+  gap: 1px;
   font-family: var(--mono);
   font-size: var(--fs-xs);
   color: var(--text-faint);
@@ -407,6 +409,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+.browser-strip-subtarget {
+  color: var(--text-dim);
 }
 .browser-strip-collapse {
   margin-left: auto;

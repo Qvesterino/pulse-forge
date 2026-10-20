@@ -63,6 +63,44 @@ function Start-ProbeProcess {
   return [System.Diagnostics.Process]::Start($startInfo)
 }
 
+function Stop-OwnedProbeProcess {
+  param(
+    [Parameter(Mandatory = $true)][System.Diagnostics.Process]$Process,
+    [Parameter(Mandatory = $true)][string]$Label
+  )
+
+  if ($Process.HasExited) { return }
+  try {
+    $Process.Kill()
+    if (-not $Process.WaitForExit(5000)) {
+      throw "The owned $Label probe did not exit after termination."
+    }
+  } catch {
+    [Console]::Error.WriteLine("Could not stop owned $Label probe: $($_.Exception.Message)")
+    $script:exitCode = 1
+  }
+}
+
+function Read-ProbeOutput {
+  param(
+    [Parameter(Mandatory = $true)][System.Threading.Tasks.Task[string]]$Task,
+    [Parameter(Mandatory = $true)][string]$Label
+  )
+
+  try {
+    if (-not $Task.Wait(5000)) {
+      [Console]::Error.WriteLine("Timed out collecting $Label from an owned probe process.")
+      $script:exitCode = 1
+      return "<timed out collecting $Label>"
+    }
+    return $Task.GetAwaiter().GetResult()
+  } catch {
+    [Console]::Error.WriteLine("Could not collect $Label from an owned probe process: $($_.Exception.Message)")
+    $script:exitCode = 1
+    return "<failed collecting $Label>"
+  }
+}
+
 $captureProcess = $null
 $renderProcess = $null
 $exitCode = 0
@@ -84,19 +122,26 @@ try {
 
   $timedOut = -not $captureProcess.HasExited -or -not $renderProcess.HasExited
   if ($timedOut) {
-    Write-Error "The concurrent probe exceeded its $($Seconds + 15)-second safety timeout; stopping both streams."
+    $timeoutMessage = "The concurrent probe exceeded its $($Seconds + 15)-second safety timeout; stopping both streams."
+    [Console]::Error.WriteLine($timeoutMessage)
     $exitCode = 1
+    Stop-OwnedProbeProcess $captureProcess 'capture'
+    Stop-OwnedProbeProcess $renderProcess 'render'
   }
 
-  Write-Output "Concurrent shared-WASAPI capture/render smoke completed in $([math]::Round($watch.Elapsed.TotalSeconds, 2)) s."
+  if ($timedOut) {
+    Write-Output "Concurrent shared-WASAPI capture/render smoke timed out after $([math]::Round($watch.Elapsed.TotalSeconds, 2)) s."
+  } else {
+    Write-Output "Concurrent shared-WASAPI capture/render smoke completed in $([math]::Round($watch.Elapsed.TotalSeconds, 2)) s."
+  }
   Write-Output 'Capture PCM is discarded; render sends silence. This does not measure physical loopback or round-trip latency.'
   Write-Output '--- CAPTURE ---'
-  Write-Output $captureOutputTask.GetAwaiter().GetResult()
-  $captureError = $captureErrorTask.GetAwaiter().GetResult()
+  Write-Output (Read-ProbeOutput $captureOutputTask 'capture stdout')
+  $captureError = Read-ProbeOutput $captureErrorTask 'capture stderr'
   if ($captureError) { [Console]::Error.WriteLine($captureError) }
   Write-Output '--- RENDER ---'
-  Write-Output $renderOutputTask.GetAwaiter().GetResult()
-  $renderError = $renderErrorTask.GetAwaiter().GetResult()
+  Write-Output (Read-ProbeOutput $renderOutputTask 'render stdout')
+  $renderError = Read-ProbeOutput $renderErrorTask 'render stderr'
   if ($renderError) { [Console]::Error.WriteLine($renderError) }
 
   if (-not $timedOut -and ($captureProcess.ExitCode -ne 0 -or $renderProcess.ExitCode -ne 0)) {
@@ -108,15 +153,8 @@ try {
 } finally {
   foreach ($process in @($captureProcess, $renderProcess)) {
     if ($null -ne $process) {
-      if (-not $process.HasExited) {
-        try {
-          $process.Kill()
-          [void]$process.WaitForExit(5000)
-        } catch {
-          [Console]::Error.WriteLine("Could not stop probe process: $($_.Exception.Message)")
-          $exitCode = 1
-        }
-      }
+      $label = if ($process -eq $captureProcess) { 'capture' } else { 'render' }
+      Stop-OwnedProbeProcess $process $label
       $process.Dispose()
     }
   }

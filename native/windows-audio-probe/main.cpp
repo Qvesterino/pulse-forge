@@ -387,6 +387,10 @@ struct ScopedWaveFormat {
   ~ScopedWaveFormat() { CoTaskMemFree(value); }
 };
 
+void reportStreamStage(const wchar_t* stage) {
+  std::wcout << L"    stage: " << stage << L"\n" << std::flush;
+}
+
 bool prepareStream(IAudioClient3* client, AUDCLNT_SHAREMODE mode, WAVEFORMATEX* format,
                    UINT32* periodFrames, UINT32* bufferFrames, DWORD extraStreamFlags = 0) {
   HRESULT hr = AUDCLNT_E_UNSUPPORTED_FORMAT;
@@ -396,6 +400,7 @@ bool prepareStream(IAudioClient3* client, AUDCLNT_SHAREMODE mode, WAVEFORMATEX* 
     // Match the documented metadata preflight query for a real stream.
     properties.eCategory = AudioCategory_Media;
     properties.Options = AUDCLNT_STREAMOPTIONS_NONE;
+    reportStreamStage(L"shared-set-client-properties");
     hr = client->SetClientProperties(&properties);
     if (FAILED(hr)) {
       std::wcerr << L"SetClientProperties(AudioCategory_Media) failed (HRESULT 0x" << std::hex
@@ -407,6 +412,7 @@ bool prepareStream(IAudioClient3* client, AUDCLNT_SHAREMODE mode, WAVEFORMATEX* 
     UINT32 fundamentalFrames = 0;
     UINT32 minimumFrames = 0;
     UINT32 maximumFrames = 0;
+    reportStreamStage(L"shared-query-engine-period");
     hr = client->GetSharedModeEnginePeriod(format, &defaultFrames, &fundamentalFrames, &minimumFrames, &maximumFrames);
     if (FAILED(hr) || minimumFrames == 0) {
       std::wcerr << L"No valid shared period is available (HRESULT 0x" << std::hex
@@ -417,11 +423,13 @@ bool prepareStream(IAudioClient3* client, AUDCLNT_SHAREMODE mode, WAVEFORMATEX* 
       std::wcerr << L"No legal shared period is available within the reported range\n";
       return false;
     }
+    reportStreamStage(L"shared-initialize-audio-stream");
     hr = client->InitializeSharedAudioStream(AUDCLNT_STREAMFLAGS_EVENTCALLBACK | extraStreamFlags, *periodFrames,
                                              format, nullptr);
   } else {
     REFERENCE_TIME defaultPeriod = 0;
     REFERENCE_TIME minimumPeriod = 0;
+    reportStreamStage(L"exclusive-query-device-period");
     hr = client->GetDevicePeriod(&defaultPeriod, &minimumPeriod);
     if (FAILED(hr) || minimumPeriod <= 0) {
       std::wcerr << L"GetDevicePeriod failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr) << std::dec
@@ -430,6 +438,7 @@ bool prepareStream(IAudioClient3* client, AUDCLNT_SHAREMODE mode, WAVEFORMATEX* 
     }
     REFERENCE_TIME requestedPeriod = minimumPeriod;
     *periodFrames = static_cast<UINT32>((requestedPeriod * format->nSamplesPerSec) / 10'000'000);
+    reportStreamStage(L"exclusive-initialize-audio-stream");
     hr = client->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE, AUDCLNT_STREAMFLAGS_EVENTCALLBACK, requestedPeriod,
                             requestedPeriod, format, nullptr);
     if (hr == AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED) {
@@ -444,6 +453,7 @@ bool prepareStream(IAudioClient3* client, AUDCLNT_SHAREMODE mode, WAVEFORMATEX* 
       requestedPeriod = static_cast<REFERENCE_TIME>(
           (10'000'000.0 * static_cast<double>(*bufferFrames) / format->nSamplesPerSec) + 0.5);
       *periodFrames = *bufferFrames;
+      reportStreamStage(L"exclusive-retry-aligned-initialize");
       hr = client->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE, AUDCLNT_STREAMFLAGS_EVENTCALLBACK, requestedPeriod,
                               requestedPeriod, format, nullptr);
     }
@@ -453,6 +463,7 @@ bool prepareStream(IAudioClient3* client, AUDCLNT_SHAREMODE mode, WAVEFORMATEX* 
                << L")\n";
     return false;
   }
+  reportStreamStage(L"get-allocated-buffer-size");
   hr = client->GetBufferSize(bufferFrames);
   if (FAILED(hr) || *bufferFrames == 0) {
     std::wcerr << L"GetBufferSize failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr) << std::dec
@@ -487,6 +498,7 @@ bool preparePullLoopbackStream(IAudioClient3* client, WAVEFORMATEX* format, UINT
 bool runCaptureStream(IAudioClient3* client, HANDLE eventHandle, AUDCLNT_SHAREMODE mode, UINT32 seconds,
                       UINT32 bufferFrames, UINT32 sampleRate) {
   ComPtr<IAudioCaptureClient> capture;
+  reportStreamStage(L"capture-acquire-service");
   HRESULT hr = client->GetService(IID_PPV_ARGS(capture.GetAddressOf()));
   if (FAILED(hr)) {
     std::wcerr << L"Could not acquire IAudioCaptureClient (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr)
@@ -494,6 +506,7 @@ bool runCaptureStream(IAudioClient3* client, HANDLE eventHandle, AUDCLNT_SHAREMO
     return false;
   }
 
+  reportStreamStage(L"capture-set-event-handle");
   hr = client->SetEventHandle(eventHandle);
   if (FAILED(hr)) {
     std::wcerr << L"SetEventHandle failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr) << std::dec
@@ -504,6 +517,7 @@ bool runCaptureStream(IAudioClient3* client, HANDLE eventHandle, AUDCLNT_SHAREMO
   LARGE_INTEGER qpcStartCall{};
   const bool canMeasureQpcStart = QueryPerformanceFrequency(&qpcFrequency) != 0 &&
                                   QueryPerformanceCounter(&qpcStartCall) != 0;
+  reportStreamStage(L"capture-start");
   hr = client->Start();
   if (FAILED(hr)) {
     std::wcerr << L"Capture stream Start failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr) << std::dec
@@ -512,6 +526,7 @@ bool runCaptureStream(IAudioClient3* client, HANDLE eventHandle, AUDCLNT_SHAREMO
   }
   LARGE_INTEGER qpcStartReturned{};
   const bool canMeasureQpcReturn = canMeasureQpcStart && QueryPerformanceCounter(&qpcStartReturned) != 0;
+  reportStreamStage(L"capture-event-loop");
 
   UINT64 totalFrames = 0;
   UINT64 firstDevicePosition = 0;
@@ -627,9 +642,11 @@ bool runCaptureStream(IAudioClient3* client, HANDLE eventHandle, AUDCLNT_SHAREMO
     if (!ok) break;
   }
 
+  reportStreamStage(L"capture-stop");
   const HRESULT stopHr = client->Stop();
   const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
   REFERENCE_TIME streamLatency = 0;
+  reportStreamStage(L"capture-query-stream-latency");
   const HRESULT latencyHr = client->GetStreamLatency(&streamLatency);
   std::wcout << L"    capture result: elapsed=" << std::fixed << std::setprecision(2) << elapsed
             << L" s, packets=" << packetCount << L", frames=" << totalFrames << L" ("
@@ -675,12 +692,14 @@ bool runCaptureStream(IAudioClient3* client, HANDLE eventHandle, AUDCLNT_SHAREMO
 bool runSilentRenderStream(IAudioClient3* client, HANDLE eventHandle, UINT32 seconds, UINT32 bufferFrames,
                            UINT32 sampleRate) {
   ComPtr<IAudioRenderClient> render;
+  reportStreamStage(L"render-acquire-service");
   HRESULT hr = client->GetService(IID_PPV_ARGS(render.GetAddressOf()));
   if (FAILED(hr)) {
     std::wcerr << L"Could not acquire IAudioRenderClient (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr)
                << std::dec << L")\n";
     return false;
   }
+  reportStreamStage(L"render-set-event-handle");
   hr = client->SetEventHandle(eventHandle);
   if (FAILED(hr)) {
     std::wcerr << L"SetEventHandle failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr) << std::dec
@@ -690,18 +709,21 @@ bool runSilentRenderStream(IAudioClient3* client, HANDLE eventHandle, UINT32 sec
 
   // Prime the endpoint with silence before starting; no tone or captured input is used.
   BYTE* initialData = nullptr;
+  reportStreamStage(L"render-prime-get-buffer");
   hr = render->GetBuffer(bufferFrames, &initialData);
   if (FAILED(hr)) {
     std::wcerr << L"Render prime GetBuffer failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr)
                << std::dec << L")\n";
     return false;
   }
+  reportStreamStage(L"render-prime-release-silence");
   hr = render->ReleaseBuffer(bufferFrames, AUDCLNT_BUFFERFLAGS_SILENT);
   if (FAILED(hr)) {
     std::wcerr << L"Render prime ReleaseBuffer failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr)
                << std::dec << L")\n";
     return false;
   }
+  reportStreamStage(L"render-start");
   hr = client->Start();
   if (FAILED(hr)) {
     std::wcerr << L"Render stream Start failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr) << std::dec
@@ -709,6 +731,7 @@ bool runSilentRenderStream(IAudioClient3* client, HANDLE eventHandle, UINT32 sec
     return false;
   }
 
+  reportStreamStage(L"render-event-loop");
   UINT64 renderedFrames = bufferFrames;
   UINT64 eventCount = 0;
   UINT64 eventTimeouts = 0;
@@ -761,9 +784,11 @@ bool runSilentRenderStream(IAudioClient3* client, HANDLE eventHandle, UINT32 sec
     renderedFrames += available;
   }
 
+  reportStreamStage(L"render-stop");
   const HRESULT stopHr = client->Stop();
   const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
   REFERENCE_TIME streamLatency = 0;
+  reportStreamStage(L"render-query-stream-latency");
   const HRESULT latencyHr = client->GetStreamLatency(&streamLatency);
   std::wcout << L"    silent-render result: elapsed=" << std::fixed << std::setprecision(2) << elapsed
             << L" s, events=" << eventCount << L", frames queued=" << renderedFrames << L" ("
@@ -1141,6 +1166,7 @@ bool runLoopbackTest(IMMDeviceEnumerator* enumerator, const std::wstring& exactN
 bool runStreamTest(IMMDeviceEnumerator* enumerator, EDataFlow flow, AUDCLNT_SHAREMODE mode,
                    const std::wstring& selector, bool selectById, UINT32 seconds) {
   ComPtr<IMMDeviceCollection> devices;
+  reportStreamStage(L"enumerate-active-endpoints");
   HRESULT hr = enumerator->EnumAudioEndpoints(flow, DEVICE_STATE_ACTIVE, devices.GetAddressOf());
   if (FAILED(hr)) {
     std::wcerr << L"Could not enumerate active " << flowName(flow) << L" endpoints (HRESULT 0x" << std::hex
@@ -1183,6 +1209,7 @@ bool runStreamTest(IMMDeviceEnumerator* enumerator, EDataFlow flow, AUDCLNT_SHAR
             << L"PCM is discarded in process memory; no file is written. Render mode sends silence only.\n";
 
   ComPtr<IAudioClient3> client;
+  reportStreamStage(L"activate-audio-client");
   hr = selected->Activate(__uuidof(IAudioClient3), CLSCTX_ALL, nullptr,
                           reinterpret_cast<void**>(client.GetAddressOf()));
   if (FAILED(hr)) {
@@ -1192,6 +1219,7 @@ bool runStreamTest(IMMDeviceEnumerator* enumerator, EDataFlow flow, AUDCLNT_SHAR
   }
 
   WAVEFORMATEX* mixFormat = nullptr;
+  reportStreamStage(L"get-mix-format");
   hr = client->GetMixFormat(&mixFormat);
   if (FAILED(hr) || !mixFormat) {
     std::wcerr << L"GetMixFormat failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr) << std::dec
@@ -1204,6 +1232,7 @@ bool runStreamTest(IMMDeviceEnumerator* enumerator, EDataFlow flow, AUDCLNT_SHAR
   WAVEFORMATEX candidateFormat = makeFormat(48'000, 2, 16, WAVE_FORMAT_PCM);
   WAVEFORMATEX* streamFormat = mode == AUDCLNT_SHAREMODE_SHARED ? mixFormat : &candidateFormat;
   WAVEFORMATEX* closestMatch = nullptr;
+  reportStreamStage(L"check-stream-format");
   hr = client->IsFormatSupported(mode, streamFormat,
                                  mode == AUDCLNT_SHAREMODE_SHARED ? &closestMatch : nullptr);
   if (hr != S_OK && mode == AUDCLNT_SHAREMODE_EXCLUSIVE) {
@@ -1221,6 +1250,7 @@ bool runStreamTest(IMMDeviceEnumerator* enumerator, EDataFlow flow, AUDCLNT_SHAR
 
   UINT32 periodFrames = 0;
   UINT32 bufferFrames = 0;
+  reportStreamStage(L"prepare-audio-stream");
   if (!prepareStream(client.Get(), mode, streamFormat, &periodFrames, &bufferFrames)) {
     CoTaskMemFree(mixFormat);
     return false;
@@ -1239,6 +1269,7 @@ bool runStreamTest(IMMDeviceEnumerator* enumerator, EDataFlow flow, AUDCLNT_SHAR
             << framesToMs(bufferFrames, sampleRate) << L" ms\n";
   const wchar_t* mmcssTaskName = periodMs < 10.0 ? L"Pro Audio" : L"Audio";
   ScopedMmcssTask mmcssTask;
+  reportStreamStage(L"register-mmcss");
   if (!mmcssTask.registerTask(mmcssTaskName)) {
     std::wcerr << L"AvSetMmThreadCharacteristics failed for MMCSS task '" << mmcssTaskName << L"' (Win32 "
                << GetLastError() << L")\n";
@@ -1246,6 +1277,7 @@ bool runStreamTest(IMMDeviceEnumerator* enumerator, EDataFlow flow, AUDCLNT_SHAR
     return false;
   }
   std::wcout << L"    MMCSS service-thread task: " << mmcssTaskName << L"\n";
+  reportStreamStage(flow == eCapture ? L"run-capture-stream" : L"run-silent-render-stream");
   const bool ok = flow == eCapture
                       ? runCaptureStream(client.Get(), event.value, mode, seconds, bufferFrames, sampleRate)
                       : runSilentRenderStream(client.Get(), event.value, seconds, bufferFrames, sampleRate);

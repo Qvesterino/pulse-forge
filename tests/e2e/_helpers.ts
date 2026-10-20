@@ -85,7 +85,7 @@ export async function openHouseTemplateFromLanding(page: Page): Promise<void> {
     );
   }
   await page.waitForSelector(".project-browser", { timeout: 60_000 });
-  await page.locator(".pb-template").first().click();
+  await openFirstProjectTemplate(page);
   await page.waitForSelector(".topbar", { timeout: 60_000 });
   await page.waitForSelector(".sequencer", { timeout: 60_000 });
   await completeOnboardingTourIfPresent(page);
@@ -113,8 +113,20 @@ export async function openHouseTemplate(page: Page, options: { timeoutMs?: numbe
   });
   await page.goto("/", { waitUntil: "domcontentloaded", timeout: timeoutMs });
   await page.waitForSelector(".project-browser", { timeout: timeoutMs });
-  await page.locator(".pb-template").first().click();
+  const continueCard = page.locator(".pb-continue-card").first();
+  if (await continueCard.count()) await continueCard.click();
+  else await openFirstProjectTemplate(page);
   await page.waitForSelector(".topbar", { timeout: timeoutMs });
   await page.waitForSelector(".sequencer", { timeout: timeoutMs });
   await completeOnboardingTourIfPresent(page);
+}
+
+async function openFirstProjectTemplate(page: Page): Promise<void> {
+  const firstTemplate = page.locator(".pb-template").first();
+  if (!(await firstTemplate.isVisible().catch(() => false))) {
+    const expandTemplates = page.getByText("EXPLORE ALL PROJECT TEMPLATES", { exact: true });
+    if (await expandTemplates.isVisible().catch(() => false)) await expandTemplates.click();
+  }
+  await firstTemplate.waitFor({ state: "visible", timeout: 15_000 });
+  await firstTemplate.click();
 }

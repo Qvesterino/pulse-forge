@@ -26,13 +26,26 @@ async function openInputChannelRouting(page: Page): Promise<void> {
   if ((await routing.getAttribute("open")) === null) await routing.locator("summary").click();
 }
 
-async function installSyntheticInput(page: Page, channels = 2, captureFrequencies: number[][] = []): Promise<void> {
+async function installSyntheticInput(
+  page: Page,
+  channels = 2,
+  captureFrequencies: number[][] = [],
+  deviceIds: string[] = [],
+): Promise<void> {
   // Distinct tones exercise the real AudioWorklet/PCM path without opening a
   // physical microphone or audio interface. Chromium's MediaStreamDestination
   // is stereo-only, so the test seam supplies its synthetic channels at the
   // app's MediaStreamAudioSourceNode boundary.
   await page.addInitScript(
-    ({ channelCount, frequencySets }: { channelCount: number; frequencySets: number[][] }) => {
+    ({
+      channelCount,
+      frequencySets,
+      deviceIds,
+    }: {
+      channelCount: number;
+      frequencySets: number[][];
+      deviceIds: string[];
+    }) => {
       const syntheticStreams = new WeakMap<MediaStream, number>();
       const syntheticTracks = new WeakSet<MediaStreamTrack>();
       let nextCaptureIndex = 0;
@@ -58,10 +71,44 @@ async function installSyntheticInput(page: Page, channels = 2, captureFrequencie
         const settings = nativeGetSettings.call(this);
         return syntheticTracks.has(this) ? { ...settings, channelCount } : settings;
       };
+      if (deviceIds.length > 0) {
+        Object.defineProperty(navigator.mediaDevices, "enumerateDevices", {
+          configurable: true,
+          value: async () =>
+            deviceIds.map(
+              (deviceId, index) =>
+                ({
+                  kind: "audioinput",
+                  deviceId,
+                  groupId: `synthetic-group-${index + 1}`,
+                  label: `Synthetic Input ${index + 1}`,
+                }) as MediaDeviceInfo,
+            ),
+        });
+      }
       Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
         configurable: true,
-        value: async () => {
-          const captureIndex = nextCaptureIndex++;
+        value: async (constraints?: MediaStreamConstraints) => {
+          const audio = constraints?.audio;
+          const deviceConstraint = typeof audio === "object" && audio !== null ? audio.deviceId : undefined;
+          const exactDeviceId =
+            typeof deviceConstraint === "string"
+              ? deviceConstraint
+              : Array.isArray(deviceConstraint)
+                ? deviceConstraint[0]
+                : typeof deviceConstraint === "object" && deviceConstraint !== null
+                  ? deviceConstraint.exact
+                  : undefined;
+          const requestedDeviceId = typeof exactDeviceId === "string" ? exactDeviceId : undefined;
+          const captureIndex =
+            requestedDeviceId !== undefined ? deviceIds.indexOf(requestedDeviceId) : nextCaptureIndex++;
+          if (requestedDeviceId !== undefined && captureIndex < 0)
+            throw new DOMException("Synthetic input device was not found", "NotFoundError");
+          if (requestedDeviceId !== undefined) {
+            const testWindow = window as Window & { __syntheticCaptureDeviceIds?: string[] };
+            testWindow.__syntheticCaptureDeviceIds ??= [];
+            testWindow.__syntheticCaptureDeviceIds.push(requestedDeviceId);
+          }
           const streamContext = new AudioContext({ sampleRate: 48_000 });
           const stream = streamContext.createMediaStreamDestination().stream;
           syntheticStreams.set(stream, captureIndex);
@@ -70,7 +117,7 @@ async function installSyntheticInput(page: Page, channels = 2, captureFrequencie
         },
       });
     },
-    { channelCount: channels, frequencySets: captureFrequencies },
+    { channelCount: channels, frequencySets: captureFrequencies, deviceIds },
   );
 }
 
@@ -291,6 +338,151 @@ test.describe("11 — audio-input recording", () => {
     await expect(page.locator(".sequencer")).toBeVisible({ timeout: 30_000 });
     await ensureArrangementVisible(page);
     await expect(page.locator(".arr-audio-clip")).toHaveCount(2, { timeout: 20_000 });
+  });
+
+  test("records independent browser inputs to separate tracks with isolated dry monitoring", async ({ page }) => {
+    test.setTimeout(120_000);
+    const deviceIds = ["synthetic-input-lead", "synthetic-input-bass"];
+    await installSyntheticInput(page, 1, [[220], [660]], deviceIds);
+    await openHouseTemplate(page);
+    await clickPanelAction(page, "ARR");
+    await expect(page.locator(".arr-timeline")).toBeVisible();
+    await page.getByLabel("Add track").selectOption("sampler");
+
+    const armTrack = page.getByLabel("Arm track for recording");
+    const trackOptions = await armTrack
+      .locator("option")
+      .evaluateAll((options) =>
+        options
+          .map((option) => ({ id: (option as HTMLOptionElement).value, name: option.textContent?.trim() ?? "" }))
+          .filter((option) => option.id),
+      );
+    expect(trackOptions.length).toBeGreaterThanOrEqual(2);
+    const leadTrack = trackOptions[0]!;
+    const bassTrack = trackOptions.find((option) => option.id !== leadTrack.id)!;
+    await armTrack.selectOption(leadTrack.id);
+    await openCaptureSetup(page);
+    await page.getByLabel("Audio input device").selectOption(deviceIds[0]!);
+    await page.getByText("INDEPENDENT INPUT STREAMS · 1", { exact: true }).click();
+    await page.getByLabel("Add independent input stream").click();
+    await page.getByLabel("Independent input 2 track").selectOption(bassTrack.id);
+    await page.getByLabel("Independent input 2 device").selectOption(deviceIds[1]!);
+    await page.getByLabel(`Monitor ${bassTrack.name} input`).check();
+
+    await page.evaluate(async () => {
+      const load = (specifier: string) => import(/* @vite-ignore */ specifier);
+      const { AudioEngine } = await load("/src/audio-engine/AudioEngine.ts");
+      const prototype = AudioEngine.prototype;
+      const original = prototype.attachDryInputMonitor;
+      const routes: string[] = [];
+      prototype.attachDryInputMonitor = function (trackId: string, source: AudioNode) {
+        routes.push(trackId);
+        return original.call(this, trackId, source);
+      };
+      (window as Window & { __recordingMonitorTrackIds?: string[] }).__recordingMonitorTrackIds = routes;
+    });
+    await page.getByRole("button", { name: "DRY SOFT MON OFF" }).click();
+    await page.getByRole("button", { name: /REC$/ }).click();
+    await expect(page.getByRole("button", { name: /STOP/ })).toBeVisible({ timeout: 15_000 });
+    await expect
+      .poll(() =>
+        page.evaluate(() => (window as Window & { __recordingMonitorTrackIds?: string[] }).__recordingMonitorTrackIds),
+      )
+      .toEqual([leadTrack.id, bassTrack.id]);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => (window as Window & { __syntheticCaptureDeviceIds?: string[] }).__syntheticCaptureDeviceIds,
+        ),
+      )
+      .toEqual(deviceIds);
+    await expect(page.getByRole("meter", { name: "Audio input level" })).toHaveAttribute(
+      "aria-valuenow",
+      /^(?!0(?:\.0+)?$)/,
+    );
+    await page.waitForTimeout(1_200);
+    await page.getByRole("button", { name: /STOP/ }).click();
+    await expect(page.getByRole("button", { name: /REC$/ })).toBeEnabled({ timeout: 15_000 });
+    await expect(page.locator(".arr-audio-clip")).toHaveCount(2);
+    await page.waitForTimeout(1_500);
+
+    const capture = await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open("pulse-forge");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const readAll = <T>(storeName: string): Promise<T[]> =>
+        new Promise((resolve, reject) => {
+          const request = db.transaction(storeName, "readonly").objectStore(storeName).getAll();
+          request.onsuccess = () => resolve(request.result as T[]);
+          request.onerror = () => reject(request.error);
+        });
+      const [projects, audioEntries] = await Promise.all([readAll<any>("projects"), readAll<any>("user-sample-audio")]);
+      const project = projects.find((candidate) =>
+        candidate?.arrangement?.audioClips?.some((clip: any) => clip.bufferId.startsWith("user.recording-")),
+      );
+      const clips = project?.arrangement?.audioClips?.filter((clip: any) =>
+        clip.bufferId.startsWith("user.recording-"),
+      );
+      if (!clips || clips.length !== 2) throw new Error("Expected two persisted independent-input clips");
+
+      const takes = await Promise.all(
+        clips.map(async (clip: any) => {
+          const reference = audioEntries.find((entry) => entry.id === clip.bufferId)?.data;
+          if (reference?.kind !== "pcm-f32-planar-v1") throw new Error("A recorded track has no durable PCM reference");
+          const chunks = await new Promise<any[]>((resolve, reject) => {
+            const request = db
+              .transaction("recording-chunks", "readonly")
+              .objectStore("recording-chunks")
+              .index("by-session")
+              .getAll(reference.recordingId);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+          });
+          chunks.sort((left, right) => left.sequence - right.sequence);
+          const samples = new Float32Array(chunks.reduce((frames, chunk) => frames + chunk.frames, 0));
+          let offset = 0;
+          for (const chunk of chunks) {
+            if (chunk.channels.length !== 1) throw new Error("Each independent stream should save its own mono take");
+            const channel = new Float32Array(chunk.channels[0]);
+            samples.set(channel, offset);
+            offset += channel.length;
+          }
+          const amplitudeAt = (frequency: number): number => {
+            const start = Math.min(240, Math.floor(samples.length / 8));
+            const count = Math.min(12_000, samples.length - start);
+            let real = 0;
+            let imaginary = 0;
+            for (let index = 0; index < count; index++) {
+              const sample = samples[start + index] ?? 0;
+              const phase = (2 * Math.PI * frequency * index) / reference.sampleRate;
+              real += sample * Math.cos(phase);
+              imaginary -= sample * Math.sin(phase);
+            }
+            return count > 0 ? (2 * Math.hypot(real, imaginary)) / count : 0;
+          };
+          return {
+            trackId: clip.trackId,
+            frames: samples.length,
+            leadTone: amplitudeAt(220),
+            bassTone: amplitudeAt(660),
+          };
+        }),
+      );
+      db.close();
+      return takes;
+    });
+
+    expect(capture).toHaveLength(2);
+    const leadTake = capture.find((take) => take.trackId === leadTrack.id);
+    const bassTake = capture.find((take) => take.trackId === bassTrack.id);
+    expect(leadTake?.frames).toBeGreaterThan(24_000);
+    expect(leadTake?.leadTone).toBeGreaterThan(0.02);
+    expect(leadTake?.bassTone).toBeLessThan((leadTake?.leadTone ?? 0) * 0.1);
+    expect(bassTake?.frames).toBeGreaterThan(24_000);
+    expect(bassTake?.bassTone).toBeGreaterThan(0.02);
+    expect(bassTake?.leadTone).toBeLessThan((bassTake?.bassTone ?? 0) * 0.1);
   });
 
   test("records alternate PCM takes, comps them with undo and preserves the export after reload", async ({ page }) => {

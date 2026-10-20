@@ -1089,6 +1089,131 @@ describe("PcmMicRecorder", () => {
     expect(isMicRecordingActive()).toBe(false);
   });
 
+  it("keeps independent input monitoring isolated by destination track", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    type MonitorGain = {
+      gain: {
+        value: number;
+        cancelScheduledValues: ReturnType<typeof vi.fn>;
+        setTargetAtTime: ReturnType<typeof vi.fn>;
+      };
+    };
+    const monitorGains = new Map<string, MonitorGain>();
+    const createMonitorRoute = (id: string) => (monitorOutput: AudioNode) => {
+      monitorGains.set(id, monitorOutput as unknown as MonitorGain);
+      return vi.fn();
+    };
+    const lead = createRecorder({
+      inputDeviceId: "input-lead",
+      trackId: "track-lead",
+      routeMonitorOutput: createMonitorRoute("lead"),
+    });
+    const bass = createRecorder({
+      context: lead.context,
+      inputDeviceId: "input-bass",
+      trackId: "track-bass",
+      routeMonitorOutput: createMonitorRoute("bass"),
+    });
+    const createSource = lead.context.createMediaStreamSource as unknown as ReturnType<typeof vi.fn>;
+    createSource.mockReturnValueOnce(lead.source).mockReturnValueOnce(bass.source);
+    const group = new PcmMicRecorderGroup([
+      { id: "track-lead", dependencies: lead.dependencies, getMetadata: lead.metadata },
+      { id: "track-bass", dependencies: bass.dependencies, getMetadata: bass.metadata },
+    ]);
+
+    group.setInputMonitoring("track-lead", true);
+    await group.start();
+
+    const leadMonitor = monitorGains.get("lead");
+    const bassMonitor = monitorGains.get("bass");
+    if (!leadMonitor || !bassMonitor) throw new Error("Independent monitor routes were not created");
+    expect(leadMonitor.gain.value).toBe(1);
+    expect(bassMonitor.gain.value).toBe(0);
+
+    group.setInputMonitoring("track-bass", true);
+    expect(leadMonitor.gain.setTargetAtTime).not.toHaveBeenCalled();
+    expect(bassMonitor.gain.setTargetAtTime).toHaveBeenCalledWith(1, lead.context.currentTime, 0.01);
+
+    group.setInputMonitoring("track-lead", false);
+    expect(leadMonitor.gain.setTargetAtTime).toHaveBeenCalledWith(0, lead.context.currentTime, 0.01);
+    expect(bassMonitor.gain.setTargetAtTime).toHaveBeenCalledOnce();
+    await group.cancel();
+  });
+
+  it("cancels a starting input group and stops streams that resolve after Stop", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const lead = createRecorder({ deferMicrophonePermission: true, inputDeviceId: "input-lead" });
+    const bass = createRecorder({
+      deferMicrophonePermission: true,
+      context: lead.context,
+      inputDeviceId: "input-bass",
+      trackId: "track-bass",
+    });
+    const group = new PcmMicRecorderGroup([
+      { id: "track-lead", dependencies: lead.dependencies, getMetadata: lead.metadata },
+      { id: "track-bass", dependencies: bass.dependencies, getMetadata: bass.metadata },
+    ]);
+
+    const starting = group.start();
+    await vi.waitFor(() => {
+      expect(lead.getUserMedia).toHaveBeenCalledOnce();
+      expect(bass.getUserMedia).toHaveBeenCalledOnce();
+    });
+    await group.stop();
+    await expect(starting).rejects.toThrow(/cancelled/i);
+    expect(group.state).toBe("complete");
+    expect(isMicRecordingActive()).toBe(false);
+
+    lead.resolveMicrophonePermission();
+    bass.resolveMicrophonePermission();
+    await vi.waitFor(() => {
+      expect(lead.track.stop).toHaveBeenCalledOnce();
+      expect(bass.track.stop).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("times out a group whose permission prompts never settle and closes late streams", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    vi.useFakeTimers();
+    try {
+      const lead = createRecorder({ deferMicrophonePermission: true, inputDeviceId: "input-lead" });
+      const bass = createRecorder({
+        deferMicrophonePermission: true,
+        context: lead.context,
+        inputDeviceId: "input-bass",
+        trackId: "track-bass",
+      });
+      const group = new PcmMicRecorderGroup([
+        { id: "track-lead", dependencies: lead.dependencies, getMetadata: lead.metadata },
+        { id: "track-bass", dependencies: bass.dependencies, getMetadata: bass.metadata },
+      ]);
+
+      const starting = group.start();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(lead.getUserMedia).toHaveBeenCalledOnce();
+      expect(bass.getUserMedia).toHaveBeenCalledOnce();
+
+      const rejected = expect(starting).rejects.toThrow(/within 20 seconds/i);
+      await vi.advanceTimersByTimeAsync(20_000);
+      await rejected;
+
+      expect(group.state).toBe("complete");
+      expect(isMicRecordingActive()).toBe(false);
+
+      // Browser permission prompts are not abortable. If they complete after
+      // the group has timed out, the late streams must still be closed.
+      lead.resolveMicrophonePermission();
+      bass.resolveMicrophonePermission();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(lead.track.stop).toHaveBeenCalledOnce();
+      expect(bass.track.stop).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("cancels every member and releases the shared claim when one device fails during preparation", async () => {
     vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
     const lead = createRecorder({ inputDeviceId: "input-lead", trackId: "track-lead", trackName: "Lead" });

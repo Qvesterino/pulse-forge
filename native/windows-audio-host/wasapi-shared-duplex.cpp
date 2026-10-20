@@ -362,6 +362,7 @@ struct WasapiSharedDuplexSession::Impl {
   ScopedEvent renderEvent;
   bool eventsValid = false;
   std::thread worker;
+  std::mutex workerMutex;
   mutable std::mutex startupMutex;
   std::condition_variable startupCondition;
   bool startCalled = false;
@@ -435,6 +436,11 @@ struct WasapiSharedDuplexSession::Impl {
     startupCondition.notify_all();
   }
 
+  void joinWorker() noexcept {
+    std::lock_guard<std::mutex> lock(workerMutex);
+    if (worker.joinable() && worker.get_id() != std::this_thread::get_id()) worker.join();
+  }
+
   bool start(std::wstring* error) {
     startupStage.store("validating-request", std::memory_order_release);
     std::wstring validationError;
@@ -443,6 +449,7 @@ struct WasapiSharedDuplexSession::Impl {
       finishStartup(false, SharedModeDuplexState::failed, validationError);
       return false;
     }
+    std::wstring workerCreationError;
     {
       std::lock_guard<std::mutex> lock(startupMutex);
       if (stopCalled) {
@@ -459,15 +466,21 @@ struct WasapiSharedDuplexSession::Impl {
       startupStage.store("creating-worker", std::memory_order_release);
       ResetEvent(stopEvent.value);
       ResetEvent(deviceChangedEvent.value);
+      try {
+        // Keep creation under startupMutex so stop() cannot signal an empty
+        // worker slot and return just before this thread is launched.
+        worker = std::thread([this]() { run(); });
+      } catch (const std::exception& exception) {
+        const std::string detail(exception.what());
+        workerCreationError = L"Could not create WASAPI service thread: " +
+                              std::wstring(detail.begin(), detail.end());
+      } catch (...) {
+        workerCreationError = L"Could not create WASAPI service thread";
+      }
     }
-
-    try {
-      worker = std::thread([this]() { run(); });
-    } catch (const std::exception& exception) {
-      const std::string detail(exception.what());
-      const std::wstring message = L"Could not create WASAPI service thread: " + std::wstring(detail.begin(), detail.end());
-      if (error) *error = message;
-      finishStartup(false, SharedModeDuplexState::failed, message);
+    if (!workerCreationError.empty()) {
+      if (error) *error = workerCreationError;
+      finishStartup(false, SharedModeDuplexState::failed, workerCreationError);
       return false;
     }
 
@@ -476,7 +489,7 @@ struct WasapiSharedDuplexSession::Impl {
     if (!completed) {
       lock.unlock();
       SetEvent(stopEvent.value);
-      if (worker.joinable()) worker.join();
+      joinWorker();
       const std::wstring message = L"Timed out while opening the selected WASAPI endpoints";
       if (error) *error = message;
       finishStartup(false, SharedModeDuplexState::failed, message);
@@ -485,7 +498,7 @@ struct WasapiSharedDuplexSession::Impl {
     const bool success = startupSucceeded;
     const std::wstring startupMessage = startupError;
     lock.unlock();
-    if (!success && worker.joinable()) worker.join();
+    if (!success) joinWorker();
     if (error && !success) *error = startupMessage;
     return success;
   }
@@ -496,7 +509,7 @@ struct WasapiSharedDuplexSession::Impl {
       stopCalled = true;
     }
     if (stopEvent.value) SetEvent(stopEvent.value);
-    if (worker.joinable()) worker.join();
+    joinWorker();
     const auto current = state.load(std::memory_order_acquire);
     if (current == SharedModeDuplexState::idle || current == SharedModeDuplexState::starting)
       state.store(SharedModeDuplexState::stopped, std::memory_order_release);

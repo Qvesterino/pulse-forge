@@ -143,6 +143,7 @@ describe("ProjectBrowser — import does not overwrite by embedded id", () => {
   it("shows truthful first-run transfer boundaries and opens the transfer wizard", async () => {
     render(<ProjectBrowser core={makeCore([])} onOpen={vi.fn()} />);
 
+    fireEvent.click(await screen.findByText("ALREADY HAVE A PROJECT? IMPORT OR TRANSFER IT"));
     expect(await screen.findByRole("heading", { name: "Continue your song in KYX" })).toBeTruthy();
     expect(screen.getByText(/KYX projects and supported project JSON import/)).toBeTruthy();
     expect(screen.getByText(/native low-latency Windows audio backend is not shipped/)).toBeTruthy();

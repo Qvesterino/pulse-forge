@@ -58,8 +58,9 @@ struct SharedModeDuplexSnapshot {
  * Exact-endpoint, float32-only WASAPI shared-mode duplex session.
  * Construction preallocates its bounded PCM rings; the service thread uses
  * event-driven capture/render and never substitutes endpoints or formats.
- * start/stop control calls must be serialized; the audio rings each allow one
- * producer and one consumer.
+ * start() may overlap stop(); stop wakes the service thread and joins it safely.
+ * A session can only be started once. The audio rings each allow one producer
+ * and one consumer.
  */
 class WasapiSharedDuplexSession final {
  public:

@@ -86,6 +86,76 @@ capture or render endpoint. No WASAPI stream was opened and no input samples
 were read. The Volt's 2026-10-15 shared-mode smoke remains historical; repeat
 physical qualification only when the Volt endpoints are present.
 
+## Volt re-enumeration and shared-duplex timeout — 2026-10-19
+
+A later read-only PnP and WASAPI metadata check found the active Volt capture
+(`INPUT 1/2`) and render (`MONITOR L/R`) endpoints again. Both report a stereo,
+48 kHz, 32-bit-float mix format with channel mask `0x3` and a 480-frame
+(10 ms) shared period. This establishes the logical stereo format only; it
+does not identify the physical jack-to-channel wiring. The metadata-only
+endpoint query completed in under one second and opened no stream.
+
+A bounded 10-second concurrent shared-mode probe exceeded its 25-second safety
+timeout. Its wrapper terminated both probe processes; a follow-up process check
+found neither process still running. The capture probe discards PCM in memory
+and the render probe queues silence, so no recording or audible test signal
+was produced.
+
+The timeout path in `run-shared-duplex.ps1` was corrected to preserve each
+child's captured output after terminating it. Its bounded termination and
+stdout/stderr collection were checked with synthetic sleeping child processes.
+The native probe now flushes phase labels before stream activation, format
+checks, initialization, service start, event servicing and stop calls. The
+instrumented 10-second repeat also exceeded 25 seconds. Capture reached
+`capture-start` after successful stream initialization, service acquisition,
+event-handle setup and MMCSS registration, but never reached the event loop.
+Render reached `render-start` after initialization, service acquisition and
+silent buffer priming, but never reached its event loop. The exact blocked call
+is therefore `IAudioClient3::Start()` for both directions; the driver or
+AudioSrv cause remains unknown. Both probe processes were terminated and
+confirmed gone. AudioSrv and AudioEndpointBuilder were still running,
+`audiodg` reported as responding, the Volt endpoints remained present, and no
+new related Application/System warnings or errors appeared in the preceding
+10 minutes. No further physical stream was attempted. Active metadata and the
+historical 2026-10-15 streams do not qualify today's product path.
+
+## AudioSrv hang and endpoint disappearance — 2026-10-19 20:31 +02:00
+
+A later Application/System log read found `Application Hang` event 1002 and
+Windows Error Reporting `AppHangB1` for `svchost.exe_Audiosrv` at 20:31:10
++02:00. Service Control Manager event 7031 says Windows Audio had terminated
+unexpectedly five times and scheduled a restart; the service was running under
+a new process ID at the follow-up check. No audio service was manually
+restarted.
+
+The same check found that WASAPI metadata now marked every Volt endpoint
+`not-present`, although `Get-PnpDevice -Class AudioEndpoint -PresentOnly`
+still returned the Volt `INPUT 1/2` capture endpoint as `OK`; it did not list a
+present Volt render endpoint. A bounded 3-second capture-only request then
+failed during active-endpoint enumeration with “No active capture endpoint”;
+the probe never activated `IAudioClient3` and opened no stream. No probe
+process remained. These events followed the shared-stream `Start()` hangs, but
+the timing does not prove that a probe caused the AudioSrv hang. The root cause
+and device/driver recovery remain unknown. No stream was attempted during this
+unavailable-endpoint interval; the later metadata recovery is recorded below.
+
+A subsequent read-only check at 20:36 +02:00 found the physical Volt PnP
+device and both audio endpoints `OK` again; WASAPI metadata also marked
+`INPUT 1/2` capture and `MONITOR L/R` render active at stereo 48 kHz float32
+with a 480-frame shared period. Neither service was manually restarted. This
+shows endpoint re-enumeration after the automatic service restart, not that
+stream startup or audio I/O has recovered.
+
+After that metadata recovery, a bounded 3-second capture-only probe again
+reached `capture-start` and failed to return within its 10-second process
+limit. It was terminated; the render endpoint was not opened, and capture did
+not reach its event loop or read any PCM. A follow-up found AudioSrv and
+AudioEndpointBuilder still running, both PnP endpoints `OK`, and WASAPI capture
+and render metadata active again, with no new related events. This shows the
+capture `Start()` hang also occurs without a concurrent render start, while
+endpoint enumeration is active. The root cause remains unknown; no further
+physical streams were attempted.
+
 ## Reference endpoints detected in the original 2026-09 session
 
 Windows reported these active Universal Audio endpoints in the original session:

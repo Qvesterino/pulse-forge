@@ -62,24 +62,24 @@ const TRANSFER_STEPS: TourStep[] = [
 
 const SONG_STARTER_STEPS: TourStep[] = [
   {
-    title: "1/4 — YOUR SONG STARTER",
-    body: "Your style, mood, and tempo are set. The full-song brief is ready in Intent — press Ctrl/Cmd+Enter to build from it.",
-    hint: "Edit the brief before you generate if you want",
+    title: "1/4 — YOUR LOOPS ARE READY",
+    body: "Your selected style and tempo are already applied in Sounds. Narrow the list by mood, instrument, or key.",
+    hint: "Choose a loop and preview it",
   },
   {
-    title: "2/4 — LISTEN AND CHOOSE",
-    body: "Listen through the generated result before keeping a take. Sounds is already filtered to your style and mood; audition a loop there to add a played layer.",
-    hint: "Ctrl+Z undoes your last applied edit",
+    title: "2/4 — PREVIEW AND ADD",
+    body: "Preview a loop in Sounds, select its destination track above the sequencer, then add it to the arrangement as an editable clip.",
+    hint: "Ctrl+Z undoes the last edit",
   },
   {
-    title: "3/4 — ARRANGE AND MIX",
-    body: "Switch between PATTERN and SONG. Open Arrangement to edit sections on the timeline, then Mixer to balance the tracks.",
-    hint: "Your template is a starting point you can change",
+    title: "3/4 — SAVE AND REOPEN",
+    body: "KYX saves as you work. Open Projects to leave the studio, then reopen your song to continue where you left off.",
+    hint: "Use Ctrl+S to save now",
   },
   {
-    title: "4/4 — SAVE AND EXPORT",
-    body: "Press Ctrl+S to save, then open Export to render a WAV or MP3. Reopen the project to continue later.",
-    hint: "The project is saved in your KYX library",
+    title: "4/4 — EXPORT YOUR SONG",
+    body: "Open Export, choose WAV or MP3, and render a file you can play or share outside KYX.",
+    hint: "The project stays in your KYX library",
   },
 ];
 
@@ -102,8 +102,8 @@ function tourDone(key: string): boolean {
 let tourActive = false;
 
 /**
- * First-run onboarding: four steps over the real UI. A transferred DAW
- * project gets its own one-time tour without repeating the general tour.
+ * First-run onboarding: four steps over the real UI. Transferred projects
+ * and guided song starters get a one-time tour for their specific workflow.
  */
 export function OnboardingTour({
   sourceDaw,
@@ -123,6 +123,13 @@ export function OnboardingTour({
 
   useEffect(() => {
     setStep(-1);
+    if (isSongStarterProject) {
+      try {
+        localStorage.setItem(TOUR_KEY, "1");
+      } catch {
+        /* the guided starter still has its focused tour for this session */
+      }
+    }
     if (tourDone(tourKey) || tourActive) return;
     tourActive = true;
     // Wait one beat so the studio chrome settles before the card appears.
@@ -131,7 +138,7 @@ export function OnboardingTour({
       clearTimeout(id);
       tourActive = false;
     };
-  }, [tourKey]);
+  }, [isSongStarterProject, tourKey]);
 
   const finish = () => {
     try {
@@ -160,7 +167,7 @@ export function OnboardingTour({
         : current.title;
   const tourBody =
     isSongStarterProject && step === 0
-      ? `Your ${songStarter.genre}${songStarter.mood ? ` · ${songStarter.mood}` : ""} song is set to ${songStarter.bpm} BPM. The full-song brief is ready in Intent — press Ctrl/Cmd+Enter to build from it.`
+      ? `Your ${songStarter.genre}${songStarter.mood ? ` · ${songStarter.mood}` : ""} style and ${songStarter.bpm} BPM are already applied. KYX prepares matching loops automatically; watch the pack status, then preview one in Sounds.`
       : current.body;
 
   return (
@@ -174,7 +181,7 @@ export function OnboardingTour({
       <h3 className="tour-title">{tourTitle}</h3>
       <p className="tour-body">{tourBody}</p>
       {profileHint && <p className="tour-profile-hint">{profileHint}</p>}
-      {!isTransferProject && step === 0 && (
+      {!isTransferProject && !isSongStarterProject && step === 0 && (
         <label className="tour-profile-picker">
           Coming from another DAW? <span>Optional</span>
           <select

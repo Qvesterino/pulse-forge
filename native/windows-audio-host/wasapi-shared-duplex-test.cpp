@@ -1,9 +1,12 @@
 #include "wasapi-shared-duplex.h"
 
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <utility>
 
 namespace {
@@ -92,6 +95,37 @@ void unavailableExactIdsFailWithoutSelectingCurrentDefaults() {
           "missing endpoint unexpectedly returned a successful negotiation");
 }
 
+void stopCanOverlapAnInProgressStart() {
+  auto request = validRequest();
+  request.inputEndpointId = L"{KYX-concurrent-start-stop-capture-does-not-exist}";
+  request.outputEndpointId = L"{KYX-concurrent-start-stop-render-does-not-exist}";
+  kyx::windows_audio::WasapiSharedDuplexSession session(std::move(request));
+  std::atomic<bool> startFinished{false};
+  bool started = false;
+  std::wstring error;
+
+  std::thread starter([&]() {
+    started = session.start(&error);
+    startFinished.store(true, std::memory_order_release);
+  });
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (!startFinished.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline) {
+    const std::string stage(session.snapshot().startupStage);
+    if (stage != "idle" && stage != "validating-request") break;
+    std::this_thread::yield();
+  }
+  session.stop();
+  starter.join();
+
+  const auto snapshot = session.snapshot();
+  require(!started, "test used nonexistent exact IDs but native startup succeeded");
+  require(snapshot.state != kyx::windows_audio::SharedModeDuplexState::starting &&
+              snapshot.state != kyx::windows_audio::SharedModeDuplexState::running,
+          "overlapping stop returned while native startup remained live");
+  require(!error.empty(), "overlapping native startup failure did not return its reason");
+  session.stop();
+}
+
 }  // namespace
 
 int main() {
@@ -99,6 +133,7 @@ int main() {
   undersizedRingsAndStoppedSessionsCannotStart();
   stoppedAndFailedSessionsKeepCaptureReadableButCannotRender();
   unavailableExactIdsFailWithoutSelectingCurrentDefaults();
-  std::cout << "WASAPI duplex request validation: 4/4 checks passed (unknown-ID case opened no stream)\n";
+  stopCanOverlapAnInProgressStart();
+  std::cout << "WASAPI duplex request and lifecycle validation: 5/5 checks passed (unknown-ID cases opened no stream)\n";
   return 0;
 }

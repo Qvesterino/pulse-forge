@@ -182,9 +182,10 @@ manifest and every WAV hash, decodes the audio and persists it through the
 existing user-sample repository; the samples then restore from local storage
 and the existing preview/placement path can use them. The Project Browser can
 also install the pack and open either a saved Afterhours House or Half-Time
-Trap demo with two arrangement clips. These projects remain local and reference
-the stable pack sample IDs; sharing a project without its audio assets is not
-yet a portable-pack workflow.
+Trap demo with two arrangement clips. Exporting a `.kyxpack` now includes the
+project's referenced audio assets and frozen audio, so importing it on another
+KYX install restores those assets before opening the project. Legacy `.kyx`
+and `.json` files remain document-only exports.
 
 The pack is a functional first content drop, not a claim of release-ready
 sound design. The next content gate is a human listening pass in KYX across

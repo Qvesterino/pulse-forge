@@ -92,7 +92,7 @@ import { ActivityCenter } from "./ActivityCenter";
 // Palette lives in a lazy chunk — it loads on first Ctrl+K.
 const PaletteOverlay = lazy(() => import("./PaletteOverlay").then((m) => ({ default: m.PaletteOverlay })));
 import { HelpOverlay } from "./HelpOverlay";
-import { notifyOnboardingProgress, OnboardingHint } from "./OnboardingHint";
+import { markOnboardingHintComplete, notifyOnboardingProgress, OnboardingHint } from "./OnboardingHint";
 import { SessionStateIndicator } from "./SessionStateIndicator";
 import { StatusHint } from "./StatusHint";
 import { MasterMiniMeter } from "./MasterMeter";
@@ -514,9 +514,9 @@ export function App({
     if (firstRunIntentRef.current) return;
     firstRunIntentRef.current = true;
     if (songStarter) {
-      intentPanelFirstRun();
       clearSongStarter();
-      setBottomPanel("intent");
+      markOnboardingHintComplete();
+      setDock(bumpPanelHeight({ ...dock, slotA: "arr", slotB: null }, "arr"));
       return;
     }
     if (intentPanelFirstRun() || peekRegenFlag()) setBottomPanel("intent");
@@ -1955,7 +1955,7 @@ export function App({
                   <PaletteOverlay open={paletteOpen} deps={paletteDeps} onClose={() => setPaletteOpen(false)} />
                 </Suspense>
               </ErrorBoundary>
-              <OnboardingHint />
+              <OnboardingHint disabled={Boolean(songStarter)} />
               <ContextMenu
                 state={contextMenu}
                 onClose={() => setContextMenu(null)}

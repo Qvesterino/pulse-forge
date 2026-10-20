@@ -157,7 +157,7 @@ describe("ArrangementPanel", () => {
       const recordButton = screen.getByRole("button", { name: "● REC" });
       expect(recordButton).toBeDisabled();
 
-      await screen.findByRole("option", { name: "Volt Input 1" });
+      await screen.findAllByRole("option", { name: "Volt Input 1" });
       await user.selectOptions(screen.getByLabelText("Audio input device"), "volt-input-1");
       const secondTrackId = doc.tracks.find((track) => track.id !== doc.tracks[0]!.id)!.id;
       await user.selectOptions(screen.getByLabelText("Independent input 2 track"), secondTrackId);

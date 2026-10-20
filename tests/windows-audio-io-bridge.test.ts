@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   connectWindowsAudioIoToEngine,
   discardWindowsAudioSessionPort,
+  getWindowsAudioIoEngineConnection,
   waitForWindowsAudioSessionPort,
   type WindowsAudioIoEngineConnection,
 } from "../src/audio-engine/windowsAudioIoBridge";
@@ -175,6 +176,59 @@ describe("Windows audio I/O AudioEngine bridge", () => {
 
       connection.stop();
 
+      expect(clearLiveAudioOutputSink).toHaveBeenCalledWith(node);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("tears down a ready bridge after the utility heartbeat is lost and lets Stop restore normal output", async () => {
+    const tracks = [{ stop: vi.fn() }];
+    const captureDestination = {
+      stream: { getTracks: () => tracks },
+      disconnect: vi.fn(),
+    };
+    const context = {
+      state: "running",
+      sampleRate: 48_000,
+      destination: {},
+      audioWorklet: { addModule: vi.fn(async () => undefined) },
+      createMediaStreamDestination: vi.fn(() => captureDestination),
+    };
+    const clearLiveAudioOutputSink = vi.fn();
+    const engine = {
+      getLiveAudioContext: () => context,
+      setLiveAudioOutputSink: vi.fn(),
+      clearLiveAudioOutputSink,
+      subscribeLiveContext: () => () => undefined,
+    };
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    FakeWorkletNode.last = null;
+    try {
+      const connecting = connectWindowsAudioIoToEngine(
+        engine as never,
+        "stale-native-heartbeat",
+        new FakePort() as unknown as MessagePort,
+        request,
+      );
+      await vi.waitFor(() => expect(FakeWorkletNode.last).not.toBeNull());
+      const node = FakeWorkletNode.last!;
+      node.port.onmessage?.({ data: { type: "ready", negotiation } });
+      const connection = await connecting;
+      let observedError = "";
+      connection.subscribe((event) => {
+        if (event.type === "error") observedError = event.message;
+      });
+
+      node.port.onmessage?.({ data: { type: "error", message: "No native audio status arrived for two seconds" } });
+
+      expect(observedError).toContain("No native audio status arrived for two seconds");
+      expect(node.disconnected).toBe(true);
+      expect(tracks[0]?.stop).toHaveBeenCalledOnce();
+      expect(getWindowsAudioIoEngineConnection(engine as never)).toBeNull();
+      expect(clearLiveAudioOutputSink).not.toHaveBeenCalled();
+
+      connection.stop();
       expect(clearLiveAudioOutputSink).toHaveBeenCalledWith(node);
     } finally {
       vi.unstubAllGlobals();

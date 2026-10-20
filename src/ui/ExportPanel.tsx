@@ -106,6 +106,7 @@ import { MasteringCodecPreview } from "./MasteringCodecPreview";
 type Status =
   | { kind: "idle" }
   | { kind: "busy"; label: string }
+  | { kind: "file-done"; label: string }
   | { kind: "done"; label: string; summary: BufferSummary }
   | { kind: "cancelled"; label: string; reason: string }
   | { kind: "error"; label: string };
@@ -991,6 +992,31 @@ export function ExportPanel({
     }
   };
 
+  const exportPortableProjectFile = async () => {
+    const signal = beginExport();
+    setStatus({ kind: "busy", label: "Preparing portable project…" });
+    try {
+      const { buildPortableProject } = await import("../export/portable-project");
+      await services.core.initialSampleBankHydration;
+      const result = await buildPortableProject(
+        doc,
+        services.bank,
+        services.userSamples,
+        services.frozenAudio,
+        (progress) => setStatus({ kind: "busy", label: `Portable project: ${progress.phase}…` }),
+        signal,
+      );
+      if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
+      downloadBlob(result.blob, result.filename);
+      setStatus({
+        kind: "file-done",
+        label: `Portable project exported (${result.sampleCount} audio assets · ${result.frozenCount} frozen tracks · ${(result.blob.size / 1024 / 1024).toFixed(1)} MB)`,
+      });
+    } catch (error) {
+      cancelOrElse(error, "Portable project failed: {err}", "Portable project export cancelled");
+    }
+  };
+
   const exportZyvoTransfer = async () => {
     const signal = beginExport();
     setStatus({ kind: "busy", label: "Preparing KYX → ZYVO transfer…" });
@@ -1606,19 +1632,28 @@ export function ExportPanel({
                 </button>
                 <button
                   type="button"
+                  className="btn btn-export btn-export-scorepack"
+                  disabled={busy}
+                  title="Export a self-contained .kyxpack with the project and its referenced audio so it can open on another computer."
+                  onClick={() => void exportPortableProjectFile()}
+                >
+                  EXPORT PORTABLE PROJECT
+                </button>
+                <button
+                  type="button"
                   className="btn btn-export"
                   disabled={busy}
-                  title="Download project as JSON file for backup or sharing"
+                  title="Download project data as a JSON file without embedding audio assets"
                   onClick={() => exportProject(doc)}
                 >
-                  EXPORT JSON
+                  EXPORT JSON ONLY
                 </button>
               </div>
             </details>
           </>
         )}
       </div>
-      <div className={`export-status export-${status.kind}`}>
+      <div className={`export-status export-${status.kind === "file-done" ? "done" : status.kind}`}>
         <span aria-hidden="true">
           {status.kind === "idle" &&
             "Offline render uses the exact same engine, instruments and effects as playback — plus a 2 s tail for reverb/delay."}

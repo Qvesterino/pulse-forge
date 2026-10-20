@@ -5,8 +5,6 @@ import type { CrashJournalReport } from "../persistence/crashJournal";
 import type { ProjectDocument } from "../project-model/types";
 import { TEMPLATES, createProjectFromTemplate } from "../project-model/templates";
 import type { TemplateId } from "../project-model/templates";
-import { ASSET_MOODS } from "../sample-library/manifest";
-import { importProject } from "../export/project-io";
 import { stashIntentPrefill, stashSongStarter } from "../landing/handoff";
 import {
   clearRecoveryBuffer,
@@ -30,9 +28,14 @@ const TransferCapabilityCard = lazy(() =>
 /** One row of the library: openable, or written by a newer app version. */
 type ProjectRow = { kind: "ok"; meta: SavedProjectMeta } | { kind: "newer"; meta: IncompatibleProjectMeta };
 
-const SONG_STARTER_TEMPLATES = TEMPLATES.filter(
-  (template) => template.id !== "empty" && template.id !== "scene-score" && template.id !== "vlyx-demo",
-);
+const STARTER_LOOP_GENRES = new Set<TemplateId>(["house", "techno", "ukg", "trap"]);
+const SONG_STARTER_TEMPLATES = TEMPLATES.filter((template) => STARTER_LOOP_GENRES.has(template.id));
+const SONG_STARTER_MOODS: Partial<Record<TemplateId, string[]>> = {
+  house: ["deep", "warm"],
+  techno: ["aggressive", "dark"],
+  ukg: ["bright", "warm"],
+  trap: ["dark", "deep"],
+};
 
 const LOOP_DEMOS = {
   house: {
@@ -292,14 +295,29 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
     setBusy(true);
     setImportError(null);
     try {
-      const doc = await importProject(file);
+      const [{ importPortableProjectFile, installPortableProjectAssets }, { FrozenBufferRepository }] =
+        await Promise.all([import("../export/portable-project"), import("../persistence/FrozenBufferRepository")]);
+      const bundle = await importPortableProjectFile(file);
+      const installedAssets = await installPortableProjectAssets(
+        bundle,
+        core.bank,
+        new UserSampleRepository(),
+        new FrozenBufferRepository(),
+      );
       // Save under a FRESH id: the file embeds its original id, and saving
       // with it would silently overwrite an existing library project with
       // the same id (matching the comment's intent — and repo.save is a
       // keyPath put).
-      const imported: ProjectDocument = { ...doc, id: uid("project") };
-      await core.repo.save(imported);
-      onOpen(imported);
+      const imported: ProjectDocument = { ...installedAssets.doc, id: uid("project") };
+      let saved = false;
+      try {
+        await core.repo.save(imported);
+        saved = true;
+        onOpen(imported);
+      } catch (error) {
+        if (!saved) await installedAssets.rollback();
+        throw error;
+      }
     } catch (err) {
       setImportError(err instanceof Error ? err.message : "Import failed");
     } finally {
@@ -388,6 +406,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   const firstRun = !listError && projects !== null && projects.length === 0 && newerProjects.length === 0;
   const rows = projects === null ? null : mergeRows(projects, newerProjects);
   const latest = projects !== null && projects.length > 0 ? projects[0] : null;
+  const songStarterMoods = SONG_STARTER_MOODS[songStarterGenre] ?? [];
 
   return (
     <div className="project-browser">
@@ -407,11 +426,6 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
       </header>
 
       <div className="pb-body">
-        {firstRun && (
-          <Suspense fallback={<div className="panel-loading">Loading transfer guide…</div>}>
-            <TransferCapabilityCard onStartTransfer={() => setTransferImportOpen(true)} />
-          </Suspense>
-        )}
         {recovery !== null && (
           <div className="pb-crash-banner" role="alert">
             <span className="pb-crash-text">
@@ -471,50 +485,65 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
           </section>
         )}
 
-        <section className="pb-section">
-          <h2 className="pb-title">IMPORT PROJECT</h2>
-          <input
-            ref={fileInputRef}
-            type="file"
-            // No accept filter — the importer is shape-based and accepts
-            // legacy sessions regardless of extension; the literal legacy
-            // brand token must not ship in the bundle (release preflight).
-            accept=".kyx,.json,.kyx.json,application/json"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void handleImportFile(file);
-              e.target.value = "";
-            }}
-          />
-          <button type="button" className="btn btn-small" disabled={busy} onClick={() => fileInputRef.current?.click()}>
-            IMPORT FROM FILE
-          </button>
-          {!firstRun && (
+        <details className="pb-secondary-disclosure pb-import-disclosure" open={!firstRun}>
+          <summary className="pb-title">
+            {firstRun ? "ALREADY HAVE A PROJECT? IMPORT OR TRANSFER IT" : "IMPORT PROJECT"}
+          </summary>
+          {firstRun && (
+            <Suspense fallback={<div className="panel-loading">Loading transfer guide…</div>}>
+              <TransferCapabilityCard onStartTransfer={() => setTransferImportOpen(true)} />
+            </Suspense>
+          )}
+          <section className="pb-section pb-import-contents">
+            <input
+              ref={fileInputRef}
+              type="file"
+              // No accept filter — the importer is shape-based and accepts
+              // legacy sessions regardless of extension; the literal legacy
+              // brand token must not ship in the bundle (release preflight).
+              accept=".kyxpack,.kyx,.json,application/zip,application/json"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleImportFile(file);
+                e.target.value = "";
+              }}
+            />
             <button
               type="button"
-              className="btn btn-small btn-primary pb-bring-song"
+              className="btn btn-small"
               disabled={busy}
-              onClick={() => setTransferImportOpen(true)}
+              onClick={() => fileInputRef.current?.click()}
             >
-              BRING A SONG FROM ANOTHER DAW
+              IMPORT FROM FILE
             </button>
-          )}
-          <p className="pb-import-hint">
-            Import aligned audio track-outs and one Standard MIDI file into a new KYX project.
-          </p>
-          {importError && <span className="pb-import-error">{importError}</span>}
-        </section>
+            {!firstRun && (
+              <button
+                type="button"
+                className="btn btn-small btn-primary pb-bring-song"
+                disabled={busy}
+                onClick={() => setTransferImportOpen(true)}
+              >
+                BRING A SONG FROM ANOTHER DAW
+              </button>
+            )}
+            <p className="pb-import-hint">
+              Portable .kyxpack files include their audio. Legacy .kyx and .json files contain project data only. Use
+              Bring a Song for aligned audio track-outs and MIDI from another DAW.
+            </p>
+            {importError && <span className="pb-import-error">{importError}</span>}
+          </section>
+        </details>
 
         <section className="pb-section">
           <h2 className="pb-title">NEW PROJECT</h2>
           {firstRun && (
-            <p className="pb-first-run">Pick a template — you will hear your first sound in under a minute.</p>
+            <p className="pb-first-run">Choose a style and KYX will prepare matching loops in your new song.</p>
           )}
           <div className="pb-song-starter" aria-label="Guided song starter">
             <div className="pb-song-starter-copy">
               <strong>START A SONG</strong>
-              <span>Choose a style and mood. KYX opens the full-song prompt and filters your loop library.</span>
+              <span>Choose a style with matching loops. KYX prepares them and filters the library for your song.</span>
             </div>
             <div className="pb-song-starter-fields">
               <label>
@@ -528,6 +557,9 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
                     if (!next) return;
                     setSongStarterGenre(next.id);
                     setSongStarterBpm(String(next.bpm));
+                    if (songStarterMood !== "all" && !(SONG_STARTER_MOODS[next.id] ?? []).includes(songStarterMood)) {
+                      setSongStarterMood("all");
+                    }
                   }}
                 >
                   {SONG_STARTER_TEMPLATES.map((template) => (
@@ -546,7 +578,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
                   onChange={(event) => setSongStarterMood(event.target.value)}
                 >
                   <option value="all">Any mood</option>
-                  {ASSET_MOODS.map((mood) => (
+                  {songStarterMoods.map((mood) => (
                     <option key={mood} value={mood}>
                       {mood}
                     </option>
@@ -568,7 +600,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
               </label>
             </div>
             <div className="pb-song-starter-actions">
-              <span>Choose a key in the loop browser after the project opens.</span>
+              <span>First use downloads 4.9 MB once; the original loops stay available offline on this device.</span>
               <button
                 type="button"
                 className="btn btn-primary"
@@ -584,29 +616,31 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
               </button>
             </div>
           </div>
-          <div className="pb-templates">
-            {TEMPLATES.map((template) => (
-              <button
-                key={template.id}
-                type="button"
-                className={`pb-template${firstRun && template.id === "house" ? " pb-template-start" : ""}`}
-                onClick={() => void createFromTemplate(template.id)}
-                disabled={busy}
-              >
-                <span className="pb-template-top">
-                  <span className="pb-template-name">{template.name.toUpperCase()}</span>
-                  <span className="pb-template-bpm">{template.bpm} BPM</span>
-                </span>
-                <span className="pb-template-desc">{template.description}</span>
-                <span className="pb-template-tags">{template.tags.join(" · ")}</span>
-                {firstRun && template.id === "house" && <span className="pb-template-start-hint">START HERE</span>}
-              </button>
-            ))}
-          </div>
+          <details className="pb-secondary-disclosure" open={!firstRun}>
+            <summary className="pb-title">{firstRun ? "EXPLORE ALL PROJECT TEMPLATES" : "PROJECT TEMPLATES"}</summary>
+            <div className="pb-templates">
+              {TEMPLATES.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  className="pb-template"
+                  onClick={() => void createFromTemplate(template.id)}
+                  disabled={busy}
+                >
+                  <span className="pb-template-top">
+                    <span className="pb-template-name">{template.name.toUpperCase()}</span>
+                    <span className="pb-template-bpm">{template.bpm} BPM</span>
+                  </span>
+                  <span className="pb-template-desc">{template.description}</span>
+                  <span className="pb-template-tags">{template.tags.join(" · ")}</span>
+                </button>
+              ))}
+            </div>
+          </details>
         </section>
 
-        <section className="pb-section">
-          <h2 className="pb-title">PLAY A LOOP DEMO</h2>
+        <details className="pb-secondary-disclosure" open={!firstRun}>
+          <summary className="pb-title">{firstRun ? "OPEN A READY-MADE LOOP DEMO" : "PLAY A LOOP DEMO"}</summary>
           <p className="pb-import-hint">
             Install the 4.9 MB original KYX loop pack and open a saved, editable example.
           </p>
@@ -633,7 +667,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
               {demoProgress}
             </p>
           )}
-        </section>
+        </details>
 
         <section className="pb-section">
           <h2 className="pb-title">PROJECTS</h2>

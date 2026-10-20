@@ -16,6 +16,15 @@ const PROGRESS_EVENT = "kyx:onboarding-progress";
 
 export type OnboardingProgressKey = "panel-opened" | "intent-generated" | "recorded";
 
+/** A guided song starter replaces the generic first-project hints. */
+export function markOnboardingHintComplete(): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, new Date().toISOString());
+  } catch {
+    /* private mode — onboarding is still hidden for the current starter */
+  }
+}
+
 /** Fire-and-forget: the onboarding hint consumes it to advance its step. */
 export function notifyOnboardingProgress(key: OnboardingProgressKey): void {
   try {
@@ -34,7 +43,7 @@ const ADVANCE_KEYS: Record<number, OnboardingProgressKey> = { 2: "panel-opened",
  * cover the core journey — transport, grid editing, panels, the AI intent
  * path and recording — and the last one auto-dismisses on a first take.
  */
-export function OnboardingHint() {
+export function OnboardingHint({ disabled = false }: { disabled?: boolean }) {
   const services = useServices();
   const [step, setStep] = useState<number>(() => {
     try {
@@ -47,54 +56,50 @@ export function OnboardingHint() {
   const dismissRef = useRef<() => void>(() => {});
 
   useEffect(() => {
-    if (step !== 0) return;
+    if (disabled || step !== 0) return;
     const timer = setInterval(() => {
       if (services.transport.playing) setStep(1);
     }, 250);
     return () => clearInterval(timer);
-  }, [step, services]);
+  }, [disabled, step, services]);
 
   useEffect(() => {
-    if (step !== 1) return;
+    if (disabled || step !== 1) return;
     return services.store.subscribe(() => {
       if (services.store.doc !== initialDoc.current) setStep(2);
     });
-  }, [step, services]);
+  }, [disabled, step, services]);
 
   // Middle steps advance on progress events fired where the action happens
   // (panel open, intent generate). Each step listens only for its own key.
   useEffect(() => {
     const advanceKey = ADVANCE_KEYS[step];
-    if (!advanceKey) return;
+    if (disabled || !advanceKey) return;
     const advance = (event: Event) => {
       if ((event as CustomEvent<{ key?: string }>).detail?.key === advanceKey) setStep(step + 1);
     };
     window.addEventListener(PROGRESS_EVENT, advance);
     return () => window.removeEventListener(PROGRESS_EVENT, advance);
-  }, [step]);
+  }, [disabled, step]);
 
   // Final step auto-dismisses when the user records their first take —
   // the journey is complete.
   useEffect(() => {
-    if (step !== STEPS.length - 1) return;
+    if (disabled || step !== STEPS.length - 1) return;
     const onRecorded = (event: Event) => {
       if ((event as CustomEvent<{ key?: string }>).detail?.key === "recorded") dismissRef.current();
     };
     window.addEventListener(PROGRESS_EVENT, onRecorded);
     return () => window.removeEventListener(PROGRESS_EVENT, onRecorded);
-  }, [step]);
+  }, [disabled, step]);
 
   const dismiss = () => {
-    try {
-      localStorage.setItem(STORAGE_KEY, new Date().toISOString());
-    } catch {
-      /* private mode — onboarding just won't persist */
-    }
+    markOnboardingHintComplete();
     setStep(STEPS.length);
   };
   dismissRef.current = dismiss;
 
-  if (step >= STEPS.length) return null;
+  if (disabled || step >= STEPS.length) return null;
 
   return (
     <div className="onboarding" role="status">

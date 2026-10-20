@@ -201,4 +201,28 @@ describe("Windows audio session manager", () => {
     await harness.manager.stopAll();
     expect(harness.manager.activeSessions()).toEqual([]);
   });
+
+  it("allows a fresh exact-endpoint session after an unexpected utility exit", async () => {
+    const harness = managerHarness();
+    const start = harness.handlers.get("kyx:audio:windows-start");
+    if (!start) throw new Error("audio start handler was not registered");
+
+    const first = (await start({ sender: harness.webContents }, request)) as { sessionId: string };
+    const failedHost = harness.hosts[0];
+    if (!failedHost) throw new Error("the first audio utility host was not started");
+    failedHost.emit("exit", 1);
+    expect(harness.manager.activeSessions()).toEqual([]);
+
+    const retry = (await start({ sender: harness.webContents }, request)) as { sessionId: string };
+    expect(retry.sessionId).not.toBe(first.sessionId);
+    expect(harness.hosts).toHaveLength(2);
+    expect(harness.hosts[1]?.messages[0]?.message).toMatchObject({
+      type: "start",
+      sessionId: retry.sessionId,
+      request,
+    });
+    expect(harness.manager.activeSessions()).toEqual([retry.sessionId]);
+    await harness.manager.stopAll();
+    expect(harness.manager.activeSessions()).toEqual([]);
+  });
 });

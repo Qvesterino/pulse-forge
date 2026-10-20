@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLibrary, useServices } from "./context";
 import type { FactoryAsset } from "../sample-library/manifest";
 import { ASSET_MOODS } from "../sample-library/manifest";
@@ -129,6 +129,7 @@ export function SampleBrowser({
   const [installingStarterPack, setInstallingStarterPack] = useState(false);
   const [starterPackProgress, setStarterPackProgress] = useState<string | null>(null);
   const installLock = useRef(false);
+  const starterPackAutoInstallStarted = useRef(false);
   const starterPackInstalledCount = allUserAssets.filter(
     (asset) => asset.factoryPack?.id === "kyx-starter-loops",
   ).length;
@@ -177,9 +178,20 @@ export function SampleBrowser({
   const instruments = useMemo(() => uniqueMetadataValues(loopAssets, "instrument"), [loopAssets]);
   const keys = useMemo(() => uniqueMetadataValues(loopAssets, "key"), [loopAssets]);
   const loopMoods = useMemo(() => {
-    const tagged = uniqueMetadataValues(loopAssets, "mood");
-    return [...new Map([...ASSET_MOODS, ...tagged].map((value) => [value.toLocaleLowerCase(), value])).values()];
-  }, [loopAssets]);
+    const genreAssets =
+      loopGenre === "all"
+        ? loopAssets
+        : loopAssets.filter((asset) => matchesFilter(asset.loopMetadata?.genre, loopGenre));
+    const tagged = uniqueMetadataValues(genreAssets, "mood");
+    const moods = tagged.length > 0 ? tagged : ASSET_MOODS;
+    return [...new Map(moods.map((value) => [value.toLocaleLowerCase(), value])).values()];
+  }, [loopAssets, loopGenre]);
+
+  useEffect(() => {
+    if (loopMood !== "all" && !loopMoods.some((value) => normalizedText(value) === normalizedText(loopMood))) {
+      setLoopMood("all");
+    }
+  }, [loopMood, loopMoods]);
 
   const soundFiltered = useMemo(() => {
     return allAssets.filter((asset) => {
@@ -337,7 +349,7 @@ export function SampleBrowser({
     }
   };
 
-  const installStarterPack = async () => {
+  const installStarterPack = useCallback(async () => {
     if (installLock.current) return;
     installLock.current = true;
     setInstallingStarterPack(true);
@@ -373,7 +385,16 @@ export function SampleBrowser({
       setInstallingStarterPack(false);
       setStarterPackProgress(null);
     }
-  };
+  }, [services]);
+
+  // A guided starter lands directly in its filtered loop browser. Prepare the
+  // small original pack there so the user can preview a loop without a second
+  // setup decision; the existing button remains available for retries.
+  useEffect(() => {
+    if (!loopStarter || starterPackAutoInstallStarted.current) return;
+    starterPackAutoInstallStarted.current = true;
+    void installStarterPack();
+  }, [installStarterPack, loopStarter]);
 
   const clearFilters = () => {
     setQuery("");

@@ -136,13 +136,18 @@ export function BrowserStrip({
           className="browser-strip-target"
           title="Sounds assign to the selected pad or instrument; loops can be added to the arrangement track"
         >
-          {drumPad
-            ? `→ ${drumPad.name}`
-            : instrumentTarget
-              ? `→ ${instrumentTarget.name}`
-              : arrangementTarget
-                ? `→ ${arrangementTarget.name}`
-                : "no target"}
+          {drumPad ? (
+            <>
+              <span>LOOPS → {arrangementTarget?.name ?? "none"}</span>
+              <span className="browser-strip-subtarget">DRUM SOUND → {drumPad.name}</span>
+            </>
+          ) : instrumentTarget ? (
+            <span>LOOPS → {arrangementTarget?.name ?? "none"}</span>
+          ) : arrangementTarget ? (
+            <span>LOOPS → {arrangementTarget.name}</span>
+          ) : (
+            <span>no target</span>
+          )}
         </span>
         <button
           type="button"

@@ -352,6 +352,18 @@ interface Metrics {
   /** Block-RMS max/min ratio — sees AM-class effects (pump/tremolo/gate)
    *  whose average RMS stays flat while the loudness swings. */
   dyn: number;
+  /**
+   * Per-segment RMS envelope over the WHOLE buffer (not the post-attack
+   * window the amplitude stats use).
+   *
+   * WHY THIS EXISTS, MEASURED: reverseSwell reorders energy in time instead of
+   * adding or removing it. Its whole output lands in the first eighth of the
+   * buffer, so the post-attack amplitude stats measured 5.8e-11 for a signal
+   * whose true whole-buffer amplitude delta is 3.0e-3 — and whose envelope
+   * divergence is 2.5e-2. RMS, peak, crest and side are all near-invariant to
+   * a time reversal; an envelope is not.
+   */
+  env: Float32Array;
 }
 
 function metricsOf(buffer: AudioBuffer): Metrics {
@@ -394,7 +406,52 @@ function metricsOf(buffer: AudioBuffer): Metrics {
     side: Math.sqrt(sideSum / n),
     centroid: spectralCentroid(l, start),
     dyn: bRmsMax / Math.max(bRmsMin, 1e-4),
+    env: envelopeOf(l),
   };
+}
+
+/**
+ * Segments of the whole buffer used for the envelope metric.
+ *
+ * 16 is not a magic number: it is enough to localise a reverse swell's early
+ * output (which lives in the first eighth) while keeping each segment long
+ * enough that its RMS is stable. A segment count too small would average the
+ * swell away again; too large would let render jitter into every segment.
+ */
+const ENVELOPE_SEGMENTS = 16;
+
+/** Per-segment RMS of the whole buffer. */
+function envelopeOf(data: Float32Array): Float32Array {
+  const env = new Float32Array(ENVELOPE_SEGMENTS);
+  const seg = Math.floor(data.length / ENVELOPE_SEGMENTS);
+  if (seg < 1) return env;
+  for (let s = 0; s < ENVELOPE_SEGMENTS; s++) {
+    let sum = 0;
+    for (let i = s * seg; i < (s + 1) * seg; i++) sum += data[i] * data[i];
+    env[s] = Math.sqrt(sum / seg);
+  }
+  return env;
+}
+
+/**
+ * Divergence of two envelopes, in [0, 1].
+ *
+ * The denominator is the LARGER of the two segment levels, so a segment the
+ * effect fills with sound the reference did not have scores 1 instead of
+ * dividing by ~0. Segments where BOTH are inaudible carry no information and
+ * are skipped — otherwise the ratio there is arbitrary.
+ */
+function envelopeDelta(base: Float32Array, m: Float32Array): number {
+  let best = 0;
+  for (let i = 0; i < ENVELOPE_SEGMENTS; i++) {
+    const a = base[i];
+    const b = m[i];
+    const level = Math.max(a, b);
+    if (level < 1e-9) continue;
+    const d = Math.abs(b - a) / level;
+    if (d > best) best = d;
+  }
+  return best;
 }
 
 /** Radix-2 FFT (real input, Hann-windowed) for a spectral centroid. */
@@ -465,12 +522,22 @@ function deltaVs(base: Metrics, m: Metrics): { delta: number; metric: string } {
   const relSide = Math.abs(m.side - base.side) / Math.max(base.side, base.rms * 0.1, 1e-6);
   const relCentroid = Math.abs(m.centroid - base.centroid) / Math.max(base.centroid, 200);
   const relDyn = Math.abs(m.dyn - base.dyn) / Math.max(base.dyn, 0.2);
+  // Envelope divergence — the only term that can see a device which REORDERS
+  // energy instead of adding or removing it. Measured signal-to-noise against
+  // two independent renders of the same document: reverseSwell 1.2e7,
+  // reverb 4.6e8, rezonans 2.8e8, while sirka/vocoder/sidechain stay at ~1
+  // (correctly indistinguishable — mono bus, no modulator track, no key
+  // track). A per-segment cross-correlation was tried and rejected: it is
+  // blind to reverb (ratio 0.73) because the correlation of a decaying tail
+  // varies with render jitter.
+  const relEnv = envelopeDelta(base.env, m.env);
   const candidates: [string, number][] = [
     ["rms", relRms],
     ["crest", relCrest],
     ["side", relSide],
     ["centroid", relCentroid],
     ["dyn", relDyn],
+    ["env", relEnv],
   ];
   const best = candidates.reduce((a, b) => (b[1] > a[1] ? b : a));
   return { delta: best[1], metric: best[0] };
