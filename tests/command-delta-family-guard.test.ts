@@ -124,7 +124,7 @@ describe("command family: no whole-document pinning (audit 2026-10-20)", () => {
       "  const next = { ...doc };",
       "  return {",
       '    type: "fakeCut",',
-      "    label: "Fake",",
+      '    label: "Fake",',
       "    execute: () => next,",
       "    undo: () => doc,",
       "  };",

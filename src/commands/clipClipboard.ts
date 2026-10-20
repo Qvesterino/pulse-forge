@@ -120,10 +120,15 @@ export function cutClips(doc: ProjectDocument, clipIds: readonly string[]): Comm
     else if (automationIds.has(clipId)) next = deleteAutomationClip(next, clipId).execute(next);
   }
   return {
+    // Delta snapshot, not a whole-document pin. `execute: () => next` would
+    // replace the ENTIRE document with the stale build computed at command
+    // creation, silently reverting every edit that landed in between (an
+    // async freeze render, a collab merge, a collaborator's change) — and
+    // `undo: () => doc` would wipe every edit made after the cut.
+    ...snapshot("cutClips", "Cut clips", doc, next),
     type: "cutClips",
     label: "Cut clips",
     detail: "Copied to clipboard — Ctrl+V pastes at the playhead",
-    ...snapshot("cutClips", "Cut clips", doc, next),
   };
 }
 
@@ -284,9 +289,14 @@ export function pasteClips(doc: ProjectDocument, clipboard: ClipClipboard, playh
   }
 
   return {
+    // Delta snapshot, not a whole-document pin — see cutClips above. The
+    // paste's own delta is "add these clips at these positions", so it can
+    // be applied to whatever document is current at dispatch time without
+    // reverting concurrent edits, and its inverse removes exactly the
+    // pasted clips instead of restoring the whole pre-paste document.
+    ...snapshot("pasteClips", "Paste clips", doc, pasted),
     type: "pasteClips",
     label: "Paste clips",
-    ...snapshot("pasteClips", "Paste clips", doc, pasted),
   };
 }
 
