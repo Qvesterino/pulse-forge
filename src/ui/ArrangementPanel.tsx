@@ -120,7 +120,7 @@ import type {
   MidiClip,
   ProjectDocument,
 } from "../project-model/types";
-import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
+import { PPQ, STEP_TICKS } from "../project-model/types";
 import { detectLoopBpm } from "../audio-engine/bpm-detect";
 import { audioClipChannelData, audioClipWaveformWindow } from "../audio-engine/audioClipChannels";
 import { warpBufferTimeAtTick } from "../audio-engine/AudioEngine";
@@ -366,7 +366,9 @@ function timelineExtentBars(
   clips: readonly Pick<ArrangementClip, "startBar" | "lengthBars">[],
   audioClips: readonly Pick<AudioClip, "startBar" | "lengthBars">[],
   midiClips: readonly Pick<MidiClip, "startTick" | "lengthTicks">[],
-  automationClips: readonly Pick<ArrangementAutomationClip, "startTick" | "lengthTicks">[] = [],
+  automationClips: readonly Pick<ArrangementAutomationClip, "startTick" | "lengthTicks">[],
+  /** The document's bar length in ticks (ADR 0056) — tick-based clips are read in the document's meter. */
+  barUnitTicks: number,
 ): number {
   let extent = 16;
   for (const list of [clips, audioClips]) {
@@ -377,12 +379,12 @@ function timelineExtentBars(
     }
   }
   for (const clip of midiClips) {
-    const end = (clip.startTick + clip.lengthTicks) / BAR_TICKS + 4;
+    const end = (clip.startTick + clip.lengthTicks) / barUnitTicks + 4;
     if (!Number.isFinite(end)) continue;
     if (end > extent) extent = end;
   }
   for (const clip of automationClips) {
-    const end = (clip.startTick + clip.lengthTicks) / BAR_TICKS + 4;
+    const end = (clip.startTick + clip.lengthTicks) / barUnitTicks + 4;
     if (!Number.isFinite(end)) continue;
     if (end > extent) extent = end;
   }
@@ -466,10 +468,16 @@ interface AudioTakeAuditionRequest extends AudioTakeAudition {
  *
  * Exported so the rule is testable without reproducing a full pointer drag.
  */
-export function loopSnapTargetBars(loopEnabled: boolean, loopStart: number, loopEnd: number): number[] {
+export function loopSnapTargetBars(
+  loopEnabled: boolean,
+  loopStart: number,
+  loopEnd: number,
+  /** The document's bar length in ticks (ADR 0056). */
+  barUnitTicks: number,
+): number[] {
   if (!loopEnabled) return [];
-  const targets = [loopStart / BAR_TICKS];
-  if (loopEnd > 0) targets.push(loopEnd / BAR_TICKS);
+  const targets = [loopStart / barUnitTicks];
+  if (loopEnd > 0) targets.push(loopEnd / barUnitTicks);
   return targets;
 }
 
@@ -493,6 +501,11 @@ export function ArrangementPanel() {
   // `doc` is still needed for the BPM scalar, the project id, and command
   // arguments. It's a plain getter (no React subscription).
   const doc = services.store.getDoc();
+  // The document's bar length in ticks (ADR 0056). The arrangement lane's pixel
+  // grid is one MUSICAL bar wide, so every tick↔pixel and tick↔bar conversion
+  // uses this unit — otherwise a 6/8 project's clips sit a quarter-bar off the
+  // drawn bar lines.
+  const barUnit = ticksPerBar(doc);
   const projectBpm = useSyncExternalStore(
     services.store.subscribe,
     () => services.store.getDoc().bpm,
@@ -540,8 +553,11 @@ export function ArrangementPanel() {
   }, []);
   const [showSkeletonPreview, setShowSkeletonPreview] = useState(false);
   const [autoArrangeMinutes, setAutoArrangeMinutes] = useState(3);
-  const autoArrangeTargetBars = Math.max(7, Math.round(sceneSecondsToBars(autoArrangeMinutes * 60, projectBpm)));
-  const autoArrangeEstimatedSeconds = sceneBarsToSeconds(autoArrangeTargetBars, projectBpm);
+  const autoArrangeTargetBars = Math.max(
+    7,
+    Math.round(sceneSecondsToBars(autoArrangeMinutes * 60, projectBpm, ticksPerBar(doc))),
+  );
+  const autoArrangeEstimatedSeconds = sceneBarsToSeconds(autoArrangeTargetBars, projectBpm, ticksPerBar(doc));
   const autoArrangeRoundedSeconds = Math.round(autoArrangeEstimatedSeconds);
   const autoArrangeDuration = `${Math.floor(autoArrangeRoundedSeconds / 60)}:${String(autoArrangeRoundedSeconds % 60).padStart(2, "0")}`;
   const [transitionBoundary, setTransitionBoundary] = useState<TransitionBoundary | null>(null);
@@ -699,9 +715,9 @@ export function ArrangementPanel() {
       armedTrackNames: names,
       recState,
       punchRange: punchCapture
-        ? `${(services.transport.loopStart / BAR_TICKS).toFixed(1)} → ${(
-            services.transport.loopEnd / BAR_TICKS
-          ).toFixed(1)}`
+        ? `${(services.transport.loopStart / barUnit).toFixed(1)} → ${(services.transport.loopEnd / barUnit).toFixed(
+            1,
+          )}`
         : null,
       loopTakes: loopTakeCapture,
       takeModeLabel: recordingTakeMode ? (recordingTakeMode === "new" ? "NEW TAKE GROUP" : "TAKE GROUP") : null,
@@ -892,7 +908,7 @@ export function ArrangementPanel() {
       event.preventDefault();
       const rect = el.getBoundingClientRect();
       const cursorX = event.clientX - rect.left;
-      const tickAtCursor = ((el.scrollLeft + cursorX) / (BASE_BAR_WIDTH * zoomRef.current)) * BAR_TICKS;
+      const tickAtCursor = ((el.scrollLeft + cursorX) / (BASE_BAR_WIDTH * zoomRef.current)) * barUnit;
       const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoomRef.current * Math.exp(-event.deltaY * 0.002)));
       if (next === zoomRef.current) return;
       // Keep the tick under the cursor stable across the zoom.
@@ -908,7 +924,7 @@ export function ArrangementPanel() {
     const el = scrollRef.current;
     const anchor = zoomAnchorRef.current;
     if (!el || !anchor) return;
-    el.scrollLeft = Math.max(0, (anchor.tick / BAR_TICKS) * (BASE_BAR_WIDTH * zoom) - anchor.cursorX);
+    el.scrollLeft = Math.max(0, (anchor.tick / barUnit) * (BASE_BAR_WIDTH * zoom) - anchor.cursorX);
     zoomAnchorRef.current = null;
   }, [zoom]);
 
@@ -1044,7 +1060,7 @@ export function ArrangementPanel() {
                 const ticks =
                   services.transport.position +
                   (services.transport.playing ? scheduledStartDelaySec / services.transport.secondsPerTick : 0);
-                return Number.isFinite(ticks) && ticks >= 0 ? recordingStartBar(ticks) : null;
+                return Number.isFinite(ticks) && ticks >= 0 ? recordingStartBar(ticks, ticksPerBar(doc)) : null;
               },
             },
             getMetadata: () => {
@@ -1057,7 +1073,7 @@ export function ArrangementPanel() {
                 trackId: track.id,
                 trackName: track.name,
                 placeOnTimeline: true,
-                startBar: recordingStartBar(ticks),
+                startBar: recordingStartBar(ticks, ticksPerBar(latestDoc)),
                 bpm: latestDoc.bpm,
                 recordingInputOffsetMs: recordingAlignment.getSnapshot(),
                 leadInSec: leadInWillApply ? leadInTicks * services.transport.secondsPerTick : 0,
@@ -1195,7 +1211,7 @@ export function ArrangementPanel() {
         // would land on the timeline as a per-take start-offset error.
         refreshStartBar: () => {
           const ticks = punchLocators?.start ?? services.transport.position;
-          return Number.isFinite(ticks) && ticks >= 0 ? recordingStartBar(ticks) : null;
+          return Number.isFinite(ticks) && ticks >= 0 ? recordingStartBar(ticks, ticksPerBar(doc)) : null;
         },
         ...(requestedChannelCount !== null ? { requestedChannelCount } : {}),
       });
@@ -1250,7 +1266,7 @@ export function ArrangementPanel() {
               const activePassClips = groupClips.filter((clip) => clip.takeId === group.activeTakeId);
               const anchorClips = activePassClips.length > 0 ? activePassClips : groupClips;
               const anchorBar = Math.min(...anchorClips.map((clip) => clip.startBar));
-              services.transport.seek(Math.round(anchorBar * BAR_TICKS));
+              services.transport.seek(Math.round(anchorBar * barUnit));
               takeAnchorApplied = true;
             }
           }
@@ -1266,7 +1282,10 @@ export function ArrangementPanel() {
           return [{ channelIndex, trackId: destinationTrack.id, trackName: destinationTrack.name }];
         });
         const hasSplitChannelRouting = channelDestinations.some((destination) => destination.channelIndex > 0);
-        const startBar = Math.max(0, recordingStartBar(punchLocators?.start ?? services.transport.position));
+        const startBar = Math.max(
+          0,
+          recordingStartBar(punchLocators?.start ?? services.transport.position, ticksPerBar(doc)),
+        );
         // Audit 07 D1: capture whether the imminent playPause() will roll a
         // count-in/pre-roll lead-in BEFORE the content — the buffer starts at
         // the REC press, so without this the take landed one lead-in late
@@ -1455,9 +1474,14 @@ export function ArrangementPanel() {
           take.session.startBar,
           take.session.recordingInputOffsetMs ?? 0,
           projectedDoc.bpm,
+          ticksPerBar(projectedDoc),
         );
         const leadInSec = take.session.leadInSec ?? 0;
-        const lengthBars = clipLengthBars(take.buffer.duration - leadInSec, projectedDoc.bpm);
+        const lengthBars = clipLengthBars(
+          take.buffer.duration - leadInSec,
+          projectedDoc.bpm,
+          ticksPerBar(projectedDoc),
+        );
         const alignmentChannels: Float32Array[] = [];
         try {
           for (let channel = 0; channel < take.buffer.numberOfChannels; channel += 1) {
@@ -1557,8 +1581,11 @@ export function ArrangementPanel() {
           take.session.startBar,
           take.session.recordingInputOffsetMs ?? 0,
           currentDoc.bpm,
+          ticksPerBar(currentDoc),
         );
-        const punchWindow = take.session.punchCapture ? recordedPunchWindow(take.session) : null;
+        const punchWindow = take.session.punchCapture
+          ? recordedPunchWindow(take.session, ticksPerBar(currentDoc))
+          : null;
         if (take.session.punchCapture && !punchWindow) {
           throw new Error(
             "Punch-in was not reached cleanly; the recovered audio is kept as a sample, not placed on the timeline",
@@ -1566,7 +1593,7 @@ export function ArrangementPanel() {
         }
         const lengthBars =
           punchWindow?.lengthBars ??
-          clipLengthBars(take.buffer.duration - (take.session.leadInSec ?? 0), currentDoc.bpm);
+          clipLengthBars(take.buffer.duration - (take.session.leadInSec ?? 0), currentDoc.bpm, ticksPerBar(currentDoc));
         // VOCAL-FIRST ALIGNMENT. The device path is already compensated above
         // (recordingInputOffsetMs); this is the HUMAN path: a phrase that
         // started a latency-scale step late gets its leading silence skipped,
@@ -1596,6 +1623,7 @@ export function ArrangementPanel() {
               take.session.takeBoundaries,
               take.session.bpm,
               take.session.id,
+              ticksPerBar(doc),
             )
           : [];
         const alignShifts = take.session.loopCapture
@@ -1741,13 +1769,15 @@ export function ArrangementPanel() {
             session.startBar,
             session.recordingInputOffsetMs ?? 0,
             currentDoc.bpm,
+            ticksPerBar(currentDoc),
           );
-          const punchWindow = session.punchCapture ? recordedPunchWindow(session) : null;
+          const punchWindow = session.punchCapture ? recordedPunchWindow(session, ticksPerBar(currentDoc)) : null;
           if (session.punchCapture && !punchWindow) {
             throw new Error("Punch-in was not reached; the recovered audio remains in the sample library");
           }
           const lengthBars =
-            punchWindow?.lengthBars ?? clipLengthBars(take.buffer.duration - (session.leadInSec ?? 0), currentDoc.bpm);
+            punchWindow?.lengthBars ??
+            clipLengthBars(take.buffer.duration - (session.leadInSec ?? 0), currentDoc.bpm, ticksPerBar(currentDoc));
           const patch = { fadeIn: 0.005, fadeOut: 0.02, offsetSec: punchWindow?.offsetSec ?? session.leadInSec ?? 0 };
           if (session.loopCapture && session.takeGroupId) {
             if (routing.destinations.length !== 1 || routing.destinations[0]?.trackId !== session.trackId) {
@@ -2052,11 +2082,11 @@ export function ArrangementPanel() {
    */
   const midiClips = arrangement.midiClips ?? [];
   const automationClips = arrangement.automationClips ?? [];
-  const totalBars = timelineExtentBars(clips, audioClips, midiClips, automationClips);
+  const totalBars = timelineExtentBars(clips, audioClips, midiClips, automationClips, barUnit);
   const visibleMidiClips = useMemo(() => {
     if (!viewport) return midiClips;
-    const fromTick = Math.max(0, viewport.firstBar) * BAR_TICKS;
-    const toTick = Math.min(totalBars, viewport.lastBar) * BAR_TICKS;
+    const fromTick = Math.max(0, viewport.firstBar) * barUnit;
+    const toTick = Math.min(totalBars, viewport.lastBar) * barUnit;
     return midiClips.filter(
       (clip) =>
         (groupDragPreview?.projectId === doc.id && groupDragPreview.clipIds.includes(clip.id)) ||
@@ -2065,8 +2095,8 @@ export function ArrangementPanel() {
   }, [doc.id, groupDragPreview, midiClips, totalBars, viewport]);
   const visibleAutomationClips = useMemo(() => {
     if (!viewport) return automationClips;
-    const fromTick = Math.max(0, viewport.firstBar) * BAR_TICKS;
-    const toTick = Math.min(totalBars, viewport.lastBar) * BAR_TICKS;
+    const fromTick = Math.max(0, viewport.firstBar) * barUnit;
+    const toTick = Math.min(totalBars, viewport.lastBar) * barUnit;
     return automationClips.filter(
       (clip) =>
         (groupDragPreview?.projectId === doc.id && groupDragPreview.clipIds.includes(clip.id)) ||
@@ -2159,13 +2189,15 @@ export function ArrangementPanel() {
   const selectedClip = clips.find((clip) => clip.id === selectedClipId);
   const selectedClipScene = selectedClip ? scenes.find((scene) => scene.id === selectedClip.sceneId) : undefined;
   const selectedClipBpm = effectiveSceneBpm(selectedClipScene?.bpm, doc.bpm);
-  const selectedClipSeconds = selectedClip ? sceneBarsToSeconds(selectedClip.lengthBars, selectedClipBpm) : 0;
+  const selectedClipSeconds = selectedClip
+    ? sceneBarsToSeconds(selectedClip.lengthBars, selectedClipBpm, ticksPerBar(doc))
+    : 0;
   const commitClipSecs = (): void => {
     if (!selectedClip || secsDraft === null) return;
     const seconds = Number.parseFloat(secsDraft);
     setSecsDraft(null);
     if (!Number.isFinite(seconds) || seconds <= 0) return;
-    const bars = Math.max(1, Math.round(sceneSecondsToBars(seconds, selectedClipBpm)));
+    const bars = Math.max(1, Math.round(sceneSecondsToBars(seconds, selectedClipBpm, ticksPerBar(doc))));
     if (bars === selectedClip.lengthBars) return;
     // The command clamps to MAX_ARRANGEMENT_CLIP_BARS; clamping here too keeps
     // the field from silently accepting a value the document will refuse.
@@ -2304,7 +2336,7 @@ export function ArrangementPanel() {
     const barWidthAt = geometry ? geometry.barWidthAt : barWidth;
     const left = rect.width ? rect.left : 0;
     const x = Math.max(0, Math.min(width, event.clientX - left));
-    return (x / Math.max(1, barWidthAt)) * BAR_TICKS;
+    return (x / Math.max(1, barWidthAt)) * barUnit;
   };
 
   const startTakeLaneRangeDrag = (
@@ -2337,7 +2369,7 @@ export function ArrangementPanel() {
     if (!drag || drag.pointerId !== event.pointerId) return;
     // Comp ranges are timeline positions — snap to the grid (Shift suspends).
     const grid = event.shiftKey ? null : snapBarsFor(snapGrid);
-    const currentTick = snapTick(takeLaneTickAtPointer(event, drag.geometry), grid);
+    const currentTick = snapTick(takeLaneTickAtPointer(event, drag.geometry), grid, barUnit);
     const moved = drag.moved || Math.abs(event.clientX - drag.anchorClientX) > 2;
     audioTakeLaneDragRef.current = { ...drag, currentTick, moved };
     if (moved) {
@@ -2355,7 +2387,7 @@ export function ArrangementPanel() {
     if (!drag || drag.pointerId !== event.pointerId) return;
     audioTakeLaneDragRef.current = null;
     const grid = event.shiftKey ? null : snapBarsFor(snapGrid);
-    const endTick = snapTick(takeLaneTickAtPointer(event, drag.geometry), grid);
+    const endTick = snapTick(takeLaneTickAtPointer(event, drag.geometry), grid, barUnit);
     if (drag.moved && Math.abs(endTick - drag.startTick) >= 1) {
       suppressTakeLaneClickRef.current = true;
       window.setTimeout(() => {
@@ -2578,14 +2610,14 @@ export function ArrangementPanel() {
       setActionError("Buffer not loaded");
       return;
     }
-    const clipStartTick = clip.startBar * BAR_TICKS;
-    const clipTicks = clip.lengthBars * BAR_TICKS;
+    const clipStartTick = clip.startBar * barUnit;
+    const clipTicks = clip.lengthBars * barUnit;
     const rel = tick - clipStartTick;
     if (!(rel > 0) || !(rel < clipTicks)) return;
     // The engine derives its warp mapping from the clip's START tempo
     // (durationSec is scheduled at the covering scene's effective bpm) — pin
     // placement must divide ticks by the same spt or pins land off-transient.
-    const spt = 60 / (tempoAtTick(clips, scenes, clipStartTick, doc.bpm) * PPQ);
+    const spt = 60 / (tempoAtTick(clips, scenes, clipStartTick, doc.bpm, ticksPerBar(doc)) * PPQ);
     const contentStart = (clip.offsetSec ?? 0) + (clip.trimStart ?? 0);
     const contentDur = Math.max(0.01, buf.duration - contentStart - (clip.trimEnd ?? 0));
     const contentEnd = contentStart + contentDur;
@@ -2653,11 +2685,11 @@ export function ArrangementPanel() {
       const bpm = effectiveSceneBpm(scene?.bpm, doc.bpm);
       const segEnd = Math.min(bar, end);
       if (segEnd > cursor) {
-        seconds += sceneBarsToSeconds(segEnd - Math.max(cursor, start), bpm);
+        seconds += sceneBarsToSeconds(segEnd - Math.max(cursor, start), bpm, ticksPerBar(doc));
         cursor = segEnd;
       }
     }
-    if (bar > cursor) seconds += sceneBarsToSeconds(bar - cursor, doc.bpm);
+    if (bar > cursor) seconds += sceneBarsToSeconds(bar - cursor, doc.bpm, ticksPerBar(doc));
     return seconds;
   };
 
@@ -2828,8 +2860,8 @@ export function ArrangementPanel() {
       const deltaBars = current.groupHasScene
         ? Math.round(bar - current.grabBar)
         : snapDelta(bar - current.grabBar, snapBarsFor(snapGrid));
-      const deltaTicks = Math.round(deltaBars * BAR_TICKS);
-      const planned = nudgeClips(liveDoc, [current.clipId], deltaTicks / BAR_TICKS).execute(liveDoc);
+      const deltaTicks = Math.round(deltaBars * barUnit);
+      const planned = nudgeClips(liveDoc, [current.clipId], deltaTicks / barUnit).execute(liveDoc);
       const nextScene = planned.arrangement.clips.find((clip) => clip.id === current.clipId);
       dragRef.current = { ...current, groupDeltaTicks: deltaTicks };
       if (nextScene) setClipDrag({ startBar: nextScene.startBar, lengthBars: nextScene.lengthBars });
@@ -2899,7 +2931,7 @@ export function ArrangementPanel() {
         current.groupClipIds.every((id) => liveGroup.clipIds.includes(id)) &&
         timelineItemsOf(beforeDoc).some((item) => item.id === current.clipId);
       if (!groupStillMatches) return;
-      execute(nudgeClips(beforeDoc, [current.clipId], (current.groupDeltaTicks ?? 0) / BAR_TICKS));
+      execute(nudgeClips(beforeDoc, [current.clipId], (current.groupDeltaTicks ?? 0) / barUnit));
       return;
     }
     if (!current || !finalDrag) return;
@@ -3181,9 +3213,10 @@ export function ArrangementPanel() {
     const clipWallSec = arrangementSecondsBetweenTicks(
       clips,
       scenes,
-      clip.startBar * BAR_TICKS,
-      (clip.startBar + clip.lengthBars) * BAR_TICKS,
+      clip.startBar * ticksPerBar(doc),
+      (clip.startBar + clip.lengthBars) * ticksPerBar(doc),
       doc.bpm,
+      ticksPerBar(doc),
     );
     // SLIP gate (Alt+drag in the body): the slip writes offsetSec, whose
     // mapping is only defined for linear forward playback — reversed clips
@@ -3222,7 +3255,7 @@ export function ArrangementPanel() {
       /** Same reason as the scene drag: one unit system per gesture. */
       barWidth,
       grabY: event.clientY,
-      secPerBar: clip.lengthBars > 0 ? clipWallSec / clip.lengthBars : (BAR_TICKS * 60) / (doc.bpm * PPQ),
+      secPerBar: clip.lengthBars > 0 ? clipWallSec / clip.lengthBars : (barUnit * 60) / (doc.bpm * PPQ),
       ...(multiMoving !== undefined
         ? {
             movingIds: multiMoving,
@@ -3253,10 +3286,10 @@ export function ArrangementPanel() {
       if (clip.id === draggedClipId) continue;
       targets.push(clip.startBar, clip.startBar + clip.lengthBars);
     }
-    for (const marker of doc.markers ?? []) targets.push(marker.tick / BAR_TICKS);
+    for (const marker of doc.markers ?? []) targets.push(marker.tick / barUnit);
     if (services.transport.loopEnabled) {
       // loopEnd === 0 is a SENTINEL, not bar 0 — see loopSnapTargetBars.
-      targets.push(...loopSnapTargetBars(true, services.transport.loopStart, services.transport.loopEnd));
+      targets.push(...loopSnapTargetBars(true, services.transport.loopStart, services.transport.loopEnd, barUnit));
     }
     return targets;
   };
@@ -3286,8 +3319,8 @@ export function ArrangementPanel() {
         return;
       }
       const deltaBars = cur.groupHasScene ? Math.round(delta) : snapDelta(delta, grid);
-      const deltaTicks = Math.round(deltaBars * BAR_TICKS);
-      const planned = nudgeClips(liveDoc, [cur.clipId], deltaTicks / BAR_TICKS).execute(liveDoc);
+      const deltaTicks = Math.round(deltaBars * barUnit);
+      const planned = nudgeClips(liveDoc, [cur.clipId], deltaTicks / barUnit).execute(liveDoc);
       const nextAudio = (planned.arrangement.audioClips ?? []).find((clip) => clip.id === cur.clipId);
       audioDragRef.current = { ...cur, groupDeltaTicks: deltaTicks };
       if (nextAudio) setAudioDragLive({ startBar: nextAudio.startBar, lengthBars: nextAudio.lengthBars });
@@ -3407,7 +3440,7 @@ export function ArrangementPanel() {
         cur.groupClipIds.every((id) => liveGroup.clipIds.includes(id)) &&
         timelineItemsOf(beforeDoc).some((item) => item.id === cur.clipId);
       if (!groupStillMatches) return;
-      execute(nudgeClips(beforeDoc, [cur.clipId], (cur.groupDeltaTicks ?? 0) / BAR_TICKS));
+      execute(nudgeClips(beforeDoc, [cur.clipId], (cur.groupDeltaTicks ?? 0) / barUnit));
       return;
     }
     // BLOCK MOVE: every selected audio clip slides by the shared delta in ONE
@@ -3481,9 +3514,10 @@ export function ArrangementPanel() {
         const deltaSec = arrangementSecondsBetweenTicks(
           clips,
           scenes,
-          cur.origStart * BAR_TICKS,
-          final.startBar * BAR_TICKS,
+          cur.origStart * ticksPerBar(doc),
+          final.startBar * ticksPerBar(doc),
           doc.bpm,
+          ticksPerBar(doc),
         );
         const lengthChanged = final.lengthBars !== cur.origLength;
         if (Math.abs(deltaSec) > 0.001 || lengthChanged) {
@@ -3715,8 +3749,8 @@ export function ArrangementPanel() {
   };
   const bounceZoneToClip = async () => {
     if (!selection.timeRange || bouncingZone) return;
-    const fromBar = selection.timeRange.fromTick / BAR_TICKS;
-    const lenBars = (selection.timeRange.toTick - selection.timeRange.fromTick) / BAR_TICKS;
+    const fromBar = selection.timeRange.fromTick / barUnit;
+    const lenBars = (selection.timeRange.toTick - selection.timeRange.fromTick) / barUnit;
     if (lenBars < 0.25) return;
     // Audit 11 D6: the fallback target must skip GROUP tracks — a group
     // alone renders silence (no generators on group nodes) and plants a
@@ -4445,7 +4479,7 @@ export function ArrangementPanel() {
                       min={0.5}
                       // The field is in seconds; the cap is a bar count, so convert
                       // it at the clip's own tempo (a bar is 4 beats).
-                      max={Math.round(sceneBarsToSeconds(MAX_ARRANGEMENT_CLIP_BARS, selectedClipBpm))}
+                      max={Math.round(sceneBarsToSeconds(MAX_ARRANGEMENT_CLIP_BARS, selectedClipBpm, ticksPerBar(doc)))}
                       step={0.5}
                       aria-label="Clip length in seconds"
                       title={`${selectedClip.lengthBars} bars at ${Math.round(selectedClipBpm)} BPM — Enter resizes the clip`}
@@ -4725,7 +4759,11 @@ export function ArrangementPanel() {
                 onClick={() => {
                   try {
                     const currentDoc = services.store.getDoc();
-                    const targetBars = sceneSecondsToBars(autoArrangeMinutes * 60, currentDoc.bpm);
+                    const targetBars = sceneSecondsToBars(
+                      autoArrangeMinutes * 60,
+                      currentDoc.bpm,
+                      ticksPerBar(currentDoc),
+                    );
                     execute(autoArrangeSong(currentDoc, targetBars));
                   } catch (err) {
                     setActionError(err instanceof Error ? err.message : "Auto-arrange failed");
@@ -5002,7 +5040,7 @@ export function ArrangementPanel() {
                 // act as snap-suspend — the grid applies to the placement.
                 execute(
                   addMarker(services.store.doc, {
-                    tick: Math.floor(snapBar(bar, snapBarsFor(snapGrid)) * BAR_TICKS),
+                    tick: Math.floor(snapBar(bar, snapBarsFor(snapGrid)) * barUnit),
                     type: "cue",
                   }),
                 );
@@ -5027,8 +5065,8 @@ export function ArrangementPanel() {
               const to = snapBar(Math.max(timeDrag.startBar, bar), grid);
               if (Math.abs(to - from) > 0.15) {
                 selectionStore.setTimeRange({
-                  fromTick: Math.floor(from * BAR_TICKS),
-                  toTick: Math.floor(to * BAR_TICKS),
+                  fromTick: Math.floor(from * barUnit),
+                  toTick: Math.floor(to * barUnit),
                 });
               } else {
                 selectionStore.setTimeRange(null);
@@ -5039,7 +5077,7 @@ export function ArrangementPanel() {
               const from = Math.min(timeDrag.startBar, timeDrag.currentBar);
               const to = Math.max(timeDrag.startBar, timeDrag.currentBar);
               if (Math.abs(to - from) < 0.15) {
-                services.playback.seek(Math.floor(from * BAR_TICKS));
+                services.playback.seek(Math.floor(from * barUnit));
                 selectionStore.setTimeRange(null);
               }
               setTimeDrag(null);
@@ -5063,7 +5101,7 @@ export function ArrangementPanel() {
               if (!lane) return;
               const x = event.clientX - lane.getBoundingClientRect().left;
               const closest = markers
-                .map((marker) => ({ id: marker.id, dist: Math.abs((marker.tick / BAR_TICKS) * barWidth - x) }))
+                .map((marker) => ({ id: marker.id, dist: Math.abs((marker.tick / barUnit) * barWidth - x) }))
                 .filter((marker) => marker.dist < 8)
                 .sort((a, b) => a.dist - b.dist)[0];
               if (closest) execute(removeMarker(services.store.doc, closest.id));
@@ -5081,7 +5119,7 @@ export function ArrangementPanel() {
               <div
                 key={marker.id}
                 className={`arr-marker arr-marker-${marker.type}`}
-                style={{ left: (marker.tick / BAR_TICKS) * barWidth - 6 }}
+                style={{ left: (marker.tick / barUnit) * barWidth - 6 }}
                 title={`${marker.name} (${marker.type})`}
                 onPointerDown={(event) => {
                   markerLongPressTargetRef.current = marker.id;
@@ -5099,8 +5137,8 @@ export function ArrangementPanel() {
               <div
                 className="arr-time-range"
                 style={{
-                  left: (Math.min(selection.timeRange.fromTick, selection.timeRange.toTick) / BAR_TICKS) * barWidth,
-                  width: (Math.abs(selection.timeRange.toTick - selection.timeRange.fromTick) / BAR_TICKS) * barWidth,
+                  left: (Math.min(selection.timeRange.fromTick, selection.timeRange.toTick) / barUnit) * barWidth,
+                  width: (Math.abs(selection.timeRange.toTick - selection.timeRange.fromTick) / barUnit) * barWidth,
                 }}
               />
             )}
@@ -5353,8 +5391,8 @@ export function ArrangementPanel() {
               const to = snapBar(Math.max(timeDrag.startBar, bar), grid);
               if (Math.abs(to - from) > 0.15)
                 selectionStore.setTimeRange({
-                  fromTick: Math.floor(from * BAR_TICKS),
-                  toTick: Math.floor(to * BAR_TICKS),
+                  fromTick: Math.floor(from * barUnit),
+                  toTick: Math.floor(to * barUnit),
                 });
               else selectionStore.setTimeRange(null);
             }}
@@ -5443,8 +5481,8 @@ export function ArrangementPanel() {
               <div
                 className="arr-time-range arr-time-range-lane"
                 style={{
-                  left: (Math.min(selection.timeRange.fromTick, selection.timeRange.toTick) / BAR_TICKS) * barWidth,
-                  width: (Math.abs(selection.timeRange.toTick - selection.timeRange.fromTick) / BAR_TICKS) * barWidth,
+                  left: (Math.min(selection.timeRange.fromTick, selection.timeRange.toTick) / barUnit) * barWidth,
+                  width: (Math.abs(selection.timeRange.toTick - selection.timeRange.fromTick) / barUnit) * barWidth,
                 }}
               />
             )}
@@ -5472,7 +5510,7 @@ export function ArrangementPanel() {
               const multiMoving = dragRef.current?.movingIds?.includes(clip.id) && multiDrag !== null;
               const groupStartBar =
                 groupDragPreview?.projectId === doc.id && groupDragPreview.clipIds.includes(clip.id)
-                  ? (groupDragPreview.startTicks[clip.id] ?? clip.startBar * BAR_TICKS) / BAR_TICKS
+                  ? (groupDragPreview.startTicks[clip.id] ?? clip.startBar * barUnit) / barUnit
                   : undefined;
               const startBar =
                 groupStartBar ?? (multiMoving ? clip.startBar + multiDrag : isDragging ? drag.startBar : clip.startBar);
@@ -5500,7 +5538,7 @@ export function ArrangementPanel() {
                           splitArrangementClipAtTick(
                             services.store.doc,
                             clip.id,
-                            Math.floor(snapBar(bar, snapBarsFor(snapGrid)) * BAR_TICKS),
+                            Math.floor(snapBar(bar, snapBarsFor(snapGrid)) * barUnit),
                           ),
                         );
                         return;
@@ -5580,7 +5618,7 @@ export function ArrangementPanel() {
                 isDragging || multiMovingAudio ? 0 : ghostShiftFor(clip.id, clip.startBar, rippleGhost?.fromAudio ?? 0);
               const groupStartBar =
                 groupDragPreview?.projectId === doc.id && groupDragPreview.clipIds.includes(clip.id)
-                  ? (groupDragPreview.startTicks[clip.id] ?? clip.startBar * BAR_TICKS) / BAR_TICKS
+                  ? (groupDragPreview.startTicks[clip.id] ?? clip.startBar * barUnit) / barUnit
                   : undefined;
               const startBar =
                 groupStartBar ??
@@ -5632,11 +5670,12 @@ export function ArrangementPanel() {
                   ? arrangementSecondsBetweenTicks(
                       clips,
                       scenes,
-                      startBar * BAR_TICKS,
-                      (startBar + lengthBars) * BAR_TICKS,
+                      startBar * ticksPerBar(doc),
+                      (startBar + lengthBars) * ticksPerBar(doc),
                       doc.bpm,
+                      ticksPerBar(doc),
                     ) / lengthBars
-                  : (BAR_TICKS * 60) / (doc.bpm * PPQ);
+                  : (barUnit * 60) / (doc.bpm * PPQ);
               return (
                 <div
                   key={clip.id}
@@ -5655,7 +5694,7 @@ export function ArrangementPanel() {
                         splitAudioClipAtTick(
                           services.store.doc,
                           clip.id,
-                          Math.floor(snapBar(bar, snapBarsFor(snapGrid)) * BAR_TICKS),
+                          Math.floor(snapBar(bar, snapBarsFor(snapGrid)) * barUnit),
                           services.bank.get(clip.bufferId)?.duration,
                         ),
                       );
@@ -5701,7 +5740,7 @@ export function ArrangementPanel() {
                     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
                     if (rect.width <= 0) return;
                     const frac = (event.clientX - rect.left) / rect.width;
-                    addWarpPinAtTick(clip, Math.round(clip.startBar * BAR_TICKS + frac * clip.lengthBars * BAR_TICKS));
+                    addWarpPinAtTick(clip, Math.round(clip.startBar * barUnit + frac * clip.lengthBars * barUnit));
                   }}
                   onContextMenu={audioLongPress.wrapContextMenu((event) => {
                     event.preventDefault();
@@ -5722,6 +5761,7 @@ export function ArrangementPanel() {
                   <WarpPinsOverlay
                     clip={clip}
                     cancelEpoch={overlayCancelEpoch}
+                    barUnitTicks={barUnit}
                     disabledReason={
                       clip.reverse
                         ? "Warp needs forward playback — switch off Reverse"
@@ -5867,6 +5907,7 @@ export function ArrangementPanel() {
               transport={services.transport}
               barWidth={barWidth}
               cancelEpoch={overlayCancelEpoch}
+              barUnitTicks={barUnit}
               onEdit={(sceneId, curve) => execute(setSceneIntensityCurve(services.store.doc, sceneId, curve))}
             />
           )}
@@ -6007,9 +6048,8 @@ export function ArrangementPanel() {
                             className="arr-audio-take-lane-range"
                             aria-label={`Selected comp range from ${laneLabel}`}
                             style={{
-                              left: (audioTakeLaneRange.startTick / BAR_TICKS) * barWidth,
-                              width:
-                                ((audioTakeLaneRange.endTick - audioTakeLaneRange.startTick) / BAR_TICKS) * barWidth,
+                              left: (audioTakeLaneRange.startTick / barUnit) * barWidth,
+                              width: ((audioTakeLaneRange.endTick - audioTakeLaneRange.startTick) / barUnit) * barWidth,
                             }}
                           />
                         )}
@@ -6255,8 +6295,8 @@ export function ArrangementPanel() {
                   return;
                 }
                 const pos = services.transport.position;
-                const clipStartTick = c.startBar * BAR_TICKS;
-                const clipTicks = c.lengthBars * BAR_TICKS;
+                const clipStartTick = c.startBar * barUnit;
+                const clipTicks = c.lengthBars * barUnit;
                 if (!(pos > clipStartTick) || !(pos < clipStartTick + clipTicks)) {
                   setActionError("Move playhead inside the clip, then pin");
                   setAudioMenu(null);
@@ -6505,8 +6545,8 @@ export function ArrangementPanel() {
                   setAudioMenu(null);
                   return;
                 }
-                const s = c.startBar * BAR_TICKS;
-                const e = s + c.lengthBars * BAR_TICKS;
+                const s = c.startBar * barUnit;
+                const e = s + c.lengthBars * barUnit;
                 if (pos <= s || pos >= e) {
                   setActionError("Move playhead inside clip then Ctrl+E");
                   setAudioMenu(null);
@@ -6598,8 +6638,8 @@ export function ArrangementPanel() {
                   const { fromTick, toTick } = selection.timeRange;
                   clipIds = (arrangement.audioClips ?? [])
                     .filter((clip) => {
-                      const startTick = clip.startBar * BAR_TICKS;
-                      const endTick = startTick + clip.lengthBars * BAR_TICKS;
+                      const startTick = clip.startBar * barUnit;
+                      const endTick = startTick + clip.lengthBars * barUnit;
                       return startTick >= fromTick && endTick <= toTick;
                     })
                     .map((clip) => clip.id);
@@ -6683,7 +6723,13 @@ export function ArrangementPanel() {
             initialMode={stretchTarget.stretchMode ?? "resample"}
             initialPitch={stretchTarget.pitchSemitones ?? 0}
             detectedBpm={stretchDetectedBpm}
-            projectBpm={tempoAtTick(doc.arrangement.clips, doc.scenes, stretchTarget.startBar * BAR_TICKS, doc.bpm)}
+            projectBpm={tempoAtTick(
+              doc.arrangement.clips,
+              doc.scenes,
+              stretchTarget.startBar * ticksPerBar(doc),
+              doc.bpm,
+              ticksPerBar(doc),
+            )}
             onApply={(rate, mode, pitchSemitones) => {
               // The factory throws before `execute`'s guard can run: stretch is
               // a direct editing verb, so a locked clip refuses here exactly as
@@ -6891,6 +6937,7 @@ function WarpPinsOverlay({
   disabledReason,
   onCommit,
   cancelEpoch = 0,
+  barUnitTicks,
 }: {
   clip: AudioClip;
   disabledReason: string | null;
@@ -6901,7 +6948,10 @@ function WarpPinsOverlay({
    * directly — the epoch is how it learns it must abort.
    */
   cancelEpoch?: number;
+  /** The document's bar length in ticks (ADR 0056). */
+  barUnitTicks: number;
 }) {
+  const barUnit = barUnitTicks;
   const overlayRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ index: number; originTick: number; startX: number; moved: boolean } | null>(null);
   const [dragTick, setDragTick] = useState<number | null>(null);
@@ -6914,8 +6964,8 @@ function WarpPinsOverlay({
   }, [cancelEpoch]);
   const markers = clip.warpMarkers ?? [];
   if (markers.length === 0) return null;
-  const clipStartTick = clip.startBar * BAR_TICKS;
-  const clipTicks = clip.lengthBars * BAR_TICKS;
+  const clipStartTick = clip.startBar * barUnit;
+  const clipTicks = clip.lengthBars * barUnit;
   if (!(clipTicks > 0)) return null;
 
   const commitMove = (index: number, tick: number) => {
@@ -6938,7 +6988,7 @@ function WarpPinsOverlay({
         const tick = dragRef.current?.index === i && dragTick !== null ? dragTick : m.tick;
         const leftPct = ((tick - clipStartTick) / clipTicks) * 100;
         if (leftPct < 0 || leftPct > 100) return null;
-        const bar = Math.floor(tick / BAR_TICKS) + 1;
+        const bar = Math.floor(tick / barUnit) + 1;
         return (
           <div
             key={`${m.tick}-${m.timeSec}-${i}`}
@@ -7080,6 +7130,7 @@ function IntensityLane({
   barWidth,
   onEdit,
   cancelEpoch = 0,
+  barUnitTicks,
 }: {
   scenes: ProjectDocument["scenes"];
   clips: ArrangementClip[];
@@ -7093,7 +7144,10 @@ function IntensityLane({
    * than by reaching into its internals.
    */
   cancelEpoch?: number;
+  /** The document's bar length in ticks (ADR 0056). */
+  barUnitTicks: number;
 }) {
+  const barUnit = barUnitTicks;
   const laneRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
     sceneId: string;
@@ -7113,7 +7167,7 @@ function IntensityLane({
     setLive(null);
   }, [cancelEpoch]);
   const width = totalBars * barWidth;
-  const pxPerTick = barWidth / BAR_TICKS;
+  const pxPerTick = barWidth / barUnit;
   const yFor = (value: number) => INTENSITY_LANE_HEIGHT - value * INTENSITY_LANE_HEIGHT;
 
   const scenesById = new Map(scenes.map((s) => [s.id, s]));
@@ -7129,8 +7183,8 @@ function IntensityLane({
   for (const clip of clips) {
     const scene = scenesById.get(clip.sceneId);
     if (!scene) continue;
-    const clipStartTick = clip.startBar * BAR_TICKS;
-    const clipEndTick = clipStartTick + clip.lengthBars * BAR_TICKS;
+    const clipStartTick = clip.startBar * barUnit;
+    const clipEndTick = clipStartTick + clip.lengthBars * barUnit;
     const curve = scene.intensityCurve ?? [];
     const points: IntensityPoint[] = [];
     curve.forEach((p, index) => {
@@ -7176,7 +7230,7 @@ function IntensityLane({
   };
 
   const clipAt = (absTick: number): ArrangementClip | null =>
-    clips.find((c) => absTick >= c.startBar * BAR_TICKS && absTick < (c.startBar + c.lengthBars) * BAR_TICKS) ?? null;
+    clips.find((c) => absTick >= c.startBar * barUnit && absTick < (c.startBar + c.lengthBars) * barUnit) ?? null;
 
   const onPointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return;
@@ -7204,7 +7258,7 @@ function IntensityLane({
     if (!clip) return;
     const scene = scenesById.get(clip.sceneId);
     if (!scene) return;
-    const offset = local.absTick - clip.startBar * BAR_TICKS;
+    const offset = local.absTick - clip.startBar * barUnit;
     onEdit(scene.id, [...(scene.intensityCurve ?? []), { offset, value: local.value }]);
   };
 
@@ -7217,11 +7271,11 @@ function IntensityLane({
       clipAt(local.absTick) ??
       clipAt(handles.find((h) => h.sceneId === drag.sceneId && h.index === drag.index)?.absTick ?? -1);
     if (!clip) return;
-    const offset = Math.max(0, Math.min(clip.lengthBars * BAR_TICKS, local.absTick - clip.startBar * BAR_TICKS));
+    const offset = Math.max(0, Math.min(clip.lengthBars * barUnit, local.absTick - clip.startBar * barUnit));
     setLive({
       sceneId: drag.sceneId,
       index: drag.index,
-      absTick: clip.startBar * BAR_TICKS + offset,
+      absTick: clip.startBar * barUnit + offset,
       value: local.value,
     });
   };
@@ -7234,10 +7288,10 @@ function IntensityLane({
     if (!drag || !livePos) return;
     const clip = clipAt(livePos.absTick);
     if (!clip) return;
-    const newOffset = livePos.absTick - clip.startBar * BAR_TICKS;
+    const newOffset = livePos.absTick - clip.startBar * barUnit;
     // The dragged handle's scene-local origin (its offset when the drag began).
     const originClip = clipAt(drag.originAbsTick);
-    const origOffset = originClip ? drag.originAbsTick - originClip.startBar * BAR_TICKS : drag.origOffset;
+    const origOffset = originClip ? drag.originAbsTick - originClip.startBar * barUnit : drag.origOffset;
     if (newOffset === origOffset && livePos.value === drag.origValue) return;
     const updated = [...drag.curve];
     updated[drag.index] = { offset: newOffset, value: livePos.value };
@@ -7266,7 +7320,7 @@ function IntensityLane({
   const activeScene = activeClip ? scenesById.get(activeClip.sceneId) : undefined;
   const playheadValue =
     activeClip && activeScene
-      ? computeSceneIntensity(activeScene, activeClip.startBar * BAR_TICKS, Math.round(playheadBar * BAR_TICKS))
+      ? computeSceneIntensity(activeScene, activeClip.startBar * barUnit, Math.round(playheadBar * barUnit))
       : null;
 
   return (

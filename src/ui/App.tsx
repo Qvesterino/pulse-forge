@@ -80,7 +80,8 @@ import type { PatternClipboard } from "../commands/commands";
 import type { SelectedNote } from "./PianoRoll";
 import { matchShortcut, panelIdOfShortcut, type ShortcutKey } from "./shortcuts";
 import type { PaletteDeps } from "./commandPalette";
-import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
+import { PPQ, STEP_TICKS } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { timelineItemsOf } from "../project-model/timeline";
 import { userSampleId } from "../persistence/UserSampleRepository";
 import { buildBounceZoneDoc } from "../rendering/bounce";
@@ -357,6 +358,9 @@ export function App({
   onReplaceServices: (services: Services) => void;
 }) {
   const doc = useSyncExternalStore(services.store.subscribe, services.store.getDoc, services.store.getDoc);
+  // The document's bar length in ticks (ADR 0056): bar-relative work (seek by
+  // one bar, clip-under-playhead, selection bounds) uses the project's meter.
+  const barUnit = ticksPerBar(doc);
   const playMode = useSyncExternalStore(
     services.playback.subscribe,
     services.playback.getSnapshot,
@@ -692,11 +696,11 @@ export function App({
         return;
       case "seekBack":
         event?.preventDefault();
-        services.playback.seek(Math.max(0, services.transport.position - BAR_TICKS));
+        services.playback.seek(Math.max(0, services.transport.position - barUnit));
         return;
       case "seekForward":
         event?.preventDefault();
-        services.playback.seek(services.transport.position + BAR_TICKS);
+        services.playback.seek(services.transport.position + barUnit);
         return;
       case "save":
         event?.preventDefault();
@@ -906,8 +910,8 @@ export function App({
           const oldDoc = doc;
           // Clips overlapping timeRange
           const clipsToDelete = newDoc.arrangement.clips.filter((c) => {
-            const cFrom = c.startBar * BAR_TICKS;
-            const cTo = (c.startBar + c.lengthBars) * BAR_TICKS;
+            const cFrom = c.startBar * barUnit;
+            const cTo = (c.startBar + c.lengthBars) * barUnit;
             return cFrom < to && cTo > from;
           });
           for (const c of clipsToDelete) {
@@ -1160,8 +1164,8 @@ export function App({
           // Prefer clip under playhead, else nearest
           let target: (typeof clips)[number] | null = null;
           for (const c of clips) {
-            const s = c.startBar * BAR_TICKS;
-            const e = s + c.lengthBars * BAR_TICKS;
+            const s = c.startBar * barUnit;
+            const e = s + c.lengthBars * barUnit;
             if (pos >= s && pos < e) {
               target = c;
               break;
@@ -1171,10 +1175,10 @@ export function App({
             // Find clip with start > pos (next) or previous
             const sorted = [...clips].sort((a, b) => a.startBar - b.startBar);
             if (!event.shiftKey) {
-              target = sorted.find((c) => c.startBar * BAR_TICKS > pos) ?? sorted[0] ?? null;
+              target = sorted.find((c) => c.startBar * barUnit > pos) ?? sorted[0] ?? null;
             } else {
               const rev = [...sorted].reverse();
-              target = rev.find((c) => c.startBar * BAR_TICKS < pos) ?? rev[0] ?? null;
+              target = rev.find((c) => c.startBar * barUnit < pos) ?? rev[0] ?? null;
             }
           }
           if (target) {
@@ -1205,7 +1209,8 @@ export function App({
                   return;
                 const activePos = services.transport.position;
                 const secondsPerTick = 60 / (currentDoc.bpm * PPQ);
-                const clipStartTick = currentTarget.startBar * BAR_TICKS;
+                const currentBarUnit = ticksPerBar(currentDoc);
+                const clipStartTick = currentTarget.startBar * currentBarUnit;
                 const offsetSec = (currentTarget.offsetSec ?? 0) + (currentTarget.trimStart ?? 0);
                 // Map buffer transient times to ticks: tick = clipStart + (t - offset)/stretch / secPerTick
                 const ticks = times.map(
@@ -1215,7 +1220,7 @@ export function App({
                 const valid = ticks.filter(
                   (tk) =>
                     tk >= clipStartTick &&
-                    tk < clipStartTick + currentTarget.lengthBars * BAR_TICKS &&
+                    tk < clipStartTick + currentTarget.lengthBars * currentBarUnit &&
                     Number.isFinite(tk),
                 );
                 let nextTick: number | null = null;
@@ -1238,7 +1243,7 @@ export function App({
                         if (request !== transientJumpRef.current) return;
                         if (nt.length > 0)
                           nextTick =
-                            nxt.startBar * BAR_TICKS +
+                            nxt.startBar * currentBarUnit +
                             (nt[0] - (nxt.offsetSec ?? 0)) / secondsPerTick / (nxt.stretchRate ?? 1);
                       }
                     }
@@ -1263,7 +1268,7 @@ export function App({
                         if (pt.length > 0) {
                           const last = pt[pt.length - 1];
                           nextTick =
-                            prv.startBar * BAR_TICKS +
+                            prv.startBar * currentBarUnit +
                             (last - (prv.offsetSec ?? 0)) / secondsPerTick / (prv.stretchRate ?? 1);
                         }
                       }
@@ -1293,8 +1298,8 @@ export function App({
       if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "e") {
         const pos = services.transport.position;
         const clip = (doc.arrangement.audioClips ?? []).find((c) => {
-          const s = c.startBar * BAR_TICKS;
-          const e2 = s + c.lengthBars * BAR_TICKS;
+          const s = c.startBar * barUnit;
+          const e2 = s + c.lengthBars * barUnit;
           return pos > s && pos < e2;
         });
         if (clip) {
@@ -1319,8 +1324,8 @@ export function App({
         // integer-bar by contract, so the command lands the split on the last
         // bar line at or before the playhead and refuses edge-adjacent spots.
         const sceneClip = doc.arrangement.clips.find((c) => {
-          const s = c.startBar * BAR_TICKS;
-          const e2 = s + c.lengthBars * BAR_TICKS;
+          const s = c.startBar * barUnit;
+          const e2 = s + c.lengthBars * barUnit;
           return pos >= s && pos < e2;
         });
         if (sceneClip) {
@@ -1363,8 +1368,8 @@ export function App({
               for (const cid of selection.clipIds) {
                 const c = items.get(cid);
                 if (c) {
-                  const s = c.startBar * BAR_TICKS;
-                  const e = (c.startBar + c.lengthBars) * BAR_TICKS;
+                  const s = c.startBar * barUnit;
+                  const e = (c.startBar + c.lengthBars) * barUnit;
                   min = Math.min(min, s);
                   max = Math.max(max, e);
                 }
@@ -1452,8 +1457,8 @@ export function App({
       // selected project content before the AudioClip is committed.
       if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "b") {
         if (selection.timeRange) {
-          const fromBar = selection.timeRange.fromTick / BAR_TICKS;
-          const lenBars = (selection.timeRange.toTick - selection.timeRange.fromTick) / BAR_TICKS;
+          const fromBar = selection.timeRange.fromTick / barUnit;
+          const lenBars = (selection.timeRange.toTick - selection.timeRange.fromTick) / barUnit;
           if (lenBars >= 0.25) {
             event.preventDefault();
             if (bouncingRange) return;

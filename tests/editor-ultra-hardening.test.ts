@@ -504,7 +504,7 @@ describe("snap module (pure)", () => {
   it("every grid is tick-clean and tick-snapping lands on whole ticks", () => {
     for (const g of SNAP_GRIDS) {
       expect((g.bars * BAR_TICKS) % 1).toBe(0);
-      expect(snapTick(BAR_TICKS * 0.51, g.bars) % 1).toBe(0);
+      expect(snapTick(BAR_TICKS * 0.51, g.bars, BAR_TICKS) % 1).toBe(0);
     }
     // Nearest-line behavior, half rounds up.
     expect(snapBar(1.26, 0.25)).toBeCloseTo(1.25, 9);
@@ -520,11 +520,23 @@ describe("snap module (pure)", () => {
     expect(snapDelta(1.3, 0.5)).toBeCloseTo(1.5, 9);
     expect(snapDelta(-0.26, 0.25)).toBeCloseTo(-0.25, 9);
     // Tick snapping uses the grid in ticks.
-    expect(snapTick(121, 0.0625)).toBe(120);
+    expect(snapTick(121, 0.0625, BAR_TICKS)).toBe(120);
     // 180 sits exactly between 120 and 240 — half rounds UP (documented).
-    expect(snapTick(180, 0.0625)).toBe(240);
-    expect(snapTick(181, 0.0625)).toBe(240);
-    expect(snapTick(999, null)).toBe(999);
+    expect(snapTick(180, 0.0625, BAR_TICKS)).toBe(240);
+    expect(snapTick(181, 0.0625, BAR_TICKS)).toBe(240);
+    expect(snapTick(999, null, BAR_TICKS)).toBe(999);
+  });
+
+  it("snaps the grid as a FRACTION OF THE DOCUMENT'S BAR (ADR 0056)", () => {
+    // 6/8: a bar is 1440 ticks, so a 1/16-bar grid is 90 ticks — a fixed 4/4
+    // bar would have snapped to 120, a grid the ruler never draws in 6/8.
+    const SIX_EIGHT = 1440;
+    expect(snapTick(91, 0.0625, SIX_EIGHT)).toBe(90);
+    expect(snapTick(91, 0.0625, BAR_TICKS)).toBe(120);
+    // Every grid stays tick-clean in every supported meter.
+    for (const g of SNAP_GRIDS) {
+      expect((g.bars * SIX_EIGHT) % 1).toBe(0);
+    }
   });
 
   it("loadSnapGrid validates storage and falls back to off", () => {

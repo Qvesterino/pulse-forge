@@ -1,6 +1,7 @@
 import type { DrumPad, InstrumentTrack, ProjectDocument } from "../project-model/types";
 import { PPQ } from "../project-model/types";
 import { arrangementSecondsBetweenTicks } from "../project-model/scene-time";
+import { ticksPerBar } from "../project-model/schema";
 import type { SampleBank } from "../sample-library/factory";
 import type { InstrumentRuntime } from "../instruments/types";
 import type { InstrumentPreset } from "../presets/types";
@@ -616,7 +617,14 @@ export class PreviewDeck {
     const now = ctx.currentTime;
     const pos = this.deps.transportTickNow();
     const nextBeatTick = (Math.floor(pos / PPQ) + 1) * PPQ;
-    const delaySec = arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, pos, nextBeatTick, doc.bpm);
+    const delaySec = arrangementSecondsBetweenTicks(
+      doc.arrangement.clips,
+      doc.scenes,
+      pos,
+      nextBeatTick,
+      doc.bpm,
+      ticksPerBar(doc),
+    );
     const when = now + Math.max(0.005, delaySec + 0.005);
     const playbackRate = Number.isFinite(rate) ? Math.min(4, Math.max(0.25, rate)) : 1;
     let playBuffer = buffer;

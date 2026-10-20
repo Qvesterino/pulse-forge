@@ -22,39 +22,44 @@ const spans = [
 ];
 
 describe("scene-tempo helpers (scene-time)", () => {
+  // The fixture below is a 4/4 arrangement by construction, so its bar unit is
+  // BAR_TICKS. The helpers take the bar LENGTH IN TICKS (ADR 0056) — a fixed
+  // 4/4 unit inside a 4/4 fixture, the metrical unit everywhere else.
   it("tempoAtTick: pinned span, unpinned span, gap, boundary", () => {
-    expect(tempoAtTick(spans, scenesWithPin, 0, 120)).toBe(240);
-    expect(tempoAtTick(spans, scenesWithPin, 2 * BAR_TICKS, 120)).toBe(240);
+    expect(tempoAtTick(spans, scenesWithPin, 0, 120, BAR_TICKS)).toBe(240);
+    expect(tempoAtTick(spans, scenesWithPin, 2 * BAR_TICKS, 120, BAR_TICKS)).toBe(240);
     // Boundary bar 4 belongs to the SECOND clip ([4, 8)) — unpinned → project tempo.
-    expect(tempoAtTick(spans, scenesWithPin, 4 * BAR_TICKS, 120)).toBe(120);
+    expect(tempoAtTick(spans, scenesWithPin, 4 * BAR_TICKS, 120, BAR_TICKS)).toBe(120);
     // Gap after the last clip → project tempo.
-    expect(tempoAtTick(spans, scenesWithPin, 9 * BAR_TICKS, 120)).toBe(120);
+    expect(tempoAtTick(spans, scenesWithPin, 9 * BAR_TICKS, 120, BAR_TICKS)).toBe(120);
   });
 
   it("arrangementSecondsBetweenTicks: pinned, gap, piecewise crossing, signed", () => {
     const secPerBarAt = (bpm: number) => (BAR_TICKS * 60) / (bpm * 480);
     // Two bars fully inside the 240 bpm pin.
-    expect(arrangementSecondsBetweenTicks(spans, scenesWithPin, 0, 2 * BAR_TICKS, 120)).toBeCloseTo(
+    expect(arrangementSecondsBetweenTicks(spans, scenesWithPin, 0, 2 * BAR_TICKS, 120, BAR_TICKS)).toBeCloseTo(
       2 * secPerBarAt(240),
       9,
     );
     // Bars 8→9 are a gap → project tempo.
-    expect(arrangementSecondsBetweenTicks(spans, scenesWithPin, 8 * BAR_TICKS, 9 * BAR_TICKS, 120)).toBeCloseTo(
-      secPerBarAt(120),
-      9,
-    );
+    expect(
+      arrangementSecondsBetweenTicks(spans, scenesWithPin, 8 * BAR_TICKS, 9 * BAR_TICKS, 120, BAR_TICKS),
+    ).toBeCloseTo(secPerBarAt(120), 9);
     // 0→8 bars crosses the boundary: 4 bars at 240 + 4 bars at 120.
-    expect(arrangementSecondsBetweenTicks(spans, scenesWithPin, 0, 8 * BAR_TICKS, 120)).toBeCloseTo(
+    expect(arrangementSecondsBetweenTicks(spans, scenesWithPin, 0, 8 * BAR_TICKS, 120, BAR_TICKS)).toBeCloseTo(
       4 * secPerBarAt(240) + 4 * secPerBarAt(120),
       9,
     );
     // Signed: reversed span negates.
-    expect(arrangementSecondsBetweenTicks(spans, scenesWithPin, 2 * BAR_TICKS, 0, 120)).toBeCloseTo(
+    expect(arrangementSecondsBetweenTicks(spans, scenesWithPin, 2 * BAR_TICKS, 0, 120, BAR_TICKS)).toBeCloseTo(
       -2 * secPerBarAt(240),
       9,
     );
     // No scenes at all → flat project tempo (identical to the old doc.bpm math).
-    expect(arrangementSecondsBetweenTicks([], [], 0, 4 * BAR_TICKS, 120)).toBeCloseTo(4 * secPerBarAt(120), 9);
+    expect(arrangementSecondsBetweenTicks([], [], 0, 4 * BAR_TICKS, 120, BAR_TICKS)).toBeCloseTo(
+      4 * secPerBarAt(120),
+      9,
+    );
   });
 });
 

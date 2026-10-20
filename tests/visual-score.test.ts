@@ -4,7 +4,7 @@ import { ProjectStore } from "../src/store/ProjectStore";
 import { addArrangementClip, addChord, addMarker } from "../src/commands/commands";
 import { buildVisualScore } from "../src/interop/visualScore";
 import { arrangementSecondsBetweenTicks } from "../src/project-model/scene-time";
-import { BAR_TICKS } from "../src/project-model/types";
+import { ticksPerBar } from "../src/project-model/schema";
 import type { ProjectDocument } from "../src/project-model/types";
 
 /**
@@ -23,7 +23,7 @@ const fixture = (): { doc: ProjectDocument; store: ProjectStore } => {
   for (const c of doc.arrangement.clips) doc = deleteArrangementClip(doc, c.id).execute(doc);
   doc = addArrangementClip(doc, doc.scenes[0]!.id, 0, 4).execute(doc);
   doc = addArrangementClip(doc, doc.scenes[0]!.id, 4, 4).execute(doc);
-  doc = addMarker(doc, { tick: BAR_TICKS, name: "LIFT", type: "riser" }).execute(doc);
+  doc = addMarker(doc, { tick: ticksPerBar(doc), name: "LIFT", type: "riser" }).execute(doc);
   doc = addChord(doc, 0, 2, 0, "min7").execute(doc);
   doc = addChord(doc, 2, 2, 7, "dom7").execute(doc);
   const store = new ProjectStore(doc);
@@ -56,8 +56,9 @@ describe("V1 sections", () => {
       doc.arrangement.clips,
       doc.scenes,
       0,
-      clip.startBar * BAR_TICKS,
+      clip.startBar * ticksPerBar(doc),
       doc.bpm,
+      ticksPerBar(doc),
     );
     expect(score.sections[1]!.startSec).toBeCloseTo(expectedStart, 6);
   });
@@ -70,7 +71,14 @@ describe("V2 markers", () => {
     expect(score.markers).toHaveLength(1);
     expect(score.markers[0]!.name).toBe("LIFT");
     expect(score.markers[0]!.type).toBe("riser");
-    const markerSec = arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, 0, BAR_TICKS, doc.bpm);
+    const markerSec = arrangementSecondsBetweenTicks(
+      doc.arrangement.clips,
+      doc.scenes,
+      0,
+      ticksPerBar(doc),
+      doc.bpm,
+      ticksPerBar(doc),
+    );
     expect(score.markers[0]!.sec).toBeCloseTo(markerSec, 6); // scene-tempo aware
   });
 });
@@ -83,7 +91,14 @@ describe("V3 chords", () => {
     expect(score.chords[0]!.name).toBe("Cm7");
     expect(score.chords[1]!.name).toBe("G7");
     expect(score.chords[0]!.startSec).toBeCloseTo(0, 6);
-    const chord2Sec = arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, 0, 2 * BAR_TICKS, doc.bpm);
+    const chord2Sec = arrangementSecondsBetweenTicks(
+      doc.arrangement.clips,
+      doc.scenes,
+      0,
+      2 * ticksPerBar(doc),
+      doc.bpm,
+      ticksPerBar(doc),
+    );
     expect(score.chords[1]!.startSec).toBeCloseTo(chord2Sec, 3); // scene-tempo aware
   });
 });

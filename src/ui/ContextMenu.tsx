@@ -20,7 +20,7 @@ import {
   toggleAudioClipsMute,
   ungroupClips,
 } from "../commands/commands";
-import { BAR_TICKS } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { timelineItemsOf } from "../project-model/timeline";
 import { consolidateRangeToAudio } from "../services/rangeConsolidation";
 import type { ClipClipboard } from "../commands/commands";
@@ -138,8 +138,8 @@ export function ContextMenu({
     }
     const rangeError = selectedTimeRangeIntentError(doc, rangeEditTarget, operation);
     if (rangeError) return { operation: null, preview: null, error: rangeError };
-    const fromBar = rangeEditTarget.fromTick / BAR_TICKS;
-    const toBar = rangeEditTarget.toTick / BAR_TICKS;
+    const fromBar = rangeEditTarget.fromTick / ticksPerBar(doc);
+    const toBar = rangeEditTarget.toTick / ticksPerBar(doc);
     const count = toBar - fromBar;
     const preview =
       operation === "duplicate"
@@ -540,8 +540,8 @@ export function ContextMenu({
           <div className="context-menu-header">PRODUCER EDIT · SELECTED RANGE</div>
           <div className="context-menu-edit-target">
             {rangeEditTarget
-              ? `Target locked · bars ${rangeEditTarget.fromTick / BAR_TICKS + 1}–${rangeEditTarget.toTick / BAR_TICKS} · ${
-                  (rangeEditTarget.toTick - rangeEditTarget.fromTick) / BAR_TICKS
+              ? `Target locked · bars ${rangeEditTarget.fromTick / ticksPerBar(doc) + 1}–${rangeEditTarget.toTick / ticksPerBar(doc)} · ${
+                  (rangeEditTarget.toTick - rangeEditTarget.fromTick) / ticksPerBar(doc)
                 } bars`
               : "Target unavailable"}
           </div>

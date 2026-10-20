@@ -1,5 +1,5 @@
 import type { ProjectDocument } from "../project-model/types";
-import { BAR_TICKS } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { buildTempoMap, type ClipWindow } from "./renderer";
 
 /**
@@ -65,9 +65,11 @@ export function createLiveAudioTakeAuditionProject(
   const project = createAudioTakeAuditionDoc(doc, groupId, takeId);
   const tempoMap = buildTempoMap(doc, takeTempoWindows(doc));
   const resumedAudioClipOffsets = new Map<string, number>();
+  // The document's bar length in ticks (ADR 0056).
+  const barUnit = ticksPerBar(doc);
   const liveClips = (project.arrangement.audioClips ?? []).flatMap((clip) => {
-    const clipStartTick = clip.startBar * BAR_TICKS;
-    const clipEndTick = clipStartTick + clip.lengthBars * BAR_TICKS;
+    const clipStartTick = clip.startBar * barUnit;
+    const clipEndTick = clipStartTick + clip.lengthBars * barUnit;
     if (clipEndTick <= playhead + 1e-6) return [];
     if (clipStartTick >= playhead - 1e-6) return [clip];
 
@@ -88,8 +90,8 @@ export function createLiveAudioTakeAuditionProject(
     return [
       {
         ...clip,
-        startBar: playhead / BAR_TICKS,
-        lengthBars: (clipEndTick - playhead) / BAR_TICKS,
+        startBar: playhead / barUnit,
+        lengthBars: (clipEndTick - playhead) / barUnit,
         offsetSec: Math.max(0, (clip.offsetSec ?? 0) + elapsedSec * stretchRate),
       },
     ];
@@ -112,17 +114,18 @@ export function createLiveAudioTakeAuditionProject(
 }
 
 function takeTempoWindows(doc: ProjectDocument): ClipWindow[] {
+  const barUnit = ticksPerBar(doc);
   return doc.arrangement.clips.flatMap((clip) => {
     const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
     const pattern = scene ? doc.patterns.find((candidate) => candidate.id === scene.patternId) : undefined;
     if (!scene || !pattern) return [];
-    const from = clip.startBar * BAR_TICKS;
+    const from = clip.startBar * barUnit;
     return [
       {
         pattern,
         base: from,
         from,
-        to: (clip.startBar + clip.lengthBars) * BAR_TICKS,
+        to: (clip.startBar + clip.lengthBars) * barUnit,
         bpm: scene.bpm ?? doc.bpm,
         sceneId: scene.id,
       },
@@ -138,6 +141,6 @@ export function audioTakeAuditionStartOffsetSec(doc: ProjectDocument, groupId: s
     (clip) => clip.takeGroupId === groupId && clip.takeId === takeId && clip.trackId === group.trackId,
   );
   if (clips.length === 0) throw new Error(`Audio take ${takeId} has no clips in group ${groupId}`);
-  const startTick = Math.min(...clips.map((clip) => clip.startBar * BAR_TICKS));
+  const startTick = Math.min(...clips.map((clip) => clip.startBar * ticksPerBar(doc)));
   return buildTempoMap(doc, takeTempoWindows(doc)).timeAt(startTick);
 }

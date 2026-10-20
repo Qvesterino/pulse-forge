@@ -106,8 +106,8 @@ export function resumeSpanningAudioClips(deps: LiveEditSyncDeps & { skipIds?: Re
     const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
     if (clip.reverse || clip.loop === true || (clip.warpMarkers?.length ?? 0) > 0) continue;
     if (clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01) continue;
-    const elapsedSec = Math.max(0, arrangementSecondsBetweenTicks(clips, scenes, startTick, pos, projectBpm));
-    const remainingSec = arrangementSecondsBetweenTicks(clips, scenes, pos, endTick, projectBpm);
+    const elapsedSec = Math.max(0, arrangementSecondsBetweenTicks(clips, scenes, startTick, pos, projectBpm, barUnit));
+    const remainingSec = arrangementSecondsBetweenTicks(clips, scenes, pos, endTick, projectBpm, barUnit);
     if (!Number.isFinite(remainingSec) || remainingSec <= 0.01) continue;
     const resumed: AudioClip = {
       ...clip,

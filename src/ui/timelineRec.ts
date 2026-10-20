@@ -3,16 +3,24 @@
  * straight onto an armed arrangement track. Pure, so the tests cover the
  * math without a microphone.
  */
-import { BAR_TICKS } from "../project-model/types";
+import { PPQ } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import type { AudioClip, ProjectDocument } from "../project-model/types";
 import type { RecordingChannelDestination, RecordingSession } from "../persistence/RecordingRecoveryRepository";
 import { addAudioClip, addAudioTakeClip, setActiveAudioTake, snapshot } from "../commands/commands";
 import type { Command } from "../commands/types";
 
-/** One bar in seconds at the given tempo (4/4). */
-export function secondsPerBar(bpm: number): number {
+/**
+ * One bar in seconds at the given tempo.
+ *
+ * `barUnitTicks` is the document's bar length in ticks (ADR 0056): 1920 for
+ * 4/4, 1440 for 6/8. A 6/8 bar is three quarter notes, so it lasts 1.5 s at
+ * 120 BPM — a quarter shorter than a 4/4 bar. The unit is a required
+ * argument, never a default.
+ */
+export function secondsPerBar(bpm: number, barUnitTicks: number): number {
   const safeBpm = Number.isFinite(bpm) && bpm >= 20 ? bpm : 120;
-  return 240 / safeBpm;
+  return (barUnitTicks * 60) / (safeBpm * PPQ);
 }
 
 /**
@@ -20,8 +28,8 @@ export function secondsPerBar(bpm: number): number {
  * command's own granularity) with a 0.25-bar floor so whisper-short takes
  * still make a visible, selectable clip.
  */
-export function clipLengthBars(durationSec: number, bpm: number): number {
-  const bars = durationSec / secondsPerBar(bpm);
+export function clipLengthBars(durationSec: number, bpm: number, barUnitTicks: number): number {
+  const bars = durationSec / secondsPerBar(bpm, barUnitTicks);
   return Math.max(0.25, Math.round(bars * 100) / 100);
 }
 
@@ -33,7 +41,7 @@ export interface RecordedPunchWindow {
 }
 
 /** Resolve a durable punch recording to the exact input-frame window for placement/recovery. */
-export function recordedPunchWindow(session: RecordingSession): RecordedPunchWindow | null {
+export function recordedPunchWindow(session: RecordingSession, barUnitTicks: number): RecordedPunchWindow | null {
   const punch = session.punchCapture;
   if (
     !punch ||
@@ -53,22 +61,27 @@ export function recordedPunchWindow(session: RecordingSession): RecordedPunchWin
   if (startFrame === undefined || startFrame >= session.totalFrames) return null;
   const capturedFrames = session.totalFrames - startFrame;
   const lengthBars = session.punchOutReached
-    ? (punch.endTick - punch.startTick) / BAR_TICKS
-    : clipLengthBars(capturedFrames / session.sampleRate, session.bpm);
+    ? (punch.endTick - punch.startTick) / barUnitTicks
+    : clipLengthBars(capturedFrames / session.sampleRate, session.bpm, barUnitTicks);
   if (!Number.isFinite(lengthBars) || lengthBars <= 0) return null;
   return { offsetSec: startFrame / session.sampleRate, lengthBars };
 }
 
 /** Exact musical position where REC starts, expressed in bars. */
-export function recordingStartBar(positionTicks: number): number {
-  return Number.isFinite(positionTicks) ? Math.max(0, positionTicks / BAR_TICKS) : 0;
+export function recordingStartBar(positionTicks: number, barUnitTicks: number): number {
+  return Number.isFinite(positionTicks) ? Math.max(0, positionTicks / barUnitTicks) : 0;
 }
 
 /** Apply a measured manual mic-input correction; positive values move takes earlier. */
-export function compensateRecordingStartBar(startBar: number, inputOffsetMs: number, bpm: number): number {
+export function compensateRecordingStartBar(
+  startBar: number,
+  inputOffsetMs: number,
+  bpm: number,
+  barUnitTicks: number,
+): number {
   const safeStartBar = Number.isFinite(startBar) ? Math.max(0, startBar) : 0;
   const safeOffsetMs = Number.isFinite(inputOffsetMs) ? inputOffsetMs : 0;
-  return Math.max(0, safeStartBar - safeOffsetMs / (secondsPerBar(bpm) * 1000));
+  return Math.max(0, safeStartBar - safeOffsetMs / (secondsPerBar(bpm, barUnitTicks) * 1000));
 }
 
 /** A recovered recording may already have a timeline clip after a failed library commit. */
@@ -89,7 +102,9 @@ export function addRecordedAudioClip(
   lengthBars: number,
   patch: Partial<Omit<AudioClip, "id" | "trackId" | "bufferId" | "startBar" | "lengthBars">> = {},
 ): Command {
-  const exactStartBar = Number.isFinite(startBar) ? Math.max(0, Math.round(startBar * BAR_TICKS) / BAR_TICKS) : 0;
+  const exactStartBar = Number.isFinite(startBar)
+    ? Math.max(0, Math.round(startBar * ticksPerBar(doc)) / ticksPerBar(doc))
+    : 0;
   const addCommand = addAudioClip(doc, trackId, bufferId, exactStartBar, lengthBars, patch);
   return {
     ...addCommand,
@@ -181,7 +196,9 @@ export function addRecordedAudioClips(
   patch: Partial<Omit<AudioClip, "id" | "trackId" | "bufferId" | "startBar" | "lengthBars" | "sourceChannel">> = {},
 ): Command {
   if (destinations.length === 0) throw new Error("No available track destination for the recorded audio");
-  const exactStartBar = Number.isFinite(startBar) ? Math.max(0, Math.round(startBar * BAR_TICKS) / BAR_TICKS) : 0;
+  const exactStartBar = Number.isFinite(startBar)
+    ? Math.max(0, Math.round(startBar * ticksPerBar(doc)) / ticksPerBar(doc))
+    : 0;
   let next = doc;
   for (const destination of destinations) {
     const channelPatch =
@@ -209,7 +226,9 @@ export function addRecordedAudioTakeClip(
   lengthBars: number,
   patch: Partial<Omit<AudioClip, "id" | "trackId" | "bufferId" | "startBar" | "lengthBars">> = {},
 ): Command {
-  const exactStartBar = Number.isFinite(startBar) ? Math.max(0, Math.round(startBar * BAR_TICKS) / BAR_TICKS) : 0;
+  const exactStartBar = Number.isFinite(startBar)
+    ? Math.max(0, Math.round(startBar * ticksPerBar(doc)) / ticksPerBar(doc))
+    : 0;
   const added = addAudioTakeClip(doc, groupId, takeId, trackId, bufferId, exactStartBar, lengthBars, patch).execute(
     doc,
   );
@@ -244,6 +263,7 @@ export function recordedLoopPasses(
   boundaries: readonly number[] | undefined,
   bpm: number,
   sessionId: string,
+  barUnitTicks: number,
 ): RecordedLoopPass[] {
   if (!Number.isSafeInteger(totalFrames) || totalFrames <= 0 || !Number.isInteger(sampleRate) || sampleRate <= 0)
     return [];
@@ -252,13 +272,13 @@ export function recordedLoopPasses(
   );
   const points = [0, ...validBoundaries.filter((frame) => frame < totalFrames), totalFrames].sort((a, b) => a - b);
   const uniquePoints = points.filter((frame, index) => index === 0 || frame !== points[index - 1]);
-  const minimumFrames = Math.ceil(secondsPerBar(bpm) * 0.25 * sampleRate);
+  const minimumFrames = Math.ceil(secondsPerBar(bpm, barUnitTicks) * 0.25 * sampleRate);
   const passes: RecordedLoopPass[] = [];
   for (let index = 0; index + 1 < uniquePoints.length; index++) {
     const startFrame = uniquePoints[index]!;
     const endFrame = uniquePoints[index + 1]!;
     const durationSec = (endFrame - startFrame) / sampleRate;
-    const lengthBars = durationSec / secondsPerBar(bpm);
+    const lengthBars = durationSec / secondsPerBar(bpm, barUnitTicks);
     if (endFrame - startFrame < minimumFrames || !Number.isFinite(lengthBars) || lengthBars < 0.25) continue;
     passes.push({ takeId: `${sessionId}-pass-${passes.length + 1}`, startFrame, endFrame, lengthBars });
   }
@@ -348,13 +368,14 @@ export function addRecordedLoopSession(
     session.takeBoundaries,
     session.bpm,
     session.id,
+    ticksPerBar(doc),
   );
   return addRecordedLoopTakeClips(
     doc,
     session.takeGroupId,
     session.trackId,
     bufferId,
-    compensateRecordingStartBar(session.startBar, session.recordingInputOffsetMs ?? 0, session.bpm),
+    compensateRecordingStartBar(session.startBar, session.recordingInputOffsetMs ?? 0, session.bpm, ticksPerBar(doc)),
     session.sampleRate,
     session.totalFrames,
     passes,

@@ -2,7 +2,7 @@ import { buildStemProject } from "./stems";
 import type { ClipWindow } from "./renderer";
 import { buildTempoMap } from "./tempoMap";
 import type { ProjectDocument } from "../project-model/types";
-import { BAR_TICKS } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
 import { patternPhaseOffsetAtTick, sceneOffsetAtTick } from "../project-model/events";
 
@@ -43,8 +43,12 @@ export function buildBounceZoneDoc(
   options: BounceZoneOptions = {},
 ): ProjectDocument {
   if (trackIds.length === 0) throw new Error("Select at least one track to bounce");
-  const zoneStartTick = zone.startBar * BAR_TICKS;
-  const zoneEndTick = zoneStartTick + Math.max(0.25, zone.lengthBars) * BAR_TICKS;
+  // The document's bar length in ticks (ADR 0056): a 6/8 arrangement's bar is
+  // three quarter notes, so the zone and the clips inside it are measured in
+  // that unit — otherwise the zone would cut a third of every 6/8 bar away.
+  const barUnit = ticksPerBar(doc);
+  const zoneStartTick = zone.startBar * barUnit;
+  const zoneEndTick = zoneStartTick + Math.max(0.25, zone.lengthBars) * barUnit;
   const selectedTrackIds = new Set(trackIds);
   const stemDoc = buildStemProject(doc, (t) => selectedTrackIds.has(t.id));
   const mixDoc = options.preserveMixState
@@ -62,13 +66,13 @@ export function buildBounceZoneDoc(
   // offline export and scene playback agree at tempo seams.
   const tempoMap = buildTempoMap(doc, bounceTempoWindows(doc));
   for (const clip of mixDoc.arrangement.clips) {
-    const clipStart = clip.startBar * BAR_TICKS;
-    const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;
+    const clipStart = clip.startBar * barUnit;
+    const clipEnd = clipStart + clip.lengthBars * barUnit;
     const overlapStart = Math.max(clipStart, zoneStartTick);
     const overlapEnd = Math.min(clipEnd, zoneEndTick);
     if (
       overlapEnd <= overlapStart ||
-      (!options.includeSubQuarterArrangementClips && overlapEnd - overlapStart < BAR_TICKS * 0.25)
+      (!options.includeSubQuarterArrangementClips && overlapEnd - overlapStart < barUnit * 0.25)
     ) {
       continue;
     }
@@ -81,20 +85,20 @@ export function buildBounceZoneDoc(
     const { phaseOffsetTicks: _oldPhaseOffset, sceneOffsetTicks: _oldSceneOffset, ...clipWithoutPhase } = clip;
     zoneRelativeClips.push({
       ...clipWithoutPhase,
-      startBar: (overlapStart - zoneStartTick) / BAR_TICKS,
-      lengthBars: (overlapEnd - overlapStart) / BAR_TICKS,
+      startBar: (overlapStart - zoneStartTick) / barUnit,
+      lengthBars: (overlapEnd - overlapStart) / barUnit,
       ...(phaseOffsetTicks > 1e-9 ? { phaseOffsetTicks } : {}),
       ...(sceneOffsetTicks > 1e-9 ? { sceneOffsetTicks } : {}),
     });
   }
   for (const clip of mixDoc.arrangement.audioClips ?? []) {
-    const clipStart = clip.startBar * BAR_TICKS;
-    const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;
+    const clipStart = clip.startBar * barUnit;
+    const clipEnd = clipStart + clip.lengthBars * barUnit;
     const overlapStart = Math.max(clipStart, zoneStartTick);
     const overlapEnd = Math.min(clipEnd, zoneEndTick);
     if (
       overlapEnd <= overlapStart ||
-      (!options.includeSubQuarterAudioClips && overlapEnd - overlapStart < BAR_TICKS * 0.25)
+      (!options.includeSubQuarterAudioClips && overlapEnd - overlapStart < barUnit * 0.25)
     ) {
       continue;
     }
@@ -153,8 +157,8 @@ export function buildBounceZoneDoc(
     }
     zoneRelativeAudio.push({
       ...clip,
-      startBar: (overlapStart - zoneStartTick) / BAR_TICKS,
-      lengthBars: (overlapEnd - overlapStart) / BAR_TICKS,
+      startBar: (overlapStart - zoneStartTick) / barUnit,
+      lengthBars: (overlapEnd - overlapStart) / barUnit,
       offsetSec,
       trimStart,
       trimEnd,
@@ -205,15 +209,16 @@ export function buildTimeRangeConsolidationDoc(
   if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 0 || to <= from) {
     throw new Error("Select a valid, non-empty time range.");
   }
-  if (from % BAR_TICKS !== 0 || to % BAR_TICKS !== 0) {
+  const barUnit = ticksPerBar(doc);
+  if (from % barUnit !== 0 || to % barUnit !== 0) {
     throw new Error("Consolidation requires a selection aligned to complete bars.");
   }
   if (doc.tracks.some((track) => track.solo)) {
     throw new Error("Turn off Solo before consolidating so the print does not change the rest of the mix.");
   }
 
-  const startBar = from / BAR_TICKS;
-  const endBar = to / BAR_TICKS;
+  const startBar = from / barUnit;
+  const endBar = to / barUnit;
   const overlaps = (start: number, length: number) => start < endBar && start + length > startBar;
   const contained = (start: number, length: number) => start >= startBar && start + length <= endBar;
   const boundaryWarpedAudio = (doc.arrangement.audioClips ?? []).find(
@@ -331,17 +336,18 @@ export function buildAudioClipConsolidationDoc(doc: ProjectDocument, clipIds: st
 }
 
 function bounceTempoWindows(doc: ProjectDocument): ClipWindow[] {
+  const barUnit = ticksPerBar(doc);
   return doc.arrangement.clips.flatMap((clip) => {
     const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
     const pattern = scene ? doc.patterns.find((candidate) => candidate.id === scene.patternId) : undefined;
     if (!scene || !pattern) return [];
-    const base = clip.startBar * BAR_TICKS;
+    const base = clip.startBar * barUnit;
     return [
       {
         pattern,
         base,
         from: base,
-        to: base + clip.lengthBars * BAR_TICKS,
+        to: base + clip.lengthBars * barUnit,
         bpm: scene.bpm ?? doc.bpm,
         sceneId: scene.id,
       },

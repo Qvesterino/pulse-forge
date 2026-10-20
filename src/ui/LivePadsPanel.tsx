@@ -10,7 +10,6 @@ import {
   selectLiveSet,
   setLiveSetOptions,
 } from "../commands/commands";
-import { BAR_TICKS } from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
 import { sceneSecondsToBars, tempoAtTick } from "../project-model/scene-time";
 import type { LiveSet, LiveSetPad } from "../project-model/types";
@@ -121,14 +120,20 @@ export function LivePadsPanel() {
       }
       const barTick = Math.max(0, services.transport.position);
       const startBar = services.transport.playing
-        ? Math.floor(barTick / BAR_TICKS) + 1
-        : Math.max(0, Math.ceil((barTick - 1e-6) / BAR_TICKS));
-      const startTick = startBar * BAR_TICKS;
-      const targetBpm = tempoAtTick(currentDoc.arrangement.clips, currentDoc.scenes, startTick, currentDoc.bpm);
+        ? Math.floor(barTick / ticksPerBar(currentDoc)) + 1
+        : Math.max(0, Math.ceil((barTick - 1e-6) / ticksPerBar(currentDoc)));
+      const startTick = startBar * ticksPerBar(currentDoc);
+      const targetBpm = tempoAtTick(
+        currentDoc.arrangement.clips,
+        currentDoc.scenes,
+        startTick,
+        currentDoc.bpm,
+        ticksPerBar(currentDoc),
+      );
       const fit = pad.bpm ? fittedLoopPlacement(source.duration, pad.bpm, targetBpm, ticksPerBar(currentDoc)) : null;
       const lengthBars = pad.loop
         ? Math.max(liveSet.loopBars, fit?.lengthBars ?? 0)
-        : Math.max(0.25, sceneSecondsToBars(source.duration, targetBpm));
+        : Math.max(0.25, sceneSecondsToBars(source.duration, targetBpm, ticksPerBar(currentDoc)));
       const patch = {
         ...(pad.loop ? { loop: true } : {}),
         ...(fit ? { stretchMode: "stretch" as const, stretchRate: fit.rate } : {}),

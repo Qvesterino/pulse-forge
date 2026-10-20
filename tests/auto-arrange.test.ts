@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { autoArrangeSong, assistVary, setSceneBpm } from "../src/commands/commands";
 import { createDefaultProject } from "../src/project-model/schema";
-import { sceneRoleOf } from "../src/project-model/schema";
+import { sceneRoleOf, ticksPerBar } from "../src/project-model/schema";
 import { BAR_TICKS } from "../src/project-model/types";
 import { sceneSecondsToBars } from "../src/project-model/scene-time";
 import { computeRenderTicks } from "../src/rendering/renderer";
@@ -54,7 +54,7 @@ describe("autoArrangeSong", () => {
 
   it("builds a contiguous three-minute song at 124 BPM whose SONG render reaches the exact end", () => {
     const doc = { ...docWithScenes("Kick Jam"), bpm: 124 };
-    const targetBars = sceneSecondsToBars(180, doc.bpm);
+    const targetBars = sceneSecondsToBars(180, doc.bpm, ticksPerBar(doc));
     const next = autoArrangeSong(doc, targetBars).execute(doc);
     const clips = next.arrangement.clips;
 

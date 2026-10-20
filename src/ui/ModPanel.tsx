@@ -37,7 +37,7 @@ import {
   setSceneIntensityCurve,
 } from "../commands/commands";
 import type { AutomationParamKind, AutomationTarget, LfoKind, LfoWave, ProjectDocument } from "../project-model/types";
-import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
+import { STEP_TICKS } from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
 import { effectiveSceneBpm, sceneBarsToSeconds } from "../project-model/scene-time";
 import { DEFAULT_STEP_PATTERN } from "../project-model/modulators";
@@ -1431,8 +1431,9 @@ function ScenePanel() {
             <div className="scene-loop-info" title="One pattern loop at this scene's effective tempo">
               LOOP{" "}
               {sceneBarsToSeconds(
-                (scenePattern.stepCount * STEP_TICKS) / BAR_TICKS,
+                (scenePattern.stepCount * STEP_TICKS) / ticksPerBar(doc),
                 effectiveSceneBpm(scene.bpm, doc.bpm),
+                ticksPerBar(doc),
               ).toFixed(2)}
               s
             </div>

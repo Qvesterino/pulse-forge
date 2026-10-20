@@ -29,8 +29,7 @@ import type {
   MidiClip,
   ProjectDocument,
 } from "../project-model/types";
-import { BAR_TICKS } from "../project-model/types";
-import { MAX_ARRANGEMENT_CLIP_TICKS } from "../project-model/schema";
+import { MAX_ARRANGEMENT_CLIP_TICKS, ticksPerBar } from "../project-model/schema";
 import { clampTargetValue, isAutomationTargetValid } from "../project-model/targets";
 import { uid } from "../shared/ids";
 import { addAudioClip, deleteAudioClip } from "./audioClips";
@@ -88,7 +87,7 @@ export function buildClipClipboard(doc: ProjectDocument, clipIds: readonly strin
     if (!resolved) continue;
     const startTick =
       resolved.kind === "audio" || resolved.kind === "arrangement"
-        ? resolved.clip.startBar * BAR_TICKS
+        ? resolved.clip.startBar * ticksPerBar(doc)
         : resolved.clip.startTick;
     anchorTick = Math.min(anchorTick, startTick);
     // Deep copy: the payload must not alias the live document — later edits
@@ -176,7 +175,7 @@ export function pasteClips(doc: ProjectDocument, clipboard: ClipClipboard, playh
   if (invalidAutomation) {
     throw new Error("Cannot paste — an automation clip's target no longer exists");
   }
-  const deltaBars = (Math.max(0, playheadTick) - clipboard.anchorTick) / BAR_TICKS;
+  const deltaBars = (Math.max(0, playheadTick) - clipboard.anchorTick) / ticksPerBar(doc);
   const deltaTicks = Math.round(Math.max(0, playheadTick) - clipboard.anchorTick);
 
   let pasted = doc;
@@ -303,9 +302,10 @@ export function duplicateClips(doc: ProjectDocument, clipIds: readonly string[])
   if (!clipboard) return null;
 
   const barBased = clipboard.audioClips.length > 0 || clipboard.arrangementClips.length > 0;
+  const barUnit = ticksPerBar(doc);
   const endTicks = [
-    ...clipboard.audioClips.map((clip) => (clip.startBar + clip.lengthBars) * BAR_TICKS),
-    ...clipboard.arrangementClips.map((clip) => (clip.startBar + clip.lengthBars) * BAR_TICKS),
+    ...clipboard.audioClips.map((clip) => (clip.startBar + clip.lengthBars) * barUnit),
+    ...clipboard.arrangementClips.map((clip) => (clip.startBar + clip.lengthBars) * barUnit),
     ...clipboard.midiClips.map((clip) => clip.startTick + clip.lengthTicks),
     ...clipboard.automationClips.map((clip) => clip.startTick + clip.lengthTicks),
   ];
@@ -313,7 +313,7 @@ export function duplicateClips(doc: ProjectDocument, clipIds: readonly string[])
   if (!Number.isFinite(latestEnd) || latestEnd <= clipboard.anchorTick) return null;
 
   const selectionSpan = latestEnd - clipboard.anchorTick;
-  const duplicateSpan = barBased ? Math.ceil(selectionSpan / BAR_TICKS) * BAR_TICKS : selectionSpan;
+  const duplicateSpan = barBased ? Math.ceil(selectionSpan / barUnit) * barUnit : selectionSpan;
   const command = pasteClips(doc, clipboard, clipboard.anchorTick + duplicateSpan);
   return {
     ...command,

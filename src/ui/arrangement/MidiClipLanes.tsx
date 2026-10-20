@@ -14,7 +14,8 @@ import {
 import { nudgeClips } from "../../commands/clipEditing";
 import type { MidiClip, NoteEvent, ProjectDocument, Track } from "../../project-model/types";
 import type { MidiObjectNoteEdit } from "../../commands/midiClips";
-import { BAR_TICKS, STEP_TICKS } from "../../project-model/types";
+import { STEP_TICKS } from "../../project-model/types";
+import { ticksPerBar } from "../../project-model/schema";
 import { midiPhraseLengthTicks } from "../../project-model/midiTime";
 import { snapBarsFor, snapTick, type SnapGridId } from "../snap";
 import {
@@ -89,9 +90,9 @@ const MidiClipNoteMarks = memo(function MidiClipNoteMarks({
   return <>{marks}</>;
 });
 
-function snapToGrid(tick: number, grid: SnapGridId, suspended: boolean): number {
+function snapToGrid(tick: number, grid: SnapGridId, suspended: boolean, barUnitTicks: number): number {
   const bars = suspended ? null : snapBarsFor(grid);
-  return Math.round(bars === null ? tick : snapTick(tick, bars));
+  return Math.round(bars === null ? tick : snapTick(tick, bars, barUnitTicks));
 }
 
 export function MidiClipLanes({
@@ -108,6 +109,10 @@ export function MidiClipLanes({
   onEditSource,
   onMakeUniqueAndEdit,
 }: MidiClipLanesProps) {
+  // The document's bar length in ticks (ADR 0056). The lane's pixel grid is
+  // one musical bar wide, so tick↔pixel conversion must use the same unit or
+  // clips sit a quarter-bar off the drawn bar lines in a 6/8 project.
+  const barUnit = ticksPerBar(doc);
   const instruments = tracks.filter((track) => track.kind === "instrument");
   const dragRef = useRef<ClipDrag | null>(null);
   const [preview, setPreview] = useState<ClipDrag | null>(null);
@@ -201,7 +206,7 @@ export function MidiClipLanes({
   const updateDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
     const current = dragRef.current;
     if (!current || current.pointerId !== event.pointerId) return;
-    const delta = ((event.clientX - current.clientX) / Math.max(1, current.barWidthAt)) * BAR_TICKS;
+    const delta = ((event.clientX - current.clientX) / Math.max(1, current.barWidthAt)) * barUnit;
     if (current.multiClipIds) {
       const stillLive = current.multiClipIds.every((id) =>
         (doc.arrangement.midiClips ?? []).some((candidate) => candidate.id === id),
@@ -210,8 +215,8 @@ export function MidiClipLanes({
         cancelDrag();
         return;
       }
-      const deltaTicks = snapToGrid(delta, snapGrid, event.shiftKey);
-      const planned = nudgeClips(doc, current.multiClipIds, deltaTicks / BAR_TICKS).execute(doc);
+      const deltaTicks = snapToGrid(delta, snapGrid, event.shiftKey, barUnit);
+      const planned = nudgeClips(doc, current.multiClipIds, deltaTicks / barUnit).execute(doc);
       const nextStartTick =
         planned.arrangement.midiClips?.find((candidate) => candidate.id === current.clipId)?.startTick ??
         current.startTick;
@@ -233,9 +238,9 @@ export function MidiClipLanes({
         return;
       }
       const deltaTicks = current.groupHasScene
-        ? Math.round(delta / BAR_TICKS) * BAR_TICKS
-        : snapToGrid(delta, snapGrid, event.shiftKey);
-      const planned = nudgeClips(doc, [current.clipId], deltaTicks / BAR_TICKS).execute(doc);
+        ? Math.round(delta / barUnit) * barUnit
+        : snapToGrid(delta, snapGrid, event.shiftKey, barUnit);
+      const planned = nudgeClips(doc, [current.clipId], deltaTicks / barUnit).execute(doc);
       const nextStartTick =
         planned.arrangement.midiClips?.find((candidate) => candidate.id === current.clipId)?.startTick ??
         current.startTick;
@@ -245,19 +250,19 @@ export function MidiClipLanes({
       publishTimelineGroupDragPreview(planned, current.groupId, current.groupClipIds);
       return;
     }
-    const snappedDelta = snapToGrid(delta, snapGrid, event.shiftKey);
+    const snappedDelta = snapToGrid(delta, snapGrid, event.shiftKey, barUnit);
     let nextStartTick = current.startTick;
     let nextLengthTicks = current.lengthTicks;
     if (current.mode === "move") {
       nextStartTick = Math.max(0, current.startTick + snappedDelta);
     } else if (current.mode === "resize") {
-      const snappedEnd = snapToGrid(current.startTick + current.lengthTicks + delta, snapGrid, event.shiftKey);
+      const snappedEnd = snapToGrid(current.startTick + current.lengthTicks + delta, snapGrid, event.shiftKey, barUnit);
       nextLengthTicks = Math.max(STEP_TICKS, snappedEnd - current.startTick);
     } else {
       const endTick = current.startTick + current.lengthTicks;
       nextStartTick = Math.max(
         0,
-        Math.min(endTick - STEP_TICKS, snapToGrid(current.startTick + delta, snapGrid, event.shiftKey)),
+        Math.min(endTick - STEP_TICKS, snapToGrid(current.startTick + delta, snapGrid, event.shiftKey, barUnit)),
       );
       nextLengthTicks = endTick - nextStartTick;
     }
@@ -279,7 +284,7 @@ export function MidiClipLanes({
     if (current.multiClipIds) {
       const deltaTicks = current.nextStartTick - current.startTick;
       clearTimelineGroupDragPreview();
-      if (deltaTicks !== 0) onExecute(nudgeClips(doc, current.multiClipIds, deltaTicks / BAR_TICKS));
+      if (deltaTicks !== 0) onExecute(nudgeClips(doc, current.multiClipIds, deltaTicks / barUnit));
       return;
     }
     if (current.groupId && current.groupClipIds) {
@@ -290,7 +295,7 @@ export function MidiClipLanes({
       clearTimelineGroupDragPreview();
       if (!stillSameGroup) return;
       const deltaTicks = current.nextStartTick - current.startTick;
-      if (deltaTicks !== 0) onExecute(nudgeClips(doc, [current.clipId], deltaTicks / BAR_TICKS));
+      if (deltaTicks !== 0) onExecute(nudgeClips(doc, [current.clipId], deltaTicks / barUnit));
       return;
     }
     if (current.mode === "move" && current.nextStartTick !== current.startTick) {
@@ -335,7 +340,7 @@ export function MidiClipLanes({
                       doc,
                       track.id,
                       pattern.id,
-                      Math.max(0, snapToGrid(playheadTick, snapGrid, false)),
+                      Math.max(0, snapToGrid(playheadTick, snapGrid, false, barUnit)),
                       defaultClipLength,
                     ),
                   );
@@ -351,9 +356,10 @@ export function MidiClipLanes({
                 if (event.target !== event.currentTarget || !pattern) return;
                 const rect = event.currentTarget.getBoundingClientRect();
                 const tick = snapToGrid(
-                  ((event.clientX - rect.left) / Math.max(1, barWidth)) * BAR_TICKS,
+                  ((event.clientX - rect.left) / Math.max(1, barWidth)) * barUnit,
                   snapGrid,
                   event.shiftKey,
+                  barUnit,
                 );
                 onExecute(addMidiClip(doc, track.id, pattern.id, Math.max(0, tick), defaultClipLength));
               }}
@@ -380,11 +386,11 @@ export function MidiClipLanes({
                     type="button"
                     key={clip.id}
                     className={`arr-midi-clip${selectedClipIds.includes(clip.id) ? " selected" : ""}${clip.muted ? " muted" : ""}${clip.locked ? " locked" : ""}${sharedSource ? " shared-source" : ""}${doc.arrangement.clipGroups?.some((group) => group.clipIds.includes(clip.id)) ? " grouped" : ""}`}
-                    aria-label={`${source?.name ?? "Pattern"} MIDI clip on ${track.name}, bar ${Math.floor(startTick / BAR_TICKS) + 1}${sharedSource ? `, shared source pattern used by ${sourcePlacementCount} placements` : ""}`}
+                    aria-label={`${source?.name ?? "Pattern"} MIDI clip on ${track.name}, bar ${Math.floor(startTick / barUnit) + 1}${sharedSource ? `, shared source pattern used by ${sourcePlacementCount} placements` : ""}`}
                     title={`${source?.name ?? "Pattern"} · ${track.name} · ${lengthTicks} ticks · ${sharedHint} Double-click to edit source pattern.`}
                     style={{
-                      left: (startTick / BAR_TICKS) * barWidth,
-                      width: Math.max(10, (lengthTicks / BAR_TICKS) * barWidth - 3),
+                      left: (startTick / barUnit) * barWidth,
+                      width: Math.max(10, (lengthTicks / barUnit) * barWidth - 3),
                     }}
                     onPointerDown={(event) => beginDrag(event, clip)}
                     onPointerMove={updateDrag}

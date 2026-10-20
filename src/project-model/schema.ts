@@ -588,6 +588,14 @@ export function sanitizeAudioClips(
    * project-tempo bound would clamp valid crossfades on every normalize.
    */
   durationSecOf?: (startBar: number, lengthBars: number) => number,
+  /**
+   * The document's bar length in ticks (ADR 0056) — used only by the fallback
+   * fade bound below. Without it a 6/8 clip's bound is computed in 4/4 bars
+   * and lands a third too long, which is exactly the "fade outlives the clip"
+   * case the bound exists to prevent. Document-aware callers pass
+   * `ticksPerBar(doc)`; a caller with no document gets the 4/4 grid.
+   */
+  barUnitTicks?: number,
 ): import("./types").AudioClip[] | undefined {
   if (!Array.isArray(input)) return undefined;
   const out: import("./types").AudioClip[] = [];
@@ -617,7 +625,7 @@ export function sanitizeAudioClips(
     const fadeBoundSec =
       durationSecOf !== undefined
         ? durationSecOf(startBar, lengthBars)
-        : (lengthBars * BAR_TICKS * 60) / (Math.max(1, Number.isFinite(bpm) ? bpm! : 120) * PPQ);
+        : (lengthBars * (barUnitTicks ?? BAR_TICKS) * 60) / (Math.max(1, Number.isFinite(bpm) ? bpm! : 120) * PPQ);
     const fadeIn = Math.min(fadeBoundSec, Math.max(0, Number.isFinite(Number(raw.fadeIn)) ? Number(raw.fadeIn) : 0));
     const fadeOut = Math.min(fadeBoundSec, Math.max(0, Number.isFinite(Number(raw.fadeOut)) ? Number(raw.fadeOut) : 0));
     let stretchRate = Number.isFinite(Number(raw.stretchRate)) ? Number(raw.stretchRate) : 1;
@@ -1858,9 +1866,19 @@ function normalizeArrangementDomain(s: NormalizeState): void {
     trackIds,
     s.doc.bpm,
     (startBar, lengthBars) => {
-      const spt = 60 / (tempoAtTick(s.doc.arrangement.clips, s.doc.scenes, startBar * BAR_TICKS, s.doc.bpm) * PPQ);
-      return lengthBars * BAR_TICKS * spt;
+      const spt =
+        60 /
+        (tempoAtTick(
+          s.doc.arrangement.clips,
+          s.doc.scenes,
+          startBar * ticksPerBar(s.doc),
+          s.doc.bpm,
+          ticksPerBar(s.doc),
+        ) *
+          PPQ);
+      return lengthBars * ticksPerBar(s.doc) * spt;
     },
+    ticksPerBar(s.doc),
   );
   const takeGroups = sanitizeAudioTakeGroups(
     (arrangement as unknown as Record<string, unknown>).takeGroups,

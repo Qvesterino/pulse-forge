@@ -9,7 +9,7 @@ import type {
   ProjectDocument,
   SceneRole,
 } from "../project-model/types";
-import { BAR_TICKS } from "../project-model/types";
+import { STEP_TICKS } from "../project-model/types";
 import { emptyPattern } from "../project-model/templates";
 import { normalizeIntent, intentFromGenerateOptions } from "./normalize";
 import { generateOptionsFromIntent, planGeneration } from "./plan";
@@ -31,7 +31,7 @@ import { GENRE_REFERENCE, SONG_LOUDNESS_TARGET_LUFS, SONG_LOUDNESS_TRIM_LIMIT_DB
 import { canonicalizePattern, contentHash } from "../ai/evaluation";
 import type { Command } from "../commands/types";
 import { addEffect, setBeatManglerSteps, setEffectParam, snapshot, trackEffectsOf } from "../commands/commands";
-import { createInstrumentTrackModel, sceneRoleOf } from "../project-model/schema";
+import { createInstrumentTrackModel, sceneRoleOf, ticksPerBar } from "../project-model/schema";
 import type { IntentInput, IntentRole, IntentSpec } from "./types";
 import type { CandidateSearchInfo, SearchLane } from "./candidate-search";
 import {
@@ -2468,7 +2468,7 @@ function applyLyricProsodyToPattern(
 
   const grid = buildProsodyGrid(buildSyllableTimeline(lyrics.join("\n")));
   if (grid.notes.length === 0) return pattern;
-  const ticksPerStep = BAR_TICKS / 16;
+  const ticksPerStep = STEP_TICKS;
   const patternTicks = pattern.stepCount * ticksPerStep;
   const shaped = shapeMelodyToLyrics(
     sourceNotes.map((note) => ({ pitch: note.pitch, velocity: note.velocity })),
@@ -2509,11 +2509,11 @@ const HOOK_ROLES: ReadonlySet<string> = new Set(["chorus", "drop"]);
 
 /**
  * Repeat the donor motif to fill a target length (wraps at the donor's own
- * length). NOTE UNITS: NoteEvent times are TICKS (a 16th = BAR_TICKS / 16)
+ * length). NOTE UNITS: NoteEvent times are TICKS (a 16th = STEP_TICKS)
  * while section stepCounts are 16th STEPS — convert before offsetting.
  */
 function repeatMotif(notes: NoteEvent[], donorSteps: number, targetSteps: number): NoteEvent[] {
-  const stepTicks = BAR_TICKS / 16;
+  const stepTicks = STEP_TICKS;
   const donorTicks = donorSteps * stepTicks;
   const targetTicks = targetSteps * stepTicks;
   const sorted = [...notes].sort((a, b) => a.start - b.start);
@@ -2588,7 +2588,7 @@ export function applySectionDevelopment(
       leadTrack
     ) {
       const existing = next.pattern.notes[leadTrack.id] ?? [];
-      const firstBarTicks = Math.min(next.stepCount, 16) * (BAR_TICKS / 16);
+      const firstBarTicks = Math.min(next.stepCount, 16) * STEP_TICKS;
       const quote = motif.map((note) => ({
         ...note,
         start: Math.min(note.start, firstBarTicks - note.duration),
@@ -3135,7 +3135,7 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
         id: `marker-${section.pattern.id}`,
         name: section.marker.name,
         type: section.marker.type,
-        tick: bar * BAR_TICKS,
+        tick: bar * ticksPerBar(doc),
         linkedClipId: clip.id,
       });
     }
@@ -3170,7 +3170,7 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
     laneKeys.add(laneKey);
     const target = { kind: "fxParam" as const, trackId, fxId, paramId };
     for (const section of build.sections) {
-      const span = section.bars * BAR_TICKS;
+      const span = section.bars * ticksPerBar(doc);
       const points =
         section === targetSection
           ? "active" in inner

@@ -23,7 +23,7 @@ import {
   secondsPerBar,
 } from "../../src/ui/timelineRec";
 import { BAR_TICKS } from "../../src/project-model/types";
-import { createDefaultProject } from "../../src/project-model/schema";
+import { createDefaultProject, ticksPerBarFor } from "../../src/project-model/schema";
 import {
   addAudioClip,
   addAudioTakeClip,
@@ -63,37 +63,76 @@ vi.mock("../../src/audio-engine/PcmMicRecorder", async () => {
 });
 
 describe("recording placement math", () => {
-  it("computes seconds per bar (4/4)", () => {
-    expect(secondsPerBar(120)).toBe(2);
-    expect(secondsPerBar(60)).toBe(4);
-    expect(secondsPerBar(240)).toBe(1);
-    expect(secondsPerBar(Number.NaN)).toBe(2); // safe fallback
+  // The placement helpers take the document's bar length in ticks (ADR 0056).
+  // 4/4 is 1920; 6/8 is 1440 (three quarter notes).
+  const FOUR_FOUR = ticksPerBarFor({ numerator: 4, denominator: 4 });
+  const SIX_EIGHT = ticksPerBarFor({ numerator: 6, denominator: 8 });
+
+  it("computes seconds per bar in the document's meter", () => {
+    expect(secondsPerBar(120, FOUR_FOUR)).toBe(2);
+    expect(secondsPerBar(60, FOUR_FOUR)).toBe(4);
+    expect(secondsPerBar(240, FOUR_FOUR)).toBe(1);
+    expect(secondsPerBar(Number.NaN, FOUR_FOUR)).toBe(2); // safe fallback
+    // A 6/8 bar is three quarter notes — 1.5 s at 120 BPM, not 2 s.
+    expect(secondsPerBar(120, SIX_EIGHT)).toBe(1.5);
+    expect(secondsPerBar(120, SIX_EIGHT)).not.toBe(secondsPerBar(120, FOUR_FOUR));
   });
 
   it("converts take duration to clip bars with a sensible floor", () => {
-    expect(clipLengthBars(2, 120)).toBe(1); // exactly one bar
-    expect(clipLengthBars(3.333, 120)).toBe(1.67); // rounded to 2 decimals
-    expect(clipLengthBars(0.05, 120)).toBe(0.25); // floor keeps it visible
-    expect(clipLengthBars(8, 240)).toBe(8); // fast tempo → many bars
+    expect(clipLengthBars(2, 120, FOUR_FOUR)).toBe(1); // exactly one bar
+    expect(clipLengthBars(3.333, 120, FOUR_FOUR)).toBe(1.67); // rounded to 2 decimals
+    expect(clipLengthBars(0.05, 120, FOUR_FOUR)).toBe(0.25); // floor keeps it visible
+    expect(clipLengthBars(8, 240, FOUR_FOUR)).toBe(8); // fast tempo → many bars
+    // The same 2 s of audio is 1.33 bars of 6/8 — the meter decides, not the clock.
+    expect(clipLengthBars(2, 120, SIX_EIGHT)).toBe(1.33);
   });
 
   it("anchors the clip at the exact transport tick", () => {
-    expect(recordingStartBar(0)).toBe(0);
-    expect(recordingStartBar(BAR_TICKS * 4 + 5)).toBeCloseTo(4 + 5 / BAR_TICKS, 12);
-    expect(recordingStartBar(-10)).toBe(0);
-    expect(recordingStartBar(Number.NaN)).toBe(0);
+    expect(recordingStartBar(0, FOUR_FOUR)).toBe(0);
+    expect(recordingStartBar(BAR_TICKS * 4 + 5, FOUR_FOUR)).toBeCloseTo(4 + 5 / BAR_TICKS, 12);
+    expect(recordingStartBar(-10, FOUR_FOUR)).toBe(0);
+    expect(recordingStartBar(Number.NaN, FOUR_FOUR)).toBe(0);
+    // Musical bar 1 of a 6/8 document is tick 1440, not 1920.
+    expect(recordingStartBar(1440, SIX_EIGHT)).toBe(1);
+    expect(recordingStartBar(1440, SIX_EIGHT)).not.toBe(recordingStartBar(1440, FOUR_FOUR));
   });
 
   it("applies manual input compensation in time units and never places before bar zero", () => {
-    expect(compensateRecordingStartBar(2, 25, 120)).toBeCloseTo(1.9875, 10);
-    expect(compensateRecordingStartBar(2, -25, 120)).toBeCloseTo(2.0125, 10);
-    expect(compensateRecordingStartBar(0.01, 500, 120)).toBe(0);
+    expect(compensateRecordingStartBar(2, 25, 120, FOUR_FOUR)).toBeCloseTo(1.9875, 10);
+    expect(compensateRecordingStartBar(2, -25, 120, FOUR_FOUR)).toBeCloseTo(2.0125, 10);
+    expect(compensateRecordingStartBar(0.01, 500, 120, FOUR_FOUR)).toBe(0);
   });
 
   it("uses durable punch-in frames and exact locators for completed punch placement", () => {
     expect(
-      recordedPunchWindow({
-        id: "punch-1",
+      recordedPunchWindow(
+        {
+          id: "punch-1",
+          projectId: "project-1",
+          trackId: "track-1",
+          trackName: "Guitar",
+          startBar: 1,
+          bpm: 120,
+          sampleRate: 48_000,
+          channels: 1,
+          createdAt: "2026-09-26T00:00:00.000Z",
+          updatedAt: 1,
+          status: "recoverable",
+          totalFrames: 48_100,
+          chunkCount: 2,
+          punchCapture: { startTick: 960, endTick: 1920 },
+          punchOutReached: true,
+          takeBoundaries: [1_000],
+        },
+        FOUR_FOUR,
+      ),
+    ).toEqual({ offsetSec: 1_000 / 48_000, lengthBars: 0.5 });
+  });
+
+  it("uses only the recovered audio duration for a manually stopped partial punch", () => {
+    const window = recordedPunchWindow(
+      {
+        id: "punch-2",
         projectId: "project-1",
         trackId: "track-1",
         trackName: "Guitar",
@@ -107,30 +146,10 @@ describe("recording placement math", () => {
         totalFrames: 48_100,
         chunkCount: 2,
         punchCapture: { startTick: 960, endTick: 1920 },
-        punchOutReached: true,
         takeBoundaries: [1_000],
-      }),
-    ).toEqual({ offsetSec: 1_000 / 48_000, lengthBars: 0.5 });
-  });
-
-  it("uses only the recovered audio duration for a manually stopped partial punch", () => {
-    const window = recordedPunchWindow({
-      id: "punch-2",
-      projectId: "project-1",
-      trackId: "track-1",
-      trackName: "Guitar",
-      startBar: 1,
-      bpm: 120,
-      sampleRate: 48_000,
-      channels: 1,
-      createdAt: "2026-09-26T00:00:00.000Z",
-      updatedAt: 1,
-      status: "recoverable",
-      totalFrames: 48_100,
-      chunkCount: 2,
-      punchCapture: { startTick: 960, endTick: 1920 },
-      takeBoundaries: [1_000],
-    });
+      },
+      FOUR_FOUR,
+    );
     expect(window?.offsetSec).toBeCloseTo(1_000 / 48_000, 12);
     expect(window?.lengthBars).toBe(0.49);
   });
@@ -201,7 +220,7 @@ describe("recording placement math", () => {
 
   it("turns durable loop-boundary frames into selectable source windows in one undoable edit", () => {
     const doc = createDefaultProject();
-    const passes = recordedLoopPasses(288_000, 48_000, [0, 96_000, 192_000], 120, "recording-42");
+    const passes = recordedLoopPasses(288_000, 48_000, [0, 96_000, 192_000], 120, "recording-42", FOUR_FOUR);
     expect(passes).toEqual([
       { takeId: "recording-42-pass-1", startFrame: 0, endFrame: 96_000, lengthBars: 1 },
       { takeId: "recording-42-pass-2", startFrame: 96_000, endFrame: 192_000, lengthBars: 1 },
@@ -233,7 +252,7 @@ describe("recording placement math", () => {
 
   it("applies per-pass phrase alignment to the take offsets, and ignores a mismatched shift list", () => {
     const doc = createDefaultProject();
-    const passes = recordedLoopPasses(288_000, 48_000, [0, 96_000, 192_000], 120, "recording-42");
+    const passes = recordedLoopPasses(288_000, 48_000, [0, 96_000, 192_000], 120, "recording-42", FOUR_FOUR);
 
     // Vocal-first alignment: each pass skips its OWN measured late head, inside
     // the same placement command — one undo removes take and correction.

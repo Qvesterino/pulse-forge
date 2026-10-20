@@ -3,7 +3,7 @@ import { addArrangementTransition } from "../commands/arrangementShapes";
 import { crossfadeAudioClips } from "../commands/clipEditing";
 import { updateAudioClip } from "../commands/clipEditing";
 import type { AudioClip, ProjectDocument } from "../project-model/types";
-import { BAR_TICKS } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import type { SelectionState } from "../store/SelectionStore";
 
 /**
@@ -55,6 +55,9 @@ export function applyRangeCrossfade(
     const rangeFrom = selection.timeRange?.fromTick ?? 0;
     const rangeTo = selection.timeRange?.toTick ?? 0;
     const hasRange = !!selection.timeRange;
+    // The document's bar length in ticks (ADR 0056) — overlap and seam
+    // detection measure clip spans in the project's own meter.
+    const barUnit = ticksPerBar(doc);
     // PHASE 1 — crossfade OVERLAPPING pairs (same track): the real verb.
     // Each pair gets complementary fades over its overlap span (equal-power),
     // replacing the blanket 0.08 seam for those clips. A clip can join only
@@ -63,7 +66,7 @@ export function applyRangeCrossfade(
     const byTrack = new Map<string, AudioClip[]>();
     for (const ac of doc.arrangement.audioClips ?? []) {
       const inRange = hasRange
-        ? ac.startBar * BAR_TICKS < rangeTo && (ac.startBar + ac.lengthBars) * BAR_TICKS > rangeFrom
+        ? ac.startBar * barUnit < rangeTo && (ac.startBar + ac.lengthBars) * barUnit > rangeFrom
         : selection.clipIds.includes(ac.id);
       if (!inRange) continue;
       const list = byTrack.get(ac.trackId) ?? [];
@@ -76,8 +79,8 @@ export function applyRangeCrossfade(
         const a = sorted[i];
         const b = sorted[i + 1];
         if (crossfaded.has(a.id) || crossfaded.has(b.id)) continue;
-        const aEnd = (a.startBar + a.lengthBars) * BAR_TICKS;
-        const bStart = b.startBar * BAR_TICKS;
+        const aEnd = (a.startBar + a.lengthBars) * barUnit;
+        const bStart = b.startBar * barUnit;
         if (aEnd <= bStart) continue; // adjacent or gapped — not an overlap
         try {
           store.execute(crossfadeAudioClips(doc, a.id, b.id));
@@ -90,8 +93,8 @@ export function applyRangeCrossfade(
     // PHASE 2 — seam fades for clips that got no crossfade (unchanged behavior).
     for (const ac of doc.arrangement.audioClips ?? []) {
       if (crossfaded.has(ac.id)) continue;
-      const cFrom = ac.startBar * BAR_TICKS;
-      const cTo = (ac.startBar + ac.lengthBars) * BAR_TICKS;
+      const cFrom = ac.startBar * barUnit;
+      const cTo = (ac.startBar + ac.lengthBars) * barUnit;
       const inRange = hasRange ? cFrom < rangeTo && cTo > rangeFrom : selection.clipIds.includes(ac.id);
       // A clip already carrying exactly the crossfade pair is skipped: the
       // identical patch would push an empty history entry and make repeated
@@ -108,10 +111,10 @@ export function applyRangeCrossfade(
       for (let i = 0; i < clips.length - 1; i++) {
         const a = clips[i];
         const b = clips[i + 1];
-        const aEnd = (a.startBar + a.lengthBars) * BAR_TICKS;
-        const bStart = b.startBar * BAR_TICKS;
+        const aEnd = (a.startBar + a.lengthBars) * barUnit;
+        const bStart = b.startBar * barUnit;
         const gap = bStart - aEnd;
-        if (Math.abs(gap) < BAR_TICKS * 0.5 && aEnd >= rangeFrom && bStart <= rangeTo) {
+        if (Math.abs(gap) < barUnit * 0.5 && aEnd >= rangeFrom && bStart <= rangeTo) {
           const exists = doc.arrangement.transitions?.some((t) => t.fromClipId === a.id && t.toClipId === b.id);
           if (!exists) {
             try {

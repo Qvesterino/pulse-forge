@@ -17,7 +17,7 @@ import type {
   ProjectDocument,
   Scene,
 } from "../project-model/types";
-import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
+import { STEP_TICKS } from "../project-model/types";
 import { buildStemProject } from "../rendering/stems";
 import { patternPhaseOffsetAtTick, sceneOffsetAtTick } from "../project-model/events";
 import {
@@ -25,6 +25,7 @@ import {
   MAX_ARRANGEMENT_CLIP_BARS,
   normalizeProject,
   sanitizeArrangementTransitions,
+  ticksPerBar,
 } from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
@@ -45,16 +46,19 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
   const rawFrom = Math.min(fromTick, toTick);
   const rawTo = Math.max(fromTick, toTick);
   if (rawFrom === rawTo) throw new Error("Cannot duplicate empty time range");
+  // The document's bar length in ticks (ADR 0056) — a 6/8 arrangement's bar is
+  // three quarter notes, not four.
+  const barUnit = ticksPerBar(doc);
   // Scene clips live on an integer-bar grid (every move/resize command rounds
   // to whole bars) but the marquee only quantizes to ticks — a 2.4-bar drag
   // would shift later sections to fractional startBars, which the next move
   // command silently snaps back to an integer (position jump) and whose
-  // startBar*BAR_TICKS is not even tick-exact in floating point. Widen the
+  // startBar*barUnit is not even tick-exact in floating point. Widen the
   // zone to whole bars, never shrink it; bar-aligned ranges are unaffected.
-  const from = Math.floor(rawFrom / BAR_TICKS) * BAR_TICKS;
-  const to = Math.ceil(rawTo / BAR_TICKS) * BAR_TICKS;
+  const from = Math.floor(rawFrom / barUnit) * barUnit;
+  const to = Math.ceil(rawTo / barUnit) * barUnit;
   const delta = to - from;
-  const deltaBars = delta / BAR_TICKS;
+  const deltaBars = delta / barUnit;
   // Scene clips are a no-overlap lane: a clip crossing either zone boundary
   // neither duplicates (not wholly inside) nor shifts (not trailing), so an
   // inside clip's copy would land on top of it — the audio lane below refuses
@@ -62,8 +66,8 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
   // overlapping arrangement.
   if (
     doc.arrangement.clips.some((c) => {
-      const cFrom = c.startBar * BAR_TICKS;
-      const cTo = (c.startBar + c.lengthBars) * BAR_TICKS;
+      const cFrom = c.startBar * barUnit;
+      const cTo = (c.startBar + c.lengthBars) * barUnit;
       return (cFrom < from && cTo > from) || (cFrom < to && cTo > to);
     })
   ) {
@@ -75,8 +79,8 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
   // Verify stem routing for tracks that contribute to the zone (guardrail)
   const zoneTrackIds = new Set<string>();
   for (const clip of doc.arrangement.clips) {
-    const cFrom = clip.startBar * BAR_TICKS;
-    const cTo = (clip.startBar + clip.lengthBars) * BAR_TICKS;
+    const cFrom = clip.startBar * barUnit;
+    const cTo = (clip.startBar + clip.lengthBars) * barUnit;
     if (cFrom >= from && cTo <= to) {
       const scene = doc.scenes.find((s) => s.id === clip.sceneId);
       if (scene) {
@@ -102,11 +106,11 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
 
   // 1) Arrangement clips: wholly-inside are duplicated; trailing clips are shifted forward by deltaBars
   const whollyInside = doc.arrangement.clips.filter((c) => {
-    const cFrom = c.startBar * BAR_TICKS;
-    const cTo = (c.startBar + c.lengthBars) * BAR_TICKS;
+    const cFrom = c.startBar * barUnit;
+    const cTo = (c.startBar + c.lengthBars) * barUnit;
     return cFrom >= from && cTo <= to;
   });
-  const trailingIds = new Set(doc.arrangement.clips.filter((c) => c.startBar * BAR_TICKS >= to).map((c) => c.id));
+  const trailingIds = new Set(doc.arrangement.clips.filter((c) => c.startBar * barUnit >= to).map((c) => c.id));
   const baseClips: ArrangementClip[] = doc.arrangement.clips.map((c) =>
     trailingIds.has(c.id) ? { ...c, startBar: c.startBar + deltaBars } : c,
   );
@@ -143,8 +147,8 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
   // edge would need a destructive split; fail closed rather than leave it
   // straddling the inserted section. Clips at/after the insertion point move
   // with the timeline, including their absolute warp-pin ticks.
-  const fromBar = from / BAR_TICKS;
-  const toBar = to / BAR_TICKS;
+  const fromBar = from / barUnit;
+  const toBar = to / barUnit;
   const audioClips = doc.arrangement.audioClips ?? [];
   const overlapsRange = (clip: AudioClip) => clip.startBar < toBar && clip.startBar + clip.lengthBars > fromBar;
   const isWhollyInsideRange = (clip: AudioClip) => clip.startBar >= fromBar && clip.startBar + clip.lengthBars <= toBar;
@@ -302,9 +306,10 @@ export function consolidateTimeRange(doc: ProjectDocument, fromTick: number, toT
   const from = Math.min(fromTick, toTick);
   const to = Math.max(fromTick, toTick);
   if (from === to) throw new Error("Cannot consolidate empty time range");
+  const barUnit = ticksPerBar(doc);
   const delta = to - from;
-  const deltaBars = delta / BAR_TICKS;
-  const fromBar = from / BAR_TICKS;
+  const deltaBars = delta / barUnit;
+  const fromBar = from / barUnit;
   const fromStep = Math.floor(from / STEP_TICKS);
   const toStepEx = Math.ceil(to / STEP_TICKS);
   const zoneSteps = toStepEx - fromStep;
@@ -313,8 +318,8 @@ export function consolidateTimeRange(doc: ProjectDocument, fromTick: number, toT
   // Collect zone track affinity for stem filtering
   const zoneTrackIds = new Set<string>();
   for (const clip of doc.arrangement.clips) {
-    const cFrom = clip.startBar * BAR_TICKS;
-    const cTo = (clip.startBar + clip.lengthBars) * BAR_TICKS;
+    const cFrom = clip.startBar * barUnit;
+    const cTo = (clip.startBar + clip.lengthBars) * barUnit;
     if (cFrom < to && cTo > from) {
       const scene = doc.scenes.find((s) => s.id === clip.sceneId);
       if (scene) {
@@ -401,8 +406,8 @@ export function consolidateTimeRange(doc: ProjectDocument, fromTick: number, toT
   const whollyInsideIds = new Set(
     doc.arrangement.clips
       .filter((c) => {
-        const cFrom = c.startBar * BAR_TICKS;
-        const cTo = (c.startBar + c.lengthBars) * BAR_TICKS;
+        const cFrom = c.startBar * barUnit;
+        const cTo = (c.startBar + c.lengthBars) * barUnit;
         return cFrom >= from && cTo <= to;
       })
       .map((c) => c.id),
@@ -488,11 +493,12 @@ function splitAudioClipsForConsolidationRange(
 ): SplitAudioRangeResult {
   let project = doc;
   const removedClipIds = new Set<string>();
+  const barUnit = ticksPerBar(doc);
 
   for (const sourceClip of clips) {
     const sourceDuration = sourceDurationsByBufferId.get(sourceClip.bufferId);
     const crossesRangeBoundary =
-      sourceClip.startBar * BAR_TICKS < fromTick || (sourceClip.startBar + sourceClip.lengthBars) * BAR_TICKS > toTick;
+      sourceClip.startBar * barUnit < fromTick || (sourceClip.startBar + sourceClip.lengthBars) * barUnit > toTick;
     if (
       crossesRangeBoundary &&
       sourceClip.warpMarkers?.length &&
@@ -518,9 +524,9 @@ function splitAudioClipsForConsolidationRange(
       return pieces;
     };
 
-    if (initial.startBar * BAR_TICKS < fromTick) {
+    if (initial.startBar * barUnit < fromTick) {
       const rangeFragment = splitAt(rangeClipId, fromTick).find(
-        (clip) => Math.abs(clip.startBar * BAR_TICKS - fromTick) < 1e-6,
+        (clip) => Math.abs(clip.startBar * barUnit - fromTick) < 1e-6,
       );
       if (!rangeFragment) throw new Error(`Could not preserve the left audio fragment for clip ${sourceClip.id}.`);
       rangeClipId = rangeFragment.id;
@@ -528,12 +534,12 @@ function splitAudioClipsForConsolidationRange(
 
     const middle = currentClip();
     if (!middle) throw new Error(`AudioClip ${sourceClip.id} disappeared during range consolidation.`);
-    if ((middle.startBar + middle.lengthBars) * BAR_TICKS > toTick) {
+    if ((middle.startBar + middle.lengthBars) * barUnit > toTick) {
       const rangeFragment = splitAt(rangeClipId, toTick).find(
         (clip) =>
-          clip.startBar * BAR_TICKS >= fromTick - 1e-6 &&
-          (clip.startBar + clip.lengthBars) * BAR_TICKS <= toTick + 1e-6 &&
-          (clip.startBar + clip.lengthBars) * BAR_TICKS > fromTick,
+          clip.startBar * barUnit >= fromTick - 1e-6 &&
+          (clip.startBar + clip.lengthBars) * barUnit <= toTick + 1e-6 &&
+          (clip.startBar + clip.lengthBars) * barUnit > fromTick,
       );
       if (!rangeFragment) throw new Error(`Could not isolate the selected audio range for clip ${sourceClip.id}.`);
       rangeClipId = rangeFragment.id;
@@ -557,7 +563,8 @@ export function consolidateTimeRangeToAudio(
   if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 0 || to <= from) {
     throw new Error("Select a valid, non-empty time range.");
   }
-  if (from % BAR_TICKS !== 0 || to % BAR_TICKS !== 0) {
+  const barUnit = ticksPerBar(doc);
+  if (from % barUnit !== 0 || to % barUnit !== 0) {
     throw new Error("Consolidation requires a selection aligned to complete bars.");
   }
   if (!bufferId) throw new Error("A rendered audio asset is required for consolidation.");
@@ -565,8 +572,8 @@ export function consolidateTimeRangeToAudio(
     throw new Error("Turn off Solo before consolidating so the print does not change the rest of the mix.");
   }
 
-  const fromBar = from / BAR_TICKS;
-  const toBar = to / BAR_TICKS;
+  const fromBar = from / barUnit;
+  const toBar = to / barUnit;
   const lengthBars = toBar - fromBar;
   const renderedLengthBars = printLengthBars ?? lengthBars;
   if (
@@ -657,7 +664,7 @@ export function consolidateTimeRangeToAudio(
     }
 
     if (hasRightRemainder) {
-      const rightStartTick = overlapEndBar * BAR_TICKS;
+      const rightStartTick = overlapEndBar * barUnit;
       nextClips.push({
         ...clip,
         id: hasLeftRemainder ? uid("clip") : clip.id,

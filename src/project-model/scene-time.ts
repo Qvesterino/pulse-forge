@@ -1,4 +1,4 @@
-import { BAR_TICKS, PPQ } from "./types";
+import { PPQ } from "./types";
 
 /**
  * Wall-clock (seconds) helpers for Scene Mode (VISION §10): a producer thinks
@@ -6,6 +6,10 @@ import { BAR_TICKS, PPQ } from "./types";
  * DISPLAY affordance — the persisted model stays bar-based, converted at the
  * scene's EFFECTIVE tempo (its own BPM pin, else the project tempo) so the
  * numbers stay honest when a scene pins a different tempo.
+ *
+ * `barUnitTicks` is the document's bar length in ticks (ADR 0056). It is a
+ * required argument, never a default: a default would keep every scene
+ * measured in 4/4 bars while the document says 6/8.
  */
 
 /** The tempo a scene runs at — its own BPM pin, else the project tempo. */
@@ -15,13 +19,13 @@ export function effectiveSceneBpm(sceneBpm: number | undefined, projectBpm: numb
 }
 
 /** Wall-clock seconds a span of `bars` bars lasts at `bpm`. */
-export function sceneBarsToSeconds(bars: number, bpm: number): number {
-  return (bars * BAR_TICKS * 60) / (bpm * PPQ);
+export function sceneBarsToSeconds(bars: number, bpm: number, barUnitTicks: number): number {
+  return (bars * barUnitTicks * 60) / (bpm * PPQ);
 }
 
 /** Bars (fractional) needed for `seconds` of wall-clock time at `bpm`. */
-export function sceneSecondsToBars(seconds: number, bpm: number): number {
-  return (seconds * bpm * PPQ) / (BAR_TICKS * 60);
+export function sceneSecondsToBars(seconds: number, bpm: number, barUnitTicks: number): number {
+  return (seconds * bpm * PPQ) / (barUnitTicks * 60);
 }
 
 /**
@@ -37,8 +41,9 @@ export function tempoAtTick(
   scenes: ReadonlyArray<{ id: string; bpm?: number }>,
   tick: number,
   projectBpm: number,
+  barUnitTicks: number,
 ): number {
-  const bar = tick / BAR_TICKS;
+  const bar = tick / barUnitTicks;
   const covering = clips.find(
     (clip) =>
       Number.isFinite(clip.startBar) &&
@@ -65,15 +70,17 @@ export function arrangementSecondsBetweenTicks(
   fromTick: number,
   toTick: number,
   projectBpm: number,
+  barUnitTicks: number,
 ): number {
   if (!Number.isFinite(fromTick) || !Number.isFinite(toTick) || fromTick === toTick) return 0;
-  if (toTick < fromTick) return -arrangementSecondsBetweenTicks(clips, scenes, toTick, fromTick, projectBpm);
+  if (toTick < fromTick)
+    return -arrangementSecondsBetweenTicks(clips, scenes, toTick, fromTick, projectBpm, barUnitTicks);
   // Scene spans as tick ranges, sorted so the walk hits boundaries in order.
   const spans = clips
     .filter((clip) => Number.isFinite(clip.startBar) && Number.isFinite(clip.lengthBars) && clip.lengthBars > 0)
     .map((clip) => ({
-      from: clip.startBar * BAR_TICKS,
-      to: (clip.startBar + clip.lengthBars) * BAR_TICKS,
+      from: clip.startBar * barUnitTicks,
+      to: (clip.startBar + clip.lengthBars) * barUnitTicks,
       bpm: effectiveSceneBpm(scenes.find((scene) => scene.id === clip.sceneId)?.bpm, projectBpm),
     }))
     .filter((span) => span.to > span.from)

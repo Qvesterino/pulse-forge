@@ -169,7 +169,13 @@ export function fitAudioClipTempo(doc: ProjectDocument, clipId: string, detected
   // Fit against the tempo the transport ACTUALLY runs at the clip — its
   // covering scene's BPM pin — not flat doc.bpm. Fitting to the project tempo
   // under a pinned scene left the loop locked to a clock nothing plays at.
-  const targetBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, clip.startBar * ticksPerBar(doc), doc.bpm);
+  const targetBpm = tempoAtTick(
+    doc.arrangement.clips,
+    doc.scenes,
+    clip.startBar * ticksPerBar(doc),
+    doc.bpm,
+    ticksPerBar(doc),
+  );
   const rate = Math.round(Math.min(4, Math.max(0.25, detectedBpm / targetBpm)) * 100) / 100;
   const next: ProjectDocument = {
     ...doc,
@@ -206,8 +212,15 @@ export function sliceAudioClipToArrangement(doc: ProjectDocument, clipId: string
   // 1/rate (pitch-preserving stretch), and the window base is
   // offsetSec + trimStart — dropping trimStart made every slice play the
   // wrong region of a start-trimmed clip.
-  const wallDurSec = arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, startTick, endTick, doc.bpm);
-  const spt = 60 / (tempoAtTick(doc.arrangement.clips, doc.scenes, startTick, doc.bpm) * PPQ);
+  const wallDurSec = arrangementSecondsBetweenTicks(
+    doc.arrangement.clips,
+    doc.scenes,
+    startTick,
+    endTick,
+    doc.bpm,
+    ticksPerBar(doc),
+  );
+  const spt = 60 / (tempoAtTick(doc.arrangement.clips, doc.scenes, startTick, doc.bpm, ticksPerBar(doc)) * PPQ);
   const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
   const preservingStretch = clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01;
   const sourcePerWall = preservingStretch ? 1 / rate : rate;
@@ -342,9 +355,24 @@ export function splitAudioClipAtTickWithMinimumFragment(
   // transport never ran at — the split point skipped or repeated source.
   // secondsPerTick stays for the warp branch, whose mapping the engine derives
   // from the clip's start tempo (triggerEngine's clipDurSec/clipTicks).
-  const leftSec = arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, startTick, splitTick, doc.bpm);
-  const rightSec = arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, splitTick, endTick, doc.bpm);
-  const secondsPerTick = 60 / (tempoAtTick(doc.arrangement.clips, doc.scenes, startTick, doc.bpm) * PPQ);
+  const leftSec = arrangementSecondsBetweenTicks(
+    doc.arrangement.clips,
+    doc.scenes,
+    startTick,
+    splitTick,
+    doc.bpm,
+    ticksPerBar(doc),
+  );
+  const rightSec = arrangementSecondsBetweenTicks(
+    doc.arrangement.clips,
+    doc.scenes,
+    splitTick,
+    endTick,
+    doc.bpm,
+    ticksPerBar(doc),
+  );
+  const secondsPerTick =
+    60 / (tempoAtTick(doc.arrangement.clips, doc.scenes, startTick, doc.bpm, ticksPerBar(doc)) * PPQ);
   const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
   const preservingStretch = clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01;
   const sourceSecondsPerWallSecond = preservingStretch ? 1 / rate : rate;
@@ -497,7 +525,7 @@ export function stripSilenceAudioClip(
   // span at its effective tempo, so plain doc.bpm places fragments against a
   // wall clock the transport never runs at (same bug class the split fix
   // documented).
-  const spt = 60 / (tempoAtTick(doc.arrangement.clips, doc.scenes, startTick, doc.bpm) * PPQ);
+  const spt = 60 / (tempoAtTick(doc.arrangement.clips, doc.scenes, startTick, doc.bpm, ticksPerBar(doc)) * PPQ);
   const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
   const preservingStretch = clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01;
   const sourcePerWall = preservingStretch ? 1 / rate : rate;
@@ -516,7 +544,8 @@ export function stripSilenceAudioClip(
   const playedEnd = Math.min(
     windowEnd,
     windowStart +
-      arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, startTick, endTick, doc.bpm) * sourcePerWall,
+      arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, startTick, endTick, doc.bpm, ticksPerBar(doc)) *
+        sourcePerWall,
   );
   if (
     fragments.length === 1 &&
@@ -676,10 +705,17 @@ export function crossfadeAudioClips(
       Math.max(eStart, lStart),
       Math.min(eEnd, lEnd),
       doc.bpm,
+      ticksPerBar(doc),
     ),
   );
-  const eDur = Math.max(0, arrangementSecondsBetweenTicks(doc.arrangement.clips, scenes, eStart, eEnd, doc.bpm));
-  const lDur = Math.max(0, arrangementSecondsBetweenTicks(doc.arrangement.clips, scenes, lStart, lEnd, doc.bpm));
+  const eDur = Math.max(
+    0,
+    arrangementSecondsBetweenTicks(doc.arrangement.clips, scenes, eStart, eEnd, doc.bpm, ticksPerBar(doc)),
+  );
+  const lDur = Math.max(
+    0,
+    arrangementSecondsBetweenTicks(doc.arrangement.clips, scenes, lStart, lEnd, doc.bpm, ticksPerBar(doc)),
+  );
   const earlierFade = Math.min(overlapSec, eDur);
   const laterFade = Math.min(overlapSec, lDur);
   const curve = options.curve === "linear" ? undefined : "equal";

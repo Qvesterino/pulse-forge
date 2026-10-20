@@ -11,6 +11,7 @@ import {
 } from "../src/commands/commands";
 import { applyRangeCrossfade } from "../src/ui/rangeCrossfade";
 import { BAR_TICKS } from "../src/project-model/types";
+import { ticksPerBar } from "../src/project-model/schema";
 import { arrangementSecondsBetweenTicks } from "../src/project-model/scene-time";
 import type { AudioClip, ProjectDocument } from "../src/project-model/types";
 
@@ -47,9 +48,9 @@ const clipsOf = (doc: ProjectDocument): AudioClip[] => doc.arrangement.audioClip
 const overlapSecOf = (doc: ProjectDocument): number => {
   const a = clipsOf(doc).find((c) => c.bufferId === "buf-a")!;
   const b = clipsOf(doc).find((c) => c.bufferId === "buf-b")!;
-  const from = Math.max(a.startBar, b.startBar) * BAR_TICKS;
-  const to = Math.min(a.startBar + a.lengthBars, b.startBar + b.lengthBars) * BAR_TICKS;
-  return arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, from, to, doc.bpm);
+  const from = Math.max(a.startBar, b.startBar) * ticksPerBar(doc);
+  const to = Math.min(a.startBar + a.lengthBars, b.startBar + b.lengthBars) * ticksPerBar(doc);
+  return arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, from, to, doc.bpm, ticksPerBar(doc));
 };
 
 describe("X1 crossfadeAudioClips", () => {
@@ -108,9 +109,10 @@ describe("X1 crossfadeAudioClips", () => {
     const aDur = arrangementSecondsBetweenTicks(
       doc.arrangement.clips,
       doc.scenes,
-      earlier.startBar * BAR,
-      (earlier.startBar + earlier.lengthBars) * BAR,
+      earlier.startBar * ticksPerBar(doc),
+      (earlier.startBar + earlier.lengthBars) * ticksPerBar(doc),
       doc.bpm,
+      ticksPerBar(doc),
     );
     expect(earlier.fadeOut).toBeCloseTo(Math.min(overlap, aDur), 3);
     expect(later.fadeIn).toBeCloseTo(Math.min(overlap, aDur), 3);

@@ -1,7 +1,8 @@
 import type { AudioEngine } from "../audio-engine/AudioEngine";
 import { consolidateTimeRangeToAudio } from "../commands/commands";
 import type { Command } from "../commands/types";
-import { BAR_TICKS, type ProjectDocument } from "../project-model/types";
+import { type ProjectDocument } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import type { IUserSampleRepository } from "../persistence/contracts";
 import { userSampleId } from "../persistence/UserSampleRepository";
 import type { SampleBank } from "../sample-library/factory";
@@ -42,8 +43,11 @@ export async function consolidateRangeToAudio(
   try {
     if (!isSelectionCurrent()) throw new Error("The time selection changed. Review the range and try again.");
     const sourceDoc = store.getDoc();
-    const fromBar = Math.min(range.fromTick, range.toTick) / BAR_TICKS;
-    const toBar = Math.max(range.fromTick, range.toTick) / BAR_TICKS;
+    // The document's bar length in ticks (ADR 0056) — the range is measured in
+    // the project's own meter, not a fixed 4/4 bar.
+    const barUnit = ticksPerBar(sourceDoc);
+    const fromBar = Math.min(range.fromTick, range.toTick) / barUnit;
+    const toBar = Math.max(range.fromTick, range.toTick) / barUnit;
     const sourceDurationsByBufferId = new Map<string, number>();
     for (const clip of sourceDoc.arrangement.audioClips ?? []) {
       if (clip.startBar >= toBar || clip.startBar + clip.lengthBars <= fromBar) continue;
@@ -55,7 +59,7 @@ export async function consolidateRangeToAudio(
     }
     const plan = buildTimeRangeConsolidationDoc(sourceDoc, range.fromTick, range.toTick, sourceDurationsByBufferId);
     const sampleRate = runtime.engine.getLiveAudioContext()?.sampleRate ?? 44100;
-    const durationTicks = plan.lengthBars * BAR_TICKS;
+    const durationTicks = plan.lengthBars * barUnit;
     const { buildTempoMap, resolveRenderTailSeconds } = await import("../rendering/renderer");
     const tailSeconds = resolveRenderTailSeconds(plan.project);
     const rangeStartTick = Math.min(range.fromTick, range.toTick);
@@ -67,8 +71,8 @@ export async function consolidateRangeToAudio(
         return scene
           ? [
               {
-                from: clip.startBar * BAR_TICKS,
-                to: (clip.startBar + clip.lengthBars) * BAR_TICKS,
+                from: clip.startBar * barUnit,
+                to: (clip.startBar + clip.lengthBars) * barUnit,
                 bpm: scene.bpm ?? sourceDoc.bpm,
               },
             ]
@@ -76,8 +80,7 @@ export async function consolidateRangeToAudio(
       }),
     );
     const printEndTick = sourceTempoMap.tickAt(sourceTempoMap.timeAt(rangeEndTick) + tailSeconds);
-    const printLengthBars =
-      Math.ceil(Math.max(plan.lengthBars, (printEndTick - rangeStartTick) / BAR_TICKS) * 100) / 100;
+    const printLengthBars = Math.ceil(Math.max(plan.lengthBars, (printEndTick - rangeStartTick) / barUnit) * 100) / 100;
     const buffer = await renderFn(plan.project, runtime.bank, {
       mode: "song",
       sampleRate,

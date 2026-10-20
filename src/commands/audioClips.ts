@@ -463,7 +463,7 @@ export function audioClipDurationSec(doc: ProjectDocument, lengthBars: number, s
   const bpm =
     startBar === undefined
       ? doc.bpm
-      : tempoAtTick(doc.arrangement.clips, doc.scenes, startBar * ticksPerBar(doc), doc.bpm);
+      : tempoAtTick(doc.arrangement.clips, doc.scenes, startBar * ticksPerBar(doc), doc.bpm, ticksPerBar(doc));
   return (bars * ticksPerBar(doc) * 60) / (bpm * PPQ);
 }
 

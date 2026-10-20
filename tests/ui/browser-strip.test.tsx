@@ -7,6 +7,7 @@ import { mockServices, renderWithContext } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { BAR_TICKS, PPQ } from "../../src/project-model/types";
 import { tempoAtTick } from "../../src/project-model/scene-time";
+import { ticksPerBar } from "../../src/project-model/schema";
 import type { UserSampleAsset } from "../../src/persistence/UserSampleRepository";
 
 const drumTrackOf = (doc: ReturnType<typeof createProjectFromTemplate>) => doc.tracks.find((t) => t.kind === "drum")!;
@@ -98,7 +99,7 @@ describe("BrowserStrip (ROADMAP-UI-2027 V4)", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: /LOOPS 1/ }));
     await userEvent.setup().click(screen.getByRole("button", { name: "Preview loop in project tempo House Loop" }));
     const nextBeatTick = (Math.floor(services.transport.position / PPQ) + 1) * PPQ;
-    const previewBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, nextBeatTick, doc.bpm);
+    const previewBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, nextBeatTick, doc.bpm, ticksPerBar(doc));
     expect(services.engine.previewAssetSynced).toHaveBeenCalledWith(loop.id, previewBpm / loop.bpm!, true);
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Add House Loop to arrangement" }));

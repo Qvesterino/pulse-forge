@@ -20,7 +20,8 @@ import { arrangementAutomationSegmentsInWindow } from "../../project-model/event
 import { nudgeClips } from "../../commands/clipEditing";
 import { valueAt } from "../../project-model/automation";
 import type { ArrangementAutomationClip, AutomationTarget, ProjectDocument } from "../../project-model/types";
-import { BAR_TICKS, STEP_TICKS } from "../../project-model/types";
+import { STEP_TICKS } from "../../project-model/types";
+import { ticksPerBar } from "../../project-model/schema";
 import {
   automationClipForTarget,
   automationTargetKey,
@@ -71,14 +72,14 @@ interface PointDragState {
   value: number;
 }
 
-function snapped(tick: number, grid: SnapGridId, free: boolean): number {
+function snapped(tick: number, grid: SnapGridId, free: boolean, barUnitTicks: number): number {
   const bars = free ? null : snapBarsFor(grid);
-  return Math.max(0, Math.round(bars === null ? tick : snapTick(tick, bars)));
+  return Math.max(0, Math.round(bars === null ? tick : snapTick(tick, bars, barUnitTicks)));
 }
 
-function snappedDelta(tick: number, grid: SnapGridId, free: boolean): number {
+function snappedDelta(tick: number, grid: SnapGridId, free: boolean, barUnitTicks: number): number {
   const bars = free ? null : snapBarsFor(grid);
-  return Math.round(bars === null ? tick : snapTick(tick, bars));
+  return Math.round(bars === null ? tick : snapTick(tick, bars, barUnitTicks));
 }
 
 function targetName(doc: ProjectDocument, target: AutomationTarget): string {
@@ -163,6 +164,9 @@ export function AutomationClipLanes({
   onExecute,
   onSelect,
 }: AutomationClipLanesProps) {
+  // The document's bar length in ticks (ADR 0056) — the lane's pixel grid is
+  // one musical bar wide, so tick↔pixel conversion uses the same unit.
+  const barUnit = ticksPerBar(doc);
   const dragRef = useRef<DragState | null>(null);
   const pointDragRef = useRef<PointDragState | null>(null);
   const [preview, setPreview] = useState<DragState | null>(null);
@@ -268,7 +272,7 @@ export function AutomationClipLanes({
   const updateDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
     const current = dragRef.current;
     if (!current || current.pointerId !== event.pointerId) return;
-    const delta = ((event.clientX - current.clientX) / Math.max(1, current.barWidthAt)) * BAR_TICKS;
+    const delta = ((event.clientX - current.clientX) / Math.max(1, current.barWidthAt)) * barUnit;
     if (current.groupId && current.groupClipIds) {
       const currentGroup = doc.arrangement.clipGroups?.find((group) => group.id === current.groupId);
       const stillSameGroup =
@@ -281,9 +285,9 @@ export function AutomationClipLanes({
         return;
       }
       const deltaTicks = current.groupHasScene
-        ? Math.round(delta / BAR_TICKS) * BAR_TICKS
-        : snappedDelta(delta, snapGrid, event.shiftKey);
-      const planned = nudgeClips(doc, [current.clipId], deltaTicks / BAR_TICKS).execute(doc);
+        ? Math.round(delta / barUnit) * barUnit
+        : snappedDelta(delta, snapGrid, event.shiftKey, barUnit);
+      const planned = nudgeClips(doc, [current.clipId], deltaTicks / barUnit).execute(doc);
       const nextStartTick =
         planned.arrangement.automationClips?.find((candidate) => candidate.id === current.clipId)?.startTick ??
         current.startTick;
@@ -296,17 +300,17 @@ export function AutomationClipLanes({
     let nextStartTick = current.startTick;
     let nextLengthTicks = current.lengthTicks;
     if (current.mode === "move") {
-      nextStartTick = snapped(current.startTick + delta, snapGrid, event.shiftKey);
+      nextStartTick = snapped(current.startTick + delta, snapGrid, event.shiftKey, barUnit);
     } else if (current.mode === "resize") {
       nextLengthTicks = Math.max(
         STEP_TICKS,
-        snapped(current.startTick + current.lengthTicks + delta, snapGrid, event.shiftKey) - current.startTick,
+        snapped(current.startTick + current.lengthTicks + delta, snapGrid, event.shiftKey, barUnit) - current.startTick,
       );
     } else {
       const end = current.startTick + current.lengthTicks;
       nextStartTick = Math.max(
         0,
-        Math.min(end - STEP_TICKS, snapped(current.startTick + delta, snapGrid, event.shiftKey)),
+        Math.min(end - STEP_TICKS, snapped(current.startTick + delta, snapGrid, event.shiftKey, barUnit)),
       );
       nextLengthTicks = end - nextStartTick;
     }
@@ -333,7 +337,7 @@ export function AutomationClipLanes({
       clearTimelineGroupDragPreview();
       if (!stillSameGroup) return;
       const deltaTicks = current.nextStartTick - current.startTick;
-      if (deltaTicks !== 0) onExecute(nudgeClips(doc, [current.clipId], deltaTicks / BAR_TICKS));
+      if (deltaTicks !== 0) onExecute(nudgeClips(doc, [current.clipId], deltaTicks / barUnit));
       return;
     }
     if (current.mode === "move" && current.nextStartTick !== current.startTick) {
@@ -359,7 +363,7 @@ export function AutomationClipLanes({
     const rect = event.currentTarget.ownerSVGElement?.getBoundingClientRect();
     if (!rect) return { visibleTick: 0, value: 0 };
     const rawTick = ((event.clientX - rect.left) / Math.max(1, rect.width)) * clip.lengthTicks;
-    const absoluteTick = snapped(clip.startTick + rawTick, snapGrid, event.shiftKey);
+    const absoluteTick = snapped(clip.startTick + rawTick, snapGrid, event.shiftKey, barUnit);
     const visibleTick = Math.max(0, Math.min(clip.lengthTicks, absoluteTick - clip.startTick));
     const mapped = automationClipForTarget(doc, clip, target);
     const range = valueRange(doc, target, mapped);
@@ -437,7 +441,7 @@ export function AutomationClipLanes({
                 type="button"
                 aria-label={`Add automation clip for ${targetName(doc, target)}`}
                 disabled={!pattern}
-                onClick={() => addForTarget(target, snapped(playheadTick, snapGrid, false))}
+                onClick={() => addForTarget(target, snapped(playheadTick, snapGrid, false, barUnit))}
               >
                 +
               </button>
@@ -448,8 +452,8 @@ export function AutomationClipLanes({
               onDoubleClick={(event) => {
                 if (event.target !== event.currentTarget || !pattern) return;
                 const rect = event.currentTarget.getBoundingClientRect();
-                const tick = ((event.clientX - rect.left) / Math.max(1, barWidth)) * BAR_TICKS;
-                addForTarget(target, snapped(tick, snapGrid, event.shiftKey));
+                const tick = ((event.clientX - rect.left) / Math.max(1, barWidth)) * barUnit;
+                addForTarget(target, snapped(tick, snapGrid, event.shiftKey, barUnit));
               }}
             >
               {clips.map((clip) => {
@@ -492,8 +496,8 @@ export function AutomationClipLanes({
                     key={clip.id}
                     className={`arr-auto-clip${selected ? " selected" : ""}${muted ? " muted" : ""}${clip.locked ? " locked" : ""}${doc.arrangement.clipGroups?.some((group) => group.clipIds.includes(clip.id)) ? " grouped" : ""}${overlapping ? (isWinner ? " overlap-winner" : " overlap-shadowed") : ""}`}
                     style={{
-                      left: `${(startTick / BAR_TICKS) * barWidth}px`,
-                      width: `${Math.max(8, (lengthTicks / BAR_TICKS) * barWidth)}px`,
+                      left: `${(startTick / barUnit) * barWidth}px`,
+                      width: `${Math.max(8, (lengthTicks / barUnit) * barWidth)}px`,
                       zIndex: selected ? 3 : isWinner ? 2 : undefined,
                     }}
                     title={`${targetName(doc, target)} · ${lengthTicks} ticks${primaryTarget ? " · primary curve" : " · linked curve"}${overlapping ? (isWinner ? " · playback winner at playhead" : " · overlapped by another clip at playhead") : ""}${clip.locked ? " · locked" : ""}`}

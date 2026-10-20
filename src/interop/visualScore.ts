@@ -1,7 +1,7 @@
 import type { ProjectDocument } from "../project-model/types";
 import { arrangementSecondsBetweenTicks } from "../project-model/scene-time";
 import { chordName } from "../project-model/chords";
-import { BAR_TICKS } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 
 /**
  * VISUAL SCORE — the declarative dramaturgy export for the Audio Canvas
@@ -73,7 +73,14 @@ function keyToMode(key: ProjectDocument["key"]): "major" | "minor" | null {
 export function buildVisualScore(doc: ProjectDocument, durationSec: number): VisualScore {
   const clips = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar);
   const barStartSec = (bar: number): number =>
-    arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, 0, bar * BAR_TICKS, doc.bpm);
+    arrangementSecondsBetweenTicks(
+      doc.arrangement.clips,
+      doc.scenes,
+      0,
+      bar * ticksPerBar(doc),
+      doc.bpm,
+      ticksPerBar(doc),
+    );
 
   const sections: VisualScoreSection[] = [];
   const intensity: VisualScore["intensity"] = [];
@@ -96,7 +103,7 @@ export function buildVisualScore(doc: ProjectDocument, durationSec: number): Vis
   const markers: VisualScoreMarker[] = (doc.markers ?? []).map((marker) => ({
     name: marker.name,
     type: marker.type,
-    sec: arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, 0, marker.tick, doc.bpm),
+    sec: arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, 0, marker.tick, doc.bpm, ticksPerBar(doc)),
   }));
 
   const chords: VisualScoreChord[] = (doc.arrangement.chords ?? []).map((chord) => {

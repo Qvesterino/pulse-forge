@@ -3,7 +3,7 @@ import { useServices } from "./context";
 import { addAudioClip, fittedLoopPlacement, setInstrumentSample, setPadParams } from "../commands/commands";
 import { loopPreviewPlaybackRate } from "../audio-engine/loopTempo";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
-import { BAR_TICKS, PPQ, type Track } from "../project-model/types";
+import { PPQ, type Track } from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
 import { sceneSecondsToBars, tempoAtTick } from "../project-model/scene-time";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
@@ -75,7 +75,13 @@ export function BrowserStrip({
   const previewLoop = (asset: UserSampleAsset) => {
     const currentDoc = services.store.getDoc();
     const nextBeatTick = (Math.floor(services.transport.position / PPQ) + 1) * PPQ;
-    const targetBpm = tempoAtTick(currentDoc.arrangement.clips, currentDoc.scenes, nextBeatTick, currentDoc.bpm);
+    const targetBpm = tempoAtTick(
+      currentDoc.arrangement.clips,
+      currentDoc.scenes,
+      nextBeatTick,
+      currentDoc.bpm,
+      ticksPerBar(currentDoc),
+    );
     const detectedBpm = Number.isFinite(asset.bpm) && asset.bpm! >= 40 && asset.bpm! <= 240 ? asset.bpm! : targetBpm;
     services.engine.previewAssetSynced(asset.id, loopPreviewPlaybackRate(detectedBpm, targetBpm), true);
   };
@@ -90,15 +96,17 @@ export function BrowserStrip({
     if (!target || target.kind === "generative")
       throw new Error("The selected arrangement track is no longer available.");
     const playheadTick = Math.max(0, services.transport.position);
-    const startBar = Math.max(0, Math.ceil((playheadTick - 1e-6) / BAR_TICKS));
+    const startBar = Math.max(0, Math.ceil((playheadTick - 1e-6) / ticksPerBar(currentDoc)));
     const targetBpm = tempoAtTick(
       currentDoc.arrangement.clips,
       currentDoc.scenes,
-      startBar * BAR_TICKS,
+      startBar * ticksPerBar(currentDoc),
       currentDoc.bpm,
+      ticksPerBar(currentDoc),
     );
     const fitted = fittedLoopPlacement(asset.duration, asset.bpm, targetBpm, ticksPerBar(currentDoc));
-    const lengthBars = fitted?.lengthBars ?? Math.max(0.25, sceneSecondsToBars(asset.duration, targetBpm));
+    const lengthBars =
+      fitted?.lengthBars ?? Math.max(0.25, sceneSecondsToBars(asset.duration, targetBpm, ticksPerBar(currentDoc)));
 
     services.store.execute(
       addAudioClip(

@@ -6,6 +6,7 @@ import { FACTORY_ASSETS } from "../../src/sample-library/manifest";
 import type { UserSampleAsset } from "../../src/persistence/UserSampleRepository";
 import { PPQ } from "../../src/project-model/types";
 import { tempoAtTick } from "../../src/project-model/scene-time";
+import { ticksPerBar } from "../../src/project-model/schema";
 
 const loopA: UserSampleAsset = {
   id: "user.loop-house-01",
@@ -181,7 +182,7 @@ describe("SampleBrowser", () => {
 
     const doc = services.store.getDoc();
     const nextBeatTick = (Math.floor(services.transport.position / PPQ) + 1) * PPQ;
-    const targetBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, nextBeatTick, doc.bpm);
+    const targetBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, nextBeatTick, doc.bpm, ticksPerBar(doc));
     expect(services.engine.previewAssetSynced).toHaveBeenCalledWith(loopA.id, targetBpm / loopA.bpm!, true);
   });
 

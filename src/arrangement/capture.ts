@@ -7,7 +7,7 @@ import {
   type CapturedArrangementAudioClip,
   type CapturedArrangementClip,
 } from "../commands/commands";
-import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
+import { STEP_TICKS } from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
 import type { AudioClip, NoteEvent, ProjectDocument } from "../project-model/types";
 import { sceneSecondsToBars, tempoAtTick } from "../project-model/scene-time";
@@ -333,7 +333,7 @@ export class ArrangementCaptureController {
           runtime.stopLivePadVoice(current.voiceId, boundary.audioTime);
           this.notify();
         });
-        this.lastMessage = `Queued ${pad.name} to stop at bar ${Math.floor(stopTick / BAR_TICKS) + 1}.`;
+        this.lastMessage = `Queued ${pad.name} to stop at bar ${Math.floor(stopTick / ticksPerBar(doc)) + 1}.`;
         this.notify();
         return this.lastMessage;
       }
@@ -359,7 +359,7 @@ export class ArrangementCaptureController {
     };
     this.livePadVoices.set(voiceId, state);
     this.scheduleLivePadStart(state);
-    this.lastMessage = `Queued ${pad.name} for bar ${Math.floor(startTick / BAR_TICKS) + 1}.`;
+    this.lastMessage = `Queued ${pad.name} for bar ${Math.floor(startTick / ticksPerBar(doc)) + 1}.`;
     this.notify();
     return this.lastMessage;
   };
@@ -372,7 +372,8 @@ export class ArrangementCaptureController {
   };
 
   private nextBarTick(currentTick: number): number {
-    return (Math.floor(Math.max(0, currentTick) / BAR_TICKS) + 1) * BAR_TICKS;
+    const barUnit = ticksPerBar(this.projectRef());
+    return (Math.floor(Math.max(0, currentTick) / barUnit) + 1) * barUnit;
   }
 
   private buildLivePadClip(state: LivePadVoiceState): {
@@ -391,8 +392,8 @@ export class ArrangementCaptureController {
     }
 
     const startTick = state.startTick;
-    const startBar = startTick / BAR_TICKS;
-    const targetBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, startTick, doc.bpm);
+    const startBar = startTick / ticksPerBar(doc);
+    const targetBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, startTick, doc.bpm, ticksPerBar(doc));
     const fit = pad.bpm ? fittedLoopPlacement(state.sourceDurationSec, pad.bpm, targetBpm, ticksPerBar(doc)) : null;
     const loop = pad.loop === true;
     const patch: CapturedArrangementAudioClip["patch"] = {
@@ -401,13 +402,13 @@ export class ArrangementCaptureController {
       liveSetId: set.id,
       livePadSlot: pad.slot,
     };
-    const effectiveBars = sceneSecondsToBars(state.sourceDurationSec * (fit?.rate ?? 1), targetBpm);
+    const effectiveBars = sceneSecondsToBars(state.sourceDurationSec * (fit?.rate ?? 1), targetBpm, ticksPerBar(doc));
     const lengthBars = loop ? Math.max(set.loopBars, fit?.lengthBars ?? 1) : Math.max(0.25, effectiveBars);
     const before = new Set((doc.arrangement.audioClips ?? []).map((clip) => clip.id));
     const next = addAudioClip(doc, state.trackId, pad.bufferId, startBar, lengthBars, patch).execute(doc);
     const created = (next.arrangement.audioClips ?? []).find((clip) => !before.has(clip.id));
     if (!created) throw new Error("Could not prepare the Live Pad audio source.");
-    const endTick = loop ? null : startTick + Math.max(1, Math.round(effectiveBars * BAR_TICKS));
+    const endTick = loop ? null : startTick + Math.max(1, Math.round(effectiveBars * ticksPerBar(doc)));
     return { clip: { ...created, id: state.voiceId, fadeIn: 0, fadeOut: 0 }, patch, endTick };
   }
 
@@ -442,7 +443,7 @@ export class ArrangementCaptureController {
           };
           this.capturedLivePads.push(state.interval);
         }
-        if (this.firstBar === null) this.firstBar = Math.floor(state.startTick / BAR_TICKS);
+        if (this.firstBar === null) this.firstBar = Math.floor(state.startTick / ticksPerBar(this.projectRef()));
         this.notify();
       } catch (error) {
         this.removeLivePadVoice(state, true, true);
@@ -520,8 +521,9 @@ export class ArrangementCaptureController {
   }
 
   recordSceneLaunch = (sceneId: string, currentTick: number): void => {
-    if (!this.capturing || !this.projectRef().scenes.some((scene) => scene.id === sceneId)) return;
-    const nextBar = Math.floor(Math.max(0, currentTick) / BAR_TICKS) + 1;
+    const doc = this.projectRef();
+    if (!this.capturing || !doc.scenes.some((scene) => scene.id === sceneId)) return;
+    const nextBar = Math.floor(Math.max(0, currentTick) / ticksPerBar(doc)) + 1;
     if (this.firstBar === null) this.firstBar = nextBar;
     const relativeBar = Math.max(0, nextBar - this.firstBar);
     const existing = this.launches.findIndex((launch) => launch.startBar === relativeBar);
@@ -538,8 +540,9 @@ export class ArrangementCaptureController {
     this.discardOrphanedLoopVoices(currentTick);
     this.pruneLivePadVoices(currentTick);
     this.closeLivePadPerformance(currentTick, false);
-    const originBar = this.firstBar ?? Math.floor((this.capturedLivePads[0]?.startTick ?? currentTick) / BAR_TICKS);
-    const currentBar = Math.floor(currentTick / BAR_TICKS);
+    const barUnit = ticksPerBar(this.projectRef());
+    const originBar = this.firstBar ?? Math.floor((this.capturedLivePads[0]?.startTick ?? currentTick) / barUnit);
+    const currentBar = Math.floor(currentTick / barUnit);
     const endBar = Math.max(1, currentBar - (this.firstBar ?? 0));
     const captured: CapturedArrangementClip[] = this.launches.map((launch, index) => ({
       sceneId: launch.sceneId,
@@ -558,8 +561,8 @@ export class ArrangementCaptureController {
         {
           trackId: interval.trackId,
           bufferId: interval.bufferId,
-          startBar: Math.max(0, (interval.startTick - originBar * BAR_TICKS) / BAR_TICKS),
-          lengthBars: Math.max(1 / BAR_TICKS, (endTick - interval.startTick) / BAR_TICKS),
+          startBar: Math.max(0, (interval.startTick - originBar * barUnit) / barUnit),
+          lengthBars: Math.max(1 / barUnit, (endTick - interval.startTick) / barUnit),
           patch: interval.patch,
         },
       ];

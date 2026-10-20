@@ -1,5 +1,3 @@
-import { BAR_TICKS } from "../project-model/types";
-
 /**
  * TIMELINE SNAP (arrangement surface).
  *
@@ -68,10 +66,17 @@ export function snapDelta(delta: number, bars: number | null): number {
   return snapBar(delta, bars);
 }
 
-/** Snap a tick value (ranges, markers) — grid in whole ticks. */
-export function snapTick(tick: number, bars: number | null): number {
+/**
+ * Snap a tick value (ranges, markers) — grid in whole ticks.
+ *
+ * `barUnitTicks` is the document's bar length in ticks (ADR 0056): the grid is
+ * a FRACTION OF A BAR ("1/16 bar"), so in 6/8 a 1/16-bar grid is 90 ticks, not
+ * 120. Reading the fraction against a fixed 4/4 bar snapped every position in
+ * a 6/8 project to a grid the ruler never drew.
+ */
+export function snapTick(tick: number, bars: number | null, barUnitTicks: number): number {
   if (bars === null || !(bars > 0) || !Number.isFinite(tick)) return tick;
-  const gridTicks = bars * BAR_TICKS;
+  const gridTicks = bars * barUnitTicks;
   return Math.round(tick / gridTicks) * gridTicks;
 }
 
