@@ -11,7 +11,10 @@ import path from "node:path";
  * baseline that costs about an hour to produce — the runner would have been able
  * to invalidate its own evidence without changing a single measurement.
  */
-export const HARNESS_SOURCES = [path.join("src", "plugin-audit-checks.ts")];
+export const HARNESS_SOURCES = [
+  path.join("src", "plugin-audit-checks.ts"),
+  path.join("src", "plugin-audit-audition.ts"),
+];
 
 /**
  * Fingerprint of the measuring code.

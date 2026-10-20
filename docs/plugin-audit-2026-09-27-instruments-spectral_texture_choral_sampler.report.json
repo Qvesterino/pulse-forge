@@ -1,0 +1,87 @@
+{
+  "effects": [],
+  "instruments": [
+    {
+      "kind": "sampler",
+      "name": "Sampler",
+      "defaultAudible": true,
+      "defaultPeak": 0.16107048094272614,
+      "unstableParams": [],
+      "deadParams": [
+        "decay",
+        "pitchDecayT",
+        "velFlt",
+        "loopXfade",
+        "loopStart",
+        "loopEnd",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 16,
+      "totalParams": 28,
+      "transientWired": []
+    },
+    {
+      "kind": "texture",
+      "name": "Texture Synth",
+      "defaultAudible": true,
+      "defaultPeak": 0.14167384803295135,
+      "unstableParams": [],
+      "deadParams": [
+        "space",
+        "hold",
+        "gate",
+        "diffuse",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 13,
+      "totalParams": 23,
+      "transientWired": []
+    },
+    {
+      "kind": "spectral",
+      "name": "Spectral Pad",
+      "defaultAudible": true,
+      "defaultPeak": 0.15030454099178314,
+      "unstableParams": [],
+      "deadParams": [
+        "resonance",
+        "motionRate",
+        "motionSync",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 13,
+      "totalParams": 22,
+      "transientWired": []
+    },
+    {
+      "kind": "choral",
+      "name": "CHORÁL",
+      "defaultAudible": true,
+      "defaultPeak": 0.45115476846694946,
+      "unstableParams": [],
+      "deadParams": [],
+      "wiredParams": 12,
+      "totalParams": 12,
+      "transientWired": []
+    }
+  ],
+  "interactions": null,
+  "harness": "6f84756bb6607ee8",
+  "startedAt": "2026-10-20T06:30:51.150Z",
+  "finishedAt": "2026-10-20T06:33:33.871Z"
+}

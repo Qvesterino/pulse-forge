@@ -1100,6 +1100,13 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
       const rt = INSTRUMENT_DEFS[kind].factory(ctx, track, { bpm: 124, getSample: (id) => bank.get(id) });
       rt.output.connect(ctx.destination);
       rt.noteOn(60, 0.9, 0.05, 0.5);
+      // The offline worklet path creates its AudioWorkletNode HERE, seeded with
+      // the queued note events through processorOptions — Chromium does not
+      // pump a worklet's message queue during an OfflineAudioContext render.
+      // The export renderer arms exactly this call (renderer.ts →
+      // AudioEngine.prepareOfflineRender), so the probe has to arm it too:
+      // without it the node never exists and the render is silence.
+      rt.prepareOfflineRender?.();
       const buffer = await ctx.startRendering();
       rt.dispose();
       return peakOf(buffer.getChannelData(0));
@@ -1107,13 +1114,13 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     const wtPeak = await offlineVoice("wavetable");
     const granPeak = await offlineVoice("granular");
     check(
-      "offline export parity: wavetable + granular render audible with worklets loaded (native offline routing)",
+      "offline export parity: wavetable + granular render audible with worklets loaded (offline worklet seeding)",
       wtPeak > 0.001 && granPeak > 0.001,
       `wavetable=${wtPeak.toFixed(4)} granular=${granPeak.toFixed(4)}`,
     );
   } catch (error) {
     check(
-      "offline export parity: wavetable + granular render audible with worklets loaded (native offline routing)",
+      "offline export parity: wavetable + granular render audible with worklets loaded (offline worklet seeding)",
       false,
       String(error),
     );
@@ -6805,6 +6812,13 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
       rt.output.connect(ctx.destination);
       rt.noteOn(60, 0.9, 0.05, 0.6);
       rt.noteOff?.(60, 0.65);
+      // The offline worklet path creates its AudioWorkletNode HERE and seeds
+      // the queued note events through processorOptions — Chromium does not
+      // pump a worklet's message queue during an OfflineAudioContext render.
+      // The export renderer arms exactly this call (renderer.ts →
+      // AudioEngine.prepareOfflineRender), so the probe has to arm it too:
+      // without it the node never exists and the render is silence.
+      rt.prepareOfflineRender?.();
       // Real exports yield between engine sync and startRendering — port
       // messages need a task-turn to reach the offline worklet.
       await new Promise((r) => setTimeout(r, 60));

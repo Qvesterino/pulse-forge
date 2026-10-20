@@ -46,7 +46,9 @@ const AUDITION_MODULE = process.env.KYX_AUDITION_MODULE ?? "../src/plugin-audit-
 const ENVELOPE_SOURCE = process.env.KYX_ENVELOPE_SOURCE ?? "src/instruments/envelope.ts";
 
 const { holdParamAt } = (await import(ENVELOPE_MODULE)) as typeof import("../src/instruments/envelope");
-const { auditionNoteSec, AUDITION_NOTE_SEC } = (await import(AUDITION_MODULE)) as typeof import("../src/plugin-audit-audition");
+const { auditionNoteSec, AUDITION_NOTE_SEC } = (await import(
+  AUDITION_MODULE
+)) as typeof import("../src/plugin-audit-audition");
 
 function instrumentSources(): string[] {
   return readdirSync(resolve(ROOT, INSTRUMENT_DIR))
