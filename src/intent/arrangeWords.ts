@@ -1,10 +1,5 @@
 import type { Command } from "../commands/types";
-import {
-  type ArrangementClip,
-  type ProjectDocument,
-  type Scene,
-  type SceneRole,
-} from "../project-model/types";
+import { type ArrangementClip, type ProjectDocument, type Scene, type SceneRole } from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
 import { effectWordIn } from "./mix";
 import {

@@ -55,6 +55,12 @@ import {
   type MixOverrides,
 } from "../intent/mix";
 import { applyParamIntent } from "../intent/param-intent";
+import {
+  clearAdjustmentLedger,
+  recordEffectAdjustment,
+  recordFaderAdjustment,
+  recordParamAdjustment,
+} from "../intent/adjustment-recording";
 import { transcribeTrack } from "../reference/transcribe";
 import { unsunoCommand } from "../reference/unsuno";
 import { restyleCommand } from "../reference/restyle";
@@ -1581,7 +1587,11 @@ export const MCP_TOOLS: McpToolDef[] = [
           maximum: 12,
           description: "For op:trim — output-trim delta in dB (e.g. target LUFS minus measured LUFS)",
         },
-        instance: { type: "number", description: "1-based ZENIT instance index when a track carries more than one" },
+        instance: {
+          type: "integer",
+          minimum: 1,
+          description: "1-based ZENIT instance index when a track carries more than one",
+        },
       },
       required: ["op"],
     },
@@ -2330,6 +2340,17 @@ function dryRunContext(ctx: McpToolContext): { ctx: McpToolContext; applied: () 
   };
 }
 
+const INSTANCE_INDEXED_MCP_TOOLS = new Set(["kyx_fx", "kyx_plugin_param", "kyx_automation", "kyx_master"]);
+
+function invalidInstanceIndexMessage(name: string, args: unknown): string | null {
+  if (!INSTANCE_INDEXED_MCP_TOOLS.has(name) || args == null || typeof args !== "object") return null;
+  const record = args as Record<string, unknown>;
+  if (!Object.prototype.hasOwnProperty.call(record, "instance")) return null;
+  const instance = record.instance;
+  if (typeof instance === "number" && Number.isSafeInteger(instance) && instance >= 1) return null;
+  return "instance must be a positive 1-based integer";
+}
+
 export async function executeMcpTool(ctx: McpToolContext, name: string, args: unknown): Promise<McpToolResult> {
   const envelope = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
   const requestId = typeof envelope.requestId === "string" ? envelope.requestId.trim().slice(0, 128) : "";
@@ -2387,6 +2408,24 @@ async function executeMcpToolCore(
   const risk = toolRisk(name);
   const depth = mcpCallDepth;
   const summary = summarizeToolArgs(args);
+  const invalidInstanceIndex = invalidInstanceIndexMessage(name, args);
+  if (invalidInstanceIndex !== null) {
+    const doc = ctx.getDoc();
+    completeAgentCall({
+      agent,
+      tool: name,
+      risk,
+      depth,
+      mutated: false,
+      isError: true,
+      errorCode: "INVALID_ARGUMENTS",
+      durationMs: 0,
+      docId: doc.id,
+      docName: doc.name,
+      ...(summary !== "" ? { summary } : {}),
+    });
+    return mcpError("INVALID_ARGUMENTS", invalidInstanceIndex);
+  }
   // P2-C DRY-RUN (control-surface audit 2026-10-13, GAP-11): `dryRun: true`
   // executes the tool's FULL logic against a SANDBOX context — validation,
   // resolution and command construction run for real, but `ctx.execute`
@@ -2538,6 +2577,9 @@ ${preview.text}`,
   // its original line (the cache stores the attributed result — the line
   // is appended exactly once per execution).
   if (result.mutated === true) {
+    // Any non-intent mutation supersedes the remembered fader move; the intent
+    // path records/clears itself, and kyx_undo clears when it actually moves.
+    if (name !== "kyx_intent" && name !== "kyx_undo") clearAdjustmentLedger();
     const doc = ctx.getDoc();
     result.text = `${result.text}\nmutated on ${ctx.agentId ? `${ctx.agentId} · ` : ""}document "${doc.name}" (id ${doc.id})`;
     result.docId = doc.id;
@@ -2674,6 +2716,8 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         // state — report exactly how far it got (audit re-run).
         failure = error instanceof Error ? error.message : String(error);
       }
+      // The move a prior-delta reference points at is no longer applied.
+      if (done > 0) clearAdjustmentLedger();
       let text = `${action} ×${done}`;
       if (failure) text += ` — step failed after ${done}: ${failure}`;
       if (done > 0 && reverted.length > 0) {
@@ -6004,8 +6048,9 @@ function zenitInstancesOf(doc: ProjectDocument, trackId: string): { id: string }
 function pickZenitInstance(doc: ProjectDocument, trackId: string, record: Record<string, unknown>): string | null {
   const instances = zenitInstancesOf(doc, trackId);
   if (instances.length === 0) return null;
-  const index = Math.max(1, Math.round(Number(record.instance ?? 1))) - 1;
-  return instances[Math.min(index, instances.length - 1)]?.id ?? null;
+  const requested = record.instance ?? 1;
+  if (typeof requested !== "number" || !Number.isSafeInteger(requested) || requested < 1) return null;
+  return instances[requested - 1]?.id ?? null;
 }
 
 function masterSignalFlowStatus(doc: ProjectDocument): string[] {
@@ -6365,6 +6410,12 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
       const shape = plan.find((entry) => entry.stem === stem)!;
       let fxId = pickZenitInstance(next, id, record);
       if (!fxId) {
+        if (record.instance != null) {
+          return mcpError(
+            "INVALID_ARGUMENTS",
+            `${track.name}: ZENIT instance #${String(record.instance)} does not exist`,
+          );
+        }
         next = addEffectToTracks(next, [id], "zenit").execute(next);
         const created = next.tracks
           .find((t) => t.id === id)!
@@ -6697,6 +6748,12 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
           continue;
         }
         if (!fxId) {
+          if (step.device === "zenit" && record.instance != null) {
+            return mcpError(
+              "INVALID_ARGUMENTS",
+              `${track.name}: ZENIT instance #${String(record.instance)} does not exist`,
+            );
+          }
           if (record.insert !== true) {
             return {
               text: `${track.name}: ${step.device} not inserted — pass insert:true to let assist add missing devices`,
@@ -6737,7 +6794,15 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
   for (const id of ids) {
     const track = doc.tracks.find((t) => t.id === id)!;
     const fxId = pickZenitInstance(doc, id, record);
-    if (!fxId) return { text: `${track.name} carries no ZENIT instance — op:add first`, mutated: false };
+    if (!fxId) {
+      if (record.instance != null) {
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          `${track.name}: ZENIT instance #${String(record.instance)} does not exist`,
+        );
+      }
+      return { text: `${track.name} carries no ZENIT instance — op:add first`, mutated: false };
+    }
     targets.push({ trackId: id, trackName: track.name, fxId });
   }
 
@@ -7226,6 +7291,18 @@ function executeIntentTool(ctx: McpToolContext, instruction: string): McpToolRes
  * model fallback land here, so the destructive gate, the UI-local refusals
  * and the verification read-back apply to BOTH brains identically. */
 function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolResult {
+  // The prior-adjustment ledger is session-scoped and invalidated by any
+  // other mutation / generation / undo; the three recordable routes re-record
+  // after their command lands.
+  if (
+    route.kind !== "fader" &&
+    route.kind !== "paramIntent" &&
+    route.kind !== "effectIntent" &&
+    route.kind !== "clarify" &&
+    route.kind !== "queryIntent"
+  ) {
+    clearAdjustmentLedger();
+  }
   // Generation kinds are proposals, not commands — honest refusal over MCP
   // (candidates need in-app auditioning).
   if (route.kind === "pattern" || route.kind === "revise") {
@@ -7331,6 +7408,9 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
       return { text: "intent understood but nothing changed (already matches or no target)", mutated: false };
     }
     ctx.execute(command);
+    if (route.kind === "fader") recordFaderAdjustment(before.id, route.intent, before, ctx.getDoc());
+    else if (route.kind === "effectIntent") recordEffectAdjustment(before.id, route.intent, before, ctx.getDoc());
+    else if (route.kind === "paramIntent") recordParamAdjustment(before.id, route.intent, before, ctx.getDoc());
     const extra = route.kind === "production" ? ` — ${productionReadback(before, ctx.getDoc(), route.intent)}` : "";
     return { text: `${command.label}${extra} — verification: applied, one undo step in KYX`, mutated: true };
   } catch (error) {

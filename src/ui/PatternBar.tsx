@@ -19,6 +19,7 @@ import {
 } from "../commands/commands";
 import type { PatternClipboard } from "../commands/commands";
 import { grooveOf, GRID_8TH, GRID_16TH, GRID_32ND } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { DragNumber } from "./controls";
 // F2 eager diet: the dialog mounts its intent-generation graph — load it
 // when the user opens it, not with the pattern bar at boot.

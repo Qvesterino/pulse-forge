@@ -200,3 +200,29 @@ describe("applyParamIntent", () => {
     expect(readback).toMatch(/s/);
   });
 });
+
+/**
+ * P1 — a fully-resolved PARAMETER with no track must ask for the track, not
+ * fall through to pattern generation (which replaces the song).
+ */
+describe("param ask with no track — target clarification", () => {
+  it("offers executable track-completed sentences", () => {
+    const doc = testDoc();
+    const route = routeIntentText("make the reverb tail a little longer", doc);
+    expect(route.kind).toBe("clarify");
+    if (route.kind !== "clarify") return;
+    expect(route.reason).toBe("param-target");
+    expect(route.suggestions.length).toBeGreaterThan(0);
+    for (const suggestion of route.suggestions) {
+      const parsed = parseParamIntent(suggestion);
+      expect(parsed, suggestion).not.toBeNull();
+      expect(parsed!.degree?.level, suggestion).toBe(3);
+      expect(parsed!.targets.length, suggestion).toBeGreaterThan(0);
+    }
+  });
+
+  it("the same ask WITH a track still parses normally", () => {
+    expect(parseParamIntent("make the reverb tail a little longer on the lead")).not.toBeNull();
+    expect(routeIntentText("make the reverb tail a little longer on the lead", testDoc()).kind).toBe("paramIntent");
+  });
+});

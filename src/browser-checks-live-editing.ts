@@ -19,7 +19,8 @@ import {
   updateAudioClip,
 } from "./commands/commands";
 import type { AudioClip, ProjectDocument } from "./project-model/types";
-import { BAR_TICKS, PPQ } from "./project-model/types";
+import { PPQ } from "./project-model/types";
+import { ticksPerBar } from "./project-model/schema";
 
 /**
  * LIVE EDITING PASS — edit-the-timeline-while-it-plays, verified by EAR.
@@ -299,7 +300,7 @@ export async function runLiveEditingChecks(onProgress?: (message: string) => voi
         transport.play(0, { leadIn: false });
         playLive();
         await waitUntilAudioTime(ctx, t0 + 1.0);
-        seekLive(2 * BAR_TICKS); // bar 2 — the clip's temporal middle
+        seekLive(2 * ticksPerBar(store.doc)); // bar 2 — the clip's temporal middle
       }, 4.5);
       if (!shape) throw new Error("recorder produced no take");
       const tailAudible = shape.tailRms > AUDIBLE_RMS;
@@ -341,7 +342,7 @@ export async function runLiveEditingChecks(onProgress?: (message: string) => voi
         await waitUntilAudioTime(ctx, t0 + 1.5);
         store.execute(moveAudioClip(store.doc, clipId, 8)); // out from under the playhead
         await waitUntilAudioTime(ctx, t0 + 3.0);
-        seekLive(9 * BAR_TICKS); // into the clip's new body (bars 8..12)
+        seekLive(9 * ticksPerBar(store.doc)); // into the clip's new body (bars 8..12)
       }, 6.0);
       if (!shape) throw new Error("recorder produced no take");
       const gapExists = shape.longestSilentGapSec >= 0.8; // died at the old spot
@@ -408,7 +409,7 @@ export async function runLiveEditingChecks(onProgress?: (message: string) => voi
           () => store.redo(),
           () => {
             const c = liveClip();
-            store.execute(splitAudioClipAtTick(store.doc, c.id, c.startBar * BAR_TICKS + 960, 8));
+            store.execute(splitAudioClipAtTick(store.doc, c.id, c.startBar * ticksPerBar(store.doc) + 960, 8));
           },
           () => store.undo(),
           () => store.undo(),

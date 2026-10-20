@@ -718,6 +718,15 @@
       "seamEvent": "fireEvent.keyDown(document.body, { key: \"Tab\" })",
       "negativeSpec": "does not let an unselected audio clip hijack Tab track navigation",
       "note": "An audio clip elsewhere in the project must not consume Tab; transient navigation only applies when an audio clip is selected."
+    },
+    {
+      "id": "intent-decline-prior-delta-and-description",
+      "status": "COVERED",
+      "entryPoint": "src/intent/route.ts:706 routeIntentText",
+      "spec": "tests/intent-degree.test.ts",
+      "seamEvent": "routeIntentText(\"no, half that adjustment\"",
+      "negativeSpec": "the router declines and no mutation parser claims them",
+      "note": "P0/P1 semantic-precision audit 2026-10-20: descriptive statements and unresolvable prior-delta references enter the real router and are asserted to decline without mutation. Prior-delta references resolve through the session ledger only when a measured fader move exists; project switch, undo and any other mutation invalidate it."
     }
   ]
 }

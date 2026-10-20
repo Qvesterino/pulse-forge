@@ -40,6 +40,8 @@ import { testDoc } from "./fixtures/doc";
 const DECLINE_BATTERY: ReadonlyArray<readonly [string, string]> = [
   ["turn down the drums and don't touch the bass", "negated-mutation-command"],
   ["no, half that adjustment", "last-adjustment-reference"],
+  ["the bass is quieter than the lead", "descriptive-not-a-command"],
+  ["make the reverb tail a little longer", "param-target"],
   ["should I lower the snare?", "hypothetical-action-question"],
   ["mute the bass but keep it audible", "conflicting-actions"],
   ["pan the bass left and right", "conflicting-pan-directions"],

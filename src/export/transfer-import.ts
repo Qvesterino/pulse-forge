@@ -6,14 +6,14 @@ import { assertAudioImportSize, isAudioImportFile, MAX_AUDIO_IMPORT_BYTES } from
 import {
   MAX_ARRANGEMENT_CLIP_BARS,
   MAX_ARRANGEMENT_CLIP_TICKS,
-  arrangementGridMatchesMeter,
   createGroupTrackModel,
   createInstrumentTrackModel,
   normalizeProject,
+  patternGridIsOneBar,
   ticksPerBarFor,
 } from "../project-model/schema";
 import {
-  BAR_TICKS,
+  PATTERN_TICKS,
   STEP_TICKS,
   type InstrumentTrack,
   type Pattern,
@@ -486,22 +486,46 @@ export function midiImportWarnings(parsed: ParsedMidi | null): string[] {
 }
 
 /**
- * The arrangement grid is 4/4 — four quarter notes per bar — whatever meter
- * the document declares (ADR 0056). A non-4/4 meter therefore desynchronizes
- * the ruler, the clip grid and the loop regions from the metronome and the bar
- * readout, so the transfer dialog has to say so BEFORE the song is imported
- * rather than shipping a project that quietly disagrees with itself.
+ * The ARRANGEMENT now follows the document's meter (ADR 0056 Stage 2): the
+ * ruler, clip placement, loop regions, the metronome and the bar readouts all
+ * measure the metrical bar, so there is no grid mismatch left to disclose.
  *
- * `null` when the meter and the arrangement grid agree (4/4, 2/2, 8/8).
+ * The one unit that did NOT move is the PATTERN grid: a pattern is 16 sixteenth
+ * steps — four quarter notes, `PATTERN_TICKS` — whatever the meter declares. In
+ * 6/8 one pattern is 1.33 bars long, so the pattern's downbeat reaches the bar
+ * line only every fourth bar and is a quarter note late in between. That is
+ * measured, not assumed (see `tests/adr0056-pattern-grid.test.ts`), and the
+ * dialog discloses it BEFORE the song is imported rather than shipping a
+ * project whose grooves quietly drift against its own ruler.
+ *
+ * `null` when one pattern is exactly one bar of the chosen meter (4/4, 2/2, 8/8).
  */
-export function arrangementGridWarning(sig: TimeSignature): string | null {
-  if (arrangementGridMatchesMeter(sig)) return null;
+export function patternGridWarning(sig: TimeSignature): string | null {
+  if (patternGridIsOneBar(sig)) return null;
+  const barTicks = ticksPerBarFor(sig);
+  const patternTicks = PATTERN_TICKS;
+  // How many bars one pattern spans (fractional in 3/4 and 6/8).
+  const barsPerPattern = patternTicks / barTicks;
+  // How many bars pass between two pattern downbeats that land on a bar line.
+  const downbeatEveryBars = patternTicks / greatestCommonDivisor(patternTicks, barTicks);
   return (
-    `KYX's arrangement grid is 4/4 — every ruler bar, clip placement and loop region is ` +
-    `${BAR_TICKS} ticks (four quarter notes) — while the metronome and the bar readout follow the ` +
-    `${sig.numerator}/${sig.denominator} meter you chose (${ticksPerBarFor(sig)} ticks per bar). ` +
-    `The two grids do not line up: the click's downbeats will not fall on the arrangement's bar ` +
-    `lines, and imported audio lanes are measured in ${sig.numerator}/${sig.denominator} bars but ` +
-    `placed on the 4/4 grid.`
+    `KYX's arrangement follows your ${sig.numerator}/${sig.denominator} meter — every ruler bar, ` +
+    `clip placement and loop region is ${barTicks} ticks. But the 16-step pattern grid is fixed at ` +
+    `16 sixteenth notes (${patternTicks} ticks = four quarter notes) whatever the meter, so one ` +
+    `pattern spans ${barsPerPattern.toFixed(2)} bars of ${sig.numerator}/${sig.denominator} and a ` +
+    `pattern's downbeat reaches the bar line only every ${downbeatEveryBars} ` +
+    `${downbeatEveryBars === 1 ? "bar" : "bars"}. Making the step grid follow the meter is a ` +
+    `separate change that has not been made yet.`
   );
+}
+
+function greatestCommonDivisor(a: number, b: number): number {
+  let x = Math.abs(a);
+  let y = Math.abs(b);
+  while (y !== 0) {
+    const next = x % y;
+    x = y;
+    y = next;
+  }
+  return x || 1;
 }

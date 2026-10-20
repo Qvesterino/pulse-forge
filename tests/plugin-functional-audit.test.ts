@@ -32,7 +32,7 @@ import type { ProjectDocument } from "../src/project-model/types";
  * INTERNAL PLUGIN AUDIT (2026-09-27) — model-level half.
  *
  * Static + document-level functional verification of every internal plugin:
- * 47 effect types × all exposed params, 21 instrument kinds × all params.
+ * Every registered effect type × all exposed params, 21 instrument kinds × all params.
  * The real-audio half (bypass deltas, param responsiveness, NaN at extremes,
  * interactions) lives in src/plugin-audit-checks.ts, run by
  * scripts/verify-plugin-audit.mjs in a real browser.
@@ -169,7 +169,7 @@ function checkParamSurface(surface: string, params: ParamDef[]) {
 }
 
 describe("B. parameter metadata sanity", () => {
-  it("all 47 effect parameter surfaces are coherent", () => {
+  it("all registered effect parameter surfaces are coherent", () => {
     for (const type of ALL_EFFECT_TYPES) checkParamSurface(`fx:${type}`, EFFECT_META[type].params);
   });
 

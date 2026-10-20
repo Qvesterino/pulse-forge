@@ -16,7 +16,6 @@ import type {
   ProjectDocument,
   SceneRole,
 } from "../project-model/types";
-import { BAR_TICKS } from "../project-model/types";
 import {
   clampArrangementTransitionType,
   MAX_ARRANGEMENT_CLIP_BARS,
@@ -282,7 +281,7 @@ export function autoArrangeSong(doc: ProjectDocument, targetBars?: number): Comm
         id: uid("marker"),
         name: slot.marker.name,
         type: slot.marker.type,
-        tick: bar * BAR_TICKS,
+        tick: bar * ticksPerBar(doc),
         linkedClipId: clip.id,
       });
     }

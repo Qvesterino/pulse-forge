@@ -5,11 +5,11 @@ import { UserSampleRepository } from "../persistence/UserSampleRepository";
 import { importAudioFile } from "./sample-import";
 import { uid } from "../shared/ids";
 import {
-  arrangementGridWarning,
   buildTransferProject,
   defaultTransferTrackName,
   inspectTransferFiles,
   midiImportWarnings,
+  patternGridWarning,
   type TransferInspection,
   type TransferSourceDaw,
 } from "../export/transfer-import";
@@ -122,7 +122,7 @@ export function TransferImportDialog({ core, onCancel, onImported }: TransferImp
       : ![1, 2, 4, 8, 16, 32].includes(denominator)
         ? "Choose a supported beat unit: 1, 2, 4, 8, 16 or 32."
         : null;
-  const gridWarning = meterError === null ? arrangementGridWarning({ numerator, denominator }) : null;
+  const gridWarning = meterError === null ? patternGridWarning({ numerator, denominator }) : null;
   const warnings = [
     ...new Set([
       ...(inspection?.warnings ?? []),

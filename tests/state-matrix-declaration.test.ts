@@ -119,6 +119,13 @@ const blank = (over: Partial<StateReading> = {}): StateReading => ({
   borderAccent: null,
   borderAccentCount: 0,
   borderAccentSample: null,
+  contrast: null,
+  compositedBackground: null,
+  backgroundResolved: false,
+  backgroundNote: null,
+  contrastFloor: 4.5,
+  largeText: false,
+  pixelContrast: null,
   ...over,
 });
 

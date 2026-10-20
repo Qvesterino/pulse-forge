@@ -200,6 +200,9 @@ describe("PreviewDeck (Wave 4c)", () => {
     };
     const doc = {
       bpm: 120,
+      // The deck measures the preview delay in the document's meter (ADR 0056),
+      // so a valid document carries a meter.
+      timeSignature: { numerator: 4, denominator: 4 },
       arrangement: { clips: [{ sceneId: "slow-scene", startBar: 0, lengthBars: 4 }] },
       scenes: [{ id: "slow-scene", bpm: 60 }],
     } as unknown as ProjectDocument;
@@ -233,6 +236,7 @@ describe("PreviewDeck (Wave 4c)", () => {
     };
     const doc = {
       bpm: 120,
+      timeSignature: { numerator: 4, denominator: 4 },
       arrangement: { clips: [] },
       scenes: [],
     } as unknown as ProjectDocument;

@@ -79,6 +79,12 @@ import { buildTheatrePlan, stageLabel, type TheatreRun } from "../intent/produce
 import { personaBySlug } from "../intent/producer-personas";
 import { mutateBeat } from "../gallery/lineage";
 import { applyFaderIntent, applyTempoIntent, faderReadback } from "../intent/conversation";
+import {
+  clearAdjustmentLedger,
+  recordEffectAdjustment,
+  recordFaderAdjustment,
+  recordParamAdjustment,
+} from "../intent/adjustment-recording";
 import { applyCompoundIntent, compoundReadback } from "../intent/compound";
 import {
   applyAutomateIntent,
@@ -208,7 +214,7 @@ import type { IntentModelState } from "../intent/model-loader-types";
 import { normalizeIntent } from "../intent/normalize";
 import type { IntentInput } from "../intent/types";
 import type { NoteEvent } from "../project-model/types";
-import { BAR_TICKS, PPQ } from "../project-model/types";
+import { PPQ } from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
 import { rankerMode } from "../ai/ranking/ranker-client";
 import { playAuditionBuffer, renderAuditionBuffer, renderSongAuditionBuffer, stopAudition } from "../intent/audition";
@@ -489,9 +495,11 @@ function selectedClipEditPreviewLines(doc: ProjectDocument, clip: ArrangementCli
 function selectedRangeEditDescription(
   range: { fromTick: number; toTick: number },
   operation: SelectedTimeRangeOperation,
+  /** The document's bar length in ticks (ADR 0056). */
+  barUnitTicks: number,
 ): string {
-  const fromBar = Math.min(range.fromTick, range.toTick) / BAR_TICKS;
-  const toBar = Math.max(range.fromTick, range.toTick) / BAR_TICKS;
+  const fromBar = Math.min(range.fromTick, range.toTick) / barUnitTicks;
+  const toBar = Math.max(range.fromTick, range.toTick) / barUnitTicks;
   const count = toBar - fromBar;
   return operation === "duplicate"
     ? `Duplicate bars ${fromBar + 1}–${toBar} (${count} bars), including musical and audio clips, markers, pattern notes, and drum steps; shift later clips/markers.`
@@ -4082,6 +4090,19 @@ export function IntentPanel() {
         });
       preRoutedRef.current = null;
       executedRoute = route;
+      // Prior-delta references ("half that adjustment") are session-scoped:
+      // any OTHER mutation, a new generation, an undo/redo or a project switch
+      // makes the remembered move stale. Clear before dispatch, then the three
+      // recordable routes write the new record after their command lands.
+      if (
+        route.kind !== "fader" &&
+        route.kind !== "paramIntent" &&
+        route.kind !== "effectIntent" &&
+        route.kind !== "clarify" &&
+        route.kind !== "queryIntent"
+      ) {
+        clearAdjustmentLedger();
+      }
       if (route.kind === "revise" && rejectUnresolvedBriefConflicts()) return;
       if (lastGeneration() && resolveProducerFollowUp(source, lastGeneration()?.intent ?? null)) {
         const followUp = resolveProducerFollowUp(source, lastGeneration()?.intent ?? null)!;
@@ -4418,7 +4439,7 @@ export function IntentPanel() {
           source,
           range: { ...route.range },
           operation,
-          description: selectedRangeEditDescription(route.range, operation),
+          description: selectedRangeEditDescription(route.range, operation, ticksPerBar(doc)),
         });
         setStatus("Range preview ready — inspect the source and destination, then apply or cancel.");
       } else if (route.kind === "stepEditIntent") {
@@ -4550,6 +4571,7 @@ export function IntentPanel() {
         try {
           const command = applyParamIntent(doc, route.intent);
           services.store.execute(command);
+          recordParamAdjustment(doc.id, route.intent, doc, services.store.getDoc());
           const readback = paramReadback(doc, services.store.getDoc(), route.intent);
           setStatus(`⚡ ${route.intent.detected.join(" · ")}${readback ? ` — ${readback}` : ""} (one undo step)`);
           const afterDoc = services.store.getDoc();
@@ -4581,6 +4603,7 @@ export function IntentPanel() {
         stopAudition();
         const command = applyEffectIntent(doc, route.intent);
         services.store.execute(command);
+        recordEffectAdjustment(doc.id, route.intent, doc, services.store.getDoc());
         const readback = effectReadback(doc, services.store.getDoc(), route.intent);
         setStatus(`⚡ ${route.intent.detected.join(" · ")}${readback ? ` — ${readback}` : ""}${checkpointNote}`);
       } else if (route.kind === "sendIntent") {
@@ -4628,6 +4651,7 @@ export function IntentPanel() {
           return;
         }
         services.store.execute(command);
+        recordFaderAdjustment(doc.id, route.intent, doc, services.store.getDoc());
         const readback = faderReadback(doc, services.store.getDoc(), route.intent);
         setStatus(`${command.label}${readback ? ` — ${readback}` : ""} (one undo step)`);
       } else if (route.kind === "compound") {

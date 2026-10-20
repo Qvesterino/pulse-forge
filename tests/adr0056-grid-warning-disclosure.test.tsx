@@ -4,7 +4,7 @@
  * The first cut of ADR 0056 wired the grid warning into the transfer dialog, but gated it on
  * `inspection`:
  *
- *     const gridWarning = inspection ? arrangementGridWarning({ numerator, denominator }) : null;
+ *     const gridWarning = inspection ? patternGridWarning({ numerator, denominator }) : null;
  *
  * The meter control is live from the moment the dialog opens and is not gated on anything, so the
  * reachable sequence was: open the dialog, set 3/4, and the dialog says NOTHING about the grid it
@@ -17,17 +17,19 @@
  * The mismatch is a property of the live meter state, not of the inspected files. Gating it on
  * the inspection made the disclosure depend on a fact that has nothing to do with it.
  *
- * The fix is one line and it deliberately does NOT touch the ~370 bar-to-tick conversions the ADR
- * counts: the arrangement grid stays 4/4, and the dialog says so instead of the grid being made
- * to follow the meter. That is Stage 2 and Stage 3 of the ADR, and this is Stage 1.
+ * Stage 2 changed WHICH grid the disclosure is about. The arrangement now follows the meter
+ * (ruler, placement, loop regions, metronome, readouts), so the old "the arrangement grid is
+ * 4/4" text became false. The unit that did NOT move is the PATTERN grid: a pattern is 16
+ * sixteenth steps whatever the meter declares, so in 6/8 a groove's downbeat drifts against the
+ * ruler. The disclosure now says that — before the meter is committed, as before.
  */
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { CoreServices } from "../src/services";
 import { TransferImportDialog } from "../src/ui/TransferImportDialog";
-import { BAR_TICKS } from "../src/project-model/types";
+import { PATTERN_TICKS } from "../src/project-model/types";
 
-const GRID_WARNING = /arrangement grid is 4\/4/i;
+const GRID_WARNING = /16-step pattern grid is fixed/i;
 
 function renderDialog(): { container: HTMLElement } {
   const core = { repo: { save: vi.fn() }, bank: { remove: vi.fn() }, engine: {} } as unknown as CoreServices;
@@ -47,7 +49,7 @@ describe("ADR 0056 — the grid is disclosed before the meter is committed", () 
     // It has to name BOTH tick lengths, or it does not tell the user what the disagreement is.
     expect(warning.textContent).toContain("3/4");
     expect(warning.textContent).toContain("1440"); // the 3/4 bar
-    expect(warning.textContent).toContain(String(BAR_TICKS)); // 1920 — the arrangement grid
+    expect(warning.textContent).toContain(String(PATTERN_TICKS)); // 1920 — the pattern grid
   });
 
   it("a non-4/4 BEAT UNIT says it too", async () => {
@@ -60,7 +62,7 @@ describe("ADR 0056 — the grid is disclosed before the meter is committed", () 
 
     const warning = await screen.findByText(GRID_WARNING);
     expect(warning.textContent).toContain("6/8");
-    expect(warning.textContent).toContain(String(BAR_TICKS));
+    expect(warning.textContent).toContain(String(PATTERN_TICKS));
   });
 
   it("NEGATIVE CONTROL: 4/4 with no file chosen says nothing", () => {
@@ -71,7 +73,7 @@ describe("ADR 0056 — the grid is disclosed before the meter is committed", () 
   });
 
   it("NEGATIVE CONTROL: 2/2 and 8/8 match the grid and say nothing", () => {
-    // A meter matches the 4/4 grid when one bar spans four quarter notes — 2/2 and 8/8 do.
+    // A meter matches the pattern grid when one bar spans four quarter notes — 2/2 and 8/8 do.
     for (const [num, den] of [
       [2, 2],
       [8, 8],

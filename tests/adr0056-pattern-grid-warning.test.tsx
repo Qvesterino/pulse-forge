@@ -1,7 +1,11 @@
 /**
- * ADR 0056 — the arrangement grid is 4/4 whatever meter the document declares,
- * so every surface that can pick a non-4/4 meter has to DISCLOSE the mismatch
- * before the user commits to it.
+ * ADR 0056 — the PATTERN grid is the grid that does not follow the meter.
+ *
+ * Stage 2 moved the arrangement onto the document's meter. The one unit that
+ * stayed put is the 16-step PATTERN grid: a pattern is 16 sixteenth steps
+ * (`PATTERN_TICKS` = four quarter notes) whatever the meter declares, so in
+ * 6/8 one pattern is 1.33 bars long and its downbeat reaches the bar line only
+ * every fourth bar.
  *
  * These specs are the gate for that disclosure. The 4/4 case is the negative
  * control and it is not optional: a dialog that warned on 4/4 too would train
@@ -14,10 +18,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { CoreServices } from "../src/services";
-import { arrangementGridMatchesMeter, ticksPerBar, ticksPerBarFor } from "../src/project-model/schema";
+import { patternGridIsOneBar, ticksPerBar, ticksPerBarFor } from "../src/project-model/schema";
 import { createProjectFromTemplate } from "../src/project-model/templates";
-import { BAR_TICKS } from "../src/project-model/types";
-import { arrangementGridWarning } from "../src/export/transfer-import";
+import { PATTERN_TICKS } from "../src/project-model/types";
+import { patternGridWarning } from "../src/export/transfer-import";
 import { writeMidiFile } from "../src/midi/midiFile";
 import { TransferImportDialog } from "../src/ui/TransferImportDialog";
 
@@ -30,7 +34,7 @@ vi.mock("../src/persistence/UserSampleRepository", () => ({
   },
 }));
 
-const GRID_WARNING = /arrangement grid is 4\/4/i;
+const GRID_WARNING = /16-step pattern grid is fixed/i;
 
 function midiFile(sig?: { num: number; den: number }): File {
   const bytes = writeMidiFile({
@@ -57,19 +61,19 @@ function renderDialog(): { container: HTMLElement } {
   return { container };
 }
 
-describe("ADR 0056 — bar length: the meter is musical, the arrangement grid is 4/4", () => {
+describe("ADR 0056 — the meter is musical; the PATTERN grid stays 16 steps", () => {
   beforeEach(() => {
     importAudioFileMock.mockReset();
     removeSampleMock.mockClear();
   });
 
-  it("a meter matches the 4/4 grid exactly when one bar spans four quarter notes", () => {
+  it("a meter is one-pattern-per-bar exactly when one bar spans four quarter notes", () => {
     for (const sig of [
       { numerator: 4, denominator: 4 },
       { numerator: 2, denominator: 2 },
       { numerator: 8, denominator: 8 },
     ]) {
-      expect(arrangementGridMatchesMeter(sig)).toBe(true);
+      expect(patternGridIsOneBar(sig)).toBe(true);
     }
     for (const sig of [
       { numerator: 3, denominator: 4 },
@@ -78,7 +82,7 @@ describe("ADR 0056 — bar length: the meter is musical, the arrangement grid is
       { numerator: 12, denominator: 8 },
       { numerator: 2, denominator: 4 },
     ]) {
-      expect(arrangementGridMatchesMeter(sig)).toBe(false);
+      expect(patternGridIsOneBar(sig)).toBe(false);
     }
   });
 
@@ -86,17 +90,29 @@ describe("ADR 0056 — bar length: the meter is musical, the arrangement grid is
     const doc = { ...createProjectFromTemplate("house"), timeSignature: { numerator: 6, denominator: 8 } };
     expect(ticksPerBar(doc)).toBe(ticksPerBarFor(doc.timeSignature));
     expect(ticksPerBar(doc)).toBe(1440);
-    expect(ticksPerBarFor({ numerator: 4, denominator: 4 })).toBe(BAR_TICKS);
+    expect(ticksPerBarFor({ numerator: 4, denominator: 4 })).toBe(PATTERN_TICKS);
   });
 
   it("the warning names BOTH tick lengths and stays silent on 4/4", () => {
-    expect(arrangementGridWarning({ numerator: 4, denominator: 4 })).toBeNull();
+    expect(patternGridWarning({ numerator: 4, denominator: 4 })).toBeNull();
 
-    const warning = arrangementGridWarning({ numerator: 6, denominator: 8 });
+    const warning = patternGridWarning({ numerator: 6, denominator: 8 });
     expect(warning).not.toBeNull();
     expect(warning).toContain("6/8");
-    expect(warning).toContain(String(BAR_TICKS)); // 1920 — the arrangement grid
+    expect(warning).toContain(String(PATTERN_TICKS)); // 1920 — the pattern grid
     expect(warning).toContain("1440"); // the 6/8 bar
+    // The arrangement part of the sentence must now say the arrangement FOLLOWS
+    // the meter — the old text claimed the opposite and became false.
+    expect(warning).toContain("arrangement follows your 6/8 meter");
+    expect(warning).not.toContain("arrangement grid is 4/4");
+  });
+
+  it("quotes the measured drift: how long a pattern is, and how often it reaches the bar", () => {
+    const warning = patternGridWarning({ numerator: 6, denominator: 8 })!;
+    // One 1920-tick pattern in a 1440-tick bar is 1.33 bars long…
+    expect(warning).toContain("1.33 bars");
+    // …and it reaches the bar line only every fourth bar.
+    expect(warning).toContain("every 4 bars");
   });
 
   it("a 6/8 MIDI pre-fills the meter, raises the grid warning and holds the import until it is acknowledged", async () => {

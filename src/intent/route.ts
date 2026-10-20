@@ -19,7 +19,7 @@ import {
   parseBypassIntent,
   TARGET_WORDS,
 } from "./mix";
-import { parseParamIntent, type ParamIntent } from "./param-intent";
+import { declinedParamIntentClarification, parseParamIntent, type ParamIntent } from "./param-intent";
 import { parseLoudnessIntent } from "./loudness";
 import {
   parseFaderIntent,
@@ -71,7 +71,9 @@ import { parsePresetIntent, type PresetIntent } from "./preset-intent";
 import { typoCorrections } from "./typo";
 import { parseSectionRequests } from "./sections";
 import { parseSelectedStepIntent, type SelectedStepIntent } from "../assist/selected-step-intent";
-import { isPriorDeltaReference, stripPriorDeltaReference } from "./reference-delta";
+import { stripPriorDeltaReference } from "./reference-delta";
+import { isDescriptiveStatement } from "./declarative";
+import { resolvePriorAdjustment } from "./prior-adjustment";
 
 /**
  * Mix-intent vocabulary (INTENT_ENGINE.md D1): words that mean "change the
@@ -511,22 +513,19 @@ function ambiguousSendReturnChoices(text: string, doc: ProjectDocument): IntentC
 }
 
 /**
- * PRIOR-DELTA DECLINE — "a little less than last time", "half that
- * adjustment", "do the same on track two".
+ * PRIOR-DELTA DECLINE — the fallback when the ledger cannot answer.
  *
- * These asks need the magnitude (and sometimes the target) of an EARLIER
- * command. The engine does not persist that ledger yet, so there are exactly
- * two honest outcomes: clarify, or silently guess. Before this guard the fader
- * parser silently guessed the phrase's own step ("…a little less than last
- * time" applied a level-3 step), and the correction/reuse forms fell through
- * to PATTERN GENERATION, which replaces the song.
+ * "a little less than last time", "half that adjustment" and "do the same on
+ * track two" are resolved by `resolvePriorAdjustment` when the last successful
+ * move is still known. When there is no usable record (fresh session, project
+ * switch, undo, deleted target) the honest answer is a focused clarification —
+ * never the phrase's own nominal step, and never pattern generation.
  *
  * The suggestion is the producer's own sentence with the reference phrase
  * removed, and only when that sentence actually re-parses as an executable
  * intent — a chip must never be a guess. Everything else is declared ADVICE.
  */
-function clarifyPriorDeltaReference(text: string): Extract<RoutedIntent, { kind: "clarify" }> | null {
-  if (!isPriorDeltaReference(text)) return null;
+function clarifyPriorReference(text: string, reason: string): Extract<RoutedIntent, { kind: "clarify" }> {
   const stripped = stripPriorDeltaReference(text);
   const suggestions: string[] = [];
   if (stripped && stripped !== text.trim()) {
@@ -537,7 +536,7 @@ function clarifyPriorDeltaReference(text: string): Extract<RoutedIntent, { kind:
     if (executable) suggestions.push(stripped);
   }
   const advice = ["Name the target and the amount you want", "Say 'undo that' to remove the last change"];
-  return { kind: "clarify", reason: "last-adjustment-reference", suggestions, advice };
+  return { kind: "clarify", reason, suggestions, advice };
 }
 
 function clarifyAmbiguousCommand(text: string, doc: ProjectDocument): RoutedIntent | null {
@@ -851,6 +850,19 @@ export function routeIntentText(
   if (complaintIntent) {
     return { kind: "complaintIntent", intent: complaintIntent };
   }
+  // P0 (semantic precision audit 2026-10-20): a DESCRIPTION is not a command.
+  // "the bass is quieter than the lead" moved the bass fader and "the pads
+  // have too much reverb" added MORE reverb, because the parsers match
+  // direction words without sentence mood. The complaint route above still
+  // gets first refusal; everything else declines here without mutating.
+  if (isDescriptiveStatement(text)) {
+    return {
+      kind: "clarify",
+      reason: "descriptive-not-a-command",
+      suggestions: [],
+      advice: ['Say what to change, for example "turn down the bass".'],
+    };
+  }
   // A non-structural request that says the arrangement needs more or less
   // energy/density is a content revision. The noun "arrangement" alone must
   // not trigger auto-arrange when scenes exist.
@@ -994,10 +1006,14 @@ export function routeIntentText(
   if (sendIntent) {
     return { kind: "sendIntent", intent: sendIntent };
   }
-  // A reference to an EARLIER adjustment is not resolvable from the document;
-  // decline before any parser can apply the phrase's own step as a guess.
-  const priorDelta = clarifyPriorDeltaReference(text);
-  if (priorDelta) return priorDelta;
+  // A reference to an EARLIER adjustment: resolve it through the session
+  // ledger when possible; otherwise decline before any parser can apply the
+  // phrase's own step as a guess.
+  const priorAdjustment = resolvePriorAdjustment(text, doc);
+  if (priorAdjustment) {
+    if (priorAdjustment.kind === "clarify") return clarifyPriorReference(text, priorAdjustment.reason);
+    return priorAdjustment;
+  }
   const fader = parseFaderIntent(text);
   if (fader) {
     return { kind: "fader", intent: fader };
@@ -1145,7 +1161,10 @@ export function routeIntentText(
   // text carries NO genre/beat signal — anything that parses as a prompt
   // stays a prompt.
   if (!genreSignal && pattern.detected.length === 0) {
-    const clarification = declinedFaderClarification(text) ?? declinedEffectClarification(text);
+    const clarification =
+      declinedParamIntentClarification(text, doc) ??
+      declinedFaderClarification(text) ??
+      declinedEffectClarification(text);
     if (clarification) {
       return { kind: "clarify", reason: clarification.reason, suggestions: clarification.suggestions };
     }

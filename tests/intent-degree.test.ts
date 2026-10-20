@@ -13,6 +13,13 @@ import { effectKnobDelta, parseEffectIntent } from "../src/intent/mix";
 import { parseParamIntent } from "../src/intent/param-intent";
 import { parseProductionIntent } from "../src/intent/production";
 import { routeIntentText } from "../src/intent/route";
+import {
+  clearAdjustmentLedger,
+  recordEffectAdjustment,
+  recordFaderAdjustment,
+} from "../src/intent/adjustment-recording";
+import { lastAdjustment } from "../src/intent/adjustment-ledger";
+import { resolvePriorAdjustment } from "../src/intent/prior-adjustment";
 import { testDoc } from "./fixtures/doc";
 
 /**
@@ -572,5 +579,182 @@ describe("prior-delta references are declined, never guessed", () => {
     expect(again).not.toBeNull();
     expect(again!.direction).toBe("down");
     expect(again!.degree?.level).toBe(3);
+  });
+});
+
+/**
+ * P0 — DESCRIPTIVE STATEMENTS ARE NOT COMMANDS (audit 2026-10-20, follow-up).
+ *
+ * Direction words alone are not an instruction. "the bass is quieter than the
+ * lead" moved the bass fader, "the pads have too much reverb" added MORE
+ * reverb, and "the mix is significantly louder than the reference" started a
+ * loudness action. The router now declines these before any mutation parser,
+ * and the fader/effect/param parsers enforce the same guard for direct callers.
+ */
+describe("descriptive statements are not commands", () => {
+  const DESCRIPTIONS: ReadonlyArray<string> = [
+    "the bass is quieter than the lead",
+    "the bass is much less loud than the lead",
+    "the pads have too much reverb",
+    "the reverb is too wet",
+    "the mix is significantly louder than the reference",
+    "the lead is markedly sharper than the reference",
+    "the top end is a hair harsh",
+    "this is very slightly brighter",
+    "the mix is somewhat louder than the reference",
+    "there is less reverb on the pads",
+    "the bass is as quiet as possible",
+    "the kick is barely audible",
+  ];
+
+  it("the router declines and no mutation parser claims them", () => {
+    for (const text of DESCRIPTIONS) {
+      const route = routeIntentText(text, testDoc());
+      expect(route.kind, text).toBe("clarify");
+      if (route.kind === "clarify") expect(route.reason, text).toBe("descriptive-not-a-command");
+      expect(parseFaderIntent(text), `fader: ${text}`).toBeNull();
+      expect(parseEffectIntent(text), `effect: ${text}`).toBeNull();
+      expect(parseParamIntent(text), `param: ${text}`).toBeNull();
+    }
+  });
+
+  it("an imperative anywhere keeps the command valid", () => {
+    // A description plus an instruction is still an instruction.
+    expect(routeIntentText("the bass is too loud, turn it down", testDoc()).kind).toBe("fader");
+    expect(parseFaderIntent("the bass is too loud, turn it down")?.direction).toBe("down");
+    expect(routeIntentText("the bass is muddy, make it warmer", testDoc()).kind).toBe("complaintIntent");
+  });
+
+  it("a creative prompt that merely contains a description still generates", () => {
+    // The guard must not swallow generation prompts: no mix subject and/or an
+    // imperative verb keeps the pattern route.
+    expect(routeIntentText("a beat that is dark and warm", testDoc()).kind).toBe("pattern");
+    expect(routeIntentText("make a beat that is dark and warm", testDoc()).kind).toBe("pattern");
+  });
+});
+
+/**
+ * P1 — PRIOR-ADJUSTMENT LEDGER (audit 2026-10-20, follow-up).
+ *
+ * The session ledger remembers the measured last RELATIVE FADER move. These
+ * tests enter through the real appliers, record what actually landed, resolve
+ * the reference, and verify the SECOND move against the state it produced.
+ * Effect/param changes deliberately invalidate the fader-only record.
+ */
+describe("prior-adjustment ledger", () => {
+  const gainOf = (doc: ReturnType<typeof testDoc>, name: string): number => {
+    const track = doc.tracks.find((candidate) => candidate.name === name);
+    if (!track) throw new Error(`no track ${name}`);
+    return track.gain;
+  };
+  const db = (after: number, before: number): number => 20 * Math.log10(after / before);
+
+  const recorded = () => {
+    clearAdjustmentLedger();
+    const doc = testDoc();
+    const first = parseFaderIntent("turn the bass down a little")!;
+    const after1 = applyFaderIntent(doc, first)!.execute(doc);
+    recordFaderAdjustment(doc.id, first, doc, after1);
+    return { doc, after1 };
+  };
+
+  it("'half that adjustment' halves the dB move that actually landed", () => {
+    const { doc, after1 } = recorded();
+    const entry = lastAdjustment(doc.id)!;
+    expect(entry.factor).toBeLessThan(1);
+    const half = resolvePriorAdjustment("no, half that adjustment", after1);
+    expect(half?.kind).toBe("fader");
+    if (half?.kind !== "fader") return;
+    expect(half.intent.factor).toBeCloseTo(Math.sqrt(entry.factor), 6);
+    const after2 = applyFaderIntent(after1, half.intent)!.execute(after1);
+    const firstDb = db(gainOf(after1, "808"), gainOf(doc, "808"));
+    const halfDb = db(gainOf(after2, "808"), gainOf(after1, "808"));
+    expect(halfDb).toBeLessThan(0);
+    expect(Math.abs(halfDb)).toBeLessThan(Math.abs(firstDb));
+    // 2-decimal gain rounding in the applier: within ~0.1 dB is exact enough.
+    expect(Math.abs(Math.abs(halfDb) - Math.abs(firstDb) / 2)).toBeLessThan(0.15);
+  });
+
+  it("'a little less than last time' is ONE rung weaker, not a fresh nominal step", () => {
+    const { doc, after1 } = recorded();
+    const less = resolvePriorAdjustment("a little less than last time", after1);
+    expect(less?.kind).toBe("fader");
+    if (less?.kind !== "fader") return;
+    // The original ask was level 3 ("a little"); one rung weaker is level 2.
+    expect(less.intent.degree?.level).toBe(2);
+    const after2 = applyFaderIntent(after1, less.intent)!.execute(after1);
+    const firstDelta = gainOf(doc, "808") - gainOf(after1, "808");
+    const secondDelta = gainOf(after1, "808") - gainOf(after2, "808");
+    expect(secondDelta).toBeGreaterThan(0);
+    expect(secondDelta).toBeLessThan(firstDelta);
+  });
+
+  it("'much less than last time' is TWO rungs weaker and saturates at level 1", () => {
+    const { after1 } = recorded();
+    const less = resolvePriorAdjustment("much less than last time", after1);
+    expect(less?.kind).toBe("fader");
+    if (less?.kind !== "fader") return;
+    expect(less.intent.degree?.level).toBe(1);
+    expect(less.intent.amount).toBe("subtle");
+  });
+
+  it("'do the same on track three' reuses the factor on the NEW track", () => {
+    const { doc, after1 } = recorded();
+    const entry = lastAdjustment(doc.id)!;
+    const chords = doc.tracks.find((track) => track.name === "Chords")!;
+    const same = resolvePriorAdjustment("do the same on track three", after1);
+    expect(same?.kind).toBe("fader");
+    if (same?.kind !== "fader") return;
+    expect(same.intent.trackIds).toEqual([chords.id]);
+    expect(same.intent.targets).toEqual([]);
+    expect(same.intent.factor).toBeCloseTo(entry.factor, 6);
+    const after2 = applyFaderIntent(after1, same.intent)!.execute(after1);
+    expect(gainOf(after2, "Chords")).toBeLessThan(gainOf(after1, "Chords"));
+    expect(gainOf(after2, "808")).toBeCloseTo(gainOf(after1, "808"), 6);
+  });
+
+  it("'do the same on track two' resolves the second non-group track", () => {
+    const { doc, after1 } = recorded();
+    const second = doc.tracks.filter((track) => track.kind !== "group")[1]!;
+    const same = resolvePriorAdjustment("do the same on track two", after1);
+    expect(same?.kind).toBe("fader");
+    if (same?.kind !== "fader") return;
+    expect(same.intent.trackIds).toEqual([second.id]);
+  });
+
+  it("the ROUTER returns the executable fader route, not a guess or a pattern", () => {
+    const { after1 } = recorded();
+    const route = routeIntentText("no, half that adjustment", after1);
+    expect(route.kind).toBe("fader");
+    if (route.kind === "fader") expect(route.intent.factor).toBeLessThan(1);
+  });
+
+  it("project switch, undo/clear and effect/param changes invalidate the reference", () => {
+    const { doc, after1 } = recorded();
+    expect(resolvePriorAdjustment("no, half that adjustment", { ...after1, id: "other-project" })).toEqual({
+      kind: "clarify",
+      reason: "last-adjustment-reference",
+    });
+    clearAdjustmentLedger();
+    expect(resolvePriorAdjustment("no, half that adjustment", after1)).toEqual({
+      kind: "clarify",
+      reason: "last-adjustment-reference",
+    });
+    // Re-record, then a different kind of change supersedes it.
+    const first = parseFaderIntent("turn the bass down a little")!;
+    recordFaderAdjustment(doc.id, first, doc, after1);
+    recordEffectAdjustment(doc.id, parseEffectIntent("more reverb on the pads")!, after1, after1);
+    expect(resolvePriorAdjustment("no, half that adjustment", after1)).toEqual({
+      kind: "clarify",
+      reason: "last-adjustment-reference",
+    });
+  });
+
+  it("a deleted target asks for a track instead of throwing", () => {
+    const { doc, after1 } = recorded();
+    const withoutBass = { ...after1, tracks: after1.tracks.filter((track) => track.name !== "808") };
+    const result = resolvePriorAdjustment("no, half that adjustment", withoutBass);
+    expect(result).toEqual({ kind: "clarify", reason: "prior-adjustment-target" });
+    expect(doc.id).toBe(after1.id);
   });
 });

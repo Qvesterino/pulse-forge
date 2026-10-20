@@ -34,7 +34,6 @@ import { generateFactoryBank } from "./sample-library/factory";
 import type { SampleBank } from "./sample-library/factory";
 import type { PlayMode, ProjectDocument, Scene } from "./project-model/types";
 import { PPQ } from "./project-model/types";
-import { ticksPerBar } from "./project-model/schema";
 import { setActivePattern, setBpm, unfreezeTrack } from "./commands/commands";
 import { MidiInput } from "./midi/MidiInput";
 import { PatternRecorder } from "./midi/patternRecorder";
@@ -373,6 +372,7 @@ export class PlaybackController {
       this.notify();
       return;
     }
+    const doc = this.projectRef();
     const nextBar = (Math.floor(this.transport.position / ticksPerBar(doc)) + 1) * ticksPerBar(doc);
     this.onSceneLaunch?.(scene.id, this.transport.position);
     this.scheduler.queuePatternLaunch(scene.patternId, nextBar);

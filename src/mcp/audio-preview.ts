@@ -1,5 +1,6 @@
 import type { Services } from "../services";
-import { BAR_TICKS, getActivePattern, STEP_TICKS, type ProjectDocument } from "../project-model/types";
+import { getActivePattern, STEP_TICKS, type ProjectDocument } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { encodeWavAsync } from "../rendering/wav";
 
 const MAX_PREVIEW_BARS = 4;
@@ -56,7 +57,9 @@ export function createMcpPreviewDocument(doc: ProjectDocument, bars: number): Pr
   }
 
   const active = getActivePattern(doc);
-  const stepsPerBar = BAR_TICKS / STEP_TICKS;
+  // The document's bar length in ticks (ADR 0056): an arrangement bar holds a
+  // different number of 16th steps in 6/8 (12) than in 4/4 (16).
+  const stepsPerBar = ticksPerBar(doc) / STEP_TICKS;
   const bounded = { ...active, stepCount: Math.min(active.stepCount, bars * stepsPerBar) };
   return {
     ...doc,
@@ -89,7 +92,7 @@ export async function mcpRenderAudioPreview(
     mode,
     sampleRate: PREVIEW_SAMPLE_RATE,
     tailSeconds: 0.35,
-    ...(hasArrangement ? { arrangementOnly: true, minimumDurationTicks: request.bars * BAR_TICKS } : {}),
+    ...(hasArrangement ? { arrangementOnly: true, minimumDurationTicks: request.bars * ticksPerBar(doc) } : {}),
     quality: "live",
   });
 

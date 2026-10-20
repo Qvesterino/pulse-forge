@@ -17,6 +17,7 @@ import { roleForTrack } from "./favorites";
 import { parsePercent, parsePercentAllowingZero } from "./percent";
 import { stripReferenceClauses } from "./reference-clause";
 import { isPriorDeltaReference } from "./reference-delta";
+import { isDescriptiveStatement } from "./declarative";
 import { calibrateKnobScale, degreeToEffectAmount, parseDegree, type Degree } from "./degree";
 import type { IntentSpec } from "./types";
 
@@ -952,6 +953,9 @@ const SET_VALUE = /\b(?:to|na)\s*(\d{1,3})\s*(?:%|percent\w*|procent\w*)/;
 
 /** Parse a TARGETED effect request. Null when no effect×sentence is present. */
 export function parseEffectIntent(text: string): EffectIntent | null {
+  // A description ("the pads have too much reverb") is a complaint, not an
+  // instruction to add more reverb.
+  if (isDescriptiveStatement(text)) return null;
   const lower = deaccentLower(text);
   // A reference to an earlier adjustment cannot be resolved here; decline so
   // the router can clarify instead of applying a guessed step.

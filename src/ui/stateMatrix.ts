@@ -203,6 +203,43 @@ export interface StateReading {
   /** The element's text, trimmed — what a human would read. */
   sample: string | null;
 
+  // ---- contrast (phase D) ----------------------------------------------------
+  /**
+   * WCAG contrast of the element's own text colour against the background
+   * BEHIND it — not against the token it was declared with.
+   *
+   * The difference matters: `--text-faint` on the app background is one
+   * number, and the same token over a translucent panel over a lit step is
+   * another. `26-settings-glass.css` says so itself: its 4.86:1 holds "against
+   * the app background", and "against a LIGHT backdrop the composite would
+   * fall below AA". That second case was never measured. This is the phase D
+   * reading: the background is composited from the real ancestor chain.
+   */
+  contrast: number | null;
+  /** The composited background behind the element. */
+  compositedBackground: string | null;
+  /**
+   * False when the background could NOT be resolved from the DOM — an ancestor
+   * paints a gradient, so the colour under the text depends on where in the
+   * gradient it lands. Reported, never guessed.
+   */
+  backgroundResolved: boolean;
+  /** Why the background could not be resolved. */
+  backgroundNote: string | null;
+  /** The AA floor that applies at this size: 4.5 for normal text, 3 for large. */
+  contrastFloor: number;
+  /** Whether the text counts as large under WCAG (>=24px, or >=18.66px bold). */
+  largeText: boolean;
+  /**
+   * The pixel measurement, when one was taken for this role.
+   *
+   * The static `contrast` above composites solid background-colours only. For
+   * a role that paints a gradient, the static reading is UNRESOLVED and this
+   * is the real answer. `null` means "no pixel measurement was taken", which
+   * is different from "the measurement found nothing".
+   */
+  pixelContrast: PixelContrast | null;
+
   // ---- distribution over the VISIBLE matches -------------------------------
   /** How many visible elements carry a chromatic mark. */
   accentCount: number;
@@ -465,6 +502,79 @@ export function readStateMatrix(roles: readonly StateRole[]): StateReading[] {
     return s >= 0.35;
   };
 
+  /**
+   * Composite the background BEHIND an element.
+   *
+   * Walks the ancestor chain and layers the background-colours source-over,
+   * which is what the browser does, and stops at the first opaque layer.
+   *
+   * A layer with a background-IMAGE is NOT resolvable this way: the colour
+   * under the text depends on where in the gradient the text lands. That is
+   * REPORTED as unresolved, not guessed — a guessed background is how a
+   * contrast number becomes a fiction.
+   */
+  const compositeBackground = (el: Element) => {
+    const layers: { r: number; g: number; b: number; a: number }[] = [];
+    for (let node: Element | null = el; node; node = node.parentElement) {
+      const cs = getComputedStyle(node);
+      if (cs.backgroundImage && cs.backgroundImage !== "none") {
+        const cls = (node.getAttribute("class") || "").split(/\s+/)[0] || node.tagName.toLowerCase();
+        return { color: null, resolved: false, note: `${cls} paints a background-image` };
+      }
+      const bg = rgbOf(cs.backgroundColor);
+      if (bg && bg.a > 0) {
+        layers.push(bg);
+        if (bg.a >= 0.999) break;
+      }
+    }
+    // Layer from the bottom up — source-over.
+    let base = { r: 0, g: 0, b: 0, a: 0 };
+    for (let i = layers.length - 1; i >= 0; i -= 1) {
+      const L = layers[i];
+      const a = L.a + base.a * (1 - L.a);
+      if (a <= 0) continue;
+      base = {
+        r: (L.r * L.a + base.r * base.a * (1 - L.a)) / a,
+        g: (L.g * L.a + base.g * base.a * (1 - L.a)) / a,
+        b: (L.b * L.a + base.b * base.a * (1 - L.a)) / a,
+        a,
+      };
+    }
+    if (base.a < 0.999) {
+      // Nothing opaque behind it: the browser canvas shows through.
+      const k = base.a;
+      base = { r: 255 * (1 - k) + base.r * k, g: 255 * (1 - k) + base.g * k, b: 255 * (1 - k) + base.b * k, a: 1 };
+    }
+    return {
+      color: `rgb(${Math.round(base.r)}, ${Math.round(base.g)}, ${Math.round(base.b)})`,
+      resolved: true,
+      note: null,
+    };
+  };
+
+  /** WCAG relative luminance. */
+  const relLuminance = (r: number, g: number, b: number) => {
+    const ch = (c: number) => {
+      const s = c / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b);
+  };
+
+  /** WCAG contrast ratio between two colours. */
+  const contrastRatio = (fg: string | null | undefined, bg: string | null | undefined): number | null => {
+    const f = rgbOf(fg);
+    const b = rgbOf(bg);
+    if (!f || !b) return null;
+    // A translucent text colour is composited over the background first.
+    const fr = f.a >= 0.999 ? f.r : f.r * f.a + b.r * (1 - f.a);
+    const fg2 = f.a >= 0.999 ? f.g : f.g * f.a + b.g * (1 - f.a);
+    const fb = f.a >= 0.999 ? f.b : f.b * f.a + b.b * (1 - f.a);
+    const l1 = relLuminance(fr, fg2, fb);
+    const l2 = relLuminance(b.r, b.g, b.b);
+    return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
+  };
+
   const scope = document.querySelector(".app") ?? document.body;
   const visibleOf = (el: Element) => {
     const cs = getComputedStyle(el);
@@ -548,6 +658,13 @@ export function readStateMatrix(roles: readonly StateRole[]): StateReading[] {
       background: null,
       color: null,
       sample: null,
+      contrast: null,
+      compositedBackground: null,
+      backgroundResolved: false,
+      backgroundNote: null,
+      contrastFloor: 4.5,
+      largeText: false,
+      pixelContrast: null,
       accentCount: 0,
       accentColors: [],
       accentIndexes: [],
@@ -615,8 +732,73 @@ export function readStateMatrix(roles: readonly StateRole[]): StateReading[] {
     reading.background = info.background;
     reading.color = info.color;
     reading.sample = info.sample;
+
+    // ---- phase D: the contrast this text actually has ------------------------
+    // Only the FIRST visible element: the contrast is a property of the role
+    // as the reading describes it, and the distribution counts are a separate
+    // question.
+    const backdrop = compositeBackground(el);
+    reading.compositedBackground = backdrop.color;
+    reading.backgroundResolved = backdrop.resolved;
+    reading.backgroundNote = backdrop.note;
+    reading.contrast = backdrop.resolved ? contrastRatio(info.color, backdrop.color) : null;
+    // WCAG "large text": >=24px, or >=18.66px when bold.
+    reading.largeText =
+      reading.fontSize !== null &&
+      (reading.fontSize >= 24 || (reading.fontSize >= 18.66 && (reading.fontWeight ?? 400) >= 700));
+    reading.contrastFloor = reading.largeText ? 3 : 4.5;
     return reading;
   });
+}
+
+/**
+ * What the PIXEL measurement found for one role.
+ *
+ * The static reader can only composite solid background-colours. Nine roles
+ * paint a gradient, and for those the colour under the text depends on where
+ * in the gradient the text lands. The pixel measurement answers that for
+ * real: it compares a screenshot with the text and one with the text made
+ * transparent, so the second screenshot's pixels ARE the background under the
+ * glyphs.
+ */
+export interface PixelContrast {
+  /** Which role this measurement belongs to. */
+  id: string;
+  /** The WORST contrast over the text pixels — WCAG asks for the worst case. */
+  minContrast: number | null;
+  /** Mean over the text pixels. Informational only; a mean hides a gradient. */
+  meanContrast: number | null;
+  /** How many pixels were counted as painted text. */
+  textPixels: number;
+  /** The background colour at the worst text pixel. */
+  worstBackground: string | null;
+  /**
+   * The TEXT colour that produced the worst pixel.
+   *
+   * Without it the number is unreadable: a role can hold several text
+   * colours at once (a `.row-pad` holds a 13px name and an 8px index), and
+   * "4.45:1" says nothing about WHICH text failed.
+   */
+  worstTextColor: string | null;
+  /** The text colours the pixels were matched against. */
+  textColors: string[];
+  /**
+   * How many DISTINCT (background, text colour) surfaces the text appears on.
+   *
+   * One means a single flat surface. Many means the text spans a gradient or
+   * several chips — and then the worst one is a real reading, not a sliver.
+   */
+  surfaces: number;
+  /**
+   * How many text pixels sat on the WORST surface.
+   *
+   * This is what separates "the text is unreadable here" from "one pixel of a
+   * glyph grazed a 1px highlight". A sliver has a count of 1–2; a surface the
+   * text is genuinely read against has dozens.
+   */
+  worstSurfacePixels: number;
+  /** Where the worst pixel was, relative to the role's box. */
+  worstPixel: { x: number; y: number } | null;
 }
 
 /** A snapshot of one state: the readings plus the state's identity. */

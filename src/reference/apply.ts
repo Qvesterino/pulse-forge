@@ -23,7 +23,8 @@
  *    rather than peeling markers off one at a time.
  */
 
-import { BAR_TICKS, PPQ, type ProjectDocument } from "../project-model/types";
+import { PPQ, type ProjectDocument } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import type { MusicalKey } from "../project-model/types";
 import { addMarker, setBpm, setGroove, setProjectKey, snapshot } from "../commands/commands";
 import type { Command } from "../commands/types";
@@ -174,7 +175,7 @@ export function markerCommand(doc: ProjectDocument, map: ReferenceMap, options: 
     const raw = secondsToTicks(beatTimes[beat], bpm);
     // Snap to the nearest bar so a small tempo disagreement does not leave
     // the marker visibly off the grid.
-    const snapped = Math.round(raw / BAR_TICKS) * BAR_TICKS;
+    const snapped = Math.round(raw / ticksPerBar(doc)) * ticksPerBar(doc);
     if (snapped > 0) boundaryTicks.push(snapped);
   }
   // Two boundaries can collapse onto the same bar after snapping; duplicates
@@ -185,7 +186,7 @@ export function markerCommand(doc: ProjectDocument, map: ReferenceMap, options: 
   const prefix = label ? `${label} ` : "";
   const before = doc;
   const after = unique.reduce(
-    (d, tick) => addMarker(d, { tick, type: "cue", name: `${prefix}Phrase ${tick / BAR_TICKS + 1}` }).execute(d),
+    (d, tick) => addMarker(d, { tick, type: "cue", name: `${prefix}Phrase ${tick / ticksPerBar(doc) + 1}` }).execute(d),
     doc,
   );
   if (after.markers.length === before.markers.length) return null;

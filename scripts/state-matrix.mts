@@ -36,6 +36,7 @@ import {
   STATES,
   evaluateExpectation,
   readStateMatrix,
+  type PixelContrast,
   type StateSnapshot,
 } from "../src/ui/stateMatrix";
 
@@ -45,6 +46,11 @@ const URL = urlIndex >= 0 ? argv[urlIndex + 1] : "http://127.0.0.1:5173";
 const SHOTS = argv.includes("--shots");
 /** Phase C: after recording, assert the DECLARED expectations against it. */
 const GATE = argv.includes("--gate");
+/**
+ * Phase D: measure the contrast FROM THE PIXELS, for the roles whose
+ * background the DOM cannot answer (a gradient ancestor).
+ */
+const PIXELS = argv.includes("--pixels");
 
 const EXIT_GATE = 1;
 const EXIT_STATE_UNREACHED = 1;
@@ -77,6 +83,310 @@ await bootStudio(page, URL, { label: "state-matrix" });
 /** Read the matrix out of the live DOM. */
 const measure = async () => await page.evaluate(readStateMatrix, STATE_ROLES);
 
+/**
+ * MEASURE THE BACKGROUND FROM PIXELS — for the roles whose background the DOM
+ * cannot answer.
+ *
+ * WHY
+ * ---
+ * Nine of the shell's roles paint a `background-image` (a gradient). For
+ * those, the colour under the text depends on WHERE in the gradient the text
+ * lands, and no amount of walking the DOM will say so. The static reader
+ * reports them as unresolved, which is honest but useless as a gate.
+ *
+ * So the pixels are measured. Twice:
+ *
+ *   A  the element as rendered, text included
+ *   B  the same pixels with the TEXT made transparent (background only)
+ *
+ * Where A differs from B, the text was painted. B's pixel there is the TRUE
+ * background under that glyph — gradient, blur, backdrop-filter and all. The
+ * contrast at that pixel is the real one. The WORST pixel is reported,
+ * because WCAG asks for the worst case and a gradient's worst case is exactly
+ * the thing a token-level calculation cannot see.
+ *
+ * The text colour comes from the computed style, not from A's pixels: A's
+ * glyph pixels are antialiased blends, and a blend is not the text colour.
+ */
+/**
+ * The text colours of an element: the colours of the elements that actually
+ * OWN TEXT.
+ *
+ * Not the element's own `color`. A `.row-pad` owns no text itself — its
+ * `.row-pad-name` child does, and that child may wear a DIFFERENT colour (a
+ * selected row's name goes amber). Reading the parent's inherited colour
+ * would measure a colour that is not on the screen, and the pixel test would
+ * then reject every glyph as "not text".
+ */
+const textColorsOf = async (selector: string): Promise<string[]> =>
+  await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return [] as string[];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const node of [el, ...el.querySelectorAll("*")]) {
+      const ownsText = [...node.childNodes].some(
+        (child) => child.nodeType === 3 && (child.textContent ?? "").trim().length > 0,
+      );
+      if (!ownsText) continue;
+      const color = getComputedStyle(node).color;
+      if (seen.has(color)) continue;
+      seen.add(color);
+      out.push(color);
+    }
+    return out;
+  }, selector);
+
+/** One role's region on the viewport, with the colours of its text. */
+interface RoleRegion {
+  id: string;
+  selector: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  colors: string[];
+}
+
+/**
+ * Hide the TEXT of every role at once, keeping every background.
+ *
+ * `color: transparent` on the element and every descendant. `visibility:
+ * hidden` would take the background with it. The previous inline value is
+ * restored EXACTLY afterwards — `removeProperty` on every node would have
+ * destroyed the inline colours some of these elements legitimately carry.
+ *
+ * ONE pass for all roles, not one per role. The first version took two
+ * screenshots per role, and on the software-rendered canvas that cost 200
+ * seconds PER STATE. Two screenshots per state is the same measurement.
+ */
+const hideRoleText = async (selectors: string[]): Promise<boolean> =>
+  await page.evaluate((sels) => {
+    const targets: HTMLElement[] = [];
+    for (const sel of sels) {
+      const el = document.querySelector(sel);
+      if (el) targets.push(el as HTMLElement);
+    }
+    if (!targets.length) return false;
+    const seen = new Set<HTMLElement>();
+    const touched: { el: HTMLElement; value: string; priority: string }[] = [];
+    for (const el of targets) {
+      for (const node of [el, ...el.querySelectorAll("*")]) {
+        const h = node as HTMLElement;
+        // A nested role would otherwise record the ALREADY modified value
+        // and never restore it.
+        if (seen.has(h)) continue;
+        seen.add(h);
+        const style = h.style;
+        touched.push({
+          el: h,
+          value: style.getPropertyValue("color"),
+          priority: style.getPropertyPriority("color"),
+        });
+        style.setProperty("color", "transparent", "important");
+      }
+    }
+    (window as unknown as { __contrastRestore?: () => void }).__contrastRestore = () => {
+      for (const t of touched) {
+        if (t.value) t.el.style.setProperty("color", t.value, t.priority);
+        else t.el.style.removeProperty("color");
+      }
+    };
+    return true;
+  }, selectors);
+
+async function measureContrastByPixels(): Promise<Map<string, PixelContrast>> {
+  const result = new Map<string, PixelContrast>();
+  const viewport = page.viewportSize();
+  if (!viewport) return result;
+
+  // 1. Where each role is, and what colours its text wears.
+  const regions: RoleRegion[] = [];
+  for (const role of STATE_ROLES) {
+    const locator = page.locator(role.selector).first();
+    if ((await locator.count()) === 0) continue;
+    const box = await locator.boundingBox();
+    if (!box || box.width < 2 || box.height < 2) continue;
+    const x = Math.max(0, box.x);
+    const y = Math.max(0, box.y);
+    const w = Math.min(box.width, viewport.width - x);
+    const h = Math.min(box.height, viewport.height - y);
+    if (w < 2 || h < 2) continue;
+    const colors = await textColorsOf(role.selector);
+    if (!colors.length) continue; // no text on screen -> no contrast to measure
+    regions.push({ id: role.id, selector: role.selector, x, y, w, h, colors });
+  }
+  if (!regions.length) return result;
+
+  // 2. The whole viewport, twice: with the text, and without it.
+  const withText = (await page.screenshot({ scale: "css" })).toString("base64");
+  const hidden = await hideRoleText(regions.map((r) => r.selector));
+  if (!hidden) return result;
+  await page.waitForTimeout(80);
+  const withoutText = (await page.screenshot({ scale: "css" })).toString("base64");
+  await page.evaluate(() => {
+    const restore = (window as unknown as { __contrastRestore?: () => void }).__contrastRestore;
+    if (restore) restore();
+  });
+  await page.waitForTimeout(80);
+
+  // 3. Analyse every role out of the two images.
+  const analysed = await page.evaluate(
+    async ({ a, b, regions }) => {
+      const load = async (dataUrl: string) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${dataUrl}`;
+        await img.decode();
+        const canvas = new OffscreenCanvas(img.width, img.height);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return null;
+        ctx.drawImage(img, 0, 0);
+        return { data: ctx.getImageData(0, 0, img.width, img.height).data, width: img.width, height: img.height };
+      };
+      const A = await load(a);
+      const B = await load(b);
+      if (!A || !B) return [];
+
+      // Rasterise the text colours through the BROWSER's own colour
+      // pipeline. `fillStyle` understands every syntax the engine
+      // understands — `color(srgb ...)`, `oklab(...)`, a `color-mix()`
+      // result — and `getImageData` returns the bytes the engine would
+      // actually paint. A regex over the serialised string would have to
+      // re-implement that, and would get it wrong for the two formats this
+      // shell uses 1160 and 192 times respectively.
+      const probe = new OffscreenCanvas(1, 1);
+      const pctx = probe.getContext("2d");
+      if (!pctx) return [];
+      const SENTINEL = "rgb(1, 2, 3)";
+      const parsed = new Map<string, { r: number; g: number; b: number; a: number }>();
+      for (const color of new Set(regions.flatMap((rg) => rg.colors))) {
+        pctx.fillStyle = SENTINEL;
+        pctx.fillStyle = color;
+        pctx.fillRect(0, 0, 1, 1);
+        const d = pctx.getImageData(0, 0, 1, 1).data;
+        // The sentinel survived -> the colour did not parse.
+        if (d[0] === 1 && d[1] === 2 && d[2] === 3) continue;
+        parsed.set(color, { r: d[0], g: d[1], b: d[2], a: d[3] / 255 });
+      }
+
+      const ch = (c: number) => {
+        const s = c / 255;
+        return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+      };
+      const lum = (r: number, g: number, bl: number) => 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(bl);
+
+      const out: unknown[] = [];
+      for (const region of regions) {
+        const x0 = Math.max(0, Math.round(region.x));
+        const y0 = Math.max(0, Math.round(region.y));
+        const x1 = Math.min(A.width, x0 + Math.round(region.w));
+        const y1 = Math.min(A.height, y0 + Math.round(region.h));
+
+        /**
+         * The pixels are GROUPED by the (background, text colour) pair they
+         * show, not averaged and not reduced to a single worst pixel.
+         *
+         * A single stray pixel — the top of a glyph grazing a 1px top-light —
+         * is a rendering detail, not a surface the text is read against. But a
+         * gradient the text genuinely spans IS. Grouping tells the two apart:
+         * the group's pixel count says how much text actually sits on that
+         * surface, and the DECLARATION can then require a real area.
+         */
+        const groups = new Map<
+          string,
+          { count: number; ratio: number; bg: number[]; text: string; x: number; y: number }
+        >();
+        let sum = 0;
+        let count = 0;
+
+        for (let y = y0; y < y1; y += 1) {
+          for (let x = x0; x < x1; x += 1) {
+            const i = (y * A.width + x) * 4;
+            const ar = A.data[i];
+            const ag = A.data[i + 1];
+            const ab = A.data[i + 2];
+            const br = B.data[i];
+            const bg = B.data[i + 1];
+            const bb = B.data[i + 2];
+            if (Math.abs(ar - br) + Math.abs(ag - bg) + Math.abs(ab - bb) < 6) continue; // unchanged
+
+            for (const color of region.colors) {
+              const t = parsed.get(color);
+              if (!t) continue;
+              // The text colour as it lands on THIS background.
+              const tr = t.a * t.r + (1 - t.a) * br;
+              const tg = t.a * t.g + (1 - t.a) * bg;
+              const tb = t.a * t.b + (1 - t.a) * bb;
+              const dx = tr - br;
+              const dy = tg - bg;
+              const dz = tb - bb;
+              const len2 = dx * dx + dy * dy + dz * dz;
+              if (len2 < 1) continue;
+              let cover = ((ar - br) * dx + (ag - bg) * dy + (ab - bb) * dz) / len2;
+              if (cover < 0) cover = 0;
+              if (cover > 1) cover = 1;
+              const pr = br + cover * dx;
+              const pg = bg + cover * dy;
+              const pbb = bb + cover * dz;
+              const residual = Math.abs(ar - pr) + Math.abs(ag - pg) + Math.abs(ab - pbb);
+              // A pixel that is NOT on the line between the background and
+              // the text colour is not text: it is a ring, a border, a
+              // playhead animation, or a glyph painted in another colour.
+              if (residual > 48) continue;
+              if (cover < 0.05) continue; // essentially nothing painted here
+              const lText = lum(tr, tg, tb);
+              const lBg = lum(br, bg, bb);
+              const ratio = (Math.max(lText, lBg) + 0.05) / (Math.min(lText, lBg) + 0.05);
+              const key = `${br},${bg},${bb}|${color}`;
+              const group = groups.get(key);
+              if (group) {
+                group.count += 1;
+                sum += ratio;
+                count += 1;
+              } else {
+                groups.set(key, { count: 1, ratio, bg: [br, bg, bb], text: color, x: x - x0, y: y - y0 });
+                sum += ratio;
+                count += 1;
+              }
+              break; // this pixel matched one text colour — count it once
+            }
+          }
+        }
+
+        let worst: { count: number; ratio: number; bg: number[]; text: string; x: number; y: number } | null = null;
+        for (const group of groups.values()) {
+          if (!worst || group.ratio < worst.ratio) worst = group;
+        }
+
+        const shape = {
+          id: region.id,
+          textPixels: count,
+          surfaces: groups.size,
+          worstBackground: worst ? `rgb(${worst.bg[0]}, ${worst.bg[1]}, ${worst.bg[2]})` : null,
+          worstTextColor: worst ? worst.text : null,
+          worstSurfacePixels: worst ? worst.count : 0,
+          worstPixel: worst ? { x: worst.x, y: worst.y } : null,
+          textColors: region.colors,
+        };
+        if (count === 0) out.push({ ...shape, minContrast: null, meanContrast: null });
+        else
+          out.push({
+            ...shape,
+            minContrast: Math.round((worst?.ratio ?? 0) * 100) / 100,
+            meanContrast: Math.round((sum / count) * 100) / 100,
+          });
+      }
+      return out;
+    },
+    { a: withText, b: withoutText, regions },
+  );
+
+  for (const entry of analysed as PixelContrast[]) {
+    result.set(entry.id, entry);
+  }
+  return result;
+}
+
 const snapshots: StateSnapshot[] = [];
 
 async function record(stateId: string, entered: boolean, note?: string) {
@@ -93,6 +403,19 @@ async function record(stateId: string, entered: boolean, note?: string) {
   if (SHOTS) {
     await page.screenshot({ path: resolve(shotDir, `state-${stateId}.png`) });
   }
+
+  // ---- phase D: the pixel measurement, taken while THIS state is live ------
+  // It has to run here, not at the end: the background under the text is a
+  // property of the state (a selected row repaints its own background), so a
+  // measurement taken after the transport moved would be measuring another
+  // state than the one the snapshot describes.
+  if (PIXELS) {
+    const pixels = await measureContrastByPixels();
+    for (const r of readings) {
+      const p = pixels.get(r.roleId);
+      if (p) r.pixelContrast = p;
+    }
+  }
   const accents = readings.filter((r) => r.hasAccent).map((r) => r.roleId);
   const marked = readings.filter((r) => r.accentCount > 0).map((r) => `${r.roleId}(${r.accentCount})`);
   const rings = readings.filter((r) => r.ringCount > 0).map((r) => `${r.roleId}(${r.ringCount})`);
@@ -106,6 +429,43 @@ async function record(stateId: string, entered: boolean, note?: string) {
       (rings.length ? `  rings: ${rings.join(", ")}` : "") +
       (outlines.length ? `  outline: ${outlines.join(", ")}` : ""),
   );
+  // Phase D: the contrast of every role that has text.
+  //
+  // TWO numbers, because they answer different questions:
+  //
+  //   static  the composited background from the DOM — exact where the
+  //           background is a solid colour, and REPORTED AS UNRESOLVED where
+  //           an ancestor paints a gradient.
+  //   pixel   the background taken from the rendered pixels under the glyphs
+  //           — the real one, gradient included, and the WORST of it.
+  //
+  // Where the static background WAS resolved, the two must agree. That
+  // agreement is the check on the compositing maths, not a coincidence.
+  const contrast = readings.filter((r) => r.contrast !== null || r.pixelContrast?.minContrast != null);
+  if (contrast.length) {
+    for (const r of contrast) {
+      const px = r.pixelContrast?.minContrast ?? null;
+      const effective = px ?? r.contrast;
+      const flag = effective !== null && effective < r.contrastFloor ? "  BELOW AA" : "";
+      const staticText = r.contrast === null ? "unresolved" : `${r.contrast}:1`;
+      const pixelText = px === null ? "—" : `${px}:1`;
+      const bg = r.pixelContrast?.worstBackground ?? r.compositedBackground ?? "?";
+      const who = r.pixelContrast?.worstTextColor ?? r.color ?? "?";
+      const pxCount = r.pixelContrast ? ` ${r.pixelContrast.textPixels}px` : "";
+      const surf = r.pixelContrast ? ` s${r.pixelContrast.surfaces}` : "";
+      const surfPx = r.pixelContrast ? ` worst${r.pixelContrast.worstSurfacePixels}px` : "";
+      console.log(
+        `      ${r.roleId.padEnd(20)} static ${staticText.padStart(9)}   pixel ${pixelText.padStart(6)}${pxCount.padStart(8)}${surf.padStart(4)}${surfPx.padStart(12)}   ` +
+          `floor ${r.contrastFloor}   ${who} on ${bg}${flag}`,
+      );
+    }
+  }
+  const unresolved = readings.filter((r) => r.visible > 0 && !r.backgroundResolved);
+  if (unresolved.length) {
+    console.log(
+      `      unresolved backgrounds: ${unresolved.map((r) => `${r.roleId} (${r.backgroundNote})`).join(", ")}`,
+    );
+  }
   if (note) console.log(`      ${note}`);
   return snapshot;
 }

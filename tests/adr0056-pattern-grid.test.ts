@@ -1,0 +1,87 @@
+/**
+ * ADR 0056 — the PATTERN grid is the one unit that did not follow the meter.
+ *
+ * Stage 2 moved the whole arrangement onto the document's meter: the ruler, clip
+ * placement, loop regions, the metronome and the bar readouts all measure the
+ * metrical bar now. The PATTERN grid stayed where it was — a pattern is 16
+ * sixteenth steps (`PATTERN_TICKS` = four quarter notes) whatever the meter
+ * declares.
+ *
+ * That is not a cosmetic difference. In 6/8 a bar is 1440 ticks and a pattern is
+ * 1920, so the pattern's phrase is 1.33 bars long: its downbeat reaches the bar
+ * line only every fourth bar and is a quarter note late in between. A groove
+ * whose "one" drifts against the ruler is a real defect, so it is measured here
+ * rather than assumed, and the transfer dialog discloses it.
+ *
+ * The 4/4 case is the negative control and it is not optional: the pattern grid
+ * is correct in 4/4-like meters, and a guard that fired there would be wrong.
+ */
+import { describe, expect, it } from "vitest";
+import { createProjectFromTemplate } from "../src/project-model/templates";
+import { normalizeProject, patternGridIsOneBar, ticksPerBar } from "../src/project-model/schema";
+import { patternPhaseOffsetAtTick } from "../src/project-model/events";
+import { PATTERN_TICKS } from "../src/project-model/types";
+import type { ProjectDocument, TimeSignature } from "../src/project-model/types";
+
+const FOUR_FOUR: TimeSignature = { numerator: 4, denominator: 4 };
+const SIX_EIGHT: TimeSignature = { numerator: 6, denominator: 8 };
+
+function docWithMeter(sig: TimeSignature): ProjectDocument {
+  return normalizeProject({
+    ...createProjectFromTemplate("house"),
+    timeSignature: sig,
+    bpm: 120,
+    arrangement: { clips: [] },
+  });
+}
+
+/** The pattern's phase (ticks into its 16-step cycle) at each musical bar line. */
+function patternPhasesAtBarLines(doc: ProjectDocument, bars: number): number[] {
+  const bar = ticksPerBar(doc);
+  const pattern = doc.patterns[0]!;
+  const clip = { startBar: 0, phaseOffsetTicks: 0 };
+  const phases: number[] = [];
+  for (let b = 0; b < bars; b++) {
+    phases.push(patternPhaseOffsetAtTick(clip, pattern, b * bar, bar));
+  }
+  return phases;
+}
+
+describe("ADR 0056 — the pattern grid is 16 steps, and that is not metrical", () => {
+  it("NEGATIVE CONTROL: in 4/4 the pattern's downbeat lands on every bar line", () => {
+    const doc = docWithMeter(FOUR_FOUR);
+    expect(ticksPerBar(doc)).toBe(PATTERN_TICKS);
+    expect(patternGridIsOneBar(FOUR_FOUR)).toBe(true);
+    // Phase 0 at every bar line: the pattern repeats exactly on the bar.
+    expect(patternPhasesAtBarLines(doc, 8)).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+  });
+
+  it("in 6/8 the pattern's downbeat drifts and only reaches the bar every 4th bar", () => {
+    const doc = docWithMeter(SIX_EIGHT);
+    expect(ticksPerBar(doc)).toBe(1440);
+    expect(patternGridIsOneBar(SIX_EIGHT)).toBe(false);
+    // The measured drift: 1920 - 1440 = 480 ticks (a quarter note) per bar, so
+    // the phase advances 1440, then 960, then 480, and returns to 0 on the
+    // fourth bar. This is the number the disclosure quotes.
+    expect(patternPhasesAtBarLines(doc, 8)).toEqual([0, 1440, 960, 480, 0, 1440, 960, 480]);
+  });
+
+  it("knows which meters make one pattern exactly one bar", () => {
+    for (const sig of [
+      { numerator: 4, denominator: 4 },
+      { numerator: 2, denominator: 2 },
+      { numerator: 8, denominator: 8 },
+    ]) {
+      expect(patternGridIsOneBar(sig)).toBe(true);
+    }
+    for (const sig of [
+      { numerator: 3, denominator: 4 },
+      { numerator: 6, denominator: 8 },
+      { numerator: 4, denominator: 2 },
+      { numerator: 12, denominator: 8 },
+      { numerator: 2, denominator: 4 },
+    ]) {
+      expect(patternGridIsOneBar(sig)).toBe(false);
+    }
+  });
+});

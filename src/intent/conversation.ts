@@ -22,6 +22,7 @@ import { setBpm, setMasterConfig, setPadParams, setReturnGain, setTrackParams, s
 import { parsePercent, parsePercentAllowingZero } from "./percent";
 import { calibrateFaderFactor, degreeToFaderAmount, parseDegree, type Degree } from "./degree";
 import { isPriorDeltaReference } from "./reference-delta";
+import { isDescriptiveStatement } from "./declarative";
 import { stripReferenceClauses } from "./reference-clause";
 import { intentCarriesGenreSignal } from "./exact";
 import { inferPadRole } from "../ai/pad-roles";
@@ -76,6 +77,13 @@ export interface FaderIntent {
    * absolute target level. Wins over vibe `amount` when present.
    */
   percent?: number;
+  /**
+   * EXACT multiplicative gain factor, used by the prior-adjustment resolver
+   * ("half that adjustment" = the square root of the prior factor, i.e. half
+   * the dB move). Wins over `percent`, `degree` and `amount`; ignored for
+   * direction "set".
+   */
+  factor?: number;
   /**
    * The resolved graduated degree (intent/degree.ts) when the ask NAMED one.
    * Absent for an unqualified ask, which keeps the documented default.
@@ -177,6 +185,27 @@ const FADER_PADS: ReadonlyArray<readonly [RegExp, FaderPadFamily]> = [
   [/\bperc(?:ussion\w*|s)?\b|\bperkus\w*/, "perc"],
 ];
 
+/** De-accented lowercase with boundary padding (the module's house style). */
+function normalizedLower(text: string): string {
+  return ` ${text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")} `;
+}
+
+/**
+ * The fader family/pad targets a sentence names — exported so the
+ * prior-adjustment resolver ("do the same on the bass") reads the SAME
+ * vocabulary as the parser instead of growing a second copy.
+ */
+export function faderTargetsIn(text: string): { targets: FaderTarget[]; pads: FaderPadFamily[] } {
+  const targetText = stripReferenceClauses(normalizedLower(text));
+  return {
+    targets: FADER_TARGETS.filter(([pattern]) => pattern.test(targetText)).map(([, target]) => target),
+    pads: FADER_PADS.filter(([pattern]) => pattern.test(targetText)).map(([, family]) => family),
+  };
+}
+
 /**
  * Amount modifiers, resolved through the shared degree taxonomy
  * (intent/degree.ts). The three local regexes this replaced
@@ -223,10 +252,11 @@ function dBPercent(text: string, direction: "down" | "up"): number | undefined {
 const EFFECT_NOUN = /\b(?:reverb|dozvuk|delay|chorus|compress|saturat|filtr|\beq\b|pump|drive)\b/;
 
 export function parseFaderIntent(text: string): FaderIntent | null {
-  const lower = ` ${text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")} `;
+  // A description of the current balance is not a fader command. The router
+  // declines these, and this guard keeps direct callers (compound, tests,
+  // assistants) from bypassing that decision.
+  if (isDescriptiveStatement(text)) return null;
+  const lower = normalizedLower(text);
   // A semicolon can separate context from a direct final command. Resolve
   // targets from that command so a reference mentioned earlier does not get
   // treated as another fader target.
@@ -573,7 +603,7 @@ const PAD_FAMILY_MATCH: Record<FaderPadFamily, (role: string) => boolean> = {
  * the caller fails explicitly — turning down the lead because "the bass is
  * missing" would be an unintended mutation.
  */
-function trackIdsForTarget(doc: ProjectDocument, target: FaderTarget): string[] {
+export function trackIdsForTarget(doc: ProjectDocument, target: FaderTarget): string[] {
   if (target === "drums") {
     return doc.tracks.filter((track) => track.kind === "drum").map((track) => track.id);
   }
@@ -627,21 +657,23 @@ function foldFaderIntent(cursor: ProjectDocument, intent: FaderIntent): FaderFol
   const absoluteGain = isSet ? clampGain(((intent.percent ?? 0) / 100) * GAIN_MAX) : null;
   const factor = isSet
     ? 1
-    : intent.percent != null
-      ? intent.direction === "down"
-        ? Math.max(0, 1 - intent.percent / 100)
-        : 1 + intent.percent / 100
-      : (() => {
-          // The fine-grained DEGREE wins when the ask named one — that is what
-          // separates "barely" (×0.95) from "a little" (×0.92) from "much"
-          // (×0.70). The coarse FADER_FACTORS table stays the FALLBACK for a
-          // decoded model intent, which carries the schema's `amount` class
-          // without any words to re-derive a degree from (model-decoder.ts).
-          if (intent.degree)
-            return calibrateFaderFactor(intent.degree.value, intent.direction === "down" ? "down" : "up");
-          const factors = FADER_FACTORS[intent.amount ?? "normal"];
-          return intent.direction === "down" ? factors.down : factors.up;
-        })();
+    : intent.factor != null && Number.isFinite(intent.factor) && intent.factor > 0
+      ? Math.max(0.01, Math.min(4, intent.factor))
+      : intent.percent != null
+        ? intent.direction === "down"
+          ? Math.max(0, 1 - intent.percent / 100)
+          : 1 + intent.percent / 100
+        : (() => {
+            // The fine-grained DEGREE wins when the ask named one — that is what
+            // separates "barely" (×0.95) from "a little" (×0.92) from "much"
+            // (×0.70). The coarse FADER_FACTORS table stays the FALLBACK for a
+            // decoded model intent, which carries the schema's `amount` class
+            // without any words to re-derive a degree from (model-decoder.ts).
+            if (intent.degree)
+              return calibrateFaderFactor(intent.degree.value, intent.direction === "down" ? "down" : "up");
+            const factors = FADER_FACTORS[intent.amount ?? "normal"];
+            return intent.direction === "down" ? factors.down : factors.up;
+          })();
   const targetGain = (current: number): number => (isSet ? (absoluteGain as number) : clampGain(current * factor));
   let next = cursor;
   let faders = 0;
@@ -709,9 +741,11 @@ function foldFaderIntent(cursor: ProjectDocument, intent: FaderIntent): FaderFol
   ].join(" + ");
   const sizeNote = isSet
     ? `=${intent.percent ?? 0}%`
-    : intent.percent != null
-      ? `${intent.direction === "down" ? "−" : "+"}${intent.percent}%`
-      : (intent.amount ?? "normal");
+    : intent.factor != null
+      ? `×${Math.round(intent.factor * 1000) / 1000}`
+      : intent.percent != null
+        ? `${intent.direction === "down" ? "−" : "+"}${intent.percent}%`
+        : (intent.amount ?? "normal");
   return {
     next,
     faders,

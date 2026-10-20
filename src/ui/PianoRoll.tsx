@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useArrangement, usePatterns, useScenes, useServices, useTracks } from "./context";
 import type { InstrumentTrack, NoteEvent, Pattern, ProjectDocument } from "../project-model/types";
-import { BAR_TICKS, STEP_TICKS, pitchName } from "../project-model/types";
+import { PATTERN_TICKS, STEP_TICKS, pitchName } from "../project-model/types";
 import { midiPhraseLengthTicks } from "../project-model/midiTime";
 import { MAX_ARRANGEMENT_CLIP_TICKS, ticksPerBar } from "../project-model/schema";
 import {
@@ -43,19 +43,26 @@ const ROW_HEIGHT = 14;
 const BLACK_KEYS = new Set([1, 3, 6, 8, 10]);
 const MAX_PIANO_ROLL_STEPS = Math.floor(MAX_ARRANGEMENT_CLIP_TICKS / STEP_TICKS);
 const MIN_PIANO_ROLL_STEP_PX = 24;
+/**
+ * New-note length menu. The note lengths are PATTERN-grid ticks: a pattern is
+ * 16 sixteenth steps (PATTERN_TICKS), so "1 BAR" here is the pattern's own bar
+ * — which is one musical bar only in 4/4-like meters. In 6/8 the arrangement
+ * bar is 1440 ticks while the pattern grid is 1920, and a note cannot be
+ * measured against a unit its own grid does not use. Recorded in ADR 0056.
+ */
 const NOTE_LENGTH_OPTIONS = [
   { label: "1/16", ticks: STEP_TICKS },
   { label: "1/8", ticks: STEP_TICKS * 2 },
   { label: "1/4", ticks: STEP_TICKS * 4 },
   { label: "1/2", ticks: STEP_TICKS * 8 },
-  { label: "1 BAR", ticks: BAR_TICKS },
-  { label: "2 BARS", ticks: BAR_TICKS * 2 },
-  { label: "4 BARS", ticks: BAR_TICKS * 4 },
-  { label: "8 BARS", ticks: BAR_TICKS * 8 },
-  { label: "12 BARS", ticks: BAR_TICKS * 12 },
-  { label: "16 BARS", ticks: BAR_TICKS * 16 },
-  { label: "32 BARS", ticks: BAR_TICKS * 32 },
-  { label: "64 BARS", ticks: BAR_TICKS * 64 },
+  { label: "1 BAR", ticks: PATTERN_TICKS },
+  { label: "2 BARS", ticks: PATTERN_TICKS * 2 },
+  { label: "4 BARS", ticks: PATTERN_TICKS * 4 },
+  { label: "8 BARS", ticks: PATTERN_TICKS * 8 },
+  { label: "12 BARS", ticks: PATTERN_TICKS * 12 },
+  { label: "16 BARS", ticks: PATTERN_TICKS * 16 },
+  { label: "32 BARS", ticks: PATTERN_TICKS * 32 },
+  { label: "64 BARS", ticks: PATTERN_TICKS * 64 },
 ] as const;
 
 export interface SelectedNotes {

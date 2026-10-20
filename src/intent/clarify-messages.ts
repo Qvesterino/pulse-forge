@@ -34,6 +34,11 @@ export const CLARIFY_MESSAGES: Readonly<Record<string, string>> = {
     "That sentence asks for a change AND an exception, so I didn't change anything. Send the change on its own.",
   "last-adjustment-reference":
     "That refers to an earlier adjustment, which this build does not keep. I didn't change anything — name the target and the amount, or say 'undo that'.",
+  "descriptive-not-a-command":
+    'That describes how the mix sounds right now, so I didn\'t change anything. Say what you want changed, for example "turn down the bass".',
+  "param-target": "That names a parameter but not the track it belongs to. I didn't change anything — pick a track.",
+  "prior-adjustment-target":
+    "I remember the last adjustment, but not which track you mean. I didn't change anything — name the track.",
   "hypothetical-action-question":
     "That was a question about what would happen, not an instruction to change something — I left the project alone.",
   "conflicting-values":

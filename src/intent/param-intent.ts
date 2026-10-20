@@ -21,9 +21,18 @@ import type { EffectType } from "../project-model/types";
 import type { ParamDef } from "../effects/types";
 import { EFFECT_META, clampEffectParam, defaultParamsOf } from "../effects/definitions";
 import type { Command } from "../commands/types";
-import { effectWordIn, applyMixIntent, TARGET_WORDS, EFFECT_KNOB, type MixDecision, type MixTarget } from "./mix";
+import {
+  effectWordIn,
+  applyMixIntent,
+  TARGET_WORDS,
+  EFFECT_KNOB,
+  type DeclinedIntentClarification,
+  type MixDecision,
+  type MixTarget,
+} from "./mix";
 import { calibrateParamFraction, degreeToEffectAmount, parseDegree, type Degree } from "./degree";
 import { isPriorDeltaReference } from "./reference-delta";
+import { isDescriptiveStatement } from "./declarative";
 
 export type ParamRole = "mix" | "time" | "tone" | "drive" | "width";
 
@@ -189,7 +198,22 @@ function toParamUnit(value: number, unit: UnitValue["unit"], param: ParamDef): n
  * Parse a param-level ask. Null when the text does not name an effect ×
  * role × target — the generic effect/mix layers keep their behavior.
  */
-export function parseParamIntent(text: string): ParamIntent | null {
+interface ParamAsk {
+  lower: string;
+  role: ParamRole;
+  effectType: EffectType;
+  paramId: string;
+  targets: Set<MixTarget>;
+}
+
+/**
+ * Resolve role × effect × param × targets WITHOUT requiring a target. The
+ * parser uses the full result; the target clarification uses the same result
+ * when the only missing piece is "which track?" — one vocabulary, no second
+ * interpretation.
+ */
+function resolveParamAsk(text: string): ParamAsk | null {
+  if (isDescriptiveStatement(text)) return null;
   const lower = deaccentLower(text);
   // "a little less than last time" must not resolve here (or anywhere) with a
   // guessed fraction — the prior delta is not available to this layer.
@@ -213,8 +237,7 @@ export function parseParamIntent(text: string): ParamIntent | null {
   // stealing those asks would only churn the pinned routes.
   if (EFFECT_KNOB[effectType] === (PARAM_ROLES[role].params[effectType] as string)) return null;
   const paramId = PARAM_ROLES[role].params[effectType] as string;
-  const param = paramDefOf(effectType, paramId);
-  if (!param) return null;
+  if (!paramDefOf(effectType, paramId)) return null;
 
   // Targets: track families + scene-role expansion (same vocabulary as the
   // effect layer — "na leade", "v drope").
@@ -228,7 +251,41 @@ export function parseParamIntent(text: string): ParamIntent | null {
       for (const target of expanded) targets.add(target);
     }
   }
+  return { lower, role, effectType, paramId, targets };
+}
+
+/**
+ * TARGET CLARIFICATION (P1, audit 2026-10-20): a named-knob ask with no track
+ * ("make the reverb tail a little longer") used to fall through to pattern
+ * generation — which replaces the producer's song. The parameter is fully
+ * resolved; only the track is missing, so offer the producer's own sentence
+ * with each real track family appended. Every chip is re-parsed before it is
+ * offered, so a suggestion can never be a guess or a generation prompt.
+ */
+export function declinedParamIntentClarification(
+  text: string,
+  doc: Parameters<typeof applyMixIntent>[0],
+): DeclinedIntentClarification | null {
+  const ask = resolveParamAsk(text);
+  if (!ask || ask.targets.size > 0) return null;
+  // Never append a second prepositional phrase: "…on the pads on the bass".
+  if (/\b(?:on|to|na)\b/i.test(text)) return null;
+  const base = text.trim().replace(/[.!?]+$/, "");
+  const suggestions = (["drums", "bass", "chords", "lead"] as const)
+    .filter((family) => trackIdsForMixTarget(doc, family).length > 0)
+    .map((family) => `${base} on the ${family}`)
+    .filter((suggestion) => parseParamIntent(suggestion) !== null);
+  if (suggestions.length === 0) return null;
+  return { reason: "param-target", suggestions };
+}
+
+export function parseParamIntent(text: string): ParamIntent | null {
+  const ask = resolveParamAsk(text);
+  if (!ask) return null;
+  const { lower, role, effectType, paramId, targets } = ask;
   if (targets.size === 0) return null;
+  const param = paramDefOf(effectType, paramId);
+  if (!param) return null;
 
   const detected: string[] = [`${role} → ${effectType}.${paramId}`, `→ ${[...targets].join("+")}`];
 
@@ -448,6 +505,15 @@ export function paramMovePreview(intent: ParamIntent, current: number): ParamMov
     proposed,
     next: clampEffectParam(intent.effectType, intent.paramId, proposed),
   };
+}
+
+/**
+ * A value's position in the param's own range (0..1), used by the adjustment
+ * ledger to measure the delta that ACTUALLY landed after clamping.
+ */
+export function paramValueFraction(effectType: EffectType, paramId: string, value: number): number | null {
+  const param = paramDefOf(effectType, paramId);
+  return param ? fractionOf(param, value) : null;
 }
 
 /**

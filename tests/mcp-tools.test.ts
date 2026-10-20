@@ -13,6 +13,7 @@ import {
 import { ProjectStore } from "../src/store/ProjectStore";
 import { inferPadRole } from "../src/ai/pad-roles";
 import type { ProjectDocument } from "../src/project-model/types";
+import { clearAdjustmentLedger } from "../src/intent/adjustment-recording";
 
 /**
  * MCP TOOLS — headless verification against a real ProjectStore-backed
@@ -181,6 +182,28 @@ describe("mcp tools — headless execution", async () => {
     const state = await executeMcpTool(ctx, "kyx_state", { subject: "tempo" });
     expect(state.text).toContain("140");
     expect(state.mutated).toBe(false);
+  });
+
+  it("kyx_intent prior-adjustment ledger survives the MCP round-trip, and undo clears it", async () => {
+    clearAdjustmentLedger();
+    const doc = datasetDoc();
+    const ctx = makeCtx(doc);
+    const gainOf = (): number => ctx.getDoc().tracks.find((track) => track.name === "808")!.gain;
+    const g0 = gainOf();
+    await executeMcpTool(ctx, "kyx_intent", { instruction: "turn down the bass a little" });
+    const g1 = gainOf();
+    await executeMcpTool(ctx, "kyx_intent", { instruction: "half that adjustment" });
+    const g2 = gainOf();
+    const firstDb = 20 * Math.log10(g1 / g0);
+    const halfDb = 20 * Math.log10(g2 / g1);
+    expect(firstDb).toBeLessThan(0);
+    expect(halfDb).toBeLessThan(0);
+    expect(Math.abs(halfDb)).toBeLessThan(Math.abs(firstDb));
+    expect(Math.abs(Math.abs(halfDb) - Math.abs(firstDb) / 2)).toBeLessThan(0.15);
+    // Undo removes the move the reference pointed at; the ledger must forget it.
+    await executeMcpTool(ctx, "kyx_undo", { steps: 1 });
+    const stale = await executeMcpTool(ctx, "kyx_intent", { instruction: "half that adjustment" });
+    expect(stale.mutated).toBe(false);
   });
 
   it("kyx_intent generation asks are REFUSED honestly (no hallucinated beats over MCP)", async () => {
@@ -765,6 +788,70 @@ describe("mcp P0 wave — self-description + precision", async () => {
     });
     expect(nan.mutated).toBe(false);
     expect(nan.text).toContain("finite number");
+  });
+
+  it("rejects malformed FX instance indexes without retargeting or mutating", async () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    await executeMcpTool(ctx, "kyx_fx", { effect: "delay", family: "lead", action: "more" });
+    store.execute(addEffectToTracks(store.doc, ["track-lead-x"], "delay"));
+    const before = store.doc;
+    const undoBefore = store.undoStackLength;
+
+    for (const instance of [1.5, 0, -1, "2", "not-a-number", null]) {
+      const result = await executeMcpTool(ctx, "kyx_plugin_param", {
+        op: "set",
+        trackId: "track-lead-x",
+        effect: "delay",
+        instance,
+        param: "mix",
+        value: 0.9,
+      });
+      expect(result.isError).toBe(true);
+      expect(result.errorCode).toBe("INVALID_ARGUMENTS");
+      expect(result.mutated).toBe(false);
+      expect(store.doc).toEqual(before);
+      expect(store.undoStackLength).toBe(undoBefore);
+    }
+
+    const badBypass = await executeMcpTool(ctx, "kyx_fx", {
+      action: "bypass",
+      effect: "delay",
+      family: "lead",
+      instance: 0,
+    });
+    expect(badBypass.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(store.doc).toEqual(before);
+    expect(store.undoStackLength).toBe(undoBefore);
+
+    for (const tool of ["kyx_automation", "kyx_master"] as const) {
+      const result = await executeMcpTool(ctx, tool, { instance: 1.5 });
+      expect(result.errorCode).toBe("INVALID_ARGUMENTS");
+      expect(store.doc).toEqual(before);
+      expect(store.undoStackLength).toBe(undoBefore);
+    }
+  });
+
+  it("rejects a missing ZENIT instance instead of clamping to the last one", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    await executeMcpTool(ctx, "kyx_master", { op: "add", family: "drums" });
+    await executeMcpTool(ctx, "kyx_master", { op: "add", family: "drums" });
+    const before = store.doc;
+    const undoBefore = store.undoStackLength;
+
+    const result = await executeMcpTool(ctx, "kyx_master", {
+      op: "trim",
+      family: "drums",
+      instance: 3,
+      trimDb: -1,
+    });
+    expect(result.isError).toBe(true);
+    expect(result.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(result.mutated).toBe(false);
+    expect(result.text).toContain("ZENIT instance #3 does not exist");
+    expect(store.doc).toEqual(before);
+    expect(store.undoStackLength).toBe(undoBefore);
   });
 
   it("trackId addressing: kyx_fx and kyx_plugin_param hit ONE exact track", async () => {

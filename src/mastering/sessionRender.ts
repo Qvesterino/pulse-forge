@@ -1,6 +1,7 @@
 import { createProjectFromTemplate } from "../project-model/templates";
 import type { MasterConfig, ProjectDocument } from "../project-model/types";
-import { BAR_TICKS, PPQ } from "../project-model/types";
+import { PPQ } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { SampleBank } from "../sample-library/factory";
 import type { SampleBank as SampleBankType } from "../sample-library/factory";
@@ -192,5 +193,5 @@ export async function renderMasteringSessionSource(
 /** Seconds represented by the scratch source clip, for alignment assertions. */
 export function masteringSessionTimelineSeconds(doc: ProjectDocument): number {
   const clip = doc.arrangement.audioClips?.[0];
-  return clip ? clip.lengthBars * BAR_TICKS * (60 / (doc.bpm * PPQ)) : 0;
+  return clip ? (clip.lengthBars * ticksPerBar(doc) * 60) / (doc.bpm * PPQ) : 0;
 }

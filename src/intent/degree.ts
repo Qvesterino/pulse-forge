@@ -450,6 +450,19 @@ export function degreeToProductionAmount(level: DegreeLevel): number {
   return PRODUCTION_AMOUNTS[level];
 }
 
+/**
+ * The Degree value for a level, used when a reference asks for "one rung
+ * weaker than last time" — the calibration must run through the same anchors
+ * as a spoken word, not through a second percentage table.
+ */
+export function degreeForLevel(level: DegreeLevel): Degree {
+  const band = DEGREE_BANDS.find((candidate) => candidate.level === level) ?? DEGREE_BANDS[0];
+  if (!band) {
+    return { level: 1, name: "minimal", value: 0.2, matched: "level 1" };
+  }
+  return { level: band.level, name: band.name, value: band.value, matched: `level ${band.level}` };
+}
+
 /** Every band's words, for the taxonomy documentation test. */
 export function degreeBandVocabulary(): ReadonlyArray<{ level: DegreeLevel; value: number; pattern: string }> {
   return DEGREE_BANDS.map((band) => ({ level: band.level, value: band.value, pattern: band.words.source }));

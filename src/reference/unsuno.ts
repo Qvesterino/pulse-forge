@@ -23,14 +23,8 @@
  * shell (so the arrangement skeleton matches the source), but empty layers
  * are reported in the result, never faked. Deterministic: no RNG anywhere.
  */
-import {
-  PPQ,
-  STEP_TICKS,
-  BAR_TICKS,
-  type MusicalKey,
-  type ProjectDocument,
-  type NoteEvent,
-} from "../project-model/types";
+import { PPQ, STEP_TICKS, type MusicalKey, type ProjectDocument, type NoteEvent } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { snapshot } from "../commands/core";
 import { setBpm } from "../commands/project";
 import { setProjectKey } from "../commands/metadata";
@@ -358,7 +352,7 @@ export function unsunoCommand(doc: ProjectDocument, input: UnsunoInput, options:
 
     // Marker at the section start.
     if (section.startSec > 0) {
-      const tick = Math.round((section.startSec * bpm * PPQ) / 60 / BAR_TICKS) * BAR_TICKS;
+      const tick = Math.round((section.startSec * bpm * PPQ) / 60 / ticksPerBar(next)) * ticksPerBar(next);
       next = addMarker(next, { tick, type: "cue", name: `${role} ${occurrence + 1}` }).execute(next);
     }
     patternCount += 1;

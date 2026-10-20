@@ -116,7 +116,7 @@ describe("A1 move/nudge: the curve follows the clip", () => {
 describe("A2 trim-left: absolute curve position is invariant", () => {
   it("trimming 1 bar advances sceneOffset; every point stays at its absolute tick", () => {
     const f = fixture();
-    const baseBefore = sceneBaseTickForClip(f.doc.arrangement.clips[0]!);
+    const baseBefore = sceneBaseTickForClip(f.doc.arrangement.clips[0]!, BAR);
     f.store.execute(trimArrangementClipStart(f.store.doc, f.clipId, 1));
     const clip = f.store.doc.arrangement.clips[0]!;
     const baseAfter = sceneBaseTickForClip(clip, BAR);
