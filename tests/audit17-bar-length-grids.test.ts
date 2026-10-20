@@ -61,9 +61,9 @@ describe("AUDIT 17: bar length — arrangement grid vs scheduler grid", () => {
   });
 
   it.todo(
-    "DECISION PENDING: either the arrangement grid follows the meter " +
-      "(rewrite the bar unit in ~340 sites, on-disk format) or the scheduler " +
-      "stops using ticksPerBar(doc) (musically wrong for 6/8). Unblocked once " +
-      "the meter semantics are decided.",
+    "DECIDED (ADR 0056): the arrangement grid follows the meter. Rewriting the bar unit " +
+      "in 376 conversions across 55 files plus a schema migration for already-saved " +
+      "non-4/4 documents is Stage 2 and Stage 3. Stage 1 (disclosure) has shipped; " +
+      "the grid is still 4/4, so this spec stays open until Stage 2 lands.",
   );
 });
