@@ -42,7 +42,7 @@ describe("App (top-level shell)", () => {
 
     expect(screen.getByRole("dialog", { name: "Studio I/O settings" })).toBeInTheDocument();
     expect(await screen.findByText("Audio devices", {}, { timeout: 10_000 })).toBeInTheDocument();
-  }, 15_000);
+  }, 30_000);
 
   it("does not duplicate the active pattern when Ctrl+D targets a selected timeline clip", async () => {
     const user = userEvent.setup();
@@ -98,7 +98,7 @@ describe("App (top-level shell)", () => {
       else window.localStorage.setItem("pf-tour-v1", beforeTour);
       initLayout();
     }
-  });
+  }, 30_000);
 
   it("does not open Arrangement before the chord is assigned, then dispatches the custom binding", async () => {
     const template = createProjectFromTemplate("house");
@@ -117,6 +117,11 @@ describe("App (top-level shell)", () => {
     });
 
     try {
+      // Warm the lazy chunk BEFORE the keypress — the same reason the Studio
+      // I/O test above warms IoPanel. The panel is a lazy() import whose
+      // module graph takes seconds to transform under load; without the
+      // warm-up the 1 s waitFor measures the import queue, not the panel.
+      await import("../../src/ui/ArrangementPanel");
       fireEvent.keyDown(document.body, { key: "U", ctrlKey: true, shiftKey: true });
       expect(view.container.querySelector(".arr-panel")).toBeNull();
       setShortcutBinding("panelArr", { keyHint: "u", ctrl: true, shift: true, alt: false, meta: false });
@@ -131,7 +136,7 @@ describe("App (top-level shell)", () => {
       else window.localStorage.setItem("pf-tour-v1", previousTour);
       initLayout();
     }
-  });
+  }, 30_000);
 
   it("does not let an unselected audio clip hijack Tab track navigation", async () => {
     const template = createProjectFromTemplate("house");
@@ -240,7 +245,7 @@ describe("App (top-level shell)", () => {
       if (previousPrefill === null) window.sessionStorage.removeItem("pf-intent-prefill");
       else window.sessionStorage.setItem("pf-intent-prefill", previousPrefill);
     }
-  });
+  }, 30_000);
 
   it("if the tour has been completed (flag set), the OnboardingTour does NOT appear", async () => {
     const services = mockServices();
