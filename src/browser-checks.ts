@@ -824,6 +824,55 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     }
   }
 
+  // Spectral Pad: a note released DURING its 0.6 s attack must fade out from
+  // the level the attack had reached. The release path used to cancel the
+  // in-flight attack ramp, which dropped the envelope to the floor and muted
+  // the note outright instead of releasing it: the instrument measured
+  // -68.5 dBFS on a 0.35 s note where the same note held long enough reached
+  // -16.6 dBFS.
+  try {
+    const ctx = new OfflineAudioContext(1, SR * 2, SR);
+    const track: InstrumentTrack = {
+      id: "check-spectral-release",
+      kind: "instrument",
+      instrument: "spectral",
+      name: "Spectral Pad",
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      sampleId: null,
+      params: defaultInstrumentParams("spectral"),
+      effects: [],
+      sends: {},
+    };
+    const rt = INSTRUMENT_DEFS.spectral.factory(ctx, track, { bpm: 124, getSample: () => undefined });
+    rt.output.connect(ctx.destination);
+    // Attack runs 0.05–0.65 s; the note-off at 0.4 s lands INSIDE the ramp.
+    rt.noteOn(45, 0.9, 0.05, 0.35);
+    rt.noteOff?.(45, 0.4);
+    const buffer = await ctx.startRendering();
+    const data = buffer.getChannelData(0);
+    const rmsBetween = (from: number, to: number) => {
+      const fromIndex = Math.floor(from * SR);
+      const toIndex = Math.min(data.length, Math.floor(to * SR));
+      let sum = 0;
+      for (let i = fromIndex; i < toIndex; i++) sum += data[i] * data[i];
+      return Math.sqrt(sum / Math.max(1, toIndex - fromIndex));
+    };
+    const before = rmsBetween(0.35, 0.4);
+    const after = rmsBetween(0.4, 0.45);
+    rt.dispose();
+    const ratio = after / Math.max(before, 1e-9);
+    check(
+      "Spectral Pad: release during the attack fades from the attack level",
+      ratio > 0.4,
+      `before=${before.toExponential(2)} after=${after.toExponential(2)} ratio=${ratio.toFixed(2)}`,
+    );
+  } catch (error) {
+    check("Spectral Pad: release during the attack fades from the attack level", false, String(error));
+  }
+
   // Texture Synth: polyphony + voice stealing
   try {
     const ctx = new OfflineAudioContext(2, SR * 2, SR);

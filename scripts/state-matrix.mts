@@ -24,6 +24,7 @@
 import { chromium } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { bootStudio } from "./lib/studio-boot.mjs";
 import { STATE_ROLES, STATES, readStateMatrix, type StateSnapshot } from "../src/ui/stateMatrix";
 
 const argv = process.argv.slice(2);
@@ -38,7 +39,6 @@ process.on("uncaughtException", (error) => {
   process.exit(EXIT_HARNESS_ERROR);
 });
 
-const STUDIO_WAIT_MS = 480_000;
 const outDir = resolve("output/state-matrix");
 const shotDir = resolve("output/playwright");
 mkdirSync(outDir, { recursive: true });
@@ -52,40 +52,12 @@ const page = await context.newPage();
 page.setDefaultNavigationTimeout(300_000);
 page.setDefaultTimeout(300_000);
 
-await page.addInitScript(() => {
-  try {
-    localStorage.setItem("pf-onboarded", "1");
-  } catch {
-    /* ignore */
-  }
-});
-
-await page.goto(URL, { waitUntil: "domcontentloaded" });
-
-// Warm the optimizer: vite's dependency optimizer can force a reload mid-load,
-// which lands after the project is opened and leaves the studio chrome down.
-await page.waitForLoadState("networkidle").catch(() => {});
-await page.waitForTimeout(3000);
-await page.reload({ waitUntil: "domcontentloaded" });
-
-const continueCard = page.locator("button.pb-continue-card");
-const templateCard = page.locator("button.pb-template-start");
-await continueCard.or(templateCard).first().waitFor({ state: "visible", timeout: 60_000 });
-const resume = (await continueCard.count()) > 0 && (await continueCard.isVisible());
-await (resume ? continueCard : templateCard).first().click();
-console.log(`booted once: ${resume ? "resumed last project" : "opened House template"}`);
-
-await page.locator(".topbar, .crash-screen, .boot-error").first().waitFor({ state: "visible", timeout: STUDIO_WAIT_MS });
-await page.waitForTimeout(1200);
-const crashed = page.locator(".crash-screen, .boot-error").first();
-if ((await crashed.count()) > 0) {
-  throw new Error(`studio boot did not settle: ${(await crashed.innerText()).replace(/\s+/g, " ").slice(0, 200)}`);
-}
-const skipTour = page.locator("button:has-text('SKIP')").first();
-if ((await skipTour.count()) > 0 && (await skipTour.isVisible().catch(() => false))) {
-  await skipTour.click().catch(() => {});
-  await page.waitForTimeout(400);
-}
+// ONE boot, shared with every other gate (scripts/lib/studio-boot.mjs).
+// The first draft of this script carried its own copy and waited on
+// `button.pb-template-start` — a class commit 8d11f16b removed from the
+// markup. The template now lives in a CLOSED <details>, so the button is in
+// the DOM but NOT visible, and waiting on visibility is what timed out.
+await bootStudio(page, URL, { label: "state-matrix" });
 
 /** Read the matrix out of the live DOM. */
 const measure = async () => await page.evaluate(readStateMatrix, STATE_ROLES);
@@ -107,38 +79,72 @@ async function record(stateId: string, entered: boolean, note?: string) {
     await page.screenshot({ path: resolve(shotDir, `state-${stateId}.png`) });
   }
   const accents = readings.filter((r) => r.hasAccent).map((r) => r.roleId);
+  const marked = readings.filter((r) => r.accentCount > 0).map((r) => `${r.roleId}(${r.accentCount})`);
+  const rings = readings.filter((r) => r.ringCount > 0).map((r) => `${r.roleId}(${r.ringCount})`);
+  const borders = readings.filter((r) => r.borderAccentCount > 0).map((r) => `${r.roleId}(${r.borderAccentCount})`);
   console.log(
     `  ${entered ? "entered" : "NOT ENTERED"}  ${stateId.padEnd(10)} ` +
       `roles=${readings.filter((r) => r.visible > 0).length}/${readings.length}` +
-      (accents.length ? `  accent: ${accents.join(", ")}` : ""),
+      (marked.length ? `  inset: ${marked.join(", ")}` : "") +
+      (borders.length ? `  border: ${borders.join(", ")}` : "") +
+      (rings.length ? `  rings: ${rings.join(", ")}` : ""),
   );
   if (note) console.log(`      ${note}`);
   return snapshot;
 }
 
 // ---- idle ------------------------------------------------------------------
+// "Idle" is a CLAIM: nothing is playing and nothing is marked as the
+// playhead. Asserting it costs two queries and stops a green run from
+// meaning "the transport was already running when we called it idle".
+const idlePlay = (await page.locator(".btn-play.active").count()) > 0;
+const idleHead = (await page.locator(".step.playhead").count()) > 0;
 await page.waitForTimeout(400);
-await record("idle", true);
+await record("idle", !idlePlay && !idleHead, idlePlay || idleHead ? "the transport was already running" : undefined);
 
 // ---- selected --------------------------------------------------------------
-const firstRow = page.locator(".row-pad").first();
-if ((await firstRow.count()) > 0) {
-  await firstRow.click({ timeout: 20_000 }).catch(() => {});
-  await page.waitForTimeout(500);
-  const readings = await measure();
-  const selected = readings.find((r) => r.roleId === "rowPad");
-  await record("selected", !!selected?.hasAccent, selected?.hasAccent ? undefined : "no amber accent on the channel row after the click");
+// The selection has to MOVE for this state to mean anything.
+//
+// The first version clicked `.row-pad` — the FIRST row — which is ALREADY
+// selected, so the reading came back byte-identical to idle and "selected"
+// was indistinguishable from "idle" in the data while the screenshot looked
+// the same too. Now it clicks a row that is not selected and proves the mark
+// moved to it.
+const beforeSelection = (await measure()).find((r) => r.roleId === "rowPad")?.accentSample ?? null;
+const otherRow = page.locator(".row-pad:not(.selected)").first();
+if ((await otherRow.count()) > 0) {
+  await otherRow.click({ timeout: 20_000 }).catch(() => {});
+  await page.waitForTimeout(600);
+  const after = (await measure()).find((r) => r.roleId === "rowPad");
+  const moved = !!after?.accentSample && after.accentSample !== beforeSelection;
+  await record(
+    "selected",
+    moved,
+    moved ? undefined : `the selection did not move (still "${after?.accentSample}")`,
+  );
 } else {
-  await record("selected", false, "no .row-pad in the shell");
+  await record("selected", false, "no unselected .row-pad to click");
 }
 
 // ---- playing ---------------------------------------------------------------
+// Two independent signals, not one: the transport says it is running AND the
+// grid is actually marking a playhead column. A run that only checks the
+// button class would happily record "playing" over a frozen grid.
 const play = page.locator(".btn-play").first();
 if ((await play.count()) > 0) {
   await play.click({ timeout: 20_000 }).catch(() => {});
   await page.waitForTimeout(900);
-  const playing = (await page.locator(".btn-play.active").count()) > 0;
-  await record("playing", playing, playing ? undefined : "the transport did not report a playing state");
+  const transportRunning = (await page.locator(".btn-play.active").count()) > 0;
+  const playheadCells = (await page.locator(".step.playhead").count()) > 0;
+  await record(
+    "playing",
+    transportRunning && playheadCells,
+    !transportRunning
+      ? "the transport did not report a playing state"
+      : !playheadCells
+        ? "the transport is running but no step carries the playhead mark"
+        : undefined,
+  );
 } else {
   await record("playing", false, "no .btn-play in the shell");
 }
@@ -152,7 +158,10 @@ const hoverTarget = page.locator(".transport-cluster .btn").first();
 if ((await hoverTarget.count()) > 0) {
   await hoverTarget.hover({ timeout: 20_000 }).catch(() => {});
   await page.waitForTimeout(300);
-  await record("hover", true);
+  // `:hover` is the pointer's real answer, not an assumption that the hover
+  // call worked. The first version recorded "hover" unconditionally.
+  const hovering = await hoverTarget.evaluate((el) => el.matches(":hover")).catch(() => false);
+  await record("hover", hovering, hovering ? undefined : "the pointer is not actually over the control");
   await page.mouse.move(5, 5).catch(() => {});
   await page.waitForTimeout(200);
 } else {
@@ -160,25 +169,53 @@ if ((await hoverTarget.count()) > 0) {
 }
 
 // ---- focus -----------------------------------------------------------------
-const focusTarget = page.locator(".transport-cluster .btn").first();
-if ((await focusTarget.count()) > 0) {
-  await focusTarget.focus({ timeout: 20_000 }).catch(() => {});
-  await page.waitForTimeout(300);
-  const focused = await page.evaluate(() => document.activeElement?.className ?? "");
-  await record("focus", /transport-cluster/.test(focused) || focused.length > 0, focused.length === 0 ? "nothing took focus" : undefined);
-} else {
-  await record("focus", false, "no .transport-cluster .btn to focus");
+// Keyboard focus has to be reached WITH THE KEYBOARD.
+//
+// The first version called `element.focus()`, which moves DOM focus but does
+// NOT arm `:focus-visible` — and every focus ring in this shell is a
+// `:focus-visible` outline. So the recorded "focus" state was pixel-identical
+// to "idle" and the state was not measurable at all. Pressing Tab is what a
+// keyboard user does, and it is the only way the shell actually paints a
+// focus ring.
+await page.mouse.move(5, 5).catch(() => {});
+await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
+await page.waitForTimeout(200);
+
+let focusReached = false;
+for (let i = 0; i < 40 && !focusReached; i += 1) {
+  await page.keyboard.press("Tab");
+  focusReached = await page.evaluate(() => {
+    const el = document.activeElement;
+    return !!el && !!el.closest(".transport-cluster");
+  });
 }
+await page.waitForTimeout(300);
+await record(
+  "focus",
+  focusReached,
+  focusReached ? undefined : "keyboard focus never reached a transport control",
+);
 
 // ---- recording -------------------------------------------------------------
 // The transport's RECORD is MIDI overdub into the pattern (patternRecorder),
 // not microphone capture - so it needs no permission dialog and IS reachable.
+// Two signals: the button is lit, and the OVERDUB/REPLACE mode selector that
+// only exists while armed is present.
 const rec = page.locator(".btn-record").first();
 if ((await rec.count()) > 0) {
   await rec.click({ timeout: 20_000 }).catch(() => {});
   await page.waitForTimeout(900);
   const armed = (await page.locator(".btn-record.armed").count()) > 0;
-  await record("recording", armed, armed ? undefined : "the record button did not report an armed state");
+  const modeSelector = (await page.locator("select.rec-option").count()) > 0;
+  await record(
+    "recording",
+    armed && modeSelector,
+    !armed
+      ? "the record button did not report an armed state"
+      : !modeSelector
+        ? "the record button is armed but the record-mode selector is absent"
+        : undefined,
+  );
 } else {
   await record("recording", false, "no .btn-record in the shell");
 }

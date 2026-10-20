@@ -1,0 +1,321 @@
+[2m07:56:26[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Transform failed with 1 error:
+D:/pulse-forge/src/transport/Transport.ts:11:6: ERROR: The symbol "MIN_BPM" has already been declared
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/pulse-forge/src/transport/Transport.ts[39m:11:6
+[33m  
+  [33mThe symbol "MIN_BPM" has already been declared[33m
+  9  |  
+  10 |  const MIN_BPM = 20;
+  11 |  const MIN_BPM = 20;
+     |        ^
+  12 |  const MAX_BPM = 300;
+  13 |  const FALLBACK_BPM = 120;
+  [39m
+[2m07:56:26[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Transform failed with 1 error:
+D:/pulse-forge/src/transport/Transport.ts:11:6: ERROR: The symbol "MIN_BPM" has already been declared
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/pulse-forge/src/transport/Transport.ts[39m:11:6
+[33m  
+  [33mThe symbol "MIN_BPM" has already been declared[33m
+  9  |  
+  10 |  const MIN_BPM = 20;
+  11 |  const MIN_BPM = 20;
+     |        ^
+  12 |  const MAX_BPM = 300;
+  13 |  const FALLBACK_BPM = 120;
+  [39m
+[2m07:56:26[22m [31m[1m[vite][22m[39m [31mInternal server error: Transform failed with 1 error:
+D:/pulse-forge/src/transport/Transport.ts:11:6: ERROR: The symbol "MIN_BPM" has already been declared[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/pulse-forge/src/transport/Transport.ts[39m:11:6
+[33m  
+  [33mThe symbol "MIN_BPM" has already been declared[33m
+  9  |  
+  10 |  const MIN_BPM = 20;
+  11 |  const MIN_BPM = 20;
+     |        ^
+  12 |  const MAX_BPM = 300;
+  13 |  const FALLBACK_BPM = 120;
+  [39m
+      at failureErrorWithLog (D:\pulse-forge\node_modules\esbuild\lib\main.js:1467:15)
+      at D:\pulse-forge\node_modules\esbuild\lib\main.js:736:50
+      at responseCallbacks.<computed> (D:\pulse-forge\node_modules\esbuild\lib\main.js:603:9)
+      at handleIncomingPacket (D:\pulse-forge\node_modules\esbuild\lib\main.js:658:12)
+      at Socket.readFromStdout (D:\pulse-forge\node_modules\esbuild\lib\main.js:581:7)
+      at Socket.emit (node:events:508:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+[2m07:56:43[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Transform failed with 1 error:
+D:/pulse-forge/src/transport/Transport.ts:11:6: ERROR: The symbol "MIN_BPM" has already been declared
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/pulse-forge/src/transport/Transport.ts[39m:11:6
+[33m  
+  [33mThe symbol "MIN_BPM" has already been declared[33m
+  9  |  
+  10 |  const MIN_BPM = 20;
+  11 |  const MIN_BPM = 20;
+     |        ^
+  12 |  const MAX_BPM = 300;
+  13 |  const FALLBACK_BPM = 120;
+  [39m
+[2m07:56:43[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Transform failed with 1 error:
+D:/pulse-forge/src/transport/Transport.ts:11:6: ERROR: The symbol "MIN_BPM" has already been declared
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/pulse-forge/src/transport/Transport.ts[39m:11:6
+[33m  
+  [33mThe symbol "MIN_BPM" has already been declared[33m
+  9  |  
+  10 |  const MIN_BPM = 20;
+  11 |  const MIN_BPM = 20;
+     |        ^
+  12 |  const MAX_BPM = 300;
+  13 |  const FALLBACK_BPM = 120;
+  [39m
+[2m07:56:43[22m [31m[1m[vite][22m[39m [31mInternal server error: Transform failed with 1 error:
+D:/pulse-forge/src/transport/Transport.ts:11:6: ERROR: The symbol "MIN_BPM" has already been declared[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/pulse-forge/src/transport/Transport.ts[39m:11:6
+[33m  
+  [33mThe symbol "MIN_BPM" has already been declared[33m
+  9  |  
+  10 |  const MIN_BPM = 20;
+  11 |  const MIN_BPM = 20;
+     |        ^
+  12 |  const MAX_BPM = 300;
+  13 |  const FALLBACK_BPM = 120;
+  [39m
+      at failureErrorWithLog (D:\pulse-forge\node_modules\esbuild\lib\main.js:1467:15)
+      at D:\pulse-forge\node_modules\esbuild\lib\main.js:736:50
+      at responseCallbacks.<computed> (D:\pulse-forge\node_modules\esbuild\lib\main.js:603:9)
+      at handleIncomingPacket (D:\pulse-forge\node_modules\esbuild\lib\main.js:658:12)
+      at Socket.readFromStdout (D:\pulse-forge\node_modules\esbuild\lib\main.js:581:7)
+      at Socket.emit (node:events:508:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+[2m07:56:44[22m [31m[1m[vite][22m[39m [31mInternal server error: Transform failed with 1 error:
+D:/pulse-forge/src/transport/Transport.ts:11:6: ERROR: The symbol "MIN_BPM" has already been declared[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/pulse-forge/src/transport/Transport.ts[39m:11:6
+[33m  
+  [33mThe symbol "MIN_BPM" has already been declared[33m
+  9  |  
+  10 |  const MIN_BPM = 20;
+  11 |  const MIN_BPM = 20;
+     |        ^
+  12 |  const MAX_BPM = 300;
+  13 |  const FALLBACK_BPM = 120;
+  [39m
+      at failureErrorWithLog (D:\pulse-forge\node_modules\esbuild\lib\main.js:1467:15)
+      at D:\pulse-forge\node_modules\esbuild\lib\main.js:736:50
+      at responseCallbacks.<computed> (D:\pulse-forge\node_modules\esbuild\lib\main.js:603:9)
+      at handleIncomingPacket (D:\pulse-forge\node_modules\esbuild\lib\main.js:658:12)
+      at Socket.readFromStdout (D:\pulse-forge\node_modules\esbuild\lib\main.js:581:7)
+      at Socket.emit (node:events:508:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+[2m07:56:48[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Transform failed with 1 error:
+D:/pulse-forge/src/transport/Transport.ts:11:6: ERROR: The symbol "MIN_BPM" has already been declared
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/pulse-forge/src/transport/Transport.ts[39m:11:6
+[33m  
+  [33mThe symbol "MIN_BPM" has already been declared[33m
+  9  |  
+  10 |  const MIN_BPM = 20;
+  11 |  const MIN_BPM = 20;
+     |        ^
+  12 |  const MAX_BPM = 300;
+  13 |  const FALLBACK_BPM = 120;
+  [39m
+[2m07:56:48[22m [31m[1m[vite][22m[39m [31mInternal server error: Transform failed with 1 error:
+D:/pulse-forge/src/transport/Transport.ts:11:6: ERROR: The symbol "MIN_BPM" has already been declared[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/pulse-forge/src/transport/Transport.ts[39m:11:6
+[33m  
+  [33mThe symbol "MIN_BPM" has already been declared[33m
+  9  |  
+  10 |  const MIN_BPM = 20;
+  11 |  const MIN_BPM = 20;
+     |        ^
+  12 |  const MAX_BPM = 300;
+  13 |  const FALLBACK_BPM = 120;
+  [39m
+      at failureErrorWithLog (D:\pulse-forge\node_modules\esbuild\lib\main.js:1467:15)
+      at D:\pulse-forge\node_modules\esbuild\lib\main.js:736:50
+      at responseCallbacks.<computed> (D:\pulse-forge\node_modules\esbuild\lib\main.js:603:9)
+      at handleIncomingPacket (D:\pulse-forge\node_modules\esbuild\lib\main.js:658:12)
+      at Socket.readFromStdout (D:\pulse-forge\node_modules\esbuild\lib\main.js:581:7)
+      at Socket.emit (node:events:508:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+[2m07:56:51[22m [31m[1m[vite][22m[39m [31mInternal server error: Transform failed with 1 error:
+D:/pulse-forge/src/transport/Transport.ts:11:6: ERROR: The symbol "MIN_BPM" has already been declared[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/pulse-forge/src/transport/Transport.ts[39m:11:6
+[33m  
+  [33mThe symbol "MIN_BPM" has already been declared[33m
+  9  |  
+  10 |  const MIN_BPM = 20;
+  11 |  const MIN_BPM = 20;
+     |        ^
+  12 |  const MAX_BPM = 300;
+  13 |  const FALLBACK_BPM = 120;
+  [39m
+      at failureErrorWithLog (D:\pulse-forge\node_modules\esbuild\lib\main.js:1467:15)
+      at D:\pulse-forge\node_modules\esbuild\lib\main.js:736:50
+      at responseCallbacks.<computed> (D:\pulse-forge\node_modules\esbuild\lib\main.js:603:9)
+      at handleIncomingPacket (D:\pulse-forge\node_modules\esbuild\lib\main.js:658:12)
+      at Socket.readFromStdout (D:\pulse-forge\node_modules\esbuild\lib\main.js:581:7)
+      at Socket.emit (node:events:508:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+[2m07:56:54[22m [31m[1m[vite][22m[39m [31mInternal server error: Transform failed with 1 error:
+D:/pulse-forge/src/transport/Transport.ts:11:6: ERROR: The symbol "MIN_BPM" has already been declared[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/pulse-forge/src/transport/Transport.ts[39m:11:6
+[33m  
+  [33mThe symbol "MIN_BPM" has already been declared[33m
+  9  |  
+  10 |  const MIN_BPM = 20;
+  11 |  const MIN_BPM = 20;
+     |        ^
+  12 |  const MAX_BPM = 300;
+  13 |  const FALLBACK_BPM = 120;
+  [39m
+      at failureErrorWithLog (D:\pulse-forge\node_modules\esbuild\lib\main.js:1467:15)
+      at D:\pulse-forge\node_modules\esbuild\lib\main.js:736:50
+      at responseCallbacks.<computed> (D:\pulse-forge\node_modules\esbuild\lib\main.js:603:9)
+      at handleIncomingPacket (D:\pulse-forge\node_modules\esbuild\lib\main.js:658:12)
+      at Socket.readFromStdout (D:\pulse-forge\node_modules\esbuild\lib\main.js:581:7)
+      at Socket.emit (node:events:508:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+[2m07:57:00[22m [31m[1m[vite][22m[39m [31mInternal server error: Transform failed with 1 error:
+D:/pulse-forge/src/transport/Transport.ts:11:6: ERROR: The symbol "MIN_BPM" has already been declared[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/pulse-forge/src/transport/Transport.ts[39m:11:6
+[33m  
+  [33mThe symbol "MIN_BPM" has already been declared[33m
+  9  |  
+  10 |  const MIN_BPM = 20;
+  11 |  const MIN_BPM = 20;
+     |        ^
+  12 |  const MAX_BPM = 300;
+  13 |  const FALLBACK_BPM = 120;
+  [39m
+      at failureErrorWithLog (D:\pulse-forge\node_modules\esbuild\lib\main.js:1467:15)
+      at D:\pulse-forge\node_modules\esbuild\lib\main.js:736:50
+      at responseCallbacks.<computed> (D:\pulse-forge\node_modules\esbuild\lib\main.js:603:9)
+      at handleIncomingPacket (D:\pulse-forge\node_modules\esbuild\lib\main.js:658:12)
+      at Socket.readFromStdout (D:\pulse-forge\node_modules\esbuild\lib\main.js:581:7)
+      at Socket.emit (node:events:508:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+[2m07:57:04[22m [31m[1m[vite][22m[39m [31mInternal server error: Transform failed with 1 error:
+D:/pulse-forge/src/transport/Transport.ts:11:6: ERROR: The symbol "MIN_BPM" has already been declared[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/pulse-forge/src/transport/Transport.ts[39m:11:6
+[33m  
+  [33mThe symbol "MIN_BPM" has already been declared[33m
+  9  |  
+  10 |  const MIN_BPM = 20;
+  11 |  const MIN_BPM = 20;
+     |        ^
+  12 |  const MAX_BPM = 300;
+  13 |  const FALLBACK_BPM = 120;
+  [39m
+      at failureErrorWithLog (D:\pulse-forge\node_modules\esbuild\lib\main.js:1467:15)
+      at D:\pulse-forge\node_modules\esbuild\lib\main.js:736:50
+      at responseCallbacks.<computed> (D:\pulse-forge\node_modules\esbuild\lib\main.js:603:9)
+      at handleIncomingPacket (D:\pulse-forge\node_modules\esbuild\lib\main.js:658:12)
+      at Socket.readFromStdout (D:\pulse-forge\node_modules\esbuild\lib\main.js:581:7)
+      at Socket.emit (node:events:508:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+[2m07:57:19[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Transform failed with 1 error:
+D:/pulse-forge/src/transport/Transport.ts:11:6: ERROR: The symbol "MIN_BPM" has already been declared
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/pulse-forge/src/transport/Transport.ts[39m:11:6
+[33m  
+  [33mThe symbol "MIN_BPM" has already been declared[33m
+  9  |  
+  10 |  const MIN_BPM = 20;
+  11 |  const MIN_BPM = 20;
+     |        ^
+  12 |  const MAX_BPM = 300;
+  13 |  const FALLBACK_BPM = 120;
+  [39m
+[2m07:57:19[22m [31m[1m[vite][22m[39m [31mInternal server error: Transform failed with 1 error:
+D:/pulse-forge/src/transport/Transport.ts:11:6: ERROR: The symbol "MIN_BPM" has already been declared[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/pulse-forge/src/transport/Transport.ts[39m:11:6
+[33m  
+  [33mThe symbol "MIN_BPM" has already been declared[33m
+  9  |  
+  10 |  const MIN_BPM = 20;
+  11 |  const MIN_BPM = 20;
+     |        ^
+  12 |  const MAX_BPM = 300;
+  13 |  const FALLBACK_BPM = 120;
+  [39m
+      at failureErrorWithLog (D:\pulse-forge\node_modules\esbuild\lib\main.js:1467:15)
+      at D:\pulse-forge\node_modules\esbuild\lib\main.js:736:50
+      at responseCallbacks.<computed> (D:\pulse-forge\node_modules\esbuild\lib\main.js:603:9)
+      at handleIncomingPacket (D:\pulse-forge\node_modules\esbuild\lib\main.js:658:12)
+      at Socket.readFromStdout (D:\pulse-forge\node_modules\esbuild\lib\main.js:581:7)
+      at Socket.emit (node:events:508:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+[2m07:57:20[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Transform failed with 1 error:
+D:/pulse-forge/src/transport/Transport.ts:11:6: ERROR: The symbol "MIN_BPM" has already been declared
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/pulse-forge/src/transport/Transport.ts[39m:11:6
+[33m  
+  [33mThe symbol "MIN_BPM" has already been declared[33m
+  9  |  
+  10 |  const MIN_BPM = 20;
+  11 |  const MIN_BPM = 20;
+     |        ^
+  12 |  const MAX_BPM = 300;
+  13 |  const FALLBACK_BPM = 120;
+  [39m
+[2m07:57:20[22m [31m[1m[vite][22m[39m [31mInternal server error: Transform failed with 1 error:
+D:/pulse-forge/src/transport/Transport.ts:11:6: ERROR: The symbol "MIN_BPM" has already been declared[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/pulse-forge/src/transport/Transport.ts[39m:11:6
+[33m  
+  [33mThe symbol "MIN_BPM" has already been declared[33m
+  9  |  
+  10 |  const MIN_BPM = 20;
+  11 |  const MIN_BPM = 20;
+     |        ^
+  12 |  const MAX_BPM = 300;
+  13 |  const FALLBACK_BPM = 120;
+  [39m
+      at failureErrorWithLog (D:\pulse-forge\node_modules\esbuild\lib\main.js:1467:15)
+      at D:\pulse-forge\node_modules\esbuild\lib\main.js:736:50
+      at responseCallbacks.<computed> (D:\pulse-forge\node_modules\esbuild\lib\main.js:603:9)
+      at handleIncomingPacket (D:\pulse-forge\node_modules\esbuild\lib\main.js:658:12)
+      at Socket.readFromStdout (D:\pulse-forge\node_modules\esbuild\lib\main.js:581:7)
+      at Socket.emit (node:events:508:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)

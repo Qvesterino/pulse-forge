@@ -26,6 +26,7 @@
  * one (vite's first cold transform of AudioEngine.ts takes minutes).
  */
 import { chromium, devices } from "playwright";
+import { bootStudio } from "./lib/studio-boot.mjs";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -35,9 +36,6 @@ const URL = urlIndex >= 0 ? argv[urlIndex + 1] : "http://127.0.0.1:5173";
 const SHOTS = argv.includes("--shots");
 /** Add the coarse-pointer pass. See TOUCH_PASS below for why it is worth its boot. */
 const TOUCH = argv.includes("--touch");
-
-/** Cold-transform budget for the lazily-imported studio chunk on vite dev. */
-const STUDIO_WAIT_MS = 480_000;
 
 /** Viewports from the QA matrix in docs/PULSE-FORGE-PREMIUM-UI-PLAN.md. */
 const VIEWPORTS = [
@@ -203,75 +201,13 @@ const report = [];
 // every breakpoint in this shell is CSS (media + container queries), all of
 // which respond to a resize.
 /**
- * Boot the studio once in a context: skip the landing page, open a project,
- * wait out the lazy studio chunk, refuse to measure a crash screen, and close
- * the first-run tour. Shared by the fine and coarse passes so the two branches
- * cannot drift into measuring different things.
+ * Boot the studio once. The implementation lives in scripts/lib/studio-boot.mjs
+ * because FOUR gates each carried their own copy of it, and one app-side class
+ * rename (`pb-template-start` -> `pb-template`, commit 8d11f16b) broke all four
+ * at once. This file keeps only the label.
  */
 async function openStudio(page, label) {
-  // Skip the landing page: this measures the studio shell, not onboarding.
-  await page.addInitScript(() => {
-    try {
-      localStorage.setItem("pf-onboarded", "1");
-    } catch {
-      /* storage blocked — the landing shows, handled below */
-    }
-  });
-
-  await page.goto(URL, { waitUntil: "domcontentloaded" });
-
-  // WARM THE OPTIMIZER BEFORE MEASURING. Observed 2026-10-18 on this repo:
-  // partway through the first load vite logged "new dependencies optimized:
-  // @huggingface/transformers / optimized dependencies changed. reloading"
-  // and force-reloaded the page AFTER the project was opened, so the studio
-  // chrome never came up and the run died as a navigation timeout. Two earlier
-  // sessions attributed that to "cold vite transform" with no log line to
-  // support it; this one is in the server log. The race disappears entirely
-  // under `vite preview` over dist.
-  await page.waitForLoadState("networkidle").catch(() => {});
-  await page.waitForTimeout(3000);
-  await page.reload({ waitUntil: "domcontentloaded" });
-
-  // Fresh browser profiles have no saved project, so the project browser is
-  // showing templates. `.pb-template-start` is the House template, pinned by
-  // ProjectBrowser.tsx as the first-run entry.
-  //
-  // A stored project from an earlier run wins when it exists, so the continue
-  // card is preferred. Do NOT collapse this into `a.or(b)` for the click: the
-  // union locator also decides which element was clicked, and with no
-  // continue card present the first version of this script waited out its
-  // full budget on a studio that was actually up in five seconds.
-  const continueCard = page.locator("button.pb-continue-card");
-  const templateCard = page.locator("button.pb-template-start");
-  await continueCard.or(templateCard).first().waitFor({ state: "visible", timeout: 60_000 });
-  const resume = (await continueCard.count()) > 0 && (await continueCard.isVisible());
-  await (resume ? continueCard : templateCard).first().click();
-  console.log(`${label} booted once: ${resume ? "resumed last project" : "opened House template"}`);
-
-  // `main.tsx` lazy-imports the studio (`./ui/App`) only once a project is
-  // opened. The budget stays generous for a cold vite dev server.
-  await page
-    .locator(".topbar, .crash-screen, .boot-error")
-    .first()
-    .waitFor({ state: "visible", timeout: STUDIO_WAIT_MS });
-  await page.waitForTimeout(1200);
-
-  // A boot that settled on an error screen is a real result, not a timeout to
-  // hide behind — surface it instead of measuring an empty document.
-  const crashed = page.locator(".crash-screen, .boot-error").first();
-  if ((await crashed.count()) > 0) {
-    const text = (await crashed.innerText()).replace(/\s+/g, " ").slice(0, 200);
-    throw new Error(`studio boot did not settle: ${text}`);
-  }
-
-  // The first-run tour overlays the shell and would shift every measurement.
-  // It is a dismissible overlay, not part of the layout under test, so close
-  // it before measuring — the QA matrix in the plan doc requires the same.
-  const skipTour = page.locator("button:has-text('SKIP')").first();
-  if ((await skipTour.count()) > 0 && (await skipTour.isVisible().catch(() => false))) {
-    await skipTour.click().catch(() => {});
-    await page.waitForTimeout(400);
-  }
+  await bootStudio(page, URL, { label });
 }
 
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });

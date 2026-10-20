@@ -9,6 +9,7 @@
 
 import type { InstrumentTrack } from "../project-model/types";
 import type { ChoralRuntime } from "./choralNode";
+import { holdParamAt } from "./envelope";
 
 interface FallbackVoice {
   oscs: OscillatorNode[];
@@ -37,7 +38,7 @@ export function createChoralFallbackRuntime(ctx: BaseAudioContext, track: Instru
     const release = Math.max(0.02, params.release ?? 0.6);
     for (const voice of group) {
       try {
-        voice.gain.gain.cancelScheduledValues(when);
+        holdParamAt(voice.gain.gain, when);
         voice.gain.gain.setTargetAtTime(0, when, release * 0.35);
         for (const osc of voice.oscs) osc.stop(when + release * 2 + 0.05);
       } catch {

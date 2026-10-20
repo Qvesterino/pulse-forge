@@ -28,6 +28,7 @@
  */
 
 import type { InstrumentRuntime } from "./types";
+import { holdParamAt } from "./envelope";
 import type { HarmonyContextInit } from "../effects/types";
 import type { InstrumentTrack } from "../project-model/types";
 import { buildWavetableMips, extractWavetable, FACTORY_WAVETABLES, FRAME_SIZE } from "./wavetables";
@@ -80,7 +81,7 @@ export function createTsarFallbackRuntime(ctx: BaseAudioContext, track: Instrume
     voices.delete(pitch);
     const release = Math.max(0.01, params.srcARel ?? 0.4);
     try {
-      voice.gain.gain.cancelScheduledValues(when);
+      holdParamAt(voice.gain.gain, when);
       voice.gain.gain.setTargetAtTime(0, when, release * 0.35);
       for (const osc of voice.osc) osc.stop(when + release * 2 + 0.05);
     } catch {

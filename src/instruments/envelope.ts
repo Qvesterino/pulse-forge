@@ -18,6 +18,43 @@
  * EXACTLY the legacy sequence (same values, same times, same setTarget taus).
  */
 
+/**
+ * Cancel scheduled automation on `param` from `time` onward while HOLDING the
+ * value the parameter has reached at that moment.
+ *
+ * Plain cancelScheduledValues() drops an in-flight ramp to the last
+ * setValueAtTime() value — it does NOT preserve the level the ramp had
+ * reached. A note released while its attack is still running therefore snapped
+ * to the envelope floor instead of fading out from where the attack had got
+ * to: the Spectral Pad (0.6 s attack) measured -68.5 dBFS on a 0.35 s note,
+ * while the very same note held long enough reached -16.6 dBFS. The release
+ * was inaudible — a hard mute, not a fade.
+ *
+ * cancelAndHoldAtTime() computes the value at `time` from the pending
+ * automation and holds it, so the release continues from the real level. It
+ * differs from cancelScheduledValues() ONLY when a ramp is in flight at
+ * `time`; a release after the attack completed, or during the decay, computes
+ * the same value either way.
+ *
+ * The fallback keeps older engines (and any timeline the browser rejects) on
+ * the previous behaviour instead of throwing into the audio path.
+ */
+export function holdParamAt(param: AudioParam, time: number): void {
+  // A negative cancel time throws RangeError in Chromium (both
+  // cancelScheduledValues and cancelAndHoldAtTime) — clamp so a bad caller
+  // cannot throw into the audio path.
+  const at = Math.max(0, time);
+  if (typeof param.cancelAndHoldAtTime === "function") {
+    try {
+      param.cancelAndHoldAtTime(at);
+      return;
+    } catch {
+      /* unsupported timeline — fall through to the plain cancel */
+    }
+  }
+  param.cancelScheduledValues(at);
+}
+
 export type EnvShape = 0 | 1 | 2;
 
 export const ENV_SHAPE_OPTIONS = [

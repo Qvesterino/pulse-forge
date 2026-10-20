@@ -20,6 +20,7 @@
 //   1 = a check failed
 //   2 = HARNESS_ERROR — nothing was measured; NOT a gate result
 import { chromium } from "playwright";
+import { bootStudio } from "./lib/studio-boot.mjs";
 
 const EXIT_GATE = 1;
 const EXIT_HARNESS_ERROR = 2;
@@ -59,21 +60,7 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 page.setDefaultNavigationTimeout(300_000);
 page.setDefaultTimeout(300_000);
-await page.addInitScript(() => {
-  try {
-    localStorage.setItem("pf-onboarded", "1");
-  } catch {
-    /* ignore */
-  }
-});
-await page.goto(URL, { waitUntil: "domcontentloaded" });
-await page.locator("button.pb-template-start").first().waitFor({ state: "visible", timeout: 120_000 });
-await page.locator("button.pb-template-start").first().click();
-await page.locator(".topbar").first().waitFor({ state: "visible", timeout: 300_000 });
-await page.waitForTimeout(1200);
-const skip = page.locator("button:has-text('SKIP')").first();
-if ((await skip.count()) > 0) await skip.click().catch(() => {});
-await page.waitForTimeout(400);
+await bootStudio(page, URL);
 
 const tabs = page.locator(".dock-tab");
 const tabCount = await tabs.count();

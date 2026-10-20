@@ -26,6 +26,7 @@
  */
 
 import type { InstrumentRuntime } from "./types";
+import { holdParamAt } from "./envelope";
 import type { InstrumentTrack } from "../project-model/types";
 import type { KopaEvent } from "../kopa/dsp/kopaProcessor";
 
@@ -141,7 +142,7 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
     voices.delete(id);
     const release = 0.002;
     try {
-      voice.gain.gain.cancelScheduledValues(when);
+      holdParamAt(voice.gain.gain, when);
       voice.gain.gain.setTargetAtTime(0, when, release);
       for (const source of voice.sources) source.stop(when + release * 4 + 0.005);
     } catch {

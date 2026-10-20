@@ -1,5 +1,6 @@
 import type { Command } from "../commands/types";
 import type { ProjectDocument } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import {
   addAutomationLane,
   addAutomationPoint,
@@ -140,8 +141,10 @@ export function applyAutomateIntent(
       ? nonGroupTracks[0]
       : undefined;
   if (!track) return null;
-  const PPQ = 480;
-  const bar = 4 * PPQ;
+  // The document's bar length (ADR 0056). The ramp's end tick is measured in
+  // bars, so it has to be the document's meter — a hardcoded 4/4 bar put the
+  // end point two beats late per bar in a 6/8 project.
+  const bar = ticksPerBar(doc);
   const startTick = span?.startTick ?? 0;
   const endTick =
     span?.endTick ??

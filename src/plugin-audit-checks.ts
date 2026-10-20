@@ -34,6 +34,7 @@ import { EFFECT_META } from "./effects/definitions";
 import type { ParamDef } from "./effects/types";
 import { CORE_EFFECT_PRESETS } from "./effects/presets";
 import { INSTRUMENT_DEFS, INSTRUMENT_ORDER, defaultInstrumentParams } from "./instruments/registry";
+import { auditionNoteSec } from "./plugin-audit-audition";
 import { generateFactoryBank, type SampleBank } from "./sample-library/factory";
 import { ensureCuratedLayer } from "./sample-library/curated";
 import { loadAllWorklets } from "./audio-worklets/loader";
@@ -1535,6 +1536,17 @@ async function auditInstrument(kind: (typeof INSTRUMENT_ORDER)[number], bank: Sa
     return { attack: win(0.05, 0.15), sustain: win(0.2, 0.35), tail: win(0.42, 0.7) };
   };
 
+  const defaults = defaultInstrumentParams(kind);
+  // A 0.35 s tap cannot audition an instrument whose ATTACK is longer than the
+  // tap: the envelope never leaves the attack, so the render measures the
+  // attack slope instead of the instrument's operating level. Spectral Pad
+  // (0.6 s attack) and Texture Synth (0.5 s attack) measured -68.5 and
+  // -84.0 dBFS that way and were reported as broken instruments — an audit
+  // artifact, not a defect. The rule lives in plugin-audit-audition.ts so a
+  // node test can pin it; it leaves the fixture IDENTICAL for the 22
+  // instruments whose attack is shorter than the tap.
+  const noteLenSec = auditionNoteSec(defaults);
+
   const render = async (params: Record<string, number>, plan?: InstrumentProbePlan): Promise<AudioBuffer> => {
     const duration = plan?.duration ?? 2;
     const ctx = new OfflineAudioContext(2, Math.floor(SR * duration), SR);
@@ -1566,12 +1578,14 @@ async function auditInstrument(kind: (typeof INSTRUMENT_ORDER)[number], bank: Sa
         else rt.polyPressure?.(event.pitch, event.value, event.when);
       }
     } else {
-      rt.noteOn(45, 0.9, 0.05, 0.35);
+      rt.noteOn(45, 0.9, 0.05, noteLenSec);
       // Percussive one-shots (808/logdrum/drumsynth family) decay naturally —
       // an explicit noteOff would choke their decay tail through the percussive
       // stop gate and hide every envelope/tail parameter.
       const oneShotKopa = kind === "kopa" && (params.triggerMode ?? 0) < 0.5;
-      if (!oneShotKopa && !["808", "logdrum", "drumsynth", "bass808"].includes(kind)) rt.noteOff?.(45, 0.4);
+      if (!oneShotKopa && !["808", "logdrum", "drumsynth", "bass808"].includes(kind)) {
+        rt.noteOff?.(45, 0.05 + noteLenSec);
+      }
     }
     // Event-queue instruments (TSAR/KOPA) must seed their processorOptions
     // before Chromium starts an offline render; port messages are not pumped
@@ -1582,7 +1596,6 @@ async function auditInstrument(kind: (typeof INSTRUMENT_ORDER)[number], bank: Sa
     return buffer;
   };
 
-  const defaults = defaultInstrumentParams(kind);
   const baseBuffer = await render(defaults);
   const base = metricsOf(baseBuffer);
   const defaultAudible = base.peak > 0.01 && finiteEverywhere(baseBuffer);

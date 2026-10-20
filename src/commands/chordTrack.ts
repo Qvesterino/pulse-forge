@@ -3,6 +3,7 @@ import type { ChordEvent, ProjectDocument } from "../project-model/types";
 import type { ChordQuality } from "../project-model/chords";
 import { CHORD_QUALITIES, chordAtTick, nearestChordPitch } from "../project-model/chords";
 import { patternBaseTickForClip } from "../project-model/events";
+import { ticksPerBar } from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
 import { PROGRESSIONS_BY_GENRE, selectProgression } from "../ai/harmony";
@@ -345,7 +346,7 @@ export function conformInstrumentClipsToChordTrack(doc: ProjectDocument, clipIds
         outNotes[trackId] = (notes[trackId] ?? []).map((note) => {
           // Absolute arrangement tick of the note: pattern base + note start.
           // PITCH only snaps — note timing never changes.
-          const chord = chordAtTick(chords, anchorBase + note.start);
+          const chord = chordAtTick(chords, anchorBase + note.start, ticksPerBar(doc));
           if (!chord) return note;
           const pitch = nearestChordPitch(note.pitch, chord, { min: 0, max: 127 });
           if (pitch !== note.pitch) touched = true;

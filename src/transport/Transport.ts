@@ -1,4 +1,5 @@
 import { PPQ } from "../project-model/types";
+import { ticksPerBarFor } from "../project-model/schema";
 
 export interface Clock {
   now(): number;
@@ -6,8 +7,6 @@ export interface Clock {
 
 export const systemClock: Clock = { now: () => performance.now() / 1000 };
 
-/** Default ticks per bar (4/4). Projects can provide their actual bar length. */
-const BAR_TICKS_ = PPQ * 4;
 const MIN_BPM = 20;
 const MAX_BPM = 300;
 const FALLBACK_BPM = 120;
@@ -25,8 +24,14 @@ export class Transport {
   private paused_ = false;
   /** Absolute tick at which content becomes audible for the current play. */
   private contentStartTick_ = 0;
-  /** Bar length used when calculating a future count-in/pre-roll. */
-  private barTicks_ = BAR_TICKS_;
+  /**
+   * Bar length used when calculating a future count-in/pre-roll.
+   *
+   * The default is 4/4. The bar-length formula lives in ONE place (ADR 0056),
+   * so this is `ticksPerBarFor`'s 4/4 case — not a second copy of `PPQ * 4`.
+   * A document's real bar length arrives through `setBarTicks`.
+   */
+  private barTicks_ = ticksPerBarFor({ numerator: 4, denominator: 4 });
   private loopEnabled_ = false;
   private loopStart_ = 0;
   private loopEnd_ = 0;

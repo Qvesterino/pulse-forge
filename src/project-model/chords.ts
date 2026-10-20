@@ -54,14 +54,23 @@ export function chordName(root: number, quality: ChordQuality): string {
   return `${NOTE_NAMES[rootClass]}${CHORD_LABELS[quality]}`;
 }
 
-/** The chord event covering an absolute arrangement tick, if any. */
+/**
+ * The chord event covering an absolute arrangement tick, if any.
+ *
+ * `barUnitTicks` is the document's bar length in ticks (ADR 0056). It is a
+ * PARAMETER, not an import, on purpose: `schema.ts` imports this module, so
+ * importing the bar-length helper back would close a cycle. A chord occupies
+ * whole bars on the same grid as the scene clips, so it MUST be measured in
+ * the same unit the clips are stored in.
+ */
 export function chordAtTick(
   chords: readonly { id: string; startBar: number; lengthBars: number; root: number; quality: ChordQuality }[],
   tick: number,
+  barUnitTicks: number,
 ): { root: number; quality: ChordQuality } | null {
   for (const chord of chords) {
-    const start = chord.startBar * 1920;
-    if (tick >= start && tick < start + chord.lengthBars * 1920) {
+    const start = chord.startBar * barUnitTicks;
+    if (tick >= start && tick < start + chord.lengthBars * barUnitTicks) {
       return { root: chord.root, quality: chord.quality };
     }
   }

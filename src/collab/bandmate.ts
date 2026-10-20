@@ -3,7 +3,7 @@ import { setTrackParams } from "../commands/project";
 import type { Command } from "../commands/types";
 import { hashString, mulberry32 } from "../shared/rng";
 import type { ProjectDocument, SceneRole } from "../project-model/types";
-import { PPQ } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import type { Transport } from "../transport/Transport";
 
 /**
@@ -26,7 +26,6 @@ import type { Transport } from "../transport/Transport";
  * double-triggers inside a phrase.
  */
 
-const BAR_TICKS = PPQ * 4;
 const TICK_MS = 250;
 const BOT_TRACK_NAME = "KYX Drums";
 const STEPS = 16;
@@ -440,14 +439,18 @@ export function createBandmate(deps: {
 
   const tick = (): void => {
     if (!enabled || !transport.playing) return;
-    const phraseTicks = BAR_TICKS * phraseBars;
+    // The document's bar unit (ADR 0056) — the phrase length and the playhead
+    // bar index must both be measured in the SAME unit the arrangement clips
+    // are stored in, or the bot's phrase boundaries drift off the scene roles.
+    const barUnit = ticksPerBar(store.doc);
+    const phraseTicks = barUnit * phraseBars;
     const position = Math.max(0, transport.position);
     const index = Math.floor(position / phraseTicks);
     if (index === lastPhraseIndex) return;
     lastPhraseIndex = index;
     if (!ensureTrack()) return;
     const phraseProgress = position / phraseTicks - index;
-    sceneRole_ = currentSceneRole(store.doc, deps.getMode(), position / BAR_TICKS);
+    sceneRole_ = currentSceneRole(store.doc, deps.getMode(), position / barUnit);
     roll(index, phraseProgress, sceneRole_);
     emit();
   };

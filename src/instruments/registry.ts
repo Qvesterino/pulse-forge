@@ -4,7 +4,7 @@ import type { InstrumentKind, InstrumentTrack, NoteExpression, SampleLayer } fro
 import { midiToFreq } from "../project-model/types";
 import { hashString, mulberry32 } from "../shared/rng";
 import { buildWavetableMips, extractWavetable, FACTORY_WAVETABLES, FRAME_SIZE, pickMipLevel } from "./wavetables";
-import { scheduleDahdsr } from "./envelope";
+import { holdParamAt, scheduleDahdsr } from "./envelope";
 import { createWtVoiceRuntime } from "./wtvoiceNode";
 import { createGrainVoiceRuntime, grainProcessorOptions } from "./granularNode";
 import { createTsarRuntime, createTsarFallbackRuntime } from "./tsarNode";
@@ -604,7 +604,7 @@ const analog: InstrumentDefinition = {
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            amp.gain.cancelScheduledValues(t);
+            holdParamAt(amp.gain, t);
             const releaseTau = Math.max(0.005, release / 4);
             const releaseTailSec = release * 3 + 0.1;
             amp.gain.setTargetAtTime(0.0001, t, releaseTau);
@@ -944,7 +944,7 @@ const bass: InstrumentDefinition = {
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            amp.gain.cancelScheduledValues(t);
+            holdParamAt(amp.gain, t);
             const releaseTau = Math.max(0.005, release / 4);
             const releaseTailSec = release * 3 + 0.1;
             amp.gain.setTargetAtTime(0.0001, t, releaseTau);
@@ -1339,14 +1339,14 @@ const bass808: InstrumentDefinition = {
           },
           stop: (whenStop) => {
             const t = Math.max(whenStop, 0);
-            amp.gain.cancelScheduledValues(t);
+            holdParamAt(amp.gain, t);
             amp.gain.setTargetAtTime(0.0001, t, Math.max(0.005, releaseSec / 3));
             if (subGain) {
-              subGain.gain.cancelScheduledValues(t);
+              holdParamAt(subGain.gain, t);
               subGain.gain.setTargetAtTime(0.0001, t, Math.max(0.005, releaseSec / 3));
             }
             if (gritGain) {
-              gritGain.gain.cancelScheduledValues(t);
+              holdParamAt(gritGain.gain, t);
               gritGain.gain.setTargetAtTime(0.0001, t, Math.max(0.005, releaseSec / 5));
             }
             try {
@@ -1786,7 +1786,7 @@ const sampler: InstrumentDefinition = {
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            amp.gain.cancelScheduledValues(t);
+            holdParamAt(amp.gain, t);
             const releaseTau = Math.max(0.005, release / 4);
             const releaseTailSec = release * 3 + 0.1;
             amp.gain.setTargetAtTime(0.0001, t, releaseTau);
@@ -2142,7 +2142,7 @@ const texture: InstrumentDefinition = {
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            voiceGain.gain.cancelScheduledValues(t);
+            holdParamAt(voiceGain.gain, t);
             voiceGain.gain.setTargetAtTime(0.0001, t, releaseTc);
             for (const osc of [...oscs, lfo3, noise]) {
               try {
@@ -2636,7 +2636,7 @@ const wavetable: InstrumentDefinition = {
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            amp.gain.cancelScheduledValues(t);
+            holdParamAt(amp.gain, t);
             const releaseTau = Math.max(0.005, release / 4);
             const releaseTailSec = release * 3 + 0.1;
             amp.gain.setTargetAtTime(0.0001, t, releaseTau);
@@ -2932,7 +2932,7 @@ const granular: InstrumentDefinition = {
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            amp.gain.cancelScheduledValues(t);
+            holdParamAt(amp.gain, t);
             const releaseTau = Math.max(0.005, release / 4);
             const releaseTailSec = release * 3 + 0.1;
             amp.gain.setTargetAtTime(0.0001, t, releaseTau);
@@ -3150,7 +3150,7 @@ const fm: InstrumentDefinition = {
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            amp.gain.cancelScheduledValues(t);
+            holdParamAt(amp.gain, t);
             const releaseTau = Math.max(0.005, release / 4);
             const releaseTailSec = release * 3 + 0.1;
             amp.gain.setTargetAtTime(0.0001, t, releaseTau);
@@ -3497,7 +3497,7 @@ const keys: InstrumentDefinition = {
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            amp.gain.cancelScheduledValues(t);
+            holdParamAt(amp.gain, t);
             const releaseTau = Math.max(0.005, release / 4);
             const releaseTailSec = release * 3 + 0.1;
             amp.gain.setTargetAtTime(0.0001, t, releaseTau);
@@ -3795,7 +3795,7 @@ const pluck: InstrumentDefinition = {
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            amp.gain.cancelScheduledValues(t);
+            holdParamAt(amp.gain, t);
             const releaseTau = Math.max(0.005, release / 4);
             const releaseTailSec = release * 3 + 0.1;
             amp.gain.setTargetAtTime(0.0001, t, releaseTau);
@@ -4063,7 +4063,7 @@ const flute: InstrumentDefinition = {
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            amp.gain.cancelScheduledValues(t);
+            holdParamAt(amp.gain, t);
             const releaseTau = Math.max(0.005, release / 4);
             const releaseTailSec = release * 3 + 0.1;
             amp.gain.setTargetAtTime(0.0001, t, releaseTau);
@@ -4336,7 +4336,7 @@ const organ: InstrumentDefinition = {
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            amp.gain.cancelScheduledValues(t);
+            holdParamAt(amp.gain, t);
             const releaseTau = Math.max(0.005, release / 4);
             const releaseTailSec = release * 3 + 0.1;
             amp.gain.setTargetAtTime(0.0001, t, releaseTau);
@@ -4512,7 +4512,7 @@ const strings: InstrumentDefinition = {
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            amp.gain.cancelScheduledValues(t);
+            holdParamAt(amp.gain, t);
             const releaseTau = Math.max(0.005, release / 4);
             amp.gain.setTargetAtTime(0.0001, t, releaseTau);
           },
@@ -4688,7 +4688,7 @@ const bell: InstrumentDefinition = {
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            amp.gain.cancelScheduledValues(t);
+            holdParamAt(amp.gain, t);
             amp.gain.setTargetAtTime(0.0001, t, gated ? release / 4 : 0.002);
             const stopAfter = gated ? release * 3 + 0.05 : 0.05;
             for (const source of [carrier, modulator, shimmerOsc]) {
@@ -4861,7 +4861,7 @@ const reese: InstrumentDefinition = {
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            amp.gain.cancelScheduledValues(t);
+            holdParamAt(amp.gain, t);
             const releaseTau = Math.max(0.005, release / 4);
             amp.gain.setTargetAtTime(0.0001, t, releaseTau);
           },
@@ -5003,7 +5003,7 @@ const acid: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             voice.heldUntil = Math.min(voice.heldUntil ?? stopTime, t);
-            amp.gain.cancelScheduledValues(t);
+            holdParamAt(amp.gain, t);
             const releaseTau = Math.max(0.005, release / 4);
             const releaseTailSec = release * 3 + 0.1;
             amp.gain.setTargetAtTime(0.0001, t, releaseTau);
@@ -5192,7 +5192,7 @@ const brass: InstrumentDefinition = {
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            amp.gain.cancelScheduledValues(t);
+            holdParamAt(amp.gain, t);
             const releaseTau = Math.max(0.005, release / 4);
             amp.gain.setTargetAtTime(0.0001, t, releaseTau);
           },
@@ -5422,7 +5422,7 @@ const clav: InstrumentDefinition = {
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            amp.gain.cancelScheduledValues(t);
+            holdParamAt(amp.gain, t);
             amp.gain.setTargetAtTime(0.0001, t, Math.max(0.005, release / 3));
             for (const node of [oscA, oscB, tine, driftLfoA, driftLfoB, growlOsc, clickSrc]) {
               if (!node) continue;
@@ -5619,7 +5619,7 @@ const logdrum: InstrumentDefinition = {
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            amp.gain.cancelScheduledValues(t);
+            holdParamAt(amp.gain, t);
             amp.gain.setTargetAtTime(0.0001, t, 0.01);
             for (const o of oscs) {
               try {
@@ -5872,7 +5872,7 @@ const spectral: InstrumentDefinition = {
             const t = Math.max(whenStop, 0);
             for (let i = 0; i < gains.length; i++) {
               const g = gains[i]!;
-              g.gain.cancelScheduledValues(t);
+              holdParamAt(g.gain, t);
               g.gain.setTargetAtTime(0.0001, t, Math.max(0.005, releaseTaus[i]!));
             }
             for (const osc of oscs) {
@@ -6175,7 +6175,7 @@ const vocalchop: InstrumentDefinition = {
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            amp.gain.cancelScheduledValues(t);
+            holdParamAt(amp.gain, t);
             const releaseTau = Math.max(0.005, release / 4);
             const releaseTailSec = release * 3 + 0.1;
             amp.gain.setTargetAtTime(0.0001, t, releaseTau);
@@ -6673,7 +6673,7 @@ const drumsynth: InstrumentDefinition = {
           when + ringTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
-            noteGain.gain.cancelScheduledValues(t);
+            holdParamAt(noteGain.gain, t);
             noteGain.gain.setTargetAtTime(0.0001, t, gated ? release / 4 : 0.008);
             const stopAfter = gated ? release * 3 + 0.05 : 0.05;
             for (const osc of oscs) {

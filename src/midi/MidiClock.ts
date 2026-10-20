@@ -1,8 +1,8 @@
 import type { Transport } from "../transport/Transport";
 import type { MidiOutput } from "./MidiOutput";
 import { MAX_BPM, MIN_BPM } from "../project-model/schema";
+import { PPQ } from "../project-model/types";
 
-const PPQ = 480; // pulses per quarter note (matching project PPQ)
 const CLOCKS_PER_BEAT = 24; // MIDI standard
 /** Pulse intervals outside this window are timing noise, not a musical clock. */
 const MIN_PULSE_INTERVAL_MS = 5;

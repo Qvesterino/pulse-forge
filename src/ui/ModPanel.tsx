@@ -38,6 +38,7 @@ import {
 } from "../commands/commands";
 import type { AutomationParamKind, AutomationTarget, LfoKind, LfoWave, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { effectiveSceneBpm, sceneBarsToSeconds } from "../project-model/scene-time";
 import { DEFAULT_STEP_PATTERN } from "../project-model/modulators";
 import { laneLabel } from "../project-model/automation";
@@ -1378,7 +1379,9 @@ function ScenePanel() {
 
   // Scene intensity curve: max range is the scene's pattern length in ticks
   const scenePattern = scene ? patterns.find((p) => p.id === scene.patternId) : null;
-  const maxSceneTicks = scenePattern ? scenePattern.stepCount * STEP_TICKS : 2 * 1920;
+  // The fallback is TWO bars of the document's meter (ADR 0056), not a
+  // hardcoded 1920 — the curve's range has to match the unit the scene spans.
+  const maxSceneTicks = scenePattern ? scenePattern.stepCount * STEP_TICKS : 2 * ticksPerBar(doc);
   const sceneRange = { min: 0, max: 1, format: (v: number) => v.toFixed(2) };
 
   return (

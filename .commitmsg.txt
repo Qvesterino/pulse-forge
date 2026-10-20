@@ -1,17 +1,41 @@
-test(audit): make the measurement guard falsifiable without touching production code
+docs(audit): regenerate the plugin-audit baseline on the corrected measurement
 
-The guard in tests/plugin-audit-measurement.test.ts reads the audit source to
-check the measurement contract. It now reads it from KYX_AUDIT_SOURCE when
-that is set, so the guard can be pointed at a DOCTORED COPY and shown to
-fail. A guard that cannot be shown to fail is not a guard.
+Full re-run on harness 93430b5038d38fe0, compared against the original
+baseline (37abe053, harness c902c867953b74fb):
 
-Falsified with four mutations, all detected:
+  dead parameters           144 -> 86   (+45 gated = 131 accounted for)
+  silent instruments        texture, spectral, choral -> texture, spectral
+  not processing (all)      6 -> 2       (+2 exempt, now reported apart)
+  hostBypassEqualsRemoved   7 -> 1
 
-  F1  "choral" removed from SAMPLE_DRIVEN_INSTRUMENTS  -> guard fails
-  F2  "tsar" added to SAMPLE_DRIVEN_INSTRUMENTS        -> guard fails
-  F3  the mix-class wiring probe removed from
-      hostProcesses                                     -> guard fails
-  F4  the envelope term removed from deltaVs            -> guard fails
+The "6 effects not processing" figure was four different problems counted as
+one. Split apart:
 
-Nothing in src/ was modified to produce them; each mutation was applied to a
-copy in a temp directory and passed to the test through the env var.
+  reverseSwell  the fingerprint picked harmony.mode + detect.clarity — a
+                harmony generator fed a percussive drum bus — while the effect
+                sat wired in the graph. Its whole output also lands in the
+                first eighth of the buffer, where the amplitude stats were
+                blind. Now processing (hostDelta 2.47e-2).
+  rezonans      the same, plus the mix-class wiring probe. Now processing.
+  vocoder       exempt: the house doc has no modulator track, so carrier
+                passthrough is the CORRECT output.
+  sidechain     exempt: the house doc has no key track, so the dry path is
+                correct.
+  pitchCorrect  still unexplained (6.19e-8). Left open rather than dressed up.
+  sirka         the house drum bus is MONO (sideToSum = 0), so a per-band
+                stereo imager has nothing to widen. Its own definition says
+                "width 1 everywhere is a neutral pass" — the zero is correct.
+
+The dead-parameter work list shrinks because two of its categories were
+false. 13 parameters are no longer dead at all — the envelope metric made
+them responsive: msEq.midLowFreq, msEq.sideLowFreq, msEq.sideHighFreq,
+utility.phaseLeft, gate.attack, gate.lookahead, shimmer.shift, fxeq.bandCount,
+ozvena.global.quality, apeks.release, portal.feedback, rezonans.voice0.degree,
+rezonans.voice3.enabled. A further 45 are GATED behind a sibling switch rather
+than dead, across 16 effects: eq(10), granularFreeze(9), beatMangler(5),
+reverseSwell(3), sirka(3), portal(3), delay(2), tapeStop(2) and seven others.
+
+choral is audible at -6.9 dBFS with 12/12 params wired and 0 dead parameters.
+It was never broken — the audit played it with no sample.
+
+GATE PASSED. `npm run test:browser:plugin-audit:quick` is green again.

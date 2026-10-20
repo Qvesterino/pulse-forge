@@ -209,6 +209,7 @@ import { normalizeIntent } from "../intent/normalize";
 import type { IntentInput } from "../intent/types";
 import type { NoteEvent } from "../project-model/types";
 import { BAR_TICKS, PPQ } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { rankerMode } from "../ai/ranking/ranker-client";
 import { playAuditionBuffer, renderAuditionBuffer, renderSongAuditionBuffer, stopAudition } from "../intent/audition";
 import { voiceifyHum } from "../vocal/voiceify";
@@ -2625,7 +2626,11 @@ export function IntentPanel() {
       services.transport.setLoop(true, 0, ticks);
       services.transport.setMetronome(true);
       if (!services.transport.playing) services.playback.playPause();
-      setStatus(`🎧 vocal mode — loop ${Math.round(ticks / 1920)} bars @ ${doc.bpm} BPM, click on. Spievaj!`);
+      // Bar counts are measured in the document's meter, not a hardcoded 1920
+      // (ADR 0056).
+      setStatus(
+        `🎧 vocal mode — loop ${Math.round(ticks / ticksPerBar(doc))} bars @ ${doc.bpm} BPM, click on. Spievaj!`,
+      );
     } else {
       if (services.transport.playing) services.playback.playPause();
       services.transport.setMetronome(false);
@@ -5763,7 +5768,7 @@ export function IntentPanel() {
               Math.round(
                 (doc.patterns.find((candidate) => candidate.id === doc.activePatternId)
                   ? patternLengthTicks(doc.patterns.find((candidate) => candidate.id === doc.activePatternId)!)
-                  : 1920) / 1920,
+                  : ticksPerBar(doc)) / ticksPerBar(doc),
               ),
             )}{" "}
             bars

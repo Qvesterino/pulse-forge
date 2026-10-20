@@ -3,7 +3,7 @@ import { useArrangement, usePatterns, useScenes, useServices, useTracks } from "
 import type { InstrumentTrack, NoteEvent, Pattern, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, STEP_TICKS, pitchName } from "../project-model/types";
 import { midiPhraseLengthTicks } from "../project-model/midiTime";
-import { MAX_ARRANGEMENT_CLIP_TICKS } from "../project-model/schema";
+import { MAX_ARRANGEMENT_CLIP_TICKS, ticksPerBar } from "../project-model/schema";
 import {
   addNote,
   applyMidiCreativeTool,
@@ -863,7 +863,7 @@ export function PianoRollTrack({
     if (chordSnap) {
       // A pattern has no single absolute position (scenes can place it
       // anywhere) — the chord under the PLAYHEAD is the musical context.
-      const chord = chordAtTick(doc.arrangement.chords ?? [], services.transport.position);
+      const chord = chordAtTick(doc.arrangement.chords ?? [], services.transport.position, ticksPerBar(doc));
       if (chord) pitch = nearestChordPitch(pitch, chord);
     }
     return {
@@ -1145,7 +1145,7 @@ export function PianoRollTrack({
         newPitch = snapToScale(newPitch, projectKey);
       }
       if (chordSnap) {
-        const chord = chordAtTick(doc.arrangement.chords ?? [], services.transport.position);
+        const chord = chordAtTick(doc.arrangement.chords ?? [], services.transport.position, ticksPerBar(doc));
         if (chord) newPitch = clamp(nearestChordPitch(newPitch, chord), PITCH_MIN, PITCH_MAX);
       }
       executeUserEdit(

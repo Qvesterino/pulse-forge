@@ -104,7 +104,24 @@ async function enterProject(page) {
   // the button is in the DOM but NOT visible, and waiting for visibility on it
   // is what used to time out.
   const templates = page.locator(".pb-templates .pb-template");
-  await templates.first().waitFor({ state: "attached", timeout: 60_000 });
+  try {
+    await templates.first().waitFor({ state: "attached", timeout: 60_000 });
+  } catch (error) {
+    // A bare Playwright timeout says "some locator did not appear" and leaves
+    // the reader guessing whether the app crashed, the dev server was still
+    // compiling, or the markup changed again. Say what was actually on screen.
+    const seen = await page
+      .evaluate(() => ({
+        url: location.href,
+        bodyClass: document.body?.className ?? "",
+        crash: !!document.querySelector(".crash-screen, .boot-error"),
+        text: (document.body?.innerText || "").replace(/\s+/g, " ").slice(0, 300),
+      }))
+      .catch(() => null);
+    throw new Error(
+      `project templates never appeared${seen ? ` (url ${seen.url}, body "${seen.bodyClass}"` + (seen.crash ? ", CRASH SCREEN" : "") + `, text "${seen.text}")` : ""}: ${error.message}`,
+    );
+  }
 
   if (!(await templates.first().isVisible().catch(() => false))) {
     // Click the disclosure the way a user would.

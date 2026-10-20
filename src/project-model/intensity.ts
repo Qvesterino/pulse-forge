@@ -1,5 +1,6 @@
 import type { Scene } from "./types";
-import type { ArrangementClip } from "./types";
+import type { ArrangementClip, TimeSignature } from "./types";
+import { ticksPerBarFor } from "./schema";
 
 /**
  * Compute the scene's intensity value at a given scene-local tick. Uses a
@@ -40,19 +41,27 @@ function clamp01(v: number): number {
 }
 
 /** Convenience: look up a scene's intensity at a given absolute project tick, or
- *  fall back to the project-wide default if the scene is not currently active. */
+ *  fall back to the project-wide default if the scene is not currently active.
+ *
+ *  The document's OWN meter decides the bar length (ADR 0056) — the clip lane
+ *  is bar-addressed, so the unit has to be the document's, not a hardcoded
+ *  1920. `timeSignature` is part of the accepted shape on purpose: a caller
+ *  that cannot say what meter the document is in cannot ask this function
+ *  where the scene boundaries are. */
 export function intensitySignalAt(
   doc: {
     scenes: Scene[];
+    timeSignature: TimeSignature;
     arrangement: { clips: Pick<ArrangementClip, "id" | "sceneId" | "startBar" | "lengthBars" | "sceneOffsetTicks">[] };
   },
   activePatternId: string,
   tick: number,
 ): number {
+  const barUnitTicks = ticksPerBarFor(doc.timeSignature);
   // The active scene is whichever arrangement clip the tick falls within.
   for (const clip of doc.arrangement.clips) {
-    const start = clip.startBar * 1920;
-    const end = start + clip.lengthBars * 1920;
+    const start = clip.startBar * barUnitTicks;
+    const end = start + clip.lengthBars * barUnitTicks;
     if (tick >= start && tick < end) {
       const scene =
         doc.scenes.find((s) => s.patternId === activePatternId) ?? doc.scenes.find((s) => s.id === clip.sceneId);

@@ -25,6 +25,7 @@
 //   1 = a declared surface did not apply it
 //   2 = HARNESS_ERROR — nothing was measured
 import { chromium } from "playwright";
+import { bootStudio } from "./lib/studio-boot.mjs";
 
 const EXIT_GATE = 1;
 const EXIT_HARNESS_ERROR = 2;
@@ -41,35 +42,13 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 page.setDefaultNavigationTimeout(300_000);
 page.setDefaultTimeout(300_000);
-await page.addInitScript(() => {
-  try {
-    localStorage.setItem("pf-onboarded", "1");
-  } catch {
-    /* ignore */
-  }
-});
-await page.goto(URL, { waitUntil: "domcontentloaded" });
-
-// WARM THE OPTIMIZER BEFORE MEASURING. Observed 2026-10-18: partway through the
-// first load vite logged "new dependencies optimized: @huggingface/transformers
-// / optimized dependencies changed. reloading" and forced a full reload. That
-// reload lands AFTER the template was clicked, so .topbar never appears and the
-// run dies as HARNESS_ERROR five minutes later. Cold-transform was the excuse
-// for two sessions; this is the log line that actually proves it.
-//
-// This race disappears entirely when the gates are served from `vite preview`
-// over dist, which is the argument for that CI option.
-await page.waitForLoadState("networkidle").catch(() => {});
-await page.waitForTimeout(3000);
-await page.reload({ waitUntil: "domcontentloaded" });
-
-await page.locator("button.pb-template-start").first().waitFor({ state: "visible", timeout: 120_000 });
-await page.locator("button.pb-template-start").first().click();
-await page.locator(".topbar").first().waitFor({ state: "visible", timeout: 300_000 });
-await page.waitForTimeout(1500);
-const skip = page.locator("button:has-text('SKIP')").first();
-if ((await skip.count()) > 0) await skip.click().catch(() => {});
-await page.waitForTimeout(500);
+// ONE boot, shared with every other gate (scripts/lib/studio-boot.mjs).
+// This script used to carry its own copy, and its copy was the one that
+// broke: it waited for `button.pb-template-start`, a class that commit 8d11f16b
+// removed from the markup. The template now lives in a CLOSED <details>, so
+// the button is in the DOM but not visible. The helper opens the disclosure
+// first and refuses to measure a boot that did not settle.
+await bootStudio(page, URL);
 
 // The wave-4 family. This sheet owns these four; the material must apply.
 // Roles whose highlight is a SELECTION signal (.track-tab, .row-pad,
