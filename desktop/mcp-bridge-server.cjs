@@ -26,26 +26,6 @@ const RPC_ERRORS = { parse: -32700, invalidRequest: -32600, methodNotFound: -326
 // not a quota system — the auth token is still the primary gate.
 const RATE_LIMIT_BURST = 30;
 const RATE_LIMIT_REFILL_PER_SEC = 0.5; // 30/min sustained
-let bucketTokens = RATE_LIMIT_BURST;
-let bucketLastRefill = Date.now();
-
-function tryConsumeToken() {
-  const now = Date.now();
-  const elapsed = (now - bucketLastRefill) / 1000;
-  bucketLastRefill = now;
-  bucketTokens = Math.min(RATE_LIMIT_BURST, bucketTokens + elapsed * RATE_LIMIT_REFILL_PER_SEC);
-  if (bucketTokens >= 1) {
-    bucketTokens -= 1;
-    return true;
-  }
-  return false;
-}
-
-/** Test hook — resets the bucket to full. */
-function resetRateLimitBucket() {
-  bucketTokens = RATE_LIMIT_BURST;
-  bucketLastRefill = Date.now();
-}
 /**
  * Protocol eras this server speaks (MCP 2026-07-28 "Versioning"): MODERN
  * (2026-07-28+) declares version/identity in per-request `_meta` and uses
@@ -144,6 +124,22 @@ function rpcError(id, code, message) {
 function createMcpBridgeServer({ token, executeTool, port = 0 }) {
   void port;
   let toolExecutor = executeTool;
+  // Each enabled bridge owns an independent bucket. A module-global bucket
+  // made unrelated KYX windows throttle one another and contradicted the
+  // documented per-bridge limit.
+  let bucketTokens = RATE_LIMIT_BURST;
+  let bucketLastRefill = Date.now();
+  const tryConsumeToken = () => {
+    const now = Date.now();
+    const elapsed = (now - bucketLastRefill) / 1000;
+    bucketLastRefill = now;
+    bucketTokens = Math.min(RATE_LIMIT_BURST, bucketTokens + elapsed * RATE_LIMIT_REFILL_PER_SEC);
+    if (bucketTokens >= 1) {
+      bucketTokens -= 1;
+      return true;
+    }
+    return false;
+  };
 
   const server = createServer((req, res) => {
     if (req.method !== "POST" || req.url !== "/rpc") {
@@ -354,5 +350,4 @@ module.exports = {
   MCP_TOOL_DEFS,
   RATE_LIMIT_BURST,
   RATE_LIMIT_REFILL_PER_SEC,
-  resetRateLimitBucket,
 };

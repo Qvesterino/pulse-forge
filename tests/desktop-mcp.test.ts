@@ -670,6 +670,48 @@ describe("desktop mcp bridge server (real HTTP)", () => {
     expect(body.result.structuredContent).toEqual(data);
   });
 
+  it("returns exact pad-step read-back as structuredContent over desktop HTTP", async () => {
+    const data = {
+      status: "changed",
+      op: "add",
+      family: "kick",
+      patternId: "pattern-1",
+      patternName: "Beat",
+      stepCount: 16,
+      targetPadCount: 1,
+      pads: [{ padId: "pad-kick", padName: "Kick", beforeHitCount: 0, afterHitCount: 1 }],
+      requestedSteps: [1],
+      changedCellCount: 1,
+      changedSteps: [1],
+      changes: [{ padId: "pad-kick", padName: "Kick", step: 1, velocity: 0.8, probability: 1 }],
+      beforeHitCount: 0,
+      afterHitCount: 1,
+      undoSteps: 1,
+    };
+    const { server } = bridgeModule.createMcpBridgeServer({
+      token: "tok",
+      executeTool: async () => ({ text: "kick add: 0 → 1 hits", mutated: true, data }),
+    });
+    const port = await listenOnEphemeralPort(server);
+    runningServers.push(server);
+
+    const response = await post(
+      port,
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 18,
+        method: "tools/call",
+        params: { name: "kyx_steps", arguments: { op: "add", family: "kick", steps: [1] } },
+      }),
+      { token: "tok" },
+    );
+    const body = JSON.parse(response.body) as {
+      result: { isError?: boolean; structuredContent: Record<string, unknown> };
+    };
+    expect(body.result.isError).toBeUndefined();
+    expect(body.result.structuredContent).toEqual(data);
+  });
+
   it("protocol completeness: version negotiation, instructions, resources, batch, unknown-tool -32602", async () => {
     const { server } = bridgeModule.createMcpBridgeServer({
       token: "tok",
@@ -1077,6 +1119,9 @@ describe("desktop mcp stdio forwarder (subprocess)", () => {
     );
     expect(list.result.tools.find((tool) => tool.name === "kyx_notes")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_notes")?.outputSchema,
+    );
+    expect(list.result.tools.find((tool) => tool.name === "kyx_steps")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_steps")?.outputSchema,
     );
 
     writeLine({

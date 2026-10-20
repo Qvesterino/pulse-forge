@@ -1143,15 +1143,16 @@ export const MCP_TOOL_DEFS = [
           items: {
             type: "integer",
             minimum: 1,
-            maximum: 256,
+            maximum: 128,
           },
+          maxItems: 128,
           description: "1-based 16th-step indexes within the pattern (16 per bar). Not used by clearPad.",
         },
         velocity: {
           type: "number",
           minimum: 0.05,
           maximum: 1,
-          description: "For add (default 0.8)",
+          description: "For add/toggle (default 0.8)",
         },
         requestId: {
           type: "string",
@@ -1166,6 +1167,152 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["op", "family"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        status: {
+          type: "string",
+          enum: ["changed", "no_change", "partial"],
+        },
+        op: {
+          type: "string",
+          enum: ["add", "remove", "toggle", "ghost", "clearPad"],
+        },
+        family: {
+          type: "string",
+          enum: ["kick", "snare", "clap", "hat", "perc", "tom"],
+        },
+        patternId: {
+          type: "string",
+        },
+        patternName: {
+          type: "string",
+        },
+        stepCount: {
+          type: "integer",
+          minimum: 1,
+          maximum: 128,
+        },
+        targetPadCount: {
+          type: "integer",
+          minimum: 1,
+          maximum: 256,
+        },
+        pads: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              padId: {
+                type: "string",
+              },
+              padName: {
+                type: "string",
+              },
+              beforeHitCount: {
+                type: "integer",
+                minimum: 0,
+                maximum: 128,
+              },
+              afterHitCount: {
+                type: "integer",
+                minimum: 0,
+                maximum: 128,
+              },
+            },
+            required: ["padId", "padName", "beforeHitCount", "afterHitCount"],
+          },
+          maxItems: 256,
+        },
+        requestedSteps: {
+          type: "array",
+          items: {
+            type: "integer",
+            minimum: 1,
+            maximum: 128,
+          },
+          maxItems: 128,
+        },
+        changedCellCount: {
+          type: "integer",
+          minimum: 0,
+          maximum: 2048,
+        },
+        changedSteps: {
+          type: "array",
+          items: {
+            type: "integer",
+            minimum: 1,
+            maximum: 128,
+          },
+          maxItems: 128,
+        },
+        changes: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              padId: {
+                type: "string",
+              },
+              padName: {
+                type: "string",
+              },
+              step: {
+                type: "integer",
+                minimum: 1,
+                maximum: 128,
+              },
+              velocity: {
+                type: "number",
+                minimum: 0,
+                maximum: 1,
+              },
+              probability: {
+                type: "number",
+                minimum: 0,
+                maximum: 1,
+              },
+            },
+            required: ["padId", "padName", "step", "velocity", "probability"],
+          },
+          maxItems: 2048,
+        },
+        beforeHitCount: {
+          type: "integer",
+          minimum: 0,
+        },
+        afterHitCount: {
+          type: "integer",
+          minimum: 0,
+        },
+        undoSteps: {
+          type: "integer",
+          minimum: 0,
+          maximum: 1,
+        },
+      },
+      required: [
+        "status",
+        "op",
+        "family",
+        "patternId",
+        "patternName",
+        "stepCount",
+        "targetPadCount",
+        "pads",
+        "requestedSteps",
+        "changedCellCount",
+        "changedSteps",
+        "changes",
+        "beforeHitCount",
+        "afterHitCount",
+        "undoSteps",
+      ],
     },
     annotations: {
       readOnlyHint: false,

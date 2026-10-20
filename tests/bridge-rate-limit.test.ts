@@ -19,7 +19,6 @@ const bridge = require_(path.join(ROOT, "desktop/mcp-bridge-server.cjs")) as {
     token: string;
     executeTool: (name: string, args: Record<string, unknown>) => Promise<{ text: string }>;
   }): { server: http.Server };
-  resetRateLimitBucket: () => void;
   RATE_LIMIT_BURST: number;
 };
 
@@ -47,7 +46,6 @@ let server: http.Server | null = null;
 let port = 0;
 
 beforeEach(async () => {
-  bridge.resetRateLimitBucket();
   server = bridge.createMcpBridgeServer({
     token: "test-tok",
     executeTool: async () => ({ text: "ok" }),
@@ -89,4 +87,36 @@ describe("bridge rate limiter", () => {
     }
     expect(ok).toBe(bridge.RATE_LIMIT_BURST);
   });
+
+  it("keeps independent token buckets for separate bridge instances", async () => {
+    for (let i = 0; i < bridge.RATE_LIMIT_BURST; i++) {
+      expect((await post(port, JSON.stringify({ jsonrpc: "2.0", id: i, method: "ping" }), "test-tok")).status).toBe(
+        200,
+      );
+    }
+    expect((await post(port, JSON.stringify({ jsonrpc: "2.0", id: 99, method: "ping" }), "test-tok")).status).toBe(429);
+
+    const independentServer = bridge.createMcpBridgeServer({
+      token: "other-tok",
+      executeTool: async () => ({ text: "ok" }),
+    }).server;
+    await new Promise<void>((resolve) => independentServer.listen(0, "127.0.0.1", resolve));
+    const independentPort = (independentServer.address() as { port: number }).port;
+    try {
+      let accepted = 0;
+      for (let i = 0; i < bridge.RATE_LIMIT_BURST; i++) {
+        const result = await post(
+          independentPort,
+          JSON.stringify({ jsonrpc: "2.0", id: i, method: "ping" }),
+          "other-tok",
+        );
+        if (result.status === 200) accepted += 1;
+      }
+      expect(accepted).toBe(bridge.RATE_LIMIT_BURST);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        independentServer.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  }, 15_000);
 });

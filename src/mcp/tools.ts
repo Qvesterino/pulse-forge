@@ -1,5 +1,5 @@
 import type { MusicalKey, ProjectDocument } from "../project-model/types";
-import { MAX_ARRANGEMENT_CLIP_TICKS } from "../project-model/schema";
+import { MAX_ARRANGEMENT_CLIP_TICKS, MAX_STEP_COUNT } from "../project-model/schema";
 import { isForeignWork, labelsRevertedBy } from "./attribution";
 import {
   LONG_RUNNING_AGENT_TOOLS,
@@ -913,6 +913,76 @@ const OUTPUT_NOTES: McpOutputSchema = {
   },
   required: ["status", "op", "trackId", "trackName", "noteCount", "undoSteps"],
 };
+const STEP_CHANGE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    padId: { type: "string" },
+    padName: { type: "string" },
+    step: { type: "integer", minimum: 1, maximum: MAX_STEP_COUNT },
+    velocity: { type: "number", minimum: 0, maximum: 1 },
+    probability: { type: "number", minimum: 0, maximum: 1 },
+  },
+  required: ["padId", "padName", "step", "velocity", "probability"],
+};
+const STEP_PAD_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    padId: { type: "string" },
+    padName: { type: "string" },
+    beforeHitCount: { type: "integer", minimum: 0, maximum: MAX_STEP_COUNT },
+    afterHitCount: { type: "integer", minimum: 0, maximum: MAX_STEP_COUNT },
+  },
+  required: ["padId", "padName", "beforeHitCount", "afterHitCount"],
+};
+/** kyx_steps — bounded exact read-back for drum-grid edits. */
+const OUTPUT_STEPS: McpOutputSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    status: { type: "string", enum: ["changed", "no_change", "partial"] },
+    op: { type: "string", enum: ["add", "remove", "toggle", "ghost", "clearPad"] },
+    family: { type: "string", enum: ["kick", "snare", "clap", "hat", "perc", "tom"] },
+    patternId: { type: "string" },
+    patternName: { type: "string" },
+    stepCount: { type: "integer", minimum: 1, maximum: MAX_STEP_COUNT },
+    targetPadCount: { type: "integer", minimum: 1, maximum: 256 },
+    pads: { type: "array", items: STEP_PAD_SCHEMA, maxItems: 256 },
+    requestedSteps: {
+      type: "array",
+      items: { type: "integer", minimum: 1, maximum: MAX_STEP_COUNT },
+      maxItems: MAX_STEP_COUNT,
+    },
+    changedCellCount: { type: "integer", minimum: 0, maximum: 2048 },
+    changedSteps: {
+      type: "array",
+      items: { type: "integer", minimum: 1, maximum: MAX_STEP_COUNT },
+      maxItems: MAX_STEP_COUNT,
+    },
+    changes: { type: "array", items: STEP_CHANGE_SCHEMA, maxItems: 2048 },
+    beforeHitCount: { type: "integer", minimum: 0 },
+    afterHitCount: { type: "integer", minimum: 0 },
+    undoSteps: { type: "integer", minimum: 0, maximum: 1 },
+  },
+  required: [
+    "status",
+    "op",
+    "family",
+    "patternId",
+    "patternName",
+    "stepCount",
+    "targetPadCount",
+    "pads",
+    "requestedSteps",
+    "changedCellCount",
+    "changedSteps",
+    "changes",
+    "beforeHitCount",
+    "afterHitCount",
+    "undoSteps",
+  ],
+};
 export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_intent",
@@ -1374,13 +1444,15 @@ export const MCP_TOOLS: McpToolDef[] = [
         family: { type: "string", enum: ["kick", "snare", "clap", "hat", "perc", "tom"] },
         steps: {
           type: "array",
-          items: { type: "integer", minimum: 1, maximum: 256 },
+          items: { type: "integer", minimum: 1, maximum: MAX_STEP_COUNT },
+          maxItems: MAX_STEP_COUNT,
           description: "1-based 16th-step indexes within the pattern (16 per bar). Not used by clearPad.",
         },
-        velocity: { type: "number", minimum: 0.05, maximum: 1, description: "For add (default 0.8)" },
+        velocity: { type: "number", minimum: 0.05, maximum: 1, description: "For add/toggle (default 0.8)" },
       },
       required: ["op", "family"],
     },
+    outputSchema: OUTPUT_STEPS,
   },
   {
     name: "kyx_notes",
@@ -9514,14 +9586,17 @@ function stateSnapshot(
 function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
   const doc = ctx.getDoc();
   const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
-  if (!pattern) return { text: "no active pattern", mutated: false };
+  if (!pattern) return mcpError("UNKNOWN_TARGET", "no active pattern");
   const op = String(record.op ?? "");
   const family = String(record.family ?? "");
+  if (!("add remove toggle ghost clearPad".split(" ") as string[]).includes(op)) {
+    return mcpError("UNKNOWN_REQUEST", `unknown step op "${op}" (add | remove | toggle | ghost | clearPad)`);
+  }
   if (!["kick", "snare", "clap", "hat", "perc", "tom"].includes(family)) {
     return mcpError("UNKNOWN_REQUEST", `unknown pad family "${family}"`);
   }
   const drums = doc.tracks.filter((track): track is DrumTrack => track.kind === "drum");
-  if (drums.length === 0) return { text: "no drum tracks in the project", mutated: false };
+  if (drums.length === 0) return mcpError("UNKNOWN_TARGET", "no drum tracks in the project");
 
   const targets: Array<{ padId: string; name: string }> = [];
   for (const track of drums) {
@@ -9530,77 +9605,174 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
     });
   }
   if (targets.length === 0) return mcpError("UNKNOWN_TARGET", `no pad matches family "${family}"`);
+  if (targets.length > 256)
+    return mcpError("RESOURCE_LIMIT", "step edit matches more than 256 pads; narrow the project first");
 
   const stepCount = pattern.stepCount;
-  const requested = Array.isArray(record.steps)
-    ? [...new Set(record.steps.map((step) => Math.round(Number(step))))].filter(
-        (step) => Number.isFinite(step) && step >= 1 && step <= stepCount,
+  let requested: number[] = [];
+  if (op === "clearPad") {
+    if (record.steps !== undefined)
+      return mcpError("INVALID_ARGUMENTS", "clearPad clears the whole family; omit steps");
+    if (record.velocity !== undefined) return mcpError("INVALID_ARGUMENTS", "clearPad does not accept velocity");
+  } else {
+    if (!Array.isArray(record.steps) || record.steps.length === 0) {
+      return mcpError(
+        "INVALID_ARGUMENTS",
+        `steps must be a non-empty array of 1-based integers within this ${stepCount}-step pattern`,
+      );
+    }
+    if (record.steps.length > MAX_STEP_COUNT) {
+      return mcpError("RESOURCE_LIMIT", `steps accepts at most ${MAX_STEP_COUNT} entries`);
+    }
+    if (
+      record.steps.some(
+        (step) => typeof step !== "number" || !Number.isSafeInteger(step) || step < 1 || step > stepCount,
       )
-    : [];
-  if (op !== "clearPad" && requested.length === 0) {
-    return {
-      text: `no valid steps — pattern "${pattern.name}" has ${stepCount} steps (1-based, 16 per bar)`,
-      mutated: false,
-    };
+    ) {
+      return mcpError(
+        "INVALID_ARGUMENTS",
+        `every step must be an integer from 1 to ${stepCount}; the request was rejected without changing the pattern`,
+      );
+    }
+    requested = [...new Set(record.steps as number[])].sort((a, b) => a - b);
+    if (op !== "add" && op !== "toggle" && record.velocity !== undefined) {
+      return mcpError("INVALID_ARGUMENTS", `velocity is only used by add and toggle, not ${op}`);
+    }
   }
-  const velocity = typeof record.velocity === "number" && record.velocity > 0 ? Math.min(1, record.velocity) : 0.8;
-
-  const familySteps = (source: ProjectDocument): number => {
-    const sourcePattern = source.patterns.find((candidate) => candidate.id === doc.activePatternId);
-    if (!sourcePattern) return 0;
-    return targets.reduce(
-      (sum, target) => sum + (sourcePattern.rows[target.padId]?.filter((v) => v > 0).length ?? 0),
-      0,
+  let velocity = 0.8;
+  if (record.velocity !== undefined) {
+    if (
+      (op !== "add" && op !== "toggle") ||
+      typeof record.velocity !== "number" ||
+      !Number.isFinite(record.velocity) ||
+      record.velocity < 0.05 ||
+      record.velocity > 1
+    ) {
+      return mcpError("INVALID_ARGUMENTS", "velocity for add/toggle must be finite and between 0.05 and 1");
+    }
+    velocity = record.velocity;
+  }
+  const candidateSteps = op === "clearPad" ? Array.from({ length: stepCount }, (_, index) => index + 1) : requested;
+  const candidateCellCount = targets.length * candidateSteps.length;
+  if (candidateCellCount > 2048) {
+    return mcpError(
+      "RESOURCE_LIMIT",
+      `this edit would inspect ${candidateCellCount} pad-step cells (limit 2048); narrow the edit or target fewer pads`,
     );
+  }
+
+  const sourcePattern = (source: ProjectDocument) => source.patterns.find((candidate) => candidate.id === pattern.id);
+  const readCell = (source: ProjectDocument, padId: string, stepIndex: number) => {
+    const candidate = sourcePattern(source);
+    return {
+      velocity: candidate?.rows[padId]?.[stepIndex] ?? 0,
+      probability: candidate?.stepMeta?.[padId]?.[stepIndex]?.probability ?? 1,
+    };
   };
-  const before = familySteps(doc);
+  const hitCount = (source: ProjectDocument, padId: string): number =>
+    sourcePattern(source)?.rows[padId]?.filter((value) => value > 0).length ?? 0;
+  const totalHitCount = (source: ProjectDocument): number =>
+    targets.reduce((sum, target) => sum + hitCount(source, target.padId), 0);
+  const padReadback = (beforeDoc: ProjectDocument, afterDoc: ProjectDocument) =>
+    targets.map((target) => ({
+      padId: target.padId,
+      padName: target.name,
+      beforeHitCount: hitCount(beforeDoc, target.padId),
+      afterHitCount: hitCount(afterDoc, target.padId),
+    }));
+  const beforeHitCount = totalHitCount(doc);
 
   let next = doc;
-  const touched: number[] = [];
-  const rowAt = (source: ProjectDocument, padId: string, index: number): number =>
-    source.patterns.find((candidate) => candidate.id === doc.activePatternId)?.rows[padId]?.[index] ?? 0;
-  for (const step of op === "clearPad" ? [] : requested) {
+  const affected = new Set<string>();
+  const intended = new Map<string, { velocity: number; probability: number }>();
+  for (const step of op === "clearPad" ? candidateSteps : requested) {
     const index = step - 1;
     for (const target of targets) {
-      const current = rowAt(next, target.padId, index);
-      let write: number | null = null;
-      if (op === "add") write = velocity;
-      else if (op === "remove") write = current > 0 ? 0 : null;
-      else if (op === "toggle") write = current > 0 ? 0 : velocity;
-      else if (op === "ghost") write = current > 0 ? null : 0.35;
-      if (write == null) continue;
-      next = setStepVelocityCommand(next, target.padId, index, write).execute(next);
-      if (op === "ghost") next = setStepMeta(next, pattern.id, target.padId, index, { probability: 0.5 }).execute(next);
-      if (!touched.includes(index)) touched.push(index);
-    }
-  }
-  if (op === "clearPad") {
-    for (const target of targets) {
-      for (let index = 0; index < stepCount; index++) {
-        if (rowAt(next, target.padId, index) > 0) {
-          next = setStepVelocityCommand(next, target.padId, index, 0).execute(next);
-          touched.push(index);
-        }
+      const current = readCell(next, target.padId, index);
+      let nextVelocity: number | null = null;
+      let nextProbability = current.probability;
+      if (op === "add") nextVelocity = velocity;
+      else if (op === "remove" || op === "clearPad") nextVelocity = current.velocity > 0 ? 0 : null;
+      else if (op === "toggle") nextVelocity = current.velocity > 0 ? 0 : velocity;
+      else if (op === "ghost" && current.velocity <= 0) {
+        nextVelocity = 0.35;
+        nextProbability = 0.5;
       }
+      const velocityChanged = nextVelocity !== null && nextVelocity !== current.velocity;
+      const probabilityChanged = nextProbability !== current.probability;
+      if (!velocityChanged && !probabilityChanged) continue;
+      if (velocityChanged) next = setStepVelocityCommand(next, target.padId, index, nextVelocity!).execute(next);
+      if (probabilityChanged)
+        next = setStepMeta(next, pattern.id, target.padId, index, { probability: nextProbability }).execute(next);
+      const cellKey = `${target.padId}:${index}`;
+      affected.add(cellKey);
+      intended.set(cellKey, { velocity: nextVelocity ?? current.velocity, probability: nextProbability });
     }
   }
-  if (touched.length === 0) {
-    return { text: `nothing changed (${op} on ${family}: steps already match)`, mutated: false };
+  const makeData = (status: "changed" | "no_change" | "partial", afterDoc: ProjectDocument, undoSteps: number) => {
+    const changes = [...affected]
+      .map((cellKey) => {
+        const separator = cellKey.lastIndexOf(":");
+        const padId = cellKey.slice(0, separator);
+        const index = Number(cellKey.slice(separator + 1));
+        const target = targets.find((candidate) => candidate.padId === padId)!;
+        const before = readCell(doc, padId, index);
+        const landed = readCell(afterDoc, padId, index);
+        return before.velocity === landed.velocity && before.probability === landed.probability
+          ? null
+          : { padId, padName: target.name, step: index + 1, ...landed };
+      })
+      .filter((change) => change !== null)
+      .sort((a, b) => a.step - b.step || a.padId.localeCompare(b.padId));
+    const changedSteps = [...new Set(changes.map((change) => change.step))].sort((a, b) => a - b);
+    return {
+      status,
+      op,
+      family,
+      patternId: pattern.id,
+      patternName: pattern.name,
+      stepCount,
+      targetPadCount: targets.length,
+      pads: padReadback(doc, afterDoc),
+      requestedSteps: requested,
+      changedCellCount: changes.length,
+      changedSteps,
+      changes,
+      beforeHitCount,
+      afterHitCount: totalHitCount(afterDoc),
+      undoSteps,
+    };
+  };
+  if (affected.size === 0) {
+    const data = makeData("no_change", doc, 0);
+    return { text: `nothing changed (${op} on ${family}: steps already match)`, mutated: false, data };
   }
-  const after = familySteps(next);
-  const bars = Math.max(1, Math.round(stepCount / 16));
-  const command = snapshot("mcpSteps", `MCP steps: ${op} ${family} ×${touched.length}`, doc, next);
+  const command = snapshot("mcpSteps", `MCP steps: ${op} ${family} ×${affected.size}`, doc, next);
   ctx.execute(command);
+  const afterDoc = ctx.getDoc();
+  const mutated = afterDoc !== doc;
+  const data = makeData(mutated ? "changed" : "no_change", afterDoc, mutated ? 1 : 0);
+  const mismatches = [...intended].filter(([cellKey, expected]) => {
+    const separator = cellKey.lastIndexOf(":");
+    const actual = readCell(afterDoc, cellKey.slice(0, separator), Number(cellKey.slice(separator + 1)));
+    return actual.velocity !== expected.velocity || actual.probability !== expected.probability;
+  }).length;
+  if (mismatches > 0) {
+    data.status = "partial";
+    return mcpError("PARTIAL_FAILURE", `step edit read-back differs from ${mismatches} requested pad-step cells`, {
+      mutated,
+      data,
+    });
+  }
+  if (!mutated)
+    return { text: `nothing changed (${op} on ${family}: committed state already matches)`, mutated: false, data };
+  const bars = Math.max(1, Math.round(stepCount / 16));
   const touchedText =
-    touched.length <= 12
-      ? touched
-          .sort((a, b) => a - b)
-          .map((step) => String(step))
-          .join(", ")
-      : `${touched.length} steps`;
+    data.changedSteps.length <= 12 ? data.changedSteps.join(", ") : `${data.changedSteps.length} steps`;
   return {
-    text: `${family} ${op}: ${before} → ${after} steps (touched: ${touchedText}) · pattern "${pattern.name}" (${bars} bar${bars > 1 ? "s" : ""}) · one undo step`,
-    mutated: true,
+    text: `${family} ${op}: ${beforeHitCount} → ${data.afterHitCount} hits across ${targets.length} pad(s); ${data.changedCellCount} pad-step cell(s) changed (steps: ${touchedText}) · pattern "${pattern.name}" (${bars} bar${bars > 1 ? "s" : ""}) · one undo step`,
+    mutated,
+    data,
   };
 }
 

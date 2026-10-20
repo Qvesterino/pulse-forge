@@ -66,7 +66,7 @@ describe("mcp core — protocol with an authenticated session", () => {
     const list = await handleMcpRequest(hub as any, TOKEN, TOKEN, rpc("tools/list", {}, 2));
     const listedTools = (list.result as { tools: Array<{ name: string; outputSchema?: unknown }> }).tools;
     expect(listedTools).toHaveLength(37);
-    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(19);
+    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(20);
     expect(listedTools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema,
     );
@@ -105,6 +105,9 @@ describe("mcp core — protocol with an authenticated session", () => {
     );
     expect(listedTools.find((tool) => tool.name === "kyx_notes")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_notes")?.outputSchema,
+    );
+    expect(listedTools.find((tool) => tool.name === "kyx_steps")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_steps")?.outputSchema,
     );
     expect(listedTools.map((t) => t.name)).toEqual([
       "kyx_intent",
@@ -676,6 +679,49 @@ describe("mcp core — protocol with an authenticated session", () => {
       type: "mcp-result",
       id: delivered[0].id,
       result: { text: "listed 1 note", mutated: false, data },
+    });
+    const response = await promise;
+    expect(response.result.isError).toBe(false);
+    expect(response.result.structuredContent).toEqual(data);
+  });
+
+  it("returns exact pad-step read-back as structuredContent across the web relay", async () => {
+    const { hub, delivered } = makeHub();
+    const data = {
+      status: "changed",
+      op: "add",
+      family: "kick",
+      patternId: "pattern-1",
+      patternName: "Beat",
+      stepCount: 16,
+      targetPadCount: 1,
+      pads: [{ padId: "pad-kick", padName: "Kick", beforeHitCount: 0, afterHitCount: 1 }],
+      requestedSteps: [1],
+      changedCellCount: 1,
+      changedSteps: [1],
+      changes: [{ padId: "pad-kick", padName: "Kick", step: 1, velocity: 0.8, probability: 1 }],
+      beforeHitCount: 0,
+      afterHitCount: 1,
+      undoSteps: 1,
+    };
+    const promise = handleMcpRequest(
+      hub,
+      TOKEN,
+      TOKEN,
+      rpc(
+        "tools/call",
+        {
+          name: "kyx_steps",
+          arguments: { op: "add", family: "kick", steps: [1] },
+          _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+        },
+        29,
+      ),
+    );
+    hub.handleSessionMessage({
+      type: "mcp-result",
+      id: delivered[0].id,
+      result: { text: "kick add: 0 → 1 hits", mutated: true, data },
     });
     const response = await promise;
     expect(response.result.isError).toBe(false);

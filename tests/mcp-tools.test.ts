@@ -124,6 +124,11 @@ describe("mcp tools — headless execution", async () => {
   it("tool surface: the 37 documented tools", async () => {
     expect(MCP_TOOLS.find((tool) => tool.name === "kyx_sections")?.outputSchema).toBeDefined();
     expect(MCP_TOOLS.find((tool) => tool.name === "kyx_music")?.outputSchema).toBeDefined();
+    expect(MCP_TOOLS.find((tool) => tool.name === "kyx_steps")?.outputSchema).toBeDefined();
+    expect(MCP_TOOLS.find((tool) => tool.name === "kyx_steps")?.inputSchema.properties?.steps).toMatchObject({
+      maxItems: 128,
+      items: { maximum: 128 },
+    });
     expect(MCP_TOOLS.map((tool) => tool.name)).toEqual([
       "kyx_intent",
       "kyx_state",
@@ -533,9 +538,37 @@ describe("mcp model-drivability wave", async () => {
     expect(result.mutated).toBe(true);
     expect(result.text).toContain("kick add");
     expect(result.text).toContain("one undo step");
+    expect(result.data).toMatchObject({
+      status: "changed",
+      op: "add",
+      family: "kick",
+      patternName: expect.any(String),
+      stepCount: expect.any(Number),
+      targetPadCount: expect.any(Number),
+      changedSteps: [1, 5],
+      beforeHitCount: expect.any(Number),
+      undoSteps: 1,
+    });
+    const addedData = result.data as { targetPadCount: number; changedCellCount: number };
+    expect(addedData.changedCellCount).toBe(addedData.targetPadCount * 2);
+    expect((result.data as { changes: Array<{ padId: string; step: number; velocity: number }> }).changes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ padId: kickPad, step: 1, velocity: 0.9 }),
+        expect.objectContaining({ padId: kickPad, step: 5, velocity: 0.9 }),
+      ]),
+    );
     const pattern = store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!;
     expect(pattern.rows[kickPad!]?.[0]).toBeCloseTo(0.9, 5);
     expect(pattern.rows[kickPad!]?.[4]).toBeCloseTo(0.9, 5);
+    expect(store.undoStackLength).toBe(1);
+    const repeated = await executeMcpTool(ctx, "kyx_steps", {
+      op: "add",
+      family: "kick",
+      steps: [1, 5],
+      velocity: 0.9,
+    });
+    expect(repeated.mutated).toBe(false);
+    expect(repeated.data).toMatchObject({ status: "no_change", changedCellCount: 0, undoSteps: 0 });
     expect(store.undoStackLength).toBe(1);
     store.undo();
     const restored = store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!;
@@ -571,6 +604,7 @@ describe("mcp model-drivability wave", async () => {
     await executeMcpTool(ctx, "kyx_steps", { op: "add", family: "kick", steps: [1, 3, 5] });
     const cleared = await executeMcpTool(ctx, "kyx_steps", { op: "clearPad", family: "kick" });
     expect(cleared.mutated).toBe(true);
+    expect(cleared.data).toMatchObject({ status: "changed", op: "clearPad", undoSteps: 1 });
     const pattern = store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!;
     expect((pattern.rows[kickPad] ?? []).every((v) => v === 0)).toBe(true);
 
@@ -580,7 +614,34 @@ describe("mcp model-drivability wave", async () => {
       steps: [999],
     });
     expect(refused.mutated).toBe(false);
-    expect(refused.text).toContain("no valid steps");
+    expect(refused.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(refused.text).toContain("every step must be an integer");
+  });
+
+  it("kyx_steps rejects malformed mixed steps and invalid velocity atomically", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const kickPad = padIdForFamily(store.doc, "kick")!;
+    const before = store.doc;
+    const beforeKickVelocity = before.patterns.find((p) => p.id === before.activePatternId)!.rows[kickPad]?.[0] ?? 0;
+    const fractional = await executeMcpTool(ctx, "kyx_steps", {
+      op: "add",
+      family: "kick",
+      steps: [1, 2.5],
+    });
+    const badVelocity = await executeMcpTool(ctx, "kyx_steps", {
+      op: "add",
+      family: "kick",
+      steps: [1],
+      velocity: 1.1,
+    });
+    expect(fractional.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(badVelocity.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(store.doc).toBe(before);
+    expect(store.undoStackLength).toBe(0);
+    expect(store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!.rows[kickPad]?.[0] ?? 0).toBe(
+      beforeKickVelocity,
+    );
   });
 
   it("kyx_pattern lists and selects by 1-based index or name; unknown is honest", async () => {
