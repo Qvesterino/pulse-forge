@@ -13,8 +13,16 @@ import { resolve } from "node:path";
 const ROOT = resolve(__dirname, "..");
 const read = (relative: string) => readFileSync(resolve(ROOT, relative), "utf8");
 
+/**
+ * Which audit source to check. Overridable so the guard can be FALSIFIED
+ * without editing production code: point it at a doctored copy and the
+ * matching assertion must fail. A guard that cannot be shown to fail is not
+ * a guard.
+ */
+const AUDIT_SOURCE = process.env.KYX_AUDIT_SOURCE ?? "src/plugin-audit-checks.ts";
+
 const registry = read("src/instruments/registry.ts");
-const audit = read("src/plugin-audit-checks.ts");
+const audit = read(AUDIT_SOURCE);
 
 /**
  * Instruments whose ONLY sound source is the track sample. Auditioning one of
