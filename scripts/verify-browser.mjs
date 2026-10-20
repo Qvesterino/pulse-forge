@@ -14,12 +14,13 @@ const PORT = Number(process.env.PORT) || 5199;
  * The first navigation transforms the WHOLE module graph of a browser-first
  * DAW through Vite, and the page cannot fire domcontentloaded until that
  * graph has loaded. Measured on this machine (2026-10-24): 198.4 s on an
- * otherwise idle box — the old 120 s budget could not reach the checks at
- * all, so the gate failed on `page.goto` before a single check ran. A gate
- * that never reaches its assertions tells you nothing; the budget has to fit
- * the app it boots.
+ * otherwise idle box, and over 300 s while other agent sessions were
+ * committing into the same worktree — the old 120 s budget could not reach
+ * the checks at all, so the gate failed on `page.goto` before a single check
+ * ran. A gate that never reaches its assertions tells you nothing; the
+ * budget has to fit the app it boots AND the machine it boots it on.
  */
-const BOOT_TIMEOUT_MS = 300_000;
+const BOOT_TIMEOUT_MS = 600_000;
 
 const server = await createServer({
   root,
@@ -249,9 +250,20 @@ try {
     );
     await clickPanelAction(appPage, "EXPORT");
     await appPage.waitForSelector('.export-panel[aria-label="Export"]', { timeout: 5000 });
-    const projectDownload = appPage.waitForEvent("download");
+    // `waitForEvent` arms its own timeout NOW, so if anything between here and
+    // the await below throws (a missing button, a closed panel), this promise
+    // rejects later with NO handler attached — an unhandled rejection, which
+    // kills the whole runner before it can print a summary. Keep the error
+    // here and rethrow it at the await, so a missing download is a normal
+    // failed check instead of a dead process.
+    let downloadError = null;
+    const projectDownload = appPage.waitForEvent("download").catch((error) => {
+      downloadError = error;
+      return null;
+    });
     await appPage.locator('.export-panel button:has-text("EXPORT JSON")').click();
     const download = await projectDownload;
+    if (!download) throw downloadError;
     // `.kyx` is the current public brand extension (project-io.ts, "New files
     // use the short public brand .kyx — brand-coherent with the .kyxzyvo
     // transfer format"). The importer is shape-based and never inspects the
