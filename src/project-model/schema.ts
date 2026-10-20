@@ -34,6 +34,7 @@ import type {
   SceneAutomation,
   StepMeta,
   AutomationTarget,
+  TimeSignature,
 } from "./types";
 import { BAR_TICKS, PPQ, STEP_TICKS, STEPS_PER_PATTERN, isMusicalKey } from "./types";
 import { tempoAtTick } from "./scene-time";
@@ -3617,13 +3618,39 @@ export function beatsPerBar(doc: ProjectDocument): number {
   return doc.timeSignature.numerator;
 }
 
+/**
+ * Ticks in one bar of the given meter (4/4 → 1920, 6/8 → 1440, 2/2 → 1920).
+ *
+ * The single source for "how long is a bar" in musical terms. The arrangement
+ * grid has its own, separate unit — `BAR_TICKS`, always four quarter notes —
+ * and the two disagree outside 4/4-like meters. See ADR 0056.
+ */
+export function ticksPerBarFor(sig: TimeSignature): number {
+  return PPQ * (4 / sig.denominator) * sig.numerator;
+}
+
 export function ticksPerBar(doc: ProjectDocument): number {
-  return PPQ * (4 / doc.timeSignature.denominator) * doc.timeSignature.numerator;
+  return ticksPerBarFor(doc.timeSignature);
 }
 
 /** Ticks per beat (one quarter note in 4/4, one eighth note in 6/8). */
 export function ticksPerBeat(doc: ProjectDocument): number {
   return PPQ * (4 / doc.timeSignature.denominator);
+}
+
+/**
+ * Does the given meter's bar span the same length as the arrangement grid?
+ *
+ * The arrangement grid is four quarter notes per bar (`BAR_TICKS`) whatever
+ * the document declares. A meter matches it only when one bar also spans four
+ * quarter notes: 4/4, 2/2 and 8/8 do; 3/4, 6/8, 4/2 and 12/8 do not.
+ *
+ * While the arrangement grid stays 4/4 (ADR 0056), every surface that can
+ * choose a non-4/4 meter has to disclose the mismatch instead of silently
+ * producing a project whose ruler and metronome disagree.
+ */
+export function arrangementGridMatchesMeter(sig: TimeSignature): boolean {
+  return ticksPerBarFor(sig) === BAR_TICKS;
 }
 
 /**

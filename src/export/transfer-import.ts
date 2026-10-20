@@ -6,11 +6,14 @@ import { assertAudioImportSize, isAudioImportFile, MAX_AUDIO_IMPORT_BYTES } from
 import {
   MAX_ARRANGEMENT_CLIP_BARS,
   MAX_ARRANGEMENT_CLIP_TICKS,
+  arrangementGridMatchesMeter,
   createGroupTrackModel,
   createInstrumentTrackModel,
   normalizeProject,
+  ticksPerBarFor,
 } from "../project-model/schema";
 import {
+  BAR_TICKS,
   STEP_TICKS,
   type InstrumentTrack,
   type Pattern,
@@ -480,4 +483,25 @@ export function midiImportWarnings(parsed: ParsedMidi | null): string[] {
   if (parsed.tracks.some((track) => track.channel === 9))
     warnings.push("GM drum notes are mapped to KYX kit pads on a 16th-note grid.");
   return warnings;
+}
+
+/**
+ * The arrangement grid is 4/4 — four quarter notes per bar — whatever meter
+ * the document declares (ADR 0056). A non-4/4 meter therefore desynchronizes
+ * the ruler, the clip grid and the loop regions from the metronome and the bar
+ * readout, so the transfer dialog has to say so BEFORE the song is imported
+ * rather than shipping a project that quietly disagrees with itself.
+ *
+ * `null` when the meter and the arrangement grid agree (4/4, 2/2, 8/8).
+ */
+export function arrangementGridWarning(sig: TimeSignature): string | null {
+  if (arrangementGridMatchesMeter(sig)) return null;
+  return (
+    `KYX's arrangement grid is 4/4 — every ruler bar, clip placement and loop region is ` +
+    `${BAR_TICKS} ticks (four quarter notes) — while the metronome and the bar readout follow the ` +
+    `${sig.numerator}/${sig.denominator} meter you chose (${ticksPerBarFor(sig)} ticks per bar). ` +
+    `The two grids do not line up: the click's downbeats will not fall on the arrangement's bar ` +
+    `lines, and imported audio lanes are measured in ${sig.numerator}/${sig.denominator} bars but ` +
+    `placed on the 4/4 grid.`
+  );
 }

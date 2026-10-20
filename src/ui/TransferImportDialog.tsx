@@ -5,6 +5,7 @@ import { UserSampleRepository } from "../persistence/UserSampleRepository";
 import { importAudioFile } from "./sample-import";
 import { uid } from "../shared/ids";
 import {
+  arrangementGridWarning,
   buildTransferProject,
   defaultTransferTrackName,
   inspectTransferFiles,
@@ -101,8 +102,33 @@ export function TransferImportDialog({ core, onCancel, onImported }: TransferImp
     }
   };
 
+  // The arrangement grid is 4/4 whatever meter the user picks, so the mismatch
+  // is a property of the LIVE meter state, not of the inspected files (ADR 0056).
+  //
+  // It is therefore NOT gated on the inspection. The meter control is live from the moment the
+  // dialog opens, so a user who set 3/4 before choosing any file was told nothing about the grid
+  // they were about to be handed — and a warning that appears only once the files land discloses
+  // the mismatch to someone who has already committed. The point of the warning is that it is said
+  // BEFORE the commitment, and the commitment here is the import.
+  //
+  // An INVALID meter is a different thing and is not disclosed as a mismatch: the settings error
+  // below already says "beats per bar must be a whole number from 1 to 32", and a grid warning
+  // computed from a half-typed 0 would name a 0/4 meter and 0 ticks per bar. Nothing is being
+  // committed, so there is nothing to disclose. The validity test is written ONCE, here, and the
+  // settings error reads it — two copies of the same rule is how they drift apart.
+  const meterError =
+    !Number.isInteger(numerator) || numerator < 1 || numerator > 32
+      ? "Beats per bar must be a whole number from 1 to 32."
+      : ![1, 2, 4, 8, 16, 32].includes(denominator)
+        ? "Choose a supported beat unit: 1, 2, 4, 8, 16 or 32."
+        : null;
+  const gridWarning = meterError === null ? arrangementGridWarning({ numerator, denominator }) : null;
   const warnings = [
-    ...new Set([...(inspection?.warnings ?? []), ...midiImportWarnings(inspection?.parsedMidi ?? null)]),
+    ...new Set([
+      ...(inspection?.warnings ?? []),
+      ...midiImportWarnings(inspection?.parsedMidi ?? null),
+      ...(gridWarning ? [gridWarning] : []),
+    ]),
   ];
   const audioTrackNameError = inspection?.audioFiles.some((file) => {
     const selectionIndex = files.indexOf(file);
@@ -112,13 +138,7 @@ export function TransferImportDialog({ core, onCancel, onImported }: TransferImp
     : null;
   const alignmentRequired = (inspection?.audioFiles.length ?? 0) > 0;
   const settingsError =
-    !Number.isFinite(bpm) || bpm < 20 || bpm > 300
-      ? "Project tempo must be 20–300 BPM."
-      : !Number.isInteger(numerator) || numerator < 1 || numerator > 32
-        ? "Beats per bar must be a whole number from 1 to 32."
-        : ![1, 2, 4, 8, 16, 32].includes(denominator)
-          ? "Choose a supported beat unit: 1, 2, 4, 8, 16 or 32."
-          : null;
+    !Number.isFinite(bpm) || bpm < 20 || bpm > 300 ? "Project tempo must be 20–300 BPM." : meterError;
   const canImport =
     !busy &&
     files.length > 0 &&
@@ -414,7 +434,7 @@ export function TransferImportDialog({ core, onCancel, onImported }: TransferImp
             </p>
           </div>
 
-          {inspection?.warnings.map((warning) => (
+          {warnings.map((warning) => (
             <p className="kyx-transfer-warning" key={warning}>
               {warning}
             </p>
