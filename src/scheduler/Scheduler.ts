@@ -1,5 +1,5 @@
 import type { DrumTrack, NoteExpression, Pattern, PlayMode, ProjectDocument } from "../project-model/types";
-import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
+import { PPQ, STEP_TICKS } from "../project-model/types";
 import { ticksPerBar, ticksPerBeat } from "../project-model/schema";
 import { drumHitsInWindow } from "../project-model/groove";
 import {
@@ -210,10 +210,11 @@ function resolveLoopEnd(transport: Transport, doc: ProjectDocument, mode: PlayMo
     // pattern; the document boundary repairs the invariant.
     return STEP_TICKS * (findActivePattern(doc)?.stepCount ?? 16);
   }
+  const barUnit = ticksPerBar(doc);
   return Math.max(
     0,
-    ...doc.arrangement.clips.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS),
-    ...audioClipsForPlayback(doc.arrangement).map((c) => (c.startBar + c.lengthBars) * BAR_TICKS),
+    ...doc.arrangement.clips.map((c) => (c.startBar + c.lengthBars) * barUnit),
+    ...audioClipsForPlayback(doc.arrangement).map((c) => (c.startBar + c.lengthBars) * barUnit),
     ...(doc.arrangement.midiClips ?? []).map((c) => c.startTick + c.lengthTicks),
     ...(doc.arrangement.automationClips ?? []).map((c) => c.startTick + c.lengthTicks),
   );
@@ -775,6 +776,9 @@ export class Scheduler {
   ): void {
     const doc = this.getProject();
     const mode = this.deps.getMode();
+    // The arrangement's bar unit for THIS document (ADR 0056) — one source for
+    // every bar→tick conversion inside the window.
+    const barUnit = ticksPerBar(doc);
     this.songTimeAt = null;
 
     // Metronome: clicks fire on every beat of the click lead-in and, when the
@@ -797,8 +801,13 @@ export class Scheduler {
         const inLeadIn = leadInActive && cursor < contentStart;
         if (inLeadIn || (cursor >= contentStart && transport.metronome)) {
           const when = transport.timeAtTick(cursor) + this.scheduleOffsetSec() + 0.005;
+          // The lead-in and the playback click measure the SAME bar unit
+          // (ADR 0056). They used to disagree: the lead-in counted 4/4 bars
+          // (BAR_TICKS) while the playback counted the document's meter, so in
+          // 6/8 the accent landed on a different bar than the one the user
+          // heard. Only the anchor differs now.
           const downbeat = inLeadIn
-            ? Math.abs((((cursor - clickAnchor) % BAR_TICKS) + BAR_TICKS) % BAR_TICKS) < 1e-6
+            ? Math.abs((((cursor - clickAnchor) % barTicks) + barTicks) % barTicks) < 1e-6
             : Math.abs(((cursor % barTicks) + barTicks) % barTicks) < 1e-6;
           if (audibleClick(when, now)) this.deps.metronomeClick(when, downbeat);
         }
@@ -971,8 +980,8 @@ export class Scheduler {
       let activeScene: (typeof doc.scenes)[number] | null = null;
       let activeClipStart = 0;
       for (const clip of clips) {
-        const clipStart = clip.startBar * BAR_TICKS;
-        const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;
+        const clipStart = clip.startBar * barUnit;
+        const clipEnd = clipStart + clip.lengthBars * barUnit;
         if (contentWindowStart >= clipStart && contentWindowStart < clipEnd) {
           const scene = scenesById.get(clip.sceneId);
           if (scene) {
@@ -1034,7 +1043,7 @@ export class Scheduler {
         // DIFFERENT bpm than the one currently applied, and schedule the flip.
         const currentBpm = transport.bpm;
         for (const clip of clips) {
-          const boundaryTick = clip.startBar * BAR_TICKS;
+          const boundaryTick = clip.startBar * barUnit;
           if (boundaryTick <= contentWindowStart || boundaryTick > windowEnd) continue;
           const scene = scenesById.get(clip.sceneId);
           if (!scene) continue;
@@ -1056,12 +1065,12 @@ export class Scheduler {
       const timeAtForWindow = tempoSplit ? tempoSplit.timeAt : (tick: number) => baseTimeOld + tick * sptOld;
       this.songTimeAt = timeAtForWindow;
       this.deps.scheduleSceneIntensity?.(
-        sceneIntensityPointsForWindow(clips, scenesById, contentWindowStart, windowEnd),
+        sceneIntensityPointsForWindow(clips, scenesById, barUnit, contentWindowStart, windowEnd),
         timeAtForWindow,
       );
       for (const clip of clips) {
-        const clipStart = clip.startBar * BAR_TICKS;
-        const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;
+        const clipStart = clip.startBar * barUnit;
+        const clipEnd = clipStart + clip.lengthBars * barUnit;
         const s = Math.max(contentWindowStart, clipStart);
         const e = Math.min(windowEnd, clipEnd);
         if (e <= s) continue;
@@ -1105,8 +1114,8 @@ export class Scheduler {
       }
       if (!automationCtx) {
         const covering = clips.find((c) => {
-          const cs = c.startBar * BAR_TICKS;
-          return contentWindowStart >= cs && contentWindowStart < cs + c.lengthBars * BAR_TICKS;
+          const cs = c.startBar * barUnit;
+          return contentWindowStart >= cs && contentWindowStart < cs + c.lengthBars * barUnit;
         });
         if (covering) {
           const scene = scenesById.get(covering.sceneId);
@@ -1148,12 +1157,12 @@ export class Scheduler {
       // AudioClips: fire any clip whose start tick falls inside the current window
       if (this.deps.triggerAudioClip && doc.arrangement.audioClips) {
         for (const clip of audioClipsForPlayback(doc.arrangement)) {
-          const clipStart = clip.startBar * BAR_TICKS;
+          const clipStart = clip.startBar * barUnit;
           if (clipStart < contentWindowStart || clipStart >= windowEnd) continue;
           const when = timeAtForWindow(clipStart) + this.scheduleOffsetSec() + 0.005;
           // A clip starting past the tempo boundary runs at the NEW tempo.
           const spt = tempoSplit && clipStart >= tempoSplit.atTick ? tempoSplit.sptNew : transport.secondsPerTick;
-          const durationSec = clip.lengthBars * BAR_TICKS * spt;
+          const durationSec = clip.lengthBars * barUnit * spt;
           this.deps.triggerAudioClip(
             clip,
             when,
@@ -1389,14 +1398,15 @@ export class Scheduler {
 function sceneIntensityPointsForWindow(
   clips: { sceneId: string; startBar: number; lengthBars: number; sceneOffsetTicks?: number }[],
   scenesById: Map<string, ProjectDocument["scenes"][number]>,
+  barUnitTicks: number,
   fromTick: number,
   toTick: number,
 ): Array<{ tick: number; value: number } & ScenePerformance> {
   const points: Array<{ tick: number; value: number } & ScenePerformance> = [];
   let cursor = fromTick;
   for (const clip of clips) {
-    const clipStart = clip.startBar * BAR_TICKS;
-    const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;
+    const clipStart = clip.startBar * barUnitTicks;
+    const clipEnd = clipStart + clip.lengthBars * barUnitTicks;
     const from = Math.max(fromTick, clipStart);
     const to = Math.min(toTick, clipEnd);
     if (to <= from) continue;

@@ -11,8 +11,9 @@ import type {
   PlayMode,
   ProjectDocument,
 } from "../project-model/types";
-import { BAR_TICKS, MASTER_EFFECT_OWNER_ID, PPQ, STEP_TICKS, getActivePattern } from "../project-model/types";
+import { MASTER_EFFECT_OWNER_ID, PPQ, STEP_TICKS, getActivePattern } from "../project-model/types";
 import { drumHitsInWindow } from "../project-model/groove";
+import { ticksPerBar } from "../project-model/schema";
 import {
   arrangementAutomationSegmentsInWindow,
   automationClipEventsInWindow,
@@ -356,6 +357,9 @@ export interface ClipWindow {
 
 export function computeRenderTicks(doc: ProjectDocument, mode: PlayMode): number {
   if (mode === "song") {
+    // Everything is compared in BARS and converted back once (ADR 0056) — the
+    // bar unit is the document's meter, not a hardcoded 4/4.
+    const barUnit = ticksPerBar(doc);
     const end = doc.arrangement.clips.reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
     // Audio clips can sit past the last scene clip (outro vocals, ad-libs).
     // Duration must cover them or they are silently truncated/dropped from
@@ -365,20 +369,21 @@ export function computeRenderTicks(doc: ProjectDocument, mode: PlayMode): number
       0,
     );
     const midiEnd = (doc.arrangement.midiClips ?? []).reduce(
-      (max, clip) => Math.max(max, (clip.startTick + clip.lengthTicks) / BAR_TICKS),
+      (max, clip) => Math.max(max, (clip.startTick + clip.lengthTicks) / barUnit),
       0,
     );
     const automationEnd = (doc.arrangement.automationClips ?? []).reduce(
-      (max, clip) => Math.max(max, (clip.startTick + clip.lengthTicks) / BAR_TICKS),
+      (max, clip) => Math.max(max, (clip.startTick + clip.lengthTicks) / barUnit),
       0,
     );
     const total = Math.max(end, audioEnd, midiEnd, automationEnd);
-    if (total > 0) return total * BAR_TICKS;
+    if (total > 0) return total * barUnit;
   }
   return getActivePattern(doc).stepCount * STEP_TICKS;
 }
 
 function collectClipWindows(doc: ProjectDocument, mode: PlayMode, arrangementOnly = false): ClipWindow[] {
+  const barUnit = ticksPerBar(doc);
   if (mode === "song") {
     const windows: ClipWindow[] = [];
     for (const clip of [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar)) {
@@ -386,14 +391,14 @@ function collectClipWindows(doc: ProjectDocument, mode: PlayMode, arrangementOnl
       if (!scene) continue;
       const pattern = doc.patterns.find((p) => p.id === scene.patternId);
       if (!pattern) continue;
-      const visibleStart = clip.startBar * BAR_TICKS;
+      const visibleStart = clip.startBar * barUnit;
       const sceneBase = sceneBaseTickForClip(clip);
       const base = patternBaseTickForClip(clip);
       windows.push({
         pattern,
         base,
         from: visibleStart,
-        to: visibleStart + clip.lengthBars * BAR_TICKS,
+        to: visibleStart + clip.lengthBars * barUnit,
         sceneBase,
         bpm: scene.bpm ?? doc.bpm,
         sceneId: clip.sceneId,
@@ -489,6 +494,7 @@ export async function renderProject(
   throwIfAborted(options.signal);
   const tail = options.tailSeconds ?? resolveRenderTailSeconds(doc);
   const secondsPerTick = 60 / (doc.bpm * PPQ);
+  const barUnit = ticksPerBar(doc);
   const durationFloor = Number.isFinite(options.minimumDurationTicks) ? Math.max(0, options.minimumDurationTicks!) : 0;
   const totalTicks = Math.max(computeRenderTicks(doc, options.mode), durationFloor);
   const sampleRate = options.sampleRate;
@@ -630,8 +636,8 @@ export async function renderProject(
     // user never hears in pattern playback.
     if (options.mode === "song" && doc.arrangement.audioClips) {
       for (const clip of audioClipsForPlayback(doc.arrangement)) {
-        const clipStartTick = clip.startBar * BAR_TICKS;
-        const clipEndTick = clipStartTick + clip.lengthBars * BAR_TICKS;
+        const clipStartTick = clip.startBar * barUnit;
+        const clipEndTick = clipStartTick + clip.lengthBars * barUnit;
         // Only schedule if clip overlaps the total render window
         if (clipEndTick <= 0 || clipStartTick >= totalTicks) continue;
         const when = timeAt(clipStartTick);

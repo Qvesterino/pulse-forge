@@ -8,9 +8,9 @@
  */
 import type { Command } from "./types";
 import type { AudioClip, ProjectDocument } from "../project-model/types";
-import { BAR_TICKS, PPQ } from "../project-model/types";
+import { PPQ } from "../project-model/types";
 import { arrangementSecondsBetweenTicks, tempoAtTick } from "../project-model/scene-time";
-import { MAX_ARRANGEMENT_CLIP_TICKS, normalizeProject } from "../project-model/schema";
+import { MAX_ARRANGEMENT_CLIP_TICKS, normalizeProject, ticksPerBar } from "../project-model/schema";
 import { buildStemProject } from "../rendering/stems";
 import { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
 import { uid } from "../shared/ids";
@@ -137,18 +137,24 @@ export interface FittedLoopPlacement {
  * loop's own duration + detected tempo, plus the fitAudioClipTempo rate.
  * Null when there is nothing musical to fit (no detection, bad numbers).
  * Pure — shared by the DropZone offer and any future place-fitted flow.
+ *
+ * `barUnitTicks` is the document's bar length in TICKS (ADR 0056), not a beat
+ * count. A beat count is the wrong unit: a 6/8 bar spans three quarter notes,
+ * not six, so passing the meter's numerator made every fitted loop in 6/8
+ * twice as long as the music it holds.
  */
 export function fittedLoopPlacement(
   durationSec: number,
   detectedBpm: number | undefined,
   projectBpm: number,
-  beatsPerBar = 4,
+  barUnitTicks: number,
 ): FittedLoopPlacement | null {
   if (!Number.isFinite(durationSec) || durationSec <= 0) return null;
   if (detectedBpm === undefined || !Number.isFinite(detectedBpm) || detectedBpm < 40 || detectedBpm > 240) return null;
   if (!Number.isFinite(projectBpm) || projectBpm <= 0) return null;
-  if (!Number.isFinite(beatsPerBar) || beatsPerBar < 1) return null;
-  const lengthBars = Math.max(1, Math.round((durationSec * detectedBpm) / 60 / beatsPerBar));
+  if (!Number.isFinite(barUnitTicks) || barUnitTicks < 1) return null;
+  const loopTicks = (durationSec * detectedBpm * PPQ) / 60;
+  const lengthBars = Math.max(1, Math.round(loopTicks / barUnitTicks));
   const rate = Math.round(Math.min(4, Math.max(0.25, detectedBpm / projectBpm)) * 100) / 100;
   return { lengthBars, rate };
 }
@@ -163,7 +169,7 @@ export function fitAudioClipTempo(doc: ProjectDocument, clipId: string, detected
   // Fit against the tempo the transport ACTUALLY runs at the clip — its
   // covering scene's BPM pin — not flat doc.bpm. Fitting to the project tempo
   // under a pinned scene left the loop locked to a clock nothing plays at.
-  const targetBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, clip.startBar * BAR_TICKS, doc.bpm);
+  const targetBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, clip.startBar * ticksPerBar(doc), doc.bpm);
   const rate = Math.round(Math.min(4, Math.max(0.25, detectedBpm / targetBpm)) * 100) / 100;
   const next: ProjectDocument = {
     ...doc,
@@ -193,8 +199,8 @@ export function sliceAudioClipToArrangement(doc: ProjectDocument, clipId: string
   if (sliceTimesSec.length === 0) throw new Error("No slice points provided");
   if (clip.reverse === true) throw new Error("Slice is not supported on reversed clips");
   if (clip.loop === true) throw new Error("Slice is not supported on looping clips");
-  const startTick = clip.startBar * BAR_TICKS;
-  const endTick = startTick + clip.lengthBars * BAR_TICKS;
+  const startTick = clip.startBar * ticksPerBar(doc);
+  const endTick = startTick + clip.lengthBars * ticksPerBar(doc);
   // Same discipline as splitAudioClipAtTick: wall math at the scene-pinned
   // tempo (not doc.bpm), source advance per wall second = rate (resample) or
   // 1/rate (pitch-preserving stretch), and the window base is
@@ -224,7 +230,7 @@ export function sliceAudioClipToArrangement(doc: ProjectDocument, clipId: string
   let currentBar = Math.round((originalEndBar + 0.5) * 100) / 100;
   for (const seg of segments) {
     const segWallSec = seg.endSec - seg.startSec;
-    const segBars = Math.max(0.25, segWallSec / (spt * BAR_TICKS));
+    const segBars = Math.max(0.25, segWallSec / (spt * ticksPerBar(doc)));
     const storedBars = Math.round(segBars * 100) / 100;
     // A slice is typically far shorter than the clip it came from, so the
     // parent's fades are re-bounded by the slice's own STORED length, at the
@@ -323,10 +329,10 @@ export function splitAudioClipAtTickWithMinimumFragment(
   if (!Number.isFinite(minimumFragmentBars) || minimumFragmentBars < 0) {
     throw new Error("Minimum split fragment must be a finite non-negative bar length");
   }
-  const startTick = clip.startBar * BAR_TICKS;
-  const endTick = startTick + clip.lengthBars * BAR_TICKS;
+  const startTick = clip.startBar * ticksPerBar(doc);
+  const endTick = startTick + clip.lengthBars * ticksPerBar(doc);
   if (splitTick <= startTick || splitTick >= endTick) throw new Error("Split point outside clip");
-  const leftBars = (splitTick - startTick) / BAR_TICKS;
+  const leftBars = (splitTick - startTick) / ticksPerBar(doc);
   const rightBars = clip.lengthBars - leftBars;
   if (leftBars < minimumFragmentBars || rightBars < minimumFragmentBars) throw new Error("Split too close to edge");
   // Piecewise bars→seconds at the scenes' effective tempos: the scheduler runs
@@ -387,7 +393,7 @@ export function splitAudioClipAtTickWithMinimumFragment(
   // moved the timeline edge and accumulated source-offset drift on repeated
   // edits. Tiny fades suppress a discontinuity without changing the source
   // window or the exact adjacent timeline boundary.
-  const rightStartBar = splitTick / BAR_TICKS;
+  const rightStartBar = splitTick / ticksPerBar(doc);
   const leftLength = rightStartBar - clip.startBar;
   const rightLength = clip.startBar + clip.lengthBars - rightStartBar;
   const splitDeclickFadeSec = 0.003;
@@ -448,7 +454,12 @@ export function splitAudioClipAtTickWithMinimumFragment(
     .concat([leftClip, rightClip])
     .sort((a, b) => a.startBar - b.startBar);
   const next: ProjectDocument = { ...doc, arrangement: { ...doc.arrangement, audioClips: nextClips } };
-  return snapshot("splitAudioClip", `Split audio clip at bar ${(splitTick / BAR_TICKS + 1).toFixed(2)}`, doc, next);
+  return snapshot(
+    "splitAudioClip",
+    `Split audio clip at bar ${(splitTick / ticksPerBar(doc) + 1).toFixed(2)}`,
+    doc,
+    next,
+  );
 }
 
 /**
@@ -480,8 +491,8 @@ export function stripSilenceAudioClip(
   if (segments.length === 0) throw new Error("No non-silent segments");
   if (clip.reverse === true) throw new Error("Strip silence is not supported on reversed clips");
   if (clip.loop === true) throw new Error("Strip silence is not supported on looping clips");
-  const startTick = clip.startBar * BAR_TICKS;
-  const endTick = startTick + clip.lengthBars * BAR_TICKS;
+  const startTick = clip.startBar * ticksPerBar(doc);
+  const endTick = startTick + clip.lengthBars * ticksPerBar(doc);
   // Scene-pinned seconds-per-tick at the clip's start: the scheduler runs this
   // span at its effective tempo, so plain doc.bpm places fragments against a
   // wall clock the transport never runs at (same bug class the split fix
@@ -518,17 +529,17 @@ export function stripSilenceAudioClip(
     // Source span → wall span via the stretch conversion, then wall → bars at
     // the scene-pinned tempo.
     const wallDurSec = (seg.end - seg.start) / sourcePerWall;
-    const segBars = wallDurSec / (spt * BAR_TICKS);
+    const segBars = wallDurSec / (spt * ticksPerBar(doc));
     const segStartTick = startTick + (seg.start - windowStart) / sourcePerWall / spt;
     const storedBars = Math.max(0.05, Math.round(segBars * 100) / 100);
     // Stripped segments are by definition much shorter than the source clip —
     // a 4s fadeIn cannot survive on a 0.1s blip. Bounded at the fragment's own
     // timeline position (scene-pinned tempo may differ from the parent's).
-    const { fadeIn, fadeOut } = clampClipFades(doc, clip, storedBars, segStartTick / BAR_TICKS);
+    const { fadeIn, fadeOut } = clampClipFades(doc, clip, storedBars, segStartTick / ticksPerBar(doc));
     return {
       ...clip,
       id: uid("audioClip"),
-      startBar: segStartTick / BAR_TICKS,
+      startBar: segStartTick / ticksPerBar(doc),
       lengthBars: storedBars,
       offsetSec: seg.start,
       trimStart: 0,
@@ -650,10 +661,10 @@ export function crossfadeAudioClips(
   // standalone fade allowed.
   assertClipEditable(earlier, "crossfade");
   assertClipEditable(later, "crossfade");
-  const eStart = earlier.startBar * BAR_TICKS;
-  const eEnd = eStart + earlier.lengthBars * BAR_TICKS;
-  const lStart = later.startBar * BAR_TICKS;
-  const lEnd = lStart + later.lengthBars * BAR_TICKS;
+  const eStart = earlier.startBar * ticksPerBar(doc);
+  const eEnd = eStart + earlier.lengthBars * ticksPerBar(doc);
+  const lStart = later.startBar * ticksPerBar(doc);
+  const lEnd = lStart + later.lengthBars * ticksPerBar(doc);
   const overlapTicks = Math.min(eEnd, lEnd) - Math.max(eStart, lStart);
   if (overlapTicks <= 0) throw new Error("Clips do not overlap — nothing to crossfade");
   const scenes = doc.scenes;
@@ -716,7 +727,7 @@ export function crossfadeAudioClips(
 export function nudgeClips(doc: ProjectDocument, clipIds: readonly string[], deltaBars: number): Command {
   if (!Number.isFinite(deltaBars) || deltaBars === 0) return snapshot("nudgeClips", "Nudge clips (no-op)", doc, doc);
   const ids = new Set(clipIds);
-  const deltaTicks = Math.round(deltaBars * BAR_TICKS);
+  const deltaTicks = Math.round(deltaBars * ticksPerBar(doc));
   const groups = doc.arrangement.clipGroups ?? [];
   const groupForId = new Map<string, (typeof groups)[number]>();
   for (const group of groups) for (const id of group.clipIds) groupForId.set(id, group);
@@ -739,9 +750,11 @@ export function nudgeClips(doc: ProjectDocument, clipIds: readonly string[], del
     (doc.arrangement.automationClips ?? []).some((clip) => clip.id === id && clip.locked === true);
   const tickGeometry = (id: string): { start: number; end: number } | null => {
     const scene = doc.arrangement.clips.find((clip) => clip.id === id);
-    if (scene) return { start: scene.startBar * BAR_TICKS, end: (scene.startBar + scene.lengthBars) * BAR_TICKS };
+    if (scene)
+      return { start: scene.startBar * ticksPerBar(doc), end: (scene.startBar + scene.lengthBars) * ticksPerBar(doc) };
     const audio = (doc.arrangement.audioClips ?? []).find((clip) => clip.id === id);
-    if (audio) return { start: audio.startBar * BAR_TICKS, end: (audio.startBar + audio.lengthBars) * BAR_TICKS };
+    if (audio)
+      return { start: audio.startBar * ticksPerBar(doc), end: (audio.startBar + audio.lengthBars) * ticksPerBar(doc) };
     const midi = (doc.arrangement.midiClips ?? []).find((clip) => clip.id === id);
     if (midi) return { start: midi.startTick, end: midi.startTick + midi.lengthTicks };
     const automation = (doc.arrangement.automationClips ?? []).find((clip) => clip.id === id);

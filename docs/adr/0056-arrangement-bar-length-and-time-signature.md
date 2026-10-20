@@ -102,19 +102,66 @@ plus the audible disagreement between the click and the audio.
    must stay identical through every later stage. It is pinned as an
    invariant, not as an accident.
 6. **The migration is staged, and each stage is independently mergeable:**
-   - *Stage 1 (this ADR)* — disclose the mismatch. No model change, no
-     on-disk change, no behavioural change to any 4/4 project.
-   - *Stage 2* — one helper, `barTicks(doc)`, becomes the only way a bar
-     index is converted to ticks. `BAR_TICKS` survives only as
-     `DEFAULT_BAR_TICKS`, for 4/4 defaults and for the ruler's pixel width,
-     which has no musical unit at all.
-   - *Stage 3* — `SCHEMA_VERSION` bump plus a migration that re-expresses
-     `startBar` / `lengthBars` for documents saved with a non-4/4 meter.
-     Documents saved under 4/4 are numerically unchanged.
+   - *Stage 1* — disclose the mismatch. No model change, no on-disk change, no
+     behavioural change to any 4/4 project. **Shipped.**
+   - *Stage 2* — `ticksPerBar(doc)` becomes the only way a bar index is
+     converted to ticks. `BAR_TICKS` survives only as the 4/4 default and for
+     the ruler's pixel width, which has no musical unit at all. **In progress**
+     — see the batch inventory below.
+   - *Stage 3* — see the measured finding below: **no schema migration is
+     needed.** The stored values are bar indices, not ticks derived from bars,
+     so what changes is their *interpretation*, which is the fix itself.
 7. **A meter matches the 4/4 grid when one bar spans four quarter notes.**
    `arrangementGridMatchesMeter(sig)` encodes that musically, not numerically:
    4/4, 2/2 and 8/8 match; 3/4, 6/8, 4/2, 12/8 and 2/4 do not. A meter that
    matches produces no warning.
+
+### Stage 2 — what was measured, and the ratchet
+
+The bar unit is not a one-line change. Measured over `src/`: **376 bar↔tick
+conversions across 55 files**, of which only **48** sit in a scope that already
+has the document. The rest live in pure helpers (`tempoAtTick`-style), so the
+bar length has to be threaded in as a number — `barUnitTicks` — not as a
+document. That is why Stage 2 is a sequence of batches, not one commit.
+
+**Batch 1 — the audible path** (shipped): `commands/audioClips.ts`,
+`commands/clipEditing.ts`, `scheduler/Scheduler.ts`, `rendering/renderer.ts`,
+`audio-engine/liveEditSync.ts`, `audio-engine/triggerEngine.ts`, plus the five
+`fittedLoopPlacement` call sites. 88 conversions moved. **376 → 288 sites in
+49 files.**
+
+Two findings that only the measurement could produce:
+
+- **`fittedLoopPlacement` took a BEAT COUNT, and its callers passed the meter's
+  numerator.** A 6/8 bar spans three quarter notes, not six, so a fitted loop
+  in 6/8 came out one bar long instead of three — and on the old 4/4 grid
+  that truncated the audio to a third of itself on every import. The parameter
+  is now the bar length in ticks, which is the only unit that cannot be wrong.
+- **The scheduler's lead-in downbeat and its playback downbeat measured
+  different bars** (`Scheduler.ts`, two lines apart). In 6/8 the accent landed
+  on the wrong beat. They now measure the same bar; only the anchor differs.
+
+**The ratchet.** Stage 2 is a ratchet, not a big bang: each batch lowers the
+count of remaining `BAR_TICKS` conversions, and the count is asserted so a new
+one cannot be added unnoticed. The gate that proves completion is the compiler
+— `BAR_TICKS` is deleted from the public surface when the last conversion is
+gone, and `tsc` then holds the line for good.
+
+### Stage 3 — no schema migration is needed
+
+Measured on the model: the values the project stores are **bar indices**
+(`ArrangementClip.startBar`, the audio clip's `startBar` / `lengthBars`,
+`ChordEvent.startBar`, `ArrangementTransition.lengthBars`, `Marker.bar`), while
+the values that must NOT move are **absolute ticks** (`MidiClip.startTick` /
+`lengthTicks`, `ArrangementAutomationClip.startTick` / `lengthTicks`). No
+stored value is an absolute tick that was derived from a bar conversion, so
+there is nothing to re-express: switching the unit changes the *meaning* of
+the stored number, and that is the fix.
+
+Consequence, stated plainly: in an existing non-4/4 document, bar-addressed
+content shifts by the meter ratio — that is the defect being corrected, and it
+is what a DAW does when the meter changes. MIDI note timing does not move at
+all, because MIDI clips store absolute ticks.
 
 ## Acceptance gates
 
@@ -142,12 +189,21 @@ plus the audible disagreement between the click and the audio.
 ## Consequences and scope limits
 
 - A 6/8 or 3/4 import is now *labelled* as a 4/4-grid project instead of
-  silently producing a project whose ruler and metronome disagree. It is not
-  yet *fixed*; the grid itself still needs Stage 2 and Stage 3.
-- The audio-lane consequence is stated in the warning but not repaired: an
-  imported lane's length is computed in the chosen meter
-  (`secondsPerBar`) and then placed on the 4/4 grid, so the lane's timeline
-  length does not match its audio duration in a non-4/4 meter.
+  silently producing a project whose ruler and metronome disagree. Stage 2 has
+  since made the audible path meter-aware (see the batch inventory), so the
+  clip placement, the render length, the bar duration and the count-in accent
+  now agree with the meter. The parts of the grid that are still 4/4 — the
+  ruler's drawn bars, zoom, selection, markers — are the remaining batches.
+- The audio-lane consequence is stated in the warning. `fittedLoopPlacement`
+  measured the bar in beats and now measures it in ticks, so an imported lane
+  is no longer truncated to a third of its length in 6/8. The remaining
+  limitation is that a lane's length is still *rounded up* to whole metrical
+  bars, which leaves a tail of silence rather than a cut-off.
+- `MAX_ARRANGEMENT_CLIP_TICKS` is still derived from `BAR_TICKS`, so in a
+  non-4/4 document it is a loose bound: it allows up to 1.33× the intended
+  maximum bar count in 6/8. It never rejects a clip that should be allowed.
+  Recorded, not changed — the bar-count clamps use `MAX_ARRANGEMENT_CLIP_BARS`
+  and are correct.
 - Other meter-setting surfaces (the `kyx_music` MCP tool, the text-intent
   path, `setTimeSignature`) can still change a project's meter without
   disclosure. They are a follow-up; this ADR covers the transfer dialog
@@ -168,12 +224,17 @@ plus the audible disagreement between the click and the audio.
 - `src/project-model/schema.ts` — `ticksPerBarFor`, `ticksPerBar`,
   `arrangementGridMatchesMeter`
 - `src/scheduler/Scheduler.ts` — the click (musical) against the audio clip
-  schedule (4/4)
+  schedule
 - `src/export/transfer-import.ts` — `arrangementGridWarning`,
   `secondsPerBar`
 - `src/ui/TransferImportDialog.tsx` — the meter choice and the warning gate
 - `tests/audit17-bar-length-grids.test.ts` — the pinned 4/4 invariant and the
   measured non-4/4 divergence
 - `tests/adr0056-arrangement-grid-warning.test.tsx` — the disclosure gate
+- `tests/adr0056-stage2-bar-unit.test.ts` — the Stage 2 gate: a 6/8 clip lands
+  on the musical bar, the render length follows the meter, the bar's audible
+  duration follows the meter, and the count-in accent measures the document's
+  bar — each with a 4/4 negative control
+- `tests/fit-loop-placement.test.ts` — the loop-fit bar unit
 - `docs/DAW-TRANSFER-EXPORT-GUIDE.md` — the transfer contract this dialog
   implements

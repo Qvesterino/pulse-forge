@@ -9,9 +9,9 @@
  */
 import type { Command } from "./types";
 import type { AudioClip, ProjectDocument } from "../project-model/types";
-import { BAR_TICKS, PPQ } from "../project-model/types";
+import { PPQ } from "../project-model/types";
 import { tempoAtTick } from "../project-model/scene-time";
-import { MAX_ARRANGEMENT_CLIP_BARS, normalizeProject } from "../project-model/schema";
+import { MAX_ARRANGEMENT_CLIP_BARS, normalizeProject, ticksPerBar } from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
 import { assertClipEditable, clipGroupsWithoutIds } from "./clipGroups";
@@ -26,9 +26,13 @@ import { unlinkMarkersOfClips } from "./docOps";
  * and 1/16 positions (0.125 → 0.13, 0.0625 → 0.06) — finer than the old
  * precision on purpose, and legacy 0.01-quantized data shifts by at most half
  * a tick on its next edit (inaudible at any tempo).
+ *
+ * `barUnitTicks` is the document's bar length in ticks (ADR 0056). It is a
+ * required argument, not a default: a default would silently keep quantizing
+ * in 4/4 bars for a 6/8 document.
  */
-export function quantizeAudioBar(bar: number): number {
-  return Number.isFinite(bar) ? Math.round(bar * BAR_TICKS) / BAR_TICKS : bar;
+export function quantizeAudioBar(bar: number, barUnitTicks: number): number {
+  return Number.isFinite(bar) ? Math.round(bar * barUnitTicks) / barUnitTicks : bar;
 }
 
 export function addAudioClip(
@@ -45,13 +49,14 @@ export function addAudioClip(
   // Audit hardening: a non-finite position/duration from a caller parse bug
   // must never poison the document (Math.max/min pass NaN through).
   const finiteOr = (value: number, fallback: number): number => (Number.isFinite(value) ? value : fallback);
+  const barUnitTicks = ticksPerBar(doc);
   const pitchSemitones = Math.round(Math.min(24, Math.max(-24, finiteOr(patch.pitchSemitones ?? 0, 0))));
   const clip: AudioClip = {
     id: uid("audioClip"),
     trackId,
     bufferId,
-    startBar: Math.max(0, quantizeAudioBar(finiteOr(startBar, 0))),
-    lengthBars: Math.max(0.25, quantizeAudioBar(finiteOr(lengthBars, 4))),
+    startBar: Math.max(0, quantizeAudioBar(finiteOr(startBar, 0), barUnitTicks)),
+    lengthBars: Math.max(0.25, quantizeAudioBar(finiteOr(lengthBars, 4), barUnitTicks)),
     offsetSec: Math.max(0, finiteOr(patch.offsetSec ?? 0, 0)),
     trimStart: Math.max(0, finiteOr(patch.trimStart ?? 0, 0)),
     trimEnd: Math.max(0, finiteOr(patch.trimEnd ?? 0, 0)),
@@ -178,6 +183,7 @@ export function compAudioTakeRange(
   const audioClips = doc.arrangement.audioClips ?? [];
   const compTakeId = group.compTakeId ?? uid("takeComp");
   const epsilonTicks = 1e-6;
+  const barUnitTicks = ticksPerBar(doc);
   const isLinear = (clip: AudioClip): boolean =>
     !clip.reverse && !clip.loop && clip.stretchMode !== "stretch" && (clip.warpMarkers?.length ?? 0) === 0;
   const clipsForTake = (takeId: string): AudioClip[] =>
@@ -189,8 +195,8 @@ export function compAudioTakeRange(
     if (!scene) return [];
     return [
       {
-        from: arrangementClip.startBar * BAR_TICKS,
-        to: (arrangementClip.startBar + arrangementClip.lengthBars) * BAR_TICKS,
+        from: arrangementClip.startBar * barUnitTicks,
+        to: (arrangementClip.startBar + arrangementClip.lengthBars) * barUnitTicks,
         bpm: scene.bpm ?? doc.bpm,
       },
     ];
@@ -210,8 +216,8 @@ export function compAudioTakeRange(
   };
   const declickFadeSec = 0.003;
   const sliceClip = (clip: AudioClip, fromTick: number, toTick: number, id: string): AudioClip | null => {
-    const clipStartTick = clip.startBar * BAR_TICKS;
-    const clipEndTick = clipStartTick + clip.lengthBars * BAR_TICKS;
+    const clipStartTick = clip.startBar * barUnitTicks;
+    const clipEndTick = clipStartTick + clip.lengthBars * barUnitTicks;
     const sliceStart = Math.max(fromTick, clipStartTick);
     const sliceEnd = Math.min(toTick, clipEndTick);
     if (sliceEnd <= sliceStart + epsilonTicks) return null;
@@ -221,8 +227,8 @@ export function compAudioTakeRange(
     return {
       ...clip,
       id,
-      startBar: sliceStart / BAR_TICKS,
-      lengthBars: (sliceEnd - sliceStart) / BAR_TICKS,
+      startBar: sliceStart / barUnitTicks,
+      lengthBars: (sliceEnd - sliceStart) / barUnitTicks,
       // offsetSec excludes trimStart; this matches splitAudioClipAtTick and
       // keeps the source window continuous for non-unit resample rates.
       offsetSec: Math.max(0, clip.offsetSec + elapsedSec * clip.stretchRate),
@@ -244,8 +250,8 @@ export function compAudioTakeRange(
     const segments: Array<{ clip: AudioClip; startTick: number; endTick: number }> = [];
     let coveredUntil = fromTick;
     for (const clip of sourceClips) {
-      const clipStartTick = clip.startBar * BAR_TICKS;
-      const clipEndTick = clipStartTick + clip.lengthBars * BAR_TICKS;
+      const clipStartTick = clip.startBar * barUnitTicks;
+      const clipEndTick = clipStartTick + clip.lengthBars * barUnitTicks;
       const segmentStart = Math.max(fromTick, clipStartTick);
       const segmentEnd = Math.min(toTick, clipEndTick);
       if (segmentEnd <= segmentStart + epsilonTicks) continue;
@@ -272,15 +278,15 @@ export function compAudioTakeRange(
   const leftCandidates = compClips
     .filter(
       (clip) =>
-        clip.startBar * BAR_TICKS < startTick - epsilonTicks &&
-        clip.startBar * BAR_TICKS + clip.lengthBars * BAR_TICKS >= startTick - epsilonTicks,
+        clip.startBar * barUnitTicks < startTick - epsilonTicks &&
+        clip.startBar * barUnitTicks + clip.lengthBars * barUnitTicks >= startTick - epsilonTicks,
     )
     .sort((a, b) => b.startBar - a.startBar);
   const rightCandidates = compClips
     .filter(
       (clip) =>
-        clip.startBar * BAR_TICKS <= endTick + epsilonTicks &&
-        clip.startBar * BAR_TICKS + clip.lengthBars * BAR_TICKS > endTick + epsilonTicks,
+        clip.startBar * barUnitTicks <= endTick + epsilonTicks &&
+        clip.startBar * barUnitTicks + clip.lengthBars * barUnitTicks > endTick + epsilonTicks,
     )
     .sort((a, b) => a.startBar + a.lengthBars - (b.startBar + b.lengthBars));
   const leftNeighbor = leftCandidates[0];
@@ -301,8 +307,8 @@ export function compAudioTakeRange(
     const sources = new Set(
       compClips
         .filter((clip) => {
-          const clipStart = clip.startBar * BAR_TICKS;
-          const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;
+          const clipStart = clip.startBar * barUnitTicks;
+          const clipEnd = clipStart + clip.lengthBars * barUnitTicks;
           return clipStart < toTick - epsilonTicks && clipEnd > fromTick + epsilonTicks;
         })
         .map((clip) => clip.compSourceTakeId ?? `unknown:${clip.id}`),
@@ -333,16 +339,16 @@ export function compAudioTakeRange(
     compClips.some(
       (clip) =>
         clip.compSourceTakeId === leftNeighbor?.compSourceTakeId &&
-        clip.startBar * BAR_TICKS < cutStartTick - epsilonTicks &&
-        clip.startBar * BAR_TICKS + clip.lengthBars * BAR_TICKS >= cutStartTick - epsilonTicks,
+        clip.startBar * barUnitTicks < cutStartTick - epsilonTicks &&
+        clip.startBar * barUnitTicks + clip.lengthBars * barUnitTicks >= cutStartTick - epsilonTicks,
     );
   const continuesRightOfCrossfade =
     rightHalfTicks > 0 &&
     compClips.some(
       (clip) =>
         clip.compSourceTakeId === rightNeighbor?.compSourceTakeId &&
-        clip.startBar * BAR_TICKS <= cutEndTick + epsilonTicks &&
-        clip.startBar * BAR_TICKS + clip.lengthBars * BAR_TICKS > cutEndTick + epsilonTicks,
+        clip.startBar * barUnitTicks <= cutEndTick + epsilonTicks &&
+        clip.startBar * barUnitTicks + clip.lengthBars * barUnitTicks > cutEndTick + epsilonTicks,
     );
   const retainedCompClips: AudioClip[] = [];
   for (const clip of audioClips) {
@@ -350,8 +356,8 @@ export function compAudioTakeRange(
       retainedCompClips.push(clip);
       continue;
     }
-    const clipStartTick = clip.startBar * BAR_TICKS;
-    const clipEndTick = clipStartTick + clip.lengthBars * BAR_TICKS;
+    const clipStartTick = clip.startBar * barUnitTicks;
+    const clipEndTick = clipStartTick + clip.lengthBars * barUnitTicks;
     if (clipEndTick <= cutStartTick + epsilonTicks || clipStartTick >= cutEndTick - epsilonTicks) {
       retainedCompClips.push(clip);
       continue;
@@ -455,8 +461,10 @@ export function deleteAudioClip(doc: ProjectDocument, clipId: string): Command {
 export function audioClipDurationSec(doc: ProjectDocument, lengthBars: number, startBar?: number): number {
   const bars = Number.isFinite(lengthBars) ? lengthBars : 0;
   const bpm =
-    startBar === undefined ? doc.bpm : tempoAtTick(doc.arrangement.clips, doc.scenes, startBar * BAR_TICKS, doc.bpm);
-  return (bars * BAR_TICKS * 60) / (bpm * PPQ);
+    startBar === undefined
+      ? doc.bpm
+      : tempoAtTick(doc.arrangement.clips, doc.scenes, startBar * ticksPerBar(doc), doc.bpm);
+  return (bars * ticksPerBar(doc) * 60) / (bpm * PPQ);
 }
 
 /**
@@ -501,7 +509,7 @@ export function moveAudioClip(doc: ProjectDocument, clipId: string, startBar: nu
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
   assertClipEditable(clip, "move");
   if (!Number.isFinite(startBar)) return snapshot("moveAudioClip", "Move audio clip (no-op)", doc, doc);
-  const bar = Math.max(0, quantizeAudioBar(startBar));
+  const bar = Math.max(0, quantizeAudioBar(startBar, ticksPerBar(doc)));
   const next: ProjectDocument = {
     ...doc,
     arrangement: {
@@ -630,7 +638,7 @@ export function stretchAudioClip(
   // MAX_ARRANGEMENT_CLIP_BARS, and ProjectStore.applyCommand normalizes after
   // every command — so an unclamped value here did not store an oversized clip,
   // it silently DELETED the user's clip with no error and no undo entry.
-  const bars = Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(0.25, quantizeAudioBar(lengthBars)));
+  const bars = Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(0.25, quantizeAudioBar(lengthBars, ticksPerBar(doc))));
   const rate = Number.isFinite(stretchRate) ? Math.round(Math.min(4, Math.max(0.25, stretchRate)) * 100) / 100 : 1;
   // Fades must stay inside the clip (clampClipFades) — same rule as resize.
   const { fadeIn, fadeOut } = clampClipFades(doc, clip, bars, clip.startBar);
@@ -656,7 +664,7 @@ export function resizeAudioClip(doc: ProjectDocument, clipId: string, lengthBars
   // drops the clip outright, and because normalization runs inside
   // applyCommand the clip vanished from the store with no error and no undo —
   // a drag past the limit destroyed the user's take.
-  const bars = Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(0.25, quantizeAudioBar(lengthBars)));
+  const bars = Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(0.25, quantizeAudioBar(lengthBars, ticksPerBar(doc))));
   // Fades must stay inside the resized clip (audit §8): the engine clamps
   // audibly, but out-of-bounds state desyncs the fade handles from the
   // visual clip width.
@@ -689,7 +697,9 @@ export function trimAudioClipStart(
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
   assertClipEditable(clip, "trim");
-  const bars = Number.isFinite(patch.lengthBars) ? Math.max(0.25, quantizeAudioBar(patch.lengthBars)) : clip.lengthBars;
+  const bars = Number.isFinite(patch.lengthBars)
+    ? Math.max(0.25, quantizeAudioBar(patch.lengthBars, ticksPerBar(doc)))
+    : clip.lengthBars;
   const trimStart = Number.isFinite(patch.trimStart) ? Math.max(0, patch.trimStart) : clip.trimStart;
   const offsetSec = Number.isFinite(patch.offsetSec) ? Math.max(0, patch.offsetSec) : clip.offsetSec;
   // Fades must stay inside the trimmed clip (same rule as resizeAudioClip) or

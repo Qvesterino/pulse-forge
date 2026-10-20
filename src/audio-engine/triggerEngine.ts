@@ -1,5 +1,5 @@
 import type { DrumPad, ProjectDocument } from "../project-model/types";
-import { BAR_TICKS } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import type { SampleBank } from "../sample-library/factory";
 import type { InstrumentRuntime } from "../instruments/types";
 import { connectAudioClipSourceChannel } from "./audioClipChannels";
@@ -464,6 +464,8 @@ export class TriggerEngine {
     const ctx = this.deps.ctx();
     const doc = this.deps.doc();
     if (!ctx || !doc) return;
+    // The document's bar unit (ADR 0056) — the clip's length in ticks.
+    const barUnit = ticksPerBar(doc);
     if (this.warp.isFrozen(clip.trackId)) return;
     const nodes = this.deps.trackNodes.get(clip.trackId) ?? this.deps.groupNodes.get(clip.trackId);
     if (!nodes) return;
@@ -626,7 +628,7 @@ export class TriggerEngine {
     );
 
     const hasWarpPins = (clip.warpMarkers?.length ?? 0) > 0;
-    const clipTicks = clip.lengthBars * BAR_TICKS;
+    const clipTicks = clip.lengthBars * barUnit;
     // Pitch-preserving warp: stretch mode + pins → pre-rendered phase-vocoder
     // buffer (cached, tempo-exact). A cache miss warms in the background while
     // THIS trigger plays legacy straight-stretched, so timing never gaps —
@@ -667,7 +669,7 @@ export class TriggerEngine {
         ? null
         : buildWarpSegments({
             markers: clip.warpMarkers ?? [],
-            clipStartTick: clip.startBar * BAR_TICKS,
+            clipStartTick: clip.startBar * barUnit,
             clipTicks,
             spt: clipTicks > 0 ? clipDurSec / clipTicks : 0,
             contentStartSec: playOffset,

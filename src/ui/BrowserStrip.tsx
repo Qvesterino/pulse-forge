@@ -4,6 +4,7 @@ import { addAudioClip, fittedLoopPlacement, setInstrumentSample, setPadParams } 
 import { loopPreviewPlaybackRate } from "../audio-engine/loopTempo";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
 import { BAR_TICKS, PPQ, type Track } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { sceneSecondsToBars, tempoAtTick } from "../project-model/scene-time";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
 import type { SongStarterHandoff } from "../landing/handoff";
@@ -96,7 +97,7 @@ export function BrowserStrip({
       startBar * BAR_TICKS,
       currentDoc.bpm,
     );
-    const fitted = fittedLoopPlacement(asset.duration, asset.bpm, targetBpm, currentDoc.timeSignature.numerator);
+    const fitted = fittedLoopPlacement(asset.duration, asset.bpm, targetBpm, ticksPerBar(currentDoc));
     const lengthBars = fitted?.lengthBars ?? Math.max(0.25, sceneSecondsToBars(asset.duration, targetBpm));
 
     services.store.execute(

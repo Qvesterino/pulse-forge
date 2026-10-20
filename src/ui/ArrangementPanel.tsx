@@ -84,7 +84,7 @@ import {
 } from "../commands/commands";
 import { generatePatternCommand } from "../commands/aiPattern";
 import { makeMidiClipUnique } from "../commands/midiClips";
-import { MAX_ARRANGEMENT_CLIP_BARS, sceneRoleOf } from "../project-model/schema";
+import { MAX_ARRANGEMENT_CLIP_BARS, sceneRoleOf, ticksPerBar } from "../project-model/schema";
 import { applySmartComp, planBars, planSmartComp, type SmartCompPlan } from "../commands/smart-comp";
 import { sectionFxChips } from "../intent/song";
 import {
@@ -2943,7 +2943,9 @@ export function ArrangementPanel() {
         // ADR 0025: ripple is timeline-wide — audio clips at/after the block
         // ride the same whole-bar delta (the command twin does the same).
         const rippleAudio = (beforeDoc.arrangement.audioClips ?? []).map((c) =>
-          c.startBar >= minStart ? { ...c, startBar: Math.max(0, quantizeAudioBar(c.startBar + flooredDelta)) } : c,
+          c.startBar >= minStart
+            ? { ...c, startBar: Math.max(0, quantizeAudioBar(c.startBar + flooredDelta, ticksPerBar(beforeDoc))) }
+            : c,
         );
         const nextDoc: ProjectDocument = {
           ...beforeDoc,
@@ -3436,7 +3438,10 @@ export function ArrangementPanel() {
                 ...c,
                 // Tick storage precision (matches moveAudioClip) — a snapped
                 // delta survives the commit exactly.
-                startBar: Math.max(0, quantizeAudioBar((cur.origStarts?.[c.id] ?? c.startBar) + multiDelta)),
+                startBar: Math.max(
+                  0,
+                  quantizeAudioBar((cur.origStarts?.[c.id] ?? c.startBar) + multiDelta, ticksPerBar(doc)),
+                ),
               }
             : c,
         )

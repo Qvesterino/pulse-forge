@@ -1,6 +1,6 @@
 import { audioClipsForPlayback } from "../project-model/audio-takes";
 import { arrangementSecondsBetweenTicks } from "../project-model/scene-time";
-import { BAR_TICKS } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import type { AudioClip, ProjectDocument } from "../project-model/types";
 import type { AudioEngine } from "./AudioEngine";
 import type { Transport } from "../transport/Transport";
@@ -89,15 +89,16 @@ export function resumeSpanningAudioClips(deps: LiveEditSyncDeps & { skipIds?: Re
   const pos = deps.transport.position;
   // Tolerant to minimal documents (test harnesses mock the store with bare
   // objects — services.seek runs on every playing seek whatever they hold).
-  if (!arrangement || !Number.isFinite(pos) || pos <= 0) return;
+  if (!doc || !arrangement || !Number.isFinite(pos) || pos <= 0) return;
+  const barUnit = ticksPerBar(doc);
   const slackTicks = deps.transport.secondsPerTick * RESUME_FORWARD_SLACK_SEC;
   const when = deps.engine.currentTime + 0.005;
   const scenes = doc.scenes ?? [];
   const projectBpm = Number.isFinite(doc.bpm) && (doc.bpm as number) > 0 ? (doc.bpm as number) : 120;
   const clips = arrangement.clips ?? [];
   for (const clip of audioClipsForPlayback(arrangement)) {
-    const startTick = clip.startBar * BAR_TICKS;
-    const endTick = (clip.startBar + clip.lengthBars) * BAR_TICKS;
+    const startTick = clip.startBar * barUnit;
+    const endTick = (clip.startBar + clip.lengthBars) * barUnit;
     // Strictly spanning, or starting within the seam slack: anything starting
     // later belongs to the scheduler's window planner.
     if (startTick >= pos + slackTicks || endTick <= pos + CLIP_EPS_TICKS) continue;
@@ -110,8 +111,8 @@ export function resumeSpanningAudioClips(deps: LiveEditSyncDeps & { skipIds?: Re
     if (!Number.isFinite(remainingSec) || remainingSec <= 0.01) continue;
     const resumed: AudioClip = {
       ...clip,
-      startBar: pos / BAR_TICKS,
-      lengthBars: (endTick - pos) / BAR_TICKS,
+      startBar: pos / barUnit,
+      lengthBars: (endTick - pos) / barUnit,
       offsetSec: Math.max(0, (clip.offsetSec ?? 0) + elapsedSec * rate),
     };
     // The 4th argument is triggerAudioClip's resume offset: it advances the

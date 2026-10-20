@@ -3,6 +3,7 @@ import type { CoreServices } from "../services";
 import type { IncompatibleProjectMeta, SavedProjectMeta } from "../persistence/ProjectRepository";
 import type { CrashJournalReport } from "../persistence/crashJournal";
 import type { ProjectDocument } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { TEMPLATES, createProjectFromTemplate } from "../project-model/templates";
 import type { TemplateId } from "../project-model/templates";
 import { stashIntentPrefill, stashSongStarter } from "../landing/handoff";
@@ -274,7 +275,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
           const asset = assets.find((candidate) => candidate.id === bufferId);
           const track = targetTracks[index];
           if (!asset || !track) throw new Error(`A loop for the ${kind} demo could not be installed.`);
-          const placement = fittedLoopPlacement(asset.duration, asset.bpm, demo.bpm, doc.timeSignature.numerator);
+          const placement = fittedLoopPlacement(asset.duration, asset.bpm, demo.bpm, ticksPerBar(doc));
           if (!placement) throw new Error(`${asset.name} does not contain valid loop timing information.`);
           doc = addAudioClip(doc, track.id, asset.id, 0, placement.lengthBars, {
             stretchMode: "stretch",

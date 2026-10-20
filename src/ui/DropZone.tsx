@@ -3,6 +3,7 @@ import { useServices } from "./context";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
 import { addAudioClip, fittedLoopPlacement, type FittedLoopPlacement } from "../commands/commands";
 import { BAR_TICKS } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { importAudioFile } from "./sample-import";
 import {
   audioImportAcceptAttribute,
@@ -144,9 +145,7 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
           void only;
           const doc = services.store.doc;
           const placement =
-            only.bpm !== undefined
-              ? fittedLoopPlacement(only.duration, only.bpm, doc.bpm, doc.timeSignature.numerator)
-              : null;
+            only.bpm !== undefined ? fittedLoopPlacement(only.duration, only.bpm, doc.bpm, ticksPerBar(doc)) : null;
           if (placement) setFitOffer({ asset: only, placement });
           // UN-SUNO shortcut offer — hand the File AND the bank id to the
           // Reference Map panel, which owns the analyze pipeline (it may be

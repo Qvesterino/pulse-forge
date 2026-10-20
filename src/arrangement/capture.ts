@@ -8,6 +8,7 @@ import {
   type CapturedArrangementClip,
 } from "../commands/commands";
 import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import type { AudioClip, NoteEvent, ProjectDocument } from "../project-model/types";
 import { sceneSecondsToBars, tempoAtTick } from "../project-model/scene-time";
 
@@ -392,9 +393,7 @@ export class ArrangementCaptureController {
     const startTick = state.startTick;
     const startBar = startTick / BAR_TICKS;
     const targetBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, startTick, doc.bpm);
-    const fit = pad.bpm
-      ? fittedLoopPlacement(state.sourceDurationSec, pad.bpm, targetBpm, doc.timeSignature.numerator)
-      : null;
+    const fit = pad.bpm ? fittedLoopPlacement(state.sourceDurationSec, pad.bpm, targetBpm, ticksPerBar(doc)) : null;
     const loop = pad.loop === true;
     const patch: CapturedArrangementAudioClip["patch"] = {
       ...(loop ? { loop: true } : {}),

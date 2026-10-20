@@ -11,6 +11,7 @@ import {
   setLiveSetOptions,
 } from "../commands/commands";
 import { BAR_TICKS } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { sceneSecondsToBars, tempoAtTick } from "../project-model/scene-time";
 import type { LiveSet, LiveSetPad } from "../project-model/types";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
@@ -124,9 +125,7 @@ export function LivePadsPanel() {
         : Math.max(0, Math.ceil((barTick - 1e-6) / BAR_TICKS));
       const startTick = startBar * BAR_TICKS;
       const targetBpm = tempoAtTick(currentDoc.arrangement.clips, currentDoc.scenes, startTick, currentDoc.bpm);
-      const fit = pad.bpm
-        ? fittedLoopPlacement(source.duration, pad.bpm, targetBpm, currentDoc.timeSignature.numerator)
-        : null;
+      const fit = pad.bpm ? fittedLoopPlacement(source.duration, pad.bpm, targetBpm, ticksPerBar(currentDoc)) : null;
       const lengthBars = pad.loop
         ? Math.max(liveSet.loopBars, fit?.lengthBars ?? 0)
         : Math.max(0.25, sceneSecondsToBars(source.duration, targetBpm));
