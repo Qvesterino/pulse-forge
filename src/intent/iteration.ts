@@ -5,6 +5,7 @@
  */
 import { canonicalizePattern, contentHash } from "../ai/evaluation";
 import { STEP_TICKS, type NoteEvent, type Pattern, type ProjectDocument } from "../project-model/types";
+import { stepsPerBar } from "../project-model/grid";
 import { uid } from "../shared/ids";
 import { hashString } from "../shared/rng";
 import { briefGateViolations } from "./brief-gate";
@@ -30,6 +31,7 @@ const PATCH_FIELDS = [
   "key",
   "style",
   "length",
+  "bars",
 ] as const;
 
 export interface IterationProposal {
@@ -167,7 +169,16 @@ export function compileIteration(
   const preserve = explicitNoDrums ? requestedPreserve.filter((role) => role !== "drums") : requestedPreserve;
   const baseRoles: readonly IntentRole[] = candidate.intent.roles ?? ["drums", "bass"];
   const effectiveRoles: readonly IntentRole[] = residual.input.roles ?? baseRoles;
-  const fullRegen = patch.length !== undefined && patch.length !== candidate.pattern.stepCount;
+  // A length request can arrive in either unit: steps ("32 steps") or bars
+  // ("2 bars"). Both are resolved to the document's steps before they are
+  // compared with the candidate's length.
+  const requestedSteps =
+    typeof patch.bars === "number"
+      ? patch.bars * stepsPerBar(doc)
+      : typeof patch.length === "number"
+        ? patch.length
+        : undefined;
+  const fullRegen = requestedSteps !== undefined && requestedSteps !== candidate.pattern.stepCount;
   const drumTarget = effectiveRoles.includes("drums") && !preserve.includes("drums") && !explicitNoDrums;
   const drumRemoval = explicitNoDrums && hasDrumContent(candidate.pattern);
   const melodicPreserved = MELODIC_ROLES.some((role) => preserve.includes(role));
@@ -184,25 +195,31 @@ export function compileIteration(
   if (Object.keys(patch).length === 0 && preserve.length === 0 && !explicitNoDrums) return null;
   if (targets.length === 0 && !drumRemoval && !fullRegen && Object.keys(patch).length === 0) return null;
 
-  const mergedIntent = normalizeIntent({
-    ...candidate.intent,
-    ...patch,
-    preserve,
-    ...(residual.input.roles ? { roles: residual.input.roles } : {}),
-  });
+  const mergedIntent = normalizeIntent(
+    {
+      ...candidate.intent,
+      ...patch,
+      preserve,
+      ...(residual.input.roles ? { roles: residual.input.roles } : {}),
+    },
+    doc,
+  );
   const candidateSeed = candidate.pattern.generation?.seed ?? candidate.intent.seed;
   const candidateHash = contentHash(canonicalizePattern(doc, candidate.pattern));
   const iterSeed = `${candidateSeed.slice(0, 72)}|iter:${hashString(`${candidateSeed}|${candidateHash}`).toString(36)}`;
-  const regenIntent = normalizeIntent({
-    ...mergedIntent,
-    // The generator sees only regenerated roles. Preserved content is spliced
-    // back from the referenced candidate below.
-    roles: targets.length > 0 ? targets : mergedIntent.roles,
-    preserve,
-    seed: iterSeed,
-    sourcePatternId: candidate.pattern.id,
-    candidateCount: 1,
-  });
+  const regenIntent = normalizeIntent(
+    {
+      ...mergedIntent,
+      // The generator sees only regenerated roles. Preserved content is spliced
+      // back from the referenced candidate below.
+      roles: targets.length > 0 ? targets : mergedIntent.roles,
+      preserve,
+      seed: iterSeed,
+      sourcePatternId: candidate.pattern.id,
+      candidateCount: 1,
+    },
+    doc,
+  );
 
   // Make the referenced in-memory candidate available to the normal source-
   // pattern seed/provenance path even when it has not been applied yet.
@@ -415,7 +432,7 @@ export async function compileIterationWithBank(
     ...doc,
     patterns: [...doc.patterns.filter((pattern) => pattern.id !== candidate.pattern.id), sourcePattern],
   };
-  const intent = normalizeIntent({ ...base.result.plan.intent, candidateCount });
+  const intent = normalizeIntent({ ...base.result.plan.intent, candidateCount }, doc);
   const generated = await generateAsyncResult(sourceDoc, intent, {
     mode: "preview",
     includeBank: true,

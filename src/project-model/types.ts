@@ -1335,6 +1335,13 @@ export type ProjectProducerBriefFact = ProjectBriefFactMetadata &
     | { field: "bpmRange"; section: "hard"; value: [number, number] }
     | { field: "key"; section: "hard"; value: MusicalKey }
     | { field: "length"; section: "hard"; value: number }
+    /**
+     * A bar-framed length. BARS are meter-independent, so the fact survives
+     * a change of meter and the document's meter still decides how many steps
+     * one bar holds. The "length" fact above stays a STEP count for the
+     * requests that were framed in steps.
+     */
+    | { field: "bars"; section: "hard"; value: number }
     | { field: "roles"; section: "hard"; value: ProjectBriefRole[] }
     | { field: "energy" | "density" | "complexity" | "variation"; section: "preference"; value: number }
     | { field: "preserve"; section: "preserve"; value: ProjectBriefRole[] }

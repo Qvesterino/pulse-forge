@@ -19,7 +19,8 @@ import type { PitchFrame } from "../audio-workers/pitch-tracker";
 import { framesToNotes } from "../midi/hum-to-notes";
 import { estimateKey, estimateTempo } from "../ai/audio-tempo-key";
 import { STEP_TICKS } from "../project-model/types";
-import type { NoteEvent } from "../project-model/types";
+import type { NoteEvent, TimeSignature } from "../project-model/types";
+import { DEFAULT_TIME_SIGNATURE, stepsPerBarFor } from "../project-model/grid";
 import type { IntentInput } from "./types";
 
 export type TrackPitchFn = (pcm: Float32Array, sampleRate: number) => Promise<PitchFrame[]>;
@@ -51,6 +52,12 @@ export interface VoiceIdeaOptions {
   transportStartTick?: number;
   /** Loop grid length in ticks for the transportStartTick mapping. */
   patternLengthTicks?: number;
+  /**
+   * The meter the hum loop is measured in. A bar is not sixteen steps
+   * outside 4/4, so the loop length follows the document's meter. Absent =
+   * 4/4.
+   */
+  timeSignature?: TimeSignature;
 }
 
 export const DEFAULT_HUM_LOOP_BARS = 4;
@@ -72,7 +79,7 @@ export async function analyzeVoiceIdea(
     const tracker = options.track ?? trackPitchAsync;
     const frames = (await tracker(pcm, sampleRate)) ?? [];
     const loopBars = options.loopBars ?? DEFAULT_HUM_LOOP_BARS;
-    const loopTicks = loopBars * 16 * STEP_TICKS;
+    const loopTicks = loopBars * stepsPerBarFor(options.timeSignature ?? DEFAULT_TIME_SIGNATURE) * STEP_TICKS;
 
     const notes =
       frames.length > 0

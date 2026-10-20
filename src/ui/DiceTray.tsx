@@ -8,8 +8,16 @@ import type { DrumTrack } from "../project-model/types";
 import { isPadKey, padKeysArmed } from "./padKeys";
 import { PAD_NAMES } from "../ai/types";
 import { KIT_PRESETS } from "../project-model/kit-presets";
+import { stepsForBars } from "../project-model/grid";
 import { pitchName } from "../project-model/types";
 import { readFavoriteLedger } from "../intent/favorites";
+
+/**
+ * The dice's length choices, in BARS — a bar is not sixteen steps outside
+ * 4/4, so the panel offers bars and the document's meter turns them into
+ * steps. In 4/4 these are the familiar 16 / 32 / 64 steps.
+ */
+const DICE_LENGTH_BARS = [1, 2, 4] as const;
 
 function MiniPreview({ rows, activePads }: { rows: number[][]; activePads: number[] }) {
   if (!rows.length || activePads.length === 0) return <div className="dice-preview-empty">— no preview —</div>;
@@ -296,9 +304,14 @@ export function DiceTray() {
         <label className="dice-field">
           <span>LENGTH</span>
           <select value={session.intent.length} onChange={(e) => setLength(Number(e.target.value))}>
-            <option value={16}>16</option>
-            <option value={32}>32</option>
-            <option value={64}>64</option>
+            {DICE_LENGTH_BARS.map((bars) => {
+              const steps = stepsForBars(doc, bars);
+              return (
+                <option key={bars} value={steps}>
+                  {bars} {bars === 1 ? "takt" : "takty"}
+                </option>
+              );
+            })}
           </select>
         </label>
         <label className="dice-field dice-seed-field">

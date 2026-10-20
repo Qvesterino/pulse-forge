@@ -826,6 +826,11 @@ const OUTPUT_MUSIC: McpOutputSchema = {
     key: { type: "string", enum: [...MUSICAL_KEYS] },
     patternId: { type: "string" },
     steps: { type: "integer", minimum: 1, maximum: 128 },
+    bars: {
+      type: "number",
+      minimum: 0,
+      description: "Pattern length in the document's bars (fractional when the length is not a whole number of bars).",
+    },
     numerator: { type: "integer", minimum: 1, maximum: 16 },
     denominator: { type: "integer", enum: [2, 4, 8, 16] },
     target: { type: "string", enum: ["all", "bass", "lead", "chords", "vocal"] },
@@ -1921,6 +1926,13 @@ export const MCP_TOOLS: McpToolDef[] = [
           minimum: 1,
           maximum: 128,
           description: "setPatternLength — absolute sixteenth-note step count (1..128; meter controls bars)",
+        },
+        bars: {
+          type: "integer",
+          minimum: 1,
+          maximum: 16,
+          description:
+            "setPatternLength — length in BARS of the document's meter (4 bars is 64 steps in 4/4, 48 in 3/4). Prefer bars; a step count is only a whole number of bars in 4/4.",
         },
         semitones: { type: "integer", minimum: -127, maximum: 127, description: "transposeAll shift (non-zero)" },
         target: {
@@ -4114,34 +4126,34 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
     case "kyx_generate": {
       const doc = ctx.getDoc();
       const bars = record.bars;
-      const stepCountFromBars = typeof bars === "number" ? bars * stepsPerBar(doc) : null;
+      // A bar is the DOCUMENT's bar: 16 steps in 4/4, 12 in 3/4 and 6/8, 32
+      // in 4/2. The old "must be a multiple of 16 steps" rule made EVERY bar
+      // request illegal outside 4/4 — and the error could not even name a
+      // legal length, because none existed.
+      const stepUnit = stepsPerBar(doc);
+      const maxBars = Math.max(1, Math.floor(MAX_STEP_COUNT / stepUnit));
       if (
         bars !== undefined &&
-        (typeof bars !== "number" ||
-          !Number.isSafeInteger(bars) ||
-          bars < 1 ||
-          stepCountFromBars! > MAX_STEP_COUNT ||
-          stepCountFromBars! % 16 !== 0)
+        (typeof bars !== "number" || !Number.isSafeInteger(bars) || bars < 1 || bars > maxBars)
       ) {
-        const stepUnit = stepsPerBar(doc);
-        const supportedBars = Array.from({ length: Math.floor(MAX_STEP_COUNT / stepUnit) }, (_, index) => index + 1)
-          .filter((candidate) => (candidate * stepUnit) % 16 === 0)
-          .join(", ");
         return mcpError(
           "INVALID_ARGUMENTS",
-          `bars must map to a supported 16-step pattern length in this meter${supportedBars ? ` (supported whole-bar lengths: ${supportedBars})` : ""}`,
+          `bars must be a whole number of the document's ${doc.timeSignature.numerator}/${doc.timeSignature.denominator} bars: 1 to ${maxBars} (one bar is ${stepUnit} steps)`,
         );
       }
-      const spec = normalizeIntent({
-        genre: typeof record.genre === "string" ? record.genre : undefined,
-        seed: typeof record.seed === "string" ? record.seed : undefined,
-        energy: typeof record.energy === "number" ? record.energy : undefined,
-        density: typeof record.density === "number" ? record.density : undefined,
-        bpmRange: typeof record.bpm === "number" ? [Number(record.bpm), Number(record.bpm)] : undefined,
-        ...(bars !== undefined ? { length: stepCountFromBars! } : {}),
-        ...(record.replaceMode === "replace" ? { replaceMode: "replace" as const } : {}),
-        roles: Array.isArray(record.roles) ? record.roles : undefined,
-      });
+      const spec = normalizeIntent(
+        {
+          genre: typeof record.genre === "string" ? record.genre : undefined,
+          seed: typeof record.seed === "string" ? record.seed : undefined,
+          energy: typeof record.energy === "number" ? record.energy : undefined,
+          density: typeof record.density === "number" ? record.density : undefined,
+          bpmRange: typeof record.bpm === "number" ? [Number(record.bpm), Number(record.bpm)] : undefined,
+          ...(bars !== undefined ? { bars } : {}),
+          ...(record.replaceMode === "replace" ? { replaceMode: "replace" as const } : {}),
+          roles: Array.isArray(record.roles) ? record.roles : undefined,
+        },
+        doc,
+      );
       const result = generateLocalResult(doc, spec, "apply");
       if (!result.proposal) {
         return {
@@ -9107,6 +9119,20 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
   return { text: needsCommit ? `${text} — read-back verified` : `${text} — already at requested value`, mutated, data };
 }
 
+/**
+ * A pattern's length in the DOCUMENT's bars — fractional when the length is
+ * not a whole number of bars (a step-framed request in a non-4/4 meter).
+ */
+function patternBars(doc: ProjectDocument, steps: number): number {
+  const perBar = stepsPerBar(doc);
+  return perBar > 0 ? steps / perBar : 0;
+}
+
+/** The bar count as an agent reads it: whole bars as an integer, fractions with two decimals. */
+function barsText(bars: number): string {
+  return Number.isInteger(bars) ? `${bars}` : bars.toFixed(2);
+}
+
 function executeMusicTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
   const allowedOps = ["setTempo", "setKey", "setPatternLength", "setTimeSignature", "transposeAll"] as const;
   if (typeof record.op !== "string") return mcpError("INVALID_ARGUMENTS", "op is required");
@@ -9189,25 +9215,72 @@ function executeMusicTool(ctx: McpToolContext, record: Record<string, unknown>):
   }
 
   if (op === "setPatternLength") {
-    const steps = record.steps;
-    if (typeof steps !== "number" || !Number.isSafeInteger(steps) || steps < 1 || steps > MAX_STEP_COUNT) {
-      return mcpError("INVALID_ARGUMENTS", `setPatternLength needs an integer step count from 1 to ${MAX_STEP_COUNT}`);
+    // The agent may ask in either unit. BARS are the document's — exact in
+    // every meter (4 bars is 64 steps in 4/4, 48 in 3/4). STEPS are the raw
+    // grid, where a bar is sixteen steps only in 4/4.
+    const perBar = stepsPerBar(before);
+    const requestedBars = record.bars;
+    const requestedSteps = record.steps;
+    if (requestedBars !== undefined && requestedSteps !== undefined) {
+      return mcpError("INVALID_ARGUMENTS", "setPatternLength takes bars OR steps, not both");
+    }
+    let targetSteps: number;
+    if (requestedBars !== undefined) {
+      const maxBars = Math.max(1, Math.floor(MAX_STEP_COUNT / perBar));
+      if (
+        typeof requestedBars !== "number" ||
+        !Number.isSafeInteger(requestedBars) ||
+        requestedBars < 1 ||
+        requestedBars > maxBars
+      ) {
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          `setPatternLength needs an integer bar count from 1 to ${maxBars} (one bar is ${perBar} steps in ${before.timeSignature.numerator}/${before.timeSignature.denominator})`,
+        );
+      }
+      targetSteps = requestedBars * perBar;
+    } else {
+      if (
+        typeof requestedSteps !== "number" ||
+        !Number.isSafeInteger(requestedSteps) ||
+        requestedSteps < 1 ||
+        requestedSteps > MAX_STEP_COUNT
+      ) {
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          `setPatternLength needs an integer step count from 1 to ${MAX_STEP_COUNT}`,
+        );
+      }
+      targetSteps = requestedSteps;
     }
     const active = before.patterns.find((pattern) => pattern.id === before.activePatternId);
     if (!active) return mcpError("UNKNOWN_TARGET", "the active pattern does not exist in this project");
-    if (active.stepCount === steps) {
-      return unchanged({ patternId: active.id, steps: active.stepCount }, `active pattern is already ${steps} steps`);
+    if (active.stepCount === targetSteps) {
+      const bars = patternBars(before, active.stepCount);
+      return unchanged(
+        { patternId: active.id, steps: active.stepCount, bars },
+        `active pattern is already ${active.stepCount} steps (${barsText(bars)} bars)`,
+      );
     }
-    const command = applyExactIntentCommand(before, plan([{ kind: "patternLength", steps }]));
+    // Both units go through the canonical exact-intent command: the bar
+    // request is resolved by the document's meter, the step request is exact.
+    const command = applyExactIntentCommand(
+      before,
+      requestedBars !== undefined
+        ? plan([{ kind: "patternLengthBars", bars: requestedBars }])
+        : plan([{ kind: "patternLength", steps: targetSteps }]),
+    );
     return commit(
       command,
-      (doc) => doc.patterns.find((pattern) => pattern.id === active.id)?.stepCount === steps,
-      (doc) => ({
-        patternId: active.id,
-        steps: doc.patterns.find((pattern) => pattern.id === active.id)?.stepCount ?? active.stepCount,
-      }),
-      (doc) =>
-        `active pattern is now ${doc.patterns.find((pattern) => pattern.id === active.id)?.stepCount ?? "?"} steps (one undo step)`,
+      (doc) => doc.patterns.find((pattern) => pattern.id === active.id)?.stepCount === targetSteps,
+      (doc) => {
+        const steps = doc.patterns.find((pattern) => pattern.id === active.id)?.stepCount ?? active.stepCount;
+        return { patternId: active.id, steps, bars: patternBars(doc, steps) };
+      },
+      (doc) => {
+        const steps = doc.patterns.find((pattern) => pattern.id === active.id)?.stepCount ?? 0;
+        return `active pattern is now ${steps} steps (${barsText(patternBars(doc, steps))} bars) (one undo step)`;
+      },
     );
   }
 

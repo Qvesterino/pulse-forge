@@ -24,7 +24,9 @@ export function createSongSectionIntent(baseIntent: IntentSpec, section: SongSec
   return normalizeIntent({
     ...baseIntent,
     seed: `${baseIntent.seed}|song:${section.index}:${section.role}`,
-    length: Math.min(256, section.bars * 16),
+    // The section's length is asked in BARS; the document's meter turns it
+    // into steps (a 4-bar section is 16 steps in 4/4 and 12 in 3/4).
+    bars: section.bars,
     energy: section.energy,
     density: section.density,
     complexity: section.complexity,

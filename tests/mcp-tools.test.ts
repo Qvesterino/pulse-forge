@@ -850,7 +850,7 @@ describe("mcp model-drivability wave", async () => {
     expect(result.text).toContain("2 bar");
   });
 
-  it("meter-aware MCP generation rejects invalid lengths and derives sixteenth-step count from 6/8", async () => {
+  it("meter-aware MCP generation derives the sixteenth-step count from the document's meter", async () => {
     const store = new ProjectStore(withMeter(datasetDoc(), 6, 8));
     const ctx = storeCtx(store);
     const generated = await executeMcpTool(ctx, "kyx_generate", { genre: "techno", seed: "6-8-bars", bars: 4 });
@@ -858,14 +858,21 @@ describe("mcp model-drivability wave", async () => {
     expect(store.doc.patterns.at(-1)?.stepCount).toBe(48);
     expect(generated.text).toContain("48 sixteenth-note steps (~4 bars)");
 
-    const unsupported = await executeMcpTool(ctx, "kyx_generate", { genre: "techno", seed: "unsupported", bars: 2 });
-    expect(unsupported.errorCode).toBe("INVALID_ARGUMENTS");
-    expect(unsupported.text).toContain("supported whole-bar lengths: 4, 8");
+    // TWO bars in 6/8 is two whole bars (24 steps). The old rule demanded a
+    // multiple of sixteen STEPS, which made every bar count illegal outside
+    // 4/4 unless it happened to be a multiple of four bars.
+    const twoBars = await executeMcpTool(ctx, "kyx_generate", { genre: "techno", seed: "6-8-two-bars", bars: 2 });
+    expect(twoBars.mutated).toBe(true);
+    expect(store.doc.patterns.at(-1)?.stepCount).toBe(24);
+
     const fractional = await executeMcpTool(ctx, "kyx_generate", { genre: "techno", seed: "bad-bars", bars: 1.5 });
     expect(fractional.errorCode).toBe("INVALID_ARGUMENTS");
+    // 6/8: one bar is twelve steps, so eleven bars is more than the engine
+    // holds (128 steps) — and the error says so.
     const tooLong = await executeMcpTool(ctx, "kyx_generate", { genre: "techno", seed: "too-long", bars: 11 });
     expect(tooLong.errorCode).toBe("INVALID_ARGUMENTS");
-    expect(store.doc.patterns.at(-1)?.stepCount).toBe(48);
+    expect(tooLong.text).toContain("1 to 10");
+    expect(store.doc.patterns.at(-1)?.stepCount).toBe(24);
   });
 
   it("pattern, step, and explicit length read-backs retain fractional metrical bars", async () => {

@@ -46,11 +46,15 @@ export interface DiceSession {
   kitId: string | null;
 }
 
-export function createDiceSession(intentInput: Partial<IntentSpec> | IntentSpec, initialSeed?: string): DiceSession {
-  const intent = normalizeIntent(intentInput as unknown as Record<string, unknown>);
+export function createDiceSession(
+  intentInput: Partial<IntentSpec> | IntentSpec,
+  initialSeed?: string,
+  doc?: Pick<ProjectDocument, "timeSignature">,
+): DiceSession {
+  const intent = normalizeIntent(intentInput as unknown as Record<string, unknown>, doc);
   const seed = (initialSeed ?? intent.seed ?? "").slice(0, 16) || nextSeed(String(Date.now()), "init");
   // Ensure intent seed matches chain start for preview parity
-  const normalizedIntent = normalizeIntent({ ...intent, seed });
+  const normalizedIntent = normalizeIntent({ ...intent, seed }, doc);
   return {
     intent: normalizedIntent,
     seedChain: [seed],
@@ -63,7 +67,7 @@ export function createDiceSession(intentInput: Partial<IntentSpec> | IntentSpec,
   };
 }
 
-export function rollSession(session: DiceSession): DiceSession {
+export function rollSession(session: DiceSession, doc?: Pick<ProjectDocument, "timeSignature">): DiceSession {
   const currentSeed = session.seedChain[session.cursor] ?? session.seedChain[session.seedChain.length - 1];
   const ns = nextSeed(currentSeed, `dice:${session.mode}`);
   // If cursor is at tip, append; if in middle, truncate forward history then append (branch)
@@ -73,7 +77,7 @@ export function rollSession(session: DiceSession): DiceSession {
   const capped = nextChain.length > 100 ? nextChain.slice(nextChain.length - 100) : nextChain;
   const nextCursor = capped.length - 1;
   // Jittered intent for next preview (style + controls) — deterministic per seed
-  const jitteredIntent = jitteredIntentForSeed(session.intent, ns, session.jitter);
+  const jitteredIntent = jitteredIntentForSeed(session.intent, ns, session.jitter, doc);
   return {
     ...session,
     intent: jitteredIntent,
@@ -83,8 +87,13 @@ export function rollSession(session: DiceSession): DiceSession {
 }
 
 /** Build the intent that should be used to preview/apply at `seed` with current jitter. */
-export function jitteredIntentForSeed(baseIntent: IntentSpec, seed: string, jitter: number): IntentSpec {
-  if (jitter <= 0) return normalizeIntent({ ...baseIntent, seed });
+export function jitteredIntentForSeed(
+  baseIntent: IntentSpec,
+  seed: string,
+  jitter: number,
+  doc?: Pick<ProjectDocument, "timeSignature">,
+): IntentSpec {
+  if (jitter <= 0) return normalizeIntent({ ...baseIntent, seed }, doc);
   const controls = jitterControls(seed, baseIntent.controls, jitter);
   // Style dice when jitter > 0 — 50% chance to randomize style
   let style: string | null = baseIntent.style;
@@ -96,7 +105,7 @@ export function jitteredIntentForSeed(baseIntent: IntentSpec, seed: string, jitt
       style = pickStyle(seed, baseIntent.genre, baseIntent.style);
     }
   }
-  return normalizeIntent({ ...baseIntent, seed, style: style ?? undefined, controls });
+  return normalizeIntent({ ...baseIntent, seed, style: style ?? undefined, controls }, doc);
 }
 
 export function jumpSession(session: DiceSession, index: number): DiceSession {
@@ -123,8 +132,12 @@ export function setDiceJitter(session: DiceSession, jitter: number): DiceSession
   return { ...session, jitter: Math.max(0, Math.min(1, jitter)) };
 }
 
-export function setDiceIntent(session: DiceSession, intent: IntentSpec): DiceSession {
-  return { ...session, intent: normalizeIntent(intent) };
+export function setDiceIntent(
+  session: DiceSession,
+  intent: IntentSpec,
+  doc?: Pick<ProjectDocument, "timeSignature">,
+): DiceSession {
+  return { ...session, intent: normalizeIntent(intent, doc) };
 }
 
 export function setDiceKit(session: DiceSession, kitId: string | null): DiceSession {

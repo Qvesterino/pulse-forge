@@ -78,15 +78,26 @@ export function createProjectBriefFromContract(
 
   const length = statements.get("length");
   const lengthMetadata = length && approvedMetadata(length);
+  // Two lengths, two units, never mixed: a request framed in STEPS stores its
+  // step count, a request framed in BARS stores its bar count. Both are
+  // hard facts; the meter is applied when the fact becomes an intent.
   if (
     lengthMetadata &&
     typeof input.length === "number" &&
     Number.isInteger(input.length) &&
-    input.length >= 16 &&
-    input.length <= 4096 &&
-    input.length % 16 === 0
+    input.length >= 1 &&
+    input.length <= 4096
   ) {
     facts.push({ field: "length", section: "hard", value: input.length, ...lengthMetadata });
+  }
+  if (
+    lengthMetadata &&
+    typeof input.bars === "number" &&
+    Number.isInteger(input.bars) &&
+    input.bars >= 1 &&
+    input.bars <= 256
+  ) {
+    facts.push({ field: "bars", section: "hard", value: input.bars, ...lengthMetadata });
   }
 
   addString("genre");
@@ -152,6 +163,9 @@ export function projectBriefIntentPatch(brief: ProjectProducerBriefV1): ProjectB
       case "roles":
       case "preserve":
         input[fact.field] = fact.value as never;
+        break;
+      case "bars":
+        input.bars = fact.value;
         break;
       case "prohibitedRoles":
         prohibitedRoles.push(...fact.value);

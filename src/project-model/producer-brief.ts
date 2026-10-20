@@ -15,6 +15,7 @@ const BRIEF_FIELDS = new Set([
   "bpmRange",
   "key",
   "length",
+  "bars",
   "roles",
   "energy",
   "density",
@@ -78,12 +79,23 @@ function sanitizeFact(raw: unknown): ProjectProducerBriefFact | null {
     return section === "hard" && isMusicalKey(raw.value) ? { field, section, value: raw.value, ...metadata } : null;
   }
   if (field === "length") {
+    // A STEP count. The alignment to the meter is the producer's business —
+    // demanding a multiple of sixteen here would hard-code 4/4 into the
+    // persisted brief.
     return section === "hard" &&
       typeof raw.value === "number" &&
       Number.isInteger(raw.value) &&
-      raw.value >= 16 &&
-      raw.value <= 4096 &&
-      raw.value % 16 === 0
+      raw.value >= 1 &&
+      raw.value <= 4096
+      ? { field, section, value: raw.value, ...metadata }
+      : null;
+  }
+  if (field === "bars") {
+    return section === "hard" &&
+      typeof raw.value === "number" &&
+      Number.isInteger(raw.value) &&
+      raw.value >= 1 &&
+      raw.value <= 256
       ? { field, section, value: raw.value, ...metadata }
       : null;
   }

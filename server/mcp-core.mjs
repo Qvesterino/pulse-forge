@@ -2341,6 +2341,13 @@ export const MCP_TOOL_DEFS = [
           maximum: 128,
           description: "setPatternLength — absolute sixteenth-note step count (1..128; meter controls bars)",
         },
+        bars: {
+          type: "integer",
+          minimum: 1,
+          maximum: 16,
+          description:
+            "setPatternLength — length in BARS of the document's meter (4 bars is 64 steps in 4/4, 48 in 3/4). Prefer bars; a step count is only a whole number of bars in 4/4.",
+        },
         semitones: {
           type: "integer",
           minimum: -127,
@@ -2503,6 +2510,12 @@ export const MCP_TOOL_DEFS = [
           type: "integer",
           minimum: 1,
           maximum: 128,
+        },
+        bars: {
+          type: "number",
+          minimum: 0,
+          description:
+            "Pattern length in the document's bars (fractional when the length is not a whole number of bars).",
         },
         numerator: {
           type: "integer",

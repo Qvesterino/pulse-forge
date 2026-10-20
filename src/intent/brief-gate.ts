@@ -22,6 +22,7 @@
  * what a pattern can prove, `null` ("·") for what only the plan enforces.
  */
 import { drumTrackForTarget, instrumentTrackForRole, type MelodicRole } from "../ai/role-targets";
+import { DEFAULT_STEPS_PER_BAR, stepsPerBar } from "../project-model/grid";
 import type { NoteEvent, Pattern, ProjectDocument } from "../project-model/types";
 import type { GenerationPlan, GenerationResult, IntentRole } from "./types";
 
@@ -143,7 +144,11 @@ export interface BriefComplianceItem {
   detail?: string;
 }
 
-const stepCountLabel = (steps: number): string => `${steps / 16} taktov`;
+/**
+ * The planned length in bars of the document's meter. A bar is NOT sixteen
+ * steps: in 3/4 a bar is twelve, in 6/8 twelve, in 4/2 thirty-two.
+ */
+const stepCountLabel = (steps: number, perBar: number): string => `${steps / perBar} taktov`;
 
 /**
  * Per-fact compliance of a generation result's selected pattern against its
@@ -246,10 +251,14 @@ export function evaluateBriefCompliance(
     items.push({ id: "bpm", label: "tempo", satisfied: null, detail: "zvolí groove" });
   }
 
+  // The planned length is the PLAN's step count — already resolved against
+  // the document's meter — and the label counts it in that meter's bars.
+  const perBar = sourceProject ? stepsPerBar(sourceProject) : DEFAULT_STEPS_PER_BAR;
+  const plannedSteps = result.plan.outputShape.stepCount;
   items.push(
     pattern
-      ? { id: "length", label: stepCountLabel(intent.length), satisfied: pattern.stepCount === intent.length }
-      : { id: "length", label: stepCountLabel(intent.length), satisfied: null },
+      ? { id: "length", label: stepCountLabel(plannedSteps, perBar), satisfied: pattern.stepCount === plannedSteps }
+      : { id: "length", label: stepCountLabel(plannedSteps, perBar), satisfied: null },
   );
 
   items.push(

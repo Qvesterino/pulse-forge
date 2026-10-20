@@ -1,6 +1,6 @@
 # ADR 0057 — The step grid follows the meter: one bar is `ticksPerBar(doc) / STEP_TICKS` steps
 
-Date: 2026-10-20 · Status: Accepted (v1 — Stage 1 shipped) · Scope: pattern grid, sequencer ruler, piano roll grid, pattern labels, transfer disclosure
+Date: 2026-10-20 · Status: Accepted (v2 — Stage 1, 1b and 2a shipped) · Scope: pattern grid, sequencer ruler, piano roll grid, pattern labels, transfer disclosure, intent engine, MCP surface
 
 ## Context
 
@@ -9,19 +9,19 @@ placement, loop regions, the metronome and the bar readouts all measure the
 metrical bar. It left the **pattern grid** where it was, and named the fix:
 
 > "Fixing it means a metrical step grid and its own ADR."
-> — `docs/adr/0056-arrangement-bar-length-and-time-signature.md`, *Consequences and scope limits*
+> — `docs/adr/0056-arrangement-bar-length-and-time-signature.md`, _Consequences and scope limits_
 
 The grid was not one bug but one assumption wearing six faces, and every face
 said the same thing: **a bar is 16 sixteenth steps**.
 
-| site | what it said | in 3/4 | in 6/8 |
-| --- | --- | --- | --- |
-| `src/ui/Sequencer.tsx` ruler | `i % 4 === 0 ? " beat-start"`, label `i / 4 + 1` | a "beat 4" that does not exist | the eighth-note pulse the click plays was never marked |
-| `src/ui/Sequencer.tsx` cells | `stepIndex % 4 === 0` → the beat separator line | separators every 4 steps | separators every 4 steps |
-| `src/ui/PianoRoll.tsx` | bar lines at `bar * 16`, beat lines every 4 steps | bar lines on the wrong steps | bar lines on the wrong steps |
-| `src/ui/PianoRoll.tsx` note menu | `"1 BAR" = PATTERN_TICKS` (1920) | a note "1 bar" is 1⅓ bars | a note "1 bar" is 1⅓ bars |
-| `src/ui/PatternBar.tsx` | `stepCount / 16` → "bars"; options 16/32/64/128 | "1 bar" for a 16-step pattern | "1 bar" for a 16-step pattern |
-| `src/ui/SceneLauncher.tsx` | `Math.ceil(stepCount / 16)` → "N BARS" | "1 BAR" for a 16-step pattern | "1 BAR" for a 16-step pattern |
+| site                             | what it said                                      | in 3/4                         | in 6/8                                                 |
+| -------------------------------- | ------------------------------------------------- | ------------------------------ | ------------------------------------------------------ |
+| `src/ui/Sequencer.tsx` ruler     | `i % 4 === 0 ? " beat-start"`, label `i / 4 + 1`  | a "beat 4" that does not exist | the eighth-note pulse the click plays was never marked |
+| `src/ui/Sequencer.tsx` cells     | `stepIndex % 4 === 0` → the beat separator line   | separators every 4 steps       | separators every 4 steps                               |
+| `src/ui/PianoRoll.tsx`           | bar lines at `bar * 16`, beat lines every 4 steps | bar lines on the wrong steps   | bar lines on the wrong steps                           |
+| `src/ui/PianoRoll.tsx` note menu | `"1 BAR" = PATTERN_TICKS` (1920)                  | a note "1 bar" is 1⅓ bars      | a note "1 bar" is 1⅓ bars                              |
+| `src/ui/PatternBar.tsx`          | `stepCount / 16` → "bars"; options 16/32/64/128   | "1 bar" for a 16-step pattern  | "1 bar" for a 16-step pattern                          |
+| `src/ui/SceneLauncher.tsx`       | `Math.ceil(stepCount / 16)` → "N BARS"            | "1 BAR" for a 16-step pattern  | "1 BAR" for a 16-step pattern                          |
 
 The ruler is the sharpest version: it counted **beats**, and a beat in KYX is
 the denominator's unit — a quarter note in x/4, an eighth note in x/8. The
@@ -48,7 +48,7 @@ migration, it is a guess about what the user meant. A 16-step pattern in a 6/8
 project resized to 12 steps would delete four steps of the user's groove.
 
 **What the meter decides is what ONE BAR MEANS** — how many of those sixteenth
-steps make a bar. That is a change of *unit*, not of *data*.
+steps make a bar. That is a change of _unit_, not of _data_.
 
 ### 2. The grid's bar is the metrical bar, and one module owns it
 
@@ -127,10 +127,67 @@ the user snaps it to a whole bar.
   live capture (`src/arrangement/capture.ts` wraps a take into a 16-slot
   grid). Resizing those would delete or stretch a user's material.
 
+## Stage 2a — the intent engine and the MCP surface speak the document's bars
+
+The grid was truthful while the ENGINE still asked in 4/4 steps. Five independent
+gates demanded "a multiple of 16", the default intent length WAS sixteen steps,
+and the text parser turned "8 bars" into 128 steps before anyone knew what meter
+the project was in. So in a 3/4 project the engine answered a request for one
+bar with a sixteen-step pattern — 1.33 bars, drifting against the very ruler
+drawn above it — and the MCP surface rejected **every** bar count that was not a
+multiple of four bars.
+
+### The request is asked in BARS; the document's meter answers in steps
+
+- `IntentSpec` carries `bars` — a **meter-independent** request ("8 bars"). The
+  document's meter turns it into steps at the one place the document is known:
+  `planGeneration(input, doc)`.
+- `normalizeIntent(input, doc?)` takes the document as an OPTIONAL second
+  argument. With it, the default length is **one bar of that meter** (12 steps in
+  3/4, not 16) and a step-framed request is rounded to a whole number of that
+  meter's bars. Without it, the meter is unknown and 4/4 is assumed.
+- The text parser stops converting: "8 bars" stays `bars: 8` and the meter
+  decides the steps. "32 steps" stays a step count.
+- The brief contracts keep BOTH facts: a `length` fact (steps) for a
+  step-framed request and a new `bars` fact for a bar-framed one. Bars survive
+  a change of meter; a step count is the truth of a step count.
+- The producers that counted bars by hand (`song.ts`, `song-section-intent.ts`,
+  `multi-voice.ts`, `voice-idea.ts`, `candidate-search.ts`) now use the grid's
+  `stepsForBars` / `stepsPerBar`.
+
+### 4/4 is byte-identical — including the intent HASH
+
+The `bars` field is carried on the spec **only where the step count cannot say
+it** (i.e. where a bar is not sixteen steps). In 4/4 the spec is the same
+object it always was: same length, same keys, same `intentHash` — so the same
+prompt still produces the same beat, and the learned preferences keyed by the
+content hash still point at the same content. A bar-framed request in 4/4
+hashes exactly like the legacy step-framed one.
+
+### The MCP surface speaks bars, and reads back both units
+
+- `kyx_generate` accepts **any whole number of the document's bars** and names
+  the meter's real limit ("1 to 10 (one bar is 12 steps)") instead of an empty
+  list of "supported whole-bar lengths".
+- `kyx_music.setPatternLength` takes `bars` **or** `steps` (not both). Bars are
+  the document's; the read-back states both units — "24 steps (2 bars)" — and
+  the returned data carries `steps` and `bars`.
+- The creative-task contract (the agent-facing request) resolves the length
+  against the project's meter and no longer demands a multiple of sixteen.
+
+### What still drifts, and why it is not here
+
+The AI layer's own 16-step shapes (`src/ai/phrase.ts`, `markov.ts`, `quality.ts`,
+`pattern-features.ts`) change the GENERATED CONTENT at a fixed seed — a
+determinism invariant that needs its own measured baseline. The content-shaped
+producers (MIDI import, live capture, the 4/4 templates) resize user material.
+The ONNX feature vectors encode a fixed 16-step bar. Those are Stage 2b.
+
 ## Stage 2 — what is still open (and where)
 
-The grid now tells the truth, and a NEW pattern is right. What still drifts is
-a pattern that was authored in another meter — a 16-step pattern in a 6/8
+The grid now tells the truth, a NEW pattern is right, the intent engine asks in
+the document's bars and the MCP surface answers in them. What still drifts is
+a pattern that was AUTHORED in another meter — a 16-step pattern in a 6/8
 project is 1.33 bars, and the grid now SHOWS that instead of hiding it. The
 remaining work is to make every producer and every contract speak the
 document's meter. The highest-risk sites, mapped (read-only sweep,
@@ -142,17 +199,13 @@ document's meter. The highest-risk sites, mapped (read-only sweep,
    `src/ai/features/pattern-features.ts` detect downbeats with `step % 16`.
    Changing these changes generated output at a fixed seed — a determinism
    invariant, so it needs its own measured baseline.
-2. **The intent / brief contracts.** Five independent gates demand a length
-   that is a multiple of 16 (`src/intent/schema.ts`, `project-brief.ts`,
-   `creative-task-contract.ts`, `src/project-model/producer-brief.ts`,
-   `src/intent/normalize.ts`). They would reject a metrical 12/20/24.
-   **The exact-intent path is done** (Stage 1b): the applier and the parser
-   speak the document's bars — "4 bars longer" adds four METRICAL bars, and
-   "make the loop 4 bars" is an absolute length in bars. The BRIEF contracts
-   are still open: they validate a request with no document in hand.
-3. **The MCP surface.** `src/mcp/tools.ts` rejects any `setPatternLength`
-   outside 16..128, and maps `bars → length: bars * 16`. For a platform that
-   AI agents drive, this is the surface that must speak bars.
+2. **The intent / brief contracts.** **DONE in Stage 2a** — the five gates
+   (`src/intent/schema.ts`, `project-brief.ts`, `creative-task-contract.ts`,
+   `src/project-model/producer-brief.ts`, `src/intent/normalize.ts`) no longer
+   demand a multiple of sixteen, and the brief carries bars beside steps.
+3. **The MCP surface.** **DONE in Stage 2a** — `kyx_generate` takes the
+   document's bars, `setPatternLength` takes bars or steps and reads back
+   both, and the creative-task request resolves the length against the meter.
 4. **Content-shaped producers.** The MIDI import's 16-rounding
    (`src/midi/midiProject.ts`), live capture's 16-slot grid
    (`src/arrangement/capture.ts`) and the 4/4 templates
@@ -184,6 +237,13 @@ contour's bar lines. **The ledger may only shrink.**
   converts a step count to a bar count by hand. The guard proves it can fail.
 - The transfer disclosure says what is true: the grid follows the meter, and
   the imported pattern keeps its own length.
+- **The intent engine asks in the document's bars**: the default length is one
+  bar of that meter, a bar-framed request is resolved by that meter, and a
+  step-framed request is a step count.
+- **4/4 keeps the same intent hash** — a bar-framed request in 4/4 produces the
+  same spec, and therefore the same beat, as the legacy step-framed one.
+- **The MCP surface accepts every whole number of the document's bars** and
+  reads the length back in both units.
 
 ## Consequences and scope limits
 
@@ -192,7 +252,7 @@ contour's bar lines. **The ledger may only shrink.**
   point of deciding the unit rather than the data.
 - **A 16-step pattern in 6/8 still drifts.** What changed is that the grid now
   shows the bar line at step 12 and the label says "1.33 bars". The defect
-  moved from *invisible* to *visible*; Stage 2 removes it for new patterns.
+  moved from _invisible_ to _visible_; Stage 2 removes it for new patterns.
 - **The stored model did not move.** No schema version, no migration, no
   resized pattern, no lost content.
 - `patternGridIsOneBar(sig)` (ADR 0056) still answers "is the metrical bar the
@@ -216,5 +276,6 @@ contour's bar lines. **The ledger may only shrink.**
 - `src/ui/PianoRoll.tsx` — the bar lines, the note-length menu
 - `src/export/transfer-import.ts` — `patternGridWarning`
 - `tests/adr0057-metrical-step-grid.test.ts` — the truth table and the guard
+- `tests/adr0057-metrical-intent-length.test.ts` — the intent engine's bars, the MCP surface's bars, and the second guard
 - `tests/adr0056-pattern-grid.test.ts` — the drift, and the whole-bar control
 - `docs/adr/0056-arrangement-bar-length-and-time-signature.md` — the arrangement's move onto the meter

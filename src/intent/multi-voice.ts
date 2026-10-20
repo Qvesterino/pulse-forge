@@ -1,5 +1,6 @@
 import type { MusicalKey, NoteEvent, ProductionProfile, ProjectDocument } from "../project-model/types";
 import { STEP_TICKS } from "../project-model/types";
+import { stepsPerBar } from "../project-model/grid";
 import { parseKey, SCALE_INTERVALS, snapToScale } from "../project-model/scales";
 import { uid } from "../shared/ids";
 import { forkRandom } from "../shared/rng";
@@ -92,7 +93,7 @@ function octaveOffsetFor(genre: string, role: string, profile?: ProductionProfil
  * This replaces independent Markov chains with a UNIFIED harmonic model.
  */
 export function generateMultiVoice(
-  _doc: ProjectDocument,
+  doc: ProjectDocument,
   genre: string,
   seed: number,
   stepCount: number,
@@ -140,7 +141,8 @@ export function generateMultiVoice(
   const root = parsedKey?.root ?? 0;
   const intervals = SCALE_INTERVALS[parsedKey?.scaleType ?? (productionProfile ? "natural_minor" : "major")];
 
-  const bars = stepCount / 16;
+  // Bars of the DOCUMENT's meter — a bar is not sixteen steps outside 4/4.
+  const bars = stepCount / stepsPerBar(doc);
   const velocitySpread = 0.08 + velocityVariation * 0.1;
 
   // P2 melodic dynamics — energy/density/complexity shape all three voices.
@@ -272,7 +274,7 @@ export function generateMultiVoice(
     // survives the replay.
     const motif: Array<{ offset: number; toneIndex: number; approachDir: number }> = [];
     for (let bar = 0; bar < bars; bar++) {
-      const barStartTicks = bar * 16 * STEP_TICKS;
+      const barStartTicks = bar * stepsPerBar(doc) * STEP_TICKS;
       const replay = bar > 0 && bar % 4 === 0 && motif.length > 0;
       const offsets = replay ? motif.map((m) => m.offset) : flowOffsets();
       for (let i = 0; i < offsets.length; i++) {

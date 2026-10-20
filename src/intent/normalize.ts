@@ -1,5 +1,7 @@
 import { DEFAULT_GENERATE_OPTIONS, GENRES, type GenerateOptions } from "../ai/types";
 import { isMusicalKey, PRODUCTION_PROFILES } from "../project-model/types";
+import type { ProjectDocument } from "../project-model/types";
+import { DEFAULT_STEPS_PER_BAR, MAX_PATTERN_STEPS, stepsPerBar } from "../project-model/grid";
 import { INTENT_SCHEMA_VERSION, type IntentInput, type IntentRole, type IntentSpec } from "./types";
 import { assertIntentSpec } from "./schema";
 import { sanitizeFxIntent } from "./production";
@@ -20,9 +22,30 @@ function text(value: unknown, fallback: string | null = null): string | null {
   return trimmed.length > 0 ? trimmed : fallback;
 }
 
-function lengthOf(value: unknown, fallback: number): number {
-  const raw = finite(value, fallback);
-  return Math.max(16, Math.min(256, Math.round(raw / 16) * 16));
+/**
+ * The requested length in steps, aligned to the document's BAR.
+ *
+ * The quantum is the bar, not a hard-coded sixteen. In 4/4 this is exactly
+ * the legacy `round(raw / 16) * 16` — one bar is 16 steps there — and in 3/4
+ * it rounds to twelfths. The result is always a whole number of bars, so a
+ * generated pattern starts on the downbeat of the meter it was asked for.
+ */
+function lengthOf(value: unknown, perBar: number): number {
+  const raw = finite(value, perBar);
+  const maxBars = Math.max(1, Math.floor(MAX_PATTERN_STEPS / perBar));
+  const bars = Math.max(1, Math.min(maxBars, Math.round(raw / perBar)));
+  return bars * perBar;
+}
+
+/**
+ * The requested length in BARS, or null when the request is not framed in
+ * bars. Bars are meter-independent, so they survive the trip from the parser
+ * to the document that finally decides how many steps one bar holds.
+ */
+function barsOf(value: unknown, perBar: number): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const maxBars = Math.max(1, Math.floor(MAX_PATTERN_STEPS / perBar));
+  return Math.max(1, Math.min(maxBars, Math.round(value)));
 }
 
 function candidateCountOf(value: unknown): number {
@@ -56,9 +79,29 @@ function bool(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
-/** Normalize untrusted user/provider data into one canonical IntentSpec. */
-export function normalizeIntent(input: IntentInput | unknown = {}): IntentSpec {
+/**
+ * Normalize untrusted user/provider data into one canonical IntentSpec.
+ *
+ * `doc` is the document the generation will land in. When it is known, the
+ * length is measured in that document's meter: the default is ONE BAR of it
+ * (not sixteen steps), a bar-framed request (`bars`) is turned into steps by
+ * the meter, and a step-framed request is rounded to a whole number of its
+ * bars. Without a document the meter is unknown and the 4/4 bar is assumed —
+ * which keeps every document-independent call byte-identical to before.
+ */
+export function normalizeIntent(
+  input: IntentInput | unknown = {},
+  doc?: Pick<ProjectDocument, "timeSignature">,
+): IntentSpec {
   const source = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
+  const perBar = doc ? stepsPerBar(doc) : DEFAULT_STEPS_PER_BAR;
+  const bars = barsOf(source.bars, perBar);
+  // The step count alone expresses the request in 4/4 — a bar is sixteen
+  // steps there — so the bar count is recorded ONLY where it says something
+  // the steps cannot: in the meters where a bar is not sixteen steps. That
+  // keeps every 4/4 intent byte-identical to before (same hash, same
+  // generated beat) and only changes the meters that were wrong.
+  const carriesBars = bars !== null && bars * perBar !== bars * DEFAULT_STEPS_PER_BAR;
   const controls =
     source.controls && typeof source.controls === "object" ? (source.controls as Record<string, unknown>) : {};
   const targetTracks =
@@ -109,7 +152,8 @@ export function normalizeIntent(input: IntentInput | unknown = {}): IntentSpec {
       : {}),
     key: isMusicalKey(source.key) ? source.key : null,
     bpmRange: bpmRangeOf(source.bpmRange),
-    length: lengthOf(source.length, DEFAULT_GENERATE_OPTIONS.stepCount),
+    length: bars !== null ? bars * perBar : lengthOf(source.length, perBar),
+    ...(carriesBars ? { bars: bars as number } : {}),
     candidateCount: candidateCountOf(source.candidateCount),
     symbolicCandidates: symbolicCandidatesOf(source.symbolicCandidates),
     roles: rolesOf(source.roles),

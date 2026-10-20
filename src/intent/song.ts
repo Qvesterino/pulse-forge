@@ -32,7 +32,7 @@ import { canonicalizePattern, contentHash } from "../ai/evaluation";
 import type { Command } from "../commands/types";
 import { addEffect, setBeatManglerSteps, setEffectParam, snapshot, trackEffectsOf } from "../commands/commands";
 import { createInstrumentTrackModel, sceneRoleOf, ticksPerBar } from "../project-model/schema";
-import { stepsPerBar } from "../project-model/grid";
+import { stepsForBars, stepsPerBar } from "../project-model/grid";
 import type { IntentInput, IntentRole, IntentSpec } from "./types";
 import type { CandidateSearchInfo, SearchLane } from "./candidate-search";
 import {
@@ -2794,7 +2794,7 @@ export async function buildSong(
   input: IntentInput | IntentSpec,
   options: BuildSongOptions = {},
 ): Promise<SongBuild> {
-  const baseIntent = normalizeIntent(input);
+  const baseIntent = normalizeIntent(input, doc);
   // SUNO-format compatibility (W4): a bracketed prompt ([Verse]/[Chorus] +
   // lyric lines) defines the form ITSELF — the bracket sequence is the
   // arrangement, bars follow the syllable grid (at least 4 per section),
@@ -2817,7 +2817,7 @@ export async function buildSong(
 
           return Array.from({ length: section.repeats }, (_, copy) =>
             chunks.map((lines, chunkIndex): SongSectionSpec => {
-              const bars = Math.max(4, Math.ceil(lyricChunkSteps(lines) / 16));
+              const bars = Math.max(4, Math.ceil(lyricChunkSteps(lines) / stepsPerBar(doc)));
               const repeatLabel = section.repeats > 1 ? `${section.tag} (${copy + 1}/${section.repeats})` : section.tag;
               return {
                 role: section.role,
@@ -2842,7 +2842,7 @@ export async function buildSong(
         totalBars: suno.sections.reduce((sum, section) => {
           const chunks = splitLyricsIntoPatternSizedChunks(section.lyrics);
           const sectionBars = chunks.reduce(
-            (bars, lines) => bars + Math.max(4, Math.ceil(lyricChunkSteps(lines) / 16)),
+            (bars, lines) => bars + Math.max(4, Math.ceil(lyricChunkSteps(lines) / stepsPerBar(doc))),
             0,
           );
           return sum + sectionBars * section.repeats;
@@ -2955,7 +2955,7 @@ export async function buildSong(
     sections.push({
       ...section,
       pattern,
-      stepCount: section.bars * 16,
+      stepCount: stepsForBars(doc, section.bars),
       roles: sectionRoles,
     });
     for (const candidate of result.bank ?? []) {
@@ -2978,7 +2978,7 @@ export async function buildSong(
             sectionRoles.includes("lead") ? (leadTrack?.id ?? null) : null,
             sectionIntent,
           ),
-          stepCount: section.bars * 16,
+          stepCount: stepsForBars(doc, section.bars),
           roles: sectionRoles,
         };
         const modes = laneModes.get(lane) ?? new Set<CandidateSearchInfo["mode"]>();
@@ -3354,16 +3354,16 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
       const progressionName = span.role === "bridge" ? build.harmonyPlan.turnName : build.harmonyPlan.verseName;
       const progression =
         findProgression(build.baseIntent.genre, progressionName) ?? selectProgression(build.baseIntent.genre, 0);
-      const events = expandProgression(progression, span.bars * 16);
+      const events = expandProgression(progression, stepsForBars(doc, span.bars));
       let cursorStep = 0;
       let sectionChords: import("../project-model/types").ChordEvent[] = [];
       for (const event of events) {
         const evStart = cursorStep;
-        const evEnd = Math.min(cursorStep + event.duration, span.bars * 16);
+        const evEnd = Math.min(cursorStep + event.duration, stepsForBars(doc, span.bars));
         cursorStep += event.duration;
         if (evEnd <= evStart) continue;
-        const startBar = span.startBar + Math.floor(evStart / 16);
-        const endBar = span.startBar + Math.ceil(evEnd / 16);
+        const startBar = span.startBar + Math.floor(evStart / stepsPerBar(doc));
+        const endBar = span.startBar + Math.ceil(evEnd / stepsPerBar(doc));
         const root = (tonic + scale[((event.degree % 7) + 7) % 7]) % 12;
         const previous = sectionChords[sectionChords.length - 1];
         if (previous && previous.startBar === startBar) continue; // same-bar event: first color wins
@@ -3420,13 +3420,13 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
 /** Convenience: plan-only preview for UI (section list, no generation). */
 export function previewSongForm(
   input: IntentInput | IntentSpec,
-  _doc?: ProjectDocument,
+  doc?: ProjectDocument,
 ): {
   name: string;
   sections: SongSectionSpec[];
   totalBars: number;
 } {
-  const intent = normalizeIntent(input);
+  const intent = normalizeIntent(input, doc);
   const form = planSongForm(intent);
   const nameParts: string[] = [intent.genre];
   if (intent.style) nameParts.push(intent.style);

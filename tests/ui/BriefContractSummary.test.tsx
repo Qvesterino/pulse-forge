@@ -204,13 +204,15 @@ describe("BriefContractSummary", () => {
     expect(onPatch).not.toHaveBeenCalled();
   });
 
-  it("bars chip edits length in 16-step units", () => {
+  it("bars chip edits the length in BARS — the meter turns them into steps", () => {
     const { onPatch } = renderBox("drill, 8 taktov, pri 142", { length: 128 });
     fireEvent.click(screen.getByText(/^8 taktov/));
     const input = document.querySelector(".brief-input") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "4" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(onPatch).toHaveBeenCalledWith({ length: 64 });
+    // Bars, not steps: four bars is 64 steps in 4/4 and 48 in 3/4 — the
+    // engine, not the editor, owns that conversion.
+    expect(onPatch).toHaveBeenCalledWith({ bars: 4 });
   });
 
   it("preserve chip × un-protects the role via unprotectRole", () => {

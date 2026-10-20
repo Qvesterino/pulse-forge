@@ -2517,6 +2517,7 @@ export function IntentPanel() {
         ...(beatSync ? { bpm: doc.bpm } : {}),
         ...(beatSync && startTick !== null ? { transportStartTick: startTick } : {}),
         ...(beatSync && activePattern ? { patternLengthTicks: patternLengthTicks(activePattern) } : {}),
+        timeSignature: doc.timeSignature,
       });
       voiceTakeBufferRef.current = take.buffer;
       setVoiceTake(analysis);

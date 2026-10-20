@@ -113,7 +113,7 @@ function generationSeed(intent: IntentSpec, effectiveSeed: string, grooveId: str
 
 /** Pure, serializable plan shared by preview and apply. */
 export function planGeneration(input: IntentInput | IntentSpec, doc: ProjectDocument): GenerationPlan {
-  const intent = normalizeIntent(input);
+  const intent = normalizeIntent(input, doc);
   const preserveSourcePatternId =
     intent.preserve && intent.preserve.length > 0
       ? (intent.sourcePatternId ??

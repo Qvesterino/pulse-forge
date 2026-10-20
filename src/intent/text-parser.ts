@@ -1,5 +1,6 @@
 import type { IntentInput, IntentRole } from "./types";
 import type { IntentGenre } from "./types";
+import { MAX_PATTERN_BARS } from "../project-model/grid";
 import { matchAllArtistPresets, matchArtistPreset, parseVibeBlend } from "./artists";
 import { parseSunoFormat } from "./suno-format";
 
@@ -1236,12 +1237,14 @@ export function parseIntentText(text: string): ParsedIntent {
     detected.push(key.toLowerCase());
   }
 
-  // Length: "8 bars" / "16 bar" / "8 taktov" / "4 takty" → steps (16/bar)
+  // Length: "8 bars" / "16 bar" / "8 taktov" / "4 takty" → BARS. The bar
+  // count is kept as bars (not steps) so the document's meter decides how
+  // many steps one bar holds — "4 bars" is 16 steps in 4/4 and 12 in 3/4.
   const bars = /\b(\d{1,3})\s*(?:bars?|takty|taktov|takt)\b/.exec(lower);
   if (bars) {
-    const steps = Number(bars[1]) * 16;
-    if (steps >= 16 && steps <= 256) {
-      input.length = steps;
+    const count = Number(bars[1]);
+    if (count >= 1 && count <= MAX_PATTERN_BARS) {
+      input.bars = count;
       detected.push(`${bars[1]}bars`);
     }
   }

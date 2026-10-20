@@ -72,6 +72,13 @@ export interface IntentSpec {
   key: MusicalKey | null;
   bpmRange: [number, number] | null;
   length: number;
+  /**
+   * The requested length in BARS — meter-independent. Present only when the
+   * request was framed in bars ("8 bars"); the document's meter turns it into
+   * the step count in `length`. Absent = the request was framed in steps, or
+   * defaulted to one bar of the document's meter.
+   */
+  bars?: number;
   /** Number of local candidates to generate and rank before accepting one. */
   candidateCount?: number;
   /**
@@ -124,6 +131,7 @@ export type IntentInput = Partial<IntentSpec> & {
   key?: unknown;
   bpmRange?: unknown;
   length?: unknown;
+  bars?: unknown;
   candidateCount?: unknown;
   symbolicCandidates?: unknown;
   roles?: unknown;

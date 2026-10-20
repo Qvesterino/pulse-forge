@@ -1,5 +1,7 @@
 import { GENRES, type Genre } from "../ai/types";
 import { isMusicalKey, MUSICAL_KEYS, type MusicalKey, type ProjectDocument } from "../project-model/types";
+import { MAX_PATTERN_STEPS } from "../project-model/grid";
+import { normalizeIntent } from "./normalize";
 import type { BriefConfidence, BriefContract, BriefOrigin, BriefSection } from "./brief-contract";
 import type { ParsedIntentConflictKind } from "./text-parser";
 import type { IntentInput, IntentRole } from "./types";
@@ -41,6 +43,19 @@ export interface CreativeTaskEvidenceV1 {
  * The prompt is used only for the current inference; this object must never be
  * persisted to a project, session history, preference ledger or training set.
  */
+/**
+ * The requested length in the document's STEPS. The meter decides how many
+ * steps one bar holds, so a request framed in bars ("8 bars") only becomes a
+ * step count here — and a request with no length at all stays null, so the
+ * agent is not handed a length nobody asked for.
+ */
+function resolvedLengthSteps(intent: IntentInput, project?: ProjectDocument | null): number | null {
+  if (typeof intent.length !== "number" && typeof intent.bars !== "number") return null;
+  const resolved = normalizeIntent(intent as unknown as Record<string, unknown>, project ?? undefined);
+  const length = resolved.length;
+  return Number.isInteger(length) && length >= 1 && length <= MAX_PATTERN_STEPS ? length : null;
+}
+
 export interface CreativeTaskRequestV1 {
   version: typeof CREATIVE_TASK_REQUEST_VERSION;
   operation: CreativeTaskOperation;
@@ -129,7 +144,7 @@ export const CREATIVE_TASK_OUTPUT_JSON_SCHEMA = {
           items: { type: "integer", minimum: 40, maximum: 240 },
         },
         key: { type: "string", enum: [...MUSICAL_KEYS] },
-        lengthSteps: { type: "integer", minimum: 16, maximum: 256, multipleOf: 16 },
+        lengthSteps: { type: "integer", minimum: 1, maximum: 256 },
         energy: { type: "number", minimum: 0, maximum: 1 },
         density: { type: "number", minimum: 0, maximum: 1 },
         complexity: { type: "number", minimum: 0, maximum: 1 },
@@ -332,14 +347,10 @@ export function createCreativeTaskRequestV1(args: {
       requirements: {
         bpmRange: rawRange,
         key: isMusicalKey(intent.key) ? intent.key : null,
-        lengthSteps:
-          typeof intent.length === "number" &&
-          Number.isInteger(intent.length) &&
-          intent.length >= 16 &&
-          intent.length <= 256 &&
-          intent.length % 16 === 0
-            ? intent.length
-            : null,
+        // The length is resolved against the PROJECT's meter: a bar is not
+        // sixteen steps outside 4/4, so a request framed in bars ("8 bars")
+        // must not be read as a step count that no bar divides.
+        lengthSteps: resolvedLengthSteps(intent, args.project),
         targetRoles,
       },
       preferences: {
@@ -415,9 +426,8 @@ function validateSuggestions(value: unknown): CreativeTaskOutputV1["suggestions"
     if (
       typeof value.lengthSteps !== "number" ||
       !Number.isInteger(value.lengthSteps) ||
-      value.lengthSteps < 16 ||
-      value.lengthSteps > 256 ||
-      value.lengthSteps % 16 !== 0
+      value.lengthSteps < 1 ||
+      value.lengthSteps > 256
     ) {
       return null;
     }

@@ -7,6 +7,7 @@ const FIELD_LABEL: Record<ProjectProducerBriefFact["field"], string> = {
   bpmRange: "Tempo",
   key: "Tónina",
   length: "Dĺžka",
+  bars: "Dĺžka (takty)",
   roles: "Generovať",
   energy: "Energia",
   density: "Hustota",
@@ -30,7 +31,11 @@ function factValue(fact: ProjectProducerBriefFact): string {
     case "key":
       return fact.value;
     case "length":
-      return `${fact.value / 16} taktov`;
+      // A step count — a bar is not sixteen steps outside 4/4, so the truth
+      // is stated in steps unless the fact carries bars (below).
+      return `${fact.value} krokov`;
+    case "bars":
+      return `${fact.value} taktov`;
     case "roles":
     case "preserve":
     case "prohibitedRoles":

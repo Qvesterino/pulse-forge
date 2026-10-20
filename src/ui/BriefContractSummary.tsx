@@ -102,7 +102,7 @@ export function BriefContractSummary({
     const bars = Math.round(Number(raw));
     setEditing(null);
     if (!Number.isFinite(bars) || bars < 1 || bars > 16) return;
-    onPatch({ length: bars * 16 });
+    onPatch({ bars });
   };
 
   const renderStatement = (statement: BriefStatement) => {
@@ -217,7 +217,7 @@ export function BriefContractSummary({
     }
 
     const editable = statement.id === "bpm" || statement.id === "length";
-    const fixed = editable && fixes[statement.id === "bpm" ? "bpmRange" : "length"] !== undefined;
+    const fixed = editable && fixes[statement.id === "bpm" ? "bpmRange" : "bars"] !== undefined;
     const corrected = statement.origin === "user";
     return (
       <button

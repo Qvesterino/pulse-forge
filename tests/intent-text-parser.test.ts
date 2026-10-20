@@ -80,11 +80,24 @@ describe("text-parser v2", () => {
     expect(parseIntentText("deep house in a minor").input.key).toBe("A Natural Minor");
   });
 
-  it("converts bars into step counts", () => {
-    expect(parseIntentText("8 bars of techno").input.length).toBe(128);
-    expect(parseIntentText("4 bar loop").input.length).toBe(64);
-    // out of the 16..256 window is dropped (normalize clamps defaults instead)
-    expect(parseIntentText("64 bars of ambient").input.length).toBeUndefined();
+  it("keeps bar counts as BARS — the meter turns them into steps", () => {
+    // The parser does not know the document's meter, so it must not guess one:
+    // "8 bars" stays eight bars and the intent layer resolves it against the
+    // meter of the document the generation lands in.
+    expect(parseIntentText("8 bars of techno").input.bars).toBe(8);
+    expect(parseIntentText("4 bar loop").input.bars).toBe(4);
+    expect(parseIntentText("8 bars of techno").input.length).toBeUndefined();
+    // 4/4: a bar is sixteen steps. 3/4: twelve.
+    expect(
+      normalizeIntent(parseIntentText("8 bars of techno").input, { timeSignature: { numerator: 4, denominator: 4 } })
+        .length,
+    ).toBe(128);
+    expect(
+      normalizeIntent(parseIntentText("8 bars of techno").input, { timeSignature: { numerator: 3, denominator: 4 } })
+        .length,
+    ).toBe(96);
+    // out of the 1..256 window is dropped (normalize clamps defaults instead)
+    expect(parseIntentText("64 bars of ambient").input.bars).toBeUndefined();
   });
 
   it("detects roles including negations", () => {
@@ -159,7 +172,7 @@ describe("text-parser v3 — slovenčina", () => {
     const parsed = parseIntentText("hlboký house v F# mol, 8 taktov");
     expect(parsed.input.style).toBe("deep");
     expect(parsed.input.key).toBe("F# Natural Minor");
-    expect(parsed.input.length).toBe(128);
+    expect(parsed.input.bars).toBe(8);
     expect(parseIntentText("pokojný ambient v C dur").input.key).toBe("C Major");
     expect(parseIntentText("ambient v a harmonicka mol").input.key).toBe("A Harmonic Minor");
   });

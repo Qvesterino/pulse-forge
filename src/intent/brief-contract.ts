@@ -23,6 +23,7 @@
 import { DEFAULT_GENERATE_OPTIONS, GENRES } from "../ai/types";
 import { drumTrackForTarget, instrumentTrackForRole } from "../ai/role-targets";
 import { isMusicalKey, type ProjectDocument, type ProjectProducerBriefV1 } from "../project-model/types";
+import { DEFAULT_STEPS_PER_BAR, stepsPerBar } from "../project-model/grid";
 import type { ProducerSessionState } from "./producer-session";
 import type { ParsedIntent, ParsedIntentConflictKind } from "./text-parser";
 import type { IntentInput, IntentRole } from "./types";
@@ -149,8 +150,16 @@ export interface BriefContractContext {
 
 const clampBpm = (value: number): number => Math.max(40, Math.min(240, value));
 
-function barsLabel(steps: number): string {
-  const bars = steps / 16;
+/**
+ * The length of a request in BARS. A bar is not sixteen steps outside 4/4,
+ * so the step count is read in the document's meter when the document is
+ * known, and in 4/4 otherwise.
+ */
+function barsLabel(steps: number, perBar: number): string {
+  return barsCountLabel(steps / perBar);
+}
+
+function barsCountLabel(bars: number): string {
   if (bars === 1) return "1 takt";
   if (bars < 5) return `${bars} takty`;
   return `${bars} taktov`;
@@ -254,12 +263,16 @@ export function compileBriefContract(parsed: ParsedIntent | null, context: Brief
     });
   }
 
-  if (input.length) {
+  // The length is stated in the unit the request used: a bar-framed request
+  // ("4 bars") carries its bar count, a step-framed one carries its steps.
+  const perBar = project ? stepsPerBar(project) : DEFAULT_STEPS_PER_BAR;
+  const requestedBars = typeof input.bars === "number" ? input.bars : null;
+  if (requestedBars !== null || input.length) {
     statements.push({
       id: "length",
       section: "hard",
-      label: barsLabel(input.length),
-      ...provenance(["length"], { origin: "prompt", confidence: "parsed" }),
+      label: requestedBars !== null ? barsCountLabel(requestedBars) : barsLabel(input.length as number, perBar),
+      ...provenance(requestedBars !== null ? ["bars"] : ["length"], { origin: "prompt", confidence: "parsed" }),
       patch: null,
     });
   } else {

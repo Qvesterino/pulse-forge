@@ -61,12 +61,14 @@ describe("creative task contract v1", () => {
       maxItems: 2,
       items: { type: "integer", minimum: 40, maximum: 240 },
     });
+    // A step count, NOT a multiple of sixteen: a bar is sixteen steps only
+    // in 4/4, and the agent's answer is resolved against the project's meter.
     expect(schema.properties.suggestions.properties.lengthSteps).toMatchObject({
       type: "integer",
-      minimum: 16,
+      minimum: 1,
       maximum: 256,
-      multipleOf: 16,
     });
+    expect(schema.properties.suggestions.properties.lengthSteps).not.toHaveProperty("multipleOf");
     expect(schema.properties.suggestions.properties.targetRoles).toMatchObject({
       minItems: 1,
       maxItems: 4,

@@ -47,13 +47,18 @@ export function validateIntentSpec(value: unknown): string[] {
       errors.push("bpmRange must be a two-number tuple or null");
     }
   }
+  // The length is a step count whose ALIGNMENT is the producer's business:
+  // the document's meter decides how many steps make a bar, so a contract
+  // cannot demand "a multiple of 16" without assuming 4/4. The contract only
+  // demands that the number is a real, bounded step count.
+  if (!isFiniteNumber(value.length) || !Number.isInteger(value.length) || value.length < 1 || value.length > 256) {
+    errors.push("length must be a positive integer of at most 256 steps");
+  }
   if (
-    !isFiniteNumber(value.length) ||
-    !Number.isInteger(value.length) ||
-    value.length < 16 ||
-    value.length % 16 !== 0
+    value.bars !== undefined &&
+    (!isFiniteNumber(value.bars) || !Number.isInteger(value.bars) || value.bars < 1 || value.bars > 256)
   ) {
-    errors.push("length must be a positive multiple of 16");
+    errors.push("bars must be an integer between 1 and 256 when present");
   }
   if (
     value.candidateCount !== undefined &&

@@ -4,6 +4,7 @@ import { candidatePlan } from "./providers/candidate";
 import type { GenerationPlan, IntentSpec } from "./types";
 import type { PersonalSearchBias } from "./personal-ranker";
 import { STEP_TICKS, type InstrumentTrack, type Pattern, type ProjectDocument } from "../project-model/types";
+import { stepsPerBar } from "../project-model/grid";
 import { uid } from "../shared/ids";
 import { refreshPatternQuality } from "./quality";
 
@@ -220,7 +221,7 @@ function applyEvolvingHook(
 ): { pattern: Pattern; search: CandidateSearchInfo } {
   const leadTrack = leadTrackForPlan(doc, generationPlan);
   const leadNotes = leadTrack ? (pattern.notes?.[leadTrack.id] ?? []) : [];
-  const barTicks = 16 * STEP_TICKS;
+  const barTicks = stepsPerBar(doc) * STEP_TICKS;
   const firstBar = leadNotes
     .filter(
       (note) =>
@@ -303,7 +304,7 @@ export function applyCandidateSearchFamily(
 
   const leadTrack = leadTrackForPlan(doc, generationPlan);
   const leadNotes = leadTrack ? (pattern.notes?.[leadTrack.id] ?? []) : [];
-  const barTicks = 16 * STEP_TICKS;
+  const barTicks = stepsPerBar(doc) * STEP_TICKS;
   const firstBar = leadNotes.filter(
     (note) =>
       Number.isFinite(note.start) &&

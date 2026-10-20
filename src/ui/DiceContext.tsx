@@ -139,12 +139,18 @@ export function DiceProvider({
   children: React.ReactNode;
 }) {
   const [session, setSession] = useState<DiceSession>(() => {
-    const initIntent = normalizeIntent({
-      genre: "house" as const,
-      seed: nextSeed(String(Date.now()), "dice-init"),
-      length: 16,
-    });
-    return createDiceSession(initIntent, initIntent.seed);
+    // The document's meter decides the first length: one bar — sixteen steps
+    // in 4/4, twelve in 3/4 — so the tray's LENGTH control always shows a
+    // length the document can hold.
+    const initIntent = normalizeIntent(
+      {
+        genre: "house" as const,
+        seed: nextSeed(String(Date.now()), "dice-init"),
+        length: 16,
+      },
+      doc,
+    );
+    return createDiceSession(initIntent, initIntent.seed, doc);
   });
 
   function diceScore(
@@ -190,7 +196,7 @@ export function DiceProvider({
   const preview = useMemo<DicePreview>(() => {
     const seed = diceCurrentSeed(session);
     const fxCard = target === "drums" && session.mode === "full" ? pickDiceFx(seed, session.locks) : null;
-    const jittered = jitteredIntentForSeed(session.intent, seed, session.jitter);
+    const jittered = jitteredIntentForSeed(session.intent, seed, session.jitter, doc);
     const beforeHits = (() => {
       try {
         const pat = getActivePattern(doc);
@@ -451,14 +457,14 @@ export function DiceProvider({
   const rollFull = useCallback(() => {
     setSession((prev) => {
       const asFull = prev.mode === "full" ? prev : { ...prev, mode: "full" as const };
-      return rollSession(asFull);
+      return rollSession(asFull, doc);
     });
   }, []);
 
   const rollVary = useCallback(() => {
     setSession((prev) => {
       const asVary = prev.mode === "vary" ? prev : { ...prev, mode: "vary" as const };
-      return rollSession(asVary);
+      return rollSession(asVary, doc);
     });
   }, []);
 
@@ -556,47 +562,82 @@ export function DiceProvider({
     setSession((prev) => setDiceJitter(prev, v));
   }, []);
 
-  const setGenre = useCallback((genre: GenerateOptions["genre"]) => {
-    if (!GENRES.includes(genre as (typeof GENRES)[number])) return;
-    setSession((prev) => setDiceIntent(prev, { ...prev.intent, genre } as unknown as DiceSession["intent"]));
-  }, []);
+  const setGenre = useCallback(
+    (genre: GenerateOptions["genre"]) => {
+      if (!GENRES.includes(genre as (typeof GENRES)[number])) return;
+      setSession((prev) => setDiceIntent(prev, { ...prev.intent, genre } as unknown as DiceSession["intent"], doc));
+    },
+    [doc],
+  );
 
-  const setStyle = useCallback((style: string | null) => {
-    setSession((prev) =>
-      setDiceIntent(prev, { ...prev.intent, style: style ?? null } as unknown as DiceSession["intent"]),
-    );
-  }, []);
+  const setStyle = useCallback(
+    (style: string | null) => {
+      setSession((prev) =>
+        setDiceIntent(prev, { ...prev.intent, style: style ?? null } as unknown as DiceSession["intent"], doc),
+      );
+    },
+    [doc],
+  );
 
-  const setSeed = useCallback((seed: string) => {
-    setSession((prev) => {
-      const intent = normalizeIntent({ ...prev.intent, seed: seed.slice(0, 16) });
-      // Replace current seed in chain
-      const idx = prev.cursor;
-      const chain = [...prev.seedChain];
-      chain[idx] = seed.slice(0, 16);
-      return { ...prev, intent, seedChain: chain };
-    });
-  }, []);
+  const setSeed = useCallback(
+    (seed: string) => {
+      setSession((prev) => {
+        const intent = normalizeIntent({ ...prev.intent, seed: seed.slice(0, 16) }, doc);
+        // Replace current seed in chain
+        const idx = prev.cursor;
+        const chain = [...prev.seedChain];
+        chain[idx] = seed.slice(0, 16);
+        return { ...prev, intent, seedChain: chain };
+      });
+    },
+    [doc],
+  );
 
-  const setLength = useCallback((len: number) => {
-    setSession((prev) => setDiceIntent(prev, { ...prev.intent, length: len } as unknown as DiceSession["intent"]));
-  }, []);
+  const setLength = useCallback(
+    (len: number) => {
+      setSession((prev) =>
+        setDiceIntent(prev, { ...prev.intent, length: len } as unknown as DiceSession["intent"], doc),
+      );
+    },
+    [doc],
+  );
 
-  const setEnergy = useCallback((v: number) => {
-    setSession((prev) => setDiceIntent(prev, { ...prev.intent, energy: v } as unknown as DiceSession["intent"]));
-  }, []);
-  const setDensity = useCallback((v: number) => {
-    setSession((prev) => setDiceIntent(prev, { ...prev.intent, density: v } as unknown as DiceSession["intent"]));
-  }, []);
-  const setComplexity = useCallback((v: number) => {
-    setSession((prev) => setDiceIntent(prev, { ...prev.intent, complexity: v } as unknown as DiceSession["intent"]));
-  }, []);
-  const setVariation = useCallback((v: number) => {
-    setSession((prev) => setDiceIntent(prev, { ...prev.intent, variation: v } as unknown as DiceSession["intent"]));
-  }, []);
-  const setMood = useCallback((m: string | null) => {
-    setSession((prev) => setDiceIntent(prev, { ...prev.intent, mood: m } as unknown as DiceSession["intent"]));
-  }, []);
+  const setEnergy = useCallback(
+    (v: number) => {
+      setSession((prev) => setDiceIntent(prev, { ...prev.intent, energy: v } as unknown as DiceSession["intent"], doc));
+    },
+    [doc],
+  );
+  const setDensity = useCallback(
+    (v: number) => {
+      setSession((prev) =>
+        setDiceIntent(prev, { ...prev.intent, density: v } as unknown as DiceSession["intent"], doc),
+      );
+    },
+    [doc],
+  );
+  const setComplexity = useCallback(
+    (v: number) => {
+      setSession((prev) =>
+        setDiceIntent(prev, { ...prev.intent, complexity: v } as unknown as DiceSession["intent"], doc),
+      );
+    },
+    [doc],
+  );
+  const setVariation = useCallback(
+    (v: number) => {
+      setSession((prev) =>
+        setDiceIntent(prev, { ...prev.intent, variation: v } as unknown as DiceSession["intent"], doc),
+      );
+    },
+    [doc],
+  );
+  const setMood = useCallback(
+    (m: string | null) => {
+      setSession((prev) => setDiceIntent(prev, { ...prev.intent, mood: m } as unknown as DiceSession["intent"], doc));
+    },
+    [doc],
+  );
   const setKitId = useCallback((kitId: string | null) => {
     setSession((prev) => setDiceKit(prev, kitId));
   }, []);
@@ -610,7 +651,7 @@ export function DiceProvider({
   const apply = useCallback(
     (services: Services, currentDoc: ProjectDocument) => {
       const seed = diceCurrentSeed(session);
-      const jittered = jitteredIntentForSeed(session.intent, seed, session.jitter);
+      const jittered = jitteredIntentForSeed(session.intent, seed, session.jitter, doc);
       if (target === "melodic") {
         // MELODIC apply: write the seeded phrase into the active pattern for
         // the instrument track — one undo, same notes as the preview.

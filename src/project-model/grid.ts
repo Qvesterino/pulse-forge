@@ -40,12 +40,17 @@ import type { ProjectDocument, TimeSignature } from "./types";
  */
 
 /** How many sixteenth-note steps one bar of `sig` holds. */
-export function stepsPerBarFor(sig: TimeSignature): number {
+export function stepsPerBarFor(sig: TimeSignature | undefined): number {
+  // A document that declares no (or a broken) meter falls back to 4/4 rather
+  // than throwing: the grid must never be the thing that breaks a session.
+  if (!sig || !Number.isFinite(sig.numerator) || !Number.isFinite(sig.denominator) || sig.denominator <= 0) {
+    return DEFAULT_STEPS_PER_BAR;
+  }
   return Math.max(1, Math.round(ticksPerBarFor(sig) / STEP_TICKS));
 }
 
 export function stepsPerBar(doc: Pick<ProjectDocument, "timeSignature">): number {
-  return stepsPerBarFor(doc.timeSignature);
+  return stepsPerBarFor(doc?.timeSignature);
 }
 
 /**
@@ -109,3 +114,34 @@ export function barStartSteps(doc: Pick<ProjectDocument, "timeSignature">, stepC
   for (let step = 0; step < stepCount; step += perBar) starts.push(step);
   return starts;
 }
+
+/**
+ * How many steps `bars` bars of the document's meter hold. The one conversion
+ * from bars to steps — the intent layer asks in bars, the pattern grid stores
+ * steps, and this is where the two meet.
+ */
+export function stepsForBars(doc: Pick<ProjectDocument, "timeSignature">, bars: number): number {
+  return Math.max(0, Math.round(bars)) * stepsPerBar(doc);
+}
+
+/**
+ * The 4/4 bar length in steps — the fallback for contexts with no document
+ * (an intent normalized without one, a provider payload that carries no
+ * meter). It is the same quantity as `stepsPerBarFor` in 4/4, spelled out so
+ * the fallback cannot drift away from the formula.
+ */
+export const DEFAULT_STEPS_PER_BAR = 16;
+
+/** The meter a document falls back to when it declares none. */
+export const DEFAULT_TIME_SIGNATURE: TimeSignature = { numerator: 4, denominator: 4 };
+
+/** The longest pattern the engine generates, in steps. */
+export const MAX_PATTERN_STEPS = 256;
+
+/**
+ * The largest bar count that fits in ANY supported meter — the shortest
+ * supported bar is 3/4 (twelve steps), so twenty-one bars is the ceiling a
+ * meter-blind request can honestly ask for. A meter-aware producer clamps
+ * further to its own bar length.
+ */
+export const MAX_PATTERN_BARS = Math.floor(MAX_PATTERN_STEPS / 12);
