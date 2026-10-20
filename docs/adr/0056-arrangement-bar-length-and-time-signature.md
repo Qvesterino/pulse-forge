@@ -1,14 +1,14 @@
-# ADR 0056 — One bar length: the musical meter wins, the 4/4 arrangement grid is disclosed until it migrates
+# ADR 0056 — One bar length: the musical meter wins, the 16-step pattern grid stays and is disclosed
 
-Date: 2026-10-20 · Status: Accepted (v1) · Scope: project model, Scheduler, arrangement grid, transfer import, meter surfaces
+Date: 2026-10-20 · Status: Accepted (v2 — Stage 2 shipped) · Scope: project model, Scheduler, arrangement grid, transfer import, meter surfaces
 
 ## Context
 
-KYX has **two different definitions of "one bar"** in the same codebase, and
-until now no document decided which of them is the truth.
+KYX had **two different definitions of "one bar"** in the same codebase, and
+until now no document decided which of them was the truth.
 
 - `BAR_TICKS` (`src/project-model/types.ts:4`) is `PPQ * 4` = 1920 ticks — always
-  four quarter notes, whatever the document declares. It is the arrangement's
+  four quarter notes, whatever the document declares. It was the arrangement's
   bar unit: ruler drawing, clip placement, loop regions, markers, zoom, selection.
 - `ticksPerBar(doc)` (`src/project-model/schema.ts`) is
   `PPQ * (4 / denominator) * numerator` — the *musical* bar length. It is what
@@ -24,7 +24,7 @@ Measured divergence (the reproduction lives in
 | 3/4    | 1440               | 1920        | 3840                  | 2880                       | 960   |
 | 6/8    | 1440               | 1920        | 3840                  | 2880                       | 960   |
 
-960 ticks is two beats. On a non-4/4 document, a clip placed at bar 2 starts
+960 ticks is two beats. On a non-4/4 document, a clip placed at bar 2 started
 two beats after the bar-2 downbeat the metronome clicks.
 
 The clearest single expression of the defect is in the scheduler itself. One
@@ -36,12 +36,12 @@ const downbeat = inLeadIn
   : Math.abs(((cursor % barTicks) + barTicks) % barTicks) < 1e-6;                     // the document's meter
 ```
 
-The lead-in downbeat and the playback downbeat are computed against different
-bar lengths. Audio clips a few lines further down are scheduled with
-`clip.startBar * BAR_TICKS`, so in a 6/8 project the audio enters two beats
+The lead-in downbeat and the playback downbeat were computed against different
+bar lengths. Audio clips a few lines further down were scheduled with
+`clip.startBar * BAR_TICKS`, so in a 6/8 project the audio entered two beats
 after the click that is meant to mark the same bar.
 
-The two units are not equally defensible, and the codebase is **half
+The two units were not equally defensible, and the codebase was **half
 migrated** rather than consistently wrong:
 
 | Site                                                          | Unit            |
@@ -56,19 +56,19 @@ migrated** rather than consistently wrong:
 This is why the defect could not be patched site by site: the two conventions
 disagree, and "fixing" an individual site before the unit is decided flips it
 to whichever convention the fixer happened to assume. A concrete example —
-`fittedLoopPlacement` (`src/commands/clipEditing.ts:141`) takes a
+`fittedLoopPlacement` (`src/commands/clipEditing.ts:141`) took a
 `beatsPerBar = 4` argument, and `src/ui/BrowserStrip.tsx:90`,
-`src/ui/DropZone.tsx:148` and `src/ui/LivePadsPanel.tsx:118` pass
+`src/ui/DropZone.tsx:148` and `src/ui/LivePadsPanel.tsx:118` passed
 `doc.timeSignature.numerator` into it. For 6/8 that is 6, but a 6/8 bar spans
 three quarter notes.
 
-**The mismatch is user-reachable.** `src/ui/TransferImportDialog.tsx` lets the
+**The mismatch was user-reachable.** `src/ui/TransferImportDialog.tsx` lets the
 user pick the meter, pre-fills it from the imported MIDI, and offers 3/4, 6/8,
 4/2 and 32/4 alongside 4/4. Nothing told the user that the arrangement grid
-stays 4/4 regardless.
+stayed 4/4 regardless.
 
-MIDI note timing is *not* damaged by this: MIDI clips store `startTick`, so
-notes keep their absolute musical positions. The damage is to everything
+MIDI note timing was *not* damaged by this: MIDI clips store `startTick`, so
+notes keep their absolute musical positions. The damage was to everything
 **bar-addressed** — ruler, clip placement, loop regions, markers, selection —
 plus the audible disagreement between the click and the audio.
 
@@ -77,58 +77,69 @@ plus the audible disagreement between the click and the audio.
 1. **The musical bar length is the truth.** `ticksPerBarFor(sig)` in
    `src/project-model/schema.ts` is the single source for "how long is a bar",
    and `ticksPerBar(doc)` delegates to it. No other copy of the formula is
-   allowed. `BAR_TICKS` is *not* a competing musical truth — it is the
-   arrangement grid's unit, always four quarter notes, and that is now a
-   documented property rather than an assumption.
-2. **The arrangement grid stays 4/4 for now.** Making it follow the meter is
-   an on-disk format change (the stored `startBar` / `lengthBars` would change
-   meaning for every non-4/4 document) and therefore its own migration, not a
-   patch. It is not attempted in this ADR.
-3. **No surface may change the meter silently.** While the grid stays 4/4,
-   every surface that can select a non-4/4 meter must disclose the mismatch
-   before the user commits to it. The transfer import dialog now does:
-   `arrangementGridWarning()` (`src/export/transfer-import.ts`) states that the
-   arrangement grid is 4/4, that the metronome follows the chosen meter, that
-   the two grids do not line up, and that imported audio lanes are measured in
-   the chosen meter but placed on the 4/4 grid. The warning participates in
-   the dialog's existing acknowledgement gate, so it cannot be scrolled past
-   and imported without ticking the review box.
-4. **The dialog now displays exactly what it asks the user to acknowledge.**
-   The warning list renders the merged, de-duplicated warning set (inspection
+   allowed.
+2. **The arrangement grid follows the document's meter.** A bar index is
+   converted to ticks with `ticksPerBar(doc)` and nothing else: the ruler, the
+   clip placement grid, the loop regions, the markers, the selection, the zoom,
+   the metronome and the readouts all measure the same bar. A 4/4 document is
+   unchanged, because there the two units were already identical.
+3. **The PATTERN grid is the unit that does not follow the meter, and it is
+   disclosed.** A pattern is 16 sixteenth steps — `PATTERN_TICKS`, four quarter
+   notes — whatever the document declares. That is a property of the 16-step
+   sequencer, not of the document, and Stage 2 does not change it (it would
+   change every pattern's length, every drum row and the sequencer UI — a
+   separate change, not a patch). The consequence is real and measured (see
+   below), so the transfer dialog discloses it before the user commits to a
+   meter: `patternGridWarning()` (`src/export/transfer-import.ts`) states that
+   the arrangement follows the chosen meter, that the pattern grid does not,
+   and how far a pattern's downbeat drifts from the bar line. The warning
+   participates in the dialog's existing acknowledgement gate, so it cannot be
+   scrolled past and imported without ticking the review box.
+4. **No surface may change the meter silently.** Every surface that can select
+   a non-4/4 meter must disclose the pattern-grid mismatch before the user
+   commits to it.
+5. **The dialog displays exactly what it asks the user to acknowledge.** The
+   warning list renders the merged, de-duplicated warning set (inspection
    warnings + MIDI import warnings + the grid warning) instead of the
-   inspection warnings alone. Previously the acknowledgement checkbox could
-   be raised by a warning the user was never shown.
-5. **4/4 is an invariant.** On a 4/4 document the two units are identical and
+   inspection warnings alone. Previously the acknowledgement checkbox could be
+   raised by a warning the user was never shown.
+6. **4/4 is an invariant.** On a 4/4 document the two units are identical and
    must stay identical through every later stage. It is pinned as an
    invariant, not as an accident.
-6. **The migration is staged, and each stage is independently mergeable:**
+7. **The migration is staged, and each stage is independently mergeable:**
    - *Stage 1* — disclose the mismatch. No model change, no on-disk change, no
-     behavioural change to any 4/4 project. **Shipped.**
+     behavioural change to any 4/4 project. **Shipped** (`aa2e92c4`).
    - *Stage 2* — `ticksPerBar(doc)` becomes the only way a bar index is
-     converted to ticks. `BAR_TICKS` survives only as the 4/4 default and for
-     the ruler's pixel width, which has no musical unit at all. **In progress**
-     — see the batch inventory below.
+     converted to ticks. **Shipped** (`1215b0ac`, `aa638640`, `f92cd156`,
+     `8bc00ea1`). `BAR_TICKS` survives only as the definition of the pattern
+     grid's own length (`PATTERN_TICKS`), as the 4/4 default of the global tick
+     cap and as a no-document fallback.
    - *Stage 3* — see the measured finding below: **no schema migration is
      needed.** The stored values are bar indices, not ticks derived from bars,
      so what changes is their *interpretation*, which is the fix itself.
-7. **A meter matches the 4/4 grid when one bar spans four quarter notes.**
-   `arrangementGridMatchesMeter(sig)` encodes that musically, not numerically:
-   4/4, 2/2 and 8/8 match; 3/4, 6/8, 4/2, 12/8 and 2/4 do not. A meter that
-   matches produces no warning.
+8. **A meter is one-pattern-per-bar exactly when one bar spans four quarter
+   notes.** `patternGridIsOneBar(sig)` encodes that musically, not numerically:
+   4/4, 2/2 and 8/8 are one pattern per bar; 3/4, 6/8, 4/2, 12/8 and 2/4 are
+   not. A meter that is produces no warning.
 
 ### Stage 2 — what was measured, and the ratchet
 
-The bar unit is not a one-line change. Measured over `src/`: **376 bar↔tick
-conversions across 55 files**, of which only **48** sit in a scope that already
-has the document. The rest live in pure helpers (`tempoAtTick`-style), so the
-bar length has to be threaded in as a number — `barUnitTicks` — not as a
-document. That is why Stage 2 is a sequence of batches, not one commit.
+The bar unit is not a one-line change. Measured over `src/`: **470 occurrences
+of the token `BAR_TICKS` across 58 files** before Stage 2 — a figure one
+command reproduces:
 
-**Batch 1 — the audible path** (shipped): `commands/audioClips.ts`,
+```
+git grep -o BAR_TICKS -- 'src/*.ts' 'src/*.tsx' | wc -l
+```
+
+(The ADR's first cut quoted "376 conversions"; that counted conversion
+*expressions*, and one expression can carry two tokens. The token count is the
+ratchet because it is the number a single command reports.)
+
+**Batch 1 — the audible path** (shipped, `1215b0ac`): `commands/audioClips.ts`,
 `commands/clipEditing.ts`, `scheduler/Scheduler.ts`, `rendering/renderer.ts`,
 `audio-engine/liveEditSync.ts`, `audio-engine/triggerEngine.ts`, plus the five
-`fittedLoopPlacement` call sites. 88 conversions moved. **376 → 288 sites in
-49 files.**
+`fittedLoopPlacement` call sites. **470 → 385 tokens in 53 files.**
 
 Two findings that only the measurement could produce:
 
@@ -141,11 +152,60 @@ Two findings that only the measurement could produce:
   different bars** (`Scheduler.ts`, two lines apart). In 6/8 the accent landed
   on the wrong beat. They now measure the same bar; only the anchor differs.
 
-**The ratchet.** Stage 2 is a ratchet, not a big bang: each batch lowers the
-count of remaining `BAR_TICKS` conversions, and the count is asserted so a new
-one cannot be added unnoticed. The gate that proves completion is the compiler
-— `BAR_TICKS` is deleted from the public surface when the last conversion is
-gone, and `tsc` then holds the line for good.
+**Batch 2 — the rest** (shipped: `aa638640` for waves 1–2, and the follow-up
+wave in `f92cd156` and `8bc00ea1`): the scene-time helpers, the command layer,
+the rendering layer, the project model and the whole UI pixel wave. **385 → 9
+tokens in 4 files.** Every one of the 9 is accounted for:
+
+| token | file | why it stays |
+| ----- | ---- | ------------ |
+| 2 | `src/project-model/types.ts` | the definition (`PPQ * 4`) and the pattern-grid alias (`PATTERN_TICKS = BAR_TICKS`) — a different unit that happens to have the same length in 4/4 |
+| 2 | `src/project-model/schema.ts` | `MAX_ARRANGEMENT_CLIP_TICKS` and its use — a loose global bound, not a grid (see the consequences) |
+| 1 | `src/project-model/schema.ts` | the no-document fallback of `sanitizeAudioClips`, which has no meter to read |
+| 1 | `src/project-model/schema.ts` | the import of the constant |
+| 3 | three files | comments that explain why the constant is not the grid |
+
+The count is measured at HEAD, not asserted here: re-running the ratchet
+command above reproduces 9.
+
+Three structural decisions the batch forced:
+
+- **Pure helpers take the bar length as a NUMBER, not a document.**
+  `sceneBarsToSeconds`, `sceneSecondsToBars`, `tempoAtTick` and
+  `arrangementSecondsBetweenTicks` take a required trailing `barUnitTicks`. A
+  default would have kept every caller on 4/4 semantics while *looking*
+  converted — the ratchet would have gone down and the defect would have
+  stayed.
+- **The ruler's PIXEL width is not a musical unit.** `barWidth` stays a pixel
+  value; only the tick↔pixel conversion uses the metrical bar, so a clip lands
+  on the drawn bar line instead of a quarter-bar off it.
+- **One constant, one meaning.** `song.ts` computed the 16th-note step as
+  `BAR_TICKS / 16`, which is exactly `STEP_TICKS`; `midiTime.ts`, the hum→melody
+  fill and the piano roll's note-length menu used `BAR_TICKS` for the *pattern*
+  grid, which is `PATTERN_TICKS`. The pattern grid got its own name, because
+  it is a different unit that happens to have the same length in 4/4.
+
+### The pattern grid — measured, not assumed
+
+Stage 2 made the arrangement metrical. The pattern grid stayed 16 steps, and
+the two do not agree outside 4/4-like meters. Measured, in a 6/8 document, the
+pattern's phase at successive musical bar lines:
+
+| bar | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| --- | - | - | - | - | - | - | - | - |
+| pattern phase (ticks) | 0 | 1440 | 960 | 480 | 0 | 1440 | 960 | 480 |
+
+One pattern is 1920 ticks and a 6/8 bar is 1440, so the phrase is 1.33 bars
+long: the pattern's downbeat reaches the bar line only every **fourth** bar and
+is a quarter note late in between. In 4/4 the same measurement is 0 at every bar
+line — the negative control. Pinned by
+`tests/adr0056-pattern-grid.test.ts`.
+
+This is the honest remainder of the migration, and it is what the dialog now
+discloses. It is also the next thing that has to change: a metrical step grid
+(12 steps in 6/8) is a separate change with its own ADR, because it changes
+every pattern's length, every drum row, the sequencer UI and every stored
+pattern.
 
 ### Stage 3 — no schema migration is needed
 
@@ -155,8 +215,8 @@ Measured on the model: the values the project stores are **bar indices**
 the values that must NOT move are **absolute ticks** (`MidiClip.startTick` /
 `lengthTicks`, `ArrangementAutomationClip.startTick` / `lengthTicks`). No
 stored value is an absolute tick that was derived from a bar conversion, so
-there is nothing to re-express: switching the unit changes the *meaning* of
-the stored number, and that is the fix.
+there is nothing to re-express: switching the unit changes the *meaning* of the
+stored number, and that is the fix.
 
 Consequence, stated plainly: in an existing non-4/4 document, bar-addressed
 content shifts by the meter ratio — that is the defect being corrected, and it
@@ -167,13 +227,13 @@ all, because MIDI clips store absolute ticks.
 
 - A 4/4 document is unchanged: `ticksPerBar(doc) === BAR_TICKS`, and the
   transfer dialog raises no grid warning.
-- `arrangementGridMatchesMeter` is true exactly for 4/4, 2/2 and 8/8, and
-  false for 3/4, 6/8, 4/2, 12/8 and 2/4.
+- `patternGridIsOneBar` is true exactly for 4/4, 2/2 and 8/8, and false for
+  3/4, 6/8, 4/2, 12/8 and 2/4.
 - `ticksPerBar(doc)` and `ticksPerBarFor(doc.timeSignature)` return the same
   value — the formula has one implementation.
 - Choosing a non-4/4 meter in the transfer dialog shows the grid warning,
-  naming both the grid's tick length and the meter's, and the import button
-  stays disabled until the review box is ticked.
+  naming both the pattern grid's tick length and the meter's, and the import
+  button stays disabled until the review box is ticked.
   The warning is shown **as soon as the meter says so — before any file is
   chosen**. The meter control is live from the moment the dialog opens, so a
   disclosure that waits for the file inspection discloses the mismatch only
@@ -182,18 +242,28 @@ all, because MIDI clips store absolute ticks.
   wording above did not pin the timing, which is how the hole survived its own
   acceptance gate. Pinned by
   `tests/adr0056-grid-warning-disclosure.test.tsx`.
+- The warning says the ARRANGEMENT follows the meter and the PATTERN grid does
+  not. The Stage 1 text ("the arrangement grid is 4/4") became false when
+  Stage 2 landed and was replaced rather than left standing.
 - The warnings the dialog asks the user to acknowledge are the warnings the
   dialog displays.
 - The existing 4/4 transfer-import behaviour and its specs are unchanged.
 
 ## Consequences and scope limits
 
-- A 6/8 or 3/4 import is now *labelled* as a 4/4-grid project instead of
-  silently producing a project whose ruler and metronome disagree. Stage 2 has
-  since made the audible path meter-aware (see the batch inventory), so the
-  clip placement, the render length, the bar duration and the count-in accent
-  now agree with the meter. The parts of the grid that are still 4/4 — the
-  ruler's drawn bars, zoom, selection, markers — are the remaining batches.
+- The arrangement, the metronome and the readouts now agree in every meter.
+  A 6/8 or 3/4 import is a metrical project end to end: the ruler's bar, the
+  clip placement, the loop region, the count-in accent, the render length and
+  the bar's audible duration are all the metrical bar.
+- **The pattern grid did not move, and in a non-4/4 meter a groove's downbeat
+  drifts against the ruler.** Measured in 6/8: the pattern's phrase is 1.33
+  bars long and reaches the bar line only every fourth bar. This is disclosed
+  at import; it is not fixed. Fixing it means a metrical step grid and its own
+  ADR.
+- Before Stage 2 the pattern grid and the 4/4 arrangement grid agreed with each
+  other and disagreed with the metronome. Stage 2 traded that: the click and
+  the ruler now agree, and the pattern grid is the odd one out. Both
+  disagreements are 4/4-invisible, so no 4/4 project changed.
 - The audio-lane consequence is stated in the warning. `fittedLoopPlacement`
   measured the bar in beats and now measures it in ticks, so an imported lane
   is no longer truncated to a third of its length in 6/8. The remaining
@@ -220,17 +290,25 @@ all, because MIDI clips store absolute ticks.
 
 ## References
 
-- `src/project-model/types.ts` — `BAR_TICKS`, `PPQ`
+- `src/project-model/types.ts` — `BAR_TICKS`, `PATTERN_TICKS`, `PPQ`
 - `src/project-model/schema.ts` — `ticksPerBarFor`, `ticksPerBar`,
-  `arrangementGridMatchesMeter`
+  `patternGridIsOneBar`
+- `src/project-model/scene-time.ts` — the bar-unit helpers
 - `src/scheduler/Scheduler.ts` — the click (musical) against the audio clip
   schedule
-- `src/export/transfer-import.ts` — `arrangementGridWarning`,
-  `secondsPerBar`
+- `src/export/transfer-import.ts` — `patternGridWarning`, `secondsPerBar`
 - `src/ui/TransferImportDialog.tsx` — the meter choice and the warning gate
 - `tests/audit17-bar-length-grids.test.ts` — the pinned 4/4 invariant and the
   measured non-4/4 divergence
-- `tests/adr0056-arrangement-grid-warning.test.tsx` — the disclosure gate
+- `tests/adr0056-pattern-grid.test.ts` — the measured pattern-grid drift and
+  its 4/4 negative control
+- `tests/adr0056-pattern-grid-warning.test.tsx` — the warning's truth table
+  (`patternGridIsOneBar`) and the 4/4 negative control
+- `tests/adr0056-grid-warning-disclosure.test.tsx` — the disclosure arrives
+  before the meter is committed
+- `tests/adr0056-stage2-bar-formula-guard.test.ts` — the bar-length FORMULA
+  exists in exactly one module (an AST guard, because a name sweep cannot see
+  a formula written backwards)
 - `tests/adr0056-stage2-bar-unit.test.ts` — the Stage 2 gate: a 6/8 clip lands
   on the musical bar, the render length follows the meter, the bar's audible
   duration follows the meter, and the count-in accent measures the document's
