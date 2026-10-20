@@ -164,10 +164,70 @@ a `uncaughtException` handler, ktorý ho vyvolá.
 
 ### 3.5 Čo ešte chýba (otvorené)
 
-- `ui-proportion.mjs` **nie je v CI**. Bez dev servera v jobe je mŕtvy.
-  Kým sa nezapojí, je to nástroj pre jedného človeka, nie brána pre produkt.
+- ~~`ui-proportion.mjs` **nie je v CI**.~~ **Vyriešené 2026-10-21: job `ui-gate`.** Všetky štyri UI brány teraz bežia v CI proti **zamrznutému `dist`**, ktorý vyrobil job `build` — jeden build, jedna pravda. Bližšie §3.6.
 - Chýba **hrubý bod** (`pointer: coarse`) v matici. Dnes sa meria iba myš.
   Defekt 2 je presne to, čo prešlo.
+
+### 3.6 Brány v CI, a čo to hneď odhalilo (2026-10-21)
+
+**ČO SA PRIDALO.** Job `ui-gate` v `.github/workflows/ci.yml`: stiahne `dist` z
+jobu `build`, nainštaluje Chromium a spustí `npm run gate` — teda `proportion`
+(5 viewportov + hrubý bod), `typography`, `material` a `state-matrix`. Exit 0 =
+všetko drží, 1 = niektorá brána zlyhala, 2 = harness sa rozbil a **nič sa
+nameralo**. Kontrakt 0/1/2 je rovnaký ako pri každej inej bráne.
+
+**PREČO PRÁVE TERAZ.** `scripts/gate.mjs` už bežal proti zamrznutému buildu —
+chýbalo mu len to, aby ho niekto spustil. Bez toho boli štyri brány nástroj
+pre jedného človeka: spustené ručne, vtedy keď si to pamätal, a s výstupom,
+ktorý nikto nečítal.
+
+**OVERENÉ LOKÁLNE, PRESNE AKO V CI.** Z čistého worktree na HEAD
+(`git worktree add` + junction `node_modules`, pravidlo 5 a 6): `npm run gate`
+→ **všetky 4 brány PASS, exit 0**. To je tá istá cesta, ktorou CI prejde
+(build → artefakt `dist` → Chromium → `npm run gate`).
+
+**A PRIAVOLI TO VYSAŤ PRVÉ VECI — BUDGET.**
+
+| Kedy                                      | Boot path   | DAW total   | Výsledok   |
+| ----------------------------------------- | ----------- | ----------- | ---------- |
+| `4d99b05a` (2026-10-12) — posledný zelený | **2122 KB** | 5186 KB     | exit 0     |
+| `590e972c` (2026-10-18)                   | 2305 KB     | 5222 KB     | **FAIL**   |
+| `92f01de5` (HEAD, 2026-10-21)             | **2358 KB** | **5476 KB** | **FAIL**   |
+
+Podlaha boot path je **2200 KB** a celkový DAW graf **5186 KB**. Build bol
+**červený najmenej tri dni** a nikto si to všimol, pretože exit code buildu sa
+nikde nekontroloval. To je presne tá trieda chyby, ktorú §3.1 popisuje: brána
+existuje, ale nemá zuby.
+
+**ČO PRIBUDLO DO BOOT CESTY** (rozdiel chunkov medzi zeleným stavom a HEAD):
+
+| Chunk                                          | Zmena  | Čo to je                                   |
+| ---------------------------------------------- | ------ | ------------------------------------------ |
+| `App`                                          | +78 KB | difúzne pribudnutie aplikačného kódu      |
+| `midiFile`                                     | +36 KB | **NOVÝ** v boot ceste — MIDI import/export |
+| `curated-layer`                                | +17 KB | vzorka knižnice                            |
+| `renderManifest`                               | +11 KB | **NOVÝ** v boot ceste — manifest rendera   |
+| `factory`                                      | +9 KB  | fabrikové presety                          |
+| `intentRouting`                                | +9 KB  | smerovanie intentu                         |
+| `events`                                       | +7 KB  | **NOVÝ** v boot ceste — event bus          |
+| `normalize`, `services`                        | +8 KB  | drobnosti                                  |
+| `zip`, `FrozenBufferRepository`, `audio-import-capabilities` | +5 KB | **NOVÉ** v boot ceste       |
+
+`midiFile` a `renderManifest` sú **funkcie, ktoré sa používajú len pri
+importe/exporte a pri renderovaní** — a platia sa pri každom boote štúdia.
+Ťahajú ich `src/export/transfer-import.ts` a `src/midi/midiProject.ts`
+statickým importom.
+
+**ČO Z TOHO VYPLÝVA.** Rozpočet sa prekročil dvoma spôsobmi naraz: šesť
+**nových** chunkov v boot ceste, ktoré tam nemajú čo hľadať, a difúzne
+pribudnutie v `App`. Prvé sa dá opraviť lazy seamom — to presne radí aj hláška
+budgetu („Lazy-seam the newcomer"); druhé je honestná váha novej funkcie, a to
+je **vedome zvýšenie podlahy**, nie chyba.
+
+**ČO NIE JE ZA TOTO ZODPOVEDNÉ TÝCHTO VĽN.** Príspevok bol 0 KB v boot ceste:
+`stateMatrix` (21 KB) a `StateMatrixPanel` (6 KB) sú v samostatných chunkoch a
+do uzatvoreniny sa nedostanú — overené prepočtom statických importov, nie
+odhadom. Do celkového grafu pridali 27 KB z 290 KB prekročenia.
 
 ---
 

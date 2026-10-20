@@ -62,6 +62,15 @@ jobs:
       # tsc --noEmit + vite build — catches bundler-level regressions that
       # unit tests never see (dynamic imports, PWA precache, chunking).
       - run: npm run build
+      # Hand the EXACT dist this job produced to the UI-gate job. The gates
+      # measure a frozen build, not a dev server, and one build has to be the
+      # single source of what was measured — two builds would be two subjects.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          retention-days: 1
+          if-no-files-found: error
       # Validate the exact production-only invariants without contacting a
       # deployment. The real origin/token are supplied by the deployment
       # environment, while CI uses explicit non-secret sentinels.
@@ -72,6 +81,37 @@ jobs:
           KYX_GALLERY_PUBLIC: "1"
           GALLERY_ADMIN_TOKEN: ci-only-preflight-token
       - run: npm run release:server-smoke
+
+  ui-gate:
+    name: UI gates (proportion, typography, material, state matrix)
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      # The gates drive a real Chromium: they click the real transport, move a
+      # real pointer, and measure the rendered pixels.
+      - run: npx playwright install --with-deps chromium
+      # The four UI gates in one command — the shell's proportions (5 viewports
+      # and the coarse-pointer branch), the declared type roles, the declared
+      # material, and every interaction state.
+      #
+      # Exit 0 = every gate ran and held. 1 = a gate ran and FAILED. 2 = the
+      # harness broke and NOTHING was measured — deliberately distinct, so a
+      # broken harness is never read as a broken shell.
+      #
+      # Before this job these gates only ran when a person remembered to run
+      # them, which made them a tool for one human, not a gate for the product
+      # (STUDIO-OPTIMIZATION-PLAN.md §3.5).
+      - run: npm run gate
 
   test-browser:
     name: Browser audio checks (Chromium)
@@ -144,6 +184,7 @@ jobs:
       - typecheck
       - test
       - build
+      - ui-gate
       - test-browser
       - test-browser-production
       - e2e-smoke
