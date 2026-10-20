@@ -66,7 +66,7 @@ describe("mcp core — protocol with an authenticated session", () => {
     const list = await handleMcpRequest(hub as any, TOKEN, TOKEN, rpc("tools/list", {}, 2));
     const listedTools = (list.result as { tools: Array<{ name: string; outputSchema?: unknown }> }).tools;
     expect(listedTools).toHaveLength(37);
-    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(20);
+    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(21);
     expect(listedTools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema,
     );
@@ -108,6 +108,9 @@ describe("mcp core — protocol with an authenticated session", () => {
     );
     expect(listedTools.find((tool) => tool.name === "kyx_steps")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_steps")?.outputSchema,
+    );
+    expect(listedTools.find((tool) => tool.name === "kyx_transport")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_transport")?.outputSchema,
     );
     expect(listedTools.map((t) => t.name)).toEqual([
       "kyx_intent",
@@ -722,6 +725,43 @@ describe("mcp core — protocol with an authenticated session", () => {
       type: "mcp-result",
       id: delivered[0].id,
       result: { text: "kick add: 0 → 1 hits", mutated: true, data },
+    });
+    const response = await promise;
+    expect(response.result.isError).toBe(false);
+    expect(response.result.structuredContent).toEqual(data);
+  });
+
+  it("returns transport position and runtime state as structuredContent across the web relay", async () => {
+    const { hub, delivered } = makeHub();
+    const data = {
+      status: "read",
+      action: "state",
+      positionTick: 2400,
+      bar: 2,
+      beat: 2,
+      playing: false,
+      paused: true,
+      loop: { enabled: true, startTick: 1920, endTick: 5760, startBar: 2, endBar: 3 },
+      metronome: true,
+    };
+    const promise = handleMcpRequest(
+      hub,
+      TOKEN,
+      TOKEN,
+      rpc(
+        "tools/call",
+        {
+          name: "kyx_transport",
+          arguments: { action: "state" },
+          _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+        },
+        30,
+      ),
+    );
+    hub.handleSessionMessage({
+      type: "mcp-result",
+      id: delivered[0].id,
+      result: { text: "position bar 2 beat 2 · paused", mutated: false, data },
     });
     const response = await promise;
     expect(response.result.isError).toBe(false);

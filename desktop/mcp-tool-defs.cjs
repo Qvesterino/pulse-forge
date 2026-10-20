@@ -169,7 +169,7 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_transport",
     description:
-      "Transport control AND reads: play, stop, pause, loop on/off, metronome on/off — or seek to a 1-based bar (optional beat), set the loop region in bars (loopRegion), or state: a read-only read-back of the playhead position (bar/beat/tick), playing state, loop region and metronome. Position is 4/4-based (1920 ticks per bar, 480 per beat).",
+      "Transport control AND reads: play, stop, pause, loop on/off, metronome on/off — or seek to a 1-based bar (optional beat), set the loop region in bars (loopRegion), or state: a read-only read-back of the playhead position (bar/beat/tick), playing state, loop region and metronome. Bar controls are bounded to 1..8192; fractional bar/beat values are rejected. Scene launch accepts an exact sceneId, name/role, or 1-based index. Position is 4/4-based (1920 ticks per bar, 480 per beat).",
     inputSchema: {
       type: "object",
       properties: {
@@ -192,15 +192,25 @@ const MCP_TOOL_DEFS = [
         bar: {
           type: "integer",
           minimum: 1,
+          maximum: 8192,
           description: "For seek — 1-based destination bar",
         },
         scene: {
           type: "string",
+          minLength: 1,
+          maxLength: 128,
           description: 'launchScene — scene NAME or ROLE (e.g. "drop", "chorus")',
+        },
+        sceneId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "launchScene — exact scene ID",
         },
         index: {
           type: "integer",
           minimum: 1,
+          maximum: 1000000,
           description: "launchScene — 1-based index as kyx_state scenes lists them (alternative to scene)",
         },
         play: {
@@ -216,11 +226,13 @@ const MCP_TOOL_DEFS = [
         startBar: {
           type: "integer",
           minimum: 1,
+          maximum: 8192,
           description: "For loopRegion — first looped bar (1-based)",
         },
         endBar: {
           type: "integer",
           minimum: 2,
+          maximum: 8192,
           description: "For loopRegion — last looped bar (inclusive; must be > startBar)",
         },
         requestId: {
@@ -236,6 +248,123 @@ const MCP_TOOL_DEFS = [
         },
       },
       required: ["action"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        status: {
+          type: "string",
+          enum: ["read", "applied", "partial"],
+        },
+        action: {
+          type: "string",
+          enum: [
+            "play",
+            "stop",
+            "pause",
+            "loopOn",
+            "loopOff",
+            "metronomeOn",
+            "metronomeOff",
+            "seek",
+            "loopRegion",
+            "launchScene",
+            "state",
+          ],
+        },
+        positionTick: {
+          type: ["integer", "null"],
+          minimum: 0,
+        },
+        bar: {
+          type: ["integer", "null"],
+          minimum: 1,
+        },
+        beat: {
+          type: ["integer", "null"],
+          minimum: 1,
+          maximum: 4,
+        },
+        playing: {
+          type: ["boolean", "null"],
+        },
+        paused: {
+          type: ["boolean", "null"],
+        },
+        loop: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            enabled: {
+              type: ["boolean", "null"],
+            },
+            startTick: {
+              type: ["integer", "null"],
+              minimum: 0,
+            },
+            endTick: {
+              type: ["integer", "null"],
+              minimum: 0,
+            },
+            startBar: {
+              type: ["integer", "null"],
+              minimum: 1,
+            },
+            endBar: {
+              type: ["integer", "null"],
+              minimum: 1,
+            },
+          },
+          required: ["enabled", "startTick", "endTick", "startBar", "endBar"],
+        },
+        metronome: {
+          type: ["boolean", "null"],
+        },
+        requestedTick: {
+          type: "integer",
+          minimum: 0,
+          maximum: 15728640,
+        },
+        requestedBar: {
+          type: "integer",
+          minimum: 1,
+          maximum: 8192,
+        },
+        requestedBeat: {
+          type: "integer",
+          minimum: 1,
+          maximum: 4,
+        },
+        requestedStartBar: {
+          type: "integer",
+          minimum: 1,
+          maximum: 8192,
+        },
+        requestedEndBar: {
+          type: "integer",
+          minimum: 2,
+          maximum: 8192,
+        },
+        sceneId: {
+          type: "string",
+        },
+        sceneName: {
+          type: "string",
+        },
+        sceneRole: {
+          type: ["string", "null"],
+        },
+        sceneBar: {
+          type: "integer",
+          minimum: 1,
+          maximum: 8192,
+        },
+        playRequested: {
+          type: "boolean",
+        },
+      },
+      required: ["status", "action", "positionTick", "bar", "beat", "playing", "paused", "loop", "metronome"],
     },
     annotations: {
       readOnlyHint: false,

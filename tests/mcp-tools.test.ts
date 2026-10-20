@@ -129,6 +129,13 @@ describe("mcp tools — headless execution", async () => {
       maxItems: 128,
       items: { maximum: 128 },
     });
+    const transportTool = MCP_TOOLS.find((tool) => tool.name === "kyx_transport");
+    expect(transportTool?.outputSchema?.properties.status).toMatchObject({
+      type: "string",
+      enum: expect.arrayContaining(["read", "applied", "partial"]),
+    });
+    expect(transportTool?.inputSchema.properties?.bar).toMatchObject({ minimum: 1, maximum: 8192 });
+    expect(transportTool?.inputSchema.properties?.sceneId).toMatchObject({ type: "string", maxLength: 128 });
     expect(MCP_TOOLS.map((tool) => tool.name)).toEqual([
       "kyx_intent",
       "kyx_state",
@@ -1214,6 +1221,14 @@ describe("mcp P1 transport — reads + seek + loop region", async () => {
     expect(result.text).toContain("playing");
     expect(result.text).toContain("loop on (bars 2–4)");
     expect(result.text).toContain("metronome off");
+    expect(result.data).toMatchObject({
+      status: "read",
+      action: "state",
+      positionTick: 4320,
+      bar: 3,
+      beat: 2,
+      loop: { enabled: true, startTick: 1920, endTick: 7680, startBar: 2, endBar: 4 },
+    });
   });
 
   it("kyx_transport state degrades honestly on a bare fake (no read accessors)", async () => {
@@ -1221,23 +1236,46 @@ describe("mcp P1 transport — reads + seek + loop region", async () => {
     const result = await executeMcpTool(ctx, "kyx_transport", { action: "state" });
     expect(result.mutated).toBe(false);
     expect(result.text).toBe("position unknown"); // the complete honest output
+    expect(result.data).toMatchObject({
+      status: "read",
+      action: "state",
+      positionTick: null,
+      bar: null,
+      beat: null,
+      playing: null,
+      paused: null,
+      loop: { enabled: null, startTick: null, endTick: null, startBar: null, endBar: null },
+      metronome: null,
+    });
   });
 
   it("kyx_transport seek jumps by 1-based bar (+ optional beat) and reports the landing", async () => {
     const seeks: number[] = [];
     const ctx = makeCtx(datasetDoc());
+    let position = 2 * 1920 + 480;
     const observing: McpToolContext = {
       ...ctx,
-      transport: fullTransport({ seek: (tick) => seeks.push(tick), playing: false }),
+      transport: {
+        ...fullTransport({ playing: false }),
+        get position() {
+          return position;
+        },
+        seek: (tick) => {
+          seeks.push(tick);
+          position = tick;
+        },
+      },
     };
     const result = await executeMcpTool(observing, "kyx_transport", { action: "seek", bar: 5 });
     expect(seeks).toEqual([4 * 1920]);
     expect(result.text).toContain("seek → bar 5 (tick 7680)");
+    expect(result.data).toMatchObject({ status: "applied", action: "seek", requestedTick: 7680, positionTick: 7680 });
 
     const withBeat = await executeMcpTool(observing, "kyx_transport", { action: "seek", bar: 2, beat: 3 });
     expect(seeks).toEqual([4 * 1920, 1920 + 2 * 480]);
     expect(withBeat.text).toContain("bar 2 beat 3");
     expect(withBeat.text).toContain("stopped");
+    expect(withBeat.data).toMatchObject({ status: "applied", requestedBar: 2, requestedBeat: 3, positionTick: 2880 });
   });
 
   it("kyx_transport seek validates input and refuses without a seek-capable transport", async () => {
@@ -1248,11 +1286,89 @@ describe("mcp P1 transport — reads + seek + loop region", async () => {
 
     const full = makeCtx(datasetDoc());
     const observing: McpToolContext = { ...full, transport: fullTransport() };
-    for (const bad of [{}, { bar: 0 }, { bar: -3 }, { bar: "quantum" }]) {
+    for (const bad of [{}, { bar: 0 }, { bar: -3 }, { bar: "quantum" }, { bar: 1.5 }, { bar: 8193 }]) {
       const refused = await executeMcpTool(observing, "kyx_transport", { action: "seek", ...bad });
       expect(refused.mutated).toBe(false);
-      expect(refused.text).toContain("1-based bar");
+      expect(refused.errorCode).toBe("INVALID_ARGUMENTS");
+      expect(refused.text).toContain("seek bar must be an integer");
     }
+    const badBeat = await executeMcpTool(observing, "kyx_transport", { action: "seek", bar: 5, beat: 1.5 });
+    expect(badBeat.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(badBeat.text).toContain("seek beat must be an integer");
+  });
+
+  it("kyx_transport reports a partial seek when an exposed playhead does not land", async () => {
+    const ctx = makeCtx(datasetDoc());
+    const observing: McpToolContext = { ...ctx, transport: fullTransport({ seek: () => {}, playing: false }) };
+    const result = await executeMcpTool(observing, "kyx_transport", { action: "seek", bar: 5 });
+    expect(result.isError).toBe(true);
+    expect(result.errorCode).toBe("PARTIAL_FAILURE");
+    expect(result.data).toMatchObject({
+      status: "partial",
+      action: "seek",
+      requestedTick: 7680,
+      positionTick: 4320,
+    });
+  });
+
+  it("kyx_transport launches an exact scene ID and reads back the selected runtime target", async () => {
+    const doc = datasetDoc();
+    const scene = doc.scenes.find((candidate) => candidate.name === "Drop")!;
+    const seeks: number[] = [];
+    let position = 0;
+    const ctx = makeCtx(doc);
+    const observing: McpToolContext = {
+      ...ctx,
+      transport: {
+        ...fullTransport({ playing: false }),
+        get position() {
+          return position;
+        },
+        seek: (tick) => {
+          position = tick;
+          seeks.push(tick);
+        },
+        play: () => {},
+      },
+    };
+    const result = await executeMcpTool(observing, "kyx_transport", {
+      action: "launchScene",
+      sceneId: scene.id,
+      play: false,
+    });
+    expect(seeks).toEqual([4 * 1920]);
+    expect(result.data).toMatchObject({
+      status: "applied",
+      action: "launchScene",
+      sceneId: scene.id,
+      sceneName: "Drop",
+      sceneRole: "drop",
+      sceneBar: 5,
+      playRequested: false,
+      positionTick: 7680,
+    });
+
+    const fuzzy = await executeMcpTool(observing, "kyx_transport", { action: "launchScene", scene: "Dro" });
+    expect(fuzzy.errorCode).toBe("UNKNOWN_TARGET");
+    expect(fuzzy.text).toContain("no exact scene name or role");
+    expect(seeks).toEqual([4 * 1920]);
+
+    const duplicateNameDoc = { ...doc, scenes: doc.scenes.map((candidate) => ({ ...candidate, name: "Shared" })) };
+    const duplicateNameContext: McpToolContext = { ...makeCtx(duplicateNameDoc), transport: observing.transport };
+    const duplicateName = await executeMcpTool(duplicateNameContext, "kyx_transport", {
+      action: "launchScene",
+      scene: "Shared",
+    });
+    expect(duplicateName.errorCode).toBe("UNKNOWN_TARGET");
+    expect(duplicateName.text).toContain("is ambiguous");
+    expect(seeks).toEqual([4 * 1920]);
+
+    const ambiguous = await executeMcpTool(observing, "kyx_transport", {
+      action: "launchScene",
+      sceneId: scene.id,
+      index: 2,
+    });
+    expect(ambiguous.errorCode).toBe("INVALID_ARGUMENTS");
   });
 
   it("kyx_transport loopRegion sets the loop by inclusive 1-based bars", async () => {
@@ -1281,9 +1397,17 @@ describe("mcp P1 transport — reads + seek + loop region", async () => {
     expect(result.text).toContain("loop region: bars 5–9");
     expect(result.text).toContain("loop on (bars 5–9)");
 
-    for (const bad of [{}, { startBar: 3 }, { startBar: 5, endBar: 5 }, { startBar: 9, endBar: 5 }]) {
+    for (const bad of [
+      {},
+      { startBar: 3 },
+      { startBar: 5, endBar: 5 },
+      { startBar: 9, endBar: 5 },
+      { startBar: 1.5, endBar: 3 },
+      { startBar: 1, endBar: 8193 },
+    ]) {
       const refused = await executeMcpTool(observing, "kyx_transport", { action: "loopRegion", ...bad });
       expect(refused.mutated).toBe(false);
+      expect(refused.errorCode).toBe("INVALID_ARGUMENTS");
       expect(refused.text).toContain("loopRegion needs");
     }
   });
@@ -1960,14 +2084,22 @@ describe("mcp P2 envelopes — machine-readable results", async () => {
     };
     const result = await executeMcpTool(observing, "kyx_transport", { action: "state" });
     const data = result.data as {
+      status: string;
+      action: string;
+      positionTick: number;
       bar: number;
       beat: number;
       playing: boolean;
-      loop: { startBar: number; endBar: number };
+      loop: { startTick: number; endTick: number; startBar: number; endBar: number };
     };
+    expect(data.status).toBe("read");
+    expect(data.action).toBe("state");
+    expect(data.positionTick).toBe(4320);
     expect(data.bar).toBe(3);
     expect(data.beat).toBe(2);
     expect(data.playing).toBe(true);
+    expect(data.loop.startTick).toBe(1920);
+    expect(data.loop.endTick).toBe(7680);
     expect(data.loop.startBar).toBe(2);
     expect(data.loop.endBar).toBe(4);
   });

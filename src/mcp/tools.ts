@@ -1,5 +1,5 @@
 import type { MusicalKey, ProjectDocument } from "../project-model/types";
-import { MAX_ARRANGEMENT_CLIP_TICKS, MAX_STEP_COUNT } from "../project-model/schema";
+import { MAX_ARRANGEMENT_CLIP_BARS, MAX_ARRANGEMENT_CLIP_TICKS, MAX_STEP_COUNT } from "../project-model/schema";
 import { isForeignWork, labelsRevertedBy } from "./attribution";
 import {
   LONG_RUNNING_AGENT_TOOLS,
@@ -983,6 +983,59 @@ const OUTPUT_STEPS: McpOutputSchema = {
     "undoSteps",
   ],
 };
+/** kyx_transport — runtime transport state and action read-back. */
+const OUTPUT_TRANSPORT: McpOutputSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    status: { type: "string", enum: ["read", "applied", "partial"] },
+    action: {
+      type: "string",
+      enum: [
+        "play",
+        "stop",
+        "pause",
+        "loopOn",
+        "loopOff",
+        "metronomeOn",
+        "metronomeOff",
+        "seek",
+        "loopRegion",
+        "launchScene",
+        "state",
+      ],
+    },
+    positionTick: { type: ["integer", "null"], minimum: 0 },
+    bar: { type: ["integer", "null"], minimum: 1 },
+    beat: { type: ["integer", "null"], minimum: 1, maximum: 4 },
+    playing: { type: ["boolean", "null"] },
+    paused: { type: ["boolean", "null"] },
+    loop: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        enabled: { type: ["boolean", "null"] },
+        startTick: { type: ["integer", "null"], minimum: 0 },
+        endTick: { type: ["integer", "null"], minimum: 0 },
+        startBar: { type: ["integer", "null"], minimum: 1 },
+        endBar: { type: ["integer", "null"], minimum: 1 },
+      },
+      required: ["enabled", "startTick", "endTick", "startBar", "endBar"],
+    },
+    metronome: { type: ["boolean", "null"] },
+    requestedTick: { type: "integer", minimum: 0, maximum: MAX_ARRANGEMENT_CLIP_TICKS },
+    requestedBar: { type: "integer", minimum: 1, maximum: MAX_ARRANGEMENT_CLIP_BARS },
+    requestedBeat: { type: "integer", minimum: 1, maximum: 4 },
+    requestedStartBar: { type: "integer", minimum: 1, maximum: MAX_ARRANGEMENT_CLIP_BARS },
+    requestedEndBar: { type: "integer", minimum: 2, maximum: MAX_ARRANGEMENT_CLIP_BARS },
+    sceneId: { type: "string" },
+    sceneName: { type: "string" },
+    sceneRole: { type: ["string", "null"] },
+    sceneBar: { type: "integer", minimum: 1, maximum: MAX_ARRANGEMENT_CLIP_BARS },
+    playRequested: { type: "boolean" },
+  },
+  required: ["status", "action", "positionTick", "bar", "beat", "playing", "paused", "loop", "metronome"],
+};
 export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_intent",
@@ -1064,7 +1117,8 @@ export const MCP_TOOLS: McpToolDef[] = [
       "metronome on/off — or seek to a 1-based bar (optional beat), set the " +
       "loop region in bars (loopRegion), or state: a read-only read-back of " +
       "the playhead position (bar/beat/tick), playing state, loop region and " +
-      "metronome. Position is 4/4-based (1920 ticks per bar, 480 per beat).",
+      `metronome. Bar controls are bounded to 1..${MAX_ARRANGEMENT_CLIP_BARS}; fractional bar/beat values are rejected. ` +
+      "Scene launch accepts an exact sceneId, name/role, or 1-based index. Position is 4/4-based (1920 ticks per bar, 480 per beat).",
     inputSchema: {
       type: "object",
       properties: {
@@ -1084,11 +1138,23 @@ export const MCP_TOOLS: McpToolDef[] = [
             "state",
           ],
         },
-        bar: { type: "integer", minimum: 1, description: "For seek — 1-based destination bar" },
-        scene: { type: "string", description: 'launchScene — scene NAME or ROLE (e.g. "drop", "chorus")' },
+        bar: {
+          type: "integer",
+          minimum: 1,
+          maximum: MAX_ARRANGEMENT_CLIP_BARS,
+          description: "For seek — 1-based destination bar",
+        },
+        scene: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: 'launchScene — scene NAME or ROLE (e.g. "drop", "chorus")',
+        },
+        sceneId: { type: "string", minLength: 1, maxLength: 128, description: "launchScene — exact scene ID" },
         index: {
           type: "integer",
           minimum: 1,
+          maximum: 1000000,
           description: "launchScene — 1-based index as kyx_state scenes lists them (alternative to scene)",
         },
         play: { type: "boolean", description: "launchScene — start playback after the jump (default true)" },
@@ -1098,15 +1164,22 @@ export const MCP_TOOLS: McpToolDef[] = [
           maximum: 4,
           description: "For seek — 1-based beat within the bar (default 1)",
         },
-        startBar: { type: "integer", minimum: 1, description: "For loopRegion — first looped bar (1-based)" },
+        startBar: {
+          type: "integer",
+          minimum: 1,
+          maximum: MAX_ARRANGEMENT_CLIP_BARS,
+          description: "For loopRegion — first looped bar (1-based)",
+        },
         endBar: {
           type: "integer",
           minimum: 2,
+          maximum: MAX_ARRANGEMENT_CLIP_BARS,
           description: "For loopRegion — last looped bar (inclusive; must be > startBar)",
         },
       },
       required: ["action"],
     },
+    outputSchema: OUTPUT_TRANSPORT,
   },
   {
     name: "kyx_export",
@@ -2712,6 +2785,48 @@ function mcpError(code: McpErrorCode, text: string, overrides?: Partial<McpToolR
 
 const TICKS_PER_BAR = 4 * 480;
 
+function transportReadback(transport: McpToolContext["transport"]) {
+  const positionTick =
+    typeof transport.position === "number" && Number.isFinite(transport.position)
+      ? Math.max(0, Math.round(transport.position))
+      : null;
+  const startTick =
+    typeof transport.loopStart === "number" && Number.isFinite(transport.loopStart)
+      ? Math.max(0, Math.round(transport.loopStart))
+      : null;
+  const endTick =
+    typeof transport.loopEnd === "number" && Number.isFinite(transport.loopEnd)
+      ? Math.max(0, Math.round(transport.loopEnd))
+      : null;
+  return {
+    positionTick,
+    bar: positionTick != null ? Math.floor(positionTick / TICKS_PER_BAR) + 1 : null,
+    beat: positionTick != null ? Math.floor((positionTick % TICKS_PER_BAR) / (TICKS_PER_BAR / 4)) + 1 : null,
+    playing: typeof transport.playing === "boolean" ? transport.playing : null,
+    paused: typeof transport.paused === "boolean" ? transport.paused : null,
+    loop: {
+      enabled: typeof transport.loopEnabled === "boolean" ? transport.loopEnabled : null,
+      startTick,
+      endTick,
+      startBar: transport.loopEnabled === true && startTick != null ? Math.floor(startTick / TICKS_PER_BAR) + 1 : null,
+      endBar:
+        transport.loopEnabled === true && startTick != null && endTick != null && endTick > startTick
+          ? Math.ceil(endTick / TICKS_PER_BAR)
+          : null,
+    },
+    metronome: typeof transport.metronome === "boolean" ? transport.metronome : null,
+  };
+}
+
+function transportData(
+  status: "read" | "applied" | "partial",
+  action: string,
+  transport: McpToolContext["transport"],
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return { status, action, ...transportReadback(transport), ...extra };
+}
+
 /** D4 escalation gate — every destructive op routes through this refusal. */
 function destructiveRefusal(): McpToolResult {
   return mcpError(
@@ -2739,8 +2854,12 @@ function dispatchTransport(ctx: McpToolContext, action: string): McpToolResult {
     const end = currentEnd > currentStart ? currentEnd : currentStart + TICKS_PER_BAR * 4;
     transport.setLoop(true, currentStart, end);
   } else if (action === "loopOff") transport.setLoop(false, 0, 0);
-  else return { text: `unknown transport action: ${action}`, mutated: false };
-  return { text: `transport: ${action} · ${describeTransport(transport)}`, mutated: false };
+  else return mcpError("UNKNOWN_REQUEST", `unknown transport action: ${action}`);
+  return {
+    text: `transport: ${action} · ${describeTransport(transport)}`,
+    mutated: false,
+    data: transportData("applied", action, transport),
+  };
 }
 
 /** Human/AI-readable transport state line; every optional read degrades to
@@ -2786,21 +2905,21 @@ function resolveMcpScene(doc: ProjectDocument, record: Record<string, unknown>):
     if (byId) return byId;
   }
   if (typeof record.index === "number" && Number.isFinite(record.index)) {
+    if (!Number.isSafeInteger(record.index) || record.index < 1)
+      return "scene index must be a positive 1-based integer";
     const scene = doc.scenes[Math.floor(record.index) - 1];
     if (scene) return scene;
     return `no scene at index ${record.index} — scenes are 1..${doc.scenes.length} (kyx_state {subject:'scenes'})`;
   }
   const label = typeof record.scene === "string" ? record.scene.trim().toLowerCase() : "";
   if (label !== "") {
-    const byName = doc.scenes.find((candidate) => candidate.name.toLowerCase() === label);
-    if (byName) return byName;
-    const byRole = doc.scenes.find((candidate) => candidate.role != null && (candidate.role as string) === label);
-    if (byRole) return byRole;
-    const loose = doc.scenes.find(
-      (candidate) => candidate.name.toLowerCase().includes(label) || (candidate.role as string | null) === label,
-    );
-    if (loose) return loose;
-    return `no scene matches "${record.scene}" — kyx_state {subject:'scenes'} lists them`;
+    const byName = doc.scenes.filter((candidate) => candidate.name.trim().toLowerCase() === label);
+    if (byName.length === 1) return byName[0];
+    if (byName.length > 1) return `scene name "${record.scene}" is ambiguous — use sceneId or index`;
+    const byRole = doc.scenes.filter((candidate) => candidate.role != null && candidate.role === label);
+    if (byRole.length === 1) return byRole[0];
+    if (byRole.length > 1) return `scene role "${record.scene}" is ambiguous — use sceneId or index`;
+    return `no exact scene name or role "${record.scene}" — use sceneId or index from kyx_state {subject:'scenes'}`;
   }
   return "needs scene (name or role) or index (1-based, as kyx_state scenes lists them)";
 }
@@ -2816,15 +2935,39 @@ function transportLaunchScene(ctx: McpToolContext, record: Record<string, unknow
       "scene launch is not available over this MCP transport (no seek-capable transport bound)",
     );
   }
+  if (
+    record.sceneId !== undefined &&
+    (typeof record.sceneId !== "string" || record.sceneId.trim() === "" || record.sceneId.length > 128)
+  ) {
+    return mcpError("INVALID_ARGUMENTS", "sceneId must be a non-empty string of at most 128 characters");
+  }
+  if (
+    record.scene !== undefined &&
+    (typeof record.scene !== "string" || record.scene.trim() === "" || record.scene.length > 128)
+  ) {
+    return mcpError("INVALID_ARGUMENTS", "scene must be a non-empty name or role of at most 128 characters");
+  }
+  if (
+    record.index !== undefined &&
+    (!Number.isSafeInteger(record.index) || (record.index as number) < 1 || (record.index as number) > 1_000_000)
+  ) {
+    return mcpError("INVALID_ARGUMENTS", "index must be a 1-based integer from 1 to 1000000");
+  }
+  if (record.play !== undefined && typeof record.play !== "boolean") {
+    return mcpError("INVALID_ARGUMENTS", "play must be a boolean when provided");
+  }
+  if ([record.sceneId, record.scene, record.index].filter((value) => value !== undefined).length !== 1) {
+    return mcpError("INVALID_ARGUMENTS", "launchScene needs exactly one of sceneId, scene, or index");
+  }
   const scene = resolveMcpScene(ctx.getDoc(), record);
-  if (typeof scene === "string") return { text: scene, mutated: false };
+  if (typeof scene === "string") return mcpError("UNKNOWN_TARGET", scene);
   const clips = ctx
     .getDoc()
     .arrangement.clips.filter((clip) => clip.sceneId === scene.id)
     .sort((a, b) => a.startBar - b.startBar);
   const startBar = clips[0]?.startBar ?? null;
   if (startBar === null) {
-    return { text: `scene "${scene.name}" has no arrangement clip to launch`, mutated: false };
+    return mcpError("UNKNOWN_TARGET", `scene "${scene.name}" has no arrangement clip to launch`);
   }
   // Method CALL — extracting seek into a local would drop `this` and crash
   // the real Transport (same unbound-playing_ lesson as transportSeek).
@@ -2834,7 +2977,13 @@ function transportLaunchScene(ctx: McpToolContext, record: Record<string, unknow
   return {
     text: `launched "${scene.name}"${scene.role ? ` (${scene.role})` : ""} at bar ${startBar + 1}${play ? " — playing" : " (transport stopped)"} · intensity ${Math.round(scene.intensity * 100)}%`,
     mutated: false,
-    data: { sceneId: scene.id, name: scene.name, role: scene.role ?? null, startBar, playing: play },
+    data: transportData("applied", "launchScene", transport, {
+      sceneId: scene.id,
+      sceneName: scene.name,
+      sceneRole: scene.role ?? null,
+      sceneBar: startBar + 1,
+      playRequested: play,
+    }),
   };
 }
 
@@ -2846,39 +2995,75 @@ function transportSeek(ctx: McpToolContext, record: Record<string, unknown>): Mc
       "seek is not available over this MCP transport (no seek-capable transport bound)",
     );
   }
-  const rawBar = Number(record.bar);
-  if (!Number.isFinite(rawBar) || Math.round(rawBar) < 1) {
-    return { text: 'seek needs a 1-based bar (e.g. { action: "seek", bar: 5 })', mutated: false };
+  const rawBar = record.bar;
+  if (typeof rawBar !== "number" || !Number.isSafeInteger(rawBar) || rawBar < 1 || rawBar > MAX_ARRANGEMENT_CLIP_BARS) {
+    return mcpError("INVALID_ARGUMENTS", `seek bar must be an integer from 1 to ${MAX_ARRANGEMENT_CLIP_BARS}`);
   }
-  const bar = Math.round(rawBar);
-  const rawBeat = typeof record.beat === "number" ? record.beat : 1;
-  const beat = Math.min(4, Math.max(1, Math.round(Number.isFinite(rawBeat) ? rawBeat : 1)));
+  const bar = rawBar;
+  const beat = record.beat === undefined ? 1 : record.beat;
+  if (typeof beat !== "number" || !Number.isSafeInteger(beat) || beat < 1 || beat > 4) {
+    return mcpError("INVALID_ARGUMENTS", "seek beat must be an integer from 1 to 4");
+  }
   const tick = (bar - 1) * TICKS_PER_BAR + (beat - 1) * (TICKS_PER_BAR / 4);
   // Method CALL on the transport object — extracting `transport.seek` into a
   // local would drop `this` and crash the real Transport (unbound playing_).
   transport.seek(tick);
+  const data = transportData("applied", "seek", transport, {
+    requestedTick: tick,
+    requestedBar: bar,
+    requestedBeat: beat,
+  });
+  const landedTick = (data.positionTick as number | null) ?? null;
+  if (landedTick != null && Math.abs(landedTick - tick) > 4) {
+    data.status = "partial";
+    return mcpError("PARTIAL_FAILURE", `seek requested tick ${tick}, but read back tick ${landedTick}`, { data });
+  }
   return {
     text: `seek → bar ${bar}${beat > 1 ? ` beat ${beat}` : ""} (tick ${tick}) · ${describeTransport(ctx.transport)}`,
     mutated: false,
+    data,
   };
 }
 
 /** kyx_transport loopRegion — set the loop by 1-based inclusive bars. */
 function transportLoopRegion(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
-  const startBar = Math.round(Number(record.startBar));
-  const endBar = Math.round(Number(record.endBar));
-  if (!Number.isFinite(startBar) || !Number.isFinite(endBar) || startBar < 1 || endBar <= startBar) {
-    return {
-      text: 'loopRegion needs { startBar >= 1, endBar > startBar } (1-based, inclusive) — e.g. { action: "loopRegion", startBar: 5, endBar: 9 }',
-      mutated: false,
-    };
+  const startBar = record.startBar;
+  const endBar = record.endBar;
+  if (
+    typeof startBar !== "number" ||
+    !Number.isSafeInteger(startBar) ||
+    startBar < 1 ||
+    startBar > MAX_ARRANGEMENT_CLIP_BARS ||
+    typeof endBar !== "number" ||
+    !Number.isSafeInteger(endBar) ||
+    endBar <= startBar ||
+    endBar > MAX_ARRANGEMENT_CLIP_BARS
+  ) {
+    return mcpError(
+      "INVALID_ARGUMENTS",
+      `loopRegion needs integer bars 1 <= startBar < endBar <= ${MAX_ARRANGEMENT_CLIP_BARS} (1-based, inclusive)`,
+    );
   }
   const startTick = (startBar - 1) * TICKS_PER_BAR;
   const endTick = endBar * TICKS_PER_BAR;
   ctx.transport.setLoop(true, startTick, endTick);
+  const data = transportData("applied", "loopRegion", ctx.transport, {
+    requestedStartBar: startBar,
+    requestedEndBar: endBar,
+  });
+  if (
+    typeof ctx.transport.loopEnabled === "boolean" &&
+    typeof ctx.transport.loopStart === "number" &&
+    typeof ctx.transport.loopEnd === "number" &&
+    (ctx.transport.loopEnabled !== true || ctx.transport.loopStart !== startTick || ctx.transport.loopEnd !== endTick)
+  ) {
+    data.status = "partial";
+    return mcpError("PARTIAL_FAILURE", "loop region read-back differs from the requested bars", { data });
+  }
   return {
     text: `loop region: bars ${startBar}–${endBar} (ticks ${startTick}..${endTick}) · ${describeTransport(ctx.transport)}`,
     mutated: false,
+    data,
   };
 }
 
@@ -3562,32 +3747,31 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       };
     }
     case "kyx_transport": {
-      const action = String(record.action ?? "");
+      if (typeof record.action !== "string") return mcpError("INVALID_ARGUMENTS", "action must be a string");
+      const action = record.action;
+      if (
+        ![
+          "play",
+          "stop",
+          "pause",
+          "loopOn",
+          "loopOff",
+          "metronomeOn",
+          "metronomeOff",
+          "seek",
+          "loopRegion",
+          "launchScene",
+          "state",
+        ].includes(action)
+      ) {
+        return mcpError("UNKNOWN_REQUEST", `unknown transport action: ${action}`);
+      }
       if (action === "seek") return transportSeek(ctx, record);
       if (action === "launchScene") return transportLaunchScene(ctx, record);
       if (action === "loopRegion") return transportLoopRegion(ctx, record);
       if (action === "state") {
         const t = ctx.transport;
-        const position =
-          typeof t.position === "number" && Number.isFinite(t.position) ? Math.max(0, Math.round(t.position)) : null;
-        const data = {
-          positionTick: position,
-          bar: position != null ? Math.floor(position / TICKS_PER_BAR) + 1 : null,
-          beat: position != null ? Math.floor((position % TICKS_PER_BAR) / (TICKS_PER_BAR / 4)) + 1 : null,
-          playing: typeof t.playing === "boolean" ? t.playing : null,
-          paused: typeof t.paused === "boolean" ? t.paused : null,
-          loop: {
-            enabled: typeof t.loopEnabled === "boolean" ? t.loopEnabled : null,
-            startBar:
-              t.loopEnabled && typeof t.loopStart === "number" ? Math.floor(t.loopStart / TICKS_PER_BAR) + 1 : null,
-            endBar:
-              t.loopEnabled && typeof t.loopEnd === "number" && t.loopEnd > (t.loopStart ?? 0)
-                ? Math.ceil(t.loopEnd / TICKS_PER_BAR)
-                : null,
-          },
-          metronome: typeof t.metronome === "boolean" ? t.metronome : null,
-        };
-        return { text: describeTransport(t), mutated: false, data };
+        return { text: describeTransport(t), mutated: false, data: transportData("read", action, t) };
       }
       return dispatchTransport(ctx, action);
     }
