@@ -48,6 +48,16 @@ const FINGERPRINT_SOURCE = process.env.KYX_FINGERPRINT_SOURCE ?? "src/plugin-aud
 const GATE_SOURCE = process.env.KYX_GATE_SOURCE ?? "scripts/lib/plugin-audit-gate.mjs";
 
 /**
+ * Which MATERIAL RULE to check.
+ *
+ * The material list moved out of the audit file on 2026-10-25 into its own
+ * Node-pure module (src/plugin-audit-materials.ts) so the rule that decides
+ * WHICH SOUND an effect is judged on can be unit-tested without a browser —
+ * the same reason the fingerprint rule lives where it does.
+ */
+const MATERIALS_SOURCE = process.env.KYX_MATERIALS_SOURCE ?? "src/plugin-audit-materials.ts";
+
+/**
  * Which fingerprint RULE to test.
  *
  * Overridable so the guard can be FALSIFIED against a doctored copy: point it
@@ -63,6 +73,7 @@ const { MIX_CLASS_IDS, fingerprintOf } = (await import(
 const audit = read(AUDIT_SOURCE);
 const fingerprintSource = read(FINGERPRINT_SOURCE);
 const gateSource = read(GATE_SOURCE);
+const materialsSource = read(MATERIALS_SOURCE);
 
 /**
  * The pitchCorrect sweep as the baseline report recorded it, with the
@@ -212,7 +223,7 @@ interface Contract {
   name: string;
   holds: (source: string) => boolean;
   /** The source this contract is checked against. */
-  target: "audit" | "fingerprint" | "gate";
+  target: "audit" | "fingerprint" | "gate" | "materials";
 }
 
 const CONTRACTS: Contract[] = [
@@ -228,8 +239,13 @@ const CONTRACTS: Contract[] = [
   },
   {
     name: "the host test can put the effect on more than the drum bus",
-    target: "audit",
+    target: "materials",
     holds: (s) => /function hostMaterials/.test(s) && /melodic: true/.test(s),
+  },
+  {
+    name: "the host test renders the material the rule chose",
+    target: "audit",
+    holds: (s) => /from "\.\/plugin-audit-materials"/.test(s) && /materialDoc\(base,\s*material\)/.test(s),
   },
   {
     name: "the host test falls back to another material when one does not engage",
@@ -248,7 +264,7 @@ const CONTRACTS: Contract[] = [
   },
 ];
 
-const SOURCES = { audit, fingerprint: fingerprintSource, gate: gateSource } as const;
+const SOURCES = { audit, fingerprint: fingerprintSource, gate: gateSource, materials: materialsSource } as const;
 
 /** Write a doctored copy to scratch/ (git-ignored) and return its text. */
 function doctoredCopy(name: string, source: string, mutate: (s: string) => string): string {

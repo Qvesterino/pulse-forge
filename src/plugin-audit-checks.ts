@@ -36,6 +36,7 @@ import { CORE_EFFECT_PRESETS } from "./effects/presets";
 import { INSTRUMENT_DEFS, INSTRUMENT_ORDER, defaultInstrumentParams } from "./instruments/registry";
 import { auditionNoteSec } from "./plugin-audit-audition";
 import { HOST_EPS, MIX_CLASS_IDS, fingerprintOf, type ParamExtreme } from "./plugin-audit-fingerprint";
+import { hostMaterials, materialDoc, type HostMaterial } from "./plugin-audit-materials";
 import { generateFactoryBank, type SampleBank } from "./sample-library/factory";
 import { ensureCuratedLayer } from "./sample-library/curated";
 import { loadAllWorklets } from "./audio-worklets/loader";
@@ -1006,10 +1007,17 @@ async function renderDoc(doc: ProjectDocument, bank: SampleBank): Promise<AudioB
 /**
  * A track the host test can put the effect on.
  *
- * The drum bus comes first: it is what the house template plays and what most
- * devices are built for. The MELODIC tracks follow, and they exist because a
+ * The MATERIALS — which tracks the effect is measured on, and the stereo
+ * spread kit that can excite a stereo imager — live in
+ * ./plugin-audit-materials. Node-pure, so the rule that decides WHAT is
+ * measured can be proven in a unit test without a browser; this file does the
+ * measuring.
+ *
+ * The short version: the drum bus comes first (it is what the house template
+ * plays and what most devices are built for), the melodic tracks follow (a
  * drum bus cannot excite every device — a pitch corrector has nothing to
- * correct in a kick.
+ * correct in a kick), and the spread kit comes last (the house mix is mono, so
+ * a stereo imager sees nothing until the kit is panned).
  *
  * MEASURED 2026-10-25 on the house template WITH its real drum samples (an
  * empty sample bank renders the drum bus silent, which is a different failure
@@ -1025,29 +1033,6 @@ async function renderDoc(doc: ProjectDocument, bank: SampleBank): Promise<AudioB
  * was a passthrough state. Either one alone is enough to report a working
  * effect as dead.
  */
-interface HostMaterial {
-  trackId: string;
-  label: string;
-  melodic: boolean;
-}
-
-/** The drum bus first, then every track that plays notes in the active pattern. */
-function hostMaterials(doc: ProjectDocument): HostMaterial[] {
-  const materials: HostMaterial[] = [];
-  const drum = doc.tracks.find((t) => t.kind === "drum");
-  if (!drum) throw new Error("house template lost its drum track");
-  materials.push({ trackId: drum.id, label: `${drum.name} (drum bus)`, melodic: false });
-  const pattern = doc.patterns.find((p) => p.id === doc.activePatternId) ?? doc.patterns[0];
-  for (const trackId of Object.keys(pattern?.notes ?? {})) {
-    if (trackId === drum.id) continue;
-    const notes = pattern?.notes?.[trackId] ?? [];
-    if (notes.length === 0) continue;
-    const track = doc.tracks.find((t) => t.id === trackId);
-    if (!track) continue;
-    materials.push({ trackId, label: `${track.name} (melodic)`, melodic: true });
-  }
-  return materials;
-}
 
 /** What one material showed about one effect. */
 interface HostMaterialProbe {
@@ -1090,10 +1075,17 @@ async function probeHostMaterial(
   bank: SampleBank,
   material: HostMaterial,
 ): Promise<HostMaterialProbe> {
+  // A material may need a DIFFERENT document, not just a different track: the
+  // spread kit is the same drum bus with its pads panned, so the stereo
+  // imager sees side energy in front of the insert chain. `materialDoc`
+  // returns a COPY — the base doc is shared by every material and by every
+  // effect, and a material that panned the shared kit would poison every
+  // measurement that follows it.
+  const doc = materialDoc(base, material);
   const trackId = material.trackId;
 
   // The effect as shipped, on this material.
-  const addStore = new ProjectStore(base);
+  const addStore = new ProjectStore(doc);
   const add = addEffect(addStore.getDoc(), trackId, type);
   addStore.execute(add);
   const fxId = add.effectId;
@@ -1136,10 +1128,10 @@ async function probeHostMaterial(
   const mixParamId = EFFECT_META[type].params.find((p: ParamDef) => MIX_CLASS_IDS.has(p.id));
   let mixEngagement = 0;
   if (mixParamId) {
-    // Built from `base`, not from the fingerprint doc: one effect, mix at max,
+    // Built from `doc`, not from the fingerprint doc: one effect, mix at max,
     // every other param at its default. Adding a second effect would stack the
     // device with itself and prove nothing about wiring.
-    const mixStore = new ProjectStore(base);
+    const mixStore = new ProjectStore(doc);
     const mixAdd = addEffect(mixStore.getDoc(), trackId, type);
     mixStore.execute(mixAdd);
     mixStore.execute(setEffectParam(mixStore.getDoc(), trackId, mixAdd.effectId, mixParamId.id, mixParamId.max));
@@ -1151,7 +1143,7 @@ async function probeHostMaterial(
   // Device lanes apply as discrete point events (cyclic pattern semantics — a
   // point on the cycle boundary is the next cycle's start), so the step lives
   // at an interior tick.
-  const autoStore = new ProjectStore(base);
+  const autoStore = new ProjectStore(doc);
   const autoAdd = addEffect(autoStore.getDoc(), trackId, type);
   autoStore.execute(autoAdd);
   const autoDoc = normalizeProject({

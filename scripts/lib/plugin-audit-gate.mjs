@@ -19,6 +19,11 @@ export const HARNESS_SOURCES = [
   // fingerprint. Left out, the rule could change under a report that still
   // claimed the old harness and the baseline would stay "valid".
   path.join("src", "plugin-audit-fingerprint.ts"),
+  // The material rule decides WHICH SOUND an effect is judged on — including
+  // the spread kit that is the only thing a stereo imager can be measured on.
+  // It decides what a host delta MEANS, so it belongs to the harness
+  // fingerprint for the same reason the fingerprint rule does.
+  path.join("src", "plugin-audit-materials.ts"),
 ];
 
 /**
