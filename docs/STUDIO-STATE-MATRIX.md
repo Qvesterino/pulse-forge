@@ -699,20 +699,20 @@ zapísané tu, aby sa dalo zopakovať.
 
 1. ~~**Meno.**~~ **Vyriešené 2026-10-21: `MATRIX`.** Tab v Diagnostics sa bude
    volať `MATRIX` — znie ako nástroj a nie ako kritika.
-2. **Prístupnosť.** Má byť tab v Diagnostics (developer-only, otvorený ručne),
-   alebo aj viditeľný pre bežného používateľa?
+2. ~~**Prístupnosť.**~~ **Vyriešené 2026-10-21: developer-only, v Diagnostics.**
+   Tab je piati tab existujúceho Diagnostics panela, otvára sa ručne cez DIAG.
+   Bežný používateľ o ňom nevie a nepotrebuje ho.
 
-   **Odporúčanie (2026-10-21): developer-only, v Diagnostics.** Panel je
-   nástroj na kontrolu shellu — rovnaký druh vecí ako ENGINE, MEMORY,
-   PERFORMANCE a DEVICE. A §5.1 zakazuje novú plochu v chrome, takže
-   „viditeľný pre bežného používateľa" by znamenal **novú plochu** (tlačidlo
-   v topbare, slot v docku) — to je iný produkt a potrebuje vlastné ADR.
+   Prečo: panel je **nástroj na kontrolu shellu** — rovnaký druh vecí ako
+   ENGINE, MEMORY, PERFORMANCE a DEVICE. A §5.1 zakazuje novú plochu v chrome,
+   takže „viditeľný pre bežného používateľa" by znamenal **novú plochu**
+   (tlačidlo v topbare, slot v docku) — to je iný produkt a potrebuje vlastné
+   ADR.
 
-   **Čo sa zmení, ak sa rozhodne pre user-visible:** panel by ostal ten istý
-   kód, len by sa otvoril inak — a musel by byť schopný hovoriť aj bežnému
-   používateľovi, teda vlastný jazyk, vlastné pravidlá pre to, čo sa smie
-   zobraziť, a vlastný spôsob, ako sa k nemu dostane. Deklarácia ostáva
-   spoločná.
+   **Ak to niekedy treba:** panel by ostal ten istý kód, len by sa otvoril inak
+   — a musel by byť schopný hovoriť aj bežnému používateľovi, teda vlastný
+   jazyk, vlastné pravidlá pre to, čo sa smie zobraziť, a vlastný spôsob, ako
+   sa k nemu dostane. Deklarácia ostáva spoločná.
 
 3. **Kto je „užívateľ" v požiadavke.** Panel je pre tých, ktorí štúdio
    používajú; brána je pre tých, ktorí ho menia. Oba sú „neorušivé" inak.
