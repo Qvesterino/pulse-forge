@@ -66,7 +66,7 @@ describe("mcp core — protocol with an authenticated session", () => {
     const list = await handleMcpRequest(hub as any, TOKEN, TOKEN, rpc("tools/list", {}, 2));
     const listedTools = (list.result as { tools: Array<{ name: string; outputSchema?: unknown }> }).tools;
     expect(listedTools).toHaveLength(37);
-    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(11);
+    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(12);
     expect(listedTools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema,
     );
@@ -81,6 +81,9 @@ describe("mcp core — protocol with an authenticated session", () => {
     );
     expect(listedTools.find((tool) => tool.name === "kyx_mix_idea")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_mix_idea")?.outputSchema,
+    );
+    expect(listedTools.find((tool) => tool.name === "kyx_mix")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_mix")?.outputSchema,
     );
     expect(listedTools.map((t) => t.name)).toEqual([
       "kyx_intent",
@@ -358,6 +361,38 @@ describe("mcp core — protocol with an authenticated session", () => {
       type: "mcp-result",
       id: delivered[0].id,
       result: { text: "Planned: Warm the drums", mutated: false, data },
+    });
+    const response = await promise;
+    expect(response.result.isError).toBe(false);
+    expect(response.result.structuredContent).toEqual(data);
+  });
+
+  it("returns the applied mix profile as structuredContent across the web relay", async () => {
+    const { hub, delivered } = makeHub();
+    const data = {
+      status: "applied",
+      genre: "techno",
+      decisionCount: 4,
+      summary: ["tone: dark", "punch: more", "reverb: less", "pump: on"],
+    };
+    const promise = handleMcpRequest(
+      hub,
+      TOKEN,
+      TOKEN,
+      rpc(
+        "tools/call",
+        {
+          name: "kyx_mix",
+          arguments: { genre: "techno", energy: 0.8 },
+          _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+        },
+        19,
+      ),
+    );
+    hub.handleSessionMessage({
+      type: "mcp-result",
+      id: delivered[0].id,
+      result: { text: "mix applied (4 decisions)", mutated: true, data },
     });
     const response = await promise;
     expect(response.result.isError).toBe(false);

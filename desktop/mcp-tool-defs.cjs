@@ -2019,6 +2019,7 @@ const MCP_TOOL_DEFS = [
         },
         mood: {
           type: "string",
+          maxLength: 128,
           description: "Optional mood (dark, chill, warm, aggressive...)",
         },
         energy: {
@@ -2055,6 +2056,30 @@ const MCP_TOOL_DEFS = [
         },
       },
       required: ["genre"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        status: {
+          type: "string",
+          enum: ["applied", "neutral", "already_matched"],
+        },
+        genre: {
+          type: "string",
+        },
+        decisionCount: {
+          type: "integer",
+          minimum: 0,
+        },
+        summary: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+      },
+      required: ["status", "genre", "decisionCount", "summary"],
     },
     annotations: {
       readOnlyHint: false,

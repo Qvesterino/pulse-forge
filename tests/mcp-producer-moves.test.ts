@@ -43,6 +43,12 @@ describe("kyx_mix (producer move)", async () => {
     expect(result.mutated).toBe(true);
     expect(result.text).toContain("mix applied");
     expect(result.text).toContain("one undo step");
+    expect(result.data).toMatchObject({
+      status: "applied",
+      genre: "techno",
+      decisionCount: expect.any(Number),
+      summary: expect.any(Array),
+    });
     // the measured profile lands REAL effects (drums compressor + saturation,
     // instrument EQ, sidechain pump — the D1 mix wave contract)
     const drumTrack = store.doc.tracks.find((t) => t.kind === "drum")!;
@@ -70,6 +76,7 @@ describe("kyx_mix (producer move)", async () => {
     expect(again.mutated).toBe(false);
     expect(again.isError).toBeUndefined();
     expect(again.text).toContain("changed nothing");
+    expect(again.data).toMatchObject({ status: "already_matched", genre: "techno" });
 
     const bad = await executeMcpTool(ctx, "kyx_mix", { genre: "quantum" });
     expect(bad.isError).toBe(true);
@@ -144,5 +151,34 @@ describe("producer moves surface", async () => {
     const mixGenre = mix?.inputSchema.properties.genre as { enum?: string[] };
     expect(mixGenre.enum).toContain("techno");
     expect(mixGenre.enum).toContain("amapiano");
+    expect(mix?.inputSchema.properties.mood).toMatchObject({ maxLength: 128 });
+    expect(mix?.outputSchema).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["status", "genre", "decisionCount", "summary"],
+    });
+  });
+
+  it("rejects malformed optional controls instead of silently ignoring them", async () => {
+    const store = cleanStore();
+    const ctx = storeCtx(store);
+    const before = JSON.stringify(store.doc);
+    const invalid = [
+      { genre: "techno", mood: "m".repeat(129) },
+      { genre: "techno", energy: Number.NaN },
+      { genre: "techno", energy: 1.01 },
+      { genre: "techno", tone: "neon" },
+      { genre: "techno", tone: ["dark"] },
+      { genre: "techno", reverb: "maximum" },
+      { genre: "techno", punch: "huge" },
+      { genre: "techno", pump: "maybe" },
+      { genre: "techno", pump: true },
+    ];
+    for (const args of invalid) {
+      const result = await executeMcpTool(ctx, "kyx_mix", args);
+      expect(result.errorCode).toBe("INVALID_ARGUMENTS");
+      expect(result.isError).toBe(true);
+    }
+    expect(JSON.stringify(store.doc)).toBe(before);
   });
 });

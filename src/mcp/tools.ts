@@ -474,6 +474,18 @@ const OUTPUT_MIX_IDEA: McpOutputSchema = {
   },
   required: ["status", "ok", "applied"],
 };
+/** kyx_mix — applied producer-profile result. */
+const OUTPUT_MIX: McpOutputSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    status: { type: "string", enum: ["applied", "neutral", "already_matched"] },
+    genre: { type: "string" },
+    decisionCount: { type: "integer", minimum: 0 },
+    summary: { type: "array", items: { type: "string" } },
+  },
+  required: ["status", "genre", "decisionCount", "summary"],
+};
 export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_intent",
@@ -1480,7 +1492,11 @@ export const MCP_TOOLS: McpToolDef[] = [
             "latin",
           ],
         },
-        mood: { type: "string", description: "Optional mood (dark, chill, warm, aggressive...)" },
+        mood: {
+          type: "string",
+          maxLength: 128,
+          description: "Optional mood (dark, chill, warm, aggressive...)",
+        },
         energy: { type: "number", minimum: 0, maximum: 1 },
         tone: { type: "string", enum: ["dark", "bright", "warm", "cold"] },
         reverb: { type: "string", enum: ["more", "less", "huge"] },
@@ -1489,6 +1505,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["genre"],
     },
+    outputSchema: OUTPUT_MIX,
   },
   {
     name: "kyx_arrange",
@@ -4539,9 +4556,39 @@ const MIX_GENRES = [
 ] as const;
 
 function executeMixTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
-  const genre = String(record.genre ?? "");
+  if (typeof record.genre !== "string" || record.genre.length === 0) {
+    return mcpError("INVALID_ARGUMENTS", "genre is required and must be a string");
+  }
+  const genre = record.genre;
   if (!MIX_GENRES.includes(genre as (typeof MIX_GENRES)[number])) {
     return mcpError("UNKNOWN_REQUEST", `unknown genre "${genre}" - one of: ${MIX_GENRES.join(", ")}`);
+  }
+  if (record.mood !== undefined && (typeof record.mood !== "string" || record.mood.length > 128)) {
+    return mcpError("INVALID_ARGUMENTS", "mood must be a string of at most 128 characters");
+  }
+  if (
+    record.energy !== undefined &&
+    (typeof record.energy !== "number" || !Number.isFinite(record.energy) || record.energy < 0 || record.energy > 1)
+  ) {
+    return mcpError("INVALID_ARGUMENTS", "energy must be a finite number from 0 to 1");
+  }
+  if (
+    record.tone !== undefined &&
+    (typeof record.tone !== "string" || !["dark", "bright", "warm", "cold"].includes(record.tone))
+  ) {
+    return mcpError("INVALID_ARGUMENTS", "tone must be one of: dark, bright, warm, cold");
+  }
+  if (
+    record.reverb !== undefined &&
+    (typeof record.reverb !== "string" || !["more", "less", "huge"].includes(record.reverb))
+  ) {
+    return mcpError("INVALID_ARGUMENTS", "reverb must be one of: more, less, huge");
+  }
+  if (record.punch !== undefined && (typeof record.punch !== "string" || !["more", "less"].includes(record.punch))) {
+    return mcpError("INVALID_ARGUMENTS", "punch must be one of: more, less");
+  }
+  if (record.pump !== undefined && (typeof record.pump !== "string" || !["on", "off"].includes(record.pump))) {
+    return mcpError("INVALID_ARGUMENTS", "pump must be one of: on, off");
   }
   const spec = normalizeIntent({
     genre: genre as never,
@@ -4563,6 +4610,7 @@ function executeMixTool(ctx: McpToolContext, record: Record<string, unknown>): M
     return {
       text: "mix profile is neutral for this genre/mood (no decisions) - nothing to apply",
       mutated: false,
+      data: { status: "neutral", genre, decisionCount: 0, summary: [] },
     };
   }
   try {
@@ -4571,13 +4619,18 @@ function executeMixTool(ctx: McpToolContext, record: Record<string, unknown>): M
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (/changed nothing/i.test(message)) {
-      return { text: "mix already matches the profile - changed nothing", mutated: false };
+      return {
+        text: "mix already matches the profile - changed nothing",
+        mutated: false,
+        data: { status: "already_matched", genre, decisionCount: profile.decisions.length, summary: profile.summary },
+      };
     }
     return mcpError("EXECUTION_FAILED", `mix failed: ${message}`);
   }
   return {
     text: `mix applied (${profile.decisions.length} decisions): ${profile.summary.join(" | ")} - one undo step`,
     mutated: true,
+    data: { status: "applied", genre, decisionCount: profile.decisions.length, summary: profile.summary },
   };
 }
 
