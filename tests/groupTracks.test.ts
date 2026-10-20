@@ -26,6 +26,13 @@ describe("GroupTrack", () => {
     expect(groups[0].name).toBe("Group 1");
   });
 
+  it("createGroupTrack accepts a trimmed name in the same canonical command", () => {
+    const doc = createProjectFromTemplate("house");
+    const next = createGroupTrack(doc, "  Drum Bus  ").execute(doc);
+    const group = next.tracks.find((track) => track.kind === "group");
+    expect(group?.name).toBe("Drum Bus");
+  });
+
   it("addToGroup sets groupId on a drum track", () => {
     const doc = createProjectFromTemplate("house");
     const group = createGroupTrackModel("Drums");

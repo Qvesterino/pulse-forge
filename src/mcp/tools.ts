@@ -6103,16 +6103,33 @@ function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>
 
   try {
     if (op === "createGroup") {
-      const command = createGroupTrack(doc);
-      ctx.execute(command);
-      const groups = ctx.getDoc().tracks.filter((t) => t.kind === "group");
-      const groupId = groups[groups.length - 1]?.id;
       const name = typeof record.name === "string" ? record.name.trim().slice(0, 40) : "";
-      if (name !== "" && groupId != null) {
-        ctx.execute(setTrackParams(ctx.getDoc(), groupId, { name }));
-        return { text: `created group "${name}" (id=${groupId}) — one undo step`, mutated: true };
+      const previousGroupIds = new Set(doc.tracks.filter((track) => track.kind === "group").map((track) => track.id));
+      const expectedName =
+        name !== "" ? name : `Group ${doc.tracks.filter((track) => track.kind === "group").length + 1}`;
+      ctx.execute(createGroupTrack(doc, name || undefined));
+      const committed = ctx.getDoc();
+      const createdGroups = committed.tracks.filter(
+        (track) => track.kind === "group" && !previousGroupIds.has(track.id),
+      );
+      const created = createdGroups.length === 1 ? createdGroups[0] : undefined;
+      const matches = created != null && created.name === expectedName;
+      const data = {
+        status: matches ? "created" : "partial",
+        ...(created != null ? { groupId: created.id, groupName: created.name } : {}),
+        undoSteps: createdGroups.length > 0 ? 1 : 0,
+      };
+      if (!matches) {
+        return mcpError("PARTIAL_FAILURE", "group creation did not match one new group in the project read-back", {
+          mutated: createdGroups.length > 0,
+          data,
+        });
       }
-      return { text: `created group (id=${groupId}) — one undo step`, mutated: true };
+      return {
+        text: `created group "${created.name}" (id=${created.id}) — one undo step`,
+        mutated: true,
+        data: { ...data, status: "created", undoSteps: 1 },
+      };
     }
     if (op === "addToGroup") {
       const ids = explicitTrackIds(doc, record);

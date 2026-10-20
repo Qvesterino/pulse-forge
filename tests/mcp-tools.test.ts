@@ -2005,8 +2005,16 @@ describe("mcp routing — the group graph", async () => {
     const created = await executeMcpTool(ctx, "kyx_routing", { op: "createGroup", name: "Drum Bus" });
     expect(created.mutated).toBe(true);
     expect(created.text).toContain('created group "Drum Bus"');
+    expect(created.data).toMatchObject({ status: "created", groupName: "Drum Bus", undoSteps: 1 });
+    expect(store.undoStackLength).toBe(1);
     const group = store.doc.tracks.find((t) => t.kind === "group" && t.name === "Drum Bus")!;
     expect(group).toBeTruthy();
+    expect((created.data as { groupId: string }).groupId).toBe(group.id);
+
+    store.undo();
+    expect(store.doc.tracks.some((track) => track.id === group.id)).toBe(false);
+    store.redo();
+    expect(store.doc.tracks.find((track) => track.id === group.id)?.name).toBe("Drum Bus");
 
     const added = await executeMcpTool(ctx, "kyx_routing", {
       op: "addToGroup",
@@ -2089,9 +2097,8 @@ describe("mcp kyx_master — the ZENIT mastering device", async () => {
     expect(shaped.params.ceiling).toBe(-1);
     expect(shaped.params.limit).toBe(0.35);
     expect(shaped.params.glue).toBe(0.25);
-    // createGroup + rename + ZENIT add + preset = 4 undo steps (createGroup
-    // lands its rename as a second command).
-    expect(store.undoStackLength).toBe(4);
+    // One group create, one ZENIT insert and one preset command.
+    expect(store.undoStackLength).toBe(3);
 
     const status = await executeMcpTool(ctx, "kyx_master", { op: "status" });
     expect(status.mutated).toBe(false);

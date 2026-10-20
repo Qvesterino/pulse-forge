@@ -71,9 +71,10 @@ export function createInstrumentTrack(doc: ProjectDocument, kind: InstrumentKind
   return snapshot("createInstrumentTrack", `Add track ${track.name}`, doc, next);
 }
 
-export function createGroupTrack(doc: ProjectDocument): Command {
+export function createGroupTrack(doc: ProjectDocument, requestedName?: string): Command {
   const count = doc.tracks.filter((t) => t.kind === "group").length;
-  const track = createGroupTrackModel(`Group ${count + 1}`);
+  const name = requestedName?.trim().slice(0, 40) || `Group ${count + 1}`;
+  const track = createGroupTrackModel(name);
   const next: ProjectDocument = { ...doc, tracks: [...doc.tracks, track] };
   return snapshot("createGroupTrack", `Add group ${track.name}`, doc, next);
 }
