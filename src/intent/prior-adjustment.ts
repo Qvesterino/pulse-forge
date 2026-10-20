@@ -33,7 +33,8 @@ const HALF =
   /\bhalf\s+(?:of\s+)?(?:that|the|your|last)\s+(?:adjustment|change|amount|step|delta)\b|\bhalf\s+as\s+much\s+as\s+(?:last|before|the\s+last)\b/;
 const MUCH_LESS = /\b(?:much|way|a\s+lot|far)\s+less\s+than\s+(?:the\s+)?(?:last|previous|prior)\b/;
 const LESS_THAN = /\bless\s+than\s+(?:the\s+)?(?:last|previous|prior)\b/;
-const REUSE = /\b(?:do|apply|use|repeat)\s+(?:the\s+)?same\b|\b(?:same|identical)\s+(?:adjustment|change)\s+as\b/;
+const REUSE =
+  /\b(?:do|apply|use|repeat)\s+(?:the\s+)?same\b|\b(?:same|identical)\s+(?:adjustment|change)\s+as\b|\b(?:same|that|it)\s+again\b|\bdo\s+(?:that|it)\s+again\b|\bas\s+much\s+as\s+(?:the\s+)?(?:last|previous|prior)\b|\brepeat\s+(?:that|it|the\s+last\b)|\b(?:same|identical)\s+(?:amount|volume|level|value|delta)\s+as\b|\bagain\s*[.!?]?\s*$/;
 
 function normalized(text: string): string {
   return ` ${text
@@ -169,6 +170,12 @@ function rungLevel(prior: DegreeLevel, count: 1 | 2): DegreeLevel {
 
 export function resolvePriorAdjustment(text: string, doc: ProjectDocument): PriorResolution | null {
   if (!isPriorDeltaReference(text)) return null;
+  // A bare "again" could be transport ("play again") or a repeat of the last
+  // adjustment. It is not specific enough to execute either; ask. Qualified
+  // repeats ("same again", "do it again", "repeat the last change") resolve.
+  if (/^\s*again(?:\s+please)?\s*[.!?]?\s*$/i.test(text)) {
+    return { kind: "clarify", reason: "last-adjustment-reference" };
+  }
   const entry = lastAdjustment(doc.id);
   if (!entry) return { kind: "clarify", reason: "last-adjustment-reference" };
   const scale = scaleOf(text);

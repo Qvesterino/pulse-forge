@@ -49,6 +49,11 @@ const PRIOR_DELTA_SOURCE = [
   String.raw`\bas\s+much\s+as\s+(?:the\s+)?(?:last|previous|prior)\b`,
   // "the same amount as before", "the same volume as last time"
   String.raw`\b(?:same|identical)\s+(?:amount|volume|level|value|delta)\s+as\b`,
+  // "again", "again please" — a bare repeat, and the whole sentence. The
+  // anchor matters: "play again" is a TRANSPORT ask (the transport parser
+  // decides that one), and only a sentence that IS the repeat is a reference
+  // to the last change.
+  String.raw`^\s*(?:again|again\s+please|same\s+again|that\s+again|do\s+it\s+again)\s*[.!?]?\s*$`,
 ].join("|");
 
 const PRIOR_DELTA_REFERENCE = new RegExp(PRIOR_DELTA_SOURCE, "i");

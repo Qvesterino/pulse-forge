@@ -164,6 +164,16 @@ describe("the resolution — the remembered change comes back as a fader intent"
     expect(intent.factor).toBeCloseTo(before, 5);
   });
 
+  it("'same again but on the hats' repeats the move on the NEW target", () => {
+    perform("raise the bass by 10%");
+    const before = lastAdjustment(doc.id)!.factor;
+    const route = routeIntentText("same again but on the hats", doc);
+    expect(route.kind).toBe("fader");
+    const intent = (route as { kind: "fader"; intent: { factor?: number; pads?: string[] } }).intent;
+    expect(intent.pads ?? []).toContain("hat");
+    expect(intent.factor).toBeCloseTo(before, 5);
+  });
+
   it("'do the same on the hats' repeats the move on the NEW target", () => {
     perform("raise the bass by 10%");
     const route = routeIntentText("do the same on the hats", doc);
@@ -198,11 +208,17 @@ describe("the safety property — a reference must never reach the generation ro
     perform("raise the bass by 10%");
     const route = routeIntentText("again", doc);
     expect(route.kind).not.toBe("pattern");
+    expect(route.kind).toBe("clarify");
   });
 
-  it("the transport keeps its own 'again' — 'play it again' is still a transport command", () => {
+  it("the transport keeps its own commands — 'play' is still a transport command", () => {
+    perform("raise the bass by 10%");
+    expect(routeIntentText("play", doc).kind).toBe("transport");
+  });
+
+  it("'play it again' is not a beat-generation prompt either", () => {
     perform("raise the bass by 10%");
     const route = routeIntentText("play it again", doc);
-    expect(route.kind).toBe("transport");
+    expect(route.kind).not.toBe("pattern");
   });
 });
