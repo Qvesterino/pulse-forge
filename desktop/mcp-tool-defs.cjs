@@ -2090,7 +2090,7 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_arrange",
     description:
-      "PRODUCER MOVE - lay out the genre song form as scenes + clips + cue markers (intro/build/drop/... with per-section intensity) in ONE undo step. Refused when the arrangement already has clips: use kyx_sections/kyx_clips for surgical edits on an existing arrangement.",
+      "PRODUCER MOVE - lay out the genre song form as scenes + clips + cue markers (intro/build/drop/... with per-section intensity) in ONE undo step; returns created scene/clip/cue IDs and counts. Refused when the arrangement already has clips: use kyx_sections/kyx_clips for surgical edits on an existing arrangement.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2137,6 +2137,162 @@ const MCP_TOOL_DEFS = [
         },
       },
       required: ["genre"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        status: {
+          type: "string",
+          enum: ["arranged", "empty", "partial"],
+        },
+        genre: {
+          type: "string",
+        },
+        sections: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              label: {
+                type: "string",
+              },
+              role: {
+                type: "string",
+                enum: ["intro", "build", "drop", "break", "outro", "fill", "verse", "chorus", "bridge", "custom"],
+              },
+              startBar: {
+                type: "integer",
+                minimum: 1,
+                description: "Human-facing 1-based bar number.",
+              },
+              bars: {
+                type: "integer",
+                minimum: 1,
+                description: "Section length in bars.",
+              },
+              intensity: {
+                type: "number",
+                minimum: 0,
+                maximum: 1,
+                description: "Normalized section intensity.",
+              },
+            },
+            required: ["label", "role", "startBar", "bars", "intensity"],
+          },
+        },
+        scenes: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              id: {
+                type: "string",
+              },
+              name: {
+                type: "string",
+              },
+              role: {
+                type: "string",
+                enum: ["intro", "build", "drop", "break", "outro", "fill", "verse", "chorus", "bridge", "custom"],
+              },
+              intensity: {
+                type: "number",
+                minimum: 0,
+                maximum: 1,
+              },
+            },
+            required: ["id", "name", "role", "intensity"],
+          },
+        },
+        clips: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              id: {
+                type: "string",
+              },
+              sceneId: {
+                type: "string",
+              },
+              startBar: {
+                type: "integer",
+                minimum: 0,
+                description: "Project-model 0-based start bar.",
+              },
+              lengthBars: {
+                type: "integer",
+                minimum: 1,
+                description: "Clip length in bars.",
+              },
+            },
+            required: ["id", "sceneId", "startBar", "lengthBars"],
+          },
+        },
+        markers: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              id: {
+                type: "string",
+              },
+              name: {
+                type: "string",
+              },
+              type: {
+                type: "string",
+                enum: ["drop", "buildup", "riser", "impact", "cue", "custom"],
+              },
+              tick: {
+                type: "integer",
+                minimum: 0,
+                description: "Absolute project tick (PPQ 480).",
+              },
+            },
+            required: ["id", "name", "type", "tick"],
+          },
+        },
+        sceneCount: {
+          type: "integer",
+          minimum: 0,
+        },
+        clipCount: {
+          type: "integer",
+          minimum: 0,
+        },
+        cueMarkerCount: {
+          type: "integer",
+          minimum: 0,
+        },
+        totalBars: {
+          type: "integer",
+          minimum: 0,
+        },
+        undoSteps: {
+          type: "integer",
+          minimum: 0,
+          maximum: 1,
+        },
+      },
+      required: [
+        "status",
+        "genre",
+        "sections",
+        "scenes",
+        "clips",
+        "markers",
+        "sceneCount",
+        "clipCount",
+        "cueMarkerCount",
+        "totalBars",
+        "undoSteps",
+      ],
     },
     annotations: {
       readOnlyHint: false,

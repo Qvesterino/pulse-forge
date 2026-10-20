@@ -407,6 +407,44 @@ describe("desktop mcp bridge server (real HTTP)", () => {
     expect(body.result.structuredContent).toEqual(data);
   });
 
+  it("returns created arrangement IDs as structuredContent over desktop HTTP", async () => {
+    const data = {
+      status: "arranged",
+      genre: "house",
+      sections: [{ label: "Intro", role: "intro", startBar: 1, bars: 4, intensity: 0.4 }],
+      scenes: [{ id: "scene-1", name: "Intro", role: "intro", intensity: 0.4 }],
+      clips: [{ id: "clip-1", sceneId: "scene-1", startBar: 0, lengthBars: 4 }],
+      markers: [{ id: "marker-1", name: "Intro", type: "cue", tick: 0 }],
+      sceneCount: 1,
+      clipCount: 1,
+      cueMarkerCount: 1,
+      totalBars: 4,
+      undoSteps: 1,
+    };
+    const { server } = bridgeModule.createMcpBridgeServer({
+      token: "tok",
+      executeTool: async () => ({ text: "arranged house: 1 scene, 1 clip, 1 cue marker", mutated: true, data }),
+    });
+    const port = await listenOnEphemeralPort(server);
+    runningServers.push(server);
+
+    const response = await post(
+      port,
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 11,
+        method: "tools/call",
+        params: { name: "kyx_arrange", arguments: { genre: "house" } },
+      }),
+      { token: "tok" },
+    );
+    const body = JSON.parse(response.body) as {
+      result: { isError?: boolean; structuredContent: Record<string, unknown> };
+    };
+    expect(body.result.isError).toBeUndefined();
+    expect(body.result.structuredContent).toEqual(data);
+  });
+
   it("protocol completeness: version negotiation, instructions, resources, batch, unknown-tool -32602", async () => {
     const { server } = bridgeModule.createMcpBridgeServer({
       token: "tok",
@@ -793,6 +831,9 @@ describe("desktop mcp stdio forwarder (subprocess)", () => {
     );
     expect(list.result.tools.find((tool) => tool.name === "kyx_mix")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_mix")?.outputSchema,
+    );
+    expect(list.result.tools.find((tool) => tool.name === "kyx_arrange")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_arrange")?.outputSchema,
     );
 
     writeLine({

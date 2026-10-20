@@ -66,7 +66,7 @@ describe("mcp core — protocol with an authenticated session", () => {
     const list = await handleMcpRequest(hub as any, TOKEN, TOKEN, rpc("tools/list", {}, 2));
     const listedTools = (list.result as { tools: Array<{ name: string; outputSchema?: unknown }> }).tools;
     expect(listedTools).toHaveLength(37);
-    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(12);
+    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(13);
     expect(listedTools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema,
     );
@@ -84,6 +84,9 @@ describe("mcp core — protocol with an authenticated session", () => {
     );
     expect(listedTools.find((tool) => tool.name === "kyx_mix")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_mix")?.outputSchema,
+    );
+    expect(listedTools.find((tool) => tool.name === "kyx_arrange")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_arrange")?.outputSchema,
     );
     expect(listedTools.map((t) => t.name)).toEqual([
       "kyx_intent",
@@ -393,6 +396,45 @@ describe("mcp core — protocol with an authenticated session", () => {
       type: "mcp-result",
       id: delivered[0].id,
       result: { text: "mix applied (4 decisions)", mutated: true, data },
+    });
+    const response = await promise;
+    expect(response.result.isError).toBe(false);
+    expect(response.result.structuredContent).toEqual(data);
+  });
+
+  it("returns created arrangement IDs as structuredContent across the web relay", async () => {
+    const { hub, delivered } = makeHub();
+    const data = {
+      status: "arranged",
+      genre: "house",
+      sections: [{ label: "Intro", role: "intro", startBar: 1, bars: 4, intensity: 0.4 }],
+      scenes: [{ id: "scene-1", name: "Intro", role: "intro", intensity: 0.4 }],
+      clips: [{ id: "clip-1", sceneId: "scene-1", startBar: 0, lengthBars: 4 }],
+      markers: [{ id: "marker-1", name: "Intro", type: "cue", tick: 0 }],
+      sceneCount: 1,
+      clipCount: 1,
+      cueMarkerCount: 1,
+      totalBars: 4,
+      undoSteps: 1,
+    };
+    const promise = handleMcpRequest(
+      hub,
+      TOKEN,
+      TOKEN,
+      rpc(
+        "tools/call",
+        {
+          name: "kyx_arrange",
+          arguments: { genre: "house" },
+          _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+        },
+        20,
+      ),
+    );
+    hub.handleSessionMessage({
+      type: "mcp-result",
+      id: delivered[0].id,
+      result: { text: "arranged house: 1 scene, 1 clip, 1 cue marker", mutated: true, data },
     });
     const response = await promise;
     expect(response.result.isError).toBe(false);

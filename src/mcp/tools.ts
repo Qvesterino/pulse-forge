@@ -486,6 +486,96 @@ const OUTPUT_MIX: McpOutputSchema = {
   },
   required: ["status", "genre", "decisionCount", "summary"],
 };
+/** kyx_arrange — generated scenes, clips and cue-marker read-back. */
+const OUTPUT_ARRANGE: McpOutputSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    status: { type: "string", enum: ["arranged", "empty", "partial"] },
+    genre: { type: "string" },
+    sections: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          label: { type: "string" },
+          role: {
+            type: "string",
+            enum: ["intro", "build", "drop", "break", "outro", "fill", "verse", "chorus", "bridge", "custom"],
+          },
+          startBar: { type: "integer", minimum: 1, description: "Human-facing 1-based bar number." },
+          bars: { type: "integer", minimum: 1, description: "Section length in bars." },
+          intensity: { type: "number", minimum: 0, maximum: 1, description: "Normalized section intensity." },
+        },
+        required: ["label", "role", "startBar", "bars", "intensity"],
+      },
+    },
+    scenes: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          id: { type: "string" },
+          name: { type: "string" },
+          role: {
+            type: "string",
+            enum: ["intro", "build", "drop", "break", "outro", "fill", "verse", "chorus", "bridge", "custom"],
+          },
+          intensity: { type: "number", minimum: 0, maximum: 1 },
+        },
+        required: ["id", "name", "role", "intensity"],
+      },
+    },
+    clips: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          id: { type: "string" },
+          sceneId: { type: "string" },
+          startBar: { type: "integer", minimum: 0, description: "Project-model 0-based start bar." },
+          lengthBars: { type: "integer", minimum: 1, description: "Clip length in bars." },
+        },
+        required: ["id", "sceneId", "startBar", "lengthBars"],
+      },
+    },
+    markers: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          id: { type: "string" },
+          name: { type: "string" },
+          type: { type: "string", enum: ["drop", "buildup", "riser", "impact", "cue", "custom"] },
+          tick: { type: "integer", minimum: 0, description: "Absolute project tick (PPQ 480)." },
+        },
+        required: ["id", "name", "type", "tick"],
+      },
+    },
+    sceneCount: { type: "integer", minimum: 0 },
+    clipCount: { type: "integer", minimum: 0 },
+    cueMarkerCount: { type: "integer", minimum: 0 },
+    totalBars: { type: "integer", minimum: 0 },
+    undoSteps: { type: "integer", minimum: 0, maximum: 1 },
+  },
+  required: [
+    "status",
+    "genre",
+    "sections",
+    "scenes",
+    "clips",
+    "markers",
+    "sceneCount",
+    "clipCount",
+    "cueMarkerCount",
+    "totalBars",
+    "undoSteps",
+  ],
+};
 export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_intent",
@@ -1512,7 +1602,8 @@ export const MCP_TOOLS: McpToolDef[] = [
     description:
       "PRODUCER MOVE - lay out the genre song form as scenes + clips + " +
       "cue markers (intro/build/drop/... with per-section intensity) in ONE " +
-      "undo step. Refused when the arrangement already has clips: use " +
+      "undo step; returns created scene/clip/cue IDs and counts. Refused when " +
+      "the arrangement already has clips: use " +
       "kyx_sections/kyx_clips for surgical edits on an existing arrangement.",
     inputSchema: {
       type: "object",
@@ -1546,6 +1637,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["genre"],
     },
+    outputSchema: OUTPUT_ARRANGE,
   },
   {
     name: "kyx_song",
@@ -4635,9 +4727,25 @@ function executeMixTool(ctx: McpToolContext, record: Record<string, unknown>): M
 }
 
 async function executeArrangeTool(ctx: McpToolContext, record: Record<string, unknown>): Promise<McpToolResult> {
-  const genre = String(record.genre ?? "");
+  if (typeof record.genre !== "string" || record.genre.length === 0) {
+    return mcpError("INVALID_ARGUMENTS", "genre is required and must be a string");
+  }
+  const genre = record.genre;
   if (!MIX_GENRES.includes(genre as (typeof MIX_GENRES)[number])) {
     return mcpError("UNKNOWN_REQUEST", `unknown genre "${genre}" - one of: ${MIX_GENRES.join(", ")}`);
+  }
+  if (
+    record.energy !== undefined &&
+    (typeof record.energy !== "number" || !Number.isFinite(record.energy) || record.energy < 0 || record.energy > 1)
+  ) {
+    return mcpError("INVALID_ARGUMENTS", "energy must be a finite number from 0 to 1");
+  }
+  const lengthKinds = ["short", "standard", "radio", "extended", "epic"] as const;
+  if (
+    record.length !== undefined &&
+    (typeof record.length !== "string" || !lengthKinds.includes(record.length as (typeof lengthKinds)[number]))
+  ) {
+    return mcpError("INVALID_ARGUMENTS", "length must be one of: short, standard, radio, extended, epic");
   }
   const doc = ctx.getDoc();
   if (doc.arrangement.clips.length > 0) {
@@ -4651,7 +4759,7 @@ async function executeArrangeTool(ctx: McpToolContext, record: Record<string, un
     genre: genre as never,
     ...(typeof record.energy === "number" ? { energy: record.energy } : {}),
   });
-  const lengthKind = ["short", "standard", "radio", "extended", "epic"].find((kind) => kind === record.length);
+  const lengthKind = lengthKinds.find((kind) => kind === record.length);
   const length =
     lengthKind != null
       ? { kind: lengthKind as "short" | "standard" | "radio" | "extended" | "epic", label: lengthKind }
@@ -4661,12 +4769,29 @@ async function executeArrangeTool(ctx: McpToolContext, record: Record<string, un
   const { planSongForm } = await import("../intent/song");
   const planned: SongSectionSpec[] = planSongForm(spec, undefined, length).sections;
   if (planned.length === 0) {
-    return { text: "the genre produced an empty form - nothing to arrange", mutated: false };
+    return {
+      text: "the genre produced an empty form - nothing to arrange",
+      mutated: false,
+      data: {
+        status: "empty",
+        genre,
+        sections: [],
+        scenes: [],
+        clips: [],
+        markers: [],
+        sceneCount: 0,
+        clipCount: 0,
+        cueMarkerCount: 0,
+        totalBars: 0,
+        undoSteps: 0,
+      },
+    };
   }
 
   let next = doc;
   let bar = 1; // human 1-based
   const rows: string[] = [];
+  const resultSections: Array<{ label: string; role: string; startBar: number; bars: number; intensity: number }> = [];
   for (const section of planned) {
     next = createScene(next, section.label).execute(next);
     const scene = next.scenes[next.scenes.length - 1];
@@ -4674,21 +4799,71 @@ async function executeArrangeTool(ctx: McpToolContext, record: Record<string, un
     next = setSceneRole(next, scene.id, section.role).execute(next);
     next = setSceneIntensity(next, scene.id, section.intensity).execute(next);
     next = addArrangementClip(next, scene.id, (bar - 1) * 4, section.bars).execute(next);
+    const clip = next.arrangement.clips.find((candidate) => candidate.sceneId === scene.id);
+    if (!clip) return mcpError("PARTIAL_FAILURE", `arrangement clip creation failed for ${section.label}`);
+    const existingMarkerIds = new Set(next.markers.map((marker) => marker.id));
     next = addMarker(next, { tick: (bar - 1) * TICKS_PER_BAR, name: section.label }).execute(next);
+    const marker = next.markers.find((candidate) => !existingMarkerIds.has(candidate.id));
+    if (!marker) return mcpError("PARTIAL_FAILURE", `cue marker creation failed for ${section.label}`);
     rows.push(`${section.role} ${section.bars}bar@${bar}`);
+    resultSections.push({
+      label: section.label,
+      role: section.role,
+      startBar: bar,
+      bars: section.bars,
+      intensity: section.intensity,
+    });
     bar += section.bars;
   }
-  const totalBars = bar - 1;
+  const plannedTotalBars = bar - 1;
   const command = snapshot(
     "mcpArrange",
-    `MCP: arrange '${genre}' form (${planned.length} sections, ${totalBars} bars)`,
+    `MCP: arrange '${genre}' form (${planned.length} sections, ${plannedTotalBars} bars)`,
     doc,
     next,
   );
   ctx.execute(command);
+  const committed = ctx.getDoc();
+  const existingSceneIds = new Set(doc.scenes.map((scene) => scene.id));
+  const existingClipIds = new Set(doc.arrangement.clips.map((clip) => clip.id));
+  const existingMarkerIds = new Set(doc.markers.map((marker) => marker.id));
+  const scenes = committed.scenes
+    .filter((scene) => !existingSceneIds.has(scene.id))
+    .map((scene) => ({ id: scene.id, name: scene.name, role: scene.role ?? "custom", intensity: scene.intensity }));
+  const clips = committed.arrangement.clips
+    .filter((clip) => !existingClipIds.has(clip.id))
+    .map((clip) => ({ id: clip.id, sceneId: clip.sceneId, startBar: clip.startBar, lengthBars: clip.lengthBars }));
+  const markers = committed.markers
+    .filter((marker) => !existingMarkerIds.has(marker.id))
+    .map((marker) => ({ id: marker.id, name: marker.name, type: marker.type, tick: marker.tick }));
+  const cueMarkerCount = markers.filter((marker) => marker.type === "cue").length;
+  const totalBars = clips.reduce((sum, clip) => sum + clip.lengthBars, 0);
+  const complete =
+    scenes.length === planned.length && clips.length === planned.length && cueMarkerCount === planned.length;
+  const data = {
+    status: complete ? "arranged" : "partial",
+    genre,
+    sections: resultSections,
+    scenes,
+    clips,
+    markers,
+    sceneCount: scenes.length,
+    clipCount: clips.length,
+    cueMarkerCount,
+    totalBars,
+    undoSteps: scenes.length + clips.length + markers.length > 0 ? 1 : 0,
+  };
+  if (!complete) {
+    return mcpError(
+      "PARTIAL_FAILURE",
+      `arrangement read-back incomplete: ${scenes.length}/${planned.length} scenes, ${clips.length}/${planned.length} clips, ${cueMarkerCount}/${planned.length} cue markers`,
+      { mutated: data.undoSteps > 0, data },
+    );
+  }
   return {
     text: `arranged '${genre}' form: ${rows.join(" · ")} - ${planned.length} scenes, ${totalBars} bars, cue markers at every section (one undo step)`,
     mutated: true,
+    data,
   };
 }
 

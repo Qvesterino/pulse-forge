@@ -95,6 +95,7 @@ describe("kyx_mix (producer move)", async () => {
 describe("kyx_arrange (producer move)", async () => {
   it("lays out the house form as scenes + clips + markers in ONE undo step", async () => {
     const store = cleanStore();
+    const before = store.doc;
     const ctx = storeCtx(store);
     const result = await executeMcpToolAsync(ctx, "kyx_arrange", { genre: "house" });
     expect(result.mutated).toBe(true);
@@ -112,6 +113,32 @@ describe("kyx_arrange (producer move)", async () => {
     expect(doc.markers.length).toBe(7);
     expect(store.undoStackLength).toBe(1);
     expect(result.text).toContain("intro");
+    expect(result.data).toMatchObject({
+      status: "arranged",
+      genre: "house",
+      sceneCount: 7,
+      clipCount: 7,
+      cueMarkerCount: 7,
+      totalBars: expect.any(Number),
+      undoSteps: 1,
+    });
+    const data = result.data as {
+      scenes: Array<{ id: string }>;
+      sections: Array<{ startBar: number }>;
+      clips: Array<{ id: string; startBar: number }>;
+      markers: Array<{ id: string; tick: number }>;
+      totalBars: number;
+    };
+    expect(data.scenes.every((scene) => !before.scenes.some((item) => item.id === scene.id))).toBe(true);
+    expect(data.scenes.every((scene) => doc.scenes.some((item) => item.id === scene.id))).toBe(true);
+    expect(data.clips.every((clip) => doc.arrangement.clips.some((item) => item.id === clip.id))).toBe(true);
+    expect(data.markers.every((marker) => doc.markers.some((item) => item.id === marker.id))).toBe(true);
+    expect(data.sections[0]?.startBar).toBe(1);
+    expect(data.clips[0]?.startBar).toBe(0);
+    expect(data.markers[0]?.tick).toBe(0);
+    expect(data.totalBars).toBe(
+      data.clips.reduce((sum, clip) => sum + doc.arrangement.clips.find((item) => item.id === clip.id)!.lengthBars, 0),
+    );
   });
 
   it("length scaling: 'short' yields fewer total bars than 'extended'", async () => {
@@ -157,6 +184,43 @@ describe("producer moves surface", async () => {
       additionalProperties: false,
       required: ["status", "genre", "decisionCount", "summary"],
     });
+    expect(arrange?.outputSchema).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "status",
+        "genre",
+        "sections",
+        "scenes",
+        "clips",
+        "markers",
+        "sceneCount",
+        "clipCount",
+        "cueMarkerCount",
+        "totalBars",
+        "undoSteps",
+      ],
+    });
+  });
+
+  it("rejects malformed arrangement options before changing the document", async () => {
+    const store = cleanStore();
+    const ctx = storeCtx(store);
+    const before = JSON.stringify(store.doc);
+    const invalid = [
+      { genre: ["house"] },
+      { genre: "house", energy: Number.NaN },
+      { genre: "house", energy: -0.01 },
+      { genre: "house", energy: 1.01 },
+      { genre: "house", length: "unbounded" },
+      { genre: "house", length: 123 },
+    ];
+    for (const args of invalid) {
+      const result = await executeMcpToolAsync(ctx, "kyx_arrange", args);
+      expect(result.errorCode).toBe("INVALID_ARGUMENTS");
+      expect(result.isError).toBe(true);
+    }
+    expect(JSON.stringify(store.doc)).toBe(before);
   });
 
   it("rejects malformed optional controls instead of silently ignoring them", async () => {
