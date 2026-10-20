@@ -31,6 +31,7 @@ class FakeHost extends EventEmitter {
   messages: Array<{ message: unknown; ports: unknown[] }> = [];
   killed = false;
   exitOnStop = true;
+  exitOnKill = true;
 
   postMessage(message: unknown, ports: unknown[] = []) {
     this.messages.push({ message, ports });
@@ -39,7 +40,7 @@ class FakeHost extends EventEmitter {
 
   kill() {
     this.killed = true;
-    queueMicrotask(() => this.emit("exit", 1));
+    if (this.exitOnKill) queueMicrotask(() => this.emit("exit", 1));
   }
 }
 
@@ -183,6 +184,47 @@ describe("Windows audio session manager", () => {
       await expect(stopping).resolves.toEqual({ status: "stopped" });
       expect(host.killed).toBe(true);
       expect(harness.manager.activeSessions()).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("waits for forced utility exit before starting a replacement session", async () => {
+    vi.useFakeTimers();
+    try {
+      const harness = managerHarness();
+      const start = harness.handlers.get("kyx:audio:windows-start");
+      if (!start) throw new Error("audio start handler was not registered");
+
+      const first = (await start({ sender: harness.webContents }, request)) as { sessionId: string };
+      const host = harness.hosts[0];
+      if (!host) throw new Error("audio utility host was not started");
+      host.exitOnStop = false;
+      host.exitOnKill = false;
+
+      const replacement = start({ sender: harness.webContents }, request).then(
+        () => ({ resolved: true as const }),
+        (error: unknown) => ({ resolved: false as const, error }),
+      );
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(host.killed).toBe(true);
+      expect(harness.utilityProcess.fork).toHaveBeenCalledOnce();
+
+      await vi.advanceTimersByTimeAsync(1_500);
+      const outcome = await replacement;
+      expect(outcome.resolved).toBe(false);
+      if (outcome.resolved) throw new Error("replacement started before the old utility exited");
+      expect(outcome.error).toMatchObject({
+        message: expect.stringMatching(/did not exit after termination was requested/),
+      });
+      expect(harness.manager.activeSessions()).toEqual([first.sessionId]);
+      expect(harness.utilityProcess.fork).toHaveBeenCalledOnce();
+
+      host.emit("exit", 1);
+      const retry = (await start({ sender: harness.webContents }, request)) as { sessionId: string };
+      expect(retry.sessionId).not.toBe(first.sessionId);
+      expect(harness.utilityProcess.fork).toHaveBeenCalledTimes(2);
+      await harness.manager.stopAll();
     } finally {
       vi.useRealTimers();
     }

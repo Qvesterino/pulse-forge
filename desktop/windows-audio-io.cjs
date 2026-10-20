@@ -3,6 +3,7 @@ const path = require("node:path");
 
 const SESSION_SCRIPT = path.join(__dirname, "windows-audio-session-host.cjs");
 const STOP_TIMEOUT_MS = 1_500;
+const KILL_EXIT_TIMEOUT_MS = 1_500;
 
 function validateRequest(value) {
   if (!value || typeof value !== "object" || Array.isArray(value))
@@ -74,15 +75,52 @@ function registerWindowsAudioIoHandlers(ipcMain, options = {}) {
 
   function waitForExit(session) {
     if (session.exited) return Promise.resolve();
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        if (!session.exited) session.host.kill();
+    return new Promise((resolve, reject) => {
+      let gracefulTimer;
+      let killTimer;
+      let settled = false;
+      const cleanup = () => {
+        clearTimeout(gracefulTimer);
+        clearTimeout(killTimer);
+        session.host.removeListener?.("exit", onExit);
+      };
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
         resolve();
+      };
+      const fail = (error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+      const onExit = () => {
+        session.exited = true;
+        finish();
+      };
+      session.host.once("exit", onExit);
+      gracefulTimer = setTimeout(() => {
+        if (session.exited) {
+          finish();
+          return;
+        }
+        try {
+          session.host.kill();
+        } catch (error) {
+          fail(new Error(`Could not terminate the Windows audio utility: ${String(error)}`));
+          return;
+        }
+        if (session.exited) {
+          finish();
+          return;
+        }
+        killTimer = setTimeout(() => {
+          if (session.exited) finish();
+          else fail(new Error("Windows audio utility did not exit after termination was requested"));
+        }, KILL_EXIT_TIMEOUT_MS);
       }, STOP_TIMEOUT_MS);
-      session.host.once("exit", () => {
-        clearTimeout(timer);
-        resolve();
-      });
     });
   }
 
@@ -97,7 +135,11 @@ function registerWindowsAudioIoHandlers(ipcMain, options = {}) {
       }
       await waitForExit(session);
       sessions.delete(session.id);
-    })();
+    })().catch((error) => {
+      session.stopping = false;
+      session.stopPromise = null;
+      throw error;
+    });
     return session.stopPromise;
   }
 

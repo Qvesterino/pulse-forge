@@ -156,6 +156,18 @@ capture `Start()` hang also occurs without a concurrent render start, while
 endpoint enumeration is active. The root cause remains unknown; no further
 physical streams were attempted.
 
+## Current endpoint check — 2026-10-20 05:43 +02:00
+
+A metadata-only `--list-json` query completed in under one second. PnP listed
+the root `Universal Audio Thunderbolt WDM` device as `OK`, but WASAPI marked all
+Volt capture and render endpoints `not-present`; no current mix format or
+shared-period data was available. `Audiosrv` and `AudioEndpointBuilder` were
+running. An Application log query found no later AudioSrv `AppHangB1` /
+Application Hang 1002 after the 2026-10-19 20:31 event. Reading that event's
+WER `ReportArchive` directory failed with `Access denied`, so the report payload
+and any dump remain unavailable. This check opened no stream and does not show
+that the earlier capture `Start()` hang has been resolved.
+
 ## Reference endpoints detected in the original 2026-09 session
 
 Windows reported these active Universal Audio endpoints in the original session:

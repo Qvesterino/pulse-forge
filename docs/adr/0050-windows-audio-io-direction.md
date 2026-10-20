@@ -338,7 +338,7 @@ and [recovering from an invalid device](https://learn.microsoft.com/en-us/window
   post-recovery attempt exercised this watchdog at 7.17 seconds; AudioSrv
   remained running, the active endpoints enumerated again, and no new service
   hang was recorded during the following two minutes. The run sent silence
-  and saved no captured audio. Windows logs contain four AudioSrv AppHang /
+  and saved no captured audio. By 11:26, Windows logs contained four AudioSrv AppHang /
   unexpected-termination events at 10:14, 10:58, 11:11 and 11:26 (one
   cross-process report references `audiodg.exe`). The 11:26 smoke found its
   selected capture endpoint inactive before stream initialization; the
@@ -385,14 +385,17 @@ and [recovering from an invalid device](https://learn.microsoft.com/en-us/window
   snapshots now distinguish capture start, render start, capture latency query
   and render latency query. This is passive diagnostic instrumentation; it
   does not open a device stream. A read-only Application/WER query on
-  2026-10-19 reconfirmed the four documented AudioSrv hang reports (including
-  one cross-process `audiodg.exe` report); it did not identify a root cause or
-  add a later report after the 11:26 event.
+  2026-10-20 found a later `AppHangB1` for `svchost.exe_Audiosrv` at
+  2026-10-19 20:31 +02:00, after the four earlier events at 10:14, 10:58,
+  11:11 and 11:26 (one cross-process report references `audiodg.exe`). No
+  later Application Hang 1002 or WER `AppHangB1` appeared through the
+  2026-10-20 05:43 check. This confirms a fifth event, but not its cause.
 - A read-only recovery check on 2026-10-19 found `Audiosrv` running, no
   warning/error entries in the Audio Operational or PlaybackManager logs from
-  10:00–12:00, and no WER event later than 11:26. The archived WER report
-  folders exist, but reading their contents returned `UnauthorizedAccess`; no
-  hang dump or report payload could be inspected from this session. A static
+  10:00–12:00, and no WER event later than 11:26 at that time. The archived
+  WER report folders exist, but reading their contents returned
+  `UnauthorizedAccess`; the later 20:31 report directory also denied reads, so
+  no hang dump or report payload could be inspected from this session. A static
   call-order review against Microsoft's
   [InitializeSharedAudioStream contract](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudioclient3-initializesharedaudiostream)
   and [Start guidance](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudioclient-start)
@@ -400,6 +403,12 @@ and [recovering from an invalid device](https://learn.microsoft.com/en-us/window
   handle attachment and render-buffer priming before `Start()`. This finds no
   source-level ordering defect; it is not runtime evidence and does not explain
   the service hang.
+- A metadata-only endpoint check at 2026-10-20 05:43 +02:00 found
+  `Audiosrv` and `AudioEndpointBuilder` running. PnP listed the root
+  `Universal Audio Thunderbolt WDM` device as `OK`, but the WASAPI inventory
+  marked every Volt capture/render endpoint `not-present`; no mix format or
+  shared period was available. This read opened no stream and does not qualify
+  the Volt path or show that the earlier `Start()` hang has recovered.
 - The I/O panel now retains the validated ready negotiation on the engine
   connection and displays endpoint-reported input/output stream latency in
   frames and milliseconds when the driver supplies it. It labels acoustic
@@ -420,6 +429,13 @@ and [recovering from an invalid device](https://learn.microsoft.com/en-us/window
   a port arriving after cancellation is closed. Bridge and UI regression tests
   cover both the late transfer and Stop winning the delayed IPC response race;
   this is lifecycle hardening and does not qualify hardware streaming.
+- Native duplex startup now checks the stop event after each blocking WASAPI
+  `Start()` call, stops any client that did start, and commits the running state
+  under the same mutex used by Stop. Synthetic C++ cases cover delayed capture
+  Start, delayed render Start and Stop winning the completion race. This handles
+  a `Start()` that returns after cancellation; a call that never returns still
+  requires the isolated utility watchdog and leaves the AudioSrv root cause
+  unresolved.
 - Native Windows audio I/O is **implemented with qualification open**. The
   next step is to investigate the service hang without opening another stream
   until Windows audio recovers and the cause is better understood. Preserve

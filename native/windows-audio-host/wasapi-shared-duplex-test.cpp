@@ -1,4 +1,5 @@
 #include "wasapi-shared-duplex.h"
+#include "duplex-startup.h"
 
 #include <array>
 #include <atomic>
@@ -126,6 +127,87 @@ void stopCanOverlapAnInProgressStart() {
   session.stop();
 }
 
+void stopDuringCaptureStartSkipsRenderStart() {
+  bool stopRequested = false;
+  int captureStops = 0;
+  int renderStarts = 0;
+
+  const auto result = kyx::windows_audio::detail::startDuplexWithStop(
+      [&]() { return stopRequested; },
+      [&]() {
+        // Model a blocking IAudioClient3::Start() that only returns after Stop.
+        stopRequested = true;
+        return true;
+      },
+      [&]() { ++captureStops; },
+      [&]() {
+        ++renderStarts;
+        return true;
+      },
+      []() {});
+
+  require(result == kyx::windows_audio::detail::DuplexStartResult::stopped,
+          "stop during capture Start did not cancel duplex startup");
+  require(renderStarts == 0, "render Start ran after stop during capture Start");
+  require(captureStops == 1, "capture client was not stopped after delayed Start returned");
+}
+
+void stopDuringRenderStartStopsBothClients() {
+  bool stopRequested = false;
+  int captureStops = 0;
+  int renderStops = 0;
+
+  const auto result = kyx::windows_audio::detail::startDuplexWithStop(
+      [&]() { return stopRequested; }, []() { return true; }, [&]() { ++captureStops; },
+      [&]() {
+        stopRequested = true;
+        return true;
+      },
+      [&]() { ++renderStops; });
+
+  require(result == kyx::windows_audio::detail::DuplexStartResult::stopped,
+          "stop during render Start did not cancel duplex startup");
+  require(renderStops == 1 && captureStops == 1, "both clients were not stopped after render Start completed");
+}
+
+void failedDuplexStartDoesNotLeavePartialClientsRunning() {
+  int captureStops = 0;
+  int renderStarts = 0;
+  const auto captureFailure = kyx::windows_audio::detail::startDuplexWithStop(
+      []() { return false; }, []() { return false; }, [&]() { ++captureStops; },
+      [&]() {
+        ++renderStarts;
+        return true;
+      },
+      []() {});
+  require(captureFailure == kyx::windows_audio::detail::DuplexStartResult::captureFailed,
+          "capture Start failure did not fail duplex startup");
+  require(renderStarts == 0 && captureStops == 0, "capture failure advanced startup or stopped an unstarted client");
+
+  captureStops = 0;
+  int renderStops = 0;
+  const auto renderFailure = kyx::windows_audio::detail::startDuplexWithStop(
+      []() { return false; }, []() { return true; }, [&]() { ++captureStops; }, []() { return false; },
+      [&]() { ++renderStops; });
+  require(renderFailure == kyx::windows_audio::detail::DuplexStartResult::renderFailed,
+          "render Start failure did not fail duplex startup");
+  require(renderStops == 1 && captureStops == 1, "render Start failure did not stop both clients");
+}
+
+void stopWinningStartupCommitCannotReportReady() {
+  using kyx::windows_audio::SharedModeDuplexState;
+  using kyx::windows_audio::detail::resolveStartupCompletion;
+
+  const auto stopped = resolveStartupCompletion(true, SharedModeDuplexState::running, L"", true);
+  require(!stopped.succeeded && stopped.state == SharedModeDuplexState::stopped,
+          "Stop that won the startup lock still reported a running session");
+  require(!stopped.error.empty(), "cancelled startup did not provide a recovery reason");
+
+  const auto failed = resolveStartupCompletion(false, SharedModeDuplexState::failed, L"device error", true);
+  require(!failed.succeeded && failed.state == SharedModeDuplexState::failed && failed.error == L"device error",
+          "Stop erased a real endpoint startup failure");
+}
+
 }  // namespace
 
 int main() {
@@ -134,6 +216,10 @@ int main() {
   stoppedAndFailedSessionsKeepCaptureReadableButCannotRender();
   unavailableExactIdsFailWithoutSelectingCurrentDefaults();
   stopCanOverlapAnInProgressStart();
-  std::cout << "WASAPI duplex request and lifecycle validation: 5/5 checks passed (unknown-ID cases opened no stream)\n";
+  stopDuringCaptureStartSkipsRenderStart();
+  stopDuringRenderStartStopsBothClients();
+  failedDuplexStartDoesNotLeavePartialClientsRunning();
+  stopWinningStartupCommitCannotReportReady();
+  std::cout << "WASAPI duplex request and lifecycle validation: 9/9 checks passed (unknown-ID cases opened no stream)\n";
   return 0;
 }

@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "channel-map.h"
+#include "duplex-startup.h"
 #include "spsc-float-ring.h"
 
 using Microsoft::WRL::ComPtr;
@@ -410,21 +411,24 @@ struct WasapiSharedDuplexSession::Impl {
     return true;
   }
 
-  void finishStartup(bool success, SharedModeDuplexState finalState, const std::wstring& error) {
-    if (!error.empty()) {
-      std::lock_guard<std::mutex> lock(statusMutex);
-      lastError = error;
-    }
-    state.store(finalState, std::memory_order_release);
+  bool finishStartup(bool success, SharedModeDuplexState finalState, const std::wstring& error) {
+    detail::StartupCompletion completion;
     {
       std::lock_guard<std::mutex> lock(startupMutex);
+      completion = detail::resolveStartupCompletion(success, finalState, error, stopCalled);
+      state.store(completion.state, std::memory_order_release);
       if (!startupComplete) {
         startupComplete = true;
-        startupSucceeded = success;
-        startupError = error;
+        startupSucceeded = completion.succeeded;
+        startupError = completion.error;
       }
     }
+    if (!completion.error.empty()) {
+      std::lock_guard<std::mutex> lock(statusMutex);
+      lastError = completion.error;
+    }
     startupCondition.notify_all();
+    return completion.succeeded;
   }
 
   void setTerminal(SharedModeDuplexState terminalState, const std::wstring& error) {
@@ -678,25 +682,37 @@ struct WasapiSharedDuplexSession::Impl {
       finishStartup(false, SharedModeDuplexState::stopped, L"WASAPI session was stopped during startup");
       return;
     }
-    startupEndpoint.store("capture", std::memory_order_release);
-    startupStage.store("starting-capture-client", std::memory_order_release);
-    result = input.client->Start();
-    if (FAILED(result)) {
+    HRESULT captureStartResult = S_OK;
+    HRESULT renderStartResult = S_OK;
+    const auto startResult = detail::startDuplexWithStop(
+        [this]() { return WaitForSingleObject(stopEvent.value, 0) == WAIT_OBJECT_0; },
+        [this, &input, &captureStartResult]() {
+          startupEndpoint.store("capture", std::memory_order_release);
+          startupStage.store("starting-capture-client", std::memory_order_release);
+          captureStartResult = input.client->Start();
+          return SUCCEEDED(captureStartResult);
+        },
+        [this, &input]() { input.client->Stop(); },
+        [this, &output, &renderStartResult]() {
+          startupEndpoint.store("render", std::memory_order_release);
+          startupStage.store("starting-render-client", std::memory_order_release);
+          renderStartResult = output.client->Start();
+          return SUCCEEDED(renderStartResult);
+        },
+        [this, &output]() { output.client->Stop(); });
+    if (startResult != detail::DuplexStartResult::started) {
       enumerator->UnregisterEndpointNotificationCallback(notification.Get());
-      finishStartup(false, isDeviceInvalidation(result) ? SharedModeDuplexState::deviceLost
-                                                       : SharedModeDuplexState::failed,
-                    hresultMessage(L"Could not start capture endpoint", result));
-      return;
-    }
-    startupEndpoint.store("render", std::memory_order_release);
-    startupStage.store("starting-render-client", std::memory_order_release);
-    result = output.client->Start();
-    if (FAILED(result)) {
-      input.client->Stop();
-      enumerator->UnregisterEndpointNotificationCallback(notification.Get());
-      finishStartup(false, isDeviceInvalidation(result) ? SharedModeDuplexState::deviceLost
-                                                       : SharedModeDuplexState::failed,
-                    hresultMessage(L"Could not start render endpoint", result));
+      if (startResult == detail::DuplexStartResult::captureFailed) {
+        finishStartup(false, isDeviceInvalidation(captureStartResult) ? SharedModeDuplexState::deviceLost
+                                                                     : SharedModeDuplexState::failed,
+                      hresultMessage(L"Could not start capture endpoint", captureStartResult));
+      } else if (startResult == detail::DuplexStartResult::renderFailed) {
+        finishStartup(false, isDeviceInvalidation(renderStartResult) ? SharedModeDuplexState::deviceLost
+                                                                     : SharedModeDuplexState::failed,
+                      hresultMessage(L"Could not start render endpoint", renderStartResult));
+      } else {
+        finishStartup(false, SharedModeDuplexState::stopped, L"WASAPI session was stopped during startup");
+      }
       return;
     }
 
@@ -712,8 +728,8 @@ struct WasapiSharedDuplexSession::Impl {
       negotiation.reportedOutputLatencyFrames = output.reportedLatencyFrames;
     }
 
-    finishStartup(true, SharedModeDuplexState::running, L"");
-    startupStage.store("running", std::memory_order_release);
+    const bool startupAccepted = finishStartup(true, SharedModeDuplexState::running, L"");
+    startupStage.store(startupAccepted ? "running" : "stopped-during-startup", std::memory_order_release);
     startupEndpoint.store("", std::memory_order_release);
     const DWORD waitMs = std::max<DWORD>(25, static_cast<DWORD>(4'000.0 * request.periodFrames / request.sampleRateHz));
     const auto missingEventLimit = std::max(std::chrono::milliseconds(100),

@@ -1160,8 +1160,16 @@ async function auditInstrument(kind: (typeof INSTRUMENT_ORDER)[number], bank: Sa
   const deadParams: string[] = [];
   let wiredParams = 0;
 
-  /** Instruments whose DSP consumes the track sample — audition with one. */
-  const SAMPLE_DRIVEN_INSTRUMENTS = new Set(["sampler", "granular", "vocalchop", "clav", "texture"]);
+  /**
+   * Instruments whose DSP consumes the track sample — audition with one.
+   *
+   * `choral` belongs here and was missing. Its worklet is a grain engine over
+   * the uploaded source (`ChoralProcessor.streamSample` returns 0 when there
+   * is no PCM), exactly like `sampler` (which returns early on a missing
+   * buffer). Auditioning it without a sample measured DIGITAL SILENCE and
+   * reported it as a broken instrument — an audit artifact, not a defect.
+   */
+  const SAMPLE_DRIVEN_INSTRUMENTS = new Set(["sampler", "granular", "vocalchop", "clav", "texture", "choral"]);
 
   type ProbeEvent =
     | { type: "noteOn"; pitch: number; velocity: number; when: number }
