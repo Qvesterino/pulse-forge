@@ -544,38 +544,47 @@ export function parseTransportIntent(text: string): TransportAction | null {
   // and the anchored regex is ASCII ("metronóm zapni" used to miss the gate
   // and teach the model a clarify)
   const plain = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  // "play again", "play it again", "stop again" — the SAME command, asked for
+  // a second time. The repetition adverb must not push the sentence out of
+  // the transport: without this, "play it again" fell out of the bare-word
+  // gate, and then (once the session ledger existed) the conversational
+  // memory read it as "repeat the last edit" and moved a fader the producer
+  // never asked to move. The adverb is dropped, the command is still read
+  // from the rest of the sentence.
+  const repeated = /^(.*?)\s+(?:it\s+)?(?:again|znova)\s*[.!]?\s*$/i.exec(plain);
+  const bare = repeated ? repeated[1]! : plain;
   const commandObject =
     /^\s*(?:please\s+)?(play|pause|stop)\s+(?:the\s+)?(?:(?:currently|running)\s+)?(?:loop|playback|transport)\s*(?:please)?\s*[.!]?\s*$/i.exec(
-      plain,
+      bare,
     );
   if (commandObject) return commandObject[1]!.toLowerCase() as "play" | "pause" | "stop";
   const pressCommand =
     /^\s*(?:please\s+)?press\s+(play|pause|stop)\s+(?:on|for)\s+(?:the\s+)?(?:session|project|transport|loop|playback)\s*(?:please)?\s*[.!]?\s*$/i.exec(
-      plain,
+      bare,
     );
   if (pressCommand) return pressCommand[1]!.toLowerCase() as "play" | "pause" | "stop";
   const clickCommand =
     /^\s*(?:please\s+)?(?:switch|turn)\s+(?:the\s+)?click\s+(on|off)(?:\s+for\s+(?:the\s+)?take)?\s*(?:please)?\s*[.!]?\s*$/i.exec(
-      plain,
+      bare,
     );
   if (clickCommand) return clickCommand[1]!.toLowerCase() === "on" ? "metronomeOn" : "metronomeOff";
   if (
     /^\s*(?:please\s+)?(?:start|enable|switch on|turn on)\s+(?:the\s+)?(?:click|metronome)\s+before\s+recording\s*[.!]?\s*$/i.test(
-      plain,
+      bare,
     )
   ) {
     return "metronomeOn";
   }
-  if (/^\s*(?:please\s+)?count us in with (?:the )?metronome\s*[.!]?\s*$/i.test(plain)) return "metronomeOn";
-  if (/^\s*vypni klik metronomu\s*[.!]?\s*$/i.test(plain)) return "metronomeOff";
+  if (/^\s*(?:please\s+)?count us in with (?:the )?metronome\s*[.!]?\s*$/i.test(bare)) return "metronomeOn";
+  if (/^\s*vypni klik metronomu\s*[.!]?\s*$/i.test(bare)) return "metronomeOff";
   if (
     !/^\s*(?:please\s+|prosim\s+)?(?:play|stop|pause|hraj|hrat|start|spusti|pauza|pauzu|zastav|stoj|stopni|(?:metronome|metronom)(?:\s+(?:on|off|zapni|vypni))?|(?:loop|cykluj|cyklus)(?:\s+(?:on|off|zapni|vypni))?|(?:zapni|vypni)\s+(?:loop|cyklus))\s*(?:please|prosim)?\s*[.!]?\s*$/i.test(
-      plain,
+      bare,
     )
   ) {
     return null;
   }
-  const lower = plain
+  const lower = bare
     .toLowerCase()
     .trim()
     // politeness wraps the verb on either side — dispatch on the bare verb

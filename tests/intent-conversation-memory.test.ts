@@ -216,9 +216,13 @@ describe("the safety property — a reference must never reach the generation ro
     expect(routeIntentText("play", doc).kind).toBe("transport");
   });
 
-  it("'play it again' is not a beat-generation prompt either", () => {
+  it("'play it again' is a TRANSPORT command — the repetition adverb must not become an edit", () => {
+    // Without this, "play it again" fell out of the transport's bare-word
+    // gate, and the conversational memory read it as "repeat the last edit" —
+    // a silent fader move the producer never asked for.
     perform("raise the bass by 10%");
     const route = routeIntentText("play it again", doc);
-    expect(route.kind).not.toBe("pattern");
+    expect(route.kind).toBe("transport");
+    expect((route as { action: string }).action).toBe("play");
   });
 });
