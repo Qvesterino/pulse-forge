@@ -70,9 +70,7 @@ describe("automation target parameter catalog cache", () => {
     const a = instrumentTargetParamDefs(instrument("sampler", "t-1") as Extract<Track, { kind: "instrument" }>);
     const b = instrumentTargetParamDefs(instrument("sampler", "t-2") as Extract<Track, { kind: "instrument" }>);
     expect(a).toBe(b);
-    const other = instrumentTargetParamDefs(
-      instrument("analog", "t-3") as Extract<Track, { kind: "instrument" }>,
-    );
+    const other = instrumentTargetParamDefs(instrument("analog", "t-3") as Extract<Track, { kind: "instrument" }>);
     expect(other).not.toBe(a);
   });
 });

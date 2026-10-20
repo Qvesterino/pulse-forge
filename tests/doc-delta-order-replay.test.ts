@@ -111,8 +111,14 @@ describe("docDelta entity-array order replay", () => {
       if (round % 3 === 1) next.push(`added-${round}`);
 
       const base = baseDoc();
-      const before = withTracks(base, ids.map((id) => ({ id, name: id })));
-      const after = withTracks(base, next.map((id) => ({ id, name: id })));
+      const before = withTracks(
+        base,
+        ids.map((id) => ({ id, name: id })),
+      );
+      const after = withTracks(
+        base,
+        next.map((id) => ({ id, name: id })),
+      );
 
       expect(orderOps(before, after)).toEqual(legacyOrderReplay(ids, next));
     }
@@ -122,8 +128,14 @@ describe("docDelta entity-array order replay", () => {
     const ids = Array.from({ length: 40 }, (_, i) => `t-${i}`);
     const next = [...ids].reverse();
     const base = baseDoc();
-    const before = withTracks(base, ids.map((id) => ({ id, name: id })));
-    const after = withTracks(base, next.map((id) => ({ id, name: id })));
+    const before = withTracks(
+      base,
+      ids.map((id) => ({ id, name: id })),
+    );
+    const after = withTracks(
+      base,
+      next.map((id) => ({ id, name: id })),
+    );
     const ops = computeDocDelta(before, after).ops;
     const restored = applyDocDelta(before, ops) as unknown as { tracks: { id: string }[] };
     expect(restored.tracks.map((t) => t.id)).toEqual(next);

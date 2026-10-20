@@ -152,9 +152,7 @@ async function ab(name: string, currentFn: () => unknown, legacyFn: () => unknow
 class LegacyMeterHistory {
   private l: number[] = [];
   private r: number[] = [];
-  constructor(
-    private maxSamples: number,
-  ) {}
+  constructor(private maxSamples: number) {}
   push(bufL: Float32Array, bufR: Float32Array): void {
     this.l.push(...bufL);
     this.r.push(...bufR);
@@ -239,7 +237,11 @@ function mirrorDrumHits(
   const lastGrid = base + Math.floor((toTick - base) / STEP_TICKS + 1e-9) * STEP_TICKS + STEP_TICKS;
 
   const anyPadSoloByTrack = new Map<string, boolean>();
-  for (const track of tracks) anyPadSoloByTrack.set(track.id, track.pads.some((p) => p.solo));
+  for (const track of tracks)
+    anyPadSoloByTrack.set(
+      track.id,
+      track.pads.some((p) => p.solo),
+    );
 
   const mod = (n: number, m: number): number => ((n % m) + m) % m;
   const clampRange = (v: number, lo: number, hi: number): number =>
@@ -446,7 +448,12 @@ function legacyDiffAny(a: unknown, b: unknown, path: DeltaPath, ops: DeltaOp[]):
   }
   ops.push({ k: "set", path, value: b });
 }
-function legacyDiffObject(a: Record<string, unknown>, b: Record<string, unknown>, path: DeltaPath, ops: DeltaOp[]): void {
+function legacyDiffObject(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+  path: DeltaPath,
+  ops: DeltaOp[],
+): void {
   for (const key of Object.keys(a)) {
     if (!Object.prototype.hasOwnProperty.call(b, key)) {
       if (a[key] === undefined) continue;
@@ -582,7 +589,8 @@ async function main(): Promise<void> {
     const speedupLabel = r.speedup >= 1.005 ? `${r.speedup.toFixed(2)}×` : `0.${Math.round(r.speedup * 100)}×`;
     const allocSignal = Math.abs(r.allocDelta) > NOISE;
     const timeSignal = r.speedup > 1.05;
-    const signal = timeSignal || allocSignal ? (timeSignal && allocSignal ? "both" : timeSignal ? "time" : "alloc") : "noise";
+    const signal =
+      timeSignal || allocSignal ? (timeSignal && allocSignal ? "both" : timeSignal ? "time" : "alloc") : "noise";
     console.log(
       `${r.name.padEnd(66)}${`${fmt(r.msLegacy, 4)} ms`.padStart(12)}${`${fmt(r.msCurrent, 4)} ms`.padStart(12)}${speedupLabel.padStart(11)}${fmtBytes(r.allocDelta).padStart(14)}${signal.padStart(10)}`,
     );
