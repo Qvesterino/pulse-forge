@@ -66,7 +66,7 @@ describe("mcp core — protocol with an authenticated session", () => {
     const list = await handleMcpRequest(hub as any, TOKEN, TOKEN, rpc("tools/list", {}, 2));
     const listedTools = (list.result as { tools: Array<{ name: string; outputSchema?: unknown }> }).tools;
     expect(listedTools).toHaveLength(37);
-    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(18);
+    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(19);
     expect(listedTools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema,
     );
@@ -102,6 +102,9 @@ describe("mcp core — protocol with an authenticated session", () => {
     );
     expect(listedTools.find((tool) => tool.name === "kyx_music")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_music")?.outputSchema,
+    );
+    expect(listedTools.find((tool) => tool.name === "kyx_notes")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_notes")?.outputSchema,
     );
     expect(listedTools.map((t) => t.name)).toEqual([
       "kyx_intent",
@@ -624,6 +627,55 @@ describe("mcp core — protocol with an authenticated session", () => {
       type: "mcp-result",
       id: delivered[0].id,
       result: { text: "tempo is now 140 BPM (one undo step)", mutated: true, data },
+    });
+    const response = await promise;
+    expect(response.result.isError).toBe(false);
+    expect(response.result.structuredContent).toEqual(data);
+  });
+
+  it("returns note IDs and verified note read-back as structuredContent across the web relay", async () => {
+    const { hub, delivered } = makeHub();
+    const data = {
+      status: "listed",
+      op: "list",
+      trackId: "track-bass",
+      trackName: "808",
+      noteCount: 1,
+      undoSteps: 0,
+      offset: 0,
+      limit: 40,
+      notes: [
+        {
+          id: "note-1",
+          index: 0,
+          pitch: 33,
+          noteName: "A1",
+          startTicks: 0,
+          startBeat: 0,
+          durationTicks: 240,
+          durationBeats: 0.5,
+          velocity: 0.8,
+        },
+      ],
+    };
+    const promise = handleMcpRequest(
+      hub,
+      TOKEN,
+      TOKEN,
+      rpc(
+        "tools/call",
+        {
+          name: "kyx_notes",
+          arguments: { op: "list", trackId: "track-bass" },
+          _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+        },
+        28,
+      ),
+    );
+    hub.handleSessionMessage({
+      type: "mcp-result",
+      id: delivered[0].id,
+      result: { text: "listed 1 note", mutated: false, data },
     });
     const response = await promise;
     expect(response.result.isError).toBe(false);

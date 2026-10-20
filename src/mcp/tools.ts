@@ -1,4 +1,5 @@
 import type { MusicalKey, ProjectDocument } from "../project-model/types";
+import { MAX_ARRANGEMENT_CLIP_TICKS } from "../project-model/schema";
 import { isForeignWork, labelsRevertedBy } from "./attribution";
 import {
   LONG_RUNNING_AGENT_TOOLS,
@@ -835,6 +836,83 @@ const OUTPUT_MUSIC: McpOutputSchema = {
   },
   required: ["status", "op", "undoSteps"],
 };
+const NOTE_READBACK_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    id: { type: "string" },
+    index: { type: "integer", minimum: 0, description: "Current 0-based list position; use id for later edits." },
+    pitch: { type: "integer", minimum: 0, maximum: 127 },
+    noteName: { type: "string" },
+    startTicks: { type: "integer", minimum: 0, description: "Authoritative position in PPQ 480 ticks." },
+    startBeat: { type: "number", minimum: 0, description: "Position derived from startTicks at 480 ticks per beat." },
+    durationTicks: { type: "integer", minimum: 1 },
+    durationBeats: {
+      type: "number",
+      minimum: 0,
+      description: "Length derived from durationTicks at 480 ticks per beat.",
+    },
+    velocity: { type: "number", minimum: 0, maximum: 1, description: "Normalized MIDI velocity." },
+  },
+  required: [
+    "id",
+    "index",
+    "pitch",
+    "noteName",
+    "startTicks",
+    "startBeat",
+    "durationTicks",
+    "durationBeats",
+    "velocity",
+  ],
+};
+/** kyx_notes — page of note IDs and verified mutation read-back. */
+const OUTPUT_NOTES: McpOutputSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    status: {
+      type: "string",
+      enum: [
+        "listed",
+        "added",
+        "moved",
+        "already_moved",
+        "deleted",
+        "velocity_set",
+        "already_set",
+        "quantized",
+        "already_quantized",
+        "transposed",
+        "no_notes",
+        "partial",
+      ],
+    },
+    op: { type: "string", enum: ["list", "add", "move", "delete", "setVelocity", "quantize", "transpose"] },
+    trackId: { type: "string" },
+    trackName: { type: "string" },
+    noteCount: { type: "integer", minimum: 0 },
+    notes: { type: "array", items: NOTE_READBACK_SCHEMA, maxItems: 40 },
+    note: NOTE_READBACK_SCHEMA,
+    noteId: { type: "string" },
+    index: { type: "integer", minimum: 0 },
+    offset: { type: "integer", minimum: 0 },
+    limit: { type: "integer", minimum: 1, maximum: 40 },
+    nextOffset: { type: "integer", minimum: 0 },
+    undoSteps: { type: "integer", minimum: 0, maximum: 1 },
+    targetNoteCount: { type: "integer", minimum: 0 },
+    changedNotes: { type: "integer", minimum: 0 },
+    missingNotes: { type: "integer", minimum: 0 },
+    transposedNotes: { type: "integer", minimum: 0 },
+    partialNotes: { type: "integer", minimum: 0 },
+    requestedSemitones: { type: "integer", minimum: -127, maximum: 127 },
+    grid: { type: "string", enum: ["1/4", "1/8", "1/16", "1/32", "1/8T", "1/16T"] },
+    key: { type: "string", enum: [...MUSICAL_KEYS] },
+    clamped: { type: "boolean" },
+    requestedVelocity: { type: "number" },
+  },
+  required: ["status", "op", "trackId", "trackName", "noteCount", "undoSteps"],
+};
 export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_intent",
@@ -1311,9 +1389,9 @@ export const MCP_TOOLS: McpToolDef[] = [
       "does not cover): list/add/move/delete notes, set velocity, quantize to " +
       "grid or key on one track, transpose a family's whole line. Targets " +
       "accept an exact trackId or a melodic family. Notes are addressed by " +
-      "INDEX into the list response — call {op:'list'} first, indices are " +
-      "positions in it. Every op is one undo step through the audited command " +
-      "layer (pitch/velocity clamps, pattern-bounds fit).",
+      "stable noteId (preferred) or INDEX into a paged list response; " +
+      "indices remain supported for compatibility. Every edit uses the " +
+      "audited command layer and returns committed note read-back.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1327,15 +1405,33 @@ export const MCP_TOOLS: McpToolDef[] = [
           description: "Target melodic family (first matching track edits; default bass). Read-back names the track.",
         },
         trackId: { type: "string", description: "Exact track ID; takes precedence over family." },
+        noteId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "Stable note ID for move/delete/setVelocity.",
+        },
         pitch: { type: "integer", minimum: 0, maximum: 127, description: "MIDI pitch (add; move absolute)" },
         noteName: { type: "string", description: 'Alternative to pitch: "C3", "F#4", "Bb2" (add)' },
-        index: { type: "integer", minimum: 0, description: "Position in the list response (move/delete/setVelocity)" },
+        index: {
+          type: "integer",
+          minimum: 0,
+          description: "Legacy position in the list response (move/delete/setVelocity)",
+        },
+        offset: { type: "integer", minimum: 0, maximum: 1000000, description: "list page start (default 0)" },
+        limit: { type: "integer", minimum: 1, maximum: 40, description: "list page size (default 40)" },
         startBeat: {
           type: "number",
           minimum: 0,
+          maximum: 1000000,
           description: "Start in beats from pattern start (add; move absolute)",
         },
-        durationBeats: { type: "number", minimum: 0.05, description: "Note length in beats (add, default 0.5)" },
+        durationBeats: {
+          type: "number",
+          minimum: 0.05,
+          maximum: 1000000,
+          description: "Note length in beats (add, default 0.5)",
+        },
         velocity: { type: "number", minimum: 0, maximum: 1, description: "add (default 0.8) / setVelocity" },
         pitchDelta: { type: "integer", minimum: -127, maximum: 127, description: "move relative semitones" },
         grid: {
@@ -1352,6 +1448,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["op"],
     },
+    outputSchema: OUTPUT_NOTES,
   },
   {
     name: "kyx_music",
@@ -4106,92 +4203,310 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       return executeMixTool(ctx, record);
     case "kyx_notes": {
       // MELODIC COMPOSITION — the half of the DAW kyx_steps does not cover.
-      // Notes are addressed by INDEX into the kyx_notes list response (stable
-      // within a call; list again after edits). One op = one undo step via
-      // the audited command layer (clamps, pattern-bounds fit included).
+      // Stable note IDs are preferred; list indices remain compatible.
       const record = args as Record<string, unknown>;
       const family = typeof record.family === "string" ? record.family : "bass";
+      if (!(["bass", "lead", "chords"] as string[]).includes(family)) {
+        return mcpError("INVALID_ARGUMENTS", 'family must be "bass", "lead", or "chords"');
+      }
+      if (
+        record.trackId !== undefined &&
+        (typeof record.trackId !== "string" || record.trackId.trim() === "" || record.trackId.length > 128)
+      ) {
+        return mcpError("INVALID_ARGUMENTS", "trackId must be a non-empty string of at most 128 characters");
+      }
       // agents may target by explicit trackId; family is the friendly default
       const ids = explicitTrackIds(ctx.getDoc(), { ...(record as Record<string, unknown>), family });
       if (typeof ids === "string") return mcpError("UNKNOWN_TARGET", ids);
       if (ids.length === 0) return mcpError("UNKNOWN_TARGET", `no track matches family "${family}"`);
       const trackId = ids[0];
       const track = ctx.getDoc().tracks.find((t) => t.id === trackId);
+      const trackName = track?.name ?? trackId;
       const notesOf = (): { id: string; pitch: number; start: number; duration: number; velocity: number }[] =>
         ctx.getDoc().patterns.find((p) => p.id === ctx.getDoc().activePatternId)?.notes?.[trackId] ?? [];
       const op = String(record.op ?? "");
       const beat = (ticks: number): string => (ticks / 480).toFixed(2).replace(/\.?0+$/, "");
+      const noteData = (
+        status: string,
+        noteCount: number,
+        undoSteps: number,
+        extra: Record<string, unknown> = {},
+      ): Record<string, unknown> => ({ status, op, trackId, trackName, noteCount, undoSteps, ...extra });
+      const noteReadback = (
+        note: { id: string; pitch: number; start: number; duration: number; velocity: number },
+        index: number,
+      ): Record<string, unknown> => ({
+        id: note.id,
+        index,
+        pitch: note.pitch,
+        noteName: midiToNoteName(note.pitch),
+        startTicks: note.start,
+        startBeat: note.start / 480,
+        durationTicks: note.duration,
+        durationBeats: note.duration / 480,
+        velocity: note.velocity,
+      });
       const describe = (
-        note: { pitch: number; start: number; duration: number; velocity: number },
+        note: { id: string; pitch: number; start: number; duration: number; velocity: number },
         index: number,
       ): string =>
-        `#${index} ${midiToNoteName(note.pitch)} @${beat(note.start)}b ×${beat(note.duration)}b v${note.velocity.toFixed(2)}`;
+        `#${index} id=${note.id} ${midiToNoteName(note.pitch)} @${beat(note.start)}b ×${beat(note.duration)}b v${note.velocity.toFixed(2)}`;
 
       if (op === "list") {
         const notes = notesOf();
-        if (notes.length === 0)
-          return { text: `track "${track?.name ?? trackId}" (${family}): no notes`, mutated: false };
-        const head = notes.slice(0, 40).map(describe).join("; ");
-        const tail = notes.length > 40 ? ` …+${notes.length - 40} more` : "";
+        const offset = record.offset === undefined ? 0 : record.offset;
+        const limit = record.limit === undefined ? 40 : record.limit;
+        if (
+          typeof offset !== "number" ||
+          !Number.isSafeInteger(offset) ||
+          offset < 0 ||
+          offset > 1_000_000 ||
+          typeof limit !== "number" ||
+          !Number.isSafeInteger(limit) ||
+          limit < 1 ||
+          limit > 40
+        ) {
+          return mcpError("INVALID_ARGUMENTS", "list offset must be an integer 0..1000000 and limit 1..40");
+        }
+        const page = notes.slice(offset, offset + limit);
+        const nextOffset = offset + page.length < notes.length ? offset + page.length : undefined;
+        const head = page.map((note, index) => describe(note, offset + index)).join("; ");
+        const summary =
+          notes.length === 0
+            ? `track "${trackName}" (${family}): no notes`
+            : page.length === 0
+              ? `track "${trackName}" (${family}): no notes at offset ${offset}; ${notes.length} total`
+              : `track "${trackName}" (${family}), notes ${offset + 1}–${offset + page.length} of ${notes.length}: ${head}`;
         return {
-          text: `track "${track?.name ?? trackId}" (${family}), ${notes.length} notes: ${head}${tail}`,
+          text: summary,
           mutated: false,
-          data: { trackId, count: notes.length },
+          data: noteData("listed", notes.length, 0, {
+            offset,
+            limit,
+            ...(nextOffset !== undefined ? { nextOffset } : {}),
+            notes: page.map((note, index) => noteReadback(note, offset + index)),
+          }),
         };
       }
       if (op === "add") {
+        if (
+          record.pitch !== undefined &&
+          (!Number.isSafeInteger(record.pitch) || (record.pitch as number) < 0 || (record.pitch as number) > 127)
+        ) {
+          return mcpError("INVALID_ARGUMENTS", "pitch must be an integer MIDI note from 0 to 127");
+        }
+        if (record.pitch !== undefined && record.noteName !== undefined) {
+          return mcpError("INVALID_ARGUMENTS", "add accepts pitch or noteName, not both");
+        }
         const pitch = resolvePitch(record.pitch, typeof record.noteName === "string" ? record.noteName : undefined);
-        if (pitch === null) return { text: 'add needs pitch (0..127) or noteName ("C3", "F#4")', mutated: false };
-        const startBeat =
-          typeof record.startBeat === "number" && Number.isFinite(record.startBeat) ? record.startBeat : 0;
-        const durationBeats =
-          typeof record.durationBeats === "number" && Number.isFinite(record.durationBeats)
-            ? record.durationBeats
-            : 0.5;
-        const velocity = typeof record.velocity === "number" ? record.velocity : 0.8;
-        const before = notesOf().length;
+        if (pitch === null) return mcpError("INVALID_ARGUMENTS", 'add needs pitch (0..127) or noteName ("C3", "F#4")');
+        const startBeat = record.startBeat === undefined ? 0 : record.startBeat;
+        const durationBeats = record.durationBeats === undefined ? 0.5 : record.durationBeats;
+        const velocity = record.velocity === undefined ? 0.8 : record.velocity;
+        if (typeof startBeat !== "number" || !Number.isFinite(startBeat) || startBeat < 0 || startBeat > 1_000_000) {
+          return mcpError("INVALID_ARGUMENTS", "startBeat must be finite and between 0 and 1000000 beats");
+        }
+        if (
+          typeof durationBeats !== "number" ||
+          !Number.isFinite(durationBeats) ||
+          durationBeats < 0.05 ||
+          durationBeats > 1_000_000
+        ) {
+          return mcpError("INVALID_ARGUMENTS", "durationBeats must be finite and between 0.05 and 1000000 beats");
+        }
+        if (typeof velocity !== "number" || !Number.isFinite(velocity) || velocity < 0.05 || velocity > 1) {
+          return mcpError("INVALID_ARGUMENTS", "velocity must be finite and between 0.05 and 1");
+        }
+        const beforeDoc = ctx.getDoc();
+        const beforeNotes = notesOf();
+        const beforeIds = new Set(beforeNotes.map((note) => note.id));
         ctx.execute(
-          addNote(ctx.getDoc(), trackId, {
+          addNote(beforeDoc, trackId, {
             pitch,
             start: Math.round(startBeat * 480),
             duration: Math.max(1, Math.round(durationBeats * 480)),
             velocity,
           }),
         );
+        const afterDoc = ctx.getDoc();
         const after = notesOf();
-        const added = after[after.length - 1];
+        const addedIndex = after.findIndex((note) => !beforeIds.has(note.id));
+        const added = addedIndex >= 0 ? after[addedIndex] : undefined;
+        const mutated = afterDoc !== beforeDoc;
+        if (!added) {
+          return mcpError("PARTIAL_FAILURE", "add command did not produce a committed note", {
+            mutated,
+            data: noteData("partial", after.length, mutated ? 1 : 0),
+          });
+        }
         return {
-          text: `added ${midiToNoteName(added?.pitch ?? pitch)} @${beat(added?.start ?? 0)}b ×${beat(added?.duration ?? 0)}b — ${track?.name ?? trackId} now has ${after.length} notes (was ${before})`,
-          mutated: true,
+          text: `added ${midiToNoteName(added.pitch)} @${beat(added.start)}b ×${beat(added.duration)}b — ${trackName} now has ${after.length} notes`,
+          mutated,
+          data: noteData("added", after.length, mutated ? 1 : 0, {
+            noteId: added.id,
+            index: addedIndex,
+            note: noteReadback(added, addedIndex),
+          }),
         };
       }
-      const index = typeof record.index === "number" ? Math.floor(record.index) : -1;
-      const target = index >= 0 ? notesOf()[index] : undefined;
-      if ((op === "move" || op === "delete" || op === "setVelocity") && !target) {
-        return {
-          text: `no note at index ${record.index} — call kyx_notes {op:"list"} first; indices are positions in that response`,
-          mutated: false,
-        };
+      const usesNoteTarget = op === "move" || op === "delete" || op === "setVelocity";
+      const hasNoteId = record.noteId !== undefined;
+      const hasIndex = record.index !== undefined;
+      if (usesNoteTarget && hasNoteId && hasIndex) {
+        return mcpError("INVALID_ARGUMENTS", "pass noteId or index, not both");
+      }
+      if (
+        usesNoteTarget &&
+        hasNoteId &&
+        (typeof record.noteId !== "string" || record.noteId.trim() === "" || record.noteId.length > 128)
+      ) {
+        return mcpError("INVALID_ARGUMENTS", "noteId must be a non-empty string of at most 128 characters");
+      }
+      if (
+        usesNoteTarget &&
+        hasIndex &&
+        (typeof record.index !== "number" || !Number.isSafeInteger(record.index) || record.index < 0)
+      ) {
+        return mcpError("INVALID_ARGUMENTS", "index must be a non-negative integer from the latest list response");
+      }
+      const targetNotes = notesOf();
+      const index = hasNoteId
+        ? targetNotes.findIndex((note) => note.id === record.noteId)
+        : typeof record.index === "number"
+          ? record.index
+          : -1;
+      const target = index >= 0 ? targetNotes[index] : undefined;
+      if (usesNoteTarget && !hasNoteId && !hasIndex) {
+        return mcpError("INVALID_ARGUMENTS", `${op} needs a stable noteId or a legacy list index`);
+      }
+      if (usesNoteTarget && !target) {
+        return mcpError(
+          "UNKNOWN_TARGET",
+          hasNoteId
+            ? `no note with id "${String(record.noteId)}" on track ${trackName}`
+            : `no note at index ${index}; call kyx_notes {op:"list"} first`,
+        );
       }
       if (op === "move") {
-        const start = typeof record.startBeat === "number" ? Math.round(record.startBeat * 480) : undefined;
-        const pitchDelta = typeof record.pitchDelta === "number" ? Math.round(record.pitchDelta) : undefined;
-        const newPitch = typeof record.pitch === "number" ? Math.round(record.pitch) : undefined;
-        if (start === undefined && pitchDelta === undefined && newPitch === undefined) {
-          return { text: "move needs startBeat and/or pitch, or pitchDelta (semitones)", mutated: false };
+        const startBeat = record.startBeat;
+        if (
+          startBeat !== undefined &&
+          (typeof startBeat !== "number" || !Number.isFinite(startBeat) || startBeat < 0 || startBeat > 1_000_000)
+        ) {
+          return mcpError("INVALID_ARGUMENTS", "startBeat must be finite and between 0 and 1000000 beats");
         }
+        const pitchDelta = record.pitchDelta;
+        if (
+          pitchDelta !== undefined &&
+          (typeof pitchDelta !== "number" || !Number.isSafeInteger(pitchDelta) || pitchDelta < -127 || pitchDelta > 127)
+        ) {
+          return mcpError("INVALID_ARGUMENTS", "pitchDelta must be an integer from -127 to 127 semitones");
+        }
+        const newPitch = record.pitch;
+        if (
+          newPitch !== undefined &&
+          (typeof newPitch !== "number" || !Number.isSafeInteger(newPitch) || newPitch < 0 || newPitch > 127)
+        ) {
+          return mcpError("INVALID_ARGUMENTS", "pitch must be an integer MIDI note from 0 to 127");
+        }
+        if (pitchDelta !== undefined && newPitch !== undefined) {
+          return mcpError("INVALID_ARGUMENTS", "move accepts pitch or pitchDelta, not both");
+        }
+        if (startBeat === undefined && pitchDelta === undefined && newPitch === undefined) {
+          return mcpError("INVALID_ARGUMENTS", "move needs startBeat and/or pitch, or pitchDelta (semitones)");
+        }
+        const requestedStart = typeof startBeat === "number" ? Math.round(startBeat * 480) : undefined;
+        const requestedPitch =
+          typeof newPitch === "number"
+            ? newPitch
+            : typeof pitchDelta === "number"
+              ? target!.pitch + pitchDelta
+              : undefined;
+        const landedPitch = requestedPitch === undefined ? target!.pitch : Math.max(0, Math.min(127, requestedPitch));
+        const landedStart =
+          requestedStart === undefined
+            ? target!.start
+            : Math.min(Math.max(0, requestedStart), Math.max(0, MAX_ARRANGEMENT_CLIP_TICKS - target!.duration));
+        const pitchClamped = requestedPitch !== undefined && landedPitch !== requestedPitch;
+        const startClamped = requestedStart !== undefined && landedStart !== requestedStart;
+        const clamped = pitchClamped || startClamped;
+        if (landedPitch === target!.pitch && landedStart === target!.start) {
+          if (clamped) {
+            return mcpError(
+              "PARTIAL_FAILURE",
+              "move was clamped to the current note position; no change or undo step was added",
+              {
+                data: noteData("partial", targetNotes.length, 0, {
+                  noteId: target!.id,
+                  index,
+                  note: noteReadback(target!, index),
+                  clamped: true,
+                }),
+              },
+            );
+          }
+          return {
+            text: `note ${target!.id} is already at the requested position`,
+            mutated: false,
+            data: noteData("already_moved", targetNotes.length, 0, {
+              noteId: target!.id,
+              index,
+              note: noteReadback(target!, index),
+            }),
+          };
+        }
+        const beforeDoc = ctx.getDoc();
         ctx.execute(
-          moveNote(ctx.getDoc(), trackId, target!.id, {
-            ...(start !== undefined ? { start } : {}),
-            ...(newPitch !== undefined
-              ? { pitch: newPitch }
-              : pitchDelta !== undefined
-                ? { pitch: target!.pitch + pitchDelta }
-                : {}),
+          moveNote(beforeDoc, trackId, target!.id, {
+            ...(requestedStart !== undefined ? { start: requestedStart } : {}),
+            ...(requestedPitch !== undefined ? { pitch: requestedPitch } : {}),
           }),
         );
-        const moved = notesOf()[index];
-        return { text: `moved: now ${describe(moved, index)}`, mutated: true };
+        const afterDoc = ctx.getDoc();
+        const afterNotes = notesOf();
+        const landedIndex = afterNotes.findIndex((note) => note.id === target!.id);
+        const moved = landedIndex >= 0 ? afterNotes[landedIndex] : undefined;
+        const mutated = afterDoc !== beforeDoc;
+        if (!moved) {
+          return mcpError("PARTIAL_FAILURE", "move did not preserve the targeted note in committed state", {
+            mutated,
+            data: noteData("partial", afterNotes.length, mutated ? 1 : 0, { noteId: target!.id, clamped }),
+          });
+        }
+        const actualClamp =
+          (requestedPitch !== undefined && moved.pitch !== requestedPitch) ||
+          (requestedStart !== undefined && moved.start !== requestedStart);
+        if (actualClamp) {
+          return mcpError("PARTIAL_FAILURE", `move was clamped; committed ${describe(moved, landedIndex)}`, {
+            mutated,
+            data: noteData("partial", afterNotes.length, mutated ? 1 : 0, {
+              noteId: moved.id,
+              index: landedIndex,
+              note: noteReadback(moved, landedIndex),
+              clamped: true,
+            }),
+          });
+        }
+        if (!mutated) {
+          return {
+            text: `note ${moved.id} is already at the requested position`,
+            mutated: false,
+            data: noteData("already_moved", afterNotes.length, 0, {
+              noteId: moved.id,
+              index: landedIndex,
+              note: noteReadback(moved, landedIndex),
+            }),
+          };
+        }
+        return {
+          text: `moved: now ${describe(moved, landedIndex)}`,
+          mutated: true,
+          data: noteData("moved", afterNotes.length, 1, {
+            noteId: moved.id,
+            index: landedIndex,
+            note: noteReadback(moved, landedIndex),
+          }),
+        };
       }
       if (op === "delete") {
         // The one removal op that shipped without the D4 gate (audit 10-06):
@@ -4199,14 +4514,70 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         // the user flips the chip — note delete must not be the loophole
         // that deletes a part one call at a time.
         if (!destructiveAllowedWithCheckpoint(ctx, "kyx_notes")) return destructiveRefusal();
-        ctx.execute(deleteNote(ctx.getDoc(), trackId, target!.id));
-        return { text: `deleted ${describe(target!, index)} — ${notesOf().length} notes left`, mutated: true };
+        const beforeDoc = ctx.getDoc();
+        ctx.execute(deleteNote(beforeDoc, trackId, target!.id));
+        const afterDoc = ctx.getDoc();
+        const afterNotes = notesOf();
+        const deleted = !afterNotes.some((note) => note.id === target!.id);
+        const mutated = afterDoc !== beforeDoc;
+        if (!deleted) {
+          return mcpError("PARTIAL_FAILURE", "delete did not remove the targeted note from committed state", {
+            mutated,
+            data: noteData("partial", afterNotes.length, mutated ? 1 : 0, {
+              noteId: target!.id,
+              index,
+              note: noteReadback(target!, index),
+            }),
+          });
+        }
+        return {
+          text: `deleted ${describe(target!, index)} — ${afterNotes.length} notes left`,
+          mutated,
+          data: noteData("deleted", afterNotes.length, mutated ? 1 : 0, { noteId: target!.id, index }),
+        };
       }
       if (op === "setVelocity") {
         const velocity = typeof record.velocity === "number" ? record.velocity : NaN;
-        if (!Number.isFinite(velocity)) return { text: "setVelocity needs velocity 0..1", mutated: false };
-        ctx.execute(setNoteVelocity(ctx.getDoc(), trackId, target!.id, velocity));
-        return { text: `velocity: ${describe(notesOf()[index], index)}`, mutated: true };
+        if (!Number.isFinite(velocity))
+          return mcpError("INVALID_ARGUMENTS", "setVelocity needs a finite velocity value");
+        const landedVelocity = Math.max(0.05, Math.min(1, velocity));
+        if (landedVelocity === target!.velocity) {
+          return {
+            text: `velocity is already ${landedVelocity.toFixed(2)} for note ${target!.id}`,
+            mutated: false,
+            data: noteData("already_set", targetNotes.length, 0, {
+              noteId: target!.id,
+              index,
+              note: noteReadback(target!, index),
+              requestedVelocity: velocity,
+              clamped: landedVelocity !== velocity,
+            }),
+          };
+        }
+        const beforeDoc = ctx.getDoc();
+        ctx.execute(setNoteVelocity(beforeDoc, trackId, target!.id, velocity));
+        const afterDoc = ctx.getDoc();
+        const afterNotes = notesOf();
+        const landedIndex = afterNotes.findIndex((note) => note.id === target!.id);
+        const changed = landedIndex >= 0 ? afterNotes[landedIndex] : undefined;
+        const mutated = afterDoc !== beforeDoc;
+        if (!changed) {
+          return mcpError("PARTIAL_FAILURE", "velocity edit did not preserve the targeted note in committed state", {
+            mutated,
+            data: noteData("partial", afterNotes.length, mutated ? 1 : 0, { noteId: target!.id }),
+          });
+        }
+        return {
+          text: `velocity: ${describe(changed, landedIndex)}${changed.velocity !== velocity ? ` — clamped to ${changed.velocity.toFixed(2)}` : ""}`,
+          mutated,
+          data: noteData(mutated ? "velocity_set" : "already_set", afterNotes.length, mutated ? 1 : 0, {
+            noteId: changed.id,
+            index: landedIndex,
+            note: noteReadback(changed, landedIndex),
+            requestedVelocity: velocity,
+            clamped: changed.velocity !== velocity,
+          }),
+        };
       }
       if (op === "quantize") {
         const key = typeof record.key === "string" ? record.key : null;
@@ -4237,15 +4608,11 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           return {
             text: `track "${track?.name ?? trackId}" has no notes to quantize`,
             mutated: false,
-            data: {
-              status: "no_notes",
-              op,
-              trackId,
+            data: noteData("no_notes", 0, 0, {
               targetNoteCount: 0,
               changedNotes: 0,
-              undoSteps: 0,
               ...(key ? { key } : { grid: gridName }),
-            },
+            }),
           };
         }
         const command = key
@@ -4263,16 +4630,17 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           else if (committed.start !== note.start || committed.pitch !== note.pitch) changedNotes += 1;
         }
         const mutated = after !== before;
-        const data = {
-          status: missingNotes > 0 ? "partial" : changedNotes > 0 ? "quantized" : "already_quantized",
-          op,
-          trackId,
-          targetNoteCount: beforeNotes.length,
-          changedNotes,
-          missingNotes,
-          undoSteps: mutated ? 1 : 0,
-          ...(key ? { key } : { grid: gridName }),
-        };
+        const data = noteData(
+          missingNotes > 0 ? "partial" : changedNotes > 0 ? "quantized" : "already_quantized",
+          afterPattern?.notes?.[trackId]?.length ?? 0,
+          mutated ? 1 : 0,
+          {
+            targetNoteCount: beforeNotes.length,
+            changedNotes,
+            missingNotes,
+            ...(key ? { key } : { grid: gridName }),
+          },
+        );
         if (missingNotes > 0) {
           return mcpError("PARTIAL_FAILURE", "quantize did not preserve every targeted note in committed state", {
             mutated,
@@ -4308,7 +4676,16 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         const before = ctx.getDoc();
         const beforeNotes = notesOf();
         if (beforeNotes.length === 0) {
-          return { text: `track "${track?.name ?? trackId}" has no notes to transpose`, mutated: false };
+          return {
+            text: `track "${trackName}" has no notes to transpose`,
+            mutated: false,
+            data: noteData("no_notes", 0, 0, {
+              targetNoteCount: 0,
+              transposedNotes: 0,
+              partialNotes: 0,
+              requestedSemitones: semitones,
+            }),
+          };
         }
         let next = before;
         for (const note of beforeNotes) {
@@ -4324,6 +4701,14 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           return mcpError(
             "PARTIAL_FAILURE",
             `transpose was clamped at the MIDI pitch boundary; no notes moved and no undo step was added`,
+            {
+              data: noteData("partial", beforeNotes.length, 0, {
+                targetNoteCount: beforeNotes.length,
+                transposedNotes: 0,
+                partialNotes: beforeNotes.length,
+                requestedSemitones: semitones,
+              }),
+            },
           );
         }
         ctx.execute(command);
@@ -4340,18 +4725,32 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           return mcpError(
             "PARTIAL_FAILURE",
             `transpose moved ${transposed}/${beforeNotes.length} notes by the full shift; ${partial} were clamped or missing. One undo reverts the committed changes.`,
-            { mutated: ctx.getDoc() !== before },
+            {
+              mutated: ctx.getDoc() !== before,
+              data: noteData("partial", after.length, ctx.getDoc() !== before ? 1 : 0, {
+                targetNoteCount: beforeNotes.length,
+                transposedNotes: transposed,
+                partialNotes: partial,
+                requestedSemitones: semitones,
+              }),
+            },
           );
         }
         return {
-          text: `transposed ${transposed} notes on ${track?.name ?? trackId} by ${semitones > 0 ? "+" : ""}${semitones} st — one undo step`,
+          text: `transposed ${transposed} notes on ${trackName} by ${semitones > 0 ? "+" : ""}${semitones} st — one undo step`,
           mutated: ctx.getDoc() !== before,
+          data: noteData("transposed", after.length, ctx.getDoc() !== before ? 1 : 0, {
+            targetNoteCount: beforeNotes.length,
+            transposedNotes: transposed,
+            partialNotes: 0,
+            requestedSemitones: semitones,
+          }),
         };
       }
-      return {
-        text: "unknown op — kyx_notes ops: list | add | move | delete | setVelocity | quantize | transpose",
-        mutated: false,
-      };
+      return mcpError(
+        "UNKNOWN_REQUEST",
+        "unknown op — kyx_notes ops: list | add | move | delete | setVelocity | quantize | transpose",
+      );
     }
     case "kyx_music":
       return executeMusicTool(ctx, record);

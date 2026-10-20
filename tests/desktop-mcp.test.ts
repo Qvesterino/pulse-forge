@@ -622,6 +622,54 @@ describe("desktop mcp bridge server (real HTTP)", () => {
     expect(body.result.structuredContent).toEqual(data);
   });
 
+  it("returns note IDs and verified note read-back as structuredContent over desktop HTTP", async () => {
+    const data = {
+      status: "listed",
+      op: "list",
+      trackId: "track-bass",
+      trackName: "808",
+      noteCount: 1,
+      undoSteps: 0,
+      offset: 0,
+      limit: 40,
+      notes: [
+        {
+          id: "note-1",
+          index: 0,
+          pitch: 33,
+          noteName: "A1",
+          startTicks: 0,
+          startBeat: 0,
+          durationTicks: 240,
+          durationBeats: 0.5,
+          velocity: 0.8,
+        },
+      ],
+    };
+    const { server } = bridgeModule.createMcpBridgeServer({
+      token: "tok",
+      executeTool: async () => ({ text: "listed 1 note", mutated: false, data }),
+    });
+    const port = await listenOnEphemeralPort(server);
+    runningServers.push(server);
+
+    const response = await post(
+      port,
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 17,
+        method: "tools/call",
+        params: { name: "kyx_notes", arguments: { op: "list", trackId: "track-bass" } },
+      }),
+      { token: "tok" },
+    );
+    const body = JSON.parse(response.body) as {
+      result: { isError?: boolean; structuredContent: Record<string, unknown> };
+    };
+    expect(body.result.isError).toBeUndefined();
+    expect(body.result.structuredContent).toEqual(data);
+  });
+
   it("protocol completeness: version negotiation, instructions, resources, batch, unknown-tool -32602", async () => {
     const { server } = bridgeModule.createMcpBridgeServer({
       token: "tok",
@@ -1026,6 +1074,9 @@ describe("desktop mcp stdio forwarder (subprocess)", () => {
     );
     expect(list.result.tools.find((tool) => tool.name === "kyx_music")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_music")?.outputSchema,
+    );
+    expect(list.result.tools.find((tool) => tool.name === "kyx_notes")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_notes")?.outputSchema,
     );
 
     writeLine({

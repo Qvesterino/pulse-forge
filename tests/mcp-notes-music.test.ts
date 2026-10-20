@@ -28,7 +28,7 @@ function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } =
   };
 }
 
-function projectStoreCtx(store: ProjectStore): McpToolContext {
+function projectStoreCtx(store: ProjectStore, options: { allowDestructive?: boolean } = {}): McpToolContext {
   return {
     getDoc: () => store.doc,
     execute: (command) => store.execute(command),
@@ -38,6 +38,7 @@ function projectStoreCtx(store: ProjectStore): McpToolContext {
     historyLabels: () => store.history.map((entry) => entry.label),
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
+    ...(options.allowDestructive ? { allowDestructive: () => true } : {}),
   };
 }
 
@@ -64,9 +65,18 @@ function notesOf(
 
 describe("kyx_notes", async () => {
   it("discovers exact track targeting and only supported scale names", () => {
-    const schema = MCP_TOOLS.find((tool) => tool.name === "kyx_notes")?.inputSchema;
+    const noteTool = MCP_TOOLS.find((tool) => tool.name === "kyx_notes");
+    const schema = noteTool?.inputSchema;
     expect(schema?.properties.trackId).toMatchObject({ type: "string" });
     expect(schema?.properties.key).toMatchObject({ type: "string", enum: expect.arrayContaining(["A Natural Minor"]) });
+    expect(schema?.properties.noteId).toMatchObject({ type: "string", maxLength: 128 });
+    expect(schema?.properties.offset).toMatchObject({ type: "integer", minimum: 0 });
+    expect(schema?.properties.startBeat).toMatchObject({ maximum: 1000000 });
+    expect(schema?.properties.durationBeats).toMatchObject({ maximum: 1000000 });
+    expect(noteTool?.outputSchema?.properties.status).toMatchObject({
+      type: "string",
+      enum: expect.arrayContaining(["listed", "added", "partial"]),
+    });
   });
 
   it("list on an empty track reports honestly", async () => {
@@ -89,6 +99,12 @@ describe("kyx_notes", async () => {
     expect(added.mutated).toBe(true);
     expect(added.text).toContain("A1");
     expect(notesOf(ctx, "bass")).toHaveLength(1);
+    expect(added.data).toMatchObject({
+      status: "added",
+      noteCount: 1,
+      undoSteps: 1,
+      note: { pitch: 33, noteName: "A1" },
+    });
 
     await executeMcpTool(ctx, "kyx_notes", {
       op: "add",
@@ -101,14 +117,113 @@ describe("kyx_notes", async () => {
     expect(list.text).toContain("#0");
     expect(list.text).toContain("#1");
     expect(list.text).toContain("C2");
-    expect((list.data as { count: number }).count).toBe(2);
+    expect(list.data).toMatchObject({ status: "listed", noteCount: 2, offset: 0, limit: 40, undoSteps: 0 });
+    expect((list.data as { notes: Array<{ id: string; index: number }> }).notes.map((note) => note.index)).toEqual([
+      0, 1,
+    ]);
+    expect((list.data as { notes: Array<{ id: string }> }).notes.every((note) => note.id.length > 0)).toBe(true);
+  });
+
+  it("list paginates large note sets and preserves stable IDs across pages", async () => {
+    const ctx = makeCtx(freshDoc());
+    for (let index = 0; index < 45; index += 1) {
+      await executeMcpTool(ctx, "kyx_notes", {
+        op: "add",
+        family: "bass",
+        pitch: 36 + (index % 24),
+        startBeat: index / 2,
+        durationBeats: 0.25,
+      });
+    }
+
+    const first = await executeMcpTool(ctx, "kyx_notes", { op: "list", family: "bass", limit: 20 });
+    const second = await executeMcpTool(ctx, "kyx_notes", { op: "list", family: "bass", offset: 20, limit: 20 });
+    const third = await executeMcpTool(ctx, "kyx_notes", { op: "list", family: "bass", offset: 40, limit: 20 });
+    const firstIds = (first.data as { notes: Array<{ id: string }> }).notes.map((note) => note.id);
+    const secondIds = (second.data as { notes: Array<{ id: string }> }).notes.map((note) => note.id);
+    const thirdIds = (third.data as { notes: Array<{ id: string }> }).notes.map((note) => note.id);
+
+    expect(first.data).toMatchObject({ status: "listed", noteCount: 45, offset: 0, limit: 20, nextOffset: 20 });
+    expect(second.data).toMatchObject({ status: "listed", noteCount: 45, offset: 20, limit: 20, nextOffset: 40 });
+    expect(third.data).toMatchObject({ status: "listed", noteCount: 45, offset: 40, limit: 20 });
+    expect(thirdIds).toHaveLength(5);
+    expect(new Set([...firstIds, ...secondIds, ...thirdIds]).size).toBe(45);
+  });
+
+  it("noteId targets edits stably and structured read-back survives one-step undo", async () => {
+    const store = new ProjectStore(freshDoc());
+    const ctx = projectStoreCtx(store, { allowDestructive: true });
+    await executeMcpTool(ctx, "kyx_notes", {
+      op: "add",
+      family: "bass",
+      noteName: "A1",
+      startBeat: 0,
+      durationBeats: 1,
+    });
+    await executeMcpTool(ctx, "kyx_notes", {
+      op: "add",
+      family: "bass",
+      noteName: "C2",
+      startBeat: 1,
+      durationBeats: 1,
+    });
+    const first = (
+      await executeMcpTool(ctx, "kyx_notes", { op: "list", family: "bass" }).then(
+        (result) =>
+          result.data as {
+            notes: Array<{ id: string; pitch: number }>;
+          },
+      )
+    ).notes[0];
+    const undoDepth = store.undoStackLength;
+
+    const moved = await executeMcpTool(ctx, "kyx_notes", {
+      op: "move",
+      family: "bass",
+      noteId: first.id,
+      pitchDelta: 2,
+    });
+    expect(moved.data).toMatchObject({
+      status: "moved",
+      noteId: first.id,
+      note: { id: first.id, pitch: first.pitch + 2 },
+      undoSteps: 1,
+    });
+    expect(store.undoStackLength).toBe(undoDepth + 1);
+    store.undo();
+    expect(notesOf(ctx, "bass").find((note) => note.id === first.id)?.pitch).toBe(first.pitch);
+    expect(store.undoStackLength).toBe(undoDepth);
+
+    const velocity = await executeMcpTool(ctx, "kyx_notes", {
+      op: "setVelocity",
+      family: "bass",
+      noteId: first.id,
+      velocity: 0.45,
+    });
+    expect(velocity.data).toMatchObject({
+      status: "velocity_set",
+      noteId: first.id,
+      note: { velocity: 0.45 },
+      undoSteps: 1,
+    });
+    const deleted = await executeMcpTool(ctx, "kyx_notes", { op: "delete", family: "bass", noteId: first.id });
+    expect(deleted.data).toMatchObject({ status: "deleted", noteId: first.id, noteCount: 1, undoSteps: 1 });
+    expect(notesOf(ctx, "bass").some((note) => note.id === first.id)).toBe(false);
   });
 
   it("add rejects asks with neither pitch nor noteName", async () => {
     const ctx = makeCtx(freshDoc());
     const r = await executeMcpTool(ctx, "kyx_notes", { op: "add", family: "bass", startBeat: 0 });
+    const oversized = await executeMcpTool(ctx, "kyx_notes", {
+      op: "add",
+      family: "bass",
+      pitch: 60,
+      startBeat: 1_000_001,
+    });
     expect(r.isError ?? r.mutated === false).toBeTruthy();
     expect(r.text).toContain("noteName");
+    expect(oversized.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(notesOf(ctx, "bass")).toHaveLength(0);
   });
 
   it("move by index shifts pitch and start; indices come from list", async () => {
@@ -128,6 +243,12 @@ describe("kyx_notes", async () => {
       startBeat: 2,
     });
     expect(moved.mutated).toBe(true);
+    expect(moved.data).toMatchObject({
+      status: "moved",
+      noteCount: 1,
+      undoSteps: 1,
+      note: { pitch: 36, startBeat: 2 },
+    });
     const note = notesOf(ctx, "bass")[0];
     expect(note.pitch).toBe(33 + 3); // A1 = 33
     expect(note.start).toBe(2 * 480);
@@ -166,8 +287,16 @@ describe("kyx_notes", async () => {
     });
     await executeMcpTool(ctx, "kyx_notes", { op: "setVelocity", family: "chords", index: 0, velocity: 5 });
     expect(notesOf(ctx, "chords")[0].velocity).toBe(1);
+    const alreadySet = await executeMcpTool(ctx, "kyx_notes", {
+      op: "setVelocity",
+      family: "chords",
+      index: 0,
+      velocity: 5,
+    });
+    expect(alreadySet.data).toMatchObject({ status: "already_set", undoSteps: 0, clamped: true });
     const del = await executeMcpTool(ctx, "kyx_notes", { op: "delete", family: "chords", index: 0 });
     expect(del.mutated).toBe(true);
+    expect(del.data).toMatchObject({ status: "deleted", noteCount: 0, undoSteps: 1 });
     expect(notesOf(ctx, "chords")).toHaveLength(0);
   });
 
