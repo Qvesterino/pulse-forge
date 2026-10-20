@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { executeMcpTool, explicitTrackIds, type McpToolContext } from "../src/mcp/tools";
+import { executeMcpTool, explicitTrackIds, MCP_TOOLS, type McpToolContext } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { ProjectStore } from "../src/store/ProjectStore";
 import type { ProjectDocument } from "../src/project-model/types";
@@ -63,6 +63,12 @@ function notesOf(
 }
 
 describe("kyx_notes", async () => {
+  it("discovers exact track targeting and only supported scale names", () => {
+    const schema = MCP_TOOLS.find((tool) => tool.name === "kyx_notes")?.inputSchema;
+    expect(schema?.properties.trackId).toMatchObject({ type: "string" });
+    expect(schema?.properties.key).toMatchObject({ type: "string", enum: expect.arrayContaining(["A Natural Minor"]) });
+  });
+
   it("list on an empty track reports honestly", async () => {
     const ctx = makeCtx(freshDoc());
     const r = await executeMcpTool(ctx, "kyx_notes", { op: "list", family: "bass" });
@@ -166,18 +172,77 @@ describe("kyx_notes", async () => {
   });
 
   it("quantize snaps starts to the grid; scale mode runs", async () => {
-    const ctx = makeCtx(freshDoc());
+    const store = new ProjectStore(freshDoc());
+    const ctx = projectStoreCtx(store);
     await executeMcpTool(ctx, "kyx_notes", {
       op: "add",
       family: "bass",
-      noteName: "A1",
+      noteName: "Bb1",
       startBeat: 0.31,
       durationBeats: 0.4,
     });
+    await executeMcpTool(ctx, "kyx_notes", {
+      op: "add",
+      family: "chords",
+      pitch: 61,
+      startBeat: 0.37,
+      durationBeats: 0.4,
+    });
+    const chordBefore = notesOf(ctx, "chords")[0];
+    const historyBefore = store.undoStackLength;
     await executeMcpTool(ctx, "kyx_notes", { op: "quantize", family: "bass", grid: "1/8" });
     expect(notesOf(ctx, "bass")[0].start % 240).toBe(0);
-    const scale = await executeMcpTool(ctx, "kyx_notes", { op: "quantize", family: "bass", key: "A Minor" });
+    expect(notesOf(ctx, "chords")[0].start).toBe(chordBefore.start);
+    expect(store.undoStackLength).toBe(historyBefore + 1);
+    const repeatedGrid = await executeMcpTool(ctx, "kyx_notes", { op: "quantize", family: "bass", grid: "1/8" });
+    expect(repeatedGrid.data).toMatchObject({ status: "already_quantized", changedNotes: 0, undoSteps: 0 });
+    expect(repeatedGrid.mutated).toBe(false);
+    expect(store.undoStackLength).toBe(historyBefore + 1);
+    store.undo();
+    expect(notesOf(ctx, "bass")[0].start).toBe(Math.round(0.31 * 480));
+    expect(notesOf(ctx, "chords")[0].start).toBe(chordBefore.start);
+
+    const bassPitchBeforeScale = notesOf(ctx, "bass")[0].pitch;
+    const bassIds = explicitTrackIds(ctx.getDoc(), { family: "bass" });
+    const bassTrackId = typeof bassIds === "string" ? "" : bassIds[0];
+    expect(bassTrackId).toBeTruthy();
+    const scale = await executeMcpTool(ctx, "kyx_notes", {
+      op: "quantize",
+      trackId: bassTrackId,
+      key: "A Natural Minor",
+    });
+    expect(notesOf(ctx, "bass")[0].pitch).not.toBe(bassPitchBeforeScale);
+    expect(notesOf(ctx, "chords")[0].pitch).toBe(61);
     expect(scale.mutated).toBe(true);
+    expect(scale.data).toMatchObject({ status: "quantized", targetNoteCount: 1, changedNotes: 1, undoSteps: 1 });
+  });
+
+  it("quantize rejects unsupported, conflicting and missing targets without mutating", async () => {
+    const store = new ProjectStore(freshDoc());
+    const ctx = projectStoreCtx(store);
+    await executeMcpTool(ctx, "kyx_notes", {
+      op: "add",
+      family: "bass",
+      noteName: "Bb1",
+      startBeat: 0.31,
+      durationBeats: 0.4,
+    });
+    const before = notesOf(ctx, "bass").map((note) => ({ ...note }));
+    const undoDepth = store.undoStackLength;
+    const invalidKey = await executeMcpTool(ctx, "kyx_notes", { op: "quantize", family: "bass", key: "A Minor" });
+    const conflicting = await executeMcpTool(ctx, "kyx_notes", {
+      op: "quantize",
+      family: "bass",
+      key: "A Natural Minor",
+      grid: "1/8",
+    });
+    const missingTarget = await executeMcpTool(ctx, "kyx_notes", { op: "quantize", family: "bass" });
+
+    expect(invalidKey.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(conflicting.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(missingTarget.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(notesOf(ctx, "bass")).toEqual(before);
+    expect(store.undoStackLength).toBe(undoDepth);
   });
 
   it("transpose shifts the whole line by semitones", async () => {

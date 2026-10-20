@@ -1,4 +1,4 @@
-import type { ProjectDocument } from "../project-model/types";
+import type { MusicalKey, ProjectDocument } from "../project-model/types";
 import { isForeignWork, labelsRevertedBy } from "./attribution";
 import {
   LONG_RUNNING_AGENT_TOOLS,
@@ -1309,7 +1309,8 @@ export const MCP_TOOLS: McpToolDef[] = [
     description:
       "Melodic COMPOSITION on the active pattern (the melodic half kyx_steps " +
       "does not cover): list/add/move/delete notes, set velocity, quantize to " +
-      "grid or key, transpose a family's whole line. Notes are addressed by " +
+      "grid or key on one track, transpose a family's whole line. Targets " +
+      "accept an exact trackId or a melodic family. Notes are addressed by " +
       "INDEX into the list response — call {op:'list'} first, indices are " +
       "positions in it. Every op is one undo step through the audited command " +
       "layer (pitch/velocity clamps, pattern-bounds fit).",
@@ -1325,6 +1326,7 @@ export const MCP_TOOLS: McpToolDef[] = [
           enum: ["bass", "lead", "chords"],
           description: "Target melodic family (first matching track edits; default bass). Read-back names the track.",
         },
+        trackId: { type: "string", description: "Exact track ID; takes precedence over family." },
         pitch: { type: "integer", minimum: 0, maximum: 127, description: "MIDI pitch (add; move absolute)" },
         noteName: { type: "string", description: 'Alternative to pitch: "C3", "F#4", "Bb2" (add)' },
         index: { type: "integer", minimum: 0, description: "Position in the list response (move/delete/setVelocity)" },
@@ -1341,7 +1343,11 @@ export const MCP_TOOLS: McpToolDef[] = [
           enum: ["1/4", "1/8", "1/16", "1/32", "1/8T", "1/16T"],
           description: "quantize target grid",
         },
-        key: { type: "string", description: 'quantize target scale, e.g. "C Major", "A Minor"' },
+        key: {
+          type: "string",
+          enum: [...MUSICAL_KEYS],
+          description: 'quantize this track to a supported scale, e.g. "C Major", "A Natural Minor"',
+        },
         semitones: { type: "integer", minimum: -127, maximum: 127, description: "transpose shift (non-zero)" },
       },
       required: ["op"],
@@ -4213,23 +4219,77 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           "1/8T": 160,
           "1/16T": 80,
         };
+        if ((key && gridName) || (!key && !gridName)) {
+          return mcpError("INVALID_ARGUMENTS", "quantize needs exactly one of grid or key");
+        }
         if (key) {
-          ctx.execute(quantizePatternToScale(ctx.getDoc(), ctx.getDoc().activePatternId, key as never));
+          if (!(MUSICAL_KEYS as readonly string[]).includes(key)) {
+            return mcpError("INVALID_ARGUMENTS", `unsupported key "${key}" — choose a key from kyx_notes schema`);
+          }
+        }
+        if (gridName && gridTicks[gridName] === undefined) {
+          return mcpError("INVALID_ARGUMENTS", `unsupported grid "${gridName}" — choose a grid from kyx_notes schema`);
+        }
+        const before = ctx.getDoc();
+        const activePattern = before.patterns.find((pattern) => pattern.id === before.activePatternId);
+        const beforeNotes = activePattern?.notes?.[trackId] ?? [];
+        if (beforeNotes.length === 0) {
           return {
-            text: `quantized to the ${key} scale — ${notesOf().length} notes on ${track?.name ?? trackId}`,
-            mutated: true,
+            text: `track "${track?.name ?? trackId}" has no notes to quantize`,
+            mutated: false,
+            data: {
+              status: "no_notes",
+              op,
+              trackId,
+              targetNoteCount: 0,
+              changedNotes: 0,
+              undoSteps: 0,
+              ...(key ? { key } : { grid: gridName }),
+            },
           };
         }
-        if (gridName && gridTicks[gridName] !== undefined) {
-          ctx.execute(quantizePatternToGrid(ctx.getDoc(), ctx.getDoc().activePatternId, gridTicks[gridName]));
+        const command = key
+          ? quantizePatternToScale(before, activePattern!.id, key as MusicalKey, trackId)
+          : quantizePatternToGrid(before, activePattern!.id, gridTicks[gridName!]!, trackId);
+        ctx.execute(command);
+        const after = ctx.getDoc();
+        const afterPattern = after.patterns.find((pattern) => pattern.id === activePattern!.id);
+        const afterById = new Map((afterPattern?.notes?.[trackId] ?? []).map((note) => [note.id, note]));
+        let changedNotes = 0;
+        let missingNotes = 0;
+        for (const note of beforeNotes) {
+          const committed = afterById.get(note.id);
+          if (!committed) missingNotes += 1;
+          else if (committed.start !== note.start || committed.pitch !== note.pitch) changedNotes += 1;
+        }
+        const mutated = after !== before;
+        const data = {
+          status: missingNotes > 0 ? "partial" : changedNotes > 0 ? "quantized" : "already_quantized",
+          op,
+          trackId,
+          targetNoteCount: beforeNotes.length,
+          changedNotes,
+          missingNotes,
+          undoSteps: mutated ? 1 : 0,
+          ...(key ? { key } : { grid: gridName }),
+        };
+        if (missingNotes > 0) {
+          return mcpError("PARTIAL_FAILURE", "quantize did not preserve every targeted note in committed state", {
+            mutated,
+            data,
+          });
+        }
+        if (changedNotes === 0) {
           return {
-            text: `quantized to ${gridName} grid — ${notesOf().length} notes on ${track?.name ?? trackId}`,
-            mutated: true,
+            text: `notes on ${track?.name ?? trackId} are already quantized${key ? ` to ${key}` : ` to ${gridName}`}`,
+            mutated: false,
+            data,
           };
         }
         return {
-          text: 'quantize needs grid ("1/4"|"1/8"|"1/16"|"1/32"|"1/8T"|"1/16T") or key ("C Major", "A Minor", …)',
-          mutated: false,
+          text: `quantized ${changedNotes}/${beforeNotes.length} notes on ${track?.name ?? trackId}${key ? ` to ${key}` : ` to ${gridName}`} — one undo step`,
+          mutated,
+          data,
         };
       }
       if (op === "transpose") {

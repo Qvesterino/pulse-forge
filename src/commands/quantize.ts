@@ -11,15 +11,23 @@ import { snapshot } from "./core";
  */
 /* ---------------- scale quantize ---------------- */
 
-export function quantizePatternToScale(doc: ProjectDocument, patternId: string, key: MusicalKey): Command {
+export function quantizePatternToScale(
+  doc: ProjectDocument,
+  patternId: string,
+  key: MusicalKey,
+  targetTrackId?: string,
+): Command {
   const pattern = doc.patterns.find((p) => p.id === patternId);
   if (!pattern) throw new Error(`Pattern ${patternId} not found`);
   const nextNotes: Record<string, import("../project-model/types").NoteEvent[]> = {};
   for (const [trackId, notes] of Object.entries(pattern.notes ?? {})) {
-    nextNotes[trackId] = notes.map((n) => ({
-      ...n,
-      pitch: snapToScale(n.pitch, key),
-    }));
+    nextNotes[trackId] =
+      targetTrackId !== undefined && targetTrackId !== trackId
+        ? notes
+        : notes.map((n) => ({
+            ...n,
+            pitch: snapToScale(n.pitch, key),
+          }));
   }
   const next: ProjectDocument = {
     ...doc,
@@ -30,17 +38,25 @@ export function quantizePatternToScale(doc: ProjectDocument, patternId: string, 
 
 /* ---------------- time quantize ---------------- */
 
-export function quantizePatternToGrid(doc: ProjectDocument, patternId: string, gridTicks: number): Command {
+export function quantizePatternToGrid(
+  doc: ProjectDocument,
+  patternId: string,
+  gridTicks: number,
+  targetTrackId?: string,
+): Command {
   const pattern = doc.patterns.find((p) => p.id === patternId);
   if (!pattern) throw new Error(`Pattern ${patternId} not found`);
   if (gridTicks <= 0) throw new Error("Grid resolution must be positive");
 
   const nextNotes: Record<string, import("../project-model/types").NoteEvent[]> = {};
   for (const [trackId, notes] of Object.entries(pattern.notes ?? {})) {
-    nextNotes[trackId] = notes.map((n) => ({
-      ...n,
-      start: Math.round(n.start / gridTicks) * gridTicks,
-    }));
+    nextNotes[trackId] =
+      targetTrackId !== undefined && targetTrackId !== trackId
+        ? notes
+        : notes.map((n) => ({
+            ...n,
+            start: Math.round(n.start / gridTicks) * gridTicks,
+          }));
   }
   const next: ProjectDocument = {
     ...doc,

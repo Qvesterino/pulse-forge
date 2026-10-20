@@ -157,6 +157,43 @@ describe("createFill", () => {
 });
 
 describe("quantizePatternToGrid", () => {
+  it("can quantize one track while preserving the legacy whole-pattern default", () => {
+    const { doc, kickId, patternId } = docWithKick();
+    const targetTrackId = doc.tracks.find((track) => track.kind === "instrument")!.id;
+    const otherTrackId = doc.tracks.find((track) => track.kind === "instrument" && track.id !== targetTrackId)!.id;
+    const withNotes = {
+      ...doc,
+      patterns: doc.patterns.map((pattern) =>
+        pattern.id === patternId
+          ? {
+              ...pattern,
+              notes: {
+                [targetTrackId]: [{ id: "target-note", pitch: 61, start: 178, duration: 120, velocity: 0.8 }],
+                [otherTrackId]: [{ id: "other-note", pitch: 61, start: 178, duration: 120, velocity: 0.8 }],
+                [kickId]: [{ id: "pad-note", pitch: 61, start: 178, duration: 120, velocity: 0.8 }],
+              },
+            }
+          : pattern,
+      ),
+    };
+
+    const scopedGrid = quantizePatternToGrid(withNotes, patternId, GRID_8TH, targetTrackId).execute(withNotes);
+    expect(scopedGrid.patterns.find((pattern) => pattern.id === patternId)?.notes[targetTrackId][0].start).toBe(240);
+    expect(scopedGrid.patterns.find((pattern) => pattern.id === patternId)?.notes[otherTrackId][0].start).toBe(178);
+    expect(scopedGrid.patterns.find((pattern) => pattern.id === patternId)?.notes[kickId][0].start).toBe(178);
+
+    const wholePatternGrid = quantizePatternToGrid(withNotes, patternId, GRID_8TH).execute(withNotes);
+    expect(wholePatternGrid.patterns.find((pattern) => pattern.id === patternId)?.notes[otherTrackId][0].start).toBe(
+      240,
+    );
+
+    const scopedScale = quantizePatternToScale(withNotes, patternId, "C Major" as MusicalKey, targetTrackId).execute(
+      withNotes,
+    );
+    expect(scopedScale.patterns.find((pattern) => pattern.id === patternId)?.notes[targetTrackId][0].pitch).toBe(60);
+    expect(scopedScale.patterns.find((pattern) => pattern.id === patternId)?.notes[otherTrackId][0].pitch).toBe(61);
+  });
+
   it("snaps note starts to 1/16 grid (default)", () => {
     const { doc, kickId, patternId } = docWithKick();
     // Place notes at non-grid positions by directly editing
