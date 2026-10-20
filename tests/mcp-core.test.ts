@@ -66,7 +66,7 @@ describe("mcp core — protocol with an authenticated session", () => {
     const list = await handleMcpRequest(hub as any, TOKEN, TOKEN, rpc("tools/list", {}, 2));
     const listedTools = (list.result as { tools: Array<{ name: string; outputSchema?: unknown }> }).tools;
     expect(listedTools).toHaveLength(37);
-    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(22);
+    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(24);
     expect(listedTools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema,
     );
@@ -114,6 +114,12 @@ describe("mcp core — protocol with an authenticated session", () => {
     );
     expect(listedTools.find((tool) => tool.name === "kyx_groove")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_groove")?.outputSchema,
+    );
+    expect(listedTools.find((tool) => tool.name === "kyx_catalog")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_catalog")?.outputSchema,
+    );
+    expect(listedTools.find((tool) => tool.name === "kyx_plugin_param")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_plugin_param")?.outputSchema,
     );
     expect(listedTools.map((t) => t.name)).toEqual([
       "kyx_intent",
@@ -181,6 +187,102 @@ describe("mcp core — protocol with an authenticated session", () => {
     expect(frame.tool).toBe("kyx_intent");
     expect(frame.args).toEqual({ instruction: "mute the drums" });
     expect(content[0].text).toContain("Drums mute ✓");
+  });
+
+  it("returns machine-readable effect catalog data as structuredContent across the web relay", async () => {
+    const { hub, delivered } = makeHub();
+    const data = {
+      status: "listed",
+      subject: "effects",
+      effects: [
+        {
+          type: "reverb",
+          name: "Reverb",
+          category: "space",
+          primaryKnob: "mix",
+          parameterCount: 10,
+        },
+      ],
+    };
+    const promise = handleMcpRequest(
+      hub,
+      TOKEN,
+      TOKEN,
+      rpc(
+        "tools/call",
+        {
+          name: "kyx_catalog",
+          arguments: { subject: "effects" },
+          _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+        },
+        39,
+      ),
+    );
+    hub.handleSessionMessage({
+      type: "mcp-result",
+      id: delivered[0].id,
+      result: { text: "effects listed", mutated: false, data },
+    });
+    const response = await promise;
+    expect(response.result.structuredContent).toEqual(data);
+    expect(response.result.isError).toBe(false);
+  });
+
+  it("returns verified plugin parameter changes as structuredContent across the web relay", async () => {
+    const { hub, delivered } = makeHub();
+    const data = {
+      status: "updated",
+      op: "set",
+      effect: "reverb",
+      instance: 1,
+      param: "mix",
+      requestedValue: 0.42,
+      targetCount: 1,
+      targets: [{ trackId: "track-lead", trackName: "Lead" }],
+      instances: [],
+      changes: [
+        {
+          trackId: "track-lead",
+          trackName: "Lead",
+          fxId: "fx-reverb",
+          instance: 1,
+          param: "mix",
+          beforeValue: 0.2,
+          requestedValue: 0.42,
+          value: 0.42,
+          min: 0,
+          max: 1,
+          unit: null,
+          clamped: false,
+          changed: true,
+        },
+      ],
+      unmatched: [],
+      truncatedCount: 0,
+      undoSteps: 1,
+    };
+    const promise = handleMcpRequest(
+      hub,
+      TOKEN,
+      TOKEN,
+      rpc(
+        "tools/call",
+        {
+          name: "kyx_plugin_param",
+          arguments: { op: "set", trackId: "track-lead", effect: "reverb", param: "mix", value: 0.42 },
+          _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+        },
+        40,
+      ),
+    );
+    hub.handleSessionMessage({
+      type: "mcp-result",
+      id: delivered[0].id,
+      result: { text: "Lead: mix 0.2 → 0.42 — one undo step", mutated: true, data },
+    });
+    const response = await promise;
+    expect(response.result.structuredContent).toEqual(data);
+    expect(response.result.isError).toBe(false);
   });
 
   it("gives render and generation calls an extended relay timeout", async () => {

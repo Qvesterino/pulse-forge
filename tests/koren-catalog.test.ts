@@ -32,8 +32,20 @@ describe("KOREŇ is legible to an agent", () => {
     const result = await host.call("kyx_catalog", { subject: "effect", effect: "bassHarmonic" });
     expect(result.isError).not.toBe(true);
     expect(result.text).toContain("bassHarmonic — GROW (character)");
+    const catalogData = result.data as {
+      status: string;
+      subject: string;
+      effect: { type: string; parameters: Array<{ id: string; description: string | null; options: unknown[] }> };
+    };
+    expect(catalogData.status).toBe("listed");
+    expect(catalogData.subject).toBe("effect");
+    expect(catalogData.effect.type).toBe("bassHarmonic");
     for (const param of bassHarmonicParams) {
       expect(result.text, `catalog omits the description of ${param.id}`).toContain(param.description!);
+      expect(catalogData.effect.parameters.find((entry) => entry.id === param.id)).toMatchObject({
+        description: param.description,
+        options: param.options ?? [],
+      });
     }
     // The semantic extremes an agent needs to choose values.
     expect(result.text).toContain(

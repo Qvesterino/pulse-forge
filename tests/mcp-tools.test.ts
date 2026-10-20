@@ -127,6 +127,26 @@ function withLead(): ProjectDocument {
 
 describe("mcp tools — headless execution", async () => {
   it("tool surface: the 37 documented tools", async () => {
+    expect(MCP_TOOLS.find((tool) => tool.name === "kyx_catalog")?.outputSchema).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["status", "subject"],
+    });
+    expect(MCP_TOOLS.find((tool) => tool.name === "kyx_plugin_param")?.outputSchema).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: expect.arrayContaining([
+        "status",
+        "op",
+        "effect",
+        "instance",
+        "param",
+        "requestedValue",
+        "targets",
+        "instances",
+        "changes",
+      ]),
+    });
     expect(MCP_TOOLS.find((tool) => tool.name === "kyx_sections")?.outputSchema).toBeDefined();
     expect(MCP_TOOLS.find((tool) => tool.name === "kyx_music")?.outputSchema).toBeDefined();
     expect(MCP_TOOLS.find((tool) => tool.name === "kyx_steps")?.outputSchema).toBeDefined();
@@ -1063,19 +1083,50 @@ describe("mcp P0 wave — self-description + precision", async () => {
     const ctx = makeCtx(datasetDoc());
     const effects = await executeMcpTool(ctx, "kyx_catalog", { subject: "effects" });
     expect(effects.mutated).toBe(false);
+    expect(effects.data).toMatchObject({
+      status: "listed",
+      subject: "effects",
+      effects: expect.arrayContaining([
+        expect.objectContaining({ type: "reverb", name: "Reverb", category: "space", primaryKnob: "mix" }),
+        expect.objectContaining({ type: "eq", name: "EQ", primaryKnob: null }),
+      ]),
+    });
     expect(effects.text).toContain("reverb — Reverb");
     expect(effects.text).toContain("[knob: mix]");
     expect(effects.text).toContain("eq");
     expect(effects.text).toContain("no single knob");
 
     const instruments = await executeMcpTool(ctx, "kyx_catalog", { subject: "instruments" });
+    expect(instruments.data).toMatchObject({
+      status: "listed",
+      subject: "instruments",
+      instruments: expect.arrayContaining([
+        expect.objectContaining({ kind: "808", name: expect.any(String), parameterCount: expect.any(Number) }),
+        expect.objectContaining({ kind: "analog", name: expect.any(String), parameterCount: expect.any(Number) }),
+      ]),
+    });
     expect(instruments.text).toContain("808");
     expect(instruments.text).toContain("analog");
+
+    const unknownSubject = await executeMcpTool(ctx, "kyx_catalog", { subject: "patches" });
+    expect(unknownSubject.errorCode).toBe("UNKNOWN_REQUEST");
+    expect(unknownSubject.text).toContain("unknown catalog subject");
   });
 
   it("kyx_catalog subject:effect exposes the full param table (min/max/default/unit)", async () => {
     const ctx = makeCtx(datasetDoc());
     const reverb = await executeMcpTool(ctx, "kyx_catalog", { subject: "effect", effect: "reverb" });
+    expect(reverb.data).toMatchObject({
+      status: "listed",
+      subject: "effect",
+      effect: {
+        type: "reverb",
+        primaryKnob: "mix",
+        parameters: expect.arrayContaining([
+          expect.objectContaining({ id: "mix", label: "MIX", min: 0, max: 1, unit: null, options: [] }),
+        ]),
+      },
+    });
     expect(reverb.text).toContain("primary knob (kyx_fx more/less): mix");
     expect(reverb.text).toMatch(/mix "MIX": 0 \.\. 1, default 0\.\d+/);
 
@@ -1085,6 +1136,7 @@ describe("mcp P0 wave — self-description + precision", async () => {
 
     const unknown = await executeMcpTool(ctx, "kyx_catalog", { subject: "effect", effect: "quantum" });
     expect(unknown.mutated).toBe(false);
+    expect(unknown.errorCode).toBe("UNKNOWN_TARGET");
     expect(unknown.text).toContain('unknown effect "quantum"');
   });
 
@@ -1103,8 +1155,42 @@ describe("mcp P0 wave — self-description + precision", async () => {
     expect(result.text).toContain("mix 0.");
     expect(result.text).toContain("→ 0.42");
     expect(result.text).toContain("one undo step");
+    expect(result.data).toMatchObject({
+      status: "updated",
+      op: "set",
+      effect: "reverb",
+      instance: 1,
+      param: "mix",
+      requestedValue: 0.42,
+      targetCount: 1,
+      changes: [
+        expect.objectContaining({
+          trackId: "track-lead-x",
+          param: "mix",
+          value: 0.42,
+          clamped: false,
+          changed: true,
+        }),
+      ],
+      undoSteps: 1,
+    });
     const lead = store.doc.tracks.find((t) => t.name === "Lead")!;
     expect(lead.effects.find((fx) => fx.type === "reverb")!.params.mix).toBeCloseTo(0.42, 5);
+
+    const repeated = await executeMcpTool(ctx, "kyx_plugin_param", {
+      op: "set",
+      family: "lead",
+      effect: "reverb",
+      param: "mix",
+      value: 0.42,
+    });
+    expect(repeated.mutated).toBe(false);
+    expect(repeated.data).toMatchObject({
+      status: "no_change",
+      changes: [{ changed: false, value: 0.42 }],
+      undoSteps: 0,
+    });
+    expect(store.undoStackLength).toBe(2);
     store.undo();
     expect(store.undoStackLength).toBe(1); // the kyx_fx more
   });
@@ -1145,6 +1231,11 @@ describe("mcp P0 wave — self-description + precision", async () => {
     });
     expect(missingInstance.mutated).toBe(false);
     expect(missingInstance.text).toContain("no delay instance");
+    expect(missingInstance.data).toMatchObject({
+      status: "partial",
+      unmatched: [expect.objectContaining({ trackId: "track-lead-x" })],
+      undoSteps: 0,
+    });
 
     await executeMcpTool(ctx, "kyx_fx", { effect: "delay", family: "lead", action: "more" });
     const missingSecond = await executeMcpTool(ctx, "kyx_plugin_param", {
@@ -1159,6 +1250,41 @@ describe("mcp P0 wave — self-description + precision", async () => {
     expect(missingSecond.text).toContain("instance #2 does not exist");
   });
 
+  it("kyx_plugin_param reports partial family writes with committed per-track outcomes", async () => {
+    const doc = withLead();
+    const lead = doc.tracks.find((track) => track.id === "track-lead-x")!;
+    const secondLead = { ...lead, id: "track-lead-y", name: "Lead Secondary", effects: [] };
+    const store = new ProjectStore({ ...doc, tracks: [...doc.tracks, secondLead] });
+    store.execute(addEffectToTracks(store.doc, ["track-lead-x"], "reverb"));
+    const ctx = storeCtx(store);
+
+    const result = await executeMcpTool(ctx, "kyx_plugin_param", {
+      op: "set",
+      family: "lead",
+      effect: "reverb",
+      param: "mix",
+      value: 0.63,
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.errorCode).toBe("PARTIAL_FAILURE");
+    expect(result.mutated).toBe(true);
+    expect(result.text).toContain("no reverb instance");
+    expect(result.data).toMatchObject({
+      status: "partial",
+      targetCount: 2,
+      changes: [expect.objectContaining({ trackId: "track-lead-x", value: 0.63, changed: true })],
+      unmatched: [expect.objectContaining({ trackId: "track-lead-y" })],
+      undoSteps: 1,
+    });
+    expect(store.doc.tracks.find((track) => track.id === "track-lead-x")!.effects[0].params.mix).toBe(0.63);
+    expect(store.doc.tracks.find((track) => track.id === "track-lead-y")!.effects).toHaveLength(0);
+
+    store.undo();
+    expect(store.doc.tracks.find((track) => track.id === "track-lead-x")!.effects[0].params.mix).not.toBe(0.63);
+    expect(store.doc.tracks.find((track) => track.id === "track-lead-y")!.effects).toHaveLength(0);
+  });
+
   it("kyx_plugin_param list reads current chain values; NaN value refused", async () => {
     const store = new ProjectStore(withLead());
     const ctx = storeCtx(store);
@@ -1167,6 +1293,20 @@ describe("mcp P0 wave — self-description + precision", async () => {
     expect(list.mutated).toBe(false);
     expect(list.text).toContain("reverb#1");
     expect(list.text).toMatch(/mix=\d/);
+    expect(list.data).toMatchObject({
+      status: "listed",
+      op: "list",
+      targetCount: 1,
+      instances: [
+        expect.objectContaining({
+          trackId: "track-lead-x",
+          effect: "reverb",
+          instance: 1,
+          parameters: expect.arrayContaining([expect.objectContaining({ id: "mix", value: expect.any(Number) })]),
+        }),
+      ],
+      undoSteps: 0,
+    });
 
     const nan = await executeMcpTool(ctx, "kyx_plugin_param", {
       op: "set",

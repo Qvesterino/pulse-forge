@@ -2503,7 +2503,7 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_catalog",
     description:
-      "Discovery — what the DAW can do, machine-readable: list every effect type with its category and primary knob, the FULL parameter table of one effect (id, label, min, max, default, unit, kind, taper), or the instrument kind catalog. Read-only; use it before kyx_plugin_param instead of guessing ranges.",
+      "Discovery — what the DAW can do, machine-readable: list every effect type with its category and primary knob, the FULL parameter table of one effect (native range, unit, description, kind, step, taper and enum options), or the instrument kind catalog. Read-only; use it before kyx_plugin_param instead of guessing ranges.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2529,6 +2529,158 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["subject"],
     },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        status: {
+          type: "string",
+          enum: ["listed"],
+        },
+        subject: {
+          type: "string",
+          enum: ["effects", "effect", "instruments"],
+        },
+        effects: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              type: {
+                type: "string",
+              },
+              name: {
+                type: "string",
+              },
+              category: {
+                type: "string",
+                enum: ["tone", "dynamics", "character", "space", "movement"],
+              },
+              primaryKnob: {
+                type: ["string", "null"],
+              },
+              parameterCount: {
+                type: "integer",
+                minimum: 0,
+              },
+            },
+            required: ["type", "name", "category", "primaryKnob", "parameterCount"],
+          },
+        },
+        effect: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            type: {
+              type: "string",
+            },
+            name: {
+              type: "string",
+            },
+            category: {
+              type: "string",
+              enum: ["tone", "dynamics", "character", "space", "movement"],
+            },
+            primaryKnob: {
+              type: ["string", "null"],
+            },
+            parameters: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  id: {
+                    type: "string",
+                  },
+                  label: {
+                    type: "string",
+                  },
+                  min: {
+                    type: "number",
+                  },
+                  max: {
+                    type: "number",
+                  },
+                  default: {
+                    type: "number",
+                  },
+                  unit: {
+                    type: ["string", "null"],
+                  },
+                  description: {
+                    type: ["string", "null"],
+                  },
+                  kind: {
+                    type: ["string", "null"],
+                    enum: ["continuous", "enum", "toggle", "discrete", "unknown", null],
+                  },
+                  step: {
+                    type: ["number", "null"],
+                  },
+                  taper: {
+                    type: ["string", "null"],
+                    enum: ["linear", "log", null],
+                  },
+                  options: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      additionalProperties: false,
+                      properties: {
+                        value: {
+                          type: "number",
+                        },
+                        label: {
+                          type: "string",
+                        },
+                      },
+                      required: ["value", "label"],
+                    },
+                  },
+                },
+                required: [
+                  "id",
+                  "label",
+                  "min",
+                  "max",
+                  "default",
+                  "unit",
+                  "description",
+                  "kind",
+                  "step",
+                  "taper",
+                  "options",
+                ],
+              },
+            },
+          },
+          required: ["type", "name", "category", "primaryKnob", "parameters"],
+        },
+        instruments: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              kind: {
+                type: "string",
+              },
+              name: {
+                type: "string",
+              },
+              parameterCount: {
+                type: "integer",
+                minimum: 0,
+              },
+            },
+            required: ["kind", "name", "parameterCount"],
+          },
+        },
+      },
+      required: ["status", "subject"],
+    },
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -2548,6 +2700,8 @@ export const MCP_TOOL_DEFS = [
         },
         trackId: {
           type: "string",
+          minLength: 1,
+          maxLength: 128,
           description: "Exact track id — overrides family when present",
         },
         family: {
@@ -2557,15 +2711,20 @@ export const MCP_TOOL_DEFS = [
         },
         effect: {
           type: "string",
+          minLength: 1,
+          maxLength: 128,
           description: "Effect type (e.g. reverb, eq) — required for set, filters list when given; see kyx_catalog",
         },
         instance: {
           type: "integer",
           minimum: 1,
+          maximum: 128,
           description: "1-based index among same-type instances in chain order (default 1)",
         },
         param: {
           type: "string",
+          minLength: 1,
+          maxLength: 128,
           description: "Parameter id for set (e.g. mix, decay, freq) — see kyx_catalog",
         },
         value: {
@@ -2585,6 +2744,221 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["op"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        status: {
+          type: "string",
+          enum: ["listed", "empty", "updated", "no_change", "partial"],
+        },
+        op: {
+          type: "string",
+          enum: ["list", "set"],
+        },
+        effect: {
+          type: ["string", "null"],
+        },
+        instance: {
+          type: ["integer", "null"],
+          minimum: 1,
+          maximum: 128,
+        },
+        param: {
+          type: ["string", "null"],
+        },
+        requestedValue: {
+          type: ["number", "null"],
+        },
+        targetCount: {
+          type: "integer",
+          minimum: 0,
+        },
+        targets: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              trackId: {
+                type: "string",
+              },
+              trackName: {
+                type: "string",
+              },
+            },
+            required: ["trackId", "trackName"],
+          },
+        },
+        instances: {
+          type: "array",
+          maxItems: 40,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              trackId: {
+                type: "string",
+              },
+              trackName: {
+                type: "string",
+              },
+              fxId: {
+                type: "string",
+              },
+              effect: {
+                type: "string",
+              },
+              instance: {
+                type: "integer",
+                minimum: 1,
+              },
+              bypassed: {
+                type: "boolean",
+              },
+              parameters: {
+                type: "array",
+                maxItems: 128,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    id: {
+                      type: "string",
+                    },
+                    value: {
+                      type: ["number", "null"],
+                    },
+                    min: {
+                      type: "number",
+                    },
+                    max: {
+                      type: "number",
+                    },
+                    default: {
+                      type: "number",
+                    },
+                    unit: {
+                      type: ["string", "null"],
+                    },
+                  },
+                  required: ["id", "value", "min", "max", "default", "unit"],
+                },
+              },
+            },
+            required: ["trackId", "trackName", "fxId", "effect", "instance", "bypassed", "parameters"],
+          },
+        },
+        changes: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              trackId: {
+                type: "string",
+              },
+              trackName: {
+                type: "string",
+              },
+              fxId: {
+                type: "string",
+              },
+              instance: {
+                type: "integer",
+                minimum: 1,
+              },
+              param: {
+                type: "string",
+              },
+              beforeValue: {
+                type: "number",
+              },
+              requestedValue: {
+                type: "number",
+              },
+              value: {
+                type: ["number", "null"],
+              },
+              min: {
+                type: "number",
+              },
+              max: {
+                type: "number",
+              },
+              unit: {
+                type: ["string", "null"],
+              },
+              clamped: {
+                type: "boolean",
+              },
+              changed: {
+                type: "boolean",
+              },
+            },
+            required: [
+              "trackId",
+              "trackName",
+              "fxId",
+              "instance",
+              "param",
+              "beforeValue",
+              "requestedValue",
+              "value",
+              "min",
+              "max",
+              "unit",
+              "clamped",
+              "changed",
+            ],
+          },
+        },
+        unmatched: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              trackId: {
+                type: "string",
+              },
+              trackName: {
+                type: "string",
+              },
+              reason: {
+                type: "string",
+                maxLength: 256,
+              },
+            },
+            required: ["trackId", "trackName", "reason"],
+          },
+        },
+        truncatedCount: {
+          type: "integer",
+          minimum: 0,
+        },
+        undoSteps: {
+          type: "integer",
+          minimum: 0,
+          maximum: 1,
+        },
+      },
+      required: [
+        "status",
+        "op",
+        "effect",
+        "instance",
+        "param",
+        "requestedValue",
+        "targetCount",
+        "targets",
+        "instances",
+        "changes",
+        "unmatched",
+        "truncatedCount",
+        "undoSteps",
+      ],
     },
     annotations: {
       readOnlyHint: false,

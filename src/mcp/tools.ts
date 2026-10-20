@@ -996,6 +996,223 @@ const OUTPUT_STEPS: McpOutputSchema = {
     "undoSteps",
   ],
 };
+/** kyx_catalog — strict machine-readable effect and instrument discovery. */
+const OUTPUT_CATALOG: McpOutputSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    status: { type: "string", enum: ["listed"] },
+    subject: { type: "string", enum: ["effects", "effect", "instruments"] },
+    effects: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          type: { type: "string" },
+          name: { type: "string" },
+          category: { type: "string", enum: ["tone", "dynamics", "character", "space", "movement"] },
+          primaryKnob: { type: ["string", "null"] },
+          parameterCount: { type: "integer", minimum: 0 },
+        },
+        required: ["type", "name", "category", "primaryKnob", "parameterCount"],
+      },
+    },
+    effect: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        type: { type: "string" },
+        name: { type: "string" },
+        category: { type: "string", enum: ["tone", "dynamics", "character", "space", "movement"] },
+        primaryKnob: { type: ["string", "null"] },
+        parameters: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              id: { type: "string" },
+              label: { type: "string" },
+              min: { type: "number" },
+              max: { type: "number" },
+              default: { type: "number" },
+              unit: { type: ["string", "null"] },
+              description: { type: ["string", "null"] },
+              kind: {
+                type: ["string", "null"],
+                enum: ["continuous", "enum", "toggle", "discrete", "unknown", null],
+              },
+              step: { type: ["number", "null"] },
+              taper: { type: ["string", "null"], enum: ["linear", "log", null] },
+              options: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: { value: { type: "number" }, label: { type: "string" } },
+                  required: ["value", "label"],
+                },
+              },
+            },
+            required: [
+              "id",
+              "label",
+              "min",
+              "max",
+              "default",
+              "unit",
+              "description",
+              "kind",
+              "step",
+              "taper",
+              "options",
+            ],
+          },
+        },
+      },
+      required: ["type", "name", "category", "primaryKnob", "parameters"],
+    },
+    instruments: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          kind: { type: "string" },
+          name: { type: "string" },
+          parameterCount: { type: "integer", minimum: 0 },
+        },
+        required: ["kind", "name", "parameterCount"],
+      },
+    },
+  },
+  required: ["status", "subject"],
+};
+/** kyx_plugin_param — bounded instance inventory and verified parameter writes. */
+const OUTPUT_PLUGIN_PARAM: McpOutputSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    status: { type: "string", enum: ["listed", "empty", "updated", "no_change", "partial"] },
+    op: { type: "string", enum: ["list", "set"] },
+    effect: { type: ["string", "null"] },
+    instance: { type: ["integer", "null"], minimum: 1, maximum: 128 },
+    param: { type: ["string", "null"] },
+    requestedValue: { type: ["number", "null"] },
+    targetCount: { type: "integer", minimum: 0 },
+    targets: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: { trackId: { type: "string" }, trackName: { type: "string" } },
+        required: ["trackId", "trackName"],
+      },
+    },
+    instances: {
+      type: "array",
+      maxItems: 40,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          trackId: { type: "string" },
+          trackName: { type: "string" },
+          fxId: { type: "string" },
+          effect: { type: "string" },
+          instance: { type: "integer", minimum: 1 },
+          bypassed: { type: "boolean" },
+          parameters: {
+            type: "array",
+            maxItems: 128,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                id: { type: "string" },
+                value: { type: ["number", "null"] },
+                min: { type: "number" },
+                max: { type: "number" },
+                default: { type: "number" },
+                unit: { type: ["string", "null"] },
+              },
+              required: ["id", "value", "min", "max", "default", "unit"],
+            },
+          },
+        },
+        required: ["trackId", "trackName", "fxId", "effect", "instance", "bypassed", "parameters"],
+      },
+    },
+    changes: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          trackId: { type: "string" },
+          trackName: { type: "string" },
+          fxId: { type: "string" },
+          instance: { type: "integer", minimum: 1 },
+          param: { type: "string" },
+          beforeValue: { type: "number" },
+          requestedValue: { type: "number" },
+          value: { type: ["number", "null"] },
+          min: { type: "number" },
+          max: { type: "number" },
+          unit: { type: ["string", "null"] },
+          clamped: { type: "boolean" },
+          changed: { type: "boolean" },
+        },
+        required: [
+          "trackId",
+          "trackName",
+          "fxId",
+          "instance",
+          "param",
+          "beforeValue",
+          "requestedValue",
+          "value",
+          "min",
+          "max",
+          "unit",
+          "clamped",
+          "changed",
+        ],
+      },
+    },
+    unmatched: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          trackId: { type: "string" },
+          trackName: { type: "string" },
+          reason: { type: "string", maxLength: 256 },
+        },
+        required: ["trackId", "trackName", "reason"],
+      },
+    },
+    truncatedCount: { type: "integer", minimum: 0 },
+    undoSteps: { type: "integer", minimum: 0, maximum: 1 },
+  },
+  required: [
+    "status",
+    "op",
+    "effect",
+    "instance",
+    "param",
+    "requestedValue",
+    "targetCount",
+    "targets",
+    "instances",
+    "changes",
+    "unmatched",
+    "truncatedCount",
+    "undoSteps",
+  ],
+};
 /** kyx_transport — runtime transport state and action read-back. */
 const OUTPUT_TRANSPORT: McpOutputSchema = {
   type: "object",
@@ -1724,7 +1941,7 @@ export const MCP_TOOLS: McpToolDef[] = [
     description:
       "Discovery — what the DAW can do, machine-readable: list every effect " +
       "type with its category and primary knob, the FULL parameter table of " +
-      "one effect (id, label, min, max, default, unit, kind, taper), or the " +
+      "one effect (native range, unit, description, kind, step, taper and enum options), or the " +
       "instrument kind catalog. Read-only; use it before kyx_plugin_param " +
       "instead of guessing ranges.",
     inputSchema: {
@@ -1738,6 +1955,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["subject"],
     },
+    outputSchema: OUTPUT_CATALOG,
   },
   {
     name: "kyx_plugin_param",
@@ -1753,7 +1971,12 @@ export const MCP_TOOLS: McpToolDef[] = [
       type: "object",
       properties: {
         op: { type: "string", enum: ["list", "set"] },
-        trackId: { type: "string", description: "Exact track id — overrides family when present" },
+        trackId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "Exact track id — overrides family when present",
+        },
         family: {
           type: "string",
           enum: ["drums", "bass", "chords", "lead", "vocal"],
@@ -1761,14 +1984,22 @@ export const MCP_TOOLS: McpToolDef[] = [
         },
         effect: {
           type: "string",
+          minLength: 1,
+          maxLength: 128,
           description: "Effect type (e.g. reverb, eq) — required for set, filters list when given; see kyx_catalog",
         },
         instance: {
           type: "integer",
           minimum: 1,
+          maximum: 128,
           description: "1-based index among same-type instances in chain order (default 1)",
         },
-        param: { type: "string", description: "Parameter id for set (e.g. mix, decay, freq) — see kyx_catalog" },
+        param: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "Parameter id for set (e.g. mix, decay, freq) — see kyx_catalog",
+        },
         value: {
           type: "number",
           description: "Absolute NATIVE value for set (NOT normalized 0..1 unless the param's range is 0..1)",
@@ -1776,6 +2007,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["op"],
     },
+    outputSchema: OUTPUT_PLUGIN_PARAM,
   },
   {
     name: "kyx_meter",
@@ -8254,24 +8486,57 @@ async function executeBatchTool(ctx: McpToolContext, record: Record<string, unkn
 
 /** kyx_catalog — machine-readable discovery over the registries. */
 function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
-  const subject = String(record.subject ?? "effects");
+  if (record.subject !== undefined && typeof record.subject !== "string") {
+    return mcpError("INVALID_ARGUMENTS", "subject must be effects, effect, or instruments");
+  }
+  const subject = (record.subject ?? "effects") as string;
+  if (subject.length > 32) return mcpError("INVALID_ARGUMENTS", "subject must be at most 32 characters");
+  if (subject !== "effects" && subject !== "effect" && subject !== "instruments") {
+    return mcpError("UNKNOWN_REQUEST", `unknown catalog subject: ${subject.slice(0, 32)}`);
+  }
   if (subject === "instruments") {
-    const lines = Object.values(INSTRUMENT_DEFS).map(
-      (def) => `${def.kind} — ${def.name} (${def.params.length} params)`,
+    const instruments = Object.values(INSTRUMENT_DEFS).map((def) => ({
+      kind: def.kind,
+      name: def.name,
+      parameterCount: def.params.length,
+    }));
+    const lines = instruments.map(
+      (instrument) => `${instrument.kind} — ${instrument.name} (${instrument.parameterCount} params)`,
     );
-    return { text: `${lines.length} instrument kinds:\n${lines.join("\n")}`, mutated: false };
+    return {
+      text: `${lines.length} instrument kinds:\n${lines.join("\n")}`,
+      mutated: false,
+      data: { status: "listed", subject, instruments },
+    };
   }
   if (subject === "effect") {
-    const type = String(record.effect ?? "").trim();
+    if (typeof record.effect !== "string" || record.effect.trim() === "") {
+      return mcpError("INVALID_ARGUMENTS", "subject:effect needs a non-empty effect type");
+    }
+    const type = record.effect.trim();
+    if (type.length > 128) return mcpError("INVALID_ARGUMENTS", "effect type must be at most 128 characters");
     const meta = (EFFECT_META as Record<string, EffectDefinitionMeta | undefined>)[type];
     if (meta == null) {
       const known = Object.keys(EFFECT_META).slice(0, 12).join(", ");
-      return {
-        text: `unknown effect "${type}" — see kyx_catalog subject:effects (first kinds: ${known}, …)`,
-        mutated: false,
-      };
+      return mcpError(
+        "UNKNOWN_TARGET",
+        `unknown effect "${type}" — see kyx_catalog subject:effects (first kinds: ${known}, …)`,
+      );
     }
     const knob = EFFECT_KNOB[type as keyof typeof EFFECT_KNOB];
+    const parameters = meta.params.map((param) => ({
+      id: param.id,
+      label: param.label,
+      min: param.min,
+      max: param.max,
+      default: param.default,
+      unit: param.unit ?? null,
+      description: param.description ?? null,
+      kind: param.kind ?? null,
+      step: param.step ?? null,
+      taper: param.taper ?? null,
+      options: (param.options ?? []).map((option) => ({ value: option.value, label: option.label })),
+    }));
     const lines = [
       `${meta.type} — ${meta.name} (${meta.category})`,
       knob
@@ -8294,12 +8559,32 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
         return param.description != null ? [line, `      ${param.description}`] : [line];
       }),
     ];
-    return { text: lines.join("\n"), mutated: false };
+    return {
+      text: lines.join("\n"),
+      mutated: false,
+      data: {
+        status: "listed",
+        subject,
+        effect: {
+          type: meta.type,
+          name: meta.name,
+          category: meta.category,
+          primaryKnob: knob ?? null,
+          parameters,
+        },
+      },
+    };
   }
   // effects list
-  const lines = Object.values(EFFECT_META).map((meta) => {
-    const knob = EFFECT_KNOB[meta.type];
-    return `${meta.type} — ${meta.name} (${meta.category})${knob ? ` [knob: ${knob}]` : " [no single knob]"}`;
+  const effects = Object.values(EFFECT_META).map((meta) => ({
+    type: meta.type,
+    name: meta.name,
+    category: meta.category,
+    primaryKnob: EFFECT_KNOB[meta.type as keyof typeof EFFECT_KNOB] ?? null,
+    parameterCount: meta.params.length,
+  }));
+  const lines = effects.map((effect) => {
+    return `${effect.type} — ${effect.name} (${effect.category})${effect.primaryKnob ? ` [knob: ${effect.primaryKnob}]` : " [no single knob]"}`;
   });
   return {
     text:
@@ -8308,6 +8593,7 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
       "details: kyx_catalog subject:effect + effect <type>):\n" +
       lines.join("\n"),
     mutated: false,
+    data: { status: "listed", subject, effects },
   };
 }
 
@@ -8352,19 +8638,79 @@ function describeGainReduction(readings: McpFxMeterReading["gainReduction"]): st
 /** kyx_plugin_param — precise per-instance parameter control over the
  * registry ranges (clampEffectParam), one undo snapshot per call. */
 function executePluginParamTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
-  const op = String(record.op ?? "list");
-  const doc = ctx.getDoc();
-  const effect = String(record.effect ?? "").trim();
+  const op = record.op === undefined ? "list" : record.op;
+  if (typeof op !== "string") return mcpError("INVALID_ARGUMENTS", "op must be list or set");
+  if (op !== "list" && op !== "set") return mcpError("UNKNOWN_REQUEST", `unknown op: ${op} (list | set)`);
+
+  const hasField = (field: string): boolean => Object.prototype.hasOwnProperty.call(record, field);
+  const rawTrackId = record.trackId;
+  if (hasField("trackId") && (typeof rawTrackId !== "string" || rawTrackId.trim() === "" || rawTrackId.length > 128)) {
+    return mcpError("INVALID_ARGUMENTS", "trackId must be a non-empty string of at most 128 characters");
+  }
+  const trackId = typeof rawTrackId === "string" ? rawTrackId.trim() : "";
+  const rawFamily = record.family;
+  const validFamilies = ["drums", "bass", "chords", "lead", "vocal"];
+  if (hasField("family") && (typeof rawFamily !== "string" || !validFamilies.includes(rawFamily.trim()))) {
+    return mcpError("INVALID_ARGUMENTS", "family must be drums, bass, chords, lead, or vocal");
+  }
+  const family = typeof rawFamily === "string" ? rawFamily.trim() : "";
+
+  const rawEffect = record.effect;
+  if (hasField("effect") && (typeof rawEffect !== "string" || rawEffect.trim() === "" || rawEffect.length > 128)) {
+    return mcpError("INVALID_ARGUMENTS", "effect must be a non-empty string of at most 128 characters");
+  }
+  const effect = typeof rawEffect === "string" ? rawEffect.trim() : "";
   const meta = effect !== "" ? (EFFECT_META as Record<string, EffectDefinitionMeta | undefined>)[effect] : undefined;
   if (effect !== "" && meta == null) {
-    return {
-      text: `unknown effect "${effect}" — see kyx_catalog subject:effects`,
-      mutated: false,
-    };
+    return mcpError("UNKNOWN_TARGET", `unknown effect "${effect}" — see kyx_catalog subject:effects`);
+  }
+  if (op === "set" && effect === "") {
+    return mcpError("INVALID_ARGUMENTS", "set needs an effect type — pass effect (see kyx_catalog subject:effects)");
   }
 
-  const trackId = typeof record.trackId === "string" ? record.trackId.trim() : "";
-  const family = typeof record.family === "string" ? record.family.trim() : "";
+  let paramId: string | null = null;
+  let rawValue: number | null = null;
+  let clampedValue: number | null = null;
+  let instanceWanted: number | null = null;
+  let paramDef: EffectDefinitionMeta["params"][number] | undefined;
+  if (op === "set") {
+    if (typeof record.param !== "string" || record.param.trim() === "" || record.param.length > 128) {
+      return mcpError("INVALID_ARGUMENTS", "set needs a parameter id from kyx_catalog subject:effect");
+    }
+    paramId = record.param.trim();
+    paramDef = meta!.params.find((p) => p.id === paramId);
+    if (paramDef == null) {
+      return mcpError(
+        "UNKNOWN_TARGET",
+        `unknown param "${paramId}" on ${effect} — parameters: ${meta!.params.map((p) => p.id).join(", ")}`,
+      );
+    }
+    if (typeof record.value !== "number" || !Number.isFinite(record.value)) {
+      return mcpError(
+        "INVALID_ARGUMENTS",
+        `set needs a finite number in NATIVE units (${paramId}: ${paramDef.min}..${paramDef.max}${paramDef.unit ? ` ${paramDef.unit}` : ""}, default ${paramDef.default})`,
+      );
+    }
+    rawValue = record.value;
+    const rawInstance = record.instance;
+    if (
+      rawInstance !== undefined &&
+      (typeof rawInstance !== "number" || !Number.isSafeInteger(rawInstance) || rawInstance < 1 || rawInstance > 128)
+    ) {
+      return mcpError("INVALID_ARGUMENTS", "instance must be a positive 1-based integer from 1 to 128");
+    }
+    instanceWanted = rawInstance === undefined ? 1 : rawInstance;
+    clampedValue = clampEffectParam(effect as keyof typeof EFFECT_META, paramId, rawValue);
+    if (paramDef.kind === "toggle" && clampedValue !== 0 && clampedValue !== 1) {
+      return mcpError("INVALID_ARGUMENTS", `${effect}.${paramId} is a toggle and accepts only 0 or 1`);
+    }
+    if (paramDef.options?.length && !paramDef.options.some((option) => option.value === clampedValue)) {
+      const values = paramDef.options.map((option) => option.value).join(", ");
+      return mcpError("INVALID_ARGUMENTS", `${effect}.${paramId} accepts only: ${values}`);
+    }
+  }
+
+  const doc = ctx.getDoc();
   let targets: Track[];
   if (trackId !== "") {
     const track = doc.tracks.find((t) => t.id === trackId);
@@ -8377,90 +8723,263 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
       .filter((t): t is Track => t != null);
     if (targets.length === 0) return mcpError("UNKNOWN_TARGET", `no track matches family "${family}"`);
   } else {
-    return { text: "no target — pass trackId (from kyx_state tracks) or family", mutated: false };
+    return mcpError("INVALID_ARGUMENTS", "no target — pass trackId (from kyx_state tracks) or family");
   }
+
+  const targetData = targets.map((track) => ({ trackId: track.id, trackName: track.name }));
+  const unmatched: Array<{ trackId: string; trackName: string; reason: string }> = [];
+  const resultData = (
+    status: "listed" | "empty" | "updated" | "no_change" | "partial",
+    fields: {
+      instances?: Array<{
+        trackId: string;
+        trackName: string;
+        fxId: string;
+        effect: string;
+        instance: number;
+        bypassed: boolean;
+        parameters: Array<{
+          id: string;
+          value: number;
+          min: number;
+          max: number;
+          default: number;
+          unit: string | null;
+        }>;
+      }>;
+      changes?: Array<{
+        trackId: string;
+        trackName: string;
+        fxId: string;
+        instance: number;
+        param: string;
+        beforeValue: number;
+        requestedValue: number;
+        value: number | null;
+        min: number;
+        max: number;
+        unit: string | null;
+        clamped: boolean;
+        changed: boolean;
+      }>;
+      truncatedCount?: number;
+      undoSteps?: number;
+    } = {},
+  ) => ({
+    status,
+    op,
+    effect: effect || null,
+    instance: instanceWanted,
+    param: paramId,
+    requestedValue: rawValue,
+    targetCount: targets.length,
+    targets: targetData,
+    instances: fields.instances ?? [],
+    changes: fields.changes ?? [],
+    unmatched,
+    truncatedCount: fields.truncatedCount ?? 0,
+    undoSteps: fields.undoSteps ?? 0,
+  });
 
   if (op === "list") {
     const lines: string[] = [];
+    const allInstances: NonNullable<ReturnType<typeof resultData>["instances"]> = [];
     for (const track of targets) {
-      const instances = track.effects.filter((fx) => effect === "" || fx.type === effect);
-      if (instances.length === 0) {
-        if (effect !== "") lines.push(`${track.name}: no ${effect} instance in the chain`);
-        else if (track.effects.length === 0) lines.push(`${track.name}: no FX`);
+      const matching = track.effects.filter((fx) => effect === "" || fx.type === effect);
+      if (matching.length === 0) {
+        const reason = effect !== "" ? `no ${effect} instance in the chain` : "no FX";
+        unmatched.push({ trackId: track.id, trackName: track.name, reason });
+        if (effect !== "" || track.effects.length === 0) lines.push(`${track.name}: ${reason}`);
         continue;
       }
-      for (const fx of instances) {
+      for (const fx of matching) {
         const fxMeta = (EFFECT_META as Record<string, EffectDefinitionMeta | undefined>)[fx.type];
         const params = fxMeta?.params ?? [];
-        const values = params.map((param) => {
+        const parameterData: Array<{
+          id: string;
+          value: number;
+          min: number;
+          max: number;
+          default: number;
+          unit: string | null;
+        }> = [];
+        for (const param of params) {
           const current = fx.params[param.id] ?? param.default;
-          return `${param.id}=${current} (${param.min}..${param.max}${param.unit ? ` ${param.unit}` : ""}, def ${param.default})`;
-        });
+          if (!Number.isFinite(current)) {
+            return mcpError("EXECUTION_FAILED", `${track.name}: ${fx.type}.${param.id} has a non-finite stored value`);
+          }
+          parameterData.push({
+            id: param.id,
+            value: current,
+            min: param.min,
+            max: param.max,
+            default: param.default,
+            unit: param.unit ?? null,
+          });
+        }
+        const values = parameterData.map(
+          (param) =>
+            `${param.id}=${param.value} (${param.min}..${param.max}${param.unit ? ` ${param.unit}` : ""}, def ${param.default})`,
+        );
+        const instance = matching.indexOf(fx) + 1;
         lines.push(
-          `${track.name}: ${fx.type}#${instances.indexOf(fx) + 1}${fx.bypassed ? " [bypassed]" : ""} ${values.join(", ") || "(no numeric params)"}`,
+          `${track.name}: ${fx.type}#${instance}${fx.bypassed ? " [bypassed]" : ""} ${values.join(", ") || "(no numeric params)"}`,
+        );
+        allInstances.push({
+          trackId: track.id,
+          trackName: track.name,
+          fxId: fx.id,
+          effect: fx.type,
+          instance,
+          bypassed: !!fx.bypassed,
+          parameters: parameterData,
+        });
+      }
+    }
+    const instances = allInstances.slice(0, 40);
+    const truncatedCount = Math.max(0, allInstances.length - instances.length);
+    const visibleLines = lines.slice(0, 40);
+    const text =
+      lines.length > visibleLines.length
+        ? `${visibleLines.join("\n")}\n… and ${lines.length - visibleLines.length} more line(s)`
+        : visibleLines.join("\n") || "no FX instances match the target";
+    const status = allInstances.length > 0 ? "listed" : "empty";
+    return {
+      text,
+      mutated: false,
+      data: resultData(status, { instances, truncatedCount }),
+    };
+  }
+
+  const param = paramDef!;
+  const requested = rawValue!;
+  const clamped = clampedValue!;
+  const selected: Array<{ track: Track; fx: Track["effects"][number]; beforeValue: number; changed: boolean }> = [];
+  let next = doc;
+  for (const track of targets) {
+    const instances = track.effects.filter((fx) => fx.type === effect);
+    if (instances.length === 0) {
+      unmatched.push({
+        trackId: track.id,
+        trackName: track.name,
+        reason: `no ${effect} instance (insert via kyx_fx more first)`,
+      });
+      continue;
+    }
+    if (instances.length < instanceWanted!) {
+      unmatched.push({
+        trackId: track.id,
+        trackName: track.name,
+        reason: `${effect} instance #${instanceWanted} does not exist (chain has ${instances.length})`,
+      });
+      continue;
+    }
+    const fx = instances[instanceWanted! - 1];
+    if (fx == null) {
+      unmatched.push({
+        trackId: track.id,
+        trackName: track.name,
+        reason: `${effect} instance #${instanceWanted} does not exist`,
+      });
+      continue;
+    }
+    const beforeValue = fx.params[paramId!] ?? param.default;
+    if (!Number.isFinite(beforeValue)) {
+      return mcpError("EXECUTION_FAILED", `${track.name}: ${effect}.${paramId} has a non-finite stored value`);
+    }
+    const changed = beforeValue !== clamped;
+    selected.push({ track, fx, beforeValue, changed });
+    if (changed) {
+      try {
+        next = setEffectParam(next, track.id, fx.id, paramId!, clamped).execute(next);
+      } catch (error) {
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          error instanceof Error ? error.message : `cannot set ${effect}.${paramId}`,
         );
       }
     }
-    if (lines.length === 0) return { text: "no FX instances match the target", mutated: false };
-    if (lines.length > 40)
-      return {
-        text: `${lines.slice(0, 40).join("\n")}\n… and ${lines.length - 40} more instance line(s)`,
-        mutated: false,
-      };
-    return { text: lines.join("\n"), mutated: false };
   }
 
-  if (op === "set") {
-    if (meta == null)
-      return { text: "set needs an effect type — pass effect (see kyx_catalog subject:effects)", mutated: false };
-    const paramId = String(record.param ?? "").trim();
-    const paramDef = meta.params.find((p) => p.id === paramId);
-    if (paramDef == null) {
-      return {
-        text: `unknown param "${paramId}" on ${effect} — parameters: ${meta.params.map((p) => p.id).join(", ")}`,
-        mutated: false,
-      };
+  const needsCommit = selected.some((entry) => entry.changed);
+  let executionError: unknown;
+  if (needsCommit) {
+    try {
+      ctx.execute(
+        snapshot(
+          "mcpPluginParam",
+          `MCP: ${effect}.${paramId} on ${selected.filter((entry) => entry.changed).length} track(s)`,
+          doc,
+          next,
+        ),
+      );
+    } catch (error) {
+      executionError = error;
     }
-    const rawValue = Number(record.value);
-    if (record.value == null || !Number.isFinite(rawValue)) {
-      return {
-        text: `set needs a finite number in NATIVE units (${paramId}: ${paramDef.min}..${paramDef.max}${paramDef.unit ? ` ${paramDef.unit}` : ""}, default ${paramDef.default})`,
-        mutated: false,
-      };
-    }
-    const instanceWanted = Math.max(1, Math.round(Number(record.instance ?? 1)));
-    const clamped = clampEffectParam(effect as keyof typeof EFFECT_META, paramId, rawValue);
-    let next = doc;
-    const parts: string[] = [];
-    let touched = 0;
-    for (const track of targets) {
-      const instances = track.effects.filter((fx) => fx.type === effect);
-      if (instances.length === 0) {
-        parts.push(`${track.name}: no ${effect} instance (insert via kyx_fx more first)`);
-        continue;
-      }
-      if (instances.length < instanceWanted) {
-        parts.push(
-          `${track.name}: ${effect} instance #${instanceWanted} does not exist (chain has ${instances.length})`,
-        );
-        continue;
-      }
-      const fx = instances[instanceWanted - 1];
-      const prev = fx.params[paramId] ?? paramDef.default;
-      next = setEffectParam(next, track.id, fx.id, paramId, clamped).execute(next);
-      touched += 1;
-      const tidy = (value: number): number => Math.round(value * 1e4) / 1e4; // kill float noise in the read-back
-      const clampedNote = clamped !== rawValue ? ` — clamped to ${paramDef.min}..${paramDef.max}` : "";
-      parts.push(`${track.name}: ${paramId} ${tidy(prev)} → ${tidy(clamped)}${clampedNote}`);
-    }
-    if (touched === 0) {
-      return { text: `nothing changed — ${parts.join("; ")}`, mutated: false };
-    }
-    ctx.execute(snapshot("mcpPluginParam", `MCP: ${effect}.${paramId} on ${touched} track(s)`, doc, next));
-    return { text: `${parts.join("; ")} — one undo step`, mutated: true };
   }
 
-  return { text: `unknown op: ${op} (list | set)`, mutated: false };
+  const after = ctx.getDoc();
+  const mutated = after !== doc;
+  const changes = selected.map(({ track, fx, beforeValue }) => {
+    const committedTrack = after.tracks.find((candidate) => candidate.id === track.id);
+    const committedFx = committedTrack?.effects.find((candidate) => candidate.id === fx.id);
+    const storedValue = committedFx?.params[paramId!];
+    const value =
+      committedFx == null
+        ? null
+        : storedValue === undefined
+          ? param.default
+          : Number.isFinite(storedValue)
+            ? storedValue
+            : null;
+    return {
+      trackId: track.id,
+      trackName: track.name,
+      fxId: fx.id,
+      instance: instanceWanted!,
+      param: paramId!,
+      beforeValue,
+      requestedValue: requested,
+      value,
+      min: param.min,
+      max: param.max,
+      unit: param.unit ?? null,
+      clamped: clamped !== requested,
+      changed: value != null && value !== beforeValue,
+    };
+  });
+  const readBackMismatch = changes.some((change) => change.value !== clamped);
+  const status =
+    unmatched.length > 0 || readBackMismatch || executionError != null
+      ? "partial"
+      : needsCommit
+        ? "updated"
+        : "no_change";
+  const undoSteps = mutated ? 1 : 0;
+  const data = resultData(status, { changes, undoSteps });
+  const parts = changes.map((change) => {
+    const tidy = (value: number): number => Math.round(value * 1e4) / 1e4;
+    const clampedNote = change.clamped ? ` — clamped to ${param.min}..${param.max}` : "";
+    return `${change.trackName}: ${paramId} ${tidy(change.beforeValue)} → ${change.value == null ? "unavailable" : tidy(change.value)}${clampedNote}`;
+  });
+  for (const missed of unmatched) parts.push(`${missed.trackName}: ${missed.reason}`);
+  const suffix = undoSteps > 0 ? " — one undo step" : "";
+  const text = parts.length > 0 ? `${parts.join("; ")}${suffix}` : `nothing changed — no ${effect} instance matched`;
+
+  if (executionError != null) {
+    return mcpError(
+      "EXECUTION_FAILED",
+      `${text}: ${executionError instanceof Error ? executionError.message : String(executionError)}`,
+      {
+        mutated,
+        data,
+      },
+    );
+  }
+  if (unmatched.length > 0 || readBackMismatch) {
+    return mcpError("PARTIAL_FAILURE", text, { mutated, data });
+  }
+  return { text: needsCommit ? `${text} — read-back verified` : `${text} — already at requested value`, mutated, data };
 }
 
 function executeMusicTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
