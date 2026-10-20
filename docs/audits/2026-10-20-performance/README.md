@@ -203,6 +203,7 @@ Both invariants are registered in `docs/AGENT-MAP.md`, whose gate
 | `npx vitest run tests/agent-map.test.ts`                                                                                                                                                                                            | **1 passed** — the invariant register accepts the new rows |
 | `npx vite-node scripts/bench-hotpath.ts`                                                                                                                                                                                            | P.1 **11.94× faster**, 168.87 KiB less allocated per call  |
 | `npx prettier --check` (own files)                                                                                                                                                                                                  | **clean**                                                  |
+| `npx tsc --noEmit -p tsconfig.json` (repo-wide)                                                                                                                                                                                     | **exit 0**                                                 |
 | full `npm run test`                                                                                                                                                                                                                 | see the table below                                        |
 
 ### The full-suite run
