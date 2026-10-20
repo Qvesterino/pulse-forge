@@ -13,6 +13,7 @@
 //   npm run verify:all -- --engines all     # chromium+firefox+webkit
 //
 // Gates (default order = cheapest-fail-first):
+//   mirrors     MCP tool/resource mirrors in sync   (blocking; ~1 s)
 //   typecheck   tsc --noEmit                       (blocking)
 //   unit        vitest run                          (blocking)
 //   browser     real-browser verifier @chromium     (blocking; PORT 5299 —
@@ -64,6 +65,20 @@ function argValue(flag) {
 const IS_WIN = process.platform === "win32";
 
 const GATES = [
+  {
+    // The MCP tool/resource surface has THREE copies (src/mcp/tools.ts is
+    // the source; the desktop + server files are GENERATED mirrors). The
+    // mirrors are checked, not hand-edited - so this gate is a drift
+    // detector, not a formatter. It is the cheapest gate in the harness
+    // (~1 s) and it is FIRST, because a drifted mirror fails the desktop
+    // and web MCP transports at runtime, far away from the edit that
+    // caused it.
+    id: "mirrors",
+    label: "MCP tool/resource mirrors in sync with src/mcp/tools.ts",
+    blocking: true,
+    cmd: (npm) => [npm, "run", "verify:mcp-mirrors"],
+    timeoutMs: 3 * 60 * 1000,
+  },
   {
     id: "typecheck",
     label: "Strict typecheck (tsc --noEmit)",

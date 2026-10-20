@@ -137,6 +137,12 @@ const measure = async () => await page.evaluate(readStateMatrix, STATE_ROLES);
  * goes amber). Reading the parent's inherited colour would measure a colour
  * that is not on the screen, and the pixel test would then reject every glyph
  * as "not text".
+ *
+ * And the region is the TEXT OWNER'S BOX, not the role's box. The role's box
+ * includes its BORDER — and `.track-header-name` carries a 3px amber left
+ * border, so scanning the role's box invented a "green text on pure amber,
+ * 1.23:1" reading that was really the text's antialiased edge next to a
+ * border. A border is not the surface a text is read against.
  */
 const collectRoleRegions = async (): Promise<RoleRegion[]> =>
   await page.evaluate((roles) => {
@@ -147,51 +153,35 @@ const collectRoleRegions = async (): Promise<RoleRegion[]> =>
     };
     const out: {
       id: string;
-      selector: string;
-      x: number;
-      y: number;
-      w: number;
-      h: number;
-      colors: string[];
+      parts: { color: string; x: number; y: number; w: number; h: number }[];
     }[] = [];
     for (const role of roles) {
       const el = [...document.querySelectorAll(role.selector)].filter(visible)[0];
       if (!el) continue;
-      const rect = el.getBoundingClientRect();
-      const colors: string[] = [];
+      const parts: { color: string; x: number; y: number; w: number; h: number }[] = [];
       const seen = new Set<string>();
       for (const node of [el, ...el.querySelectorAll("*")]) {
         const ownsText = [...node.childNodes].some(
           (child) => child.nodeType === 3 && (child.textContent ?? "").trim().length > 0,
         );
         if (!ownsText) continue;
+        const r = node.getBoundingClientRect();
+        if (r.width < 1 || r.height < 1) continue;
         const color = getComputedStyle(node).color;
-        if (seen.has(color)) continue;
-        seen.add(color);
-        colors.push(color);
+        const key = `${color}|${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.width)},${Math.round(r.height)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        parts.push({ color, x: r.x, y: r.y, w: r.width, h: r.height });
       }
-      out.push({
-        id: role.id,
-        selector: role.selector,
-        x: rect.x,
-        y: rect.y,
-        w: rect.width,
-        h: rect.height,
-        colors,
-      });
+      out.push({ id: role.id, parts });
     }
     return out;
   }, STATE_ROLES);
 
-/** One role's region on the viewport, with the colours of its text. */
+/** One role's text: where it is, and in which colour. */
 interface RoleRegion {
   id: string;
-  selector: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  colors: string[];
+  parts: { color: string; x: number; y: number; w: number; h: number }[];
 }
 
 /**
@@ -251,17 +241,20 @@ async function measureContrastByPixels(): Promise<Map<string, PixelContrast>> {
   const viewport = page.viewportSize();
   if (!viewport) return result;
 
-  // 1. Where each role is, and what colours its text wears.
+  // 1. Where each role's text is, and in which colours.
   const regions = await collectRoleRegions();
   const clipped = regions
-    .map((r) => {
-      const x = Math.max(0, r.x);
-      const y = Math.max(0, r.y);
-      const w = Math.min(r.w, viewport.width - x);
-      const h = Math.min(r.h, viewport.height - y);
-      return { ...r, x, y, w, h };
-    })
-    .filter((r) => r.w >= 2 && r.h >= 2 && r.colors.length > 0);
+    .map((r) => ({
+      id: r.id,
+      parts: r.parts
+        .map((p) => {
+          const x = Math.max(0, p.x);
+          const y = Math.max(0, p.y);
+          return { ...p, x, y, w: Math.min(p.w, viewport.width - x), h: Math.min(p.h, viewport.height - y) };
+        })
+        .filter((p) => p.w >= 2 && p.h >= 2),
+    }))
+    .filter((r) => r.parts.length > 0);
   if (!clipped.length) return result;
 
   // 2. The whole viewport, twice: with the text, and without it.
@@ -305,7 +298,7 @@ async function measureContrastByPixels(): Promise<Map<string, PixelContrast>> {
       if (!pctx) return [];
       const SENTINEL = "rgb(1, 2, 3)";
       const parsed = new Map<string, { r: number; g: number; b: number; a: number }>();
-      for (const color of new Set(regions.flatMap((rg) => rg.colors))) {
+      for (const color of new Set(regions.flatMap((rg) => rg.parts.map((pt) => pt.color)))) {
         pctx.fillStyle = SENTINEL;
         pctx.fillStyle = color;
         pctx.fillRect(0, 0, 1, 1);
@@ -323,11 +316,6 @@ async function measureContrastByPixels(): Promise<Map<string, PixelContrast>> {
 
       const out: unknown[] = [];
       for (const region of regions) {
-        const x0 = Math.max(0, Math.round(region.x));
-        const y0 = Math.max(0, Math.round(region.y));
-        const x1 = Math.min(A.width, x0 + Math.round(region.w));
-        const y1 = Math.min(A.height, y0 + Math.round(region.h));
-
         /**
          * The pixels are GROUPED by the (background, text colour) pair they
          * show, not averaged and not reduced to a single worst pixel.
@@ -345,18 +333,24 @@ async function measureContrastByPixels(): Promise<Map<string, PixelContrast>> {
         let sum = 0;
         let count = 0;
 
-        for (let y = y0; y < y1; y += 1) {
-          for (let x = x0; x < x1; x += 1) {
-            const i = (y * A.width + x) * 4;
-            const ar = A.data[i];
-            const ag = A.data[i + 1];
-            const ab = A.data[i + 2];
-            const br = B.data[i];
-            const bg = B.data[i + 1];
-            const bb = B.data[i + 2];
-            if (Math.abs(ar - br) + Math.abs(ag - bg) + Math.abs(ab - bb) < 6) continue; // unchanged
+        for (const part of region.parts) {
+          const x0 = Math.max(0, Math.round(part.x));
+          const y0 = Math.max(0, Math.round(part.y));
+          const x1 = Math.min(A.width, x0 + Math.round(part.w));
+          const y1 = Math.min(A.height, y0 + Math.round(part.h));
+          const color = part.color;
 
-            for (const color of region.colors) {
+          for (let y = y0; y < y1; y += 1) {
+            for (let x = x0; x < x1; x += 1) {
+              const i = (y * A.width + x) * 4;
+              const ar = A.data[i];
+              const ag = A.data[i + 1];
+              const ab = A.data[i + 2];
+              const br = B.data[i];
+              const bg = B.data[i + 1];
+              const bb = B.data[i + 2];
+              if (Math.abs(ar - br) + Math.abs(ag - bg) + Math.abs(ab - bb) < 6) continue; // unchanged
+
               const t = parsed.get(color);
               if (!t) continue;
               // The text colour as it lands on THIS background.
@@ -385,19 +379,14 @@ async function measureContrastByPixels(): Promise<Map<string, PixelContrast>> {
               const ratio = (Math.max(lText, lBg) + 0.05) / (Math.min(lText, lBg) + 0.05);
               const key = `${br},${bg},${bb}|${color}`;
               const group = groups.get(key);
-              if (group) {
-                group.count += 1;
-                sum += ratio;
-                count += 1;
-              } else {
-                groups.set(key, { count: 1, ratio, bg: [br, bg, bb], text: color, x: x - x0, y: y - y0 });
-                sum += ratio;
-                count += 1;
-              }
-              break; // this pixel matched one text colour — count it once
+              if (group) group.count += 1;
+              else groups.set(key, { count: 1, ratio, bg: [br, bg, bb], text: color, x: x - x0, y: y - y0 });
+              sum += ratio;
+              count += 1;
             }
           }
         }
+      }
 
         let worst: { count: number; ratio: number; bg: number[]; text: string; x: number; y: number } | null = null;
         let sliver: { count: number; ratio: number; bg: number[]; text: string; x: number; y: number } | null = null;
@@ -414,11 +403,23 @@ async function measureContrastByPixels(): Promise<Map<string, PixelContrast>> {
          * a moving meter edge). Nothing lands between 3% and 45%.
          */
         const minShare = Math.max(2, total * 0.1);
+        let overall: { count: number; ratio: number; bg: number[]; text: string; x: number; y: number } | null = null;
         for (const group of groups.values()) {
+          if (!overall || group.ratio < overall.ratio) overall = group;
           if (group.count >= minShare) {
             if (!worst || group.ratio < worst.ratio) worst = group;
           } else if (!sliver || group.ratio < sliver.ratio) sliver = group;
         }
+        /**
+         * When NO surface carries a tenth of the text, the text is spread thin
+         * over a gradient — there is no dominant surface, so the concept of an
+         * outlier does not apply and the WORST surface is the honest reading.
+         *
+         * The alternative was to report "no measurement", which is what the
+         * first version did by accident: it returned 0:1, a number that reads
+         * as "the worst contrast possible" and is really "I did not look".
+         */
+        if (!worst) worst = overall;
 
         const shape = {
           id: region.id,

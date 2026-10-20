@@ -70,7 +70,7 @@ describe("mcp typed error codes (P2-B, GAP-08)", () => {
     });
   }
 
-  it("PARTIAL_FAILURE and REQUEST_ID_CONFLICT are part of the closed set", async () => {
+  it("partial failures and requestId errors are part of the closed set", async () => {
     const codes: McpErrorCode[] = [
       "UNKNOWN_TOOL",
       "UNKNOWN_REQUEST",
@@ -81,8 +81,9 @@ describe("mcp typed error codes (P2-B, GAP-08)", () => {
       "UNAVAILABLE_ON_TRANSPORT",
       "POLICY_REFUSED",
       "REQUEST_ID_CONFLICT",
+      "INVALID_REQUEST_ID",
     ];
-    expect(new Set(codes).size).toBe(9);
+    expect(new Set(codes).size).toBe(10);
   });
 
   it("success results carry no errorCode", async () => {

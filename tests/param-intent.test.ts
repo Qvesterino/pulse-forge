@@ -3,6 +3,7 @@ import {
   parseParamIntent,
   applyParamIntent,
   paramMovePreview,
+  paramPlanLines,
   paramReadback,
   type ParamIntent,
 } from "../src/intent/param-intent";
@@ -224,5 +225,202 @@ describe("param ask with no track — target clarification", () => {
   it("the same ask WITH a track still parses normally", () => {
     expect(parseParamIntent("make the reverb tail a little longer on the lead")).not.toBeNull();
     expect(routeIntentText("make the reverb tail a little longer on the lead", testDoc()).kind).toBe("paramIntent");
+  });
+});
+
+/**
+ * P2 — CALIBRATION ACROSS THE SEVEN LEVELS × PARAMETER FAMILIES.
+ *
+ * The same spoken degree must not produce a different order on a dB threshold,
+ * a log-tapered attack, a linear Q or a stereo width. Every row also asserts
+ * the DIRECTION the role names (faster attack = shorter, lower cutoff =
+ * darker, wider = more width) and that the stronger word never lands weaker.
+ * Destination clamping is allowed and is reported by `paramPlan` — saturation
+ * at the bounds is explicit, not hidden.
+ */
+describe("seven-level calibration across parameter families", () => {
+  const LEVELS: ReadonlyArray<readonly [number, string]> = [
+    [1, "barely"],
+    [2, "a touch"],
+    [3, "slightly"],
+    [4, "somewhat"],
+    [5, "quite"],
+    [6, "much"],
+    [7, "as much as possible"],
+  ];
+
+  interface Family {
+    name: string;
+    make: (degree: string) => string;
+    effectType: string;
+    paramId: string;
+    direction: "more" | "less";
+    domain: "log" | "linear";
+    current: number;
+  }
+
+  const FAMILIES: ReadonlyArray<Family> = [
+    {
+      name: "saturation mix",
+      make: (d) => `${d} more saturation mix on the 808`,
+      effectType: "saturation",
+      paramId: "mix",
+      direction: "more",
+      domain: "linear",
+      current: 0.4,
+    },
+    {
+      name: "saturation tone",
+      make: (d) => `${d} brighter saturation tone on the 808`,
+      effectType: "saturation",
+      paramId: "tone",
+      direction: "more",
+      domain: "linear",
+      current: 6000,
+    },
+    {
+      name: "reverb decay",
+      make: (d) => `${d} longer reverb decay on the 808`,
+      effectType: "reverb",
+      paramId: "decay",
+      direction: "more",
+      domain: "linear",
+      current: 1.8,
+    },
+    {
+      name: "compressor threshold",
+      make: (d) => `${d} lower compressor threshold on the drums`,
+      effectType: "compressor",
+      paramId: "threshold",
+      direction: "less",
+      domain: "linear",
+      current: -18,
+    },
+    {
+      name: "compressor attack",
+      make: (d) => `${d} faster compressor attack on the drums`,
+      effectType: "compressor",
+      paramId: "attack",
+      direction: "less",
+      domain: "log",
+      current: 0.01,
+    },
+    {
+      name: "compressor release",
+      make: (d) => `${d} longer compressor release on the drums`,
+      effectType: "compressor",
+      paramId: "release",
+      direction: "more",
+      domain: "log",
+      current: 0.2,
+    },
+    {
+      name: "filter cutoff",
+      make: (d) => `${d} lower filter cutoff on the 808`,
+      effectType: "svFilter",
+      paramId: "cutoff",
+      direction: "less",
+      domain: "log",
+      current: 2000,
+    },
+    {
+      name: "filter Q",
+      make: (d) => `${d} higher filter Q on the 808`,
+      effectType: "svFilter",
+      paramId: "resonance",
+      direction: "more",
+      domain: "linear",
+      current: 0.3,
+    },
+    {
+      name: "widener width",
+      make: (d) => `${d} wider widener width on the chords`,
+      effectType: "haasWidener",
+      paramId: "width",
+      direction: "more",
+      domain: "linear",
+      current: 0.7,
+    },
+  ];
+
+  for (const family of FAMILIES) {
+    it(`${family.name}: levels are ordered and the direction is ${family.direction}`, () => {
+      let previousFraction = -1;
+      for (const [level, word] of LEVELS) {
+        const text = family.make(word);
+        const intent = parseParamIntent(text);
+        expect(intent, text).not.toBeNull();
+        if (!intent) continue;
+        expect(intent.effectType, text).toBe(family.effectType);
+        expect(intent.paramId, text).toBe(family.paramId);
+        expect(intent.mode, text).toBe(family.direction);
+        expect(intent.degree?.level, text).toBe(level);
+        const preview = paramMovePreview(intent, family.current);
+        expect(preview, text).not.toBeNull();
+        if (!preview) continue;
+        expect(preview.domain, text).toBe(family.domain);
+        expect(preview.fraction, text).not.toBeNull();
+        expect(preview.fraction!, text).toBeGreaterThanOrEqual(previousFraction - 1e-9);
+        previousFraction = preview.fraction!;
+        if (family.direction === "more") {
+          expect(preview.next, text).toBeGreaterThanOrEqual(family.current - 1e-9);
+        } else {
+          expect(preview.next, text).toBeLessThanOrEqual(family.current + 1e-9);
+        }
+      }
+    });
+  }
+
+  it("precision: exact units win, bounds clamp, and the request is preserved", () => {
+    const threshold = mustParse("set the compressor threshold to -20 dB on the drums");
+    expect(threshold.mode).toBe("set");
+    expect(threshold.value).toBe(-20);
+    expect(threshold.requestedValue).toBe(-20);
+
+    const outOfBounds = mustParse("set the compressor threshold to -200 dB on the drums");
+    expect(outOfBounds.value).toBe(-60);
+    expect(outOfBounds.requestedValue).toBe(-200);
+
+    const attack = mustParse("set compressor attack to 5 ms on the drums");
+    expect(attack.value).toBeCloseTo(0.005, 9);
+
+    const cutoff = mustParse("set filter cutoff to 12 kHz on the 808");
+    expect(cutoff.value).toBe(12000);
+
+    const width = mustParse("set widener width to 50% on the chords");
+    expect(width.value).toBe(0.5);
+
+    const q = mustParse("set filter Q to 0.5 on the 808");
+    expect(q.value).toBe(0.5);
+
+    // A unit wins over a qualifier: the exact number is not nudged.
+    const exactWins = mustParse("slightly lower the compressor threshold to -20 dB on the drums");
+    expect(exactWins.value).toBe(-20);
+
+    // "set … lower" names no value — decline instead of applying a default step.
+    expect(parseParamIntent("set the compressor threshold lower on the drums")).toBeNull();
+  });
+
+  it("a clamped set is visible BEFORE execution and shows the requested value", () => {
+    const q = mustParse("set filter Q to 2.5 on the 808");
+    expect(q.requestedValue).toBe(2.5);
+    expect(q.value).toBe(1);
+    const plan = paramPlanLines(q, testDoc()).join(" ");
+    expect(plan).toContain("svFilter.resonance");
+    expect(plan).toContain("clamped to");
+    expect(plan).toContain("100%");
+  });
+
+  it("paramPlan exposes the inferred delta in the param's own domain", () => {
+    const plan = paramPlanLines(mustParse("slightly longer reverb decay on the 808"), testDoc());
+    const line = plan.join(" ");
+    expect(line).toContain("808: reverb.decay");
+    expect(line).toContain("1.80 s");
+    expect(line).toContain("3.39 s");
+    expect(line).toContain("8% linear");
+    expect(line).toContain("(add)");
+    expect(paramPlanLines(mustParse("slightly longer reverb decay on the lead"), testDoc())).toEqual([
+      "lead: no matching track",
+    ]);
   });
 });

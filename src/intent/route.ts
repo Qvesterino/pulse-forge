@@ -863,6 +863,17 @@ export function routeIntentText(
       advice: ['Say what to change, for example "turn down the bass".'],
     };
   }
+  // P2 (domain calibration 2026-10-20): a fully resolved EFFECT × KNOB ×
+  // TARGET is more specific than a generic fader/tempo ask and must win.
+  // Measured before this move: "much faster compressor attack on the drums"
+  // changed the TEMPO, "lower filter cutoff on the lead" moved the LEAD FADER,
+  // and "set compressor attack to 5 ms" hit the fader path. The param parser
+  // already declines without all three of effect, role and target, so this
+  // cannot capture a plain "turn down the bass".
+  const paramIntent = parseParamIntent(text);
+  if (paramIntent) {
+    return { kind: "paramIntent", intent: paramIntent };
+  }
   // A non-structural request that says the arrangement needs more or less
   // energy/density is a content revision. The noun "arrangement" alone must
   // not trigger auto-arrange when scenes exist.
@@ -1064,12 +1075,9 @@ export function routeIntentText(
   }
   // PARAM-LEVEL (param wave P1): a NAMED KNOB beats the primary-knob path —
   // "set delay time to 375 ms", "dlhší chvost na reverbe" address the exact
-  // param instead of turning the effect's primary knob. Runs BEFORE
-  // effectIntent so the old namesForeignKnob decline becomes a parse.
-  const paramIntent = parseParamIntent(text);
-  if (paramIntent) {
-    return { kind: "paramIntent", intent: paramIntent };
-  }
+  // param instead of turning the effect's primary knob. This is the SAME
+  // parse that now runs early (above), so a param ask cannot be stolen by
+  // tempo/fader/send on the way here.
   const effectIntent = parseEffectIntent(text);
   const normalizedEffectText = deaccent(text).toLowerCase();
   const hasExplicitEffectVerb =

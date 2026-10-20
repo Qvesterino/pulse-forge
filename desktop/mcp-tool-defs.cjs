@@ -2223,7 +2223,8 @@ const MCP_TOOL_DEFS = [
           description: "For op:trim — output-trim delta in dB (e.g. target LUFS minus measured LUFS)",
         },
         instance: {
-          type: "number",
+          type: "integer",
+          minimum: 1,
           description: "1-based ZENIT instance index when a track carries more than one",
         },
         requestId: {

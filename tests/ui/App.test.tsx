@@ -201,7 +201,11 @@ describe("App (top-level shell)", () => {
       await waitFor(() => expect(screen.getByText(/1\/4 — YOUR TECHNO STARTER/)).toBeInTheDocument(), {
         timeout: 5000,
       });
-      expect(screen.getByText(/dark song is set to 145 BPM/)).toBeInTheDocument();
+      // The copy lives in src/ui/OnboardingTour.tsx (the song-starter tourBody).
+      // It moved from "… song is set to 145 BPM" to "… style and 145 BPM are
+      // already applied" when the handoff started describing what KYX does
+      // with the pack. Pin mood + BPM + the applied semantics.
+      expect(screen.getByText(/dark style and 145 BPM are already applied/)).toBeInTheDocument();
       await user.selectOptions(screen.getByRole("combobox", { name: "Previous DAW profile" }), "pro-tools");
       expect(window.localStorage.getItem("pf-daw-profile-v1")).toBe("pro-tools");
 

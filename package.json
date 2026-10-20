@@ -184,6 +184,7 @@
     "test:e2e:recording-soak": "playwright test tests/e2e/14-recording-soak.spec.ts --project=chromium",
     "typecheck": "tsc --noEmit",
     "gen:mcp-mirrors": "npx -y tsx scripts/generate-mcp-mirrors.mts",
+    "verify:mcp-mirrors": "npx -y tsx scripts/generate-mcp-mirrors.mts --check",
     "typecheck:clean": "node -e \"try{require('fs').unlinkSync('tsconfig.tsbuildinfo')}catch{try{require('fs').unlinkSync('./tsconfig.tsbuildinfo')}catch{}}\" && tsc --noEmit --incremental false",
     "vendor:asio": "node scripts/vendor-asio.mjs",
     "verify:all": "node scripts/verify-all.mjs",

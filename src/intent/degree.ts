@@ -99,7 +99,7 @@ const DEGREE_BANDS: readonly DegreeBand[] = [
     name: "minimal",
     value: 0.2,
     words:
-      /\b(?:barely|hardly|scarcely|minimally|takmer|minimalne|almost imperceptibly|nearly imperceptibly|the tiniest bit|a hair's breadth|as little(?:\s+[a-z-]+){0,3}\s+as possible|as little as you can|as small(?:\s+[a-z-]+){0,3}\s+as possible|as minimally as possible|the least possible)\b/,
+      /\b(?:barely|hardly|scarcely|minimally|takmer|minimalne|almost imperceptibly|nearly imperceptibly|the tiniest bit|a hair's breadth|as little(?:\s+[a-z-]+){0,3}\s+as possible|as little as you can|as small(?:\s+[a-z-]+){0,3}\s+as possible|as short as (?:possible|you can)|as minimally as possible|the least possible)\b/,
   },
   {
     level: 2,
@@ -162,7 +162,7 @@ const DEGREE_BANDS: readonly DegreeBand[] = [
     // a barely-up move, not a maximum-up one).
     value: 0.95,
     words:
-      /\b(?:max(?:imal|imum)?|fully|totally|completely|complete|plne|upln|uplne|naplno|extrem\w*|as far as possible|as much(?:\s+[a-z-]+){0,3}\s+as possible|as much as you can|as loud(?:\s+[a-z-]+){0,3}\s+as possible|as loudly as possible|as quiet(?:\s+[a-z-]+){0,3}\s+as possible|as quietly as possible|as quiet as you can|as soft(?:\s+[a-z-]+){0,3}\s+as possible|as low(?:\s+[a-z-]+){0,3}\s+as possible|as far down as possible|as (?:dry|wet|short|long|dark|bright|warm|cold)(?:\s+[a-z-]+){0,3}\s+as possible|to the limit|to the minimum|to the max|all the way|nast maximum|maximalne)\b/,
+      /\b(?:max(?:imal|imum)?|fully|totally|completely|complete|plne|upln|uplne|naplno|extrem\w*|as far as possible|as much(?:\s+[a-z-]+){0,3}\s+as possible|as much as you can|as loud(?:\s+[a-z-]+){0,3}\s+as possible|as loudly as possible|as quiet(?:\s+[a-z-]+){0,3}\s+as possible|as quietly as possible|as quiet as you can|as soft(?:\s+[a-z-]+){0,3}\s+as possible|as low(?:\s+[a-z-]+){0,3}\s+as possible|as far down as possible|as (?:dry|wet|long|dark|bright|warm|cold)(?:\s+[a-z-]+){0,3}\s+as possible|to the limit|to the minimum|to the max|all the way|nast maximum|maximalne)\b/,
   },
 ];
 

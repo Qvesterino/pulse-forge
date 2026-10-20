@@ -83,6 +83,19 @@ export default defineConfig({
       // surface. Without this a full run collects ~90 foreign svelte/vitest
       // specs and drowns the real suite in red noise.
       "**/.sft/**",
+      // `.zcode/**` is verify-all's own report directory, and it accumulates
+      // audit backups of KYX spec files (e.g. audit-backup/controls.test.tsx).
+      // A DUPLICATE spec is worse than no spec: it runs the same assertions
+      // twice and can report red for code that is green.
+      "**/.zcode/**",
+      // `.sound-audit/**` holds ad-hoc probe specs from the audio audit.
+      "**/.sound-audit/**",
+      // `tmp-*/**` are JUNCTION trees (measured: tmp-nm-junction -> node_modules).
+      // Vitest traverses INTO a junction, so the full run collected 250
+      // foreign spec files — zod's own suite — and reported 58 of them as
+      // red. A red count that is mostly someone else's test suite is a
+      // measurement that cannot be trusted.
+      "**/tmp-*/**",
       "tests/e2e/**",
     ],
     coverage: {

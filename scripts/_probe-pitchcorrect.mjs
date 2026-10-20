@@ -39,7 +39,7 @@ await page.route("**/index.html", (route) =>
 );
 
 try {
-  await page.goto("http://127.0.0.1:5281/", { waitUntil: "domcontentloaded", timeout: 240_000 });
+  await page.goto("http://127.0.0.1:5281/", { waitUntil: "domcontentloaded", timeout: 600_000 });
   const out = await page.evaluate(async () => {
     const { createProjectFromTemplate } = await import("/src/project-model/templates.ts");
     const { ProjectStore } = await import("/src/store/ProjectStore.ts");
@@ -48,7 +48,7 @@ try {
     );
     const { renderProject } = await import("/src/rendering/renderer.ts");
     const { generateFactoryBank } = await import("/src/sample-library/factory.ts");
-    const { ensureWorkletsForDoc, isWorkletReady } = await import("/src/audio-worklets/loader.ts");
+    const { ensureWorkletsForDoc, isWorkletReady, lazyWorkletTypesInDoc } = await import("/src/audio-worklets/loader.ts");
 
     const base = createProjectFromTemplate("house");
     const tracks = base.tracks.map((t) => ({
@@ -61,7 +61,7 @@ try {
     // The drum bus must start clean, like the audit does.
     for (const t of base.tracks) if (t.kind === "drum") t.effects = [];
 
-    const bank = await generateFactoryBank();
+    const bank = await generateFactoryBank([]);
 
     const maxDiff = (a, b) => {
       let d = 0;
@@ -81,19 +81,27 @@ try {
 
     const render = (doc) =>
       renderProject(doc, bank, {
-        mode: "pattern" as const,
+        mode: "pattern",
         sampleRate: 44100,
         tailSeconds: 0.6,
         masterProcessing: false,
       });
 
-    // Q1: is the worklet ready in an OFFLINE context the way the export does it?
+    // Q1: is the worklet ready in an OFFLINE context the way the export does
+    // it? The doc must CONTAIN the effect, or the loader has no reason to
+    // fetch the module.
+    const docWithEffect = new ProjectStore(base);
+    const addForProbe = addEffect(docWithEffect.getDoc(), base.tracks.find((t) => t.kind === "drum").id, "pitchCorrect");
+    docWithEffect.execute(addForProbe);
     const probeCtx = new OfflineAudioContext(2, 128, 44100);
-    await ensureWorkletsForDoc(base, probeCtx);
+    await ensureWorkletsForDoc(docWithEffect.getDoc(), probeCtx);
     const workletReady = isWorkletReady("pitchCorrect", probeCtx);
+    const lazyTypesInDoc = lazyWorkletTypesInDoc(docWithEffect.getDoc());
 
     const drum = base.tracks.find((t) => t.kind === "drum");
-    const pitched = base.tracks.find((t) => t.kind === "instrument" && (t.notes?.length ?? 0) > 0);
+    // The house template keeps its notes in the PATTERN, not on the tracks.
+    // "analog" is a synth (pitched material); "808" is a drum machine.
+    const pitched = base.tracks.find((t) => t.instrument === "analog");
 
     const runOn = async (trackId, params) => {
       const store = new ProjectStore(base);
@@ -108,9 +116,10 @@ try {
       return { on, bypassed };
     };
 
-    const result = { tracks, workletReady };
+    const result = { tracks, workletReady, lazyTypesInDoc };
 
-    // Q2/Q3/Q4: drum bus vs a pitched track, defaults vs the audit's fingerprint.
+    // Q2/Q3/Q4: the drum bus (no samples in this empty bank -> silent, kept
+    // for the record) vs a pitched track, defaults vs the audit's fingerprint.
     const drumRun = await runOn(drum.id, []);
     result.drumDefaults = { maxDiff: maxDiff(drumRun.bypassed, drumRun.on), rms: rms(drumRun.on) };
 

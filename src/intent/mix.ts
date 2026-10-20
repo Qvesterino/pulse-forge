@@ -761,6 +761,13 @@ const EFFECT_WORDS: ReadonlyArray<readonly [RegExp, EffectType]> = [
   // "rezonan" plus explicit formant/voice words rather than a bare \bharmon.
   [/\brezonan|\bformant/, "rezonans"],
   [/\beq\b|\bfilter|\bfiltr|\bekvaliz/, "eq"],
+  // P2 domain calibration (2026-10-20): the dynamics and filter effects are
+  // addressable by name so threshold/attack/release/cutoff/Q asks can resolve
+  // to a concrete effect before the param layer picks the knob.
+  [/\blimiter\b/, "limiter"],
+  [/\bgate\b|\bnoise gate\b/, "gate"],
+  [/\bhaas\b|\bwidener\b/, "haasWidener"],
+  [/\bsvf\b|\bsv filter\b|\bstate.variable\b/, "svFilter"],
 ];
 
 /** Scene role → the tracks its instrumentation plays (song-builder map). */

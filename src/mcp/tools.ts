@@ -1923,7 +1923,8 @@ export type McpErrorCode =
   | "PARTIAL_FAILURE"
   | "UNAVAILABLE_ON_TRANSPORT"
   | "POLICY_REFUSED"
-  | "REQUEST_ID_CONFLICT";
+  | "REQUEST_ID_CONFLICT"
+  | "INVALID_REQUEST_ID";
 
 /** The single shaped constructor for error results — every `isError`
  * result goes through here so the code set stays exhaustive. `overrides`
@@ -2352,12 +2353,24 @@ function invalidInstanceIndexMessage(name: string, args: unknown): string | null
   return "instance must be a positive 1-based integer";
 }
 
+function invalidRequestIdMessage(args: unknown): string | null {
+  if (args == null || typeof args !== "object" || Array.isArray(args)) return null;
+  const record = args as Record<string, unknown>;
+  if (!Object.prototype.hasOwnProperty.call(record, "requestId") || record.requestId === undefined) return null;
+  if (typeof record.requestId !== "string") return "requestId must be a string of at most 128 characters.";
+  if (record.requestId.length > 128) return "requestId must be at most 128 characters; it is never truncated.";
+  if (record.requestId.trim().length === 0) return "requestId must not be empty or whitespace-only.";
+  return null;
+}
+
 export async function executeMcpTool(ctx: McpToolContext, name: string, args: unknown): Promise<McpToolResult> {
   const envelope = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
-  const requestId = typeof envelope.requestId === "string" ? envelope.requestId.trim().slice(0, 128) : "";
-  if (requestId === "" || envelope.dryRun === true) {
+  const invalidRequestId = invalidRequestIdMessage(args);
+  if (invalidRequestId !== null || envelope.dryRun === true) {
     return executeMcpToolCore(ctx, name, args);
   }
+  const requestId = typeof envelope.requestId === "string" ? envelope.requestId.trim() : "";
+  if (requestId === "") return executeMcpToolCore(ctx, name, args);
 
   const agent = ctx.agentId ?? "local";
   let signature: string;
@@ -2401,7 +2414,7 @@ async function executeMcpToolCore(
   signature?: string,
 ): Promise<McpToolResult> {
   const envelope = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
-  const requestId = typeof envelope.requestId === "string" ? envelope.requestId.trim().slice(0, 128) : "";
+  const requestId = typeof envelope.requestId === "string" ? envelope.requestId.trim() : "";
   // Wave 1/A trust layer: every call — all transports, dry-runs and replays —
   // is classified and audited; the audit lives outside the tool surface so it
   // can never change tool behavior.
@@ -2409,6 +2422,24 @@ async function executeMcpToolCore(
   const risk = toolRisk(name);
   const depth = mcpCallDepth;
   const summary = summarizeToolArgs(args);
+  const invalidRequestId = invalidRequestIdMessage(args);
+  if (invalidRequestId !== null) {
+    const doc = ctx.getDoc();
+    completeAgentCall({
+      agent,
+      tool: name,
+      risk,
+      depth,
+      mutated: false,
+      isError: true,
+      errorCode: "INVALID_REQUEST_ID",
+      durationMs: 0,
+      docId: doc.id,
+      docName: doc.name,
+      ...(summary !== "" ? { summary } : {}),
+    });
+    return mcpError("INVALID_REQUEST_ID", invalidRequestId);
+  }
   const invalidInstanceIndex = invalidInstanceIndexMessage(name, args);
   if (invalidInstanceIndex !== null) {
     const doc = ctx.getDoc();

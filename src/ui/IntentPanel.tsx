@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useSelectionStore, useServices } from "./context";
 import { StatusLine } from "./intent/StatusLine";
 import { VoiceIdeaControls } from "./intent/VoiceIdeaControls";
@@ -161,7 +161,7 @@ import {
   planMixProfile,
   sendReadback,
 } from "../intent/mix";
-import { applyParamIntent, paramReadback } from "../intent/param-intent";
+import { applyParamIntent, paramPlanLines, paramReadback } from "../intent/param-intent";
 import { measureParamVerification } from "../intent/param-readback";
 import {
   attentiveStatusLine,
@@ -994,6 +994,23 @@ export function IntentPanel() {
     if (!text.trim()) return null;
     return parseIntentText(text);
   }, [text]);
+
+  /**
+   * P3 (2026-10-20): LIVE PARAM PLAN — before execution, show the resolved
+   * knob, the current value, the destination, the range fraction in the
+   * param's OWN domain and whether the applier will clamp or add the effect.
+   * The route is pure; nothing here touches the store. `useDeferredValue`
+   * keeps typing responsive on long prompts.
+   */
+  const deferredPrompt = useDeferredValue(text);
+  const paramPlanPreview = useMemo(() => {
+    const prompt = deferredPrompt.trim();
+    if (!prompt) return null;
+    const route = routeIntentText(prompt, doc);
+    if (route.kind !== "paramIntent") return null;
+    const lines = paramPlanLines(route.intent, doc);
+    return lines.length > 0 ? lines : null;
+  }, [deferredPrompt, doc]);
 
   useEffect(() => {
     if (parsed?.input.genre) setPreferredStyleGenre(parsed.input.genre);
@@ -5352,6 +5369,11 @@ export function IntentPanel() {
       {detectedText && (
         <div className="intent-detected" aria-label="Detected keywords">
           {detectedText}
+        </div>
+      )}
+      {paramPlanPreview && (
+        <div className="intent-detected" role="status" aria-label="Param plan">
+          🔧 {paramPlanPreview.join("  ·  ")}
         </div>
       )}
       {(() => {

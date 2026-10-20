@@ -34,7 +34,8 @@ import { calibrateParamFraction, degreeToEffectAmount, parseDegree, type Degree 
 import { isPriorDeltaReference } from "./reference-delta";
 import { isDescriptiveStatement } from "./declarative";
 
-export type ParamRole = "mix" | "time" | "tone" | "drive" | "width";
+export type ParamRole =
+  "mix" | "time" | "tone" | "drive" | "width" | "threshold" | "attack" | "release" | "cutoff" | "q";
 
 interface ParamRoleDef {
   /** SK+EN stems (deaccented, prefix matches like every other table). */
@@ -84,6 +85,33 @@ const PARAM_ROLES: Record<ParamRole, ParamRoleDef> = {
     // production layer's richer semantic moves; the width role fires only
     // when the widener effect is actually named.
   },
+  // P2 domain calibration (2026-10-20). These are NON-primary knobs, so the
+  // param layer owns them; each maps a spoken role to the real ParamDef and
+  // calibrates in that param's own domain (dB linear, seconds/Hz log, Q linear).
+  threshold: {
+    words: /\bthreshold\b|\bthresh\b|\bprah|\bcitliv/,
+    params: { compressor: "threshold", limiter: "threshold", gate: "threshold" },
+    // No impliedEffect: "more attack" on a drum is a transient ask, so the
+    // dynamics role only fires when the effect is actually named.
+  },
+  attack: {
+    words: /\battack\b|\bnabeh|\butok\b/,
+    params: { compressor: "attack", gate: "attack" },
+  },
+  release: {
+    words: /\brelease\b|\buvolnen|\bdohas/,
+    params: { compressor: "release", limiter: "release", gate: "release" },
+  },
+  cutoff: {
+    words: /\bcutoff\b|\bcut.?off\b|\bfreq(?:uency)?\b|\bfrekvenc/,
+    params: { svFilter: "cutoff" },
+    impliedEffect: "svFilter",
+  },
+  q: {
+    words: /\bq\b|\bresonance\b|\brezonanc|\bsharpness\b/,
+    params: { svFilter: "resonance", rezonans: "q" },
+    impliedEffect: "svFilter",
+  },
 };
 
 /** Scene role → instrumentation expansion (mirrors mix.ts's private table —
@@ -107,8 +135,14 @@ export interface ParamIntent {
   targets: MixTarget[];
   /** "set" = absolute raw value; "more"/"less" = relative in the param's own domain. */
   mode: "set" | "more" | "less";
-  /** Absolute raw param value (mode "set"). */
+  /** Absolute raw param value (mode "set") AFTER clamping — what will land. */
   value?: number;
+  /**
+   * The value the producer actually asked for, before the ParamDef clamp.
+   * Only for mode "set"; lets the plan/read-back say "2.5 → 1 (clamped)"
+   * instead of silently presenting the clamped number as the request.
+   */
+  requestedValue?: number;
   /** Vibe ladder for relative asks (fractions of the param range). */
   amount: "subtle" | "medium" | "huge";
   /**
@@ -158,22 +192,23 @@ function valueAtFraction(param: ParamDef, fraction: number): number {
 
 interface UnitValue {
   value: number;
-  unit: "ms" | "s" | "hz" | "khz" | "pct";
+  unit: "ms" | "s" | "hz" | "khz" | "pct" | "db";
 }
 
 const UNIT_SET =
-  /\b(?:na|to|set|nastav|daj|resp\.?)?\s*(\d+(?:[.,]\d+)?)\s*(ms|milisek|\bsec(?:ond)?s?\b|\bsek\b|\bs\b|hz|khz|%|percent\w*|procent\w*)\b/;
+  /\b(?:na|to|set|nastav|daj|resp\.?)?\s*(-?\d+(?:[.,]\d+)?)\s*(ms|milisek|\bsec(?:ond)?s?\b|\bsek\b|\bs\b|hz|khz|%|percent\w*|procent\w*|db|decibel\w*)\b/;
 
 function parseUnitValue(lower: string): UnitValue | null {
   const match = UNIT_SET.exec(lower);
   if (!match) return null;
-  const value = Number(match[1].replace(",", "."));
-  const rawUnit = match[2];
+  const value = Number(match[1]!.replace(",", "."));
+  const rawUnit = match[2]!;
   let unit: UnitValue["unit"];
   if (/ms|milisek/.test(rawUnit)) unit = "ms";
   else if (/sek|sec|s/.test(rawUnit)) unit = "s";
   else if (rawUnit === "hz") unit = "hz";
   else if (rawUnit === "khz") unit = "khz";
+  else if (/db|decibel/.test(rawUnit)) unit = "db";
   else unit = "pct";
   return { value, unit };
 }
@@ -187,6 +222,8 @@ function parsePercentWord(text: string): number | null {
  * reverb.decay is s — the ask may phrase either). */
 function toParamUnit(value: number, unit: UnitValue["unit"], param: ParamDef): number {
   const target = (param.unit ?? "").toLowerCase();
+  // dB does not convert: a threshold ask in dB belongs only on a dB knob.
+  if (unit === "db") return target === "db" ? value : Number.NaN;
   if (unit === "ms") return target === "s" ? value / 1000 : value;
   if (unit === "s") return target === "ms" ? value * 1000 : value;
   if (unit === "khz") return target === "hz" ? value * 1000 : value;
@@ -221,21 +258,32 @@ function resolveParamAsk(text: string): ParamAsk | null {
 
   // The role must be named; the effect comes from an effect noun or the
   // role's implied effect ("wider stereo" implies the widener).
+  //
+  // ROLE CANDIDATES, NOT FIRST-MATCH: "longer" belongs to the time role AND to
+  // compressor release, so "longer compressor release" used to resolve `time`
+  // first and then find no `compressor` knob on that role — a null. Pick the
+  // first candidate whose EFFECT actually carries the role.
+  const namedEffect = effectWordIn(lower);
+  const filterNamed = /\bfilter|\bfiltr|\bsvf\b|\bcutoff\b/.test(lower);
   let role: ParamRole | null = null;
+  let effectType: EffectType | null = null;
   for (const key of Object.keys(PARAM_ROLES) as ParamRole[]) {
     if (!PARAM_ROLES[key].words.test(lower)) continue;
+    const candidateEffect: EffectType | null =
+      filterNamed && (key === "cutoff" || key === "q")
+        ? "svFilter"
+        : (namedEffect ?? PARAM_ROLES[key].impliedEffect ?? null);
+    if (!candidateEffect || !PARAM_ROLES[key].params[candidateEffect]) continue;
+    // The param layer owns the NON-primary knobs. When the role resolves to
+    // the effect's own primary knob (reverb.mix, saturation.drive…), the
+    // effectIntent layer already addresses it with identical semantics —
+    // stealing those asks would only churn the pinned routes.
+    if (EFFECT_KNOB[candidateEffect] === (PARAM_ROLES[key].params[candidateEffect] as string)) continue;
     role = key;
+    effectType = candidateEffect;
     break;
   }
-  if (!role) return null;
-  const effectType = effectWordIn(lower) ?? PARAM_ROLES[role].impliedEffect ?? null;
-  if (!effectType || !PARAM_ROLES[role].params[effectType]) return null;
-
-  // The param layer owns the NON-primary knobs. When the role resolves to
-  // the effect's own primary knob (reverb.mix, saturation.drive…), the
-  // effectIntent layer already addresses it with identical semantics —
-  // stealing those asks would only churn the pinned routes.
-  if (EFFECT_KNOB[effectType] === (PARAM_ROLES[role].params[effectType] as string)) return null;
+  if (!role || !effectType) return null;
   const paramId = PARAM_ROLES[role].params[effectType] as string;
   if (!paramDefOf(effectType, paramId)) return null;
 
@@ -279,6 +327,40 @@ export function declinedParamIntentClarification(
   return { reason: "param-target", suggestions };
 }
 
+function directionForRole(role: ParamRole, lower: string, drier: boolean, wetter: boolean): "more" | "less" {
+  const lessWord =
+    /\bless\b|\bmenej|\bzniz|\bdown\b|\bdole\b|\bsniz|\blower\b|\breduce\b|\bcut\b|\bclean(?:er)?\b|\bjemne\b|\bas little\b|\bas small as possible\b/.test(
+      lower,
+    );
+  const faster = /\bfaster\b|\bfast\b|\brychlej|\bkrats|\bshorter\b|\bshort\b|\bsnappier\b|\btighter\b/.test(lower);
+  const slower = /\bslower\b|\bslow\b|\bpomals|\blonger\b|\blong\b|\bdlh/.test(lower);
+  const darker = /\bdarker\b|\bdark\b|\btmav|\blower\b|\bdown\b|\bzniz/.test(lower);
+  const brighter = /\bbrighter\b|\bbright\b|\bjasnejs|\bhigher\b|\bup\b|\bzvys/.test(lower);
+  const sharper = /\bsharper\b|\bsharp\b|\bhigher\b|\bup\b|\bzvys|\buzs|\bnarrower\b|\btighter\b/.test(lower);
+  const broader = /\bwider\b|\bwide\b|\bsirs|\blower\b|\bdown\b|\bzniz|\bsmoother\b|\bmono\b/.test(lower);
+  switch (role) {
+    case "mix":
+      return drier && !wetter ? "less" : lessWord ? "less" : "more";
+    case "time":
+      return /\bkrats|\bshort|shorter\b/.test(lower) ? "less" : "more";
+    case "threshold":
+      return lessWord ? "less" : "more";
+    case "attack":
+    case "release":
+      return faster && !slower ? "less" : slower ? "more" : lessWord ? "less" : "more";
+    case "cutoff":
+      return darker && !brighter ? "less" : brighter ? "more" : lessWord ? "less" : "more";
+    case "q":
+      return sharper && !broader ? "more" : broader ? "less" : lessWord ? "less" : "more";
+    case "width":
+      return broader && !sharper ? "more" : sharper ? "less" : lessWord ? "less" : "more";
+    case "tone":
+      return darker && !brighter ? "less" : brighter ? "more" : lessWord ? "less" : "more";
+    case "drive":
+      return lessWord ? "less" : "more";
+  }
+}
+
 export function parseParamIntent(text: string): ParamIntent | null {
   const ask = resolveParamAsk(text);
   if (!ask) return null;
@@ -289,13 +371,21 @@ export function parseParamIntent(text: string): ParamIntent | null {
 
   const detected: string[] = [`${role} → ${effectType}.${paramId}`, `→ ${[...targets].join("+")}`];
 
-  // SET with a unit ("375 ms", "2.6 s", "5 khz") or a percent word for 0-1
-  // knobs. The unit owns the value — no guessing across domains.
+  // SET with a unit ("375 ms", "2.6 s", "5 khz", "-20 db") or a percent word
+  // for 0-1 knobs. The unit owns the value — no guessing across domains.
   const unitValue = parseUnitValue(lower);
   const percent = parsePercentWord(text);
-  if (/\bset\b|\bnastav\b|\bna\s*\d/.test(lower) || unitValue) {
+  const bareDb =
+    role === "threshold" && (param.unit ?? "").toLowerCase() === "db"
+      ? /\b(?:threshold|prah)\b\s*(?:na|to|at|=)?\s*(-?\d+(?:[.,]\d+)?)\b/.exec(lower)
+      : null;
+  const bareQ =
+    role === "q" ? /\b(?:q|sharpness|rezonancia)\b\s*(?:na|to|at|=)?\s*(-?\d+(?:[.,]\d+)?)\b/.exec(lower) : null;
+  const setCue = /\b(?:set|nastav|daj)\b/.test(lower);
+  if (setCue || unitValue || bareDb || bareQ) {
     if (unitValue && unitValue.unit !== "pct") {
       const value = toParamUnit(unitValue.value, unitValue.unit, param);
+      if (!Number.isFinite(value)) return null;
       const clamped = clampEffectParam(effectType, paramId, value);
       detected.push(`${param.unit ?? param.id} → ${clamped}`);
       return {
@@ -305,9 +395,29 @@ export function parseParamIntent(text: string): ParamIntent | null {
         targets: [...targets],
         mode: "set",
         value: clamped,
+        requestedValue: value,
         amount: "medium",
         detected,
       };
+    }
+    const bare = bareQ ?? bareDb;
+    if (bare) {
+      const raw = Number((bare[1] ?? "").replace(",", "."));
+      if (Number.isFinite(raw)) {
+        const clamped = clampEffectParam(effectType, paramId, raw);
+        detected.push(`${param.unit ?? param.id} → ${clamped}`);
+        return {
+          effectType,
+          role,
+          paramId,
+          targets: [...targets],
+          mode: "set",
+          value: clamped,
+          requestedValue: raw,
+          amount: "medium",
+          detected,
+        };
+      }
     }
     if (percent != null) {
       const value = valueAtFraction(param, percent / 100);
@@ -319,25 +429,24 @@ export function parseParamIntent(text: string): ParamIntent | null {
         targets: [...targets],
         mode: "set",
         value,
+        requestedValue: value,
         amount: "medium",
         percent,
         detected,
       };
     }
+    // "set the threshold lower" names no value — declining is safer than
+    // silently applying the default relative step.
+    if (setCue) return null;
   }
 
-  // RELATIVE — more/less × ladder or explicit percent. Drier/wetter own the
-  // mix role's direction: without them "suchšia saturácia" fell through to
-  // the default MORE and turned the wet UP (caught by the real-audio
-  // readback — the measured RMS went +268 % on a drier ask).
+  // RELATIVE — role-aware direction. Drier/wetter own the mix role; attack and
+  // release read faster/slower; cutoff reads darker/brighter; Q reads
+  // sharper/wider. Without this, "faster attack" defaulted to MORE (a LONGER
+  // attack) and "darker cutoff" defaulted to MORE (a brighter filter).
   const drier = /\bsuch|\bdrier\b|\bdry\b|\bas dry as (?:possible|you can)\b/.test(lower);
   const wetter = /\bmokr|\bwetter\b|\bas wet as (?:possible|you can)\b/.test(lower);
-  const less =
-    (/\bless\b|\bmenej|\bzniz|\bdown\b|\bdole\b|\bspomals|\bas little\b|\bas small as possible\b/.test(lower) &&
-      role !== "time") ||
-    (role === "mix" && drier && !wetter);
-  const timeShorter = /\bkrats|\bshort|\bas short as (?:possible|you can)\b/.test(lower);
-  const direction: "more" | "less" = role === "time" ? (timeShorter ? "less" : "more") : less ? "less" : "more";
+  const direction = directionForRole(role, lower, drier, wetter);
   // Graduated degree, resolved through the shared taxonomy (intent/degree.ts).
   // The regexes this replaced (`subtle|trochu|malic` / `huge|a lot|obri|vela|
   // velmi|really`) were missing "slightly", "a little" and "a bit" — so
@@ -475,7 +584,7 @@ export function paramMovePreview(intent: ParamIntent, current: number): ParamMov
   if (!param) return null;
   const domain: ParamMovePreview["domain"] = param.taper === "log" ? "log" : "linear";
   if (intent.mode === "set") {
-    const proposed = intent.value ?? current;
+    const proposed = intent.requestedValue ?? intent.value ?? current;
     return {
       effectType: intent.effectType,
       paramId: intent.paramId,
@@ -514,6 +623,91 @@ export function paramMovePreview(intent: ParamIntent, current: number): ParamMov
 export function paramValueFraction(effectType: EffectType, paramId: string, value: number): number | null {
   const param = paramDefOf(effectType, paramId);
   return param ? fractionOf(param, value) : null;
+}
+
+/**
+ * P3 — THE INSPECTABLE PLAN, before execution.
+ *
+ * The UI renders these lines from the typed text, so the producer sees the
+ * inferred target, the CURRENT value, the destination and the range fraction
+ * in the param's own domain BEFORE anything is applied. `clamped` and `add`
+ * are stated because they change what actually lands.
+ */
+export interface ParamPlanLine {
+  target: MixTarget;
+  effectType: EffectType;
+  paramId: string;
+  domain: "log" | "linear";
+  /** Percent of the param's range in its own domain; null for an absolute set. */
+  fractionPct: number | null;
+  current: number;
+  proposed: number;
+  next: number;
+  clamped: boolean;
+  adding: boolean;
+  label: string;
+}
+
+export function paramPlan(intent: ParamIntent, doc: Parameters<typeof applyMixIntent>[0]): ParamPlanLine[] {
+  const param = paramDefOf(intent.effectType, intent.paramId);
+  if (!param) return [];
+  const domain: ParamPlanLine["domain"] = param.taper === "log" ? "log" : "linear";
+  const fmt = (value: number): string =>
+    param.format?.(value) ?? (param.unit ? `${value.toFixed(param.max <= 1 ? 2 : 1)} ${param.unit}` : value.toFixed(2));
+  const lines: ParamPlanLine[] = [];
+  for (const target of intent.targets) {
+    const ids = trackIdsForMixTarget(doc, target);
+    if (ids.length === 0) {
+      lines.push({
+        target,
+        effectType: intent.effectType,
+        paramId: intent.paramId,
+        domain,
+        fractionPct: null,
+        current: 0,
+        proposed: 0,
+        next: 0,
+        clamped: false,
+        adding: false,
+        label: `${target}: no matching track`,
+      });
+      continue;
+    }
+    const trackId = ids[0] as string;
+    const track = doc.tracks.find((candidate) => candidate.id === trackId);
+    const adding = !(track && "effects" in track && track.effects.some((effect) => effect.type === intent.effectType));
+    const current = currentParamValue(doc, trackId, intent.effectType, intent.paramId);
+    const preview = paramMovePreview(intent, current);
+    if (!preview) continue;
+    const fractionPct = preview.fraction != null ? Math.round(preview.fraction * 1000) / 10 : null;
+    const clamped = Math.abs(preview.next - preview.proposed) > 1e-9;
+    const values =
+      preview.mode === "set" && clamped
+        ? `${fmt(preview.current)} → ${fmt(preview.proposed)} (clamped to ${fmt(preview.next)})`
+        : `${fmt(preview.current)} → ${fmt(preview.next)}`;
+    const label =
+      `${target}: ${intent.effectType}.${intent.paramId} ${values} · ` +
+      `${fractionPct != null ? `${fractionPct}% ${preview.domain}` : "set"}` +
+      `${clamped && preview.mode !== "set" ? " (clamped)" : ""}${adding ? " (add)" : ""}`;
+    lines.push({
+      target,
+      effectType: intent.effectType,
+      paramId: intent.paramId,
+      domain,
+      fractionPct,
+      current: preview.current,
+      proposed: preview.proposed,
+      next: preview.next,
+      clamped,
+      adding,
+      label,
+    });
+  }
+  return lines;
+}
+
+export function paramPlanLines(intent: ParamIntent, doc: Parameters<typeof applyMixIntent>[0]): string[] {
+  return paramPlan(intent, doc).map((line) => line.label);
 }
 
 /**
@@ -572,3 +766,4 @@ export function paramReadback(
   if (entries.length === 0) return "";
   return entries.slice(0, 3).join(", ") + (entries.length > 3 ? ` +${entries.length - 3}` : "");
 }
+

@@ -10,10 +10,14 @@
  *           reverb/delay output lowpass acts on the wet path, where the
  *           full-render centroid's direction is source-dependent (verifier
  *           2026-10-15: 1200→16000 Hz measured −1.8 %) → honestly unmeasured
+ *   cutoff → spectral centroid (a lowpass filter's full-wet output)
  *   width → mid/side stereo width
  *   mix   → RMS level
- *   drive/time → NOT measured in v1 (measured honestly as null — the param
- *   readback in param-intent.ts still reports the knob value move).
+ *   threshold → crest factor (peak / RMS): falls as the compressor squashes
+ *   drive/time/attack/release/Q → NOT measured in v1 (null; the knob readback
+ *   in param-intent.ts still reports the value move). Attack/release/Q need a
+ *   transient fixture and an ear; claiming a direction from a static render
+ *   would be a false pass.
  *
  * Audition-first: a correction is a SUGGESTION string for the panel chip —
  * nothing re-applies silently.
@@ -67,7 +71,7 @@ interface Metric {
 }
 
 function metricOf(role: ParamRole, buffer: AudioBuffer): Metric | null {
-  if (role === "tone") {
+  if (role === "tone" || role === "cutoff") {
     const mono = monoOf(buffer);
     if (!mono) return null;
     return { name: "jas", value: extractAudioFeaturesV2(mono, buffer.sampleRate).spectralCentroid };
@@ -83,7 +87,14 @@ function metricOf(role: ParamRole, buffer: AudioBuffer): Metric | null {
     if (!mono) return null;
     return { name: "hlasitosť", value: extractAudioFeaturesV2(mono, buffer.sampleRate).rms };
   }
-  return null; // drive/time: not measured in v1
+  if (role === "threshold") {
+    // Crest factor (peak / RMS) falls as the threshold drops and the compressor
+    // squashes the transient. This is the audibility proxy for "more squish".
+    const mono = monoOf(buffer);
+    if (!mono) return null;
+    return { name: "dynamika", value: extractAudioFeaturesV2(mono, buffer.sampleRate).crestFactor };
+  }
+  return null; // drive/time/attack/release/q: not measured in v1
 }
 
 function monoOf(buffer: AudioBuffer): Float32Array | null {
@@ -187,10 +198,16 @@ export async function measureParamVerification(
 
   let line: string;
   if (!measurable) {
+    const unmeasured =
+      intent.role === "drive" ||
+      intent.role === "time" ||
+      intent.role === "attack" ||
+      intent.role === "release" ||
+      intent.role === "q";
     line = wetPathTone
       ? "tón na wet-ceste (reverb/delay) ešte nemeráme spoľahlivo — gombík sa ale pohol"
-      : intent.role === "drive" || intent.role === "time"
-        ? "meranie tejto role ešte nemáme (drive/time v1)"
+      : unmeasured
+        ? "meranie tejto role ešte nemáme (drive/time/attack/release/Q v1) — gombík sa pohol"
         : "meranie zlyhalo — renderer nedodal audio";
   } else if (verified) {
     const moved = targets.filter((entry) => entry.passed);
@@ -205,9 +222,13 @@ export async function measureParamVerification(
             ? entry.deltaPct > 0
               ? "širší"
               : "užší"
-            : entry.deltaPct > 0
-              ? "hlasnejší"
-              : "tichší";
+            : entry.metric === "dynamika"
+              ? entry.deltaPct > 0
+                ? "dynamickejší"
+                : "stlačenejší"
+              : entry.deltaPct > 0
+                ? "hlasnejší"
+                : "tichší";
       return `${entry.target} ${what} o ${Math.abs(entry.deltaPct).toFixed(0)} % (${direction} ${entry.metric})`;
     });
     line = `✓ ${parts.join(" · ")}`;

@@ -5,32 +5,21 @@
  * Phase D measured every role's text against the surface it actually sits
  * on: the composited background from the DOM where that background is solid,
  * and the RENDERED PIXELS under the glyphs where an ancestor paints a
- * gradient. One role failed:
+ * gradient. Two roles failed:
  *
  *   .row-pad-index — 8px metadata, the 1-based row number
  *     plain row       rgb(24, 27, 34)   4.45:1   (AA floor 4.5)
  *     selected row    rgb(59, 54, 46)   3.09:1
  *
- * The plain-row number is a hair under AA. The selected-row number is not a
- * hair under anything: the whole glyph sits on it, across seven surfaces
- * that differ by one or two units of the gradient.
- *
- * Two facts produced the second number, and neither is a rendering artefact:
- *
- *   1. The index sits on the sequencer's RAISED row surface, which is
- *      lighter than the panel the other faint labels sit on. --text-faint is
- *      calibrated for the panel; it was never calibrated for this surface.
- *   2. The selected row paints an amber pulse (--kyx-pulse-soft =
- *      rgba(245,158,11,0.14)) that starts at the LEFT edge — which is
- *      exactly where the index column is.
- *
- * The pulse is the brand signal. It is not weakened for the sake of an 8px
- * digit, and the amber border that marks the selection is not touched. The
- * digit moves instead.
+ *   .dock-tab      — the dock tab row, the primary navigation of the bottom
+ *     inactive label rgb(79, 82, 87)    2.03:1
+ *     active label   rgb(84, 87, 92)    3.55:1   <- the amber, the brand
  *
  * WHAT THIS SHEET DOES
  * --------------------
- * One token, and one rule:
+ * Two rules, and one veil.
+ *
+ * 1. THE ROW INDEX.
  *
  *   --text-index   the dimmest text colour that still clears AA (4.5:1) on
  *                  BOTH the plain row and the pulsed row.
@@ -48,11 +37,44 @@
  *   Forge          rgb(153,158,167)    6.34:1 plain    4.54:1 pulsed
  *   High Contrast  rgb(212,215,221)   13.10:1 plain    6.96:1 pulsed
  *
+ * Two facts produced the 3.09:1, and neither is a rendering artefact:
+ *
+ *   1. The index sits on the sequencer's RAISED row surface, which is
+ *      lighter than the panel the other faint labels sit on. --text-faint is
+ *      calibrated for the panel; it was never calibrated for this surface.
+ *   2. The selected row paints an amber pulse (--kyx-pulse-soft =
+ *      rgba(245,158,11,0.14)) that starts at the LEFT edge — which is
+ *      exactly where the index column is.
+ *
+ * The pulse is the brand signal. It is not weakened for the sake of an 8px
+ * digit, and the amber border that marks the selection is not touched. The
+ * digit moves instead.
+ *
+ * 2. THE DOCK TAB ROW.
+ *
+ * The row paints a silver sweep that is three times brighter at its light end
+ * (rgb(84,87,92)) than the panel it lies on (rgb(18,20,26)), and the FIRST
+ * tab sits in that light end. Its label was --text-faint — a colour
+ * calibrated for the dark material that predates the silver wave. Measured
+ * 2.03:1. The ACTIVE tab's amber measured 3.55:1 on the same surface, and
+ * the amber cannot be changed, because it IS the selection signal.
+ *
+ * So the surface moves, not the label: a 35% veil of the app background over
+ * the sweep brings the light end down to rgb(58,61,65), where the amber
+ * reads 5.10:1 and a silver label 7.03:1. The sweep keeps its shape and its
+ * direction; it is simply no longer brighter than the text on it.
+ *
+ * The label becomes --kyx-silver-mid — the silver the shell already uses
+ * for text on silver glass (.track-tab measures 17.38:1 with
+ * --kyx-silver-bright). That is not a new colour for this shell; it is the
+ * one the shell had already settled on for exactly this surface, and the
+ * dock row was the one place that kept the pre-silver value.
+ *
  * WHAT THIS SHEET DELIBERATELY DOES NOT TOUCH
  * --------------------------------------------
- * The 8px SIZE stays. The index is separated from the channel name by its
- * size (8px against a 13px semibold name) and by being a monospaced digit,
- * not by being illegible.
+ * The 8px SIZE of the index stays. The index is separated from the channel
+ * name by its size (8px against a 13px semibold name) and by being a
+ * monospaced digit, not by being illegible.
  *
  * That narrows a rule 58-typography-scale.css stated: it used to say the
  * index's "low contrast and small size" keep it from competing. The low
@@ -68,4 +90,19 @@
 
 .row-pad-index {
   color: var(--text-index);
+}
+
+/* The dock tab row: the silver sweep, dimmed to a level its labels can live
+   on. The veil is the app background at 35%, so it follows the theme. */
+.dock-tabs {
+  background:
+    linear-gradient(
+      color-mix(in srgb, var(--bg) 35%, transparent),
+      color-mix(in srgb, var(--bg) 35%, transparent)
+    ),
+    var(--kyx-silver-glass), linear-gradient(180deg, color-mix(in srgb, var(--bg-panel) 90%, #000), var(--bg-panel));
+}
+
+.dock-tab {
+  color: var(--kyx-silver-mid);
 }

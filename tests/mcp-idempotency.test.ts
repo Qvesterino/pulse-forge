@@ -219,6 +219,23 @@ describe("mcp idempotency ledger (P1-B, GAP-04)", () => {
     }
   });
 
+  it("ID13 malformed requestIds are rejected instead of being ignored or truncated", async () => {
+    const { ctx, doc } = makeCtx(createProjectFromTemplate("house"));
+    const start = doc();
+    const invalidRequests = [
+      { direction: "more", requestId: "x".repeat(129) },
+      { direction: "more", requestId: "   " },
+      { direction: "more", requestId: 12 },
+    ];
+
+    for (const args of invalidRequests) {
+      const result = await groove(ctx, args);
+      expect(result.isError).toBe(true);
+      expect(result.errorCode).toBe("INVALID_REQUEST_ID");
+    }
+    expect(doc()).toBe(start);
+  });
+
   it("ID11 one requestId cannot replay a different tool or argument payload", async () => {
     const { ctx, doc } = makeCtx(createProjectFromTemplate("house"));
     const first = await groove(ctx, { direction: "more", requestId: "bound-once" });

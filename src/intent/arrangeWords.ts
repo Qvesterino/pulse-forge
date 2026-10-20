@@ -1,7 +1,14 @@
 import type { Command } from "../commands/types";
-import { type ArrangementClip, type ProjectDocument, type Scene, type SceneRole } from "../project-model/types";
+import {
+  type ArrangementClip,
+  type AudioClip,
+  type ProjectDocument,
+  type Scene,
+  type SceneRole,
+} from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
 import { effectWordIn } from "./mix";
+import { parseDegree, type DegreeLevel } from "./degree";
 import {
   addArrangementClip,
   autoArrangeSong,
@@ -717,10 +724,25 @@ export function parseClipArrangeIntent(text: string, doc: ProjectDocument): Clip
  * the clip") or contradicts itself ("fade in … over its final bar") — those
  * clarify upstream rather than guessing a fade.
  */
+/**
+ * P2 FADE CALIBRATION — a fade length is a fraction of the CLIP, not a fixed
+ * number of seconds. The seven semantic levels are the same ones the fader and
+ * knob layers use; only the unit of the destination differs.
+ */
+const FADE_FRACTION: Record<DegreeLevel, number> = {
+  1: 0.02,
+  2: 0.05,
+  3: 0.1,
+  4: 0.2,
+  5: 0.35,
+  6: 0.5,
+  7: 0.75,
+};
+
 function parseFadeAmount(
   clause: string,
   doc: ProjectDocument,
-  clip: Pick<ArrangementClip, "startBar" | "lengthBars">,
+  clip: Pick<AudioClip, "startBar" | "lengthBars" | "fadeIn" | "fadeOut">,
 ): { edge: "in" | "out"; seconds: number } | null {
   const explicit = /\bfade\s+(in|out)\b/i.exec(clause);
   const lastBars = /\b(?:final|last|posledn\w*)\s*(\d+)?\s*(?:bars?|takt\w*)\b/i.exec(clause);
@@ -742,10 +764,39 @@ function parseFadeAmount(
     if (msAmount) seconds = Number(msAmount[1]!.replace(",", ".")) / 1000;
     else if (secAmount) seconds = Number(secAmount[1]!.replace(",", "."));
   }
+  const clipDur = audioClipDurationSec(doc, clip.lengthBars, clip.startBar);
+  if (seconds === null) {
+    // No explicit length: resolve the DEGREE, then apply it to the clip or to
+    // the edge's current fade. "fade" with no in/out and no existing fade stays
+    // ambiguous and declines upstream.
+    if (edge === null) {
+      const inCurrent = clip.fadeIn > 0 ? clip.fadeIn : 0;
+      const outCurrent = clip.fadeOut > 0 ? clip.fadeOut : 0;
+      if (inCurrent === 0 && outCurrent === 0) return null;
+      edge = outCurrent >= inCurrent ? "out" : "in";
+    }
+    const degree = parseDegree(clause);
+    if (!degree) return null;
+    const step = FADE_FRACTION[degree.level];
+    const outcomeLong = /\bas long as (?:possible|you can)\b/i.test(clause);
+    const outcomeShort = /\bas short as (?:possible|you can)\b/i.test(clause);
+    const longer = /\b(?:longer|dlh|predlz|extend)\b/i.test(clause) && !outcomeLong;
+    const shorter = /\b(?:shorter|krats|skrat)\b/i.test(clause) && !outcomeShort;
+    const current = edge === "out" ? clip.fadeOut : clip.fadeIn;
+    if ((longer || shorter) && current > 0) {
+      seconds = longer ? current * (1 + step) : current * Math.max(0.05, 1 - step);
+    } else if (!longer && !shorter) {
+      // An outcome ask ("slightly", "as long as possible") names the fade's
+      // size, not a change to the existing one: a fraction of the clip
+      // duration. The maximum outcome owns the whole clip.
+      seconds = outcomeLong ? clipDur : clipDur * step;
+    } else {
+      return null; // "longer" with no existing fade has no base to grow from
+    }
+  }
   if (!edge || seconds === null || !Number.isFinite(seconds) || seconds <= 0) return null;
   // A fade may never outlive its clip — pre-clamp to the stored length so the
   // op reports (and the label shows) the value that actually lands.
-  const clipDur = audioClipDurationSec(doc, clip.lengthBars, clip.startBar);
   return { edge, seconds: Math.max(0.001, Math.min(seconds, clipDur)) };
 }
 
