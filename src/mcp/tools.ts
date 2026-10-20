@@ -412,6 +412,68 @@ const OUTPUT_BLIND_AB: McpOutputSchema = {
   },
   required: ["op", "status"],
 };
+const MIX_IDEA_MAX_LENGTH = 1_000;
+const MIX_IDEA_TARGET_MAX_LENGTH = 128;
+/** kyx_mix_idea — proposal, application and measured preview read-back. */
+const OUTPUT_MIX_IDEA: McpOutputSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    status: { type: "string", enum: ["planned", "applied", "previewed", "rejected"] },
+    ok: { type: "boolean" },
+    applied: { type: "boolean" },
+    reason: { type: "string", maxLength: 2_000 },
+    interpreter: { type: "string", enum: ["production", "assistant"] },
+    targets: { type: "array", items: { type: "string" } },
+    goals: { type: "array", items: { type: "string" } },
+    label: { type: "string" },
+    steps: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          trackId: { type: "string" },
+          track: { type: "string" },
+          device: { type: "string" },
+          params: { type: "string" },
+          reason: { type: "string" },
+        },
+        required: ["trackId", "track", "device", "params", "reason"],
+      },
+    },
+    warnings: { type: "array", items: { type: "string" } },
+    preview: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        laneId: { type: "string" },
+        label: { type: "string" },
+        targets: { type: "array", items: { type: "string" } },
+        goals: { type: "array", items: { type: "string" } },
+        interpreter: { type: "string", enum: ["production", "assistant"] },
+        beforeLufs: { type: ["number", "null"] },
+        afterLufs: { type: ["number", "null"] },
+        matchGainDb: { type: "number", minimum: -12, maximum: 12 },
+        seconds: { type: "number", minimum: 0 },
+        studioBound: { type: "boolean" },
+      },
+      required: [
+        "laneId",
+        "label",
+        "targets",
+        "goals",
+        "interpreter",
+        "beforeLufs",
+        "afterLufs",
+        "matchGainDb",
+        "seconds",
+        "studioBound",
+      ],
+    },
+  },
+  required: ["status", "ok", "applied"],
+};
 export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_intent",
@@ -1351,10 +1413,12 @@ export const MCP_TOOLS: McpToolDef[] = [
       properties: {
         idea: {
           type: "string",
+          maxLength: MIX_IDEA_MAX_LENGTH,
           description: "The mix idea in plain language, e.g. 'warm it up and glue the drums'",
         },
         target: {
           type: "string",
+          maxLength: MIX_IDEA_TARGET_MAX_LENGTH,
           description:
             'Optional target override: "drums | bass | lead | chords | mix | kick | snare | hats" or a track id from kyx_state',
         },
@@ -1367,6 +1431,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["idea"],
     },
+    outputSchema: OUTPUT_MIX_IDEA,
   },
   {
     name: "kyx_checkpoint",
@@ -4146,6 +4211,27 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       if (idea.trim().length < 3) {
         return mcpError("INVALID_ARGUMENTS", 'kyx_mix_idea needs an idea — e.g. idea: "warm it up and glue the drums"');
       }
+      if (idea.length > MIX_IDEA_MAX_LENGTH) {
+        return mcpError("INVALID_ARGUMENTS", `idea must be at most ${MIX_IDEA_MAX_LENGTH} characters`);
+      }
+      if (
+        record.target !== undefined &&
+        (typeof record.target !== "string" || record.target.length > MIX_IDEA_TARGET_MAX_LENGTH)
+      ) {
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          `target must be a string of at most ${MIX_IDEA_TARGET_MAX_LENGTH} characters`,
+        );
+      }
+      if (record.apply !== undefined && typeof record.apply !== "boolean") {
+        return mcpError("INVALID_ARGUMENTS", "apply must be a boolean");
+      }
+      if (record.preview !== undefined && typeof record.preview !== "boolean") {
+        return mcpError("INVALID_ARGUMENTS", "preview must be a boolean");
+      }
+      if (record.apply === true && record.preview === true) {
+        return mcpError("INVALID_ARGUMENTS", "apply and preview are mutually exclusive");
+      }
       const target = typeof record.target === "string" ? record.target.trim() : undefined;
       const apply = record.apply === true;
       if (record.preview === true) {
@@ -4160,7 +4246,26 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         try {
           const { formatMixPreview } = await import("./mix-preview");
           const outcome = await ctx.mixPreview({ idea, ...(target ? { target } : {}) });
-          return { text: formatMixPreview(outcome), mutated: false };
+          const data = outcome.ok
+            ? {
+                status: "previewed",
+                ok: true,
+                applied: false,
+                preview: {
+                  laneId: outcome.lane.id,
+                  label: outcome.lane.label,
+                  targets: outcome.lane.targets,
+                  goals: outcome.lane.goals,
+                  interpreter: outcome.lane.interpreter,
+                  beforeLufs: outcome.lane.stats.beforeLufs,
+                  afterLufs: outcome.lane.stats.afterLufs,
+                  matchGainDb: outcome.lane.stats.matchGainDb,
+                  seconds: outcome.lane.stats.seconds,
+                  studioBound: outcome.studioBound,
+                },
+              }
+            : { status: "rejected", ok: false, applied: false, reason: outcome.reason };
+          return { text: formatMixPreview(outcome), mutated: false, data };
         } catch (error) {
           return mcpError(
             "EXECUTION_FAILED",
@@ -4172,12 +4277,31 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         const { planMixIdea, formatMixIdea } = await import("./mix-idea");
         const plan = planMixIdea(ctx.getDoc(), idea, target);
         if (!plan.ok) {
-          return { text: plan.reason, mutated: false, isError: apply };
+          return {
+            text: plan.reason,
+            mutated: false,
+            isError: apply,
+            data: { status: "rejected", ok: false, applied: false, reason: plan.reason },
+          };
         }
         if (apply) {
           ctx.execute(plan.command);
         }
-        return { text: formatMixIdea(plan, apply), mutated: apply };
+        return {
+          text: formatMixIdea(plan, apply),
+          mutated: apply,
+          data: {
+            status: apply ? "applied" : "planned",
+            ok: true,
+            applied: apply,
+            interpreter: plan.interpreter,
+            targets: plan.targets,
+            goals: plan.goals,
+            label: plan.label,
+            steps: plan.steps,
+            warnings: plan.warnings,
+          },
+        };
       } catch (error) {
         return mcpError(
           "EXECUTION_FAILED",

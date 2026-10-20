@@ -66,6 +66,7 @@ describe("mcp core — protocol with an authenticated session", () => {
     const list = await handleMcpRequest(hub as any, TOKEN, TOKEN, rpc("tools/list", {}, 2));
     const listedTools = (list.result as { tools: Array<{ name: string; outputSchema?: unknown }> }).tools;
     expect(listedTools).toHaveLength(37);
+    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(11);
     expect(listedTools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema,
     );
@@ -77,6 +78,9 @@ describe("mcp core — protocol with an authenticated session", () => {
     );
     expect(listedTools.find((tool) => tool.name === "kyx_blind_ab")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_blind_ab")?.outputSchema,
+    );
+    expect(listedTools.find((tool) => tool.name === "kyx_mix_idea")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_mix_idea")?.outputSchema,
     );
     expect(listedTools.map((t) => t.name)).toEqual([
       "kyx_intent",
@@ -317,6 +321,43 @@ describe("mcp core — protocol with an authenticated session", () => {
       type: "mcp-result",
       id: delivered[0].id,
       result: { text: 'trial recorded: incorrect (lane "tilt-vs-flat")', mutated: false, data },
+    });
+    const response = await promise;
+    expect(response.result.isError).toBe(false);
+    expect(response.result.structuredContent).toEqual(data);
+  });
+
+  it("returns mix plans as structuredContent across the web relay", async () => {
+    const { hub, delivered } = makeHub();
+    const data = {
+      status: "planned",
+      ok: true,
+      applied: false,
+      interpreter: "production",
+      targets: ["drums"],
+      goals: ["warmer"],
+      label: "Warm the drums",
+      steps: [{ trackId: "track-1", track: "Drums", device: "Tape Sat", params: "drive=0.2", reason: "warmth" }],
+      warnings: [],
+    };
+    const promise = handleMcpRequest(
+      hub,
+      TOKEN,
+      TOKEN,
+      rpc(
+        "tools/call",
+        {
+          name: "kyx_mix_idea",
+          arguments: { idea: "warm up the drums" },
+          _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+        },
+        18,
+      ),
+    );
+    hub.handleSessionMessage({
+      type: "mcp-result",
+      id: delivered[0].id,
+      result: { text: "Planned: Warm the drums", mutated: false, data },
     });
     const response = await promise;
     expect(response.result.isError).toBe(false);

@@ -339,6 +339,43 @@ describe("desktop mcp bridge server (real HTTP)", () => {
     expect(body.result.structuredContent).toEqual(data);
   });
 
+  it("returns mix plans as structuredContent over desktop HTTP", async () => {
+    const data = {
+      status: "planned",
+      ok: true,
+      applied: false,
+      interpreter: "production",
+      targets: ["drums"],
+      goals: ["warmer"],
+      label: "Warm the drums",
+      steps: [{ trackId: "track-1", track: "Drums", device: "Tape Sat", params: "drive=0.2", reason: "warmth" }],
+      warnings: [],
+    };
+    const { server } = bridgeModule.createMcpBridgeServer({
+      token: "tok",
+      executeTool: async () => ({ text: "Planned: Warm the drums", mutated: false, data }),
+    });
+    const port = await listenOnEphemeralPort(server);
+    runningServers.push(server);
+
+    const response = await post(
+      port,
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 9,
+        method: "tools/call",
+        params: { name: "kyx_mix_idea", arguments: { idea: "warm up the drums" } },
+      }),
+      { token: "tok" },
+    );
+    const body = JSON.parse(response.body) as {
+      result: { isError?: boolean; content: Array<Record<string, string>>; structuredContent: Record<string, unknown> };
+    };
+    expect(body.result.isError).toBeUndefined();
+    expect(body.result.content).toEqual([{ type: "text", text: "Planned: Warm the drums" }]);
+    expect(body.result.structuredContent).toEqual(data);
+  });
+
   it("protocol completeness: version negotiation, instructions, resources, batch, unknown-tool -32602", async () => {
     const { server } = bridgeModule.createMcpBridgeServer({
       token: "tok",
@@ -719,6 +756,9 @@ describe("desktop mcp stdio forwarder (subprocess)", () => {
     );
     expect(list.result.tools.find((tool) => tool.name === "kyx_blind_ab")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_blind_ab")?.outputSchema,
+    );
+    expect(list.result.tools.find((tool) => tool.name === "kyx_mix_idea")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_mix_idea")?.outputSchema,
     );
 
     writeLine({

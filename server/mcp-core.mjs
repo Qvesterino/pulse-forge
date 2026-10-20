@@ -1950,10 +1950,12 @@ export const MCP_TOOL_DEFS = [
       properties: {
         idea: {
           type: "string",
+          maxLength: 1000,
           description: "The mix idea in plain language, e.g. 'warm it up and glue the drums'",
         },
         target: {
           type: "string",
+          maxLength: 128,
           description:
             'Optional target override: "drums | bass | lead | chords | mix | kick | snare | hats" or a track id from kyx_state',
         },
@@ -1979,6 +1981,135 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["idea"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        status: {
+          type: "string",
+          enum: ["planned", "applied", "previewed", "rejected"],
+        },
+        ok: {
+          type: "boolean",
+        },
+        applied: {
+          type: "boolean",
+        },
+        reason: {
+          type: "string",
+          maxLength: 2000,
+        },
+        interpreter: {
+          type: "string",
+          enum: ["production", "assistant"],
+        },
+        targets: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+        goals: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+        label: {
+          type: "string",
+        },
+        steps: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              trackId: {
+                type: "string",
+              },
+              track: {
+                type: "string",
+              },
+              device: {
+                type: "string",
+              },
+              params: {
+                type: "string",
+              },
+              reason: {
+                type: "string",
+              },
+            },
+            required: ["trackId", "track", "device", "params", "reason"],
+          },
+        },
+        warnings: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+        preview: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            laneId: {
+              type: "string",
+            },
+            label: {
+              type: "string",
+            },
+            targets: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+            goals: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+            interpreter: {
+              type: "string",
+              enum: ["production", "assistant"],
+            },
+            beforeLufs: {
+              type: ["number", "null"],
+            },
+            afterLufs: {
+              type: ["number", "null"],
+            },
+            matchGainDb: {
+              type: "number",
+              minimum: -12,
+              maximum: 12,
+            },
+            seconds: {
+              type: "number",
+              minimum: 0,
+            },
+            studioBound: {
+              type: "boolean",
+            },
+          },
+          required: [
+            "laneId",
+            "label",
+            "targets",
+            "goals",
+            "interpreter",
+            "beforeLufs",
+            "afterLufs",
+            "matchGainDb",
+            "seconds",
+            "studioBound",
+          ],
+        },
+      },
+      required: ["status", "ok", "applied"],
     },
     annotations: {
       readOnlyHint: false,

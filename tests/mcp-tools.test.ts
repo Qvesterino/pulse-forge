@@ -2425,6 +2425,16 @@ describe("kyx_mix_idea — text-to-mix loop", () => {
     expect(plan.text).toContain("nothing applied yet");
     expect(plan.text).toMatch(/goals: .*warmer/);
     expect(plan.text).toContain("Tape Sat");
+    expect(plan.data).toMatchObject({
+      status: "planned",
+      ok: true,
+      applied: false,
+      interpreter: "production",
+      targets: ["drums"],
+      steps: expect.arrayContaining([
+        expect.objectContaining({ trackId: expect.any(String), device: expect.any(String) }),
+      ]),
+    });
     expect(JSON.stringify(store.doc)).toBe(before);
 
     const apply = await executeMcpToolAsync(storeCtx(store), "kyx_mix_idea", {
@@ -2433,6 +2443,7 @@ describe("kyx_mix_idea — text-to-mix loop", () => {
     });
     expect(apply.mutated).toBe(true);
     expect(apply.text).toMatch(/ONE undo/);
+    expect(apply.data).toMatchObject({ status: "applied", ok: true, applied: true });
     expect(JSON.stringify(store.doc)).not.toBe(before);
     // ONE undo step for the WHOLE idea.
     expect(storeCtx(store).undoStackLength()).toBe(1);
@@ -2447,7 +2458,57 @@ describe("kyx_mix_idea — text-to-mix loop", () => {
     });
     expect(result.mutated).toBe(false);
     expect(result.text).toMatch(/mix idea|target|track|plans nothing/i);
+    expect(result.data).toMatchObject({ status: "rejected", ok: false, applied: false });
     expect(JSON.stringify(store.doc)).toBe(before);
+  });
+
+  it("discovers a strict structured result and rejects unbounded or mistyped inputs", async () => {
+    const def = MCP_TOOLS.find((tool) => tool.name === "kyx_mix_idea");
+    expect(def?.outputSchema).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["status", "ok", "applied"],
+      properties: {
+        status: { enum: ["planned", "applied", "previewed", "rejected"] },
+        preview: {
+          additionalProperties: false,
+          required: [
+            "laneId",
+            "label",
+            "targets",
+            "goals",
+            "interpreter",
+            "beforeLufs",
+            "afterLufs",
+            "matchGainDb",
+            "seconds",
+            "studioBound",
+          ],
+        },
+      },
+    });
+    expect(def?.inputSchema.properties.idea).toMatchObject({ maxLength: 1_000 });
+    expect(def?.inputSchema.properties.target).toMatchObject({ maxLength: 128 });
+
+    const store = new ProjectStore(datasetDoc());
+    const tooLongIdea = await executeMcpToolAsync(storeCtx(store), "kyx_mix_idea", { idea: "x".repeat(1_001) });
+    const tooLongTarget = await executeMcpToolAsync(storeCtx(store), "kyx_mix_idea", {
+      idea: "warmer drums",
+      target: "x".repeat(129),
+    });
+    const mistypedApply = await executeMcpToolAsync(storeCtx(store), "kyx_mix_idea", {
+      idea: "warmer drums",
+      apply: "yes",
+    });
+    const conflictingModes = await executeMcpToolAsync(storeCtx(store), "kyx_mix_idea", {
+      idea: "warmer drums",
+      apply: true,
+      preview: true,
+    });
+    expect(tooLongIdea.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(tooLongTarget.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(mistypedApply.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(conflictingModes.errorCode).toBe("INVALID_ARGUMENTS");
   });
 });
 
@@ -2482,6 +2543,23 @@ describe("kyx_mix_idea — preview mode", () => {
     expect(result.text).toContain("PREVIEW armed");
     expect(result.text).toContain("-14.2");
     expect(result.text).toContain("desktop stdio");
+    expect(result.data).toMatchObject({
+      status: "previewed",
+      ok: true,
+      applied: false,
+      preview: {
+        laneId: "mp-dispatch",
+        beforeLufs: -14.2,
+        afterLufs: -13.4,
+        matchGainDb: -0.8,
+        seconds: 9.6,
+        studioBound: false,
+      },
+    });
+    const previewData = result.data as { preview: Record<string, unknown> };
+    expect(previewData.preview).not.toHaveProperty("beforeDoc");
+    expect(previewData.preview).not.toHaveProperty("afterDoc");
+    expect(previewData.preview).not.toHaveProperty("command");
     expect(JSON.stringify(store.doc)).toBe(before);
   });
 
