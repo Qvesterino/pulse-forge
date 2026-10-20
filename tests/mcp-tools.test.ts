@@ -6,6 +6,7 @@ import {
   addArrangementClip,
   addEffectToTracks,
   createScene,
+  duplicatePatternForScene,
   setSceneRole,
   setTrackSend,
   snapshot,
@@ -125,6 +126,11 @@ describe("mcp tools — headless execution", async () => {
     expect(MCP_TOOLS.find((tool) => tool.name === "kyx_sections")?.outputSchema).toBeDefined();
     expect(MCP_TOOLS.find((tool) => tool.name === "kyx_music")?.outputSchema).toBeDefined();
     expect(MCP_TOOLS.find((tool) => tool.name === "kyx_steps")?.outputSchema).toBeDefined();
+    expect(MCP_TOOLS.find((tool) => tool.name === "kyx_groove")?.outputSchema).toBeDefined();
+    expect(MCP_TOOLS.find((tool) => tool.name === "kyx_groove")?.inputSchema.properties?.sectionId).toMatchObject({
+      type: "string",
+      maxLength: 128,
+    });
     expect(MCP_TOOLS.find((tool) => tool.name === "kyx_steps")?.inputSchema.properties?.steps).toMatchObject({
       maxItems: 128,
       items: { maximum: 128 },
@@ -288,8 +294,20 @@ describe("mcp structured tools", async () => {
   it("kyx_groove global set lands absolute swing (one undo)", async () => {
     const store = new ProjectStore(datasetDoc());
     const ctx = storeCtx(store);
-    await executeMcpTool(ctx, "kyx_groove", { direction: "set", percent: 60 });
+    const result = await executeMcpTool(ctx, "kyx_groove", { direction: "set", percent: 60 });
     expect(store.doc.groove?.swing ?? 0).toBeCloseTo(0.6, 5);
+    expect(store.undoStackLength).toBe(1);
+    expect(result.data).toMatchObject({
+      status: "applied",
+      scope: "global",
+      requestedPercent: 60,
+      swingBefore: 0,
+      swingAfter: 0.6,
+      undoSteps: 1,
+    });
+    const repeated = await executeMcpTool(ctx, "kyx_groove", { direction: "set", percent: 60 });
+    expect(repeated.data).toMatchObject({ status: "already_at_target", undoSteps: 0 });
+    expect(repeated.mutated).toBe(false);
     expect(store.undoStackLength).toBe(1);
     store.undo();
     expect(store.doc.groove?.swing ?? 0).toBe(0);
@@ -308,6 +326,72 @@ describe("mcp structured tools", async () => {
     const stated = await executeMcpTool(ctx, "kyx_groove", { direction: "set", percent: 75 });
     expect(stated.text).not.toContain("assumed");
     expect(store.doc.groove?.swing ?? 0).toBeCloseTo(0.75, 5);
+  });
+
+  it("kyx_groove rejects malformed directions and magnitudes without mutation", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const before = store.doc;
+    const badDirection = await executeMcpTool(ctx, "kyx_groove", { direction: "sideways" });
+    expect(badDirection.isError).toBe(true);
+    expect(badDirection.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(badDirection.data).toMatchObject({ status: "rejected", reason: expect.stringContaining("direction") });
+
+    const badMagnitude = await executeMcpTool(ctx, "kyx_groove", { direction: "set", percent: 100.5 });
+    expect(badMagnitude.isError).toBe(true);
+    expect(badMagnitude.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(store.doc).toBe(before);
+    expect(store.undoStackLength).toBe(0);
+  });
+
+  it("kyx_groove requires a stable scene ID when a role matches multiple scenes", async () => {
+    let doc = datasetDoc();
+    doc = createScene(doc, "Second Drop").execute(doc);
+    const secondId = doc.scenes[doc.scenes.length - 1].id;
+    doc = setSceneRole(doc, secondId, "drop").execute(doc);
+    doc = duplicatePatternForScene(doc, secondId).execute(doc);
+    const second = doc.scenes.find((scene) => scene.id === secondId)!;
+    const store = new ProjectStore(doc);
+    const ctx = storeCtx(store);
+    const originalPattern = store.doc.patterns.find(
+      (pattern) => pattern.id === store.doc.scenes.find((scene) => scene.name === "Drop")?.patternId,
+    )!;
+
+    const ambiguous = await executeMcpTool(ctx, "kyx_groove", { direction: "more", section: "drop" });
+    expect(ambiguous.isError).toBe(true);
+    expect(ambiguous.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(ambiguous.data).toMatchObject({
+      status: "rejected",
+      candidateSceneIds: expect.arrayContaining([second.id]),
+      candidateSceneCount: 2,
+    });
+    expect(store.undoStackLength).toBe(0);
+
+    const exact = await executeMcpTool(ctx, "kyx_groove", {
+      direction: "set",
+      percent: 75,
+      sectionId: second.id,
+    });
+    expect(exact.isError).not.toBe(true);
+    expect(exact.data).toMatchObject({
+      status: "applied",
+      scope: "section",
+      sectionId: second.id,
+      sectionName: "Second Drop",
+      patternId: second.patternId,
+      requestedPercent: 75,
+      changedCells: expect.any(Number),
+      undoSteps: 1,
+    });
+    expect((exact.data as { changedCells: number }).changedCells).toBeGreaterThan(0);
+    expect(store.doc.patterns.find((pattern) => pattern.id === originalPattern.id)?.stepMeta).toEqual(
+      originalPattern.stepMeta,
+    );
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(store.doc.patterns.find((pattern) => pattern.id === second.patternId)?.stepMeta).toEqual(
+      doc.patterns.find((pattern) => pattern.id === second.patternId)?.stepMeta,
+    );
   });
 
   it("kyx_fx more reverb on the lead adds the instance; remove deletes it (D4-gated)", async () => {

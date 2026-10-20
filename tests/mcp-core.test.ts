@@ -66,7 +66,7 @@ describe("mcp core — protocol with an authenticated session", () => {
     const list = await handleMcpRequest(hub as any, TOKEN, TOKEN, rpc("tools/list", {}, 2));
     const listedTools = (list.result as { tools: Array<{ name: string; outputSchema?: unknown }> }).tools;
     expect(listedTools).toHaveLength(37);
-    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(21);
+    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(22);
     expect(listedTools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema,
     );
@@ -111,6 +111,9 @@ describe("mcp core — protocol with an authenticated session", () => {
     );
     expect(listedTools.find((tool) => tool.name === "kyx_transport")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_transport")?.outputSchema,
+    );
+    expect(listedTools.find((tool) => tool.name === "kyx_groove")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_groove")?.outputSchema,
     );
     expect(listedTools.map((t) => t.name)).toEqual([
       "kyx_intent",
@@ -762,6 +765,54 @@ describe("mcp core — protocol with an authenticated session", () => {
       type: "mcp-result",
       id: delivered[0].id,
       result: { text: "position bar 2 beat 2 · paused", mutated: false, data },
+    });
+    const response = await promise;
+    expect(response.result.isError).toBe(false);
+    expect(response.result.structuredContent).toEqual(data);
+  });
+
+  it("returns groove read-back as structuredContent across the web relay", async () => {
+    const { hub, delivered } = makeHub();
+    const data = {
+      status: "applied",
+      scope: "global",
+      direction: "set",
+      requestedPercent: 60,
+      sectionId: null,
+      sectionName: null,
+      candidateSceneIds: [],
+      candidateSceneCount: 0,
+      patternId: null,
+      swingBefore: 0,
+      swingAfter: 0.6,
+      humanizeTimingBefore: 0,
+      humanizeTimingAfter: 0,
+      humanizeVelocityBefore: 0,
+      humanizeVelocityAfter: 0,
+      averageAbsMicrotimingBefore: null,
+      averageAbsMicrotimingAfter: null,
+      changedCells: 0,
+      undoSteps: 1,
+      reason: null,
+    };
+    const promise = handleMcpRequest(
+      hub,
+      TOKEN,
+      TOKEN,
+      rpc(
+        "tools/call",
+        {
+          name: "kyx_groove",
+          arguments: { direction: "set", percent: 60 },
+          _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+        },
+        31,
+      ),
+    );
+    hub.handleSessionMessage({
+      type: "mcp-result",
+      id: delivered[0].id,
+      result: { text: "Groove → swing 60%", mutated: true, data },
     });
     const response = await promise;
     expect(response.result.isError).toBe(false);

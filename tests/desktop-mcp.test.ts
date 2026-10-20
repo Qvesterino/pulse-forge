@@ -748,6 +748,53 @@ describe("desktop mcp bridge server (real HTTP)", () => {
     expect(body.result.structuredContent).toEqual(data);
   });
 
+  it("returns groove read-back as structuredContent over desktop HTTP", async () => {
+    const data = {
+      status: "applied",
+      scope: "global",
+      direction: "set",
+      requestedPercent: 60,
+      sectionId: null,
+      sectionName: null,
+      candidateSceneIds: [],
+      candidateSceneCount: 0,
+      patternId: null,
+      swingBefore: 0,
+      swingAfter: 0.6,
+      humanizeTimingBefore: 0,
+      humanizeTimingAfter: 0,
+      humanizeVelocityBefore: 0,
+      humanizeVelocityAfter: 0,
+      averageAbsMicrotimingBefore: null,
+      averageAbsMicrotimingAfter: null,
+      changedCells: 0,
+      undoSteps: 1,
+      reason: null,
+    };
+    const { server } = bridgeModule.createMcpBridgeServer({
+      token: "tok",
+      executeTool: async () => ({ text: "Groove → swing 60%", mutated: true, data }),
+    });
+    const port = await listenOnEphemeralPort(server);
+    runningServers.push(server);
+
+    const response = await post(
+      port,
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 20,
+        method: "tools/call",
+        params: { name: "kyx_groove", arguments: { direction: "set", percent: 60 } },
+      }),
+      { token: "tok" },
+    );
+    const body = JSON.parse(response.body) as {
+      result: { isError?: boolean; structuredContent: Record<string, unknown> };
+    };
+    expect(body.result.isError).toBeUndefined();
+    expect(body.result.structuredContent).toEqual(data);
+  });
+
   it("protocol completeness: version negotiation, instructions, resources, batch, unknown-tool -32602", async () => {
     const { server } = bridgeModule.createMcpBridgeServer({
       token: "tok",

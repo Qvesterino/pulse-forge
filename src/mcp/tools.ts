@@ -92,6 +92,7 @@ import {
   applyGrooveIntent,
   applyMarkerIntent,
   applySectionGrooveIntent,
+  type SectionGrooveIntent,
 } from "../intent/studio-words";
 import { applyClipArrangeOps, applyArrangeOps, sceneRoleOf } from "../intent/arrangeWords";
 import { applySoundSwapIntent, applyStepEditIntent } from "../intent/sound-words";
@@ -1036,6 +1037,58 @@ const OUTPUT_TRANSPORT: McpOutputSchema = {
   },
   required: ["status", "action", "positionTick", "bar", "beat", "playing", "paused", "loop", "metronome"],
 };
+/** kyx_groove — bounded command read-back for global and scene groove edits. */
+const OUTPUT_GROOVE: McpOutputSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    status: {
+      type: "string",
+      enum: ["applied", "already_at_target", "missing_target", "no_pattern", "no_drum_track", "partial", "rejected"],
+    },
+    scope: { type: "string", enum: ["global", "section"] },
+    direction: { type: "string", maxLength: 16 },
+    requestedPercent: { type: ["integer", "null"], minimum: 0, maximum: 100 },
+    sectionId: { type: ["string", "null"], maxLength: 128 },
+    sectionName: { type: ["string", "null"], maxLength: 256 },
+    candidateSceneIds: { type: "array", items: { type: "string", maxLength: 128 }, maxItems: 64 },
+    candidateSceneCount: { type: "integer", minimum: 0 },
+    patternId: { type: ["string", "null"], maxLength: 128 },
+    swingBefore: { type: ["number", "null"], minimum: 0, maximum: 1 },
+    swingAfter: { type: ["number", "null"], minimum: 0, maximum: 1 },
+    humanizeTimingBefore: { type: ["number", "null"], minimum: 0, maximum: 1 },
+    humanizeTimingAfter: { type: ["number", "null"], minimum: 0, maximum: 1 },
+    humanizeVelocityBefore: { type: ["number", "null"], minimum: 0, maximum: 1 },
+    humanizeVelocityAfter: { type: ["number", "null"], minimum: 0, maximum: 1 },
+    averageAbsMicrotimingBefore: { type: ["number", "null"], minimum: 0, maximum: 1 },
+    averageAbsMicrotimingAfter: { type: ["number", "null"], minimum: 0, maximum: 1 },
+    changedCells: { type: "integer", minimum: 0 },
+    undoSteps: { type: "integer", minimum: 0, maximum: 1 },
+    reason: { type: ["string", "null"], maxLength: 512 },
+  },
+  required: [
+    "status",
+    "scope",
+    "direction",
+    "requestedPercent",
+    "sectionId",
+    "sectionName",
+    "candidateSceneIds",
+    "candidateSceneCount",
+    "patternId",
+    "swingBefore",
+    "swingAfter",
+    "humanizeTimingBefore",
+    "humanizeTimingAfter",
+    "humanizeVelocityBefore",
+    "humanizeVelocityAfter",
+    "averageAbsMicrotimingBefore",
+    "averageAbsMicrotimingAfter",
+    "changedCells",
+    "undoSteps",
+    "reason",
+  ],
+};
 export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_intent",
@@ -1281,8 +1334,8 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_groove",
     description:
-      "Groove/swing control. Global (no section) adjusts project swing; " +
-      "section-scoped bakes microtiming into that section's pattern.",
+      "Groove/swing control. Globally, more/less adjust swing by 10 percentage points; tighter reduces swing and timing humanization; set chooses an absolute swing (omitted percent = 50). " +
+      "With section or sectionId, the canonical command bakes microtiming into that scene's pattern. A role must match one scene; repeated roles require the stable sectionId.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1290,12 +1343,23 @@ export const MCP_TOOLS: McpToolDef[] = [
         section: {
           type: "string",
           enum: ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"],
-          description: "Omit = global groove",
+          description: "Target a unique scene role. Omit both section and sectionId for global groove.",
         },
-        percent: { type: "integer", minimum: 0, maximum: 100, description: "Only for direction 'set'" },
+        sectionId: {
+          type: "string",
+          maxLength: 128,
+          description: "Exact stable scene ID; use this when multiple scenes share the same role.",
+        },
+        percent: {
+          type: "integer",
+          minimum: 0,
+          maximum: 100,
+          description: "Only for direction 'set'; if omitted, the default is 50%.",
+        },
       },
       required: ["direction"],
     },
+    outputSchema: OUTPUT_GROOVE,
   },
   {
     name: "kyx_fx",
@@ -3805,31 +3869,235 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       };
     }
     case "kyx_groove": {
-      const direction = String(record.direction ?? "");
-      const section = typeof record.section === "string" ? record.section : undefined;
-      const percent = typeof record.percent === "number" ? record.percent : undefined;
-      // SILENT-DEFAULT rule: an unstated magnitude lands on the bounded
-      // default (50 %), and the read-back says so — an agent that meant 80 %
-      // must see that 50 happened, not mistake the default for its intent.
+      const rawDirection = record.direction;
+      const validDirections = ["more", "less", "tighter", "set"] as const;
+      const direction =
+        typeof rawDirection === "string" && validDirections.includes(rawDirection as (typeof validDirections)[number])
+          ? (rawDirection as (typeof validDirections)[number])
+          : null;
+      const rawSection = record.section;
+      const rawSectionId = record.sectionId;
+      const sectionRoles = ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"] as const;
+      const requestedSection =
+        typeof rawSection === "string" && sectionRoles.includes(rawSection as (typeof sectionRoles)[number])
+          ? rawSection
+          : undefined;
+      const requestedSectionId = typeof rawSectionId === "string" ? rawSectionId : undefined;
+      const hasSection = Object.prototype.hasOwnProperty.call(record, "section");
+      const hasSectionId = Object.prototype.hasOwnProperty.call(record, "sectionId");
+      const hasPercent = Object.prototype.hasOwnProperty.call(record, "percent");
+      const rawPercent = record.percent;
+      const scope = hasSection || hasSectionId ? "section" : "global";
+      const requestedPercent = direction === "set" ? (rawPercent === undefined ? 50 : rawPercent) : null;
+      const baseData = (overrides: Record<string, unknown> = {}) => ({
+        status: "rejected",
+        scope,
+        direction: typeof rawDirection === "string" ? rawDirection.slice(0, 16) : "",
+        requestedPercent:
+          typeof requestedPercent === "number" && Number.isInteger(requestedPercent) ? requestedPercent : null,
+        sectionId: requestedSectionId ?? null,
+        sectionName: null,
+        candidateSceneIds: [] as string[],
+        candidateSceneCount: 0,
+        patternId: null,
+        swingBefore: null,
+        swingAfter: null,
+        humanizeTimingBefore: null,
+        humanizeTimingAfter: null,
+        averageAbsMicrotimingBefore: null,
+        averageAbsMicrotimingAfter: null,
+        changedCells: 0,
+        undoSteps: 0,
+        reason: null,
+        ...overrides,
+      });
+      const invalid = (reason: string) =>
+        mcpError("INVALID_ARGUMENTS", reason, { data: baseData({ status: "rejected", reason }) });
+
+      if (!direction) return invalid("direction must be one of more, less, tighter, or set");
+      if (hasSection && (typeof rawSection !== "string" || requestedSection === undefined)) {
+        return invalid("section must be one of the advertised scene roles");
+      }
+      if (
+        hasSectionId &&
+        (typeof rawSectionId !== "string" || rawSectionId.trim().length === 0 || rawSectionId.length > 128)
+      ) {
+        return invalid("sectionId must be a non-empty exact scene ID of at most 128 characters");
+      }
+      if (hasSection && hasSectionId) return invalid("pass section or sectionId, not both");
+      if (hasPercent && direction !== "set") return invalid("percent is only valid with direction set");
+      if (
+        hasPercent &&
+        (typeof rawPercent !== "number" || !Number.isInteger(rawPercent) || rawPercent < 0 || rawPercent > 100)
+      ) {
+        return invalid("percent must be an integer from 0 through 100");
+      }
+
+      const docBefore = ctx.getDoc();
+      const beforeGroove = grooveState(docBefore);
       const assumedNote =
-        direction === "set" && percent == null ? " (swing 50% assumed default — pass percent for an exact value)" : "";
-      if (section == null) {
+        direction === "set" && !hasPercent ? " (swing 50% assumed default — pass percent for an exact value)" : "";
+      if (!hasSection && !hasSectionId) {
         const command = applyGrooveIntent(
-          ctx.getDoc(),
+          docBefore,
           direction === "set"
-            ? { direction: "set", percent: percent ?? 50 }
+            ? { direction: "set", percent: requestedPercent as number }
             : direction === "tighter"
               ? { direction: "tighter" }
               : { direction: direction === "less" ? "swingDown" : "swingUp" },
         );
-        if (!command) return { text: "groove already neutral", mutated: false };
-        ctx.execute(command);
-        return { text: `${command.label}${assumedNote}`, mutated: true };
+        const predicted = grooveState(command.execute(docBefore));
+        const wouldChange = !sameGrooveState(beforeGroove, predicted);
+        if (wouldChange) ctx.execute(command);
+        const afterGroove = grooveState(ctx.getDoc());
+        const landed = sameGrooveState(afterGroove, predicted);
+        const changed = !sameGrooveState(beforeGroove, afterGroove);
+        const status = !wouldChange ? "already_at_target" : landed ? "applied" : "partial";
+        const data = baseData({
+          status,
+          scope: "global",
+          requestedPercent: direction === "set" ? requestedPercent : null,
+          swingBefore: beforeGroove.swing,
+          swingAfter: afterGroove.swing,
+          humanizeTimingBefore: beforeGroove.humanizeTiming,
+          humanizeTimingAfter: afterGroove.humanizeTiming,
+          humanizeVelocityBefore: beforeGroove.humanizeVelocity,
+          humanizeVelocityAfter: afterGroove.humanizeVelocity,
+          changedCells: 0,
+          undoSteps: changed ? 1 : 0,
+          reason: status === "partial" ? "committed groove does not match the requested command result" : null,
+        });
+        return {
+          text:
+            status === "applied"
+              ? `${command.label}${assumedNote}`
+              : status === "partial"
+                ? `groove change only partially landed${assumedNote}`
+                : `groove already at requested setting${assumedNote}`,
+          mutated: changed,
+          ...(status === "partial" ? { isError: true, errorCode: "PARTIAL_FAILURE" as const } : {}),
+          data,
+        };
       }
-      const scoped = applySectionGrooveIntent(ctx.getDoc(), sectionGrooveFrom(direction, percent, section));
-      if (!scoped) return { text: `no pattern for the "${section}" section`, mutated: false };
+
+      const targetScenes = requestedSectionId
+        ? docBefore.scenes.filter((scene) => scene.id === requestedSectionId)
+        : docBefore.scenes.filter((scene) => sceneRoleOf(scene) === requestedSection);
+      if (targetScenes.length === 0) {
+        const reason = requestedSectionId
+          ? `no scene has id "${requestedSectionId}"`
+          : `no scene has role "${requestedSection}"`;
+        return {
+          ...mcpError("UNKNOWN_TARGET", reason, {
+            data: baseData({ status: "missing_target", reason }),
+          }),
+          text: reason,
+        };
+      }
+      if (targetScenes.length > 1) {
+        const candidates = targetScenes.slice(0, 64).map((scene) => scene.id);
+        const reason = `role "${requestedSection}" matches ${targetScenes.length} scenes; pass sectionId to target one exactly`;
+        return mcpError("INVALID_ARGUMENTS", reason, {
+          data: baseData({
+            status: "rejected",
+            candidateSceneIds: candidates,
+            candidateSceneCount: targetScenes.length,
+            reason,
+          }),
+        });
+      }
+
+      const scene = targetScenes[0];
+      const pattern = docBefore.patterns.find((candidate) => candidate.id === scene.patternId);
+      if (!pattern) {
+        const reason = `scene "${scene.name}" has no resolvable pattern`;
+        return {
+          ...mcpError("UNKNOWN_TARGET", reason, {
+            data: baseData({ status: "no_pattern", sectionId: scene.id, sectionName: scene.name, reason }),
+          }),
+          text: reason,
+        };
+      }
+      const beforeSection = sectionGrooveState(docBefore, scene);
+      if (beforeSection === null) {
+        const reason = `scene "${scene.name}" has no drum pads to groove`;
+        return {
+          ...mcpError("UNKNOWN_TARGET", reason, {
+            data: baseData({
+              status: "no_drum_track",
+              sectionId: scene.id,
+              sectionName: scene.name,
+              patternId: scene.patternId,
+              reason,
+            }),
+          }),
+          text: reason,
+        };
+      }
+
+      const scoped = applySectionGrooveIntent(
+        docBefore,
+        sectionGrooveFrom(direction, requestedPercent as number | undefined, scene),
+      );
+      if (!scoped) {
+        return {
+          text: `groove already at requested setting in "${scene.name}"${assumedNote}`,
+          mutated: false,
+          data: baseData({
+            status: "already_at_target",
+            scope: "section",
+            sectionId: scene.id,
+            sectionName: scene.name,
+            patternId: scene.patternId,
+            requestedPercent: direction === "set" ? requestedPercent : null,
+            averageAbsMicrotimingBefore: beforeSection.averageAbsMicrotiming,
+            averageAbsMicrotimingAfter: beforeSection.averageAbsMicrotiming,
+          }),
+        };
+      }
       ctx.execute(scoped);
-      return { text: `${scoped.label}${assumedNote}`, mutated: true };
+      const afterSection = sectionGrooveState(ctx.getDoc(), scene);
+      if (afterSection === null) {
+        const reason = "the committed section pattern could not be read back";
+        return {
+          text: reason,
+          mutated: true,
+          isError: true,
+          errorCode: "PARTIAL_FAILURE",
+          data: baseData({
+            status: "partial",
+            sectionId: scene.id,
+            sectionName: scene.name,
+            patternId: scene.patternId,
+            reason,
+            undoSteps: 1,
+          }),
+        };
+      }
+      const changedCells = countChangedGrooveCells(beforeSection.cells, afterSection.cells);
+      const status = changedCells > 0 ? "applied" : "partial";
+      const reason = status === "partial" ? "the command returned but no changed groove cells were observed" : null;
+      return {
+        text:
+          status === "applied"
+            ? `${scoped.label}${assumedNote} · ${changedCells} cells verified`
+            : `section groove change could not be verified${assumedNote}`,
+        mutated: changedCells > 0,
+        ...(status === "partial" ? { isError: true, errorCode: "PARTIAL_FAILURE" as const } : {}),
+        data: baseData({
+          status,
+          scope: "section",
+          sectionId: scene.id,
+          sectionName: scene.name,
+          patternId: scene.patternId,
+          requestedPercent: direction === "set" ? requestedPercent : null,
+          averageAbsMicrotimingBefore: beforeSection.averageAbsMicrotiming,
+          averageAbsMicrotimingAfter: afterSection.averageAbsMicrotiming,
+          changedCells,
+          undoSteps: changedCells > 0 ? 1 : 0,
+          reason,
+        }),
+      };
     }
     case "kyx_fx": {
       const action = String(record.action ?? "");
@@ -9435,11 +9703,74 @@ async function executeMasterTool(ctx: McpToolContext, record: Record<string, unk
   return mcpError("UNKNOWN_REQUEST", `unknown kyx_master op: ${op}`);
 }
 
-/** Scoped groove part builder for the kyx_groove tool. */
-function sectionGrooveFrom(direction: string, percent: number | undefined, section: string) {
-  if (direction === "set") return { role: section, direction: "set" as const, swingPercent: percent ?? 50 };
-  if (direction === "tighter") return { role: section, direction: "tighter" as const };
-  return { role: section, direction: direction === "less" ? ("swingDown" as const) : ("swingUp" as const) };
+type GrooveState = { swing: number; humanizeTiming: number; humanizeVelocity: number };
+
+function grooveState(doc: ProjectDocument): GrooveState {
+  const groove = doc.groove;
+  return {
+    swing: Number.isFinite(groove?.swing) ? (groove?.swing ?? 0) : 0,
+    humanizeTiming: Number.isFinite(groove?.humanizeTiming) ? (groove?.humanizeTiming ?? 0) : 0,
+    humanizeVelocity: Number.isFinite(groove?.humanizeVelocity) ? (groove?.humanizeVelocity ?? 0) : 0,
+  };
+}
+
+function sameGrooveState(a: GrooveState, b: GrooveState): boolean {
+  return a.swing === b.swing && a.humanizeTiming === b.humanizeTiming && a.humanizeVelocity === b.humanizeVelocity;
+}
+
+interface SectionGrooveState {
+  averageAbsMicrotiming: number | null;
+  /** Persisted microtiming by pad ID and odd sixteenth index. */
+  cells: Map<string, number>;
+}
+
+function sectionGrooveState(doc: ProjectDocument, scene: Scene): SectionGrooveState | null {
+  const pattern = doc.patterns.find((candidate) => candidate.id === scene.patternId);
+  if (!pattern) return null;
+  const padIds = [
+    ...new Set(
+      doc.tracks
+        .filter((track): track is DrumTrack => track.kind === "drum")
+        .flatMap((track) => track.pads.map((pad) => pad.id)),
+    ),
+  ];
+  if (padIds.length === 0) return null;
+  const cells = new Map<string, number>();
+  let absoluteSum = 0;
+  let count = 0;
+  for (const padId of padIds) {
+    for (let stepIndex = 1; stepIndex < pattern.stepCount; stepIndex += 2) {
+      const value = pattern.stepMeta?.[padId]?.[stepIndex]?.microtiming ?? 0;
+      cells.set(JSON.stringify([padId, stepIndex]), value);
+      absoluteSum += Math.abs(value);
+      count += 1;
+    }
+  }
+  return {
+    averageAbsMicrotiming: count > 0 ? Math.round((absoluteSum / count) * 1000) / 1000 : null,
+    cells,
+  };
+}
+
+function countChangedGrooveCells(before: Map<string, number>, after: Map<string, number>): number {
+  const keys = new Set([...before.keys(), ...after.keys()]);
+  let changed = 0;
+  for (const key of keys) {
+    if ((before.get(key) ?? 0) !== (after.get(key) ?? 0)) changed += 1;
+  }
+  return changed;
+}
+
+/** Scoped groove intent targets a pre-resolved scene ID through the canonical intent command. */
+function sectionGrooveFrom(
+  direction: "more" | "less" | "tighter" | "set",
+  percent: number | undefined,
+  scene: Scene,
+): SectionGrooveIntent {
+  const base = { role: scene.name, sceneId: scene.id };
+  if (direction === "set") return { ...base, direction: "set", swingPercent: percent ?? 50 };
+  if (direction === "tighter") return { ...base, direction: "tighter" };
+  return { ...base, direction: direction === "less" ? "swingDown" : "swingUp" };
 }
 
 /** Track or return display name for an automation target owner. */

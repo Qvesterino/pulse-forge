@@ -722,7 +722,7 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_groove",
     description:
-      "Groove/swing control. Global (no section) adjusts project swing; section-scoped bakes microtiming into that section's pattern.",
+      "Groove/swing control. Globally, more/less adjust swing by 10 percentage points; tighter reduces swing and timing humanization; set chooses an absolute swing (omitted percent = 50). With section or sectionId, the canonical command bakes microtiming into that scene's pattern. A role must match one scene; repeated roles require the stable sectionId.",
     inputSchema: {
       type: "object",
       properties: {
@@ -733,13 +733,18 @@ export const MCP_TOOL_DEFS = [
         section: {
           type: "string",
           enum: ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"],
-          description: "Omit = global groove",
+          description: "Target a unique scene role. Omit both section and sectionId for global groove.",
+        },
+        sectionId: {
+          type: "string",
+          maxLength: 128,
+          description: "Exact stable scene ID; use this when multiple scenes share the same role.",
         },
         percent: {
           type: "integer",
           minimum: 0,
           maximum: 100,
-          description: "Only for direction 'set'",
+          description: "Only for direction 'set'; if omitted, the default is 50%.",
         },
         requestId: {
           type: "string",
@@ -754,6 +759,136 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["direction"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        status: {
+          type: "string",
+          enum: [
+            "applied",
+            "already_at_target",
+            "missing_target",
+            "no_pattern",
+            "no_drum_track",
+            "partial",
+            "rejected",
+          ],
+        },
+        scope: {
+          type: "string",
+          enum: ["global", "section"],
+        },
+        direction: {
+          type: "string",
+          maxLength: 16,
+        },
+        requestedPercent: {
+          type: ["integer", "null"],
+          minimum: 0,
+          maximum: 100,
+        },
+        sectionId: {
+          type: ["string", "null"],
+          maxLength: 128,
+        },
+        sectionName: {
+          type: ["string", "null"],
+          maxLength: 256,
+        },
+        candidateSceneIds: {
+          type: "array",
+          items: {
+            type: "string",
+            maxLength: 128,
+          },
+          maxItems: 64,
+        },
+        candidateSceneCount: {
+          type: "integer",
+          minimum: 0,
+        },
+        patternId: {
+          type: ["string", "null"],
+          maxLength: 128,
+        },
+        swingBefore: {
+          type: ["number", "null"],
+          minimum: 0,
+          maximum: 1,
+        },
+        swingAfter: {
+          type: ["number", "null"],
+          minimum: 0,
+          maximum: 1,
+        },
+        humanizeTimingBefore: {
+          type: ["number", "null"],
+          minimum: 0,
+          maximum: 1,
+        },
+        humanizeTimingAfter: {
+          type: ["number", "null"],
+          minimum: 0,
+          maximum: 1,
+        },
+        humanizeVelocityBefore: {
+          type: ["number", "null"],
+          minimum: 0,
+          maximum: 1,
+        },
+        humanizeVelocityAfter: {
+          type: ["number", "null"],
+          minimum: 0,
+          maximum: 1,
+        },
+        averageAbsMicrotimingBefore: {
+          type: ["number", "null"],
+          minimum: 0,
+          maximum: 1,
+        },
+        averageAbsMicrotimingAfter: {
+          type: ["number", "null"],
+          minimum: 0,
+          maximum: 1,
+        },
+        changedCells: {
+          type: "integer",
+          minimum: 0,
+        },
+        undoSteps: {
+          type: "integer",
+          minimum: 0,
+          maximum: 1,
+        },
+        reason: {
+          type: ["string", "null"],
+          maxLength: 512,
+        },
+      },
+      required: [
+        "status",
+        "scope",
+        "direction",
+        "requestedPercent",
+        "sectionId",
+        "sectionName",
+        "candidateSceneIds",
+        "candidateSceneCount",
+        "patternId",
+        "swingBefore",
+        "swingAfter",
+        "humanizeTimingBefore",
+        "humanizeTimingAfter",
+        "humanizeVelocityBefore",
+        "humanizeVelocityAfter",
+        "averageAbsMicrotimingBefore",
+        "averageAbsMicrotimingAfter",
+        "changedCells",
+        "undoSteps",
+        "reason",
+      ],
     },
     annotations: {
       readOnlyHint: false,

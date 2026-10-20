@@ -223,6 +223,8 @@ import { setStepMeta } from "../commands/commands";
 
 export interface SectionGrooveIntent {
   role: string;
+  /** Stable target when the caller has already resolved an exact scene. */
+  sceneId?: string;
   direction: "swingUp" | "swingDown" | "tighter" | "set";
   swingPercent?: number;
 }
@@ -273,7 +275,9 @@ const MICRO_STEP = 0.1 * SWING_TO_MICRO;
 
 export function applySectionGrooveIntent(doc: ProjectDocument, intent: SectionGrooveIntent): Command | null {
   const role = intent.role as ArrangeRole;
-  const scene = resolveSceneTarget(doc, intent.role, [role]);
+  const scene = intent.sceneId
+    ? (doc.scenes.find((candidate) => candidate.id === intent.sceneId) ?? null)
+    : resolveSceneTarget(doc, intent.role, [role]);
   if (!scene) return null;
   const pattern = doc.patterns.find((p) => p.id === scene.patternId);
   if (!pattern) return null;
