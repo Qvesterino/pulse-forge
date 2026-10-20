@@ -66,7 +66,7 @@ describe("mcp core — protocol with an authenticated session", () => {
     const list = await handleMcpRequest(hub as any, TOKEN, TOKEN, rpc("tools/list", {}, 2));
     const listedTools = (list.result as { tools: Array<{ name: string; outputSchema?: unknown }> }).tools;
     expect(listedTools).toHaveLength(37);
-    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(17);
+    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(18);
     expect(listedTools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema,
     );
@@ -99,6 +99,9 @@ describe("mcp core — protocol with an authenticated session", () => {
     );
     expect(listedTools.find((tool) => tool.name === "kyx_sections")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_sections")?.outputSchema,
+    );
+    expect(listedTools.find((tool) => tool.name === "kyx_music")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_music")?.outputSchema,
     );
     expect(listedTools.map((t) => t.name)).toEqual([
       "kyx_intent",
@@ -594,6 +597,33 @@ describe("mcp core — protocol with an authenticated session", () => {
       type: "mcp-result",
       id: delivered[0].id,
       result: { text: "listed 1 sections", mutated: false, data },
+    });
+    const response = await promise;
+    expect(response.result.isError).toBe(false);
+    expect(response.result.structuredContent).toEqual(data);
+  });
+
+  it("returns musical-state read-back as structuredContent across the web relay", async () => {
+    const { hub, delivered } = makeHub();
+    const data = { status: "set", op: "setTempo", bpm: 140, undoSteps: 1 };
+    const promise = handleMcpRequest(
+      hub,
+      TOKEN,
+      TOKEN,
+      rpc(
+        "tools/call",
+        {
+          name: "kyx_music",
+          arguments: { op: "setTempo", bpm: 140 },
+          _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+        },
+        25,
+      ),
+    );
+    hub.handleSessionMessage({
+      type: "mcp-result",
+      id: delivered[0].id,
+      result: { text: "tempo is now 140 BPM (one undo step)", mutated: true, data },
     });
     const response = await promise;
     expect(response.result.isError).toBe(false);

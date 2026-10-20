@@ -12,18 +12,26 @@ KYX is both an MCP server and an MCP client-like relay endpoint. The desktop ser
 flowchart LR
   C[MCP client]
   subgraph Desktop[KYX desktop]
-    S[desktop/mcp-server.cjs\nstdio JSON-RPC]
-    B[desktop/mcp-bridge-server.cjs\nloopback HTTP + token]
-    H[desktop/mcp-host-manager.cjs\nIPC broker]
-    R[Electron renderer\nsrc/mcp/desktop-host.ts]
+    S[desktop/mcp-server.cjs
+stdio JSON-RPC]
+    B[desktop/mcp-bridge-server.cjs
+loopback HTTP + token]
+    H[desktop/mcp-host-manager.cjs
+IPC broker]
+    R[Electron renderer
+src/mcp/desktop-host.ts]
   end
   subgraph Web[KYX web relay]
-    W[server/mcp-core.mjs\nPOST /mcp]
-    WS[WebSocket relay\n/mcp-relay]
+    W[server/mcp-core.mjs
+POST /mcp]
+    WS[WebSocket relay
+/mcp-relay]
     WH[src/mcp/web-host.ts]
   end
-  X[src/mcp/tools.ts\nexecuteMcpTool → dispatch]
-  D[ProjectStore / command layer\nundo + event propagation]
+  X[src/mcp/tools.ts
+executeMcpTool → dispatch]
+  D[ProjectStore / command layer
+undo + event propagation]
   A[AudioEngine / Transport / UI]
   P[autosave + IndexedDB]
   C --> S --> B --> H --> R --> X
@@ -89,7 +97,8 @@ At the audit baseline, all 37 tools had input schemas and descriptions, but only
 - **Routing read-back and retry safety:** `kyx_routing` now declares a strict output schema for route/group/return inventories and every operation result. Mutations verify committed read-back; repeated route, send and return-gain writes report no-op status without adding undo entries. Ambiguous names and malformed/bounded inputs fail explicitly. Web and desktop relay tests pin structuredContent and schema discovery.
 - **Marker inventory and exact targeting:** `kyx_markers` now lists stable marker IDs/positions, supports exact marker IDs for rename/removal and keeps nearest-bar matching as a compatibility fallback. Writes verify committed state; same-name rename is a no-op. Invalid ops and fractional bars fail before mutation. Web and desktop transport tests cover the structured result and schema discovery.
 - **Section inventory and exact edits:** `kyx_sections` lists stable scene IDs and committed position/length/intensity, accepts scene ID, exact name, 1-based index, or an unambiguous role, and verifies add/remove/duplicate/reorder/resize/intensity outcomes. Same-value size/intensity edits and boundary reorders return explicit no-op statuses; removal remains behind the destructive-operation gate. Web and desktop tests pin structured results and schema discovery.
-- **Still partial:** seventeen tools publish output schemas; the other 20 remain text-first. Web transport still exposes error codes through text rather than the full internal result envelope. Checkpoint save/delete and preview remain external/UI state outside ProjectStore undo by design.
+- **Musical-state validation and read-back:** `kyx_music` rejects fractional BPM/meter/step/semitone values, limits pattern length to the command-layer 128-step ceiling, validates keys against the supported enum, and returns committed state. `transposeAll` reports fully shifted, missing and MIDI-boundary-clamped notes as structured counts; unpitched or empty targets fail or no-op explicitly.
+- **Still partial:** eighteen tools publish output schemas; the other 19 remain text-first. Web transport still exposes error codes through text rather than the full internal result envelope. Checkpoint save/delete and preview remain external/UI state outside ProjectStore undo by design.
 - **Mirror gate:** the current `npm run verify:mcp-mirrors` check passes; generated desktop and web catalogs match `src/mcp/tools.ts`.
 
 ## Security and runtime limits
@@ -104,4 +113,4 @@ At the audit baseline, all 37 tools had input schemas and descriptions, but only
 
 This is a source and test audit, not a packaged-app run. No external MCP client was attached, no audio hardware route was exercised, and the full Vitest suite was not run at this stage. The findings above are supported by source path traces and existing tests, not claims of end-to-end packaged acceptance.
 
-Verification update: the full suite before blind A/B hardening passed 12,672 tests, skipped 129 and had one in-flight `plugin-audit-measurement.test.ts` failure against concurrently modified plugin-audit source. Blind A/B hardening passed 182 focused MCP tests and 19 desktop HTTP/stdio tests. The mix-idea increment passed 166/166 tests across the MCP tools, web relay, desktop HTTP/stdio and mirror-sync suites. The genre-mix increment passed 55/55 tests across producer moves, web relay, desktop HTTP/stdio and mirror-sync. The arrangement increment passed 58/58 across the same transport and producer surfaces. The take-management increment passed 174/174 tests across MCP tools, web relay, desktop HTTP and mirror-sync. The routing undo-parity increment passed 147/147 tests across `groupTracks.test.ts` and `mcp-tools.test.ts`. The structured-routing increment passed 176/176 MCP tool, relay, desktop and mirror tests; the marker increment passed 180/180; and the section increment passed 185/185 MCP tool, web relay, desktop HTTP and mirror-sync tests. The latest `npm run typecheck`, mirror verification, changed-file Prettier and `git diff --check` pass. The most recent full `npm run test:expectations` run before the marker increment completed 1,139 files: 12,702 passed, 129 skipped, 1 todo, no failures, and the suite ledger ratchet held. The repository-wide `format:check` still fails on five unrelated files.
+Verification update: the full suite before blind A/B hardening passed 12,672 tests, skipped 129 and had one in-flight `plugin-audit-measurement.test.ts` failure against concurrently modified plugin-audit source. Blind A/B hardening passed 182 focused MCP tests and 19 desktop HTTP/stdio tests. The mix-idea increment passed 166/166 tests across the MCP tools, web relay, desktop HTTP/stdio and mirror-sync suites. The genre-mix increment passed 55/55 tests across producer moves, web relay, desktop HTTP/stdio and mirror-sync. The arrangement increment passed 58/58 across the same transport and producer surfaces. The take-management increment passed 174/174 tests across MCP tools, web relay, desktop HTTP and mirror-sync. The routing undo-parity increment passed 147/147 tests across `groupTracks.test.ts` and `mcp-tools.test.ts`. The structured-routing increment passed 176/176 MCP tool, relay, desktop and mirror tests; the marker increment passed 180/180; and the section increment passed 185/185 MCP tool, web relay, desktop HTTP and mirror-sync tests; musical-state control passed 204/204 MCP, web, desktop and mirror tests. The latest `npm run typecheck`, mirror verification, changed-file Prettier and `git diff --check` pass. The most recent full `npm run test:expectations` run before the marker increment completed 1,139 files: 12,702 passed, 129 skipped, 1 todo, no failures, and the suite ledger ratchet held. The repository-wide `format:check` still fails on five unrelated files.

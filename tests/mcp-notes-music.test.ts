@@ -205,8 +205,46 @@ describe("kyx_notes", async () => {
     });
     const r = await executeMcpTool(ctx, "kyx_music", { op: "transposeAll", semitones: 5 });
     expect(r.mutated).toBe(true);
+    expect(r.data).toMatchObject({
+      status: "transposed",
+      op: "transposeAll",
+      target: "all",
+      requestedSemitones: 5,
+      targetNoteCount: 2,
+      transposedNotes: 2,
+      partialNotes: 0,
+      undoSteps: 1,
+    });
     expect(notesOf(ctx, "bass")[0].pitch).toBe(33 + 5);
     expect(notesOf(ctx, "chords")[0].pitch).toBe(64 + 5);
+  });
+
+  it("transposeAll reports boundary-clamped notes as a partial result", async () => {
+    const ctx = makeCtx(freshDoc());
+    await executeMcpTool(ctx, "kyx_notes", {
+      op: "add",
+      family: "bass",
+      pitch: 127,
+      startBeat: 0,
+      durationBeats: 1,
+    });
+    const result = await executeMcpTool(ctx, "kyx_music", { op: "transposeAll", target: "bass", semitones: 1 });
+    expect(result.errorCode).toBe("PARTIAL_FAILURE");
+    expect(result.data).toMatchObject({
+      status: "partial",
+      targetNoteCount: 1,
+      transposedNotes: 0,
+      partialNotes: 1,
+      undoSteps: 0,
+    });
+    expect(notesOf(ctx, "bass")[0].pitch).toBe(127);
+  });
+
+  it("transposeAll reports an empty target without creating an undoable mutation", async () => {
+    const ctx = makeCtx(freshDoc());
+    const result = await executeMcpTool(ctx, "kyx_music", { op: "transposeAll", target: "bass", semitones: -2 });
+    expect(result.data).toMatchObject({ status: "no_notes", target: "bass", targetNoteCount: 0, undoSteps: 0 });
+    expect(result.mutated).toBe(false);
   });
 });
 
@@ -217,13 +255,20 @@ describe("kyx_music", async () => {
     expect(r.mutated).toBe(true);
     expect(ctx.getDoc().bpm).toBe(140);
     expect(r.text).toContain("140");
+    expect(r.data).toMatchObject({ status: "set", op: "setTempo", bpm: 140, undoSteps: 1 });
+    const repeated = await executeMcpTool(ctx, "kyx_music", { op: "setTempo", bpm: 140 });
+    expect(repeated.data).toMatchObject({ status: "already_set", bpm: 140, undoSteps: 0 });
   });
 
-  it("setKey accepts a musical key and rejects junk through the executor", async () => {
+  it("setKey accepts a supported musical key and rejects unsupported aliases", async () => {
     const ctx = makeCtx(freshDoc());
-    const r = await executeMcpTool(ctx, "kyx_music", { op: "setKey", key: "F# Minor" });
+    const r = await executeMcpTool(ctx, "kyx_music", { op: "setKey", key: "F# Natural Minor" });
     expect(r.mutated).toBe(true);
-    expect(ctx.getDoc().key).toBe("F# Minor");
+    expect(ctx.getDoc().key).toBe("F# Natural Minor");
+    expect(r.data).toMatchObject({ status: "set", op: "setKey", key: "F# Natural Minor", undoSteps: 1 });
+    const invalid = await executeMcpTool(ctx, "kyx_music", { op: "setKey", key: "not a key" });
+    expect(invalid.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(ctx.getDoc().key).toBe("F# Natural Minor");
   });
 
   it("setPatternLength resizes the active pattern", async () => {
@@ -232,6 +277,42 @@ describe("kyx_music", async () => {
     expect(r.mutated).toBe(true);
     const active = ctx.getDoc().patterns.find((p) => p.id === ctx.getDoc().activePatternId);
     expect(active?.stepCount).toBe(32);
+    expect(r.data).toMatchObject({
+      status: "set",
+      op: "setPatternLength",
+      patternId: active?.id,
+      steps: 32,
+      undoSteps: 1,
+    });
+    const repeated = await executeMcpTool(ctx, "kyx_music", { op: "setPatternLength", steps: 32 });
+    expect(repeated.data).toMatchObject({ status: "already_set", patternId: active?.id, steps: 32, undoSteps: 0 });
+  });
+
+  it("setTimeSignature reports committed state and skips same-value writes", async () => {
+    const ctx = makeCtx(freshDoc());
+    const changed = await executeMcpTool(ctx, "kyx_music", { op: "setTimeSignature", numerator: 7, denominator: 8 });
+    expect(changed.data).toMatchObject({
+      status: "set",
+      op: "setTimeSignature",
+      numerator: 7,
+      denominator: 8,
+      undoSteps: 1,
+    });
+    expect(ctx.getDoc().timeSignature).toEqual({ numerator: 7, denominator: 8 });
+    const repeated = await executeMcpTool(ctx, "kyx_music", { op: "setTimeSignature", numerator: 7, denominator: 8 });
+    expect(repeated.data).toMatchObject({ status: "already_set", numerator: 7, denominator: 8, undoSteps: 0 });
+  });
+
+  it("strict numeric validation rejects fractions and lengths above the canonical command cap", async () => {
+    const ctx = makeCtx(freshDoc());
+    const tempo = await executeMcpTool(ctx, "kyx_music", { op: "setTempo", bpm: 140.5 });
+    const meter = await executeMcpTool(ctx, "kyx_music", { op: "setTimeSignature", numerator: 4.5, denominator: 4 });
+    const length = await executeMcpTool(ctx, "kyx_music", { op: "setPatternLength", steps: 256 });
+    expect(tempo.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(meter.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(length.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(ctx.getDoc().bpm).not.toBeNaN();
+    expect(ctx.getDoc().timeSignature.numerator).toBe(4);
   });
 
   it("unknown op and missing bpm answer honestly without mutating", async () => {

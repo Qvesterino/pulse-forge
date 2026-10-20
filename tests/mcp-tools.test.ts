@@ -123,6 +123,7 @@ function withLead(): ProjectDocument {
 describe("mcp tools — headless execution", async () => {
   it("tool surface: the 37 documented tools", async () => {
     expect(MCP_TOOLS.find((tool) => tool.name === "kyx_sections")?.outputSchema).toBeDefined();
+    expect(MCP_TOOLS.find((tool) => tool.name === "kyx_music")?.outputSchema).toBeDefined();
     expect(MCP_TOOLS.map((tool) => tool.name)).toEqual([
       "kyx_intent",
       "kyx_state",

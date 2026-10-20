@@ -596,6 +596,32 @@ describe("desktop mcp bridge server (real HTTP)", () => {
     expect(body.result.structuredContent).toEqual(data);
   });
 
+  it("returns musical-state read-back as structuredContent over desktop HTTP", async () => {
+    const data = { status: "set", op: "setTempo", bpm: 140, undoSteps: 1 };
+    const { server } = bridgeModule.createMcpBridgeServer({
+      token: "tok",
+      executeTool: async () => ({ text: "tempo is now 140 BPM (one undo step)", mutated: true, data }),
+    });
+    const port = await listenOnEphemeralPort(server);
+    runningServers.push(server);
+
+    const response = await post(
+      port,
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 16,
+        method: "tools/call",
+        params: { name: "kyx_music", arguments: { op: "setTempo", bpm: 140 } },
+      }),
+      { token: "tok" },
+    );
+    const body = JSON.parse(response.body) as {
+      result: { isError?: boolean; structuredContent: Record<string, unknown> };
+    };
+    expect(body.result.isError).toBeUndefined();
+    expect(body.result.structuredContent).toEqual(data);
+  });
+
   it("protocol completeness: version negotiation, instructions, resources, batch, unknown-tool -32602", async () => {
     const { server } = bridgeModule.createMcpBridgeServer({
       token: "tok",
@@ -997,6 +1023,9 @@ describe("desktop mcp stdio forwarder (subprocess)", () => {
     );
     expect(list.result.tools.find((tool) => tool.name === "kyx_sections")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_sections")?.outputSchema,
+    );
+    expect(list.result.tools.find((tool) => tool.name === "kyx_music")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_music")?.outputSchema,
     );
 
     writeLine({

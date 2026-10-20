@@ -99,6 +99,8 @@ import { MCP_PLAYBOOK_TEXT, MCP_VOCAB_TEXT } from "./onboarding";
 import { normalizeIntent } from "../intent/normalize";
 import { inferPadRole } from "../ai/pad-roles";
 import type { DrumTrack, InstrumentKind, Scene, Track, AutomationTarget, AutomationLane } from "../project-model/types";
+import { MUSICAL_KEYS } from "../project-model/types";
+import { resolveProductionTargets } from "../intent/production";
 import { getIntentModelProvider, tryModelRoute } from "../intent/model-resolver";
 import { logIntentMiningEvent } from "../intent/failure-log";
 import { formatRenderSummary } from "./render-summary";
@@ -799,6 +801,40 @@ const OUTPUT_SECTIONS: McpOutputSchema = {
   },
   required: ["status", "sections", "undoSteps"],
 };
+/** kyx_music — strict scalar musical-state setters and note-transpose read-back. */
+const OUTPUT_MUSIC: McpOutputSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    status: { type: "string", enum: ["set", "already_set", "transposed", "no_notes", "partial"] },
+    op: { type: "string", enum: ["setTempo", "setKey", "setPatternLength", "setTimeSignature", "transposeAll"] },
+    bpm: { type: "integer", minimum: 20, maximum: 300 },
+    key: { type: "string", enum: [...MUSICAL_KEYS] },
+    patternId: { type: "string" },
+    steps: { type: "integer", minimum: 16, maximum: 128 },
+    numerator: { type: "integer", minimum: 1, maximum: 16 },
+    denominator: { type: "integer", enum: [2, 4, 8, 16] },
+    target: { type: "string", enum: ["all", "bass", "lead", "chords", "vocal"] },
+    requestedSemitones: { type: "integer", minimum: -127, maximum: 127 },
+    targetNoteCount: {
+      type: "integer",
+      minimum: 0,
+      description: "Active-pattern notes in the resolved melodic target.",
+    },
+    transposedNotes: {
+      type: "integer",
+      minimum: 0,
+      description: "Notes that landed the full requested semitone shift.",
+    },
+    partialNotes: {
+      type: "integer",
+      minimum: 0,
+      description: "Target notes that did not land the full shift, including MIDI-boundary clamps.",
+    },
+    undoSteps: { type: "integer", minimum: 0, maximum: 1 },
+  },
+  required: ["status", "op", "undoSteps"],
+};
 export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_intent",
@@ -1315,8 +1351,10 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "kyx_music",
     description:
       "Structured MUSICAL STATE: set tempo, set musical key, change the active " +
-      "pattern's length, or transpose all melodic content. One op = ONE undo " +
-      "step through the exact-intent executor (same clamps as the text layer).",
+      "pattern's length, set meter, or transpose active-pattern melodic notes. " +
+      "Changes use the canonical exact-intent command and return committed " +
+      "read-back; no-ops add no undo step. Numeric inputs are strict, and " +
+      "retries of transposeAll should include requestId.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1328,13 +1366,22 @@ export const MCP_TOOLS: McpToolDef[] = [
           description: "setTimeSignature — beat unit (denominator)",
         },
         bpm: { type: "integer", minimum: 20, maximum: 300, description: "setTempo" },
-        key: { type: "string", description: 'setKey — e.g. "C Major", "F# Minor", "Bb Minor"' },
-        steps: { type: "integer", minimum: 16, maximum: 256, description: "setPatternLength (16 per bar)" },
+        key: {
+          type: "string",
+          enum: [...MUSICAL_KEYS],
+          description: "setKey — choose from KYX's supported musical-key catalog",
+        },
+        steps: { type: "integer", minimum: 16, maximum: 128, description: "setPatternLength (16 steps per bar)" },
         semitones: { type: "integer", minimum: -127, maximum: 127, description: "transposeAll shift (non-zero)" },
-        target: { type: "string", description: 'transposeAll scope: track family or "all" (default all)' },
+        target: {
+          type: "string",
+          enum: ["all", "bass", "lead", "chords", "vocal"],
+          description: 'transposeAll scope (default "all"); drum tracks do not contain pitched notes',
+        },
       },
       required: ["op"],
     },
+    outputSchema: OUTPUT_MUSIC,
   },
   {
     name: "kyx_catalog",
@@ -4203,66 +4250,8 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         mutated: false,
       };
     }
-    case "kyx_music": {
-      // STRUCTURED MUSICAL STATE — tempo, key, pattern length, global
-      // transpose. One op = ONE undo step through the exact-intent executor
-      // (the same clamps the text layer uses).
-      const record = args as Record<string, unknown>;
-      const op = String(record.op ?? "");
-      const plan = (ops: { kind: string; [key: string]: unknown }[]): { label: string; ops: never[] } => ({
-        label: "MCP music",
-        ops: ops as never[],
-      });
-      if (op === "setTimeSignature") {
-        // GAP-12 (control-surface audit 2026-10-13): the transport re-reads
-        // barTicks from the doc on every change, so the grid adapts live.
-        const numerator = Math.round(Number(record.numerator));
-        const denominator = Math.round(Number(record.denominator));
-        if (!Number.isInteger(numerator) || numerator < 1 || numerator > 16 || ![2, 4, 8, 16].includes(denominator)) {
-          return mcpError("INVALID_ARGUMENTS", "setTimeSignature needs numerator 1..16 and denominator 2|4|8|16");
-        }
-        const command = setTimeSignature(ctx.getDoc(), numerator, denominator);
-        ctx.execute(command);
-        return { text: `time signature ${numerator}/${denominator} — one undo step`, mutated: true };
-      }
-      if (op === "setTempo") {
-        const bpm = typeof record.bpm === "number" ? Math.round(record.bpm) : NaN;
-        if (!Number.isFinite(bpm)) return { text: "setTempo needs bpm (20..300)", mutated: false };
-        ctx.execute(applyExactIntentCommand(ctx.getDoc(), plan([{ kind: "tempo", bpm }])));
-        return { text: `tempo is now ${ctx.getDoc().bpm} BPM`, mutated: true };
-      }
-      if (op === "setKey") {
-        const key = typeof record.key === "string" ? record.key : "";
-        ctx.execute(applyExactIntentCommand(ctx.getDoc(), plan([{ kind: "key", key }])));
-        return { text: `key is now ${ctx.getDoc().key}`, mutated: true };
-      }
-      if (op === "setPatternLength") {
-        const steps = typeof record.steps === "number" ? Math.round(record.steps) : NaN;
-        if (!Number.isFinite(steps)) return { text: "setPatternLength needs steps (16..256)", mutated: false };
-        ctx.execute(applyExactIntentCommand(ctx.getDoc(), plan([{ kind: "patternLength", steps }])));
-        const active = ctx.getDoc().patterns.find((p) => p.id === ctx.getDoc().activePatternId);
-        return { text: `active pattern is now ${active?.stepCount ?? "?"} steps`, mutated: true };
-      }
-      if (op === "transposeAll") {
-        const semitones = typeof record.semitones === "number" ? Math.round(record.semitones) : NaN;
-        const target = typeof record.target === "string" ? record.target : "all";
-        if (!Number.isFinite(semitones) || semitones === 0) {
-          return {
-            text: 'transposeAll needs semitones (non-zero) and optional target (family or "all")',
-            mutated: false,
-          };
-        }
-        ctx.execute(applyExactIntentCommand(ctx.getDoc(), plan([{ kind: "transpose", target, semitones }])));
-        return {
-          text: `transposed ${target} by ${semitones > 0 ? "+" : ""}${semitones} semitones — one undo step`,
-          mutated: true,
-        };
-      }
-      return {
-        text: "unknown op — kyx_music ops: setTempo | setKey | setPatternLength | transposeAll",
-        mutated: false,
-      };
-    }
+    case "kyx_music":
+      return executeMusicTool(ctx, record);
     case "kyx_checkpoint":
       return executeCheckpointTool(ctx, record);
     case "__kyx_resource":
@@ -7344,6 +7333,239 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
   }
 
   return { text: `unknown op: ${op} (list | set)`, mutated: false };
+}
+
+function executeMusicTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+  const allowedOps = ["setTempo", "setKey", "setPatternLength", "setTimeSignature", "transposeAll"] as const;
+  if (typeof record.op !== "string") return mcpError("INVALID_ARGUMENTS", "op is required");
+  if (!allowedOps.includes(record.op as (typeof allowedOps)[number])) {
+    return mcpError("UNKNOWN_REQUEST", `unknown op for kyx_music: ${record.op}`);
+  }
+  const op = record.op;
+  const before = ctx.getDoc();
+  const plan = (ops: { kind: string; [key: string]: unknown }[]): { label: string; ops: never[] } => ({
+    label: "MCP music",
+    ops: ops as never[],
+  });
+  const unchanged = (fields: Record<string, unknown>, text: string): McpToolResult => {
+    const data = { status: "already_set", op, ...fields, undoSteps: 0 };
+    return { text, mutated: false, data };
+  };
+  const commit = (
+    command: Command,
+    verify: (doc: ProjectDocument) => boolean,
+    readback: (doc: ProjectDocument) => Record<string, unknown>,
+    resultText: (doc: ProjectDocument) => string,
+  ): McpToolResult => {
+    try {
+      ctx.execute(command);
+      const after = ctx.getDoc();
+      const mutated = after !== before;
+      const verified = verify(after);
+      const data = {
+        status: verified ? (mutated ? "set" : "already_set") : "partial",
+        op,
+        ...readback(after),
+        undoSteps: mutated ? 1 : 0,
+      };
+      if (!verified) {
+        return mcpError("PARTIAL_FAILURE", `kyx_music ${op} did not match its committed read-back`, {
+          mutated,
+          data,
+        });
+      }
+      return { text: resultText(after), mutated, data };
+    } catch (error) {
+      return mcpError(
+        "EXECUTION_FAILED",
+        `kyx_music ${op} failed: ${error instanceof Error ? error.message : String(error)}`,
+        {
+          mutated: ctx.getDoc() !== before,
+        },
+      );
+    }
+  };
+
+  if (op === "setTempo") {
+    const bpm = record.bpm;
+    if (typeof bpm !== "number" || !Number.isSafeInteger(bpm) || bpm < 20 || bpm > 300) {
+      return mcpError("INVALID_ARGUMENTS", "setTempo needs an integer bpm from 20 to 300");
+    }
+    if (before.bpm === bpm) return unchanged({ bpm: before.bpm }, `tempo is already ${before.bpm} BPM`);
+    const command = applyExactIntentCommand(before, plan([{ kind: "tempo", bpm }]));
+    return commit(
+      command,
+      (doc) => doc.bpm === bpm,
+      (doc) => ({ bpm: doc.bpm }),
+      (doc) => `tempo is now ${doc.bpm} BPM (one undo step)`,
+    );
+  }
+
+  if (op === "setKey") {
+    const key = record.key;
+    if (typeof key !== "string" || !(MUSICAL_KEYS as string[]).includes(key)) {
+      return mcpError("INVALID_ARGUMENTS", "setKey needs one of KYX's supported musical keys (see tools/list schema)");
+    }
+    if (before.key === key) return unchanged({ key: before.key }, `key is already ${before.key}`);
+    const command = applyExactIntentCommand(before, plan([{ kind: "key", key }]));
+    return commit(
+      command,
+      (doc) => doc.key === key,
+      (doc) => ({ key: doc.key }),
+      (doc) => `key is now ${doc.key} (one undo step)`,
+    );
+  }
+
+  if (op === "setPatternLength") {
+    const steps = record.steps;
+    if (typeof steps !== "number" || !Number.isSafeInteger(steps) || steps < 16 || steps > 128) {
+      return mcpError("INVALID_ARGUMENTS", "setPatternLength needs an integer step count from 16 to 128");
+    }
+    const active = before.patterns.find((pattern) => pattern.id === before.activePatternId);
+    if (!active) return mcpError("UNKNOWN_TARGET", "the active pattern does not exist in this project");
+    if (active.stepCount === steps) {
+      return unchanged({ patternId: active.id, steps: active.stepCount }, `active pattern is already ${steps} steps`);
+    }
+    const command = applyExactIntentCommand(before, plan([{ kind: "patternLength", steps }]));
+    return commit(
+      command,
+      (doc) => doc.patterns.find((pattern) => pattern.id === active.id)?.stepCount === steps,
+      (doc) => ({
+        patternId: active.id,
+        steps: doc.patterns.find((pattern) => pattern.id === active.id)?.stepCount ?? active.stepCount,
+      }),
+      (doc) =>
+        `active pattern is now ${doc.patterns.find((pattern) => pattern.id === active.id)?.stepCount ?? "?"} steps (one undo step)`,
+    );
+  }
+
+  if (op === "setTimeSignature") {
+    const numerator = record.numerator;
+    const denominator = record.denominator;
+    if (
+      typeof numerator !== "number" ||
+      !Number.isSafeInteger(numerator) ||
+      numerator < 1 ||
+      numerator > 16 ||
+      typeof denominator !== "number" ||
+      !Number.isSafeInteger(denominator) ||
+      ![2, 4, 8, 16].includes(denominator)
+    ) {
+      return mcpError(
+        "INVALID_ARGUMENTS",
+        "setTimeSignature needs an integer numerator 1..16 and denominator 2|4|8|16",
+      );
+    }
+    const beforeSignature = before.timeSignature;
+    if (beforeSignature.numerator === numerator && beforeSignature.denominator === denominator) {
+      return unchanged({ numerator, denominator }, `time signature is already ${numerator}/${denominator}`);
+    }
+    return commit(
+      setTimeSignature(before, numerator, denominator),
+      (doc) => doc.timeSignature.numerator === numerator && doc.timeSignature.denominator === denominator,
+      (doc) => ({ numerator: doc.timeSignature.numerator, denominator: doc.timeSignature.denominator }),
+      (doc) => `time signature is now ${doc.timeSignature.numerator}/${doc.timeSignature.denominator} (one undo step)`,
+    );
+  }
+
+  const semitones = record.semitones;
+  const rawTarget = record.target ?? "all";
+  const targets = ["all", "bass", "lead", "chords", "vocal"] as const;
+  if (
+    typeof semitones !== "number" ||
+    !Number.isSafeInteger(semitones) ||
+    semitones === 0 ||
+    Math.abs(semitones) > 127
+  ) {
+    return mcpError(
+      "INVALID_ARGUMENTS",
+      "transposeAll needs an integer semitone shift from -127 to 127, excluding zero",
+    );
+  }
+  if (typeof rawTarget !== "string" || !targets.includes(rawTarget as (typeof targets)[number])) {
+    return mcpError("INVALID_ARGUMENTS", "transposeAll target must be all, bass, lead, chords, or vocal");
+  }
+  const target = rawTarget as (typeof targets)[number];
+  const active = before.patterns.find((pattern) => pattern.id === before.activePatternId);
+  if (!active) return mcpError("UNKNOWN_TARGET", "the active pattern does not exist in this project");
+  let targetTrackIds: string[];
+  try {
+    targetTrackIds =
+      target === "all"
+        ? before.tracks.filter((track) => track.kind === "instrument").map((track) => track.id)
+        : resolveProductionTargets(before, [target as never]).filter((id) =>
+            before.tracks.some((track) => track.id === id && track.kind === "instrument"),
+          );
+  } catch (error) {
+    return mcpError("UNKNOWN_TARGET", error instanceof Error ? error.message : String(error));
+  }
+  if (targetTrackIds.length === 0) return mcpError("UNKNOWN_TARGET", `no melodic track matches target "${target}"`);
+  const targetNoteCount = targetTrackIds.reduce((count, id) => count + (active.notes[id]?.length ?? 0), 0);
+  if (targetNoteCount === 0) {
+    const data = {
+      status: "no_notes",
+      op,
+      target,
+      requestedSemitones: semitones,
+      targetNoteCount: 0,
+      transposedNotes: 0,
+      partialNotes: 0,
+      undoSteps: 0,
+    };
+    return { text: `no active-pattern notes for ${target}; nothing was changed`, mutated: false, data };
+  }
+  const command = applyExactIntentCommand(before, plan([{ kind: "transpose", target, semitones }]));
+  try {
+    ctx.execute(command);
+    const after = ctx.getDoc();
+    const afterPattern = after.patterns.find((pattern) => pattern.id === active.id);
+    let transposedNotes = 0;
+    let partialNotes = 0;
+    for (const trackId of targetTrackIds) {
+      const afterById = new Map((afterPattern?.notes[trackId] ?? []).map((note) => [note.id, note]));
+      for (const note of active.notes[trackId] ?? []) {
+        const committed = afterById.get(note.id);
+        if (!committed) {
+          partialNotes += 1;
+        } else if (committed.pitch - note.pitch === semitones) {
+          transposedNotes += 1;
+        } else {
+          partialNotes += 1;
+        }
+      }
+    }
+    const mutated = after !== before;
+    const status = partialNotes > 0 || transposedNotes === 0 ? "partial" : "transposed";
+    const data = {
+      status,
+      op,
+      target,
+      requestedSemitones: semitones,
+      targetNoteCount,
+      transposedNotes,
+      partialNotes,
+      undoSteps: mutated ? 1 : 0,
+    };
+    if (status === "partial") {
+      return mcpError("PARTIAL_FAILURE", "transposeAll did not land the full requested shift on every targeted note", {
+        mutated,
+        data,
+      });
+    }
+    return {
+      text: `transposed ${transposedNotes} notes in ${target} by ${semitones > 0 ? "+" : ""}${semitones} semitones (one undo step)`,
+      mutated,
+      data,
+    };
+  } catch (error) {
+    return mcpError(
+      "EXECUTION_FAILED",
+      `kyx_music transposeAll failed: ${error instanceof Error ? error.message : String(error)}`,
+      {
+        mutated: ctx.getDoc() !== before,
+      },
+    );
+  }
 }
 
 function executeSectionsTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
