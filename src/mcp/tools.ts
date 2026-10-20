@@ -1,5 +1,15 @@
 import type { MusicalKey, ProjectDocument } from "../project-model/types";
-import { MAX_ARRANGEMENT_CLIP_BARS, MAX_ARRANGEMENT_CLIP_TICKS, MAX_STEP_COUNT } from "../project-model/schema";
+import { barsPerPattern, stepsPerBar } from "../project-model/grid";
+import {
+  MAX_ARRANGEMENT_CLIP_BARS,
+  MAX_ARRANGEMENT_CLIP_TICKS,
+  MAX_STEP_COUNT,
+  barAtTick,
+  beatAtTick,
+  tickAtBar,
+  tickAtBarBeat,
+  ticksPerBar,
+} from "../project-model/schema";
 import { isForeignWork, labelsRevertedBy } from "./attribution";
 import {
   LONG_RUNNING_AGENT_TOOLS,
@@ -562,6 +572,7 @@ const OUTPUT_ARRANGE: McpOutputSchema = {
     sceneCount: { type: "integer", minimum: 0 },
     clipCount: { type: "integer", minimum: 0 },
     cueMarkerCount: { type: "integer", minimum: 0 },
+    placementMismatchCount: { type: "integer", minimum: 0 },
     totalBars: { type: "integer", minimum: 0 },
     undoSteps: { type: "integer", minimum: 0, maximum: 1 },
   },
@@ -575,6 +586,7 @@ const OUTPUT_ARRANGE: McpOutputSchema = {
     "sceneCount",
     "clipCount",
     "cueMarkerCount",
+    "placementMismatchCount",
     "totalBars",
     "undoSteps",
   ],
@@ -737,7 +749,7 @@ const OUTPUT_MARKERS: McpOutputSchema = {
           name: { type: "string" },
           type: { type: "string", enum: ["drop", "buildup", "riser", "impact", "cue", "custom"] },
           tick: { type: "integer", minimum: 0 },
-          bar: { type: "integer", minimum: 1 },
+          bar: { type: "integer", minimum: 1, maximum: MAX_ARRANGEMENT_CLIP_BARS },
           linkedClipId: { type: "string" },
         },
         required: ["id", "name", "type", "tick", "bar"],
@@ -747,7 +759,7 @@ const OUTPUT_MARKERS: McpOutputSchema = {
     name: { type: "string" },
     markerType: { type: "string", enum: ["drop", "buildup", "riser", "impact", "cue", "custom"] },
     tick: { type: "integer", minimum: 0 },
-    bar: { type: "integer", minimum: 1 },
+    bar: { type: "integer", minimum: 1, maximum: MAX_ARRANGEMENT_CLIP_BARS },
     linkedClipId: { type: "string" },
     undoSteps: { type: "integer", minimum: 0, maximum: 1 },
   },
@@ -813,7 +825,7 @@ const OUTPUT_MUSIC: McpOutputSchema = {
     bpm: { type: "integer", minimum: 20, maximum: 300 },
     key: { type: "string", enum: [...MUSICAL_KEYS] },
     patternId: { type: "string" },
-    steps: { type: "integer", minimum: 16, maximum: 128 },
+    steps: { type: "integer", minimum: 1, maximum: 128 },
     numerator: { type: "integer", minimum: 1, maximum: 16 },
     denominator: { type: "integer", enum: [2, 4, 8, 16] },
     target: { type: "string", enum: ["all", "bass", "lead", "chords", "vocal"] },
@@ -1008,7 +1020,7 @@ const OUTPUT_TRANSPORT: McpOutputSchema = {
     },
     positionTick: { type: ["integer", "null"], minimum: 0 },
     bar: { type: ["integer", "null"], minimum: 1 },
-    beat: { type: ["integer", "null"], minimum: 1, maximum: 4 },
+    beat: { type: ["integer", "null"], minimum: 1, maximum: 16 },
     playing: { type: ["boolean", "null"] },
     paused: { type: ["boolean", "null"] },
     loop: {
@@ -1026,7 +1038,7 @@ const OUTPUT_TRANSPORT: McpOutputSchema = {
     metronome: { type: ["boolean", "null"] },
     requestedTick: { type: "integer", minimum: 0, maximum: MAX_ARRANGEMENT_CLIP_TICKS },
     requestedBar: { type: "integer", minimum: 1, maximum: MAX_ARRANGEMENT_CLIP_BARS },
-    requestedBeat: { type: "integer", minimum: 1, maximum: 4 },
+    requestedBeat: { type: "integer", minimum: 1, maximum: 16 },
     requestedStartBar: { type: "integer", minimum: 1, maximum: MAX_ARRANGEMENT_CLIP_BARS },
     requestedEndBar: { type: "integer", minimum: 2, maximum: MAX_ARRANGEMENT_CLIP_BARS },
     sceneId: { type: "string" },
@@ -1171,7 +1183,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       "loop region in bars (loopRegion), or state: a read-only read-back of " +
       "the playhead position (bar/beat/tick), playing state, loop region and " +
       `metronome. Bar controls are bounded to 1..${MAX_ARRANGEMENT_CLIP_BARS}; fractional bar/beat values are rejected. ` +
-      "Scene launch accepts an exact sceneId, name/role, or 1-based index. Position is 4/4-based (1920 ticks per bar, 480 per beat).",
+      "Scene launch accepts an exact sceneId, name/role, or 1-based index. Bar and beat coordinates follow the project's time signature.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1214,8 +1226,9 @@ export const MCP_TOOLS: McpToolDef[] = [
         beat: {
           type: "integer",
           minimum: 1,
-          maximum: 4,
-          description: "For seek — 1-based beat within the bar (default 1)",
+          maximum: 16,
+          description:
+            "For seek — 1-based beat within the project's meter (default 1; runtime validates this meter's numerator)",
         },
         startBar: {
           type: "integer",
@@ -1315,7 +1328,8 @@ export const MCP_TOOLS: McpToolDef[] = [
           type: "integer",
           minimum: 1,
           maximum: 16,
-          description: "Pattern length in bars (16 steps per bar; default engine choice)",
+          description:
+            "Metrical bars; the maximum depends on the meter and 128-step pattern limit (default engine choice)",
         },
         replaceMode: {
           type: "string",
@@ -1482,7 +1496,12 @@ export const MCP_TOOLS: McpToolDef[] = [
       properties: {
         op: { type: "string", enum: ["list", "add", "remove", "rename"] },
         markerId: { type: "string", maxLength: 128, description: "Exact target for rename/remove; overrides bar" },
-        bar: { type: "integer", minimum: 1, description: "1-based bar for add, or nearest-marker anchor" },
+        bar: {
+          type: "integer",
+          minimum: 1,
+          maximum: MAX_ARRANGEMENT_CLIP_BARS,
+          description: "1-based bar for add, or nearest-marker anchor",
+        },
         name: { type: "string", maxLength: 40, description: "Optional for add; required for rename" },
       },
       required: ["op"],
@@ -1569,8 +1588,8 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_steps",
     description:
-      "Structured step-grid edit on the ACTIVE pattern's drum pads (16 steps " +
-      "per bar, 1-based indexes across the whole pattern). add sets velocity, " +
+      "Structured sixteenth-note step-grid edit on the ACTIVE pattern's drum pads " +
+      "(1-based indexes across the whole pattern; steps per bar follow the project's meter). add sets velocity, " +
       "remove clears, toggle flips, ghost places a soft probabilistic hit, " +
       "clearPad empties the whole family. Returns a verification read-back " +
       "with the family's before → after step counts.",
@@ -1583,7 +1602,7 @@ export const MCP_TOOLS: McpToolDef[] = [
           type: "array",
           items: { type: "integer", minimum: 1, maximum: MAX_STEP_COUNT },
           maxItems: MAX_STEP_COUNT,
-          description: "1-based 16th-step indexes within the pattern (16 per bar). Not used by clearPad.",
+          description: "1-based sixteenth-note step indexes within the pattern. Not used by clearPad.",
         },
         velocity: { type: "number", minimum: 0.05, maximum: 1, description: "For add/toggle (default 0.8)" },
       },
@@ -1683,7 +1702,12 @@ export const MCP_TOOLS: McpToolDef[] = [
           enum: [...MUSICAL_KEYS],
           description: "setKey — choose from KYX's supported musical-key catalog",
         },
-        steps: { type: "integer", minimum: 16, maximum: 128, description: "setPatternLength (16 steps per bar)" },
+        steps: {
+          type: "integer",
+          minimum: 1,
+          maximum: 128,
+          description: "setPatternLength — absolute sixteenth-note step count (1..128; meter controls bars)",
+        },
         semitones: { type: "integer", minimum: -127, maximum: 127, description: "transposeAll shift (non-zero)" },
         target: {
           type: "string",
@@ -1806,15 +1830,26 @@ export const MCP_TOOLS: McpToolDef[] = [
         bar: {
           type: "integer",
           minimum: 1,
+          maximum: MAX_ARRANGEMENT_CLIP_BARS,
           description: "1-based bar — position for addPoint, anchor for movePoint/deletePoint",
         },
-        newBar: { type: "integer", minimum: 1, description: "For movePoint — 1-based destination bar" },
-        newBeat: { type: "integer", minimum: 1, maximum: 4, description: "For movePoint — 1-based destination beat" },
+        newBar: {
+          type: "integer",
+          minimum: 1,
+          maximum: MAX_ARRANGEMENT_CLIP_BARS,
+          description: "For movePoint — 1-based destination bar",
+        },
+        newBeat: {
+          type: "integer",
+          minimum: 1,
+          maximum: 16,
+          description: "For movePoint — 1-based destination beat; runtime validates this meter's numerator",
+        },
         beat: {
           type: "integer",
           minimum: 1,
-          maximum: 4,
-          description: "Optional 1-based beat within the bar (default 1)",
+          maximum: 16,
+          description: "Optional 1-based beat within the project's meter (default 1)",
         },
         value: { type: "number", description: "NATIVE value for addPoint (clamped into the target's range)" },
       },
@@ -2847,9 +2882,7 @@ function mcpError(code: McpErrorCode, text: string, overrides?: Partial<McpToolR
   return { text, mutated: false, isError: true, errorCode: code, ...overrides };
 }
 
-const TICKS_PER_BAR = 4 * 480;
-
-function transportReadback(transport: McpToolContext["transport"]) {
+function transportReadback(transport: McpToolContext["transport"], doc: ProjectDocument) {
   const positionTick =
     typeof transport.position === "number" && Number.isFinite(transport.position)
       ? Math.max(0, Math.round(transport.position))
@@ -2864,18 +2897,18 @@ function transportReadback(transport: McpToolContext["transport"]) {
       : null;
   return {
     positionTick,
-    bar: positionTick != null ? Math.floor(positionTick / TICKS_PER_BAR) + 1 : null,
-    beat: positionTick != null ? Math.floor((positionTick % TICKS_PER_BAR) / (TICKS_PER_BAR / 4)) + 1 : null,
+    bar: positionTick != null ? barAtTick(positionTick, doc) : null,
+    beat: positionTick != null ? beatAtTick(positionTick, doc) : null,
     playing: typeof transport.playing === "boolean" ? transport.playing : null,
     paused: typeof transport.paused === "boolean" ? transport.paused : null,
     loop: {
       enabled: typeof transport.loopEnabled === "boolean" ? transport.loopEnabled : null,
       startTick,
       endTick,
-      startBar: transport.loopEnabled === true && startTick != null ? Math.floor(startTick / TICKS_PER_BAR) + 1 : null,
+      startBar: transport.loopEnabled === true && startTick != null ? barAtTick(startTick, doc) : null,
       endBar:
         transport.loopEnabled === true && startTick != null && endTick != null && endTick > startTick
-          ? Math.ceil(endTick / TICKS_PER_BAR)
+          ? barAtTick(endTick - 1, doc)
           : null,
     },
     metronome: typeof transport.metronome === "boolean" ? transport.metronome : null,
@@ -2886,9 +2919,10 @@ function transportData(
   status: "read" | "applied" | "partial",
   action: string,
   transport: McpToolContext["transport"],
+  doc: ProjectDocument,
   extra: Record<string, unknown> = {},
 ): Record<string, unknown> {
-  return { status, action, ...transportReadback(transport), ...extra };
+  return { status, action, ...transportReadback(transport, doc), ...extra };
 }
 
 /** D4 escalation gate — every destructive op routes through this refusal. */
@@ -2907,6 +2941,7 @@ function destructiveRefusal(): McpToolResult {
  * resulting transport STATE so the caller can verify the landing. */
 function dispatchTransport(ctx: McpToolContext, action: string): McpToolResult {
   const transport = ctx.transport;
+  const doc = ctx.getDoc();
   if (action === "play") transport.play();
   else if (action === "stop") transport.stop();
   else if (action === "pause") transport.pause();
@@ -2915,25 +2950,25 @@ function dispatchTransport(ctx: McpToolContext, action: string): McpToolResult {
   else if (action === "loopOn") {
     const currentStart = transport.loopStart ?? 0;
     const currentEnd = transport.loopEnd ?? 0;
-    const end = currentEnd > currentStart ? currentEnd : currentStart + TICKS_PER_BAR * 4;
+    const end = currentEnd > currentStart ? currentEnd : currentStart + ticksPerBar(doc) * 4;
     transport.setLoop(true, currentStart, end);
   } else if (action === "loopOff") transport.setLoop(false, 0, 0);
   else return mcpError("UNKNOWN_REQUEST", `unknown transport action: ${action}`);
   return {
-    text: `transport: ${action} · ${describeTransport(transport)}`,
+    text: `transport: ${action} · ${describeTransport(transport, doc)}`,
     mutated: false,
-    data: transportData("applied", action, transport),
+    data: transportData("applied", action, transport, doc),
   };
 }
 
 /** Human/AI-readable transport state line; every optional read degrades to
  * an honest "unknown" when the host's transport lacks the accessor. */
-function describeTransport(transport: McpToolContext["transport"]): string {
+function describeTransport(transport: McpToolContext["transport"], doc: ProjectDocument): string {
   const parts: string[] = [];
   if (typeof transport.position === "number" && Number.isFinite(transport.position)) {
     const tick = Math.max(0, Math.round(transport.position));
-    const bar = Math.floor(tick / TICKS_PER_BAR) + 1;
-    const beat = Math.floor((tick % TICKS_PER_BAR) / (TICKS_PER_BAR / 4)) + 1;
+    const bar = barAtTick(tick, doc);
+    const beat = beatAtTick(tick, doc);
     parts.push(`position bar ${bar} beat ${beat} (tick ${tick})`);
   } else {
     parts.push("position unknown");
@@ -2947,7 +2982,7 @@ function describeTransport(transport: McpToolContext["transport"]): string {
       // current content" — report it as such instead of a bogus bar number.
       const region =
         transport.loopEnd > transport.loopStart
-          ? `bars ${Math.floor(transport.loopStart / TICKS_PER_BAR) + 1}–${Math.ceil(transport.loopEnd / TICKS_PER_BAR)}`
+          ? `bars ${barAtTick(transport.loopStart, doc)}–${barAtTick(transport.loopEnd - 1, doc)}`
           : "to end of content";
       parts.push(`loop on (${region})`);
     } else {
@@ -2983,7 +3018,7 @@ function resolveMcpScene(doc: ProjectDocument, record: Record<string, unknown>):
     const byRole = doc.scenes.filter((candidate) => candidate.role != null && candidate.role === label);
     if (byRole.length === 1) return byRole[0];
     if (byRole.length > 1) return `scene role "${record.scene}" is ambiguous — use sceneId or index`;
-    return `no exact scene name or role "${record.scene}" — use sceneId or index from kyx_state {subject:'scenes'}`;
+    return `no scene matches "${record.scene}" (no exact scene name or role) — use sceneId or index from kyx_state {subject:'scenes'}`;
   }
   return "needs scene (name or role) or index (1-based, as kyx_state scenes lists them)";
 }
@@ -2993,6 +3028,7 @@ function resolveMcpScene(doc: ProjectDocument, record: Record<string, unknown>):
  * seek, this never enters the undo stack. */
 function transportLaunchScene(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
   const transport = ctx.transport;
+  const doc = ctx.getDoc();
   if (transport.seek == null) {
     return mcpError(
       "UNAVAILABLE_ON_TRANSPORT",
@@ -3023,11 +3059,10 @@ function transportLaunchScene(ctx: McpToolContext, record: Record<string, unknow
   if ([record.sceneId, record.scene, record.index].filter((value) => value !== undefined).length !== 1) {
     return mcpError("INVALID_ARGUMENTS", "launchScene needs exactly one of sceneId, scene, or index");
   }
-  const scene = resolveMcpScene(ctx.getDoc(), record);
+  const scene = resolveMcpScene(doc, record);
   if (typeof scene === "string") return mcpError("UNKNOWN_TARGET", scene);
-  const clips = ctx
-    .getDoc()
-    .arrangement.clips.filter((clip) => clip.sceneId === scene.id)
+  const clips = doc.arrangement.clips
+    .filter((clip) => clip.sceneId === scene.id)
     .sort((a, b) => a.startBar - b.startBar);
   const startBar = clips[0]?.startBar ?? null;
   if (startBar === null) {
@@ -3035,13 +3070,13 @@ function transportLaunchScene(ctx: McpToolContext, record: Record<string, unknow
   }
   // Method CALL — extracting seek into a local would drop `this` and crash
   // the real Transport (same unbound-playing_ lesson as transportSeek).
-  transport.seek(startBar * TICKS_PER_BAR);
+  transport.seek(tickAtBar(startBar + 1, doc));
   const play = record.play !== false;
   if (play) transport.play();
   return {
     text: `launched "${scene.name}"${scene.role ? ` (${scene.role})` : ""} at bar ${startBar + 1}${play ? " — playing" : " (transport stopped)"} · intensity ${Math.round(scene.intensity * 100)}%`,
     mutated: false,
-    data: transportData("applied", "launchScene", transport, {
+    data: transportData("applied", "launchScene", transport, doc, {
       sceneId: scene.id,
       sceneName: scene.name,
       sceneRole: scene.role ?? null,
@@ -3053,6 +3088,7 @@ function transportLaunchScene(ctx: McpToolContext, record: Record<string, unknow
 
 function transportSeek(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
   const transport = ctx.transport;
+  const doc = ctx.getDoc();
   if (transport.seek == null) {
     return mcpError(
       "UNAVAILABLE_ON_TRANSPORT",
@@ -3065,14 +3101,17 @@ function transportSeek(ctx: McpToolContext, record: Record<string, unknown>): Mc
   }
   const bar = rawBar;
   const beat = record.beat === undefined ? 1 : record.beat;
-  if (typeof beat !== "number" || !Number.isSafeInteger(beat) || beat < 1 || beat > 4) {
-    return mcpError("INVALID_ARGUMENTS", "seek beat must be an integer from 1 to 4");
+  if (typeof beat !== "number" || !Number.isSafeInteger(beat) || beat < 1 || beat > doc.timeSignature.numerator) {
+    return mcpError(
+      "INVALID_ARGUMENTS",
+      `seek beat must be an integer from 1 to ${doc.timeSignature.numerator} in this meter`,
+    );
   }
-  const tick = (bar - 1) * TICKS_PER_BAR + (beat - 1) * (TICKS_PER_BAR / 4);
+  const tick = tickAtBarBeat(bar, beat, doc);
   // Method CALL on the transport object — extracting `transport.seek` into a
   // local would drop `this` and crash the real Transport (unbound playing_).
   transport.seek(tick);
-  const data = transportData("applied", "seek", transport, {
+  const data = transportData("applied", "seek", transport, doc, {
     requestedTick: tick,
     requestedBar: bar,
     requestedBeat: beat,
@@ -3083,7 +3122,7 @@ function transportSeek(ctx: McpToolContext, record: Record<string, unknown>): Mc
     return mcpError("PARTIAL_FAILURE", `seek requested tick ${tick}, but read back tick ${landedTick}`, { data });
   }
   return {
-    text: `seek → bar ${bar}${beat > 1 ? ` beat ${beat}` : ""} (tick ${tick}) · ${describeTransport(ctx.transport)}`,
+    text: `seek → bar ${bar}${beat > 1 ? ` beat ${beat}` : ""} (tick ${tick}) · ${describeTransport(transport, doc)}`,
     mutated: false,
     data,
   };
@@ -3091,6 +3130,7 @@ function transportSeek(ctx: McpToolContext, record: Record<string, unknown>): Mc
 
 /** kyx_transport loopRegion — set the loop by 1-based inclusive bars. */
 function transportLoopRegion(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+  const doc = ctx.getDoc();
   const startBar = record.startBar;
   const endBar = record.endBar;
   if (
@@ -3108,10 +3148,10 @@ function transportLoopRegion(ctx: McpToolContext, record: Record<string, unknown
       `loopRegion needs integer bars 1 <= startBar < endBar <= ${MAX_ARRANGEMENT_CLIP_BARS} (1-based, inclusive)`,
     );
   }
-  const startTick = (startBar - 1) * TICKS_PER_BAR;
-  const endTick = endBar * TICKS_PER_BAR;
+  const startTick = tickAtBar(startBar, doc);
+  const endTick = tickAtBar(endBar + 1, doc);
   ctx.transport.setLoop(true, startTick, endTick);
-  const data = transportData("applied", "loopRegion", ctx.transport, {
+  const data = transportData("applied", "loopRegion", ctx.transport, doc, {
     requestedStartBar: startBar,
     requestedEndBar: endBar,
   });
@@ -3125,7 +3165,7 @@ function transportLoopRegion(ctx: McpToolContext, record: Record<string, unknown
     return mcpError("PARTIAL_FAILURE", "loop region read-back differs from the requested bars", { data });
   }
   return {
-    text: `loop region: bars ${startBar}–${endBar} (ticks ${startTick}..${endTick}) · ${describeTransport(ctx.transport)}`,
+    text: `loop region: bars ${startBar}–${endBar} (ticks ${startTick}..${endTick}) · ${describeTransport(ctx.transport, doc)}`,
     mutated: false,
     data,
   };
@@ -3835,36 +3875,56 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       if (action === "loopRegion") return transportLoopRegion(ctx, record);
       if (action === "state") {
         const t = ctx.transport;
-        return { text: describeTransport(t), mutated: false, data: transportData("read", action, t) };
+        const doc = ctx.getDoc();
+        return { text: describeTransport(t, doc), mutated: false, data: transportData("read", action, t, doc) };
       }
       return dispatchTransport(ctx, action);
     }
     case "kyx_intent":
       return executeIntentTool(ctx, String(record.instruction ?? ""));
     case "kyx_generate": {
-      const bars = typeof record.bars === "number" ? Math.max(1, Math.min(16, Math.round(record.bars))) : undefined;
+      const doc = ctx.getDoc();
+      const bars = record.bars;
+      const stepCountFromBars = typeof bars === "number" ? bars * stepsPerBar(doc) : null;
+      if (
+        bars !== undefined &&
+        (typeof bars !== "number" ||
+          !Number.isSafeInteger(bars) ||
+          bars < 1 ||
+          stepCountFromBars! > MAX_STEP_COUNT ||
+          stepCountFromBars! % 16 !== 0)
+      ) {
+        const stepUnit = stepsPerBar(doc);
+        const supportedBars = Array.from({ length: Math.floor(MAX_STEP_COUNT / stepUnit) }, (_, index) => index + 1)
+          .filter((candidate) => (candidate * stepUnit) % 16 === 0)
+          .join(", ");
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          `bars must map to a supported 16-step pattern length in this meter${supportedBars ? ` (supported whole-bar lengths: ${supportedBars})` : ""}`,
+        );
+      }
       const spec = normalizeIntent({
         genre: typeof record.genre === "string" ? record.genre : undefined,
         seed: typeof record.seed === "string" ? record.seed : undefined,
         energy: typeof record.energy === "number" ? record.energy : undefined,
         density: typeof record.density === "number" ? record.density : undefined,
         bpmRange: typeof record.bpm === "number" ? [Number(record.bpm), Number(record.bpm)] : undefined,
-        ...(bars != null ? { length: bars * 16 } : {}),
+        ...(bars !== undefined ? { length: stepCountFromBars! } : {}),
         ...(record.replaceMode === "replace" ? { replaceMode: "replace" as const } : {}),
         roles: Array.isArray(record.roles) ? record.roles : undefined,
       });
-      const result = generateLocalResult(ctx.getDoc(), spec, "apply");
+      const result = generateLocalResult(doc, spec, "apply");
       if (!result.proposal) {
         return {
           text: `generation rejected: ${result.diagnostics.errors[0] ?? "unknown"}`,
           mutated: false,
         };
       }
-      ctx.execute(applyGenerationResultCommand(ctx.getDoc(), result));
+      ctx.execute(applyGenerationResultCommand(doc, result));
       const pattern = result.proposal.pattern;
-      const stepBars = Math.max(1, Math.round(pattern.stepCount / 16));
+      const stepBars = barsPerPattern(doc, pattern.stepCount);
       return {
-        text: `generated "${pattern.name}" — ${pattern.stepCount} steps (~${stepBars} bar) · project ${ctx.getDoc().bpm} BPM (one undo step in KYX)`,
+        text: `generated "${pattern.name}" — ${pattern.stepCount} sixteenth-note steps (~${formatMetricalBars(stepBars)}) · project ${doc.bpm} BPM (one undo step in KYX)`,
         mutated: true,
       };
     }
@@ -4274,6 +4334,8 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
     case "kyx_sections":
       return executeSectionsTool(ctx, record);
     case "kyx_markers": {
+      const doc = ctx.getDoc();
+      const barTicks = ticksPerBar(doc);
       if (record.op !== undefined && typeof record.op !== "string") {
         return mcpError("INVALID_ARGUMENTS", "op must be one of: list, add, rename, remove");
       }
@@ -4289,11 +4351,17 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return mcpError("INVALID_ARGUMENTS", "markerId must not be empty");
       }
       const hasBar = record.bar !== undefined;
-      if (hasBar && (typeof record.bar !== "number" || !Number.isInteger(record.bar) || record.bar < 1)) {
-        return mcpError("INVALID_ARGUMENTS", "bar must be a 1-based positive integer");
+      if (
+        hasBar &&
+        (typeof record.bar !== "number" ||
+          !Number.isSafeInteger(record.bar) ||
+          record.bar < 1 ||
+          record.bar > MAX_ARRANGEMENT_CLIP_BARS)
+      ) {
+        return mcpError("INVALID_ARGUMENTS", `bar must be an integer from 1 to ${MAX_ARRANGEMENT_CLIP_BARS}`);
       }
       const bar = hasBar ? (record.bar as number) : undefined;
-      const tick = bar === undefined ? undefined : (bar - 1) * TICKS_PER_BAR;
+      const tick = bar === undefined ? undefined : tickAtBar(bar, doc);
       if (record.name !== undefined && (typeof record.name !== "string" || record.name.length > 40)) {
         return mcpError("INVALID_ARGUMENTS", "name must be a string of at most 40 characters");
       }
@@ -4303,7 +4371,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         name: marker.name,
         type: marker.type,
         tick: marker.tick,
-        bar: Math.floor(marker.tick / TICKS_PER_BAR) + 1,
+        bar: barAtTick(marker.tick, doc),
         ...(marker.linkedClipId !== undefined ? { linkedClipId: marker.linkedClipId } : {}),
       });
       const markerMutationReadback = (marker: ProjectDocument["markers"][number]) => ({
@@ -4311,10 +4379,9 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         name: marker.name,
         markerType: marker.type,
         tick: marker.tick,
-        bar: Math.floor(marker.tick / TICKS_PER_BAR) + 1,
+        bar: barAtTick(marker.tick, doc),
         ...(marker.linkedClipId !== undefined ? { linkedClipId: marker.linkedClipId } : {}),
       });
-      const doc = ctx.getDoc();
       if (op === "list") {
         const markers = doc.markers.map(markerReadback);
         return {
@@ -4364,7 +4431,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           return mcpError("INVALID_ARGUMENTS", `${op} needs markerId or bar (1-based)`);
         }
         target = doc.markers
-          .filter((marker) => Math.abs(marker.tick - tick) < TICKS_PER_BAR)
+          .filter((marker) => Math.abs(marker.tick - tick) < barTicks)
           .sort((a, b) => Math.abs(a.tick - tick) - Math.abs(b.tick - tick))[0];
       }
       if (target === undefined) {
@@ -4606,13 +4673,13 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
     case "kyx_pattern": {
       const op = String(record.op ?? "list");
       if (op === "list") {
-        const activeId = ctx.getDoc().activePatternId;
-        const list = ctx
-          .getDoc()
-          .patterns.map((pattern, index) => {
-            const bars = Math.max(1, Math.round(pattern.stepCount / 16));
+        const doc = ctx.getDoc();
+        const activeId = doc.activePatternId;
+        const list = doc.patterns
+          .map((pattern, index) => {
+            const bars = barsPerPattern(doc, pattern.stepCount);
             const active = pattern.id === activeId ? " · ACTIVE" : "";
-            return `${index + 1}. "${pattern.name}" (${bars} bar${bars > 1 ? "s" : ""})${active}`;
+            return `${index + 1}. "${pattern.name}" (${formatMetricalBars(bars)})${active}`;
           })
           .join("\n");
         return { text: list || "no patterns", mutated: false };
@@ -4632,9 +4699,9 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return { text: `"${target.name}" is already the active pattern`, mutated: false };
       }
       ctx.execute(setActivePattern(ctx.getDoc(), target.id));
-      const bars = Math.max(1, Math.round(target.stepCount / 16));
+      const bars = barsPerPattern(ctx.getDoc(), target.stepCount);
       return {
-        text: `active pattern: "${target.name}" (${bars} bar${bars > 1 ? "s" : ""}) — step edits and generation act on it now`,
+        text: `active pattern: "${target.name}" (${formatMetricalBars(bars)}) — step edits and generation act on it now`,
         mutated: true,
       };
     }
@@ -6144,6 +6211,7 @@ async function executeArrangeTool(ctx: McpToolContext, record: Record<string, un
         sceneCount: 0,
         clipCount: 0,
         cueMarkerCount: 0,
+        placementMismatchCount: 0,
         totalBars: 0,
         undoSteps: 0,
       },
@@ -6160,11 +6228,11 @@ async function executeArrangeTool(ctx: McpToolContext, record: Record<string, un
     if (!scene) return mcpError("PARTIAL_FAILURE", "scene creation failed mid-form");
     next = setSceneRole(next, scene.id, section.role).execute(next);
     next = setSceneIntensity(next, scene.id, section.intensity).execute(next);
-    next = addArrangementClip(next, scene.id, (bar - 1) * 4, section.bars).execute(next);
+    next = addArrangementClip(next, scene.id, bar - 1, section.bars).execute(next);
     const clip = next.arrangement.clips.find((candidate) => candidate.sceneId === scene.id);
     if (!clip) return mcpError("PARTIAL_FAILURE", `arrangement clip creation failed for ${section.label}`);
     const existingMarkerIds = new Set(next.markers.map((marker) => marker.id));
-    next = addMarker(next, { tick: (bar - 1) * TICKS_PER_BAR, name: section.label }).execute(next);
+    next = addMarker(next, { tick: tickAtBar(bar, doc), name: section.label }).execute(next);
     const marker = next.markers.find((candidate) => !existingMarkerIds.has(candidate.id));
     if (!marker) return mcpError("PARTIAL_FAILURE", `cue marker creation failed for ${section.label}`);
     rows.push(`${section.role} ${section.bars}bar@${bar}`);
@@ -6200,8 +6268,28 @@ async function executeArrangeTool(ctx: McpToolContext, record: Record<string, un
     .map((marker) => ({ id: marker.id, name: marker.name, type: marker.type, tick: marker.tick }));
   const cueMarkerCount = markers.filter((marker) => marker.type === "cue").length;
   const totalBars = clips.reduce((sum, clip) => sum + clip.lengthBars, 0);
+  const sceneAndClipMismatches = resultSections.reduce((mismatches, section, index) => {
+    const scene = scenes[index];
+    const clip = scene ? clips.find((candidate) => candidate.sceneId === scene.id) : undefined;
+    return (
+      mismatches +
+      Number(scene?.name !== section.label || scene?.role !== section.role) +
+      Number(clip?.startBar !== section.startBar - 1 || clip?.lengthBars !== section.bars)
+    );
+  }, 0);
+  const markerMismatches = resultSections.filter(
+    (section) =>
+      !markers.some(
+        (marker) =>
+          marker.name === section.label && marker.type === "cue" && marker.tick === tickAtBar(section.startBar, doc),
+      ),
+  ).length;
+  const placementMismatchCount = sceneAndClipMismatches + markerMismatches;
   const complete =
-    scenes.length === planned.length && clips.length === planned.length && cueMarkerCount === planned.length;
+    scenes.length === planned.length &&
+    clips.length === planned.length &&
+    cueMarkerCount === planned.length &&
+    placementMismatchCount === 0;
   const data = {
     status: complete ? "arranged" : "partial",
     genre,
@@ -6212,13 +6300,14 @@ async function executeArrangeTool(ctx: McpToolContext, record: Record<string, un
     sceneCount: scenes.length,
     clipCount: clips.length,
     cueMarkerCount,
+    placementMismatchCount,
     totalBars,
     undoSteps: scenes.length + clips.length + markers.length > 0 ? 1 : 0,
   };
   if (!complete) {
     return mcpError(
       "PARTIAL_FAILURE",
-      `arrangement read-back incomplete: ${scenes.length}/${planned.length} scenes, ${clips.length}/${planned.length} clips, ${cueMarkerCount}/${planned.length} cue markers`,
+      `arrangement read-back incomplete: ${scenes.length}/${planned.length} scenes, ${clips.length}/${planned.length} clips, ${cueMarkerCount}/${planned.length} cue markers, ${placementMismatchCount} placement mismatch(es)`,
       { mutated: data.undoSteps > 0, data },
     );
   }
@@ -6623,7 +6712,7 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
   const lane = automationLaneForTarget(doc, target);
 
   if (op === "addPoint") {
-    const position = positionFromRecord(record);
+    const position = positionFromRecord(record, doc);
     if (typeof position === "string") return { text: position, mutated: false };
     if (record.value == null || !Number.isFinite(Number(record.value))) {
       const def = targetParamDef(doc, target);
@@ -6655,13 +6744,13 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
     ctx.execute(
       snapshot(
         "mcpAutomation",
-        `MCP: automation ${automationTargetLabel(doc, target)} @ ${barBeat(position)}`,
+        `MCP: automation ${automationTargetLabel(doc, target)} @ ${barBeat(position, doc)}`,
         doc,
         next,
       ),
     );
     return {
-      text: `${automationTargetLabel(doc, target)}: point ${barBeat(landed.tick)}=${Math.round(landed.value * 1e4) / 1e4}${clampNote} — lane ${pointCount} pt(s), one undo step`,
+      text: `${automationTargetLabel(doc, target)}: point ${barBeat(landed.tick, doc)}=${Math.round(landed.value * 1e4) / 1e4}${clampNote} — lane ${pointCount} pt(s), one undo step`,
       mutated: true,
     };
   }
@@ -6673,11 +6762,11 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
         mutated: false,
       };
     if (lane.points.length === 0) return { text: "the lane has no points", mutated: false };
-    const position = positionFromRecord(record);
+    const position = positionFromRecord(record, doc);
     if (typeof position === "string") return { text: position, mutated: false };
     // Nearest point within one bar window (same etiquette as kyx_markers).
     let bestIndex = -1;
-    let bestDistance = TICKS_PER_BAR;
+    let bestDistance = ticksPerBar(doc);
     lane.points.forEach((point, index) => {
       const distance = Math.abs(point.tick - position);
       if (distance < bestDistance) {
@@ -6687,14 +6776,14 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
     });
     if (bestIndex === -1) {
       return {
-        text: `no automation point within a bar of ${barBeat(position)} — read the lane via kyx_state subject:automation`,
+        text: `no automation point within a bar of ${barBeat(position, doc)} — read the lane via kyx_state subject:automation`,
         mutated: false,
       };
     }
     const removed = lane.points[bestIndex];
     ctx.execute(deleteAutomationPoint(doc, lane.id, bestIndex));
     return {
-      text: `${automationTargetLabel(doc, target)}: removed point ${barBeat(removed!.tick)}=${Math.round(removed!.value * 1e4) / 1e4} — one undo step`,
+      text: `${automationTargetLabel(doc, target)}: removed point ${barBeat(removed!.tick, doc)}=${Math.round(removed!.value * 1e4) / 1e4} — one undo step`,
       mutated: true,
     };
   }
@@ -6706,10 +6795,10 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
         mutated: false,
       };
     if (lane.points.length === 0) return { text: "the lane has no points", mutated: false };
-    const position = positionFromRecord(record);
+    const position = positionFromRecord(record, doc);
     if (typeof position === "string") return { text: position, mutated: false };
     let bestIndex = -1;
-    let bestDistance = TICKS_PER_BAR;
+    let bestDistance = ticksPerBar(doc);
     lane.points.forEach((point, index) => {
       const distance = Math.abs(point.tick - position);
       if (distance < bestDistance) {
@@ -6719,13 +6808,15 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
     });
     if (bestIndex === -1) {
       return {
-        text: `no automation point within a bar of ${barBeat(position)} — read the lane via kyx_state subject:automation`,
+        text: `no automation point within a bar of ${barBeat(position, doc)} — read the lane via kyx_state subject:automation`,
         mutated: false,
       };
     }
     const original = lane.points[bestIndex];
     const hasNewPosition = record.newBar != null;
-    const newTick = hasNewPosition ? positionFromRecord({ bar: record.newBar, beat: record.newBeat }) : original!.tick;
+    const newTick = hasNewPosition
+      ? positionFromRecord({ bar: record.newBar, beat: record.newBeat }, doc)
+      : original!.tick;
     if (typeof newTick === "string") return { text: newTick, mutated: false };
     const delta: { tick?: number; value?: number } = {};
     if (hasNewPosition && newTick !== original!.tick) delta.tick = newTick;
@@ -6736,7 +6827,7 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
     }
     if (delta.tick === undefined && delta.value === undefined) {
       return {
-        text: `nothing to change — point ${barBeat(original!.tick)}=${original!.value} already matches`,
+        text: `nothing to change — point ${barBeat(original!.tick, doc)}=${original!.value} already matches`,
         mutated: false,
       };
     }
@@ -6746,7 +6837,7 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
     const clampedNote =
       delta.value !== undefined && after && after.value !== delta.value ? " — value clamped into range" : "";
     return {
-      text: `${automationTargetLabel(doc, target)}: ${barBeat(original!.tick)}=${Math.round(original!.value * 1e4) / 1e4} → ${valueChangedOnly ? `value ${after?.value}` : `${barBeat(after?.tick ?? newTick)}=${Math.round((after?.value ?? original!.value) * 1e4) / 1e4}`}${clampedNote} — one undo step`,
+      text: `${automationTargetLabel(doc, target)}: ${barBeat(original!.tick, doc)}=${Math.round(original!.value * 1e4) / 1e4} → ${valueChangedOnly ? `value ${after?.value}` : `${barBeat(after?.tick ?? newTick, doc)}=${Math.round((after?.value ?? original!.value) * 1e4) / 1e4}`}${clampedNote} — one undo step`,
       mutated: true,
     };
   }
@@ -6828,13 +6919,24 @@ function automationLaneForTarget(doc: ProjectDocument, target: AutomationTarget)
 }
 
 /** bar (+ optional beat) → absolute tick; error string on bad input. */
-function positionFromRecord(record: Record<string, unknown>): number | string {
-  const rawBar = Number(record.bar);
-  if (!Number.isFinite(rawBar) || Math.round(rawBar) < 1) return "a 1-based bar is required (e.g. bar: 5)";
-  const bar = Math.round(rawBar);
-  const rawBeat = typeof record.beat === "number" && Number.isFinite(record.beat) ? record.beat : 1;
-  const beat = Math.min(4, Math.max(1, Math.round(rawBeat)));
-  return (bar - 1) * TICKS_PER_BAR + (beat - 1) * (TICKS_PER_BAR / 4);
+function positionFromRecord(record: Record<string, unknown>, doc: ProjectDocument): number | string {
+  const rawBar = record.bar;
+  if (rawBar === undefined) return "a 1-based bar is required (e.g. bar: 5)";
+  if (typeof rawBar !== "number" || !Number.isSafeInteger(rawBar) || rawBar < 1 || rawBar > MAX_ARRANGEMENT_CLIP_BARS) {
+    return `bar must be an integer from 1 to ${MAX_ARRANGEMENT_CLIP_BARS}`;
+  }
+  const bar = rawBar;
+  const rawBeat = record.beat === undefined ? 1 : record.beat;
+  if (
+    typeof rawBeat !== "number" ||
+    !Number.isSafeInteger(rawBeat) ||
+    rawBeat < 1 ||
+    rawBeat > doc.timeSignature.numerator
+  ) {
+    return `beat must be an integer from 1 to ${doc.timeSignature.numerator} in this meter`;
+  }
+  const beat = rawBeat;
+  return tickAtBarBeat(bar, beat, doc);
 }
 
 /** The arrangement clip covering a 1-based bar (clips never overlap). */
@@ -6885,7 +6987,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
         // playhead, so an agent that passes no bar lands where a user would.
         const rawPasteBar = Number(record.bar);
         const playhead = typeof ctx.transport.position === "number" ? ctx.transport.position : 0;
-        const atTick = Number.isFinite(rawPasteBar) && rawPasteBar >= 1 ? (rawPasteBar - 1) * TICKS_PER_BAR : playhead;
+        const atTick = Number.isFinite(rawPasteBar) && rawPasteBar >= 1 ? tickAtBar(rawPasteBar, doc) : playhead;
         ctx.execute(pasteClips(doc, mcpClipClipboard, atTick));
         const where =
           Number.isFinite(rawPasteBar) && rawPasteBar >= 1 ? `bar ${Math.round(rawPasteBar)}` : "the playhead";
@@ -7048,7 +7150,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
         return { text: `moved ${describe()} → starts at bar ${toBar} — one undo step`, mutated: true };
       }
       if (op === "audioSplit") {
-        const tick = anchor * TICKS_PER_BAR;
+        const tick = tickAtBar(anchor + 1, doc);
         ctx.execute(splitAudioClipAtTick(doc, target.id, tick));
         return { text: `split ${describe()} at bar ${anchor + 1} — one undo step`, mutated: true };
       }
@@ -7292,7 +7394,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
       // sample-precise, scene clips split at the bar boundary covering the
       // anchor. The MCP lane can only name a whole bar, so it is the same
       // primitive the grid cut tool uses.
-      const tick = (Math.round(rawBar) - 1) * TICKS_PER_BAR;
+      const tick = tickAtBar(Math.round(rawBar), doc);
       ctx.execute(splitArrangementClipAtTick(doc, clip.id, tick));
       return { text: `split ${describeClip(clip)} at bar ${Math.round(rawBar)} — one undo step`, mutated: true };
     }
@@ -8444,8 +8546,8 @@ function executeMusicTool(ctx: McpToolContext, record: Record<string, unknown>):
 
   if (op === "setPatternLength") {
     const steps = record.steps;
-    if (typeof steps !== "number" || !Number.isSafeInteger(steps) || steps < 16 || steps > 128) {
-      return mcpError("INVALID_ARGUMENTS", "setPatternLength needs an integer step count from 16 to 128");
+    if (typeof steps !== "number" || !Number.isSafeInteger(steps) || steps < 1 || steps > MAX_STEP_COUNT) {
+      return mcpError("INVALID_ARGUMENTS", `setPatternLength needs an integer step count from 1 to ${MAX_STEP_COUNT}`);
     }
     const active = before.patterns.find((pattern) => pattern.id === before.activePatternId);
     if (!active) return mcpError("UNKNOWN_TARGET", "the active pattern does not exist in this project");
@@ -8669,7 +8771,7 @@ function executeSectionsTool(ctx: McpToolContext, record: Record<string, unknown
   if (op === "intensity") {
     const value = typeof record.intensity === "number" ? record.intensity : record.value;
     if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
-      return mcpError("INVALID_ARGUMENTS", "intensity needs a number from 0 to 1");
+      return mcpError("INVALID_ARGUMENTS", "intensity needs a finite number in the inclusive range 0..1");
     }
     if (scene.intensity === value) {
       const data = sectionResultData(before, "already_set", scene.id, previous, 0);
@@ -8777,7 +8879,7 @@ function sectionSummary(doc: ProjectDocument, scene: Scene, index: number): McpS
   const bars =
     clips.length > 0
       ? Math.max(1, Math.round(clips.reduce((total, clip) => total + clip.lengthBars, 0)))
-      : Math.max(1, Math.ceil((pattern?.stepCount ?? 16) / 16));
+      : Math.max(1, Math.ceil(barsPerPattern(doc, pattern?.stepCount ?? 16)));
   const startBar =
     clips.length > 0
       ? Math.floor(clips.reduce((minimum, clip) => Math.min(minimum, clip.startBar), Number.POSITIVE_INFINITY)) + 1
@@ -8827,8 +8929,12 @@ function formatSectionResult(data: Record<string, unknown>): string {
   if (status === "listed") return `listed ${Array.isArray(data.sections) ? data.sections.length : 0} sections`;
   const label = typeof data.name === "string" ? ` "${data.name}"` : "";
   const detail = typeof data.startBar === "number" ? ` at bar ${data.startBar}, ${String(data.bars)} bars` : "";
+  const intensity =
+    typeof data.intensity === "number" && Number.isFinite(data.intensity)
+      ? ` · intensity ${Math.round(data.intensity * 100)}%`
+      : "";
   const undo = data.undoSteps === 1 ? " (one undo step)" : " (no change)";
-  return `${status.replaceAll("_", " ")}${label}${detail}${undo}`;
+  return `${status.replaceAll("_", " ")}${label}${detail}${intensity}${undo}`;
 }
 
 function resolveSectionTarget(doc: ProjectDocument, record: Record<string, unknown>): Scene | McpToolResult {
@@ -8851,7 +8957,7 @@ function resolveSectionTarget(doc: ProjectDocument, record: Record<string, unkno
     if (byRole.length === 1) return byRole[0]!;
     if (byRole.length > 1)
       return mcpError("INVALID_ARGUMENTS", `section role "${label}" is ambiguous; use sceneId or index`);
-    return mcpError("UNKNOWN_TARGET", `no section matches exact name or role "${label}"`);
+    return mcpError("UNKNOWN_TARGET", `no scene matches exact section name or role "${label}"`);
   }
   const role = typeof record.role === "string" ? record.role : "";
   if (role !== "") {
@@ -9780,11 +9886,15 @@ function ownerNameOf(doc: ProjectDocument, trackId: string): string {
   return doc.returns.find((r) => r.id === trackId)?.name ?? trackId;
 }
 
-/** tick → "bar.beat" (4/4, 1920 ticks per bar). */
-function barBeat(tick: number): string {
-  const bar = Math.floor(tick / TICKS_PER_BAR) + 1;
-  const beat = Math.floor((tick % TICKS_PER_BAR) / (TICKS_PER_BAR / 4)) + 1;
-  return `${bar}.${beat}`;
+/** tick → "bar.beat" in the document's meter. */
+function barBeat(tick: number, doc: ProjectDocument): string {
+  return `${barAtTick(tick, doc)}.${beatAtTick(tick, doc)}`;
+}
+
+/** Keep fractional pattern lengths visible instead of rounding them into a different duration. */
+function formatMetricalBars(bars: number): string {
+  const display = Number(bars.toFixed(2));
+  return `${display} bar${Math.abs(bars - 1) < 1e-9 ? "" : "s"}`;
 }
 
 /** Human label for an automation target (mirrors automation.ts laneLabel). */
@@ -9802,10 +9912,10 @@ function automationTargetLabel(doc: ProjectDocument, target: AutomationTarget): 
 }
 
 /** Format an automation lane's points: all when ≤ 8, else head + range summary. */
-function formatAutomationPoints(points: Array<{ tick: number; value: number }>): string {
+function formatAutomationPoints(doc: ProjectDocument, points: Array<{ tick: number; value: number }>): string {
   const tidy = (value: number): number => Math.round(value * 1e4) / 1e4;
   if (points.length === 0) return "no points";
-  const rendered = points.map((point) => `${barBeat(point.tick)}=${tidy(point.value)}`);
+  const rendered = points.map((point) => `${barBeat(point.tick, doc)}=${tidy(point.value)}`);
   if (rendered.length <= 8) return rendered.join(", ");
   const values = points.map((point) => point.value);
   return `${rendered.slice(0, 4).join(", ")} … +${points.length - 4} more (values ${Math.min(...values)}..${Math.max(...values)})`;
@@ -9836,7 +9946,7 @@ function automationSnapshot(doc: ProjectDocument, family: string | undefined): s
     const def = targetParamDef(doc, lane.target);
     const range = def ? `, range ${def.min}..${def.max}` : "";
     lines.push(
-      `${index + 1}. ${automationTargetLabel(doc, lane.target)} (lane ${lane.id}) — ${lane.points.length} pt${lane.points.length === 1 ? "" : "s"}${range}: ${formatAutomationPoints(lane.points)}`,
+      `${index + 1}. ${automationTargetLabel(doc, lane.target)} (lane ${lane.id}) — ${lane.points.length} pt${lane.points.length === 1 ? "" : "s"}${range}: ${formatAutomationPoints(doc, lane.points)}`,
     );
   });
   if (doc.sceneAutomation.length > 0) {
@@ -9940,7 +10050,7 @@ function stateSnapshot(
   }
   if (subject === "markers") {
     return doc.markers.length > 0
-      ? doc.markers.map((m) => `${m.name}@${Math.round(m.tick / TICKS_PER_BAR) + 1}`).join(", ")
+      ? doc.markers.map((m) => `${m.name}@${barAtTick(m.tick, doc)}`).join(", ")
       : "no markers";
   }
   if (subject === "groove") {
@@ -9997,10 +10107,12 @@ function stateSnapshot(
   if (subject === "pattern") {
     const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
     if (!pattern) return "no active pattern";
-    const bars = Math.max(1, Math.round(pattern.stepCount / 16));
+    const bars = barsPerPattern(doc, pattern.stepCount);
     const families = ["kick", "snare", "clap", "hat", "perc", "tom"] as const;
     const drums = doc.tracks.filter((track): track is DrumTrack => track.kind === "drum");
-    const lines = [`active: "${pattern.name}" — ${bars} bar${bars > 1 ? "s" : ""}, ${pattern.stepCount} steps`];
+    const lines = [
+      `active: "${pattern.name}" — ${formatMetricalBars(bars)}, ${pattern.stepCount} sixteenth-note steps`,
+    ];
     for (const family of families) {
       const pads: Array<{ id: string }> = [];
       for (const track of drums) {
@@ -10087,9 +10199,9 @@ function stateSnapshot(
   // overview
   const active = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
   const lines = [
-    `${doc.bpm} BPM · ${doc.key ?? "key unset"} · ${doc.tracks.length} tracks · ${doc.scenes.length} scenes · ${doc.patterns.length} patterns`,
+    `${doc.bpm} BPM · ${doc.timeSignature.numerator}/${doc.timeSignature.denominator} · ${doc.key ?? "key unset"} · ${doc.tracks.length} tracks · ${doc.scenes.length} scenes · ${doc.patterns.length} patterns`,
     `tracks: ${doc.tracks.map((t) => t.name).join(", ")}`,
-    `active pattern: "${active?.name ?? "none"}"${active ? ` (${Math.max(1, Math.round(active.stepCount / 16))} bar)` : ""}`,
+    `active pattern: "${active?.name ?? "none"}"${active ? ` (${formatMetricalBars(barsPerPattern(doc, active.stepCount))})` : ""}`,
     `scenes: ${doc.scenes.map((s) => `${s.name}${s.role ? `(${s.role})` : ""}`).join(", ") || "none"}`,
   ];
   return lines.join("\n");
@@ -10281,11 +10393,11 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
   }
   if (!mutated)
     return { text: `nothing changed (${op} on ${family}: committed state already matches)`, mutated: false, data };
-  const bars = Math.max(1, Math.round(stepCount / 16));
+  const bars = barsPerPattern(doc, stepCount);
   const touchedText =
     data.changedSteps.length <= 12 ? data.changedSteps.join(", ") : `${data.changedSteps.length} steps`;
   return {
-    text: `${family} ${op}: ${beforeHitCount} → ${data.afterHitCount} hits across ${targets.length} pad(s); ${data.changedCellCount} pad-step cell(s) changed (steps: ${touchedText}) · pattern "${pattern.name}" (${bars} bar${bars > 1 ? "s" : ""}) · one undo step`,
+    text: `${family} ${op}: ${beforeHitCount} → ${data.afterHitCount} hits across ${targets.length} pad(s); ${data.changedCellCount} pad-step cell(s) changed (steps: ${touchedText}) · pattern "${pattern.name}" (${formatMetricalBars(bars)}) · one undo step`,
     mutated,
     data,
   };

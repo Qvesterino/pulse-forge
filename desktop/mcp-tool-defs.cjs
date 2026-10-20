@@ -169,7 +169,7 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_transport",
     description:
-      "Transport control AND reads: play, stop, pause, loop on/off, metronome on/off — or seek to a 1-based bar (optional beat), set the loop region in bars (loopRegion), or state: a read-only read-back of the playhead position (bar/beat/tick), playing state, loop region and metronome. Bar controls are bounded to 1..8192; fractional bar/beat values are rejected. Scene launch accepts an exact sceneId, name/role, or 1-based index. Position is 4/4-based (1920 ticks per bar, 480 per beat).",
+      "Transport control AND reads: play, stop, pause, loop on/off, metronome on/off — or seek to a 1-based bar (optional beat), set the loop region in bars (loopRegion), or state: a read-only read-back of the playhead position (bar/beat/tick), playing state, loop region and metronome. Bar controls are bounded to 1..8192; fractional bar/beat values are rejected. Scene launch accepts an exact sceneId, name/role, or 1-based index. Bar and beat coordinates follow the project's time signature.",
     inputSchema: {
       type: "object",
       properties: {
@@ -220,8 +220,9 @@ const MCP_TOOL_DEFS = [
         beat: {
           type: "integer",
           minimum: 1,
-          maximum: 4,
-          description: "For seek — 1-based beat within the bar (default 1)",
+          maximum: 16,
+          description:
+            "For seek — 1-based beat within the project's meter (default 1; runtime validates this meter's numerator)",
         },
         startBar: {
           type: "integer",
@@ -284,7 +285,7 @@ const MCP_TOOL_DEFS = [
         beat: {
           type: ["integer", "null"],
           minimum: 1,
-          maximum: 4,
+          maximum: 16,
         },
         playing: {
           type: ["boolean", "null"],
@@ -334,7 +335,7 @@ const MCP_TOOL_DEFS = [
         requestedBeat: {
           type: "integer",
           minimum: 1,
-          maximum: 4,
+          maximum: 16,
         },
         requestedStartBar: {
           type: "integer",
@@ -522,7 +523,8 @@ const MCP_TOOL_DEFS = [
           type: "integer",
           minimum: 1,
           maximum: 16,
-          description: "Pattern length in bars (16 steps per bar; default engine choice)",
+          description:
+            "Metrical bars; the maximum depends on the meter and 128-step pattern limit (default engine choice)",
         },
         replaceMode: {
           type: "string",
@@ -1004,6 +1006,7 @@ const MCP_TOOL_DEFS = [
         bar: {
           type: "integer",
           minimum: 1,
+          maximum: 8192,
           description: "1-based bar for add, or nearest-marker anchor",
         },
         name: {
@@ -1056,6 +1059,7 @@ const MCP_TOOL_DEFS = [
               bar: {
                 type: "integer",
                 minimum: 1,
+                maximum: 8192,
               },
               linkedClipId: {
                 type: "string",
@@ -1081,6 +1085,7 @@ const MCP_TOOL_DEFS = [
         bar: {
           type: "integer",
           minimum: 1,
+          maximum: 8192,
         },
         linkedClipId: {
           type: "string",
@@ -1228,7 +1233,7 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_steps",
     description:
-      "Structured step-grid edit on the ACTIVE pattern's drum pads (16 steps per bar, 1-based indexes across the whole pattern). add sets velocity, remove clears, toggle flips, ghost places a soft probabilistic hit, clearPad empties the whole family. Returns a verification read-back with the family's before → after step counts.",
+      "Structured sixteenth-note step-grid edit on the ACTIVE pattern's drum pads (1-based indexes across the whole pattern; steps per bar follow the project's meter). add sets velocity, remove clears, toggle flips, ghost places a soft probabilistic hit, clearPad empties the whole family. Returns a verification read-back with the family's before → after step counts.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1248,7 +1253,7 @@ const MCP_TOOL_DEFS = [
             maximum: 128,
           },
           maxItems: 128,
-          description: "1-based 16th-step indexes within the pattern (16 per bar). Not used by clearPad.",
+          description: "1-based sixteenth-note step indexes within the pattern. Not used by clearPad.",
         },
         velocity: {
           type: "number",
@@ -2119,9 +2124,9 @@ const MCP_TOOL_DEFS = [
         },
         steps: {
           type: "integer",
-          minimum: 16,
+          minimum: 1,
           maximum: 128,
-          description: "setPatternLength (16 steps per bar)",
+          description: "setPatternLength — absolute sixteenth-note step count (1..128; meter controls bars)",
         },
         semitones: {
           type: "integer",
@@ -2283,7 +2288,7 @@ const MCP_TOOL_DEFS = [
         },
         steps: {
           type: "integer",
-          minimum: 16,
+          minimum: 1,
           maximum: 128,
         },
         numerator: {
@@ -2509,24 +2514,26 @@ const MCP_TOOL_DEFS = [
         bar: {
           type: "integer",
           minimum: 1,
+          maximum: 8192,
           description: "1-based bar — position for addPoint, anchor for movePoint/deletePoint",
         },
         newBar: {
           type: "integer",
           minimum: 1,
+          maximum: 8192,
           description: "For movePoint — 1-based destination bar",
         },
         newBeat: {
           type: "integer",
           minimum: 1,
-          maximum: 4,
-          description: "For movePoint — 1-based destination beat",
+          maximum: 16,
+          description: "For movePoint — 1-based destination beat; runtime validates this meter's numerator",
         },
         beat: {
           type: "integer",
           minimum: 1,
-          maximum: 4,
-          description: "Optional 1-based beat within the bar (default 1)",
+          maximum: 16,
+          description: "Optional 1-based beat within the project's meter (default 1)",
         },
         value: {
           type: "number",
@@ -3622,6 +3629,10 @@ const MCP_TOOL_DEFS = [
           type: "integer",
           minimum: 0,
         },
+        placementMismatchCount: {
+          type: "integer",
+          minimum: 0,
+        },
         totalBars: {
           type: "integer",
           minimum: 0,
@@ -3642,6 +3653,7 @@ const MCP_TOOL_DEFS = [
         "sceneCount",
         "clipCount",
         "cueMarkerCount",
+        "placementMismatchCount",
         "totalBars",
         "undoSteps",
       ],

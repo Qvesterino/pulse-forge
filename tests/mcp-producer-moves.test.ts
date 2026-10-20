@@ -197,6 +197,7 @@ describe("producer moves surface", async () => {
         "sceneCount",
         "clipCount",
         "cueMarkerCount",
+        "placementMismatchCount",
         "totalBars",
         "undoSteps",
       ],

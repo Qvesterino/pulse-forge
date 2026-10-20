@@ -281,7 +281,7 @@ function isFourFourBarConstant(node: ts.Node): boolean {
  *
  *  A. The steps-per-bar FORMULA (`ticksPerBar(...) / STEP_TICKS`) may only be
  *     written in `src/project-model/grid.ts`.
- *  B. A UI file may not convert a step count to a bar count by hand.
+ *  B. A user-facing UI or MCP file may not convert a step count to a bar count by hand.
  */
 export function findGridViolations(files: { file: string; source: string }[]): Violation[] {
   const violations: Violation[] = [];
@@ -306,7 +306,11 @@ export function findGridViolations(files: { file: string; source: string }[]): V
           }
         }
       }
-      if (ts.isBinaryExpression(node) && file.startsWith("src/ui/")) {
+      if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.SlashToken &&
+        (file.startsWith("src/ui/") || file.startsWith("src/mcp/"))
+      ) {
         const left = node.left;
         const right = node.right;
         const pairs =
@@ -340,17 +344,17 @@ describe("ADR 0057 — the grid truth has one owner", () => {
     ).toEqual([]);
   });
 
-  it("the visible surface does not convert a step count to a bar count by hand", () => {
+  it("visible UI and MCP surfaces do not convert a step count to a bar count by hand", () => {
     const files = walkSourceFiles(SRC_ROOT)
       .map((absolute) => ({
         file: relative(process.cwd(), absolute).replace(/\\/g, "/"),
         source: readFileSync(absolute, "utf8"),
       }))
-      .filter((entry) => entry.file.startsWith("src/ui/"));
+      .filter((entry) => entry.file.startsWith("src/ui/") || entry.file.startsWith("src/mcp/"));
     const violations = findGridViolations(files).filter((v) => v.detail === "converts a step count to bars by hand");
     expect(
       violations.map((v) => `${v.file}:${v.line} — ${v.detail}`),
-      "a UI site converts a step count to bars by hand; use barsPerPattern(doc, …) or stepsPerBar(doc)",
+      "a UI or MCP site converts a step count to bars by hand; use barsPerPattern(doc, …) or stepsPerBar(doc)",
     ).toEqual([]);
   });
 });
@@ -363,12 +367,13 @@ describe("ADR 0057 — the guard, proven able to fail", () => {
     expect(violations.map((v) => v.detail)).toEqual(["computes steps per bar for itself"]);
   });
 
-  it("reports a UI site that converts a step count to bars by hand", () => {
+  it("reports a UI or MCP site that converts a step count to bars by hand", () => {
     const violations = findGridViolations([
       { file: "src/ui/Whatever.tsx", source: "const bars = pattern.stepCount / 16;" },
       { file: "src/ui/Another.tsx", source: "const bars = Math.ceil(editorStepCount / 16);" },
+      { file: "src/mcp/tools.ts", source: "const bars = pattern.stepCount / 16;" },
     ]);
-    expect(violations.map((v) => v.file)).toEqual(["src/ui/Whatever.tsx", "src/ui/Another.tsx"]);
+    expect(violations.map((v) => v.file)).toEqual(["src/ui/Whatever.tsx", "src/ui/Another.tsx", "src/mcp/tools.ts"]);
   });
 
   it("does NOT report the same code in the owner module or in a ledgered site", () => {

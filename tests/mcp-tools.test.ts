@@ -110,6 +110,10 @@ function datasetDoc(): ProjectDocument {
   return doc;
 }
 
+function withMeter(doc: ProjectDocument, numerator: number, denominator: number): ProjectDocument {
+  return { ...doc, timeSignature: { numerator, denominator } };
+}
+
 function withLead(): ProjectDocument {
   const doc = datasetDoc();
   const base = createProjectFromTemplate("house");
@@ -567,6 +571,16 @@ describe("mcp structured tools", async () => {
     expect(store.doc.markers).toHaveLength(0);
   });
 
+  it("kyx_markers maps 1-based bars through the project's 6/8 meter", async () => {
+    const store = new ProjectStore(withMeter(datasetDoc(), 6, 8));
+    const ctx = storeCtx(store);
+    const created = await executeMcpTool(ctx, "kyx_markers", { op: "add", bar: 3, name: "6/8 cue" });
+    expect(created.data).toMatchObject({ status: "created", tick: 2880, bar: 3 });
+    expect(store.doc.markers[0]?.tick).toBe(2880);
+    const snapshot = await executeMcpTool(ctx, "kyx_state", { subject: "markers" });
+    expect(snapshot.text).toContain("6/8 cue@3");
+  });
+
   it("kyx_markers rejects invalid ops and non-integral bars without falling through to deletion", async () => {
     const store = new ProjectStore(datasetDoc());
     const ctx = storeCtx(store);
@@ -808,6 +822,75 @@ describe("mcp model-drivability wave", async () => {
     const pattern = store.doc.patterns[store.doc.patterns.length - 1];
     expect(pattern.stepCount).toBe(32);
     expect(result.text).toContain("2 bar");
+  });
+
+  it("meter-aware MCP generation rejects invalid lengths and derives sixteenth-step count from 6/8", async () => {
+    const store = new ProjectStore(withMeter(datasetDoc(), 6, 8));
+    const ctx = storeCtx(store);
+    const generated = await executeMcpTool(ctx, "kyx_generate", { genre: "techno", seed: "6-8-bars", bars: 4 });
+    expect(generated.mutated).toBe(true);
+    expect(store.doc.patterns.at(-1)?.stepCount).toBe(48);
+    expect(generated.text).toContain("48 sixteenth-note steps (~4 bars)");
+
+    const unsupported = await executeMcpTool(ctx, "kyx_generate", { genre: "techno", seed: "unsupported", bars: 2 });
+    expect(unsupported.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(unsupported.text).toContain("supported whole-bar lengths: 4, 8");
+    const fractional = await executeMcpTool(ctx, "kyx_generate", { genre: "techno", seed: "bad-bars", bars: 1.5 });
+    expect(fractional.errorCode).toBe("INVALID_ARGUMENTS");
+    const tooLong = await executeMcpTool(ctx, "kyx_generate", { genre: "techno", seed: "too-long", bars: 11 });
+    expect(tooLong.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(store.doc.patterns.at(-1)?.stepCount).toBe(48);
+  });
+
+  it("pattern, step, and explicit length read-backs retain fractional metrical bars", async () => {
+    const store = new ProjectStore(withMeter(datasetDoc(), 6, 8));
+    const ctx = storeCtx(store);
+    const active = store.doc.patterns.find((pattern) => pattern.id === store.doc.activePatternId)!;
+    expect(active.stepCount).toBe(16);
+
+    const patterns = await executeMcpTool(ctx, "kyx_pattern", { op: "list" });
+    expect(patterns.text).toContain("(1.33 bars)");
+    const state = await executeMcpTool(ctx, "kyx_state", { subject: "pattern" });
+    expect(state.text).toContain("1.33 bars, 16 sixteenth-note steps");
+
+    const edited = await executeMcpTool(ctx, "kyx_steps", { op: "toggle", family: "kick", steps: [1] });
+    expect(edited.text).toContain("(1.33 bars)");
+
+    const shortened = await executeMcpTool(ctx, "kyx_music", { op: "setPatternLength", steps: 8 });
+    expect(shortened.mutated).toBe(true);
+    expect(store.doc.patterns.find((pattern) => pattern.id === store.doc.activePatternId)?.stepCount).toBe(8);
+    const after = await executeMcpTool(ctx, "kyx_state", { subject: "pattern" });
+    expect(after.text).toContain("0.67 bars, 8 sixteenth-note steps");
+  });
+
+  it("kyx_arrange places sections contiguously and places cues on 6/8 bar lines", async () => {
+    const base = createProjectFromTemplate("house");
+    const doc = withMeter(
+      {
+        ...base,
+        scenes: [],
+        markers: [],
+        arrangement: { ...base.arrangement, clips: [] },
+      },
+      6,
+      8,
+    );
+    const ctx = makeCtx(doc);
+    const result = await executeMcpToolAsync(ctx, "kyx_arrange", {
+      genre: "techno",
+      length: "short",
+    });
+    const data = result.data as {
+      status: string;
+      sections: Array<{ startBar: number; bars: number }>;
+      clips: Array<{ startBar: number }>;
+      markers: Array<{ tick: number }>;
+    };
+    expect(data.status).toBe("arranged");
+    expect(data.clips.map((clip) => clip.startBar)).toEqual(data.sections.map((section) => section.startBar - 1));
+    expect(data.markers.map((marker) => marker.tick)).toEqual(
+      data.sections.map((section) => (section.startBar - 1) * 1440),
+    );
   });
 });
 
@@ -1362,6 +1445,59 @@ describe("mcp P1 transport — reads + seek + loop region", async () => {
     expect(withBeat.data).toMatchObject({ status: "applied", requestedBar: 2, requestedBeat: 3, positionTick: 2880 });
   });
 
+  it("kyx_transport uses metrical bars and denominator beats in 6/8", async () => {
+    const doc = withMeter(datasetDoc(), 6, 8);
+    let position = 0;
+    let loop: [number, number] = [0, 0];
+    let loopEnabled = false;
+    const ctx = makeCtx(doc);
+    const observing: McpToolContext = {
+      ...ctx,
+      transport: {
+        ...fullTransport({ playing: false, loopEnabled: false }),
+        get loopEnabled() {
+          return loopEnabled;
+        },
+        get position() {
+          return position;
+        },
+        get loopStart() {
+          return loop[0];
+        },
+        get loopEnd() {
+          return loop[1];
+        },
+        seek: (tick) => {
+          position = tick;
+        },
+        setLoop: (enabled, start, end) => {
+          loopEnabled = enabled;
+          loop = enabled ? [start, end] : [0, 0];
+        },
+      },
+    };
+
+    const seek = await executeMcpTool(observing, "kyx_transport", { action: "seek", bar: 2, beat: 6 });
+    expect(seek.data).toMatchObject({ requestedTick: 2640, bar: 2, beat: 6, requestedBeat: 6 });
+    expect(seek.text).toContain("bar 2 beat 6 (tick 2640)");
+
+    position = 1440;
+    const state = await executeMcpTool(observing, "kyx_transport", { action: "state" });
+    expect(state.data).toMatchObject({ positionTick: 1440, bar: 2, beat: 1 });
+
+    const region = await executeMcpTool(observing, "kyx_transport", {
+      action: "loopRegion",
+      startBar: 2,
+      endBar: 4,
+    });
+    expect(loop).toEqual([1440, 5760]);
+    expect(region.data).toMatchObject({ loop: { startTick: 1440, endTick: 5760, startBar: 2, endBar: 4 } });
+
+    const invalidBeat = await executeMcpTool(observing, "kyx_transport", { action: "seek", bar: 2, beat: 7 });
+    expect(invalidBeat.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(invalidBeat.text).toContain("1 to 6 in this meter");
+  });
+
   it("kyx_transport seek validates input and refuses without a seek-capable transport", async () => {
     const ctx = makeCtx(datasetDoc());
     const missing = await executeMcpTool(ctx, "kyx_transport", { action: "seek", bar: 5 });
@@ -1599,6 +1735,38 @@ describe("mcp P1 automation — lanes, points, FX targeting", async () => {
     expect(store.undoStackLength).toBe(1);
     store.undo();
     expect(store.doc.automation).toHaveLength(0);
+  });
+
+  it("automation positions and read-back use metrical beats in 6/8", async () => {
+    const store = new ProjectStore(withMeter(withLead(), 6, 8));
+    const ctx = storeCtx(store);
+    const result = await executeMcpTool(ctx, "kyx_automation", {
+      op: "addPoint",
+      trackId: "track-lead-x",
+      param: "gain",
+      bar: 2,
+      beat: 6,
+      value: 0.4,
+    });
+    expect(result.mutated).toBe(true);
+    expect(result.text).toContain("2.6=0.4");
+    expect(store.doc.automation[0]?.points).toEqual([{ tick: 2640, value: 0.4 }]);
+
+    const read = await executeMcpTool(ctx, "kyx_state", { subject: "automation" });
+    expect(read.text).toContain("2.6=0.4");
+
+    const invalid = await executeMcpTool(ctx, "kyx_automation", {
+      op: "addPoint",
+      trackId: "track-lead-x",
+      param: "gain",
+      bar: 3,
+      beat: 7,
+      value: 0.2,
+    });
+    expect(invalid.mutated).toBe(false);
+    expect(invalid.text).toContain("beat must be an integer from 1 to 6");
+    expect(store.doc.automation[0]?.points).toHaveLength(1);
+    expect(store.undoStackLength).toBe(1);
   });
 
   it("addPoint on an FX parameter targets the typed instance and clamps out-of-range", async () => {
