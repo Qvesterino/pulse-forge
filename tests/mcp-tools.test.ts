@@ -151,6 +151,12 @@ describe("mcp tools — headless execution", async () => {
     expect(MCP_TOOLS.find((tool) => tool.name === "kyx_music")?.outputSchema).toBeDefined();
     expect(MCP_TOOLS.find((tool) => tool.name === "kyx_steps")?.outputSchema).toBeDefined();
     expect(MCP_TOOLS.find((tool) => tool.name === "kyx_groove")?.outputSchema).toBeDefined();
+    const fxTool = MCP_TOOLS.find((tool) => tool.name === "kyx_fx");
+    expect(fxTool?.inputSchema.properties?.instance).toMatchObject({ type: "integer", minimum: 1, maximum: 128 });
+    expect(fxTool?.inputSchema.properties?.direction).toMatchObject({ type: "string", enum: ["earlier", "later"] });
+    expect(fxTool?.inputSchema.properties?.position).toMatchObject({ type: "integer", minimum: 1, maximum: 128 });
+    expect(fxTool?.inputSchema.properties?.percent).not.toHaveProperty("instance");
+    expect((fxTool?.inputSchema.properties?.effect as { enum?: string[] } | undefined)?.enum).toContain("eq");
     expect(MCP_TOOLS.find((tool) => tool.name === "kyx_groove")?.inputSchema.properties?.sectionId).toMatchObject({
       type: "string",
       maxLength: 128,
@@ -3198,6 +3204,95 @@ describe("mcp fx instances — per-instance ops + chain reorder", async () => {
     });
     expect(missing.isError).toBe(true);
     expect(missing.text).toContain("no chorus instance");
+  });
+
+  it("reorder addresses an exact track ID and leaves the undo stack unchanged for a no-op", async () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    await executeMcpTool(ctx, "kyx_fx", { effect: "reverb", family: "lead", action: "more" });
+    await executeMcpTool(ctx, "kyx_fx", { effect: "delay", family: "lead", action: "more" });
+
+    const reordered = await executeMcpTool(ctx, "kyx_fx", {
+      action: "reorder",
+      effect: "delay",
+      trackId: "track-lead-x",
+      position: 1,
+    });
+    expect(reordered.mutated).toBe(true);
+    expect(store.doc.tracks.find((track) => track.id === "track-lead-x")!.effects.map((fx) => fx.type)).toEqual([
+      "delay",
+      "reverb",
+    ]);
+
+    const undoSteps = store.undoStackLength;
+    const unchanged = await executeMcpTool(ctx, "kyx_fx", {
+      action: "reorder",
+      effect: "delay",
+      trackId: "track-lead-x",
+      position: 1,
+    });
+    expect(unchanged.mutated).toBe(false);
+    expect(unchanged.text).toContain("already at position 1");
+    expect(store.undoStackLength).toBe(undoSteps);
+
+    ctx.undo();
+    expect(store.doc.tracks.find((track) => track.id === "track-lead-x")!.effects.map((fx) => fx.type)).toEqual([
+      "reverb",
+      "delay",
+    ]);
+  });
+
+  it("rejects malformed FX targets and reorder arguments without falling back or mutating", async () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    const before = store.doc;
+    const malformedTarget = await executeMcpTool(ctx, "kyx_fx", {
+      action: "more",
+      effect: "reverb",
+      trackId: 42,
+      family: "lead",
+    });
+    expect(malformedTarget.isError).toBe(true);
+    expect(malformedTarget.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(malformedTarget.mutated).toBe(false);
+    expect(store.doc).toBe(before);
+
+    for (const position of [1.5, Number.NaN, Number.POSITIVE_INFINITY, 0, 129]) {
+      const invalid = await executeMcpTool(ctx, "kyx_fx", {
+        action: "reorder",
+        effect: "reverb",
+        trackId: "track-lead-x",
+        position,
+      });
+      expect(invalid.isError).toBe(true);
+      expect(invalid.errorCode).toBe("INVALID_ARGUMENTS");
+      expect(invalid.mutated).toBe(false);
+      expect(store.doc).toBe(before);
+    }
+
+    const unknownAction = await executeMcpTool(ctx, "kyx_fx", {
+      action: "insert",
+      effect: "reverb",
+      trackId: "track-lead-x",
+    });
+    expect(unknownAction.isError).toBe(true);
+    expect(unknownAction.errorCode).toBe("UNKNOWN_REQUEST");
+    expect(unknownAction.mutated).toBe(false);
+    expect(store.doc).toBe(before);
+  });
+
+  it("allows bypassing a registered no-knob effect without pretending to adjust a knob", async () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    store.execute(addEffectToTracks(store.doc, ["track-lead-x"], "eq"));
+
+    const bypassed = await executeMcpTool(ctx, "kyx_fx", {
+      action: "bypass",
+      effect: "eq",
+      trackId: "track-lead-x",
+    });
+    expect(bypassed.mutated).toBe(true);
+    expect(store.doc.tracks.find((track) => track.id === "track-lead-x")!.effects[0].bypassed).toBe(true);
   });
 });
 

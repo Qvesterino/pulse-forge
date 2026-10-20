@@ -1608,19 +1608,8 @@ export const MCP_TOOLS: McpToolDef[] = [
       properties: {
         effect: {
           type: "string",
-          enum: [
-            "reverb",
-            "delay",
-            "saturation",
-            "distortion",
-            "chorus",
-            "flanger",
-            "phaser",
-            "tremolo",
-            "bitcrusher",
-            "compressor",
-            "pump",
-          ],
+          enum: Object.keys(EFFECT_META),
+          description: "Any registered effect; more/less requires a primary knob (see kyx_catalog)",
         },
         family: {
           type: "string",
@@ -1629,6 +1618,8 @@ export const MCP_TOOLS: McpToolDef[] = [
         },
         trackId: {
           type: "string",
+          minLength: 1,
+          maxLength: 128,
           description: "Exact track id (from kyx_state tracks) — overrides family when present",
         },
         action: { type: "string", enum: ["more", "less", "remove", "bypass", "enable", "reorder"] },
@@ -1637,18 +1628,24 @@ export const MCP_TOOLS: McpToolDef[] = [
           minimum: 0,
           maximum: 100,
           description: "Relative step size for more/less, as % of the knob's range (default: fixed calibrated step)",
-          instance: {
-            type: "integer",
-            minimum: 1,
-            description:
-              "1-based same-type instance — scopes remove/bypass/enable/reorder to ONE instance (default: all instances of the type)",
-          },
-          direction: {
-            type: "string",
-            enum: ["earlier", "later"],
-            description: "For reorder — move the instance one slot toward the input (earlier) or output (later)",
-          },
-          position: { type: "integer", minimum: 1, description: "For reorder — 1-based final slot in the chain" },
+        },
+        instance: {
+          type: "integer",
+          minimum: 1,
+          maximum: 128,
+          description:
+            "1-based same-type instance — scopes remove/bypass/enable/reorder to ONE instance (default: all instances of the type)",
+        },
+        direction: {
+          type: "string",
+          enum: ["earlier", "later"],
+          description: "For reorder — move the instance one slot toward the input (earlier) or output (later)",
+        },
+        position: {
+          type: "integer",
+          minimum: 1,
+          maximum: 128,
+          description: "For reorder — 1-based final slot in the chain",
         },
       },
       required: ["effect", "action"],
@@ -4392,46 +4389,134 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       };
     }
     case "kyx_fx": {
-      const action = String(record.action ?? "");
-      const effect = String(record.effect ?? "");
-      const targets = explicitTargets(record);
-      if (typeof targets === "string") return { text: targets, mutated: false };
+      const allowedActions = ["more", "less", "remove", "bypass", "enable", "reorder"] as const;
+      if (typeof record.action !== "string") {
+        return mcpError("INVALID_ARGUMENTS", "fx op failed — action must be a string");
+      }
+      const action = record.action;
+      if (!allowedActions.includes(action as (typeof allowedActions)[number])) {
+        return mcpError("UNKNOWN_REQUEST", `fx op failed — unknown action "${action}"`);
+      }
+      if (typeof record.effect !== "string" || record.effect.trim() === "" || record.effect.length > 64) {
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          "fx op failed — effect must be a non-empty string of at most 64 characters",
+        );
+      }
+      const effect = record.effect.trim();
+      if (!Object.prototype.hasOwnProperty.call(EFFECT_META, effect)) {
+        return mcpError("UNKNOWN_TARGET", `fx op failed — unknown effect "${effect}"; list effects via kyx_catalog`);
+      }
+
+      const before = ctx.getDoc();
+      const resolved = explicitTargets(before, record);
+      if ("errorCode" in resolved) return mcpError(resolved.errorCode, `fx op failed — ${resolved.reason}`);
+      const { selectors: targets, trackIds: targetIds } = resolved;
+      const hasInstance = Object.prototype.hasOwnProperty.call(record, "instance");
+      if (
+        hasInstance &&
+        (typeof record.instance !== "number" ||
+          !Number.isSafeInteger(record.instance) ||
+          record.instance < 1 ||
+          record.instance > 128)
+      ) {
+        return mcpError("INVALID_ARGUMENTS", "fx op failed — instance must be an integer from 1 to 128");
+      }
+      if (hasInstance && action !== "remove" && action !== "bypass" && action !== "enable" && action !== "reorder") {
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          "fx op failed — instance is only valid for remove, bypass, enable, or reorder",
+        );
+      }
+      const hasPercent = Object.prototype.hasOwnProperty.call(record, "percent");
+      if (
+        hasPercent &&
+        (typeof record.percent !== "number" ||
+          !Number.isFinite(record.percent) ||
+          record.percent < 0 ||
+          record.percent > 100)
+      ) {
+        return mcpError("INVALID_ARGUMENTS", "fx op failed — percent must be a finite number from 0 to 100");
+      }
+      if (hasPercent && action !== "more" && action !== "less") {
+        return mcpError("INVALID_ARGUMENTS", "fx op failed — percent is only valid for more or less");
+      }
+      const hasDirection = Object.prototype.hasOwnProperty.call(record, "direction");
+      if (hasDirection && action !== "reorder") {
+        return mcpError("INVALID_ARGUMENTS", "fx op failed — direction is only valid for reorder");
+      }
+      if (hasDirection && record.direction !== "earlier" && record.direction !== "later") {
+        return mcpError("INVALID_ARGUMENTS", "fx op failed — direction must be earlier or later");
+      }
+      const hasPosition = Object.prototype.hasOwnProperty.call(record, "position");
+      if (hasPosition && action !== "reorder") {
+        return mcpError("INVALID_ARGUMENTS", "fx op failed — position is only valid for reorder");
+      }
+      if (
+        hasPosition &&
+        (typeof record.position !== "number" ||
+          !Number.isSafeInteger(record.position) ||
+          record.position < 1 ||
+          record.position > 128)
+      ) {
+        return mcpError("INVALID_ARGUMENTS", "fx op failed — position must be an integer from 1 to 128");
+      }
       if (action === "reorder") {
         // Per-instance chain reorder: direction moves ±1, position is the
         // 1-based final slot. Uses the domain's moveEffect/moveEffectToIndex.
-        const reorderIndex = Math.max(1, Math.round(Number(record.instance ?? 1)));
-        const direction = record.direction === "earlier" ? -1 : record.direction === "later" ? 1 : 0;
-        const position = typeof record.position === "number" ? Math.round(record.position) : null;
-        if (direction === 0 && position == null) {
-          return { text: "reorder needs direction (earlier | later) or position (1-based final slot)", mutated: false };
+        if (hasDirection === hasPosition) {
+          return mcpError(
+            "INVALID_ARGUMENTS",
+            "fx op failed — reorder needs exactly one of direction (earlier | later) or position (1-based final slot)",
+          );
         }
+        const reorderIndex = hasInstance ? (record.instance as number) : 1;
+        const direction = record.direction === "earlier" ? -1 : 1;
+        const position = hasPosition ? (record.position as number) : null;
         try {
-          const before = ctx.getDoc();
-          const targetIds = targets.length === 1 ? tracksInFamily(before, targets[0]) : targets;
           let next = before;
           const parts: string[] = [];
           let moved = 0;
+          let failed = 0;
           for (const targetId of targetIds) {
             const track = next.tracks.find((t) => t.id === targetId);
             if (!track) {
               parts.push(`${targetId}: no such track`);
+              failed += 1;
               continue;
             }
             const instances = track.effects.filter((fx) => fx.type === effect);
             if (instances.length === 0) {
               parts.push(`${track.name}: no ${effect} instance`);
+              failed += 1;
               continue;
             }
             if (instances.length < reorderIndex) {
               parts.push(
                 `${track.name}: ${effect} instance #${reorderIndex} does not exist (chain has ${instances.length})`,
               );
+              failed += 1;
               continue;
             }
             const fx = instances[reorderIndex - 1];
             const movedFxId = fx.id;
+            const fromIndex = track.effects.findIndex((candidate) => candidate.id === movedFxId);
+            const toIndex = position == null ? fromIndex + direction : position - 1;
+            if (toIndex < 0 || toIndex >= track.effects.length) {
+              parts.push(
+                position == null
+                  ? `${track.name}: ${effect}#${reorderIndex} cannot move beyond chain slot ${fromIndex + 1}`
+                  : `${track.name}: position ${position} exceeds chain length ${track.effects.length}`,
+              );
+              failed += 1;
+              continue;
+            }
+            if (toIndex === fromIndex) {
+              parts.push(`${track.name}: ${effect}#${reorderIndex} already at position ${fromIndex + 1}`);
+              continue;
+            }
             if (position != null) {
-              next = moveEffectToIndex(next, track.id, movedFxId, position - 1).execute(next);
+              next = moveEffectToIndex(next, track.id, movedFxId, toIndex).execute(next);
             } else {
               next = moveEffect(next, track.id, movedFxId, direction as -1 | 1).execute(next);
             }
@@ -4443,10 +4528,12 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
             parts.push(`${track.name}: ${chain}`);
           }
           if (moved === 0) {
+            if (failed === 0) return { text: `nothing changed — ${parts.join("; ")}`, mutated: false };
             return mcpError("EXECUTION_FAILED", `reorder failed — ${parts.join("; ")}`);
           }
           ctx.execute(snapshot("mcpFxReorder", `MCP: reorder ${effect}#${reorderIndex}`, before, next));
-          return { text: `reorder ${effect}#${reorderIndex}: ${parts.join("; ")} — one undo step`, mutated: true };
+          const text = `reorder ${effect}#${reorderIndex}: ${parts.join("; ")} — one undo step`;
+          return failed > 0 ? mcpError("PARTIAL_FAILURE", text, { mutated: true }) : { text, mutated: true };
         } catch (error) {
           return mcpError(
             "EXECUTION_FAILED",
@@ -4454,44 +4541,45 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           );
         }
       }
-      const perInstance = record.instance != null && action !== "more" && action !== "less";
-      const instanceWanted = Math.max(1, Math.round(Number(record.instance ?? 1)));
+      const perInstance = hasInstance;
+      const instanceWanted = hasInstance ? (record.instance as number) : 1;
       if (action === "remove" && ctx.allowDestructive?.() !== true) return destructiveRefusal();
       // eq (and any knob-less effect) has no single "primary knob" — never
       // pretend: point at kyx_plugin_param instead of throwing deep inside
       // the applier. remove/bypass/reorder do NOT need a knob.
-      if (!perInstance && action !== "remove" && !(effect in EFFECT_KNOB)) {
-        return {
-          text:
-            `fx op failed: "${effect}" has no single primary knob for more/less — ` +
+      if ((action === "more" || action === "less") && !(effect in EFFECT_KNOB)) {
+        return mcpError(
+          "UNKNOWN_REQUEST",
+          `fx op failed: "${effect}" has no single primary knob for more/less — ` +
             `list its parameters with kyx_catalog subject:effect, then set them via kyx_plugin_param`,
-          mutated: false,
-        };
+        );
       }
       if (perInstance) {
         // Instance-scoped remove/bypass/enable: the Nth same-type instance
         // per targeted track, folded into ONE undo snapshot.
         try {
-          const before = ctx.getDoc();
-          const targetIds = targets.length === 1 ? tracksInFamily(before, targets[0]) : targets;
           let next = before;
           const parts: string[] = [];
           let touched = 0;
+          let failed = 0;
           for (const targetId of targetIds) {
             const track = before.tracks.find((t) => t.id === targetId);
             if (!track) {
               parts.push(`${targetId}: no such track`);
+              failed += 1;
               continue;
             }
             const instances = track.effects.filter((fx) => fx.type === effect);
             if (instances.length === 0) {
               parts.push(`${track.name}: no ${effect} instance`);
+              failed += 1;
               continue;
             }
             if (instances.length < instanceWanted) {
               parts.push(
                 `${track.name}: ${effect} instance #${instanceWanted} does not exist (chain has ${instances.length})`,
               );
+              failed += 1;
               continue;
             }
             const fx = instances[instanceWanted - 1];
@@ -4513,10 +4601,12 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
             }
           }
           if (touched === 0) {
+            if (failed > 0) return mcpError("EXECUTION_FAILED", `nothing changed — ${parts.join("; ")}`);
             return { text: `nothing changed — ${parts.join("; ")}`, mutated: false };
           }
           ctx.execute(snapshot("mcpFxInstance", `MCP: ${action} ${effect}#${instanceWanted}`, before, next));
-          return { text: `${parts.join("; ")} — one undo step`, mutated: true };
+          const text = `${parts.join("; ")} — one undo step`;
+          return failed > 0 ? mcpError("PARTIAL_FAILURE", text, { mutated: true }) : { text, mutated: true };
         } catch (error) {
           return mcpError(
             "EXECUTION_FAILED",
@@ -4525,7 +4615,6 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         }
       }
       try {
-        const before = ctx.getDoc();
         // bypass/enable flip the BYPASS FLAG (never delete the instance);
         // more/less turn the primary knob; remove deletes (D4-gated).
         if (action === "bypass" || action === "enable") {
@@ -6903,13 +6992,49 @@ function tracksInFamily(doc: ProjectDocument, family: string): string[] {
 
 /** Target resolution for writes that accept either an exact trackId or a
  * family: trackId wins when present (and must exist), else the family must
- * be non-empty. Returns an error string for the caller to surface. */
-function explicitTargets(record: Record<string, unknown>): string[] | string {
-  const trackId = typeof record.trackId === "string" ? record.trackId.trim() : "";
-  if (trackId !== "") return [trackId];
-  const family = typeof record.family === "string" ? record.family.trim() : "";
-  if (family !== "") return [family];
-  return "no target — pass trackId (from kyx_state tracks) or family";
+ * be non-empty. Malformed selectors and unknown targets stay distinguishable
+ * so the caller can return the right machine-readable error code. */
+function explicitTargets(
+  doc: ProjectDocument,
+  record: Record<string, unknown>,
+): { selectors: string[]; trackIds: string[] } | { errorCode: "INVALID_ARGUMENTS" | "UNKNOWN_TARGET"; reason: string } {
+  const hasTrackId = Object.prototype.hasOwnProperty.call(record, "trackId");
+  const rawTrackId = record.trackId;
+  const hasFamily = Object.prototype.hasOwnProperty.call(record, "family");
+  const rawFamily = record.family;
+  const validFamilies = ["drums", "bass", "chords", "lead", "vocal"];
+
+  if (hasFamily && (typeof rawFamily !== "string" || !validFamilies.includes(rawFamily.trim()))) {
+    return { errorCode: "INVALID_ARGUMENTS", reason: "family must be drums, bass, chords, lead, or vocal" };
+  }
+  if (hasTrackId) {
+    if (typeof rawTrackId !== "string" || rawTrackId.trim() === "" || rawTrackId.length > 128) {
+      return {
+        errorCode: "INVALID_ARGUMENTS",
+        reason: "trackId must be a non-empty string of at most 128 characters",
+      };
+    }
+    const trackId = rawTrackId;
+    if (!doc.tracks.some((track) => track.id === trackId)) {
+      return {
+        errorCode: "UNKNOWN_TARGET",
+        reason: `no track with id "${trackId}" — list ids via kyx_state subject:tracks`,
+      };
+    }
+    return { selectors: [trackId], trackIds: [trackId] };
+  }
+  if (!hasFamily || typeof rawFamily !== "string") {
+    return {
+      errorCode: "INVALID_ARGUMENTS",
+      reason: "no target — pass trackId (from kyx_state subject:tracks) or family",
+    };
+  }
+  const family = rawFamily.trim();
+  const trackIds = tracksInFamily(doc, family);
+  if (trackIds.length === 0) {
+    return { errorCode: "UNKNOWN_TARGET", reason: `no track matches family "${family}"` };
+  }
+  return { selectors: [family], trackIds };
 }
 
 /** Track ids for kyx_tracks remove/rename: exact trackId (single, group
