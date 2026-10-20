@@ -1,6 +1,7 @@
 import { buildPhrasePlan } from "../ai/phrase";
 import { canonicalizePattern, contentHash, createGenerationRecipe } from "../ai/evaluation";
 import { resolveGrooveForGeneration } from "../ai/generator";
+import { aiMeterFor, stepInBar } from "../ai/meter";
 import type { GenerateOptions } from "../ai/types";
 import { inferPadRole } from "../ai/pad-roles";
 import { measureDrumQuality, measureMelodicQuality } from "../ai/quality";
@@ -178,7 +179,9 @@ export function repairGeneratedPattern(
     }
   }
 
-  const phrasePlan = hasValidPhrasePlan(source.phrasePlan, stepCount) ? source.phrasePlan! : buildPhrasePlan(stepCount);
+  const phrasePlan = hasValidPhrasePlan(source.phrasePlan, stepCount)
+    ? source.phrasePlan!
+    : buildPhrasePlan(stepCount, aiMeterFor(doc.timeSignature));
   if (!hasValidPhrasePlan(source.phrasePlan, stepCount)) repairs.add("phrase-plan");
 
   return {
@@ -212,6 +215,7 @@ export function refreshPatternOutputHash(doc: ProjectDocument, pattern: Pattern)
 export function refreshPatternQuality(doc: ProjectDocument, pattern: Pattern, options: GenerateOptions): Pattern {
   if (!pattern.generation) return pattern;
   const groove = resolveGrooveForGeneration(doc, options);
+  const meter = aiMeterFor(options.timeSignature ?? doc.timeSignature);
   const drumTracks = doc.tracks.filter((track) => track.kind === "drum");
   const targetDrumTrack = options.drumTrackId
     ? (drumTracks.find((track) => track.id === options.drumTrackId) ?? drumTracks[0])
@@ -219,8 +223,8 @@ export function refreshPatternQuality(doc: ProjectDocument, pattern: Pattern, op
   const drumRows = targetDrumTrack?.kind === "drum" ? targetDrumTrack.pads.map((pad) => pattern.rows[pad.id]) : [];
   const padRoles =
     targetDrumTrack?.kind === "drum" ? targetDrumTrack.pads.map((pad, index) => inferPadRole(pad.name, index)) : [];
-  const drumQuality = measureDrumQuality(groove, drumRows, padRoles, options.stepCount);
-  const styleGate = evaluateStyleDistance(groove, drumRows, options.stepCount);
+  const drumQuality = measureDrumQuality(groove, drumRows, padRoles, options.stepCount, meter);
+  const styleGate = evaluateStyleDistance(groove, drumRows, options.stepCount, meter);
   const melodicQuality = measureMelodicQuality(
     Object.values(pattern.notes ?? {}).flat(),
     options.stepCount,
@@ -246,6 +250,7 @@ export function refreshPatternQuality(doc: ProjectDocument, pattern: Pattern, op
 /** Minimal, always-valid offline output used when the primary generator fails. */
 export function createFallbackPattern(doc: ProjectDocument, options: GenerateOptions): Pattern {
   const groove = resolveGrooveForGeneration(doc, options);
+  const meter = aiMeterFor(options.timeSignature ?? doc.timeSignature);
   const drumTracks = doc.tracks.filter((track) => track.kind === "drum");
   const targetDrumTrack = options.drumTrackId
     ? (drumTracks.find((track) => track.id === options.drumTrackId) ?? drumTracks[0])
@@ -255,8 +260,10 @@ export function createFallbackPattern(doc: ProjectDocument, options: GenerateOpt
     for (const [padIndex, pad] of targetDrumTrack?.pads.entries() ?? []) {
       if (!groove.activePads.includes(padIndex)) continue;
       const base = groove.patterns[0]?.[padIndex] ?? [];
+      // The groove's material is folded at the METRICAL bar, so the second
+      // bar of a pattern draws the groove's first bar again.
       rows[pad.id] = Array.from({ length: options.stepCount }, (_, step) =>
-        clamp(base[step % Math.max(1, base.length)], 0, 1, 0),
+        clamp(base[stepInBar(meter, step) % Math.max(1, base.length)], 0, 1, 0),
       );
     }
   }
@@ -266,7 +273,7 @@ export function createFallbackPattern(doc: ProjectDocument, options: GenerateOpt
     stepCount: options.stepCount,
     rows,
     notes: {},
-    phrasePlan: buildPhrasePlan(options.stepCount),
+    phrasePlan: buildPhrasePlan(options.stepCount, meter),
     generation: {
       ...createGenerationRecipe(options, groove.id, null),
       outputContentHash: "",

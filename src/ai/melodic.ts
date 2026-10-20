@@ -4,6 +4,7 @@ import { STEP_TICKS } from "../project-model/types";
 import { parseKey, snapToScale, SCALE_INTERVALS } from "../project-model/scales";
 import { uid } from "../shared/ids";
 import { MELODIC_BY_GENRE, MELODIC_BY_PROFILE, MELODIC_BY_STYLE } from "./grooves/melodic-data";
+import { aiMeterFor } from "./meter";
 
 /**
  * True when the prompt's STYLE names a melodic DIALECT for the genre (the
@@ -283,7 +284,11 @@ export function generateMelodicParts(
 
   const parts: MelodicParts = { bass: [], chord: [], lead: [] };
   const maxSteps = options.stepCount;
-  const bars = options.stepCount / 16;
+  // The melodic density is per METRICAL bar (ADR 0057 Stage 2b): a bar is
+  // what the melody phrases over, so a 3/4 bar asks for three-quarters of
+  // the notes a 4/4 bar does, not a bar and a quarter.
+  const meter = aiMeterFor(options.timeSignature);
+  const bars = options.stepCount / meter.stepsPerBar;
 
   // P2 melodic dynamics — the intent sliders reach the melody, not just the
   // drums. Both gains are identity at the intent defaults (energy 0.7,

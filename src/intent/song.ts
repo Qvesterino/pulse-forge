@@ -2493,7 +2493,7 @@ function applyLyricProsodyToPattern(
   const withProsody = { ...pattern, notes: { ...pattern.notes, [leadTrackId]: shaped } };
   return refreshPatternOutputHash(
     doc,
-    refreshPatternQuality(doc, withProsody, generateOptionsFromIntent(sectionIntent)),
+    refreshPatternQuality(doc, withProsody, generateOptionsFromIntent(sectionIntent, doc.timeSignature)),
   );
 }
 

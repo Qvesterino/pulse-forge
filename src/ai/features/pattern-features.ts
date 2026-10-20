@@ -5,6 +5,7 @@ import { measureDrumQuality, measureMelodicQuality } from "../quality";
 import { evaluateStyleDistance } from "../style-quality";
 import { inferPadRole, type PadRole } from "../pad-roles";
 import { resolveGrooveForGeneration } from "../generator";
+import { aiMeterFor, isBackbeatAnchor, stepInBar, type AiMeter } from "../meter";
 
 /**
  * features.v1 — the fixed, versioned feature contract for the Intent Engine
@@ -210,6 +211,12 @@ function drumStats(doc: ProjectDocument, pattern: Pattern, options: GenerateOpti
   };
   if (!drumTrack || drumTrack.kind !== "drum") return stats;
   const stepCount = options.stepCount;
+  // The metrical positions of the DOCUMENT's bar (ADR 0057 Stage 2b): the
+  // downbeat, the half-bar, the pulse and the backbeat are the meter's, not
+  // 4/4's. In 4/4 every one of them is the legacy position.
+  const meter = aiMeterFor(options.timeSignature ?? doc.timeSignature);
+  const halfBar = meter.stepsPerBar / 2;
+  const halfPulse = Math.max(1, Math.floor(meter.pulseSteps / 2));
   for (const [index, pad] of drumTrack.pads.entries()) {
     const row = pattern.rows[pad.id];
     const role = inferPadRole(pad.name, index);
@@ -223,8 +230,9 @@ function drumStats(doc: ProjectDocument, pattern: Pattern, options: GenerateOpti
       if (value <= 0) continue;
       rowHits += 1;
       stats.velocities.push(value);
-      if (step % 4 === 0) stats.offbeats += role === "closedHat" || role === "openHat" ? 1 : 0;
-      if (step % 2 === 1) stats.offbeats += role === "closedHat" ? 1 : 0;
+      const inBar = stepInBar(meter, step);
+      if (inBar % meter.pulseSteps === 0) stats.offbeats += role === "closedHat" || role === "openHat" ? 1 : 0;
+      if (inBar % halfPulse !== 0) stats.offbeats += role === "closedHat" ? 1 : 0;
       const meta = pattern.stepMeta?.[pad.id]?.[step];
       if (meta) {
         stats.metaEntries += 1;
@@ -232,11 +240,11 @@ function drumStats(doc: ProjectDocument, pattern: Pattern, options: GenerateOpti
         if ((meta.probability ?? 1) < 0.5 || value < 0.45) stats.ghosts += 1;
       }
       if (value > 0 && (role === "kick" || role === "snare" || role === "clap")) {
-        if (step % 16 === 0 || step % 16 === 8) {
+        if (inBar === 0 || inBar === halfBar) {
           stats.downbeatTotal += role === "kick" ? 1 : 0;
           stats.downbeatCovered += role === "kick" ? 1 : 0;
         }
-        if (step % 16 === 4 || step % 16 === 12) {
+        if (isBackbeatAnchor(meter, step)) {
           stats.backbeatTotal += role === "snare" || role === "clap" ? 1 : 0;
           stats.backbeatCovered += (role === "snare" || role === "clap") && value > 0 ? 1 : 0;
         }
@@ -264,7 +272,7 @@ interface MelodicStats {
   repeatedDurationPattern: number;
 }
 
-function melodicStats(pattern: Pattern, options: GenerateOptions): MelodicStats {
+function melodicStats(pattern: Pattern, options: GenerateOptions, meter: AiMeter): MelodicStats {
   const trackIds = Object.keys(pattern.notes ?? {});
   const notes: NoteEvent[] = [];
   const perTrackShares: number[] = [];
@@ -284,8 +292,8 @@ function melodicStats(pattern: Pattern, options: GenerateOptions): MelodicStats 
     }
   }
   const stepCount = options.stepCount;
-  const phraseBars = Math.max(1, Math.floor(stepCount / 16 / 4) || 1);
-  const phraseTicks = phraseBars * 16 * 120;
+  const phraseBars = Math.max(1, Math.floor(stepCount / meter.stepsPerBar / 4) || 1);
+  const phraseTicks = phraseBars * meter.stepsPerBar * 120;
   let crossingPhrase = 0;
   let longestGap = 0;
   const sortedAll = [...notes].sort((a, b) => a.start - b.start);
@@ -339,11 +347,15 @@ export function extractPatternFeatures(input: PatternFeatureInput): PatternFeatu
 
   const groove: GrooveData = resolveGrooveForGeneration(doc, options);
   const stepCount = Math.max(1, options.stepCount);
-  const bars = Math.max(1, stepCount / 16);
+  // The metrical bar of the document (ADR 0057 Stage 2b): the pattern's
+  // length in bars, the phrase length and the quality gates all measure the
+  // metrical bar, not 4/4's sixteen steps.
+  const meter = aiMeterFor(options.timeSignature ?? doc.timeSignature);
+  const bars = Math.max(1, stepCount / meter.stepsPerBar);
   const drums = drumStats(doc, pattern, options);
-  const melodic = melodicStats(pattern, options);
-  const drumQuality = measureDrumQuality(groove, drums.rows, drums.roles, stepCount);
-  const styleGate = evaluateStyleDistance(groove, drums.rows, stepCount);
+  const melodic = melodicStats(pattern, options, meter);
+  const drumQuality = measureDrumQuality(groove, drums.rows, drums.roles, stepCount, meter);
+  const styleGate = evaluateStyleDistance(groove, drums.rows, stepCount, meter);
   const melodicQuality = measureMelodicQuality(melodic.notes, stepCount, options.key ?? doc.key);
 
   const intentBpmIn = (bpm: number): boolean =>
@@ -538,7 +550,8 @@ function candidateDensityEnergy(candidate: Pattern, options: GenerateOptions): {
 function styleDistanceOf(candidate: Pattern, doc: ProjectDocument, options: GenerateOptions): number {
   const groove: GrooveData = resolveGrooveForGeneration(doc, options);
   const rows = Object.values(candidate.rows ?? {});
-  return evaluateStyleDistance(groove, rows, options.stepCount).distance;
+  const meter = aiMeterFor(options.timeSignature ?? doc.timeSignature);
+  return evaluateStyleDistance(groove, rows, options.stepCount, meter).distance;
 }
 
 function anchorCoverageOf(candidate: Pattern, doc: ProjectDocument, options: GenerateOptions): number {
@@ -546,5 +559,6 @@ function anchorCoverageOf(candidate: Pattern, doc: ProjectDocument, options: Gen
   const drumTrack = doc.tracks.find((track) => track.kind === "drum");
   const rows = drumTrack?.kind === "drum" ? drumTrack.pads.map((pad) => candidate.rows?.[pad.id]) : [];
   const roles = drumTrack?.kind === "drum" ? drumTrack.pads.map((pad, index) => inferPadRole(pad.name, index)) : [];
-  return measureDrumQuality(groove, rows, roles, options.stepCount).anchorCoverage;
+  const meter = aiMeterFor(options.timeSignature ?? doc.timeSignature);
+  return measureDrumQuality(groove, rows, roles, options.stepCount, meter).anchorCoverage;
 }

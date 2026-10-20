@@ -1,6 +1,6 @@
 # ADR 0057 — The step grid follows the meter: one bar is `ticksPerBar(doc) / STEP_TICKS` steps
 
-Date: 2026-10-20 · Status: Accepted (v2 — Stage 1, 1b and 2a shipped) · Scope: pattern grid, sequencer ruler, piano roll grid, pattern labels, transfer disclosure, intent engine, MCP surface
+Date: 2026-10-20 · Status: Accepted (v3 — Stage 1, 1b, 2a and 2b shipped) · Scope: pattern grid, sequencer ruler, piano roll grid, pattern labels, transfer disclosure, intent engine, MCP surface, AI layer
 
 ## Context
 
@@ -183,6 +183,166 @@ determinism invariant that needs its own measured baseline. The content-shaped
 producers (MIDI import, live capture, the 4/4 templates) resize user material.
 The ONNX feature vectors encode a fixed 16-step bar. Those are Stage 2b.
 
+## Stage 2b — the AI layer speaks the document's metre
+
+The grid was truthful and the intent engine asked in bars, but the GENERATOR was
+still the last layer that believed a bar is sixteen sixteenth steps. Every
+generation decision it made — where the bars are, where the phrase cuts, where
+the fill lands, where the kick and the snare sit, how long the melody's bar is,
+how the groove material is folded — was 4/4 arithmetic wearing the clothes of a
+default.
+
+### What was measured, before anything changed
+
+Generation in a 3/4 document did not fail. It produced a pattern and ACCEPTED it.
+The defect was not a rejection, it was a **truncated 4/4 groove**:
+
+| metre | generated kick | generated snare | what it was                                                  |
+| ----- | -------------- | --------------- | ------------------------------------------------------------ |
+| 4/4   | 0, 4, 8, 12    | 4, 12           | the house groove, correct                                    |
+| 3/4   | 0, 4, 8        | 4               | the 4/4 bar cut at step 12 — the beat-4 backbeat simply gone |
+| 6/8   | 0, 4, 8        | 4               | the same truncation, called a shuffle                        |
+
+Three separate defects shared one cause: the bar is 16 steps.
+
+### One owner: `src/ai/meter.ts`
+
+The AI layer's metrical facts live in ONE module, `src/ai/meter.ts`. It does not
+re-implement the bar formula — `stepsPerBarFor` / `stepsPerBeatFor` come from
+`src/project-model/grid.ts`, so the pattern grid and the generator cannot drift
+apart. It owns the **pulse rule**:
+
+| metre | pulse             | kick            | backbeat                    |
+| ----- | ----------------- | --------------- | --------------------------- |
+| 4/4   | quarter (4)       | 0, 4, 8, 12     | 4, 12                       |
+| 3/4   | quarter (4)       | 0, 4, 8         | 4                           |
+| 2/4   | quarter (4)       | 0, 4            | 4                           |
+| 5/4   | quarter (4)       | 0, 4, 8, 12, 16 | 4, 12                       |
+| 2/2   | half (8)          | 0, 8            | 8                           |
+| 6/8   | dotted quarter(6) | 0, 6            | 2, 8 (the "2 & 5")          |
+| 12/8  | dotted quarter(6) | 0, 6, 12, 18    | 2, 8, 14, 20                |
+| 7/8   | the whole bar     | 0               | — (the grouping is content) |
+
+Three regimes:
+
+1. **SIMPLE** — the denominator's unit is at least a quarter note (x/1, x/2,
+   x/4): the pulse IS that unit, the kick rides every pulse and the backbeat
+   every SECOND pulse (beats 2 and 4). In 4/4 this is exactly the legacy rule.
+2. **COMPOUND** — x/8 (or finer) with a numerator that is a multiple of three:
+   the units group in threes (the dotted quarter). The kick rides the GROUP;
+   the backbeat is the SECOND unit inside each group — the shuffle's "2 & 5". A
+   compound meter deliberately does NOT get "every second pulse": that would put
+   the snare on the second dotted quarter and turn a shuffle into a tresillo.
+3. **IRREGULAR** — a bar that does not divide into equal pulses of at least a
+   quarter note (7/8, 5/8, 3/16): the whole bar is one pulse, only the downbeat
+   is anchored, and the grouping (2+2+3) is GROOVE CONTENT, not arithmetic.
+   Declared, not guessed.
+
+### The seam: the metre travels in the options, and only when it is not 4/4
+
+`GenerateOptions.timeSignature` is the carrier, and it obeys the same rule as
+Stage 2a's `bars`: it is **present only when the metre is not 4/4**. In 4/4 the
+options object, the generation recipe and the recipe's hash are the objects they
+have always been. In any other metre the metre is part of the generation
+IDENTITY — the same seed in 3/4 and in 4/4 are different beats — so the recipe
+records it (`PatternGeneration.timeSignature`).
+
+The document's metre reaches the layer at `planGeneration(input, doc)`, and
+`generatePattern(doc, options)` falls back to the document's metre when the
+options do not carry one (the dice tray, AI Flip and the direct command paths
+all land there).
+
+### What changed, layer by layer
+
+- `src/ai/drums.ts` — the bar count, the base sequence's length, the fill's
+  placement, the phrase contour's length, the metric accents' hierarchy and the
+  density pruning's anchor protection follow the metre.
+- `src/ai/phrase.ts` — the phrase plan cuts at the metrical bar line, and the
+  fill zone is the bar's last PULSE (a quarter note in 4/4, a dotted quarter in
+  6/8).
+- `src/ai/quality.ts` — the anchor rule, the syncopation metric, the reference
+  phase and the bar-repetition slices are the metrical ones.
+- `src/ai/style-quality.ts` — the syncopation weight, the anchor test and the
+  downbeat ratio are measured against the metrical pulse.
+- `src/ai/melodic.ts`, `src/ai/melodicDice.ts` — the melodic density is per
+  metrical bar; the dice phrase's downbeat bonus and its bar-end breath sit on
+  the metrical bar's first and last step.
+- `src/ai/evaluation.ts`, `src/ai/features/pattern-features.ts` — the downbeat
+  count, the pattern's length in bars and the phrase length are metrical.
+- `src/ai/flip.ts` — the flipped pattern is a whole number of the DOCUMENT's
+  bars (the LOOP's own grid stays sixteen steps: the loop's metre is not known).
+- `src/intent/pattern-verbs.ts` — "thin the drums" keeps the DOCUMENT's
+  downbeat (the beat 1 of every 3/4 bar), not every sixteenth step; the ghost
+  verb adds hits off the metrical pulse. This is the intent layer's last
+  hand-counted bar, and it was the same defect in a different room.
+
+### The groove reference folds at the metrical bar
+
+The reference groove is 4/4 material. Reading it at `step % 16` meant the second
+bar of a 3/4 pattern reached past the groove's material. It now folds at the
+**metrical** bar, so the second bar draws the groove's FIRST bar again.
+
+### Two anchor paths — repair, and write
+
+- **REPAIR** (every metre): the reference has a hit at the anchor and the
+  sampler dropped it → the reference's own hit goes back. This is the legacy
+  rule, unchanged.
+- **WRITE** (any metre but 4/4): the reference has NOTHING at the anchor. The
+  groove library is 4/4 material, so it carries no skeleton for a 3/4 or a 6/8
+  bar — without this path the generator would write a truncated 4/4 bar and
+  call it 6/8. The metre writes the anchor, and the groove still writes its
+  loudness (the nearest reference hit of that role).
+
+4/4 is deliberately excluded from the WRITE path: that metre's behaviour is the
+promise the overwhelming majority of the product depends on, and its material
+already carries the metrical skeleton. **Stage 2c (metrical groove content)
+will retire the WRITE path everywhere**, because the reference will then hold
+the anchors itself.
+
+### 4/4 is byte-identical — measured, not assumed
+
+The baseline was captured against HEAD with the CANONICAL content hash (rows,
+notes, step meta — project UUIDs excluded, so the number is reproducible; an
+object hash would change on every run because the pattern's own id is a random
+UUID):
+
+| case               | content hash |
+| ------------------ | ------------ |
+| 4/4 house (seed 1) | `17e1439d`   |
+| 4/4 trap           | `688279c1`   |
+| 4/4 dnb            | `47f20c59`   |
+| 4/4 house (seed 2) | `b4f0ae78`   |
+
+Identical hash, identical hit positions, identical note starts, identical recipe
+and identical phrase plan. `tests/adr0057-ai-meter.test.ts` pins them.
+
+The non-4/4 rows changed, and they changed towards the metre: 3/4 house now
+generates kick 0, 4, 8 and snare 4; 6/8 house generates kick 0, 6 and snare
+2, 8 — a shuffle that is actually a shuffle.
+
+### A guard, because a ledger is not a promise
+
+`src/ai/meter.ts` is the only module allowed to know how long a bar is. The
+guard walks `src/ai/` and fails on a numeric SIXTEEN in a multiplicative
+expression (`x * 16`, `x / 16`, `x % 16`) — the shape of the old assumption. The
+declared exceptions (the Markov model's 4/4 state space, the corpus ingest's
+training frame, the pinned ONNX feature frames, the v2 feature contract's
+chord-duration fraction) are listed with their reasons, and **the ledger may
+only shrink**. The guard proves it can fail on a synthetic violation.
+
+### What is still open (and where)
+
+- **Stage 2c — metrical groove content.** The groove library is 4/4 material:
+  the Markov model's state space is sixteen positions, the ONNX priors encode a
+  sixteen-step bar, and the corpus was ingested on that frame. Those are pinned
+  model contracts; changing them is a versioned step (a `features.v3` contract
+  with an explicitly metrical frame, and re-validating the pinned manifests).
+- **Content-shaped producers** — the MIDI import's 16-rounding, live capture's
+  16-slot grid, the 4/4 templates — still resize or wrap user material. They
+  are producers of content, not readers of the metre.
+- **The assist layer** (`src/assist/patternOps.ts`) still counts bars by hand,
+  because an assist operation works on a pattern and has no document.
+
 ## Stage 2 — what is still open (and where)
 
 The grid now tells the truth, a NEW pattern is right, the intent engine asks in
@@ -193,12 +353,11 @@ remaining work is to make every producer and every contract speak the
 document's meter. The highest-risk sites, mapped (read-only sweep,
 2026-10-20):
 
-1. **The AI layer.** `src/ai/phrase.ts` cuts the phrase on 16-step boundaries
-   and anchors the kick/snare with `step % 4` / `step % 8 === 4`; `src/ai/markov.ts`
-   wraps its state machine `mod 16`; `src/ai/quality.ts` and
-   `src/ai/features/pattern-features.ts` detect downbeats with `step % 16`.
-   Changing these changes generated output at a fixed seed — a determinism
-   invariant, so it needs its own measured baseline.
+1. **The AI layer.** **DONE in Stage 2b** — `src/ai/meter.ts` owns the metrical
+   facts; the phrase, the anchors, the fills, the melodic density and the
+   quality metrics follow the document's metre, and 4/4 is byte-identical
+   (measured against a captured baseline). The groove CONTENT is still 4/4 —
+   that is Stage 2c.
 2. **The intent / brief contracts.** **DONE in Stage 2a** — the five gates
    (`src/intent/schema.ts`, `project-brief.ts`, `creative-task-contract.ts`,
    `src/project-model/producer-brief.ts`, `src/intent/normalize.ts`) no longer
@@ -244,6 +403,15 @@ contour's bar lines. **The ledger may only shrink.**
   same spec, and therefore the same beat, as the legacy step-framed one.
 - **The MCP surface accepts every whole number of the document's bars** and
   reads the length back in both units.
+- **The AI layer speaks the document's metre**: the bar count, the phrase cut,
+  the fill, the kick and the snare sit where that metre puts them, and the
+  groove reference folds at the metrical bar.
+- **A compound metre gets a shuffle, not a tresillo**: in 6/8 the backbeat is
+  the second unit inside each group of three.
+- **4/4 keeps the same generated beat** — the same canonical content hash, the
+  same anchors, the same recipe, and no metre in the recipe at all.
+- **No AI module measures a bar as sixteen steps** — the guard proves it can
+  fail, and the 4/4 ledger may only shrink.
 
 ## Consequences and scope limits
 
@@ -272,10 +440,12 @@ contour's bar lines. **The ledger may only shrink.**
 
 - `src/project-model/grid.ts` — the grid truth (one owner)
 - `src/project-model/schema.ts` — `ticksPerBarFor`, `ticksPerBeatFor`
+- `src/ai/meter.ts` — the AI layer's metrical truth (one owner)
 - `src/ui/Sequencer.tsx` — the ruler and the step cells
 - `src/ui/PianoRoll.tsx` — the bar lines, the note-length menu
 - `src/export/transfer-import.ts` — `patternGridWarning`
 - `tests/adr0057-metrical-step-grid.test.ts` — the truth table and the guard
 - `tests/adr0057-metrical-intent-length.test.ts` — the intent engine's bars, the MCP surface's bars, and the second guard
+- `tests/adr0057-ai-meter.test.ts` — the AI layer's metre, the 4/4 baseline, and the third guard
 - `tests/adr0056-pattern-grid.test.ts` — the drift, and the whole-bar control
 - `docs/adr/0056-arrangement-bar-length-and-time-signature.md` — the arrangement's move onto the meter

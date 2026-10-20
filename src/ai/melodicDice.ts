@@ -3,6 +3,7 @@ import { uid } from "../shared/ids";
 import { STEP_TICKS } from "../project-model/types";
 import type { MusicalKey, NoteEvent, ProjectDocument } from "../project-model/types";
 import { getScalePitchesInRange } from "../project-model/scales";
+import { aiMeterFor, stepInBar } from "./meter";
 
 export interface MelodicPhraseOptions {
   seed: string;
@@ -37,6 +38,11 @@ export function buildMelodicPhrase(_doc: ProjectDocument, opts: MelodicPhraseOpt
   const lengthSteps = Math.max(1, Math.min(256, Math.round(opts.lengthSteps)));
   const density = Math.max(0.05, Math.min(0.95, opts.density));
   const energy = Math.max(0, Math.min(1, opts.energy));
+  // The metrical bar of the DOCUMENT (ADR 0057 Stage 2b): the downbeat bonus
+  // belongs to the bar's first step and the phrase breathes on the bar's last
+  // one. In 4/4 that is step 0 and step 15 — the legacy pair.
+  const meter = aiMeterFor(_doc?.timeSignature);
+  const lastStepInBar = meter.stepsPerBar - 1;
 
   // Start mid-range so phrases sit in a singable register, not at the extremes.
   let index = Math.floor(scale.length / 2);
@@ -45,9 +51,9 @@ export function buildMelodicPhrase(_doc: ProjectDocument, opts: MelodicPhraseOpt
   let guard = 0;
   while (step < lengthSteps && guard < lengthSteps * 4) {
     guard += 1;
-    const inBar = step % 16;
+    const inBar = stepInBar(meter, step);
     // Downbeats invite a note, phrase ends breathe.
-    const chance = density + (inBar === 0 ? 0.25 : 0) - (inBar === 15 ? 0.1 : 0);
+    const chance = density + (inBar === 0 ? 0.25 : 0) - (inBar === lastStepInBar ? 0.1 : 0);
     if (rng() > chance) {
       step += 1;
       continue;

@@ -5,6 +5,7 @@ import { canRatchet, ghostMultiplier, inferPadRole, type PadRole } from "./pad-r
 import { applyPhraseDynamics, buildPhrasePlan } from "./phrase";
 import { enforceDrumAnchors, repairDrumRow } from "./quality";
 import { enforceSyncopationBudget } from "./style-quality";
+import { aiMeterFor, barCount, stepInBar, type AiMeter } from "./meter";
 
 export interface DrumRandomStreams {
   variation?: () => number;
@@ -57,7 +58,13 @@ function applySwingToMeta(row: number[], padMeta: Map<number, StepMeta>, swing: 
 }
 
 /** Prune or densify a row to match density intent (0 sparse → 1 dense). */
-function pruneOrDensifyRow(row: number[], density: number | null, rand: () => number, allowGhosts = true): void {
+function pruneOrDensifyRow(
+  row: number[],
+  density: number | null,
+  rand: () => number,
+  allowGhosts = true,
+  meter: AiMeter = aiMeterFor(null),
+): void {
   if (density == null) return;
   // Neutral 0.45–0.55 → no change (preserve golden)
   if (density >= 0.45 && density <= 0.55) return;
@@ -71,8 +78,8 @@ function pruneOrDensifyRow(row: number[], density: number | null, rand: () => nu
     const sorted = [...hits].sort((a, b) => a.v - b.v);
     for (let k = 0; k < toPrune; k++) {
       const pick = sorted[k];
-      // Keep anchors (downbeats) 50% of the time even when sparse
-      if (pick.i % 4 === 0 && rand() < 0.5) continue;
+      // Keep anchors (the metrical pulse) 50% of the time even when sparse
+      if (pick.i % meter.pulseSteps === 0 && rand() < 0.5) continue;
       row[pick.i] = 0;
     }
   } else if (density > 0.55 && allowGhosts) {
@@ -99,10 +106,14 @@ export function generateDrumPattern(
   const diceComplexity = (options as GenerateOptions & { _diceComplexity?: number })._diceComplexity ?? null;
   const rows: number[][] = [];
   const meta = new Map<number, Map<number, StepMeta>>();
-  const bars = Math.ceil(options.stepCount / 16);
+  // The metrical facts of THIS generation (ADR 0057 Stage 2b): one bar, one
+  // pulse, one anchor rule. Absent a meter → 4/4, the legacy assumption.
+  const meter = aiMeterFor(options.timeSignature);
+  const stepsPerBar = meter.stepsPerBar;
+  const bars = barCount(meter, options.stepCount);
   const variationRand = streams.variation ?? rand;
   const metaRand = streams.meta ?? rand;
-  const phrasePlan = buildPhrasePlan(options.stepCount);
+  const phrasePlan = buildPhrasePlan(options.stepCount, meter);
 
   for (const padIndex of groove.activePads) {
     // SubSeed lock: skip generation entirely, preserve RNG for others
@@ -124,14 +135,16 @@ export function generateDrumPattern(
     const padPatterns = cachedPad.patterns;
     const model = cachedPad.model;
 
-    // Generate base 16-step sequence
-    const baseSequence = generatePadSequence(model, 16, rand, options.temperature);
+    // Generate the base sequence for ONE metrical bar. In 4/4 that is the
+    // legacy sixteen steps; in 3/4 it is twelve, so the bar is drawn from the
+    // groove's own material instead of being cut out of a 4/4 bar.
+    const baseSequence = generatePadSequence(model, stepsPerBar, rand, options.temperature);
 
     // Extend to full stepCount with bar-level variation (dice complexity/variation widens it)
     const barVarChance = diceComplexity != null ? 0.08 + diceComplexity * 0.22 : 0.15; // 0.08 sparse → 0.30 dense
     const fullSequence: number[] = [];
     for (let bar = 0; bar < bars; bar++) {
-      for (let step = 0; step < 16 && fullSequence.length < options.stepCount; step++) {
+      for (let step = 0; step < stepsPerBar && fullSequence.length < options.stepCount; step++) {
         let level = baseSequence[step];
         if (bar > 0 && level > 0 && variationRand() < barVarChance) {
           level = Math.max(0, Math.min(3, level + (variationRand() < 0.5 ? 1 : -1)));
@@ -156,7 +169,7 @@ export function generateDrumPattern(
     }
 
     // Dice density: prune or densify before anchors (keeps anchors intact after)
-    pruneOrDensifyRow(rows[padIndex], diceDensity, variationRand, options.constraints?.allowGhosts !== false);
+    pruneOrDensifyRow(rows[padIndex], diceDensity, variationRand, options.constraints?.allowGhosts !== false, meter);
 
     // Add fill variation at phrase boundaries (every 4 bars)
     addFillVariation(
@@ -166,26 +179,27 @@ export function generateDrumPattern(
       variationRand,
       4,
       options.constraints?.allowGhosts !== false,
+      meter,
     );
 
     // Keep genre/style anchors before phrase dynamics are applied.
     if (options.constraints?.preserveAnchors !== false) {
-      enforceDrumAnchors(rows[padIndex], padPatterns, role);
+      enforceDrumAnchors(rows[padIndex], padPatterns, role, meter);
     }
     // Complexity relaxes syncopation budget (more off-beat allowed)
     if (diceComplexity == null || diceComplexity < 0.65) {
-      enforceSyncopationBudget(rows[padIndex], padPatterns, role);
+      enforceSyncopationBudget(rows[padIndex], padPatterns, role, meter);
     }
-    applyPhraseDynamics(rows[padIndex], role, phrasePlan, variationRand);
+    applyPhraseDynamics(rows[padIndex], role, phrasePlan, variationRand, meter);
 
     // Apply phrase-level velocity contour (2-bar sine envelope)
-    applyPhraseContour(rows[padIndex], 0.15);
+    applyPhraseContour(rows[padIndex], 0.15, meter);
     // Metric accent (opt-in): drop off-beat hits toward the ghost band and
     // keep downbeats full, so the pad's velocity LAYERS pick the ghost /
     // accent timbres by musical position instead of by chance.
     const metricAccent = (options as GenerateOptions & { _metricAccent?: number })._metricAccent;
     if (typeof metricAccent === "number" && metricAccent > 0) {
-      applyMetricAccents(rows[padIndex], role, metricAccent);
+      applyMetricAccents(rows[padIndex], role, metricAccent, meter);
     }
     rows[padIndex] = repairDrumRow(rows[padIndex], options.stepCount);
 
@@ -295,9 +309,9 @@ function addStepMeta(
  * Apply phrase-level velocity contour: a sine wave envelope over each 2-bar
  * phrase that peaks at the midpoint, creating natural dynamic shaping.
  */
-function applyPhraseContour(row: number[], depth: number): void {
+function applyPhraseContour(row: number[], depth: number, meter: AiMeter = aiMeterFor(null)): void {
   if (depth <= 0) return;
-  const phraseLen = 32; // 2 bars
+  const phraseLen = 2 * meter.stepsPerBar; // 2 metrical bars
   for (let i = 0; i < row.length; i++) {
     if (row[i] <= 0) continue;
     const posInPhrase = (i % phraseLen) / phraseLen;
@@ -330,7 +344,12 @@ function applyPhraseContour(row: number[], depth: number): void {
  * snare/clap are anchors and move 60 % as far, everything else 75 %.
  * Pure and deterministic — no RNG.
  */
-export function applyMetricAccents(row: number[], role: PadRole, strength: number): void {
+export function applyMetricAccents(
+  row: number[],
+  role: PadRole,
+  strength: number,
+  meter: AiMeter = aiMeterFor(null),
+): void {
   if (strength <= 0) return;
   const roleGain =
     role === "closedHat" || role === "openHat" || role === "perc"
@@ -343,19 +362,23 @@ export function applyMetricAccents(row: number[], role: PadRole, strength: numbe
   // dynamic survives and a 16th never collapses to the floor.
   const amount = strength * roleGain * 0.3;
   const GHOST_FLOOR = 0.35;
+  // The metrical hierarchy of the document's bar (ADR 0057 Stage 2b):
+  // downbeat, half-bar, pulse, off-pulse. In 4/4 that is the legacy
+  // 0 / 8 / 4-and-12 / rest.
+  const halfBar = meter.stepsPerBar / 2;
   for (let i = 0; i < row.length; i++) {
     const v = row[i];
     if (v <= 0 || v < GHOST_FLOOR) continue;
-    const s = i % 16;
-    // Signed hierarchy: downbeat +1, backbeat +0.4, other beats ~0, 16ths −1.
-    const shape = s === 0 ? 1 : s === 8 ? 0.4 : s % 4 === 0 ? 0.1 : -1;
+    const s = stepInBar(meter, i);
+    const shape = s === 0 ? 1 : s === halfBar ? 0.4 : s % meter.pulseSteps === 0 ? 0.1 : -1;
     row[i] = Math.max(0.1, Math.min(1, v + shape * amount));
   }
 }
 
 /**
  * Add fill variation at phrase boundaries: every fillBars bars, boost
- * velocities and add ghost notes in the last 4 steps to simulate a fill.
+ * velocities and add ghost notes in the last pulse of the bar to simulate a
+ * fill.
  */
 function addFillVariation(
   row: number[],
@@ -364,13 +387,15 @@ function addFillVariation(
   rand: () => number,
   fillBars: number,
   allowGhosts = true,
+  meter: AiMeter = aiMeterFor(null),
 ): void {
   if (!row) return;
-  for (let bar = fillBars - 1; bar * 16 < row.length; bar += fillBars) {
-    const fillStart = bar * 16;
-    const fillEnd = Math.min(fillStart + 16, row.length);
-    // Last 4 steps of each fill phrase
-    for (let i = Math.max(fillStart, fillEnd - 4); i < fillEnd; i++) {
+  const stepsPerBar = meter.stepsPerBar;
+  for (let bar = fillBars - 1; bar * stepsPerBar < row.length; bar += fillBars) {
+    const fillStart = bar * stepsPerBar;
+    const fillEnd = Math.min(fillStart + stepsPerBar, row.length);
+    // Last pulse of each fill phrase
+    for (let i = Math.max(fillStart, fillEnd - meter.pulseSteps); i < fillEnd; i++) {
       if (row[i] > 0) {
         row[i] = Math.min(1, row[i] + 0.1 + rand() * 0.1); // boost existing hits
       } else if (allowGhosts && rand() < ghostWeight * 0.6) {

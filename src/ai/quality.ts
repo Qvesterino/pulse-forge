@@ -2,24 +2,99 @@ import type { NoteEvent, MusicalKey } from "../project-model/types";
 import { parseKey, SCALE_INTERVALS } from "../project-model/scales";
 import type { GrooveData } from "./types";
 import type { PadRole } from "./pad-roles";
+import { DEFAULT_AI_METER, isAnchorForRole, isDefaultMeter, referencePhase, stepInBar, type AiMeter } from "./meter";
 
 function clampVelocity(value: number): number {
   if (!Number.isFinite(value) || value <= 0) return 0;
   return Math.max(0.1, Math.min(1, value));
 }
 
-/** Preserve style anchors that a sparse sampler must not erase. */
-export function enforceDrumAnchors(row: number[], references: readonly number[][], role: PadRole): void {
+/** The groove row's own length — the reference grid the phase folds onto. */
+function referenceLength(references: readonly number[][]): number {
+  for (const reference of references) {
+    if (reference.length > 0) return reference.length;
+  }
+  return DEFAULT_AI_METER.stepsPerBar;
+}
+
+/**
+ * The groove's own velocity for this role, taken from the reference hit
+ * NEAREST the anchor (cyclically inside the reference's bar).
+ *
+ * Used when the metre has to WRITE an anchor the groove's material cannot
+ * express: the anchor's loudness still comes from the groove, so the written
+ * skeleton wears the genre's accent character instead of a flat default.
+ */
+function nearestRoleVelocity(references: readonly number[][], phase: number, length: number): number {
+  let bestValue = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < length; index++) {
+    const value = Math.max(...references.map((pattern) => pattern[index] ?? 0), 0);
+    if (value <= 0) continue;
+    const forward = (phase - index + length) % length;
+    const backward = (index - phase + length) % length;
+    const distance = Math.min(forward, backward);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestValue = value;
+    }
+  }
+  return bestValue;
+}
+
+/**
+ * Preserve style anchors that a sparse sampler must not erase.
+ *
+ * The anchors are the METRE's: the kick on the pulse, the snare on the
+ * backbeat (ADR 0057 Stage 2b). In 4/4 that is the legacy set — kick on
+ * 0/4/8/12, snare on 4/12 — so the rule is unchanged there; in 3/4 the snare
+ * lands on beat 2 only, and in 6/8 on the shuffle's 2 & 5.
+ *
+ * The reference row is read at the metrical bar's phase, so the second bar of
+ * a pattern draws the groove's FIRST bar again rather than reaching past the
+ * end of the groove's material.
+ *
+ * TWO PATHS, and the difference is measured, not cosmetic:
+ *
+ * - REPAIR (every metre): the reference has a hit at the anchor, the sampler
+ *   dropped it → put the reference's own hit back. This is the legacy rule.
+ * - WRITE (any metre but 4/4): the reference has NOTHING at the anchor — the
+ *   groove library is 4/4 material, so it carries no skeleton for a 3/4 or a
+ *   6/8 bar. Without this path the generator would write a truncated 4/4 bar
+ *   and call it 6/8. The metre writes the anchor, and the groove still writes
+ *   its loudness (the nearest reference hit of that role).
+ *
+ * 4/4 is deliberately excluded from the WRITE path: that metre's behaviour is
+ * the promise the overwhelming majority of the product depends on, and its
+ * material already carries the metrical skeleton. Stage 2c (metrical groove
+ * content) will make the WRITE path unnecessary everywhere, because the
+ * reference will then hold the anchors itself.
+ */
+export function enforceDrumAnchors(
+  row: number[],
+  references: readonly number[][],
+  role: PadRole,
+  meter: AiMeter = DEFAULT_AI_METER,
+): void {
   if (role !== "kick" && role !== "snare" && role !== "clap") return;
 
-  const anchorPeriod = role === "kick" ? 4 : 8;
-  const anchorOffset = role === "kick" ? 0 : 4;
-  for (let step = anchorOffset; step < row.length; step += anchorPeriod) {
-    const reference = Math.max(...references.map((pattern) => pattern[step % 16] ?? 0), 0);
-    if (reference <= 0 || row[step] > 0) continue;
-    // Deterministic repair: keep the reference's character, but leave room
-    // for velocity contour and later phrase dynamics.
-    row[step] = clampVelocity(Math.max(reference * 0.85, 0.35));
+  const length = referenceLength(references);
+  const frozen = isDefaultMeter(meter.signature);
+  for (let step = 0; step < row.length; step++) {
+    if (!isAnchorForRole(meter, role === "kick" ? "kick" : "snare", step)) continue;
+    if (row[step] > 0) continue;
+    const phase = referencePhase(meter, step, length);
+    const reference = Math.max(...references.map((pattern) => pattern[phase] ?? 0), 0);
+    if (reference > 0) {
+      // Deterministic repair: keep the reference's character, but leave room
+      // for velocity contour and later phrase dynamics.
+      row[step] = clampVelocity(Math.max(reference * 0.85, 0.35));
+      continue;
+    }
+    if (frozen) continue;
+    const nearest = nearestRoleVelocity(references, phase, length);
+    if (nearest <= 0) continue;
+    row[step] = clampVelocity(Math.max(nearest * 0.85, 0.35));
   }
 }
 
@@ -40,31 +115,50 @@ export interface QualityMetrics {
   anchorCoverage: number;
 }
 
-/** Lightweight deterministic quality metrics for golden tests and diagnostics. */
+/**
+ * Lightweight deterministic quality metrics for golden tests and diagnostics.
+ *
+ * The metrics are measured against the DOCUMENT's metre (ADR 0057 Stage 2b):
+ * the syncopation count asks what falls off the metrical pulse, the anchor
+ * coverage asks which of the metrical anchors survived, and the bar-repetition
+ * slices the row at the metrical bar line. In 4/4 all three are the legacy
+ * measurements.
+ */
 export function measureDrumQuality(
   groove: GrooveData,
   rows: readonly (number[] | undefined)[],
   roles: readonly PadRole[],
   stepCount: number,
+  meter: AiMeter = DEFAULT_AI_METER,
 ): QualityMetrics {
   const hits: number[] = [];
   let syncopated = 0;
   let anchors = 0;
   let coveredAnchors = 0;
+  const halfPulse = meter.pulseSteps / 2;
 
   for (let pad = 0; pad < rows.length; pad++) {
     const row = rows[pad];
     if (!row) continue;
     const role = roles[pad] ?? "unknown";
     const references = groove.patterns.map((pattern) => pattern[pad] ?? []);
+    const length = referenceLength(references);
     for (let step = 0; step < stepCount; step++) {
       const value = row[step] ?? 0;
+      const inBar = stepInBar(meter, step);
       if (value > 0) {
         hits.push(value);
-        if (step % 4 === 1 || step % 4 === 3) syncopated++;
+        const offPulse = inBar % meter.pulseSteps !== 0 && (halfPulse <= 0 || inBar % halfPulse !== 0);
+        if (offPulse) syncopated++;
       }
-      if ((role === "kick" && step % 4 === 0) || ((role === "snare" || role === "clap") && step % 8 === 4)) {
-        const reference = Math.max(...references.map((pattern) => pattern[step % 16] ?? 0), 0);
+      const isAnchor =
+        (role === "kick" && isAnchorForRole(meter, "kick", step)) ||
+        ((role === "snare" || role === "clap") && isAnchorForRole(meter, "snare", step));
+      if (isAnchor) {
+        const reference = Math.max(
+          ...references.map((pattern) => pattern[referencePhase(meter, step, length)] ?? 0),
+          0,
+        );
         if (reference > 0) {
           anchors++;
           if (value > 0) coveredAnchors++;
@@ -75,7 +169,8 @@ export function measureDrumQuality(
 
   const mean = hits.length > 0 ? hits.reduce((sum, value) => sum + value, 0) / hits.length : 0;
   const variance = hits.length > 0 ? hits.reduce((sum, value) => sum + (value - mean) ** 2, 0) / hits.length : 0;
-  const bars = Math.ceil(stepCount / 16);
+  const stepsPerBar = meter.stepsPerBar;
+  const bars = Math.ceil(stepCount / stepsPerBar);
   let repeatedPairs = 0;
   let comparedPairs = 0;
   for (let pad = 0; pad < rows.length; pad++) {
@@ -83,8 +178,8 @@ export function measureDrumQuality(
     if (!row) continue;
     for (let bar = 1; bar < bars; bar++) {
       comparedPairs++;
-      const previous = row.slice((bar - 1) * 16, bar * 16).join(",");
-      const current = row.slice(bar * 16, (bar + 1) * 16).join(",");
+      const previous = row.slice((bar - 1) * stepsPerBar, bar * stepsPerBar).join(",");
+      const current = row.slice(bar * stepsPerBar, (bar + 1) * stepsPerBar).join(",");
       if (previous === current) repeatedPairs++;
     }
   }

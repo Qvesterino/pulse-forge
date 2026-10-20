@@ -74,6 +74,16 @@ export interface GenerateOptions {
   productionProfile?: import("../project-model/types").ProductionProfile;
   seed: string;
   stepCount: number;
+  /**
+   * The document's meter (ADR 0057 Stage 2b). ABSENT means 4/4 — the meter the
+   * AI layer assumed before it became metrical — so a 4/4 generation carries
+   * no field, hashes the same and produces the same beat it always did.
+   *
+   * Present only when it differs from 4/4, and it is part of the generation
+   * IDENTITY: the same seed in 3/4 and in 4/4 are different beats, so the
+   * recipe must record which meter produced them.
+   */
+  timeSignature?: import("../project-model/types").TimeSignature;
   /** Explicit key binding. Null means use the project's key, if any. */
   key?: import("../project-model/types").MusicalKey | null;
   /** Requested BPM range. Null/undefined leaves the project BPM unchanged. */

@@ -1,6 +1,7 @@
 import type { NoteEvent, Pattern, PatternGeneration, ProjectDocument, StepMeta } from "../project-model/types";
 import type { GenerateOptions } from "./types";
 import { hashString } from "../shared/rng";
+import { DEFAULT_AI_METER, meterCarrier, stepInBar, type AiMeter } from "./meter";
 
 /** Stable identity for the pre-IntentSpec local generator baseline. */
 export const LOCAL_ENGINE_ID = "pulse-forge.local-groove";
@@ -185,6 +186,10 @@ export function createGenerationRecipe(
   grooveId: string,
   inputContentHash: string | null = null,
 ): GenerationRecipeSummary {
+  // The meter is part of the generation IDENTITY (ADR 0057 Stage 2b): the same
+  // seed in 3/4 and in 4/4 are different beats. It is recorded only when it is
+  // not the 4/4 default, so every 4/4 recipe stays byte-identical.
+  const carrier = meterCarrier(options.timeSignature);
   return {
     engineId: LOCAL_ENGINE_ID,
     engineVersion: LOCAL_ENGINE_VERSION,
@@ -194,6 +199,7 @@ export function createGenerationRecipe(
     ...(options.productionProfile ? { productionProfile: options.productionProfile } : {}),
     grooveId,
     stepCount: options.stepCount,
+    ...(carrier ? { timeSignature: carrier } : {}),
     ghostWeight: stableNumber(options.ghostWeight),
     microWeight: stableNumber(options.microWeight),
     velocityVariation: stableNumber(options.velocityVariation),
@@ -210,7 +216,7 @@ function allNotes(pattern: Pattern): NoteEvent[] {
   return Object.values(pattern.notes ?? {}).flat();
 }
 
-export function measurePattern(pattern: Pattern): PatternMetrics {
+export function measurePattern(pattern: Pattern, meter: AiMeter = DEFAULT_AI_METER): PatternMetrics {
   const rows = Object.values(pattern.rows);
   let drumHits = 0;
   let downbeatHits = 0;
@@ -219,7 +225,7 @@ export function measurePattern(pattern: Pattern): PatternMetrics {
     for (let step = 0; step < row.length; step++) {
       if (row[step] > 0) {
         drumHits++;
-        if (step % 4 === 0) downbeatHits++;
+        if (stepInBar(meter, step) % meter.pulseSteps === 0) downbeatHits++;
       }
     }
   }

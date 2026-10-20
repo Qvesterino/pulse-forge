@@ -12,6 +12,7 @@ import { canonicalizePattern, contentHash, createGenerationRecipe } from "./eval
 import { measureDrumQuality, measureMelodicQuality } from "./quality";
 import { evaluateStyleDistance } from "./style-quality";
 import { buildPhrasePlan } from "./phrase";
+import { aiMeterFor, meterCarrier } from "./meter";
 
 /**
  * Stable seeded groove selection — ARCHITECTURE.md #67 / invariant #4
@@ -180,6 +181,13 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
   const roles = options.roles;
   const drumsEnabled = !roles || roles.includes("drums");
 
+  // The metrical facts of this generation (ADR 0057 Stage 2b). The options
+  // carry the meter when the caller knew it; otherwise the DOCUMENT's meter
+  // decides. The carrier rule keeps 4/4 free of the field entirely, so the
+  // options object, the recipe and its hash stay byte-identical there.
+  const meter = aiMeterFor(options.timeSignature ?? doc.timeSignature);
+  const carrier = meterCarrier(meter.signature);
+
   const generationSeed = `${options.genre}|${effectiveSeed}|${groove.id}`;
   const drumRand = forkRandom(generationSeed, "drums.core");
   const drumVariationRand = forkRandom(generationSeed, "drums.variation");
@@ -237,7 +245,11 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
           : groove.swing;
 
   // Generate drum pattern
-  const safeOptions = { ...options, stepCount: safeStepCount };
+  const safeOptions: GenerateOptions = {
+    ...options,
+    stepCount: safeStepCount,
+    ...(carrier ? { timeSignature: carrier } : {}),
+  };
   const { rows: rawRows, meta } = drumsEnabled
     ? generateDrumPattern(
         groove,
@@ -286,7 +298,7 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
   }
 
   // Generate melodic content with scale constraints and drum-aware placement
-  const melodicParts = generateMelodicParts(options, melodyRand, effectiveKey, rawRows, {
+  const melodicParts = generateMelodicParts(safeOptions, melodyRand, effectiveKey, rawRows, {
     bass: bassRand,
     chord: chordRand,
     lead: leadRand,
@@ -385,18 +397,18 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
     rows,
     notes: notesRecord,
     stepMeta: Object.keys(stepMeta).length > 0 ? stepMeta : undefined,
-    phrasePlan: buildPhrasePlan(safeStepCount),
+    phrasePlan: buildPhrasePlan(safeStepCount, meter),
   };
 
   const outputContentHash = contentHash(canonicalizePattern(doc, pattern));
   const padRoles = Array.from({ length: rawRows.length }, (_, index) => inferPadRole(padNames?.[index], index));
-  const drumQuality = measureDrumQuality(groove, rawRows, padRoles, safeStepCount);
-  const styleGate = evaluateStyleDistance(groove, rawRows, safeStepCount);
+  const drumQuality = measureDrumQuality(groove, rawRows, padRoles, safeStepCount, meter);
+  const styleGate = evaluateStyleDistance(groove, rawRows, safeStepCount, meter);
   const melodicQuality = measureMelodicQuality(Object.values(notesRecord).flat(), safeStepCount, effectiveKey);
   return {
     ...pattern,
     generation: {
-      ...createGenerationRecipe(options, groove.id, inputContentHash),
+      ...createGenerationRecipe(safeOptions, groove.id, inputContentHash),
       outputContentHash,
       quality: {
         styleDistance: styleGate.distance,

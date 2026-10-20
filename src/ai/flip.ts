@@ -43,15 +43,22 @@ export function analyzeLoopForFlip(data: Float32Array, sampleRate: number): Loop
 
 /**
  * Map the loop analysis onto generator options. `stepCount` spans the flipped
- * pattern (bars × 16); timing/accents come later via stealGrooveIntoPattern,
- * which folds its map across the pattern length.
+ * pattern (bars × the document's bar length); timing/accents come later via
+ * stealGrooveIntoPattern, which folds its map across the pattern length.
+ *
+ * The LOOP's own grid is sixteen steps (the loop's metre is not known — see
+ * `FLIP_STEPS_PER_BAR`), but the PATTERN lives in the document's metre
+ * (ADR 0057 Stage 2b): the flipped pattern is a whole number of the
+ * document's bars, capped at four. In 4/4 that is the legacy length.
  */
 export function buildFlipOptions(
   analysis: LoopFlipAnalysis,
   genre: GenerateOptions["genre"],
   seed: string,
+  stepsPerBar: number = FLIP_STEPS_PER_BAR,
 ): GenerateOptions {
-  const stepCount = Math.max(16, Math.min(64, analysis.bars * analysis.stepsPerBar));
+  const perBar = Number.isFinite(stepsPerBar) && stepsPerBar > 0 ? Math.floor(stepsPerBar) : FLIP_STEPS_PER_BAR;
+  const stepCount = Math.max(perBar, Math.min(4, analysis.bars) * perBar);
   return {
     genre,
     seed,

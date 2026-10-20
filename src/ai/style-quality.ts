@@ -1,5 +1,6 @@
 import type { GrooveData } from "./types";
 import type { PadRole } from "./pad-roles";
+import { DEFAULT_AI_METER, isAnchorForRole, referencePhase, stepInBar, type AiMeter } from "./meter";
 
 export interface StyleQualityProfile {
   densityRange: readonly [number, number];
@@ -100,23 +101,44 @@ function round(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
 }
 
-/** Weight an off-grid 16th more strongly when it follows an empty step. */
-export function syncopationWeight(step: number): number {
-  const position = ((step % 16) + 16) % 16;
-  if (position % 4 === 0) return 0;
-  if (position % 2 === 0) return 0.35;
+/**
+ * Weight an off-grid 16th more strongly when it follows an empty step.
+ *
+ * The grid is the DOCUMENT's metrical pulse (ADR 0057 Stage 2b): in 4/4 this
+ * is the legacy "on the quarter → 0, on the eighth → 0.35, else 1", and in
+ * 6/8 the eighth inside the dotted-quarter pulse is the half-pulse.
+ */
+export function syncopationWeight(step: number, meter: AiMeter = DEFAULT_AI_METER): number {
+  const position = stepInBar(meter, step);
+  if (position % meter.pulseSteps === 0) return 0;
+  const half = Math.max(1, Math.floor(meter.pulseSteps / 2));
+  if (position % half === 0) return 0.35;
   return 1;
 }
 
-function isAnchor(role: PadRole, step: number): boolean {
-  return (role === "kick" && step % 4 === 0) || ((role === "snare" || role === "clap") && step % 8 === 4);
+function isAnchor(role: PadRole, step: number, meter: AiMeter): boolean {
+  if (role === "kick") return isAnchorForRole(meter, "kick", step);
+  if (role === "snare" || role === "clap") return isAnchorForRole(meter, "snare", step);
+  return false;
 }
 
-function referenceAt(references: readonly number[][], step: number): number {
-  return Math.max(...references.map((pattern) => pattern[step % 16] ?? 0), 0);
+function referenceAt(references: readonly number[][], step: number, meter: AiMeter): number {
+  let length = 0;
+  for (const reference of references) {
+    if (reference.length > 0) {
+      length = reference.length;
+      break;
+    }
+  }
+  const phase = referencePhase(meter, step, length || meter.stepsPerBar);
+  return Math.max(...references.map((pattern) => pattern[phase] ?? 0), 0);
 }
 
-function rowMetrics(rows: readonly (number[] | undefined)[], stepCount: number): StyleDistanceMetrics {
+function rowMetrics(
+  rows: readonly (number[] | undefined)[],
+  stepCount: number,
+  meter: AiMeter = DEFAULT_AI_METER,
+): StyleDistanceMetrics {
   const activeRows = rows.filter((row): row is number[] => Boolean(row));
   let hits = 0;
   let syncHits = 0;
@@ -128,8 +150,8 @@ function rowMetrics(rows: readonly (number[] | undefined)[], stepCount: number):
       if (velocity <= 0) continue;
       hits++;
       velocityTotal += velocity;
-      syncHits += syncopationWeight(step);
-      if (step % 4 === 0) downbeats++;
+      syncHits += syncopationWeight(step, meter);
+      if (stepInBar(meter, step) % meter.pulseSteps === 0) downbeats++;
     }
   }
   const denominator = Math.max(1, activeRows.length * stepCount);
@@ -141,18 +163,23 @@ function rowMetrics(rows: readonly (number[] | undefined)[], stepCount: number):
   };
 }
 
-function referenceMetrics(groove: GrooveData, stepCount: number): StyleDistanceMetrics {
+function referenceMetrics(
+  groove: GrooveData,
+  stepCount: number,
+  meter: AiMeter = DEFAULT_AI_METER,
+): StyleDistanceMetrics {
   const rows = groove.activePads.map((padIndex) => {
     const row = new Array<number>(stepCount).fill(0);
     for (let step = 0; step < stepCount; step++) {
       row[step] = referenceAt(
         groove.patterns.map((pattern) => pattern[padIndex] ?? []),
         step,
+        meter,
       );
     }
     return row;
   });
-  return rowMetrics(rows, stepCount);
+  return rowMetrics(rows, stepCount, meter);
 }
 
 export function getStyleQualityProfile(genre: GrooveData["genre"], style?: string): StyleQualityProfile {
@@ -170,6 +197,7 @@ export function evaluateStyleDistance(
   groove: GrooveData,
   rows: readonly (number[] | undefined)[],
   stepCount: number,
+  meter: AiMeter = DEFAULT_AI_METER,
 ): StyleGateResult {
   const profile = getStyleQualityProfile(groove.genre, groove.name);
   // Defensive sanitization: NaN/Infinity velocities propagate to the distance
@@ -177,8 +205,8 @@ export function evaluateStyleDistance(
   const safeRows = rows.map((row) =>
     row ? row.map((value) => (Number.isFinite(value) && value > 0 ? value : 0)) : row,
   );
-  const metrics = rowMetrics(safeRows, stepCount);
-  const reference = referenceMetrics(groove, stepCount);
+  const metrics = rowMetrics(safeRows, stepCount, meter);
+  const reference = referenceMetrics(groove, stepCount, meter);
   // NaN guard: a non-finite stepCount (e.g. NaN, Infinity) propagates through
   // density/syncopation/velocityMean arithmetic and yields NaN distance metrics.
   // Coerce each side to a finite scalar before subtracting so the result is
@@ -229,30 +257,35 @@ function budgetForRole(role: PadRole): SyncopationBudget {
   }
 }
 
-function rowSyncopation(row: readonly number[]): number {
+function rowSyncopation(row: readonly number[], meter: AiMeter = DEFAULT_AI_METER): number {
   let hits = 0;
   let weighted = 0;
   for (let step = 0; step < row.length; step++) {
     if ((row[step] ?? 0) <= 0) continue;
     hits++;
-    weighted += syncopationWeight(step);
+    weighted += syncopationWeight(step, meter);
   }
   return hits > 0 ? weighted / hits : 0;
 }
 
 /** Keep ornamentation inside a role-specific syncopation budget. */
-export function enforceSyncopationBudget(row: number[], references: readonly number[][], role: PadRole): void {
+export function enforceSyncopationBudget(
+  row: number[],
+  references: readonly number[][],
+  role: PadRole,
+  meter: AiMeter = DEFAULT_AI_METER,
+): void {
   const budget = budgetForRole(role);
-  let score = rowSyncopation(row);
+  let score = rowSyncopation(row, meter);
 
   if (score > budget.max) {
     const candidates = row
-      .map((velocity, step) => ({ velocity, step, weight: syncopationWeight(step) }))
-      .filter((candidate) => candidate.velocity > 0 && candidate.weight > 0 && !isAnchor(role, candidate.step))
+      .map((velocity, step) => ({ velocity, step, weight: syncopationWeight(step, meter) }))
+      .filter((candidate) => candidate.velocity > 0 && candidate.weight > 0 && !isAnchor(role, candidate.step, meter))
       .sort((a, b) => a.velocity - b.velocity || b.weight - a.weight || b.step - a.step);
     for (const candidate of candidates) {
       row[candidate.step] = 0;
-      score = rowSyncopation(row);
+      score = rowSyncopation(row, meter);
       if (score <= budget.max) break;
     }
   }
@@ -262,20 +295,20 @@ export function enforceSyncopationBudget(row: number[], references: readonly num
       .map((velocity, step) => ({
         velocity,
         step,
-        reference: referenceAt(references, step),
-        weight: syncopationWeight(step),
+        reference: referenceAt(references, step, meter),
+        weight: syncopationWeight(step, meter),
       }))
       .filter(
         (candidate) =>
           candidate.velocity <= 0 &&
           candidate.reference > 0 &&
           candidate.weight > 0.5 &&
-          !isAnchor(role, candidate.step),
+          !isAnchor(role, candidate.step, meter),
       )
       .sort((a, b) => b.reference - a.reference || b.weight - a.weight || a.step - b.step);
     for (const candidate of candidates) {
       row[candidate.step] = Math.max(0.1, Math.min(1, candidate.reference * 0.55));
-      score = rowSyncopation(row);
+      score = rowSyncopation(row, meter);
       if (score >= budget.min) break;
     }
   }

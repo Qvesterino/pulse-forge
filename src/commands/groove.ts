@@ -335,7 +335,7 @@ export function applyPatternVerbsCommand(
   if (!pattern) throw new Error(`Pattern ${patternId} not found`);
   const drumTrack = doc.tracks.find((t) => t.kind === "drum");
   const pads = drumTrack && drumTrack.kind === "drum" ? drumTrack.pads : [];
-  const { rows, grooveSwingDelta } = applyVerbRows(pattern, pads, verbs, seed);
+  const { rows, grooveSwingDelta } = applyVerbRows(pattern, pads, verbs, seed, doc.timeSignature);
   const next: ProjectDocument = {
     ...doc,
     patterns: doc.patterns.map((p) => (p.id === patternId ? { ...p, rows: { ...p.rows, ...rows } } : p)),

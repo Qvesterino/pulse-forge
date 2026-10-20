@@ -638,6 +638,12 @@ export interface PatternGeneration {
   productionProfile?: ProductionProfile;
   grooveId: string;
   stepCount: number;
+  /**
+   * The meter the generation was made in (ADR 0057 Stage 2b). Absent means
+   * 4/4 — the meter the AI layer assumed before it became metrical — so every
+   * 4/4 recipe stays byte-identical to the one it has always been.
+   */
+  timeSignature?: TimeSignature;
   ghostWeight: number;
   microWeight: number;
   velocityVariation: number;

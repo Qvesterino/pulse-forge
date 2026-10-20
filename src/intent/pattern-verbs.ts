@@ -13,8 +13,9 @@
  * produces the same edit. Swing is the exception — it's a groove setting,
  * not rows, and it composes (current + 0.12, clamped).
  */
-import type { DrumPad, Pattern } from "../project-model/types";
+import type { DrumPad, Pattern, TimeSignature } from "../project-model/types";
 import { classifyPads } from "../assist/patternOps";
+import { aiMeterFor, stepInBar } from "../ai/meter";
 
 export type PatternVerbKind = "thin" | "densify" | "ghosts" | "simplify" | "swing";
 export type VerbFamily = "kicks" | "snares" | "hats" | "others" | "all";
@@ -139,14 +140,20 @@ function verbRng(seed: string, verbs: PatternVerb[]): () => number {
  * Apply the parsed verbs to a pattern's rows (pure — returns the new rows).
  * Thin keeps downbeat anchors and never empties a row entirely; ghosts add
  * quiet off-beat hits; simplify removes whisper-velocity steps first.
+ *
+ * The downbeat and the off-beat are the DOCUMENT's (ADR 0057 Stage 2b): "thin
+ * the drums" in a 3/4 project must keep the beat-1 downbeat of every 3/4 bar,
+ * not every fourth step. In 4/4 the positions are the legacy ones.
  */
 export function applyVerbRows(
   pattern: Pattern,
   pads: DrumPad[],
   verbs: PatternVerb[],
   seed: string,
+  timeSignature?: TimeSignature,
 ): { rows: Record<string, number[]>; grooveSwingDelta: number } {
   const rng = verbRng(seed, verbs);
+  const meter = aiMeterFor(timeSignature);
   const rows: Record<string, number[]> = {};
   for (const pad of pads) {
     const row = pattern.rows[pad.id];
@@ -161,8 +168,8 @@ export function applyVerbRows(
       if (!row) continue;
       const hits = row.filter((v) => v > 0).length;
       for (let step = 0; step < row.length; step++) {
-        const isDownbeat = step % 16 === 0;
-        const isOffBeat = step % 4 !== 0;
+        const isDownbeat = stepInBar(meter, step) === 0;
+        const isOffBeat = stepInBar(meter, step) % meter.pulseSteps !== 0;
         switch (verb.kind) {
           case "thin":
             if (row[step] > 0 && !isDownbeat && hits > 1 && rng() < 0.45) {

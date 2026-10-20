@@ -85,6 +85,7 @@ import {
 import { generatePatternCommand } from "../commands/aiPattern";
 import { makeMidiClipUnique } from "../commands/midiClips";
 import { MAX_ARRANGEMENT_CLIP_BARS, sceneRoleOf, ticksPerBar } from "../project-model/schema";
+import { stepsPerBar } from "../project-model/grid";
 import { applySmartComp, planBars, planSmartComp, type SmartCompPlan } from "../commands/smart-comp";
 import { sectionFxChips } from "../intent/song";
 import {
@@ -2564,7 +2565,7 @@ export function ArrangementPanel() {
       execute(
         generatePatternCommand(
           services.store.doc,
-          buildFlipOptions(analysis, genre, flipSeed(analysis)),
+          buildFlipOptions(analysis, genre, flipSeed(analysis), stepsPerBar(services.store.doc)),
           `Flip ${c.startBar}b`,
         ),
       );

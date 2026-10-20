@@ -1,8 +1,9 @@
-import type { ProjectDocument } from "../project-model/types";
+import type { ProjectDocument, TimeSignature } from "../project-model/types";
 import { drumTrackForTarget, instrumentTargets, instrumentTrackForRole } from "../ai/role-targets";
 import { forkRandom } from "../shared/rng";
 import { createGenerationRecipe } from "../ai/evaluation";
 import { resolveEffectiveSeed, resolveGrooveForGeneration, sourcePatternContentHash } from "../ai/generator";
+import { meterCarrier } from "../ai/meter";
 import type { GenerateOptions } from "../ai/types";
 import { intentHash } from "./hash";
 import { normalizeIntent } from "./normalize";
@@ -15,17 +16,22 @@ import { getArtistProfile, normalizeArtistSlug } from "./artist-profiles";
 import type { ArtistProfile } from "./artist-profiles";
 import type { GenerationPlan, IntentInput, IntentRole, IntentSpec } from "./types";
 
-export function generateOptionsFromIntent(intent: IntentSpec): GenerateOptions {
+export function generateOptionsFromIntent(intent: IntentSpec, timeSignature?: TimeSignature): GenerateOptions {
   // Protected roles never reach the generator: "keep my bass" means the
   // bass content in the project survives this generation untouched, even
   // when `roles` still lists the role.
   const preserved = intent.preserve ?? [];
+  // The document's meter travels with the options (ADR 0057 Stage 2b) — but
+  // only when it is NOT 4/4, so a 4/4 generation's options, recipe and hash
+  // stay byte-identical to the ones the product has always produced.
+  const carrier = meterCarrier(timeSignature);
   const base: GenerateOptions = {
     genre: intent.genre,
     style: intent.style ?? undefined,
     productionProfile: intent.productionProfile,
     seed: intent.seed,
     stepCount: intent.length,
+    ...(carrier ? { timeSignature: carrier } : {}),
     key: intent.key,
     bpmRange: intent.bpmRange,
     ...(intent.progression ? { progression: intent.progression } : {}),
@@ -119,7 +125,7 @@ export function planGeneration(input: IntentInput | IntentSpec, doc: ProjectDocu
       ? (intent.sourcePatternId ??
         (doc.patterns.some((pattern) => pattern.id === doc.activePatternId) ? doc.activePatternId : null))
       : undefined;
-  const options = generateOptionsFromIntent(intent);
+  const options = generateOptionsFromIntent(intent, doc.timeSignature);
   const effectiveSeed = resolveEffectiveSeed(doc, options);
   const groove = resolveGrooveForGeneration(doc, options);
   const inputContentHash = sourcePatternContentHash(doc, options.sourcePatternId);
