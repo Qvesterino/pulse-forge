@@ -168,6 +168,64 @@ _is_ provable, stop the process directly instead.
 
 ---
 
+# MANDATORY: GIT IN A SHARED WORKTREE
+
+PRIORITY: CRITICAL
+SCOPE: ALL AGENTS, SUBAGENTS AND DELEGATED TASKS
+
+## 1. WORK ON `main`. DO NOT CREATE BRANCHES.
+
+Commit directly to `main`. Do not create a topic branch, a feature branch, or a
+worktree branch for your work. `main` is the release branch: it is what ships,
+it is what is deployed, and it is what gets pushed.
+
+**Why a branch cannot protect you here.** This repo is worked on by several
+agent sessions AT THE SAME TIME, in the SAME working tree — so `HEAD` is
+global, not per-session. A branch therefore does not isolate commits; it only
+relabels them. Measured 2026-10-20: one session branched to keep a single docs
+commit separate, and within twenty minutes five other sessions' commits
+(intent routing, the PCM mic recorder, the master meter, audit17) had landed
+on that branch, because they all commit against the shared `HEAD`. `main` was
+six commits behind and had to be fast-forwarded back by hand.
+
+A branch here is not a safety mechanism. It is a way of losing `main`'s
+position and of making another session's work look like yours.
+
+## 2. WHAT ACTUALLY PROTECTS THE WORK
+
+Because the branch cannot isolate, these are the real protections. All of them
+are mandatory:
+
+1. **Commit early and often.** Verified but uncommitted work in a shared tree
+   can be reset, or swept into another session's commit.
+2. **Stage only your own paths.** `git add <path> <path>` — never `git add .`,
+   never `git add -A`. Other sessions' work is in the same tree.
+3. **Never `git stash`.** Stashes here belong to other sessions (three existed
+   on 2026-10-20: "in-flight waves during rebase", "noise before rebase",
+   "ownership-check"). Popping one rewrites files you did not touch.
+4. **Never `git checkout` over uncommitted work.** It refuses, and forcing it
+   destroys another session's changes. To move `main` without touching the
+   working tree use `git update-ref refs/heads/main <ref>`.
+5. **Say what is yours in the commit message.** Scope lines, so a human can
+   untangle the history later.
+6. **Push `main`.** `main` is the release branch; work that only exists on this
+   machine has not shipped.
+
+Isolated READ-ONLY verification runs are still fine — see
+`docs/MULTI-AGENT-GUARDRAILS.md` rule 5 (`git worktree add` at a commit, for a
+clean baseline). That is a detached checkout for measuring, not a branch for
+committing.
+
+Full incident list and recovery procedures: `docs/MULTI-AGENT-GUARDRAILS.md`.
+
+## 3. WHAT "DONE" MEANS
+
+The change is committed on `main` and `main` is pushed. A change on a branch,
+in a stash, or uncommitted in the tree is work in progress that another session
+may reset — it is not finished work.
+
+---
+
 ## 0. Project identity in one paragraph
 
 This is **KYX** (display name; landing page, embed, gallery), internally and on GitHub known as **Pulse Forge** (repo name `pulse-forge`, `package.json#name`). Both names refer to the same product. Use **KYX** in user-facing copy; use **Pulse Forge** in file paths, ADRs and roadmap documents.
@@ -376,6 +434,11 @@ The dev server must be on port 5199 with `--strictPort` (the playwright.config.t
 
 - **Kill the test run you started.** This repo is the worst offender for orphaned Node runtimes: a `vitest run` nobody waits for keeps burning CPU after the session ends. Measured 2026-10-17 on this machine - 48 concurrent `pulse-forge` `node.exe` processes (38 of them tinypool workers) during a burst of parallel runs. Run `node-gc` to see what was abandoned and `node-gc -Kill` to terminate it. Do **not** write your own kill list here; `node-gc` is the single shared implementation and it is deliberately careful - it judges idleness **per process tree** (a finished tinypool shard is idle while its runner still works), it never matches `--watch`, and it ignores the agent runtime's own processes. A run you start must either finish or be killed in the same turn.
 - **Multiple agent sessions share one working tree.** Commit early (untracked files get absorbed by concurrent commits without their dependencies), stage only files you authored, never `git stash pop` here, and run clean verifications in a `git worktree` at HEAD. Full protocol with incident history: `docs/MULTI-AGENT-GUARDRAILS.md`.
+- **No agent may change the branch in the shared tree.** `git checkout`, `git switch`, `git branch -f`, `git reset --hard` onto another branch, or any rebase that moves a branch ref, is forbidden while other sessions work here. The checkout is global to the working tree: one agent switching branch yanks the files out from under every other session, and the tree they come back to is no longer the tree they were editing. This is not a soft preference — it is the reason the tree is shared at all.
+  - **Advancing the CURRENT branch with a merge is allowed and expected.** A merge does not change what is checked out, so it is not covered by the ban. Merging into `main` is how work stops piling up on side branches.
+  - **When a merge needs a clean tree, use a separate worktree, never a checkout.** `git worktree add --detach <path> <ref>` gives an isolated, clean tree at any commit; merge there, verify there, and land the resulting commit with `git merge --ff-only <branch>` from the shared tree once it is free. Do not switch the shared tree to another branch "to make room".
+  - **Do not move a ref that another worktree has checked out** (check `git worktree list` first). Moving `main` while a session works in the main worktree desynchronises that session's index from HEAD and shows them dozens of files as deleted.
+  - **One session owns a merge.** Two sessions merging the same branches produce two divergent merge commits and a conflict nobody can reproduce.
 - **A concurrent commit absorbing your work is normal, not an incident.** Stage exactly your own paths, and if a parallel session's `git commit` sweeps them into a commit titled for its own area — that is the expected outcome of a shared index, not a problem. Do **not** amend, rebase, cherry-pick, or rewrite history to relabel it, and do **not** raise it in your final report, apologise for it, or ask whether to clean up provenance. The work is committed and the tree is clean; that is the whole requirement. Only mention it if you could not verify the content actually landed, or if the absorbed commit is about to be reverted. Commit messages describe an area, not a single author — the project has always worked this way.
 - **`useContext(ctx)` is the only path that creates `AudioNode`s.** Creating nodes directly via `ctx.createGain()` etc. without going through `AudioEngine.useContext()` will leave them attached to the wrong context (silent in live, broken in offline). See `ARCHITECTURE.md` §Engine.
 - **`?server=` overrides must pass `isAllowedServerUrl`.** Bypassing that helper is a security regression — a crafted link pointing at `wss://evil` would silently relay the victim's whole project through an attacker host.
