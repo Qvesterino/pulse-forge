@@ -125,6 +125,7 @@ const blank = (over: Partial<StateReading> = {}): StateReading => ({
   backgroundNote: null,
   contrastFloor: 4.5,
   largeText: false,
+  onScreen: false,
   pixelContrast: null,
   ...over,
 });

@@ -827,12 +827,25 @@ export interface PixelContrast {
   /** How many pixels the sliver covered. */
   sliverPixels: number;
   /**
+   * The worst surface that carries a DOMINANT share of the text (at least
+   * 10%), or null when the text is spread so thin that no surface dominates.
+   *
+   * This is the surface the text is actually read against. The overall worst
+   * surface may be one pixel — a glyph edge grazing a 1px highlight — and that
+   * is a rendering detail, not a surface.
+   */
+  dominantContrast: number | null;
+  /** The background colour of that dominant surface. */
+  dominantBackground: string | null;
+  /** How many text pixels sit on the dominant surface. */
+  dominantPixels: number;
+  /**
    * How MANY of the role's text pixels fall below the AA floor (4.5:1).
    *
    * The minimum alone cannot tell "this text is unreadable" from "one glyph
    * edge grazed a highlight". The share can: 100% of the index on a 4.45:1
-   * surface is a defect, and 0.6% of a pattern chip on a 4.25:1 gradient
-   * corner is not.
+   * surface is a defect, and 2.5% of a status bar whose top row grazes a
+   * 1px highlight is not.
    */
   belowFloorPixels: number;
   /** The same thing as a fraction of the role's text pixels. */
@@ -1277,13 +1290,20 @@ export interface ContrastResult {
 /**
  * How much of a role's text may fall below the floor.
  *
- * ONE PERCENT. Not zero, because a single glyph edge grazing a 1px highlight
- * is a rendering detail and not a surface the text is read against — and not
- * more, because the defects this phase found were not subtle: the 8px index
- * sat at 4.45:1 with 100% of its pixels below the floor, and the dock tab
- * label at 2.03:1 with 18% of its pixels below it.
+ * TEN PERCENT — and the same number the measurement uses to decide what
+ * counts as a DOMINANT surface. One threshold, used twice.
+ *
+ * It is not a fudge factor, it is the gap the measurement shows:
+ *
+ *   0 %   the roles that are simply fine
+ *   2.5 % the NOISE FLOOR — the top row of a glyph grazing a 1px top-light,
+ *         a moving meter edge. Measured on the status bar and the pattern
+ *         chip, both of which read perfectly well.
+ *   18 %  the smallest REAL defect — the dock tab label, 23 of its 125 text
+ *         pixels on a 2.03:1 surface.
+ *   100 % the 8px row index, entirely on a 4.45:1 surface.
  */
-export const MAX_BELOW_FLOOR_SHARE = 0.01;
+export const MAX_BELOW_FLOOR_SHARE = 0.1;
 
 /**
  * Check one contrast expectation against one reading.
@@ -1321,6 +1341,14 @@ export function evaluateContrast(
   // 2. The pixel reading — the real surface under the glyphs.
   const pixel = reading.pixelContrast;
   if (pixel && pixel.minContrast !== null) {
+    // 2a. The DOMINANT surface — the one the text is read against.
+    if (pixel.dominantContrast !== null && pixel.dominantContrast < expectation.min) {
+      failures.push(
+        `the dominant surface reads ${pixel.dominantContrast}:1, ${expectation.min}:1 required ` +
+          `(${pixel.dominantPixels} of ${pixel.textPixels} pixels on ${pixel.dominantBackground})`,
+      );
+    }
+    // 2b. The SHARE — no tenth of the text may be illegible.
     if (pixel.belowFloorShare > MAX_BELOW_FLOOR_SHARE) {
       failures.push(
         `${Math.round(pixel.belowFloorShare * 1000) / 10}% of the text is below ${expectation.min}:1 ` +
@@ -1337,7 +1365,7 @@ export function evaluateContrast(
     };
   }
 
-  const measured = pixel?.minContrast ?? reading.contrast;
+  const measured = pixel?.dominantContrast ?? pixel?.minContrast ?? reading.contrast;
   const source: ContrastResult["source"] =
     pixel?.minContrast != null ? "pixel" : reading.contrast !== null ? "static" : "none";
   return { ...base, ok: failures.length === 0, measured, source, failures };

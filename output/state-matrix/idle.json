@@ -23,6 +23,7 @@
       "backgroundNote": "row-pad paints a background-image",
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "channelNameRow",
         "textPixels": 138,
@@ -35,11 +36,13 @@
           "x": 40,
           "y": 7
         },
+        "dominantContrast": 10.39,
+        "dominantBackground": "rgb(38, 42, 50)",
+        "dominantPixels": 14,
         "sliverContrast": 9.45,
         "sliverPixels": 1,
-        "textColors": [
-          "rgb(217, 219, 225)"
-        ],
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
         "minContrast": 10.39,
         "meanContrast": 10.2
       },
@@ -75,26 +78,28 @@
       "backgroundNote": "track-header-name paints a background-image",
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "channelNameHeader",
-        "textPixels": 155,
-        "surfaces": 46,
-        "minSurfacePixels": 15.5,
-        "worstBackground": "rgb(38, 42, 50)",
-        "worstTextColor": "rgb(217, 219, 225)",
-        "worstSurfacePixels": 16,
+        "textPixels": 153,
+        "surfaces": 44,
+        "minSurfacePixels": 15.3,
+        "worstBackground": "rgb(11, 12, 16)",
+        "worstTextColor": "rgb(122, 130, 144)",
+        "worstSurfacePixels": 17,
         "worstPixel": {
-          "x": 72,
-          "y": 11
+          "x": 0,
+          "y": 1
         },
-        "sliverContrast": 5.05,
-        "sliverPixels": 4,
-        "textColors": [
-          "rgb(217, 219, 225)",
-          "rgb(122, 130, 144)"
-        ],
-        "minContrast": 10.39,
-        "meanContrast": 10.54
+        "dominantContrast": 5.05,
+        "dominantBackground": "rgb(11, 12, 16)",
+        "dominantPixels": 17,
+        "sliverContrast": 5.01,
+        "sliverPixels": 2,
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
+        "minContrast": 5.05,
+        "meanContrast": 9.13
       },
       "accentCount": 1,
       "accentColors": [
@@ -124,7 +129,7 @@
       "hasAccent": false,
       "accent": null,
       "background": "rgba(0, 0, 0, 0)",
-      "color": "rgb(122, 130, 144)",
+      "color": "color(srgb 0.612549 0.636078 0.684706)",
       "sample": "1",
       "contrast": null,
       "compositedBackground": null,
@@ -132,25 +137,28 @@
       "backgroundNote": "row-pad paints a background-image",
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "rowIndex",
-        "textPixels": 10,
+        "textPixels": 8,
         "surfaces": 4,
         "minSurfacePixels": 2,
         "worstBackground": "rgb(55, 50, 42)",
-        "worstTextColor": "rgb(122, 130, 144)",
-        "worstSurfacePixels": 5,
+        "worstTextColor": "color(srgb 0.612549 0.636078 0.684706)",
+        "worstSurfacePixels": 4,
         "worstPixel": {
-          "x": 7,
+          "x": 1,
           "y": 1
         },
-        "sliverContrast": 3.33,
+        "dominantContrast": 4.96,
+        "dominantBackground": "rgb(55, 50, 42)",
+        "dominantPixels": 4,
+        "sliverContrast": 5.02,
         "sliverPixels": 1,
-        "textColors": [
-          "rgb(122, 130, 144)"
-        ],
-        "minContrast": 3.28,
-        "meanContrast": 3.3
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
+        "minContrast": 4.96,
+        "meanContrast": 5
       },
       "accentCount": 0,
       "accentColors": [],
@@ -184,6 +192,7 @@
       "backgroundNote": "step paints a background-image",
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "stepCell",
         "textPixels": 0,
@@ -193,9 +202,13 @@
         "worstTextColor": null,
         "worstSurfacePixels": 0,
         "worstPixel": null,
+        "dominantContrast": null,
+        "dominantBackground": null,
+        "dominantPixels": 0,
         "sliverContrast": null,
         "sliverPixels": 0,
-        "textColors": [],
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
         "minContrast": null,
         "meanContrast": null
       },
@@ -247,6 +260,7 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": false,
       "pixelContrast": null,
       "accentCount": 0,
       "accentColors": [],
@@ -280,6 +294,7 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "rulerTick",
         "textPixels": 22,
@@ -289,14 +304,16 @@
         "worstTextColor": "rgb(141, 148, 162)",
         "worstSurfacePixels": 22,
         "worstPixel": {
-          "x": 17,
-          "y": 4
+          "x": 0,
+          "y": 2
         },
+        "dominantContrast": 6.04,
+        "dominantBackground": "rgb(18, 20, 26)",
+        "dominantPixels": 22,
         "sliverContrast": null,
         "sliverPixels": 0,
-        "textColors": [
-          "rgb(141, 148, 162)"
-        ],
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
         "minContrast": 6.04,
         "meanContrast": 6.04
       },
@@ -332,26 +349,28 @@
       "backgroundNote": "track-tab paints a background-image",
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "trackTab",
-        "textPixels": 93,
-        "surfaces": 58,
-        "minSurfacePixels": 9.3,
+        "textPixels": 90,
+        "surfaces": 54,
+        "minSurfacePixels": 9,
         "worstBackground": "rgb(11, 12, 16)",
-        "worstTextColor": "rgb(238, 242, 246)",
-        "worstSurfacePixels": 19,
+        "worstTextColor": "rgb(122, 130, 144)",
+        "worstSurfacePixels": 22,
         "worstPixel": {
-          "x": 18,
-          "y": 13
+          "x": 1,
+          "y": 1
         },
-        "sliverContrast": 2.69,
+        "dominantContrast": 5.05,
+        "dominantBackground": "rgb(11, 12, 16)",
+        "dominantPixels": 22,
+        "sliverContrast": 8.67,
         "sliverPixels": 1,
-        "textColors": [
-          "rgb(238, 242, 246)",
-          "rgb(122, 130, 144)"
-        ],
-        "minContrast": 17.38,
-        "meanContrast": 11.03
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
+        "minContrast": 5.05,
+        "meanContrast": 8.69
       },
       "accentCount": 0,
       "accentColors": [],
@@ -385,26 +404,28 @@
       "backgroundNote": "row-pad paints a background-image",
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "rowPad",
-        "textPixels": 158,
-        "surfaces": 55,
-        "minSurfacePixels": 15.8,
+        "textPixels": 146,
+        "surfaces": 44,
+        "minSurfacePixels": 14.600000000000001,
         "worstBackground": "rgb(37, 41, 49)",
         "worstTextColor": "rgb(217, 219, 225)",
-        "worstSurfacePixels": 18,
+        "worstSurfacePixels": 19,
         "worstPixel": {
-          "x": 67,
-          "y": 11
+          "x": 41,
+          "y": 7
         },
-        "sliverContrast": 3.28,
-        "sliverPixels": 5,
-        "textColors": [
-          "rgb(122, 130, 144)",
-          "rgb(217, 219, 225)"
-        ],
+        "dominantContrast": 10.53,
+        "dominantBackground": "rgb(37, 41, 49)",
+        "dominantPixels": 19,
+        "sliverContrast": 4.96,
+        "sliverPixels": 4,
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
         "minContrast": 10.53,
-        "meanContrast": 9.16
+        "meanContrast": 9.91
       },
       "accentCount": 1,
       "accentColors": [
@@ -434,7 +455,7 @@
       "hasAccent": false,
       "accent": null,
       "background": "rgba(0, 0, 0, 0)",
-      "color": "rgb(122, 130, 144)",
+      "color": "rgb(199, 208, 218)",
       "sample": "MIX",
       "contrast": null,
       "compositedBackground": null,
@@ -442,25 +463,28 @@
       "backgroundNote": "dock-tabs paints a background-image",
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "dockTab",
-        "textPixels": 125,
-        "surfaces": 25,
-        "minSurfacePixels": 12.5,
-        "worstBackground": "rgb(79, 82, 87)",
-        "worstTextColor": "rgb(122, 130, 144)",
-        "worstSurfacePixels": 23,
+        "textPixels": 51,
+        "surfaces": 11,
+        "minSurfacePixels": 5.1000000000000005,
+        "worstBackground": "rgb(55, 58, 63)",
+        "worstTextColor": "rgb(199, 208, 218)",
+        "worstSurfacePixels": 11,
         "worstPixel": {
-          "x": 25,
-          "y": 11
+          "x": 8,
+          "y": 4
         },
-        "sliverContrast": 1.99,
+        "dominantContrast": 7.32,
+        "dominantBackground": "rgb(55, 58, 63)",
+        "dominantPixels": 11,
+        "sliverContrast": 7.21,
         "sliverPixels": 1,
-        "textColors": [
-          "rgb(122, 130, 144)"
-        ],
-        "minContrast": 2.03,
-        "meanContrast": 2.03
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
+        "minContrast": 7.32,
+        "meanContrast": 7.38
       },
       "accentCount": 0,
       "accentColors": [],
@@ -494,21 +518,27 @@
       "backgroundNote": "pattern-chip paints a background-image",
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "patternChip",
         "textPixels": 160,
         "surfaces": 129,
         "minSurfacePixels": 16,
-        "worstBackground": null,
-        "worstTextColor": null,
-        "worstSurfacePixels": 0,
-        "worstPixel": null,
+        "worstBackground": "rgb(73, 72, 71)",
+        "worstTextColor": "rgb(245, 158, 11)",
+        "worstSurfacePixels": 1,
+        "worstPixel": {
+          "x": 1,
+          "y": 4
+        },
+        "dominantContrast": null,
+        "dominantBackground": null,
+        "dominantPixels": 0,
         "sliverContrast": 4.25,
         "sliverPixels": 1,
-        "textColors": [
-          "rgb(245, 158, 11)"
-        ],
-        "minContrast": 0,
+        "belowFloorPixels": 4,
+        "belowFloorShare": 0.025,
+        "minContrast": 4.25,
         "meanContrast": 5.37
       },
       "accentCount": 0,
@@ -543,6 +573,7 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "btn",
         "textPixels": 198,
@@ -552,14 +583,16 @@
         "worstTextColor": "rgb(141, 148, 162)",
         "worstSurfacePixels": 198,
         "worstPixel": {
-          "x": 12,
-          "y": 12
+          "x": 1,
+          "y": 4
         },
+        "dominantContrast": 5.17,
+        "dominantBackground": "rgb(31, 35, 43)",
+        "dominantPixels": 198,
         "sliverContrast": null,
         "sliverPixels": 0,
-        "textColors": [
-          "rgb(141, 148, 162)"
-        ],
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
         "minContrast": 5.17,
         "meanContrast": 5.17
       },
@@ -599,6 +632,7 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "btnSmall",
         "textPixels": 138,
@@ -608,14 +642,16 @@
         "worstTextColor": "rgb(141, 148, 162)",
         "worstSurfacePixels": 138,
         "worstPixel": {
-          "x": 66,
-          "y": 9
+          "x": 1,
+          "y": 4
         },
+        "dominantContrast": 5.17,
+        "dominantBackground": "rgb(31, 35, 43)",
+        "dominantPixels": 138,
         "sliverContrast": null,
         "sliverPixels": 0,
-        "textColors": [
-          "rgb(141, 148, 162)"
-        ],
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
         "minContrast": 5.17,
         "meanContrast": 5.17
       },
@@ -655,6 +691,7 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "presetChip",
         "textPixels": 41,
@@ -664,14 +701,16 @@
         "worstTextColor": "rgb(245, 158, 11)",
         "worstSurfacePixels": 41,
         "worstPixel": {
-          "x": 11,
-          "y": 5
+          "x": 2,
+          "y": 1
         },
+        "dominantContrast": 6.28,
+        "dominantBackground": "rgb(55, 45, 31)",
+        "dominantPixels": 41,
         "sliverContrast": null,
         "sliverPixels": 0,
-        "textColors": [
-          "rgb(245, 158, 11)"
-        ],
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
         "minContrast": 6.28,
         "meanContrast": 6.28
       },
@@ -707,6 +746,7 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "transportBtn",
         "textPixels": 215,
@@ -716,14 +756,16 @@
         "worstTextColor": "rgb(141, 148, 162)",
         "worstSurfacePixels": 215,
         "worstPixel": {
-          "x": 11,
-          "y": 11
+          "x": 0,
+          "y": 2
         },
+        "dominantContrast": 5.17,
+        "dominantBackground": "rgb(31, 35, 43)",
+        "dominantPixels": 215,
         "sliverContrast": null,
         "sliverPixels": 0,
-        "textColors": [
-          "rgb(141, 148, 162)"
-        ],
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
         "minContrast": 5.17,
         "meanContrast": 5.17
       },
@@ -759,21 +801,27 @@
       "backgroundNote": "position-display paints a background-image",
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "positionReadout",
         "textPixels": 170,
         "surfaces": 49,
         "minSurfacePixels": 17,
-        "worstBackground": null,
-        "worstTextColor": null,
-        "worstSurfacePixels": 0,
-        "worstPixel": null,
+        "worstBackground": "rgb(23, 18, 10)",
+        "worstTextColor": "rgb(217, 219, 225)",
+        "worstSurfacePixels": 12,
+        "worstPixel": {
+          "x": 3,
+          "y": 8
+        },
+        "dominantContrast": null,
+        "dominantBackground": null,
+        "dominantPixels": 0,
         "sliverContrast": 13.46,
         "sliverPixels": 12,
-        "textColors": [
-          "rgb(217, 219, 225)"
-        ],
-        "minContrast": 0,
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
+        "minContrast": 13.46,
         "meanContrast": 13.8
       },
       "accentCount": 0,
@@ -808,6 +856,7 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "patternBarLabel",
         "textPixels": 97,
@@ -818,13 +867,15 @@
         "worstSurfacePixels": 97,
         "worstPixel": {
           "x": 0,
-          "y": 0
+          "y": 1
         },
+        "dominantContrast": 6.41,
+        "dominantBackground": "rgb(11, 12, 16)",
+        "dominantPixels": 97,
         "sliverContrast": null,
         "sliverPixels": 0,
-        "textColors": [
-          "rgb(141, 148, 162)"
-        ],
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
         "minContrast": 6.41,
         "meanContrast": 6.41
       },
@@ -860,6 +911,7 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": false,
       "pixelContrast": null,
       "accentCount": 0,
       "accentColors": [],
@@ -893,6 +945,7 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": false,
       "pixelContrast": {
         "id": "panelTitleLocal",
         "textPixels": 0,
@@ -902,11 +955,13 @@
         "worstTextColor": null,
         "worstSurfacePixels": 0,
         "worstPixel": null,
+        "dominantContrast": null,
+        "dominantBackground": null,
+        "dominantPixels": 0,
         "sliverContrast": null,
         "sliverPixels": 0,
-        "textColors": [
-          "rgb(141, 148, 162)"
-        ],
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
         "minContrast": null,
         "meanContrast": null
       },
@@ -942,27 +997,28 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "statusbar",
-        "textPixels": 1050,
-        "surfaces": 8,
-        "minSurfacePixels": 105,
+        "textPixels": 1331,
+        "surfaces": 7,
+        "minSurfacePixels": 133.1,
         "worstBackground": "rgb(18, 20, 26)",
         "worstTextColor": "rgb(122, 130, 144)",
-        "worstSurfacePixels": 923,
+        "worstSurfacePixels": 1254,
         "worstPixel": {
-          "x": 16,
-          "y": 13
+          "x": 2,
+          "y": 4
         },
+        "dominantContrast": 4.75,
+        "dominantBackground": "rgb(18, 20, 26)",
+        "dominantPixels": 1254,
         "sliverContrast": 3.51,
         "sliverPixels": 1,
-        "textColors": [
-          "rgb(122, 130, 144)",
-          "rgb(141, 148, 162)",
-          "rgb(217, 219, 225)"
-        ],
+        "belowFloorPixels": 5,
+        "belowFloorShare": 0.004,
         "minContrast": 4.75,
-        "meanContrast": 5.28
+        "meanContrast": 4.85
       },
       "accentCount": 0,
       "accentColors": [],

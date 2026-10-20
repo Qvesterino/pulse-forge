@@ -30,6 +30,8 @@
  * past a failed boot and report a measurement of an empty document.
  */
 
+import { mkdirSync } from "node:fs";
+
 /**
  * @param {import("playwright").Page} page
  * @param {string} url
@@ -63,7 +65,13 @@ export async function bootStudio(page, url, options = {}) {
   const how = await enterProject(page);
 
   // `main.tsx` lazy-imports the studio only once a project is open.
-  await page.locator(".topbar, .crash-screen, .boot-error").first().waitFor({ state: "visible", timeout: waitMs });
+  // `waitForFunction` for the same reason as the template wait above: the
+  // polling script survives a navigation, the locator's auto-waiting did not
+  // always.
+  await page.waitForFunction(() => document.querySelector(".topbar, .crash-screen, .boot-error") !== null, undefined, {
+    timeout: waitMs,
+    polling: 250,
+  });
   await page.waitForTimeout(1200);
 
   // A boot that settled on an error screen is a real result, not a timeout to
@@ -103,9 +111,20 @@ async function enterProject(page) {
   // The templates live inside a <details> that is closed on a fresh profile:
   // the button is in the DOM but NOT visible, and waiting for visibility on it
   // is what used to time out.
-  const templates = page.locator(".pb-templates .pb-template");
+  //
+  // `page.waitForFunction`, not `locator.waitFor`. The locator version timed
+  // out on this machine while the elements were demonstrably in the DOM — the
+  // failure dump showed 17 attached `.pb-template` buttons in a complete
+  // document. The polling script is re-injected on every navigation, so it
+  // survives the service worker's reload; the locator's auto-waiting did not
+  // always. A gate that boots unreliably is a gate whose green is a coin
+  // toss, so the mechanism that was MEASURED to work is the one that stays.
+  const TEMPLATE_SELECTOR = ".pb-templates .pb-template";
   try {
-    await templates.first().waitFor({ state: "attached", timeout: 60_000 });
+    await page.waitForFunction((selector) => document.querySelectorAll(selector).length > 0, TEMPLATE_SELECTOR, {
+      timeout: 180_000,
+      polling: 250,
+    });
   } catch (error) {
     // A bare Playwright timeout says "some locator did not appear" and leaves
     // the reader guessing whether the app crashed, the dev server was still
@@ -116,35 +135,66 @@ async function enterProject(page) {
         bodyClass: document.body?.className ?? "",
         crash: !!document.querySelector(".crash-screen, .boot-error"),
         text: (document.body?.innerText || "").replace(/\s+/g, " ").slice(0, 300),
+        // The counts that turn "it did not appear" into "it appeared and was
+        // still not matched" - the difference between a dead app and a
+        // locator that is looking in the wrong place.
+        readyState: document.readyState,
+        templates: document.querySelectorAll(".pb-templates").length,
+        templateButtons: document.querySelectorAll(".pb-template").length,
+        details: document.querySelectorAll("details").length,
+        rootChildren: document.getElementById("root")?.children.length ?? -1,
+        htmlLength: document.documentElement.outerHTML.length,
       }))
       .catch(() => null);
+    // The screenshot is the evidence a text dump cannot give: it shows
+    // whether the studio is up, a spinner is spinning, or a stale document is
+    // still on screen.
+    let shot = null;
+    try {
+      const dir = "output/playwright";
+      mkdirSync(dir, { recursive: true });
+      shot = `${dir}/boot-failure-${Date.now()}.png`;
+      await page.screenshot({ path: shot });
+    } catch {
+      /* the page may be gone; the text dump still stands */
+    }
     throw new Error(
-      `project templates never appeared${seen ? ` (url ${seen.url}, body "${seen.bodyClass}"` + (seen.crash ? ", CRASH SCREEN" : "") + `, text "${seen.text}")` : ""}: ${error.message}`,
+      `project templates never appeared${seen ? ` (url ${seen.url}, body "${seen.bodyClass}"` + (seen.crash ? ", CRASH SCREEN" : "") + `, text "${seen.text}")` : ""}: ${error.message}` +
+        (seen
+          ? `\n  DIAGNOSIS: readyState=${seen.readyState} .pb-templates=${seen.templates} .pb-template=${seen.templateButtons} details=${seen.details} #root children=${seen.rootChildren} html=${seen.htmlLength} bytes${shot ? ` screenshot=${shot}` : ""}`
+          : ""),
     );
   }
 
-  if (
-    !(await templates
+  const templates = page.locator(TEMPLATE_SELECTOR);
+  const isVisible = async () =>
+    await templates
       .first()
       .isVisible()
-      .catch(() => false))
-  ) {
-    // Click the disclosure the way a user would.
-    const disclosure = page.locator("details:has(.pb-templates)").first();
-    await disclosure
+      .catch(() => false);
+
+  /**
+   * Open the disclosure that holds the templates.
+   *
+   * `<details open={!firstRun}>` is CONTROLLED by React: on the next render of
+   * the browser, React writes `open` back from its prop and the panel closes
+   * again. That is the race this loop exists for — the harness opened it, the
+   * browser re-rendered, and the template button was hidden again by the time
+   * the click was dispatched. The symptom was a click that waited five
+   * minutes for an element that had been resolved and was "not visible".
+   */
+  const openDisclosure = async () => {
+    // The user gesture first: it is the one React does not undo.
+    await page
+      .locator("details:has(.pb-templates)")
+      .first()
       .locator("summary")
       .first()
       .click({ timeout: 10_000 })
       .catch(() => {});
     await page.waitForTimeout(300);
-    // Fallback for the case where React re-asserts its `open` prop: set the
-    // attribute directly. This is a measurement harness, not a user gesture.
-    if (
-      !(await templates
-        .first()
-        .isVisible()
-        .catch(() => false))
-    ) {
+    // Then the direct attribute, for the case where the gesture did not land.
+    if (!(await isVisible())) {
       await page.evaluate(() => {
         for (const d of document.querySelectorAll("details")) {
           if (d.querySelector(".pb-templates")) d.open = true;
@@ -152,19 +202,33 @@ async function enterProject(page) {
       });
       await page.waitForTimeout(300);
     }
-  }
+  };
 
-  if (
-    !(await templates
-      .first()
-      .isVisible()
-      .catch(() => false))
-  ) {
+  for (let attempt = 0; attempt < 3 && !(await isVisible()); attempt += 1) {
+    await openDisclosure();
+  }
+  if (!(await isVisible())) {
     throw new Error("project templates are present but not visible and could not be revealed");
   }
 
   // `house` is the FIRST entry of TEMPLATES (src/project-model/templates.ts),
   // so the first button is the House template the studio opens with.
-  await templates.first().click();
+  //
+  // The click is retried with a re-open between the attempts, because React
+  // can close the disclosure between the visibility check and the click.
+  let clickError = "";
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await templates.first().click({ timeout: 20_000 });
+      clickError = "";
+      break;
+    } catch (error) {
+      clickError = String(error?.message ?? error).split("\n")[0];
+      await openDisclosure();
+    }
+  }
+  if (clickError) {
+    throw new Error(`the House template could not be opened: ${clickError}`);
+  }
   return "opened House template";
 }

@@ -13,6 +13,7 @@ import {
   STATE_ROLES,
   evaluateContrast,
   type ContrastExpectation,
+  type PixelContrast,
   type StateReading,
 } from "../src/ui/stateMatrix";
 
@@ -48,7 +49,31 @@ const blank = (over: Partial<StateReading> = {}): StateReading => ({
   backgroundNote: null,
   contrastFloor: 4.5,
   largeText: false,
+  onScreen: false,
   pixelContrast: null,
+  ...over,
+});
+
+/** A pixel measurement with the numbers a test needs to bend. */
+const pixels = (over: Partial<PixelContrast> = {}): PixelContrast => ({
+  id: "rowIndex",
+  minContrast: 6.31,
+  meanContrast: 6.3,
+  textPixels: 18,
+  worstBackground: "rgb(24, 27, 34)",
+  worstTextColor: "rgb(156, 162, 175)",
+  worstSurfacePixels: 18,
+  worstPixel: { x: 0, y: 0 },
+  dominantContrast: 6.31,
+  dominantBackground: "rgb(24, 27, 34)",
+  dominantPixels: 18,
+  sliverContrast: null,
+  sliverPixels: 0,
+  minSurfacePixels: 2,
+  textColors: [],
+  surfaces: 1,
+  belowFloorPixels: 0,
+  belowFloorShare: 0,
   ...over,
 });
 
@@ -124,36 +149,67 @@ describe("contrast evaluation", () => {
     expect(r.failures[0]).toContain("4.5:1 required");
   });
 
-  it("prefers the PIXEL measurement over the static one", () => {
+  it("reports the PIXEL measurement as the number", () => {
     // The static reading composites solid backgrounds only; the pixel reading
     // is the real surface under the glyphs. Where both exist they agree —
     // and where they disagree the pixel one is the truth.
+    const r = evaluateContrast(rule, blank({ contrast: 6.4, visible: 1, pixelContrast: pixels() }), "idle");
+    expect(r.ok).toBe(true);
+    expect(r.measured).toBe(6.31);
+    expect(r.source).toBe("pixel");
+  });
+
+  it("does not let a good pixel reading EXCUSE a bad static one", () => {
+    // Both checks have to hold. The static reading is the one the Diagnostics
+    // panel can make on its own, so a rule that only the gate could check
+    // would be a rule that is only half enforced.
+    const r = evaluateContrast(rule, blank({ contrast: 4.45, visible: 1, pixelContrast: pixels() }), "idle");
+    expect(r.ok).toBe(false);
+    expect(r.failures[0]).toContain("static 4.45:1");
+  });
+
+  it("fails a DOMINANT surface that is under the floor", () => {
+    // The whole index on one 4.45:1 surface: the surface the text is read
+    // against, and it is under AA.
+    const r = evaluateContrast(
+      rule,
+      blank({ visible: 1, pixelContrast: pixels({ dominantContrast: 4.45, dominantPixels: 8, textPixels: 8 }) }),
+      "idle",
+    );
+    expect(r.ok).toBe(false);
+    expect(r.failures[0]).toContain("dominant surface reads 4.45:1");
+  });
+
+  it("fails when too much of the text is under the floor, even if the dominant surface is fine", () => {
     const r = evaluateContrast(
       rule,
       blank({
-        contrast: 4.45,
         visible: 1,
-        pixelContrast: {
-          id: "rowIndex",
-          minContrast: 6.31,
-          meanContrast: 6.3,
-          textPixels: 18,
-          worstBackground: "rgb(24, 27, 34)",
-          worstTextColor: "rgb(156, 162, 175)",
-          worstSurfacePixels: 18,
-          worstPixel: { x: 0, y: 0 },
-          sliverContrast: null,
-          sliverPixels: 0,
-          minSurfacePixels: 2,
-          textColors: [],
-          surfaces: 1,
-        },
+        pixelContrast: pixels({ dominantContrast: 6.31, belowFloorPixels: 23, belowFloorShare: 0.18, textPixels: 125 }),
+      }),
+      "idle",
+    );
+    expect(r.ok).toBe(false);
+    expect(r.failures[0]).toContain("18% of the text is below");
+  });
+
+  it("tolerates the measured noise floor — a glyph edge grazing a 1px highlight", () => {
+    // 2.5% is what the status bar and the pattern chip measure, and both
+    // read perfectly well.
+    const r = evaluateContrast(
+      rule,
+      blank({
+        visible: 1,
+        pixelContrast: pixels({
+          dominantContrast: 4.75,
+          belowFloorPixels: 25,
+          belowFloorShare: 0.025,
+          textPixels: 1020,
+        }),
       }),
       "idle",
     );
     expect(r.ok).toBe(true);
-    expect(r.measured).toBe(6.31);
-    expect(r.source).toBe("pixel");
   });
 
   it("treats an UNMEASURABLE surface as a failure, not as a pass", () => {

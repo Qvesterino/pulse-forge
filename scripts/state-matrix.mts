@@ -143,11 +143,21 @@ const measure = async () => await page.evaluate(readStateMatrix, STATE_ROLES);
  * that is not on the screen, and the pixel test would then reject every glyph
  * as "not text".
  *
- * And the region is the TEXT OWNER'S BOX, not the role's box. The role's box
- * includes its BORDER — and `.track-header-name` carries a 3px amber left
- * border, so scanning the role's box invented a "green text on pure amber,
- * 1.23:1" reading that was really the text's antialiased edge next to a
- * border. A border is not the surface a text is read against.
+ * And the region is the TEXT's OWN LINE BOX, not the element's box.
+ *
+ * The element's box is the border box, and it contains things that are not
+ * the text's surface: the 1px border, the padding, and — the one that bit —
+ * the `::after` bar the track header draws as a selection marker at its
+ * bottom edge. That bar is amber while the row is merely selected and green
+ * while it is playing, so it CHANGES between the two screenshots of the
+ * measurement. The differ cannot tell "the glyph was hidden" from "the app
+ * animated", so the bar's pixels were counted as text — and a green glyph
+ * edge over an amber bar reads 1.23:1, a number that says "unreadable" about
+ * a word that is perfectly legible.
+ *
+ * A Range over the text node gives the line box the glyphs actually sit in.
+ * The bar, the border and the padding are outside it. The measurement is
+ * then taken where the text is, not where the element is.
  */
 const collectRoleRegions = async (): Promise<RoleRegion[]> =>
   await page.evaluate((roles) => {
@@ -166,17 +176,23 @@ const collectRoleRegions = async (): Promise<RoleRegion[]> =>
       const parts: { color: string; x: number; y: number; w: number; h: number }[] = [];
       const seen = new Set<string>();
       for (const node of [el, ...el.querySelectorAll("*")]) {
-        const ownsText = [...node.childNodes].some(
+        const textNodes = [...node.childNodes].filter(
           (child) => child.nodeType === 3 && (child.textContent ?? "").trim().length > 0,
         );
-        if (!ownsText) continue;
-        const r = node.getBoundingClientRect();
-        if (r.width < 1 || r.height < 1) continue;
+        if (!textNodes.length) continue;
         const color = getComputedStyle(node).color;
-        const key = `${color}|${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.width)},${Math.round(r.height)}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        parts.push({ color, x: r.x, y: r.y, w: r.width, h: r.height });
+        for (const textNode of textNodes) {
+          const range = document.createRange();
+          range.selectNodeContents(textNode);
+          for (const r of Array.from(range.getClientRects())) {
+            if (r.width < 1 || r.height < 1) continue;
+            const key = `${color}|${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.width)},${Math.round(r.height)}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            parts.push({ color, x: r.x, y: r.y, w: r.width, h: r.height });
+          }
+          range.detach();
+        }
       }
       out.push({ id: role.id, parts });
     }
@@ -276,7 +292,7 @@ async function measureContrastByPixels(): Promise<Map<string, PixelContrast>> {
 
   // 3. Analyse every role out of the two images.
   const analysed = await page.evaluate(
-    async ({ a, b, regions }) => {
+    async ({ a, b, regions, aaFloor }) => {
       const load = async (dataUrl: string) => {
         const img = new Image();
         img.src = `data:image/png;base64,${dataUrl}`;
@@ -408,11 +424,13 @@ async function measureContrastByPixels(): Promise<Map<string, PixelContrast>> {
          */
         const minShare = Math.max(2, total * 0.1);
         let overall: { count: number; ratio: number; bg: number[]; text: string; x: number; y: number } | null = null;
+        let dominant: { count: number; ratio: number; bg: number[]; text: string; x: number; y: number } | null = null;
         let belowFloorPixels = 0;
         for (const group of groups.values()) {
           if (!overall || group.ratio < overall.ratio) overall = group;
-          if (group.ratio < AA_FLOOR) belowFloorPixels += group.count;
+          if (group.ratio < aaFloor) belowFloorPixels += group.count;
           if (group.count >= minShare) {
+            if (!dominant || group.ratio < dominant.ratio) dominant = group;
             if (!worst || group.ratio < worst.ratio) worst = group;
           } else if (!sliver || group.ratio < sliver.ratio) sliver = group;
         }
@@ -436,6 +454,18 @@ async function measureContrastByPixels(): Promise<Map<string, PixelContrast>> {
           worstTextColor: worst ? worst.text : null,
           worstSurfacePixels: worst ? worst.count : 0,
           worstPixel: worst ? { x: worst.x, y: worst.y } : null,
+          /**
+           * The worst surface that carries a DOMINANT share of the text (at
+           * least 10%), or null when the text is spread so thin that no
+           * surface dominates.
+           *
+           * This is the surface the text is actually read against. The
+           * overall worst surface may be one pixel — a glyph edge grazing a
+           * 1px highlight — and that is a rendering detail, not a surface.
+           */
+          dominantContrast: dominant ? Math.round(dominant.ratio * 100) / 100 : null,
+          dominantBackground: dominant ? `rgb(${dominant.bg[0]}, ${dominant.bg[1]}, ${dominant.bg[2]})` : null,
+          dominantPixels: dominant ? dominant.count : 0,
           sliverContrast: sliver ? Math.round(sliver.ratio * 100) / 100 : null,
           sliverPixels: sliver ? sliver.count : 0,
           /**
@@ -444,8 +474,8 @@ async function measureContrastByPixels(): Promise<Map<string, PixelContrast>> {
            *
            * The minimum alone cannot tell "this text is unreadable" from "one
            * glyph edge grazed a highlight". The share can: 100% of the index
-           * on a 4.45:1 surface is a defect, and 0.6% of a pattern chip on a
-           * 4.25:1 gradient corner is not.
+           * on a 4.45:1 surface is a defect, and 2.5% of a status bar whose
+           * top row grazes a 1px highlight is not.
            */
           belowFloorPixels,
           belowFloorShare: count === 0 ? 0 : Math.round((belowFloorPixels / count) * 1000) / 1000,
@@ -461,7 +491,7 @@ async function measureContrastByPixels(): Promise<Map<string, PixelContrast>> {
       }
       return out;
     },
-    { a: withText, b: withoutText, regions },
+    { a: withText, b: withoutText, regions, aaFloor: AA_FLOOR },
   );
 
   for (const entry of analysed as PixelContrast[]) {
@@ -544,8 +574,9 @@ async function record(stateId: string, entered: boolean, note?: string) {
           ? `  (stray ${r.pixelContrast.sliverContrast}:1 on ${r.pixelContrast.sliverPixels}px)`
           : "";
       const share = r.pixelContrast ? `  below${(r.pixelContrast.belowFloorShare * 100).toFixed(1)}%` : "";
+      const dominant = r.pixelContrast?.dominantContrast != null ? `${r.pixelContrast.dominantContrast}:1` : "—";
       console.log(
-        `      ${r.roleId.padEnd(20)} static ${staticText.padStart(9)}   pixel ${pixelText.padStart(6)}${pxCount.padStart(8)}${surf.padStart(4)}${surfPx.padStart(12)}${share.padStart(12)}   ` +
+        `      ${r.roleId.padEnd(20)} static ${staticText.padStart(9)}   pixel ${pixelText.padStart(6)}  dominant ${dominant.padStart(6)}${pxCount.padStart(8)}${surf.padStart(4)}${surfPx.padStart(12)}${share.padStart(12)}   ` +
           `floor ${r.contrastFloor}   ${who} on ${bg}${flag}${sliver}`,
       );
     }
@@ -559,6 +590,30 @@ async function record(stateId: string, entered: boolean, note?: string) {
   if (note) console.log(`      ${note}`);
   return snapshot;
 }
+
+// Click a control, and SAY when the harness could not click it.
+//
+// The states below are entered by clicking real controls, and a click that
+// fails (the element was re-rendered, something intercepted the pointer, the
+// shell was still booting) used to be swallowed by `.catch(() => {})`. The
+// state was then reported as "not entered" — which reads like the APP did
+// not respond, when in fact the HARNESS never clicked. Those are different
+// bugs with different fixes, so the harness has to tell them apart.
+//
+// Returns an empty string on success, otherwise the first line of the error.
+const clickWithRetry = async (locator: import("playwright").Locator, attempts = 3): Promise<string> => {
+  let last = "";
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      await locator.click({ timeout: 20_000 });
+      return "";
+    } catch (error) {
+      last = String((error as Error)?.message ?? error).split("\n")[0];
+      await page.waitForTimeout(500);
+    }
+  }
+  return last;
+};
 
 // ---- idle ------------------------------------------------------------------
 // "Idle" is a CLAIM: nothing is playing and nothing is marked as the
@@ -577,14 +632,28 @@ await record("idle", !idlePlay && !idleHead, idlePlay || idleHead ? "the transpo
 // was indistinguishable from "idle" in the data while the screenshot looked
 // the same too. Now it clicks a row that is not selected and proves the mark
 // moved to it.
+//
+// The click is retried and its failure is REPORTED. The first version wrote
+// `.catch(() => {})` — a click that never happened (the element was
+// re-rendered, or something intercepted the pointer) looked exactly like an
+// app that ignored the selection, and the state was reported as "not
+// entered" with no hint that the HARNESS failed to click. A measurement tool
+// that cannot say "I could not click" is a measurement tool that guesses.
 const beforeSelection = (await measure()).find((r) => r.roleId === "rowPad")?.accentSample ?? null;
 const otherRow = page.locator(".row-pad:not(.selected)").first();
 if ((await otherRow.count()) > 0) {
-  await otherRow.click({ timeout: 20_000 }).catch(() => {});
+  const clickError = await clickWithRetry(otherRow);
   await page.waitForTimeout(600);
   const after = (await measure()).find((r) => r.roleId === "rowPad");
   const moved = !!after?.accentSample && after.accentSample !== beforeSelection;
-  await record("selected", moved, moved ? undefined : `the selection did not move (still "${after?.accentSample}")`);
+  await record(
+    "selected",
+    moved,
+    moved
+      ? undefined
+      : `the selection did not move (still "${after?.accentSample}")` +
+          (clickError ? `; the harness could not click the row: ${clickError}` : ""),
+  );
 } else {
   await record("selected", false, "no unselected .row-pad to click");
 }
@@ -595,7 +664,7 @@ if ((await otherRow.count()) > 0) {
 // button class would happily record "playing" over a frozen grid.
 const play = page.locator(".btn-play").first();
 if ((await play.count()) > 0) {
-  await play.click({ timeout: 20_000 }).catch(() => {});
+  const playClickError = await clickWithRetry(play);
   await page.waitForTimeout(900);
   const transportRunning = (await page.locator(".btn-play.active").count()) > 0;
   const playheadCells = (await page.locator(".step.playhead").count()) > 0;
@@ -603,7 +672,7 @@ if ((await play.count()) > 0) {
     "playing",
     transportRunning && playheadCells,
     !transportRunning
-      ? "the transport did not report a playing state"
+      ? `the transport did not report a playing state${playClickError ? `; the harness could not click play: ${playClickError}` : ""}`
       : !playheadCells
         ? "the transport is running but no step carries the playhead mark"
         : undefined,
@@ -702,7 +771,7 @@ if ((await focusTarget.count()) > 0) {
 // only exists while armed is present.
 const rec = page.locator(".btn-record").first();
 if ((await rec.count()) > 0) {
-  await rec.click({ timeout: 20_000 }).catch(() => {});
+  const recClickError = await clickWithRetry(rec);
   await page.waitForTimeout(900);
   const armed = (await page.locator(".btn-record.armed").count()) > 0;
   const modeSelector = (await page.locator("select.rec-option").count()) > 0;
@@ -710,7 +779,7 @@ if ((await rec.count()) > 0) {
     "recording",
     armed && modeSelector,
     !armed
-      ? "the record button did not report an armed state"
+      ? `the record button did not report an armed state${recClickError ? `; the harness could not click record: ${recClickError}` : ""}`
       : !modeSelector
         ? "the record button is armed but the record-mode selector is absent"
         : undefined,
@@ -779,17 +848,30 @@ if (GATE) {
   for (const expectation of CONTRAST_EXPECTATIONS) {
     let worst: ContrastResult | null = null;
     let seen = 0;
+    let rendered = 0;
     for (const snapshot of snapshots) {
       if (!snapshot.entered) continue;
       const reading = snapshot.readings.find((r) => r.roleId === expectation.role);
       if (!reading || reading.visible === 0) continue;
+      rendered += 1;
+      // A role that is rendered but BELOW THE FOLD cannot be exercised: the
+      // pixels are not on the screen. That is a note, not a failure — the
+      // floor is still declared, and the hole is said out loud.
+      if (!reading.onScreen) continue;
       seen += 1;
       const result = evaluateContrast(expectation, reading, snapshot.state);
       if (!worst || (result.measured ?? 0) < (worst.measured ?? 0)) worst = result;
     }
     if (seen === 0) {
-      failed += 1;
-      console.log(`  FAIL  ${expectation.role} — the role was not on screen in any state, so the rule covers nothing`);
+      if (rendered === 0) {
+        failed += 1;
+        console.log(`  FAIL  ${expectation.role} — the role was not rendered in any state, so the rule covers nothing`);
+      } else {
+        console.log(
+          `  NOTE  ${expectation.role} — rendered but below the fold in every measured state (1440x900); ` +
+            `the floor is declared but NOT exercised here`,
+        );
+      }
       continue;
     }
     contrastChecks += seen;

@@ -96,10 +96,7 @@
    on. The veil is the app background at 35%, so it follows the theme. */
 .dock-tabs {
   background:
-    linear-gradient(
-      color-mix(in srgb, var(--bg) 35%, transparent),
-      color-mix(in srgb, var(--bg) 35%, transparent)
-    ),
+    linear-gradient(color-mix(in srgb, var(--bg) 35%, transparent), color-mix(in srgb, var(--bg) 35%, transparent)),
     var(--kyx-silver-glass), linear-gradient(180deg, color-mix(in srgb, var(--bg-panel) 90%, #000), var(--bg-panel));
 }
 

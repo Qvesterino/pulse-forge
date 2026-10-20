@@ -23,6 +23,7 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "channelNameRow",
         "textPixels": 107,
@@ -35,11 +36,13 @@
           "x": 10,
           "y": 4
         },
+        "dominantContrast": 12.45,
+        "dominantBackground": "rgb(24, 27, 34)",
+        "dominantPixels": 107,
         "sliverContrast": null,
         "sliverPixels": 0,
-        "textColors": [
-          "rgb(217, 219, 225)"
-        ],
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
         "minContrast": 12.45,
         "meanContrast": 12.45
       },
@@ -65,9 +68,9 @@
       "topLight": 0.11,
       "bottomLight": null,
       "hasAccent": true,
-      "accent": "rgb(74, 222, 128)",
+      "accent": "rgb(245, 158, 11)",
       "background": "rgb(31, 35, 43)",
-      "color": "rgb(74, 222, 128)",
+      "color": "rgb(217, 219, 225)",
       "sample": "DRDrums",
       "contrast": null,
       "compositedBackground": null,
@@ -75,27 +78,32 @@
       "backgroundNote": "track-header-name paints a background-image",
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "channelNameHeader",
-        "textPixels": 250,
-        "surfaces": 58,
-        "minSurfacePixels": 25,
-        "worstBackground": null,
-        "worstTextColor": null,
-        "worstSurfacePixels": 0,
-        "worstPixel": null,
-        "sliverContrast": 3.45,
+        "textPixels": 153,
+        "surfaces": 44,
+        "minSurfacePixels": 15.3,
+        "worstBackground": "rgb(11, 12, 16)",
+        "worstTextColor": "rgb(122, 130, 144)",
+        "worstSurfacePixels": 17,
+        "worstPixel": {
+          "x": 0,
+          "y": 1
+        },
+        "dominantContrast": 5.05,
+        "dominantBackground": "rgb(11, 12, 16)",
+        "dominantPixels": 17,
+        "sliverContrast": 5.01,
         "sliverPixels": 2,
-        "textColors": [
-          "rgb(74, 222, 128)",
-          "rgb(122, 130, 144)"
-        ],
-        "minContrast": 0,
-        "meanContrast": 7.79
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
+        "minContrast": 5.05,
+        "meanContrast": 9.13
       },
       "accentCount": 1,
       "accentColors": [
-        "rgb(74, 222, 128)"
+        "rgb(245, 158, 11)"
       ],
       "accentIndexes": [
         0
@@ -105,7 +113,7 @@
       "outlineCount": 0,
       "outlineAccent": null,
       "outlineWidth": null,
-      "borderAccent": "rgb(59, 138, 93)",
+      "borderAccent": "rgb(229, 175, 83)",
       "borderAccentCount": 1,
       "borderAccentSample": "DRDrums"
     },
@@ -121,33 +129,36 @@
       "hasAccent": false,
       "accent": null,
       "background": "rgba(0, 0, 0, 0)",
-      "color": "rgb(122, 130, 144)",
+      "color": "color(srgb 0.612549 0.636078 0.684706)",
       "sample": "1",
-      "contrast": 4.45,
+      "contrast": 6.74,
       "compositedBackground": "rgb(24, 27, 34)",
       "backgroundResolved": true,
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "rowIndex",
-        "textPixels": 8,
+        "textPixels": 7,
         "surfaces": 1,
         "minSurfacePixels": 2,
         "worstBackground": "rgb(24, 27, 34)",
-        "worstTextColor": "rgb(122, 130, 144)",
-        "worstSurfacePixels": 8,
+        "worstTextColor": "color(srgb 0.612549 0.636078 0.684706)",
+        "worstSurfacePixels": 7,
         "worstPixel": {
-          "x": 7,
+          "x": 1,
           "y": 1
         },
+        "dominantContrast": 6.73,
+        "dominantBackground": "rgb(24, 27, 34)",
+        "dominantPixels": 7,
         "sliverContrast": null,
         "sliverPixels": 0,
-        "textColors": [
-          "rgb(122, 130, 144)"
-        ],
-        "minContrast": 4.45,
-        "meanContrast": 4.45
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
+        "minContrast": 6.73,
+        "meanContrast": 6.73
       },
       "accentCount": 0,
       "accentColors": [],
@@ -181,6 +192,7 @@
       "backgroundNote": "step paints a background-image",
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "stepCell",
         "textPixels": 0,
@@ -190,53 +202,58 @@
         "worstTextColor": null,
         "worstSurfacePixels": 0,
         "worstPixel": null,
+        "dominantContrast": null,
+        "dominantBackground": null,
+        "dominantPixels": 0,
         "sliverContrast": null,
         "sliverPixels": 0,
-        "textColors": [],
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
         "minContrast": null,
         "meanContrast": null
       },
-      "accentCount": 26,
+      "accentCount": 42,
       "accentColors": [
         "rgb(178, 238, 216)",
         "rgb(251, 201, 227)",
         "rgb(251, 218, 162)",
-        "rgba(245, 158, 11, 0.161)",
-        "rgba(252, 222, 171, 0.861)"
+        "rgba(195, 239, 214, 0.858)",
+        "rgba(245, 158, 11, 0.164)",
+        "rgba(245, 158, 11, 0.341)"
       ],
       "accentIndexes": [
         0,
         4,
+        6,
+        7,
         8,
         12,
-        24,
-        40,
-        56,
-        72,
-        88,
+        22,
+        23,
+        38,
+        39,
+        54,
+        55,
+        70,
+        71,
+        86,
+        87,
         100,
-        104,
+        102,
+        103,
         108,
-        120,
+        118,
+        119,
         130,
-        134,
-        136,
-        138,
-        142,
-        152,
-        168,
-        174,
-        184,
-        200,
-        216
+        134
       ],
       "accentSample": null,
-      "ringCount": 15,
+      "ringCount": 31,
       "outlineCount": 0,
       "outlineAccent": null,
       "outlineWidth": null,
       "borderAccent": "rgb(247, 181, 70)",
-      "borderAccentCount": 11,
+      "borderAccentCount": 27,
       "borderAccentSample": null
     },
     {
@@ -248,8 +265,8 @@
       "letterSpacing": "normal",
       "topLight": null,
       "bottomLight": null,
-      "hasAccent": false,
-      "accent": null,
+      "hasAccent": true,
+      "accent": "rgba(245, 158, 11, 0.341)",
       "background": "rgb(11, 12, 16)",
       "color": "rgb(217, 219, 225)",
       "sample": null,
@@ -259,6 +276,7 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "stepPlayhead",
         "textPixels": 0,
@@ -268,26 +286,45 @@
         "worstTextColor": null,
         "worstSurfacePixels": 0,
         "worstPixel": null,
+        "dominantContrast": null,
+        "dominantBackground": null,
+        "dominantPixels": 0,
         "sliverContrast": null,
         "sliverPixels": 0,
-        "textColors": [],
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
         "minContrast": null,
         "meanContrast": null
       },
-      "accentCount": 1,
+      "accentCount": 16,
       "accentColors": [
-        "rgb(178, 238, 216)"
+        "rgba(245, 158, 11, 0.341)"
       ],
       "accentIndexes": [
-        8
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
       ],
       "accentSample": null,
-      "ringCount": 0,
+      "ringCount": 16,
       "outlineCount": 0,
       "outlineAccent": null,
       "outlineWidth": null,
-      "borderAccent": null,
-      "borderAccentCount": 1,
+      "borderAccent": "rgba(107, 81, 43, 0.917)",
+      "borderAccentCount": 16,
       "borderAccentSample": null
     },
     {
@@ -310,6 +347,7 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "rulerTick",
         "textPixels": 22,
@@ -319,14 +357,16 @@
         "worstTextColor": "rgb(141, 148, 162)",
         "worstSurfacePixels": 22,
         "worstPixel": {
-          "x": 17,
-          "y": 4
+          "x": 0,
+          "y": 2
         },
+        "dominantContrast": 6.04,
+        "dominantBackground": "rgb(18, 20, 26)",
+        "dominantPixels": 22,
         "sliverContrast": null,
         "sliverPixels": 0,
-        "textColors": [
-          "rgb(141, 148, 162)"
-        ],
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
         "minContrast": 6.04,
         "meanContrast": 6.04
       },
@@ -362,26 +402,28 @@
       "backgroundNote": "track-tab paints a background-image",
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "trackTab",
-        "textPixels": 93,
-        "surfaces": 58,
-        "minSurfacePixels": 9.3,
+        "textPixels": 90,
+        "surfaces": 54,
+        "minSurfacePixels": 9,
         "worstBackground": "rgb(11, 12, 16)",
-        "worstTextColor": "rgb(238, 242, 246)",
-        "worstSurfacePixels": 19,
+        "worstTextColor": "rgb(122, 130, 144)",
+        "worstSurfacePixels": 22,
         "worstPixel": {
-          "x": 18,
-          "y": 13
+          "x": 1,
+          "y": 1
         },
-        "sliverContrast": 2.69,
+        "dominantContrast": 5.05,
+        "dominantBackground": "rgb(11, 12, 16)",
+        "dominantPixels": 22,
+        "sliverContrast": 8.67,
         "sliverPixels": 1,
-        "textColors": [
-          "rgb(238, 242, 246)",
-          "rgb(122, 130, 144)"
-        ],
-        "minContrast": 17.38,
-        "meanContrast": 11.03
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
+        "minContrast": 5.05,
+        "meanContrast": 8.69
       },
       "accentCount": 0,
       "accentColors": [],
@@ -415,26 +457,28 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "rowPad",
-        "textPixels": 128,
-        "surfaces": 3,
-        "minSurfacePixels": 12.8,
+        "textPixels": 114,
+        "surfaces": 2,
+        "minSurfacePixels": 11.4,
         "worstBackground": "rgb(24, 27, 34)",
-        "worstTextColor": "rgb(122, 130, 144)",
-        "worstSurfacePixels": 20,
+        "worstTextColor": "rgb(217, 219, 225)",
+        "worstSurfacePixels": 107,
         "worstPixel": {
-          "x": 18,
-          "y": 9
+          "x": 10,
+          "y": 4
         },
-        "sliverContrast": 1.54,
-        "sliverPixels": 3,
-        "textColors": [
-          "rgb(122, 130, 144)",
-          "rgb(217, 219, 225)"
-        ],
-        "minContrast": 4.45,
-        "meanContrast": 10.94
+        "dominantContrast": 12.45,
+        "dominantBackground": "rgb(24, 27, 34)",
+        "dominantPixels": 107,
+        "sliverContrast": 6.73,
+        "sliverPixels": 7,
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
+        "minContrast": 12.45,
+        "meanContrast": 12.1
       },
       "accentCount": 1,
       "accentColors": [
@@ -464,7 +508,7 @@
       "hasAccent": false,
       "accent": null,
       "background": "rgba(0, 0, 0, 0)",
-      "color": "rgb(122, 130, 144)",
+      "color": "rgb(199, 208, 218)",
       "sample": "MIX",
       "contrast": null,
       "compositedBackground": null,
@@ -472,25 +516,28 @@
       "backgroundNote": "dock-tabs paints a background-image",
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "dockTab",
-        "textPixels": 125,
-        "surfaces": 25,
-        "minSurfacePixels": 12.5,
-        "worstBackground": "rgb(79, 82, 87)",
-        "worstTextColor": "rgb(122, 130, 144)",
-        "worstSurfacePixels": 23,
+        "textPixels": 51,
+        "surfaces": 11,
+        "minSurfacePixels": 5.1000000000000005,
+        "worstBackground": "rgb(55, 58, 63)",
+        "worstTextColor": "rgb(199, 208, 218)",
+        "worstSurfacePixels": 11,
         "worstPixel": {
-          "x": 25,
-          "y": 11
+          "x": 8,
+          "y": 4
         },
-        "sliverContrast": 1.99,
+        "dominantContrast": 7.32,
+        "dominantBackground": "rgb(55, 58, 63)",
+        "dominantPixels": 11,
+        "sliverContrast": 7.21,
         "sliverPixels": 1,
-        "textColors": [
-          "rgb(122, 130, 144)"
-        ],
-        "minContrast": 2.03,
-        "meanContrast": 2.03
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
+        "minContrast": 7.32,
+        "meanContrast": 7.38
       },
       "accentCount": 0,
       "accentColors": [],
@@ -524,21 +571,27 @@
       "backgroundNote": "pattern-chip paints a background-image",
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "patternChip",
         "textPixels": 160,
         "surfaces": 129,
         "minSurfacePixels": 16,
-        "worstBackground": null,
-        "worstTextColor": null,
-        "worstSurfacePixels": 0,
-        "worstPixel": null,
+        "worstBackground": "rgb(73, 72, 71)",
+        "worstTextColor": "rgb(245, 158, 11)",
+        "worstSurfacePixels": 1,
+        "worstPixel": {
+          "x": 1,
+          "y": 4
+        },
+        "dominantContrast": null,
+        "dominantBackground": null,
+        "dominantPixels": 0,
         "sliverContrast": 4.25,
         "sliverPixels": 1,
-        "textColors": [
-          "rgb(245, 158, 11)"
-        ],
-        "minContrast": 0,
+        "belowFloorPixels": 4,
+        "belowFloorShare": 0.025,
+        "minContrast": 4.25,
         "meanContrast": 5.37
       },
       "accentCount": 0,
@@ -573,25 +626,28 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "btn",
         "textPixels": 198,
-        "surfaces": 1,
+        "surfaces": 3,
         "minSurfacePixels": 19.8,
-        "worstBackground": "rgb(31, 35, 43)",
+        "worstBackground": "rgb(32, 36, 44)",
         "worstTextColor": "rgb(141, 148, 162)",
-        "worstSurfacePixels": 198,
+        "worstSurfacePixels": 30,
         "worstPixel": {
-          "x": 12,
-          "y": 12
+          "x": 2,
+          "y": 4
         },
-        "sliverContrast": null,
-        "sliverPixels": 0,
-        "textColors": [
-          "rgb(141, 148, 162)"
-        ],
-        "minContrast": 5.17,
-        "meanContrast": 5.17
+        "dominantContrast": 5.1,
+        "dominantBackground": "rgb(32, 36, 44)",
+        "dominantPixels": 30,
+        "sliverContrast": 5.23,
+        "sliverPixels": 14,
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
+        "minContrast": 5.1,
+        "meanContrast": 5.16
       },
       "accentCount": 1,
       "accentColors": [
@@ -629,6 +685,7 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "btnSmall",
         "textPixels": 138,
@@ -638,14 +695,16 @@
         "worstTextColor": "rgb(141, 148, 162)",
         "worstSurfacePixels": 138,
         "worstPixel": {
-          "x": 66,
-          "y": 9
+          "x": 1,
+          "y": 4
         },
+        "dominantContrast": 5.17,
+        "dominantBackground": "rgb(31, 35, 43)",
+        "dominantPixels": 138,
         "sliverContrast": null,
         "sliverPixels": 0,
-        "textColors": [
-          "rgb(141, 148, 162)"
-        ],
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
         "minContrast": 5.17,
         "meanContrast": 5.17
       },
@@ -685,6 +744,7 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "presetChip",
         "textPixels": 41,
@@ -694,14 +754,16 @@
         "worstTextColor": "rgb(245, 158, 11)",
         "worstSurfacePixels": 41,
         "worstPixel": {
-          "x": 11,
-          "y": 5
+          "x": 2,
+          "y": 1
         },
+        "dominantContrast": 6.28,
+        "dominantBackground": "rgb(55, 45, 31)",
+        "dominantPixels": 41,
         "sliverContrast": null,
         "sliverPixels": 0,
-        "textColors": [
-          "rgb(245, 158, 11)"
-        ],
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
         "minContrast": 6.28,
         "meanContrast": 6.28
       },
@@ -737,24 +799,27 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "transportBtn",
         "textPixels": 215,
-        "surfaces": 1,
+        "surfaces": 3,
         "minSurfacePixels": 21.5,
-        "worstBackground": "rgb(31, 35, 43)",
+        "worstBackground": "rgb(32, 36, 44)",
         "worstTextColor": "rgb(141, 148, 162)",
-        "worstSurfacePixels": 215,
+        "worstSurfacePixels": 26,
         "worstPixel": {
-          "x": 11,
-          "y": 11
+          "x": 1,
+          "y": 2
         },
+        "dominantContrast": 5.1,
+        "dominantBackground": "rgb(32, 36, 44)",
+        "dominantPixels": 26,
         "sliverContrast": null,
         "sliverPixels": 0,
-        "textColors": [
-          "rgb(141, 148, 162)"
-        ],
-        "minContrast": 5.17,
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
+        "minContrast": 5.1,
         "meanContrast": 5.17
       },
       "accentCount": 0,
@@ -782,29 +847,35 @@
       "accent": null,
       "background": "rgba(0, 0, 0, 0)",
       "color": "rgb(217, 219, 225)",
-      "sample": "1.3.3",
+      "sample": "1.2.4",
       "contrast": null,
       "compositedBackground": null,
       "backgroundResolved": false,
       "backgroundNote": "position-display paints a background-image",
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "positionReadout",
-        "textPixels": 189,
+        "textPixels": 187,
         "surfaces": 63,
-        "minSurfacePixels": 18.900000000000002,
-        "worstBackground": null,
-        "worstTextColor": null,
-        "worstSurfacePixels": 0,
-        "worstPixel": null,
+        "minSurfacePixels": 18.7,
+        "worstBackground": "rgb(25, 20, 10)",
+        "worstTextColor": "rgb(217, 219, 225)",
+        "worstSurfacePixels": 1,
+        "worstPixel": {
+          "x": 24,
+          "y": 8
+        },
+        "dominantContrast": null,
+        "dominantBackground": null,
+        "dominantPixels": 0,
         "sliverContrast": 13.24,
-        "sliverPixels": 3,
-        "textColors": [
-          "rgb(217, 219, 225)"
-        ],
-        "minContrast": 0,
-        "meanContrast": 13.71
+        "sliverPixels": 1,
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
+        "minContrast": 13.24,
+        "meanContrast": 13.72
       },
       "accentCount": 0,
       "accentColors": [],
@@ -838,6 +909,7 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "patternBarLabel",
         "textPixels": 97,
@@ -848,13 +920,15 @@
         "worstSurfacePixels": 97,
         "worstPixel": {
           "x": 0,
-          "y": 0
+          "y": 1
         },
+        "dominantContrast": 6.41,
+        "dominantBackground": "rgb(11, 12, 16)",
+        "dominantPixels": 97,
         "sliverContrast": null,
         "sliverPixels": 0,
-        "textColors": [
-          "rgb(141, 148, 162)"
-        ],
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
         "minContrast": 6.41,
         "meanContrast": 6.41
       },
@@ -890,6 +964,7 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": false,
       "pixelContrast": null,
       "accentCount": 0,
       "accentColors": [],
@@ -923,6 +998,7 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": false,
       "pixelContrast": {
         "id": "panelTitleLocal",
         "textPixels": 0,
@@ -932,11 +1008,13 @@
         "worstTextColor": null,
         "worstSurfacePixels": 0,
         "worstPixel": null,
+        "dominantContrast": null,
+        "dominantBackground": null,
+        "dominantPixels": 0,
         "sliverContrast": null,
         "sliverPixels": 0,
-        "textColors": [
-          "rgb(141, 148, 162)"
-        ],
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
         "minContrast": null,
         "meanContrast": null
       },
@@ -972,27 +1050,28 @@
       "backgroundNote": null,
       "contrastFloor": 4.5,
       "largeText": false,
+      "onScreen": true,
       "pixelContrast": {
         "id": "statusbar",
-        "textPixels": 1048,
-        "surfaces": 8,
-        "minSurfacePixels": 104.80000000000001,
+        "textPixels": 1313,
+        "surfaces": 5,
+        "minSurfacePixels": 131.3,
         "worstBackground": "rgb(18, 20, 26)",
         "worstTextColor": "rgb(122, 130, 144)",
-        "worstSurfacePixels": 898,
+        "worstSurfacePixels": 1218,
         "worstPixel": {
-          "x": 16,
-          "y": 13
+          "x": 2,
+          "y": 4
         },
-        "sliverContrast": 3.51,
-        "sliverPixels": 1,
-        "textColors": [
-          "rgb(122, 130, 144)",
-          "rgb(141, 148, 162)",
-          "rgb(217, 219, 225)"
-        ],
+        "dominantContrast": 4.75,
+        "dominantBackground": "rgb(18, 20, 26)",
+        "dominantPixels": 1218,
+        "sliverContrast": 4.8,
+        "sliverPixels": 59,
+        "belowFloorPixels": 0,
+        "belowFloorShare": 0,
         "minContrast": 4.75,
-        "meanContrast": 5.27
+        "meanContrast": 4.84
       },
       "accentCount": 0,
       "accentColors": [],
