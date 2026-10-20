@@ -179,7 +179,7 @@ describe("mcp idempotency ledger (P1-B, GAP-04)", () => {
     const evicted = await groove(ctx, { direction: "set", percent: 41, requestId: "evict-0" });
     expect(evicted.replayed).toBeUndefined(); // evicted → executed again
     expect(doc()).not.toBe(beforeOldest);
-    const survivor = await groove(ctx, { direction: "set", percent: 40, requestId: "evict-256" });
+    const survivor = await groove(ctx, { direction: "set", percent: 56, requestId: "evict-256" });
     expect(survivor.replayed).toBe(true); // newest → still cached
   });
 
@@ -217,5 +217,43 @@ describe("mcp idempotency ledger (P1-B, GAP-04)", () => {
       expect(prop!.type, def.name).toBe("string");
       expect(prop!.maxLength, def.name).toBe(128);
     }
+  });
+
+  it("ID11 one requestId cannot replay a different tool or argument payload", async () => {
+    const { ctx, doc } = makeCtx(createProjectFromTemplate("house"));
+    const first = await groove(ctx, { direction: "more", requestId: "bound-once" });
+    expect(first.mutated).toBe(true);
+    const afterFirst = doc();
+
+    const differentArguments = await groove(ctx, {
+      direction: "less",
+      requestId: "bound-once",
+    });
+    expect(differentArguments.isError).toBe(true);
+    expect(differentArguments.errorCode).toBe("REQUEST_ID_CONFLICT");
+    expect(differentArguments.text).toContain("choose a fresh requestId");
+    expect(doc()).toBe(afterFirst);
+
+    const differentTool = await executeMcpTool(ctx, "kyx_markers", {
+      op: "add",
+      bar: 1,
+      name: "must-not-land",
+      requestId: "bound-once",
+    });
+    expect(differentTool.errorCode).toBe("REQUEST_ID_CONFLICT");
+    expect(doc()).toBe(afterFirst);
+    expect(doc().markers.some((marker) => marker.name === "must-not-land")).toBe(false);
+  });
+
+  it("ID12 overlapping calls with the same requestId execute one mutation", async () => {
+    const { ctx, doc } = makeCtx(createProjectFromTemplate("house"));
+    const args = { direction: "more", requestId: "concurrent-once" };
+    const [first, second] = await Promise.all([groove(ctx, args), groove(ctx, args)]);
+    expect(first.mutated).toBe(true);
+    expect(second.mutated).toBe(true);
+    expect([first.replayed, second.replayed].filter(Boolean)).toHaveLength(1);
+    const after = await groove(ctx, { direction: "more", requestId: "concurrent-once" });
+    expect(after.replayed).toBe(true);
+    expect(doc().groove).toBeDefined();
   });
 });

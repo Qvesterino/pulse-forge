@@ -1111,6 +1111,13 @@ describe("mcp P1 automation — lanes, points, FX targeting", async () => {
     expect(lane.target.fxId).toBe(store.doc.tracks.find((t) => t.id === "track-lead-x")!.effects[0].id);
   });
 
+  it("kyx_state input schema advertises the implemented automation subject", () => {
+    const stateTool = MCP_TOOLS.find((tool) => tool.name === "kyx_state");
+    expect(stateTool).toBeDefined();
+    const subject = stateTool?.inputSchema.properties.subject as { enum?: string[] } | undefined;
+    expect(subject?.enum).toContain("automation");
+  });
+
   it("kyx_state subject:automation reads lanes back with points and ranges", async () => {
     const store = new ProjectStore(withLead());
     const ctx = storeCtx(store);

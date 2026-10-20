@@ -342,6 +342,7 @@ export const MCP_TOOLS: McpToolDef[] = [
             "history",
             "reference",
             "model-misses",
+            "automation",
           ],
           description: "Which part of the project state to return",
         },
@@ -1635,14 +1636,14 @@ const REQUEST_ID_PROPERTY: Record<string, unknown> = {
   type: "string",
   maxLength: 128,
   description:
-    "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+    "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
 };
 for (const def of MCP_TOOLS) {
   def.inputSchema.properties.requestId = { ...REQUEST_ID_PROPERTY };
   def.inputSchema.properties.dryRun = {
     type: "boolean",
     description:
-      "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+      "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
   };
   // Wave 1/A: MCP-standard annotations from the risk table — clients can run
   // reads autonomously and confirm destructive calls per spec. Derived, never
@@ -1910,7 +1911,8 @@ export type McpErrorCode =
   | "EXECUTION_FAILED"
   | "PARTIAL_FAILURE"
   | "UNAVAILABLE_ON_TRANSPORT"
-  | "POLICY_REFUSED";
+  | "POLICY_REFUSED"
+  | "REQUEST_ID_CONFLICT";
 
 /** The single shaped constructor for error results — every `isError`
  * result goes through here so the code set stays exhaustive. `overrides`
@@ -2184,10 +2186,17 @@ const IDEMPOTENCY_LEDGER_CAP = 256;
 
 interface IdempotencyEntry {
   docId: string;
+  signature: string;
   result: McpToolResult;
 }
 
 const idempotencyLedger = new Map<string, IdempotencyEntry>();
+interface IdempotencyFlight {
+  signature: string;
+  done: Promise<void>;
+  finish: () => void;
+}
+const idempotencyFlights = new Map<string, IdempotencyFlight>();
 
 /** Wave 1/A: nesting depth of the CURRENT call (kyx_batch re-enters the
  *  wrapper per sub-call). Recorded in the audit log; the session checkpoint
@@ -2197,6 +2206,7 @@ let mcpCallDepth = 0;
 /** Test/teardown hook — the ledger is otherwise process-lifetime state. */
 export function resetMcpIdempotencyLedger(): void {
   idempotencyLedger.clear();
+  idempotencyFlights.clear();
   mcpCallDepth = 0;
 }
 
@@ -2209,6 +2219,72 @@ const NO_DRYRUN_TOOLS: ReadonlySet<string> = new Set([
   "kyx_publish_gallery",
   "kyx_audio_preview",
 ]);
+
+function dryRunPolicyRefusal(name: string, args: Record<string, unknown>): string | null {
+  if (name === "kyx_batch" && Array.isArray(args.calls)) {
+    for (const [index, entry] of args.calls.entries()) {
+      if (entry == null || typeof entry !== "object" || Array.isArray(entry)) continue;
+      const item = entry as { tool?: unknown; args?: unknown };
+      if (typeof item.tool !== "string") continue;
+      const childArgs =
+        item.args != null && typeof item.args === "object" && !Array.isArray(item.args)
+          ? (item.args as Record<string, unknown>)
+          : {};
+      const refusal =
+        item.tool === "kyx_batch" ? "nested batches are not supported" : dryRunPolicyRefusal(item.tool, childArgs);
+      if (refusal !== null) {
+        return `dryRun is unavailable for kyx_batch call ${index + 1} (${item.tool}): ${refusal}`;
+      }
+    }
+  }
+  if (NO_DRYRUN_TOOLS.has(name)) {
+    return `dryRun applies to document mutations — ${name} drives runtime or export state`;
+  }
+  if (name === "kyx_import_sfz") {
+    return "dryRun is unavailable for kyx_import_sfz because it writes samples to the user library";
+  }
+  if (name === "kyx_checkpoint" && (args.op === "save" || args.op === "delete")) {
+    return `dryRun is unavailable for kyx_checkpoint op:${args.op} because it writes the checkpoint repository`;
+  }
+  if (name === "kyx_mix_idea" && args.preview === true) {
+    return "dryRun is unavailable for kyx_mix_idea preview because it arms live preview state";
+  }
+  return null;
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    const encoded = JSON.stringify(value);
+    return encoded === undefined ? "null" : encoded;
+  }
+  if (Array.isArray(value)) return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  const entries = Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`);
+  return `{${entries.join(",")}}`;
+}
+
+async function idempotencySignature(agent: string, tool: string, args: unknown): Promise<string> {
+  const requestArgs =
+    args != null && typeof args === "object" && !Array.isArray(args)
+      ? Object.fromEntries(
+          Object.entries(args as Record<string, unknown>).filter(([key]) => key !== "requestId" && key !== "dryRun"),
+        )
+      : args;
+  const source = canonicalJson({ agent, tool, args: requestArgs });
+  const cryptoApi = globalThis.crypto;
+  if (!cryptoApi?.subtle) throw new Error("Web Crypto is unavailable for a safe idempotency check.");
+  const digest = new Uint8Array(await cryptoApi.subtle.digest("SHA-256", new TextEncoder().encode(source)));
+  return [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function requestIdConflict(requestId: string): McpToolResult {
+  return mcpError(
+    "REQUEST_ID_CONFLICT",
+    `requestId "${requestId}" is already bound to a different mutating request in this project; choose a fresh requestId`,
+  );
+}
 
 /**
  * P2-C sandbox context: a wrapper whose `execute` advances a LOCAL document
@@ -2257,6 +2333,53 @@ function dryRunContext(ctx: McpToolContext): { ctx: McpToolContext; applied: () 
 export async function executeMcpTool(ctx: McpToolContext, name: string, args: unknown): Promise<McpToolResult> {
   const envelope = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
   const requestId = typeof envelope.requestId === "string" ? envelope.requestId.trim().slice(0, 128) : "";
+  if (requestId === "" || envelope.dryRun === true) {
+    return executeMcpToolCore(ctx, name, args);
+  }
+
+  const agent = ctx.agentId ?? "local";
+  let signature: string;
+  try {
+    signature = await idempotencySignature(agent, name, args);
+  } catch (error) {
+    return mcpError(
+      "UNAVAILABLE_ON_TRANSPORT",
+      error instanceof Error ? error.message : "A safe idempotency check is unavailable.",
+    );
+  }
+
+  const flightKey = `${ctx.getDoc().id}\u0000${requestId}`;
+  const active = idempotencyFlights.get(flightKey);
+  if (active) {
+    if (active.signature !== signature) return requestIdConflict(requestId);
+    await active.done;
+    // The first request either stored its committed outcome (replay it) or
+    // failed without mutation (retry the now-unblocked operation).
+    return executeMcpToolCore(ctx, name, args, signature);
+  }
+
+  let finish!: () => void;
+  const done = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const flight: IdempotencyFlight = { signature, done, finish };
+  idempotencyFlights.set(flightKey, flight);
+  try {
+    return await executeMcpToolCore(ctx, name, args, signature);
+  } finally {
+    if (idempotencyFlights.get(flightKey) === flight) idempotencyFlights.delete(flightKey);
+    flight.finish();
+  }
+}
+
+async function executeMcpToolCore(
+  ctx: McpToolContext,
+  name: string,
+  args: unknown,
+  signature?: string,
+): Promise<McpToolResult> {
+  const envelope = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+  const requestId = typeof envelope.requestId === "string" ? envelope.requestId.trim().slice(0, 128) : "";
   // Wave 1/A trust layer: every call — all transports, dry-runs and replays —
   // is classified and audited; the audit lives outside the tool surface so it
   // can never change tool behavior.
@@ -2264,33 +2387,6 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
   const risk = toolRisk(name);
   const depth = mcpCallDepth;
   const summary = summarizeToolArgs(args);
-  if (requestId !== "") {
-    const cached = idempotencyLedger.get(requestId);
-    if (cached != null) {
-      if (cached.docId === ctx.getDoc().id) {
-        const doc = ctx.getDoc();
-        completeAgentCall({
-          agent,
-          tool: name,
-          risk,
-          depth,
-          mutated: false,
-          isError: cached.result.isError === true,
-          durationMs: 0,
-          docId: doc.id,
-          docName: doc.name,
-          replayed: true,
-          ...(summary !== "" ? { summary } : {}),
-        });
-        return {
-          ...cached.result,
-          text: `idempotent replay — requestId was already applied; nothing re-executed\n${cached.result.text}`,
-          replayed: true,
-        };
-      }
-      idempotencyLedger.delete(requestId); // stale project scope — re-bind below
-    }
-  }
   // P2-C DRY-RUN (control-surface audit 2026-10-13, GAP-11): `dryRun: true`
   // executes the tool's FULL logic against a SANDBOX context — validation,
   // resolution and command construction run for real, but `ctx.execute`
@@ -2299,11 +2395,9 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
   // the real run would commit). Runtime/export-side tools are refused: a
   // dry-run cannot un-play a note or un-write a file.
   if (envelope.dryRun === true) {
-    if (NO_DRYRUN_TOOLS.has(name)) {
-      return mcpError(
-        "POLICY_REFUSED",
-        `dryRun applies to document mutations — ${name} drives runtime or export state`,
-      );
+    const refusal = dryRunPolicyRefusal(name, envelope);
+    if (refusal != null) {
+      return mcpError("POLICY_REFUSED", refusal);
     }
     const dry = dryRunContext(ctx);
     const dryStartedAt = Date.now();
@@ -2341,6 +2435,34 @@ ${preview.text}`,
       mutated: false,
       dryRun: true,
     };
+  }
+  if (requestId !== "" && signature !== undefined) {
+    const cached = idempotencyLedger.get(requestId);
+    if (cached != null) {
+      if (cached.docId === ctx.getDoc().id) {
+        if (cached.signature !== signature) return requestIdConflict(requestId);
+        const doc = ctx.getDoc();
+        completeAgentCall({
+          agent,
+          tool: name,
+          risk,
+          depth,
+          mutated: false,
+          isError: cached.result.isError === true,
+          durationMs: 0,
+          docId: doc.id,
+          docName: doc.name,
+          replayed: true,
+          ...(summary !== "" ? { summary } : {}),
+        });
+        return {
+          ...cached.result,
+          text: `idempotent replay — requestId was already applied; nothing re-executed\n${cached.result.text}`,
+          replayed: true,
+        };
+      }
+      idempotencyLedger.delete(requestId); // stale project scope — re-bind below
+    }
   }
   // ── Wave 1/A: session checkpoint BEFORE the first document mutation ──
   // One clone per session, not per call: the first mutating call of a fresh
@@ -2415,14 +2537,14 @@ ${preview.text}`,
   // fields ride along for in-process consumers. A replay already carries
   // its original line (the cache stores the attributed result — the line
   // is appended exactly once per execution).
-  if (result.mutated && result.isError !== true) {
+  if (result.mutated === true) {
     const doc = ctx.getDoc();
     result.text = `${result.text}\nmutated on ${ctx.agentId ? `${ctx.agentId} · ` : ""}document "${doc.name}" (id ${doc.id})`;
     result.docId = doc.id;
     result.docName = doc.name;
-    if (requestId !== "") {
+    if (requestId !== "" && signature !== undefined) {
       idempotencyLedger.delete(requestId); // refresh FIFO position on re-bind
-      idempotencyLedger.set(requestId, { docId: doc.id, result });
+      idempotencyLedger.set(requestId, { docId: doc.id, signature, result });
       while (idempotencyLedger.size > IDEMPOTENCY_LEDGER_CAP) {
         const oldest = idempotencyLedger.keys().next();
         if (oldest.done) break;

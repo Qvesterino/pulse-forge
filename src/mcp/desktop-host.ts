@@ -1,4 +1,4 @@
-import { executeMcpToolAsync, type McpToolContext } from "./tools";
+import { executeMcpToolAsync, type McpToolContext, type McpToolResult } from "./tools";
 import { withAgentAttribution } from "./attribution";
 import { mcpAllowDestructive } from "./flags";
 import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
@@ -39,16 +39,8 @@ export interface DesktopMcpApi {
   disable: () => Promise<unknown>;
   /** Subscribe to forwarded tool calls; returns an unsubscribe function. */
   onCall: (listener: (call: { id: string; name: string; args?: unknown }) => void) => () => void;
-  /** Resolve a forwarded call: { id, result: { text, mutated, isError? } }. */
-  answer: (payload: {
-    id: string;
-    result: {
-      text: string;
-      mutated?: boolean;
-      isError?: boolean;
-      audio?: import("./audio-preview").McpAudioContent;
-    };
-  }) => Promise<void>;
+  /** Resolve a forwarded call with the full machine-readable tool result. */
+  answer: (payload: { id: string; result: McpToolResult }) => Promise<void>;
 }
 
 /** The `kyxDesktop.mcp` API when running under the desktop shell, else null. */
@@ -165,12 +157,16 @@ export function startMcpDesktopHost(services: Services): () => void {
         const result = await executeMcpToolAsync(ctx, String(call?.name ?? ""), call?.args ?? {});
         await api.answer({
           id: String(call?.id ?? ""),
-          result: { text: result.text, mutated: result.mutated, isError: result.isError, audio: result.audio },
+          result,
         });
       } catch (error) {
         await api.answer({
           id: String(call?.id ?? ""),
-          result: { text: error instanceof Error ? error.message : String(error), isError: true },
+          result: {
+            text: error instanceof Error ? error.message : String(error),
+            mutated: false,
+            isError: true,
+          },
         });
       }
     })();

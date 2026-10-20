@@ -130,6 +130,53 @@ describe("P2-C dry-run envelope", () => {
     expect(result.text).toContain("drives runtime or export state");
   });
 
+  it("dry-run refuses external side effects that bypass the document sandbox", async () => {
+    const { ctx } = makeCtx(createProjectFromTemplate("house"));
+    const cases: Array<{ tool: string; args: Record<string, unknown>; message: string }> = [
+      {
+        tool: "kyx_import_sfz",
+        args: { dryRun: true },
+        message: "writes samples to the user library",
+      },
+      {
+        tool: "kyx_checkpoint",
+        args: { op: "save", name: "preview", dryRun: true },
+        message: "writes the checkpoint repository",
+      },
+      {
+        tool: "kyx_checkpoint",
+        args: { op: "delete", name: "old", dryRun: true },
+        message: "writes the checkpoint repository",
+      },
+      {
+        tool: "kyx_mix_idea",
+        args: { idea: "warm up the drums", preview: true, dryRun: true },
+        message: "arms live preview state",
+      },
+    ];
+
+    for (const entry of cases) {
+      const result = await executeMcpTool(ctx, entry.tool, entry.args);
+      expect(result.isError, entry.tool).toBe(true);
+      expect(result.errorCode, entry.tool).toBe("POLICY_REFUSED");
+      expect(result.text, entry.tool).toContain(entry.message);
+      expect(result.dryRun, entry.tool).toBeUndefined();
+    }
+  });
+
+  it("dry-run refuses non-sandboxable operations nested in a batch", async () => {
+    const { ctx } = makeCtx(createProjectFromTemplate("house"));
+    const result = await executeMcpTool(ctx, "kyx_batch", {
+      dryRun: true,
+      calls: [{ tool: "kyx_checkpoint", args: { op: "save", name: "must-not-save" } }],
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.errorCode).toBe("POLICY_REFUSED");
+    expect(result.text).toContain("kyx_batch call 1");
+    expect(result.text).toContain("writes the checkpoint repository");
+  });
+
   it("dry-run results are not idempotency-cached", async () => {
     const { ctx, doc } = makeCtx(createProjectFromTemplate("house"));
     await executeMcpTool(ctx, "kyx_markers", { op: "add", bar: 1, name: "d", requestId: "dry-1", dryRun: true });
@@ -138,6 +185,54 @@ describe("P2-C dry-run envelope", () => {
     expect(real.replayed).toBeUndefined();
     expect(real.mutated).toBe(true);
     expect(doc().markers.some((m) => m.name === "d")).toBe(true);
+  });
+
+  it("dry-run never replays a prior live mutation with the same requestId", async () => {
+    const { ctx, doc } = makeCtx(createProjectFromTemplate("house"));
+    const live = await executeMcpTool(ctx, "kyx_markers", {
+      op: "add",
+      bar: 1,
+      name: "committed-first",
+      requestId: "same-live-and-dry",
+    });
+    expect(live.mutated).toBe(true);
+    const afterLive = doc();
+
+    const preview = await executeMcpTool(ctx, "kyx_markers", {
+      op: "add",
+      bar: 2,
+      name: "preview-only",
+      requestId: "same-live-and-dry",
+      dryRun: true,
+    });
+
+    expect(preview.dryRun).toBe(true);
+    expect(preview.replayed).toBeUndefined();
+    expect(preview.mutated).toBe(false);
+    expect(doc()).toBe(afterLive);
+    expect(doc().markers.some((marker) => marker.name === "preview-only")).toBe(false);
+  });
+
+  it("retries a partially applied atomic batch without re-running its committed prefix", async () => {
+    const { ctx, doc } = makeCtx(createProjectFromTemplate("house"));
+    const request = {
+      requestId: "partial-batch-once",
+      atomic: true,
+      calls: [
+        { tool: "kyx_markers", args: { op: "add", bar: 1, name: "prefix-once" } },
+        { tool: "kyx_checkpoint", args: { op: "restore", name: "not-found" } },
+      ],
+    };
+    const first = await executeMcpTool(ctx, "kyx_batch", request);
+    expect(first.isError).toBe(true);
+    expect(first.mutated).toBe(true);
+    const afterFirst = doc();
+
+    const retry = await executeMcpTool(ctx, "kyx_batch", request);
+    expect(retry.replayed).toBe(true);
+    expect(retry.errorCode).toBe("PARTIAL_FAILURE");
+    expect(doc()).toBe(afterFirst);
+    expect(doc().markers.filter((marker) => marker.name === "prefix-once")).toHaveLength(1);
   });
 
   it("every tool schema declares the dryRun envelope (discoverability)", () => {

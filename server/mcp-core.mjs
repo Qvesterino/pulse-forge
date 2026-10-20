@@ -185,12 +185,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["instruction"],
@@ -225,6 +225,7 @@ export const MCP_TOOL_DEFS = [
             "history",
             "reference",
             "model-misses",
+            "automation",
           ],
           description: "Which part of the project state to return",
         },
@@ -237,12 +238,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["subject"],
@@ -278,12 +279,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["action"],
@@ -355,12 +356,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["action"],
@@ -401,12 +402,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["format"],
@@ -434,12 +435,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
     },
@@ -540,12 +541,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["genre"],
@@ -582,12 +583,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["direction"],
@@ -660,12 +661,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["effect", "action"],
@@ -722,12 +723,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["op", "role"],
@@ -761,12 +762,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["op", "bar"],
@@ -852,12 +853,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["op"],
@@ -887,12 +888,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["op"],
@@ -937,12 +938,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["op", "family"],
@@ -1025,12 +1026,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["op"],
@@ -1093,12 +1094,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["op"],
@@ -1128,12 +1129,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["subject"],
@@ -1185,12 +1186,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["op"],
@@ -1217,12 +1218,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: [],
@@ -1312,12 +1313,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["op"],
@@ -1476,12 +1477,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["op"],
@@ -1522,12 +1523,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["calls"],
@@ -1586,12 +1587,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["op"],
@@ -1664,12 +1665,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["name", "sfzBase64", "trackId", "samples"],
@@ -1710,12 +1711,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["title"],
@@ -1758,12 +1759,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
     },
@@ -1813,12 +1814,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
     },
@@ -1900,12 +1901,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["idea"],
@@ -1935,12 +1936,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["op"],
@@ -2007,12 +2008,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["genre"],
@@ -2064,12 +2065,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["genre"],
@@ -2133,12 +2134,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["genre"],
@@ -2214,12 +2215,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["op"],
@@ -2260,12 +2261,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["action"],
@@ -2391,12 +2392,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["op"],
@@ -2430,12 +2431,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["op"],
@@ -2487,12 +2488,12 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failed calls are not remembered, so fixing the args and retrying with the same id re-executes.",
+            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
           description:
-            "Preview mode: run the tool's full logic against a sandbox document and report what WOULD change — the live project is never touched (mutated stays false). Refused for runtime/export-side tools (transport, export, gallery, audio preview).",
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
       required: ["op"],
@@ -2786,7 +2787,16 @@ async function handleSingleRequest(hub, rpc, negotiatedProtocolVersion) {
     }
     try {
       const result = await hub.callTool(name, parsed.params?.arguments ?? {});
-      const content = [{ type: "text", text: result.text ?? "" }];
+      const resultText = result.text ?? "";
+      const content = [
+        {
+          type: "text",
+          text:
+            result.isError === true && typeof result.errorCode === "string"
+              ? `${result.errorCode}: ${resultText}`
+              : resultText,
+        },
+      ];
       if (result.audio && typeof result.audio.data === "string" && typeof result.audio.mimeType === "string") {
         content.push({ type: "audio", data: result.audio.data, mimeType: result.audio.mimeType });
       }

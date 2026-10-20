@@ -8,6 +8,10 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { MCP_TOOLS } from "../src/mcp/tools";
+import { startMcpDesktopHost, type DesktopMcpApi } from "../src/mcp/desktop-host";
+import { createProjectFromTemplate } from "../src/project-model/templates";
+import { ProjectStore } from "../src/store/ProjectStore";
+import type { Services } from "../src/services";
 
 /**
  * DESKTOP MCP (Phase D2) — the real CommonJS transport artifacts under
@@ -167,6 +171,95 @@ describe("desktop mcp bridge server (real HTTP)", () => {
     const badBody = JSON.parse(bad.body) as { result: { content: Array<{ text: string }>; isError: boolean } };
     expect(badBody.result.isError).toBe(true);
     expect(badBody.result.content[0]?.text).toBe("honest failure");
+  });
+
+  it("exposes machine-readable error codes in MCP text content", async () => {
+    const { server } = bridgeModule.createMcpBridgeServer({
+      token: "tok",
+      executeTool: async () => ({
+        text: "choose a fresh requestId",
+        mutated: false,
+        isError: true,
+        errorCode: "REQUEST_ID_CONFLICT",
+      }),
+    });
+    const port = await listenOnEphemeralPort(server);
+    runningServers.push(server);
+
+    const response = await post(
+      port,
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 61,
+        method: "tools/call",
+        params: { name: "kyx_groove", arguments: { direction: "more", requestId: "same" } },
+      }),
+      { token: "tok" },
+    );
+    const result = (JSON.parse(response.body) as { result: { content: Array<{ text: string }>; isError: boolean } })
+      .result;
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toBe("REQUEST_ID_CONFLICT: choose a fresh requestId");
+  });
+
+  it("renderer host passes the complete result envelope through its IPC answer", async () => {
+    const previous = Object.getOwnPropertyDescriptor(window, "kyxDesktop");
+    let onCall: Parameters<DesktopMcpApi["onCall"]>[0] | null = null;
+    let resolveAnswer!: (payload: Parameters<DesktopMcpApi["answer"]>[0]) => void;
+    const answer = new Promise<Parameters<DesktopMcpApi["answer"]>[0]>((resolve) => {
+      resolveAnswer = resolve;
+    });
+    const api: DesktopMcpApi = {
+      status: async () => ({
+        enabled: true,
+        running: true,
+        bridgeUrl: "http://127.0.0.1",
+        token: "t",
+        clientConfig: null,
+      }),
+      enable: async () => undefined,
+      disable: async () => undefined,
+      onCall: (listener) => {
+        onCall = listener;
+        return () => {};
+      },
+      answer: async (payload) => resolveAnswer(payload),
+    };
+    Object.defineProperty(window, "kyxDesktop", {
+      configurable: true,
+      value: { isDesktop: true, mcp: api },
+    });
+    const store = new ProjectStore(createProjectFromTemplate("house"));
+    const services = {
+      store,
+      transport: {
+        play: () => {},
+        stop: () => {},
+        pause: () => {},
+        setLoop: () => {},
+        setMetronome: () => {},
+      },
+    } as unknown as Services;
+
+    const unbind = startMcpDesktopHost(services);
+    try {
+      expect(onCall).toBeTypeOf("function");
+      onCall!({
+        id: "host-structured",
+        name: "kyx_batch",
+        args: {
+          calls: [{ tool: "kyx_markers", args: { op: "add", bar: 2, name: "ipc-result" } }],
+        },
+      });
+      const response = await answer;
+      expect(response.result.data).toMatchObject({ mutations: 1 });
+      expect(response.result.docId).toBe(store.getDoc().id);
+      expect(response.result.mutated).toBe(true);
+    } finally {
+      unbind();
+      if (previous) Object.defineProperty(window, "kyxDesktop", previous);
+      else delete (window as { kyxDesktop?: unknown }).kyxDesktop;
+    }
   });
 
   it("returns standard MCP audio content blocks from the renderer executor", async () => {

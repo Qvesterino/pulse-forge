@@ -356,9 +356,16 @@ describe("mcp core — protocol with an authenticated session", () => {
     hub.handleSessionMessage({
       type: "mcp-result",
       id: (delivered[0] as { id: number }).id,
-      result: { text: "fx op failed: no tracks match the target", mutated: false, isError: true },
+      result: {
+        text: "choose a fresh requestId",
+        mutated: false,
+        isError: true,
+        errorCode: "REQUEST_ID_CONFLICT",
+      },
     });
     const response = await promise;
-    expect((response.result as { isError: boolean }).isError).toBe(true);
+    const result = response.result as { isError: boolean; content: Array<{ text: string }> };
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toBe("REQUEST_ID_CONFLICT: choose a fresh requestId");
   });
 });

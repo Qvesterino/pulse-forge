@@ -18,6 +18,7 @@ import type { ProjectDocument } from "../src/project-model/types";
  *   PARTIAL_FAILURE         a compound op stopped mid-form
  *   UNAVAILABLE_ON_TRANSPORT a capability this session lacks
  *   POLICY_REFUSED          a gate declines (destructive ops locked)
+ *   REQUEST_ID_CONFLICT     a retry key names different tool arguments
  */
 
 function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } = {}): McpToolContext {
@@ -69,7 +70,7 @@ describe("mcp typed error codes (P2-B, GAP-08)", () => {
     });
   }
 
-  it("PARTIAL_FAILURE is part of the closed set (its guard fires only when createScene lands nothing — not deterministically triggerable through public args; the other seven codes are executed for real above)", async () => {
+  it("PARTIAL_FAILURE and REQUEST_ID_CONFLICT are part of the closed set", async () => {
     const codes: McpErrorCode[] = [
       "UNKNOWN_TOOL",
       "UNKNOWN_REQUEST",
@@ -79,8 +80,9 @@ describe("mcp typed error codes (P2-B, GAP-08)", () => {
       "PARTIAL_FAILURE",
       "UNAVAILABLE_ON_TRANSPORT",
       "POLICY_REFUSED",
+      "REQUEST_ID_CONFLICT",
     ];
-    expect(new Set(codes).size).toBe(8);
+    expect(new Set(codes).size).toBe(9);
   });
 
   it("success results carry no errorCode", async () => {
