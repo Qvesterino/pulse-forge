@@ -1,6 +1,6 @@
 /**
  * AUDIT 17 — the arrangement's bar grid and the scheduler's bar grid are two
- * different lengths, and no single decision has been made about which wins.
+ * different lengths.
  *
  * Reproduced (this spec is the reproduction):
  *
@@ -13,12 +13,17 @@
  * plays two beats later than the bar-2 downbeat the metronome clicks.
  *
  * WHY THIS SPEC DOES NOT ASSERT A FIX: there is no safe local one. `BAR_TICKS`
- * is the arrangement's bar unit in ~340 places across ~50 files (ruler
- * drawing, clip placement, loop regions, markers, zoom, selection). The
- * scheduler's `ticksPerBar(doc)` is the musical one. Each convention is
- * defensible; making them agree means either rewriting the arrangement model
- * (an on-disk format decision, ADR territory) or deliberately un-musical
- * metronome clicks. That is a product decision, not a patch.
+ * is the arrangement's bar unit in 376 bar↔tick conversions across 55 files
+ * (ruler drawing, clip placement, loop regions, markers, zoom, selection). The
+ * scheduler's `ticksPerBar(doc)` is the musical one. Making them agree means
+ * rewriting the arrangement model (an on-disk format decision) or deliberately
+ * un-musical metronome clicks.
+ *
+ * ADR 0056 (2026-10-20) settled which side wins: the musical bar length.
+ * The arrangement grid follows the meter in Stage 2 and Stage 3 of that ADR —
+ * a helper migration plus a schema migration for documents already saved with
+ * a non-4/4 meter. Stage 1 (disclosing the mismatch in the transfer dialog)
+ * has shipped; the grid is still 4/4, so this gap is still open.
  *
  * So: the 4/4 agreement is pinned as an INVARIANT (it must hold whatever is
  * decided), and the non-4/4 gap is recorded as a known, quantified hole

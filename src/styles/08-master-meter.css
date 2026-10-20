@@ -164,6 +164,57 @@
   opacity: 0.48;
 }
 
+/* Keyboard users get real range controls for the same four draggable EQ
+   points. They stay out of the analyzer until focused; focus reveals a compact
+   control row while the highlighted point remains visible on the spectrum. */
+.eq-curve-keyboard-controls {
+  position: absolute;
+  z-index: 3;
+  right: 4px;
+  bottom: 4px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.eq-curve-keyboard-controls:focus-within {
+  width: min(520px, calc(100% - 8px));
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  white-space: normal;
+}
+
+.eq-curve-keyboard-controls label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-faint);
+  font: 8px var(--mono);
+}
+
+.eq-curve-keyboard-controls output {
+  color: var(--text);
+}
+
+.eq-curve-keyboard-controls input {
+  width: 100%;
+  min-width: 0;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .master-spectrum-eq-controls {
   position: absolute;
   z-index: 2;

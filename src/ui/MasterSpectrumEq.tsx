@@ -48,6 +48,8 @@ export function MasterSpectrumEq({ analyser, id }: { analyser: AnalyserNode | nu
           height={120}
           fillHeight
           className="master-spectrum-eq-curve"
+          onUndo={() => services.store.undo()}
+          onRedo={() => services.store.redo()}
         />
       )}
       <div className="master-spectrum-eq-controls">

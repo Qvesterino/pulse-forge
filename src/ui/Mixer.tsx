@@ -262,7 +262,7 @@ function MasterStrip() {
           {/* Stereo indicators fill the strip's dead space under the controls. */}
           <MasterStereoMeters />
         </div>
-        <MasterMeter />
+        <MasterMeter integratedEq />
       </div>
     </div>
   );

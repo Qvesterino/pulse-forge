@@ -120,6 +120,8 @@ export interface IFrozenBufferRepository {
 export interface IRecordingRecoveryRepository {
   begin(session: RecordingSession): Promise<void>;
   appendChunk(chunk: RecordingPcmChunk): Promise<void>;
+  /** Optional atomic multi-session commit for coordinated simultaneous capture. */
+  appendChunks?(chunks: readonly RecordingPcmChunk[]): Promise<void>;
   markPunchOutReached(sessionId: string): Promise<void>;
   markRecoverable(sessionId: string): Promise<void>;
   /** Optional (recording audit 2026-10-01): refresh the placement anchor after

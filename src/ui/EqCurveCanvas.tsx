@@ -20,6 +20,8 @@ type EqCurveCanvasProps = {
   /** Fill the containing chart instead of using the compact fixed-height layout. */
   fillHeight?: boolean;
   className?: string;
+  onUndo?: () => void;
+  onRedo?: () => void;
 };
 
 type DragState = {
@@ -68,6 +70,8 @@ export function EqCurveCanvas({
   height = 34,
   fillHeight = false,
   className,
+  onUndo,
+  onRedo,
 }: EqCurveCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // Refs, not state: pointer events are the authority for WHERE the pointer is.
@@ -257,17 +261,51 @@ export function EqCurveCanvas({
   };
 
   return (
-    <canvas
-      ref={canvasRef}
-      className={`kit-eq-curve${drag ? " is-dragging" : ""}${hovered && !drag ? " is-hovering" : ""}${className ? ` ${className}` : ""}`}
-      style={{ width: "100%", height: fillHeight ? "100%" : `${height}px` }}
-      role="application"
-      aria-label="EQ response curve — drag a band to change its gain"
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={(event) => finishDrag(event, true)}
-      onPointerCancel={(event) => finishDrag(event, false)}
-      onPointerLeave={() => setHovered(null)}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        className={`kit-eq-curve${drag ? " is-dragging" : ""}${hovered && !drag ? " is-hovering" : ""}${className ? ` ${className}` : ""}`}
+        style={{ width: "100%", height: fillHeight ? "100%" : `${height}px` }}
+        role="img"
+        aria-label="EQ response curve. Adjust the labeled band gain sliders with the keyboard."
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={(event) => finishDrag(event, true)}
+        onPointerCancel={(event) => finishDrag(event, false)}
+        onPointerLeave={() => setHovered(null)}
+      />
+      <div className="eq-curve-keyboard-controls" role="group" aria-label="EQ band gains">
+        {eqBands(params).map((band) => (
+          <label key={band.paramId}>
+            <span>
+              {band.label} <output>{band.gainDb.toFixed(1)} dB</output>
+            </span>
+            <input
+              type="range"
+              min={band.min}
+              max={band.max}
+              step={0.1}
+              value={band.gainDb}
+              aria-label={`${band.label.toLowerCase()} gain`}
+              aria-valuetext={`${band.gainDb.toFixed(1)} dB`}
+              onFocus={() => setHovered(band.paramId)}
+              onBlur={() => setHovered((current) => (current === band.paramId ? null : current))}
+              onKeyDown={(event) => {
+                if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+                const key = event.key.toLowerCase();
+                const redo = (key === "z" && event.shiftKey) || (key === "y" && !event.shiftKey);
+                const undo = key === "z" && !event.shiftKey;
+                if (!redo && !undo) return;
+                event.preventDefault();
+                event.stopPropagation();
+                if (redo) onRedo?.();
+                else onUndo?.();
+              }}
+              onChange={(event) => onCommit(band.paramId, event.currentTarget.valueAsNumber)}
+            />
+          </label>
+        ))}
+      </div>
+    </>
   );
 }

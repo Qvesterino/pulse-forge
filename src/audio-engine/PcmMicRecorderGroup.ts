@@ -5,15 +5,72 @@ import {
   type PcmRecordingMetadata,
 } from "./PcmMicRecorder";
 import type { MaterializedPcmTake } from "./pcmRecording";
+import { RecordingRecoveryRepository, type RecordingPcmChunk } from "../persistence/RecordingRecoveryRepository";
+import type { IRecordingRecoveryRepository } from "../persistence/contracts";
 
 const PREPARE_TIMEOUT_MS = 20_000;
 const RENDER_QUANTUM_FRAMES = 128;
 const START_LEAD_SEC = 0.02;
+const CHUNK_BATCH_WINDOW_MS = 4;
+const MAX_GROUP_CHUNKS_PER_BATCH = 128;
 
 export type PcmMicRecorderGroupDependencies = Omit<
   PcmMicRecorderDependencies,
-  "captureGroupToken" | "captureStartBarrier"
+  "captureGroupToken" | "captureStartBarrier" | "appendChunk"
 >;
+
+interface PendingGroupChunk {
+  recovery: IRecordingRecoveryRepository;
+  chunk: RecordingPcmChunk;
+  resolve: () => void;
+  reject: (error: unknown) => void;
+}
+
+/** Collects concurrent worklet blocks so one storage transaction commits a group of tracks. */
+class PcmCaptureChunkBatcher {
+  private pending: PendingGroupChunk[] = [];
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+  append(recovery: IRecordingRecoveryRepository, chunk: RecordingPcmChunk): Promise<void> {
+    const committed = new Promise<void>((resolve, reject) => {
+      this.pending.push({ recovery, chunk, resolve, reject });
+    });
+    this.scheduleFlush();
+    return committed;
+  }
+
+  private scheduleFlush(): void {
+    if (this.flushTimer !== null) return;
+    this.flushTimer = setTimeout(() => {
+      this.flushTimer = null;
+      void this.flush();
+    }, CHUNK_BATCH_WINDOW_MS);
+  }
+
+  private async flush(): Promise<void> {
+    const batch = this.pending.splice(0, MAX_GROUP_CHUNKS_PER_BATCH);
+    const byRepository = new Map<IRecordingRecoveryRepository, PendingGroupChunk[]>();
+    for (const pending of batch) {
+      const queued = byRepository.get(pending.recovery);
+      if (queued) queued.push(pending);
+      else byRepository.set(pending.recovery, [pending]);
+    }
+
+    await Promise.all(
+      [...byRepository].map(async ([recovery, queued]) => {
+        try {
+          if (recovery.appendChunks) await recovery.appendChunks(queued.map((item) => item.chunk));
+          else await Promise.all(queued.map((item) => recovery.appendChunk(item.chunk)));
+          for (const item of queued) item.resolve();
+        } catch (error) {
+          for (const item of queued) item.reject(error);
+        }
+      }),
+    );
+
+    if (this.pending.length > 0) this.scheduleFlush();
+  }
+}
 
 export interface PcmMicRecorderGroupInput {
   /** Stable per-track identity used by the arrangement UI and stop results. */
@@ -44,6 +101,7 @@ export class PcmMicRecorderGroup {
   private readonly startBarrier: PcmCaptureStartBarrier;
   private readonly captureGroupToken = {};
   private readonly context: AudioContext;
+  private readonly chunkBatcher = new PcmCaptureChunkBatcher();
   private state_: "idle" | "starting" | "recording" | "stopping" | "complete" = "idle";
   private stopPromise: Promise<PcmMicRecorderGroupStopResult[]> | null = null;
 
@@ -62,11 +120,16 @@ export class PcmMicRecorderGroup {
     this.context = context;
 
     this.startBarrier = new PcmCaptureStartBarrier(inputs.length);
+    const fallbackRecovery = inputs.find((input) => input.dependencies.recovery)?.dependencies.recovery;
+    const defaultRecovery = fallbackRecovery ?? new RecordingRecoveryRepository();
     this.entries = inputs.map((input) => {
+      const recovery = input.dependencies.recovery ?? defaultRecovery;
       const recorder = new PcmMicRecorder({
         ...input.dependencies,
+        recovery,
         captureGroupToken: this.captureGroupToken,
         captureStartBarrier: this.startBarrier,
+        appendChunk: (chunk) => this.chunkBatcher.append(recovery, chunk),
       });
       recorder.onError = (message) => this.handleMemberFailure(input.id, message);
       return { id: input.id, recorder, getMetadata: input.getMetadata };

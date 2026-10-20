@@ -73,6 +73,42 @@ describe("RecordingRecoveryRepository", () => {
     ]);
   });
 
+  it("commits simultaneous input blocks together while preserving each session sequence", async () => {
+    const lead = session("recording-batch-lead");
+    const bass = session("recording-batch-bass");
+    await recovery.begin(lead);
+    await recovery.begin(bass);
+
+    await recovery.appendChunks([
+      block(lead.id, 0, [0.1, 0.2], [-0.1, -0.2]),
+      block(bass.id, 0, [0.3, 0.4], [-0.3, -0.4]),
+    ]);
+
+    await expect(recovery.get(lead.id)).resolves.toMatchObject({ totalFrames: 2, chunkCount: 1 });
+    await expect(recovery.get(bass.id)).resolves.toMatchObject({ totalFrames: 2, chunkCount: 1 });
+    const leadBlocks: number[] = [];
+    const bassBlocks: number[] = [];
+    await recovery.forEachChunk(lead.id, (chunk) => leadBlocks.push(chunk.sequence));
+    await recovery.forEachChunk(bass.id, (chunk) => bassBlocks.push(chunk.sequence));
+    expect(leadBlocks).toEqual([0]);
+    expect(bassBlocks).toEqual([0]);
+  });
+
+  it("rolls back every session when one stream in a batch is no longer recording", async () => {
+    const active = session("recording-batch-active");
+    const stopped = session("recording-batch-stopped");
+    await recovery.begin(active);
+    await recovery.begin(stopped);
+    await recovery.markRecoverable(stopped.id);
+
+    await expect(
+      recovery.appendChunks([block(active.id, 0, [0.1], [-0.1]), block(stopped.id, 0, [0.2], [-0.2])]),
+    ).rejects.toThrow();
+
+    await expect(recovery.get(active.id)).resolves.toMatchObject({ totalFrames: 0, chunkCount: 0 });
+    await expect(recovery.get(stopped.id)).resolves.toMatchObject({ totalFrames: 0, chunkCount: 0 });
+  });
+
   it("rejects a sequence gap without changing the durable session", async () => {
     const take = session("recording-gap");
     await recovery.begin(take);

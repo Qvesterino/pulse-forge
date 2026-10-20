@@ -26,6 +26,7 @@ import {
   parseNamedTrackFaderIntent,
   parseTempoIntent,
   parsePopIntent,
+  splitIntentClauses,
   type FaderIntent,
   type TempoIntent,
 } from "./conversation";
@@ -110,6 +111,47 @@ const HYPOTHETICAL_ACTION_QUESTION =
  */
 const NEGATED_MUTATION_COMMAND =
   /(?:^|[,;.!?]\s*|\b(?:and|but|while)\s+)(?:please\s+)?(?:do\s+not|don't|dont|never)\b[\s\S]*?\b(?:touch|touches|touching|leave|leaves|affect|affects|mute|unmute|solo|delete|remove|add|raise|lower|turn|change|set|increase|decrease|move|pan|bypass|apply|insert|undo|redo|start|stop|record)\b/i;
+
+/**
+ * The command half of a fenced sentence, as standalone executable prompts.
+ *
+ * "turn down the drums and don't touch the bass" → ["turn down the drums"].
+ *
+ * Only clauses that actually PARSE as a fader ask are offered, so every
+ * suggestion the producer can click is a sentence the engine can execute. A
+ * clause that carries the negation is dropped — offering "don't touch the
+ * bass" as a clickable chip would re-run the fence that produced this decline.
+ *
+ * Empty when no clause stands alone as a command ("never change the master"
+ * leaves nothing to offer) — the decline then shows its message and no chip.
+ */
+function negatedClauseSuggestions(text: string): string[] {
+  const suggestions = splitIntentClauses(text)
+    .filter((clause) => !/\b(?:do\s+not|don't|dont|never)\b/i.test(clause))
+    .filter((clause) => parseFaderIntent(clause) !== null);
+  return suggestions.slice(0, 3);
+}
+
+/**
+ * Complete preset asks — the producer's own sentence with the target filled in.
+ *
+ * The previous suggestions were FRAGMENTS ("on the bass", "na akordy") meant to
+ * complete the sentence by hand. But the UI sends a clicked chip to the router
+ * STANDALONE, so the fragment lost the sentence it was completing. Measured
+ * 2026-10-19: every one of the six fragments routed to a creative brief, so
+ * clicking one GENERATED A NEW BEAT and replaced the producer's song — the
+ * exact P0-A failure the miss path is guarded against everywhere else.
+ *
+ * A chip is therefore a whole sentence: the producer's own words plus the
+ * target, in the producer's own language (the preset verbs decide SK vs EN).
+ */
+function presetTargetSuggestions(text: string): string[] {
+  const base = text.trim().replace(/\s+/g, " ");
+  const slovak = /\b(?:nacitaj|pouzi|nahraj)\b/.test(base.toLowerCase());
+  const targets = slovak ? ["bas", "808", "akordy", "bicie", "lead"] : ["bass", "808", "chords", "drums", "lead"];
+  const joiner = slovak ? " na " : " on the ";
+  return targets.map((family) => `${base}${joiner}${family}`);
+}
 
 export function isMixIntentText(text: string): boolean {
   // Same normalization parseMixIntent applies — the guard must never be
@@ -368,8 +410,38 @@ export type RoutedIntent =
   | { kind: "bypassIntent"; intent: BypassIntent }
   | {
       kind: "clarify";
+      /**
+       * MACHINE KEY. Stable, snake-case, and part of the SFT teacher's
+       * compacted action — so it must NOT be reworded. It groups declines in
+       * the mining log; the producer reads `clarifyMessage(reason)` instead
+       * (see intent/clarify-messages.ts — the one home for that vocabulary).
+       *
+       * A few declines use a full SENTENCE as their reason (the unmatched-route
+       * clarify, the section-scoped ones). Those read as-is.
+       */
       reason: string;
+      /**
+       * SUGGESTIONS.
+       *
+       * Two kinds were mixed in one list, and the difference is not something a
+       * reader can infer from the wording:
+       *
+       *   COMMAND  "turn down the drums" — a complete ask the engine runs.
+       *   ADVICE   "name the track or layer" — an instruction in prose.
+       *
+       * Rendered as one list of chips, clicking an advice item re-routed
+       * English prose back into the engine, and clicking a sentence FRAGMENT
+       * ("on the bass" — the tail of "load the Warm Sub preset on the bass")
+       * routed to a creative brief: measured 2026-10-19, that GENERATED A NEW
+       * BEAT and replaced the producer's song.
+       *
+       * So the KIND IS DECLARED, not inferred: `advice` lists the items that
+       * are prose. Everything else in `suggestions` is a command and becomes a
+       * chip. `suggestions` itself is unchanged (the SFT teacher pins it).
+       */
       suggestions: string[];
+      /** The subset of `suggestions` that is ADVICE, not a command. */
+      advice?: string[];
       choices?: IntentClarificationChoice[];
     }
   | { kind: "tempo"; intent: TempoIntent }
@@ -442,10 +514,20 @@ function clarifyAmbiguousCommand(text: string, doc: ProjectDocument): RoutedInte
     .toLowerCase()
     .replace(/[^a-z0-9%\s'-]/g, " ")
     .replace(/\s+/g, " ")} `;
+  // Every suggestion in THIS helper is an instruction in prose ("name the
+  // track or layer", "give a percentage or dB value"). They are declared as
+  // ADVICE so the UI shows them as text instead of as clickable chips — a
+  // chip would send the prose back into the router.
+  //
+  // Measured 2026-10-19: "choose louder or quieter" routes to a LOUDNESS
+  // action and "say faster or slower" routes to a TEMPO action, so probing the
+  // router for "is this executable" cannot tell prose from a command here.
+  // The kind has to be declared.
   const clarify = (reason: string, suggestions: string[]): Extract<RoutedIntent, { kind: "clarify" }> => ({
     kind: "clarify",
     reason,
     suggestions,
+    advice: suggestions,
   });
   const targets = [
     /\b(?:bass|808|sub)\b/,
@@ -600,10 +682,20 @@ export function routeIntentText(
   } = {},
 ): RoutedIntent {
   if (NEGATED_MUTATION_COMMAND.test(text)) {
+    // The producer's OWN carve-out is in the sentence, so the sentence holds
+    // both a change and an exception ("turn down the drums AND don't touch the
+    // bass"). Applying either half is a guess, so the whole thing declines.
+    //
+    // What we CAN offer is the half that IS a command: the non-negated clause,
+    // verbatim, as an executable prompt. The producer clicks it to choose —
+    // that is a question, not a guess. (Measured 2026-10-19: the previous
+    // suggestions here were PROSE — "state the change you want" — and the UI
+    // rendered prose as clickable chips, so clicking one re-routed English
+    // prose back into the router.)
     return {
       kind: "clarify",
       reason: "negated-mutation-command",
-      suggestions: ["state the change you want", "leave the project unchanged"],
+      suggestions: negatedClauseSuggestions(text),
     };
   }
   const ambiguousCommand = clarifyAmbiguousCommand(text, doc);
@@ -617,6 +709,9 @@ export function routeIntentText(
       kind: "clarify",
       reason: "hypothetical-action-question",
       suggestions: ["apply a specific change", "compare a preview first"],
+      // Prose, not commands — see the `clarify()` helper in
+      // clarifyAmbiguousCommand for why the kind is declared.
+      advice: ["apply a specific change", "compare a preview first"],
     };
   }
   // TRANSPORT — bare-word runtime commands ("stop", "play", "pauza",
@@ -846,13 +941,15 @@ export function routeIntentText(
           "preset banka sa ešte načítava — skús to o chvíľu",
           "preset bank is still warming up — try again",
         ],
+        // Prose — the bank is warming up, there is no ask to run.
+        advice: ["preset banka sa ešte načítava — skús to o chvíľu", "preset bank is still warming up — try again"],
       };
     }
     if (!/\b(?:on|to|na)\b/.test(lowerText)) {
       return {
         kind: "clarify",
         reason: "preset-target",
-        suggestions: ["na bas / 808", "na akordy", "na lead", "na bicie", "on the bass", "on the lead"],
+        suggestions: presetTargetSuggestions(text),
       };
     }
   }

@@ -265,6 +265,30 @@
   color: var(--accent, #f59e0b);
 }
 
+/* ── Decline card (control-surface audit 2026-10-19) ─────────────────────
+   A decline has to explain ITSELF. The machine key ("negated-mutation-
+   command") is a log group and never reaches the screen; the sentence does.
+   The advice lines are prose and are deliberately NOT chips — clicking one
+   used to re-route the prose back into the engine. */
+.intent-decline {
+  align-items: baseline;
+}
+
+.intent-decline-message {
+  color: var(--text-dim, #aaa);
+  font: 10px var(--mono, monospace);
+  flex: 1 1 100%;
+  line-height: 1.45;
+}
+
+.intent-decline-advice {
+  color: var(--text-faint, #777);
+  font: 9px var(--mono, monospace);
+  border: 1px dashed var(--border, #333);
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
 /* Project-scoped AI memory — inspectable even when generation use is off. */
 .project-brief-manager {
   margin: 4px 0;

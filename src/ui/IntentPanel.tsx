@@ -196,6 +196,8 @@ import { restoreIntentCheckpoint, saveIntentCheckpoint } from "../intent/checkpo
 import { snapshot } from "../commands/core";
 import { getIntentModelProvider, tryModelRoute } from "../intent/model-resolver";
 import { isCreativeBriefRoute, UNMATCHED_ROUTE_CLARIFY } from "../intent/model-fallback-policy";
+import { clarifyMessage } from "../intent/clarify-messages";
+import { partitionClarifySuggestions } from "../intent/clarify-suggestions";
 import { installIntentFailureDevtools, logIntentMiningEvent } from "../intent/failure-log";
 import { diagnoseComplaint } from "../intent/complaints";
 import type { SongSectionMeter } from "../intent/song-audio-review";
@@ -3804,8 +3806,20 @@ export function IntentPanel() {
   // `prompt` rides along for MINING only (which ask produced these chips) —
   // the diagnosis path leaves it unset; picked chips log against it.
   const [clarify, setClarify] = useState<{
+    /** Machine key — what the mining log groups by. */
     reason: string;
-    suggestions: string[];
+    /** The sentence the producer reads (clarifyMessage(reason) at set time). */
+    message: string;
+    /**
+     * Suggestions the engine can EXECUTE — rendered as clickable chips.
+     * Measured 2026-10-19: a prose or fragment suggestion routed to a
+     * creative brief, and clicking it generated a new beat over the
+     * producer's song. The route DECLARES which suggestions are advice
+     * (prose); a safety net demotes anything that would generate.
+     */
+    executable: string[];
+    /** Suggestions that are only ADVICE — rendered as plain text, not chips. */
+    advice: string[];
     choices?: IntentClarificationChoice[];
     prompt?: string;
   } | null>(null);
@@ -4164,9 +4178,13 @@ export function IntentPanel() {
             const probe = routeIntentText(instruction, doc);
             return probe.kind !== "pattern" && probe.kind !== "clarify";
           });
+        const diagnosisReason = `Diagnóza: ${diagnosis.diagnosis}${diagnosis.measurement ? ` — ${diagnosis.measurement}` : ""}`;
+        const diagnosisSplit = partitionClarifySuggestions(verified, undefined, doc);
         setClarify({
-          reason: `Diagnóza: ${diagnosis.diagnosis}${diagnosis.measurement ? ` — ${diagnosis.measurement}` : ""}`,
-          suggestions: verified,
+          reason: diagnosisReason,
+          message: diagnosisReason,
+          executable: diagnosisSplit.executable,
+          advice: diagnosisSplit.advice,
         });
         setStatus(`👂 ${diagnosis.diagnosis}${diagnosis.measurement ? ` — ${diagnosis.measurement}` : ""}`);
       } else if (route.kind === "undoIntent") {
@@ -4760,9 +4778,13 @@ export function IntentPanel() {
         // MINING: a clarify is a real sentence both layers failed on — the
         // #1 corpus signal for the next round.
         stopAudition();
+        const split = partitionClarifySuggestions(route.suggestions, route.advice, doc);
+        const declineMessage = clarifyMessage(route.reason);
         setClarify({
           reason: route.reason,
-          suggestions: route.suggestions,
+          message: declineMessage,
+          executable: split.executable,
+          advice: split.advice,
           ...(route.choices ? { choices: route.choices } : {}),
           prompt: source,
         });
@@ -4779,7 +4801,9 @@ export function IntentPanel() {
           undoDepthAfter: null,
         });
         setHistoryTick((tick) => tick + 1);
-        setStatus(route.reason);
+        // The producer reads the SENTENCE, not the machine key. The key still
+        // goes to the mining log and the tape.
+        setStatus(declineMessage);
       } else {
         // The registered local model is trained for editor actions, not for
         // composing music. Keep creative briefs on the generation path and
@@ -4832,9 +4856,12 @@ export function IntentPanel() {
         logIntentMiningEvent({ prompt: source, outcome: "model-miss" });
         logIntentMiningEvent({ prompt: source, outcome: "clarify", reason: UNMATCHED_ROUTE_CLARIFY.reason });
         stopAudition();
+        const unmatchedSplit = partitionClarifySuggestions(UNMATCHED_ROUTE_CLARIFY.suggestions, undefined, doc);
         setClarify({
           reason: UNMATCHED_ROUTE_CLARIFY.reason,
-          suggestions: [...UNMATCHED_ROUTE_CLARIFY.suggestions],
+          message: clarifyMessage(UNMATCHED_ROUTE_CLARIFY.reason),
+          executable: unmatchedSplit.executable,
+          advice: unmatchedSplit.advice,
           prompt: source,
         });
         setStatus(UNMATCHED_ROUTE_CLARIFY.reason);
@@ -5471,38 +5498,50 @@ export function IntentPanel() {
           </div>
         </div>
       )}
-      {clarify && (clarify.choices?.length || clarify.suggestions.length) > 0 && (
-        <div className="intent-history" aria-label="Nearest interpretations">
-          <span className="intent-history-label">INTENT?</span>
-          {(clarify.choices?.length
-            ? orderClarificationChoices(clarify.choices).map((choice) => ({ label: choice.label, choice }))
-            : clarify.suggestions.map((suggestion) => ({ label: suggestion, choice: undefined }))
-          ).map(({ label, choice }) => (
-            <button
-              key={label}
-              type="button"
-              className="intent-history-chip"
-              disabled={routeBusy || busy || songBusy || theatreBusy || mutateBusy}
-              title={choice ? "Apply this validated interpretation" : "Apply this interpretation"}
-              onClick={() => {
-                // MINING: the chip the user picked reveals what the failed
-                // ask actually meant — the strongest label in the whole log
-                logIntentMiningEvent({
-                  prompt: clarify.prompt ?? "(diagnóza)",
-                  outcome: "clarify-picked",
-                  reason: clarify.reason,
-                  pickedSuggestion: label,
-                });
-                replacePrompt(label, true);
-                if (choice) preRoutedRef.current = choice.route;
-                void routeAndExecute(label);
-              }}
-            >
-              {label.length > 42 ? label.slice(0, 40) + "…" : label}
-            </button>
-          ))}
-        </div>
-      )}
+      {clarify &&
+        (clarify.choices?.length || clarify.executable.length || clarify.advice.length || clarify.message) && (
+          <div className="intent-history intent-decline" aria-label="Nearest interpretations">
+            <span className="intent-history-label">INTENT?</span>
+            {/* The decline explains ITSELF. The machine key ("negated-mutation-
+              command") is a log group, not something to read on screen. */}
+            {clarify.message && <span className="intent-decline-message">{clarify.message}</span>}
+            {(clarify.choices?.length
+              ? orderClarificationChoices(clarify.choices).map((choice) => ({ label: choice.label, choice }))
+              : clarify.executable.map((suggestion) => ({ label: suggestion, choice: undefined }))
+            ).map(({ label, choice }) => (
+              <button
+                key={label}
+                type="button"
+                className="intent-history-chip"
+                disabled={routeBusy || busy || songBusy || theatreBusy || mutateBusy}
+                title={choice ? "Apply this validated interpretation" : "Apply this interpretation"}
+                onClick={() => {
+                  // MINING: the chip the user picked reveals what the failed
+                  // ask actually meant — the strongest label in the whole log
+                  logIntentMiningEvent({
+                    prompt: clarify.prompt ?? "(diagnóza)",
+                    outcome: "clarify-picked",
+                    reason: clarify.reason,
+                    pickedSuggestion: label,
+                  });
+                  replacePrompt(label, true);
+                  if (choice) preRoutedRef.current = choice.route;
+                  void routeAndExecute(label);
+                }}
+              >
+                {label.length > 42 ? label.slice(0, 40) + "…" : label}
+              </button>
+            ))}
+            {/* ADVICE, NOT CHIPS. These are instructions in prose ("name the
+              track or layer"). Clicking one re-routed the prose back into the
+              engine, so they are shown as text the producer can read. */}
+            {clarify.advice.map((advice) => (
+              <span key={advice} className="intent-decline-advice">
+                {advice}
+              </span>
+            ))}
+          </div>
+        )}
       <StatusLine message={status} busy={busy || routeBusy || songBusy || theatreBusy || mutateBusy} />
       {songBusy && songProgress && (
         <div

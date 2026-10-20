@@ -28,6 +28,7 @@ import { topIntentMisses } from "../intent/failure-log";
 import { planBlindPairGains, recordBlindAbTrial, resetBlindAbTrials, summarizeBlindAb } from "./blind-ab";
 import type { Command } from "../commands/types";
 import { routeIntentText, type RoutedIntent } from "../intent/route";
+import { clarifyMessage } from "../intent/clarify-messages";
 import { routeIsDestructive } from "../intent/route-guard";
 import { presetsForEffect } from "../effects/presets";
 import { planMasterSettings, planReferenceMastering, resolveMasterAssistantStepValue } from "./master-assistant";
@@ -7114,7 +7115,11 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
     };
   }
   if (route.kind === "clarify") {
-    return { text: `${route.reason} suggestions: ${route.suggestions.join(" | ")}`, mutated: false };
+    // The sentence, not the machine key — an agent reading "negated-mutation-
+    // command" learns nothing about what to say next.
+    const message = clarifyMessage(route.reason);
+    const suggestions = route.suggestions.length > 0 ? ` suggestions: ${route.suggestions.join(" | ")}` : "";
+    return { text: `${message}${suggestions}`, mutated: false };
   }
   if (route.kind === "presetUnknown") {
     return { text: `unknown preset "${route.name}" — try: ${route.suggestions.join(", ")}`, mutated: false };

@@ -69,6 +69,7 @@ export interface RecordingPcmChunk {
 
 const RECOVERY_STALE_MS = 5_000;
 const MAX_TAKE_BOUNDARIES_PER_CHUNK = 16_384;
+const MAX_CHUNKS_PER_APPEND_BATCH = 128;
 
 /**
  * Surfaced when `begin()` runs the IndexedDB out of disk budget while
@@ -92,6 +93,38 @@ function isQuotaExceeded(err: unknown): boolean {
 function isConstraintError(err: unknown): boolean {
   // Same as isQuotaExceeded — DOMException is the actual carrier.
   return !!err && typeof err === "object" && "name" in err && (err as { name?: string }).name === "ConstraintError";
+}
+
+function validatePcmChunkForAppend(chunk: RecordingPcmChunk): void {
+  if (!chunk || typeof chunk.sessionId !== "string" || chunk.sessionId.length === 0)
+    throw new Error("Recording block has no session identity");
+  if (!Number.isSafeInteger(chunk.sequence) || chunk.sequence < 0) throw new Error("Invalid recording block sequence");
+  if (!Number.isInteger(chunk.frames) || chunk.frames <= 0) throw new Error("Invalid recording block length");
+  if (!Array.isArray(chunk.channels) || chunk.channels.length === 0)
+    throw new Error("Recording block has no audio channels");
+  for (const channel of chunk.channels) {
+    if (!isArrayBuffer(channel) || channel.byteLength !== chunk.frames * Float32Array.BYTES_PER_ELEMENT)
+      throw new Error("Recording block has an invalid PCM channel");
+  }
+  if (chunk.takeBoundaries !== undefined && !Array.isArray(chunk.takeBoundaries)) {
+    throw new Error("Recording block has invalid take boundaries");
+  }
+  if (chunk.punchOut !== undefined && typeof chunk.punchOut !== "boolean") {
+    throw new Error("Recording block has invalid punch-out metadata");
+  }
+  const localBoundaries = chunk.takeBoundaries ?? [];
+  if (
+    localBoundaries.length > MAX_TAKE_BOUNDARIES_PER_CHUNK ||
+    localBoundaries.some(
+      (frame, index) =>
+        !Number.isSafeInteger(frame) ||
+        frame < 0 ||
+        frame >= chunk.frames ||
+        (index > 0 && frame <= localBoundaries[index - 1]!),
+    )
+  ) {
+    throw new Error("Recording block has invalid take boundaries");
+  }
 }
 
 /**
@@ -173,67 +206,73 @@ export class RecordingRecoveryRepository {
   }
 
   async appendChunk(chunk: RecordingPcmChunk): Promise<void> {
-    if (!Number.isInteger(chunk.sequence) || chunk.sequence < 0) throw new Error("Invalid recording block sequence");
-    if (!Number.isInteger(chunk.frames) || chunk.frames <= 0) throw new Error("Invalid recording block length");
-    if (!Array.isArray(chunk.channels) || chunk.channels.length === 0)
-      throw new Error("Recording block has no audio channels");
-    for (const channel of chunk.channels) {
-      if (!isArrayBuffer(channel) || channel.byteLength !== chunk.frames * Float32Array.BYTES_PER_ELEMENT)
-        throw new Error("Recording block has an invalid PCM channel");
+    await this.appendChunks([chunk]);
+  }
+
+  /** Commit a bounded set of chunks from simultaneous streams in one IDB transaction. */
+  async appendChunks(batch: readonly RecordingPcmChunk[]): Promise<void> {
+    if (batch.length === 0) return;
+    if (batch.length > MAX_CHUNKS_PER_APPEND_BATCH) throw new Error("Recording block batch is too large");
+
+    const chunksBySession = new Map<string, RecordingPcmChunk[]>();
+    for (const chunk of batch) {
+      validatePcmChunkForAppend(chunk);
+      const existing = chunksBySession.get(chunk.sessionId);
+      if (existing) existing.push(chunk);
+      else chunksBySession.set(chunk.sessionId, [chunk]);
     }
-    if (chunk.takeBoundaries !== undefined && !Array.isArray(chunk.takeBoundaries)) {
-      throw new Error("Recording block has invalid take boundaries");
-    }
-    if (chunk.punchOut !== undefined && typeof chunk.punchOut !== "boolean") {
-      throw new Error("Recording block has invalid punch-out metadata");
-    }
-    const localBoundaries = chunk.takeBoundaries ?? [];
-    if (
-      localBoundaries.length > MAX_TAKE_BOUNDARIES_PER_CHUNK ||
-      localBoundaries.some(
-        (frame, index) =>
-          !Number.isSafeInteger(frame) ||
-          frame < 0 ||
-          frame >= chunk.frames ||
-          (index > 0 && frame <= localBoundaries[index - 1]!),
-      )
-    ) {
-      throw new Error("Recording block has invalid take boundaries");
+    for (const chunks of chunksBySession.values()) {
+      chunks.sort((a, b) => a.sequence - b.sequence);
+      for (let index = 1; index < chunks.length; index++) {
+        if (chunks[index]!.sequence !== chunks[index - 1]!.sequence + 1) {
+          throw new Error("Recording block batch contains a sequence gap");
+        }
+      }
     }
 
     try {
       const db = await this.openDatabase();
       await tx(db, [STORE_RECORDING_SESSIONS, STORE_RECORDING_CHUNKS], "readwrite", (stores) => {
         const sessions = stores[STORE_RECORDING_SESSIONS];
-        const chunks = stores[STORE_RECORDING_CHUNKS];
-        const request = sessions.get(chunk.sessionId);
-        request.onsuccess = () => {
-          const session = request.result as RecordingSession | undefined;
-          if (
-            !session ||
-            session.status !== "recording" ||
-            chunk.sequence !== session.chunkCount ||
-            chunk.channels.length !== session.channels ||
-            (chunk.punchOut === true && !session.punchCapture) ||
-            chunk.frames > Math.max(128, Math.round(session.sampleRate))
-          ) {
-            request.transaction?.abort();
-            return;
-          }
-          const nextFrames = session.totalFrames + chunk.frames;
-          if (!Number.isSafeInteger(nextFrames)) {
-            request.transaction?.abort();
-            return;
-          }
-          chunks.add(chunk);
-          sessions.put({
-            ...session,
-            totalFrames: nextFrames,
-            chunkCount: session.chunkCount + 1,
-            ...(chunk.punchOut ? { punchOutReached: true } : {}),
-            updatedAt: Date.now(),
-          });
-        };
+        const pcmChunks = stores[STORE_RECORDING_CHUNKS];
+
+        for (const [sessionId, sessionChunks] of chunksBySession) {
+          let index = 0;
+          const appendNext = () => {
+            const chunk = sessionChunks[index]!;
+            const request = sessions.get(sessionId);
+            request.onsuccess = () => {
+              const session = request.result as RecordingSession | undefined;
+              if (
+                !session ||
+                session.status !== "recording" ||
+                chunk.sequence !== session.chunkCount ||
+                chunk.channels.length !== session.channels ||
+                (chunk.punchOut === true && !session.punchCapture) ||
+                chunk.frames > Math.max(128, Math.round(session.sampleRate))
+              ) {
+                request.transaction?.abort();
+                return;
+              }
+              const nextFrames = session.totalFrames + chunk.frames;
+              if (!Number.isSafeInteger(nextFrames)) {
+                request.transaction?.abort();
+                return;
+              }
+              pcmChunks.add(chunk);
+              sessions.put({
+                ...session,
+                totalFrames: nextFrames,
+                chunkCount: session.chunkCount + 1,
+                ...(chunk.punchOut ? { punchOutReached: true } : {}),
+                updatedAt: Date.now(),
+              });
+              index++;
+              if (index < sessionChunks.length) appendNext();
+            };
+          };
+          appendNext();
+        }
       });
     } catch (err) {
       if (isQuotaExceeded(err)) {

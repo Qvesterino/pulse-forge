@@ -360,6 +360,9 @@ and [recovering from an invalid device](https://learn.microsoft.com/en-us/window
   session, native Start rejection and Stop while native Start never settles on
   both capture and render endpoint Start phases; these cases verify endpoint-
   specific timeout reporting and termination of the isolated utility. The
+  2026-10-20 synthetic cases additionally cover native Start resolving after
+  Stop without publishing `ready`, and runtime device-loss forwarding with
+  native cleanup, timer cancellation and utility exit. The
   manager test verifies that an unexpected utility exit clears the
   active session and permits a retry through a fresh host. The AudioEngine
   bridge test injects its two-second missing-status error and verifies capture
@@ -370,6 +373,12 @@ and [recovering from an invalid device](https://learn.microsoft.com/en-us/window
   CTest case overlaps Stop with startup using nonexistent exact endpoint IDs,
   so it opens no physical stream. This lifecycle evidence does not explain the
   AudioSrv hang or qualify device streaming.
+- A synthetic stereo recorder case now checks the native bridge's two-channel
+  worklet layout, exact two-channel recorder request, separate dry monitor
+  routes and distinct left/right PCM values. After injected device loss, the
+  materialized take retains both channels in recovery storage. Its AudioContext,
+  native port and samples are test doubles; this does not verify physical
+  connector mapping or hardware signal flow.
 - The startup diagnostic previously grouped both `IAudioClient3::Start` calls
   and both `GetStreamLatency` calls under `starting-audio-client`, so a timeout
   there could not identify which native call remained blocked. Startup

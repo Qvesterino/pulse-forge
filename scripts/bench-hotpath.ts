@@ -22,7 +22,7 @@ import { snapshot } from "../src/commands/commands";
 import { STEP_TICKS, grooveOf } from "../src/project-model/types";
 import { mulberry32 } from "../src/shared/rng";
 import type { DrumTrack, Pattern, ProjectDocument } from "../src/project-model/types";
-import type { DeltaOp } from "../src/commands/docDelta";
+import type { DeltaOp, DeltaPath } from "../src/commands/docDelta";
 import { computeDocDelta, applyDocDelta, deepEqualRef } from "../src/commands/docDelta";
 
 const args = process.argv.slice(2);
@@ -412,6 +412,136 @@ function benchC5(): Promise<ABLegacy> {
   });
 }
 
+// ─── P.1: entity-array order replay (id→index map vs O(n²) linear scan) ─────
+
+/**
+ * Pre-fix `docDelta` diff machinery, verbatim from `git show
+ * HEAD:src/commands/docDelta.ts` as it stood before the replay was indexed.
+ * Only `diffEntityArray`'s order replay changed — every other function here
+ * is the same algorithm, so the A/B measures the replay and nothing else.
+ */
+function legacyIsPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function legacyIdOf(item: unknown): string | undefined {
+  if (legacyIsPlainObject(item) && typeof item.id === "string") return item.id;
+  return undefined;
+}
+function legacyIsEntityList(list: unknown[]): boolean {
+  return list.length > 0 && list.every((item) => legacyIdOf(item) !== undefined);
+}
+function legacyDiffAny(a: unknown, b: unknown, path: DeltaPath, ops: DeltaOp[]): void {
+  if (a === b) return;
+  if (legacyIsPlainObject(a) && legacyIsPlainObject(b)) {
+    legacyDiffObject(a, b, path, ops);
+    return;
+  }
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (legacyIsEntityList(a) && legacyIsEntityList(b)) {
+      legacyDiffEntityArray(a, b, path, ops);
+      return;
+    }
+    legacyDiffPlainArray(a, b, path, ops);
+    return;
+  }
+  ops.push({ k: "set", path, value: b });
+}
+function legacyDiffObject(a: Record<string, unknown>, b: Record<string, unknown>, path: DeltaPath, ops: DeltaOp[]): void {
+  for (const key of Object.keys(a)) {
+    if (!Object.prototype.hasOwnProperty.call(b, key)) {
+      if (a[key] === undefined) continue;
+      ops.push({ k: "del", path: [...path, key], removed: a[key] });
+    }
+  }
+  for (const key of Object.keys(b)) {
+    if (!Object.prototype.hasOwnProperty.call(a, key)) {
+      if (b[key] === undefined) continue;
+      ops.push({ k: "set", path: [...path, key], value: b[key] });
+      continue;
+    }
+    legacyDiffAny(a[key], b[key], [...path, key], ops);
+  }
+}
+function legacyDiffEntityArray(a: unknown[], b: unknown[], path: DeltaPath, ops: DeltaOp[]): void {
+  const aIds = new Map<string, unknown>();
+  for (const item of a) aIds.set(legacyIdOf(item) as string, item);
+  const bIds = new Map<string, unknown>();
+  for (const item of b) bIds.set(legacyIdOf(item) as string, item);
+  for (const [id, bItem] of bIds) {
+    if (aIds.has(id)) legacyDiffAny(aIds.get(id), bItem, [...path, { id }], ops);
+  }
+  for (const item of a) {
+    const id = legacyIdOf(item) as string;
+    if (!bIds.has(id)) ops.push({ k: "del", path: [...path, { id }], removed: item });
+  }
+  // Pre-fix replay: a linear `findIndex` per element of b — O(n²) in the
+  // length of the entity list.
+  const sim: { id: string; value: unknown }[] = a
+    .map((item) => ({ id: legacyIdOf(item) as string, value: item }))
+    .filter((entry) => bIds.has(entry.id));
+  for (let i = 0; i < b.length; i++) {
+    const item = b[i];
+    const id = legacyIdOf(item) as string;
+    const current = sim.findIndex((entry) => entry.id === id);
+    if (current === -1) {
+      ops.push({ k: "ins", path, index: i, value: item });
+      sim.splice(Math.min(i, sim.length), 0, { id, value: item });
+      continue;
+    }
+    if (current !== i) {
+      ops.push({ k: "move", path, id, toIndex: i });
+      const [moved] = sim.splice(current, 1);
+      sim.splice(Math.min(i, sim.length), 0, moved);
+    }
+  }
+}
+function legacyDiffPlainArray(a: unknown[], b: unknown[], path: DeltaPath, ops: DeltaOp[]): void {
+  const common = Math.min(a.length, b.length);
+  for (let i = 0; i < common; i++) {
+    legacyDiffAny(a[i], b[i], [...path, i], ops);
+  }
+  for (let i = a.length - 1; i >= b.length; i--) {
+    ops.push({ k: "del", path: [...path, i], removed: a[i] });
+  }
+  for (let i = common; i < b.length; i++) {
+    ops.push({ k: "ins", path, index: i, value: b[i] });
+  }
+}
+function legacyComputeDocDelta(before: ProjectDocument, after: ProjectDocument): { ops: DeltaOp[] } {
+  const ops: DeltaOp[] = [];
+  legacyDiffAny(before, after, [], ops);
+  return { ops };
+}
+
+/**
+ * One arrangement edit of one clip inside a long clip list — the shape a drag
+ * produces. The clip CONTENT is shared by reference, so the delta's only work
+ * is the order replay.
+ */
+function benchP1(): Promise<ABLegacy> {
+  const N = 1000;
+  const base = createProjectFromTemplate("house");
+  const sceneId = base.scenes[0].id;
+  const clips = Array.from({ length: N }, (_, i) => ({
+    id: `clip-${i}`,
+    sceneId,
+    startBar: i,
+    lengthBars: 1,
+  }));
+  const before = { ...base, arrangement: { ...base.arrangement, clips } } as unknown as ProjectDocument;
+  // One clip moved to the front — a single move op, then n-1 no-op steps.
+  const after = {
+    ...before,
+    arrangement: { ...before.arrangement, clips: [clips[N - 1], ...clips.slice(0, N - 1)] },
+  } as unknown as ProjectDocument;
+
+  return ab(
+    `P.1  entity-array order replay, ${N} clips (one clip moved)`,
+    () => computeDocDelta(before, after),
+    () => legacyComputeDocDelta(before, after),
+  );
+}
+
 // ─── Report ───────────────────────────────────────────────────────────────
 
 function fmt(n: number, digits = 3): string {
@@ -438,7 +568,7 @@ async function main(): Promise<void> {
   console.log(`Measurement noise floor: ${fmtBytes(noise.bytesPerCall)}/call (no-op probe)`);
   console.log("=".repeat(112));
 
-  const benches = [benchB7(), benchA3(), benchA4(), benchC5()];
+  const benches = [benchB7(), benchA3(), benchA4(), benchC5(), benchP1()];
   const results: ABLegacy[] = [];
   for (const p of benches) results.push(await p);
 

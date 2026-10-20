@@ -241,6 +241,66 @@ describe("Windows audio utility session host lifecycle", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("stops cleanly when native Start resolves after the user already pressed Stop", async () => {
+    vi.useFakeTimers();
+    let resolveStart: (() => void) | undefined;
+    const startNative = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStart = resolve;
+        }),
+    );
+    const harness = createSessionHost(startNative);
+
+    harness.pcmPort.send({ type: "bridge-ready", sessionId: "host-session-1" });
+    await flushHostMicrotasks();
+    expect(harness.nativeSession.start).toHaveBeenCalledOnce();
+
+    harness.parentPort.send({ type: "stop", sessionId: "host-session-1" });
+    expect(harness.nativeSession.stop).not.toHaveBeenCalled();
+
+    resolveStart?.();
+    await flushHostMicrotasks();
+    expect(harness.nativeSession.stop).toHaveBeenCalledOnce();
+    expect(harness.pcmPort.messages).not.toContainEqual(expect.objectContaining({ type: "ready" }));
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(harness.processStub.exit).toHaveBeenCalledWith(0);
+    expect(harness.pcmPort.closed).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("forwards runtime WASAPI device loss and tears down the session timers", async () => {
+    vi.useFakeTimers();
+    const harness = createSessionHost(vi.fn(async () => undefined));
+    harness.nativeSnapshot.state = "running";
+    harness.nativeSnapshot.startupStage = "running";
+    harness.nativeSnapshot.startupEndpoint = "";
+
+    harness.pcmPort.send({ type: "bridge-ready", sessionId: "host-session-1" });
+    await flushHostMicrotasks();
+    expect(harness.pcmPort.messages).toContainEqual(expect.objectContaining({ type: "ready" }));
+
+    harness.nativeSnapshot.state = "device-lost";
+    harness.nativeSnapshot.lastError = "Selected capture endpoint disconnected";
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(harness.pcmPort.messages).toContainEqual(
+      expect.objectContaining({
+        type: "device-lost",
+        sessionId: "host-session-1",
+        message: "Selected capture endpoint disconnected",
+      }),
+    );
+    expect(harness.nativeSession.stop).toHaveBeenCalledOnce();
+    expect(harness.pcmPort.closed).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(harness.parentPort.closed).toBe(true);
+    expect(harness.processStub.exit).toHaveBeenCalledWith(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("keeps the watchdog armed after Stop while native Start is unresolved", async () => {
     vi.useFakeTimers();
     const neverSettles = new Promise<void>(() => {});

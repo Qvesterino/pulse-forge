@@ -225,6 +225,8 @@ export interface PcmMicRecorderDependencies {
   captureGroupToken?: object;
   /** Wait for every group member, then arm this recorder at their shared frame. */
   captureStartBarrier?: PcmCaptureStartBarrier;
+  /** Optional group-owned durable append path for batching independent stream blocks. */
+  appendChunk?: (chunk: RecordingPcmChunk) => Promise<void>;
   /**
    * Optional side-effect-free re-read of the transport position, invoked
    * immediately before capture arms. The metadata snapshot (including
@@ -901,7 +903,8 @@ export class PcmMicRecorder {
     this.writeTail = this.writeTail
       .then(async () => {
         if (this.persistenceError) return;
-        await this.recovery.appendChunk({ ...chunk, sessionId: session.id });
+        const durableChunk = { ...chunk, sessionId: session.id };
+        await (this.deps.appendChunk?.(durableChunk) ?? this.recovery.appendChunk(durableChunk));
         node.port.postMessage({ type: "ack", sequence: chunk.sequence });
       })
       .catch((error) => {

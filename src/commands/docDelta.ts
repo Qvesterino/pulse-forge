@@ -179,19 +179,47 @@ function diffEntityArray(a: unknown[], b: unknown[], path: DeltaPath, ops: Delta
   const sim: { id: string; value: unknown }[] = a
     .map((item) => ({ id: idOf(item) as string, value: item }))
     .filter((entry) => bIds.has(entry.id));
+  //
+  // Locating the item a step refers to used to be a linear `sim.findIndex`
+  // per element of b — O(n²) over a list of n entities. That price was paid
+  // by EVERY command that touched one entity of a long list (one clip of a
+  // 1 600-clip arrangement), because `snapshot()` computes the forward and
+  // the backward delta. The map below answers "where is this id" in O(1) and
+  // is re-indexed only across the range a splice actually shifted, so the
+  // replay is O(n) unless the order really changed.
+  //
+  // Duplicate ids are the one case where the map and `findIndex` disagree:
+  // the map keeps one index per id, `findIndex` the FIRST occurrence. `sim`
+  // can only hold duplicates when `a` itself held them, so that case falls
+  // back to the original scan and the emitted ops stay identical.
+  const indexById = new Map<string, number>();
+  let duplicateIds = false;
+  for (let k = 0; k < sim.length; k++) {
+    if (indexById.has(sim[k].id)) duplicateIds = true;
+    else indexById.set(sim[k].id, k);
+  }
+  const locate = (id: string): number =>
+    duplicateIds ? sim.findIndex((entry) => entry.id === id) : (indexById.get(id) ?? -1);
+  const reindex = (from: number): void => {
+    for (let k = from; k < sim.length; k++) indexById.set(sim[k].id, k);
+  };
   for (let i = 0; i < b.length; i++) {
     const item = b[i];
     const id = idOf(item) as string;
-    const current = sim.findIndex((entry) => entry.id === id);
+    const current = locate(id);
     if (current === -1) {
       ops.push({ k: "ins", path, index: i, value: item });
-      sim.splice(Math.min(i, sim.length), 0, { id, value: item });
+      const at = Math.min(i, sim.length);
+      sim.splice(at, 0, { id, value: item });
+      reindex(at);
       continue;
     }
     if (current !== i) {
       ops.push({ k: "move", path, id, toIndex: i });
       const [moved] = sim.splice(current, 1);
-      sim.splice(Math.min(i, sim.length), 0, moved);
+      const at = Math.min(i, sim.length);
+      sim.splice(at, 0, moved);
+      reindex(Math.min(current, at));
     }
   }
 }

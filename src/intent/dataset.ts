@@ -123,6 +123,11 @@ export function compactIntentResponse(route: RoutedIntent): CompactIntentRespons
         targetRole: route.targetRole,
       };
     case "clarify":
+      // `reason` is the MACHINE KEY (the SFT teacher's label) and `suggestions`
+      // are the suggestions the decline offered. Both are byte-pinned in the
+      // training splits, so neither may be reworded here — the producer-facing
+      // sentence lives in intent/clarify-messages.ts and is deliberately NOT
+      // part of the model's output.
       return { kind: "clarify", reason: route.reason, suggestions: route.suggestions };
     case "pattern":
       // Not a command — excluded from the SFT command set by the caller.

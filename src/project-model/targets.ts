@@ -148,8 +148,25 @@ export function targetEffectsOf(doc: ProjectDocument, trackId: string): EffectIn
  * plugins additionally expose their vendored schemas so deep editor params
  * are selectable by macros and automation instead of becoming dangling
  * strings that only the panel understands.
+ *
+ * The catalog is derived PURELY from the effect type (and, for fxeq, the band
+ * count) — never from project state — so it is cached. The automation path
+ * resolves a target seven times per lane per scheduler tick, and rebuilding
+ * the fxeq catalog (315 defs plus two maps) on each of those calls measured
+ * 0.65 ms — about 16 % of a core for a single automated fxeq. The cache holds
+ * one entry per effect type (and band count), and every entry is derived data
+ * that no caller mutates.
  */
-export function effectTargetParamDefs(effect: EffectInstance): TargetParamDef[] {
+const effectParamCatalogs = new Map<string, TargetParamDef[]>();
+const instrumentParamCatalogs = new Map<string, TargetParamDef[]>();
+
+/** Band count the fxeq schema is built from — clamped exactly as before. */
+function fxeqBandCountOf(effect: EffectInstance): number {
+  const rawBandCount = effect.params.bandCount;
+  return Math.max(2, Math.min(6, Math.round(Number.isFinite(rawBandCount) ? rawBandCount : 6)));
+}
+
+function buildEffectTargetParamDefs(effect: EffectInstance, bandCount: number): TargetParamDef[] {
   const seen = new Set<string>();
   const out: TargetParamDef[] = [];
   const push = (def: TargetParamDef) => {
@@ -171,8 +188,6 @@ export function effectTargetParamDefs(effect: EffectInstance): TargetParamDef[] 
       if (def.automatable) push(fromUltinaDef(def));
     }
   } else if (effect.type === "fxeq") {
-    const rawBandCount = effect.params.bandCount;
-    const bandCount = Math.max(2, Math.min(6, Math.round(Number.isFinite(rawBandCount) ? rawBandCount : 6)));
     const schema = buildFxEqSchema(bandCount);
     for (const def of schema.defs) {
       if (def.automatable) push(fromFxEqDef(def));
@@ -184,8 +199,22 @@ export function effectTargetParamDefs(effect: EffectInstance): TargetParamDef[] 
   return out;
 }
 
+export function effectTargetParamDefs(effect: EffectInstance): TargetParamDef[] {
+  const bandCount = fxeqBandCountOf(effect);
+  const key = effect.type === "fxeq" ? `fxeq:${bandCount}` : effect.type;
+  const cached = effectParamCatalogs.get(key);
+  if (cached) return cached;
+  const defs = buildEffectTargetParamDefs(effect, bandCount);
+  effectParamCatalogs.set(key, defs);
+  return defs;
+}
+
 export function instrumentTargetParamDefs(track: Extract<Track, { kind: "instrument" }>): TargetParamDef[] {
-  return INSTRUMENT_META[track.instrument].params.map(fromRackDef);
+  const cached = instrumentParamCatalogs.get(track.instrument);
+  if (cached) return cached;
+  const defs = INSTRUMENT_META[track.instrument].params.map(fromRackDef);
+  instrumentParamCatalogs.set(track.instrument, defs);
+  return defs;
 }
 
 /** Resolve the legal metadata for one fully-qualified AutomationTarget. */

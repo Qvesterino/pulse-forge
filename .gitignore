@@ -35,6 +35,19 @@ output/playwright/
 # above already says scratch worth keeping belongs in `scratch/` (git add -f)
 # or `.sound-audit/`; this is the rest.
 .artifacts/
+# One-off probe specs written under `output/` (the convention for a throwaway
+# measurement: `output/<name>.spec.ts`, run by path, then deleted). They are
+# NOT under `output/playwright/`, so the entry above did not match them, and a
+# forgotten probe was one `git add` away from shipping AND from being
+# collected by the full vitest run (`output/**` is not in vitest's exclude).
+output/*.spec.ts
+# The rest of the session scratch that shares that directory: dev-server logs,
+# a stray PID file, and the `_`-prefixed working notes. A bulk `git add` once
+# swept a whole pile of these into the repo.
+output/*.log
+output/*.err
+output/*.pid
+output/_*
 # Session scratch at the root: restore scripts, baseline copies, run logs.
 /tmp/
 # `.bak` below does NOT match `.bak.ts` / `.bak.mjs` - that gap is how a
