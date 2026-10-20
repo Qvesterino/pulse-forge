@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { useServices } from "./context";
 // Lazy benchmark stack: Diagnostics is the only consumer and every call site
 // is user-triggered — the eager import parked the whole measurement harness
@@ -14,11 +14,31 @@ import {
   type OfflinePackManifest,
 } from "../pwa/offlinePack";
 
-type DiagTab = "engine" | "memory" | "performance" | "device";
+type DiagTab = "engine" | "memory" | "performance" | "device" | "matrix";
 
 export function Diagnostics() {
   const services = useServices();
   const [tab, setTab] = useState<DiagTab>("engine");
+  /**
+   * The STATE MATRIX panel, loaded on demand.
+   *
+   * Same reason as the benchmark stack below: the measuring module is a
+   * measurement harness, and an eager import would park it in the studio's
+   * boot graph for a panel most sessions never open. The import happens when
+   * the tab is OPENED, and the module pulls in the state-matrix measurement
+   * code the same way.
+   */
+  const [MatrixPanel, setMatrixPanel] = useState<ComponentType | null>(null);
+  useEffect(() => {
+    if (tab !== "matrix" || MatrixPanel) return;
+    let cancelled = false;
+    void import("./StateMatrixPanel").then((loaded) => {
+      if (!cancelled) setMatrixPanel(() => loaded.StateMatrixPanel);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, MatrixPanel]);
   const [rows, setRows] = useState<Record<string, string | number | boolean>>({});
   const [perfReport, setPerfReport] = useState<PerformanceReport | null>(null);
   const [renderStatus, setRenderStatus] = useState<string>("");
@@ -149,7 +169,7 @@ export function Diagnostics() {
       <h2 className="panel-title">DIAGNOSTICS</h2>
 
       <div className="diag-tabs">
-        {(["engine", "memory", "performance", "device"] as DiagTab[]).map((t) => (
+        {(["engine", "memory", "performance", "device", "matrix"] as DiagTab[]).map((t) => (
           <button
             key={t}
             type="button"
@@ -163,6 +183,9 @@ export function Diagnostics() {
           </button>
         ))}
       </div>
+
+      {tab === "matrix" &&
+        (MatrixPanel ? <MatrixPanel /> : <div className="panel-loading">Loading the state matrix…</div>)}
 
       {tab === "engine" && (
         <div className="diagnostics-grid">

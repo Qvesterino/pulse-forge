@@ -1,0 +1,206 @@
+/* 61-state-matrix-panel.css — the Diagnostics tab that reads the SAME
+   declaration the state-matrix gate reads.
+ *
+ * WHY A SEPARATE SHEET. ADR 0036: CSS changes are additive layers, and the
+ * import order is load-bearing. This sheet owns the `.matrix-*` selectors and
+ * nothing else, so it can be read, reviewed and deleted without touching the
+ * shell's other rules.
+ *
+ * WHAT IT DOES NOT DO. It does not move anything. The panel lives inside the
+ * existing Diagnostics strip, in the existing grid, at the existing type
+ * scale. A tool that measures the shell must not restyle it — otherwise the
+ * measurement would be measuring the tool.
+ *
+ * THE COLOURS ARE THE SHELL'S OWN. A verdict is a state signal, so it wears
+ * the shell's state colours: green for "the live shell agrees", red for "it
+ * disagrees", and the dim grey for "the app cannot settle this one here".
+ * All three clear AA on the panel background — measured, not assumed:
+ *
+ *   --play    #4ade80   10.5:1 on --bg-panel
+ *   --stop    #f87171    6.6:1 on --bg-panel
+ *   --text-dim #8d94a2   5.6:1 on --bg-panel
+ *
+ * The amber is reserved for the ONE thing that is the shell's primary state
+ * signal: the state the panel is in right now.
+ */
+
+.matrix-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--mono);
+}
+
+.matrix-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.matrix-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--kyx-silver-bright);
+}
+
+.matrix-subtitle {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.matrix-now {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.matrix-now-label {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--text-faint);
+}
+
+.matrix-now-state {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.matrix-now-how {
+  color: var(--text-faint);
+}
+
+.matrix-tally {
+  margin-left: auto;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.matrix-issues {
+  border-left: 2px solid var(--stop);
+  padding-left: 8px;
+}
+
+.matrix-issues .diag-issue strong {
+  color: var(--stop);
+}
+
+.matrix-grid {
+  /* TWO WIDE COLUMNS, not three narrow ones. The shell's own grid asks for
+     240px columns. With three 455px cells a rule like "exactly one amber
+     inset mark → one amber inset mark · one amber border · 16 elements"
+     broke into three lines, and a rule you have to re-read across three
+     lines is a rule nobody compares against the expectation. Two 694px cells
+     give the rule the whole cell, and the table ends up SHORTER as well. */
+  grid-template-columns: repeat(auto-fill, minmax(680px, 1fr));
+  row-gap: 0;
+}
+
+.matrix-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.matrix-section-title {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 2px;
+}
+
+.matrix-row {
+  /* THE ROLE IS A FIXED COLUMN, NOT A CAPTION. Measured: the longest role
+     name is 26 characters ("Step cell (playhead column)", "Channel name
+     (track header)") and the longest rule needs ~540px. A 164px role column
+     plus the rule fits the 694px cell, so every rule can be read in ONE
+     pass — and the table is 21 lines shorter than stacking the role above
+     each rule, which cost a line per row for nothing. */
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 1px 0 3px;
+}
+
+.matrix-role {
+  flex: 0 0 164px;
+  color: var(--text-faint);
+}
+
+.matrix-value {
+  flex: 1 1 auto;
+  text-align: left;
+  min-width: 0;
+}
+
+.matrix-mark {
+  font-weight: 700;
+}
+
+.matrix-ok .matrix-mark {
+  color: var(--play);
+}
+
+.matrix-fail .matrix-mark,
+.matrix-fail .matrix-value {
+  color: var(--stop);
+}
+
+.matrix-unmeasured .matrix-value {
+  color: var(--text-faint);
+}
+
+.matrix-catalogue {
+  display: grid;
+  /* TWO WIDE COLUMNS, not four narrow ones. The shell's own grid asks for
+     240px columns; a catalogue entry needs the label (132px) AND the rule
+     count (92px) before the description gets a single pixel — four columns
+     left 95px for the sentence and every description ended in an ellipsis. */
+  grid-template-columns: repeat(auto-fill, minmax(520px, 1fr));
+  gap: 1px 24px;
+  border-top: 1px solid var(--border);
+  padding-top: 5px;
+}
+
+.matrix-state {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.matrix-state-label {
+  color: var(--text-dim);
+  min-width: 132px;
+}
+
+.matrix-state-rules {
+  min-width: 92px;
+}
+
+.matrix-state-desc {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* WRAP, do not clip. The description IS the content of this row — "MIDI
+     overdub is ARMED — the record button is lit and the OVERDUB/REPLACE mode
+     selector is present. This is a MIDI overdub into the pattern, NOT
+     microphone capture." A catalogue that hides the one thing it exists to
+     say is worse than a catalogue that is taller. */
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.matrix-state-live .matrix-state-label {
+  color: var(--accent);
+}
+
+.matrix-state-unobserved .matrix-state-label {
+  color: var(--text-faint);
+  font-style: italic;
+}

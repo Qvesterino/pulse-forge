@@ -529,7 +529,14 @@ export function readStateMatrix(roles: readonly StateRole[]): StateReading[] {
       const cs = getComputedStyle(node);
       if (cs.backgroundImage && cs.backgroundImage !== "none") {
         const cls = (node.getAttribute("class") || "").split(/\s+/)[0] || node.tagName.toLowerCase();
-        return { color: null, resolved: false, note: `${cls} paints a background-image` };
+        // A gradient is what the shell actually paints, and "paints a
+        // gradient" is both shorter and truer than "paints a background-image"
+        // — the CSS property name is the fallback for the case where it is
+        // NOT a gradient, and then the note has to say so.
+        const note = cs.backgroundImage.includes("gradient")
+          ? `${cls} paints a gradient`
+          : `${cls} paints a background-image`;
+        return { color: null, resolved: false, note };
       }
       const bg = rgbOf(cs.backgroundColor);
       if (bg && bg.a > 0) {
@@ -1369,4 +1376,353 @@ export function evaluateContrast(
   const source: ContrastResult["source"] =
     pixel?.minContrast != null ? "pixel" : reading.contrast !== null ? "static" : "none";
   return { ...base, ok: failures.length === 0, measured, source, failures };
+}
+
+// ---- the panel layer ------------------------------------------------------------
+//
+// ONE DECLARATION, TWO READERS. The gate prints machine-readable lines; the
+// Diagnostics panel prints what is below. Both read the same arrays, so a rule
+// cannot be green in one and red in the other.
+//
+// The wording rule (plan section 6.2): say it in the words a person uses, and
+// put the NUMBER after the words, not before. "one amber inset mark" reads;
+// "rgba(245, 158, 11) 2px 0 0 inset" does not.
+
+/** A role's human label. Falls back to the id for a role the catalogue lost. */
+export function roleLabel(roleId: string): string {
+  return STATE_ROLES.find((role) => role.id === roleId)?.label ?? roleId;
+}
+
+/** The role groups, in the order the panel lists them. */
+export const ROLE_GROUP_ORDER: readonly StateRole["group"][] = [
+  "SEQUENCER",
+  "PATTERN BAR",
+  "TRANSPORT",
+  "DOCK",
+  "CONTROLS",
+  "CHROME",
+];
+
+/** Parse an `rgb()`/`rgba()` string. The declarations speak that dialect. */
+function parseRgb(colour: string | null | undefined): { r: number; g: number; b: number } | null {
+  if (!colour) return null;
+  const m = colour.match(/rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)/i);
+  if (!m) return null;
+  return { r: parseFloat(m[1]!), g: parseFloat(m[2]!), b: parseFloat(m[3]!) };
+}
+
+/**
+ * A colour's plain name.
+ *
+ * "amber", not "rgb(245, 158, 11)". The shell's marks are exactly three hues
+ * in practice - amber (selection), green (playing), and the red of a record
+ * arm - so the name is what a person would call it.
+ */
+export function colourName(colour: string | null | undefined): string {
+  const c = parseRgb(colour);
+  if (!c) return colour ?? "unknown";
+  const max = Math.max(c.r, c.g, c.b) / 255;
+  const min = Math.min(c.r, c.g, c.b) / 255;
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (d < 0.05) return "grey";
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  if (s < 0.18) return "grey";
+  let h: number;
+  if (max === c.r / 255) h = ((c.g - c.b) / 255 / d) % 6;
+  else if (max === c.g / 255) h = (c.b - c.r) / 255 / d + 2;
+  else h = (c.r - c.g) / 255 / d + 4;
+  h *= 60;
+  if (h < 0) h += 360;
+  if (h < 12 || h >= 345) return "red";
+  if (h < 42) return "amber";
+  if (h < 68) return "yellow";
+  if (h < 160) return "green";
+  if (h < 200) return "teal";
+  if (h < 255) return "blue";
+  if (h < 290) return "violet";
+  return "magenta";
+}
+
+/** "exactly one" / "at least two" / "between one and three". */
+function countPhrase(min: number | undefined, max: number | undefined): string {
+  if (min !== undefined && max !== undefined) {
+    if (min === max) return min === 1 ? "exactly one" : `exactly ${min}`;
+    return `${min} to ${max}`;
+  }
+  if (min !== undefined) return min === 1 ? "at least one" : `at least ${min}`;
+  if (max !== undefined) return max === 1 ? "at most one" : `at most ${max}`;
+  return "some";
+}
+
+/**
+ * The expectation in the words a person would use.
+ *
+ * "exactly one amber inset mark" — not "insetMarks {min: 1, max: 1}".
+ */
+export function formatExpectation(expect: StateExpectation["expect"]): string {
+  const parts: string[] = [];
+  if (expect.visible !== undefined) {
+    parts.push(expect.visible === 0 ? "nothing on screen" : `${countPhrase(expect.visible, expect.visible)} element`);
+  }
+  const marks = (range: { min?: number; max?: number } | undefined, kind: string, colour: string | undefined): void => {
+    if (!range) return;
+    const named = colour ? `${colourName(colour)} ` : "";
+    const plural = (range.min ?? range.max) === 1 ? "" : "s";
+    parts.push(`${countPhrase(range.min, range.max)} ${named}${kind}${plural}`);
+  };
+  marks(expect.insetMarks, "inset mark", expect.insetColour);
+  marks(expect.borderMarks, "border mark", expect.borderColour);
+  marks(expect.rings, "ring", undefined);
+  marks(expect.outlines, "focus outline", undefined);
+  if (expect.markMovedFromIdle) parts.push("the mark moves to another element");
+  if (expect.textChangedFromIdle) parts.push("the text changes");
+  return parts.length ? parts.join(" · ") : "no rule";
+}
+
+/** "one" for 1, the number for anything else. English counts this way. */
+function oneOrNumber(n: number): string {
+  return n === 1 ? "one" : String(n);
+}
+
+/**
+ * The LIVE reading of a STATE rule — the marks, and only the marks.
+ *
+ * THE STATE DECLARATION IS ABOUT MARKS. `StateExpectation` declares inset
+ * marks, border marks, rings and focus outlines — nothing else. So this
+ * reading answers exactly that question: what is painted on the shell right
+ * now. The typography (size, element count) is NOT here — it belongs to the
+ * contrast floor, where the size decides which WCAG threshold applies, and
+ * repeating it on both rows made every rule two lines longer than it needed
+ * to be.
+ *
+ * THE MARK ORDER IS THE READING ORDER. The eye expects the subject first:
+ * "one amber inset mark · one amber border" — not "16 elements · 12 px ·
+ * one amber inset mark".
+ *
+ * WHEN NOTHING IS PAINTED, THAT IS THE FINDING. A rule like "at most 0 rings"
+ * is satisfied by an empty answer; an empty answer with no evidence reads
+ * like a broken row, so the row says "no marks" and says how much it looked
+ * at.
+ */
+export function formatReading(reading: StateReading): string {
+  if (reading.visible === 0) return "not on screen";
+  const parts: string[] = [];
+  if (reading.accentCount > 0) {
+    const name = colourName(reading.accent);
+    parts.push(`${oneOrNumber(reading.accentCount)} ${name} inset mark${reading.accentCount === 1 ? "" : "s"}`);
+  }
+  if (reading.borderAccentCount > 0) {
+    const name = colourName(reading.borderAccent);
+    parts.push(`${oneOrNumber(reading.borderAccentCount)} ${name} border${reading.borderAccentCount === 1 ? "" : "s"}`);
+  }
+  if (reading.ringCount > 0) parts.push(`${oneOrNumber(reading.ringCount)} ring${reading.ringCount === 1 ? "" : "s"}`);
+  if (reading.outlineCount > 0) {
+    parts.push(`${oneOrNumber(reading.outlineCount)} focus outline${reading.outlineCount === 1 ? "" : "s"}`);
+  }
+  if (parts.length === 0) {
+    parts.push(`no marks · ${reading.visible === 1 ? "one element" : `${reading.visible} elements`}`);
+  }
+  return parts.join(" · ");
+}
+
+/**
+ * The CONTRAST reading — the one number a contrast row is about.
+ *
+ * "6.04:1 on a solid surface", or "unresolved (row-pad paints a
+ * background-image)" when the surface under the text could not be resolved.
+ * A gradient is a real answer and "we do not know" is not, so the word is
+ * chosen carefully: the row says `unresolved` and NAMES THE REASON, right
+ * there, once. The reason used to ride in a separate note and be repeated
+ * by the reading as well, which put the same sentence twice on one line.
+ *
+ * The PIXEL reading wins when there is one, because it is the surface the
+ * text is really read against. The dominant surface is preferred over the
+ * worst pixel: the worst pixel can be one glyph edge grazing a 1px
+ * highlight, and a floor judged on that is a floor on a rendering detail.
+ */
+export function formatContrastReading(reading: StateReading): string {
+  if (reading.visible === 0) return "not on screen";
+  const context: string[] = [];
+  if (reading.fontSize !== null) context.push(`${reading.fontSize} px`);
+  context.push(reading.visible === 1 ? "one element" : `${reading.visible} elements`);
+  const tail = context.join(" · ");
+  const pixel = reading.pixelContrast;
+  if (pixel) {
+    const dominant = pixel.dominantContrast ?? pixel.minContrast;
+    if (dominant !== null) {
+      return `${dominant}:1 on the rendered pixels · ${tail}`;
+    }
+  }
+  if (reading.contrast !== null) {
+    return `${reading.contrast}:1 on a solid surface · ${tail}`;
+  }
+  return `unresolved (${reading.backgroundNote ?? "a gradient sits behind the text"})`;
+}
+
+/** The contrast floor in words: "at least 4.5:1 (WCAG AA)". */
+export function formatContrastFloor(min: number): string {
+  return `at least ${min}:1 (WCAG AA)`;
+}
+
+/** What the panel can observe from inside the app, and what it cannot. */
+export interface MatrixSignals {
+  /** The transport is running. */
+  playing: boolean;
+  /** The record button is armed. */
+  armed: boolean;
+  /**
+   * The row pad's accent sample when the panel FIRST looked.
+   *
+   * The matrix tells `idle` and `selected` apart by the selection mark MOVING.
+   * A single reading cannot show a movement, so the panel needs a before and
+   * an after. Without a baseline the panel does not claim `selected` - it says
+   * it cannot tell, instead of guessing.
+   */
+  baseline: string | null;
+}
+
+export interface MatrixState {
+  /** The state the panel can PROVE. */
+  id: string;
+  /** How the panel knows. Plain language. */
+  how: string;
+  /** The states the app cannot observe from the inside, and why. */
+  unobserved: readonly { id: string; why: string }[];
+}
+
+/**
+ * Which interaction state is the shell in, as far as the APP can tell.
+ *
+ * The app can see: the transport, the armed record button, a focused control,
+ * and whether the selection mark moved since the panel first looked. It
+ * cannot see the pointer, so `hover` is never claimed - the gate drives that
+ * one with a real pointer.
+ */
+export function detectMatrixState(readings: readonly StateReading[], signals: MatrixSignals): MatrixState {
+  const unobserved: { id: string; why: string }[] = [
+    { id: "hover", why: "the app cannot see the pointer — the gate drives it with a real one" },
+  ];
+  const focused = readings.some((reading) => reading.outlineCount > 0);
+  if (signals.armed) {
+    return { id: "recording", how: "the record button is armed", unobserved };
+  }
+  if (signals.playing) {
+    return { id: "playing", how: "the transport is running", unobserved };
+  }
+  if (focused) {
+    return { id: "focus", how: "a control holds keyboard focus", unobserved };
+  }
+  const rowPad = readings.find((reading) => reading.roleId === "rowPad");
+  const moved = rowPad?.accentSample != null && signals.baseline != null && rowPad.accentSample !== signals.baseline;
+  if (moved) {
+    return { id: "selected", how: "the selection mark moved to another channel", unobserved };
+  }
+  unobserved.push({
+    id: "selected",
+    why:
+      signals.baseline == null
+        ? "the panel has no resting reading yet — the mark has to MOVE to be seen"
+        : "the selection mark is where the panel first found it",
+  });
+  return {
+    id: "idle",
+    how: "nothing is playing, nothing is armed, and the selection mark has not moved",
+    unobserved,
+  };
+}
+
+/** One row of the panel: the rule, the live value, and the verdict. */
+export interface MatrixCheck {
+  /**
+   * Which kind of rule this row is.
+   *
+   * The same role can carry BOTH kinds — "Channel row" has a state rule (one
+   * amber inset mark) and a contrast floor (at least 4.5:1). Two rows with the
+   * same role and no way to tell them apart is a table nobody can read, so
+   * the panel splits them into two sections and this says which is which.
+   */
+  kind: "state" | "contrast";
+  /** The role. */
+  role: string;
+  /** The rule, in words. */
+  expected: string;
+  /** The live value, in words. */
+  now: string;
+  /**
+   * `ok` — the live shell agrees.
+   * `fail` — the live shell disagrees, and the panel says so out loud.
+   * `unmeasured` — the app cannot settle this row, and it says WHY.
+   */
+  verdict: "ok" | "fail" | "unmeasured";
+  /** Why the rule exists. The rationale, for a human. */
+  why: string;
+  /** The specific failures, when there are any. */
+  failures: string[];
+}
+
+/**
+ * Build the panel's rows from the live reading and the declaration.
+ *
+ * TWO KINDS OF ROW, and the difference matters:
+ *
+ *  - the rules of the state the panel can PROVE, and
+ *  - the contrast floors, which apply in EVERY state.
+ *
+ * `unmeasured` is NOT `fail`. A role whose text sits on a gradient cannot be
+ * settled from inside the app — the surface under the text depends on where
+ * in the gradient it lands — and a role that is not on screen cannot be
+ * measured at all. The gate settles those on the rendered pixels; the panel
+ * says "not here, and here is why". A panel that painted "the app cannot
+ * measure this" in the failure colour would cry wolf on nine rows, and the
+ * real failures would stop being visible.
+ */
+export function buildMatrixChecks(
+  readings: readonly StateReading[],
+  resting: ReadonlyMap<string, StateReading> | null,
+  state: MatrixState,
+): MatrixCheck[] {
+  const byRole = new Map(readings.map((reading) => [reading.roleId, reading]));
+  const checks: MatrixCheck[] = [];
+
+  for (const expectation of STATE_EXPECTATIONS) {
+    if (expectation.state !== state.id) continue;
+    const reading = byRole.get(expectation.role);
+    const idle = resting?.get(expectation.role);
+    const result = evaluateExpectation(expectation, reading, idle);
+    checks.push({
+      kind: "state",
+      role: expectation.role,
+      expected: formatExpectation(expectation.expect),
+      now: reading ? formatReading(reading) : "not on screen",
+      verdict: result.ok ? "ok" : "fail",
+      why: expectation.because,
+      failures: result.failures,
+    });
+  }
+
+  for (const expectation of CONTRAST_EXPECTATIONS) {
+    const reading = byRole.get(expectation.role);
+    const result = evaluateContrast(expectation, reading, state.id);
+    let verdict: MatrixCheck["verdict"] = result.ok ? "ok" : "fail";
+    if (!reading || reading.visible === 0) {
+      verdict = "unmeasured";
+    } else if (reading.contrast === null && reading.pixelContrast == null) {
+      verdict = "unmeasured";
+    }
+    checks.push({
+      kind: "contrast",
+      role: expectation.role,
+      expected: formatContrastFloor(expectation.min),
+      // The contrast reading, NOT the general one: a contrast row is about
+      // the ratio, and the reason an unresolved row could not be settled
+      // rides in the reading itself — read once, not twice.
+      now: reading ? formatContrastReading(reading) : "not on screen",
+      verdict,
+      why: expectation.because,
+      failures: verdict === "fail" ? result.failures : [],
+    });
+  }
+
+  return checks;
 }

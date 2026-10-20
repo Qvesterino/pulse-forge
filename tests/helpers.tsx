@@ -282,6 +282,10 @@ export function mockServices(doc?: ProjectDocument): Services {
       stop: vi.fn(),
       seek: vi.fn(),
       setBpm: vi.fn(),
+      // The Diagnostics STATE MATRIX tab subscribes to the transport instead
+      // of polling it (plan section 5.3), so the mock has to offer the same
+      // subscription the real Transport does.
+      subscribePlaying: vi.fn(() => () => {}),
       setCountIn: vi.fn((bars: number) => {
         countInBars = Math.max(0, Math.min(2, Math.round(bars)));
       }),

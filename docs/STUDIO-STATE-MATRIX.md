@@ -173,6 +173,15 @@ Hotová: meria nad **vyrenderovanými pixelmi** (nie nad tokenom), našla dva
 skutočné defekty, opravila ich v novej vrstve `60-contrast-legibility.css` a
 brána ich vyzdvihuje.
 
+### Fáza E — panel `MATRIX` ← hotová (2026-10-21, §7d)
+
+Piaty tab v Diagnostics, ktorý číta **ten istý zápis** ako brána. Bez
+duplicitnej tabuľky, bez paralelnej konštanty, bez pollovania.
+
+Hotová: číta `STATE_EXPECTATIONS` + `CONTRAST_EXPECTATIONS`, hovorí nahlas pri
+nesúhlase, nikdy nehlási „neviem" ako zlyhanie a nikdy netvrdí `hover` zvnútra
+appky. Vizuálne overená v prehliadači na izolovanom builde.
+
 ---
 
 ## 7b. Stav fáz A–C (2026-10-20) — čo sa zmenilo oproti plánu
@@ -481,6 +490,173 @@ nevie povedať, čo videl, posiela ďalšiu session hľadať príčinu naslepo.
 
 ---
 
+## 7d. Fáza E — panel `MATRIX` (2026-10-21)
+
+### Čo to je
+
+Piaty tab v existujúcom Diagnostics panely. Číta **ten istý** zápis, ktorý číta
+brána: `STATE_EXPECTATIONS` a `CONTRAST_EXPECTATIONS` v `src/ui/stateMatrix.ts`.
+Žiadna druhá tabuľka, žiadna paralelná konštanta — keď sa deklarácia zmení,
+panel zmení s ňou, lebo číta tie isté polia.
+
+Rozdiel je v otázke, ktorú kladie čitateľ:
+
+| Čitateľ  | Otázka                        | Odpoveď               |
+| -------- | ----------------------------- | --------------------- |
+| Brána    | „** dodržiavaš to?**"         | exit 0 / 1 / 2        |
+| Panel    | „**má to byť tak?**"          | riadok na obrazovku   |
+
+Brána potrebuje stroj a headless prehliadač. Panel potrebuje človeka, ktorý
+nečíta git diff.
+
+### Ako to vyzerá
+
+```
+STATE MATRIX   how the shell is supposed to look in each interaction state
+NOW  Idle — nothing is playing, nothing is armed, and the selection mark has not moved
+                                      nothing failing · 8 rows need the pixel gate
+
+THIS STATE'S RULES — IDLE
+  Channel row     ✓ exactly one amber inset mark → one amber inset mark · one amber border
+  Step cell       ✓ at most 0 rings → 11 amber inset marks · 11 amber borders
+
+CONTRAST FLOORS — EVERY STATE (WCAG 1.4.3)
+  Ruler tick      ✓ at least 4.5:1 (WCAG AA) → 6.04:1 on a solid surface · 10 px · 16 elements
+  Row index       — at least 4.5:1 (WCAG AA) → unresolved (row-pad paints a gradient)
+```
+
+Sekcia `NOW` hovorí, **v akom stave je shell a ako to panel vie**. Pod ňou je
+**hlasný blok** — ak živý shell nesúhlasí s deklaráciou, panel to povie nahlas,
+najprv verdom, potom očakávaním, potom skutočnosťou. Ticho by to bolo
+zlyhanie, ktoré nikto neuvidí.
+
+Za nimi sú dve tabuľky — **reguly aktuálneho stavu** a **kontrastné podlahy
+všetkých stavov**. A na konci **katalóg všetkých deklarovaných stavov** s
+počtom pravidiel; štáty, ktoré appka zvnútra nevie overiť, sú vypísané
+explicitne s dôvodom, nie vynechané.
+
+**Každé pravidlo je na jednom riadku.** Merané, nie odhadnuté — §7d.2.
+
+### Štyri tvrdé pravidlá — a ako sa každé dodržiava
+
+| Pravidlo (§5)                   | Ako                                                                                          |
+| ------------------------------- | -------------------------------------------------------------------------------------------- |
+| Žiadna nová plocha v chrome     | Tab je vnútri existujúceho Diagnostics panela. Žiadny topbar button, dock slot, overlay.       |
+| Panel je zatvorený predvolene   | Otvára ho existujúce DIAG tlačidlo; otvorenie nemení layout shellu.                           |
+| Žiadny polling                  | Meranie pri otvorení taba + `transport.subscribePlaying` + `store.subscribe` + capture-phase `pointerdown`/`keydown`, zradené do jedného rAF. Žiadny interval — pinnuté testom. |
+| Merací modul lazy               | `await import("./stateMatrix")` až pri otvorení taba. `import type` je erazovaný.               |
+| Zero impact, kým je zatvorený  | Kým sa tab neotvorí, dynamický import sa nespustil a žiadny listener nebeží.                    |
+
+### Čo appka zvnútra NEVIDÍ — a čo preto tvrdí
+
+Toto je najdôležitejšia časť panelu. Appka nemá pixely, nemá ukazovateľ a
+nemá pamäť pred chvíľou.
+
+| Čo sa nedá zistiť zvnútra | Čo panel urobí                                                       |
+| ------------------------- | -------------------------------------------------------------------- |
+| Povrch pod textom na gradiente | Riadok je **`unmeasured`**, nie `fail`. Dôvod je pomenovaný. Brána to zmeria na pixeloch. |
+| Ukazovateľ nad kontrolou  | Stav **`hover` sa nikdy netvrdí**. Katalóg hovorí „the app cannot see the pointer — the gate drives it with a real one". |
+| Či sa výberová značka posunula | Stav **`selected` sa tvrdí až vtedy, keď sa značka POHYNE**. Bez pohybu je to `idle` a `selected` je vypísaný ako neoverený. |
+| Kontrast na gradiente    | Rovnaké: `unmeasured`, dôvod v poznámke riadka.                      |
+
+**Prečo je `unmeasured` iný verdikt ako `fail`.** Deväť z devätnásť rolí kreslí
+gradient. Panel ich zvnútra **nemôže** rozsudnúť — povrch pod textom závisí od
+toho, kde v gradiente text padne. Panel, ktorý by ich maľoval načerveno, by
+kričal na deväť riadkoch a **skutočné zlyhania by prestali byť viditeľné**.
+Namiesto toho povie „tu to neviem a tu je dôvod" — brána ich potom zmeria na
+pixeloch.
+
+### Dva druhy riadkov
+
+Rola môže mať **oba** druhy naraz: „Channel row" má stavové pravidlo (jeden
+jantárový inset mark) **aj** kontrastnú podlahu (minimálne 4.5:1). Dva riadky
+s rovnakým menom a bez spôsobu, ako ich rozlíšiť, sú tabuľka, ktorú nikto
+nečíta. Preto sú v **dvoch samostatných sekciách** a každý riadok si hovorí,
+o čom je.
+
+### Overenie v prehliadači
+
+Merané na izolovanom builde (`output/_matrix-dist`), 1440×900, po otvorení
+šablóny `House`:
+
+| Čo                                          | Nameraná hodnota                          |
+| ------------------------------------------- | ---------------------------------------- |
+| Riadkov spolu (5 idle pravidiel + 16 podlah) | **21**                                   |
+| Zlyhaní                                    | **0**                                    |
+| Neoveriteľných (gradient)                  | **8**                                    |
+| Stavov v katalógu                          | **6** (idle, selected, playing, hover, focus, recording) |
+| Riadkov, ktoré sa zalomú na viac než 1 linku | **0 z 21**                               |
+| Viditeľná výška panela                     | **160 px** (`.diagnostics` max-height)    |
+| Celková výška obsahu                       | **463 px** (bolo 1126 px pred úpravou)    |
+
+**Pozor na to, čo meranie nepreverilo.** Screenshot potvrdil, že tab je
+čitateľný a sedí do striptu; **nesvedčí** o tom, že 21 riadkov v 160 px pásu
+sa číta bez rolovania. Vedúce informácie sú na vrchole (stav + hlasné zlyhania),
+katalóg je dole — poradie je zámerné.
+
+### Defekt, ktorý našiel až vizuálny probe
+
+Prvý beh prehliadača ukázal dve veci, ktoré testy nevideli.
+
+**Prvý: dôvod sa vypovedal dvakrát.**
+
+```
+— at least 4.5:1 (WCAG AA) → 8 px · 16 elements · contrast unresolved (row-pad paints a background-image)
+        (row-pad paints a background-image — only the pixel measurement can settle this)
+```
+
+Dôvod patril do `formatReading` (všeobecné čítanie) aj do poznámky riadka
+(`note`). Opravené: všeobecné čítanie o kontrast už **nehovorí** — kontrast má
+vlastné čítanie (`formatContrastReading`) a vlastnú sekciu, takže sa nezdvihá
+dvakrát. Dôvod je teraz v riadku **raz**, a je to dôvod, ktorý hovorí, čo
+paintuje ten gradient.
+
+**Druhý: pravidlo sa zalomilo na tri linky.** Tri stĺpce po 455 px nechali na
+hodnotu ~271 px, a vetu „exactly one amber inset mark → one amber inset mark ·
+12 px · 16 elements" to rozložilo na tri riadky. Pravidlo, ktoré sa musí čítať
+cez tri riadky, sa nedá porovnať s očakávaním. §7d.2.
+
+### 7d.2 Rozloženie — merané, nie odhadnuté
+
+Rozloženie sa ladilo meraním v prehliadači, nie odhadom. Nástroj: pre každý
+riadok sa zmeria, **koľko px text potrebuje**, keď sa zalamovanie vypne
+(`white-space: nowrap` + `scrollWidth`), a koľko riadkov reálne obsadí.
+
+| Merané hodnoty                                        | Čo z toho vyplýva                                        |
+| ------------------------------------------------------ | -------------------------------------------------------- |
+| Najdlhšie meno role (26 znakov)                        | stĺpec role **164 px**, inak sa meno zalomí              |
+| Najdlhšie pravidlo v stĺpci 520 px (pred skrátením)   | **548 px** — chýbalo 28 px                              |
+| Po skrátení dôvodu na „paints a gradient"              | **všetkých 21 riadkov je na jednej linke**               |
+| Katalóg: 4 stĺpce po 335 px                           | popis dostal **95 px** a bol orezaný na elipsu          |
+| Katalóg: 2 stĺpce po 694 px                           | popis **454 px**, bez orezania                           |
+
+Tri rozhodnutia, ktoré z toho vyplynuli:
+
+1. **Dva stĺpce po 694 px**, nie tri po 455 px. Tri stĺpce dali kratšiu
+   tabuľku, ale pravidlá sa lámali.
+2. **Rola je v riadku, nie nad ním.** Popis nad pravidlom stál riadok navyše
+   pri každom z 21 riadkov — a nič nepridal.
+3. **Popis katalógu sa zalamuje, neorezuje.** Katalóg existuje preto, aby
+   povedal, čo každý stav je. Orezaný popis je katalóg, ktorý mlčí.
+
+**Toto je vlastný nástroj, ktorý patrí do repozitára?** Nie — zatiaľ nie. Je to
+probe v `TEMP`. Ale meranie „koľko px text potrebuje" je presne to, čo chýba
+každému ďalšiemu panelu, a prvý krok k jeho zapísaniu do `scripts/` je
+samostatná úloha. Zatiaľ to ostáva meranie, ktoré som spravil ručne, a je
+zapísané tu, aby sa dalo zopakovať.
+
+### Čo sa NEDEKLAROVALO, a prečo
+
+- **Panel nemení shell.** Merací nástroj, ktorý by prekreslil to, čo meria,
+  by meral seba. Nová CSS vrstva `61-state-matrix-panel.css` vlastní len
+  `.matrix-*` selektory.
+- **Panel nedeklaruje nové podlahy ani nové pravidlá.** Deklarácia zostáva
+  jedna a zdieľaná.
+- **Panel nie je brána.** Nevyhadzuje exit kód a nesvedčí o pixeloch — to
+  ostáva brána.
+
+---
+
 ## 8. Čo sa nemení
 
 - **Hierarchia sa nemení.** Toto je nástroj, ktorý zistí, či hierarchia drží.
@@ -496,7 +672,7 @@ nevie povedať, čo videl, posiela ďalšiu session hľadať príčinu naslepo.
 
 | #   | Kritérium                                                                                                                                              |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | Diagnostics panel má tab `STATE`; otvorenie/zatvorenie nemení layout shellu                                                                            |
+| 1   | Diagnostics panel má tab `MATRIX`; otvorenie/zatvorenie nemení layout shellu                                                                            |
 | 2   | Tab nek polleduje — reaguje na `subscribePlaying` a zmenu výberu                                                                                       |
 | 3   | Merací modul sa načíta lazy; v boot grafe štúdia nie je                                                                                                |
 | 4   | Fáza A: JSON snapshot pre `idle` + `selected` + `playing` + `hover` + `focus`                                                                          |
@@ -512,6 +688,10 @@ nevie povedať, čo videl, posiela ďalšiu session hľadať príčinu naslepo.
 | 14  | Fáza D: rola, ktorá sa nikde nezobrazila, je **FAIL**; rola pod zástenkou je **NOTE** — otvorená priezor nie je zelená pokrytie                        |
 | 15  | Fáza D: región merania je **rámec textu** (Range), nie box elementu — inak sa značka výberu (`::after`) pomieša s textom a vyrobí falošný FAIL         |
 | 16  | Fáza D: boot je **odolný** (180 s, `waitForFunction`) a pri zlyhaní **hovorí, čo videl** (počty v DOM-e + screenshot), namiesto tichej prázdniny       |
+| 17  | Fáza E: panel je **piaty tab existujúceho Diagnostics**, nie nová plocha v chrome (§5.1); merací modul je lazy a v boot grafe štúdia nie je              |
+| 18  | Fáza E: panel **nikdy nehlási „neviem" ako zlyhanie** — `unmeasured` je iný verdikt a nesie dôvod; zvyšok zostáva čitateľný                           |
+| 19  | Fáza E: `hover` sa **nikdy netvrdí** zvnútra appky; `selected` sa tvrdí až po **pohybe** značky — inak je stav vypísaný ako neoverený                             |
+| 20  | Fáza E: **každý dôvod sa v riadku vysvetlí raz** — kontrast má vlastné čítanie a vlastnú sekciu, takže sa neduplikuje                                         |
 
 ---
 
@@ -521,5 +701,18 @@ nevie povedať, čo videl, posiela ďalšiu session hľadať príčinu naslepo.
    volať `MATRIX` — znie ako nástroj a nie ako kritika.
 2. **Prístupnosť.** Má byť tab v Diagnostics (developer-only, otvorený ručne),
    alebo aj viditeľný pre bežného používateľa?
+
+   **Odporúčanie (2026-10-21): developer-only, v Diagnostics.** Panel je
+   nástroj na kontrolu shellu — rovnaký druh vecí ako ENGINE, MEMORY,
+   PERFORMANCE a DEVICE. A §5.1 zakazuje novú plochu v chrome, takže
+   „viditeľný pre bežného používateľa" by znamenal **novú plochu** (tlačidlo
+   v topbare, slot v docku) — to je iný produkt a potrebuje vlastné ADR.
+
+   **Čo sa zmení, ak sa rozhodne pre user-visible:** panel by ostal ten istý
+   kód, len by sa otvoril inak — a musel by byť schopný hovoriť aj bežnému
+   používateľovi, teda vlastný jazyk, vlastné pravidlá pre to, čo sa smie
+   zobraziť, a vlastný spôsob, ako sa k nemu dostane. Deklarácia ostáva
+   spoločná.
+
 3. **Kto je „užívateľ" v požiadavke.** Panel je pre tých, ktorí štúdio
    používajú; brána je pre tých, ktorí ho menia. Oba sú „neorušivé" inak.
