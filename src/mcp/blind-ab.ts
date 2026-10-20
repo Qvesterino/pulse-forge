@@ -44,13 +44,32 @@ export interface BlindAbTrial {
   receivedAt: number;
 }
 
+/** Session-local ceilings keep repeated MCP calls from growing this log without bound. */
+export const BLIND_AB_MAX_LANE_LENGTH = 128;
+export const BLIND_AB_MAX_LANES = 64;
+export const BLIND_AB_MAX_TRIALS_PER_LANE = 1_000;
+export const BLIND_AB_MAX_TRIALS = 5_000;
+export const BLIND_AB_MAX_REACTION_MS = 86_400_000;
+
+export class BlindAbTrialLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BlindAbTrialLimitError";
+  }
+}
+
 /** In-memory per-session trial log — the app-side mirror of the offline
  * trials.jsonl. Module-level by design (one listener per app session). */
 const trialsByLane = new Map<string, BlindAbTrial[]>();
+let trialCount = 0;
 
 /** Test hook — clears every lane's log. */
-export function resetBlindAbTrials(): void {
+export function resetBlindAbTrials(): { clearedLanes: number; clearedTrials: number } {
+  const clearedLanes = trialsByLane.size;
+  const clearedTrials = trialCount;
   trialsByLane.clear();
+  trialCount = 0;
+  return { clearedLanes, clearedTrials };
 }
 
 export function recordBlindAbTrial(trial: {
@@ -59,6 +78,25 @@ export function recordBlindAbTrial(trial: {
   answer: "A" | "B";
   reactionMs?: number;
 }): BlindAbTrial {
+  if (trial.lane.length > BLIND_AB_MAX_LANE_LENGTH) {
+    throw new BlindAbTrialLimitError(`blind A/B lane names are limited to ${BLIND_AB_MAX_LANE_LENGTH} characters`);
+  }
+  const currentLane = trialsByLane.get(trial.lane);
+  if (currentLane == null && trialsByLane.size >= BLIND_AB_MAX_LANES) {
+    throw new BlindAbTrialLimitError(
+      `blind A/B session is limited to ${BLIND_AB_MAX_LANES} lanes; reset the log first`,
+    );
+  }
+  if ((currentLane?.length ?? 0) >= BLIND_AB_MAX_TRIALS_PER_LANE) {
+    throw new BlindAbTrialLimitError(
+      `blind A/B lane is limited to ${BLIND_AB_MAX_TRIALS_PER_LANE} trials; reset the log first`,
+    );
+  }
+  if (trialCount >= BLIND_AB_MAX_TRIALS) {
+    throw new BlindAbTrialLimitError(
+      `blind A/B session is limited to ${BLIND_AB_MAX_TRIALS} trials; reset the log first`,
+    );
+  }
   const entry: BlindAbTrial = {
     lane: trial.lane,
     xWas: trial.xWas,
@@ -67,9 +105,10 @@ export function recordBlindAbTrial(trial: {
     ...(trial.reactionMs !== undefined ? { reactionMs: Math.max(0, Math.round(trial.reactionMs)) } : {}),
     receivedAt: Date.now(),
   };
-  const log = trialsByLane.get(trial.lane) ?? [];
+  const log = currentLane ?? [];
   log.push(entry);
   trialsByLane.set(trial.lane, log);
+  trialCount += 1;
   return entry;
 }
 

@@ -301,6 +301,44 @@ describe("desktop mcp bridge server (real HTTP)", () => {
     });
   });
 
+  it("returns the blind A/B trial read-back as structuredContent over desktop HTTP", async () => {
+    const data = {
+      op: "record",
+      status: "recorded",
+      trial: {
+        lane: "tilt-vs-flat",
+        xWas: "A",
+        answer: "B",
+        correct: false,
+        reactionMs: 2500,
+        receivedAt: 1000,
+      },
+    };
+    const { server } = bridgeModule.createMcpBridgeServer({
+      token: "tok",
+      executeTool: async () => ({ text: "trial recorded", mutated: false, data }),
+    });
+    const port = await listenOnEphemeralPort(server);
+    runningServers.push(server);
+
+    const response = await post(
+      port,
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 8,
+        method: "tools/call",
+        params: { name: "kyx_blind_ab", arguments: { op: "record", lane: "tilt-vs-flat", xWas: "A", answer: "B" } },
+      }),
+      { token: "tok" },
+    );
+    const body = JSON.parse(response.body) as {
+      result: { isError?: boolean; content: Array<Record<string, string>>; structuredContent: Record<string, unknown> };
+    };
+    expect(body.result.isError).toBeUndefined();
+    expect(body.result.content).toEqual([{ type: "text", text: "trial recorded" }]);
+    expect(body.result.structuredContent).toEqual(data);
+  });
+
   it("protocol completeness: version negotiation, instructions, resources, batch, unknown-tool -32602", async () => {
     const { server } = bridgeModule.createMcpBridgeServer({
       token: "tok",
@@ -678,6 +716,9 @@ describe("desktop mcp stdio forwarder (subprocess)", () => {
     expect(list.result.tools.map((tool) => tool.name)).toEqual(MCP_TOOLS.map((tool) => tool.name));
     expect(list.result.tools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema,
+    );
+    expect(list.result.tools.find((tool) => tool.name === "kyx_blind_ab")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_blind_ab")?.outputSchema,
     );
 
     writeLine({

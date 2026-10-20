@@ -185,7 +185,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -238,7 +238,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -279,7 +279,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -389,7 +389,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -435,7 +435,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -468,7 +468,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -574,7 +574,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -616,7 +616,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -694,7 +694,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -756,7 +756,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -795,7 +795,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -886,7 +886,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -921,7 +921,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -971,7 +971,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -1059,7 +1059,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -1127,7 +1127,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -1162,7 +1162,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -1219,7 +1219,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -1251,7 +1251,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -1346,7 +1346,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -1510,7 +1510,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -1556,7 +1556,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -1620,7 +1620,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -1698,7 +1698,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -1780,7 +1780,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -1828,7 +1828,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -1883,7 +1883,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -1970,7 +1970,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -2005,7 +2005,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -2077,7 +2077,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -2134,7 +2134,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -2203,7 +2203,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -2284,7 +2284,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -2330,7 +2330,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -2462,7 +2462,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -2501,7 +2501,7 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -2538,7 +2538,8 @@ export const MCP_TOOL_DEFS = [
         },
         lane: {
           type: "string",
-          description: "Trial lane name (record/verdict), e.g. 'tilt-vs-flat'",
+          maxLength: 128,
+          description: "Trial lane name (record/verdict), e.g. 'tilt-vs-flat' (max 128 characters)",
         },
         xWas: {
           type: "string",
@@ -2552,13 +2553,19 @@ export const MCP_TOOL_DEFS = [
         },
         reactionMs: {
           type: "integer",
-          description: "For record — milliseconds from first playback",
+          minimum: 0,
+          maximum: 86400000,
+          description: "For record — milliseconds from first playback (0–24 hours)",
+        },
+        confirm: {
+          type: "boolean",
+          description: "For reset — must be true to clear all session trial lanes and their accumulated evidence",
         },
         requestId: {
           type: "string",
           maxLength: 128,
           description:
-            "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
         },
         dryRun: {
           type: "boolean",
@@ -2567,6 +2574,143 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["op"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        op: {
+          type: "string",
+          enum: ["plan", "record", "verdict", "reset"],
+        },
+        status: {
+          type: "string",
+          enum: ["planned", "recorded", "summarized", "no_trials", "cleared"],
+        },
+        lane: {
+          type: "string",
+          maxLength: 128,
+        },
+        gains: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            matched: {
+              type: "boolean",
+            },
+            targetLufs: {
+              type: ["number", "null"],
+            },
+            gainDbA: {
+              type: "number",
+              minimum: -12,
+              maximum: 12,
+            },
+            gainDbB: {
+              type: "number",
+              minimum: -12,
+              maximum: 12,
+            },
+            note: {
+              type: "string",
+            },
+          },
+          required: ["matched", "targetLufs", "gainDbA", "gainDbB", "note"],
+        },
+        trial: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            lane: {
+              type: "string",
+              maxLength: 128,
+            },
+            xWas: {
+              type: "string",
+              enum: ["A", "B"],
+            },
+            answer: {
+              type: "string",
+              enum: ["A", "B"],
+            },
+            correct: {
+              type: "boolean",
+            },
+            reactionMs: {
+              type: "integer",
+              minimum: 0,
+              maximum: 86400000,
+            },
+            receivedAt: {
+              type: "integer",
+              minimum: 0,
+            },
+          },
+          required: ["lane", "xWas", "answer", "correct", "receivedAt"],
+        },
+        summary: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            lane: {
+              type: "string",
+              maxLength: 128,
+            },
+            total: {
+              type: "integer",
+              minimum: 0,
+            },
+            correct: {
+              type: "integer",
+              minimum: 0,
+            },
+            pValue: {
+              type: "number",
+              minimum: 0,
+              maximum: 1,
+            },
+            hastyExcluded: {
+              type: "integer",
+              minimum: 0,
+            },
+            verdict: {
+              type: "string",
+            },
+          },
+          required: ["lane", "total", "correct", "pValue", "hastyExcluded", "verdict"],
+        },
+        total: {
+          type: "integer",
+          minimum: 0,
+        },
+        correct: {
+          type: "integer",
+          minimum: 0,
+        },
+        pValue: {
+          type: "number",
+          minimum: 0,
+          maximum: 1,
+        },
+        hastyExcluded: {
+          type: "integer",
+          minimum: 0,
+        },
+        verdict: {
+          type: "string",
+        },
+        clearedLanes: {
+          type: "integer",
+          minimum: 0,
+          maximum: 64,
+        },
+        clearedTrials: {
+          type: "integer",
+          minimum: 0,
+          maximum: 5000,
+        },
+      },
+      required: ["op", "status"],
     },
     annotations: {
       readOnlyHint: false,

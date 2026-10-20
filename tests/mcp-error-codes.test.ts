@@ -19,6 +19,7 @@ import type { ProjectDocument } from "../src/project-model/types";
  *   UNAVAILABLE_ON_TRANSPORT a capability this session lacks
  *   POLICY_REFUSED          a gate declines (destructive ops locked)
  *   REQUEST_ID_CONFLICT     a retry key names different tool arguments
+ *   RESOURCE_LIMIT          a bounded session resource has reached its cap
  */
 
 function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } = {}): McpToolContext {
@@ -82,8 +83,9 @@ describe("mcp typed error codes (P2-B, GAP-08)", () => {
       "POLICY_REFUSED",
       "REQUEST_ID_CONFLICT",
       "INVALID_REQUEST_ID",
+      "RESOURCE_LIMIT",
     ];
-    expect(new Set(codes).size).toBe(10);
+    expect(new Set(codes).size).toBe(11);
   });
 
   it("success results carry no errorCode", async () => {

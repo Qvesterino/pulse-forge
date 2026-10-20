@@ -8,8 +8,9 @@ import type { ProjectDocument } from "../src/project-model/types";
  * roadmap P1-B). Relative operations re-apply against live state, so a
  * retried or duplicated agent request double-applies. The ledger at the
  * dispatcher chokepoint makes a caller-supplied requestId name ONE logical
- * operation: the first mutating outcome is remembered; a repeat returns that
- * exact outcome (`replayed: true`) instead of re-executing.
+ * operation: the first document mutation or explicitly marked session-side
+ * effect is remembered; a repeat returns that exact outcome (`replayed:
+ * true`) instead of re-executing.
  *
  * Contract under test:
  *  ID1 same requestId twice → applies exactly once; second call is a replay

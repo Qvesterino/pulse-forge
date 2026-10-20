@@ -75,6 +75,9 @@ describe("mcp core — protocol with an authenticated session", () => {
     expect(listedTools.find((tool) => tool.name === "kyx_undo")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_undo")?.outputSchema,
     );
+    expect(listedTools.find((tool) => tool.name === "kyx_blind_ab")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_blind_ab")?.outputSchema,
+    );
     expect(listedTools.map((t) => t.name)).toEqual([
       "kyx_intent",
       "kyx_state",
@@ -280,6 +283,44 @@ describe("mcp core — protocol with an authenticated session", () => {
     expect(response.result.isError).toBe(false);
     expect(response.result.structuredContent).toEqual(data);
     expect(response.result.content).toEqual([{ type: "text", text: 'undo ×1 — reverts: "Set tempo to 140 BPM"' }]);
+  });
+
+  it("returns blind A/B trial read-back as structuredContent across the web relay", async () => {
+    const { hub, delivered } = makeHub();
+    const data = {
+      op: "record",
+      status: "recorded",
+      trial: {
+        lane: "tilt-vs-flat",
+        xWas: "A",
+        answer: "B",
+        correct: false,
+        reactionMs: 2500,
+        receivedAt: 1000,
+      },
+    };
+    const promise = handleMcpRequest(
+      hub,
+      TOKEN,
+      TOKEN,
+      rpc(
+        "tools/call",
+        {
+          name: "kyx_blind_ab",
+          arguments: { op: "record", lane: "tilt-vs-flat", xWas: "A", answer: "B", reactionMs: 2500 },
+          _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+        },
+        17,
+      ),
+    );
+    hub.handleSessionMessage({
+      type: "mcp-result",
+      id: delivered[0].id,
+      result: { text: 'trial recorded: incorrect (lane "tilt-vs-flat")', mutated: false, data },
+    });
+    const response = await promise;
+    expect(response.result.isError).toBe(false);
+    expect(response.result.structuredContent).toEqual(data);
   });
 
   it("2025-03-26 legacy clients do not receive outputSchema or structuredContent", async () => {

@@ -79,8 +79,9 @@ All 37 tools have input schemas and descriptions, but only seven currently decla
 - **Request idempotency:** request IDs are bound to a canonical tool/argument signature and agent identity. Reusing a key for different work returns `REQUEST_ID_CONFLICT`; overlapping identical calls serialize and replay. Partially failed calls that committed work replay the original partial result. The cache remains in-memory per host process, bounded to 256 entries; a restart or eviction removes retry protection. The corrected eviction regression verifies that the newest cache entry survives.
 - **Automation discovery:** `automation` is now present in the `kyx_state` subject schema and in the desktop/web tool mirrors.
 - **SFZ import read-back:** `kyx_import_sfz` now declares a strict output schema containing the imported track/sample IDs and bounded counts, without paths or media bytes. Unavailable and invalid requests return typed errors. Unit and web-relay tests cover the result; `npm run verify:mcp-mirrors` passes.
-- **Undo read-back:** `kyx_undo` now exposes the normalized action, requested/completed counts, bounded reverted labels and optional partial-failure text as structured output. Undo during microphone recording returns `POLICY_REFUSED`. Unit and web-relay tests cover the result.
-- **Still partial:** nine tools publish output schemas; the rest remain text-first. Web transport still exposes error codes through text rather than the full internal result envelope. Checkpoint save/delete and preview remain external/UI state outside ProjectStore undo by design.
+- **Undo read-back:** `kyx_undo` exposes the normalized action, requested/completed counts, bounded reverted labels and optional partial-failure text as structured output. Undo during microphone recording returns `POLICY_REFUSED`. Unit and web-relay tests cover the result.
+- **Blind A/B read-back and bounds:** `kyx_blind_ab` returns structured results for plan, record, verdict, empty-lane and reset operations. Session writes are idempotent under `requestId`; `dryRun` refuses record/reset; reset requires `confirm:true`; lane names and in-memory lane/trial counts have explicit caps. Web and desktop transports preserve the declared result shape.
+- **Still partial:** ten tools publish output schemas; the rest remain text-first. Web transport still exposes error codes through text rather than the full internal result envelope. Checkpoint save/delete and preview remain external/UI state outside ProjectStore undo by design.
 - **Mirror gate:** the current `npm run verify:mcp-mirrors` check passes; generated desktop and web catalogs match `src/mcp/tools.ts`.
 
 ## Security and runtime limits
@@ -94,3 +95,5 @@ All 37 tools have input schemas and descriptions, but only seven currently decla
 ## Audit limits
 
 This is a source and test audit, not a packaged-app run. No external MCP client was attached, no audio hardware route was exercised, and the full Vitest suite was not run at this stage. The findings above are supported by source path traces and existing tests, not claims of end-to-end packaged acceptance.
+
+Verification update: the full suite before blind A/B hardening passed 12,672 tests, skipped 129 and had one in-flight `plugin-audit-measurement.test.ts` failure against concurrently modified plugin-audit source. The current blind A/B increment passes 182 focused MCP tests, 19 desktop HTTP/stdio tests, the strict typecheck, MCP mirror verification and changed-file Prettier check.

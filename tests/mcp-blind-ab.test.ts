@@ -1,12 +1,16 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
+  BLIND_AB_MAX_LANES,
+  BLIND_AB_MAX_TRIALS,
+  BLIND_AB_MAX_TRIALS_PER_LANE,
+  BlindAbTrialLimitError,
   planBlindPairGains,
   recordBlindAbTrial,
   summarizeBlindAb,
   resetBlindAbTrials,
   BLIND_AB_HASTE_MS,
 } from "../src/mcp/blind-ab";
-import { executeMcpTool, MCP_TOOLS, type McpToolContext } from "../src/mcp/tools";
+import { executeMcpTool, MCP_TOOLS, resetMcpIdempotencyLedger, type McpToolContext } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
 import { ProjectStore } from "../src/store/ProjectStore";
@@ -40,6 +44,7 @@ describe("planBlindPairGains", () => {
 describe("trial log + binomial verdict", () => {
   beforeEach(() => {
     resetBlindAbTrials();
+    resetMcpIdempotencyLedger();
   });
 
   it("records correctness (answer === xWas) and verdicts honestly at chance", () => {
@@ -103,6 +108,7 @@ function makeCtx(): McpToolContext {
 describe("kyx_blind_ab tool contracts", () => {
   beforeEach(() => {
     resetBlindAbTrials();
+    resetMcpIdempotencyLedger();
   });
 
   it("plan: level-match passthrough with structured gains data", async () => {
@@ -112,6 +118,7 @@ describe("kyx_blind_ab tool contracts", () => {
     expect(result.text).toContain("level-matched to -14.0 LUFS");
     const data = result.data as { gains?: { gainDbA?: number } };
     expect(data.gains?.gainDbA).toBeCloseTo(2, 5);
+    expect(data).toMatchObject({ op: "plan", status: "planned" });
   });
 
   it("record validates the forced-choice fields; verdict carries the p-value", async () => {
@@ -131,28 +138,172 @@ describe("kyx_blind_ab tool contracts", () => {
     expect(verdict.text).toContain("2/2 correct");
     expect(verdict.text).toContain("p = ");
     expect(verdict.data).toMatchObject({ total: 2, correct: 2 });
+    expect(verdict.data).toMatchObject({
+      op: "verdict",
+      status: "summarized",
+      lane: "tool-lane",
+      hastyExcluded: 0,
+      summary: { total: 2, correct: 2 },
+    });
   });
 
-  it("reset clears the log; unknown op is isError", async () => {
+  it("reset requires confirmation, clears the log and reports its counts", async () => {
     const ctx = makeCtx();
-    await executeMcpTool(ctx, "kyx_blind_ab", {
+    const record = await executeMcpTool(ctx, "kyx_blind_ab", {
       op: "record",
       lane: "r",
       xWas: "A",
       answer: "A",
       reactionMs: 3000,
     });
-    await executeMcpTool(ctx, "kyx_blind_ab", { op: "reset" });
+    expect(record.data).toMatchObject({
+      op: "record",
+      status: "recorded",
+      trial: { lane: "r", xWas: "A", answer: "A", correct: true, reactionMs: 3000 },
+    });
+    expect(record.idempotencyCommitted).toBeUndefined();
+    const refused = await executeMcpTool(ctx, "kyx_blind_ab", { op: "reset" });
+    expect(refused.isError).toBe(true);
+    expect(refused.errorCode).toBe("POLICY_REFUSED");
+    const reset = await executeMcpTool(ctx, "kyx_blind_ab", { op: "reset", confirm: true });
+    expect(reset.data).toEqual({ op: "reset", status: "cleared", clearedLanes: 1, clearedTrials: 1 });
     const after = await executeMcpTool(ctx, "kyx_blind_ab", { op: "verdict", lane: "r" });
     expect(after.text).toContain("no trials recorded");
+    expect(after.data).toEqual({ op: "verdict", status: "no_trials", lane: "r" });
     const badOp = await executeMcpTool(ctx, "kyx_blind_ab", { op: "listen" });
     expect(badOp.isError).toBe(true);
   });
 
-  it("the tool is documented in MCP_TOOLS with all four ops", () => {
+  it("requestId replays committed trial records and a confirmed reset exactly once", async () => {
+    const ctx = makeCtx();
+    const first = await executeMcpTool(ctx, "kyx_blind_ab", {
+      op: "record",
+      lane: "retry",
+      xWas: "B",
+      answer: "B",
+      requestId: "trial-once",
+    });
+    const replay = await executeMcpTool(ctx, "kyx_blind_ab", {
+      op: "record",
+      lane: "retry",
+      xWas: "B",
+      answer: "B",
+      requestId: "trial-once",
+    });
+    expect(replay.replayed).toBe(true);
+    expect(replay.data).toEqual(first.data);
+    const beforeReset = await executeMcpTool(ctx, "kyx_blind_ab", { op: "verdict", lane: "retry" });
+    expect(beforeReset.data).toMatchObject({ total: 1, correct: 1 });
+
+    const firstReset = await executeMcpTool(ctx, "kyx_blind_ab", {
+      op: "reset",
+      confirm: true,
+      requestId: "reset-once",
+    });
+    expect(firstReset.data).toMatchObject({ clearedTrials: 1 });
+    await executeMcpTool(ctx, "kyx_blind_ab", { op: "record", lane: "newer", xWas: "A", answer: "A" });
+    const resetReplay = await executeMcpTool(ctx, "kyx_blind_ab", {
+      op: "reset",
+      confirm: true,
+      requestId: "reset-once",
+    });
+    expect(resetReplay.replayed).toBe(true);
+    const newerVerdict = await executeMcpTool(ctx, "kyx_blind_ab", { op: "verdict", lane: "newer" });
+    expect(newerVerdict.data).toMatchObject({ status: "summarized", total: 1, correct: 1 });
+  });
+
+  it("the tool publishes bounded input and output schemas for all four ops", () => {
     const def = MCP_TOOLS.find((tool) => tool.name === "kyx_blind_ab");
     expect(def).toBeDefined();
-    const schema = def!.inputSchema as unknown as { properties: { op: { enum: string[] } } };
+    const schema = def!.inputSchema as unknown as {
+      properties: { op: { enum: string[] }; lane: { maxLength: number }; confirm: { type: string } };
+    };
     expect(schema.properties.op.enum).toEqual(["plan", "record", "verdict", "reset"]);
+    expect(schema.properties.lane.maxLength).toBe(128);
+    expect(schema.properties.confirm.type).toBe("boolean");
+    expect(def!.outputSchema).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["op", "status"],
+      properties: {
+        op: { enum: ["plan", "record", "verdict", "reset"] },
+        gains: { required: ["matched", "targetLufs", "gainDbA", "gainDbB", "note"] },
+        trial: { required: ["lane", "xWas", "answer", "correct", "receivedAt"] },
+        summary: { required: ["lane", "total", "correct", "pValue", "hastyExcluded", "verdict"] },
+      },
+    });
+  });
+
+  it("dry-run cannot record or erase trials; plan and verdict remain read-only", async () => {
+    const ctx = makeCtx();
+    const record = await executeMcpTool(ctx, "kyx_blind_ab", {
+      op: "record",
+      lane: "dry-run",
+      xWas: "A",
+      answer: "A",
+      dryRun: true,
+    });
+    expect(record.isError).toBe(true);
+    expect(record.errorCode).toBe("POLICY_REFUSED");
+    const reset = await executeMcpTool(ctx, "kyx_blind_ab", { op: "reset", confirm: true, dryRun: true });
+    expect(reset.isError).toBe(true);
+    expect(reset.errorCode).toBe("POLICY_REFUSED");
+    const verdict = await executeMcpTool(ctx, "kyx_blind_ab", { op: "verdict", lane: "dry-run", dryRun: true });
+    expect(verdict.isError).toBeUndefined();
+    expect(verdict.data).toEqual({ op: "verdict", status: "no_trials", lane: "dry-run" });
+  });
+
+  it("rejects invalid lane lengths and bounds per-session trial storage", async () => {
+    const ctx = makeCtx();
+    const tooLongLane = await executeMcpTool(ctx, "kyx_blind_ab", {
+      op: "record",
+      lane: "x".repeat(129),
+      xWas: "A",
+      answer: "A",
+    });
+    expect(tooLongLane.errorCode).toBe("INVALID_ARGUMENTS");
+
+    for (let index = 0; index < BLIND_AB_MAX_TRIALS_PER_LANE; index += 1) {
+      recordBlindAbTrial({ lane: "full", xWas: "A", answer: "A" });
+    }
+    const fullLane = await executeMcpTool(ctx, "kyx_blind_ab", {
+      op: "record",
+      lane: "full",
+      xWas: "A",
+      answer: "A",
+    });
+    expect(fullLane.isError).toBe(true);
+    expect(fullLane.errorCode).toBe("RESOURCE_LIMIT");
+
+    resetBlindAbTrials();
+    for (let index = 0; index < BLIND_AB_MAX_LANES; index += 1) {
+      recordBlindAbTrial({ lane: `lane-${index}`, xWas: "A", answer: "A" });
+    }
+    const fullSession = await executeMcpTool(ctx, "kyx_blind_ab", {
+      op: "record",
+      lane: "lane-over-limit",
+      xWas: "A",
+      answer: "A",
+    });
+    expect(fullSession.isError).toBe(true);
+    expect(fullSession.errorCode).toBe("RESOURCE_LIMIT");
+    expect(BLIND_AB_MAX_LANES).toBe(64);
+    expect(() => recordBlindAbTrial({ lane: "x".repeat(129), xWas: "A", answer: "A" })).toThrow(BlindAbTrialLimitError);
+
+    resetBlindAbTrials();
+    for (let index = 0; index < BLIND_AB_MAX_TRIALS; index += 1) {
+      recordBlindAbTrial({
+        lane: `global-${Math.floor(index / BLIND_AB_MAX_TRIALS_PER_LANE)}`,
+        xWas: "A",
+        answer: "A",
+      });
+    }
+    const fullTrialBudget = await executeMcpTool(ctx, "kyx_blind_ab", {
+      op: "record",
+      lane: "global-over-limit",
+      xWas: "A",
+      answer: "A",
+    });
+    expect(fullTrialBudget.errorCode).toBe("RESOURCE_LIMIT");
   });
 });

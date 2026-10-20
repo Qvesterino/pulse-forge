@@ -25,7 +25,17 @@ import {
 import { buildClipClipboard, cutClips, pasteClips, type ClipClipboard } from "../commands/clipClipboard";
 import { hasMatchEqReference, referenceLoudnessTrim } from "../intent/match-eq";
 import { topIntentMisses } from "../intent/failure-log";
-import { planBlindPairGains, recordBlindAbTrial, resetBlindAbTrials, summarizeBlindAb } from "./blind-ab";
+import {
+  BLIND_AB_MAX_LANE_LENGTH,
+  BLIND_AB_MAX_LANES,
+  BLIND_AB_MAX_REACTION_MS,
+  BLIND_AB_MAX_TRIALS,
+  BlindAbTrialLimitError,
+  planBlindPairGains,
+  recordBlindAbTrial,
+  resetBlindAbTrials,
+  summarizeBlindAb,
+} from "./blind-ab";
 import type { Command } from "../commands/types";
 import { routeIntentText, type RoutedIntent } from "../intent/route";
 import { clarifyMessage } from "../intent/clarify-messages";
@@ -345,6 +355,62 @@ const OUTPUT_UNDO: McpOutputSchema = {
     partialFailure: { type: "string", maxLength: 2_000 },
   },
   required: ["action", "requestedSteps", "completedSteps", "revertedLabels"],
+};
+/** kyx_blind_ab — bounded planning, trial recording and verdict read-back. */
+const OUTPUT_BLIND_AB: McpOutputSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    op: { type: "string", enum: ["plan", "record", "verdict", "reset"] },
+    status: { type: "string", enum: ["planned", "recorded", "summarized", "no_trials", "cleared"] },
+    lane: { type: "string", maxLength: BLIND_AB_MAX_LANE_LENGTH },
+    gains: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        matched: { type: "boolean" },
+        targetLufs: { type: ["number", "null"] },
+        gainDbA: { type: "number", minimum: -12, maximum: 12 },
+        gainDbB: { type: "number", minimum: -12, maximum: 12 },
+        note: { type: "string" },
+      },
+      required: ["matched", "targetLufs", "gainDbA", "gainDbB", "note"],
+    },
+    trial: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        lane: { type: "string", maxLength: BLIND_AB_MAX_LANE_LENGTH },
+        xWas: { type: "string", enum: ["A", "B"] },
+        answer: { type: "string", enum: ["A", "B"] },
+        correct: { type: "boolean" },
+        reactionMs: { type: "integer", minimum: 0, maximum: BLIND_AB_MAX_REACTION_MS },
+        receivedAt: { type: "integer", minimum: 0 },
+      },
+      required: ["lane", "xWas", "answer", "correct", "receivedAt"],
+    },
+    summary: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        lane: { type: "string", maxLength: BLIND_AB_MAX_LANE_LENGTH },
+        total: { type: "integer", minimum: 0 },
+        correct: { type: "integer", minimum: 0 },
+        pValue: { type: "number", minimum: 0, maximum: 1 },
+        hastyExcluded: { type: "integer", minimum: 0 },
+        verdict: { type: "string" },
+      },
+      required: ["lane", "total", "correct", "pValue", "hastyExcluded", "verdict"],
+    },
+    total: { type: "integer", minimum: 0 },
+    correct: { type: "integer", minimum: 0 },
+    pValue: { type: "number", minimum: 0, maximum: 1 },
+    hastyExcluded: { type: "integer", minimum: 0 },
+    verdict: { type: "string" },
+    clearedLanes: { type: "integer", minimum: 0, maximum: BLIND_AB_MAX_LANES },
+    clearedTrials: { type: "integer", minimum: 0, maximum: BLIND_AB_MAX_TRIALS },
+  },
+  required: ["op", "status"],
 };
 export const MCP_TOOLS: McpToolDef[] = [
   {
@@ -1671,13 +1737,27 @@ export const MCP_TOOLS: McpToolDef[] = [
         op: { type: "string", enum: ["plan", "record", "verdict", "reset"] },
         lufsA: { type: "number", description: "For plan — measured integrated LUFS of variant A" },
         lufsB: { type: "number", description: "For plan — measured integrated LUFS of variant B" },
-        lane: { type: "string", description: "Trial lane name (record/verdict), e.g. 'tilt-vs-flat'" },
+        lane: {
+          type: "string",
+          maxLength: BLIND_AB_MAX_LANE_LENGTH,
+          description: "Trial lane name (record/verdict), e.g. 'tilt-vs-flat' (max 128 characters)",
+        },
         xWas: { type: "string", enum: ["A", "B"], description: "For record — which side was X" },
         answer: { type: "string", enum: ["A", "B"], description: "For record — what the listener answered" },
-        reactionMs: { type: "integer", description: "For record — milliseconds from first playback" },
+        reactionMs: {
+          type: "integer",
+          minimum: 0,
+          maximum: BLIND_AB_MAX_REACTION_MS,
+          description: "For record — milliseconds from first playback (0–24 hours)",
+        },
+        confirm: {
+          type: "boolean",
+          description: "For reset — must be true to clear all session trial lanes and their accumulated evidence",
+        },
       },
       required: ["op"],
     },
+    outputSchema: OUTPUT_BLIND_AB,
   },
 ];
 
@@ -1689,7 +1769,7 @@ const REQUEST_ID_PROPERTY: Record<string, unknown> = {
   type: "string",
   maxLength: 128,
   description:
-    "Optional idempotency key. Retrying a MUTATING call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches). Reads always execute fresh; failures with no committed mutation are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed mutations is replayed to avoid applying its committed prefix twice.",
+    "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
 };
 for (const def of MCP_TOOLS) {
   def.inputSchema.properties.requestId = { ...REQUEST_ID_PROPERTY };
@@ -1910,6 +1990,8 @@ export interface McpToolResult {
   /** Optional machine-readable envelope alongside the text — structured
    * results for programmatic agents (P2). JSON-serializable or absent. */
   data?: unknown;
+  /** Internal marker for committed non-document side effects; stripped before returning to transports. */
+  idempotencyCommitted?: boolean;
   /** Optional standard MCP audio attachment (base64 encoded). */
   audio?: McpAudioContent;
   /** P1-B idempotency: true when this result is a REPLAY of the outcome
@@ -1966,7 +2048,8 @@ export type McpErrorCode =
   | "UNAVAILABLE_ON_TRANSPORT"
   | "POLICY_REFUSED"
   | "REQUEST_ID_CONFLICT"
-  | "INVALID_REQUEST_ID";
+  | "INVALID_REQUEST_ID"
+  | "RESOURCE_LIMIT";
 
 /** The single shaped constructor for error results — every `isError`
  * result goes through here so the code set stays exhaustive. `overrides`
@@ -2222,10 +2305,11 @@ function mixerSnapshotData(doc: ProjectDocument): Record<string, unknown> {
 // marked `replayed: true` instead of re-executing.
 //
 // Contract (tests: tests/mcp-idempotency.test.ts):
-//  - only MUTATING outcomes are cached — reads always execute fresh, so a
-//    retried read never serves stale state;
-//  - failed calls (isError / not mutated) are not cached — fixing the args
-//    and retrying with the same id re-executes;
+//  - document mutations and explicitly marked committed session side effects
+//    are cached — reads always execute fresh, so a retried read never serves
+//    stale state;
+//  - calls with no committed change are not cached — fixing the args and
+//    retrying with the same id re-executes;
 //  - entries are scoped to the project document that produced them: the same
 //    id in another project executes fresh and re-binds the id there;
 //  - a replay does not re-execute even if the change was undone since — the
@@ -2293,6 +2377,9 @@ function dryRunPolicyRefusal(name: string, args: Record<string, unknown>): strin
   }
   if (NO_DRYRUN_TOOLS.has(name)) {
     return `dryRun applies to document mutations — ${name} drives runtime or export state`;
+  }
+  if (name === "kyx_blind_ab" && (args.op === "record" || args.op === "reset")) {
+    return `dryRun is unavailable for kyx_blind_ab op:${args.op} because it changes the session trial log`;
   }
   if (name === "kyx_import_sfz") {
     return "dryRun is unavailable for kyx_import_sfz because it writes samples to the user library";
@@ -2650,6 +2737,8 @@ ${preview.text}`,
   // fields ride along for in-process consumers. A replay already carries
   // its original line (the cache stores the attributed result — the line
   // is appended exactly once per execution).
+  const sideEffectCommitted = result.idempotencyCommitted === true;
+  delete result.idempotencyCommitted;
   if (result.mutated === true) {
     // Any non-intent mutation supersedes the remembered fader move; the intent
     // path records/clears itself, and kyx_undo clears when it actually moves.
@@ -2658,14 +2747,14 @@ ${preview.text}`,
     result.text = `${result.text}\nmutated on ${ctx.agentId ? `${ctx.agentId} · ` : ""}document "${doc.name}" (id ${doc.id})`;
     result.docId = doc.id;
     result.docName = doc.name;
-    if (requestId !== "" && signature !== undefined) {
-      idempotencyLedger.delete(requestId); // refresh FIFO position on re-bind
-      idempotencyLedger.set(requestId, { docId: doc.id, signature, result });
-      while (idempotencyLedger.size > IDEMPOTENCY_LEDGER_CAP) {
-        const oldest = idempotencyLedger.keys().next();
-        if (oldest.done) break;
-        idempotencyLedger.delete(oldest.value);
-      }
+  }
+  if (requestId !== "" && signature !== undefined && (result.mutated === true || sideEffectCommitted)) {
+    idempotencyLedger.delete(requestId); // refresh FIFO position on re-bind
+    idempotencyLedger.set(requestId, { docId: docBefore.id, signature, result });
+    while (idempotencyLedger.size > IDEMPOTENCY_LEDGER_CAP) {
+      const oldest = idempotencyLedger.keys().next();
+      if (oldest.done) break;
+      idempotencyLedger.delete(oldest.value);
     }
   }
   if (job != null) {
@@ -4108,44 +4197,95 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return {
           text: `${plan.note} — apply these playback gains before the comparison so neither side is privileged`,
           mutated: false,
-          data: { gains: plan.gains },
+          data: { op: "plan", status: "planned", gains: plan.gains },
         };
       }
       if (op === "record") {
+        const laneValue = record.lane;
+        if (laneValue !== undefined && (typeof laneValue !== "string" || laneValue.length > BLIND_AB_MAX_LANE_LENGTH)) {
+          return mcpError(
+            "INVALID_ARGUMENTS",
+            `lane must be a string of at most ${BLIND_AB_MAX_LANE_LENGTH} characters`,
+          );
+        }
         if (record.xWas !== "A" && record.xWas !== "B") {
           return mcpError("INVALID_ARGUMENTS", "trial needs xWas: A|B (which side was X)");
         }
         if (record.answer !== "A" && record.answer !== "B") {
           return mcpError("INVALID_ARGUMENTS", "trial needs answer: A|B (what the listener picked)");
         }
-        const entry = recordBlindAbTrial({
-          lane: String(record.lane ?? "default"),
-          xWas: record.xWas,
-          answer: record.answer,
-          ...(typeof record.reactionMs === "number" ? { reactionMs: record.reactionMs } : {}),
-        });
+        if (
+          record.reactionMs !== undefined &&
+          (typeof record.reactionMs !== "number" ||
+            !Number.isSafeInteger(record.reactionMs) ||
+            record.reactionMs < 0 ||
+            record.reactionMs > BLIND_AB_MAX_REACTION_MS)
+        ) {
+          return mcpError("INVALID_ARGUMENTS", `reactionMs must be an integer from 0 to ${BLIND_AB_MAX_REACTION_MS}`);
+        }
+        let entry: ReturnType<typeof recordBlindAbTrial>;
+        try {
+          entry = recordBlindAbTrial({
+            lane: typeof laneValue === "string" ? laneValue : "default",
+            xWas: record.xWas,
+            answer: record.answer,
+            ...(typeof record.reactionMs === "number" ? { reactionMs: record.reactionMs } : {}),
+          });
+        } catch (error) {
+          if (error instanceof BlindAbTrialLimitError) return mcpError("RESOURCE_LIMIT", error.message);
+          throw error;
+        }
         return {
           text: `trial recorded: ${entry.correct ? "correct" : "incorrect"} (lane "${entry.lane}")`,
           mutated: false,
+          data: { op: "record", status: "recorded", trial: entry },
+          idempotencyCommitted: true,
         };
       }
       if (op === "verdict") {
-        const summary = summarizeBlindAb(String(record.lane ?? "default"));
+        const laneValue = record.lane;
+        if (laneValue !== undefined && (typeof laneValue !== "string" || laneValue.length > BLIND_AB_MAX_LANE_LENGTH)) {
+          return mcpError(
+            "INVALID_ARGUMENTS",
+            `lane must be a string of at most ${BLIND_AB_MAX_LANE_LENGTH} characters`,
+          );
+        }
+        const lane = typeof laneValue === "string" ? laneValue : "default";
+        const summary = summarizeBlindAb(lane);
         if (summary == null) {
           return {
             text: "no trials recorded for this lane yet — record trials with op:record (the human listens, you count)",
             mutated: false,
+            data: { op: "verdict", status: "no_trials", lane },
           };
         }
         return {
           text: `blind A/B "${summary.lane}": ${summary.correct}/${summary.total} correct (p = ${summary.pValue.toFixed(4)}${summary.hastyExcluded > 0 ? `, ${summary.hastyExcluded} hasty excluded` : ""}) — ${summary.verdict}`,
           mutated: false,
-          data: { total: summary.total, correct: summary.correct, pValue: summary.pValue },
+          data: {
+            op: "verdict",
+            status: "summarized",
+            lane: summary.lane,
+            total: summary.total,
+            correct: summary.correct,
+            pValue: summary.pValue,
+            hastyExcluded: summary.hastyExcluded,
+            verdict: summary.verdict,
+            summary,
+          },
         };
       }
       if (op === "reset") {
-        resetBlindAbTrials();
-        return { text: "blind A/B trial log cleared", mutated: false };
+        if (record.confirm !== true) {
+          return mcpError("POLICY_REFUSED", "clearing all blind A/B trial evidence needs confirm:true");
+        }
+        const cleared = resetBlindAbTrials();
+        return {
+          text: `blind A/B trial log cleared (${cleared.clearedTrials} trial(s) across ${cleared.clearedLanes} lane(s))`,
+          mutated: false,
+          data: { op: "reset", status: "cleared", ...cleared },
+          idempotencyCommitted: true,
+        };
       }
       return mcpError("UNKNOWN_REQUEST", `unknown blind_ab op: ${op} (plan | record | verdict | reset)`);
     }
