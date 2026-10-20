@@ -227,6 +227,24 @@ export interface StateReading {
    */
   ringCount: number;
 
+  // ---- focus rings -----------------------------------------------------------
+  /**
+   * The focus ring in this shell is an OUTLINE, not a shadow:
+   *
+   *   outline: 2px solid color-mix(in srgb, var(--accent) 84%, #fff);
+   *
+   * A reader that only looks at box-shadow and border cannot see it at all —
+   * which is why the first "focus" recording was pixel-identical to "idle".
+   * The outline is counted over the whole set, because the focused element is
+   * ONE of many and the first element of the set is usually not the one.
+   */
+  /** How many visible elements carry a visible outline. */
+  outlineCount: number;
+  /** The normalised colour of the first visible outline. */
+  outlineAccent: string | null;
+  /** The outline width in px of the first visible outline. */
+  outlineWidth: number | null;
+
   // ---- border marks (kept separate from inset marks) ------------------------
   /**
    * A BORDER mark is a different gesture from an INSET mark: the active
@@ -489,6 +507,11 @@ export function readStateMatrix(roles: readonly StateRole[]): StateReading[] {
       }
     }
 
+    // The focus ring is an OUTLINE. It is invisible to a box-shadow reader.
+    const outlineWidth = parseFloat(cs.outlineWidth);
+    const hasOutline = cs.outlineStyle !== "none" && Number.isFinite(outlineWidth) && outlineWidth > 0;
+    const outlineAccent = hasOutline ? normalizeColor(cs.outlineColor) : null;
+
     return {
       cs,
       topLight,
@@ -496,6 +519,9 @@ export function readStateMatrix(roles: readonly StateRole[]): StateReading[] {
       accent,
       borderAccent,
       ring,
+      hasOutline,
+      outlineAccent,
+      outlineWidth: hasOutline ? outlineWidth : null,
       background: cs.backgroundColor,
       color: cs.color,
       sample: (el.textContent || "").trim().slice(0, 24) || null,
@@ -526,6 +552,9 @@ export function readStateMatrix(roles: readonly StateRole[]): StateReading[] {
       accentIndexes: [],
       accentSample: null,
       ringCount: 0,
+      outlineCount: 0,
+      outlineAccent: null,
+      outlineWidth: null,
       borderAccent: null,
       borderAccentCount: 0,
       borderAccentSample: null,
@@ -541,8 +570,16 @@ export function readStateMatrix(roles: readonly StateRole[]): StateReading[] {
     let accentSample: string | null = null;
     let borderAccentCount = 0;
     let borderAccentSample: string | null = null;
+    let outlineCount = 0;
+    let outlineAccent: string | null = null;
+    let outlineWidth: number | null = null;
     inspected.forEach((info, index) => {
       if (info.ring) ringCount += 1;
+      if (info.hasOutline) {
+        outlineCount += 1;
+        if (outlineAccent === null) outlineAccent = info.outlineAccent;
+        if (outlineWidth === null) outlineWidth = info.outlineWidth;
+      }
       if (info.borderAccent) {
         borderAccentCount += 1;
         if (borderAccentSample === null) borderAccentSample = info.sample;
@@ -558,6 +595,9 @@ export function readStateMatrix(roles: readonly StateRole[]): StateReading[] {
     reading.accentIndexes = accentIndexes;
     reading.accentSample = accentSample;
     reading.ringCount = ringCount;
+    reading.outlineCount = outlineCount;
+    reading.outlineAccent = outlineAccent;
+    reading.outlineWidth = outlineWidth;
     reading.borderAccentCount = borderAccentCount;
     reading.borderAccentSample = borderAccentSample;
 

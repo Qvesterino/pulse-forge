@@ -82,12 +82,14 @@ async function record(stateId: string, entered: boolean, note?: string) {
   const marked = readings.filter((r) => r.accentCount > 0).map((r) => `${r.roleId}(${r.accentCount})`);
   const rings = readings.filter((r) => r.ringCount > 0).map((r) => `${r.roleId}(${r.ringCount})`);
   const borders = readings.filter((r) => r.borderAccentCount > 0).map((r) => `${r.roleId}(${r.borderAccentCount})`);
+  const outlines = readings.filter((r) => r.outlineCount > 0).map((r) => `${r.roleId}(${r.outlineCount})`);
   console.log(
     `  ${entered ? "entered" : "NOT ENTERED"}  ${stateId.padEnd(10)} ` +
       `roles=${readings.filter((r) => r.visible > 0).length}/${readings.length}` +
       (marked.length ? `  inset: ${marked.join(", ")}` : "") +
       (borders.length ? `  border: ${borders.join(", ")}` : "") +
-      (rings.length ? `  rings: ${rings.join(", ")}` : ""),
+      (rings.length ? `  rings: ${rings.join(", ")}` : "") +
+      (outlines.length ? `  outline: ${outlines.join(", ")}` : ""),
   );
   if (note) console.log(`      ${note}`);
   return snapshot;
@@ -169,32 +171,58 @@ if ((await hoverTarget.count()) > 0) {
 }
 
 // ---- focus -----------------------------------------------------------------
-// Keyboard focus has to be reached WITH THE KEYBOARD.
+// Keyboard focus needs THREE things, and getting only some of them yields a
+// state that looks right and measures nothing:
 //
-// The first version called `element.focus()`, which moves DOM focus but does
-// NOT arm `:focus-visible` — and every focus ring in this shell is a
-// `:focus-visible` outline. So the recorded "focus" state was pixel-identical
-// to "idle" and the state was not measurable at all. Pressing Tab is what a
-// keyboard user does, and it is the only way the shell actually paints a
-// focus ring.
-await page.mouse.move(5, 5).catch(() => {});
-await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
-await page.waitForTimeout(200);
+//   1. KEYBOARD MODALITY. Chromium arms `:focus-visible` only when the last
+//      interaction was the keyboard. The hover state before this one left the
+//      pointer on a button, so `:focus-visible` did not match and the "focus"
+//      recording was pixel-identical to "idle".
+//   2. THE FOCUS ITSELF. `element.focus()` moves DOM focus; measured here,
+//      it does arm `:focus-visible` once the modality is right.
+//   3. A VISIBLE RING. This shell's focus ring is an OUTLINE, not a shadow,
+//      so the reader counts outlines over the whole set — the focused element
+//      is one of many, and the first element of the set is not it.
+//
+// Tab is NOT the way in: measured, Tab never moved `activeElement` off BODY
+// in this app, so the recorder drives focus directly and ASSERTS the ring.
+await page.keyboard.press("Shift");
+await page.waitForTimeout(120);
 
-let focusReached = false;
-for (let i = 0; i < 40 && !focusReached; i += 1) {
-  await page.keyboard.press("Tab");
-  focusReached = await page.evaluate(() => {
+const focusTarget = (await page.locator(".transport-cluster .btn-play").count()) > 0
+  ? page.locator(".transport-cluster .btn-play").first()
+  : page.locator(".transport-cluster .btn").first();
+if ((await focusTarget.count()) > 0) {
+  await focusTarget.focus({ timeout: 20_000 }).catch(() => {});
+  await page.waitForTimeout(400);
+  const focusInfo = await page.evaluate(() => {
     const el = document.activeElement;
-    return !!el && !!el.closest(".transport-cluster");
+    if (!el) return { inTransport: false, focusVisible: false, outline: "" };
+    const cs = getComputedStyle(el);
+    return {
+      inTransport: !!el.closest(".transport-cluster"),
+      focusVisible: el.matches(":focus-visible"),
+      outline: `${cs.outlineStyle} ${cs.outlineWidth} ${cs.outlineColor}`,
+    };
   });
+  const readings = await measure();
+  const transport = readings.find((r) => r.roleId === "transportBtn");
+  const ringed = (transport?.outlineCount ?? 0) > 0;
+  const entered = focusInfo.inTransport && focusInfo.focusVisible && ringed;
+  await record(
+    "focus",
+    entered,
+    entered
+      ? undefined
+      : !focusInfo.inTransport
+        ? "focus did not land on a transport control"
+        : !focusInfo.focusVisible
+          ? "the control has DOM focus but not :focus-visible"
+          : "no focus ring was painted (outline count 0)",
+  );
+} else {
+  await record("focus", false, "no transport control to focus");
 }
-await page.waitForTimeout(300);
-await record(
-  "focus",
-  focusReached,
-  focusReached ? undefined : "keyboard focus never reached a transport control",
-);
 
 // ---- recording -------------------------------------------------------------
 // The transport's RECORD is MIDI overdub into the pattern (patternRecorder),

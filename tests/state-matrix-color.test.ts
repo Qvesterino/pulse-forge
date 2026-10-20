@@ -36,6 +36,9 @@ interface FakeStyle {
   backgroundColor?: string;
   color?: string;
   fontSize?: string;
+  outlineStyle?: string;
+  outlineWidth?: string;
+  outlineColor?: string;
 }
 
 const NEUTRAL_BORDERS = ["rgba(217, 219, 225, 0.16)", "rgba(217, 219, 225, 0.16)", "rgba(217, 219, 225, 0.16)", "rgba(217, 219, 225, 0.16)"];
@@ -65,6 +68,9 @@ function mount(styles: FakeStyle[]): void {
       fontSize: s.fontSize ?? "13px",
       fontWeight: "600",
       letterSpacing: "normal",
+      outlineStyle: s.outlineStyle ?? "none",
+      outlineWidth: s.outlineWidth ?? "0px",
+      outlineColor: s.outlineColor ?? "rgba(245, 158, 11, 0.84)",
       display: "block",
       visibility: "visible",
     };
@@ -181,5 +187,21 @@ describe("state matrix colour reader", () => {
     ]);
     expect(r.accentCount).toBe(2);
     expect(r.accentIndexes).toEqual([1, 2]);
+  });
+
+  it("reads a focus OUTLINE — the focus ring in this shell is not a shadow", () => {
+    const r = readOne([
+      { boxShadow: "none" },
+      { boxShadow: "none", outlineStyle: "solid", outlineWidth: "2px" },
+    ]);
+    expect(r.outlineCount).toBe(1);
+    expect(r.outlineWidth).toBe(2);
+    expect(r.outlineAccent).not.toBeNull();
+  });
+
+  it("reports no focus ring when nothing is outlined", () => {
+    const r = readOne([{ boxShadow: "none" }]);
+    expect(r.outlineCount).toBe(0);
+    expect(r.outlineAccent).toBeNull();
   });
 });
