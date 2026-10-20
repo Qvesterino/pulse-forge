@@ -104,9 +104,9 @@
         "rgb(178, 238, 216)",
         "rgb(251, 201, 227)",
         "rgb(251, 218, 162)",
-        "rgba(195, 239, 214, 0.857)",
-        "rgba(245, 158, 11, 0.164)",
-        "rgba(245, 158, 11, 0.34)"
+        "rgba(221, 240, 211, 0.694)",
+        "rgba(245, 158, 11, 0.161)",
+        "rgba(245, 158, 11, 0.353)"
       ],
       "accentIndexes": [
         0,
@@ -135,12 +135,12 @@
         134
       ],
       "accentSample": null,
-      "ringCount": 31,
+      "ringCount": 32,
       "outlineCount": 0,
       "outlineAccent": null,
       "outlineWidth": null,
       "borderAccent": "rgb(247, 181, 70)",
-      "borderAccentCount": 27,
+      "borderAccentCount": 26,
       "borderAccentSample": null
     },
     {
@@ -153,13 +153,13 @@
       "topLight": null,
       "bottomLight": null,
       "hasAccent": true,
-      "accent": "rgba(245, 158, 11, 0.34)",
+      "accent": "rgba(245, 158, 11, 0.161)",
       "background": "rgb(11, 12, 16)",
       "color": "rgb(217, 219, 225)",
       "sample": null,
       "accentCount": 16,
       "accentColors": [
-        "rgba(245, 158, 11, 0.34)"
+        "rgba(245, 158, 11, 0.161)"
       ],
       "accentIndexes": [
         0,
@@ -184,8 +184,8 @@
       "outlineCount": 0,
       "outlineAccent": null,
       "outlineWidth": null,
-      "borderAccent": "rgba(107, 81, 43, 0.917)",
-      "borderAccentCount": 16,
+      "borderAccent": null,
+      "borderAccentCount": 0,
       "borderAccentSample": null
     },
     {

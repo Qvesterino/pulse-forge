@@ -237,6 +237,9 @@ Po vrátení mutácie: **17/17 očakávaní platí, exit 0**.
 - **Presný počet prstencov playheada.** Grid animuje `box-shadow`, takže kolónka,
   ktorú playhead práve opustil, si drží zhasinajúci prstenec. Zmerané: 31, 32
   aj 16 v rôznych behoch. Deklarované ako **minimum**, nie číslo.
+  _Dôsledok:_ `output/state-matrix/*.json` sa pri každom behu brány mierne
+  zmení (o dve čísla). To je **očakávané**, nie drift — a je to dôvod, prečo
+  brána nedeklaruje presný počet.
 - **Farba hlavičky stopy pri prehrávaní.** Zelená znamená „táto stopa znie" —
   je to **údaj o projekte**, nie pravidlo shellu.
 - **`focus` cez `Tab`.** Zmerané: `Tab` v tejto appke neposúva fokus. Brána
