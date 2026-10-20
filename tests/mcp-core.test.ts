@@ -72,6 +72,9 @@ describe("mcp core — protocol with an authenticated session", () => {
     expect(listedTools.find((tool) => tool.name === "kyx_import_sfz")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_import_sfz")?.outputSchema,
     );
+    expect(listedTools.find((tool) => tool.name === "kyx_undo")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_undo")?.outputSchema,
+    );
     expect(listedTools.map((t) => t.name)).toEqual([
       "kyx_intent",
       "kyx_state",
@@ -244,6 +247,39 @@ describe("mcp core — protocol with an authenticated session", () => {
     expect(response.result.isError).toBe(false);
     expect(response.result.structuredContent).toEqual(data);
     expect(response.result.content).toEqual([{ type: "text", text: "Imported My Cello" }]);
+  });
+
+  it("returns undo counts and reverted labels as structuredContent across the web relay", async () => {
+    const { hub, delivered } = makeHub();
+    const data = {
+      action: "undo",
+      requestedSteps: 2,
+      completedSteps: 1,
+      revertedLabels: ["Set tempo to 140 BPM"],
+    };
+    const promise = handleMcpRequest(
+      hub,
+      TOKEN,
+      TOKEN,
+      rpc(
+        "tools/call",
+        {
+          name: "kyx_undo",
+          arguments: { action: "undo", steps: 2 },
+          _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+        },
+        16,
+      ),
+    );
+    hub.handleSessionMessage({
+      type: "mcp-result",
+      id: delivered[0].id,
+      result: { text: 'undo ×1 — reverts: "Set tempo to 140 BPM"', mutated: true, data },
+    });
+    const response = await promise;
+    expect(response.result.isError).toBe(false);
+    expect(response.result.structuredContent).toEqual(data);
+    expect(response.result.content).toEqual([{ type: "text", text: 'undo ×1 — reverts: "Set tempo to 140 BPM"' }]);
   });
 
   it("2025-03-26 legacy clients do not receive outputSchema or structuredContent", async () => {

@@ -329,6 +329,23 @@ const OUTPUT_SFZ_IMPORT: McpOutputSchema = {
     "skippedSamples",
   ],
 };
+/** kyx_undo — exact completed step count and bounded action labels. */
+const OUTPUT_UNDO: McpOutputSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    action: { type: "string", enum: ["undo", "redo"] },
+    requestedSteps: { type: "integer", minimum: 1, maximum: 20 },
+    completedSteps: { type: "integer", minimum: 0, maximum: 20 },
+    revertedLabels: {
+      type: "array",
+      maxItems: 20,
+      items: { type: "string", maxLength: 240 },
+    },
+    partialFailure: { type: "string", maxLength: 2_000 },
+  },
+  required: ["action", "requestedSteps", "completedSteps", "revertedLabels"],
+};
 export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_intent",
@@ -401,6 +418,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["action"],
     },
+    outputSchema: OUTPUT_UNDO,
   },
   {
     name: "kyx_transport",
@@ -2735,7 +2753,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       const action = record.action === "redo" ? "redo" : "undo";
       const steps = Math.max(1, Math.min(20, Number(record.steps ?? 1)));
       if (ctx.isMicRecordingActive()) {
-        return { text: "declined: a mic take is recording — stop it before undo", mutated: false };
+        return mcpError("POLICY_REFUSED", "declined: a mic take is recording — stop it before undo");
       }
       // C6 attribution: name what this undo/redo reverts and flag when an
       // agent reverts work that was not its own (another agent's prefix, or
@@ -2792,7 +2810,17 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       if (done > 0 && action === "undo" && record.allowForeign) {
         text += " (foreign work reverted by explicit consent)";
       }
-      return { text, mutated: done > 0 };
+      return {
+        text,
+        mutated: done > 0,
+        data: {
+          action,
+          requestedSteps: steps,
+          completedSteps: done,
+          revertedLabels: reverted.slice(0, done).map((label) => label.slice(0, 240)),
+          ...(failure ? { partialFailure: failure.slice(0, 2_000) } : {}),
+        },
+      };
     }
     case "kyx_transport": {
       const action = String(record.action ?? "");

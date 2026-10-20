@@ -127,6 +127,39 @@ const MCP_TOOL_DEFS = [
       },
       required: ["action"],
     },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        action: {
+          type: "string",
+          enum: ["undo", "redo"],
+        },
+        requestedSteps: {
+          type: "integer",
+          minimum: 1,
+          maximum: 20,
+        },
+        completedSteps: {
+          type: "integer",
+          minimum: 0,
+          maximum: 20,
+        },
+        revertedLabels: {
+          type: "array",
+          maxItems: 20,
+          items: {
+            type: "string",
+            maxLength: 240,
+          },
+        },
+        partialFailure: {
+          type: "string",
+          maxLength: 2000,
+        },
+      },
+      required: ["action", "requestedSteps", "completedSteps", "revertedLabels"],
+    },
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,

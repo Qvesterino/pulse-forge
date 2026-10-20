@@ -234,6 +234,13 @@ describe("mcp tools — headless execution", async () => {
     expect(ctx.getDoc().bpm).toBe(140);
     const result = await executeMcpTool(ctx, "kyx_undo", { action: "undo", steps: 1 });
     expect(result.mutated).toBe(true);
+    expect(result.data).toMatchObject({
+      action: "undo",
+      requestedSteps: 1,
+      completedSteps: 1,
+      revertedLabels: expect.arrayContaining([expect.any(String)]),
+    });
+    expect(result.data).not.toHaveProperty("partialFailure");
     expect(ctx.getDoc().bpm).not.toBe(140);
   });
 
@@ -526,6 +533,12 @@ describe("mcp audit repairs", async () => {
     const result = await executeMcpTool(ctx, "kyx_undo", { action: "redo", steps: 5 });
     expect(result.text).toBe("redo ×0");
     expect(result.mutated).toBe(false);
+    expect(result.data).toEqual({
+      action: "redo",
+      requestedSteps: 5,
+      completedSteps: 0,
+      revertedLabels: [],
+    });
   });
 
   it("kyx_undo undo stops at the stack bottom (1 entry, ask 5 → ×1)", async () => {
@@ -534,6 +547,12 @@ describe("mcp audit repairs", async () => {
     const result = await executeMcpTool(ctx, "kyx_undo", { action: "undo", steps: 5 });
     // the read-back names what was reverted (C6 attribution observability)
     expect(result.text).toContain("undo ×1");
+    expect(result.data).toMatchObject({
+      action: "undo",
+      requestedSteps: 5,
+      completedSteps: 1,
+      revertedLabels: expect.arrayContaining([expect.any(String)]),
+    });
   });
 
   it("D4 gate: intent PHRASING cannot bypass the destructive lock", async () => {

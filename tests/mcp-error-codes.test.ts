@@ -92,6 +92,16 @@ describe("mcp typed error codes (P2-B, GAP-08)", () => {
     expect(result.errorCode).toBeUndefined();
   });
 
+  it("refuses undo during microphone recording with a typed policy error", async () => {
+    const ctx = makeCtx(doc);
+    ctx.isMicRecordingActive = () => true;
+    const result = await executeMcpTool(ctx, "kyx_undo", { action: "undo" });
+    expect(result.isError).toBe(true);
+    expect(result.errorCode).toBe("POLICY_REFUSED");
+    expect(result.mutated).toBe(false);
+    expect(result.text).toContain("mic take is recording");
+  });
+
   it("GATE: every error result is constructed through mcpError — no un-coded literals", async () => {
     // GAP-09 taught this lesson for handlers: coverage without a gate rots.
     // The invariant is "no UN-CODED error result": every `isError: true`
