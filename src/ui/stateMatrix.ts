@@ -277,12 +277,13 @@ export interface StateReading {
  */
 export function readStateMatrix(roles: readonly StateRole[]): StateReading[] {
   const parseShadow = (shadow: string | null | undefined) => {
-    if (!shadow || shadow === "none") return [] as {
-      color: string;
-      x: number;
-      y: number;
-      inset: boolean;
-    }[];
+    if (!shadow || shadow === "none")
+      return [] as {
+        color: string;
+        x: number;
+        y: number;
+        inset: boolean;
+      }[];
     const out: { color: string; x: number; y: number; inset: boolean }[] = [];
     for (const chunk of shadow.split(/,(?![^(]*\))/)) {
       const color = chunk.match(/rgba?\([^)]*\)|color\([^)]*\)|oklab\([^)]*\)|#[0-9a-f]{3,8}/i)?.[0];
@@ -627,4 +628,282 @@ export interface StateSnapshot {
   /** Why it could not be entered, when it could not. */
   note?: string;
   readings: StateReading[];
+}
+
+/**
+ * WHAT A STATE SHOULD LOOK LIKE — the declaration.
+ *
+ * Written FROM the phase A data, not before it. That order is the whole point:
+ * wave 4 pinned a material value to one sample of one state and shipped a
+ * wrong conclusion, and the plan's own rule is that a declaration is only
+ * allowed after a measurement, reviewed by a human.
+ *
+ * WHAT IS DECLARED, AND WHAT IS NOT
+ * ----------------------------------
+ * Only SHELL RULES. A rule that depends on the CONTENT of the open project is
+ * not a rule about the shell and does not belong here. Two examples of what
+ * this table therefore does NOT say:
+ *
+ *   "the track header turns green while playing" — FALSE as a shell rule. It
+ *   turns green when THAT TRACK IS SOUNDING; a silent track stays amber. The
+ *   phase A run measured green because the House template's drum track was
+ *   sounding. Declaring it would pin a project fact to a shell rule.
+ *
+ *   "the playhead rings exactly 32 cells" — FALSE as a number. The grid
+ *   animates `box-shadow`, so the column the playhead left keeps a fading
+ *   ring: 31 in one run, 32 in the next. Ranges, not exact counts, wherever
+ *   the CSS transitions.
+ */
+export interface StateExpectation {
+  /** Which interaction state this row is about. */
+  state: string;
+  /** Which role in the matrix. */
+  role: string;
+  /** What that role should look like in that state. */
+  expect: {
+    /** Exact number of visible elements matching the role. */
+    visible?: number;
+    /** Elements carrying a chromatic INSET mark (engraved). */
+    insetMarks?: { min?: number; max?: number };
+    /** Elements carrying a chromatic BORDER mark (outlined). */
+    borderMarks?: { min?: number; max?: number };
+    /** Elements carrying a chromatic RING (the playhead). */
+    rings?: { min?: number; max?: number };
+    /** Elements carrying a focus outline. */
+    outlines?: { min?: number; max?: number };
+    /** The exact normalised colour of the inset mark. */
+    insetColour?: string;
+    /** The exact normalised colour of the border mark. */
+    borderColour?: string;
+    /** The mark must sit on a DIFFERENT element than it did in `idle`. */
+    markMovedFromIdle?: boolean;
+    /** The role's text must differ from `idle` (the transport advanced). */
+    textChangedFromIdle?: boolean;
+  };
+  /** Why this expectation exists. Shown in the panel; read by humans. */
+  because: string;
+}
+
+/**
+ * THE TABLE. Every row is a shell rule, every row says why.
+ *
+ * The reader is `scripts/state-matrix.mts --gate`; the second reader will be
+ * the Diagnostics panel's STATE tab. They cannot drift, because they read
+ * this array.
+ */
+export const STATE_EXPECTATIONS: readonly StateExpectation[] = [
+  // ---- idle: the resting shell ------------------------------------------------
+  {
+    state: "idle",
+    role: "rowPad",
+    expect: { insetMarks: { min: 1, max: 1 }, insetColour: "rgb(245, 158, 11)" },
+    because:
+      "the resting shell marks the selected channel with an amber underline — exactly one, never zero, never two",
+  },
+  {
+    state: "idle",
+    role: "stepPlayhead",
+    expect: { visible: 0 },
+    because: "no cell may carry the playhead class while the transport is stopped",
+  },
+  {
+    state: "idle",
+    role: "stepCell",
+    expect: { rings: { max: 0 } },
+    because: "no cell may wear a ring while the transport is stopped",
+  },
+  {
+    state: "idle",
+    role: "rulerTick",
+    expect: { borderMarks: { max: 0 } },
+    because: "no ruler tick is 'current' while the transport is stopped",
+  },
+  {
+    state: "idle",
+    role: "transportBtn",
+    expect: { outlines: { max: 0 } },
+    because: "no focus ring at rest — a ring is a keyboard signal, not a resting state",
+  },
+
+  // ---- selected: the selection moved ------------------------------------------
+  {
+    state: "selected",
+    role: "rowPad",
+    expect: { insetMarks: { min: 1, max: 1 }, markMovedFromIdle: true },
+    because:
+      "selecting another channel MOVES the amber underline — still exactly one mark, but on a different row. " +
+      "A selection that did not move would look identical to idle, and that is what the first recorder measured.",
+  },
+
+  // ---- playing: the transport runs --------------------------------------------
+  {
+    state: "playing",
+    role: "stepPlayhead",
+    expect: { visible: 16 },
+    because: "the transport marks exactly ONE column of cells — 16 rows, one column",
+  },
+  {
+    state: "playing",
+    role: "stepCell",
+    expect: { rings: { min: 1 } },
+    because:
+      "the playhead column is ringed. A MINIMUM, not an exact count: the grid animates box-shadow, so the column " +
+      "the playhead just left keeps a fading ring and the count moves with the frame (31 measured, 32 measured).",
+  },
+  {
+    state: "playing",
+    role: "rulerTick",
+    expect: { borderMarks: { min: 1, max: 1 } },
+    because: "the ruler marks the current step — exactly one tick",
+  },
+  {
+    state: "playing",
+    role: "positionReadout",
+    expect: { textChangedFromIdle: true },
+    because: "the position readout ADVANCES — a running transport that does not move is not running",
+  },
+  {
+    state: "playing",
+    role: "transportBtn",
+    expect: { borderMarks: { min: 1 } },
+    because: "the running transport button is marked, so the transport state is visible on the transport itself",
+  },
+
+  // ---- hover: the pointer is on a control -------------------------------------
+  {
+    state: "hover",
+    role: "transportBtn",
+    expect: { borderMarks: { min: 1 } },
+    because: "the hovered control gets a brighter edge — hover must be visible without a click",
+  },
+  {
+    state: "hover",
+    role: "stepPlayhead",
+    expect: { visible: 0 },
+    because: "hovering is not playback — the playhead must not appear",
+  },
+
+  // ---- focus: the keyboard is here --------------------------------------------
+  {
+    state: "focus",
+    role: "transportBtn",
+    expect: { outlines: { min: 1, max: 1 } },
+    because:
+      "keyboard focus paints exactly ONE ring. It is an OUTLINE, not a shadow, so a reader that only looks at " +
+      "box-shadow sees nothing at all here.",
+  },
+  {
+    state: "focus",
+    role: "stepPlayhead",
+    expect: { visible: 0 },
+    because: "focus is not playback — the playhead must not appear",
+  },
+
+  // ---- recording: MIDI overdub is armed ----------------------------------------
+  {
+    state: "recording",
+    role: "transportBtn",
+    expect: { borderMarks: { min: 2 } },
+    because:
+      "two transport buttons are marked while armed: the running transport and the record button itself. " +
+      "One mark would mean the arming is not visible on the transport.",
+  },
+  {
+    state: "recording",
+    role: "stepPlayhead",
+    expect: { visible: 16 },
+    because: "arming the overdub starts the transport, so the playhead column is marked",
+  },
+];
+
+/** The verdict for one expectation, with the reasons it failed. */
+export interface ExpectationResult {
+  state: string;
+  role: string;
+  ok: boolean;
+  /** One line per broken rule. Empty when the expectation held. */
+  failures: string[];
+  /** The rationale, carried through so a failing gate explains itself. */
+  because: string;
+}
+
+const inRange = (value: number, range: { min?: number; max?: number }): boolean => {
+  if (range.min !== undefined && value < range.min) return false;
+  if (range.max !== undefined && value > range.max) return false;
+  return true;
+};
+
+/**
+ * Check one expectation against one reading.
+ *
+ * PURE — no DOM, no browser. That is deliberate: the gate runs in a headless
+ * page, and the panel runs in the app, and a rule that can only be checked in
+ * one of them is a rule that is only half enforced.
+ *
+ * `idle` is the reference reading for the two cross-state rules ("the mark
+ * MOVED", "the text CHANGED"). They are cross-state by nature: "the selection
+ * moved" is a statement about the difference between two snapshots, not about
+ * one of them.
+ */
+export function evaluateExpectation(
+  expectation: StateExpectation,
+  reading: StateReading | undefined,
+  idle: StateReading | undefined,
+): ExpectationResult {
+  const failures: string[] = [];
+  const { expect: want } = expectation;
+
+  if (!reading) {
+    return {
+      state: expectation.state,
+      role: expectation.role,
+      ok: false,
+      failures: ["the role was not read at all"],
+      because: expectation.because,
+    };
+  }
+
+  if (want.visible !== undefined && reading.visible !== want.visible) {
+    failures.push(`visible ${reading.visible}, expected ${want.visible}`);
+  }
+  if (want.insetMarks && !inRange(reading.accentCount, want.insetMarks)) {
+    failures.push(`${reading.accentCount} inset marks, expected ${JSON.stringify(want.insetMarks)}`);
+  }
+  if (want.borderMarks && !inRange(reading.borderAccentCount, want.borderMarks)) {
+    failures.push(`${reading.borderAccentCount} border marks, expected ${JSON.stringify(want.borderMarks)}`);
+  }
+  if (want.rings && !inRange(reading.ringCount, want.rings)) {
+    failures.push(`${reading.ringCount} rings, expected ${JSON.stringify(want.rings)}`);
+  }
+  if (want.outlines && !inRange(reading.outlineCount, want.outlines)) {
+    failures.push(`${reading.outlineCount} outlines, expected ${JSON.stringify(want.outlines)}`);
+  }
+  if (want.insetColour !== undefined && reading.accent !== want.insetColour) {
+    failures.push(`inset colour ${reading.accent ?? "none"}, expected ${want.insetColour}`);
+  }
+  if (want.borderColour !== undefined && reading.borderAccent !== want.borderColour) {
+    failures.push(`border colour ${reading.borderAccent ?? "none"}, expected ${want.borderColour}`);
+  }
+  if (want.markMovedFromIdle) {
+    const before = idle?.accentSample ?? null;
+    const after = reading.accentSample ?? null;
+    if (!after || !before || after === before) {
+      failures.push(`the mark did not move (idle "${before}", now "${after}")`);
+    }
+  }
+  if (want.textChangedFromIdle) {
+    const before = idle?.sample ?? null;
+    const after = reading.sample ?? null;
+    if (!after || !before || after === before) {
+      failures.push(`the text did not change (idle "${before}", now "${after}")`);
+    }
+  }
+
+  return {
+    state: expectation.state,
+    role: expectation.role,
+    ok: failures.length === 0,
+    failures,
+    because: expectation.because,
+  };
 }

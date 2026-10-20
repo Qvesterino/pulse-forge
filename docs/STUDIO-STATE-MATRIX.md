@@ -171,6 +171,80 @@ tvrdí, že je kontrastovo overený.
 
 ---
 
+## 7b. Stav fáz A–C (2026-10-20) — čo sa zmenilo oproti plánu
+
+Plán predpokladal, že Fáza A je „zapisovač, nič netvrrdí". Ukázalo sa, že
+**zapisovač bol miestami brána, ktorá nič nemerala** — a to v troch
+samostatných prípadoch, z ktorých každý dával čistý, plausibilný, zlý
+výsledok.
+
+### Čo sa zlomilo
+
+| # | Chyba | Ako sa prejavila |
+| - | ----- | --------------- |
+| 1 | Štyri skripty mali **vlastnú kopiu bootu**. Trieda `pb-template-start` zmizla z markupu (`8d11f16b`) a vzala všetky štyri brány naraz. | 40 minút „harness je rozbitý" z jedného názvu triedy |
+| 2 | Čítač vzal **prvý matchujúci** element role. Pre rolu, ktorej stav sedí na **jednom z mnohých** (256 buniek, 16 riadkov), to znamená, že každý stav vyzerá rovnako. | šesť stavov s **byte-identickými** čítaniami |
+| 3 | Farby: `rgb()`/`color(srgb …)`/`oklab(…)` — a `color(srgb …)` zložky sú **medzerou** oddelené, nie čiarkou. `oklab` je v shelli **192-krát**, vrátane **prstenca playheada**. | každá plocha s farebnou značkou z `color-mix()` čítala sa ako **bez značky** — 256 buniek aj aktívna chip svietili, ale matica ich videla ako holé |
+| 4 | Test chromatickosti: „rozdiel kanálov > 5/255" — prejde aj **neutrálny tmavý bevel** `rgba(18, 22, 27, 0.28)`, ktorý má každý `.track-tab`. | polovica shellu hlásila jantárovú značku, ktorá tam nie je |
+| 5 | Fokusový kruh v tomto shelli je **`outline`**, nie shadow. Čítač ho vôbec nečítal. | stav `focus` bol **pixelovo identický** s `idle` |
+| 6 | Stav `selected` klikol na **už vybraný** riadok. | výber sa nikdy nepohol; stav bol nerozlišiteľný od `idle` |
+| 7 | `Tab` v tejto appke **neposúva fokus** (zmerané: `activeElement` zostáva `BODY`). | stav `focus` sa nedal vstúpiť klávesnicou |
+
+### Čo vzniklo
+
+- `scripts/lib/studio-boot.mjs` — **jeden** boot pre všetky brány. Pri zlyhaní
+  vypíše, čo naozaj bolo na obrazovke (vrátane crash screenu), nie holý
+  Playwright timeout.
+- `readStateMatrix` meria **distribúciu** cez celú viditeľnú množinu
+  (`accentCount`, `ringCount`, `outlineCount`, `accentSample`), nie prvý
+  element. Všetky farby sa prevádzajú na **jediný sRGB tvar**, aby sa dali
+  porovnávať naprieč formátmi.
+- `STATE_EXPECTATIONS` v `src/ui/stateMatrix.ts` — **deklarovaná tabuľka** (17
+  riadkov), každý s dôvodom (`because`). Deklarujú sa iba ** pravidlá shellu**:
+  nie „hlavička stopy zelenie pri prehrávaní" (to platí len pre stopy, ktoré
+  znejú), ale „hrdlo prehrávania je označené".
+- `tests/state-matrix-color.test.ts` (10) + `tests/state-matrix-declaration.test.ts` (13)
+  — čítač farieb je **pripnutý** proti skutočným vypočítaným reťazcom, lebo
+  tri merania po sebe dali každé čistý, plausibilný, zlý číslo.
+- `scripts/gate.mjs` — **jeden príkaz** (`npm run gate`) spustí všetky štyri
+  brány nad `vite preview` nad `dist`. Zmrazený build, nie živý dev server:
+  živý server na zdieľanom strome meral cudziu rozpracovanú prácu (dvakrát
+  po sebe spadol na cudzí `const MIN_BPM`, čo je parse error).
+
+### Falsifikácia brány (2026-10-20)
+
+Vypnutý chromatický test (`return s >= 0.35` → `return false`):
+
+```
+FAIL  [idle] rowPad: 0 inset marks, expected {"min":1,"max":1}; inset colour none, expected rgb(245, 158, 11)
+FAIL  [selected] rowPad — the state was not entered, so the rule was never checked
+FAIL  [playing] stepCell: 0 rings, expected {"min":1}
+FAIL  [playing] rulerTick: 0 border marks, expected {"min":1,"max":1}
+FAIL  [playing] transportBtn: 0 border marks, expected {"min":1}
+FAIL  [hover] transportBtn: 0 border marks, expected {"min":1}
+FAIL  [recording] transportBtn: 0 border marks, expected {"min":2}
+→ 7 očakávaní zlyhalo, exit 1
+```
+
+Prebehli oba failure módy naraz: „očakávanie zlyhalo" **aj** „stav nebol
+dosiahnutý, takže pravidlo sa nikdy neoverilo". To je ten druhý, ktorý brána
+nesmie prehltnúť — ticho preskočené pravidlo vyzerá ako pokrytie.
+
+Po vrátení mutácie: **17/17 očakávaní platí, exit 0**.
+
+### Čo sa NEDEKLAROVALO, a prečo
+
+- **Presný počet prstencov playheada.** Grid animuje `box-shadow`, takže kolónka,
+  ktorú playhead práve opustil, si drží zhasinajúci prstenec. Zmerané: 31, 32
+  aj 16 v rôznych behoch. Deklarované ako **minimum**, nie číslo.
+- **Farba hlavičky stopy pri prehrávaní.** Zelená znamená „táto stopa znie" —
+  je to **údaj o projekte**, nie pravidlo shellu.
+- **`focus` cez `Tab`.** Zmerané: `Tab` v tejto appke neposúva fokus. Brána
+  preto tlačí `Shift` (klávesnicová modalita, bez ktorej sa `:focus-visible`
+  nezapne), potom fokuje transport a **overí, že obrys vznikol**.
+
+---
+
 ## 8. Čo sa nemení
 
 - **Hierarchia sa nemení.** Toto je nástroj, ktorý zistí, či hierarchia drží.

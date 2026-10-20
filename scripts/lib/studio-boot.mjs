@@ -123,14 +123,28 @@ async function enterProject(page) {
     );
   }
 
-  if (!(await templates.first().isVisible().catch(() => false))) {
+  if (
+    !(await templates
+      .first()
+      .isVisible()
+      .catch(() => false))
+  ) {
     // Click the disclosure the way a user would.
     const disclosure = page.locator("details:has(.pb-templates)").first();
-    await disclosure.locator("summary").first().click({ timeout: 10_000 }).catch(() => {});
+    await disclosure
+      .locator("summary")
+      .first()
+      .click({ timeout: 10_000 })
+      .catch(() => {});
     await page.waitForTimeout(300);
     // Fallback for the case where React re-asserts its `open` prop: set the
     // attribute directly. This is a measurement harness, not a user gesture.
-    if (!(await templates.first().isVisible().catch(() => false))) {
+    if (
+      !(await templates
+        .first()
+        .isVisible()
+        .catch(() => false))
+    ) {
       await page.evaluate(() => {
         for (const d of document.querySelectorAll("details")) {
           if (d.querySelector(".pb-templates")) d.open = true;
@@ -140,7 +154,12 @@ async function enterProject(page) {
     }
   }
 
-  if (!(await templates.first().isVisible().catch(() => false))) {
+  if (
+    !(await templates
+      .first()
+      .isVisible()
+      .catch(() => false))
+  ) {
     throw new Error("project templates are present but not visible and could not be revealed");
   }
 

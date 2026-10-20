@@ -41,7 +41,12 @@ interface FakeStyle {
   outlineColor?: string;
 }
 
-const NEUTRAL_BORDERS = ["rgba(217, 219, 225, 0.16)", "rgba(217, 219, 225, 0.16)", "rgba(217, 219, 225, 0.16)", "rgba(217, 219, 225, 0.16)"];
+const NEUTRAL_BORDERS = [
+  "rgba(217, 219, 225, 0.16)",
+  "rgba(217, 219, 225, 0.16)",
+  "rgba(217, 219, 225, 0.16)",
+  "rgba(217, 219, 225, 0.16)",
+];
 
 /** Mount N fake elements and make the browser report `styles` for them. */
 function mount(styles: FakeStyle[]): void {
@@ -190,10 +195,7 @@ describe("state matrix colour reader", () => {
   });
 
   it("reads a focus OUTLINE — the focus ring in this shell is not a shadow", () => {
-    const r = readOne([
-      { boxShadow: "none" },
-      { boxShadow: "none", outlineStyle: "solid", outlineWidth: "2px" },
-    ]);
+    const r = readOne([{ boxShadow: "none" }, { boxShadow: "none", outlineStyle: "solid", outlineWidth: "2px" }]);
     expect(r.outlineCount).toBe(1);
     expect(r.outlineWidth).toBe(2);
     expect(r.outlineAccent).not.toBeNull();

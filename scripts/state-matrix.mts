@@ -2,7 +2,7 @@
  * state-matrix.mts — PHASE A: record what each interaction state actually
  * looks like, and write it down.
  *
- *   npx vite-node scripts/state-matrix.mts [--url http://127.0.0.1:5173] [--shots]
+ *   npx vite-node scripts/state-matrix.mts [--url http://127.0.0.1:5173] [--shots] [--gate]
  *
  * WHAT IT DOES
  * ------------
@@ -10,28 +10,43 @@
  * role catalog the Diagnostics panel will read. Writes a JSON snapshot and a
  * screenshot per state.
  *
- * It declares nothing. The output is DATA, not a verdict: phase B decides what
- * each state SHOULD look like, from this data, with a human in the loop.
- * Deciding first is how wave 4 pinned a number to one sample.
+ * It declares nothing by itself: the output is DATA, not a verdict. Phase B
+ * decides what each state SHOULD look like, from this data, with a human in
+ * the loop. Deciding first is how wave 4 pinned a number to one sample.
+ *
+ * With --gate it additionally asserts the DECLARED expectations
+ * (src/ui/stateMatrix.ts) against the recording it just took. The gate and
+ * the panel read the same declaration, so they cannot drift apart.
  *
  * A STATE THAT WAS NOT ENTERED IS REPORTED AS NOT ENTERED. The recorder never
  * claims a state it could not actually reach — a gate that reports green over
  * an unmeasured surface is worse than no gate.
  *
- * Exit codes: 0 = recorded, 1 = a state could not be entered, 2 = HARNESS_ERROR
+ * Exit codes: 0 = recorded (and, with --gate, every expectation held),
+ * 1 = a state could not be entered or an expectation failed, 2 = HARNESS_ERROR
  * (nothing was measured; NOT a result).
  */
 import { chromium } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { bootStudio } from "./lib/studio-boot.mjs";
-import { STATE_ROLES, STATES, readStateMatrix, type StateSnapshot } from "../src/ui/stateMatrix";
+import {
+  STATE_EXPECTATIONS,
+  STATE_ROLES,
+  STATES,
+  evaluateExpectation,
+  readStateMatrix,
+  type StateSnapshot,
+} from "../src/ui/stateMatrix";
 
 const argv = process.argv.slice(2);
 const urlIndex = argv.indexOf("--url");
 const URL = urlIndex >= 0 ? argv[urlIndex + 1] : "http://127.0.0.1:5173";
 const SHOTS = argv.includes("--shots");
+/** Phase C: after recording, assert the DECLARED expectations against it. */
+const GATE = argv.includes("--gate");
 
+const EXIT_GATE = 1;
 const EXIT_STATE_UNREACHED = 1;
 const EXIT_HARNESS_ERROR = 2;
 process.on("uncaughtException", (error) => {
@@ -119,11 +134,7 @@ if ((await otherRow.count()) > 0) {
   await page.waitForTimeout(600);
   const after = (await measure()).find((r) => r.roleId === "rowPad");
   const moved = !!after?.accentSample && after.accentSample !== beforeSelection;
-  await record(
-    "selected",
-    moved,
-    moved ? undefined : `the selection did not move (still "${after?.accentSample}")`,
-  );
+  await record("selected", moved, moved ? undefined : `the selection did not move (still "${after?.accentSample}")`);
 } else {
   await record("selected", false, "no unselected .row-pad to click");
 }
@@ -189,9 +200,10 @@ if ((await hoverTarget.count()) > 0) {
 await page.keyboard.press("Shift");
 await page.waitForTimeout(120);
 
-const focusTarget = (await page.locator(".transport-cluster .btn-play").count()) > 0
-  ? page.locator(".transport-cluster .btn-play").first()
-  : page.locator(".transport-cluster .btn").first();
+const focusTarget =
+  (await page.locator(".transport-cluster .btn-play").count()) > 0
+    ? page.locator(".transport-cluster .btn-play").first()
+    : page.locator(".transport-cluster .btn").first();
 if ((await focusTarget.count()) > 0) {
   await focusTarget.focus({ timeout: 20_000 }).catch(() => {});
   await page.waitForTimeout(400);
@@ -220,6 +232,15 @@ if ((await focusTarget.count()) > 0) {
           ? "the control has DOM focus but not :focus-visible"
           : "no focus ring was painted (outline count 0)",
   );
+  // Drop the focus ring before the next state. It is an OUTLINE on a focused
+  // control, and the recording state clicks a control — so without this the
+  // focus ring leaks into the recording snapshot and the two states stop
+  // being distinguishable.
+  await page.evaluate(() => {
+    const el = document.activeElement;
+    if (el && typeof (el as HTMLElement).blur === "function") (el as HTMLElement).blur();
+  });
+  await page.waitForTimeout(300);
 } else {
   await record("focus", false, "no transport control to focus");
 }
@@ -260,8 +281,52 @@ for (const s of snapshots) {
 // recorder did its job and the answer is "this surface was not reachable".
 const unreached = snapshots.filter((s) => !s.entered);
 console.log(`\nrecorded ${snapshots.length - unreached.length}/${snapshots.length} states -> ${outDir}`);
+
+// ---- phase C: the gate ------------------------------------------------------
+// The declaration lives in src/ui/stateMatrix.ts and is read HERE, so the gate
+// and the Diagnostics panel cannot drift apart.
+//
+// A RULE WHOSE STATE WAS NOT ENTERED IS A FAILURE, not a skipped check. A
+// gate that quietly skips the rules it could not reach is exactly the failure
+// this project keeps paying for: green over an unmeasured surface. That is why
+// the gate runs BEFORE the unreached-state exit — so one run reports both the
+// unreachable surface and the rules it could not check.
+if (GATE) {
+  const idleSnapshot = snapshots.find((s) => s.state === "idle");
+  const idleByRole = new Map((idleSnapshot?.readings ?? []).map((r) => [r.roleId, r]));
+  let failed = 0;
+
+  console.log("\n=== declared expectations ===");
+  for (const expectation of STATE_EXPECTATIONS) {
+    const snapshot = snapshots.find((s) => s.state === expectation.state);
+    if (!snapshot || !snapshot.entered) {
+      failed += 1;
+      console.log(
+        `  FAIL  [${expectation.state}] ${expectation.role} — the state was not entered, so the rule was never checked`,
+      );
+      continue;
+    }
+    const reading = snapshot.readings.find((r) => r.roleId === expectation.role);
+    const result = evaluateExpectation(expectation, reading, idleByRole.get(expectation.role));
+    if (result.ok) {
+      console.log(`  PASS  [${expectation.state}] ${expectation.role}`);
+    } else {
+      failed += 1;
+      console.log(`  FAIL  [${expectation.state}] ${expectation.role}: ${result.failures.join("; ")}`);
+      console.log(`        because: ${result.because}`);
+    }
+  }
+
+  if (failed > 0) {
+    console.error(`\n${failed} declared expectation(s) FAILED`);
+    process.exit(EXIT_GATE);
+  }
+  console.log(`\nall ${STATE_EXPECTATIONS.length} declared expectations hold`);
+}
+
 if (unreached.length) {
   console.error(`\n${unreached.length} state(s) could not be entered: ${unreached.map((s) => s.state).join(", ")}`);
   process.exit(EXIT_STATE_UNREACHED);
 }
+
 process.exit(0);
