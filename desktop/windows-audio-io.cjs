@@ -67,7 +67,9 @@ function registerWindowsAudioIoHandlers(ipcMain, options = {}) {
     if (!webContents || senderCleanup.has(webContents.id)) return;
     const cleanup = () => {
       senderCleanup.delete(webContents.id);
-      void stopOwned(webContents.id);
+      void stopOwned(webContents.id).catch((error) => {
+        console.error("[windows-audio] Could not confirm utility shutdown after the window closed:", error);
+      });
     };
     senderCleanup.set(webContents.id, cleanup);
     webContents.once("destroyed", cleanup);

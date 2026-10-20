@@ -52,7 +52,8 @@ const IS_SMOKE = process.env.KYX_SMOKE === "1";
 const IS_WINDOWS_AUDIO_DEVICE_SMOKE = process.env.KYX_WINDOWS_AUDIO_DEVICE_SMOKE === "1";
 const AUDIO_BRIDGE_SMOKE_BLOCKS = 3_000;
 const AUDIO_BRIDGE_SMOKE_TIMEOUT_MS = 45_000;
-if (IS_SMOKE || IS_WINDOWS_AUDIO_DEVICE_SMOKE) app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+if (IS_SMOKE || IS_WINDOWS_AUDIO_DEVICE_SMOKE)
+  app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
 let mainWindow = null;
 let quittingAfterMrt2Stop = false;
@@ -216,7 +217,13 @@ app.on("before-quit", (event) => {
   if (!quittingAfterWindowsAudioStop && windowsAudioIo?.activeSessions().length) {
     event.preventDefault();
     quittingAfterWindowsAudioStop = true;
-    void windowsAudioIo.stopAll().finally(() => app.quit());
+    void windowsAudioIo.stopAll().then(
+      () => app.quit(),
+      (error) => {
+        console.error("[windows-audio] Could not confirm utility shutdown before quitting:", error);
+        app.quit();
+      },
+    );
   }
 });
 

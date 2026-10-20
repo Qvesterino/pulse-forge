@@ -1252,6 +1252,52 @@ describe("PcmMicRecorder", () => {
     });
   });
 
+  it("cancels a group with one prepared recorder while another permission prompt is pending", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const lead = createRecorder({ inputDeviceId: "input-lead", trackId: "track-lead" });
+    const bass = createRecorder({
+      deferMicrophonePermission: true,
+      context: lead.context,
+      inputDeviceId: "input-bass",
+      trackId: "track-bass",
+    });
+    const leadBegin = vi.spyOn(lead.recovery, "begin");
+    const leadRemove = vi.spyOn(lead.recovery, "remove");
+    const bassBegin = vi.spyOn(bass.recovery, "begin");
+    const createSource = lead.context.createMediaStreamSource as unknown as ReturnType<typeof vi.fn>;
+    createSource.mockReturnValueOnce(lead.source).mockReturnValueOnce(bass.source);
+    const group = new PcmMicRecorderGroup([
+      { id: "track-lead", dependencies: lead.dependencies, getMetadata: lead.metadata },
+      { id: "track-bass", dependencies: bass.dependencies, getMetadata: bass.metadata },
+    ]);
+
+    const nodeCountBeforeStart = FakeWorkletNode.instances.length;
+    const starting = group.start();
+    await vi.waitFor(() => {
+      expect(leadBegin).toHaveBeenCalledOnce();
+      expect(bass.getUserMedia).toHaveBeenCalledOnce();
+      expect(bassBegin).not.toHaveBeenCalled();
+    });
+    const [leadNode] = FakeWorkletNode.instances.slice(nodeCountBeforeStart);
+    if (!leadNode) throw new Error("The first input was not prepared before the pending permission prompt");
+    expect(leadNode.sent).not.toContainEqual(expect.objectContaining({ type: "start" }));
+
+    await group.stop();
+    await expect(starting).rejects.toThrow(/cancelled/i);
+    await vi.waitFor(() => expect(leadRemove).toHaveBeenCalledOnce());
+    expect(leadRemove).toHaveBeenCalledWith(leadBegin.mock.calls[0]?.[0].id);
+    expect(lead.track.stop).toHaveBeenCalledOnce();
+    expect(lead.source.disconnect).toHaveBeenCalledOnce();
+    expect(leadNode.port.close).toHaveBeenCalledOnce();
+    expect(leadNode.sent).not.toContainEqual(expect.objectContaining({ type: "start" }));
+    expect(group.state).toBe("complete");
+    expect(isMicRecordingActive()).toBe(false);
+
+    bass.resolveMicrophonePermission();
+    await vi.waitFor(() => expect(bass.track.stop).toHaveBeenCalledOnce());
+    expect(bassBegin).not.toHaveBeenCalled();
+  });
+
   it("times out a group whose permission prompts never settle and closes late streams", async () => {
     vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
     vi.useFakeTimers();

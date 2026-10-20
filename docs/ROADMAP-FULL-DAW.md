@@ -28,8 +28,9 @@ work over adding feature count.
    path from a blank project to an editable, saved and exported beat.
 5. **P1 — Prepare a trustworthy release:** close signing, update, licensing,
    privacy, recovery and platform-support gaps for the capabilities that ship.
-6. **P2 — Add desktop VST3 hosting:** begin after the native audio boundary,
-   SDK route and offline-render contract have evidence and an ADR.
+6. **P2 — Expand desktop VST3 hosting:** the metadata-only structural scanner
+   is shipped; begin SDK-backed factory enumeration and offline render-through
+   after the native audio boundary and render contract have evidence.
 7. **Differentiation:** advance AI assistance only when reversible edits show
    measurable workflow or listening improvements; it must remain optional.
 
@@ -53,7 +54,7 @@ measurements make estimates credible.
 | 4     | Make pattern-to-song creation dependable        | Clear pattern, piano-roll and song roles; target-duration song arrangement; full-form playback and export, starting with ~3-minute projects                            | A user creates a 180-second song, saves/reopens it, plays it to the end and exports the same form without pattern-boundary truncation                                                   |
 | 5     | Add independent MIDI track lanes                | Multi-bar MIDI clips on instrument lanes, sharing the song timeline with scene and audio clips                                                                         | 90+ bar projects support clip editing, note resizing, undo/redo, save/reopen, live playback and offline parity                                                                          |
 | 6     | Complete release readiness                      | Product/content/model licensing and privacy inventory, signed installer, update/recovery path, current release report and published support matrix                     | A clean release candidate installs, updates, recovers projects and passes declared platform, security, licensing and deployed-smoke gates                                               |
-| 7     | Add the desktop plug-in ecosystem               | Isolated VST3 scanning/hosting, saved state, automation, channel layouts, PDC and offline-render rules                                                                 | Plug-in projects reopen; crashes are contained; latency and real-time/offline behavior are verified on the compatibility set                                                            |
+| 7     | Add the desktop plug-in ecosystem               | SDK-backed VST3 factory enumeration and isolated offline render-through, followed by saved state, automation, channel layouts, PDC and real-time hosting               | Plug-in projects reopen; crashes are contained; latency and real-time/offline behavior are verified on the compatibility set                                                            |
 | 8     | Expand AI assistance against listening evidence | Optional producer/mix assistance with reversible edits and a human blind-listening benchmark                                                                           | Demonstrated workflow or listening improvement over baseline; unavailable models never block core DAW use                                                                               |
 
 Release-readiness work (licensing, signing, update/recovery, support claims)
@@ -466,8 +467,11 @@ export.
 
 ## Phase 4 — desktop plugin ecosystem
 
-- [ ] Prototype a VST3 scanner/host outside the UI process; blacklist crashes
-      and timeouts; never load untrusted plug-in code in the renderer.
+- [x] Ship metadata-only VST3 bundle scanning outside the UI process; the
+      Wave 1 probe never loads or executes plug-in code (ADR 0035).
+- [ ] Add SDK-backed factory enumeration and offline render-through in a
+      crash-isolated native host process; never load plug-in code in the
+      renderer, and contain crashes and timeouts per plug-in.
 - [ ] Implement plug-in identity/version, state save/restore, parameter
       automation, sidechain/channel layouts, bypass, PDC and project portability.
 - [ ] Define offline render and freeze semantics. If a plug-in cannot render

@@ -168,6 +168,12 @@ WER `ReportArchive` directory failed with `Access denied`, so the report payload
 and any dump remain unavailable. This check opened no stream and does not show
 that the earlier capture `Start()` hang has been resolved.
 
+A fresh metadata-only query at 2026-10-20 06:16 +02:00 again found every Volt
+capture/render endpoint `not-present`. Active Creative and Realtek capture
+endpoints and MSI/Realtek render endpoints reported 48 kHz float32 with shared
+periods of 480 frames, except Realtek render at 512. No stream was opened; this
+does not qualify capture startup or duplex recovery.
+
 ## Reference endpoints detected in the original 2026-09 session
 
 Windows reported these active Universal Audio endpoints in the original session:

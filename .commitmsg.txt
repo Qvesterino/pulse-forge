@@ -1,10 +1,17 @@
-chore: remove the temporary new-metric probe
+test(audit): make the measurement guard falsifiable without touching production code
 
-scripts/_probe-newmetric.mjs was a throwaway diagnostic that compared four
-candidate metrics (postAmp, fullAmp, fullCorr, fullEnv) for signal-to-noise
-against a genuine noise control. Its findings are now recorded in the code
-comments of src/plugin-audit-checks.ts and in the commit message for the
-envelope metric, so the script itself has no reason to stay in the tree.
+The guard in tests/plugin-audit-measurement.test.ts reads the audit source to
+check the measurement contract. It now reads it from KYX_AUDIT_SOURCE when
+that is set, so the guard can be pointed at a DOCTORED COPY and shown to
+fail. A guard that cannot be shown to fail is not a guard.
 
-It ended up tracked because a parallel session committed the working tree
-while it was still on disk.
+Falsified with four mutations, all detected:
+
+  F1  "choral" removed from SAMPLE_DRIVEN_INSTRUMENTS  -> guard fails
+  F2  "tsar" added to SAMPLE_DRIVEN_INSTRUMENTS        -> guard fails
+  F3  the mix-class wiring probe removed from
+      hostProcesses                                     -> guard fails
+  F4  the envelope term removed from deltaVs            -> guard fails
+
+Nothing in src/ was modified to produce them; each mutation was applied to a
+copy in a temp directory and passed to the test through the env var.

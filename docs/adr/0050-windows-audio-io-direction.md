@@ -436,6 +436,13 @@ and [recovering from an invalid device](https://learn.microsoft.com/en-us/window
   a `Start()` that returns after cancellation; a call that never returns still
   requires the isolated utility watchdog and leaves the AudioSrv root cause
   unresolved.
+- The Electron manager now waits for the utility process's `exit` event after
+  forced termination before it creates a replacement session. If the process
+  does not exit within the bounded confirmation interval, the old session stays
+  tracked and the replacement is rejected. Window-close and app-quit call sites
+  handle a failed exit confirmation without creating an unhandled rejection;
+  manager regression tests cover both the recovery boundary and window-close
+  failure reporting.
 - Native Windows audio I/O is **implemented with qualification open**. The
   next step is to investigate the service hang without opening another stream
   until Windows audio recovers and the cause is better understood. Preserve

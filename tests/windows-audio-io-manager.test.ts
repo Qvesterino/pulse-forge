@@ -202,7 +202,7 @@ describe("Windows audio session manager", () => {
       host.exitOnStop = false;
       host.exitOnKill = false;
 
-      const replacement = start({ sender: harness.webContents }, request).then(
+      const replacement = (start({ sender: harness.webContents }, request) as Promise<unknown>).then(
         () => ({ resolved: true as const }),
         (error: unknown) => ({ resolved: false as const, error }),
       );
@@ -214,9 +214,8 @@ describe("Windows audio session manager", () => {
       const outcome = await replacement;
       expect(outcome.resolved).toBe(false);
       if (outcome.resolved) throw new Error("replacement started before the old utility exited");
-      expect(outcome.error).toMatchObject({
-        message: expect.stringMatching(/did not exit after termination was requested/),
-      });
+      if (!(outcome.error instanceof Error)) throw new Error("replacement shutdown failed without an Error reason");
+      expect(outcome.error.message).toMatch(/did not exit after termination was requested/);
       expect(harness.manager.activeSessions()).toEqual([first.sessionId]);
       expect(harness.utilityProcess.fork).toHaveBeenCalledOnce();
 
@@ -226,6 +225,38 @@ describe("Windows audio session manager", () => {
       expect(harness.utilityProcess.fork).toHaveBeenCalledTimes(2);
       await harness.manager.stopAll();
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("logs a shutdown failure after window close without dropping the live utility session", async () => {
+    vi.useFakeTimers();
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const harness = managerHarness();
+      const start = harness.handlers.get("kyx:audio:windows-start");
+      if (!start) throw new Error("audio start handler was not registered");
+
+      const result = (await start({ sender: harness.webContents }, request)) as { sessionId: string };
+      const host = harness.hosts[0];
+      if (!host) throw new Error("audio utility host was not started");
+      host.exitOnStop = false;
+      host.exitOnKill = false;
+
+      harness.webContents.emit("destroyed");
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      expect(host.killed).toBe(true);
+      expect(harness.manager.activeSessions()).toEqual([result.sessionId]);
+      expect(errorLog).toHaveBeenCalledWith(
+        expect.stringContaining("Could not confirm utility shutdown after the window closed"),
+        expect.any(Error),
+      );
+
+      host.emit("exit", 1);
+      expect(harness.manager.activeSessions()).toEqual([]);
+    } finally {
+      errorLog.mockRestore();
       vi.useRealTimers();
     }
   });

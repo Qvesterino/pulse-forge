@@ -146,7 +146,10 @@ describe("ArrangementPanel", () => {
       const doc = createProjectFromTemplate("house");
       const services = mockServices(doc);
       services.store = new ProjectStore(doc);
-      renderWithContext(<ArrangementPanel />, { services });
+      await act(async () => {
+        renderWithContext(<ArrangementPanel />, { services });
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      });
 
       const user = (await import("@testing-library/user-event")).default.setup();
       await user.selectOptions(screen.getByLabelText("Arm track for recording"), doc.tracks[0]!.id);
@@ -159,13 +162,23 @@ describe("ArrangementPanel", () => {
 
       await screen.findAllByRole("option", { name: "Volt Input 1" });
       await user.selectOptions(screen.getByLabelText("Audio input device"), "volt-input-1");
-      const secondTrackId = doc.tracks.find((track) => track.id !== doc.tracks[0]!.id)!.id;
+      const secondTrack = doc.tracks.find((track) => track.id !== doc.tracks[0]!.id)!;
+      const secondTrackId = secondTrack.id;
       await user.selectOptions(screen.getByLabelText("Independent input 2 track"), secondTrackId);
 
       const secondDevice = screen.getByLabelText("Independent input 2 device") as HTMLSelectElement;
       expect(Array.from(secondDevice.options).map((option) => option.value)).not.toContain("volt-input-1");
       await user.selectOptions(secondDevice, "volt-input-2");
       expect(recordButton).toBeEnabled();
+
+      const secondTrackMonitor = screen.getByRole("checkbox", { name: `Monitor ${secondTrack.name} input` });
+      expect(secondTrackMonitor).not.toBeChecked();
+      await user.click(secondTrackMonitor);
+      expect(secondTrackMonitor).toBeChecked();
+
+      await user.click(screen.getByRole("button", { name: "DRY SOFT MON OFF" }));
+      expect(screen.getByRole("button", { name: "DRY SOFT MON ON" })).toHaveAttribute("aria-pressed", "true");
+      expect(secondTrackMonitor).toBeChecked();
 
       await user.selectOptions(screen.getByLabelText("Arm track for recording"), secondTrackId);
       expect(screen.getByLabelText("Independent input 2 track")).toHaveValue("");

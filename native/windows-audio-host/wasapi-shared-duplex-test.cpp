@@ -94,6 +94,13 @@ void unavailableExactIdsFailWithoutSelectingCurrentDefaults() {
           "missing endpoint did not retain the native startup phase and direction");
   require(snapshot.negotiation.sampleRateHz == 0,
           "missing endpoint unexpectedly returned a successful negotiation");
+
+  session.stop();
+  const auto afterStop = session.snapshot();
+  require(afterStop.state == kyx::windows_audio::SharedModeDuplexState::failed,
+          "Stop after failed startup erased the endpoint failure state");
+  require(!afterStop.lastError.empty() && afterStop.lastError == snapshot.lastError,
+          "Stop after failed startup erased the original endpoint error");
 }
 
 void stopCanOverlapAnInProgressStart() {
