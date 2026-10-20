@@ -32,7 +32,7 @@ import { testDoc } from "./fixtures/doc";
 
 const LEVELS: ReadonlyArray<readonly [DegreeLevel, readonly string[]]> = [
   [1, ["barely", "almost imperceptibly", "hardly", "the tiniest bit"]],
-  [2, ["a touch", "a hair", "just a tiny bit", "a tad"]],
+  [2, ["a touch", "a hair", "tiny bit", "a tiny bit", "just a tiny bit", "a tad"]],
   [3, ["slightly", "a little", "a bit", "trochu", "subtle"]],
   [4, ["somewhat", "moderately", "fairly"]],
   [5, ["considerably", "significantly", "noticeably", "quite"]],
@@ -91,6 +91,11 @@ describe("degree taxonomy — the seven ordered levels", () => {
     expect(degree).not.toBeNull();
     expect(degree!.level).toBe(1);
     expect(degree!.value).toBeLessThan(parseDegree("make it slightly quieter")!.value);
+  });
+
+  it("keeps 'a tiny bit' at the very-small level when scoped to its target", () => {
+    const text = "make the reverb a tiny bit quieter";
+    expect(parseDegree(text, text.indexOf("quieter"))!.level).toBe(2);
   });
 
   it("a softener in front of 'too much' is one phrase, not two competing tokens", () => {

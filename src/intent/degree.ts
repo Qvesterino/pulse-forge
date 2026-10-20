@@ -99,7 +99,7 @@ const DEGREE_BANDS: readonly DegreeBand[] = [
     name: "minimal",
     value: 0.2,
     words:
-      /\b(?:barely|hardly|scarcely|minimally|takmer|minimalne|almost imperceptibly|nearly imperceptibly|the tiniest bit|tiny bit|a hair's breadth|as little(?:\s+[a-z-]+){0,3}\s+as possible|as little as you can|as small(?:\s+[a-z-]+){0,3}\s+as possible|as minimally as possible|the least possible)\b/,
+      /\b(?:barely|hardly|scarcely|minimally|takmer|minimalne|almost imperceptibly|nearly imperceptibly|the tiniest bit|a hair's breadth|as little(?:\s+[a-z-]+){0,3}\s+as possible|as little as you can|as small(?:\s+[a-z-]+){0,3}\s+as possible|as minimally as possible|the least possible)\b/,
   },
   {
     level: 2,
@@ -108,7 +108,7 @@ const DEGREE_BANDS: readonly DegreeBand[] = [
     // (0.35), so this slot renumbers nothing. Sits at 0.27, i.e. clearly
     // weaker than "a little" and clearly stronger than "barely".
     value: 0.27,
-    words: /\b(?:a hair|a jot|a touch|a tad|a smidge|just a tiny bit|a smidge more|nepatrno|o vlasko)\b/,
+    words: /\b(?:a hair|a jot|a touch|a tad|a smidge|tiny bit|just a tiny bit|a smidge more|nepatrno|o vlasko)\b/,
   },
   {
     level: 3,
