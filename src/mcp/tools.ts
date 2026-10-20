@@ -306,6 +306,29 @@ const OUTPUT_PUBLISH: McpOutputSchema = {
   },
   required: ["galleryId", "origin", "agent"],
 };
+/** kyx_import_sfz — bounded read-back of the imported library mapping. */
+const OUTPUT_SFZ_IMPORT: McpOutputSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    name: { type: "string" },
+    trackId: { type: "string" },
+    fallbackSampleId: { type: "string" },
+    importedSamples: { type: "number" },
+    velocityLayers: { type: "number" },
+    missingSamples: { type: "number" },
+    skippedSamples: { type: "number" },
+  },
+  required: [
+    "name",
+    "trackId",
+    "fallbackSampleId",
+    "importedSamples",
+    "velocityLayers",
+    "missingSamples",
+    "skippedSamples",
+  ],
+};
 export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_intent",
@@ -1155,6 +1178,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["name", "sfzBase64", "trackId", "samples"],
     },
+    outputSchema: OUTPUT_SFZ_IMPORT,
   },
   {
     name: "kyx_publish_gallery",
@@ -3764,10 +3788,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
     }
     case "kyx_import_sfz": {
       if (ctx.importSamples == null) {
-        return {
-          text: "sample import is not available over this transport — import SFZ libraries from a live KYX session (web or desktop)",
-          mutated: false,
-        };
+        return mcpError(
+          "UNAVAILABLE_ON_TRANSPORT",
+          "sample import is not available over this transport — import SFZ libraries from a live KYX session (web or desktop)",
+        );
       }
       const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
       const name = typeof record.name === "string" ? record.name.trim() : "";
@@ -3783,11 +3807,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
           )
         : [];
       if (name === "" || sfzBase64 === "" || trackId === "" || samples.length === 0) {
-        return {
-          text:
-            "kyx_import_sfz needs name, sfzBase64, trackId and at least one sample — " + "list tracks via kyx_state",
-          mutated: false,
-        };
+        return mcpError(
+          "INVALID_ARGUMENTS",
+          "kyx_import_sfz needs name, sfzBase64, trackId and at least one sample — list tracks via kyx_state",
+        );
       }
       let result: Awaited<ReturnType<NonNullable<McpToolContext["importSamples"]>>>;
       try {
@@ -3810,6 +3833,15 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
             ? `MISSING from the import: ${r.missing.map((m) => m.fileName).join(", ")} — those zones stay silent.`
             : "All SFZ regions resolved."),
         mutated: true,
+        data: {
+          name,
+          trackId: r.trackId,
+          fallbackSampleId: r.fallbackSampleId,
+          importedSamples: r.imported,
+          velocityLayers: r.layers,
+          missingSamples: r.missing.length,
+          skippedSamples: r.skipped.length,
+        },
       };
     }
     case "kyx_publish_gallery": {

@@ -6,6 +6,7 @@ import {
   applyArrangeOps,
   applyClipArrangeOps,
   parseArrangeIntent,
+  parseSelectedAudioClipFadeIntent,
   parseSelectedClipArrangeIntent,
   parseSelectedTimeRangeIntent,
   resolveSceneTarget,
@@ -401,5 +402,73 @@ describe("effect-word stand-down (failure-mining wave 4)", () => {
     // The effect word IS the new section here — the stand-down must not fire.
     const p = parseArrangeIntent("add a chorus before the drop", doc);
     expect(p.ops[0]).toMatchObject({ op: "addRole", role: "chorus" });
+  });
+});
+
+/**
+ * P2 — FADE CALIBRATION (2026-10-20).
+ *
+ * A fade length is a fraction of the CLIP's duration, calibrated through the
+ * same seven semantic levels as the fader/knob layers. Relative asks scale the
+ * edge's CURRENT fade; "as long as possible" owns the whole clip; "as short as
+ * possible" is the minimal level. A fade with no edge, no explicit length and
+ * no existing fade still declines instead of guessing.
+ */
+describe("fade degree calibration", () => {
+  const fadeDoc = (fadeIn = 0, fadeOut = 1) => {
+    const base = createDefaultProject();
+    const trackId = base.tracks.find((track) => track.kind !== "group")!.id;
+    const clip = {
+      id: "fade-clip",
+      trackId,
+      bufferId: "user.fade",
+      startBar: 0,
+      lengthBars: 8,
+      offsetSec: 0,
+      trimStart: 0,
+      trimEnd: 0,
+      gain: 1,
+      fadeIn,
+      fadeOut,
+      stretchRate: 1,
+      reverse: false,
+    };
+    const doc: ProjectDocument = {
+      ...base,
+      bpm: 120,
+      arrangement: { ...base.arrangement, audioClips: [clip] },
+    };
+    return { doc, clipId: clip.id };
+  };
+  const secondsOf = (text: string, fadeIn = 0, fadeOut = 1): number | null => {
+    const { doc, clipId } = fadeDoc(fadeIn, fadeOut);
+    const ops = parseSelectedAudioClipFadeIntent(text, doc, clipId);
+    return ops?.[0]?.op === "fadeClip" ? ops[0].seconds : null;
+  };
+
+  it("a relative ask scales the CURRENT fade by the spoken level", () => {
+    // 8 bars at 120 BPM = 16 s clip.
+    expect(secondsOf("fade out the selected clip much longer")).toBeCloseTo(1.5, 6);
+    expect(secondsOf("fade out the selected clip slightly shorter")).toBeCloseTo(0.9, 6);
+    expect(secondsOf("fade out the selected clip a little longer")).toBeCloseTo(1.1, 6);
+  });
+
+  it("an outcome ask sizes the fade as a fraction of the clip", () => {
+    expect(secondsOf("fade in the selected clip slightly")).toBeCloseTo(1.6, 6);
+    expect(secondsOf("fade in the selected clip as short as possible")).toBeCloseTo(0.32, 6);
+    expect(secondsOf("fade in the selected clip as long as possible")).toBeCloseTo(16, 6);
+  });
+
+  it("never outlives the clip", () => {
+    expect(secondsOf("fade in the selected clip much longer", 15, 0)).toBeCloseTo(16, 6);
+  });
+
+  it("explicit seconds still win over every qualifier", () => {
+    expect(secondsOf("fade out the selected clip over 2 s slightly")).toBeCloseTo(2, 6);
+  });
+
+  it("declines when there is no base: no edge, no explicit length, no fade", () => {
+    expect(secondsOf("fade the selected clip slightly", 0, 0)).toBeNull();
+    expect(secondsOf("fade out the selected clip a little longer", 0, 0)).toBeNull();
   });
 });

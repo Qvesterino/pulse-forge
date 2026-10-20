@@ -64,6 +64,13 @@ describe("App (top-level shell)", () => {
       services,
     });
     try {
+      // Warm the lazy chunk BEFORE the click — the same reason the Studio I/O
+      // test above warms IoPanel: the arrangement panel is a lazy() import
+      // whose module graph takes seconds to transform under load, and the
+      // 1 s waitFor below would expire before the panel ever mounted. The
+      // assertion has to be about the duplicate behaviour, not about the
+      // import queue.
+      await import("../../src/ui/ArrangementPanel");
       await user.click(screen.getByRole("button", { name: "Toggle arrangement and scenes" }));
       const clip = await waitFor(() => {
         const node = view.container.querySelector<HTMLElement>(".arr-clip");
@@ -206,18 +213,22 @@ describe("App (top-level shell)", () => {
       // already applied" when the handoff started describing what KYX does
       // with the pack. Pin mood + BPM + the applied semantics.
       expect(screen.getByText(/dark style and 145 BPM are already applied/)).toBeInTheDocument();
-      await user.selectOptions(screen.getByRole("combobox", { name: "Previous DAW profile" }), "pro-tools");
-      expect(window.localStorage.getItem("pf-daw-profile-v1")).toBe("pro-tools");
+      // The guided starter is a FOCUSED flow: the DAW-profile picker belongs
+      // to the general tour, so it is not offered inside the starter.
+      expect(screen.queryByRole("combobox", { name: "Previous DAW profile" })).toBeNull();
 
       await user.click(screen.getByRole("button", { name: "NEXT" }));
-      expect(screen.getByText(/2\/4 — LISTEN AND CHOOSE/)).toBeInTheDocument();
+      expect(screen.getByText(/2\/4 — PREVIEW AND ADD/)).toBeInTheDocument();
       await user.click(screen.getByRole("button", { name: "NEXT" }));
-      expect(screen.getByText(/3\/4 — ARRANGE AND MIX/)).toBeInTheDocument();
-      expect(screen.getByText("Your Pro Tools equivalent is Edit window.")).toBeInTheDocument();
+      expect(screen.getByText(/3\/4 — SAVE AND REOPEN/)).toBeInTheDocument();
       await user.click(screen.getByRole("button", { name: "NEXT" }));
-      expect(screen.getByText("You may know this as Bounce Mix.")).toBeInTheDocument();
+      expect(screen.getByText(/4\/4 — EXPORT YOUR SONG/)).toBeInTheDocument();
+
+      // Finishing writes the starter's OWN tour key, and the general tour
+      // stays marked done so it does not follow the starter around.
+      await user.click(screen.getByRole("button", { name: "LET'S FORGE" }));
       expect(window.localStorage.getItem("pf-tour-v1")).toBe("1");
-      expect(window.localStorage.getItem("pf-song-starter-tour-v1")).toBeNull();
+      expect(window.localStorage.getItem("pf-song-starter-tour-v1")).toBe("1");
     } finally {
       view.unmount();
       for (const [key, value] of previousLocal) {

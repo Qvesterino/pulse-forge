@@ -2515,6 +2515,8 @@ describe("kyx_import_sfz — user library import", () => {
       trackId: "track-1",
       samples: [{ fileName: "a.wav", base64: b64("wav") }],
     });
+    expect(result.isError).toBe(true);
+    expect(result.errorCode).toBe("UNAVAILABLE_ON_TRANSPORT");
     expect(result.mutated).toBe(false);
     expect(result.text).toContain("not available over this transport");
   });
@@ -2523,6 +2525,8 @@ describe("kyx_import_sfz — user library import", () => {
     const store = new ProjectStore(datasetDoc());
     const ctx = ctxWithCapability(store);
     const empty = await executeMcpToolAsync(ctx, "kyx_import_sfz", {});
+    expect(empty.isError).toBe(true);
+    expect(empty.errorCode).toBe("INVALID_ARGUMENTS");
     expect(empty.mutated).toBe(false);
     expect(empty.text).toContain("name, sfzBase64, trackId and at least one sample");
   });
@@ -2542,6 +2546,26 @@ describe("kyx_import_sfz — user library import", () => {
       ],
     });
     expect(result.mutated).toBe(true);
+    expect(result.data).toEqual({
+      name: "My Cello",
+      trackId: store.doc.tracks[0].id,
+      fallbackSampleId: "user.sfz.mycello.k60z1",
+      importedSamples: 2,
+      velocityLayers: 2,
+      missingSamples: 0,
+      skippedSamples: 0,
+    });
+    expect(MCP_TOOLS.find((tool) => tool.name === "kyx_import_sfz")?.outputSchema).toMatchObject({
+      required: [
+        "name",
+        "trackId",
+        "fallbackSampleId",
+        "importedSamples",
+        "velocityLayers",
+        "missingSamples",
+        "skippedSamples",
+      ],
+    });
     expect(result.text).toContain("2 velocity/keyzone layers");
     expect(result.text).not.toContain("MISSING");
     expect(ctx.__calls.length).toBe(1);

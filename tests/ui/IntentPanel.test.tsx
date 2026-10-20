@@ -291,6 +291,22 @@ describe("IntentPanel", () => {
     expect(detected.textContent!.length).toBeGreaterThan(0);
   });
 
+  it("shows the inferred param delta BEFORE execution", async () => {
+    const project = createProjectFromTemplate("house");
+    const services = mockServices(project);
+    renderWithContext(<IntentPanel />, { services });
+    fireEvent.change(screen.getByLabelText(/Intent description/i), {
+      target: { value: "make the reverb tail a little longer on the 808" },
+    });
+    const plan = await screen.findByLabelText("Param plan");
+    expect(plan.textContent).toContain("reverb.decay");
+    expect(plan.textContent).toContain("1.80 s");
+    expect(plan.textContent).toContain("3.39 s");
+    expect(plan.textContent).toContain("8% linear");
+    // The preview is a PLAN: typing must not apply anything.
+    expect(services.store.execute).not.toHaveBeenCalled();
+  });
+
   it("routes a creative DO IT brief to generation without consulting the action model", async () => {
     const generate = vi.fn(async () => JSON.stringify({ kind: "fader", targets: ["bass"], direction: "down" }));
     setIntentModelProvider({ id: "test-action-model", version: "1", generate });

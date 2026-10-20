@@ -103,7 +103,7 @@ const PARAM_ROLES: Record<ParamRole, ParamRoleDef> = {
     params: { compressor: "release", limiter: "release", gate: "release" },
   },
   cutoff: {
-    words: /\bcutoff\b|\bcut.?off\b|\bfreq(?:uency)?\b|\bfrekvenc/,
+    words: /\bcutoff\b|\bcut.?off\b|\b(?:filter|filtr|svf)\s+(?:freq|frekvenc)|\bfrekvenc\w*\s+(?:filter|filtr)/,
     params: { svFilter: "cutoff" },
     impliedEffect: "svFilter",
   },
@@ -675,6 +675,7 @@ export function paramPlan(intent: ParamIntent, doc: Parameters<typeof applyMixIn
     }
     const trackId = ids[0] as string;
     const track = doc.tracks.find((candidate) => candidate.id === trackId);
+    const trackName = track?.name ?? target;
     const adding = !(track && "effects" in track && track.effects.some((effect) => effect.type === intent.effectType));
     const current = currentParamValue(doc, trackId, intent.effectType, intent.paramId);
     const preview = paramMovePreview(intent, current);
@@ -686,7 +687,7 @@ export function paramPlan(intent: ParamIntent, doc: Parameters<typeof applyMixIn
         ? `${fmt(preview.current)} → ${fmt(preview.proposed)} (clamped to ${fmt(preview.next)})`
         : `${fmt(preview.current)} → ${fmt(preview.next)}`;
     const label =
-      `${target}: ${intent.effectType}.${intent.paramId} ${values} · ` +
+      `${trackName}: ${intent.effectType}.${intent.paramId} ${values} · ` +
       `${fractionPct != null ? `${fractionPct}% ${preview.domain}` : "set"}` +
       `${clamped && preview.mode !== "set" ? " (clamped)" : ""}${adding ? " (add)" : ""}`;
     lines.push({
@@ -766,4 +767,3 @@ export function paramReadback(
   if (entries.length === 0) return "";
   return entries.slice(0, 3).join(", ") + (entries.length > 3 ? ` +${entries.length - 3}` : "");
 }
-

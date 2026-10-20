@@ -30,7 +30,16 @@ vi.mock("../../src/export/project-io", async (importOriginal) => {
 function makeCore(saved: ProjectDocument[]): CoreServices {
   return {
     engine: {} as CoreServices["engine"],
-    bank: {} as CoreServices["bank"],
+    // The import path installs portable assets before it saves, and that step
+    // reads the sample bank (entries/has). A bare `{}` bank made the import
+    // throw, so the save never happened and the test measured the MOCK, not
+    // the contract it claims to pin.
+    bank: {
+      entries: () => [],
+      has: () => false,
+      add: () => {},
+      remove: () => {},
+    } as unknown as CoreServices["bank"],
     repo: {
       listAll: vi.fn(async () => []),
       listIncompatible: vi.fn(async () => []),

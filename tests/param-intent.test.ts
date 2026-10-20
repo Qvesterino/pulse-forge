@@ -275,7 +275,7 @@ describe("seven-level calibration across parameter families", () => {
       effectType: "saturation",
       paramId: "tone",
       direction: "more",
-      domain: "linear",
+      domain: "log",
       current: 6000,
     },
     {

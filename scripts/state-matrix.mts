@@ -31,11 +31,14 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { bootStudio } from "./lib/studio-boot.mjs";
 import {
+  CONTRAST_EXPECTATIONS,
   STATE_EXPECTATIONS,
   STATE_ROLES,
   STATES,
+  evaluateContrast,
   evaluateExpectation,
   readStateMatrix,
+  type ContrastResult,
   type PixelContrast,
   type StateSnapshot,
 } from "../src/ui/stateMatrix";
@@ -59,6 +62,8 @@ const PIXELS = argv.includes("--pixels") || GATE;
 const EXIT_GATE = 1;
 const EXIT_STATE_UNREACHED = 1;
 const EXIT_HARNESS_ERROR = 2;
+/** WCAG AA for normal text. The floor every role's text is measured against. */
+const AA_FLOOR = 4.5;
 process.on("uncaughtException", (error) => {
   console.error(`HARNESS_ERROR (not a result - nothing was measured): ${error?.message ?? error}`);
   process.exit(EXIT_HARNESS_ERROR);
@@ -386,7 +391,6 @@ async function measureContrastByPixels(): Promise<Map<string, PixelContrast>> {
             }
           }
         }
-      }
 
         let worst: { count: number; ratio: number; bg: number[]; text: string; x: number; y: number } | null = null;
         let sliver: { count: number; ratio: number; bg: number[]; text: string; x: number; y: number } | null = null;
@@ -404,8 +408,10 @@ async function measureContrastByPixels(): Promise<Map<string, PixelContrast>> {
          */
         const minShare = Math.max(2, total * 0.1);
         let overall: { count: number; ratio: number; bg: number[]; text: string; x: number; y: number } | null = null;
+        let belowFloorPixels = 0;
         for (const group of groups.values()) {
           if (!overall || group.ratio < overall.ratio) overall = group;
+          if (group.ratio < AA_FLOOR) belowFloorPixels += group.count;
           if (group.count >= minShare) {
             if (!worst || group.ratio < worst.ratio) worst = group;
           } else if (!sliver || group.ratio < sliver.ratio) sliver = group;
@@ -432,6 +438,17 @@ async function measureContrastByPixels(): Promise<Map<string, PixelContrast>> {
           worstPixel: worst ? { x: worst.x, y: worst.y } : null,
           sliverContrast: sliver ? Math.round(sliver.ratio * 100) / 100 : null,
           sliverPixels: sliver ? sliver.count : 0,
+          /**
+           * How MUCH of the text falls below the AA floor — the share, not the
+           * worst pixel.
+           *
+           * The minimum alone cannot tell "this text is unreadable" from "one
+           * glyph edge grazed a highlight". The share can: 100% of the index
+           * on a 4.45:1 surface is a defect, and 0.6% of a pattern chip on a
+           * 4.25:1 gradient corner is not.
+           */
+          belowFloorPixels,
+          belowFloorShare: count === 0 ? 0 : Math.round((belowFloorPixels / count) * 1000) / 1000,
           textColors: region.colors,
         };
         if (count === 0) out.push({ ...shape, minContrast: null, meanContrast: null });
@@ -526,8 +543,9 @@ async function record(stateId: string, entered: boolean, note?: string) {
         r.pixelContrast?.sliverContrast != null
           ? `  (stray ${r.pixelContrast.sliverContrast}:1 on ${r.pixelContrast.sliverPixels}px)`
           : "";
+      const share = r.pixelContrast ? `  below${(r.pixelContrast.belowFloorShare * 100).toFixed(1)}%` : "";
       console.log(
-        `      ${r.roleId.padEnd(20)} static ${staticText.padStart(9)}   pixel ${pixelText.padStart(6)}${pxCount.padStart(8)}${surf.padStart(4)}${surfPx.padStart(12)}   ` +
+        `      ${r.roleId.padEnd(20)} static ${staticText.padStart(9)}   pixel ${pixelText.padStart(6)}${pxCount.padStart(8)}${surf.padStart(4)}${surfPx.padStart(12)}${share.padStart(12)}   ` +
           `floor ${r.contrastFloor}   ${who} on ${bg}${flag}${sliver}`,
       );
     }
@@ -749,11 +767,52 @@ if (GATE) {
     }
   }
 
+  // ---- phase D: the contrast gate ---------------------------------------------
+  // The floors live in src/ui/stateMatrix.ts, read HERE, so the gate and the
+  // Diagnostics panel cannot drift apart.
+  //
+  // A role's text must clear its floor in EVERY state where the role is on
+  // screen. A role that is on screen in NO state covers nothing, and that is
+  // a failure too — a rule that cannot be checked is not a rule that passed.
+  console.log("\n=== declared contrast floors ===");
+  let contrastChecks = 0;
+  for (const expectation of CONTRAST_EXPECTATIONS) {
+    let worst: ContrastResult | null = null;
+    let seen = 0;
+    for (const snapshot of snapshots) {
+      if (!snapshot.entered) continue;
+      const reading = snapshot.readings.find((r) => r.roleId === expectation.role);
+      if (!reading || reading.visible === 0) continue;
+      seen += 1;
+      const result = evaluateContrast(expectation, reading, snapshot.state);
+      if (!worst || (result.measured ?? 0) < (worst.measured ?? 0)) worst = result;
+    }
+    if (seen === 0) {
+      failed += 1;
+      console.log(`  FAIL  ${expectation.role} — the role was not on screen in any state, so the rule covers nothing`);
+      continue;
+    }
+    contrastChecks += seen;
+    if (worst?.ok) {
+      console.log(
+        `  PASS  ${expectation.role.padEnd(20)} worst ${String(worst.measured).padStart(6)}:1  (floor ${expectation.min})  ` +
+          `over ${seen} state(s), measured from the ${worst.source}`,
+      );
+    } else {
+      failed += 1;
+      console.log(`  FAIL  ${expectation.role}: ${worst?.failures.join("; ")}`);
+      console.log(`        because: ${expectation.because}`);
+    }
+  }
+
   if (failed > 0) {
     console.error(`\n${failed} declared expectation(s) FAILED`);
     process.exit(EXIT_GATE);
   }
-  console.log(`\nall ${STATE_EXPECTATIONS.length} declared expectations hold`);
+  console.log(
+    `\nall ${STATE_EXPECTATIONS.length} declared expectations hold, and all ${CONTRAST_EXPECTATIONS.length} contrast floors hold ` +
+      `(${contrastChecks} readings checked)`,
+  );
 }
 
 if (unreached.length) {

@@ -73,6 +73,13 @@ export default defineConfig({
       "**/node_modules/**",
       "**/dist/**",
       "**/.{idea,git,cache,output,temp}/**",
+      // `output/**` is KYX's own scratch/report directory (gitignored). The
+      // dotted `.{...,output,...}` entry above covers `.output`, NOT `output` —
+      // and a probe spec written to `output/` was collected by a full run.
+      "output/**",
+      // `scratch/**` is the probe scratchpad (gitignored). Same rule: a probe
+      // named `*.spec.ts` there is not test surface.
+      "scratch/**",
       // `.kilo/worktrees/**` holds stale *git worktrees* (ignored by git via
       // `.git/info/exclude` but not by vitest). Without this, a full run
       // collects ~189 duplicate spec files from the old checkout, roughly

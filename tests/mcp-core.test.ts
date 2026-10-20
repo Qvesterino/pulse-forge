@@ -69,6 +69,9 @@ describe("mcp core — protocol with an authenticated session", () => {
     expect(listedTools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema,
     );
+    expect(listedTools.find((tool) => tool.name === "kyx_import_sfz")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_import_sfz")?.outputSchema,
+    );
     expect(listedTools.map((t) => t.name)).toEqual([
       "kyx_intent",
       "kyx_state",
@@ -205,6 +208,42 @@ describe("mcp core — protocol with an authenticated session", () => {
       byteLength: 44144,
       mimeType: "audio/wav",
     });
+  });
+
+  it("returns the declared SFZ import read-back as structuredContent across the web relay", async () => {
+    const { hub, delivered } = makeHub();
+    const data = {
+      name: "My Cello",
+      trackId: "track-1",
+      fallbackSampleId: "user.sfz.mycello.k60z1",
+      importedSamples: 2,
+      velocityLayers: 2,
+      missingSamples: 0,
+      skippedSamples: 0,
+    };
+    const promise = handleMcpRequest(
+      hub,
+      TOKEN,
+      TOKEN,
+      rpc(
+        "tools/call",
+        {
+          name: "kyx_import_sfz",
+          arguments: { name: "My Cello", sfzBase64: "PHJlZ2lvbj4=", trackId: "track-1", samples: [] },
+          _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+        },
+        15,
+      ),
+    );
+    hub.handleSessionMessage({
+      type: "mcp-result",
+      id: delivered[0].id,
+      result: { text: "Imported My Cello", mutated: true, data },
+    });
+    const response = await promise;
+    expect(response.result.isError).toBe(false);
+    expect(response.result.structuredContent).toEqual(data);
+    expect(response.result.content).toEqual([{ type: "text", text: "Imported My Cello" }]);
   });
 
   it("2025-03-26 legacy clients do not receive outputSchema or structuredContent", async () => {

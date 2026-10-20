@@ -136,7 +136,7 @@ describe("measureParamVerification (P3)", () => {
     const intent = mustParse("dlhsi chvost na reverbe na 808"); // time role
     const verification = await measureParamVerification(doc, doc, intent, () => Promise.resolve(noiseBuffer(3, true)));
     expect(verification.measurable).toBe(false);
-    expect(verification.line).toMatch(/drive\/time v1/);
+    expect(verification.line).toMatch(/attack\/release\/Q v1/);
   });
 
   it("a failed render degrades to unmeasured, never throws", async () => {
@@ -183,5 +183,89 @@ describe("preset anchors (P4)", () => {
     // applyEffectIntent is the move path — exercised by the mix suite; here
     // we pin the parse shape (id/params) which is the anchor's contract.
     expect(parsed?.detected?.[0]).toMatch(/move: Hall/);
+  });
+});
+
+/** Deterministic crest fixture: a quiet bed plus one transient. */
+function crestBuffer(seed: number, compressed: boolean): AudioBuffer {
+  const length = RATE;
+  const data = new Float32Array(length);
+  let state = seed;
+  for (let index = 0; index < length; index += 1) {
+    state = (state * 1103515245 + 12345) & 0x7fffffff;
+    const noise = ((state / 0x7fffffff) * 2 - 1) * 0.04;
+    data[index] = noise + Math.sin((index / RATE) * 2 * Math.PI * 220) * 0.04;
+  }
+  data[100] = compressed ? 0.2 : 0.95;
+  return {
+    sampleRate: RATE,
+    length,
+    numberOfChannels: 1,
+    duration: 1,
+    getChannelData: () => data,
+  } as unknown as AudioBuffer;
+}
+
+describe("measureParamVerification — P2 domain metrics", () => {
+  it("a darker cutoff render verifies a filter-down ask", async () => {
+    const doc = testDoc();
+    const intent: ParamIntent = {
+      effectType: "svFilter",
+      role: "cutoff",
+      paramId: "cutoff",
+      targets: ["bass"],
+      mode: "less",
+      amount: "medium",
+      detected: [],
+    };
+    const after: ProjectDocument = { ...doc, tracks: [...doc.tracks] };
+    const verification = await measureParamVerification(doc, after, intent, (renderDoc) =>
+      Promise.resolve(renderDoc === doc ? noiseBuffer(11, true) : noiseBuffer(11, false)),
+    );
+    expect(verification.measurable).toBe(true);
+    expect(verification.verified).toBe(true);
+    expect(verification.line).toMatch(/tmavší/);
+    expect(verification.targets[0]?.metric).toBe("jas");
+  });
+
+  it("a lower threshold verifies as a crest-factor (squash) drop", async () => {
+    const doc = testDoc();
+    const intent: ParamIntent = {
+      effectType: "compressor",
+      role: "threshold",
+      paramId: "threshold",
+      targets: ["drums"],
+      mode: "less",
+      amount: "medium",
+      detected: [],
+    };
+    const after: ProjectDocument = { ...doc, tracks: [...doc.tracks] };
+    const verification = await measureParamVerification(doc, after, intent, (renderDoc) =>
+      Promise.resolve(renderDoc === doc ? crestBuffer(17, false) : crestBuffer(17, true)),
+    );
+    expect(verification.measurable).toBe(true);
+    expect(verification.verified).toBe(true);
+    expect(verification.targets[0]?.metric).toBe("dynamika");
+    expect(verification.line).toMatch(/stlačenejší/);
+  });
+
+  it("attack/release/Q stay honestly unmeasured instead of inventing a pass", async () => {
+    const doc = testDoc();
+    const intent: ParamIntent = {
+      effectType: "compressor",
+      role: "attack",
+      paramId: "attack",
+      targets: ["drums"],
+      mode: "less",
+      amount: "medium",
+      detected: [],
+    };
+    const after: ProjectDocument = { ...doc, tracks: [...doc.tracks] };
+    const verification = await measureParamVerification(doc, after, intent, () =>
+      Promise.resolve(noiseBuffer(11, false)),
+    );
+    expect(verification.measurable).toBe(false);
+    expect(verification.verified).toBe(false);
+    expect(verification.line).toMatch(/attack\/release\/Q v1/);
   });
 });

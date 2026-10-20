@@ -383,7 +383,7 @@ interface Metrics {
   env: Float32Array;
 }
 
-function metricsOf(buffer: AudioBuffer): Metrics {
+export function metricsOf(buffer: AudioBuffer): Metrics {
   const l = buffer.getChannelData(0);
   const r = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : l;
   const start = Math.floor(l.length / 8); // skip the attack / initial smoothing
@@ -533,7 +533,7 @@ function maxDiff(a: AudioBuffer, b: AudioBuffer): number {
 }
 
 /** The strongest normalized change a render shows against a baseline. */
-function deltaVs(base: Metrics, m: Metrics): { delta: number; metric: string } {
+export function deltaVs(base: Metrics, m: Metrics): { delta: number; metric: string } {
   const relRms = Math.abs(m.rms - base.rms) / Math.max(base.rms, 1e-6);
   const relCrest = Math.abs(m.crest - base.crest) / Math.max(base.crest, 0.2);
   const relSide = Math.abs(m.side - base.side) / Math.max(base.side, base.rms * 0.1, 1e-6);

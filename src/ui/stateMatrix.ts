@@ -231,6 +231,16 @@ export interface StateReading {
   /** Whether the text counts as large under WCAG (>=24px, or >=18.66px bold). */
   largeText: boolean;
   /**
+   * True when the role's element is INSIDE the viewport.
+   *
+   * "Visible" (a height, not `display: none`) is not the same thing: the
+   * inspector's `<h3 class="panel-title">TRACK MIX</h3>` sits at y = 1092 in a
+   * 900px-tall window — rendered, measurable, and off screen. A contrast
+   * rule cannot be exercised on text nobody can see, and a rule that claims
+   * otherwise is a rule that lies about its own coverage.
+   */
+  onScreen: boolean;
+  /**
    * The pixel measurement, when one was taken for this role.
    *
    * The static `contrast` above composites solid background-colours only. For
@@ -664,6 +674,7 @@ export function readStateMatrix(roles: readonly StateRole[]): StateReading[] {
       backgroundNote: null,
       contrastFloor: 4.5,
       largeText: false,
+      onScreen: false,
       pixelContrast: null,
       accentCount: 0,
       accentColors: [],
@@ -747,6 +758,11 @@ export function readStateMatrix(roles: readonly StateRole[]): StateReading[] {
       reading.fontSize !== null &&
       (reading.fontSize >= 24 || (reading.fontSize >= 18.66 && (reading.fontWeight ?? 400) >= 700));
     reading.contrastFloor = reading.largeText ? 3 : 4.5;
+    // Is the element actually inside the viewport? "Has a height" is not the
+    // same question — see `onScreen`.
+    const rect = el.getBoundingClientRect();
+    reading.onScreen =
+      rect.bottom > 0 && rect.right > 0 && rect.top < (window.innerHeight || 0) && rect.left < (window.innerWidth || 0);
     return reading;
   });
 }
@@ -810,6 +826,17 @@ export interface PixelContrast {
   sliverContrast: number | null;
   /** How many pixels the sliver covered. */
   sliverPixels: number;
+  /**
+   * How MANY of the role's text pixels fall below the AA floor (4.5:1).
+   *
+   * The minimum alone cannot tell "this text is unreadable" from "one glyph
+   * edge grazed a highlight". The share can: 100% of the index on a 4.45:1
+   * surface is a defect, and 0.6% of a pattern chip on a 4.25:1 gradient
+   * corner is not.
+   */
+  belowFloorPixels: number;
+  /** The same thing as a fraction of the role's text pixels. */
+  belowFloorShare: number;
   /** The minimum pixel count a surface needs to count as a real surface. */
   minSurfacePixels: number;
 }
@@ -1101,4 +1128,217 @@ export function evaluateExpectation(
     failures,
     because: expectation.because,
   };
+}
+
+/* =============================================================================
+ * PHASE D — CONTRAST
+ * ========================================================================== */
+
+/**
+ * WHAT A ROLE'S TEXT MUST REACH — the contrast declaration.
+ *
+ * The floor comes from WCAG 2.2 SC 1.4.3 (Contrast Minimum), NOT from what the
+ * shell happens to measure: 4.5:1 for normal text, 3:1 for large text (>=24px,
+ * or >=18.66px when bold). A declaration that pinned the MEASURED value would
+ * be a tautology — it would pass for anything, including a colour nobody can
+ * read. The measured value is the EVIDENCE; the floor is the standard.
+ *
+ * The floor is per ROLE, not per state: a role's text must be legible in
+ * every state where the role is on screen. A state is not a licence to be
+ * less legible — a selected row is not a dimmer row, and a playing row is
+ * not a dimmer row.
+ */
+export interface ContrastExpectation {
+  /** The role. */
+  role: string;
+  /**
+   * The minimum contrast the role's text must reach, in EVERY state where the
+   * role is on screen.
+   */
+  min: number;
+  /** Why this role, and why this floor. */
+  because: string;
+}
+
+/**
+ * THE TABLE. One row per role that carries text, and every row says why.
+ *
+ * The roles that carry NO text on screen (a step cell, a playhead cell) are
+ * not here: WCAG 1.4.3 is about text, and a rule about a surface that holds
+ * no text is a rule with nothing to check.
+ */
+export const CONTRAST_EXPECTATIONS: readonly ContrastExpectation[] = [
+  {
+    role: "rowIndex",
+    min: 4.5,
+    because:
+      "the 1-based row number is 8px metadata on the sequencer's RAISED row surface, and on a selected row it " +
+      "sits inside the amber pulse. It measured 4.45:1 on the plain row and 3.09:1 on the pulse — both under AA, " +
+      "and the digits 1, 3, 4 and 5 were hard to make out in the screenshot. 60-contrast-legibility.css raised it.",
+  },
+  {
+    role: "channelNameRow",
+    min: 4.5,
+    because:
+      "the channel name in the sequencer row is the shell's primary label — it carries the identity of the track",
+  },
+  {
+    role: "channelNameHeader",
+    min: 4.5,
+    because:
+      "the channel name in the track header is the same name at the same size; one may not be dimmer than the other",
+  },
+  {
+    role: "rowPad",
+    min: 4.5,
+    because: "the row is the unit a user reads the sequencer by — its name and its index both have to be legible",
+  },
+  {
+    role: "rulerTick",
+    min: 4.5,
+    because: "the ruler tick labels the step under the pointer; a tick nobody can read cannot be aimed at",
+  },
+  {
+    role: "trackTab",
+    min: 4.5,
+    because:
+      "the track tab names a channel in the header rack — the shell already puts bright silver on silver glass here",
+  },
+  {
+    role: "dockTab",
+    min: 4.5,
+    because:
+      "the dock tab row is the primary navigation of the bottom half of the studio. Its label measured 2.03:1 on the " +
+      "silver sweep's light end, and the ACTIVE tab's amber 3.55:1 — and the amber is the selection signal, so the " +
+      "surface had to move instead. 60-contrast-legibility.css dimmed the sweep and gave the label the shell's silver.",
+  },
+  {
+    role: "patternChip",
+    min: 4.5,
+    because: "the pattern chip is amber on a silver sweep, and the amber is how a user finds the pattern they are in",
+  },
+  {
+    role: "btn",
+    min: 4.5,
+    because: "a button's label is the button; a control that cannot be read cannot be used",
+  },
+  {
+    role: "btnSmall",
+    min: 4.5,
+    because: "the small buttons (mute, solo) are the fastest gesture in the sequencer, and 10px is already small",
+  },
+  {
+    role: "presetChip",
+    min: 4.5,
+    because: "the filter chip names the filter that is applied — the user has to know what they are hearing",
+  },
+  {
+    role: "transportBtn",
+    min: 4.5,
+    because: "the transport is the one control group that must be readable at a glance, in every state",
+  },
+  {
+    role: "positionReadout",
+    min: 4.5,
+    because: "the position readout is the only place the musical position is shown in digits",
+  },
+  {
+    role: "patternBarLabel",
+    min: 4.5,
+    because: "the toolbar caption groups the controls under it; an unreadable caption is an unlabelled group",
+  },
+  {
+    role: "panelTitleLocal",
+    min: 4.5,
+    because: "a local section title is the only thing that says which section of the panel you are in",
+  },
+  {
+    role: "statusbar",
+    min: 4.5,
+    because: "the status bar is where the engine's state is reported; if it cannot be read, it is not reporting",
+  },
+];
+
+/** The verdict for one contrast expectation, with the reasons it failed. */
+export interface ContrastResult {
+  role: string;
+  state: string;
+  ok: boolean;
+  /** The measured contrast, or null when it could not be measured at all. */
+  measured: number | null;
+  /** Where the number came from. */
+  source: "pixel" | "static" | "none";
+  /** One line per broken rule. Empty when the expectation held. */
+  failures: string[];
+  /** The rationale, carried through so a failing gate explains itself. */
+  because: string;
+}
+
+/**
+ * How much of a role's text may fall below the floor.
+ *
+ * ONE PERCENT. Not zero, because a single glyph edge grazing a 1px highlight
+ * is a rendering detail and not a surface the text is read against — and not
+ * more, because the defects this phase found were not subtle: the 8px index
+ * sat at 4.45:1 with 100% of its pixels below the floor, and the dock tab
+ * label at 2.03:1 with 18% of its pixels below it.
+ */
+export const MAX_BELOW_FLOOR_SHARE = 0.01;
+
+/**
+ * Check one contrast expectation against one reading.
+ *
+ * PURE — no DOM, no browser, like `evaluateExpectation`. The gate and the
+ * panel both call this, so they cannot reach different verdicts from the same
+ * reading.
+ *
+ * TWO checks, and both have to hold:
+ *
+ *   1. The STATIC reading, where the background is a solid colour. This is
+ *      the check the Diagnostics panel can make on its own, so it is made
+ *      here too — a rule the panel cannot check is a rule that is only half
+ *      enforced.
+ *   2. The PIXEL reading, where there is one. It is the real surface under
+ *      the glyphs, gradient included, and it is judged on the SHARE of the
+ *      text below the floor rather than on the worst pixel.
+ */
+export function evaluateContrast(
+  expectation: ContrastExpectation,
+  reading: StateReading | undefined,
+  state: string,
+): ContrastResult {
+  const base = { role: expectation.role, state, because: expectation.because };
+  if (!reading) {
+    return { ...base, ok: false, measured: null, source: "none", failures: ["the role was not read at all"] };
+  }
+  const failures: string[] = [];
+
+  // 1. The static reading — the composited background, where it is solid.
+  if (reading.contrast !== null && reading.contrast < expectation.min) {
+    failures.push(`static ${reading.contrast}:1 measured, ${expectation.min}:1 required`);
+  }
+
+  // 2. The pixel reading — the real surface under the glyphs.
+  const pixel = reading.pixelContrast;
+  if (pixel && pixel.minContrast !== null) {
+    if (pixel.belowFloorShare > MAX_BELOW_FLOOR_SHARE) {
+      failures.push(
+        `${Math.round(pixel.belowFloorShare * 1000) / 10}% of the text is below ${expectation.min}:1 ` +
+          `(worst ${pixel.minContrast}:1 on ${pixel.worstBackground})`,
+      );
+    }
+  } else if (reading.contrast === null) {
+    return {
+      ...base,
+      ok: false,
+      measured: null,
+      source: "none",
+      failures: ["the contrast could not be measured — the surface under this text is unknown"],
+    };
+  }
+
+  const measured = pixel?.minContrast ?? reading.contrast;
+  const source: ContrastResult["source"] =
+    pixel?.minContrast != null ? "pixel" : reading.contrast !== null ? "static" : "none";
+  return { ...base, ok: failures.length === 0, measured, source, failures };
 }

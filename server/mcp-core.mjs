@@ -1675,6 +1675,42 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["name", "sfzBase64", "trackId", "samples"],
     },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        name: {
+          type: "string",
+        },
+        trackId: {
+          type: "string",
+        },
+        fallbackSampleId: {
+          type: "string",
+        },
+        importedSamples: {
+          type: "number",
+        },
+        velocityLayers: {
+          type: "number",
+        },
+        missingSamples: {
+          type: "number",
+        },
+        skippedSamples: {
+          type: "number",
+        },
+      },
+      required: [
+        "name",
+        "trackId",
+        "fallbackSampleId",
+        "importedSamples",
+        "velocityLayers",
+        "missingSamples",
+        "skippedSamples",
+      ],
+    },
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,

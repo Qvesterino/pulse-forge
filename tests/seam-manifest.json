@@ -727,6 +727,15 @@
       "seamEvent": "routeIntentText(\"no, half that adjustment\"",
       "negativeSpec": "the router declines and no mutation parser claims them",
       "note": "P0/P1 semantic-precision audit 2026-10-20: descriptive statements and unresolvable prior-delta references enter the real router and are asserted to decline without mutation. Prior-delta references resolve through the session ledger only when a measured fader move exists; project switch, undo and any other mutation invalidate it."
+    },
+    {
+      "id": "intent-param-plan-preview",
+      "status": "COVERED",
+      "entryPoint": "src/ui/IntentPanel.tsx intent textarea → paramPlanLines",
+      "spec": "tests/ui/IntentPanel.test.tsx",
+      "seamEvent": "shows the inferred param delta BEFORE execution",
+      "negativeSpec": "typing must not apply anything",
+      "note": "P3 (2026-10-20): typing a named-knob ask renders the resolved track, current value, destination, range fraction in the param's own domain and any clamp/add marker before the command is applied; the spec asserts the store was not executed."
     }
   ]
 }

@@ -1006,11 +1006,14 @@ export function IntentPanel() {
   const paramPlanPreview = useMemo(() => {
     const prompt = deferredPrompt.trim();
     if (!prompt) return null;
+    // A genre brief is a GENERATION prompt; showing a knob plan under it would
+    // be noise (and the submit path takes the generation lane first).
+    if (parsed?.input.genre) return null;
     const route = routeIntentText(prompt, doc);
     if (route.kind !== "paramIntent") return null;
     const lines = paramPlanLines(route.intent, doc);
     return lines.length > 0 ? lines : null;
-  }, [deferredPrompt, doc]);
+  }, [deferredPrompt, doc, parsed]);
 
   useEffect(() => {
     if (parsed?.input.genre) setPreferredStyleGenre(parsed.input.genre);
