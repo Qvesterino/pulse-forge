@@ -2372,7 +2372,7 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_routing",
     description:
-      "The group routing graph AND send buses: list every track's destination (its group or master) with a structured envelope, create a group bus, route tracks into it (addToGroup) or back to master (removeFromGroup). The model is FLAT — one group per track, no group-into-group — so routing cycles are impossible by construction. setSend/setReturnGain/ createReturn cover the send-bus mixer; removeReturn drops a bus and every send reference into it (destructive-gated).",
+      "The group routing graph AND send buses: list every track's destination (its group or master) with a structured envelope, create a group bus, route tracks into it (addToGroup) or back to master (removeFromGroup). The model is FLAT — one group per track, no group-into-group — so routing cycles are impossible by construction. Successful writes return committed values and explicit no-op status. setSend/setReturnGain/createReturn cover the send-bus mixer; removeReturn drops a bus and every send reference into it (destructive-gated).",
     inputSchema: {
       type: "object",
       properties: {
@@ -2391,6 +2391,7 @@ const MCP_TOOL_DEFS = [
         },
         trackId: {
           type: "string",
+          maxLength: 128,
           description: "Exact track id — overrides family when present",
         },
         family: {
@@ -2400,22 +2401,27 @@ const MCP_TOOL_DEFS = [
         },
         groupId: {
           type: "string",
+          maxLength: 128,
           description: "For addToGroup — the group track id (op:list)",
         },
         groupName: {
           type: "string",
+          maxLength: 40,
           description: "For addToGroup — group name alternative to groupId",
         },
         name: {
           type: "string",
+          maxLength: 40,
           description: "For createGroup/createReturn — optional name (default: Group N / Return N)",
         },
         returnId: {
           type: "string",
+          maxLength: 128,
           description: "For setSend/setReturnGain/removeReturn — the return bus id (op:list)",
         },
         returnName: {
           type: "string",
+          maxLength: 40,
           description: "Return bus name alternative to returnId",
         },
         level: {
@@ -2443,6 +2449,164 @@ const MCP_TOOL_DEFS = [
         },
       },
       required: ["op"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        status: {
+          type: "string",
+          enum: [
+            "listed",
+            "created",
+            "routed",
+            "already_routed",
+            "unrouted",
+            "already_unrouted",
+            "send_set",
+            "send_unchanged",
+            "return_gain_set",
+            "return_gain_unchanged",
+            "return_created",
+            "return_removed",
+            "partial",
+          ],
+        },
+        routes: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              trackId: {
+                type: "string",
+              },
+              track: {
+                type: "string",
+              },
+              destination: {
+                type: "string",
+              },
+              destinationName: {
+                type: "string",
+              },
+            },
+            required: ["trackId", "track", "destination", "destinationName"],
+          },
+        },
+        groups: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              id: {
+                type: "string",
+              },
+              name: {
+                type: "string",
+              },
+              memberCount: {
+                type: "integer",
+                minimum: 0,
+              },
+            },
+            required: ["id", "name", "memberCount"],
+          },
+        },
+        returns: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              id: {
+                type: "string",
+              },
+              name: {
+                type: "string",
+              },
+              gain: {
+                type: "number",
+                minimum: 0,
+                maximum: 1.5,
+              },
+              sends: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    trackId: {
+                      type: "string",
+                    },
+                    track: {
+                      type: "string",
+                    },
+                    level: {
+                      type: "number",
+                      minimum: 0,
+                      maximum: 1.5,
+                    },
+                  },
+                  required: ["trackId", "track", "level"],
+                },
+              },
+            },
+            required: ["id", "name", "gain", "sends"],
+          },
+        },
+        groupId: {
+          type: "string",
+        },
+        groupName: {
+          type: "string",
+        },
+        returnId: {
+          type: "string",
+        },
+        returnName: {
+          type: "string",
+        },
+        returnExists: {
+          type: "boolean",
+        },
+        trackIds: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+        changedTrackIds: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+        sendLevel: {
+          type: "number",
+          minimum: 0,
+          maximum: 1.5,
+        },
+        requestedLevel: {
+          type: "number",
+        },
+        returnGain: {
+          type: "number",
+          minimum: 0,
+          maximum: 1.5,
+        },
+        removedSendCount: {
+          type: "integer",
+          minimum: 0,
+        },
+        undoSteps: {
+          type: "integer",
+          minimum: 0,
+          maximum: 1,
+        },
+      },
+      required: ["status"],
     },
     annotations: {
       readOnlyHint: false,

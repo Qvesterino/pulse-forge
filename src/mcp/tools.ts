@@ -624,6 +624,97 @@ const OUTPUT_TAKES: McpOutputSchema = {
   },
   required: ["status"],
 };
+/** kyx_routing — route inventory and one-command mixer changes. */
+const OUTPUT_ROUTING: McpOutputSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    status: {
+      type: "string",
+      enum: [
+        "listed",
+        "created",
+        "routed",
+        "already_routed",
+        "unrouted",
+        "already_unrouted",
+        "send_set",
+        "send_unchanged",
+        "return_gain_set",
+        "return_gain_unchanged",
+        "return_created",
+        "return_removed",
+        "partial",
+      ],
+    },
+    routes: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          trackId: { type: "string" },
+          track: { type: "string" },
+          destination: { type: "string" },
+          destinationName: { type: "string" },
+        },
+        required: ["trackId", "track", "destination", "destinationName"],
+      },
+    },
+    groups: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          id: { type: "string" },
+          name: { type: "string" },
+          memberCount: { type: "integer", minimum: 0 },
+        },
+        required: ["id", "name", "memberCount"],
+      },
+    },
+    returns: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          id: { type: "string" },
+          name: { type: "string" },
+          gain: { type: "number", minimum: 0, maximum: 1.5 },
+          sends: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                trackId: { type: "string" },
+                track: { type: "string" },
+                level: { type: "number", minimum: 0, maximum: 1.5 },
+              },
+              required: ["trackId", "track", "level"],
+            },
+          },
+        },
+        required: ["id", "name", "gain", "sends"],
+      },
+    },
+    groupId: { type: "string" },
+    groupName: { type: "string" },
+    returnId: { type: "string" },
+    returnName: { type: "string" },
+    returnExists: { type: "boolean" },
+    trackIds: { type: "array", items: { type: "string" } },
+    changedTrackIds: { type: "array", items: { type: "string" } },
+    sendLevel: { type: "number", minimum: 0, maximum: 1.5 },
+    requestedLevel: { type: "number" },
+    returnGain: { type: "number", minimum: 0, maximum: 1.5 },
+    removedSendCount: { type: "integer", minimum: 0 },
+    undoSteps: { type: "integer", minimum: 0, maximum: 1 },
+  },
+  required: ["status"],
+};
 export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_intent",
@@ -1745,9 +1836,10 @@ export const MCP_TOOLS: McpToolDef[] = [
       "group or master) with a structured envelope, create a group bus, route " +
       "tracks into it (addToGroup) or back to master (removeFromGroup). The " +
       "model is FLAT — one group per track, no group-into-group — so routing " +
-      "cycles are impossible by construction. setSend/setReturnGain/ " +
-      "createReturn cover the send-bus mixer; removeReturn drops a bus and " +
-      "every send reference into it (destructive-gated).",
+      "cycles are impossible by construction. Successful writes return committed " +
+      "values and explicit no-op status. setSend/setReturnGain/createReturn " +
+      "cover the send-bus mixer; removeReturn drops a bus and every send reference " +
+      "into it (destructive-gated).",
     inputSchema: {
       type: "object",
       properties: {
@@ -1764,23 +1856,25 @@ export const MCP_TOOLS: McpToolDef[] = [
             "removeReturn",
           ],
         },
-        trackId: { type: "string", description: "Exact track id — overrides family when present" },
+        trackId: { type: "string", maxLength: 128, description: "Exact track id — overrides family when present" },
         family: {
           type: "string",
           enum: ["drums", "bass", "chords", "lead", "vocal"],
           description: "Family alternative to trackId (applies to every resolved track)",
         },
-        groupId: { type: "string", description: "For addToGroup — the group track id (op:list)" },
-        groupName: { type: "string", description: "For addToGroup — group name alternative to groupId" },
+        groupId: { type: "string", maxLength: 128, description: "For addToGroup — the group track id (op:list)" },
+        groupName: { type: "string", maxLength: 40, description: "For addToGroup — group name alternative to groupId" },
         name: {
           type: "string",
+          maxLength: 40,
           description: "For createGroup/createReturn — optional name (default: Group N / Return N)",
         },
         returnId: {
           type: "string",
+          maxLength: 128,
           description: "For setSend/setReturnGain/removeReturn — the return bus id (op:list)",
         },
-        returnName: { type: "string", description: "Return bus name alternative to returnId" },
+        returnName: { type: "string", maxLength: 40, description: "Return bus name alternative to returnId" },
         level: {
           type: "number",
           minimum: 0,
@@ -1791,6 +1885,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["op"],
     },
+    outputSchema: OUTPUT_ROUTING,
   },
   {
     name: "kyx_unsuno",
@@ -6045,15 +6140,60 @@ function resolveReturnId(doc: ProjectDocument, record: Record<string, unknown>):
   if (returnId !== "") return doc.returns.some((r) => r.id === returnId) ? returnId : null;
   const returnName = typeof record.returnName === "string" ? record.returnName.trim().toLowerCase() : "";
   if (returnName === "") return null;
-  return doc.returns.find((r) => r.name.toLowerCase() === returnName)?.id ?? null;
+  const matches = doc.returns.filter((r) => r.name.toLowerCase() === returnName);
+  return matches.length === 1 ? matches[0]!.id : null;
 }
 
 /** kyx_routing — the group routing graph. The model is FLAT (a track joins
  * at most one group; addToGroup refuses group-into-group), so routing
  * cycles are impossible by construction — the domain IS the cycle check. */
 function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
-  const op = String(record.op ?? "list");
+  if (record.op !== undefined && typeof record.op !== "string") {
+    return mcpError(
+      "INVALID_ARGUMENTS",
+      "op must be one of: list, createGroup, addToGroup, removeFromGroup, setSend, setReturnGain, createReturn, removeReturn",
+    );
+  }
+  const op = typeof record.op === "string" ? record.op : "list";
+  const validOps = [
+    "list",
+    "createGroup",
+    "addToGroup",
+    "removeFromGroup",
+    "setSend",
+    "setReturnGain",
+    "createReturn",
+    "removeReturn",
+  ];
+  if (!validOps.includes(op)) return mcpError("UNKNOWN_REQUEST", `unknown op: ${op} (${validOps.join(" | ")})`);
+  for (const [field, maxLength] of [
+    ["trackId", 128],
+    ["groupId", 128],
+    ["returnId", 128],
+    ["groupName", 40],
+    ["returnName", 40],
+    ["name", 40],
+  ] as const) {
+    const value = record[field];
+    if (value !== undefined && (typeof value !== "string" || value.length > maxLength)) {
+      return mcpError("INVALID_ARGUMENTS", `${field} must be a string of at most ${maxLength} characters`);
+    }
+  }
+  if (
+    record.family !== undefined &&
+    (typeof record.family !== "string" || !["drums", "bass", "chords", "lead", "vocal"].includes(record.family))
+  ) {
+    return mcpError("INVALID_ARGUMENTS", "family must be one of: drums, bass, chords, lead, vocal");
+  }
+  for (const field of ["level", "gain"] as const) {
+    const value = record[field];
+    if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value))) {
+      return mcpError("INVALID_ARGUMENTS", `${field} must be a finite number`);
+    }
+  }
   const doc = ctx.getDoc();
+  const groupNameMatches = (name: string) =>
+    doc.tracks.filter((track) => track.kind === "group" && track.name.toLowerCase() === name.toLowerCase());
   const resolveGroup = (): string | null => {
     const groupId = typeof record.groupId === "string" ? record.groupId.trim() : "";
     if (groupId !== "") {
@@ -6061,43 +6201,66 @@ function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>
     }
     const groupName = typeof record.groupName === "string" ? record.groupName.trim() : "";
     if (groupName !== "") {
-      const match = doc.tracks.find((t) => t.kind === "group" && t.name.toLowerCase() === groupName.toLowerCase());
-      return match?.id ?? null;
+      const matches = groupNameMatches(groupName);
+      return matches.length === 1 ? matches[0]!.id : null;
     }
     return null;
   };
 
+  const routeReadback = (current: ProjectDocument) => {
+    const routes = current.tracks
+      .filter((track) => track.kind !== "group")
+      .map((track) => {
+        const destination = "groupId" in track && track.groupId ? track.groupId : "master";
+        return {
+          trackId: track.id,
+          track: track.name,
+          destination,
+          destinationName: destination === "master" ? "master" : ownerNameOf(current, destination),
+        };
+      });
+    const groups = current.tracks
+      .filter((track) => track.kind === "group")
+      .map((group) => ({
+        id: group.id,
+        name: group.name,
+        memberCount: current.tracks.filter((track) => track.kind !== "group" && track.groupId === group.id).length,
+      }));
+    const returns = current.returns.map((returnTrack) => ({
+      id: returnTrack.id,
+      name: returnTrack.name,
+      gain: returnTrack.gain,
+      sends: current.tracks.flatMap((track) => {
+        const level = (track as { sends?: Record<string, number> }).sends?.[returnTrack.id];
+        return track.kind !== "group" && level !== undefined ? [{ trackId: track.id, track: track.name, level }] : [];
+      }),
+    }));
+    return { routes, groups, returns };
+  };
+
   if (op === "list") {
-    const groups = doc.tracks.filter((t) => t.kind === "group");
+    const readback = routeReadback(doc);
     const lines: string[] = [];
-    for (const track of doc.tracks) {
-      if (track.kind === "group") continue;
-      const route = "groupId" in track && track.groupId ? track.groupId : "master";
-      const groupName = route === "master" ? "master" : ownerNameOf(doc, route);
-      lines.push(`${track.name} (id=${track.id}) → ${groupName}${route !== "master" ? ` (id=${route})` : ""}`);
-    }
-    for (const group of groups) {
-      const members = doc.tracks.filter((t) => t.kind !== "group" && "groupId" in t && t.groupId === group.id);
+    for (const route of readback.routes) {
       lines.push(
-        `group ${group.name} (id=${group.id}): ${members.length} member(s) — ${members.map((m) => m.name).join(", ") || "empty"}`,
+        `${route.track} (id=${route.trackId}) → ${route.destinationName}${route.destination !== "master" ? ` (id=${route.destination})` : ""}`,
       );
     }
-    if (doc.returns.length > 0) {
-      lines.push(`returns (send buses → master): ${doc.returns.map((r) => r.name).join(", ")}`);
+    for (const group of readback.groups) {
+      const members = doc.tracks.filter((track) => track.kind !== "group" && track.groupId === group.id);
+      lines.push(
+        `group ${group.name} (id=${group.id}): ${members.length} member(s) — ${members.map((member) => member.name).join(", ") || "empty"}`,
+      );
+    }
+    if (readback.returns.length > 0) {
+      lines.push(
+        `returns (send buses → master): ${readback.returns.map((returnTrack) => returnTrack.name).join(", ")}`,
+      );
     }
     return {
       text: lines.join("\n") || "no tracks",
       mutated: false,
-      data: {
-        routes: doc.tracks
-          .filter((t) => t.kind !== "group")
-          .map((t) => ({
-            trackId: t.id,
-            track: t.name,
-            destination: "groupId" in t && t.groupId ? t.groupId : "master",
-          })),
-        groups: groups.map((g) => ({ id: g.id, name: g.name })),
-      },
+      data: { status: "listed", ...readback },
     };
   }
 
@@ -6128,7 +6291,7 @@ function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>
       return {
         text: `created group "${created.name}" (id=${created.id}) — one undo step`,
         mutated: true,
-        data: { ...data, status: "created", undoSteps: 1 },
+        data,
       };
     }
     if (op === "addToGroup") {
@@ -6138,41 +6301,125 @@ function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>
         return mcpError("UNKNOWN_TARGET", `no track matches family "${String(record.family ?? "")}"`);
       const groupId = resolveGroup();
       if (groupId == null) {
+        const groupName = typeof record.groupName === "string" ? record.groupName.trim() : "";
+        const message =
+          groupName !== "" && groupNameMatches(groupName).length > 1
+            ? `group name "${groupName}" is ambiguous — use groupId from op:list`
+            : "target group not found — pass groupId (from op:list) or one exact groupName";
+        return mcpError("UNKNOWN_TARGET", message);
+      }
+      const targetGroup = doc.tracks.find((track) => track.id === groupId && track.kind === "group");
+      if (!targetGroup) return mcpError("UNKNOWN_TARGET", `group ${groupId} no longer exists`);
+      const currentTracks = ids.map((id) => doc.tracks.find((track) => track.id === id)!);
+      const changedIds = currentTracks
+        .filter(
+          (track) =>
+            !("groupId" in track && track.groupId === groupId) || (targetGroup.solo === true && track.solo !== true),
+        )
+        .map((track) => track.id);
+      if (changedIds.length === 0) {
         return {
-          text: "target group not found — pass groupId (from op:list) or the exact groupName",
+          text: `already routed to ${ownerNameOf(doc, groupId)} — no change`,
           mutated: false,
+          data: { status: "already_routed", groupId, trackIds: ids, changedTrackIds: [], undoSteps: 0 },
         };
       }
       let next = doc;
       const parts: string[] = [];
-      for (const id of ids) {
+      for (const id of changedIds) {
         next = addToGroup(next, id, groupId).execute(next);
         parts.push(`${ownerNameOf(doc, id)} → ${ownerNameOf(doc, groupId)}`);
       }
-      ctx.execute(snapshot("mcpRouting", `MCP: route ${ids.length} track(s) into group`, doc, next));
-      return { text: `${parts.join("; ")} — one undo step`, mutated: true };
+      ctx.execute(snapshot("mcpRouting", `MCP: route ${changedIds.length} track(s) into group`, doc, next));
+      const committed = ctx.getDoc();
+      const correct = ids.every((id) => {
+        const track = committed.tracks.find((candidate) => candidate.id === id);
+        const before = doc.tracks.find((candidate) => candidate.id === id);
+        return (
+          track != null &&
+          before != null &&
+          "groupId" in track &&
+          track.groupId === groupId &&
+          track.solo === (targetGroup.solo === true ? true : before.solo)
+        );
+      });
+      const stateChanged = changedIds.some((id) => {
+        const before = doc.tracks.find((candidate) => candidate.id === id);
+        const after = committed.tracks.find((candidate) => candidate.id === id);
+        return (
+          before != null &&
+          after != null &&
+          (("groupId" in before ? before.groupId : undefined) !== ("groupId" in after ? after.groupId : undefined) ||
+            before.solo !== after.solo)
+        );
+      });
+      const data = {
+        status: correct ? "routed" : "partial",
+        groupId,
+        trackIds: ids,
+        changedTrackIds: changedIds,
+        undoSteps: stateChanged ? 1 : 0,
+      };
+      if (!correct) {
+        return mcpError("PARTIAL_FAILURE", "route change did not match the committed project read-back", {
+          mutated: stateChanged,
+          data,
+        });
+      }
+      return { text: `${parts.join("; ")} — one undo step`, mutated: true, data };
     }
     if (op === "removeFromGroup") {
       const ids = explicitTrackIds(doc, record);
       if (typeof ids === "string") return mcpError("UNKNOWN_TARGET", ids);
       if (ids.length === 0)
         return mcpError("UNKNOWN_TARGET", `no track matches family "${String(record.family ?? "")}"`);
+      const changedIds = ids.filter((id) => {
+        const track = doc.tracks.find((candidate) => candidate.id === id);
+        return track != null && "groupId" in track && track.groupId != null;
+      });
+      if (changedIds.length === 0) {
+        return {
+          text: "nothing changed — every target is already on master",
+          mutated: false,
+          data: { status: "already_unrouted", trackIds: ids, changedTrackIds: [], undoSteps: 0 },
+        };
+      }
       let next = doc;
       const parts: string[] = [];
-      let changed = false;
-      for (const id of ids) {
+      for (const id of changedIds) {
         const track = next.tracks.find((t) => t.id === id);
-        if (!track || !("groupId" in track) || track.groupId == null) {
-          parts.push(`${ownerNameOf(doc, id)}: not in a group`);
-          continue;
-        }
+        if (!track) continue;
         next = removeFromGroup(next, id).execute(next);
         parts.push(`${track.name} → master`);
-        changed = true;
       }
-      if (!changed) return { text: `nothing changed — ${parts.join("; ")}`, mutated: false };
-      ctx.execute(snapshot("mcpRouting", `MCP: unroute ${ids.length} track(s)`, doc, next));
-      return { text: `${parts.join("; ")} — one undo step`, mutated: true };
+      ctx.execute(snapshot("mcpRouting", `MCP: unroute ${changedIds.length} track(s)`, doc, next));
+      const committed = ctx.getDoc();
+      const correct = ids.every((id) => {
+        const track = committed.tracks.find((candidate) => candidate.id === id);
+        return track != null && (!("groupId" in track) || track.groupId == null);
+      });
+      const stateChanged = changedIds.some((id) => {
+        const before = doc.tracks.find((candidate) => candidate.id === id);
+        const after = committed.tracks.find((candidate) => candidate.id === id);
+        return (
+          before != null &&
+          after != null &&
+          ("groupId" in before ? before.groupId : undefined) !== ("groupId" in after ? after.groupId : undefined)
+        );
+      });
+      const data = {
+        status: correct ? "unrouted" : "partial",
+        trackIds: ids,
+        changedTrackIds: changedIds,
+        undoSteps: stateChanged ? 1 : 0,
+      };
+      if (!correct) {
+        return mcpError("PARTIAL_FAILURE", "unroute change did not match the committed project read-back", {
+          mutated: stateChanged,
+          data,
+        });
+      }
+      return { text: `${parts.join("; ")} — one undo step`, mutated: true, data };
     }
     if (op === "removeReturn") {
       // Destructive: drops the bus AND every send/LFO/automation reference
@@ -6181,90 +6428,207 @@ function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>
       if (!destructiveAllowedWithCheckpoint(ctx, "kyx_routing")) return destructiveRefusal();
       const returnId = resolveReturnId(doc, record);
       if (!returnId) {
-        return {
-          text: "removeReturn needs returnId (from op:list) — or a name that resolves to one return",
-          mutated: false,
-        };
+        const name = typeof record.returnName === "string" ? record.returnName.trim() : "";
+        if (name !== "" && doc.returns.filter((item) => item.name.toLowerCase() === name.toLowerCase()).length > 1) {
+          return mcpError("UNKNOWN_TARGET", `return name "${name}" is ambiguous — use returnId from op:list`);
+        }
+        return record.returnId != null || name !== ""
+          ? mcpError("UNKNOWN_TARGET", "return bus not found — use returnId or returnName from op:list")
+          : mcpError("INVALID_ARGUMENTS", "removeReturn needs returnId or returnName from op:list");
       }
       const target = doc.returns.find((r) => r.id === returnId);
-      try {
-        ctx.execute(deleteReturnTrack(doc, returnId));
-        return {
-          text: `removed return bus "${target?.name ?? returnId}" and its send references — one undo step`,
-          mutated: true,
-        };
-      } catch (error) {
-        return mcpError(
-          "EXECUTION_FAILED",
-          `routing op failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
+      const sendsBefore = doc.tracks.filter(
+        (track) => (track as { sends?: Record<string, number> }).sends?.[returnId] !== undefined,
+      ).length;
+      ctx.execute(deleteReturnTrack(doc, returnId));
+      const committed = ctx.getDoc();
+      const returnExists = committed.returns.some((item) => item.id === returnId);
+      const sendsAfter = committed.tracks.filter(
+        (track) => (track as { sends?: Record<string, number> }).sends?.[returnId] !== undefined,
+      ).length;
+      const stateChanged = !returnExists || sendsAfter < sendsBefore;
+      const correct = !returnExists && sendsAfter === 0;
+      const data = {
+        status: correct ? "return_removed" : "partial",
+        returnId,
+        ...(target != null ? { returnName: target.name } : {}),
+        returnExists,
+        removedSendCount: sendsBefore - sendsAfter,
+        undoSteps: stateChanged ? 1 : 0,
+      };
+      if (!correct) {
+        return mcpError("PARTIAL_FAILURE", "return removal did not clear the return and its send references", {
+          mutated: stateChanged,
+          data,
+        });
       }
+      return {
+        text: `removed return bus "${target?.name ?? returnId}" and its send references — one undo step`,
+        mutated: true,
+        data,
+      };
     }
-    if (op === "setSend" || op === "setReturnGain" || op === "createReturn") {
-      // Structured send-bus writes — the last NL-only corner of the mixer.
-      if (op === "createReturn") {
-        try {
-          const name = typeof record.name === "string" ? record.name.trim().slice(0, 40) : "";
-          const command = createReturnTrack(ctx.getDoc(), name !== "" ? name : undefined);
-          ctx.execute(command);
-          const created = ctx.getDoc().returns[ctx.getDoc().returns.length - 1];
-          return { text: `created return bus "${created.name}" (id=${created.id}) — one undo step`, mutated: true };
-        } catch (error) {
-          return mcpError(
-            "EXECUTION_FAILED",
-            `routing op failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
+    if (op === "createReturn") {
+      const name = typeof record.name === "string" ? record.name.trim().slice(0, 40) : "";
+      const current = ctx.getDoc();
+      const beforeIds = new Set(current.returns.map((returnTrack) => returnTrack.id));
+      const expectedName = name || `Return ${current.returns.length + 1}`;
+      ctx.execute(createReturnTrack(current, name || undefined));
+      const committed = ctx.getDoc();
+      const created = committed.returns.filter((returnTrack) => !beforeIds.has(returnTrack.id));
+      const target = created.length === 1 ? created[0] : undefined;
+      const matches = target != null && target.name === expectedName;
+      const data = {
+        status: matches ? "return_created" : "partial",
+        ...(target != null ? { returnId: target.id, returnName: target.name, returnGain: target.gain } : {}),
+        undoSteps: created.length > 0 ? 1 : 0,
+      };
+      if (!matches) {
+        return mcpError("PARTIAL_FAILURE", "return creation did not match one new return in the project read-back", {
+          mutated: created.length > 0,
+          data,
+        });
       }
-      const levelField = op === "setSend" ? "level" : "gain";
-      const targetLevel = Number(record[levelField]);
-      if (record[levelField] == null || !Number.isFinite(targetLevel)) {
-        return {
-          text:
-            op === "setSend"
-              ? "setSend needs level (linear 0..1.5; 1.0 = unity, 1.5 = +3.5 dB into the bus)"
-              : "setReturnGain needs gain (linear 0..1.5)",
-          mutated: false,
-        };
+      return {
+        text: `created return bus "${target.name}" (id=${target.id}) — one undo step`,
+        mutated: true,
+        data,
+      };
+    }
+    if (op === "setSend" || op === "setReturnGain") {
+      const field = op === "setSend" ? "level" : "gain";
+      const value = record[field];
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        return mcpError("INVALID_ARGUMENTS", `${op} needs a finite ${field} (linear 0..1.5)`);
       }
-      const clamped = Math.min(1.5, Math.max(0, targetLevel));
-      const returnId = resolveReturnId(ctx.getDoc(), record);
+      const requestedLevel = value;
+      const appliedLevel = Math.min(1.5, Math.max(0, requestedLevel));
+      const current = ctx.getDoc();
+      const returnId = resolveReturnId(current, record);
       if (returnId == null) {
+        const name = typeof record.returnName === "string" ? record.returnName.trim() : "";
+        if (
+          name !== "" &&
+          current.returns.filter((item) => item.name.toLowerCase() === name.toLowerCase()).length > 1
+        ) {
+          return mcpError("UNKNOWN_TARGET", `return name "${name}" is ambiguous — use returnId from op:list`);
+        }
+        return record.returnId != null || name !== ""
+          ? mcpError("UNKNOWN_TARGET", "return bus not found — use returnId or returnName from op:list")
+          : mcpError("INVALID_ARGUMENTS", `${op} needs returnId or returnName from op:list`);
+      }
+      const returnTrack = current.returns.find((candidate) => candidate.id === returnId);
+      if (returnTrack == null) return mcpError("UNKNOWN_TARGET", `return bus ${returnId} no longer exists`);
+      if (op === "setSend") {
+        const ids = explicitTrackIds(current, record);
+        if (typeof ids === "string") return mcpError("UNKNOWN_TARGET", ids);
+        if (ids.length === 0) {
+          return mcpError("UNKNOWN_TARGET", `no track matches family "${String(record.family ?? "")}"`);
+        }
+        const previousLevels = new Map(
+          ids.map((id) => [
+            id,
+            (current.tracks.find((track) => track.id === id) as { sends?: Record<string, number> } | undefined)
+              ?.sends?.[returnId] ?? 0,
+          ]),
+        );
+        const changedIds = ids.filter((id) => previousLevels.get(id) !== appliedLevel);
+        if (changedIds.length === 0) {
+          return {
+            text: `send to ${returnTrack.name} is already ${appliedLevel} — no change`,
+            mutated: false,
+            data: {
+              status: "send_unchanged",
+              returnId,
+              returnName: returnTrack.name,
+              trackIds: ids,
+              changedTrackIds: [],
+              requestedLevel,
+              sendLevel: appliedLevel,
+              undoSteps: 0,
+            },
+          };
+        }
+        let next = current;
+        const parts: string[] = [];
+        for (const id of changedIds) {
+          next = setTrackSend(next, id, returnId, appliedLevel).execute(next);
+          parts.push(`${ownerNameOf(current, id)} → ${returnTrack.name} ${appliedLevel}`);
+        }
+        ctx.execute(snapshot("mcpSends", `MCP: set send ×${changedIds.length}`, current, next));
+        const committed = ctx.getDoc();
+        const correct = ids.every((id) => {
+          const track = committed.tracks.find((candidate) => candidate.id === id);
+          return (
+            track != null && ((track as { sends?: Record<string, number> }).sends?.[returnId] ?? 0) === appliedLevel
+          );
+        });
+        const stateChanged = changedIds.some((id) => {
+          const track = committed.tracks.find((candidate) => candidate.id === id);
+          return (
+            track != null &&
+            ((track as { sends?: Record<string, number> }).sends?.[returnId] ?? 0) !== previousLevels.get(id)
+          );
+        });
+        const data = {
+          status: correct ? "send_set" : "partial",
+          returnId,
+          returnName: returnTrack.name,
+          trackIds: ids,
+          changedTrackIds: changedIds,
+          requestedLevel,
+          sendLevel: appliedLevel,
+          undoSteps: stateChanged ? 1 : 0,
+        };
+        if (!correct) {
+          return mcpError("PARTIAL_FAILURE", "send write did not match the committed project read-back", {
+            mutated: stateChanged,
+            data,
+          });
+        }
+        const clampNote = appliedLevel === requestedLevel ? "" : ` (clamped from ${requestedLevel})`;
+        return { text: `${parts.join("; ")} — one undo step${clampNote}`, mutated: true, data };
+      }
+
+      if (returnTrack.gain === appliedLevel) {
         return {
-          text: "no return bus matches — pass returnId or returnName (op:list shows the buses)",
+          text: `${returnTrack.name}: return gain is already ${appliedLevel.toFixed(2)} — no change`,
           mutated: false,
+          data: {
+            status: "return_gain_unchanged",
+            returnId,
+            returnName: returnTrack.name,
+            requestedLevel,
+            returnGain: appliedLevel,
+            undoSteps: 0,
+          },
         };
       }
-      try {
-        if (op === "setSend") {
-          const ids = explicitTrackIds(ctx.getDoc(), record);
-          if (typeof ids === "string") return mcpError("UNKNOWN_TARGET", ids);
-          if (ids.length === 0)
-            return mcpError("UNKNOWN_TARGET", `no track matches family "${String(record.family ?? "")}"`);
-          let next = ctx.getDoc();
-          const parts: string[] = [];
-          for (const id of ids) {
-            next = setTrackSend(next, id, returnId, clamped).execute(next);
-            const track = next.tracks.find((t) => t.id === id)!;
-            parts.push(`${track.name} → ${ownerNameOf(next, returnId)} ${clamped}`);
-          }
-          ctx.execute(snapshot("mcpSends", `MCP: set send ×${ids.length}`, ctx.getDoc(), next));
-          return { text: `${parts.join("; ")} — one undo step`, mutated: true };
-        }
-        ctx.execute(setReturnGain(ctx.getDoc(), returnId, clamped));
-        const ret = ctx.getDoc().returns.find((r) => r.id === returnId)!;
-        return { text: `${ret.name}: return gain ${ret.gain.toFixed(2)} — one undo step`, mutated: true };
-      } catch (error) {
-        return mcpError(
-          "EXECUTION_FAILED",
-          `routing op failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
+      ctx.execute(setReturnGain(current, returnId, appliedLevel));
+      const committedReturn = ctx.getDoc().returns.find((candidate) => candidate.id === returnId);
+      const correct = committedReturn?.gain === appliedLevel;
+      const stateChanged = committedReturn?.gain !== returnTrack.gain;
+      const data = {
+        status: correct ? "return_gain_set" : "partial",
+        returnId,
+        returnName: committedReturn?.name ?? returnTrack.name,
+        ...(committedReturn ? { returnGain: committedReturn.gain } : {}),
+        undoSteps: stateChanged ? 1 : 0,
+      };
+      if (!correct) {
+        return mcpError("PARTIAL_FAILURE", "return gain did not match the committed project read-back", {
+          mutated: stateChanged,
+          data,
+        });
       }
+      const clampNote = appliedLevel === requestedLevel ? "" : ` (clamped from ${requestedLevel})`;
+      return {
+        text: `${committedReturn.name}: return gain ${committedReturn.gain.toFixed(2)} — one undo step${clampNote}`,
+        mutated: true,
+        data,
+      };
     }
-    return {
-      text: `unknown op: ${op} (list | createGroup | addToGroup | removeFromGroup | setSend | setReturnGain | createReturn)`,
-      mutated: false,
-    };
+    return mcpError("UNKNOWN_REQUEST", `unknown op: ${op}`);
   } catch (error) {
     return mcpError("EXECUTION_FAILED", `routing op failed: ${error instanceof Error ? error.message : String(error)}`);
   }

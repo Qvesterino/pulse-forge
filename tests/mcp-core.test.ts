@@ -66,7 +66,7 @@ describe("mcp core — protocol with an authenticated session", () => {
     const list = await handleMcpRequest(hub as any, TOKEN, TOKEN, rpc("tools/list", {}, 2));
     const listedTools = (list.result as { tools: Array<{ name: string; outputSchema?: unknown }> }).tools;
     expect(listedTools).toHaveLength(37);
-    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(14);
+    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(15);
     expect(listedTools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema,
     );
@@ -90,6 +90,9 @@ describe("mcp core — protocol with an authenticated session", () => {
     );
     expect(listedTools.find((tool) => tool.name === "kyx_takes")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_takes")?.outputSchema,
+    );
+    expect(listedTools.find((tool) => tool.name === "kyx_routing")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_routing")?.outputSchema,
     );
     expect(listedTools.map((t) => t.name)).toEqual([
       "kyx_intent",
@@ -480,6 +483,39 @@ describe("mcp core — protocol with an authenticated session", () => {
       type: "mcp-result",
       id: delivered[0].id,
       result: { text: "Vocal (group id=take-group-1): ACTIVE take take-a", mutated: false, data },
+    });
+    const response = await promise;
+    expect(response.result.isError).toBe(false);
+    expect(response.result.structuredContent).toEqual(data);
+  });
+
+  it("returns committed routing state as structuredContent across the web relay", async () => {
+    const { hub, delivered } = makeHub();
+    const data = {
+      status: "routed",
+      groupId: "group-1",
+      trackIds: ["track-drums"],
+      changedTrackIds: ["track-drums"],
+      undoSteps: 1,
+    };
+    const promise = handleMcpRequest(
+      hub,
+      TOKEN,
+      TOKEN,
+      rpc(
+        "tools/call",
+        {
+          name: "kyx_routing",
+          arguments: { op: "addToGroup", trackId: "track-drums", groupId: "group-1" },
+          _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+        },
+        22,
+      ),
+    );
+    hub.handleSessionMessage({
+      type: "mcp-result",
+      id: delivered[0].id,
+      result: { text: "Drums → Group 1 — one undo step", mutated: true, data },
     });
     const response = await promise;
     expect(response.result.isError).toBe(false);

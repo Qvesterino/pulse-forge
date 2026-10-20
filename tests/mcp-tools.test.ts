@@ -1993,10 +1993,23 @@ describe("mcp routing — the group graph", async () => {
     expect(result.text).toMatch(/Drums \(id=[\w-]+\) → master/);
     expect(result.text).toContain("returns (send buses → master)");
     const data = result.data as {
-      routes: Array<{ track: string; destination: string }>;
-      groups: Array<{ name: string }>;
+      status: string;
+      routes: Array<{ trackId: string; track: string; destination: string; destinationName: string }>;
+      groups: Array<{ id: string; name: string; memberCount: number }>;
+      returns: Array<{ id: string; name: string; gain: number; sends: Array<{ trackId: string; level: number }> }>;
     };
+    expect(data.status).toBe("listed");
     expect(data.routes.length).toBe(store.doc.tracks.filter((t) => t.kind !== "group").length);
+    expect(data.routes.find((route) => route.track === "Drums")?.destinationName).toBe("master");
+    expect(data.returns).toHaveLength(store.doc.returns.length);
+    expect(data.returns.map((returnTrack) => returnTrack.name)).toEqual(
+      store.doc.returns.map((returnTrack) => returnTrack.name),
+    );
+    expect(data.returns.every((returnTrack) => returnTrack.sends.length === 0)).toBe(true);
+    expect(MCP_TOOLS.find((tool) => tool.name === "kyx_routing")?.outputSchema).toMatchObject({
+      type: "object",
+      properties: { status: { type: "string" }, routes: { type: "array" }, groups: { type: "array" } },
+    });
   });
 
   it("createGroup (with name) + addToGroup + removeFromGroup round-trip in one undo each", async () => {
@@ -2023,15 +2036,32 @@ describe("mcp routing — the group graph", async () => {
     });
     expect(added.mutated).toBe(true);
     expect(added.text).toContain("Drums → Drum Bus");
+    expect(added.data).toMatchObject({ status: "routed", groupId: group.id, undoSteps: 1 });
     const drums = store.doc.tracks.find((t) => t.kind === "drum")!;
     expect(drums.groupId).toBe(group.id);
+    const undoAfterRoute = store.undoStackLength;
+
+    const alreadyRouted = await executeMcpTool(ctx, "kyx_routing", {
+      op: "addToGroup",
+      family: "drums",
+      groupId: group.id,
+    });
+    expect(alreadyRouted.mutated).toBe(false);
+    expect(alreadyRouted.data).toMatchObject({ status: "already_routed", changedTrackIds: [], undoSteps: 0 });
+    expect(store.undoStackLength).toBe(undoAfterRoute);
 
     const listed = await executeMcpTool(ctx, "kyx_routing", { op: "list" });
     expect(listed.text).toContain(`group Drum Bus (id=${group.id}): 1 member(s) — Drums`);
 
     const removed = await executeMcpTool(ctx, "kyx_routing", { op: "removeFromGroup", family: "drums" });
     expect(removed.mutated).toBe(true);
+    expect(removed.data).toMatchObject({ status: "unrouted", changedTrackIds: [drums.id], undoSteps: 1 });
     expect(store.doc.tracks.find((t) => t.kind === "drum")!.groupId).toBeUndefined();
+    const undoAfterUnroute = store.undoStackLength;
+    const alreadyUnrouted = await executeMcpTool(ctx, "kyx_routing", { op: "removeFromGroup", family: "drums" });
+    expect(alreadyUnrouted.mutated).toBe(false);
+    expect(alreadyUnrouted.data).toMatchObject({ status: "already_unrouted", changedTrackIds: [], undoSteps: 0 });
+    expect(store.undoStackLength).toBe(undoAfterUnroute);
   });
 
   it("removeReturn drops the bus AND its send references — locked without the allow flag", async () => {
@@ -2051,10 +2081,23 @@ describe("mcp routing — the group graph", async () => {
       returnId: ret.id,
     });
     expect(allowed.mutated).toBe(true);
+    expect(allowed.data).toMatchObject({
+      status: "return_removed",
+      returnId: ret.id,
+      returnName: "Space",
+      returnExists: false,
+      removedSendCount: 1,
+      undoSteps: 1,
+    });
     expect(store.doc.returns.find((r) => r.id === ret.id)).toBeUndefined();
     expect(
       (store.doc.tracks.find((t) => t.id === drums.id)! as { sends?: Record<string, number> }).sends?.[ret.id],
     ).toBeUndefined();
+    store.undo();
+    expect(store.doc.returns.find((r) => r.id === ret.id)).toBeDefined();
+    expect(
+      (store.doc.tracks.find((t) => t.id === drums.id)! as { sends?: Record<string, number> }).sends?.[ret.id],
+    ).toBe(0.4);
   });
 
   it("honest failures: unknown group, unknown group name, track not in a group", async () => {
@@ -2071,6 +2114,21 @@ describe("mcp routing — the group graph", async () => {
     const notInGroup = await executeMcpTool(ctx, "kyx_routing", { op: "removeFromGroup", family: "drums" });
     expect(notInGroup.mutated).toBe(false);
     expect(notInGroup.text).toContain("nothing changed");
+
+    await executeMcpTool(ctx, "kyx_routing", { op: "createGroup", name: "Shared Bus" });
+    await executeMcpTool(ctx, "kyx_routing", { op: "createGroup", name: "Shared Bus" });
+    const ambiguousGroup = await executeMcpTool(ctx, "kyx_routing", {
+      op: "addToGroup",
+      family: "drums",
+      groupName: "Shared Bus",
+    });
+    expect(ambiguousGroup.errorCode).toBe("UNKNOWN_TARGET");
+    expect(ambiguousGroup.text).toContain("ambiguous");
+
+    const invalidOp = await executeMcpTool(ctx, "kyx_routing", { op: 2 });
+    expect(invalidOp.errorCode).toBe("INVALID_ARGUMENTS");
+    const oversizedName = await executeMcpTool(ctx, "kyx_routing", { op: "createGroup", name: "x".repeat(41) });
+    expect(oversizedName.errorCode).toBe("INVALID_ARGUMENTS");
   });
 });
 
@@ -2454,6 +2512,12 @@ describe("mcp finishing — send buses over kyx_routing", async () => {
     const created = await executeMcpTool(ctx, "kyx_routing", { op: "createReturn", name: "Plate" });
     expect(created.mutated).toBe(true);
     expect(created.text).toContain('created return bus "Plate"');
+    expect(created.data).toMatchObject({
+      status: "return_created",
+      returnName: "Plate",
+      returnGain: 0.9,
+      undoSteps: 1,
+    });
     const plate = store.doc.returns.find((r) => r.name === "Plate")!;
     expect(plate).toBeTruthy();
 
@@ -2465,12 +2529,39 @@ describe("mcp finishing — send buses over kyx_routing", async () => {
     });
     expect(send.mutated).toBe(true);
     expect(send.text).toMatch(/Drums → Plate 0\.6/);
+    expect(send.data).toMatchObject({ status: "send_set", returnId: plate.id, sendLevel: 0.6, undoSteps: 1 });
     const drums = store.doc.tracks.find((t) => t.kind === "drum")!;
     expect(drums.sends[plate.id]).toBe(0.6);
+    const listed = await executeMcpTool(ctx, "kyx_routing", { op: "list" });
+    expect(listed.data).toMatchObject({
+      status: "listed",
+      returns: expect.arrayContaining([
+        { id: plate.id, name: "Plate", gain: 0.9, sends: [{ trackId: drums.id, track: "Drums", level: 0.6 }] },
+      ]),
+    });
+    const undoBeforeRepeatedSend = store.undoStackLength;
+    const repeatedSend = await executeMcpTool(ctx, "kyx_routing", {
+      op: "setSend",
+      family: "drums",
+      returnId: plate.id,
+      level: 0.6,
+    });
+    expect(repeatedSend.mutated).toBe(false);
+    expect(repeatedSend.data).toMatchObject({ status: "send_unchanged", sendLevel: 0.6, undoSteps: 0 });
+    expect(store.undoStackLength).toBe(undoBeforeRepeatedSend);
 
     const gain = await executeMcpTool(ctx, "kyx_routing", { op: "setReturnGain", returnName: "Plate", gain: 1.2 });
     expect(gain.mutated).toBe(true);
+    expect(gain.data).toMatchObject({ status: "return_gain_set", returnId: plate.id, returnGain: 1.2, undoSteps: 1 });
     expect(store.doc.returns.find((r) => r.name === "Plate")!.gain).toBe(1.2);
+    const repeatedGain = await executeMcpTool(ctx, "kyx_routing", {
+      op: "setReturnGain",
+      returnId: plate.id,
+      gain: 1.2,
+    });
+    expect(repeatedGain.mutated).toBe(false);
+    expect(repeatedGain.data).toMatchObject({ status: "return_gain_unchanged", returnGain: 1.2, undoSteps: 0 });
+    expect(store.undoStackLength).toBe(undoBeforeRepeatedSend + 1);
   });
 
   it("clamps and reports honestly", async () => {
@@ -2478,11 +2569,29 @@ describe("mcp finishing — send buses over kyx_routing", async () => {
     const ctx = storeCtx(store);
     const noLevel = await executeMcpTool(ctx, "kyx_routing", { op: "setSend", family: "drums", returnName: "Reverb" });
     expect(noLevel.mutated).toBe(false);
-    expect(noLevel.text).toContain("setSend needs level");
+    expect(noLevel.errorCode).toBe("INVALID_ARGUMENTS");
 
     const badReturn = await executeMcpTool(ctx, "kyx_routing", { op: "setReturnGain", returnName: "Quantum", gain: 1 });
     expect(badReturn.mutated).toBe(false);
-    expect(badReturn.text).toContain("no return bus matches");
+    expect(badReturn.errorCode).toBe("UNKNOWN_TARGET");
+
+    await executeMcpTool(ctx, "kyx_routing", { op: "createReturn", name: "Plate" });
+    await executeMcpTool(ctx, "kyx_routing", { op: "createReturn", name: "Plate" });
+    const ambiguousReturn = await executeMcpTool(ctx, "kyx_routing", {
+      op: "setReturnGain",
+      returnName: "Plate",
+      gain: 1,
+    });
+    expect(ambiguousReturn.errorCode).toBe("UNKNOWN_TARGET");
+    expect(ambiguousReturn.text).toContain("ambiguous");
+
+    const missingTrack = await executeMcpTool(ctx, "kyx_routing", {
+      op: "setSend",
+      trackId: "missing-track",
+      returnId: store.doc.returns[0]!.id,
+      level: 0.5,
+    });
+    expect(missingTrack.errorCode).toBe("UNKNOWN_TARGET");
   });
 });
 

@@ -486,6 +486,44 @@ describe("desktop mcp bridge server (real HTTP)", () => {
     expect(body.result.structuredContent).toEqual(data);
   });
 
+  it("returns committed routing state as structuredContent over desktop HTTP", async () => {
+    const data = {
+      status: "send_set",
+      returnId: "return-1",
+      returnName: "Plate",
+      trackIds: ["track-drums"],
+      changedTrackIds: ["track-drums"],
+      requestedLevel: 0.4,
+      sendLevel: 0.4,
+      undoSteps: 1,
+    };
+    const { server } = bridgeModule.createMcpBridgeServer({
+      token: "tok",
+      executeTool: async () => ({ text: "Drums → Plate 0.4 — one undo step", mutated: true, data }),
+    });
+    const port = await listenOnEphemeralPort(server);
+    runningServers.push(server);
+
+    const response = await post(
+      port,
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 13,
+        method: "tools/call",
+        params: {
+          name: "kyx_routing",
+          arguments: { op: "setSend", trackId: "track-drums", returnId: "return-1", level: 0.4 },
+        },
+      }),
+      { token: "tok" },
+    );
+    const body = JSON.parse(response.body) as {
+      result: { isError?: boolean; structuredContent: Record<string, unknown> };
+    };
+    expect(body.result.isError).toBeUndefined();
+    expect(body.result.structuredContent).toEqual(data);
+  });
+
   it("protocol completeness: version negotiation, instructions, resources, batch, unknown-tool -32602", async () => {
     const { server } = bridgeModule.createMcpBridgeServer({
       token: "tok",
@@ -878,6 +916,9 @@ describe("desktop mcp stdio forwarder (subprocess)", () => {
     );
     expect(list.result.tools.find((tool) => tool.name === "kyx_takes")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_takes")?.outputSchema,
+    );
+    expect(list.result.tools.find((tool) => tool.name === "kyx_routing")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_routing")?.outputSchema,
     );
 
     writeLine({
