@@ -14,6 +14,11 @@ import path from "node:path";
 export const HARNESS_SOURCES = [
   path.join("src", "plugin-audit-checks.ts"),
   path.join("src", "plugin-audit-audition.ts"),
+  // The fingerprint rule decides WHICH knob the host probe turns and in which
+  // state — it decides what a host delta MEANS, so it belongs to the harness
+  // fingerprint. Left out, the rule could change under a report that still
+  // claimed the old harness and the baseline would stay "valid".
+  path.join("src", "plugin-audit-fingerprint.ts"),
 ];
 
 /**

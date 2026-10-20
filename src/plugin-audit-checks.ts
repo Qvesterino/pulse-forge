@@ -35,6 +35,7 @@ import type { ParamDef } from "./effects/types";
 import { CORE_EFFECT_PRESETS } from "./effects/presets";
 import { INSTRUMENT_DEFS, INSTRUMENT_ORDER, defaultInstrumentParams } from "./instruments/registry";
 import { auditionNoteSec } from "./plugin-audit-audition";
+import { HOST_EPS, MIX_CLASS_IDS, fingerprintOf, type ParamExtreme } from "./plugin-audit-fingerprint";
 import { generateFactoryBank, type SampleBank } from "./sample-library/factory";
 import { ensureCuratedLayer } from "./sample-library/curated";
 import { loadAllWorklets } from "./audio-worklets/loader";
@@ -49,8 +50,6 @@ import type { EffectType, InstrumentTrack, PlayMode, ProjectDocument } from "./p
 const SR = 44100;
 const SIGNAL_SECONDS = 0.75;
 const RESPONSIVE_EPS = 0.02;
-/** Host delta below this still counts as processing (jitter floor ~1e-7). */
-const HOST_EPS = 0.005;
 
 const RUNAWAY_PEAK = 40;
 
@@ -263,7 +262,26 @@ export interface ParamAudit {
    * shows which instead of asserting.
    */
   gatedDelta?: number;
+  /**
+   * Both extremes of this parameter, measured separately.
+   *
+   * `delta` is the change against the DEFAULT render — "does this parameter
+   * move the sound". `dryDelta` is the change against the DRY render — "does
+   * this state still PROCESS at all".
+   *
+   * The two are not the same question, and the difference is what a
+   * passthrough looks like. `pitchCorrect.amount` defaults to 1 (full
+   * retune) and its minimum is 0 (NO retune): the minimum is the largest
+   * change against the default AND a perfect passthrough. Ranking
+   * parameters by `delta` alone therefore puts the effect into the one
+   * state where it does nothing — measured on the house material, the
+   * host probe read 6.9e-9 for that state while the same effect read 0.108
+   * at its defaults.
+   */
+  extremes?: ParamExtreme[];
 }
+
+/** One measured extreme of a parameter — defined in ./plugin-audit-fingerprint. */
 
 export interface SweepResult {
   type: EffectType;
@@ -308,6 +326,15 @@ export interface HostResult {
    * wired correctly. `hostProcesses` is the OR of the two.
    */
   hostMixDelta?: number;
+  /**
+   * Which track the effect was measured on — e.g. "Drums (drum bus)" or
+   * "Chords (melodic)". A host verdict without the material is unreadable:
+   * a drum bus cannot excite a pitch corrector, so "not processing" means two
+   * very different things depending on what the effect was fed.
+   */
+  hostMaterial?: string;
+  /** Which state the timbre probe rendered — "effect at defaults" or the fingerprint. */
+  hostState?: string;
   hostBypassEqualsRemoved: boolean;
   hostFinite: boolean;
   automationDelta: number;
@@ -716,6 +743,20 @@ async function sweepEffect(type: EffectType, signal: AudioBuffer, dry: AudioBuff
     ? metricsOf(await renderEffect(type, defaultParamsOf(type), broadbandSignal))
     : null;
 
+  /**
+   * The DRY render of every stimulus, for the ENGAGEMENT measurement.
+   *
+   * `delta` answers "does this parameter move the sound"; `dryDelta` answers
+   * "does the effect still process at all in this state". The second question
+   * needs the dry reference of the SAME stimulus — a tone, a burst train and a
+   * broadband sweep have nothing in common metric-wise, so comparing a burst
+   * render against the tone's dry reference would measure the stimulus, not
+   * the effect.
+   */
+  const dryMetrics = metricsOf(dry);
+  const dynamicsDryMetrics = dynamicsSignal ? metricsOf(await renderDry(dynamicsSignal)) : null;
+  const broadbandDryMetrics = broadbandSignal ? metricsOf(await renderDry(broadbandSignal)) : null;
+
   const params: ParamAudit[] = [];
   const deadParams: string[] = [];
   const unstableParams: string[] = [];
@@ -732,6 +773,7 @@ async function sweepEffect(type: EffectType, signal: AudioBuffer, dry: AudioBuff
       metric: "",
       delta: 0,
     };
+    const extremes: ParamExtreme[] = [];
     let bestDelta = 0;
     let bestMetric = "";
     let bestExtreme: "min" | "max" = "max";
@@ -748,6 +790,7 @@ async function sweepEffect(type: EffectType, signal: AudioBuffer, dry: AudioBuff
     const paramDefaults = korenProbe?.params ?? defaultParamsOf(type);
     const paramBaseline = korenProbe ? await renderEffect(type, paramDefaults, paramSignal) : baseline;
     const paramBaseMetrics = metricsOf(paramBaseline);
+    const paramDryMetrics = korenProbe ? metricsOf(await renderDry(paramSignal)) : dryMetrics;
     for (const extreme of ["min", "max"] as const) {
       const value = p[extreme];
       const finKey = extreme === "min" ? "minFinite" : "maxFinite";
@@ -761,26 +804,30 @@ async function sweepEffect(type: EffectType, signal: AudioBuffer, dry: AudioBuff
       let delta = d.delta;
       let metric = d.metric;
       let stimulus = "tone";
-      if (dynamicsSignal !== null && dynamicsBase !== null) {
+      let dryDelta = deltaVs(paramDryMetrics, m).delta;
+      if (dynamicsSignal !== null && dynamicsBase !== null && dynamicsDryMetrics !== null) {
         const dynRendered = await renderEffect(type, { ...defaultParamsOf(type), [p.id]: value }, dynamicsSignal);
-        const dynDelta = deltaVs(dynamicsBase, metricsOf(dynRendered)).delta;
+        const dynMetrics = metricsOf(dynRendered);
+        const dynDelta = deltaVs(dynamicsBase, dynMetrics).delta;
         if (dynDelta > delta) {
           delta = dynDelta;
-          metric = deltaVs(dynamicsBase, metricsOf(dynRendered)).metric;
+          metric = deltaVs(dynamicsBase, dynMetrics).metric;
           stimulus = "dynamics";
+          dryDelta = deltaVs(dynamicsDryMetrics, dynMetrics).delta;
         }
       }
-      if (broadbandSignal !== null && broadbandBase !== null) {
-        const bb = deltaVs(
-          broadbandBase,
-          metricsOf(await renderEffect(type, { ...defaultParamsOf(type), [p.id]: value }, broadbandSignal)),
-        );
+      if (broadbandSignal !== null && broadbandBase !== null && broadbandDryMetrics !== null) {
+        const bbRendered = await renderEffect(type, { ...defaultParamsOf(type), [p.id]: value }, broadbandSignal);
+        const bbMetrics = metricsOf(bbRendered);
+        const bb = deltaVs(broadbandBase, bbMetrics);
         if (bb.delta > delta) {
           delta = bb.delta;
           metric = bb.metric;
           stimulus = "broadband";
+          dryDelta = deltaVs(broadbandDryMetrics, bbMetrics).delta;
         }
       }
+      extremes.push({ extreme, value, delta, dryDelta });
       if (delta > bestDelta) {
         bestDelta = delta;
         bestMetric = metric;
@@ -788,6 +835,7 @@ async function sweepEffect(type: EffectType, signal: AudioBuffer, dry: AudioBuff
         bestStimulus = stimulus;
       }
     }
+    entry.extremes = extremes;
     entry.responsive = bestDelta > RESPONSIVE_EPS;
     entry.bestExtreme = bestExtreme;
     entry.metric = bestMetric;
@@ -941,101 +989,134 @@ async function renderDoc(doc: ProjectDocument, bank: SampleBank): Promise<AudioB
   });
 }
 
-/** Params whose dry extreme silences the effect (mix/wet classes). */
-const MIX_CLASS_IDS = new Set(["mix", "global.mix", "global.dryWet", "globalMix", "level"]);
+/**
+ * MIX_CLASS_IDS (the mix/wet params), FINGERPRINT_OVERRIDES and the
+ * fingerprint rule itself live in ./plugin-audit-fingerprint — Node-pure, so
+ * the rule can be unit-tested without a browser and the host threshold
+ * cannot drift away from the threshold the fingerprint gate uses.
+ */
 
 /**
- * Per-effect fingerprint overrides where the strongest sweep extreme is not
- * the most host-audible one (out-of-window delay times, mono-invisible
- * ping-pong).
+ * The fingerprint rule — which knob the host probe turns, and in which state
+ * — lives in ./plugin-audit-fingerprint. The rule and the measurement it
+ * feeds are in different files on purpose: the rule decides, the audit
+ * measures, and only the rule has to be provable in a unit test.
  */
-const FINGERPRINT_OVERRIDES: Partial<Record<EffectType, { id: string; value: number }[]>> = {
-  // The swell needs to CAPTURE time seconds before replaying it reversed:
-  // time@max (8 s) can never complete inside any audit window.
-  reverseSwell: [
-    { id: "engaged", value: 1 },
-    { id: "time", value: 0.25 },
-  ],
-  delay: [
-    { id: "feedback", value: 0.85 },
-    { id: "tone", value: 500 },
-  ],
-  duckDelay: [
-    { id: "feedback", value: 0.85 },
-    { id: "duckAmount", value: 1 },
-  ],
-  stepGate: [
-    { id: "division", value: 3 },
-    { id: "depth", value: 1 },
-  ],
-  pump: [
-    { id: "amount", value: 1 },
-    { id: "rate", value: 4 },
-  ],
-  tremolo: [
-    { id: "mode", value: 1 },
-    { id: "rate", value: 20 },
-  ],
-};
 
-/** Fingerprint: the two strongest non-dry-class extremes from the sweep. */
-function fingerprintOf(sweep: SweepResult): { id: string; value: number }[] {
-  const override = FINGERPRINT_OVERRIDES[sweep.type];
-  if (override) return override;
-  const paramsDef = EFFECT_META[sweep.type].params;
-  const candidates = sweep.params
-    .filter((p: ParamAudit) => !MIX_CLASS_IDS.has(p.id))
-    .sort((a, b) => b.delta - a.delta)
-    .slice(0, 2);
-  // Fallback when the only responsive params are mix-class: use the
-  // strongest non-default param extreme regardless.
-  const chosen = candidates.length > 0 ? candidates : [...sweep.params].sort((a, b) => b.delta - a.delta).slice(0, 2);
-  return chosen.map((p: ParamAudit) => {
-    const def = paramsDef.find((d: ParamDef) => d.id === p.id)!;
-    return { id: p.id, value: p.bestExtreme === "min" ? def.min : def.max };
-  });
+/**
+ * A track the host test can put the effect on.
+ *
+ * The drum bus comes first: it is what the house template plays and what most
+ * devices are built for. The MELODIC tracks follow, and they exist because a
+ * drum bus cannot excite every device — a pitch corrector has nothing to
+ * correct in a kick.
+ *
+ * MEASURED 2026-10-25 on the house template WITH its real drum samples (an
+ * empty sample bank renders the drum bus silent, which is a different failure
+ * and must not be confused with this one):
+ *
+ *   material        effect at defaults   audit fingerprint {amount:0,speed:0}
+ *   drum bus        8.5e-5               8.5e-5
+ *   808 bass        5.4e-9               7.9e-8
+ *   analog chords   0.108                6.9e-9
+ *
+ * Two independent reasons for a zero host delta, both visible in that table:
+ * the drum bus cannot excite a pitch corrector, and the audit's fingerprint
+ * was a passthrough state. Either one alone is enough to report a working
+ * effect as dead.
+ */
+interface HostMaterial {
+  trackId: string;
+  label: string;
+  melodic: boolean;
 }
 
-async function hostTestEffect(
+/** The drum bus first, then every track that plays notes in the active pattern. */
+function hostMaterials(doc: ProjectDocument): HostMaterial[] {
+  const materials: HostMaterial[] = [];
+  const drum = doc.tracks.find((t) => t.kind === "drum");
+  if (!drum) throw new Error("house template lost its drum track");
+  materials.push({ trackId: drum.id, label: `${drum.name} (drum bus)`, melodic: false });
+  const pattern = doc.patterns.find((p) => p.id === doc.activePatternId) ?? doc.patterns[0];
+  for (const trackId of Object.keys(pattern?.notes ?? {})) {
+    if (trackId === drum.id) continue;
+    const notes = pattern?.notes?.[trackId] ?? [];
+    if (notes.length === 0) continue;
+    const track = doc.tracks.find((t) => t.id === trackId);
+    if (!track) continue;
+    materials.push({ trackId, label: `${track.name} (melodic)`, melodic: true });
+  }
+  return materials;
+}
+
+/** What one material showed about one effect. */
+interface HostMaterialProbe {
+  material: HostMaterial;
+  /** The doc of the state the timbre probe renders. */
+  timbreDoc: ProjectDocument;
+  /** The effect id inside `timbreDoc`. */
+  fxId: string;
+  /** The render of the timbre state. */
+  timbreRender: AudioBuffer;
+  /** Which state the timbre probe rendered. */
+  timbreState: "defaults" | "fingerprint";
+  /** How much the effect changes this material against the dry reference. */
+  timbreEngagement: number;
+  /** The WIRING probe: the mix class at max against the dry reference. */
+  mixEngagement: number;
+  /** What an automation lane can move: the fingerprint state against the defaults. */
+  automationMovement: number;
+  /** Does this material show the effect working at all? */
+  engages: boolean;
+  /** The effect bypassed — the dry reference of this material. */
+  bypassed: AudioBuffer;
+  /** The automation render. */
+  auto: AudioBuffer;
+}
+
+/**
+ * Measure one effect on one material.
+ *
+ * Four questions, four different states, one material:
+ *   defaults    — the effect as shipped (the timbre probe's baseline state)
+ *   fingerprint — the effect in the sweep's strongest state (the automation lane's)
+ *   bypassed    — the effect switched off (the dry reference)
+ *   mix at max  — the wiring probe
+ */
+async function probeHostMaterial(
   base: ProjectDocument,
   type: EffectType,
-  sweep: SweepResult,
+  fingerprint: { id: string; value: number }[],
   bank: SampleBank,
-): Promise<HostResult> {
-  const trackId = drumTrackId(base);
-  // These effects duck/shape against a SECOND signal: the minimal host doc
-  // has no key/modulator track, so the dry path IS the correct output and a
-  // zero host delta is expected. Their processing evidence comes from the
-  // factory sweep, which wires a modulator feed.
-  const hostExemptReason =
-    type === "sidechain"
-      ? "host has no key track — dry path is correct; sweep carries the processing evidence"
-      : type === "vocoder"
-        ? "host has no modulator track — carrier passthrough is correct; sweep carries the processing evidence"
-        : undefined;
+  material: HostMaterial,
+): Promise<HostMaterialProbe> {
+  const trackId = material.trackId;
 
+  // The effect as shipped, on this material.
   const addStore = new ProjectStore(base);
   const add = addEffect(addStore.getDoc(), trackId, type);
   addStore.execute(add);
   const fxId = add.effectId;
-  for (const f of fingerprintOf(sweep)) {
-    addStore.execute(setEffectParam(addStore.getDoc(), trackId, fxId, f.id, f.value));
+  const defaultsDoc = addStore.getDoc();
+  const defaults = await renderDoc(defaultsDoc, bank);
+
+  // The same effect in the fingerprint state.
+  const fpStore = new ProjectStore(defaultsDoc);
+  for (const f of fingerprint) {
+    fpStore.execute(setEffectParam(fpStore.getDoc(), trackId, fxId, f.id, f.value));
   }
-  const doc = addStore.getDoc();
+  const fingerprintDoc = fpStore.getDoc();
+  const fingerprintRender = await renderDoc(fingerprintDoc, bank);
 
-  const on = await renderDoc(doc, bank);
-
-  const bypassStore = new ProjectStore(doc);
-  bypassStore.execute(toggleEffectBypass(doc, trackId, fxId));
+  // The effect bypassed — the dry reference of this material.
+  const bypassStore = new ProjectStore(defaultsDoc);
+  bypassStore.execute(toggleEffectBypass(defaultsDoc, trackId, fxId));
   const bypassed = await renderDoc(bypassStore.getDoc(), bank);
 
-  const removeStore = new ProjectStore(doc);
-  removeStore.execute(removeEffect(doc, trackId, fxId));
-  const removed = await renderDoc(removeStore.getDoc(), bank);
-
-  const hostDelta = deltaVs(metricsOf(bypassed), metricsOf(on));
-  const hostFinite = finiteEverywhere(on) && finiteEverywhere(bypassed) && finiteEverywhere(removed);
-  const hostBypassEqualsRemoved = maxDiff(bypassed, removed) <= 1e-5;
+  const bypassMetrics = metricsOf(bypassed);
+  const defaultsMetrics = metricsOf(defaults);
+  const defaultsEngagement = deltaVs(bypassMetrics, defaultsMetrics).delta;
+  const fingerprintEngagement = deltaVs(bypassMetrics, metricsOf(fingerprintRender)).delta;
 
   // WIRING probe. `fingerprintOf` deliberately skips mix-class params because
   // a dry/wet control "only changes the level" — which makes it worthless for
@@ -1049,95 +1130,154 @@ async function hostTestEffect(
   // harmony generator fed a percussive drum bus — while the effect sat wired
   // in the graph the whole time.
   //
-  // HONEST SCOPE: across seven effects this probe moves the verdict for ONE
-  // (rezonans). sirka, reverseSwell, pitchCorrect, vocoder and sidechain stay
-  // below HOST_EPS under BOTH probes, so the OR adds no signal for them and
-  // they remain open questions — at least sirka has a documented benign
-  // reason ("width 1 everywhere is a neutral pass", so mix=max against a dry
-  // bus is a passthrough by design). Do not read a still-false verdict here as
-  // either a confirmed defect or a confirmed exemption; it needs per-effect
-  // triage, and the honest next step is material that actually exercises the
-  // device rather than a bigger threshold.
-  //
   // Comparing against `bypassed` (not against the default render) is what makes
   // this sound: mix already sits at max on several effects, so mix=max equals
   // the default there, and only the dry reference still separates wet from dry.
   const mixParamId = EFFECT_META[type].params.find((p: ParamDef) => MIX_CLASS_IDS.has(p.id));
-  let hostMixDelta: number | undefined;
+  let mixEngagement = 0;
   if (mixParamId) {
-    // Built from `base`, not from `doc`: one effect, mix at max, every other
-    // param at its default. Adding a second effect to `doc` would stack the
+    // Built from `base`, not from the fingerprint doc: one effect, mix at max,
+    // every other param at its default. Adding a second effect would stack the
     // device with itself and prove nothing about wiring.
     const mixStore = new ProjectStore(base);
     const mixAdd = addEffect(mixStore.getDoc(), trackId, type);
     mixStore.execute(mixAdd);
     mixStore.execute(setEffectParam(mixStore.getDoc(), trackId, mixAdd.effectId, mixParamId.id, mixParamId.max));
-    hostMixDelta = deltaVs(metricsOf(bypassed), metricsOf(await renderDoc(mixStore.getDoc(), bank))).delta;
+    mixEngagement = deltaVs(bypassMetrics, metricsOf(await renderDoc(mixStore.getDoc(), bank))).delta;
   }
 
-  // State restore: the SAME doc through a JSON round-trip must render the
-  // same mix (worklet offline renders are deterministic).
+  // AUTOMATION probe: a lane drives the fingerprint state; the effect's own
+  // parameters stay at their defaults, so any change is the lane's doing.
+  // Device lanes apply as discrete point events (cyclic pattern semantics — a
+  // point on the cycle boundary is the next cycle's start), so the step lives
+  // at an interior tick.
+  const autoStore = new ProjectStore(base);
+  const autoAdd = addEffect(autoStore.getDoc(), trackId, type);
+  autoStore.execute(autoAdd);
+  const autoDoc = normalizeProject({
+    ...autoStore.getDoc(),
+    automation: [
+      ...autoStore.getDoc().automation,
+      ...fingerprint.map((f, index) => ({
+        id: `audit-lane-${index}`,
+        target: { kind: "fxParam" as const, trackId, fxId: autoAdd.effectId, paramId: f.id },
+        points: [
+          { tick: 0, value: f.value },
+          { tick: 480, value: f.value },
+        ],
+      })),
+    ],
+  });
+  const auto = await renderDoc(autoDoc, bank);
+  const automationMovement = deltaVs(defaultsMetrics, metricsOf(auto)).delta;
+
+  // The timbre probe renders the most audible state this material has: the
+  // effect as shipped, or the fingerprint state. The larger engagement wins —
+  // the probe asks "does the effect change the sound", not "does this one
+  // knob do something". Measured on the house material, pitchCorrect reads
+  // 0.108 at its defaults and 6.9e-9 in the old fingerprint state.
+  const useDefaults = defaultsEngagement >= fingerprintEngagement;
+
+  return {
+    material,
+    timbreDoc: useDefaults ? defaultsDoc : fingerprintDoc,
+    fxId,
+    timbreRender: useDefaults ? defaults : fingerprintRender,
+    timbreState: useDefaults ? "defaults" : "fingerprint",
+    timbreEngagement: Math.max(defaultsEngagement, fingerprintEngagement),
+    mixEngagement,
+    automationMovement,
+    engages: Math.max(defaultsEngagement, fingerprintEngagement) > HOST_EPS || mixEngagement > HOST_EPS,
+    bypassed,
+    auto,
+  };
+}
+
+async function hostTestEffect(
+  base: ProjectDocument,
+  type: EffectType,
+  sweep: SweepResult,
+  bank: SampleBank,
+): Promise<HostResult> {
+  // These effects duck/shape against a SECOND signal: the minimal host doc
+  // has no key/modulator track, so the dry path IS the correct output and a
+  // zero host delta is expected. Their processing evidence comes from the
+  // factory sweep, which wires a modulator feed.
+  const hostExemptReason =
+    type === "sidechain"
+      ? "host has no key track — dry path is correct; sweep carries the processing evidence"
+      : type === "vocoder"
+        ? "host has no modulator track — carrier passthrough is correct; sweep carries the processing evidence"
+        : undefined;
+
+  const fingerprint = fingerprintOf(sweep);
+  // The drum bus is probed first and every other material only after the
+  // previous one failed to show the effect working. An effect that processes
+  // on the drum bus keeps exactly the measurement it had before; an effect
+  // that does not gets a second chance on material that can excite it.
+  let chosen: HostMaterialProbe | undefined;
+  for (const material of hostMaterials(base)) {
+    const candidate = await probeHostMaterial(base, type, fingerprint, bank, material);
+    if (!chosen) chosen = candidate;
+    if (candidate.engages) {
+      chosen = candidate;
+      break;
+    }
+    // An exempt effect cannot be exercised by ANY material of this doc — it
+    // needs a modulator track, not a different sound.
+    if (hostExemptReason) break;
+  }
+  const probe = chosen!;
+  const trackId = probe.material.trackId;
+
+  // The effect REMOVED from the material must render like the bypassed one:
+  // "switched off" and "not there at all" are the same sound.
+  const removeStore = new ProjectStore(probe.timbreDoc);
+  removeStore.execute(removeEffect(probe.timbreDoc, trackId, probe.fxId));
+  const removed = await renderDoc(removeStore.getDoc(), bank);
+
+  const hostFinite =
+    finiteEverywhere(probe.timbreRender) && finiteEverywhere(probe.bypassed) && finiteEverywhere(removed);
+  const hostBypassEqualsRemoved = maxDiff(probe.bypassed, removed) <= 1e-5;
+
   // State restore: the SAME doc through a JSON round-trip must render the
   // same mix. (Native DelayNode feedback cycles used to alternate between
   // two stable variants across renders — the multitap worklet port closed
   // that; the strict single-pair comparison is the regression gate.)
-  const restored = normalizeProject(JSON.parse(JSON.stringify(doc)));
+  const restored = normalizeProject(JSON.parse(JSON.stringify(probe.timbreDoc)));
   const restoreRender = await renderDoc(restored, bank);
-  const on2 = await renderDoc(doc, bank);
+  const on2 = await renderDoc(probe.timbreDoc, bank);
   // Compare against both doc renders: an environment step between them is
   // not a restore failure (the restored doc matches one of the doc's own
   // stable variants).
-  const restoreMaxDiff = Math.min(maxDiff(on, restoreRender), maxDiff(on2, restoreRender));
-  const onRms = metricsOf(on).rms;
+  const restoreMaxDiff = Math.min(maxDiff(probe.timbreRender, restoreRender), maxDiff(on2, restoreRender));
+  const onRms = metricsOf(probe.timbreRender).rms;
   const restoredRms = metricsOf(restoreRender).rms;
   const restoreRmsDiff = Math.min(
     Math.abs(onRms - restoredRms) / Math.max(onRms, 1e-6),
     Math.abs(metricsOf(on2).rms - restoredRms) / Math.max(metricsOf(on2).rms, 1e-6),
   );
 
-  // Automation: a lane stepping the strongest param mid-pattern must
-  // audibly move the output vs the SAME doc without the lane. The lane is
-  // the ONLY thing setting the param here (effect params stay at defaults),
-  // so any delta is attributable to the automation path itself. Device
-  // lanes apply as discrete point events (cyclic pattern semantics — a
-  // point on the cycle boundary is the next cycle's start), so the step
-  // lives at an interior tick.
-  const f = fingerprintOf(sweep)[0];
-  const autoStore = new ProjectStore(base);
-  const autoAdd = addEffect(autoStore.getDoc(), trackId, type);
-  autoStore.execute(autoAdd);
-  const autoFxId = autoAdd.effectId;
-  const autoDoc = normalizeProject({
-    ...autoStore.getDoc(),
-    automation: [
-      ...autoStore.getDoc().automation,
-      {
-        id: "audit-lane",
-        target: { kind: "fxParam" as const, trackId, fxId: autoFxId, paramId: f.id },
-        points: [
-          { tick: 0, value: f.value },
-          { tick: 480, value: f.value },
-        ],
-      },
-    ],
-  });
-  const autoRender = await renderDoc(autoDoc, bank);
-  const plainRender = await renderDoc(autoStore.getDoc(), bank);
-  const automationDelta = deltaVs(metricsOf(plainRender), metricsOf(autoRender)).delta;
+  const mixParamId = EFFECT_META[type].params.find((p: ParamDef) => MIX_CLASS_IDS.has(p.id));
 
   return {
     hostError: undefined,
     hostExemptReason,
     // OR of the timbre probe and the wiring probe: either one moving the output
-    // past HOST_EPS means the effect is doing something in this graph. Measured
-    // effect of the OR so far is one rescued verdict (rezonans) — see the
-    // wiring-probe comment above for why the other five are still open.
-    hostProcesses: hostDelta.delta > HOST_EPS || (hostMixDelta ?? 0) > HOST_EPS,
-    hostDelta: hostDelta.delta,
-    hostMixDelta,
+    // past HOST_EPS means the effect is doing something in this graph.
+    hostProcesses: probe.engages,
+    hostDelta: probe.timbreEngagement,
+    hostMixDelta: mixParamId ? probe.mixEngagement : undefined,
+    /** Which track the effect was measured on — a verdict without it is unreadable. */
+    hostMaterial: probe.material.label,
+    /** Which state the timbre probe rendered. */
+    hostState:
+      probe.timbreState === "defaults"
+        ? "effect at defaults"
+        : `fingerprint ${fingerprint.map((f) => `${f.id}=${f.value}`).join(", ")}`,
     hostBypassEqualsRemoved,
     hostFinite,
-    automationDelta,
+    automationDelta: probe.automationMovement,
     automationExempt:
       hostExemptReason !== undefined
         ? hostExemptReason
@@ -1146,7 +1286,7 @@ async function hostTestEffect(
           : type === "pump"
             ? "duck-depth lane keeps average loudness flat on an already-dynamic bus; write path instrumented OK, depth covered by the dedicated pump check"
             : undefined,
-    automationFinite: finiteEverywhere(autoRender),
+    automationFinite: finiteEverywhere(probe.auto),
     restoreMaxDiff,
     restoreRmsDiff,
   };

@@ -117,7 +117,12 @@ describe("plugin audit — the host probe answers the question it declares", () 
     // question `hostProcesses` claims to answer. rezonans measured 5.9e-9
     // under its fingerprint and 7.2e-2 under mix, on the same document.
     expect(audit).toContain("hostMixDelta");
-    expect(audit).toMatch(/hostProcesses:\s*hostDelta\.delta > HOST_EPS \|\| \(hostMixDelta \?\? 0\) > HOST_EPS/);
+    // The verdict is the OR of the timbre probe and the wiring probe. The
+    // expression moved into the per-material probe (a material that engages
+    // can rescue an effect the drum bus cannot excite), so the contract is
+    // pinned where the decision now happens — not by the variable names.
+    expect(audit).toMatch(/HOST_EPS\s*\|\|\s*mixEngagement > HOST_EPS/);
+    expect(audit).toMatch(/hostProcesses:\s*probe\.engages/);
   });
 
   it("keeps an envelope term in the delta, because amplitude metrics are blind to a time reversal", () => {
