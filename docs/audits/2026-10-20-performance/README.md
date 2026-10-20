@@ -261,14 +261,66 @@ because the first pair of "green" results was misleading:
 
 ---
 
+## The tool this produced — `npm run perf:tick`
+
+The audit's most expensive finding was **not** on the command path, and
+`scripts/bench-hotpath.ts` could not see it: the cost lived between the
+scheduler tick and the audio-parameter write. `scripts/perf-tick.mts` closes
+that gap.
+
+**What it measures.** The real chain — `Scheduler.tick()` →
+`deps.applyAutomation()` → `AudioEngine.applyAutomation()` →
+`AutomationBridge.applyAutomation()` → `targetParamDef()` →
+`DeviceLookup.writeDeviceTargetAt()` — with the production scheduler, engine,
+bridge and document. Only the AUDIO CONTEXT is a mock, because the cost under
+study is main-thread JavaScript; the audio thread is not where a jank-inducing
+stall comes from. It reports the median and p95 milliseconds per tick and
+projects them to the real tick cadence (40 ticks/s), i.e. **percent of one
+core**.
+
+**What it does not measure.** The audio thread, the DSP, the worklet's
+`process()`, and anything that needs a real AudioContext.
+
+**Its own blind-spot guard.** The tool counts how many times a tick entered the
+automation path and **refuses to report** if that count is zero. A fixture that
+stopped exercising the path would otherwise make the tool describe pattern
+scheduling while looking healthy — the exact failure mode of a measuring
+instrument that watches the wrong thing.
+
+**Its sensitivity was proved, not asserted.** The pre-fix behaviour was
+re-created by disabling the catalog cache (the same control-mutation method
+used for the guards), the tool was run, and the source was restored
+byte-identically:
+
+| lanes | with the cache disabled                | current                   |
+| ----- | -------------------------------------- | ------------------------- |
+| 1     | 1.72 ms/tick → **6.88 % of a core**    | 0.06 ms/tick → **0.24 %** |
+| 16    | 33.45 ms/tick → **133.80 % of a core** | 0.13 ms/tick → **0.50 %** |
+
+At 16 automated flagship lanes the pre-fix code would have saturated **more
+than one core** — the isolated measurement in this audit understated it. The
+positive control confirms the numbers return to the baseline after the
+mutation is reverted.
+
+**Using it.**
+
+```bash
+npm run perf:tick                          # the default sweep
+npm run perf:tick -- --lanes 1,8,32        # a custom lane sweep
+npm run perf:tick -- --type ultina         # a different flagship effect
+npm run perf:tick -- --budget 4            # exit 1 above 4 % of one core
+```
+
+---
+
 ## Still needs profiling
 
 1. **The root subscribes to the whole document** (`src/ui/App.tsx:359`), so every
    command re-renders the entire panel tree; none of the large panels are
    `memo`-ized. The mechanism is certain; the absolute cost is not — it needs a
    React Profiler run on a large project in a real browser, not jsdom.
-2. **The effect-parameter catalogue was measured in isolation**, not as its
-   share of a real 25 ms tick with several automated flagship plugins.
+2. **~~The effect-parameter catalogue as its share of a real tick.~~** Done —
+   `npm run perf:tick` measures it end to end; see the table above.
 3. **`syncPdc` share of an edit frame** on a 24-track project — needs a browser
    trace with the real audio graph.
 4. **Long-session heap growth** of the in-memory sample bank and the frozen
