@@ -4233,16 +4233,59 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         };
       }
       if (op === "transpose") {
-        const semitones = typeof record.semitones === "number" ? Math.round(record.semitones) : NaN;
-        if (!Number.isFinite(semitones) || semitones === 0) {
-          return { text: "transpose needs semitones (non-zero, e.g. −3 or +5)", mutated: false };
+        const semitones = record.semitones;
+        if (
+          typeof semitones !== "number" ||
+          !Number.isSafeInteger(semitones) ||
+          semitones === 0 ||
+          Math.abs(semitones) > 127
+        ) {
+          return mcpError(
+            "INVALID_ARGUMENTS",
+            "transpose needs an integer semitone shift from -127 to 127, excluding zero",
+          );
         }
-        for (const note of notesOf()) {
-          ctx.execute(moveNote(ctx.getDoc(), trackId, note.id, { pitch: note.pitch + semitones }));
+        const before = ctx.getDoc();
+        const beforeNotes = notesOf();
+        if (beforeNotes.length === 0) {
+          return { text: `track "${track?.name ?? trackId}" has no notes to transpose`, mutated: false };
+        }
+        let next = before;
+        for (const note of beforeNotes) {
+          next = moveNote(next, trackId, note.id, { pitch: note.pitch + semitones }).execute(next);
+        }
+        const command = snapshot(
+          "mcpTransposeNotes",
+          `MCP: transpose ${track?.name ?? trackId} by ${semitones} st`,
+          before,
+          next,
+        );
+        if (command.execute(before) === before) {
+          return mcpError(
+            "PARTIAL_FAILURE",
+            `transpose was clamped at the MIDI pitch boundary; no notes moved and no undo step was added`,
+          );
+        }
+        ctx.execute(command);
+        const after = notesOf();
+        const afterById = new Map(after.map((note) => [note.id, note]));
+        let transposed = 0;
+        let partial = 0;
+        for (const note of beforeNotes) {
+          const committed = afterById.get(note.id);
+          if (committed?.pitch === note.pitch + semitones) transposed += 1;
+          else partial += 1;
+        }
+        if (partial > 0 || transposed === 0) {
+          return mcpError(
+            "PARTIAL_FAILURE",
+            `transpose moved ${transposed}/${beforeNotes.length} notes by the full shift; ${partial} were clamped or missing. One undo reverts the committed changes.`,
+            { mutated: ctx.getDoc() !== before },
+          );
         }
         return {
-          text: `transposed ${notesOf().length} notes by ${semitones > 0 ? "+" : ""}${semitones} st — use ONE undo to revert the whole shift`,
-          mutated: true,
+          text: `transposed ${transposed} notes on ${track?.name ?? trackId} by ${semitones > 0 ? "+" : ""}${semitones} st — one undo step`,
+          mutated: ctx.getDoc() !== before,
         };
       }
       return {

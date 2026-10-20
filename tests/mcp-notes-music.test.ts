@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { executeMcpTool, explicitTrackIds, type McpToolContext } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
+import { ProjectStore } from "../src/store/ProjectStore";
 import type { ProjectDocument } from "../src/project-model/types";
 
 /**
@@ -24,6 +25,19 @@ function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } =
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
     ...(options.allowDestructive ? { allowDestructive: () => true } : {}),
+  };
+}
+
+function projectStoreCtx(store: ProjectStore): McpToolContext {
+  return {
+    getDoc: () => store.doc,
+    execute: (command) => store.execute(command),
+    undo: () => store.undo(),
+    redo: () => store.redo(),
+    undoStackLength: () => store.undoStackLength,
+    historyLabels: () => store.history.map((entry) => entry.label),
+    isMicRecordingActive: () => false,
+    transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
   };
 }
 
@@ -185,6 +199,94 @@ describe("kyx_notes", async () => {
     await executeMcpTool(ctx, "kyx_notes", { op: "transpose", family: "bass", semitones: -3 });
     const pitches = notesOf(ctx, "bass").map((n) => n.pitch);
     expect(pitches).toEqual([30, 33]);
+  });
+
+  it("transpose commits a compound shift as one real-store undo step", async () => {
+    const store = new ProjectStore(freshDoc());
+    const ctx = projectStoreCtx(store);
+    for (const [noteName, startBeat] of [
+      ["A1", 0],
+      ["C2", 1],
+    ] as const) {
+      await executeMcpTool(ctx, "kyx_notes", {
+        op: "add",
+        family: "bass",
+        noteName,
+        startBeat,
+        durationBeats: 1,
+      });
+    }
+
+    const before = notesOf(ctx, "bass").map((note) => ({ id: note.id, pitch: note.pitch }));
+    const undoDepth = store.undoStackLength;
+    const result = await executeMcpTool(ctx, "kyx_notes", { op: "transpose", family: "bass", semitones: -3 });
+
+    expect(result.mutated).toBe(true);
+    expect(notesOf(ctx, "bass").map((note) => note.pitch)).toEqual([30, 33]);
+    expect(store.undoStackLength).toBe(undoDepth + 1);
+    expect(store.lastCommandLabel).toContain("transpose");
+
+    store.undo();
+    expect(notesOf(ctx, "bass").map((note) => ({ id: note.id, pitch: note.pitch }))).toEqual(before);
+    expect(store.undoStackLength).toBe(undoDepth);
+  });
+
+  it("transpose reports boundary clamps and keeps any partial edit in one undo step", async () => {
+    const store = new ProjectStore(freshDoc());
+    const ctx = projectStoreCtx(store);
+    for (const [pitch, startBeat] of [
+      [60, 0],
+      [127, 1],
+    ] as const) {
+      await executeMcpTool(ctx, "kyx_notes", {
+        op: "add",
+        family: "bass",
+        pitch,
+        startBeat,
+        durationBeats: 1,
+      });
+    }
+    const undoDepth = store.undoStackLength;
+
+    const result = await executeMcpTool(ctx, "kyx_notes", { op: "transpose", family: "bass", semitones: 1 });
+
+    expect(result.errorCode).toBe("PARTIAL_FAILURE");
+    expect(result.mutated).toBe(true);
+    expect(result.text).toContain("1/2 notes");
+    expect(notesOf(ctx, "bass").map((note) => note.pitch)).toEqual([61, 127]);
+    expect(store.undoStackLength).toBe(undoDepth + 1);
+    store.undo();
+    expect(notesOf(ctx, "bass").map((note) => note.pitch)).toEqual([60, 127]);
+    expect(store.undoStackLength).toBe(undoDepth);
+  });
+
+  it("transpose rejects fractional semitones and does not add history for a fully clamped shift", async () => {
+    const fractionalCtx = makeCtx(freshDoc());
+    const fractional = await executeMcpTool(fractionalCtx, "kyx_notes", {
+      op: "transpose",
+      family: "bass",
+      semitones: 1.5,
+    });
+    expect(fractional.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(fractional.mutated).toBe(false);
+
+    const store = new ProjectStore(freshDoc());
+    const ctx = projectStoreCtx(store);
+    await executeMcpTool(ctx, "kyx_notes", {
+      op: "add",
+      family: "bass",
+      pitch: 127,
+      startBeat: 0,
+      durationBeats: 1,
+    });
+    const before = notesOf(ctx, "bass").map((note) => note.pitch);
+    const undoDepth = store.undoStackLength;
+    const clamped = await executeMcpTool(ctx, "kyx_notes", { op: "transpose", family: "bass", semitones: 1 });
+
+    expect(clamped.errorCode).toBe("PARTIAL_FAILURE");
+    expect(clamped.mutated).toBe(false);
+    expect(notesOf(ctx, "bass").map((note) => note.pitch)).toEqual(before);
+    expect(store.undoStackLength).toBe(undoDepth);
   });
 
   it("transposeAll (kyx_music) hits every instrument track with one undo step", async () => {
