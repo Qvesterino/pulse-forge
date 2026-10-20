@@ -392,6 +392,14 @@ try {
   console.log(
     `[audit] ${gate.stats.effects} effects, ${gate.stats.instruments} instruments, ${gate.stats.deadParameters} dead parameters, ${gate.stats.notProcessing.length} effects not processing in the host graph`,
   );
+  // Gated parameters are NOT dead: they measured as inert only because a
+  // sibling switch was off. Reported apart from the dead count so the two
+  // never get added together.
+  if (gate.stats.gatedParameters > 0) {
+    console.log(
+      `[audit]   ${gate.stats.gatedParameters} parameters gated behind a sibling switch (not dead): ${gate.stats.gatedByEffect.map((e) => `${e.type}(${e.gated})`).join(", ")}`,
+    );
+  }
   if (gate.stats.notProcessing.length > 0)
     console.log(`[audit]   not processing: ${gate.stats.notProcessing.join(", ")}`);
   // Reported apart from the line above on purpose: a zero host delta with a

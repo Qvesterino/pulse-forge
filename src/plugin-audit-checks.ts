@@ -253,6 +253,15 @@ export interface ParamAudit {
    * of quietly promoting a "dead" parameter to "responsive".
    */
   stimulus?: string;
+  /**
+   * Delta this parameter reached in the GATED context (every sibling
+   * parameter at its most responsive extreme). Set only for parameters that
+   * measured as dead at the defaults. The number is the evidence for the
+   * "gated, not dead" claim — a gated parameter with a large delta is
+   * strongly alive, one with a marginal delta is barely alive, and the report
+   * shows which instead of asserting.
+   */
+  gatedDelta?: number;
 }
 
 export interface SweepResult {
@@ -269,6 +278,13 @@ export interface SweepResult {
   bypassDelta: number;
   params: ParamAudit[];
   deadParams: string[];
+  /**
+   * Parameters that measure as dead at the effect's DEFAULTS but respond once
+   * a sibling switch is engaged. They are NOT dead — they are gated, and
+   * listing them as dead sends the next agent to wire up something that
+   * already works.
+   */
+  gatedParams: string[];
   unstableParams: string[];
   rapidSwingFinite: boolean;
   presetsFinite: number;
@@ -780,6 +796,67 @@ async function sweepEffect(type: EffectType, signal: AudioBuffer, dry: AudioBuff
     params.push(entry);
   }
 
+  /**
+   * SECOND PASS — separate "dead" from "gated".
+   *
+   * A parameter that measures as dead at the effect's DEFAULTS may be inert
+   * only because a SIBLING SWITCH is off. Measured, exact-zero deltas:
+   *   reverseSwell  time, reach, curve, tone, level, mix — all exactly 0,
+   *                 because `engaged` defaults to 0 and a disarmed effect
+   *                 ignores its whole parameter set.
+   *   rezonans      voice3.* (11 params) — `voice3.enabled` defaults off.
+   *
+   * Those params are not dead, they are GATED. They are also invisible to the
+   * one-param-at-a-time sweep by construction: with every other parameter at
+   * its default, the sibling switch that would give them meaning is off. A
+   * dead-parameter work list that calls them dead sends the next agent to
+   * wire up something that already works.
+   *
+   * The probe re-measures each dead parameter in a MAXIMAL context — every
+   * other parameter of that effect at its own most-responsive extreme — and
+   * reports the ones that respond there. They move to `gatedParams` and are
+   * removed from `deadParams`.
+   */
+  const gatedParams: string[] = [];
+  if (deadParams.length > 0) {
+    const bestExtremes = new Map<string, number>();
+    for (const e of params) {
+      const def = paramsDef.find((d) => d.id === e.id);
+      if (!def) continue;
+      bestExtremes.set(e.id, e.bestExtreme === "min" ? def.min : def.max);
+    }
+    for (const id of deadParams) {
+      const def = paramsDef.find((d) => d.id === id);
+      if (!def) continue;
+      // The context holds every OTHER parameter at its most responsive
+      // extreme. The parameter under test stays at its own default in the
+      // baseline so the comparison isolates that one parameter.
+      const context: Record<string, number> = { ...defaultParamsOf(type) };
+      for (const [otherId, value] of bestExtremes) {
+        if (otherId !== id) context[otherId] = value;
+      }
+      try {
+        const ctxBase = metricsOf(await renderEffect(type, context, signal));
+        let best = 0;
+        for (const extreme of ["min", "max"] as const) {
+          const rendered = await renderEffect(type, { ...context, [id]: def[extreme] }, signal);
+          const d = deltaVs(ctxBase, metricsOf(rendered));
+          if (d.delta > best) best = d.delta;
+        }
+        const entry = params.find((e) => e.id === id);
+        if (entry) entry.gatedDelta = best;
+        if (best > RESPONSIVE_EPS) gatedParams.push(id);
+      } catch {
+        // A render that throws leaves the parameter dead — the conservative
+        // reading, and the one that keeps the work list honest.
+      }
+    }
+  }
+  for (const id of gatedParams) {
+    const at = deadParams.indexOf(id);
+    if (at >= 0) deadParams.splice(at, 1);
+  }
+
   // Rapid parameter swings: slam every param min↔max six times through the
   // live setParameter path (offline timestamps absent — exactly what the
   // engine's writer does), then render once and require finite output.
@@ -835,6 +912,7 @@ async function sweepEffect(type: EffectType, signal: AudioBuffer, dry: AudioBuff
     bypassDelta,
     params,
     deadParams,
+    gatedParams,
     unstableParams,
     rapidSwingFinite,
     presetsFinite,
@@ -1778,6 +1856,7 @@ export async function auditOneEffect(type: EffectType): Promise<EffectAudit> {
       defaultPeak: 0,
       defaultFinite: false,
       bypassDelta: 0,
+      gatedParams: [],
       params: [],
       deadParams: [],
       unstableParams: [],

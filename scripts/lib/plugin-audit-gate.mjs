@@ -97,6 +97,17 @@ export function evaluateAuditGate(report) {
     .map((e) => ({ type: e.type, dead: e.deadParams?.length ?? 0 }))
     .sort((a, b) => b.dead - a.dead);
 
+  // GATED parameters are not dead — they are inert only while a sibling switch
+  // is off (reverseSwell.engaged=0 disables its whole parameter set). They
+  // were measured and found to respond once the effect is engaged, so they are
+  // reported apart from the dead list rather than inside it. A work list that
+  // calls a gated parameter dead sends the next agent to wire up something
+  // that already works.
+  const gatedByEffect = effects
+    .map((e) => ({ type: e.type, gated: e.gatedParams?.length ?? 0 }))
+    .filter((e) => e.gated > 0)
+    .sort((a, b) => b.gated - a.gated);
+
   // An effect exempts itself from the host test only by carrying a non-empty
   // reason. `hostProcesses:false` alone cannot distinguish "the host fixture
   // cannot excite this" from "this plugin is wired to nothing" — the audit
@@ -116,6 +127,8 @@ export function evaluateAuditGate(report) {
       interactions: Boolean(report?.interactions),
       deadParameters: deadByEffect.reduce((sum, e) => sum + e.dead, 0),
       deadByEffect,
+      gatedParameters: gatedByEffect.reduce((sum, e) => sum + e.gated, 0),
+      gatedByEffect,
       notProcessing,
       hostExempt,
       silentInstruments: instruments.filter((i) => !i.defaultAudible).map((i) => i.kind),

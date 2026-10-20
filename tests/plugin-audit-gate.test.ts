@@ -96,6 +96,31 @@ describe("plugin-audit gate — what stays non-fatal", () => {
     expect(evaluateAuditGate({ effects: [effect({ deadParams: ["a"] })], instruments: [] }).ok).toBe(true);
   });
 
+  it("counts gated parameters apart from dead ones", () => {
+    // A gated parameter is inert only while a sibling switch is off. It is not
+    // dead, and adding the two counts together would put a work-list entry on
+    // something that already works.
+    const s = stats([
+      effect({ type: "reverseSwell", deadParams: [], gatedParams: ["time", "reach", "curve"] }),
+      effect({ type: "sirka", deadParams: ["lowFreq"], gatedParams: [] }),
+    ]);
+    expect(s.gatedParameters).toBe(3);
+    expect(s.deadParameters).toBe(1);
+    expect(s.gatedByEffect).toEqual([{ type: "reverseSwell", gated: 3 }]);
+  });
+
+  it("treats a missing gated list as zero, not as a crash", () => {
+    // Older reports have no gatedParams field at all.
+    const s = stats([effect({ type: "eq" })]);
+    expect(s.gatedParameters).toBe(0);
+    expect(s.gatedByEffect).toEqual([]);
+  });
+
+  it("does not fail on gated parameters", () => {
+    const r = evaluateAuditGate({ effects: [effect({ gatedParams: ["time"] })], instruments: [] });
+    expect(r.ok).toBe(true);
+  });
+
   it("does not fail on an effect that does not process", () => {
     // Reported, never fatal — an unexcitable fixture is not a plugin defect
     // and must not be able to redden the gate on arrival.
