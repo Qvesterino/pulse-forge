@@ -66,7 +66,7 @@ describe("mcp core — protocol with an authenticated session", () => {
     const list = await handleMcpRequest(hub as any, TOKEN, TOKEN, rpc("tools/list", {}, 2));
     const listedTools = (list.result as { tools: Array<{ name: string; outputSchema?: unknown }> }).tools;
     expect(listedTools).toHaveLength(37);
-    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(16);
+    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(17);
     expect(listedTools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema,
     );
@@ -96,6 +96,9 @@ describe("mcp core — protocol with an authenticated session", () => {
     );
     expect(listedTools.find((tool) => tool.name === "kyx_markers")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_markers")?.outputSchema,
+    );
+    expect(listedTools.find((tool) => tool.name === "kyx_sections")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_sections")?.outputSchema,
     );
     expect(listedTools.map((t) => t.name)).toEqual([
       "kyx_intent",
@@ -549,6 +552,48 @@ describe("mcp core — protocol with an authenticated session", () => {
       type: "mcp-result",
       id: delivered[0].id,
       result: { text: "Drop (id=marker-1) — bar 5, drop", mutated: false, data },
+    });
+    const response = await promise;
+    expect(response.result.isError).toBe(false);
+    expect(response.result.structuredContent).toEqual(data);
+  });
+
+  it("returns section inventories as structuredContent across the web relay", async () => {
+    const { hub, delivered } = makeHub();
+    const data = {
+      status: "listed",
+      sections: [
+        {
+          id: "scene-1",
+          name: "Intro",
+          role: "intro",
+          index: 1,
+          startBar: 1,
+          bars: 4,
+          intensity: 0.4,
+          clipCount: 1,
+        },
+      ],
+      undoSteps: 0,
+    };
+    const promise = handleMcpRequest(
+      hub,
+      TOKEN,
+      TOKEN,
+      rpc(
+        "tools/call",
+        {
+          name: "kyx_sections",
+          arguments: { op: "list" },
+          _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+        },
+        24,
+      ),
+    );
+    hub.handleSessionMessage({
+      type: "mcp-result",
+      id: delivered[0].id,
+      result: { text: "listed 1 sections", mutated: false, data },
     });
     const response = await promise;
     expect(response.result.isError).toBe(false);

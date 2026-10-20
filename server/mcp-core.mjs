@@ -713,13 +713,13 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_sections",
     description:
-      "Arrangement operations: add/remove/duplicate/reorder/resize named sections (intro/build/chorus/verse/bridge/drop/break/outro/fill).",
+      "Read the current section inventory or add/remove/duplicate/reorder/resize named sections and set section intensity. Target existing sections by stable sceneId, exact name, 1-based index, or an unambiguous role. Writes use one undoable command and return committed section read-back. Supply requestId when retrying a non-idempotent add/duplicate request.",
     inputSchema: {
       type: "object",
       properties: {
         op: {
           type: "string",
-          enum: ["add", "remove", "duplicate", "reorder", "resize", "intensity"],
+          enum: ["list", "add", "remove", "duplicate", "reorder", "resize", "intensity"],
         },
         intensity: {
           type: "number",
@@ -729,12 +729,14 @@ export const MCP_TOOL_DEFS = [
         },
         scene: {
           type: "string",
-          description: "op=intensity — scene name or role (also: index)",
+          minLength: 1,
+          maxLength: 80,
+          description: "Exact section name or role target for existing-section edits",
         },
         index: {
           type: "integer",
           minimum: 1,
-          description: "op=intensity — 1-based scene index (alternative to scene)",
+          description: "1-based section index (alternative to sceneId/name/role)",
         },
         value: {
           type: "number",
@@ -742,9 +744,21 @@ export const MCP_TOOL_DEFS = [
           maximum: 1,
           description: "op=intensity — the target intensity 0..1",
         },
+        sceneId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "Exact stable target scene ID from kyx_sections list",
+        },
         role: {
           type: "string",
           enum: ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"],
+          description: "Section role to add, or a unique existing-role target for edits",
+        },
+        direction: {
+          type: "string",
+          enum: ["earlier", "later"],
+          description: "op=reorder direction (default later)",
         },
         bars: {
           type: "integer",
@@ -764,7 +778,104 @@ export const MCP_TOOL_DEFS = [
             "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
         },
       },
-      required: ["op", "role"],
+      required: ["op"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        status: {
+          type: "string",
+          enum: [
+            "listed",
+            "created",
+            "removed",
+            "duplicated",
+            "reordered",
+            "already_ordered",
+            "resized",
+            "intensity_set",
+            "already_set",
+            "partial",
+          ],
+        },
+        sections: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              id: {
+                type: "string",
+              },
+              name: {
+                type: "string",
+              },
+              role: {
+                type: "string",
+              },
+              index: {
+                type: "integer",
+                minimum: 1,
+              },
+              startBar: {
+                type: "integer",
+                minimum: 1,
+              },
+              bars: {
+                type: "integer",
+                minimum: 1,
+              },
+              intensity: {
+                type: "number",
+                minimum: 0,
+                maximum: 1,
+              },
+              clipCount: {
+                type: "integer",
+                minimum: 0,
+              },
+            },
+            required: ["id", "name", "role", "index", "bars", "intensity", "clipCount"],
+          },
+        },
+        sectionId: {
+          type: "string",
+        },
+        name: {
+          type: "string",
+        },
+        role: {
+          type: "string",
+        },
+        index: {
+          type: "integer",
+          minimum: 1,
+        },
+        startBar: {
+          type: "integer",
+          minimum: 1,
+        },
+        bars: {
+          type: "integer",
+          minimum: 1,
+        },
+        intensity: {
+          type: "number",
+          minimum: 0,
+          maximum: 1,
+        },
+        clipCount: {
+          type: "integer",
+          minimum: 0,
+        },
+        undoSteps: {
+          type: "integer",
+          minimum: 0,
+          maximum: 1,
+        },
+      },
+      required: ["status", "sections", "undoSteps"],
     },
     annotations: {
       readOnlyHint: false,

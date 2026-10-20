@@ -122,6 +122,7 @@ function withLead(): ProjectDocument {
 
 describe("mcp tools — headless execution", async () => {
   it("tool surface: the 37 documented tools", async () => {
+    expect(MCP_TOOLS.find((tool) => tool.name === "kyx_sections")?.outputSchema).toBeDefined();
     expect(MCP_TOOLS.map((tool) => tool.name)).toEqual([
       "kyx_intent",
       "kyx_state",
@@ -341,12 +342,101 @@ describe("mcp structured tools", async () => {
 
   it("kyx_sections add/remove named sections through the arrange layer", async () => {
     const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
     const scenesBefore = store.doc.scenes.length;
-    await executeMcpTool(storeCtx(store), "kyx_sections", { op: "add", role: "build" });
+    const listed = await executeMcpTool(ctx, "kyx_sections", { op: "list" });
+    expect(listed.data).toMatchObject({ status: "listed", undoSteps: 0 });
+    expect((listed.data as { sections: unknown[] }).sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "Intro", role: "intro", index: 2, startBar: 1, bars: 4, clipCount: 1 }),
+        expect.objectContaining({ name: "Drop", role: "drop", index: 3, startBar: 5, bars: 4, clipCount: 1 }),
+      ]),
+    );
+    const added = await executeMcpTool(ctx, "kyx_sections", { op: "add", role: "build" });
+    expect(added.data).toMatchObject({ status: "created", role: "build", undoSteps: 1 });
     expect(store.doc.scenes.length).toBe(scenesBefore + 1);
     expect(store.undoStackLength).toBe(1);
     store.undo();
     expect(store.doc.scenes.length).toBe(scenesBefore);
+
+    const removalStore = new ProjectStore(datasetDoc());
+    const introId = removalStore.doc.scenes.find((scene) => scene.role === "intro")!.id;
+    const removed = await executeMcpTool(storeCtx(removalStore, { allowDestructive: true }), "kyx_sections", {
+      op: "remove",
+      sceneId: introId,
+    });
+    expect(removed.data).toMatchObject({ status: "removed", sectionId: introId, name: "Intro", undoSteps: 1 });
+    expect(removalStore.doc.scenes.some((scene) => scene.id === introId)).toBe(false);
+    removalStore.undo();
+    expect(removalStore.doc.scenes.some((scene) => scene.id === introId)).toBe(true);
+  });
+
+  it("kyx_sections targets exact scenes, verifies edits, and skips repeated or boundary writes", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const intro = store.doc.scenes.find((scene) => scene.role === "intro");
+    const drop = store.doc.scenes.find((scene) => scene.role === "drop");
+    expect(intro).toBeDefined();
+    expect(drop).toBeDefined();
+
+    const resized = await executeMcpTool(ctx, "kyx_sections", { op: "resize", sceneId: intro!.id, bars: 3 });
+    expect(resized.data).toMatchObject({
+      status: "resized",
+      sectionId: intro!.id,
+      name: "Intro",
+      bars: 3,
+      undoSteps: 1,
+    });
+    expect(store.doc.arrangement.clips.find((clip) => clip.sceneId === intro!.id)?.lengthBars).toBe(3);
+    const sameSize = await executeMcpTool(ctx, "kyx_sections", { op: "resize", sceneId: intro!.id, bars: 3 });
+    expect(sameSize.data).toMatchObject({ status: "already_set", undoSteps: 0 });
+    expect(store.undoStackLength).toBe(1);
+
+    const intensity = await executeMcpTool(ctx, "kyx_sections", { op: "intensity", sceneId: drop!.id, intensity: 0.8 });
+    expect(intensity.data).toMatchObject({
+      status: "intensity_set",
+      sectionId: drop!.id,
+      intensity: 0.8,
+      undoSteps: 1,
+    });
+    const sameIntensity = await executeMcpTool(ctx, "kyx_sections", { op: "intensity", role: "drop", value: 0.8 });
+    expect(sameIntensity.data).toMatchObject({ status: "already_set", undoSteps: 0 });
+
+    const edge = await executeMcpTool(ctx, "kyx_sections", { op: "reorder", sceneId: drop!.id, direction: "later" });
+    expect(edge.data).toMatchObject({ status: "already_ordered", undoSteps: 0 });
+    const duplicate = await executeMcpTool(ctx, "kyx_sections", { op: "duplicate", sceneId: drop!.id });
+    expect(duplicate.data).toMatchObject({ status: "duplicated", role: "drop", undoSteps: 1 });
+    const ambiguousRole = await executeMcpTool(ctx, "kyx_sections", { op: "resize", role: "drop", bars: 2 });
+    expect(ambiguousRole.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(store.undoStackLength).toBe(3);
+  });
+
+  it("kyx_sections rejects malformed lengths before any document edit", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const result = await executeMcpTool(storeCtx(store), "kyx_sections", {
+      op: "resize",
+      role: "intro",
+      bars: 2.5,
+    });
+    expect(result.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(store.undoStackLength).toBe(0);
+    expect(store.doc.arrangement.clips[0]?.lengthBars).toBe(4);
+  });
+
+  it("kyx_sections resolves roles from legacy section names when role metadata is absent", async () => {
+    const doc = datasetDoc();
+    const intro = doc.scenes.find((scene) => scene.role === "intro")!;
+    const legacyDoc = {
+      ...doc,
+      scenes: doc.scenes.map((scene) => (scene.id === intro.id ? { ...scene, role: undefined } : scene)),
+    };
+    const store = new ProjectStore(legacyDoc);
+    const result = await executeMcpTool(storeCtx(store), "kyx_sections", {
+      op: "intensity",
+      role: "intro",
+      intensity: 0.55,
+    });
+    expect(result.data).toMatchObject({ status: "intensity_set", sectionId: intro.id, role: "intro", intensity: 0.55 });
   });
 
   it("kyx_markers add/remove at 1-based bars", async () => {

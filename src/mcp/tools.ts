@@ -92,12 +92,11 @@ import {
   applyMarkerIntent,
   applySectionGrooveIntent,
 } from "../intent/studio-words";
-import { applyClipArrangeOps, applyArrangeOps } from "../intent/arrangeWords";
+import { applyClipArrangeOps, applyArrangeOps, sceneRoleOf } from "../intent/arrangeWords";
 import { applySoundSwapIntent, applyStepEditIntent } from "../intent/sound-words";
 import { generateLocalResult } from "../intent/pipeline";
 import { MCP_PLAYBOOK_TEXT, MCP_VOCAB_TEXT } from "./onboarding";
 import { normalizeIntent } from "../intent/normalize";
-import { resolveSceneTarget } from "../intent/arrangeWords";
 import { inferPadRole } from "../ai/pad-roles";
 import type { DrumTrack, InstrumentKind, Scene, Track, AutomationTarget, AutomationLane } from "../project-model/types";
 import { getIntentModelProvider, tryModelRoute } from "../intent/model-resolver";
@@ -750,6 +749,56 @@ const OUTPUT_MARKERS: McpOutputSchema = {
   },
   required: ["status"],
 };
+/** kyx_sections — current section inventory plus verified edit outcomes. */
+const OUTPUT_SECTIONS: McpOutputSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    status: {
+      type: "string",
+      enum: [
+        "listed",
+        "created",
+        "removed",
+        "duplicated",
+        "reordered",
+        "already_ordered",
+        "resized",
+        "intensity_set",
+        "already_set",
+        "partial",
+      ],
+    },
+    sections: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          id: { type: "string" },
+          name: { type: "string" },
+          role: { type: "string" },
+          index: { type: "integer", minimum: 1 },
+          startBar: { type: "integer", minimum: 1 },
+          bars: { type: "integer", minimum: 1 },
+          intensity: { type: "number", minimum: 0, maximum: 1 },
+          clipCount: { type: "integer", minimum: 0 },
+        },
+        required: ["id", "name", "role", "index", "bars", "intensity", "clipCount"],
+      },
+    },
+    sectionId: { type: "string" },
+    name: { type: "string" },
+    role: { type: "string" },
+    index: { type: "integer", minimum: 1 },
+    startBar: { type: "integer", minimum: 1 },
+    bars: { type: "integer", minimum: 1 },
+    intensity: { type: "number", minimum: 0, maximum: 1 },
+    clipCount: { type: "integer", minimum: 0 },
+    undoSteps: { type: "integer", minimum: 0, maximum: 1 },
+  },
+  required: ["status", "sections", "undoSteps"],
+};
 export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_intent",
@@ -1056,33 +1105,50 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_sections",
     description:
-      "Arrangement operations: add/remove/duplicate/reorder/resize named " +
-      "sections (intro/build/chorus/verse/bridge/drop/break/outro/fill).",
+      "Read the current section inventory or add/remove/duplicate/reorder/resize " +
+      "named sections and set section intensity. Target existing sections by " +
+      "stable sceneId, exact name, 1-based index, or an unambiguous role. " +
+      "Writes use one undoable command and return committed section read-back. " +
+      "Supply requestId when retrying a non-idempotent add/duplicate request.",
     inputSchema: {
       type: "object",
       properties: {
-        op: { type: "string", enum: ["add", "remove", "duplicate", "reorder", "resize", "intensity"] },
+        op: { type: "string", enum: ["list", "add", "remove", "duplicate", "reorder", "resize", "intensity"] },
         intensity: {
           type: "number",
           minimum: 0,
           maximum: 1,
           description: "op=intensity — target scene intensity 0..1",
         },
-        scene: { type: "string", description: "op=intensity — scene name or role (also: index)" },
+        scene: {
+          type: "string",
+          minLength: 1,
+          maxLength: 80,
+          description: "Exact section name or role target for existing-section edits",
+        },
         index: {
           type: "integer",
           minimum: 1,
-          description: "op=intensity — 1-based scene index (alternative to scene)",
+          description: "1-based section index (alternative to sceneId/name/role)",
         },
         value: { type: "number", minimum: 0, maximum: 1, description: "op=intensity — the target intensity 0..1" },
+        sceneId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "Exact stable target scene ID from kyx_sections list",
+        },
         role: {
           type: "string",
           enum: ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"],
+          description: "Section role to add, or a unique existing-role target for edits",
         },
+        direction: { type: "string", enum: ["earlier", "later"], description: "op=reorder direction (default later)" },
         bars: { type: "integer", minimum: 1, maximum: 64, description: "For resize" },
       },
-      required: ["op", "role"],
+      required: ["op"],
     },
+    outputSchema: OUTPUT_SECTIONS,
   },
   {
     name: "kyx_markers",
@@ -3531,43 +3597,8 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return mcpError("EXECUTION_FAILED", `fx op failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    case "kyx_sections": {
-      if (String(record.op ?? "") === "remove" && !destructiveAllowedWithCheckpoint(ctx, "kyx_sections"))
-        return destructiveRefusal();
-      if (String(record.op ?? "") === "intensity") {
-        // LIVE intensity ride on one scene — a document mutation (scene
-        // automation), so it IS undoable, one snapshot per call.
-        const scene = resolveMcpScene(ctx.getDoc(), record);
-        if (typeof scene === "string") return { text: scene, mutated: false };
-        // Schema-handler parity fix (P2-D remainder): the schema advertises
-        // `intensity` — a caller following tools/list sent exactly that and
-        // got "needs value". Accept both names.
-        const rawIntensity = typeof record.intensity === "number" ? record.intensity : record.value;
-        const value = typeof rawIntensity === "number" ? rawIntensity : NaN;
-        if (!Number.isFinite(value) || value < 0 || value > 1) {
-          return mcpError("INVALID_ARGUMENTS", "intensity needs value 0..1 (e.g. 0.85 for the drop)");
-        }
-        ctx.execute(setSceneIntensity(ctx.getDoc(), scene.id, value));
-        return {
-          text: `scene "${scene.name}" intensity → ${Math.round(value * 100)}% (one undo step)`,
-          mutated: true,
-        };
-      }
-      try {
-        const command = sectionCommand(record, ctx.getDoc());
-        if (!command) return { text: "section op not resolvable — check the role exists", mutated: false };
-        ctx.execute(command);
-        return { text: `${command.label} (one undo step)`, mutated: true };
-      } catch (error) {
-        // Arrange primitives throw on invariant violations (e.g. a resize
-        // that would overlap the neighbouring clip) — honest failure over
-        // MCP, never a thrown crash into the relay.
-        return mcpError(
-          "EXECUTION_FAILED",
-          `section op failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-    }
+    case "kyx_sections":
+      return executeSectionsTool(ctx, record);
     case "kyx_markers": {
       if (record.op !== undefined && typeof record.op !== "string") {
         return mcpError("INVALID_ARGUMENTS", "op must be one of: list, add, rename, remove");
@@ -7315,15 +7346,284 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
   return { text: `unknown op: ${op} (list | set)`, mutated: false };
 }
 
-/** Section op -> arrange command via the role resolver. */
-function sectionCommand(record: Record<string, unknown>, doc: ProjectDocument): Command | null {
+function executeSectionsTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+  const op = record.op;
+  if (typeof op !== "string") return mcpError("INVALID_ARGUMENTS", "op is required");
+  if (!["list", "add", "remove", "duplicate", "reorder", "resize", "intensity"].includes(op)) {
+    return mcpError("UNKNOWN_REQUEST", `unknown section op: ${op}`);
+  }
+  const before = ctx.getDoc();
+  if (op === "list") {
+    const data = sectionResultData(before, "listed", undefined, undefined, 0);
+    return { text: formatSectionResult(data), mutated: false, data };
+  }
+  if (
+    record.sceneId !== undefined &&
+    (typeof record.sceneId !== "string" || record.sceneId.trim() === "" || record.sceneId.length > 128)
+  ) {
+    return mcpError("INVALID_ARGUMENTS", "sceneId must be a non-empty string of at most 128 characters");
+  }
+  if (
+    record.scene !== undefined &&
+    (typeof record.scene !== "string" || record.scene.trim() === "" || record.scene.length > 80)
+  ) {
+    return mcpError("INVALID_ARGUMENTS", "scene must be a non-empty string of at most 80 characters");
+  }
+  if (
+    record.index !== undefined &&
+    (typeof record.index !== "number" || !Number.isSafeInteger(record.index) || record.index < 1)
+  ) {
+    return mcpError("INVALID_ARGUMENTS", "index must be a 1-based positive integer");
+  }
+  if (
+    record.role !== undefined &&
+    (typeof record.role !== "string" || !SECTION_ADD_ROLES.includes(record.role as (typeof SECTION_ADD_ROLES)[number]))
+  ) {
+    return mcpError("INVALID_ARGUMENTS", `role must be one of: ${SECTION_ADD_ROLES.join(", ")}`);
+  }
+  if (record.direction !== undefined && record.direction !== "earlier" && record.direction !== "later") {
+    return mcpError("INVALID_ARGUMENTS", "direction must be earlier or later");
+  }
+  const role = typeof record.role === "string" ? record.role : undefined;
+  if (op === "add") {
+    if (role === undefined) return mcpError("INVALID_ARGUMENTS", `add needs role (${SECTION_ADD_ROLES.join(" | ")})`);
+    try {
+      const command = sectionCommand({ op, role }, before);
+      if (!command) return mcpError("UNKNOWN_REQUEST", "section could not be created");
+      ctx.execute(command);
+      const after = ctx.getDoc();
+      const created = after.scenes.filter((candidate) => !before.scenes.some((prior) => prior.id === candidate.id));
+      const affectedId = created.length === 1 ? created[0]!.id : undefined;
+      const status = created.length === 1 ? "created" : "partial";
+      const data = sectionResultData(after, status, affectedId, undefined, after === before ? 0 : 1);
+      if (created.length !== 1) {
+        return mcpError("PARTIAL_FAILURE", "section add did not produce exactly one committed scene", {
+          mutated: after !== before,
+          data,
+        });
+      }
+      return { text: formatSectionResult(data), mutated: after !== before, data };
+    } catch (error) {
+      return mcpError(
+        "EXECUTION_FAILED",
+        `section add failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  const selected = resolveSectionTarget(before, record);
+  if (!("id" in selected)) return selected;
+  const scene = selected;
+  const previousIndex = before.scenes.findIndex((candidate) => candidate.id === scene.id);
+  const previous = sectionSummary(before, scene, previousIndex);
+  if (op === "remove" && !destructiveAllowedWithCheckpoint(ctx, "kyx_sections")) return destructiveRefusal();
+
+  if (op === "intensity") {
+    const value = typeof record.intensity === "number" ? record.intensity : record.value;
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
+      return mcpError("INVALID_ARGUMENTS", "intensity needs a number from 0 to 1");
+    }
+    if (scene.intensity === value) {
+      const data = sectionResultData(before, "already_set", scene.id, previous, 0);
+      return { text: formatSectionResult(data), mutated: false, data };
+    }
+    try {
+      ctx.execute(setSceneIntensity(before, scene.id, value));
+      const after = ctx.getDoc();
+      const committed = after.scenes.find((candidate) => candidate.id === scene.id);
+      if (!committed || committed.intensity !== value) {
+        const data = sectionResultData(after, "partial", scene.id, previous, after === before ? 0 : 1);
+        return mcpError("PARTIAL_FAILURE", "section intensity did not match its committed read-back", {
+          mutated: after !== before,
+          data,
+        });
+      }
+      const data = sectionResultData(after, "intensity_set", scene.id, previous, after === before ? 0 : 1);
+      return { text: formatSectionResult(data), mutated: after !== before, data };
+    } catch (error) {
+      return mcpError(
+        "EXECUTION_FAILED",
+        `section intensity failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  if (op === "reorder") {
+    const direction = record.direction ?? "later";
+    if (
+      (direction === "earlier" && previousIndex === 0) ||
+      (direction === "later" && previousIndex === before.scenes.length - 1)
+    ) {
+      const data = sectionResultData(before, "already_ordered", scene.id, previous, 0);
+      return { text: formatSectionResult(data), mutated: false, data };
+    }
+  }
+  if (op === "resize") {
+    if (typeof record.bars !== "number" || !Number.isSafeInteger(record.bars) || record.bars < 1 || record.bars > 64) {
+      return mcpError("INVALID_ARGUMENTS", "resize needs an integer bars value from 1 to 64");
+    }
+    if (previous.bars === record.bars) {
+      const data = sectionResultData(before, "already_set", scene.id, previous, 0);
+      return { text: formatSectionResult(data), mutated: false, data };
+    }
+    if (!before.arrangement.clips.some((clip) => clip.sceneId === scene.id)) {
+      return mcpError("UNKNOWN_TARGET", `section ${scene.name} has no arrangement clip to resize`);
+    }
+  }
+
+  try {
+    const command = sectionCommand(record, before, scene);
+    if (!command) return mcpError("UNKNOWN_REQUEST", `section op ${op} could not be resolved`);
+    ctx.execute(command);
+    const after = ctx.getDoc();
+    const stillExists = after.scenes.some((candidate) => candidate.id === scene.id);
+    let status =
+      op === "remove" ? "removed" : op === "duplicate" ? "duplicated" : op === "reorder" ? "reordered" : "resized";
+    let affectedId: string | undefined = scene.id;
+    let fallback: McpSectionSummary | undefined = previous;
+    let verified = op === "remove" ? !stillExists : stillExists;
+    if (op === "duplicate") {
+      const additions = after.scenes.filter((candidate) => !before.scenes.some((prior) => prior.id === candidate.id));
+      verified = additions.length === 1;
+      affectedId = additions.length === 1 ? additions[0]!.id : undefined;
+      fallback = undefined;
+    } else if (op === "reorder") {
+      const currentIndex = after.scenes.findIndex((candidate) => candidate.id === scene.id);
+      verified = currentIndex >= 0 && currentIndex !== previousIndex;
+      if (!verified && after === before) status = "already_ordered";
+    } else if (op === "resize") {
+      const committed = after.scenes.find((candidate) => candidate.id === scene.id);
+      const committedIndex = after.scenes.findIndex((candidate) => candidate.id === scene.id);
+      verified = committed !== undefined && sectionSummary(after, committed, committedIndex).bars === record.bars;
+    }
+    if (!verified) status = "partial";
+    const data = sectionResultData(after, status, affectedId, fallback, after === before ? 0 : 1);
+    if (!verified) {
+      return mcpError("PARTIAL_FAILURE", `section ${op} did not match the committed read-back`, {
+        mutated: after !== before,
+        data,
+      });
+    }
+    return { text: formatSectionResult(data), mutated: after !== before, data };
+  } catch (error) {
+    return mcpError("EXECUTION_FAILED", `section op failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+const SECTION_ADD_ROLES = ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"] as const;
+
+type McpSectionSummary = {
+  id: string;
+  name: string;
+  role: string;
+  index: number;
+  startBar?: number;
+  bars: number;
+  intensity: number;
+  clipCount: number;
+};
+
+function sectionSummary(doc: ProjectDocument, scene: Scene, index: number): McpSectionSummary {
+  const clips = doc.arrangement.clips.filter((clip) => clip.sceneId === scene.id);
+  const pattern = doc.patterns.find((candidate) => candidate.id === scene.patternId);
+  const bars =
+    clips.length > 0
+      ? Math.max(1, Math.round(clips.reduce((total, clip) => total + clip.lengthBars, 0)))
+      : Math.max(1, Math.ceil((pattern?.stepCount ?? 16) / 16));
+  const startBar =
+    clips.length > 0
+      ? Math.floor(clips.reduce((minimum, clip) => Math.min(minimum, clip.startBar), Number.POSITIVE_INFINITY)) + 1
+      : undefined;
+  return {
+    id: scene.id,
+    name: scene.name,
+    role: sceneRoleOf(scene) ?? "custom",
+    index: index + 1,
+    ...(startBar !== undefined ? { startBar } : {}),
+    bars,
+    intensity: scene.intensity,
+    clipCount: clips.length,
+  };
+}
+
+function sectionResultData(
+  doc: ProjectDocument,
+  status: string,
+  sectionId: string | undefined,
+  fallback: McpSectionSummary | undefined,
+  undoSteps: number,
+): Record<string, unknown> {
+  const sections = doc.scenes.map((scene, index) => sectionSummary(doc, scene, index));
+  const selected = (sectionId && sections.find((section) => section.id === sectionId)) || fallback;
+  return {
+    status,
+    sections,
+    ...(sectionId ? { sectionId } : {}),
+    ...(selected
+      ? {
+          name: selected.name,
+          role: selected.role,
+          index: selected.index,
+          ...(selected.startBar !== undefined ? { startBar: selected.startBar } : {}),
+          bars: selected.bars,
+          intensity: selected.intensity,
+          clipCount: selected.clipCount,
+        }
+      : {}),
+    undoSteps,
+  };
+}
+
+function formatSectionResult(data: Record<string, unknown>): string {
+  const status = String(data.status ?? "unknown");
+  if (status === "listed") return `listed ${Array.isArray(data.sections) ? data.sections.length : 0} sections`;
+  const label = typeof data.name === "string" ? ` "${data.name}"` : "";
+  const detail = typeof data.startBar === "number" ? ` at bar ${data.startBar}, ${String(data.bars)} bars` : "";
+  const undo = data.undoSteps === 1 ? " (one undo step)" : " (no change)";
+  return `${status.replaceAll("_", " ")}${label}${detail}${undo}`;
+}
+
+function resolveSectionTarget(doc: ProjectDocument, record: Record<string, unknown>): Scene | McpToolResult {
+  if (typeof record.sceneId === "string" && record.sceneId.trim() !== "") {
+    const sceneId = record.sceneId.trim();
+    const exact = doc.scenes.find((scene) => scene.id === sceneId);
+    return exact ?? mcpError("UNKNOWN_TARGET", `no section has sceneId ${record.sceneId}`);
+  }
+  if (typeof record.index === "number") {
+    const target = doc.scenes[record.index - 1];
+    return target ?? mcpError("UNKNOWN_TARGET", `no section at index ${record.index} (1..${doc.scenes.length})`);
+  }
+  const label = typeof record.scene === "string" ? record.scene.trim() : "";
+  if (label !== "") {
+    const byName = doc.scenes.filter((scene) => scene.name.trim().toLowerCase() === label.toLowerCase());
+    if (byName.length === 1) return byName[0]!;
+    if (byName.length > 1)
+      return mcpError("INVALID_ARGUMENTS", `section name "${label}" is ambiguous; use sceneId or index`);
+    const byRole = doc.scenes.filter((scene) => sceneRoleOf(scene) === label.toLowerCase());
+    if (byRole.length === 1) return byRole[0]!;
+    if (byRole.length > 1)
+      return mcpError("INVALID_ARGUMENTS", `section role "${label}" is ambiguous; use sceneId or index`);
+    return mcpError("UNKNOWN_TARGET", `no section matches exact name or role "${label}"`);
+  }
+  const role = typeof record.role === "string" ? record.role : "";
+  if (role !== "") {
+    const matches = doc.scenes.filter((scene) => sceneRoleOf(scene) === role);
+    if (matches.length === 1) return matches[0]!;
+    if (matches.length > 1)
+      return mcpError("INVALID_ARGUMENTS", `section role "${role}" is ambiguous; use sceneId or index`);
+    return mcpError("UNKNOWN_TARGET", `no section has role ${role}`);
+  }
+  return mcpError("INVALID_ARGUMENTS", "choose a section by sceneId, exact scene name, 1-based index, or unique role");
+}
+
+/** Section op -> canonical arrange command for one already-resolved scene. */
+function sectionCommand(record: Record<string, unknown>, doc: ProjectDocument, scene?: Scene): Command | null {
   const op = String(record.op ?? "");
-  const role = String(record.role ?? "drop");
-  const bars = Math.max(1, Math.min(64, Number(record.bars ?? 4)));
-  const scene = resolveSceneTarget(doc, role, [role as never]);
   switch (op) {
     case "add":
-      return applyArrangeOps(doc, [{ op: "addRole", role: role as never, beforeSceneId: null }]);
+      return applyArrangeOps(doc, [
+        { op: "addRole", role: record.role as (typeof SECTION_ADD_ROLES)[number], beforeSceneId: null },
+      ]);
     case "remove":
       if (!scene) return null;
       return applyArrangeOps(doc, [{ op: "remove", sceneId: scene.id, role: scene.role ?? null, name: scene.name }]);
@@ -7332,11 +7632,13 @@ function sectionCommand(record: Record<string, unknown>, doc: ProjectDocument): 
       return applyArrangeOps(doc, [{ op: "duplicate", sceneId: scene.id, role: scene.role ?? null, name: scene.name }]);
     case "reorder":
       if (!scene) return null;
-      return applyArrangeOps(doc, [{ op: "reorder", sceneId: scene.id, dir: "later" }]);
-    case "resize":
-      if (!scene) return null;
       return applyArrangeOps(doc, [
-        { op: "resize", sceneId: scene.id, role: scene.role ?? null, name: scene.name, bars },
+        { op: "reorder", sceneId: scene.id, dir: record.direction === "earlier" ? "earlier" : "later" },
+      ]);
+    case "resize":
+      if (!scene || typeof record.bars !== "number") return null;
+      return applyArrangeOps(doc, [
+        { op: "resize", sceneId: scene.id, role: scene.role ?? null, name: scene.name, bars: record.bars },
       ]);
     default:
       return null;

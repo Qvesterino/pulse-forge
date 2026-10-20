@@ -136,7 +136,7 @@ function verbHits(text: string, re: RegExp): boolean {
 
 // ── Target resolution against the live document ─────────────────────────────
 
-function sceneRoleOf(scene: Scene): SceneRole | null {
+export function sceneRoleOf(scene: Scene): SceneRole | null {
   if (scene.role) return scene.role;
   return roleFromName(scene.name);
 }
