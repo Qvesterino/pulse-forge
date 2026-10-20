@@ -2793,7 +2793,7 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_takes",
     description:
-      "Take groups (comp workflow): list every group with its track, the ACTIVE take and the alternatives (clips per take), or activate a take — the comp pick that decides which alternative is heard. Reversible (one undo step); the domain validates the take has clips. deleteTake (destructive-gated) removes every clip of one take.",
+      "Take groups (comp workflow): list every group with its track, the ACTIVE take and the alternatives (clips per take), or activate a take — the comp pick that decides which alternative is heard. Reversible (one undo step); returns stable group/take IDs and clip counts. deleteTake (destructive-gated) removes every clip of one take.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2803,10 +2803,12 @@ export const MCP_TOOL_DEFS = [
         },
         groupId: {
           type: "string",
+          maxLength: 128,
           description: "For activate/deleteTake — the take group id (op:list)",
         },
         takeId: {
           type: "string",
+          maxLength: 128,
           description: "The take id to activate or delete",
         },
         requestId: {
@@ -2822,6 +2824,92 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["op"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        status: {
+          type: "string",
+          enum: ["empty", "listed", "activated", "already_active", "deleted", "already_absent", "partial"],
+        },
+        groups: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              id: {
+                type: "string",
+              },
+              trackId: {
+                type: "string",
+              },
+              track: {
+                type: "string",
+              },
+              activeTakeId: {
+                type: "string",
+              },
+              compTakeId: {
+                type: ["string", "null"],
+              },
+              takes: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    takeId: {
+                      type: ["string", "null"],
+                    },
+                    clipCount: {
+                      type: "integer",
+                      minimum: 0,
+                    },
+                  },
+                  required: ["takeId", "clipCount"],
+                },
+              },
+            },
+            required: ["id", "trackId", "track", "activeTakeId", "compTakeId", "takes"],
+          },
+        },
+        groupId: {
+          type: "string",
+        },
+        takeId: {
+          type: "string",
+        },
+        activeTakeId: {
+          type: "string",
+        },
+        clipCount: {
+          type: "integer",
+          minimum: 0,
+        },
+        deletedClipCount: {
+          type: "integer",
+          minimum: 0,
+        },
+        remainingTakeClipCount: {
+          type: "integer",
+          minimum: 0,
+        },
+        remainingGroupClipCount: {
+          type: "integer",
+          minimum: 0,
+        },
+        groupRemaining: {
+          type: "boolean",
+        },
+        undoSteps: {
+          type: "integer",
+          minimum: 0,
+          maximum: 1,
+        },
+      },
+      required: ["status"],
     },
     annotations: {
       readOnlyHint: false,

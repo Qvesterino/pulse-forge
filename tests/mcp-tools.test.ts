@@ -2166,14 +2166,57 @@ describe("mcp takes — the comp workflow", async () => {
   }
 
   it("list shows the active take and the alternatives with a structured envelope", async () => {
-    const result = await executeMcpTool(makeCtx(withTakes()), "kyx_takes", { op: "list" });
+    const doc = withTakes();
+    const result = await executeMcpTool(makeCtx(doc), "kyx_takes", { op: "list" });
     expect(result.mutated).toBe(false);
     expect(result.text).toMatch(
       /Drums \(group id=tg-1\): ACTIVE take take-1 · take take-1 ×1 clip\(s\), take take-2 ×1 clip\(s\)/,
     );
-    const data = result.data as { groups: Array<{ id: string; activeTakeId: string; takes: Record<string, number> }> };
+    expect(result.data).toMatchObject({ status: "listed" });
+    const data = result.data as {
+      groups: Array<{
+        id: string;
+        trackId: string;
+        activeTakeId: string;
+        compTakeId: null;
+        takes: Array<{ takeId: string | null; clipCount: number }>;
+      }>;
+    };
     expect(data.groups[0].activeTakeId).toBe("take-1");
-    expect(data.groups[0].takes["take-2"]).toBe(1);
+    expect(data.groups[0].trackId).toBe(doc.tracks.find((track) => track.kind === "drum")!.id);
+    expect(data.groups[0].takes).toEqual([
+      { takeId: "take-1", clipCount: 1 },
+      { takeId: "take-2", clipCount: 1 },
+    ]);
+    expect(data.groups[0]).not.toHaveProperty("clipIds");
+    expect(MCP_TOOLS.find((tool) => tool.name === "kyx_takes")?.outputSchema).toMatchObject({
+      type: "object",
+      properties: { status: { type: "string" }, groups: { type: "array" } },
+    });
+  });
+
+  it("list returns an explicit empty result when no take groups exist", async () => {
+    const doc = datasetDoc();
+    const result = await executeMcpTool(makeCtx(doc), "kyx_takes", { op: "list" });
+    expect(result.mutated).toBe(false);
+    expect(result.data).toEqual({ status: "empty", groups: [] });
+  });
+
+  it("validates operation and identifier shapes before touching project state", async () => {
+    const doc = withTakes();
+    const ctx = makeCtx(doc);
+    const malformed = await executeMcpTool(ctx, "kyx_takes", { op: 3, groupId: "tg-1" });
+    expect(malformed.isError).toBe(true);
+    expect(malformed.errorCode).toBe("INVALID_ARGUMENTS");
+
+    const oversized = await executeMcpTool(ctx, "kyx_takes", {
+      op: "activate",
+      groupId: "g".repeat(129),
+      takeId: "take-2",
+    });
+    expect(oversized.isError).toBe(true);
+    expect(oversized.errorCode).toBe("INVALID_ARGUMENTS");
+    expect(ctx.getDoc()).toEqual(doc);
   });
 
   it("activate is the comp pick — reversible, validated, honest on no-ops", async () => {
@@ -2182,6 +2225,14 @@ describe("mcp takes — the comp workflow", async () => {
     const activated = await executeMcpTool(ctx, "kyx_takes", { op: "activate", groupId: "tg-1", takeId: "take-2" });
     expect(activated.mutated).toBe(true);
     expect(activated.text).toContain("take take-2 is now ACTIVE");
+    expect(activated.data).toEqual({
+      status: "activated",
+      groupId: "tg-1",
+      takeId: "take-2",
+      activeTakeId: "take-2",
+      clipCount: 1,
+      undoSteps: 1,
+    });
     expect(ctx.getDoc().arrangement.takeGroups![0].activeTakeId).toBe("take-2");
     ctx.undo();
     expect(ctx.getDoc().arrangement.takeGroups![0].activeTakeId).toBe("take-1");
@@ -2189,10 +2240,11 @@ describe("mcp takes — the comp workflow", async () => {
     const already = await executeMcpTool(ctx, "kyx_takes", { op: "activate", groupId: "tg-1", takeId: "take-1" });
     expect(already.mutated).toBe(false);
     expect(already.text).toContain("already the active comp");
+    expect(already.data).toMatchObject({ status: "already_active", activeTakeId: "take-1", undoSteps: 0 });
 
     const unknown = await executeMcpTool(ctx, "kyx_takes", { op: "activate", groupId: "tg-1", takeId: "take-quantum" });
     expect(unknown.isError).toBe(true);
-    expect(unknown.text).toContain("take op failed");
+    expect(unknown.errorCode).toBe("UNKNOWN_TARGET");
   });
 
   it("deleteTake (D4) removes an inactive take's clips; the ACTIVE take is protected", async () => {
@@ -2214,18 +2266,48 @@ describe("mcp takes — the comp workflow", async () => {
     expect(activeRefusal.isError).toBe(true);
     expect(activeRefusal.text).toContain("ACTIVE comp");
 
-    await executeMcpTool(ctx, "kyx_takes", { op: "deleteTake", groupId: "tg-1", takeId: "take-2" });
+    const deleted = await executeMcpTool(ctx, "kyx_takes", { op: "deleteTake", groupId: "tg-1", takeId: "take-2" });
+    expect(deleted.mutated).toBe(true);
+    expect(deleted.data).toEqual({
+      status: "deleted",
+      groupId: "tg-1",
+      takeId: "take-2",
+      deletedClipCount: 1,
+      remainingTakeClipCount: 0,
+      remainingGroupClipCount: 1,
+      groupRemaining: true,
+      undoSteps: 1,
+    });
     expect(ctx.getDoc().arrangement.audioClips!.some((clip) => clip.takeId === "take-2")).toBe(false);
+    expect(ctx.getDoc().arrangement.takeGroups).toHaveLength(1);
+
+    const replayWithoutKey = await executeMcpTool(ctx, "kyx_takes", {
+      op: "deleteTake",
+      groupId: "tg-1",
+      takeId: "take-2",
+    });
+    expect(replayWithoutKey.mutated).toBe(false);
+    expect(replayWithoutKey.data).toMatchObject({
+      status: "already_absent",
+      deletedClipCount: 0,
+      remainingTakeClipCount: 0,
+      remainingGroupClipCount: 1,
+      undoSteps: 0,
+    });
+
+    ctx.undo();
+    expect(ctx.getDoc().arrangement.audioClips!.some((clip) => clip.takeId === "take-2")).toBe(true);
     expect(ctx.getDoc().arrangement.takeGroups).toHaveLength(1);
   });
 
-  it("prunes the group when the deleted take was the last one", async () => {
+  it("keeps the group and active take when the inactive alternative is deleted", async () => {
     const doc = withTakes();
     const ctx = makeCtx(doc, { allowDestructive: true });
     await executeMcpTool(ctx, "kyx_takes", { op: "activate", groupId: "tg-1", takeId: "take-2" });
     await executeMcpTool(ctx, "kyx_takes", { op: "deleteTake", groupId: "tg-1", takeId: "take-1" });
     expect(ctx.getDoc().arrangement.audioClips!.filter((clip) => clip.takeGroupId === "tg-1")).toHaveLength(1);
     expect(ctx.getDoc().arrangement.takeGroups).toHaveLength(1);
+    expect(ctx.getDoc().arrangement.takeGroups![0].activeTakeId).toBe("take-2");
   });
 });
 

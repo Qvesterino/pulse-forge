@@ -576,6 +576,54 @@ const OUTPUT_ARRANGE: McpOutputSchema = {
     "undoSteps",
   ],
 };
+/** kyx_takes — take-group inventory and comp/delete outcomes. */
+const OUTPUT_TAKES: McpOutputSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    status: {
+      type: "string",
+      enum: ["empty", "listed", "activated", "already_active", "deleted", "already_absent", "partial"],
+    },
+    groups: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          id: { type: "string" },
+          trackId: { type: "string" },
+          track: { type: "string" },
+          activeTakeId: { type: "string" },
+          compTakeId: { type: ["string", "null"] },
+          takes: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                takeId: { type: ["string", "null"] },
+                clipCount: { type: "integer", minimum: 0 },
+              },
+              required: ["takeId", "clipCount"],
+            },
+          },
+        },
+        required: ["id", "trackId", "track", "activeTakeId", "compTakeId", "takes"],
+      },
+    },
+    groupId: { type: "string" },
+    takeId: { type: "string" },
+    activeTakeId: { type: "string" },
+    clipCount: { type: "integer", minimum: 0 },
+    deletedClipCount: { type: "integer", minimum: 0 },
+    remainingTakeClipCount: { type: "integer", minimum: 0 },
+    remainingGroupClipCount: { type: "integer", minimum: 0 },
+    groupRemaining: { type: "boolean" },
+    undoSteps: { type: "integer", minimum: 0, maximum: 1 },
+  },
+  required: ["status"],
+};
 export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_intent",
@@ -1885,17 +1933,22 @@ export const MCP_TOOLS: McpToolDef[] = [
       "Take groups (comp workflow): list every group with its track, the " +
       "ACTIVE take and the alternatives (clips per take), or activate a " +
       "take — the comp pick that decides which alternative is heard. " +
-      "Reversible (one undo step); the domain validates the take has clips. " +
+      "Reversible (one undo step); returns stable group/take IDs and clip counts. " +
       "deleteTake (destructive-gated) removes every clip of one take.",
     inputSchema: {
       type: "object",
       properties: {
         op: { type: "string", enum: ["list", "activate", "deleteTake"] },
-        groupId: { type: "string", description: "For activate/deleteTake — the take group id (op:list)" },
-        takeId: { type: "string", description: "The take id to activate or delete" },
+        groupId: {
+          type: "string",
+          maxLength: 128,
+          description: "For activate/deleteTake — the take group id (op:list)",
+        },
+        takeId: { type: "string", maxLength: 128, description: "The take id to activate or delete" },
       },
       required: ["op"],
     },
+    outputSchema: OUTPUT_TAKES,
   },
   {
     name: "kyx_blind_ab",
@@ -6204,62 +6257,115 @@ function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>
  * alternatives and activate (comp pick) one; the domain validates that the
  * take actually has clips in the group. */
 function executeTakesTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
-  const op = String(record.op ?? "list");
+  if (record.op !== undefined && typeof record.op !== "string") {
+    return mcpError("INVALID_ARGUMENTS", "op must be one of: list, activate, deleteTake");
+  }
+  const op = typeof record.op === "string" ? record.op : "list";
+  if (!["list", "activate", "deleteTake"].includes(op)) {
+    return mcpError("UNKNOWN_REQUEST", `unknown op: ${op} (list | activate | deleteTake)`);
+  }
+  for (const field of ["groupId", "takeId"] as const) {
+    const value = record[field];
+    if (value !== undefined && (typeof value !== "string" || value.length > 128)) {
+      return mcpError("INVALID_ARGUMENTS", `${field} must be a string of at most 128 characters`);
+    }
+  }
   const doc = ctx.getDoc();
   const groups = doc.arrangement.takeGroups ?? [];
-  const clipsOf = (
-    groupId: string,
-  ): Array<{ takeId: string | undefined; id: string; startBar: number; lengthBars: number }> =>
+  type TakeClip = { takeId: string | undefined };
+  const clipsOf = (groupId: string): TakeClip[] =>
     (doc.arrangement.audioClips ?? [])
       .filter((clip) => clip.takeGroupId === groupId)
-      .map((clip) => ({ takeId: clip.takeId, id: clip.id, startBar: clip.startBar, lengthBars: clip.lengthBars }));
+      .map((clip) => ({ takeId: clip.takeId }));
+  const groupReadback = (group: (typeof groups)[number]) => {
+    const perTake = new Map<string | null, TakeClip[]>();
+    for (const clip of clipsOf(group.id)) {
+      const takeId = clip.takeId ?? null;
+      const clips = perTake.get(takeId) ?? [];
+      clips.push(clip);
+      perTake.set(takeId, clips);
+    }
+    const takes = [...perTake.entries()].map(([takeId, clips]) => ({
+      takeId,
+      clipCount: clips.length,
+    }));
+    return {
+      id: group.id,
+      trackId: group.trackId,
+      track: ownerNameOf(doc, group.trackId),
+      activeTakeId: group.activeTakeId,
+      compTakeId: group.compTakeId ?? null,
+      takes,
+    };
+  };
 
   if (op === "list") {
-    if (groups.length === 0)
-      return { text: "no take groups (takes appear when a lane holds alternative passes)", mutated: false };
-    const lines: string[] = [];
-    const data: Array<{ id: string; track: string; activeTakeId: string; takes: Record<string, number> }> = [];
-    for (const group of groups) {
-      const clips = clipsOf(group.id);
-      const perTake: Record<string, number> = {};
-      for (const clip of clips) {
-        const key = clip.takeId ?? "(none)";
-        perTake[key] = (perTake[key] ?? 0) + 1;
-      }
-      lines.push(
-        `${ownerNameOf(doc, group.trackId)} (group id=${group.id}): ACTIVE take ${group.activeTakeId} · ${Object.entries(
-          perTake,
-        )
-          .map(([take, count]) => `take ${take} ×${count} clip(s)`)
-          .join(", ")}${group.compTakeId ? ` · comp: ${group.compTakeId}` : ""}`,
-      );
-      data.push({
-        id: group.id,
-        track: ownerNameOf(doc, group.trackId),
-        activeTakeId: group.activeTakeId,
-        takes: perTake,
-      });
+    if (groups.length === 0) {
+      return {
+        text: "no take groups (takes appear when a lane holds alternative passes)",
+        mutated: false,
+        data: { status: "empty", groups: [] },
+      };
     }
-    return { text: lines.join("\n"), mutated: false, data: { groups: data } };
+    const data = groups.map(groupReadback);
+    const lines = data.map(
+      (group) =>
+        `${group.track} (group id=${group.id}): ACTIVE take ${group.activeTakeId} · ${group.takes
+          .map(({ takeId, clipCount }) => `take ${takeId ?? "(none)"} ×${clipCount} clip(s)`)
+          .join(", ")}${group.compTakeId ? ` · comp: ${group.compTakeId}` : ""}`,
+    );
+    return { text: lines.join("\n"), mutated: false, data: { status: "listed", groups: data } };
   }
 
   if (op === "activate") {
     const groupId = typeof record.groupId === "string" ? record.groupId.trim() : "";
     const takeId = typeof record.takeId === "string" ? record.takeId.trim() : "";
     if (groupId === "" || takeId === "") {
-      return { text: "activate needs groupId AND takeId — read them via op:list", mutated: false };
+      return mcpError("INVALID_ARGUMENTS", "activate needs groupId and takeId — read them via op:list");
     }
     try {
       const group = groups.find((item) => item.id === groupId);
-      if (!group) return { text: `no take group "${groupId}" — op:list for the groups`, mutated: false };
+      if (!group) return mcpError("UNKNOWN_TARGET", `no take group "${groupId}" — op:list for the groups`);
+      const clipCount = clipsOf(groupId).filter((clip) => clip.takeId === takeId).length;
+      if (clipCount === 0) return mcpError("UNKNOWN_TARGET", `no clips for take ${takeId} in group ${groupId}`);
       if (group.activeTakeId === takeId) {
-        return { text: `take ${takeId} is already the active comp of group ${groupId}`, mutated: false };
+        return {
+          text: `take ${takeId} is already the active comp of group ${groupId}`,
+          mutated: false,
+          data: {
+            status: "already_active",
+            groupId,
+            takeId,
+            activeTakeId: group.activeTakeId,
+            clipCount,
+            undoSteps: 0,
+          },
+        };
       }
       ctx.execute(setActiveAudioTake(doc, groupId, takeId));
-      const clipCount = clipsOf(groupId).filter((clip) => clip.takeId === takeId).length;
+      const committed = ctx.getDoc();
+      const activeTakeId = committed.arrangement.takeGroups?.find((item) => item.id === groupId)?.activeTakeId;
+      const committedClipCount = (committed.arrangement.audioClips ?? []).filter(
+        (clip) => clip.takeGroupId === groupId && clip.takeId === takeId,
+      ).length;
+      const data = {
+        status: activeTakeId === takeId && committedClipCount > 0 ? "activated" : "partial",
+        groupId,
+        takeId,
+        ...(activeTakeId != null ? { activeTakeId } : {}),
+        clipCount: committedClipCount,
+        undoSteps: activeTakeId === takeId && committedClipCount > 0 ? 1 : 0,
+      };
+      if (activeTakeId !== takeId || committedClipCount === 0) {
+        return mcpError("PARTIAL_FAILURE", `take ${takeId} activation did not pass the project read-back`, {
+          mutated: activeTakeId !== group.activeTakeId,
+          data,
+        });
+      }
       return {
-        text: `comp pick: take ${takeId} is now ACTIVE in group ${groupId} (${clipCount} clip(s)) — one undo step`,
+        text: `comp pick: take ${takeId} is now ACTIVE in group ${groupId} (${committedClipCount} clip(s)) — one undo step`,
         mutated: true,
+        data,
       };
     } catch (error) {
       return mcpError("EXECUTION_FAILED", `take op failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -6267,20 +6373,36 @@ function executeTakesTool(ctx: McpToolContext, record: Record<string, unknown>):
   }
 
   if (op === "deleteTake") {
-    if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
     const groupId = typeof record.groupId === "string" ? record.groupId.trim() : "";
     const takeId = typeof record.takeId === "string" ? record.takeId.trim() : "";
-    if (groupId === "" || takeId === "")
-      return { text: "deleteTake needs groupId AND takeId — op:list for the groups", mutated: false };
+    if (groupId === "" || takeId === "") {
+      return mcpError("INVALID_ARGUMENTS", "deleteTake needs groupId and takeId — op:list for the groups");
+    }
+    if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
     const group = groups.find((item) => item.id === groupId);
-    if (!group) return { text: `no take group "${groupId}"`, mutated: false };
+    if (!group) return mcpError("UNKNOWN_TARGET", `no take group "${groupId}"`);
     if (group.activeTakeId === takeId) {
       return mcpError("POLICY_REFUSED", "refused: that take is the ACTIVE comp — activate another take first");
     }
     const doomed = (doc.arrangement.audioClips ?? []).filter(
       (clip) => clip.takeGroupId === groupId && clip.takeId === takeId,
     );
-    if (doomed.length === 0) return { text: `no clips for take ${takeId} in group ${groupId}`, mutated: false };
+    if (doomed.length === 0) {
+      return {
+        text: `no clips for take ${takeId} in group ${groupId}`,
+        mutated: false,
+        data: {
+          status: "already_absent",
+          groupId,
+          takeId,
+          deletedClipCount: 0,
+          remainingTakeClipCount: 0,
+          remainingGroupClipCount: clipsOf(groupId).length,
+          groupRemaining: true,
+          undoSteps: 0,
+        },
+      };
+    }
     let next = doc;
     for (const clip of doomed) next = deleteAudioClip(next, clip.id).execute(next);
     // prune the group when no clip of ANY take remains
@@ -6291,13 +6413,57 @@ function executeTakesTool(ctx: McpToolContext, record: Record<string, unknown>):
         : next.arrangement.takeGroups;
     next = { ...next, arrangement: { ...next.arrangement, takeGroups: prunedGroups } };
     ctx.execute(snapshot("mcpTakeDelete", `MCP: delete take ${takeId} (${doomed.length} clip(s))`, doc, next));
+    const committed = ctx.getDoc();
+    const committedGroupClips = (committed.arrangement.audioClips ?? []).filter((clip) => clip.takeGroupId === groupId);
+    const deletedClipCount = doomed.filter(
+      (clip) => !(committed.arrangement.audioClips ?? []).some((candidate) => candidate.id === clip.id),
+    ).length;
+    const groupRemaining = (committed.arrangement.takeGroups ?? []).some((item) => item.id === groupId);
+    const expectedRemainingIds = new Set(
+      (doc.arrangement.audioClips ?? [])
+        .filter((clip) => clip.takeGroupId === groupId && clip.takeId !== takeId)
+        .map((clip) => clip.id),
+    );
+    const actualRemainingIds = new Set(committedGroupClips.map((clip) => clip.id));
+    const originalGroupIds = new Set(
+      (doc.arrangement.audioClips ?? []).filter((clip) => clip.takeGroupId === groupId).map((clip) => clip.id),
+    );
+    const remainingContentMatches =
+      actualRemainingIds.size === expectedRemainingIds.size &&
+      [...expectedRemainingIds].every((id) => actualRemainingIds.has(id));
+    const stateMatchesBefore =
+      actualRemainingIds.size === originalGroupIds.size &&
+      [...originalGroupIds].every((id) => actualRemainingIds.has(id)) &&
+      groupRemaining;
+    const stateChanged = !stateMatchesBefore;
+    const expectedGroupRemaining = expectedRemainingIds.size > 0;
+    const complete =
+      deletedClipCount === doomed.length && remainingContentMatches && groupRemaining === expectedGroupRemaining;
+    const targetTakeRemaining = committedGroupClips.filter((clip) => clip.takeId === takeId).length;
+    const data = {
+      status: complete ? "deleted" : "partial",
+      groupId,
+      takeId,
+      deletedClipCount,
+      remainingTakeClipCount: targetTakeRemaining,
+      remainingGroupClipCount: committedGroupClips.length,
+      groupRemaining,
+      undoSteps: stateChanged ? 1 : 0,
+    };
+    if (!complete) {
+      return mcpError("PARTIAL_FAILURE", `take delete read-back removed ${deletedClipCount}/${doomed.length} clips`, {
+        mutated: stateChanged,
+        data,
+      });
+    }
     return {
       text: `deleted take ${takeId} (${doomed.length} clip(s)) from group ${groupId} — one undo step`,
       mutated: true,
+      data,
     };
   }
 
-  return { text: `unknown op: ${op} (list | activate | deleteTake)`, mutated: false };
+  return mcpError("UNKNOWN_REQUEST", `unknown op: ${op} (list | activate | deleteTake)`);
 }
 
 /** kyx_batch — sequential multi-call with optional ONE-undo-frame folding.

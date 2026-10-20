@@ -445,6 +445,47 @@ describe("desktop mcp bridge server (real HTTP)", () => {
     expect(body.result.structuredContent).toEqual(data);
   });
 
+  it("returns take-group inventory as structuredContent over desktop HTTP", async () => {
+    const data = {
+      status: "listed",
+      groups: [
+        {
+          id: "take-group-1",
+          trackId: "track-vocal-1",
+          track: "Vocal",
+          activeTakeId: "take-a",
+          compTakeId: null,
+          takes: [
+            { takeId: "take-a", clipCount: 2 },
+            { takeId: "take-b", clipCount: 1 },
+          ],
+        },
+      ],
+    };
+    const { server } = bridgeModule.createMcpBridgeServer({
+      token: "tok",
+      executeTool: async () => ({ text: "take inventory", mutated: false, data }),
+    });
+    const port = await listenOnEphemeralPort(server);
+    runningServers.push(server);
+
+    const response = await post(
+      port,
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 12,
+        method: "tools/call",
+        params: { name: "kyx_takes", arguments: { op: "list" } },
+      }),
+      { token: "tok" },
+    );
+    const body = JSON.parse(response.body) as {
+      result: { isError?: boolean; structuredContent: Record<string, unknown> };
+    };
+    expect(body.result.isError).toBeUndefined();
+    expect(body.result.structuredContent).toEqual(data);
+  });
+
   it("protocol completeness: version negotiation, instructions, resources, batch, unknown-tool -32602", async () => {
     const { server } = bridgeModule.createMcpBridgeServer({
       token: "tok",
@@ -834,6 +875,9 @@ describe("desktop mcp stdio forwarder (subprocess)", () => {
     );
     expect(list.result.tools.find((tool) => tool.name === "kyx_arrange")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_arrange")?.outputSchema,
+    );
+    expect(list.result.tools.find((tool) => tool.name === "kyx_takes")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_takes")?.outputSchema,
     );
 
     writeLine({
