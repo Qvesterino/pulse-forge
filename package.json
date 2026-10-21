@@ -91,6 +91,7 @@
     "goldens:capture": "vite-node scripts/capture-domain-goldens.mts",
     "drift:check": "vite-node scripts/drift-check.ts",
     "drift:bless": "vite-node scripts/drift-check.ts --bless",
+    "deps:check": "node scripts/check-lock-sync.mjs",
     "gate": "node scripts/gate.mjs",
     "gate:proportion": "vite-node scripts/ui-proportion.mjs",
     "gate:typography": "node scripts/typography-audit.mjs",
