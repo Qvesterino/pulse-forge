@@ -2232,16 +2232,46 @@ function RulerLoopOverlay({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    registerRaf(rafId, () => {
+    /** The overlay's whole state, as the DOM should show it. */
+    const desired = () => {
       const on = transport.loopEnabled && transport.loopEnd > transport.loopStart;
-      el.dataset.visible = String(on);
-      if (!on) return;
+      if (!on) return { visible: "false", left: "", width: "" };
       const total = STEP_TICKS * stepCount;
       const leftPct = (transport.loopStart / total) * 100;
       const widthPct = ((transport.loopEnd - transport.loopStart) / total) * 100;
-      el.style.left = `calc(172px + ${(leftPct / 100) * stepsPx}px)`;
-      el.style.width = `${Math.max(2, (widthPct / 100) * stepsPx)}px`;
-    });
+      return {
+        visible: "true",
+        left: `calc(172px + ${(leftPct / 100) * stepsPx}px)`,
+        width: `${Math.max(2, (widthPct / 100) * stepsPx)}px)`,
+      };
+    };
+    /**
+     * Write ONLY what changed.
+     *
+     * This runs on every animation frame, and an unconditional write queues a
+     * DOM mutation record and invalidates style — 60 times a second for a
+     * value that never changes. Measured by scripts/ui-camera.mjs: 1420
+     * mutations in a 4s baseline window with the transport stopped, one per
+     * frame, on this very element.
+     */
+    let last = { visible: el.dataset.visible ?? "", left: "", width: "" };
+    const apply = () => {
+      const next = desired();
+      if (next.visible !== last.visible) {
+        last.visible = next.visible;
+        el.dataset.visible = next.visible;
+      }
+      if (next.left && next.left !== last.left) {
+        last.left = next.left;
+        el.style.left = next.left;
+      }
+      if (next.width && next.width !== last.width) {
+        last.width = next.width;
+        el.style.width = next.width;
+      }
+    };
+    apply(); // the initial paint, once — not once per frame
+    registerRaf(rafId, apply);
     return () => unregisterRaf(rafId);
   }, [transport, stepCount, stepsPx, rafId]);
   return <div ref={ref} className="ruler-loop-overlay" data-visible="false" aria-hidden="true" />;

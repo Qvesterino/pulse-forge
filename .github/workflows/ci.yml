@@ -160,7 +160,7 @@ jobs:
       - run: npm run release:server-smoke
 
   ui-gate:
-    name: UI gates (proportion, typography, material, state matrix)
+    name: UI gates (proportion, typography, material, state matrix, camera)
     runs-on: ubuntu-latest
     needs: build
     steps:
@@ -177,9 +177,9 @@ jobs:
       # The gates drive a real Chromium: they click the real transport, move a
       # real pointer, and measure the rendered pixels.
       - run: npx playwright install --with-deps chromium
-      # The four UI gates in one command — the shell's proportions (5 viewports
-      # and the coarse-pointer branch), the declared type roles, the declared
-      # material, and every interaction state.
+      # The five UI gates in one command — the shell's proportions (5 viewports
+      # x 3 media branches), the declared type roles, the declared material,
+      # every interaction state, and what the sequencer costs while it plays.
       #
       # Exit 0 = every gate ran and held. 1 = a gate ran and FAILED. 2 = the
       # harness broke and NOTHING was measured — deliberately distinct, so a

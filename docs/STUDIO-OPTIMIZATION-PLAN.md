@@ -1,7 +1,7 @@
 # KYX Studio Optimization Plan — density, single source of truth, measurable gates
 
 > **Produkt:** KYX · **Repo:** Pulse Forge
-> **Stav:** plán. Vznikol z troch meracích vĺn (2026-10-15 až 18).
+> **Stav:** plán. Vznikol z meracích vĺn (2026-10-15 až 21).
 > **Princíp:** každé číslo v tomto dokumente je merané v živom prehliadači,
 > nie odhadnuté zo screenshotu. Ak číslo nie je overené, je v dokumente
 > označené ako _nep overené_.
@@ -10,22 +10,25 @@
 
 ## 0. Prečo tento dokument existuje
 
-Tri vlny merania v KYX našli **sedem defektov, ktoré žiadny test nevidí**.
+Meracie vlny v KYX našli **desať defektov, ktoré žiadny test nevidí**.
 Toto nie je argument pre „viac testov" — je to argument pre **iné
 typy brán**, ktoré vidia geometriu a rozloženie.
 
-| #   | Defekt                                                                                                                          | Ako sa zistil                        | Prečo ho testy nevideli                      |
-| --- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | -------------------------------------------- |
-| 1   | Sequencer dostával menej miesta než pomocný dock panel                                                                          | meranie `getBoundingClientRect`      | neexistovalo kritérium                       |
-| 2   | `@media (pointer: coarse)` neupravoval `.step`; `ROW_HEIGHT = 46` bol konštanta pre rozloženie, ktoré CSS nikdy neimplementoval | meranie v emulácii coarse            | jsdom nemá `matchMedia` prehrávajúci realitu |
-| 3   | `ROW_HEIGHT` (TS) a CSS box boli dve nesúvisiace čísla                                                                          | porovnaním dvoch zdrojov             | nič ich nespájalo                            |
-| 4   | Zmenšenie `.step` **nič neurobilo** — podlahou bola `.row-label`                                                                | meraním výšky oboch detí             | CSS kaskáda sa v jsdom nerieši               |
-| 5   | Brána porovnávala konštantu s jej vlastným produktom (tautológia)                                                               | zmutovaním konštanty                 | kontrola vyzerala ako funkčná                |
-| 6   | Timeout harnessu vyzeral ako zachytený defekt                                                                                   | čítaním **textu** výstupu, nie farby | `exit 1` z oboch prípadov                    |
-| 7   | Screenshot z inej session bol použitý ako meranie aktuálneho stavu                                                              | meraním a porovnaním                 | screenshot nemá kontext stavu                |
+| #   | Defekt                                                                                                                                        | Ako sa zistil                                                     | Prečo ho testy nevideli                                               |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------- |
+| 1   | Sequencer dostával menej miesta než pomocný dock panel                                                                                        | meranie `getBoundingClientRect`                                   | neexistovalo kritérium                                                |
+| 2   | `@media (pointer: coarse)` neupravoval `.step`; `ROW_HEIGHT = 46` bol konštanta pre rozloženie, ktoré CSS nikdy neimplementoval               | meranie v emulácii coarse                                         | jsdom nemá `matchMedia` prehrávajúci realitu                          |
+| 3   | `ROW_HEIGHT` (TS) a CSS box boli dve nesúvisiace čísla                                                                                        | porovnaním dvoch zdrojov                                          | nič ich nespájalo                                                     |
+| 4   | Zmenšenie `.step` **nič neurobilo** — podlahou bola `.row-label`                                                                              | meraním výšky oboch detí                                          | CSS kaskáda sa v jsdom nerieši                                        |
+| 5   | Brána porovnávala konštantu s jej vlastným produktom (tautológia)                                                                             | zmutovaním konštanty                                              | kontrola vyzerala ako funkčná                                         |
+| 6   | Timeout harnessu vyzeral ako zachytený defekt                                                                                                 | čítaním **textu** výstupu, nie farby                              | `exit 1` z oboch prípadov                                             |
+| 7   | Screenshot z inej session bol použitý ako meranie aktuálneho stavu                                                                            | meraním a porovnaním                                              | screenshot nemá kontext stavu                                         |
+| 8   | Hrubý bod: riadok **48 px v slote 46 px** — každý riadok sa prekrýval s nasledujúcim o 2 px                                                   | maticou 5 × 3 v proportion bráne                                  | matica merala len myš; hrubá vetva neexistovala                       |
+| 9   | `data-visible` sa prepisoval **60×/s aj pri stojacom transporte** (zbytočný DOM zápis + invalidácia štýlu)                                    | kamerou (MutationObserver)                                        | jsdom nemá MutationObserver; nikto nepozeral na DOM zápisy            |
+| 10  | Brána merala **build, ktorý bol o deň starý**: npm 11 zožral `--url` ako npm config a brána si spustila vlastný preview nad zdieľaným `dist/` | bránou, ktorá zlyhala na defekt, ktorý bol už opravený v zdrojáku | flag zmizol z `argv` a nič vo výstupe nehlásilo, ktorý build sa meria |
 
-Defekty 2, 3, 4 a 7 sú **neviditeľné pre vitest vôbec**. Defekt 5 a 6 sú
-defekty nástroja, nie produktu — a práve tie najviac klamali.
+Defekty 2, 3, 4, 7, 8 a 9 sú **neviditeľné pre vitest vôbec**. Defekty 5, 6
+a 10 sú defekty nástroja, nie produktu — a práve tie najviac klamali.
 
 ---
 
@@ -155,18 +158,18 @@ a `uncaughtException` handler, ktorý ho vyvolá.
 
 ### 3.4 Čo sa v KYX reálne používa
 
-| Brána                                | Čo pokrýva                                                             | Kde      |
-| ------------------------------------ | ---------------------------------------------------------------------- | -------- |
-| `scripts/ui-proportion.mjs`          | vertikálny rozpočet shellu, horizontálny overflow, zhoda TS/CSS pitchu | dev / CI |
-| `npm run typecheck`                  | strict TS                                                              | CI       |
-| `tests/layout-responsive.test.ts`    | breakpointy                                                            | CI       |
-| `tests/ui/pad-channel-state.test.ts` | kontrakt zdieľaného stavu + decay                                      | CI       |
+| Brána                                | Čo pokrýva                                                                                                             | Kde      |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | -------- |
+| `scripts/ui-proportion.mjs`          | vertikálny rozpočet shellu, horizontálny overflow, zhoda TS/CSS pitchu, **5 viewportov × 3 media vetvy**               | dev / CI |
+| `scripts/ui-camera.mjs`              | **čo stojí prehrávanie**: koľko riadkov sa re-renderuje, či badge ťahá riadok, či sa mriežka prekresľuje, frame budget | dev / CI |
+| `npm run typecheck`                  | strict TS                                                                                                              | CI       |
+| `tests/layout-responsive.test.ts`    | breakpointy                                                                                                            | CI       |
+| `tests/ui/pad-channel-state.test.ts` | kontrakt zdieľaného stavu + decay                                                                                      | CI       |
 
 ### 3.5 Čo ešte chýba (otvorené)
 
-- ~~`ui-proportion.mjs` **nie je v CI**.~~ **Vyriešené 2026-10-21: job `ui-gate`.** Všetky štyri UI brány teraz bežia v CI proti **zamrznutému `dist`**, ktorý vyrobil job `build` — jeden build, jedna pravda. Bližšie §3.6.
-- Chýba **hrubý bod** (`pointer: coarse`) v matici. Dnes sa meria iba myš.
-  Defekt 2 je presne to, čo prešlo.
+- ~~`ui-proportion.mjs` **nie je v CI**.~~ **Vyriešené 2026-10-21: job `ui-gate`.** Všetky UI brány teraz bežia v CI proti **zamrznutému `dist`**, ktorý vyrobil job `build` — jeden build, jedna pravda. Bližšie §3.6.
+- ~~Chýba **hrubý bod** (`pointer: coarse`) v matici.~~ **Vyriešené 2026-10-21: matica 5 × 3 = 15 meraní.** Tretí stĺpec **nie je** `pointer: none` — ten sa v Chromium nedá emulovať (zmerané: `emulateMedia` nemá pointer voľbu a žiadny kontext ho nevyrobí) — ale `prefers-reduced-motion: reduce`, čo je reálna vetva 14 stylesheetov, ktorú **žiadna brána predtým nepokrývala**. Prvá spustená matica hneď našla defekt, ktorý prešiel: hrubý bod mal rad 48 px v slote 46 px. Bližšie §3.8.
 
 ### 3.6 Brány v CI, a čo to hneď odhalilo (2026-10-21)
 
@@ -303,6 +306,189 @@ KB by znamenalo **zmazať dodané funkcie**. Podlaha preto stúpla na **5560 KB*
 a **podlaha boot path ostáva 2200 KB** — to je časť, ktorá chráni čakajúceho
 užívateľa, a vlna 6 ukázala, že sa dá udržať.
 
+### 3.8 Vlna 7 — matica, schéma a kamera (2026-10-21)
+
+§3.5 mal dva otvorené body, §5.1 jeden. Všetky tri sú teraz zatvorené — a
+každý z nich priniesol niečo, čo plán nepredpovedal.
+
+#### 3.8.1 Hrubý bod: prekryv, ktorý nikto nevidel
+
+Matica 5 × 3 = 15 meraní bola zmeraná ako prvá vec — a **zlyhala na hrubej
+vetve** (tretia z troch). Hrubý bod mal riadok **48 px v slote 46 px**: každý
+riadok sa prekrýval s nasledujúcim o 2 px a prebytok sa hromadil nadol.
+
+Príčina nebola v `Sequencer.tsx` ani v `57-row-pitch.css`. Bola v
+`55-mobile-profile.css`, v pravidle, ktoré dedilo z hrubej vetvy:
+
+```css
+@media (min-width: 821px) {
+  [data-input-mode="touch"] .btn,
+  [data-input-mode="touch"] button,
+  [data-input-mode="touch"] select {
+    min-height: var(--touch-target-large);
+  }
+}
+```
+
+Toto pravidlo **duplicitne pokrývalo** to, čo už robí `@media (pointer:
+coarse)` nad ním: `data-input-mode="touch"` sa nastavuje **práve vtedy, keď**
+`matchMedia("(pointer: coarse)")` matchuje (`src/shared/mobileProfile.ts:54`
+a `:71`). Bolo teda **ostrou podmnožinou** pravidla, ktoré opakovalo. A
+pretože malo vyššiu špecificitu — `(0,1,1)` proti `(0,1,0)` vlastného
+rozpočtu radu — **prebilo ho**: `.row-pad` a `.row-toggle` vyrástli z 42 na
+44 px, label stĺpec s nimi, a riadok sa z 46 px stal 48 px.
+
+**Dva vlastníci tej istej hodnoty.** §2 tohto plánu hovorí presne toto.
+
+Oprava: široké pravidlo je preč a os pointera má opäť **jedného vlastníka**.
+Zmerané po oprave (`PASS: 15 measurements`); formát je **CSS box riadka /
+slot, ktorý rezervuje `Sequencer.tsx`**:
+
+| Vetva                     | 1440×900 | 1280×800 | 1024×768 | 800×900 | 390×844 |
+| ------------------------- | -------- | -------- | -------- | ------- | ------- |
+| mouse (`pointer: fine`)   | 28 / 30  | 28 / 30  | 28 / 30  | 28 / 30 | 28 / 30 |
+| touch (`pointer: coarse`) | 46 / 46  | 46 / 46  | 46 / 46  | 46 / 46 | 46 / 46 |
+| reduced motion            | 28 / 30  | 28 / 30  | 28 / 30  | 28 / 30 | 28 / 30 |
+
+Tretí stĺpec matice je `prefers-reduced-motion: reduce`, **nie** `pointer:
+none`: `pointer: none` sa v Chromium nedá emulovať (zmerané — `emulateMedia`
+nemá pointer voľbu a žiadny kontext ho nevyrobí). Namiesto neho je reálna
+vetva **14 stylesheetov**, ktorú **žiadna brána predtým nepokrývala** — a
+meranie ju potvrdilo: v tejto vetve je najdlhší `transition-duration` **0 s**,
+zatiaľ čo v myši a dotyku **0,16 s**. Bez tejto druhej polovice by kontrola
+prechádzala aj pri shelle bez animácií.
+
+#### 3.8.2 Schéma storage: verzia v stave, nie v názve kľúča
+
+Layout sa ukladal pod kľúč, ktorý **sám seba verzuje** (`pf-layout-v1`, potom
+`pf-layout-v2`). Každá zmena schémy preto potrebovala **nový kľúč** — a nový
+kľúč znamená **výmaz**: starý blob sa vôbec nečíta. Commit `e5109496` to
+povedal otvorene: „KYX has no shipped user base, so the honest migration is a
+clean one".
+
+To je obhajiteľné pri nule používateľov a **nepoužiteľné po prvom
+nasadení** — čo §5.1 pýta pred nasadením opraviť.
+
+|                              | Pred                            | Po                                |
+| ---------------------------- | ------------------------------- | --------------------------------- |
+| Kľúč                         | `pf-layout-v2` (verzia v názve) | `pf-layout` (verzia v stave)      |
+| Tvar bloba                   | `LayoutState`                   | `{ schemaVersion, …LayoutState }` |
+| Zmena schémy                 | nový kľúč = **výmaz**           | reťazec migrácií = **posun**      |
+| v1 → v2 (výška docku)        | 220 px, zahodené                | **× 168/220** (350 px → 267 px)   |
+| `pf-theme-v1` + `pf-dock-v1` | zahodené                        | zložené **a posunuté**            |
+
+Číselný posun je **proporčný**, nie absolútny: v1 default (220 px) sa mapuje
+na v2 default (168 px) a používateľov vyšší dock (350 px) zostane
+proporčne vyšší (267 px). Výmaz by zahodil samotnú informáciu, že chcel
+vysoký dock.
+
+Posun beží **pred** svorkou, takže dock uložený pri v1 strope 800 px sa
+zmení na 611 px a až potom sa oreže na dnešných 560 px — nie na 427 px.
+
+Dve pravidlá, ktoré sa dajú ľahko pokaziť, preto ich pinujú testy:
+
+- **Blob z novšieho buildu sa neprepíše.** `migrated: false` zastaví
+  aplikátor, aby neprepísal dáta, ktorým nerozumie — to isté pravidlo, ktoré
+  používa projektová schéma.
+- **Holý blob pod stabilným kľúčom sa číta ako súčasná verzia.** Posun
+  hodnoty, ktorú neviem umiestniť, by **zmenil** číslo, ktoré používateľ
+  nikdy nemenil.
+
+Reťazec migrácií musí byť **nepretržitý** — dieru v ňom by preskočila
+migrácia. `tests/layout-data.test.ts` to tvrdí, takže zvýšenie verzie bez
+kroku je **červená suite**, nie runtime prekvapenie.
+
+Žiadne zrkadlové kľúče: druhá kópia na disku je druhý vlastník a prežije
+čiastočné upratanie — tak sa stala zastaralá schéma do nasledujúceho testu.
+Staré kľúče zostávajú **len na čítanie**, rovnako ako `pf-theme-v1` a
+`pf-dock-v1`.
+
+#### 3.8.3 Kamera: čo stojí prehrávanie
+
+§5.3 mal tri otázky a odpoveď „neoverené". Teraz má brána
+(`scripts/ui-camera.mjs`), ktorá je súčasťou `npm run gate` a v CI.
+
+**AKO MERIA.** `MutationObserver` na podstrome sequencera, ktorý trieda každú
+zmenu podľa toho, **čo** sa zmenilo: meter / badge / playhead / bunka /
+label / iné. Plus `requestAnimationFrame` (frame rate, ktorý používateľ
+dostane) a `PerformanceObserver` (long tasky). Tri okná, každé je kontrola
+pre to nasledujúce:
+
+1. **BASELINE** — transport stojí. DOM sa nesmie meniť vôbec.
+2. **PLAYBACK** — transport hrá. Meter sa musí hýbať (inak je meranie
+   prázdne → HARNESS_ERROR, nie zelené svetlo), badge a bunky sa hýbať
+   nesmú.
+3. **BADGE** — transport stojí a prepína sa „16 LEVELS". Badge sa hýbať
+   musí, mriežka sa hýbať nesmie.
+
+**ČO KAMERA ZMERALA** (8 s okno, 16 riadkov × 16 krokov = 256 buniek):
+
+| Okno                       | fps  | meter | badge | bunka | playhead | long tasky |
+| -------------------------- | ---- | ----- | ----- | ----- | -------- | ---------- |
+| baseline (transport stojí) | 60,0 | 0     | 0     | 0     | 0        | **0**      |
+| prehrávanie                | 59,9 | 1341  | **0** | **0** | 2704     | **0**      |
+| prepnutie badge-u          | 60,1 | 0     | 16    | **0** | 0        | 0          |
+
+Odpovede na tri otázky §5.3, **zmerané**, nie odhadnuté:
+
+- **Koľko riadkov sa re-renderuje pri prehrávaní?** Meter sa hýbe **v 16
+  riadkoch** (max 16/frame) — presne v tých, ktoré majú živý peak. A
+  `usePadPeak(pad.id)` je per-pad subscription, takže React pre ostatné
+  riadky **bailoutuje**. Žiadny iný riadok sa neprekresľuje.
+- **Či badge-y ťahajú celý riadok?** Pri prehrávaní **0** zápisov do badge-u.
+  Pri prepnutí badge-u sa zmení **16** badge-ov a **0** buniek — badge žiadny
+  riadok netiahne, kým meter žiadny badge netiahne.
+- **256 buniek pri 60 fps s peak decay?** **0** mutácií v bunke počas
+  8 s prehrávania. Mriežka je naozaj memoizovaná; playhead je **jeden
+  stĺpec** (najviac 16 buniek súčasne), nie celá mriežka.
+
+**A JEDEN NÁJDENÝ DEFECT, KTORÝ PREDOŠLÉ BRÁNY NEVIDELI.** Baseline ukázal
+**1420 DOM mutácií za 4 s** — presne jedna na frame, pri **stojacom**
+transporte. Histogram povedal kto: `div.ruler-loop-overlay`. Príčina bola v
+`src/ui/Sequencer.tsx`, v rAF callbacku, ktorý prepisoval stav prvku, ktorý sa
+**nemení**:
+
+```ts
+el.dataset.visible = String(on); // každý frame
+el.style.left = `calc(172px + …)`; // každý frame
+el.style.width = `${…}px`; // každý frame
+```
+
+Priradenie rovnakej hodnoty **stále** queues mutačný záznam a invaliduje
+štýl. 60 zbytočných zápisov za sekundu, o ktoré nikto nepožiadal. Fix je
+jeden `desired()` + dif (zapíš sa, len čo sa zmenilo) a prvý náaz mimo rAF —
+baseline po ňom ukazuje **0 mutácií**. Toto je deviaty defekt v tabuľke §0 — a
+je **neviditeľný pre vitest vôbec**, lebo jsdom nemá `MutationObserver`.
+
+**A JEDEN NÁJDENÝ DEFECT BRÁNY SAMOTNEJ.** Prvý beh kamery v rámci celej
+brány **zlyhal** na tej istej veci, ktorá už bola opravená — a to bolo
+nepravdepodobné. Príčina nebola v produkte:
+
+```
+npm warn Unknown cli config "--url".
+> node scripts/gate.mjs http://127.0.0.1:5295/
+starting vite preview on port 5291 ...
+```
+
+**npm 11 parseuje neznámy `--flag` ako npm config, nie ako argument
+skriptu.** `--url` zmizol, brána si spustila vlastný preview nad **zdieľaným
+`dist/`** — a ten bol o deň starý, s defektom, ktorý zdrojajkový kód už
+nemal. Brána bola poctivá; **build bol zlý** a nič vo výstupe to nehlásilo.
+
+Dve opravy, ktoré z toho vyplývajú: URL môže prísť cez **premennú prostredia**
+(`KYX_GATE_URL=… npm run gate` — npm premennú zožrať nevie) alebo priamym
+volaním `node scripts/gate.mjs --url …`; a brána **vypíše entry chunky,
+ktoré meria** (`measuring <url> — entry assets: …`), takže nesúlad medzi
+buildom a zdrojom je viditeľný v logu, nie až vo vyfuknutí čísla.
+
+**A JEDNA NEDÔVERA V BOOTE.** Bootovací helper (`scripts/lib/studio-boot.mjs`)
+klikal na šablónu cez Playwrightovu kontrolu „akcia je vykonateľná" a ten
+klik zlyhal **približne na každý druhý boot** — React medzitým zavrie
+`<details>`, takže element je „nie je viditeľný / nestabilný / neblokuje
+pointer". Posledná záloha je teraz **DOM klik** (`element.click()`), ktorý
+viditeľnosť nepotrebuje. Brána, ktorá sa bootuje na házanie mince, nie je
+brána, ktorej by sa verilo.
+
 ---
 
 ## 4. Vlny
@@ -310,7 +496,8 @@ užívateľa, a vlna 6 ukázala, že sa dá udržať.
 ### Vlna 1 — hotová (meranie a geometria)
 
 Dock ceiling 38vh → 30vh, `dockHeight` default 220 → 168, storage key
-`pf-layout-v2` (čistá migrácia, žiadni používatelia), CSS vrstvy
+`pf-layout-v2` (vtedy čistá migrácia, žiadni používatelia — **vlna 7** z toho
+spravila verzionovanú schému s číselným posunom, §3.8.2), CSS vrstvy
 `51-shell-proportion.css` a `52-step-grid-density.css`.
 
 **Výsledok:** sequencer 192 → 322 px (21,3 % → 35,8 %), dock 297 → 225 px,
@@ -442,6 +629,22 @@ tri dni a nikto si to všimol. Podrobnosti, merania a evidencia sú v §3.7.
 Šesť preťatých hrán, jedna nová brána (`tests/boot-path-seams.test.ts`) a
 zmerané odôvodnenie podlahy v `scripts/check-bundle-size.mjs`.
 
+### Vlna 7 — plán do konca (hotová)
+
+Tri otvorené body plánu naraz: hrubý bod v matici, verziovaná schéma storage
+a kamera. Podrobnosti, merania a evidencia sú v §3.8.
+
+| Metric                          | Pred                          | Po                                    |
+| ------------------------------- | ----------------------------- | ------------------------------------- |
+| Release brána (merania)         | 7 (myš)                       | **15** (5 viewportov × 3 vetvy)       |
+| Riadok v hrubej vetve (≥821 px) | 48 px v slote 46 px — prekryv | **46 px v slote 46 px**               |
+| Tretí stĺpec matice             | chýbal                        | `prefers-reduced-motion` (14 sheetov) |
+| Schema storage                  | kľúč s verziou = čistý reset  | **verzia v stave + číselný posun**    |
+| Prehrávanie pod záťažou         | „neoverené"                   | **zmerané kamerou** (§3.8.3)          |
+
+Dve nové brány (`scripts/ui-camera.mjs` a matica v `scripts/ui-proportion.mjs`)
+a jeden odstránený duplicitný vlastník hodnoty v `55-mobile-profile.css`.
+
 ---
 
 ## 5. Škáľovanie — čo musí plán prežiť
@@ -453,10 +656,17 @@ mení a čo nie:
 
 - **Maticové viewporty.** 5 viewportov × 3 pointer typy = 15 meraní na
   release. Lacné, automatizovateľné, a je to presne to, čo dnes chýba.
-- **Storage-key migrácia.** `pf-layout-v2` je čistý reset. S reálnym
-  používateľom to tak ísť nemôže — treba verziu schémy a číselný posun,
-  nie výmaz. **Toto je prvá vec, ktorá sa musí zmeniť pred prvým
-  nasadením.**
+  **Vyriešené 2026-10-21: matica je súčasť `npm run gate`** — 15 meraní,
+  tri vetvy (`pointer: fine`, `pointer: coarse`,
+  `prefers-reduced-motion: reduce`). Tretí stĺpec NIE JE `pointer: none`:
+  ten sa v Chromium nedá emulovať (zmerané — `emulateMedia` nemá pointer
+  voľbu a žiadny kontext ho nevyrobí). Namiesto neho je reálna vetva 14
+  stylesheetov, ktorú **žiadna brána predtým nepokrývala**.
+- **Storage-key migrácia.** ~~`pf-layout-v2` je čistý reset.~~ **Vyriešené
+  2026-10-21: layout má verziu schémy vnútri stavu, nie v názve kľúča.**
+  Jeden stabilný kľúč `pf-layout` + `{ schemaVersion, …state }` + reťazec
+  migrácií s číselným posunom (v1 → v2: výška docku × 168/220). Bližšie
+  §3.8.
 - **Vizuálne rozhodnutia.** Riadok 30 px vs 36 px je rozhodnutie o tom, čo
   je dôležité. Nemení sa s počtom používateľov.
 
@@ -464,7 +674,7 @@ mení a čo nie:
 
 | Aspekt                | Dnes (0 používateľov)          | Po škále                                              |
 | --------------------- | ------------------------------ | ----------------------------------------------------- |
-| Layout migrácia       | nový key, čistý reset          | schéma + zachovanie cudzích volieb                    |
+| Layout migrácia       | nový key, čistý reset          | **hotová: schéma + číselný posun** (§3.8)             |
 | Zmena defaultu        | dá sa spraviť v každom commite | **používateľský setting, nie default**                |
 | Jazyk UI              | EN                             | i18n pred prvým širokým nasadením                     |
 | Denzita               | 3 režimy, jeden profil         | profily podľa zariadenia + ručné prepnutie            |
@@ -486,7 +696,11 @@ odhad.
 - 16 kanálov × 16 krokov = 256 buniek; pri 60 fps s peak decay je to
   nezanedbateľná práca
 
-**Neoverené.** Túto meraciu povinnosť má kamera.
+**Overené 2026-10-21 kamerou** (`scripts/ui-camera.mjs`, brána v `npm run
+gate`): meranie a výsledky sú v §3.8.3. V skratke — meter hýbe **iba** v
+riadkoch, ktoré majú živý peak, **žiadna** z 256 buniek sa neprekresľuje,
+badge sa **neťaha** s metrom a prepnutie badge-u **netiahne** mriežku.
+Kamera nepreverovala odhad, ale skutočné DOM zápisy v živom prehliadači.
 
 ---
 
@@ -495,8 +709,14 @@ odhad.
 - Žiadna informácia nemá dvoch vlastníkov na obrazovke (§2.1)
 - CSS a TS geometria sa zhodujú, brána to vyžaduje (§2.2)
 - Každá brána má stav „nebežalo" a je falzifikovaná (§3)
-- Release brána pokrýva 5 viewportov × 3 pointer typy (§5.1)
-- Layout migrácia je verzionovaná, nie čistý reset (§5.1)
+- Release brána pokrýva 5 viewportov × 3 pointer typy (§5.1) — **splnené
+  2026-10-21**, s jednou poctivou výhradou: tretí stĺpec matice je
+  `prefers-reduced-motion: reduce`, nie `pointer: none`, pretože `pointer:
+none` sa v Chromium nedá emulovať (§3.8)
+- Layout migrácia je verzionovaná, nie čistý reset (§5.1) — **splnené
+  2026-10-21** (§3.8)
+- Kamerou je zmerané, čo stojí prehrávanie (§5.3) — **splnené 2026-10-21**
+  (§3.8)
 - Žiadne číslo v tomto dokumente nie je odhadnuté
 
 ---

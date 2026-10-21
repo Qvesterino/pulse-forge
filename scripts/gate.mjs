@@ -59,6 +59,12 @@ const GATES = [
     tool: "vite-node",
     args: (url) => ["scripts/state-matrix.mts", "--url", url, "--gate"],
   },
+  {
+    name: "camera",
+    what: "what the sequencer costs while it plays: rows re-rendered, badges dragged, frame budget",
+    tool: "vite-node",
+    args: (url) => ["scripts/ui-camera.mjs", "--url", url],
+  },
 ];
 
 /**
@@ -136,8 +142,34 @@ const externalUrl = urlIndex >= 0 ? argv[urlIndex + 1] : null;
 const portIndex = argv.indexOf("--port");
 const wantedPort = portIndex >= 0 ? Number(argv[portIndex + 1]) : 5291;
 
+/**
+ * WHICH BUILD IS MEASURED?
+ *
+ * `npm run gate -- --url <preview>` DOES NOT WORK on npm 11. npm 11 parses an
+ * unknown `--flag` as an npm CONFIG, not as an argument for the script:
+ *
+ *   npm warn Unknown cli config "--url".
+ *   > node scripts/gate.mjs http://127.0.0.1:5295/
+ *   starting vite preview on port 5291 ...
+ *
+ * The `--url` is swallowed, the script starts its OWN preview over the SHARED
+ * `dist/`, and the gates measure a build that may be days old. Measured
+ * 2026-10-21: the camera gate failed on a stale `dist/` that still contained a
+ * defect the source had already fixed — the gate was honest, the BUILD was
+ * wrong, and nothing in the output said so.
+ *
+ * So the URL may also come from the environment, which npm cannot eat:
+ *
+ *   KYX_GATE_URL=http://127.0.0.1:5295/ npm run gate        (npm 11 safe)
+ *   node scripts/gate.mjs --url http://127.0.0.1:5295/       (direct)
+ *
+ * And the gate PRINTS the URL it measures, so a wrong build is visible in the
+ * log instead of being discovered by a failing number.
+ */
+const envUrl = process.env.KYX_GATE_URL ?? null;
+const url = externalUrl ?? envUrl;
+
 let preview = null;
-let url = externalUrl;
 
 if (!url) {
   if (!existsSync(join(ROOT, "dist", "index.html"))) {
@@ -176,6 +208,20 @@ if (!url) {
   }
   url = `http://127.0.0.1:${port}`;
   console.log(`preview up at ${url}`);
+}
+
+// ---- WHICH BUILD? ------------------------------------------------------------
+//
+// The gates measure a build, and a build is identified by the hashed chunk
+// names it serves. Printing them turns "the gate failed" into "the gate
+// failed against THIS build", which is the difference between a finding and a
+// guess.
+try {
+  const html = await (await fetch(`${url}/`, { signal: AbortSignal.timeout(8000) })).text();
+  const chunks = [...new Set([...html.matchAll(/assets\/[A-Za-z0-9_.-]+\.(?:js|css)/g)].map((m) => m[0]))];
+  console.log(`measuring ${url} — entry assets: ${chunks.join(", ") || "(none found)"}`);
+} catch (error) {
+  console.log(`measuring ${url} — could not read the served entry (${error?.message ?? error})`);
 }
 
 // ---- run every gate ----------------------------------------------------------

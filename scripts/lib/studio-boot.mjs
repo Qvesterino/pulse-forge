@@ -216,6 +216,10 @@ async function enterProject(page) {
   //
   // The click is retried with a re-open between the attempts, because React
   // can close the disclosure between the visibility check and the click.
+  //
+  // The error text keeps the CALL LOG, not just the first line: Playwright's
+  // summary is always "Timeout 20000ms exceeded", and the reason (element not
+  // stable / pointer events intercepted / ...) lives in the lines below it.
   let clickError = "";
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -223,12 +227,36 @@ async function enterProject(page) {
       clickError = "";
       break;
     } catch (error) {
-      clickError = String(error?.message ?? error).split("\n")[0];
+      clickError = String(error?.message ?? error).slice(0, 600);
       await openDisclosure();
     }
   }
   if (clickError) {
-    throw new Error(`the House template could not be opened: ${clickError}`);
+    // LAST RESORT: a DOM click. Playwright's click waits for the element to be
+    // VISIBLE, STABLE and to RECEIVE pointer events — and React closing the
+    // disclosure between the visibility check and the click breaks all three
+    // at once. `element.click()` dispatches the event directly, so it does not
+    // care whether the disclosure is open at that moment, and React's
+    // delegated listener still handles it.
+    //
+    // Measured 2026-10-21: the actionability-checked click failed on roughly
+    // every second boot on this machine, which made a gate's green a coin
+    // toss. A gate that boots unreliably is a gate nobody trusts, so the
+    // fallback is the DOM click, and the reason is kept in the message for the
+    // next person who has to read it.
+    const dispatched = await page
+      .evaluate(() => {
+        const button = document.querySelector(".pb-templates .pb-template");
+        if (!button) return false;
+        button.click();
+        return true;
+      })
+      .catch(() => false);
+    if (dispatched) {
+      clickError = "";
+    } else {
+      throw new Error(`the House template could not be opened: ${clickError}`);
+    }
   }
   return "opened House template";
 }
