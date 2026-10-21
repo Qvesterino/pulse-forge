@@ -42,12 +42,43 @@ jobs:
       # package.json ("format:check") and is deliberately not just src+tests:
       # the two-directory scope left scripts/, docs/, prompts/ and the desktop
       # shell unchecked, so 190+ files drifted without anyone noticing.
-      - run: npm run format:check
+      #
+      # The output also goes into the JOB SUMMARY — a failed job's log sits
+      # behind a login, and the summary is part of the run page's own HTML.
+      - name: Run npm run format:check
+        run: |
+          set +e
+          npm run format:check 2>&1 | tee /tmp/format.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "### npm run format:check FAILED (exit $status)"
+              echo '```'
+              tail -60 /tmp/format.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit $status
       # Every DERIVABLE artifact must match its generator: the MCP tool
       # mirrors, the domain goldens, and the counts in docs/CURRENT-STATE.md.
       # Drift here means "the feature landed, the artifact is stale" — the bug
       # class this repo keeps shipping, and the one no unit test can see.
-      - run: npm run drift:check
+      #
+      # Its findings go into the JOB SUMMARY for the same reason as the
+      # format check: the drift report names the artifact and the generator
+      # that disagree, and it must be readable without an account.
+      - name: Run npm run drift:check
+        run: |
+          set +e
+          npm run drift:check 2>&1 | tee /tmp/drift.log
+          status=${PIPESTATUS[0]}
+          {
+            echo "### npm run drift:check (exit $status)"
+            echo '```'
+            tail -40 /tmp/drift.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
 
   test:
     name: Unit tests (vitest)
@@ -82,7 +113,26 @@ jobs:
       - run: npm ci
       # tsc --noEmit + vite build — catches bundler-level regressions that
       # unit tests never see (dynamic imports, PWA precache, chunking).
-      - run: npm run build
+      #
+      # The output also goes into the JOB SUMMARY. A failed job's log sits
+      # behind a login, so for 134 consecutive runs every job died at
+      # `npm ci` and nobody could read why — the summary is part of the run
+      # page's own HTML and can be read without an account. The exit code is
+      # passed through unchanged.
+      - name: Run npm run build
+        run: |
+          set +e
+          npm run build 2>&1 | tee /tmp/build.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "### npm run build FAILED (exit $status)"
+              echo '```'
+              tail -100 /tmp/build.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit $status
       # Hand the EXACT dist this job produced to the UI-gate job. The gates
       # measure a frozen build, not a dev server, and one build has to be the
       # single source of what was measured — two builds would be two subjects.
