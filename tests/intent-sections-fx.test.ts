@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate, emptyPattern } from "../src/project-model/templates";
 import { parseSectionRequests } from "../src/intent/sections";
 import { reviseSectionProduction } from "../src/intent/section-production";
-import { planSongForm, buildSong, applySongCommand, sectionFxChips } from "../src/intent/song";
+import { planSongForm, buildSong, applySongCommand } from "../src/intent/song";
+// The FX chips moved to a leaf module on 2026-10-21 so the ArrangementPanel
+// could stop pulling the 122 KB song module into the studio boot path. The
+// behaviour is unchanged - only its home.
+import { sectionFxChips } from "../src/ui/arrangement/sectionFxChips";
 import { normalizeIntent } from "../src/intent/normalize";
 import { generateLocalResult } from "../src/intent/pipeline";
 import { applyGenerationResultWithFxCommand } from "../src/commands/aiPattern";

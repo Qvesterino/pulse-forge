@@ -87,7 +87,7 @@ import { makeMidiClipUnique } from "../commands/midiClips";
 import { MAX_ARRANGEMENT_CLIP_BARS, sceneRoleOf, ticksPerBar } from "../project-model/schema";
 import { stepsPerBar } from "../project-model/grid";
 import { applySmartComp, planBars, planSmartComp, type SmartCompPlan } from "../commands/smart-comp";
-import { sectionFxChips } from "../intent/song";
+import { sectionFxChips } from "./arrangement/sectionFxChips";
 import {
   arrangementSecondsBetweenTicks,
   effectiveSceneBpm,

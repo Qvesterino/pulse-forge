@@ -44,7 +44,6 @@ import {
 import { applySectionRequests, type SectionParse } from "./sections";
 import { vocalSectionAdjust } from "../vocal/form";
 import type { VocalProfile } from "../vocal/types";
-import { EFFECT_META } from "../effects/definitions";
 import { createSongSectionIntent } from "./song-section-intent";
 import { hashString } from "../shared/rng";
 import { buildProsodyGrid, buildSyllableTimeline, shapeMelodyToLyrics } from "../vocal/prosody";
@@ -3442,44 +3441,13 @@ export { intentFromGenerateOptions, generateOptionsFromIntent };
 // shift one slider and RE-GENERATE with the same seed (identity kept),
 // then swap the pattern in place (scene + clip untouched, one undo step).
 
-/** One derived FX chip for an arrangement section (wave: FX chips UI). */
-export interface SectionFxChip {
-  type: EffectType;
-  /** Display name from the effect registry. */
-  label: string;
-  /** True when the section automates the device with a sweep (riser/closing). */
-  sweep: boolean;
-}
-
-/**
- * Derive the FX chips shown on an arrangement section: every device with a
- * sceneAutomation lane in this scene, one chip per device, `sweep` when the
- * lane's value actually moves inside the section (risers, closing filters)
- * versus a flat gate (vinyl only in the break). Pure — reads the document,
- * so chips stay correct across undo/redo and re-generated songs without any
- * extra persisted state.
- */
-export function sectionFxChips(doc: ProjectDocument, sceneId: string): SectionFxChip[] {
-  const chips: SectionFxChip[] = [];
-  const seen = new Set<string>();
-  for (const lane of doc.sceneAutomation) {
-    if (lane.sceneId !== sceneId || lane.target.kind !== "fxParam" || !lane.target.fxId) continue;
-    if (seen.has(lane.target.fxId)) continue;
-    seen.add(lane.target.fxId);
-    const track = doc.tracks.find((t) => t.id === lane.target.trackId);
-    const instance =
-      track && "effects" in track
-        ? (track.effects as { id: string; type: EffectType }[]).find((f) => f.id === lane.target.fxId)
-        : undefined;
-    if (!instance) continue;
-    const def = EFFECT_META[instance.type];
-    if (!def) continue;
-    const first = lane.points[0]?.value ?? 0;
-    const last = lane.points[lane.points.length - 1]?.value ?? 0;
-    chips.push({ type: instance.type, label: def.name, sweep: lane.points.length > 1 && first !== last });
-  }
-  return chips;
-}
+// The FX chips of an arrangement section moved to
+// `src/ui/arrangement/sectionFxChips.ts` (2026-10-21). They used to live
+// here, and the ArrangementPanel — a boot-critical main surface — imported
+// them from here, which pulled this whole 122 KB module (and the entire
+// intent engine it pulls) into the studio boot path for ONE helper. The
+// derivation is a leaf now: the document plus the effect registry, nothing
+// else. Do not move it back here.
 
 export type ReviseSectionAttribute = "energy" | "density";
 
