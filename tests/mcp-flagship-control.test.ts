@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { createInstrumentTrack } from "../src/commands/commands";
 import { routeIntentText } from "../src/intent/route";
 import { createHeadlessMcpHost } from "../src/mcp/headless-host";
 import { createDefaultProject } from "../src/project-model/schema";
+import { isFactoryPresetsWarm } from "../src/presets/factory-loader";
 
 function bassTrack(host: ReturnType<typeof createHeadlessMcpHost>) {
   const track = host.store.doc.tracks.find(
@@ -99,5 +101,32 @@ describe("KOREŇ flagship MCP and Intent control", () => {
     expect(host.store.doc.tracks.find((track) => track.id === bass.id)?.effects).not.toContainEqual(
       expect.objectContaining({ type: "bassHarmonic" }),
     );
+  });
+
+  it("warms the lazy bank and verifies a KOPA preset on the first MCP Intent request", async () => {
+    expect(isFactoryPresetsWarm()).toBe(false);
+    const base = createDefaultProject();
+    const withKopa = createInstrumentTrack(base, "kopa").execute(base);
+    const host = createHeadlessMcpHost({ document: withKopa });
+
+    const result = await host.call("kyx_intent", {
+      instruction: "load the Trap Long preset on the drums",
+    });
+
+    expect(isFactoryPresetsWarm()).toBe(true);
+    expect(result.isError).not.toBe(true);
+    expect(result.mutated).toBe(true);
+    expect(result.text).toContain("Trap Long");
+    expect(result.text).toContain("Kopa ✓");
+    const kopa = host.store.doc.tracks.find((track) => track.kind === "instrument" && track.instrument === "kopa");
+    expect(kopa?.kind).toBe("instrument");
+    if (kopa?.kind !== "instrument") throw new Error("missing KOPA fixture track");
+    expect(kopa.presetId).toContain("kopa");
+
+    host.store.undo();
+    const undone = host.store.doc.tracks.find((track) => track.id === kopa.id);
+    expect(undone?.kind).toBe("instrument");
+    if (undone?.kind !== "instrument") throw new Error("KOPA track disappeared after preset undo");
+    expect(undone.presetId).toBeFalsy();
   });
 });

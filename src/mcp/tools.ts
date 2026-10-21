@@ -4124,6 +4124,10 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
     );
     const trimmed = instruction.trim();
     if (trimmed !== "") {
+      // Preset parsing synchronously reads the lazy factory bank. Warm it
+      // before either deterministic routing or the local-model fallback so
+      // the first MCP preset request is executable in a panel-less host.
+      if (/\bpresets?\b/i.test(trimmed) && !isFactoryPresetsWarm()) await warmFactoryPresets();
       const deterministic = routeIntentText(trimmed, ctx.getDoc());
       if (
         !isCreativeBriefRoute(trimmed, deterministic) &&
@@ -11624,7 +11628,9 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
         ? ` — ${productionReadback(before, after, route.intent)}`
         : route.kind === "effectIntent"
           ? ` — read-back: ${effectReadback(before, after, route.intent)}`
-          : "";
+          : route.kind === "preset"
+            ? ` — read-back: ${presetReadback(after, route.intent)}`
+            : "";
     return { text: `${command.label}${extra} — verification: applied, one undo step in KYX`, mutated: true };
   } catch (error) {
     // The intent appliers throw on no-target / already-matches — surface as
