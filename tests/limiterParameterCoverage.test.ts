@@ -69,18 +69,11 @@ const PREVIOUSLY_UNREACHABLE = ["transientLink", "releaseLink", "character", "ov
 describe("limiter parameter coverage", () => {
   it("every limiter DSP parameter is a declared document parameter, or a justified exception", () => {
     const declared = new Set(EFFECT_META.limiter.params.map((p) => p.id));
-    const missing = limiterAudioParamNames().filter(
-      (name) => !declared.has(name) && !(name in NOT_A_DOCUMENT_PARAM),
-    );
-    expect(
-      missing,
-      `limiter DSP parameters with no document parameter: ${missing.join(", ")}`,
-    ).toEqual([]);
+    const missing = limiterAudioParamNames().filter((name) => !declared.has(name) && !(name in NOT_A_DOCUMENT_PARAM));
+    expect(missing, `limiter DSP parameters with no document parameter: ${missing.join(", ")}`).toEqual([]);
 
     for (const [name, reason] of Object.entries(NOT_A_DOCUMENT_PARAM)) {
-      expect(reason.length, `${name} must state why it is not a document parameter`).toBeGreaterThan(
-        20,
-      );
+      expect(reason.length, `${name} must state why it is not a document parameter`).toBeGreaterThan(20);
     }
   });
 
