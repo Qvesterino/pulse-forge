@@ -33,86 +33,9 @@ import {
 import { calibrateParamFraction, degreeToEffectAmount, parseDegree, type Degree } from "./degree";
 import { isPriorDeltaReference } from "./reference-delta";
 import { isDescriptiveStatement } from "./declarative";
+import { PARAM_ROLES, directionForRole, type ParamRole } from "./semantics/param-registry";
 
-export type ParamRole =
-  "mix" | "time" | "tone" | "drive" | "width" | "threshold" | "attack" | "release" | "cutoff" | "q";
-
-interface ParamRoleDef {
-  /** SK+EN stems (deaccented, prefix matches like every other table). */
-  words: RegExp;
-  /** role → paramId per effect type. Only listed effects carry the role. */
-  params: Partial<Record<EffectType, string>>;
-  /** When the role word itself IS the effect ask ("wider stereo" names no
-   * effect noun), this effect is implied. */
-  impliedEffect?: EffectType;
-}
-
-/**
- * The five producer-facing roles of the first wave. Deliberately NOT the
- * raw param registry: a role names what the ASK means ("dlhší chvost"),
- * the per-effect map names the knob that implements it.
- */
-const PARAM_ROLES: Record<ParamRole, ParamRoleDef> = {
-  mix: {
-    words: /\bmix\b|\bwet\b|\bdry\b|\bsuch|\bmokr|\bpercent(?:a|u|e)? dozvuk|\bpodiel/,
-    params: {
-      reverb: "mix",
-      delay: "mix",
-      chorus: "mix",
-      flanger: "mix",
-      phaser: "mix",
-      tremolo: "mix",
-      saturation: "mix",
-    },
-  },
-  time: {
-    words: /\btime\b|\bcas|\bdecay\b|\bchvost|\btail\b|\bdlh|\bkratk|\blong(?:er)?\b|\bshort(?:er)?\b/,
-    params: { reverb: "decay", delay: "time" },
-  },
-  tone: {
-    words: /\btone\b|\bton\b|\btmavs|\bjasnejs|\bsvetlejs|\bdarker\b|\bbrighter\b|\bdark\b|\bbright\b/,
-    params: { reverb: "tone", delay: "tone", saturation: "tone" },
-  },
-  drive: {
-    words:
-      /\bdrive\b|\bdriv\b|\btekut|\bspinav|\bsaturac|\bzahriat|\bgrit\b|\bdirty\b|\bliquid\b|\bwarm(?:er)?\b|\btepl(?:ej|n|s)/,
-    params: { saturation: "drive", distortion: "drive", bassHarmonic: "drive" },
-  },
-  width: {
-    words: /\bwidth\b|\bsirka|\bsirs|\bsirok|\bmono\b|\bstereo\b|\bwider\b|\buzs/,
-    params: { haasWidener: "width" },
-    // NOTE: no impliedEffect — a bare "wider hats/stereo" ask belongs to the
-    // production layer's richer semantic moves; the width role fires only
-    // when the widener effect is actually named.
-  },
-  // P2 domain calibration (2026-10-20). These are NON-primary knobs, so the
-  // param layer owns them; each maps a spoken role to the real ParamDef and
-  // calibrates in that param's own domain (dB linear, seconds/Hz log, Q linear).
-  threshold: {
-    words: /\bthreshold\b|\bthresh\b|\bprah|\bcitliv/,
-    params: { compressor: "threshold", limiter: "threshold", gate: "threshold" },
-    // No impliedEffect: "more attack" on a drum is a transient ask, so the
-    // dynamics role only fires when the effect is actually named.
-  },
-  attack: {
-    words: /\battack\b|\bnabeh|\butok\b/,
-    params: { compressor: "attack", gate: "attack" },
-  },
-  release: {
-    words: /\brelease\b|\buvolnen|\bdohas/,
-    params: { compressor: "release", limiter: "release", gate: "release" },
-  },
-  cutoff: {
-    words: /\bcutoff\b|\bcut.?off\b|\b(?:filter|filtr|svf)\s+(?:freq|frekvenc)|\bfrekvenc\w*\s+(?:filter|filtr)/,
-    params: { svFilter: "cutoff" },
-    impliedEffect: "svFilter",
-  },
-  q: {
-    words: /\bq\b|\bresonance\b|\brezonanc|\bsharpness\b/,
-    params: { svFilter: "resonance", rezonans: "q" },
-    impliedEffect: "svFilter",
-  },
-};
+export type { ParamRole };
 
 /** Scene role → instrumentation expansion (mirrors mix.ts's private table —
  * a param ask on a section targets the tracks that play it). */
@@ -327,40 +250,6 @@ export function declinedParamIntentClarification(
   return { reason: "param-target", suggestions };
 }
 
-function directionForRole(role: ParamRole, lower: string, drier: boolean, wetter: boolean): "more" | "less" {
-  const lessWord =
-    /\bless\b|\bmenej|\bzniz|\bdown\b|\bdole\b|\bsniz|\blower\b|\breduce\b|\bcut\b|\bclean(?:er)?\b|\bjemne\b|\bas little\b|\bas small as possible\b/.test(
-      lower,
-    );
-  const faster = /\bfaster\b|\bfast\b|\brychlej|\bkrats|\bshorter\b|\bshort\b|\bsnappier\b|\btighter\b/.test(lower);
-  const slower = /\bslower\b|\bslow\b|\bpomals|\blonger\b|\blong\b|\bdlh/.test(lower);
-  const darker = /\bdarker\b|\bdark\b|\btmav|\blower\b|\bdown\b|\bzniz/.test(lower);
-  const brighter = /\bbrighter\b|\bbright\b|\bjasnejs|\bhigher\b|\bup\b|\bzvys/.test(lower);
-  const sharper = /\bsharper\b|\bsharp\b|\bhigher\b|\bup\b|\bzvys|\buzs|\bnarrower\b|\btighter\b/.test(lower);
-  const broader = /\bwider\b|\bwide\b|\bsirs|\blower\b|\bdown\b|\bzniz|\bsmoother\b|\bmono\b/.test(lower);
-  switch (role) {
-    case "mix":
-      return drier && !wetter ? "less" : lessWord ? "less" : "more";
-    case "time":
-      return /\bkrats|\bshort|shorter\b/.test(lower) ? "less" : "more";
-    case "threshold":
-      return lessWord ? "less" : "more";
-    case "attack":
-    case "release":
-      return faster && !slower ? "less" : slower ? "more" : lessWord ? "less" : "more";
-    case "cutoff":
-      return darker && !brighter ? "less" : brighter ? "more" : lessWord ? "less" : "more";
-    case "q":
-      return sharper && !broader ? "more" : broader ? "less" : lessWord ? "less" : "more";
-    case "width":
-      return broader && !sharper ? "more" : sharper ? "less" : lessWord ? "less" : "more";
-    case "tone":
-      return darker && !brighter ? "less" : brighter ? "more" : lessWord ? "less" : "more";
-    case "drive":
-      return lessWord ? "less" : "more";
-  }
-}
-
 export function parseParamIntent(text: string): ParamIntent | null {
   const ask = resolveParamAsk(text);
   if (!ask) return null;
@@ -444,9 +333,7 @@ export function parseParamIntent(text: string): ParamIntent | null {
   // release read faster/slower; cutoff reads darker/brighter; Q reads
   // sharper/wider. Without this, "faster attack" defaulted to MORE (a LONGER
   // attack) and "darker cutoff" defaulted to MORE (a brighter filter).
-  const drier = /\bsuch|\bdrier\b|\bdry\b|\bas dry as (?:possible|you can)\b/.test(lower);
-  const wetter = /\bmokr|\bwetter\b|\bas wet as (?:possible|you can)\b/.test(lower);
-  const direction = directionForRole(role, lower, drier, wetter);
+  const direction = directionForRole(role, lower);
   // Graduated degree, resolved through the shared taxonomy (intent/degree.ts).
   // The regexes this replaced (`subtle|trochu|malic` / `huge|a lot|obri|vela|
   // velmi|really`) were missing "slightly", "a little" and "a bit" — so

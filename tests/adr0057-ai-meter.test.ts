@@ -248,7 +248,7 @@ const GUARDED_ROOTS = ["src/ai/"];
  */
 const LEDGER_4_4_SITES: Record<string, string> = {
   "src/ai/markov.ts":
-    "the Markov model's state space IS the 4/4 groove content (sixteen positions) — Stage 2c gives the library metrical grooves",
+    "the Markov model's state space IS the groove library's training frame (sixteen positions) — Stage 2c projects the model's bar into the document's metre; re-framing the model is a retrain (Stage 2d), not a projection",
   "src/ai/midi-corpus-ingest.ts":
     "the corpus ingest frame is the model's sixteen-step training frame, not the pattern grid",
   "src/ai/features/pattern-features-v2.ts":

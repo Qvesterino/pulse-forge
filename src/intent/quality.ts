@@ -2,6 +2,7 @@ import { buildPhrasePlan } from "../ai/phrase";
 import { canonicalizePattern, contentHash, createGenerationRecipe } from "../ai/evaluation";
 import { resolveGrooveForGeneration } from "../ai/generator";
 import { aiMeterFor, stepInBar } from "../ai/meter";
+import { projectRowToMeter } from "../ai/groove-view";
 import type { GenerateOptions } from "../ai/types";
 import { inferPadRole } from "../ai/pad-roles";
 import { measureDrumQuality, measureMelodicQuality } from "../ai/quality";
@@ -224,7 +225,7 @@ export function refreshPatternQuality(doc: ProjectDocument, pattern: Pattern, op
   const padRoles =
     targetDrumTrack?.kind === "drum" ? targetDrumTrack.pads.map((pad, index) => inferPadRole(pad.name, index)) : [];
   const drumQuality = measureDrumQuality(groove, drumRows, padRoles, options.stepCount, meter);
-  const styleGate = evaluateStyleDistance(groove, drumRows, options.stepCount, meter);
+  const styleGate = evaluateStyleDistance(groove, drumRows, options.stepCount, meter, padRoles);
   const melodicQuality = measureMelodicQuality(
     Object.values(pattern.notes ?? {}).flat(),
     options.stepCount,
@@ -259,7 +260,13 @@ export function createFallbackPattern(doc: ProjectDocument, options: GenerateOpt
   if (!options.roles || options.roles.includes("drums")) {
     for (const [padIndex, pad] of targetDrumTrack?.pads.entries() ?? []) {
       if (!groove.activePads.includes(padIndex)) continue;
-      const base = groove.patterns[0]?.[padIndex] ?? [];
+      // The groove's material in the DOCUMENT's metre (ADR 0057 Stage 2c): the
+      // fallback must not be the only path that plays a truncated 4/4 bar.
+      const base = projectRowToMeter(
+        groove.patterns[0]?.[padIndex] ?? [],
+        inferPadRole(pad.name, padIndex),
+        meter,
+      );
       // The groove's material is folded at the METRICAL bar, so the second
       // bar of a pattern draws the groove's first bar again.
       rows[pad.id] = Array.from({ length: options.stepCount }, (_, step) =>

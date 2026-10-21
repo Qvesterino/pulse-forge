@@ -355,7 +355,7 @@ export function extractPatternFeatures(input: PatternFeatureInput): PatternFeatu
   const drums = drumStats(doc, pattern, options);
   const melodic = melodicStats(pattern, options, meter);
   const drumQuality = measureDrumQuality(groove, drums.rows, drums.roles, stepCount, meter);
-  const styleGate = evaluateStyleDistance(groove, drums.rows, stepCount, meter);
+  const styleGate = evaluateStyleDistance(groove, drums.rows, stepCount, meter, drums.roles);
   const melodicQuality = measureMelodicQuality(melodic.notes, stepCount, options.key ?? doc.key);
 
   const intentBpmIn = (bpm: number): boolean =>
@@ -551,7 +551,11 @@ function styleDistanceOf(candidate: Pattern, doc: ProjectDocument, options: Gene
   const groove: GrooveData = resolveGrooveForGeneration(doc, options);
   const rows = Object.values(candidate.rows ?? {});
   const meter = aiMeterFor(options.timeSignature ?? doc.timeSignature);
-  return evaluateStyleDistance(groove, rows, options.stepCount, meter).distance;
+  // The reference speaks the document's metre, so the gate needs to know which
+  // pad is which role (ADR 0057 Stage 2c).
+  const drumTrack = doc.tracks.find((track) => track.kind === "drum");
+  const roles = drumTrack?.kind === "drum" ? drumTrack.pads.map((pad, index) => inferPadRole(pad.name, index)) : [];
+  return evaluateStyleDistance(groove, rows, options.stepCount, meter, roles).distance;
 }
 
 function anchorCoverageOf(candidate: Pattern, doc: ProjectDocument, options: GenerateOptions): number {

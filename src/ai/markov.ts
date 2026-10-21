@@ -1,6 +1,16 @@
 import type { GrooveData, PadMarkovModel, VelocityLevel, StateIndex } from "./types";
 
 const STEPS_PER_BAR = 16;
+/**
+ * The Markov model's frame — the groove library's own bar.
+ *
+ * The model is trained on the library's sixteen-position frame, and Stage 2c
+ * keeps it there: the model generates its own bar and the METRICAL VIEW
+ * (`src/ai/groove-view.ts`) maps that bar into the document's metre. Re-framing
+ * the model is a versioned step (a retrained corpus and new manifests), not a
+ * projection.
+ */
+export const MODEL_FRAME_STEPS = STEPS_PER_BAR;
 const NUM_LEVELS = 4;
 const NUM_STATES = NUM_LEVELS * NUM_LEVELS * STEPS_PER_BAR; // 256 states
 const MODEL_CACHE_LIMIT = 64;

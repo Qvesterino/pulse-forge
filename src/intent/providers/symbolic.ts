@@ -1,4 +1,5 @@
 import { generatePattern, resolveGrooveForGeneration } from "../../ai/generator";
+import { aiMeterFor } from "../../ai/meter";
 import { instrumentTrackForRole } from "../../ai/role-targets";
 import { extractPatternFeatures, FEATURE_NAMES } from "../../ai/features/pattern-features";
 import { degreeToPitch, expandChord } from "../../ai/melodic";
@@ -115,7 +116,10 @@ export async function sampleMelodicParts(
 ): Promise<Record<MelodicRole, NoteEvent[]> | null> {
   const options = plan.options;
   const stepCount = options.stepCount;
-  const bars = stepCount / 16;
+  // The melody's budget is per METRICAL bar (ADR 0057 Stage 2c). A bar is
+  // sixteen sixteenth steps in 4/4 and twelve in 3/4 — asking for sixteen here
+  // gave a 3/4 melody two thirds of the notes it should have.
+  const bars = stepCount / aiMeterFor(options.timeSignature).stepsPerBar;
   const genre = melodicGenreOf(options.genre);
   const temperature = plan.intent.controls.temperature;
   const velocitySpread = 0.08 + plan.intent.controls.velocityVariation * 0.1;

@@ -1,5 +1,6 @@
 import type { GrooveData } from "./types";
 import type { PadRole } from "./pad-roles";
+import { metricalGroovePatterns } from "./groove-view";
 import { DEFAULT_AI_METER, isAnchorForRole, referencePhase, stepInBar, type AiMeter } from "./meter";
 
 export interface StyleQualityProfile {
@@ -167,15 +168,17 @@ function referenceMetrics(
   groove: GrooveData,
   stepCount: number,
   meter: AiMeter = DEFAULT_AI_METER,
+  roles: readonly PadRole[] = [],
 ): StyleDistanceMetrics {
+  // The reference in the document's metre (ADR 0057 Stage 2c). A gate that
+  // measures a 6/8 result against a truncated 4/4 reference grades the wrong
+  // thing: the reference has to speak the same metre as the result.
+  const metrical = metricalGroovePatterns(groove, roles, meter);
   const rows = groove.activePads.map((padIndex) => {
+    const references = metrical.map((pattern) => pattern[padIndex] ?? []);
     const row = new Array<number>(stepCount).fill(0);
     for (let step = 0; step < stepCount; step++) {
-      row[step] = referenceAt(
-        groove.patterns.map((pattern) => pattern[padIndex] ?? []),
-        step,
-        meter,
-      );
+      row[step] = referenceAt(references, step, meter);
     }
     return row;
   });
@@ -198,6 +201,7 @@ export function evaluateStyleDistance(
   rows: readonly (number[] | undefined)[],
   stepCount: number,
   meter: AiMeter = DEFAULT_AI_METER,
+  roles: readonly PadRole[] = [],
 ): StyleGateResult {
   const profile = getStyleQualityProfile(groove.genre, groove.name);
   // Defensive sanitization: NaN/Infinity velocities propagate to the distance
@@ -206,7 +210,7 @@ export function evaluateStyleDistance(
     row ? row.map((value) => (Number.isFinite(value) && value > 0 ? value : 0)) : row,
   );
   const metrics = rowMetrics(safeRows, stepCount, meter);
-  const reference = referenceMetrics(groove, stepCount, meter);
+  const reference = referenceMetrics(groove, stepCount, meter, roles);
   // NaN guard: a non-finite stepCount (e.g. NaN, Infinity) propagates through
   // density/syncopation/velocityMean arithmetic and yields NaN distance metrics.
   // Coerce each side to a finite scalar before subtracting so the result is

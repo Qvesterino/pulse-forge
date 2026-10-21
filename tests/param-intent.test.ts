@@ -8,6 +8,8 @@ import {
   type ParamIntent,
 } from "../src/intent/param-intent";
 import { routeIntentText } from "../src/intent/route";
+import { buildCapabilityMatrix, capabilityIssues } from "../src/intent/semantics/param-registry";
+import { EFFECT_META } from "../src/effects/definitions";
 import { testDoc } from "./fixtures/doc";
 
 /**
@@ -422,5 +424,99 @@ describe("seven-level calibration across parameter families", () => {
     expect(paramPlanLines(mustParse("slightly longer reverb decay on the lead"), testDoc())).toEqual([
       "lead: no matching track",
     ]);
+  });
+});
+
+/**
+ * STEP 3 (2026-10-21) — THE REGISTRY IS THE INVENTORY.
+ *
+ * The role table, the capability matrix, the corpus and the readback metric
+ * now all derive from `src/intent/semantics/param-registry.ts`. These tests
+ * keep the registry honest: every capability must point at a real ParamDef,
+ * the matrix must state its owner and evidence, and the 7-level corpus runs
+ * FROM the matrix instead of a second hand-written family list.
+ */
+describe("param registry & capability matrix", () => {
+  const LEVELS: ReadonlyArray<readonly [number, string]> = [
+    [1, "barely"],
+    [2, "a touch"],
+    [3, "slightly"],
+    [4, "somewhat"],
+    [5, "quite"],
+    [6, "much"],
+    [7, "as much as possible"],
+  ];
+
+  it("no capability lies about a ParamDef or an example template", () => {
+    expect(capabilityIssues()).toEqual([]);
+  });
+
+  it("the matrix states bounds, domain, owner and evidence for every row", () => {
+    const rows = buildCapabilityMatrix();
+    expect(rows.length).toBeGreaterThan(20);
+    for (const row of rows) {
+      const def = EFFECT_META[row.effectType].params.find((param) => param.id === row.paramId);
+      expect(def, `${row.role}:${row.effectType}.${row.paramId}`).toBeDefined();
+      expect(row.min).toBe(def!.min);
+      expect(row.max).toBe(def!.max);
+      expect(row.default).toBe(def!.default);
+      expect(row.domain).toBe(def!.taper === "log" ? "log" : "linear");
+      expect(row.exposedBy).toBe(row.primary ? "effect" : "param");
+      expect(row.examples.more).toContain("${degree}");
+      expect(row.examples.less).toContain("${degree}");
+      expect(["pending", "done", "not-applicable"]).toContain(row.listening);
+      if (row.metric != null) expect(["rms", "centroid", "crest", "width"]).toContain(row.metric);
+    }
+  });
+
+  it("the P2 param-exposed families are all present", () => {
+    const exposed = buildCapabilityMatrix()
+      .filter((row) => row.exposedBy === "param")
+      .map((row) => `${row.role}:${row.effectType}.${row.paramId}`);
+    expect(exposed).toEqual(
+      expect.arrayContaining([
+        "mix:saturation.mix",
+        "tone:saturation.tone",
+        "time:reverb.decay",
+        "time:delay.time",
+        "threshold:compressor.threshold",
+        "attack:compressor.attack",
+        "release:compressor.release",
+        "cutoff:svFilter.cutoff",
+        "q:svFilter.resonance",
+        "width:haasWidener.width",
+      ]),
+    );
+  });
+
+  it("the 7-level corpus runs FROM the registry, in both directions", () => {
+    const rows = buildCapabilityMatrix().filter((row) => row.exposedBy === "param");
+    expect(rows.length).toBeGreaterThanOrEqual(10);
+    for (const row of rows) {
+      const label = `${row.role}:${row.effectType}.${row.paramId}`;
+      for (const direction of ["more", "less"] as const) {
+        const current = row.min + (row.max - row.min) * (direction === "more" ? 0.25 : 0.75);
+        let previousFraction = -1;
+        for (const [level, word] of LEVELS) {
+          const text = row.examples[direction].replace("${degree}", word);
+          const intent = parseParamIntent(text);
+          expect(intent, `${label} ${direction} ${word}: "${text}"`).not.toBeNull();
+          if (!intent) continue;
+          expect(intent.effectType, text).toBe(row.effectType);
+          expect(intent.paramId, text).toBe(row.paramId);
+          expect(intent.mode, text).toBe(direction);
+          expect(intent.degree?.level, text).toBe(level);
+          const preview = paramMovePreview(intent, current);
+          expect(preview, text).not.toBeNull();
+          if (!preview) continue;
+          expect(preview.domain, text).toBe(row.domain);
+          expect(preview.fraction, text).not.toBeNull();
+          expect(preview.fraction!, text).toBeGreaterThanOrEqual(previousFraction - 1e-9);
+          previousFraction = preview.fraction!;
+          if (direction === "more") expect(preview.next, text).toBeGreaterThanOrEqual(current - 1e-9);
+          else expect(preview.next, text).toBeLessThanOrEqual(current + 1e-9);
+        }
+      }
+    }
   });
 });

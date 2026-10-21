@@ -2,7 +2,8 @@ import type { NoteEvent, MusicalKey } from "../project-model/types";
 import { parseKey, SCALE_INTERVALS } from "../project-model/scales";
 import type { GrooveData } from "./types";
 import type { PadRole } from "./pad-roles";
-import { DEFAULT_AI_METER, isAnchorForRole, isDefaultMeter, referencePhase, stepInBar, type AiMeter } from "./meter";
+import { metricalGroovePatterns } from "./groove-view";
+import { DEFAULT_AI_METER, isAnchorForRole, referencePhase, stepInBar, type AiMeter } from "./meter";
 
 function clampVelocity(value: number): number {
   if (!Number.isFinite(value) || value <= 0) return 0;
@@ -18,31 +19,6 @@ function referenceLength(references: readonly number[][]): number {
 }
 
 /**
- * The groove's own velocity for this role, taken from the reference hit
- * NEAREST the anchor (cyclically inside the reference's bar).
- *
- * Used when the metre has to WRITE an anchor the groove's material cannot
- * express: the anchor's loudness still comes from the groove, so the written
- * skeleton wears the genre's accent character instead of a flat default.
- */
-function nearestRoleVelocity(references: readonly number[][], phase: number, length: number): number {
-  let bestValue = 0;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  for (let index = 0; index < length; index++) {
-    const value = Math.max(...references.map((pattern) => pattern[index] ?? 0), 0);
-    if (value <= 0) continue;
-    const forward = (phase - index + length) % length;
-    const backward = (index - phase + length) % length;
-    const distance = Math.min(forward, backward);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      bestValue = value;
-    }
-  }
-  return bestValue;
-}
-
-/**
  * Preserve style anchors that a sparse sampler must not erase.
  *
  * The anchors are the METRE's: the kick on the pulse, the snare on the
@@ -54,21 +30,18 @@ function nearestRoleVelocity(references: readonly number[][], phase: number, len
  * a pattern draws the groove's FIRST bar again rather than reaching past the
  * end of the groove's material.
  *
- * TWO PATHS, and the difference is measured, not cosmetic:
+ * ONE PATH, and it is the legacy one — REPAIR: the reference has a hit at the
+ * anchor and the sampler dropped it → the reference's own hit goes back.
  *
- * - REPAIR (every metre): the reference has a hit at the anchor, the sampler
- *   dropped it → put the reference's own hit back. This is the legacy rule.
- * - WRITE (any metre but 4/4): the reference has NOTHING at the anchor — the
- *   groove library is 4/4 material, so it carries no skeleton for a 3/4 or a
- *   6/8 bar. Without this path the generator would write a truncated 4/4 bar
- *   and call it 6/8. The metre writes the anchor, and the groove still writes
- *   its loudness (the nearest reference hit of that role).
- *
- * 4/4 is deliberately excluded from the WRITE path: that metre's behaviour is
- * the promise the overwhelming majority of the product depends on, and its
- * material already carries the metrical skeleton. Stage 2c (metrical groove
- * content) will make the WRITE path unnecessary everywhere, because the
- * reference will then hold the anchors itself.
+ * Stage 2b needed a second path (WRITE: the reference has NOTHING at the
+ * anchor, so the metre wrote the anchor itself), because the groove library is
+ * 4/4 material and a 3/4 or a 6/8 bar has no skeleton in it. **Stage 2c
+ * retired that path**: the reference the generator reads is now the METRICAL
+ * VIEW of the groove (`src/ai/groove-view.ts`), which carries the anchors
+ * itself — the 6/8 backbeat is the source's beat-4 backbeat, re-voiced. The
+ * metre still insists; the groove still writes the loudness. What changed is
+ * WHICH layer does the insisting, and a path that is unreachable is a path
+ * that only its own tests keep alive.
  */
 export function enforceDrumAnchors(
   row: number[],
@@ -79,7 +52,6 @@ export function enforceDrumAnchors(
   if (role !== "kick" && role !== "snare" && role !== "clap") return;
 
   const length = referenceLength(references);
-  const frozen = isDefaultMeter(meter.signature);
   for (let step = 0; step < row.length; step++) {
     if (!isAnchorForRole(meter, role === "kick" ? "kick" : "snare", step)) continue;
     if (row[step] > 0) continue;
@@ -89,12 +61,7 @@ export function enforceDrumAnchors(
       // Deterministic repair: keep the reference's character, but leave room
       // for velocity contour and later phrase dynamics.
       row[step] = clampVelocity(Math.max(reference * 0.85, 0.35));
-      continue;
     }
-    if (frozen) continue;
-    const nearest = nearestRoleVelocity(references, phase, length);
-    if (nearest <= 0) continue;
-    row[step] = clampVelocity(Math.max(nearest * 0.85, 0.35));
   }
 }
 
@@ -136,12 +103,16 @@ export function measureDrumQuality(
   let anchors = 0;
   let coveredAnchors = 0;
   const halfPulse = meter.pulseSteps / 2;
+  // The reference in the document's metre (ADR 0057 Stage 2c): the anchors the
+  // metre writes are the anchors the reference carries, so the coverage asks
+  // the right question.
+  const metrical = metricalGroovePatterns(groove, roles, meter);
 
   for (let pad = 0; pad < rows.length; pad++) {
     const row = rows[pad];
     if (!row) continue;
     const role = roles[pad] ?? "unknown";
-    const references = groove.patterns.map((pattern) => pattern[pad] ?? []);
+    const references = metrical.map((pattern) => pattern[pad] ?? []);
     const length = referenceLength(references);
     for (let step = 0; step < stepCount; step++) {
       const value = row[step] ?? 0;

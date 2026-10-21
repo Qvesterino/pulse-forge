@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { routeIntentText } from "../src/intent/route";
+import { ROUTE_PRECEDENCE } from "../src/intent/route-precedence";
+import { ROUTE_ADJUSTMENT } from "../src/intent/apply-boundary";
 import { testDoc } from "./fixtures/doc";
 import type { ProjectDocument } from "../src/project-model/types";
 
@@ -284,6 +287,13 @@ describe("route precedence contract", () => {
     for (const stage of ROUTE_PRECEDENCE) {
       if (stage.contextOnly) continue;
       expect(covered.has(stage.id), `stage ${stage.id} has no precedence case`).toBe(true);
+    }
+  });
+
+  it("every route kind is classified in both contracts", () => {
+    const inPrecedence = new Set(ROUTE_PRECEDENCE.flatMap((stage) => stage.kinds));
+    for (const kind of Object.keys(ROUTE_ADJUSTMENT) as Array<keyof typeof ROUTE_ADJUSTMENT>) {
+      expect(inPrecedence.has(kind), `route kind ${kind} has no precedence stage`).toBe(true);
     }
   });
 

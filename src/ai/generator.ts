@@ -403,7 +403,7 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
   const outputContentHash = contentHash(canonicalizePattern(doc, pattern));
   const padRoles = Array.from({ length: rawRows.length }, (_, index) => inferPadRole(padNames?.[index], index));
   const drumQuality = measureDrumQuality(groove, rawRows, padRoles, safeStepCount, meter);
-  const styleGate = evaluateStyleDistance(groove, rawRows, safeStepCount, meter);
+  const styleGate = evaluateStyleDistance(groove, rawRows, safeStepCount, meter, padRoles);
   const melodicQuality = measureMelodicQuality(Object.values(notesRecord).flat(), safeStepCount, effectiveKey);
   return {
     ...pattern,

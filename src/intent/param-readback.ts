@@ -34,6 +34,7 @@ import { extractAudioFeaturesV2, extractStereoAudioFeatures } from "../ai/audio-
 import { defaultParamsOf } from "../effects/definitions";
 import type { ParamRole, ParamIntent } from "./param-intent";
 import { trackIdsForMixTarget } from "./param-intent";
+import { capabilityFor, type MetricId } from "./semantics/param-registry";
 
 /** Render one track of one doc; null = render failed (skip that target). */
 export type RenderTrackFn = (doc: ProjectDocument, trackId: string) => Promise<AudioBuffer | null>;
@@ -70,31 +71,31 @@ interface Metric {
   value: number;
 }
 
-function metricOf(role: ParamRole, buffer: AudioBuffer): Metric | null {
-  if (role === "tone" || role === "cutoff") {
+function metricOf(metric: MetricId, buffer: AudioBuffer): Metric | null {
+  if (metric === "centroid") {
     const mono = monoOf(buffer);
     if (!mono) return null;
     return { name: "jas", value: extractAudioFeaturesV2(mono, buffer.sampleRate).spectralCentroid };
   }
-  if (role === "width") {
+  if (metric === "width") {
     if (buffer.numberOfChannels < 2) return null;
     const left = buffer.getChannelData(0);
     const right = buffer.getChannelData(1);
     return { name: "šírka", value: extractStereoAudioFeatures(left, right).width };
   }
-  if (role === "mix") {
+  if (metric === "rms") {
     const mono = monoOf(buffer);
     if (!mono) return null;
     return { name: "hlasitosť", value: extractAudioFeaturesV2(mono, buffer.sampleRate).rms };
   }
-  if (role === "threshold") {
+  if (metric === "crest") {
     // Crest factor (peak / RMS) falls as the threshold drops and the compressor
     // squashes the transient. This is the audibility proxy for "more squish".
     const mono = monoOf(buffer);
     if (!mono) return null;
     return { name: "dynamika", value: extractAudioFeaturesV2(mono, buffer.sampleRate).crestFactor };
   }
-  return null; // drive/time/attack/release/q: not measured in v1
+  return null; // no metric: honestly unmeasured
 }
 
 function monoOf(buffer: AudioBuffer): Float32Array | null {
@@ -150,6 +151,9 @@ export async function measureParamVerification(
   // would print false corrections. Saturation's tone tilt acts on the dry
   // path and keeps the centroid trustworthy.
   const wetPathTone = intent.role === "tone" && (intent.effectType === "reverb" || intent.effectType === "delay");
+  // The registry owns which feature a family claims to move. A null metric is
+  // an honest "not measured", not a failed render.
+  const metric = capabilityFor(intent.role, intent.effectType)?.metric ?? null;
   const targets: ParamVerificationTarget[] = [];
   for (const target of intent.targets) {
     if (wetPathTone) break;
@@ -165,8 +169,8 @@ export async function measureParamVerification(
       continue;
     }
     if (!beforeBuffer || !afterBuffer) continue;
-    const beforeMetric = metricOf(intent.role, beforeBuffer);
-    const afterMetric = metricOf(intent.role, afterBuffer);
+    const beforeMetric = metricOf(metric, beforeBuffer);
+    const afterMetric = metricOf(metric, afterBuffer);
     if (!beforeMetric || !afterMetric || beforeMetric.name !== afterMetric.name) continue;
     const deltaPct =
       beforeMetric.value > 1e-9
@@ -198,12 +202,7 @@ export async function measureParamVerification(
 
   let line: string;
   if (!measurable) {
-    const unmeasured =
-      intent.role === "drive" ||
-      intent.role === "time" ||
-      intent.role === "attack" ||
-      intent.role === "release" ||
-      intent.role === "q";
+    const unmeasured = metric === null;
     line = wetPathTone
       ? "tón na wet-ceste (reverb/delay) ešte nemeráme spoľahlivo — gombík sa ale pohol"
       : unmeasured

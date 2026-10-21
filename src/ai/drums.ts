@@ -1,10 +1,11 @@
 import type { StepMeta } from "../project-model/types";
 import type { GenerateOptions, GrooveData, VelocityLevel } from "./types";
-import { generatePadSequence, dequantizeVelocity, getGroovePadModel } from "./markov";
+import { generatePadSequence, dequantizeVelocity, getGroovePadModel, MODEL_FRAME_STEPS } from "./markov";
 import { canRatchet, ghostMultiplier, inferPadRole, type PadRole } from "./pad-roles";
 import { applyPhraseDynamics, buildPhrasePlan } from "./phrase";
 import { enforceDrumAnchors, repairDrumRow } from "./quality";
 import { enforceSyncopationBudget } from "./style-quality";
+import { metricalGroovePadRows, projectRowToMeter } from "./groove-view";
 import { aiMeterFor, barCount, stepInBar, type AiMeter } from "./meter";
 
 export interface DrumRandomStreams {
@@ -132,13 +133,18 @@ export function generateDrumPattern(
     }
     const role = inferPadRole(padNames?.[padIndex], padIndex);
     const cachedPad = getGroovePadModel(groove, padIndex);
-    const padPatterns = cachedPad.patterns;
     const model = cachedPad.model;
+    // The reference in the DOCUMENT's metre. The groove library is 4/4
+    // material, so this is where the metre re-voices the groove's anchors
+    // (ADR 0057 Stage 2c) — in 4/4 it is the very same rows as before.
+    const padPatterns = metricalGroovePadRows(groove, padIndex, role, meter);
 
-    // Generate the base sequence for ONE metrical bar. In 4/4 that is the
-    // legacy sixteen steps; in 3/4 it is twelve, so the bar is drawn from the
-    // groove's own material instead of being cut out of a 4/4 bar.
-    const baseSequence = generatePadSequence(model, stepsPerBar, rand, options.temperature);
+    // The model generates the SOURCE bar — the library's own sixteen-position
+    // frame — and the metrical view maps that bar into the document's metre.
+    // The model therefore keeps its frame (a retrain is a versioned step), and
+    // the CONTENT follows the metre.
+    const sourceSequence = generatePadSequence(model, MODEL_FRAME_STEPS, rand, options.temperature);
+    const baseSequence = projectRowToMeter(sourceSequence, role, meter);
 
     // Extend to full stepCount with bar-level variation (dice complexity/variation widens it)
     const barVarChance = diceComplexity != null ? 0.08 + diceComplexity * 0.22 : 0.15; // 0.08 sparse → 0.30 dense

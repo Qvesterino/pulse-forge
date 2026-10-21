@@ -71,7 +71,14 @@ export const ROUTE_PRECEDENCE: readonly RouteStage[] = [
   },
   {
     id: "studio-words",
-    kinds: ["sectionGrooveIntent", "grooveIntent", "automateIntent", "markerIntent", "stepEditIntent", "soundSwapIntent"],
+    kinds: [
+      "sectionGrooveIntent",
+      "grooveIntent",
+      "automateIntent",
+      "markerIntent",
+      "stepEditIntent",
+      "soundSwapIntent",
+    ],
     note: "explicit groove/automation/marker/step verbs, gated off inside genre prompts",
   },
   {

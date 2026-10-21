@@ -78,6 +78,7 @@ import {
 } from "../intent/mix";
 import { applyParamIntent } from "../intent/param-intent";
 import { noteAppliedRoute, noteExternalMutation, noteUndoRedo } from "../intent/apply-boundary";
+import { buildIntentCommand as intentCommand } from "../intent/command-for-route";
 import { transcribeTrack } from "../reference/transcribe";
 import { unsunoCommand } from "../reference/unsuno";
 import { restyleCommand } from "../reference/restyle";
@@ -11245,49 +11246,6 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
     // The intent appliers throw on no-target / already-matches — surface as
     // an honest failure instead of letting it kill the relay round-trip.
     return mcpError("EXECUTION_FAILED", `intent failed: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
-function intentCommand(doc: ProjectDocument, route: RoutedIntent): Command | null {
-  switch (route.kind) {
-    case "fader":
-      return applyFaderIntent(doc, route.intent);
-    case "tempo":
-      return applyTempoIntent(doc, route.intent);
-    case "exact":
-      return applyExactIntentCommand(doc, route.plan);
-    case "grooveIntent":
-      return applyGrooveIntent(doc, route.intent);
-    case "sectionGrooveIntent":
-      return applySectionGrooveIntent(doc, route.intent);
-    case "markerIntent":
-      return applyMarkerIntent(doc, route.intent);
-    case "automateIntent":
-      return applyAutomateIntent(doc, route.intent, null);
-    case "clips":
-      return applyClipArrangeOps(doc, route.ops);
-    case "arrange":
-      return applyArrangeOps(doc, route.ops);
-    case "preset":
-      return applyPresetIntentCommand(doc, route.intent);
-    case "effectIntent":
-      return applyEffectIntent(doc, route.intent);
-    case "paramIntent":
-      return applyParamIntent(doc, route.intent);
-    case "sendIntent":
-      return applySendIntent(doc, route.intent);
-    case "bypassIntent":
-      return applyBypassIntent(doc, route.intent);
-    case "soundSwapIntent":
-      return applySoundSwapIntent(doc, route.intent);
-    case "stepEditIntent":
-      return applyStepEditIntent(doc, route.intent);
-    case "compound":
-      return applyCompoundIntent(doc, route.parts);
-    case "production":
-      return applyProductionIntentCommand(doc, route.intent);
-    default:
-      return null;
   }
 }
 
