@@ -255,26 +255,26 @@ neexistuje. Názov eventu je rovnaký, ledger ho stále re-exportuje.
 
 **ŠESŤ REZOV, VŠETKY ZMERANÉ:**
 
-| # | Hrana, ktorá sa preťala                                       | Čo odišlo z boot cesty              |
-| - | ------------------------------------------------------------ | ----------------------------------- |
-| 1 | `style-observation → preference-ledger` (konštanta)          | AI engine, grooves, generator       |
-| 2 | `mix-preview → mix-idea` (plánovač)                          | `intentRouting` chunk (91,8 KB)      |
-| 3 | `ActivityCenter → trustReport` / `→ sessionStory`            | `renderManifest` (11,1) + `zip`     |
-| 4 | `services.ts → rendering/freezeSignature`                    | manifest z cesty služieb             |
-| 5 | `arrangeWords → mix` (tabuľka slov) → `src/intent/effect-words.ts` | mix planner (83 KB)            |
-| 6 | `PianoRoll → HumToMelody` (lazy komponent)                   | MIDI writer, pitch tracker           |
+| #   | Hrana, ktorá sa preťala                                            | Čo odišlo z boot cesty          |
+| --- | ------------------------------------------------------------------ | ------------------------------- |
+| 1   | `style-observation → preference-ledger` (konštanta)                | AI engine, grooves, generator   |
+| 2   | `mix-preview → mix-idea` (plánovač)                                | `intentRouting` chunk (91,8 KB) |
+| 3   | `ActivityCenter → trustReport` / `→ sessionStory`                  | `renderManifest` (11,1) + `zip` |
+| 4   | `services.ts → rendering/freezeSignature`                          | manifest z cesty služieb        |
+| 5   | `arrangeWords → mix` (tabuľka slov) → `src/intent/effect-words.ts` | mix planner (83 KB)             |
+| 6   | `PianoRoll → HumToMelody` (lazy komponent)                         | MIDI writer, pitch tracker      |
 
 **VÝSLEDOK:**
 
-| Kedy                                    | Boot path   | DAW total | Výsledok |
-| --------------------------------------- | ----------- | --------- | -------- |
-| `d55aa453` — baseline vlny 6            | 2354,4 KB   | —         | FAIL     |
-| po rezoch 1–4                           | 2199,2 KB   | 5483 KB   | boot OK  |
-| po rezoch 5–6 (`9c24df81`)              | **2072 KB** | 5494 KB   | FAIL (DAW) |
-| po zvýšení DAW podlahy                  | **2072 KB** | 5502 KB   | **exit 0** |
+| Kedy                         | Boot path   | DAW total | Výsledok   |
+| ---------------------------- | ----------- | --------- | ---------- |
+| `d55aa453` — baseline vlny 6 | 2354,4 KB   | —         | FAIL       |
+| po rezoch 1–4                | 2199,2 KB   | 5483 KB   | boot OK    |
+| po rezoch 5–6 (`9c24df81`)   | **2072 KB** | 5494 KB   | FAIL (DAW) |
+| po zvýšení DAW podlahy       | **2072 KB** | 5502 KB   | **exit 0** |
 
 Boot path **−282 KB (−12 %)**, a **128 KB rezervy** pod podlahou 2200 KB.
-Nič o produkte sa nezmenilo — zmenilo sa len *kedy* sa modul načíta.
+Nič o produkte sa nezmenilo — zmenilo sa len _kedy_ sa modul načíta.
 
 **LEKCIA, KTORÁ STOJÍ ZA TÝMTO VETOM.** Modul odchádza z boot cesty až vtedy,
 keď ho **už žiadny** modul v uzatvorenine neimportuje staticky. Presun jedného
@@ -432,12 +432,12 @@ horného svetla deklarovaných rolí sa rovná tokenu — rovnaká trieda brány
 Nie je to vlna estetiky, ale vlna **rozpočtu**: build bol na `main` červený
 tri dni a nikto si to všimol. Podrobnosti, merania a evidencia sú v §3.7.
 
-| Metric           | Pred        | Po         | Delta          |
-| ---------------- | ----------- | ---------- | -------------- |
-| Boot path        | 2354,4 KB   | **2072 KB**| **−282,4 KB**  |
-| Rezerva pod 2200 | −154,4 KB   | **+128 KB** | obrat          |
-| DAW total        | 5483 KB     | 5502 KB    | podlaha 5560   |
-| Brána            | FAIL        | **exit 0** |                |
+| Metric           | Pred      | Po          | Delta         |
+| ---------------- | --------- | ----------- | ------------- |
+| Boot path        | 2354,4 KB | **2072 KB** | **−282,4 KB** |
+| Rezerva pod 2200 | −154,4 KB | **+128 KB** | obrat         |
+| DAW total        | 5483 KB   | 5502 KB     | podlaha 5560  |
+| Brána            | FAIL      | **exit 0**  |               |
 
 Šesť preťatých hrán, jedna nová brána (`tests/boot-path-seams.test.ts`) a
 zmerané odôvodnenie podlahy v `scripts/check-bundle-size.mjs`.

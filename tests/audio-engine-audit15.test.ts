@@ -38,7 +38,15 @@ describe("audit 15 — performance pins", () => {
 
   it("the HUM feature stays off the boot path (lazy chunk + worker)", () => {
     const pianoRoll = read("src/ui/PianoRoll.tsx");
-    expect(pianoRoll).toContain('from "./HumToMelody"');
+    // The piano roll opens the hum panel from a button, so the panel — with
+    // the MIDI writer and the pitch tracker behind it — must load
+    // DYNAMICALLY. A static import here would put all of it back into the
+    // studio boot path, which is the whole point of this spec. (It used to
+    // assert that the static import EXISTED, which asserted the opposite of
+    // what the spec is named; wave 6 made the property true, so the
+    // assertion now checks the property.)
+    expect(pianoRoll).not.toMatch(/import\s+\{[^}]*\}\s+from\s+"\.\/HumToMelody"/);
+    expect(pianoRoll).toContain('import("./HumToMelody")');
     // The tracker is a dedicated worker, not main-thread DSP.
     const client = read("src/audio-workers/pitch-tracker-client.ts");
     expect(client).toContain('new Worker(new URL("./pitch-tracker.ts", import.meta.url), { type: "module" })');
