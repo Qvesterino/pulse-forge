@@ -168,6 +168,39 @@ _is_ provable, stop the process directly instead.
 
 ---
 
+## 8. THE GITHUB API BUDGET IS SHARED - READ CI STATE ONCE
+
+PRIORITY: HIGH
+SCOPE: ALL AGENTS, SUBAGENTS AND DELEGATED TASKS
+
+The unauthenticated GitHub REST API allows **60 requests per hour per IP
+address**. Every agent on this machine shares that one budget, and GitHub
+Actions runners sit in the same shared IP range. A polling loop that looks
+harmless - `while (!done) { fetch(...); await sleep(15_000); }` - spends the
+whole budget in about seven minutes and leaves every other agent, including
+the runs it is trying to watch, with `403 rate limit exceeded`.
+
+The rule: **read CI state when you have a question, not continuously.**
+
+- **One request per question.** To see a run's jobs, fetch the job list ONCE
+  and read the answer from it. A watcher that fetches the run list AND the
+  job list on every tick spends twice as fast.
+- **Poll at most every 60 seconds**, and only while a run is genuinely in
+  flight. If the answer does not change what you do, stop asking.
+- **A watch loop you cannot interrupt is a bug.** It outlives the question
+  and keeps spending a budget that other agents need.
+- **The failure text of a failed job does not need the logs API.** The
+  `hygiene` and `build` jobs write their failing output into the job summary
+  and into an **error annotation**, and the annotation is served by the
+  check-runs annotations API - one request, no token.
+- **If the API answers 403, STOP and report it.** Do not retry in a loop: the
+  budget resets on the hour, and no CI answer is worth spending another
+  agent's budget on.
+- Prefer the local facts: `git log`, `git status` and a local run of the
+  command tell you more, faster, and cost nothing.
+
+---
+
 # MANDATORY: GIT IN A SHARED WORKTREE
 
 PRIORITY: CRITICAL
