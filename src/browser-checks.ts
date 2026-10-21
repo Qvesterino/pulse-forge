@@ -11,6 +11,8 @@ import { ensureVscoPackLoaded } from "./presets/vsco-pack";
 import { normalizeIntent } from "./intent/normalize";
 import { planGeneration } from "./intent/plan";
 import { loadCoreWorklets, loadInstrumentWorklet } from "./audio-worklets/loader";
+import type { InstrumentWorkletType } from "./audio-worklets/loader";
+import { isWorkletPathInstrument } from "./presets/loudnessPath";
 import { renderProject } from "./rendering/renderer";
 import { buildStemProject, STEM_GROUPS } from "./rendering/stems";
 import { encodeWav } from "./rendering/wav";
@@ -154,6 +156,28 @@ export async function auditFactoryPresetAudio(bank: SampleBank, instrumentFilter
     };
     const durationSec = previewNoteDuration(track.params);
     const ctx = new OfflineAudioContext(2, Math.ceil(SR * (durationSec + 0.25)), SR);
+    // KOPA (ADR 0035) ships through the event-queue worklet, and the loudness
+    // map was RECORDED through that path (scripts/measure-preset-loudness.mjs
+    // loads the module and seeds the queue), so the drift gate has to measure
+    // the SAME synthesis. Without this the gate compares the native fallback
+    // with the map and reports drift that is not drift.
+    //
+    // MEASURED 2026-10-21 on all 16 KOPA presets: the map matches the worklet
+    // to 0.04 LU, while the fallback reads 6.2-12.5 LU LOUDER — the gate was
+    // comparing two different syntheses, and its advice ("run npm run
+    // presets:loudness") would have baked the fallback's level into the map,
+    // describing a sound the product never exports.
+    //
+    // The list of worklet-path instruments has ONE owner
+    // (src/presets/loudnessPath.ts), shared with the map generator, so the
+    // two cannot drift apart.
+    if (isWorkletPathInstrument(preset.instrument)) {
+      const workletType = preset.instrument as InstrumentWorkletType;
+      await loadInstrumentWorklet(ctx, workletType);
+      if (!isWorkletReady(workletType, ctx)) {
+        throw new Error(`${preset.id}: worklet did not load — refusing to measure the fallback instead`);
+      }
+    }
     const previewGain = ctx.createGain();
     previewGain.gain.value = 0.78;
     let runtime: InstrumentRuntime | null = null;
@@ -165,6 +189,12 @@ export async function auditFactoryPresetAudio(bank: SampleBank, instrumentFilter
       });
       runtime.output.connect(previewGain).connect(ctx.destination);
       runtime.noteOn(60, 0.82, 0.01, durationSec);
+      // The event-queue worklets build their AudioWorkletNode HERE and seed
+      // the queued note events through processorOptions — Chromium does not
+      // pump a worklet's message queue during an OfflineAudioContext render,
+      // so an unarmed worklet renders SILENCE. The export renderer arms
+      // exactly this call (renderer.ts → AudioEngine.prepareOfflineRender).
+      runtime.prepareOfflineRender?.();
       const buffer = await ctx.startRendering();
       const metrics = measurePreviewAudio(
         Array.from({ length: buffer.numberOfChannels }, (_, channel) => buffer.getChannelData(channel)),

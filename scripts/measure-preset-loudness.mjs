@@ -65,6 +65,10 @@ const measurements = await page.evaluate(async () => {
   const quality = await import("/src/presets/audioQuality.ts");
   const loudness = await import("/src/audio-engine/kweighting.ts");
   const worklets = await import("/src/audio-worklets/loader.ts");
+  // ONE OWNER for "which instruments measure through their production
+  // worklet" — the drift gate (src/browser-checks.ts) reads the same list, so
+  // the map and the gate can never measure two different syntheses.
+  const loudnessPath = await import("/src/presets/loudnessPath.ts");
 
   const SR = 44100;
   // Measure on the bank the app actually plays: synth kit + curated layer.
@@ -139,10 +143,10 @@ const measurements = await page.evaluate(async () => {
     let lastError = null;
     for (let pass = 0; pass < 3; pass++) {
       const ctx = new OfflineAudioContext(2, Math.ceil(SR * (durationSec + 0.25)), SR);
-      if (preset.instrument === "kopa") {
-        await worklets.loadInstrumentWorklet(ctx, "kopa");
-        if (!worklets.isWorkletReady("kopa", ctx)) {
-          throw new Error(`${preset.id}: KOPA worklet failed to load — refusing to measure the fallback instead`);
+      if (loudnessPath.isWorkletPathInstrument(preset.instrument)) {
+        await worklets.loadInstrumentWorklet(ctx, preset.instrument);
+        if (!worklets.isWorkletReady(preset.instrument, ctx)) {
+          throw new Error(`${preset.id}: worklet failed to load — refusing to measure the fallback instead`);
         }
       }
       const previewGain = ctx.createGain();
