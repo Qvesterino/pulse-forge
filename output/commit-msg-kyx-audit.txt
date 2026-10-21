@@ -1,0 +1,27 @@
+docs(audit): plugin/effect reliability + AI control audit
+
+Per-repo report for the plugin/effect reliability audit (2026-10-21):
+per-effect inventory and verified functionality matrix, the architecture map
+(UI <-> commands <-> DSP <-> persistence <-> MCP <-> Intent/LFM), the defects
+with reproduction and root cause, the actual measurements and the remaining
+coverage gaps, and a prioritised next-action list.
+
+The headline findings are stated with their evidence and their limits:
+  - 57 effects (44 worklet-backed + 13 native), 6 flagship suites, 222
+    declared parameters, 37 MCP tools with a 37-entry risk table and zero
+    declared-but-dead in either direction;
+  - the clean bill of health that matters: across all 57 effects, ZERO
+    declared parameters fail to reach the DSP, checked at the processor's
+    exact AudioParam-name level against all five of the repo's own
+    silently-dead-parameter modes;
+  - the repaired defect: four limiter controls (transientLink, releaseLink,
+    character, oversample) were live in the DSP and dead everywhere else —
+    stripped on every save/reload and refused by setEffectParam — with a
+    regression suite and a negative control;
+  - every verification in the MCP surface is DOCUMENT-level; nothing reads
+    the applied value back from the running AudioWorklet;
+  - the local model is LFM2.5-1.2B-Instruct + LoRA at Q8_0 (1.16 GB), not
+    4-bit: no Q4 artifact of the intent model exists, and the browser path is
+    a 2.6 MB ONNX model rather than the LFM;
+  - degree language is universally scaled, not per-parameter-family, and the
+    relative-step path switches unit systems between `percent` and native.

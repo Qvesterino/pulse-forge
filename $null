@@ -1,0 +1,2 @@
+rg: tests/mcp*: The filename, directory name, or volume label syntax is incorrect. (os error 123)
+rg: tests/intent*: The filename, directory name, or volume label syntax is incorrect. (os error 123)

@@ -1,0 +1,31 @@
+test(limiter): pin that every limiter DSP control reaches the document
+
+The limiter's worklet exposes four AudioParams the document never declared:
+transientLink, releaseLink, character and oversample. The document side
+declared only six ids, and that omission made the four unreachable in a way
+nothing warned about:
+
+  - the generic save path keeps only the ids present in defaultParamsOf(type),
+    so the four were STRIPPED on every save/reload;
+  - setEffectParam refused them outright ("Effect param ... not defined for
+    limiter"), so the UI, MCP and automation could not reach them either.
+
+They were live in the DSP and dead everywhere else — the classic silently dead
+parameter, in the one place a limiter's character control belongs.
+
+The new suite pins:
+  1. every AudioParam the limiter processor declares is either a declared
+     limiter parameter or an explicitly justified exception (the unit-
+     converted `lookahead`, and the monitor-only `deltaListen`),
+  2. the four are declared with a sane range and a description an agent can
+     read,
+  3. setEffectParam reaches all four and clamps out-of-range values,
+  4. the save/reload path (normalizeProject) KEEPS all four.
+
+Verified: 4/4 green. NEGATIVE CONTROL — the suite was re-run against the
+pre-fix definitions.ts (git checkout 3c4fc370^ -- src/effects/definitions.ts;
+the file was restored byte-identically, SHA-256 verified) and reports 4 failed
+/ 4 with exactly "Effect param transientLink not defined for limiter". The
+probe detects the defect; it does not merely pass.
+
+The parameter declarations themselves landed in the tree with commit 3c4fc370.

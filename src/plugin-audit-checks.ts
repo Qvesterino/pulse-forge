@@ -37,6 +37,7 @@ import { INSTRUMENT_DEFS, INSTRUMENT_ORDER, defaultInstrumentParams } from "./in
 import { auditionNoteSec } from "./plugin-audit-audition";
 import { HOST_EPS, MIX_CLASS_IDS, fingerprintOf, type ParamExtreme } from "./plugin-audit-fingerprint";
 import { hostMaterials, materialDoc, type HostMaterial } from "./plugin-audit-materials";
+import { resetDeterministicIds, useDeterministicIds } from "./shared/ids";
 import { generateFactoryBank, type SampleBank } from "./sample-library/factory";
 import { ensureCuratedLayer } from "./sample-library/curated";
 import { loadAllWorklets } from "./audio-worklets/loader";
@@ -1963,6 +1964,46 @@ function pageState(): AuditPageState | null {
   return (window as unknown as Record<string, unknown>)[AUDIT_STATE_KEY] as AuditPageState | null;
 }
 
+/**
+ * The id base for the DOCUMENT — the house template's own ids.
+ */
+const DOCUMENT_ID_BASE = 0;
+
+/**
+ * The id base for one MEASUREMENT UNIT (an effect, an instrument, the
+ * interaction block). Far above the document's own ids, so a unit's ids can
+ * never collide with the template's.
+ */
+const MEASUREMENT_ID_BASE = 1_000_000;
+
+/**
+ * Run one measurement unit with deterministic ids.
+ *
+ * WHY (measured 2026-10-21, not assumed): the house template mints a fresh
+ * random id for every track, pattern and NOTE, and the render's ordering
+ * depends on those ids. Two templates with random ids render with an rms
+ * spread of 7.1e-6 and a peak spread of 1.2e-4; two templates with
+ * deterministic ids render BIT-IDENTICALLY (spread exactly 0). The audit's
+ * relative deltas amplify that difference into percent-level movement in the
+ * report — between two full audits 52 of 57 effects changed their hostDelta
+ * (pitchCorrect 0.254 -> 0.144, apeks 5.658 -> 6.638) while 51 of 57 kept
+ * their sweep columns, which render a synthetic buffer instead of the house
+ * project.
+ *
+ * The counter restarts at a base of its own, so one unit's numbers do not
+ * depend on how many units were measured before it: a resumed audit measures
+ * the same thing as a full one.
+ */
+async function withDeterministicIds<T>(run: () => Promise<T>): Promise<T> {
+  const restore = useDeterministicIds();
+  resetDeterministicIds(MEASUREMENT_ID_BASE);
+  try {
+    return await run();
+  } finally {
+    restore();
+  }
+}
+
 async function ensurePageState(): Promise<AuditPageState> {
   const existing = pageState();
   if (existing) return existing;
@@ -1973,7 +2014,13 @@ async function ensurePageState(): Promise<AuditPageState> {
   // - restore pairs straddling that boundary compared different kits. Load
   // the curated layer UP FRONT so every audit render sees the same bank.
   await ensureCuratedLayer(bank);
+  // The document's ids are deterministic too: the template mints a fresh
+  // random id for every track, pattern and note, and the render's ordering
+  // depends on those ids (see withDeterministicIds for the measurement).
+  const restoreDocumentIds = useDeterministicIds();
+  resetDeterministicIds(DOCUMENT_ID_BASE);
   const baseDoc = createProjectFromTemplate("house");
+  restoreDocumentIds();
   // The drum bus must start clean — the house template may ship starter FX.
   const drum = baseDoc.tracks.find((t: { kind: string }) => t.kind === "drum") as { effects: unknown[] } | undefined;
   if (drum) drum.effects = [];
@@ -2000,7 +2047,7 @@ export async function auditOneEffect(type: EffectType): Promise<EffectAudit> {
   const state = await ensurePageState();
   let sweep: SweepResult;
   try {
-    sweep = await sweepEffect(type, state.signal, state.dry);
+    sweep = await withDeterministicIds(() => sweepEffect(type, state.signal, state.dry));
   } catch (error) {
     sweep = {
       type,
@@ -2020,7 +2067,7 @@ export async function auditOneEffect(type: EffectType): Promise<EffectAudit> {
   }
   let host: HostResult;
   try {
-    host = await hostTestEffect(state.baseDoc, type, sweep, state.bank);
+    host = await withDeterministicIds(() => hostTestEffect(state.baseDoc, type, sweep, state.bank));
   } catch (error) {
     host = {
       hostError: String(error),
@@ -2041,13 +2088,13 @@ export async function auditOneEffect(type: EffectType): Promise<EffectAudit> {
 /** Full audit of ONE instrument kind. */
 export async function auditOneInstrument(kind: string): Promise<InstrumentAudit> {
   const state = await ensurePageState();
-  return auditInstrument(kind as (typeof INSTRUMENT_ORDER)[number], state.bank);
+  return withDeterministicIds(() => auditInstrument(kind as (typeof INSTRUMENT_ORDER)[number], state.bank));
 }
 
 /** Interaction block: chains, duplicates, live playback, rapid syncs. */
 export async function auditInteractionsPhase(): Promise<InteractionAudit> {
   const state = await ensurePageState();
-  return auditInteractions(state.baseDoc, state.bank);
+  return withDeterministicIds(() => auditInteractions(state.baseDoc, state.bank));
 }
 
 /** One-shot orchestration (used when the whole audit fits in one evaluate). */
