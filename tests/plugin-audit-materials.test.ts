@@ -55,9 +55,11 @@ const GATE_SOURCE = process.env.KYX_GATE_SOURCE ?? "scripts/lib/plugin-audit-gat
  */
 const MATERIALS_MODULE = process.env.KYX_MATERIALS_MODULE ?? "../src/plugin-audit-materials";
 
-const { hostMaterials: shippedHostMaterials, spreadKitDoc: shippedSpreadKitDoc, materialDoc } = (await import(
-  MATERIALS_MODULE
-)) as typeof import("../src/plugin-audit-materials");
+const {
+  hostMaterials: shippedHostMaterials,
+  spreadKitDoc: shippedSpreadKitDoc,
+  materialDoc,
+} = (await import(MATERIALS_MODULE)) as typeof import("../src/plugin-audit-materials");
 
 const house = createProjectFromTemplate("house");
 
