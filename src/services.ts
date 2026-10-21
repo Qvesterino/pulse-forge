@@ -30,8 +30,8 @@ import type {
   IUserSampleRepository,
 } from "./persistence/contracts";
 import { createAutosaveDebouncer } from "./persistence/autosave-debouncer";
-import { generateFactoryBank } from "./sample-library/factory";
-import type { SampleBank } from "./sample-library/factory";
+import { SampleBank, ensureFactorySamples, startFactoryBankBuild } from "./sample-library/factory";
+import { factorySampleIdsOf } from "./sample-library/requiredIds";
 import type { PlayMode, ProjectDocument, Scene } from "./project-model/types";
 import { PPQ } from "./project-model/types";
 import { setActivePattern, setBpm, unfreezeTrack } from "./commands/commands";
@@ -380,7 +380,19 @@ export class PlaybackController {
 }
 
 export async function createCoreServices(): Promise<CoreServices> {
-  const bank = await generateFactoryBank();
+  // The factory catalogue (155 synthesized assets, ~7.5M rendered frames) is
+  // rendered OFF the boot's critical path. MEASURED: the catalogue build cost
+  // 734 ms while the WHOLE service boot took 650 ms — the boot WAS the
+  // catalogue. The context creation is only 12 % of that cost (the render is
+  // 88 %), so "fewer OfflineAudioContexts" is not the lever; "less audio
+  // before the user can act" is.
+  //
+  // The catalogue still gets rendered — in the background, while the user
+  // browses the project browser. The curated WAV layer cannot replace it as
+  // the immediate sound: MEASURED, that fetch takes 115 s cold and 2.4 s
+  // warm, so the synthesized kit is what the user hears first.
+  const bank = new SampleBank();
+  startFactoryBankBuild(bank);
   const engine = new AudioEngine();
   const generativeProviders = new GenerativeProviderRegistry();
   generativeProviders.register(
@@ -741,6 +753,11 @@ export async function openProject(
     engine.setProject(project ?? store.doc);
     if (transport.playing) engine.restartFrozenSources(transport.position);
   };
+  // The project's OWN samples are rendered before the project opens, so the
+  // first hit is never silent: the catalogue builds in the background, this
+  // awaits exactly the ids the document references (16 for the house
+  // template, against 155 for the whole catalogue).
+  await ensureFactorySamples(bank, factorySampleIdsOf(store.doc));
   engine.setProject(store.doc);
   // Pre-load AudioWorklet modules (fire-and-forget — factories fall back
   // to bypass/fallback until modules are ready, then the engine rebuilds

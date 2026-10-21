@@ -1,5 +1,6 @@
 import { AudioEngine } from "../audio-engine/AudioEngine";
 import { curatedReadyWithin } from "../sample-library/curated-layer";
+import { factoryBankReady } from "../sample-library/factory";
 import { userSamplesReadyWithin } from "../persistence/UserSampleRepository";
 import type { SampleBank } from "../sample-library/factory";
 import type {
@@ -486,6 +487,13 @@ export async function renderProject(
   // briefly for the curated sound so "what you hear is what you export" —
   // after the timeout the synthesized fallback renders (offline installs).
   await curatedReadyWithin(bank, 2000);
+  throwIfAborted(options.signal);
+  // The factory catalogue builds in the BACKGROUND (the boot no longer waits
+  // for 155 rendered assets). An export must not start before it is complete:
+  // a render that reaches for a sample the background build has not reached
+  // yet would bake that silence into the file. NO timeout here — the
+  // catalogue is finite and the render is not time-critical.
+  await factoryBankReady(bank);
   throwIfAborted(options.signal);
   // User samples (recorded takes, imports): same bounded readiness. Without
   // this a render started before the boot restore finishes silently drops

@@ -5050,8 +5050,48 @@ export function applyRoundRobinVariants(bank: SampleBank, baseId: string): void 
   });
 }
 
-export async function generateFactoryBank(ids?: readonly string[]): Promise<SampleBank> {
-  const bank = new SampleBank();
+/**
+ * Per-bank build state. The factory catalogue is rendered OFF the boot's
+ * critical path (see services.ts), so the same asset can be requested twice:
+ * once by the background build and once by a project that needs it NOW. The
+ * per-asset promise map makes the second request JOIN the first render
+ * instead of rendering it again.
+ */
+interface BankBuildState {
+  /** The full-catalogue build, if one was started for this bank. */
+  full?: Promise<void>;
+  /** In-flight renders per asset id. */
+  assets: Map<string, Promise<void>>;
+}
+
+const bankBuilds = new WeakMap<SampleBank, BankBuildState>();
+
+function buildState(bank: SampleBank): BankBuildState {
+  let state = bankBuilds.get(bank);
+  if (!state) {
+    state = { assets: new Map() };
+    bankBuilds.set(bank, state);
+  }
+  return state;
+}
+
+async function renderFactoryAsset(bank: SampleBank, asset: FactoryAsset): Promise<void> {
+  const builder = BUILDERS[asset.id];
+  if (!builder) throw new Error(`No builder for factory asset ${asset.id}`);
+  const buffer = await render(DURATIONS[asset.id] ?? 0.3, builder);
+  bank.add(asset.id, buffer);
+  // The round-robin variants derive from the base, so a base that arrives on
+  // its own (a project that needs one sample) still gets its variants.
+  if (RR_VARIATIONS[asset.id]) applyRoundRobinVariants(bank, asset.id);
+}
+
+/**
+ * Render the factory catalogue into an EXISTING bank.
+ *
+ * `ids` limits the render to the requested assets (their round-robin bases
+ * are pulled in automatically). Omitted means the whole catalogue.
+ */
+export async function generateFactoryBankInto(bank: SampleBank, ids?: readonly string[]): Promise<void> {
   const requestedIds = ids ? new Set(ids) : undefined;
   if (requestedIds) {
     for (const [baseId, variations] of Object.entries(RR_VARIATIONS)) {
@@ -5066,13 +5106,22 @@ export async function generateFactoryBank(ids?: readonly string[]): Promise<Samp
   // anyway — a small worker pool (same shape as the curated layer) keeps
   // boot TTI predictable on weak machines.
   const queue = [...assets];
+  const state = buildState(bank);
   const worker = async (): Promise<void> => {
     while (queue.length > 0) {
       const asset = queue.shift()!;
-      const builder = BUILDERS[asset.id];
-      if (!builder) throw new Error(`No builder for factory asset ${asset.id}`);
-      const buffer = await render(DURATIONS[asset.id] ?? 0.3, builder);
-      bank.add(asset.id, buffer);
+      // JOIN an in-flight render of the same asset instead of rendering it
+      // twice (the background build and a project that needs it now).
+      const existing = state.assets.get(asset.id);
+      if (existing) {
+        await existing;
+        continue;
+      }
+      const pending = renderFactoryAsset(bank, asset).finally(() => {
+        state.assets.delete(asset.id);
+      });
+      state.assets.set(asset.id, pending);
+      await pending;
     }
   };
   await Promise.all(Array.from({ length: Math.min(FACTORY_RENDER_PARALLEL, assets.length) }, worker));
@@ -5082,5 +5131,62 @@ export async function generateFactoryBank(ids?: readonly string[]): Promise<Samp
     if (!base) throw new Error(`No base buffer for RR variation of ${baseId}`);
     applyRoundRobinVariants(bank, baseId);
   }
+}
+
+export async function generateFactoryBank(ids?: readonly string[]): Promise<SampleBank> {
+  const bank = new SampleBank();
+  await generateFactoryBankInto(bank, ids);
   return bank;
+}
+
+/**
+ * Make sure the given ids are IN the bank, then resolve. Missing assets are
+ * rendered on demand (and joined with an in-flight render of the same id).
+ *
+ * This is what a project open awaits: the project is playable the moment it
+ * opens, without waiting for the whole catalogue.
+ */
+export async function ensureFactorySamples(bank: SampleBank, ids: readonly string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const wanted = new Set(ids);
+  const state = buildState(bank);
+  const pending: Promise<void>[] = [];
+  for (const asset of FACTORY_ASSETS) {
+    if (!wanted.has(asset.id)) continue;
+    if (bank.has(asset.id)) continue;
+    const existing = state.assets.get(asset.id);
+    if (existing) {
+      pending.push(existing);
+      continue;
+    }
+    const render = renderFactoryAsset(bank, asset).finally(() => {
+      state.assets.delete(asset.id);
+    });
+    state.assets.set(asset.id, render);
+    pending.push(render);
+  }
+  await Promise.all(pending);
+}
+
+/**
+ * Resolve when the whole factory catalogue has been rendered into this bank.
+ * The export path awaits it: an export that starts before the catalogue is
+ * complete would silently drop the samples it has not reached yet.
+ */
+export function factoryBankReady(bank: SampleBank): Promise<void> {
+  return buildState(bank).full ?? Promise.resolve();
+}
+
+/**
+ * Start the full catalogue render for this bank WITHOUT blocking the caller.
+ * The returned promise is the one `factoryBankReady` awaits.
+ */
+export function startFactoryBankBuild(bank: SampleBank): Promise<void> {
+  const state = buildState(bank);
+  if (!state.full) {
+    state.full = generateFactoryBankInto(bank).catch((error) => {
+      console.warn("[factory] background bank build failed:", error);
+    });
+  }
+  return state.full;
 }

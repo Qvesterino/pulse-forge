@@ -5,6 +5,7 @@ import { Transport } from "./transport/Transport";
 import { createSchedulerDriver } from "./scheduler/schedulerDriver";
 import { INSTRUMENT_DEFS, INSTRUMENT_ORDER, defaultInstrumentParams } from "./instruments/registry";
 import { generateFactoryBank, RR_VARIATIONS, type SampleBank } from "./sample-library/factory";
+import { rrVariantCorrelation, RR_VARIANT_MIN_CORRELATION } from "./sample-library/rrSimilarity";
 import { CURATED_SAMPLES, loadCuratedLayer } from "./sample-library/curated";
 import { ensurePianoPackLoaded } from "./presets/piano-pack";
 import { ensureVscoPackLoaded } from "./presets/vsco-pack";
@@ -668,28 +669,24 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     // Round-robin variants must be DERIVED from the bank's CURRENT base. The
     // curated layer overrides bases AFTER the initial derivation, so a stale
     // variant would be the synth fallback alternating with the mastered WAV —
-    // two different drums instead of one drum with micro-variation. Every
-    // variation must correlate strongly with its base (resample + ±4 % gain
-    // keeps correlation high; a different render does not).
+    // two different drums instead of one drum with micro-variation.
+    //
+    // The metric is PHASE-BLIND on purpose (src/sample-library/rrSimilarity.ts
+    // carries the measurement). A round-robin variant is a resampled copy, so
+    // sample-phase correlation collapses on it by construction — measured on
+    // the real bank, 10 of 26 bases read below the old 0.7 threshold on the
+    // SYNTH bank alone, before the curated layer had even loaded. The
+    // log-envelope correlation reads ≥ 0.9999 for a fresh variant and ≤ 0.975
+    // for a stale one, so it separates the two populations the check cares
+    // about.
     const correlation = (baseId: string): number | null => {
       const base = bank.get(baseId);
       const rr2 = bank.get(`${baseId}.rr2`);
       if (!base || !rr2) return null;
-      const a = base.getChannelData(0);
-      const b = rr2.getChannelData(0);
-      const n = Math.min(a.length, b.length);
-      let dot = 0;
-      let na = 0;
-      let nb = 0;
-      for (let i = 0; i < n; i++) {
-        dot += a[i] * b[i];
-        na += a[i] * a[i];
-        nb += b[i] * b[i];
-      }
-      return dot / Math.max(1e-12, Math.sqrt(na) * Math.sqrt(nb));
+      return rrVariantCorrelation(base.getChannelData(0), rr2.getChannelData(0));
     };
     const readings = Object.keys(RR_VARIATIONS).map((baseId) => ({ baseId, corr: correlation(baseId) }));
-    const weak = readings.filter((entry) => entry.corr === null || entry.corr <= 0.7);
+    const weak = readings.filter((entry) => entry.corr === null || entry.corr < RR_VARIANT_MIN_CORRELATION);
     check(
       "RR variants are re-derived from the curated base (same drum, micro-variation)",
       weak.length === 0,
