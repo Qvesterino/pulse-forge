@@ -1,31 +1,55 @@
-#!/usr/bin/env node
 /**
- * ui-proportion.mjs — measure the studio shell's vertical budget in a live browser.
+ * ui-proportion.mjs — the studio shell's vertical budget, measured across a
+ * MATRIX: five viewports × three media branches.
  *
- * WHY THIS EXISTS
- * ---------------
- * The premium-UI work started from eyeballing PNGs, and eyeballing produced a
- * wrong number: the step sequencer — the primary instrument of a step-based
- * DAW — was measured at ~70px of a 1440x900 viewport (7.8%) while the dock
- * panel took 495px (55%). At 800x900 the sequencer measured ZERO visible px
- * because it was squeezed between the pattern toolbar and the dock.
- *
+ * WHAT THIS MEASURES
+ * ------------------
  * A screenshot cannot tell you WHY a region got small, and it cannot be
  * diffed numerically between two commits. This does: it opens the real app,
  * reads getBoundingClientRect() on the chrome regions, and prints the budget
  * as a table. It is the measuring instrument for the proportion waves — run it
  * before and after a change and compare the two tables.
  *
+ * THE MATRIX (5 × 3 = 15 measurements)
+ * ------------------------------------
+ * The plan asks for "5 viewports × 3 pointer types = 15 measurements on
+ * release" (docs/STUDIO-OPTIMIZATION-PLAN.md §5.1). The third column is NOT
+ * `pointer: none`, and that is a measured fact, not a preference:
+ *
+ *   MEASURED 2026-10-21 in this Chromium (Playwright 1.62.1):
+ *     pointer: fine    yes — a plain desktop context
+ *     pointer: coarse  yes — hasTouch, or any mobile device descriptor
+ *     pointer: none    NO  — `emulateMedia` has no pointer option, and no
+ *                              context configuration produces it
+ *
+ * A matrix column that the harness cannot enter is not a measurement, it is a
+ * line of code that always passes. So the third column is the OTHER real
+ * media branch of this shell: `prefers-reduced-motion: reduce`. It is not a
+ * nicety — 14 stylesheets carry a reduced-motion block, including
+ * `50-motion-accessibility.css`, which zeroes `animation` and `transition` on
+ * every element. NO gate covered it before this matrix.
+ *
+ *   mouse          pointer: fine                          desktop branch
+ *   touch          pointer: coarse                        tablet branch (46px rows)
+ *   reduced motion prefers-reduced-motion: reduce         accessibility branch
+ *
+ * Each column asserts ITS OWN claim before it measures anything: the context
+ * must really report that media state, or the run is HARNESS_ERROR. A gate
+ * that reports a pass for a branch it never entered is worse than no gate,
+ * because it closes the question.
+ *
  * USAGE
  *   node scripts/ui-proportion.mjs [--url http://127.0.0.1:5173] [--shots]
+ *                                  [--only mouse|touch|reduced-motion]
  *
  *   --url    dev/preview server to measure (default 127.0.0.1:5173)
  *   --shots  also write PNGs to output/playwright/proportion-<w>x<h>.png
+ *   --only   measure a single column (fast local iteration)
  *
  * Requires a dev or preview server already running; this script never starts
  * one (vite's first cold transform of AudioEngine.ts takes minutes).
  */
-import { chromium, devices } from "playwright";
+import { chromium } from "playwright";
 import { bootStudio } from "./lib/studio-boot.mjs";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -34,8 +58,8 @@ const argv = process.argv.slice(2);
 const urlIndex = argv.indexOf("--url");
 const URL = urlIndex >= 0 ? argv[urlIndex + 1] : "http://127.0.0.1:5173";
 const SHOTS = argv.includes("--shots");
-/** Add the coarse-pointer pass. See TOUCH_PASS below for why it is worth its boot. */
-const TOUCH = argv.includes("--touch");
+const onlyIndex = argv.indexOf("--only");
+const ONLY = onlyIndex >= 0 ? argv[onlyIndex + 1] : null;
 
 /** Viewports from the QA matrix in docs/PULSE-FORGE-PREMIUM-UI-PLAN.md. */
 const VIEWPORTS = [
@@ -47,27 +71,55 @@ const VIEWPORTS = [
 ];
 
 /**
- * TOUCH_PASS — the coarse-pointer branch of this shell.
+ * THE THREE COLUMNS.
  *
- * Sequencer.tsx picks ROW_HEIGHT from `matchMedia("(pointer: coarse)")` and
- * 57-row-pitch.css sets `--step-h: 44px` under the same query, so on a tablet
- * every row is 46px instead of 30px. That entire branch ran in production with
- * NO gate behind it: the context here had no touch emulation, so even at
- * 390x844 the fine-pointer path answered and the report said "pitch TS 30px vs
- * CSS 30px" — correct, and about the wrong branch.
+ * `expect` is the claim under test: the context MUST report exactly these
+ * media values, or the run ends in HARNESS_ERROR. `expectRowPitch` is the
+ * value Sequencer.tsx must publish for that branch — a coarse pointer gets
+ * the 46px touch pitch, everything else gets 30px.
  *
- * A gate that reports a pass for a branch it never entered is worse than no
- * gate, because it closes the question. So this pass first asserts that the
- * emulated context really reports `pointer: coarse`, and exits HARNESS_ERROR
- * if it does not — a silent fall-through to the fine branch would be a green
- * light over an unmeasured surface.
+ * `hasTouch: true` WITHOUT `isMobile: true` is deliberate: `isMobile` turns
+ * on the mobile viewport meta handling, which is a different device class.
+ * A touch laptop at 1440×900 is a coarse pointer on a desktop viewport, and
+ * that is the case the shell's own media queries have to survive.
  */
-const TOUCH_VIEWPORTS = [
-  { w: 390, h: 844 },
-  { w: 800, h: 1180 },
+const MEDIA_CONFIGS = [
+  {
+    key: "mouse",
+    label: "mouse",
+    mediaLabel: "pointer: fine",
+    expect: { pointerFine: true, pointerCoarse: false, reducedMotion: false },
+    expectRowPitch: 30,
+    context: (vp) => ({ viewport: { width: vp.w, height: vp.h } }),
+    async prepare() {},
+  },
+  {
+    key: "touch",
+    label: "touch",
+    mediaLabel: "pointer: coarse",
+    expect: { pointerFine: false, pointerCoarse: true, reducedMotion: false },
+    expectRowPitch: 46,
+    context: (vp) => ({ viewport: { width: vp.w, height: vp.h }, hasTouch: true }),
+    async prepare() {},
+  },
+  {
+    key: "reduced-motion",
+    label: "reduced motion",
+    mediaLabel: "prefers-reduced-motion: reduce",
+    expect: { pointerFine: true, pointerCoarse: false, reducedMotion: true },
+    expectRowPitch: 30,
+    context: (vp) => ({ viewport: { width: vp.w, height: vp.h } }),
+    async prepare(page) {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+    },
+  },
 ];
-/** The value Sequencer.tsx must publish for a coarse pointer. */
-const COARSE_ROW_PITCH = 46;
+
+const CONFIGS = ONLY ? MEDIA_CONFIGS.filter((c) => c.key === ONLY) : MEDIA_CONFIGS;
+if (CONFIGS.length === 0) {
+  console.error(`HARNESS_ERROR: unknown --only "${ONLY}". Use one of: ${MEDIA_CONFIGS.map((c) => c.key).join(", ")}`);
+  process.exit(2);
+}
 
 /**
  * Regions in top-to-bottom order. `weight` is what this slice is trying to
@@ -151,6 +203,34 @@ async function measure(page) {
       out.rowBoxOverlapsSlot =
         out.rowBoxHeight != null && out.rowPitchAssumed != null && out.rowBoxHeight > out.rowPitchAssumed;
     }
+
+    // THE MOTION CHECK. `50-motion-accessibility.css` zeroes `animation` and
+    // `transition` on every element under `prefers-reduced-motion: reduce`.
+    // This samples the elements the shell actually animates and reports the
+    // LONGEST transition duration among them.
+    //
+    // Why sample a SET and not one element: the sheet is `* { transition: none
+    // !important }`, so any element answers 0s in the reduced branch. The
+    // interesting number is the one on the OTHER side of that switch — if the
+    // shell stopped animating altogether, "0s" would pass everywhere and mean
+    // nothing. The mouse column therefore asserts the shell DOES animate
+    // (max > 0), which makes the reduced column's 0s a real observation.
+    const animated = document.querySelectorAll(
+      ".btn, .btn-small, .dock-tab, .step, .pattern-chip, .transport-cluster button, .topbar button",
+    );
+    let max = 0;
+    let sampled = 0;
+    for (const el of Array.from(animated).slice(0, 60)) {
+      sampled += 1;
+      const value = getComputedStyle(el).transitionDuration;
+      for (const part of String(value).split(",")) {
+        const seconds = parseFloat(part);
+        if (Number.isFinite(seconds) && seconds > max) max = seconds;
+      }
+    }
+    out.maxTransitionSeconds = max;
+    out.animatedElementsSampled = sampled;
+
     return out;
   }, REGIONS);
 }
@@ -189,16 +269,16 @@ const outDir = resolve("output/playwright");
 if (SHOTS) mkdirSync(outDir, { recursive: true });
 
 const report = [];
-// ONE boot, then resize between viewports.
+// ONE boot PER COLUMN, then resize between viewports.
 //
 // The first version created a fresh context per viewport, which meant five
 // full boots of a ~180 KB AudioEngine against a dev server that parallel agent
 // sessions were also hammering. Three of the five never reached the studio at
 // all and reported `null` for every region — a measurement failure that looks
-// exactly like a collapsed sequencer. Booting once and driving the viewport
-// removes that failure mode, runs ~5x faster, and measures the same thing:
-// every breakpoint in this shell is CSS (media + container queries), all of
-// which respond to a resize.
+// exactly like a collapsed sequencer. Booting once per column and driving
+// the viewport removes that failure mode, runs ~5x faster, and measures the
+// same thing: every breakpoint in this shell is CSS (media + container
+// queries), all of which respond to a resize.
 /**
  * Boot the studio once. The implementation lives in scripts/lib/studio-boot.mjs
  * because FOUR gates each carried their own copy of it, and one app-side class
@@ -209,13 +289,42 @@ async function openStudio(page, label) {
   await bootStudio(page, URL, { label });
 }
 
-const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-{
+/** Read the media state the context is actually in. */
+async function readMediaState(page) {
+  return page.evaluate(() => ({
+    pointerFine: matchMedia("(pointer: fine)").matches,
+    pointerCoarse: matchMedia("(pointer: coarse)").matches,
+    reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+    touchPoints: navigator.maxTouchPoints,
+  }));
+}
+
+for (const config of CONFIGS) {
+  const context = await browser.newContext(config.context(VIEWPORTS[0]));
   const page = await context.newPage();
   page.setDefaultNavigationTimeout(300_000);
   page.setDefaultTimeout(300_000);
 
-  await openStudio(page, "[fine]");
+  await config.prepare(page);
+  await openStudio(page, `[${config.key}]`);
+
+  // THE CLAIM UNDER TEST. If the context does not actually report the media
+  // state this column is about, everything below measures a different branch
+  // and every number it prints is true and irrelevant. That is HARNESS_ERROR,
+  // not a pass.
+  const media = await readMediaState(page);
+  const claimOk = Object.entries(config.expect).every(([key, want]) => media[key] === want);
+  if (!claimOk) {
+    await context.close();
+    await browser.close();
+    throw new Error(
+      `the [${config.key}] context does not report ${config.mediaLabel} - ` +
+        Object.entries(config.expect)
+          .map(([key, want]) => `${key}=${media[key]} (wanted ${want})`)
+          .join(", ") +
+        `. The ${config.key} branch would NOT be measured.`,
+    );
+  }
 
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.w, height: vp.h });
@@ -224,170 +333,119 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 900 
 
     const m = await measure(page);
     if (m.topbar == null) {
+      await context.close();
+      await browser.close();
       throw new Error(
-        `studio shell absent at ${vp.w}x${vp.h} — measurement aborted, not reported as a collapsed sequencer`,
+        `studio shell absent at ${vp.w}x${vp.h} (${config.key}) - measurement aborted, not reported as a collapsed sequencer`,
       );
     }
     const rows = REGIONS.map((r) => ({ label: r.label, px: m[r.key]?.h ?? null, weight: r.weight }));
-    report.push({ vp, m, text: table(rows, vp.w, vp.h) });
+    report.push({ config, vp, m, text: table(rows, vp.w, vp.h) });
 
     if (SHOTS) {
-      await page.screenshot({ path: resolve(outDir, `proportion-${vp.w}x${vp.h}.png`) });
+      await page.screenshot({
+        path: resolve(outDir, `proportion-${config.key}-${vp.w}x${vp.h}.png`),
+      });
     }
   }
-}
-await context.close();
-
-/**
- * The coarse-pointer pass. ONE context, resized between viewports — the same
- * reason the fine pass boots once: a fresh context per viewport is a fresh
- * cold boot of a ~180 KB AudioEngine, and three of five of those never reached
- * the studio and reported nulls that read as a collapsed sequencer.
- */
-const touchReport = [];
-let coarseEmulated = null;
-if (TOUCH) {
-  const touchContext = await browser.newContext({
-    ...devices["Pixel 7"],
-    viewport: { width: TOUCH_VIEWPORTS[0].w, height: TOUCH_VIEWPORTS[0].h },
-  });
-  const page = await touchContext.newPage();
-  page.setDefaultNavigationTimeout(300_000);
-  page.setDefaultTimeout(300_000);
-
-  await openStudio(page, "[coarse]");
-
-  // THE CLAIM UNDER TEST. If the emulated context does not actually report a
-  // coarse pointer, everything below measures the fine branch and every number
-  // it prints is true and irrelevant. That is HARNESS_ERROR, not a pass.
-  coarseEmulated = await page.evaluate(() => ({
-    coarse: window.matchMedia("(pointer: coarse)").matches,
-    fine: window.matchMedia("(pointer: fine)").matches,
-    anyCoarse: window.matchMedia("(any-pointer: coarse)").matches,
-    touchPoints: navigator.maxTouchPoints,
-  }));
-  if (!coarseEmulated.coarse) {
-    await touchContext.close();
-    await browser.close();
-    throw new Error(
-      "touch context does not report (pointer: coarse) - coarse=" +
-        coarseEmulated.coarse +
-        " fine=" +
-        coarseEmulated.fine +
-        " anyCoarse=" +
-        coarseEmulated.anyCoarse +
-        " maxTouchPoints=" +
-        coarseEmulated.touchPoints +
-        ". The coarse branch would NOT be measured.",
-    );
-  }
-
-  for (const vp of TOUCH_VIEWPORTS) {
-    await page.setViewportSize({ width: vp.w, height: vp.h });
-    await page.waitForTimeout(900);
-    const m = await measure(page);
-    if (m.topbar == null) {
-      await touchContext.close();
-      await browser.close();
-      throw new Error("studio shell absent at " + vp.w + "x" + vp.h + " (coarse) - measurement aborted");
-    }
-    const rows = REGIONS.map((r) => ({ label: r.label, px: m[r.key]?.h ?? null, weight: r.weight }));
-    touchReport.push({ vp, m, text: table(rows, vp.w, vp.h) });
-    if (SHOTS) {
-      await page.screenshot({ path: resolve(outDir, "proportion-touch-" + vp.w + "x" + vp.h + ".png") });
-    }
-  }
-  await touchContext.close();
+  await context.close();
 }
 
 await browser.close();
 
+/**
+ * THE CHECKS.
+ *
+ * Per measurement:
+ *   overflow      the document is wider than the viewport
+ *   collapsed     the sequencer lost its body
+ *   pitchMiss     the CSS row box is TALLER than the slot the component reserves
+ *   wrongConstant the component published the WRONG branch's row pitch
+ *   motion        the reduced-motion column must zero every transition, and
+ *                 the other columns must NOT (otherwise the check is vacuous)
+ */
+const failures = [];
 const overflow = report.filter((r) => r.m.docWidth > r.m.vw);
 const collapsed = report.filter((r) => r.m.sequencer == null || r.m.sequencer.h < 40);
 // The STYLESHEET's row box vs the COMPONENT's constant. Two independent
 // sources. Deliberately NOT the rendered pitch, which is derived from that same
 // constant and would make the check a tautology.
 const pitchMiss = report.filter((r) => r.m.rowBoxOverlapsSlot === true);
+const wrongConstant = report.filter((r) => r.m.rowPitchAssumed !== r.config.expectRowPitch);
+// The reduced-motion column must actually be reduced, and the others must not
+// be: a shell that stopped animating everywhere would satisfy "0s" without
+// the accessibility branch doing anything.
+const motion = report.filter((r) => {
+  const reduced = r.config.expect.reducedMotion;
+  const seconds = r.m.maxTransitionSeconds ?? 0;
+  return reduced ? seconds > 0 : seconds === 0;
+});
 
-// The same two-source pitch check on the coarse branch, plus the branch itself:
-// a coarse pointer that still publishes the fine constant means the media query
-// either stopped matching or ROW_HEIGHT lost its coarse arm. Either way the
-// tablet row pitch is wrong by 16px per row.
-const touchOverflow = touchReport.filter((r) => r.m.docWidth > r.m.vw);
-const touchCollapsed = touchReport.filter((r) => r.m.sequencer == null || r.m.sequencer.h < 40);
-const touchPitchMiss = touchReport.filter((r) => r.m.rowBoxOverlapsSlot === true);
-const touchWrongConstant = touchReport.filter((r) => r.m.rowPitchAssumed !== COARSE_ROW_PITCH);
-
-console.log("\n=== KYX studio shell - vertical budget ===\n");
-for (const r of report) {
-  console.log(r.text);
-  console.log(
-    `  doc ${r.m.docWidth}px vs viewport ${r.m.vw}px ${r.m.docWidth > r.m.vw ? "  <-- HORIZONTAL OVERFLOW" : ""}`,
-  );
-  console.log(
-    `  sequencer rows ${r.m.sequencerRows ?? 0}, visible ${r.m.sequencerVisibleRows ?? 0}; ` +
-      `row box ${r.m.rowBoxHeight ?? "?"}px (margin ${r.m.rowMarginBottom ?? 0}px) in slot TS ${r.m.rowPitchAssumed ?? "?"}px`,
-  );
-  console.log("");
-}
-if (overflow.length) {
-  console.log(`FAIL: horizontal overflow at ${overflow.map((r) => `${r.vp.w}x${r.vp.h}`).join(", ")}`);
-}
-if (collapsed.length) {
-  console.log(
-    `FAIL: sequencer collapsed at ${collapsed.map((r) => `${r.vp.w}x${r.vp.h} (${r.m.sequencer?.h ?? "missing"}px)`).join(", ")}`,
-  );
-}
-if (pitchMiss.length) {
-  console.log(
-    "FAIL: the CSS row box is TALLER than the slot Sequencer.tsx reserves - each row overlaps the next by the excess, and the excess accumulates down the list. " +
-      pitchMiss
-        .map((r) => `${r.vp.w}x${r.vp.h}: row box ${r.m.rowBoxHeight}px in slot TS ${r.m.rowPitchAssumed}px`)
-        .join("; "),
-  );
-}
-
-if (TOUCH) {
-  console.log("\n=== coarse pointer (touch) - vertical budget ===\n");
-  console.log(
-    `  emulated: pointer:coarse=${coarseEmulated?.coarse} pointer:fine=${coarseEmulated?.fine} ` +
-      `any-pointer:coarse=${coarseEmulated?.anyCoarse} maxTouchPoints=${coarseEmulated?.touchPoints}`,
-  );
-  console.log(`  Sequencer.tsx must publish ROW_HEIGHT ${COARSE_ROW_PITCH} on a coarse pointer\n`);
-  for (const r of touchReport) {
+console.log("\n=== KYX studio shell - vertical budget (5 viewports x 3 media branches) ===\n");
+for (const config of CONFIGS) {
+  const rows = report.filter((r) => r.config.key === config.key);
+  console.log(`\n--- ${config.label} (${config.mediaLabel}) ---\n`);
+  for (const r of rows) {
     console.log(r.text);
     console.log(
       `  doc ${r.m.docWidth}px vs viewport ${r.m.vw}px ${r.m.docWidth > r.m.vw ? "  <-- HORIZONTAL OVERFLOW" : ""}`,
     );
     console.log(
       `  sequencer rows ${r.m.sequencerRows ?? 0}, visible ${r.m.sequencerVisibleRows ?? 0}; ` +
-        `row box ${r.m.rowBoxHeight ?? "?"}px (margin ${r.m.rowMarginBottom ?? 0}px) in slot TS ${r.m.rowPitchAssumed ?? "?"}px`,
+        `row box ${r.m.rowBoxHeight ?? "?"}px (margin ${r.m.rowMarginBottom ?? 0}px) in slot TS ${r.m.rowPitchAssumed ?? "?"}px` +
+        `${r.m.rowPitchAssumed !== r.config.expectRowPitch ? `  <-- EXPECTED ${r.config.expectRowPitch}px` : ""}`,
+    );
+    console.log(
+      `  longest transition ${r.m.maxTransitionSeconds ?? "?"}s over ${r.m.animatedElementsSampled ?? 0} sampled elements` +
+        `${r.config.expect.reducedMotion ? "  (reduced motion: must be 0s)" : "  (must be > 0s)"}`,
     );
     console.log("");
   }
-  if (touchOverflow.length) {
-    console.log(`FAIL (coarse): horizontal overflow at ${touchOverflow.map((r) => `${r.vp.w}x${r.vp.h}`).join(", ")}`);
-  }
-  if (touchCollapsed.length) {
-    console.log(
-      `FAIL (coarse): sequencer collapsed at ${touchCollapsed.map((r) => `${r.vp.w}x${r.vp.h} (${r.m.sequencer?.h ?? "missing"}px)`).join(", ")}`,
-    );
-  }
-  if (touchPitchMiss.length) {
-    console.log(
-      "FAIL (coarse): the CSS row box is TALLER than the slot ROW_HEIGHT reserves. " +
-        touchPitchMiss
-          .map((r) => `${r.vp.w}x${r.vp.h}: row box ${r.m.rowBoxHeight}px in slot TS ${r.m.rowPitchAssumed}px`)
-          .join("; "),
-    );
-  }
-  if (touchWrongConstant.length) {
-    console.log(
-      `FAIL (coarse): Sequencer.tsx published ROW_HEIGHT ${touchWrongConstant.map((r) => r.m.rowPitchAssumed).join(", ")}px ` +
-        `but a coarse pointer must publish ${COARSE_ROW_PITCH}px. Either the (pointer: coarse) query stopped matching ` +
-        `or ROW_HEIGHT lost its coarse arm - the tablet row pitch would be wrong by ${COARSE_ROW_PITCH - (touchWrongConstant[0].m.rowPitchAssumed ?? 0)}px per row.`,
-    );
-  }
+}
+
+if (overflow.length) {
+  console.log(`FAIL: horizontal overflow at ${overflow.map((r) => `${r.config.key} ${r.vp.w}x${r.vp.h}`).join(", ")}`);
+}
+if (collapsed.length) {
+  console.log(
+    `FAIL: sequencer collapsed at ${collapsed.map((r) => `${r.config.key} ${r.vp.w}x${r.vp.h} (${r.m.sequencer?.h ?? "missing"}px)`).join(", ")}`,
+  );
+}
+if (pitchMiss.length) {
+  console.log(
+    "FAIL: the CSS row box is TALLER than the slot Sequencer.tsx reserves - each row overlaps the next by the excess, and the excess accumulates down the list. " +
+      pitchMiss
+        .map(
+          (r) =>
+            `${r.config.key} ${r.vp.w}x${r.vp.h}: row box ${r.m.rowBoxHeight}px in slot TS ${r.m.rowPitchAssumed}px`,
+        )
+        .join("; "),
+  );
+}
+if (wrongConstant.length) {
+  console.log(
+    "FAIL: Sequencer.tsx published the wrong branch's ROW_HEIGHT. " +
+      wrongConstant
+        .map(
+          (r) =>
+            `${r.config.key} ${r.vp.w}x${r.vp.h}: published ${r.m.rowPitchAssumed}px, ${r.config.mediaLabel} must publish ${r.config.expectRowPitch}px`,
+        )
+        .join("; "),
+  );
+}
+if (motion.length) {
+  console.log(
+    "FAIL: the motion branch did not take effect. " +
+      motion
+        .map(
+          (r) =>
+            `${r.config.key} ${r.vp.w}x${r.vp.h}: longest transition ${r.m.maxTransitionSeconds}s over ${r.m.animatedElementsSampled} sampled elements` +
+            (r.config.expect.reducedMotion
+              ? " — prefers-reduced-motion: reduce must zero every transition (src/styles/50-motion-accessibility.css)"
+              : " — the shell must still animate, otherwise the reduced-motion check would pass vacuously"),
+        )
+        .join("; "),
+  );
 }
 
 /**
@@ -400,20 +458,11 @@ if (TOUCH) {
  * A gate that cannot tell "I checked and it is wrong" from "I never checked"
  * reports the same score for both, and the second reading is worthless.
  */
-const failed =
-  overflow.length ||
-  collapsed.length ||
-  pitchMiss.length ||
-  touchOverflow.length ||
-  touchCollapsed.length ||
-  touchPitchMiss.length ||
-  touchWrongConstant.length;
+const failed = overflow.length || collapsed.length || pitchMiss.length || wrongConstant.length || motion.length;
 if (!failed) {
-  console.log("PASS: no overflow, sequencer present at every viewport, row pitch matches the virtualizer");
-  if (TOUCH)
-    console.log(
-      "PASS (coarse): " + TOUCH_VIEWPORTS.length + " touch viewports, ROW_HEIGHT " + COARSE_ROW_PITCH + "px == CSS box",
-    );
-  else console.log("NOTE: coarse-pointer branch NOT measured - pass --touch to cover it");
+  console.log(
+    `PASS: ${report.length} measurements (${CONFIGS.length} media branch(es) x ${VIEWPORTS.length} viewports) - ` +
+      "no overflow, sequencer present everywhere, row pitch matches the virtualizer on every branch, motion branch effective",
+  );
 }
 process.exit(failed ? EXIT_GATE_FAILED : 0);

@@ -22,3 +22,9 @@ scripts/data/
 # Generated audit reports. The emitter owns their byte shape; the audit
 # scripts rewrite them in place.
 docs/**/*.report.json
+
+# The generated status page. `npm run status:report` rewrites docs/STATUS.md
+# on every run (it carries the generation timestamp), and prettier's only
+# complaint is the column padding of its markdown table - reformatting it
+# would be false drift against the emitter that owns those bytes.
+docs/STATUS.md
