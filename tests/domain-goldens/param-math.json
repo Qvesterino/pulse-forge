@@ -1054,7 +1054,11 @@
             "release": 0.12,
             "lookaheadMs": 5,
             "link": 1,
-            "mix": 1
+            "mix": 1,
+            "transientLink": 1,
+            "releaseLink": 1,
+            "character": 0,
+            "oversample": 1
           }
         },
         {
