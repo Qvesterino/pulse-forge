@@ -11,6 +11,14 @@ const instrumentFilter = process.env.PRESET_AUDIT_INSTRUMENT?.trim() || undefine
 const server = await createServer({
   root,
   logLevel: "error",
+  // Vite's default dep-scan walks EVERY html file in the tree, and this repo
+  // carries a lot of them (coverage/, playwright-report/, docs/audits/…). A
+  // stray page that pulls a dependency with a broken exports map (lib0, the
+  // yjs transitive dep) makes esbuild fail the whole optimize step with
+  // "Could not resolve ./broadcastchannel.test.js" — and the check then dies
+  // before a single preset is measured. Pinning the entry to the app's own
+  // index.html is the same remedy scripts/render-curated-seeds.mjs uses.
+  optimizeDeps: { entries: ["index.html"] },
   server: { port, host: "127.0.0.1", strictPort: true },
 });
 

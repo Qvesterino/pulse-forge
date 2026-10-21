@@ -25,6 +25,14 @@ const BOOT_TIMEOUT_MS = 600_000;
 const server = await createServer({
   root,
   logLevel: "error",
+  // Vite's default dep-scan walks EVERY html file in the tree, and this repo
+  // carries a lot of them (coverage/, playwright-report/, docs/audits/…). A
+  // stray page that pulls a dependency with a broken exports map (lib0, the
+  // yjs transitive dep) makes esbuild fail the whole optimize step, and the
+  // suite then dies before a single check runs. Pinning the entry to the
+  // app's own index.html is the same remedy scripts/render-curated-seeds.mjs
+  // and scripts/verify-factory-presets.mjs use.
+  optimizeDeps: { entries: ["index.html"] },
   // No HMR, no file watcher: a concurrent agent's save would otherwise turn
   // into a Vite FULL PAGE RELOAD, which destroys the execution context the
   // checks are running in ("Execution context was destroyed") — the retry

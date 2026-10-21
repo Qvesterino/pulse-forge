@@ -57,6 +57,14 @@ const harnessHash = computeHarnessHash(root);
 const server = await createServer({
   root,
   logLevel: "error",
+  // Vite's default dep-scan walks EVERY html file in the tree, and this repo
+  // carries a lot of them (coverage/, playwright-report/, docs/audits/…). A
+  // stray page that pulls a dependency with a broken exports map (lib0, the
+  // yjs transitive dep) makes esbuild fail the whole optimize step, and the
+  // audit then dies before a single effect is measured. Pinning the entry to
+  // the app's own index.html is the same remedy scripts/render-curated-seeds.mjs
+  // and scripts/verify-factory-presets.mjs use.
+  optimizeDeps: { entries: ["index.html"] },
   server: {
     port: PORT,
     host: "127.0.0.1",
