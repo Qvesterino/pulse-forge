@@ -9,7 +9,7 @@ import {
   type StyleExampleV1,
 } from "./style-example-ledger";
 import { patternStyleExampleFromProject } from "./pattern-style-example";
-import { PREFERENCE_LEDGER_CLEARED_EVENT } from "./preference-ledger";
+import { PREFERENCE_LEDGER_CLEARED_EVENT } from "./preference-ledger-events";
 
 const OBSERVATION_SETTLE_MS = 1400;
 

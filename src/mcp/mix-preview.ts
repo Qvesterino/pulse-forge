@@ -1,7 +1,7 @@
 import type { Command } from "../commands/types";
 import type { ProjectDocument } from "../project-model/types";
 import { analyzeMixHealth } from "../analysis/mixDoctor";
-import { planMixIdea, type MixIdeaPlan } from "./mix-idea";
+import type { MixIdeaPlan } from "./mix-idea";
 import type { Services } from "../services";
 
 /**
@@ -169,6 +169,11 @@ export async function previewMixIdea(
   request: { idea: string; target?: string },
 ): Promise<MixPreviewOutcome> {
   const doc = services.store.getDoc();
+  // The planner is loaded at the moment of the call, not at boot: mix-idea
+  // carries the intent routing table (91 KB built) and the FX add assistant,
+  // and a chip that only shows a lane must not pay for them on every studio
+  // boot. Same seam as the renderer below.
+  const { planMixIdea } = await import("./mix-idea");
   const plan = planMixIdea(doc, request.idea, request.target);
   if (!plan.ok) return { ok: false, reason: plan.reason };
   const { renderProject } = await import("../rendering/renderer");

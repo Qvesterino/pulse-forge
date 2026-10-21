@@ -11,8 +11,6 @@ import {
   type ToolRisk,
 } from "../mcp/agentTrust";
 import { restoreIntentCheckpoint } from "../intent/checkpoints";
-import { downloadTrustReport } from "../services/trustReport";
-import { downloadSessionStory } from "../services/sessionStory";
 
 /**
  * ACTIVITY CENTER (Wave 1 A+B) — one visible place for "what is running" and
@@ -129,6 +127,11 @@ export function ActivityCenter() {
     setBusy(true);
     setError(null);
     try {
+      // Loaded at the click, not at boot: the report builder carries the
+      // render manifest and the zip writer (13 KB built) plus the whole
+      // trust-report module, and the activity center is mounted on every
+      // studio boot whether or not anyone ever asks for a report.
+      const { downloadTrustReport } = await import("../services/trustReport");
       await downloadTrustReport(services);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Trust report failed.");
@@ -142,6 +145,7 @@ export function ActivityCenter() {
     setBusy(true);
     setError(null);
     try {
+      const { downloadSessionStory } = await import("../services/sessionStory");
       await downloadSessionStory(services);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Session story failed.");

@@ -56,12 +56,18 @@ import {
   type PreferenceReason,
   type PreferenceTask,
 } from "./preference-ledger-core";
+import { PREFERENCE_LEDGER_CLEARED_EVENT } from "./preference-ledger-events";
 
 export const PREFERENCE_LEDGER_KEY = "pf:producer-dna-preferences";
 export const PREFERENCE_LEARNING_KEY = "pf:producer-dna-learning";
 export const PREFERENCE_LEDGER_CHANGED_EVENT = "pf:producer-dna-preferences-changed";
-export const PREFERENCE_LEDGER_CLEARED_EVENT = "pf:producer-dna-preferences-cleared";
 const PREFERENCE_LEDGER_MAX_CHARS = 512_000;
+
+// The cleared-event NAME lives in preference-ledger-events.ts, not here: this
+// module carries the AI engine, and a listener that only needs the name must
+// not pull that engine into the studio boot path. The name is re-exported so
+// existing importers keep working.
+export { PREFERENCE_LEDGER_CLEARED_EVENT };
 
 export {
   dedupeAndCapPreferences,
