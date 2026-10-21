@@ -7,7 +7,7 @@ import {
   type SceneRole,
 } from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
-import { effectWordIn } from "./mix";
+import { effectWordIn } from "./effect-words";
 import { parseDegree, type DegreeLevel } from "./degree";
 import {
   addArrangementClip,

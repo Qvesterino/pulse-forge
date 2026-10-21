@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useArrangement, usePatterns, useScenes, useServices, useTracks } from "./context";
 import type { InstrumentTrack, NoteEvent, Pattern, ProjectDocument } from "../project-model/types";
 import { STEP_TICKS, pitchName } from "../project-model/types";
@@ -30,7 +30,11 @@ import { usePublishCursor, useRemoteCursors } from "./remoteCursors";
 import { usePointerDragGuard } from "./usePointerDragGuard";
 import { MELODIC_OFFSETS, melodicKeys } from "./melodicKeys";
 import { humanizeVelocities, randomizeVelocities } from "../shared/velocityFx";
-import { HumToMelodyPanel } from "./HumToMelody";
+// The hum-to-melody panel is opened by a button, not by the piano roll — it
+// carries the MIDI writer, the pitch tracker and its worker (about 50 KB of
+// source). It loads when the panel is first opened, so a project that never
+// hums a melody does not parse it at studio boot.
+const HumToMelodyPanel = lazy(() => import("./HumToMelody").then((m) => ({ default: m.HumToMelodyPanel })));
 import { executeUserEdit } from "../commands/types";
 import {
   noteExpressionTargetsForInstrument,
@@ -2334,12 +2338,14 @@ export function PianoRollTrack({
       </div>
       <div className="pianoroll">
         {humOpen && (
-          <HumToMelodyPanel
-            track={track}
-            pattern={pattern}
-            docKey={doc.key ?? null}
-            onClose={() => setHumOpen(false)}
-          />
+          <Suspense fallback={null}>
+            <HumToMelodyPanel
+              track={track}
+              pattern={pattern}
+              docKey={doc.key ?? null}
+              onClose={() => setHumOpen(false)}
+            />
+          </Suspense>
         )}
         <div className="pianoroll-keys">
           {Array.from({ length: PITCH_COUNT }, (_, i) => {

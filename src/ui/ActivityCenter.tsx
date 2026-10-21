@@ -10,7 +10,6 @@ import {
   type AgentSession,
   type ToolRisk,
 } from "../mcp/agentTrust";
-import { restoreIntentCheckpoint } from "../intent/checkpoints";
 
 /**
  * ACTIVITY CENTER (Wave 1 A+B) — one visible place for "what is running" and
@@ -73,6 +72,9 @@ export function ActivityCenter() {
       setBusy(true);
       setError(null);
       try {
+        // Loaded at the click: the checkpoint reader is a REVERT action, and
+        // the activity center is mounted on every studio boot.
+        const { restoreIntentCheckpoint } = await import("../intent/checkpoints");
         const restored = await restoreIntentCheckpoint(session.docId, session.checkpointName);
         if (restored == null) {
           setError("The session checkpoint is no longer available (evicted) — nothing was changed.");

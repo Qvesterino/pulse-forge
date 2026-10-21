@@ -14,6 +14,7 @@ import { FAMILY_REFERENCE } from "../presets/preset-loudness.generated";
 import { SONG_LOUDNESS_TARGET_LUFS, SONG_LOUDNESS_TRIM_LIMIT_DB } from "./genre-reference.generated";
 import { artistMixProfileOf } from "./artist-mix";
 import { roleForTrack } from "./favorites";
+import { effectWordIn } from "./effect-words";
 import { parsePercent, parsePercentAllowingZero } from "./percent";
 import { stripReferenceClauses } from "./reference-clause";
 import { isPriorDeltaReference } from "./reference-delta";
@@ -741,34 +742,7 @@ export const EFFECT_KNOB: Partial<Record<EffectType, string>> = {
   rezonans: "formant",
 };
 
-const EFFECT_WORDS: ReadonlyArray<readonly [RegExp, EffectType]> = [
-  // PREFIX stems (no trailing \b) — SK/EN inflections ride on the stem
-  // ("reverbu", "delayu", "chorusu"…). Anchor \b at the start only.
-  [/\breverb|\bdozvuk|\bozven/, "reverb"],
-  [/\bdelay|\becho|\bdekou/, "delay"],
-  [/\bdistort|\bsaturat|\bsaturac|\bdriv/, "saturation"],
-  [/\bchorus|\bkorus/, "chorus"],
-  [/\bflanger/, "flanger"],
-  [/\bphaser|\bfazer/, "phaser"],
-  [/\btremolo/, "tremolo"],
-  [/\bbitcrush|\bcrush/, "bitcrusher"],
-  [/\bcompress|\bkompres/, "compressor"],
-  [/\bsidechain|\bpump(?:a|e|u)?/, "pump"],
-  [/\bbass.?harmon|\bkoren\b|\bharmonik/, "bassHarmonic"],
-  [/\bskrutka|\btwist\b|\bdispers/, "skrutka"],
-  // Formant is the word beatmakers actually reach for; "harmony" already
-  // routes to GROW above, so the match is deliberately vowel-anchored on
-  // "rezonan" plus explicit formant/voice words rather than a bare \bharmon.
-  [/\brezonan|\bformant/, "rezonans"],
-  [/\beq\b|\bfilter|\bfiltr|\bekvaliz/, "eq"],
-  // P2 domain calibration (2026-10-20): the dynamics and filter effects are
-  // addressable by name so threshold/attack/release/cutoff/Q asks can resolve
-  // to a concrete effect before the param layer picks the knob.
-  [/\blimiter\b/, "limiter"],
-  [/\bgate\b|\bnoise gate\b/, "gate"],
-  [/\bhaas\b|\bwidener\b/, "haasWidener"],
-  [/\bsvf\b|\bsv filter\b|\bstate.variable\b/, "svFilter"],
-];
+
 
 /** Scene role → the tracks its instrumentation plays (song-builder map). */
 const ROLE_TARGETS: Record<string, MixTarget[]> = {
@@ -935,12 +909,7 @@ function deaccentLower(text: string): string {
   return ` ${text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")} `;
 }
 
-export function effectWordIn(lower: string): EffectType | null {
-  for (const [re, type] of EFFECT_WORDS) {
-    if (re.test(lower)) return type;
-  }
-  return null;
-}
+export { effectWordIn };
 
 /**
  * True when the text names a param of this effect that is NOT the intent
