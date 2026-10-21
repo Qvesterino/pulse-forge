@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -61,6 +62,15 @@ export function validateAgentMap(
     exists: (path: string) => boolean;
     read: (path: string) => string;
     scripts: ReadonlySet<string>;
+    /**
+     * Does a glob pattern match at least one tracked file? The map has to be
+     * able to name a FILE SET (`src/ai/symbolic/prior-features*.ts` — three
+     * versions of that file today, more later), so a path carrying a `*` is
+     * resolved against the tree instead of being required to exist literally.
+     * A glob that matches NOTHING is still an error: the guard learned a
+     * second spelling, it did not lose its teeth.
+     */
+    matchesGlob?: (pattern: string) => boolean;
   },
 ): MapValidation {
   const errors: string[] = [];
@@ -87,6 +97,7 @@ export function validateAgentMap(
     }
     if (options.exists(token)) return;
     if (options.scripts.has(token)) return;
+    if (token.includes("*") && options.matchesGlob?.(token)) return;
     errors.push(`${where} references a missing path or script: ${token}`);
   };
 
@@ -146,6 +157,24 @@ const scripts = new Set(
 const fileExists = (path: string) => existsSync(resolve(ROOT, path));
 const readText = (path: string) => readFileSync(resolve(ROOT, path), "utf8");
 
+/** The tracked files — committed ones only, so a parallel session cannot flap the gate. */
+const trackedFiles = new Set(
+  execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 })
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0),
+);
+
+/** Does the pattern match at least one tracked file? `*` never crosses a slash. */
+const globMatches = (pattern: string): boolean => {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*");
+  const regex = new RegExp(`^${escaped}$`);
+  for (const file of trackedFiles) {
+    if (regex.test(file)) return true;
+  }
+  return false;
+};
+
 describe("agent map gate", () => {
   it("AGENTS.md points every future agent at the map", () => {
     expect(readText("AGENTS.md")).toContain("AGENT-MAP.md");
@@ -153,7 +182,12 @@ describe("agent map gate", () => {
 
   it("every path, script and guard in the map is real", () => {
     const markdown = readText("docs/AGENT-MAP.md");
-    const { errors } = validateAgentMap(markdown, { exists: fileExists, read: readText, scripts });
+    const { errors } = validateAgentMap(markdown, {
+      exists: fileExists,
+      read: readText,
+      scripts,
+      matchesGlob: globMatches,
+    });
     expect(errors, "the map drifted from the tree — fix the map or the reference it points at").toEqual([]);
   });
 
@@ -163,6 +197,7 @@ describe("agent map gate", () => {
       "| I need to… | Start with | Run before done |",
       "| --- | --- | --- |",
       "| Fix the thing | `src/does-not-exist.ts` | `npm run no-such-script` |",
+      "| Fix another thing | `src/does-not-exist*.ts` | `npm run typecheck` |",
       "",
       "## 3. Invariant register — hard-won truths and their guards",
       "| Invariant | Guarded by | Why it exists |",
@@ -170,10 +205,18 @@ describe("agent map gate", () => {
       "| Something true | `tests/golden-doctor.test.ts` | because |",
       "",
     ].join("\n");
-    const { errors } = validateAgentMap(bogus, { exists: fileExists, read: readText, scripts });
+    const { errors } = validateAgentMap(bogus, {
+      exists: fileExists,
+      read: readText,
+      scripts,
+      matchesGlob: globMatches,
+    });
     expect(errors.some((error) => error.includes("src/does-not-exist.ts"))).toBe(true);
     expect(errors.some((error) => error.includes("no-such-script"))).toBe(true);
     expect(errors.some((error) => error.includes("floor is"))).toBe(true);
+    // A glob that matches NOTHING is still a missing path: glob support is a
+    // second spelling, not a hole in the guard.
+    expect(errors.some((error) => error.includes("src/does-not-exist*.ts"))).toBe(true);
   });
 
   it("NEGATIVE: a guard file without assertions is refused", () => {
@@ -192,7 +235,12 @@ describe("agent map gate", () => {
       ...Array.from({ length: INVARIANT_FLOOR }, (_, i) => `| invariant ${i} | \`docs/AGENT-MAP.md\` | because |`),
       "",
     ].join("\n");
-    const { errors } = validateAgentMap(mapWithWeakGuard, { exists: fileExists, read: readText, scripts });
+    const { errors } = validateAgentMap(mapWithWeakGuard, {
+      exists: fileExists,
+      read: readText,
+      scripts,
+      matchesGlob: globMatches,
+    });
     expect(errors.some((error) => error.includes("has no assertion"))).toBe(true);
   });
 });
