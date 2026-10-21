@@ -12,7 +12,6 @@ import {
   auditionTimings,
   framesToNotes,
   humToNotesCommand,
-  notesToMidiBlob,
   patternLengthTicks,
   shiftNotesOctave,
   shiftNotesToBarStart,
@@ -621,9 +620,13 @@ export function HumToMelodyPanel({
               type="button"
               className="btn btn-ghost"
               title="Download the melody as a .mid file — use it in any other DAW"
-              onClick={() => {
+              onClick={async () => {
                 stopAudition();
                 try {
+                  // The MIDI file format is 36 KB and is only needed at the
+                  // moment of the click — loading it here keeps it out of the
+                  // studio boot path (2026-10-21 seam).
+                  const { notesToMidiBlob } = await import("../midi/hum-to-midi");
                   const blob = notesToMidiBlob(notes, {
                     bpm: services.store.getDoc().bpm,
                     name: track.name,

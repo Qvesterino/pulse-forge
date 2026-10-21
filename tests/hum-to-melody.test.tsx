@@ -12,12 +12,15 @@ import {
   auditionTimings,
   framesToNotes,
   humToNotesCommand,
-  notesToMidiBlob,
   patternLengthTicks,
   shiftNotesOctave,
   shiftNotesToBarStart,
   tileNotesAcrossPattern,
 } from "../src/midi/hum-to-notes";
+// The MIDI serializer moved to its own leaf module on 2026-10-21 so the
+// 36 KB MIDI file format stopped being part of the studio boot path. The
+// behaviour is unchanged - only its home.
+import { notesToMidiBlob } from "../src/midi/hum-to-midi";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { MusicalKey, Pattern, ProjectDocument } from "../src/project-model/types";
 

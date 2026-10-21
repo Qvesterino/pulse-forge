@@ -1,7 +1,6 @@
 import type { NoteEvent, MusicalKey, Pattern, ProjectDocument } from "../project-model/types";
 import { PATTERN_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { snapToScale } from "../project-model/scales";
-import { writeMidiFile } from "./midiFile";
 import { uid } from "../shared/ids";
 import { snapshot } from "../commands/commands";
 import type { PitchFrame } from "../audio-workers/pitch-tracker";
@@ -447,28 +446,9 @@ export function auditionTimings(notes: readonly NoteEvent[], bpm: number, leadIn
 }
 
 /**
- * Serialize the hummed draft as a Standard MIDI File (improvement 6) — the
- * drafts already live in PPQ ticks, which is the MIDI division, so the map
- * is 1:1 (start → startTick, duration → endTick−startTick). One melodic
- * track carrying the take name; tempo baked into the conductor track so the
- * file opens at the project's groove in any DAW.
+ * The MIDI-file serializer moved to `src/midi/hum-to-midi.ts` (2026-10-21).
+ * It used to live here, and its static import of the 36 KB MIDI file module
+ * put the whole format in the studio boot path for a feature that only runs
+ * when a user clicks "⤓ MIDI". The HumToMelody panel now loads it at the
+ * moment of the click.
  */
-export function notesToMidiBlob(notes: readonly NoteEvent[], options: { bpm: number; name?: string }): Blob {
-  if (notes.length === 0) throw new Error("No hummed notes to export");
-  const bytes = writeMidiFile({
-    bpm: Number.isFinite(options.bpm) && options.bpm > 0 ? options.bpm : 120,
-    tracks: [
-      {
-        name: options.name ?? "KYX hum",
-        channel: 0,
-        notes: notes.map((note) => ({
-          pitch: note.pitch,
-          startTick: note.start,
-          endTick: note.start + note.duration,
-          velocity: note.velocity,
-        })),
-      },
-    ],
-  });
-  return new Blob([bytes.buffer as ArrayBuffer], { type: "audio/midi" });
-}
