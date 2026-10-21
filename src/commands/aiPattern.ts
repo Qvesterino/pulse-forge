@@ -57,6 +57,10 @@ export function applyGenerationResultCommand(
   const projectUpdates = {
     ...(grooveUpdate ? { groove: { ...doc.groove, ...grooveUpdate } } : {}),
     ...(bpmUpdate !== null && bpmUpdate !== undefined ? { bpm: bpmUpdate } : {}),
+    // The REQUESTED meter (ADR 0057 Stage 2f): "make me a beat in 6/8" leaves
+    // the project in 6/8. Without this the 6/8 beat would land in a 4/4
+    // project — twelve steps in a sixteen-step bar, three quarters of a bar.
+    ...(result.plan.intent.timeSignature ? { timeSignature: result.plan.intent.timeSignature } : {}),
   };
 
   if (options.replaceMode === "replace") {

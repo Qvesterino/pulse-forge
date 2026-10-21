@@ -2,6 +2,7 @@ import type { IntentInput, IntentRole } from "./types";
 import type { IntentGenre } from "./types";
 import { MAX_PATTERN_BARS } from "../project-model/grid";
 import { matchAllArtistPresets, matchArtistPreset, parseVibeBlend } from "./artists";
+import { meterPhraseIn } from "./meter-phrase";
 import { parseSunoFormat } from "./suno-format";
 
 /**
@@ -1182,6 +1183,16 @@ export function parseIntentText(text: string): ParsedIntent {
   if (flow) {
     input.flow = flow;
     detected.push(`${flow} flow`);
+  }
+
+  // The REQUESTED METER (ADR 0057 Stage 2f) — "in 6/8", "time signature 3/4",
+  // "a waltz". The bare form is allowed here because this is the GENERATION
+  // path: "make me a beat in 6/8" must generate a 6/8 beat, and the metre
+  // word was otherwise silently ignored (a 4/4 beat in a 4/4 project).
+  const meter = meterPhraseIn(intentText, { bareAllowed: true });
+  if (meter) {
+    input.timeSignature = { numerator: meter.numerator, denominator: meter.denominator };
+    detected.push(`${meter.numerator}/${meter.denominator}`);
   }
 
   // Mood — canonical value consumed by mapIntentToOptions tweaks.

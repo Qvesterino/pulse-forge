@@ -1,12 +1,29 @@
 import { DEFAULT_GENERATE_OPTIONS, GENRES, type GenerateOptions } from "../ai/types";
 import { isMusicalKey, PRODUCTION_PROFILES } from "../project-model/types";
-import type { ProjectDocument } from "../project-model/types";
-import { DEFAULT_STEPS_PER_BAR, MAX_PATTERN_STEPS, stepsPerBar } from "../project-model/grid";
+import type { ProjectDocument, TimeSignature } from "../project-model/types";
+import { DEFAULT_STEPS_PER_BAR, MAX_PATTERN_STEPS, stepsPerBar, stepsPerBarFor } from "../project-model/grid";
 import { INTENT_SCHEMA_VERSION, type IntentInput, type IntentRole, type IntentSpec } from "./types";
 import { assertIntentSpec } from "./schema";
 import { sanitizeFxIntent } from "./production";
 
 const DEFAULT_ROLES: readonly IntentRole[] = ["drums", "bass", "chords", "lead"];
+
+/**
+ * The REQUESTED meter, when the request names one (ADR 0057 Stage 2f).
+ *
+ * Untrusted input: only a well-formed signature survives. A broken one is
+ * dropped (the request falls back to the document's meter) rather than
+ * rejected — the same rule the rest of this module follows for bad values.
+ */
+function requestedMeter(value: unknown): TimeSignature | null {
+  if (!value || typeof value !== "object") return null;
+  const numerator = (value as { numerator?: unknown }).numerator;
+  const denominator = (value as { denominator?: unknown }).denominator;
+  if (!Number.isInteger(numerator) || !Number.isInteger(denominator)) return null;
+  if ((numerator as number) < 1 || (numerator as number) > 16) return null;
+  if (![2, 4, 8, 16].includes(denominator as number)) return null;
+  return { numerator: numerator as number, denominator: denominator as number };
+}
 
 function unit(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : fallback;
@@ -94,7 +111,11 @@ export function normalizeIntent(
   doc?: Pick<ProjectDocument, "timeSignature">,
 ): IntentSpec {
   const source = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
-  const perBar = doc ? stepsPerBar(doc) : DEFAULT_STEPS_PER_BAR;
+  // The REQUESTED meter wins over the document's meter for the LENGTH: a bar
+  // is twelve steps in 3/4 and 6/8, sixteen in 4/4. "Two bars in 3/4" is
+  // twenty-four steps, not thirty-two (ADR 0057 Stage 2f).
+  const requested = requestedMeter(source.timeSignature);
+  const perBar = requested ? stepsPerBarFor(requested) : doc ? stepsPerBar(doc) : DEFAULT_STEPS_PER_BAR;
   const bars = barsOf(source.bars, perBar);
   // The step count alone expresses the request in 4/4 — a bar is sixteen
   // steps there — so the bar count is recorded ONLY where it says something
@@ -154,6 +175,9 @@ export function normalizeIntent(
     bpmRange: bpmRangeOf(source.bpmRange),
     length: bars !== null ? bars * perBar : lengthOf(source.length, perBar),
     ...(carriesBars ? { bars: bars as number } : {}),
+    // The requested meter rides with the intent so the plan can generate in
+    // it. Omitted when absent, so a 4/4 intent's canonical hash is unchanged.
+    ...(requested ? { timeSignature: requested } : {}),
     candidateCount: candidateCountOf(source.candidateCount),
     symbolicCandidates: symbolicCandidatesOf(source.symbolicCandidates),
     roles: rolesOf(source.roles),

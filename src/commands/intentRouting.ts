@@ -81,7 +81,16 @@ export function applyExactIntentCommand(doc: ProjectDocument, plan: ExactIntentP
     if (op.kind === "pan") return { pan: Math.max(-1, Math.min(1, op.value as number)) };
     return null;
   };
-  for (const op of plan.ops) {
+  // THE METER OP GOES FIRST (ADR 0057 Stage 2f). A sentence can name a metre
+  // AND a length ("make it 2 bars in 3/4"), and the length is read in the
+  // DOCUMENT's meter at the moment it is applied. So the meter has to be
+  // settled before the length op runs, or "2 bars in 3/4" would add 32 steps
+  // (two 4/4 bars) instead of 24 (two 3/4 bars). The sort is stable, so the
+  // other ops keep the order they were parsed in.
+  const orderedOps = [...plan.ops].sort(
+    (a, b) => (a.kind === "timeSignature" ? 0 : 1) - (b.kind === "timeSignature" ? 0 : 1),
+  );
+  for (const op of orderedOps) {
     if (op.kind === "addTrack") {
       next = (op.trackKind === "drum" ? createDrumTrack(next) : createInstrumentTrack(next, op.instrument)).execute(
         next,

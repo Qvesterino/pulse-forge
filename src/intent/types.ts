@@ -4,6 +4,7 @@ import type {
   ProductionProfile,
   ProjectDocument,
   PatternGeneration,
+  TimeSignature,
 } from "../project-model/types";
 import type { GenerateOptions, GrooveData } from "../ai/types";
 import type { CandidateBankEntry } from "./candidate-bank";
@@ -79,6 +80,17 @@ export interface IntentSpec {
    * defaulted to one bar of the document's meter.
    */
   bars?: number;
+  /**
+   * The REQUESTED meter (ADR 0057 Stage 2f). Absent = the document's meter.
+   *
+   * A request can name a metre the project is not in yet ("make me a beat in
+   * 6/8"). The metre is then part of the REQUEST, and it decides three
+   * things, in this order: the pattern's length (a bar is twelve steps in
+   * 6/8, not sixteen), the metre the content is generated in, and the metre
+   * the document ends up in. Absent keeps every 4/4 request byte-identical —
+   * the field is not carried at all when the meter is the document's own.
+   */
+  timeSignature?: TimeSignature;
   /** Number of local candidates to generate and rank before accepting one. */
   candidateCount?: number;
   /**
@@ -132,6 +144,7 @@ export type IntentInput = Partial<IntentSpec> & {
   bpmRange?: unknown;
   length?: unknown;
   bars?: unknown;
+  timeSignature?: unknown;
   candidateCount?: unknown;
   symbolicCandidates?: unknown;
   roles?: unknown;

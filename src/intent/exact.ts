@@ -1,6 +1,7 @@
 import type { InstrumentKind, MusicalKey } from "../project-model/types";
 import { MUSICAL_KEYS } from "../project-model/types";
 import { parseIntentText } from "./text-parser";
+import { meterPhraseIn } from "./meter-phrase";
 
 /**
  * Exact Intents (KYX_PRODUCTION_INTENT_ENGINE_MASTER.md §4.1, §19):
@@ -396,17 +397,17 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
   }
 
   // Time signature: "time signature 3/4", "set time signature to 6/8",
-  // "meter 7/8". Explicit phrase + N/D only — a bare "3/4" stays with
-  // swing/tempo asks. Bounds mirror the command.
-  const timeSigM =
-    /\b(?:time signature|meter)\b[^0-9]{0,16}(\d{1,2})\s*\/(\d{1,2})\b/i.exec(lower) ||
-    /(\d{1,2})\s*\/(\d{1,2})\b\s*(?:time signature|meter)\b/i.exec(lower);
-  if (timeSigM) {
-    const numerator = Number(timeSigM[1]);
-    const denominator = Number(timeSigM[2]);
-    if (numerator >= 1 && numerator <= 16 && [2, 4, 8, 16].includes(denominator)) {
-      ops.push({ kind: "timeSignature", numerator, denominator });
-    }
+  // "meter 7/8", "takt 5/4", "a waltz". The vocabulary is the shared one
+  // (`src/intent/meter-phrase.ts`) so the command path and the generation path
+  // can never disagree about which metre a sentence names.
+  //
+  // The BARE form ("6/8") is deliberately NOT taken here: it belongs to the
+  // generation path, where "make me a 3/4 beat" must generate a 3/4 beat. If
+  // the command path claimed it, that sentence would become a document change
+  // and the user would get a metre change and NO BEAT.
+  const meter = meterPhraseIn(lower);
+  if (meter) {
+    ops.push({ kind: "timeSignature", numerator: meter.numerator, denominator: meter.denominator });
   }
 
   // Groove swing — NUMERIC only ("swing 60 percent", "swing na 65",

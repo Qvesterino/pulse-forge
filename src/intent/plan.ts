@@ -125,7 +125,11 @@ export function planGeneration(input: IntentInput | IntentSpec, doc: ProjectDocu
       ? (intent.sourcePatternId ??
         (doc.patterns.some((pattern) => pattern.id === doc.activePatternId) ? doc.activePatternId : null))
       : undefined;
-  const options = generateOptionsFromIntent(intent, doc.timeSignature);
+  // The meter the content is generated in: the REQUESTED one when the request
+  // names a metre ("make me a beat in 6/8"), the document's otherwise
+  // (ADR 0057 Stage 2f). Without this the beat was generated in 4/4 and the
+  // document's meter changed afterwards — a 4/4 beat in a 6/8 project.
+  const options = generateOptionsFromIntent(intent, intent.timeSignature ?? doc.timeSignature);
   const effectiveSeed = resolveEffectiveSeed(doc, options);
   const groove = resolveGrooveForGeneration(doc, options);
   const inputContentHash = sourcePatternContentHash(doc, options.sourcePatternId);
