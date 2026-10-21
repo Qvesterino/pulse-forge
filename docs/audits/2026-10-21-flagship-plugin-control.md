@@ -26,9 +26,9 @@ flowchart LR
   Exact --> Instrument
 ```
 
-The server transports and live-store binding are shared infrastructure, covered in the broader audit. The focused path starts at `src/mcp/tools.ts`: `MCP_TOOLS` defines discovery and schemas; `executeMcpTool` dispatches against the live host context; catalog and parameter handlers read the effect/instrument registries; mutations use canonical commands and return verified document state. Desktop binds that context to the renderer store in `src/mcp/desktop-host.ts`; web binds the owning browser session in `src/mcp/web-host.ts`. The headless host in `src/mcp/headless-host.ts` uses the same tool implementation for tests, but does not emulate audio.
+The server transports and live-store binding are shared infrastructure, covered in the broader audit. The focused path starts at [`src/mcp/tools.ts`](../../src/mcp/tools.ts): `MCP_TOOLS` defines discovery and schemas (lines 1440, 1713, 2061, 2088, and 2140); catalog and parameter handlers read the effect/instrument registries (lines 8818, 8976, and 9151); mutations use canonical commands and return committed-state read-back. Desktop binds that context to the renderer store in [`src/mcp/desktop-host.ts`](../../src/mcp/desktop-host.ts); web binds the owning browser session in [`src/mcp/web-host.ts`](../../src/mcp/web-host.ts). The headless host in [`src/mcp/headless-host.ts`](../../src/mcp/headless-host.ts) uses the same tool implementation for tests, but does not emulate audio.
 
-Natural language enters through `kyx_intent` → `routeIntentText` (`src/intent/route.ts`) → `buildIntentCommand` (`src/intent/command-for-route.ts`). Effect intents use the existing `applyEffectIntent` command path (`src/intent/mix.ts`). The parameter-aware Intent parser is effect-only today (`src/intent/param-intent.ts` imports `EFFECT_META` and accepts `EffectType`); KOPA/TSAR parameter edits are available through exact MCP controls, not the free-text Intent parameter parser.
+Natural language enters through `kyx_intent` → `routeIntentText` ([`src/intent/route.ts`](../../src/intent/route.ts), lines 775 and 1083–1090) → `buildIntentCommand` ([`src/intent/command-for-route.ts`](../../src/intent/command-for-route.ts), lines 20–55). Effect intents use the existing `applyEffectIntent` command path ([`src/intent/mix.ts`](../../src/intent/mix.ts), lines 1075 onward). The parameter-aware Intent parser is effect-only today ([`src/intent/param-intent.ts`](../../src/intent/param-intent.ts) imports `EFFECT_META` and accepts `EffectType`); KOPA/TSAR parameter edits are available through exact MCP controls, not the free-text Intent parameter parser.
 
 ## Flagship capability matrix
 
@@ -40,7 +40,7 @@ Natural language enters through `kyx_intent` → `routeIntentText` (`src/intent/
 
 ## Verified finding and repair
 
-`src/intent/effect-words.ts` recognized `bassHarmonic` from `bass harmonic`, `koren`, and `harmonik`, but the genre-signal gate in `src/intent/route.ts` maintained a second explicit-effect-verb regex that omitted those aliases. Reproduction: `routeIntentText("Add KOREŇ to the bass in a drill beat", doc)` returned `pattern`, so `kyx_intent` would have treated the explicit plugin edit as generation. The guard now recognizes the normalized KOREŇ aliases on either side of an explicit effect action.
+[`src/intent/effect-words.ts`](../../src/intent/effect-words.ts) recognized `bassHarmonic` from `bass harmonic`, `koren`, and `harmonik`, but the genre-signal gate in [`src/intent/route.ts`](../../src/intent/route.ts) maintained a second explicit-effect-verb regex that omitted those aliases. Reproduction: `routeIntentText("Add KOREŇ to the bass in a drill beat", doc)` returned `pattern`, so `kyx_intent` would have treated the explicit plugin edit as generation. The guard now recognizes the normalized KOREŇ aliases with the explicit add/action-before-effect wording and the existing supported adjustment/effect-before-action wording.
 
 The `kyx_intent` command path now also appends `effectReadback(before, after, intent)` for effect intents, exposing the committed parameter movement (for KOREŇ, `drive before→after on track`) after the command executes. The regression test verifies this through the headless host and undoes the resulting command.
 
@@ -48,7 +48,9 @@ The `kyx_intent` command path now also appends `effectReadback(before, after, in
 
 - `npx vitest run tests/mcp-flagship-control.test.ts tests/mcp-instrument-control.test.ts tests/koren-catalog.test.ts` — **3 files passed, 9 tests passed**.
 - `npm run typecheck` — **passed** (`tsc --noEmit`, exit 0).
-- Changed-file formatting and the abandoned-process report are recorded after the final check.
+- `npx prettier --check src/intent/route.ts src/mcp/tools.ts tests/mcp-flagship-control.test.ts docs/audits/2026-10-21-flagship-plugin-control.md` — **passed**.
+- `git diff --check` — **passed**.
+- `node-gc -Root D:\pulse-forge` — **0 abandoned process trees**; two young/active test trees were ignored by policy.
 
 ## Scope boundary
 
