@@ -426,7 +426,7 @@ pre to nasledujúce:
 | Okno                       | fps  | meter | badge | bunka | playhead | long tasky |
 | -------------------------- | ---- | ----- | ----- | ----- | -------- | ---------- |
 | baseline (transport stojí) | 60,0 | 0     | 0     | 0     | 0        | **0**      |
-| prehrávanie                | 59,9 | 1341  | **0** | **0** | 2704     | **0**      |
+| prehrávanie                | 59,8 | 2200  | **0** | **0** | 4432     | **0**      |
 | prepnutie badge-u          | 60,1 | 0     | 16    | **0** | 0        | 0          |
 
 Odpovede na tri otázky §5.3, **zmerané**, nie odhadnuté:
