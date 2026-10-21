@@ -651,7 +651,7 @@ step, and still open.
   non-aligned sources (copy the content's own bars, or the metrical bar and
   say what was dropped), not a parameter.
 
-## Stage 2g — the metre is never changed silently
+## Stage 2h — the metre is never changed silently
 
 ### What was measured, before anything changed
 
