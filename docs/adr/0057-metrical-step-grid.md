@@ -651,6 +651,119 @@ step, and still open.
   non-aligned sources (copy the content's own bars, or the metrical bar and
   say what was dropped), not a parameter.
 
+## Stage 2g — the metre is never changed silently
+
+### What was measured, before anything changed
+
+ADR 0056 shipped the transfer dialog's disclosure and left a note in its own
+"Consequences":
+
+> Other meter-setting surfaces (the `kyx_music` MCP tool, the text-intent path,
+> `setTimeSignature`) can still change a project's meter without disclosure.
+> They are a follow-up.
+
+They were. Three surfaces changed a project's metre and said only what they
+were asked to say:
+
+| surface            | what it said                                | what it did NOT say |
+| ------------------ | ------------------------------------------- | ------------------- |
+| `setTimeSignature` | `Time signature 6/8` (the undo label)       | what 6/8 measures   |
+| the intent path    | `time signature 4/4→6/8 ✓`                  | what 6/8 measures   |
+| the MCP surface    | `time signature is now 6/8 (one undo step)`  | what 6/8 measures   |
+
+And a fourth surface was not in that list at all: the AI GENERATION path
+(`src/commands/aiPattern.ts`) writes `doc.timeSignature` DIRECTLY, so it never
+went through the command and never inherited anything the command could have
+said. "Make me a beat in 6/8" moved the project into 6/8 and the user was told
+nothing about what 6/8 measures.
+
+### One owner: `src/project-model/meter-disclosure.ts`
+
+The words live in ONE module, and it owns the measured facts:
+
+- the metrical BAR in ticks and in sixteenth steps (`ticksPerBarFor`,
+  `stepsPerBarFor`) — the ruler, the clip placement, the loop region;
+- the metrical BEAT in ticks and in sixteenth steps, and how many beats the bar
+  holds (`ticksPerBeatFor`, `stepsPerBeatFor`) — the click the metronome plays
+  and the count the ruler prints;
+- what happens to the user's own pattern: its LENGTH does not change, so a
+  pattern that is not a whole number of the new bars drifts against the ruler.
+
+The transfer dialog now quotes the same `meterMeaning()` sentence it always
+quoted, so the dialog that OFFERS a metre and the surfaces that CHANGE a metre
+cannot describe the same metre in two different ways. The formula is not
+re-implemented there: `meterFacts` reads `ticksPerBarFor` / `stepsPerBarFor` /
+`ticksPerBeatFor` / `stepsPerBeatFor`, so the sentence cannot state a number
+the engine does not use.
+
+### The silence rule is the SIGNATURE, not the bar
+
+This is the part that was not obvious while writing it. The first version keyed
+the disclosure on the BAR — "the bar did not change, so say nothing" — and that
+would have been WRONG:
+
+- 4/4 → 2/2 keeps the bar's 1920 ticks and its 16 steps, but the beat becomes
+  a half note, so the metronome clicks TWICE a bar instead of four times
+  (`ticksPerBeatFor`, `src/scheduler/Scheduler.ts`). A disclosure keyed on the
+  bar would stay silent about a change the user can HEAR.
+
+So the disclosure fires when the SIGNATURE changes, and it states the beat as
+well as the bar:
+
+```
+bar = 1440 ticks / 12 steps (6 beats of 240 ticks); your 16-step pattern is 1.33 bars and drifts against the ruler — snap it to a whole bar (12 steps) to land on the downbeat
+```
+
+And 4/4 → 4/4 says NOTHING at all. That is the negative control every spec
+pins: a disclosure that fires on a no-op is a disclosure nobody reads.
+
+### The four surfaces
+
+| surface            | where the disclosure lands                                       |
+| ------------------ | ---------------------------------------------------------------- |
+| `setTimeSignature` | `Command.detail` — the consequence note the command toast shows under the label |
+| the intent path    | the read-back line (`exactReadback`) — the intent's own receipt    |
+| the MCP surface    | the tool response text                                            |
+| the AI path        | `Command.detail` — the BAR clause only                           |
+
+Two details are deliberate:
+
+- The AI path states only the BAR. Its generated pattern is built IN the
+  requested metre, so a clause about the OLD pattern's length would describe
+  material that no longer exists.
+- The intent path's grouped command does not carry the command's detail
+  (`applyExactIntentCommand` returns a fresh `snapshot`), so the read-back
+  shows the clause exactly once — a receipt, not a toast plus a receipt.
+
+### The guard
+
+`tests/adr0057-meter-disclosure.test.ts` (24 specs) pins:
+
+- the four surfaces disclose, and they say the SAME words (the clause string
+  is compared across all of them);
+- 4/4 → 4/4 discloses nothing, on every surface;
+- 4/4 → 2/2 discloses the BEAT change;
+- the numbers in the clause are the MEASURED ones, for every metre;
+- **no surface changes the metre without disclosing it** — an AST scan finds
+  every site that BUILDS a metre or calls the command, the ledger of sites
+  that do not change a project's metre is complete, every metre surface asks
+  the one owner for the words, and **the ledger may only SHRINK** (every entry
+  must still be needed);
+- **the disclosure's words live in ONE owner** — the owner's phrases may not
+  be re-typed in another surface;
+- the guard is **proven able to fail**: the last specs feed it synthetic
+  violations, and the behavioural specs were falsified by removing the
+  command's disclosure (three specs went red).
+
+### The model retrain is still a to-do
+
+Nothing here changes the models. The pinned ONNX contracts still read a
+sixteen-step frame and the models are still 4/4-TRAINED; this stage only
+makes the SURFACE tell the truth about the metre the document now carries. The
+retrain stays a to-do, and it is the same to-do as in Stage 2e: a versioned
+`features.v3` contract, re-validated manifests, and metrical training data
+that does not exist yet (the corpus is 4/4 sheet music).
+
 ## Stage 2 — what is still open (and where)
 
 The grid now tells the truth, a NEW pattern is right, the intent engine asks in
@@ -739,6 +852,13 @@ contour's bar lines. **The ledger may only shrink.**
   every row: same positions, same values, same length.
 - **An irregular bar is not given a skeleton it does not have** — 7/8 keeps the
   library's grouping, and the snare has no backbeat to be re-voiced onto.
+- **The metre is never changed silently**: every surface that can change a
+  project's metre discloses what the new metre MEASURES and what happens to
+  the material, and they all say the same words.
+- **4/4 → 4/4 says nothing** — a disclosure that fires on a no-op is a
+  disclosure nobody reads.
+- **4/4 → 2/2 discloses the BEAT** — the bar keeps its length, but the click
+  changes, and a change the user can hear is disclosed.
 
 ## Consequences and scope limits
 
@@ -767,6 +887,7 @@ contour's bar lines. **The ledger may only shrink.**
 
 - `src/project-model/grid.ts` — the grid truth (one owner)
 - `src/project-model/schema.ts` — `ticksPerBarFor`, `ticksPerBeatFor`
+- `src/project-model/meter-disclosure.ts` — the DISCLOSURE truth (one owner)
 - `src/ai/meter.ts` — the AI layer's metrical truth (one owner)
 - `src/ai/groove-view.ts` — the metrical VIEW of the groove material (one owner)
 - `src/ui/Sequencer.tsx` — the ruler and the step cells
@@ -780,4 +901,6 @@ contour's bar lines. **The ledger may only shrink.**
 - `tests/adr0057-metrical-groove.test.ts` — the groove material's metre, the
   library-wide guards, and the 4/4 negative control
 - `tests/adr0056-pattern-grid.test.ts` — the drift, and the whole-bar control
+- `tests/adr0057-meter-disclosure.test.ts` — the disclosure on every surface,
+  the 4/4 negative control, the metre-site guard, and its falsification
 - `docs/adr/0056-arrangement-bar-length-and-time-signature.md` — the arrangement's move onto the meter

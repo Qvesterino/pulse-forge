@@ -9,8 +9,8 @@ import {
   createGroupTrackModel,
   createInstrumentTrackModel,
   normalizeProject,
-  ticksPerBarFor,
 } from "../project-model/schema";
+import { meterFacts, meterMeaning } from "../project-model/meter-disclosure";
 import {
   STEP_TICKS,
   STEPS_PER_PATTERN,
@@ -504,13 +504,15 @@ export function midiImportWarnings(parsed: ParsedMidi | null): string[] {
  * `null` when the document's bar is 4/4's bar (16 steps): 4/4, 2/2 and 8/8.
  */
 export function patternGridWarning(sig: TimeSignature): string | null {
-  const barTicks = ticksPerBarFor(sig);
-  const stepsPerBar = Math.max(1, Math.round(barTicks / STEP_TICKS));
+  const facts = meterFacts(sig);
   // The grid's bar is 4/4's bar in 4/4, 2/2 and 8/8 — nothing to say there.
-  if (stepsPerBar === STEPS_PER_PATTERN) return null;
+  if (facts.steps === STEPS_PER_PATTERN) return null;
+  // The sentence about what the metre MEASURES comes from the one owner
+  // (`src/project-model/meter-disclosure.ts`), so the dialog that OFFERS a
+  // meter and the surfaces that CHANGE a meter cannot describe the same metre
+  // in two different ways.
   return (
-    `KYX reads your project in ${sig.numerator}/${sig.denominator}: every ruler bar, clip placement and ` +
-    `loop region is ${barTicks} ticks, and the step grid's bar is ${stepsPerBar} sixteenth steps. Your ` +
+    `KYX reads your project in ${facts.label}: ${meterMeaning(sig)}. Your ` +
     `imported groove is padded to a whole number of those bars, so it lands on the downbeat.`
   );
 }

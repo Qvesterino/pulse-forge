@@ -300,10 +300,13 @@ all, because MIDI clips store absolute ticks.
   Recorded, not changed — the bar-count clamps use `MAX_ARRANGEMENT_CLIP_BARS`
   and are correct.
 - Other meter-setting surfaces (the `kyx_music` MCP tool, the text-intent
-  path, `setTimeSignature`) can still change a project's meter without
-  disclosure. They are a follow-up; this ADR covers the transfer dialog
-  because that is the surface that offers a non-4/4 meter as a first-class
-  choice.
+  path, `setTimeSignature`) could change a project's meter without disclosure.
+  **DONE in ADR 0057 Stage 2g** — the command, the intent path, the MCP
+  surface and the AI generation path all disclose now, and they all quote the
+  one owner (`src/project-model/meter-disclosure.ts`). The disclosure fires
+  when the SIGNATURE changes, not when the bar changes: 4/4 → 2/2 keeps the
+  bar's 1920 ticks but moves the beat to a half note, so the metronome clicks
+  twice a bar instead of four times, and that change is audible.
 - `setTimeSignature` accepts denominator 2|4|8|16 while the transfer dialog
   also offers 1 and 32. That divergence is recorded, not changed here.
 - `midiImportWarnings()` and the warning block inside `inspectTransferFiles()`

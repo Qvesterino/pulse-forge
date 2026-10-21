@@ -2222,7 +2222,7 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_music",
     description:
-      "Structured MUSICAL STATE: set tempo, set musical key, change the active pattern's length, set meter, or transpose active-pattern melodic notes. Changes use the canonical exact-intent command and return committed read-back; no-ops add no undo step. Numeric inputs are strict, and retries of transposeAll should include requestId.",
+      "Structured MUSICAL STATE: set tempo, set musical key, change the active pattern's length, set meter, or transpose active-pattern melodic notes. Changes use the canonical exact-intent command and return committed read-back; no-ops add no undo step. Numeric inputs are strict, and retries of transposeAll should include requestId. setTimeSignature also discloses what the new metre MEASURES — the bar in ticks and steps, the beat — and what happens to the active pattern, so read that clause before assuming the groove still lands on the downbeat.",
     inputSchema: {
       type: "object",
       properties: {

@@ -3,6 +3,7 @@
  */
 import type { Command } from "./types";
 import type { MusicalKey, ProjectDocument } from "../project-model/types";
+import { meterChangeClause } from "../project-model/meter-disclosure";
 import { snapshot } from "./core";
 
 /* ---------------- metadata & scorepack ---------------- */ export function setProjectKey(
@@ -37,7 +38,16 @@ export function setTimeSignature(doc: ProjectDocument, numerator: number, denomi
     throw new Error(`invalid time signature ${numerator}/${denominator} — numerator 1..16, denominator 2|4|8|16`);
   }
   const next: ProjectDocument = { ...doc, timeSignature: { numerator, denominator } };
-  return snapshot("setTimeSignature", `Time signature ${numerator}/${denominator}`, doc, next);
+  // The meter is NOT changed silently (ADR 0056): the command's detail is the
+  // consequence note the toast shows under the label, and it says what the new
+  // metre MEASURES and what happens to a pattern authored in the old one. The
+  // clause is the shared one — the same words the intent read-back, the MCP
+  // response and the transfer dialog use.
+  const clause = meterChangeClause(doc, next.timeSignature);
+  return {
+    ...snapshot("setTimeSignature", `Time signature ${numerator}/${denominator}`, doc, next),
+    detail: clause ?? undefined,
+  };
 }
 export function setProjectTags(doc: ProjectDocument, tags: string[]): Command {
   const prev = doc.tags;

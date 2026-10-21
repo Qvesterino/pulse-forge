@@ -1,5 +1,6 @@
 import type { MusicalKey, ProjectDocument } from "../project-model/types";
 import { barsPerPattern, stepsPerBar } from "../project-model/grid";
+import { meterChangeClause } from "../project-model/meter-disclosure";
 import {
   MAX_ARRANGEMENT_CLIP_BARS,
   MAX_ARRANGEMENT_CLIP_TICKS,
@@ -2016,7 +2017,10 @@ export const MCP_TOOLS: McpToolDef[] = [
       "pattern's length, set meter, or transpose active-pattern melodic notes. " +
       "Changes use the canonical exact-intent command and return committed " +
       "read-back; no-ops add no undo step. Numeric inputs are strict, and " +
-      "retries of transposeAll should include requestId.",
+      "retries of transposeAll should include requestId. setTimeSignature " +
+      "also discloses what the new metre MEASURES — the bar in ticks and " +
+      "steps, the beat — and what happens to the active pattern, so read that " +
+      "clause before assuming the groove still lands on the downbeat.",
     inputSchema: {
       type: "object",
       properties: {

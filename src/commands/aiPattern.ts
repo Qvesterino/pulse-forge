@@ -15,6 +15,7 @@
 import { foldProductionIntent } from "./intentRouting";
 import type { Command } from "./types";
 import type { GrooveSettings, ProjectDocument, Scene } from "../project-model/types";
+import { meterBarClause, meterSignatureChanged } from "../project-model/meter-disclosure";
 import { uid } from "../shared/ids";
 import { resolveGrooveForGeneration } from "../ai/generator";
 import { generateLocalResultFromOptions } from "../intent/pipeline";
@@ -62,6 +63,17 @@ export function applyGenerationResultCommand(
     // project — twelve steps in a sixteen-step bar, three quarters of a bar.
     ...(result.plan.intent.timeSignature ? { timeSignature: result.plan.intent.timeSignature } : {}),
   };
+  // The meter is NOT changed silently (ADR 0056). This path writes
+  // `doc.timeSignature` directly, so it never goes through the `setTimeSignature`
+  // command and never inherits the command's disclosure — it has to ask the
+  // one owner itself. Only the BAR clause is used here: the generated
+  // pattern is built IN the requested metre, so a clause about the OLD
+  // pattern's length would be describing material that no longer exists.
+  const requestedMeter = result.plan.intent.timeSignature;
+  const meterDetail =
+    requestedMeter && meterSignatureChanged(doc.timeSignature, requestedMeter)
+      ? meterBarClause(requestedMeter)
+      : undefined;
 
   if (options.replaceMode === "replace") {
     const activeId = doc.activePatternId;
@@ -82,7 +94,7 @@ export function applyGenerationResultCommand(
       ),
       ...projectUpdates,
     };
-    return snapshot("generatePattern", `Replace with ${pattern.name}`, doc, next);
+    return { ...snapshot("generatePattern", `Replace with ${pattern.name}`, doc, next), detail: meterDetail };
   }
 
   const scene: Scene = {
@@ -99,7 +111,7 @@ export function applyGenerationResultCommand(
     activePatternId: pattern.id,
     ...projectUpdates,
   };
-  return snapshot("generatePattern", `Generate ${pattern.name}`, doc, next);
+  return { ...snapshot("generatePattern", `Generate ${pattern.name}`, doc, next), detail: meterDetail };
 }
 
 /**
@@ -117,12 +129,17 @@ export function applyGenerationResultWithFxCommand(
   const fx = result.plan.intent.fx ?? null;
   if (!fx) return patternCmd;
   const next = foldProductionIntent(patternCmd.execute(doc), fx);
-  return snapshot(
-    "applyGenerationWithFx",
-    `${patternCmd.label} + ${fx.goals.map((g) => g.concept).join(", ")}`,
-    doc,
-    next,
-  );
+  return {
+    ...snapshot(
+      "applyGenerationWithFx",
+      `${patternCmd.label} + ${fx.goals.map((g) => g.concept).join(", ")}`,
+      doc,
+      next,
+    ),
+    // The metre disclosure survives the FX fold — a generation that also
+    // changed the metre must still say so.
+    detail: patternCmd.detail,
+  };
 }
 
 /**
