@@ -27,7 +27,6 @@ import { buildPriorFeatureRow, PRIOR_FEATURE_COUNT } from "../src/ai/symbolic/pr
 import { buildPriorV2FeatureRow, V2_FEATURE_COUNT } from "../src/ai/symbolic/prior-features-v2";
 import { buildPriorV3FeatureRow, V3_FEATURE_COUNT } from "../src/ai/symbolic/prior-features-v3";
 import { buildMelodicFeatureRow } from "../src/ai/symbolic/melodic-features";
-import { buildMelodicV2FeatureRow } from "../src/ai/symbolic/melodic-features-v2";
 import { barPhase, stepInBarFeatures } from "../src/ai/symbolic/step-position";
 import type { TimeSignature } from "../src/project-model/types";
 
@@ -93,7 +92,7 @@ describe("ADR 0057 Stage 2d — the pinned feature frame is the document's metre
         prevPrevDegree: 1,
         meter,
       });
-      const offset = row.length - 5 - 8 - 4 - 5 - 3; // position(5) sits before the degree/duration classes
+      const offset = row.length - 5 - 8 - 4 - 5; // position(5) sits after genre(4) + role(3)
       expect(row.slice(offset, offset + 5)).toEqual(legacyPosition(step));
     }
   });
@@ -111,7 +110,7 @@ describe("ADR 0057 Stage 2d — the pinned feature frame is the document's metre
       prevPrevDegree: 0,
       meter: DEFAULT_AI_METER,
     });
-    const offset = corpusRow.length - 5 - 8 - 4 - 5 - 3;
+    const offset = corpusRow.length - 5 - 8 - 4 - 5; // position(5) sits after genre(4) + role(3)
     expect(corpusRow.slice(offset, offset + 5)).toEqual(legacyPosition(6));
   });
 

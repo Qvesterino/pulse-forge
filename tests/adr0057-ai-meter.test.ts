@@ -22,7 +22,7 @@
  *      the document's pulse, and the anchors sit where that metre puts them.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { createProjectFromTemplate } from "../src/project-model/templates";
@@ -245,26 +245,29 @@ const GUARDED_ROOTS = ["src/ai/"];
 /**
  * Sites that still state a 4/4 length. Each entry is a DECLARATION — it
  * states WHY the number is still 4/4 — and the ledger may only shrink.
+ *
+ * The six pinned-ONNX entries are GONE (ADR 0057 Stage 2e): those contracts
+ * no longer fold the bar at sixteen — they read the metre's own bar, and the
+ * model's canonical frame is a named constant in one owner
+ * (`src/ai/symbolic/step-position.ts`).
+ *
+ * The Markov entry is gone too, and that one is a lesson: the model's
+ * sixteen-position state space is a NAMED constant (`STEPS_PER_BAR = 16`), so
+ * the AST guard never saw it — and an entry the guard cannot see is an entry
+ * that HIDES a file from the scan for a reason that no longer exists. The
+ * model's 4/4 frame is recorded in ADR 0057 instead, and the file is scanned
+ * like any other.
+ *
+ * What remains is the two things that really are 4/4 material AND still state
+ * it as a literal: the corpus the models were trained on, and the pinned v2
+ * chord-duration contract. A spec below makes "the ledger may only shrink"
+ * executable — an entry whose file no longer trips the guard fails the gate.
  */
 const LEDGER_4_4_SITES: Record<string, string> = {
-  "src/ai/markov.ts":
-    "the Markov model's state space IS the groove library's training frame (sixteen positions) — Stage 2c projects the model's bar into the document's metre; re-framing the model is a retrain (Stage 2d), not a projection",
   "src/ai/midi-corpus-ingest.ts":
     "the corpus ingest frame is the model's sixteen-step training frame, not the pattern grid",
   "src/ai/features/pattern-features-v2.ts":
     "the pinned v2 feature contract measures a chord duration against a 4/4 bar — a versioned metrical contract is a separate step",
-  "src/ai/symbolic/melodic-features.ts":
-    "the pinned ONNX melodic feature frame is a sixteen-step bar — the model's contract, not the pattern grid",
-  "src/ai/symbolic/melodic-features-v2.ts":
-    "the pinned ONNX melodic feature frame is a sixteen-step bar — the model's contract, not the pattern grid",
-  "src/ai/symbolic/melodic-features-v3.ts":
-    "the pinned ONNX melodic feature frame is a sixteen-step bar — the model's contract, not the pattern grid",
-  "src/ai/symbolic/prior-features.ts":
-    "the pinned ONNX prior feature frame is a sixteen-step bar — the model's contract, not the pattern grid",
-  "src/ai/symbolic/prior-features-v2.ts":
-    "the pinned ONNX prior feature frame is a sixteen-step bar — the model's contract, not the pattern grid",
-  "src/ai/symbolic/prior-features-v3.ts":
-    "the pinned ONNX prior feature frame is a sixteen-step bar — the model's contract, not the pattern grid",
 };
 
 interface Violation {
@@ -295,11 +298,11 @@ function isSixteen(node: ts.Node): boolean {
  * The metre now lives in `src/ai/meter.ts` — one owner — and every layer
  * below it asks the metre instead of re-deriving the bar.
  */
-export function findAiBarViolations(files: { file: string; source: string }[]): Violation[] {
+export function findAiBarViolations(files: { file: string; source: string }[], ignoreLedger = false): Violation[] {
   const violations: Violation[] = [];
   for (const { file, source } of files) {
     if (!GUARDED_ROOTS.some((root) => file.startsWith(root))) continue;
-    if (LEDGER_4_4_SITES[file]) continue;
+    if (!ignoreLedger && LEDGER_4_4_SITES[file]) continue;
     const tree = ts.createSourceFile(
       file,
       source,
@@ -348,6 +351,22 @@ describe("ADR 0057 Stage 2b — the AI layer may not re-derive the bar", () => {
     const violations = findAiBarViolations(synthetic);
     expect(violations.length).toBe(2);
     expect(violations[0]?.detail).toContain("sixteen steps");
+  });
+
+  it("every ledger entry is STILL NEEDED — a stale declaration fails the gate", () => {
+    // "The ledger may only shrink" is a rule of the repo, and a rule nobody
+    // executes is a rule nobody keeps. An entry whose file no longer trips
+    // the guard is a stale declaration: it hides a file from the scan for a
+    // reason that no longer exists, and it is how a ledger grows.
+    for (const file of Object.keys(LEDGER_4_4_SITES)) {
+      const absolute = resolve(process.cwd(), file);
+      expect(existsSync(absolute)).toBe(true);
+      const violations = findAiBarViolations([{ file, source: readFileSync(absolute, "utf8") }], true);
+      expect(
+        violations.length,
+        `${file} is in the ledger but no longer trips the guard — remove the entry`,
+      ).toBeGreaterThan(0);
+    }
   });
 });
 

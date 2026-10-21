@@ -1,6 +1,6 @@
 # ADR 0057 — The step grid follows the meter: one bar is `ticksPerBar(doc) / STEP_TICKS` steps
 
-Date: 2026-10-20 · Status: Accepted (v5 — Stage 1, 1b, 2a, 2b, 2c and 2d shipped) · Scope: pattern grid, sequencer ruler, piano roll grid, pattern labels, transfer disclosure, intent engine, MCP surface, AI layer, AI groove material, MIDI import
+Date: 2026-10-20 · Status: Accepted (v6 — Stage 1, 1b, 2a, 2b, 2c, 2d and 2e shipped) · Scope: pattern grid, sequencer ruler, piano roll grid, pattern labels, transfer disclosure, intent engine, MCP surface, AI layer, AI groove material, MIDI import, pinned model feature contracts
 
 ## Context
 
@@ -530,13 +530,105 @@ so a sixteen-step pattern is exactly TWO whole bars — it lands on the
 downbeat, and the old warning told the user its downbeat "reaches the bar
 line only every 2 bars", which was not a drift at all.
 
+## Stage 2e — the PINNED feature contracts read the document's metre
+
+Stage 2c moved the groove MATERIAL onto the document's metre: the library is
+4/4 material and the metrical VIEW maps it. The PINNED models were a second
+blind spot, and a different one — not where the material sits, but how the
+model is told where it sits.
+
+### What was measured, before anything changed
+
+The pinned ONNX priors and the melodic model take a feature row per (pad, step)
+or per note. Five of its values are the note's position inside the bar, on a
+sixteen-step scale, and the drum row carries two flags. All of it was 4/4:
+
+- the position folded at sixteen (`s16 = step % 16`). In a 6/8 bar — twelve
+  steps — the bar's last eighth was called "10/16", a position that does not
+  exist in that bar;
+- the frame position had a floor of sixteen steps (`Math.max(16, stepCount)`),
+  so a 6/8 bar looked like the first three quarters of a 4/4 one;
+- `isDownbeat` was `s16 === 0`, so the SECOND bar's downbeat (step 12) was not
+  a downbeat;
+- `isBackbeat` was `s16 === 4 || s16 === 12` — 4/4's beat 2 and beat 4. In a
+  6/8 bar the backbeat is the shuffle's "2 & 5" (steps 2 and 8), and in a 3/4
+  bar there is no beat 4 at all, so the model was told about a backbeat the bar
+  does not have.
+
+### The fix: the position is divided by the BAR'S OWN LENGTH
+
+`src/ai/symbolic/step-position.ts` is the one owner. The five position values
+are now a phase encoding of "where in the bar is this note" — `phase` and its
+first two harmonics, with `phase` the position in the bar DIVIDED BY THE BAR'S
+LENGTH. The frame is the pattern's own length (at least one metrical bar), and
+the two flags come from Stage 2b's metre (`isDownbeat`, `isBackbeatAnchor`)
+instead of a second copy of 4/4's rules.
+
+The feature COUNT is unchanged and so are the pinned manifests: no retrain.
+
+### Why the bar's own length, and not a rescale onto sixteen steps
+
+A phase encoding puts the downbeat at phase 0 and the half-bar at phase 0.5 in
+EVERY metre, so the model reads "the downbeat" and "the half-bar" as the
+numbers it learned in 4/4: in 6/8 the third eighth — the half of a
+dotted-quarter bar — arrives with exactly the values 4/4's half-bar had. A
+fixed-scale rescale would have to round, and rounding collides neighbouring
+steps in a long bar: in 4/2, steps 1 and 2 would both land on 1.
+
+### 4/4 is byte-identical — and the control is independent
+
+In 4/4 the bar is sixteen steps, so the phase IS the legacy `s16/16` and every
+one of the five values is bit-for-bit what it was; the frame floor and the two
+flags are the same for the same reason. The spec does not take the production
+code's word for it: it re-implements the legacy formula and compares the
+production row against it, so the control cannot be satisfied by the code
+agreeing with itself.
+
+### The corpus and the favourites declare the training frame
+
+The corpus IS 4/4 sheet music and the shipped models were trained on its rows,
+so the ingest passes the 4/4 frame explicitly and those rows do not move — the
+models stay exactly as validated. The favourites are stored 4/4 material for
+the same reason. The runtime path passes the document's metre.
+
+### The ledger shrank — and the rule became executable
+
+Stage 2b's guard declares the sites that still state a 4/4 length, and the
+ledger may only shrink. The six pinned-ONNX entries are GONE: those contracts
+no longer fold the bar at sixteen, and the model's canonical frame is a named
+constant in one owner.
+
+The Markov model's entry went too, and that one is a lesson: its
+sixteen-position state space is a NAMED constant (`STEPS_PER_BAR = 16`), so
+the AST guard never saw it — and an entry the guard cannot see only HIDES a
+file from the scan. The model's 4/4 frame is recorded here instead, and the
+file is scanned like any other.
+
+What remains is TWO entries, and they are the two things that really are 4/4
+material AND still state it as a literal: the corpus the models were trained
+on, and the pinned v2 chord-duration contract.
+
+And the rule is now EXECUTABLE: a spec fails the gate when a ledger entry's
+file no longer trips the guard. "The ledger may only shrink" was a sentence;
+it is now a check.
+
+### What this is NOT
+
+The models are still 4/4-TRAINED. This change makes the feature they read
+TRUTHFUL about the bar in a non-4/4 project; it does not give the model
+non-4/4 training data, because none exists — the corpus is 4/4 sheet music. A
+model trained on metrical frames is a retrain with new manifests: a versioned
+step, and still open.
+
 ### What is still open (and where)
 
 - **Stage 2c — metrical groove content.** The groove library is 4/4 material:
-  the Markov model's state space is sixteen positions, the ONNX priors encode a
-  sixteen-step bar, and the corpus was ingested on that frame. Those are pinned
-  model contracts; changing them is a versioned step (a `features.v3` contract
-  with an explicitly metrical frame, and re-validating the pinned manifests).
+  the Markov model's state space is sixteen positions, and the corpus was
+  ingested on that frame. The ONNX priors' feature CONTRACTS read the
+  document's metre since Stage 2e — what is still open is the TRAINING side: a
+  model trained on metrical frames is a retrain with new manifests (a
+  `features.v3` contract, and re-validating the pinned manifests), and there is
+  no metrical training data to retrain on — the corpus is 4/4 sheet music.
 - **Content-shaped producers** — live capture's 16-slot grid and the 4/4
   templates — still wrap or carry user material at 4/4's length. The MIDI
   import's 16-rounding is **done in Stage 2d**. The remaining two are

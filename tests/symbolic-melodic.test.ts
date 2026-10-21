@@ -108,6 +108,8 @@ describe("melodic-features contract", () => {
       prevDegree: -1,
       prevDuration: 4,
       prevPrevDegree: -1,
+      // The contract's training frame (ADR 0057 Stage 2d).
+      meter: DEFAULT_AI_METER,
     });
     expect(restRow[12]).toBe(1); // prev degree rest → class 0
     expect(restRow[20 + 2]).toBe(1); // duration 4 → class 2

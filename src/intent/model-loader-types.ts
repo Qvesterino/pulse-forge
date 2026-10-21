@@ -179,11 +179,15 @@ export function isIntentModelManifest(value: unknown): value is IntentModelManif
 }
 
 async function sha256Hex(data: ArrayBuffer | Uint8Array | string): Promise<string> {
-  const bytes =
+  // The digest needs a BufferSource, and a `Uint8Array` is only one when its
+  // buffer is a plain ArrayBuffer. Copying into a fresh view is the honest
+  // way to say so — the input is a manifest's bytes, so the copy is a few KB
+  // on a path that runs once per model load.
+  const bytes: Uint8Array<ArrayBuffer> =
     typeof data === "string"
       ? new TextEncoder().encode(data)
       : data instanceof Uint8Array
-        ? data
+        ? new Uint8Array(data)
         : new Uint8Array(data);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");

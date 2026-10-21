@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { testDoc } from "./fixtures/doc";
 import { GROOVE_LIBRARY } from "../src/ai/grooves/index";
+import { DEFAULT_AI_METER } from "../src/ai/meter";
 import {
   PRIOR_FEATURE_COUNT,
   PRIOR_STYLE_VOCAB,
@@ -191,8 +192,23 @@ describe("prior-features contract", () => {
   });
 
   it("produces deterministic fixed-width one-hot rows", () => {
-    const a = buildPriorFeatureRow({ genre: "house", styleId: "house.deep", role: "kick", step: 4, stepCount: 32 });
-    const b = buildPriorFeatureRow({ genre: "house", styleId: "house.deep", role: "kick", step: 4, stepCount: 32 });
+    const a = buildPriorFeatureRow({
+      genre: "house",
+      styleId: "house.deep",
+      role: "kick",
+      step: 4,
+      stepCount: 32,
+      // The contract's training frame (ADR 0057 Stage 2d).
+      meter: DEFAULT_AI_METER,
+    });
+    const b = buildPriorFeatureRow({
+      genre: "house",
+      styleId: "house.deep",
+      role: "kick",
+      step: 4,
+      stepCount: 32,
+      meter: DEFAULT_AI_METER,
+    });
     expect(a).toEqual(b);
     expect(a.length).toBe(PRIOR_FEATURE_COUNT);
     // genre one-hot: house at index 0
@@ -215,6 +231,8 @@ describe("prior-features contract", () => {
       role: "kick",
       step: 0,
       stepCount: 16,
+      // The contract's training frame (ADR 0057 Stage 2d).
+      meter: DEFAULT_AI_METER,
     });
     expect(row.slice(4, 4 + PRIOR_STYLE_VOCAB.length)).toEqual(Array(PRIOR_STYLE_VOCAB.length).fill(0));
   });
@@ -222,7 +240,14 @@ describe("prior-features contract", () => {
   it("maps vocab roles by index and wraps foreign roles into `unknown`", () => {
     const roleOffset = 4 + PRIOR_STYLE_VOCAB.length; // 25
     // perc is vocab index 5 (kick, snare, clap, closedHat, openHat, perc, …)
-    const perc = buildPriorFeatureRow({ genre: "trap", styleId: "trap.classic", role: "perc", step: 0, stepCount: 16 });
+    const perc = buildPriorFeatureRow({
+      genre: "trap",
+      styleId: "trap.classic",
+      role: "perc",
+      step: 0,
+      stepCount: 16,
+      meter: DEFAULT_AI_METER,
+    });
     expect(perc[roleOffset + 5]).toBe(1);
     // a foreign role string falls back to the `unknown` one-hot (vocab index 8)
     const foreign = buildPriorFeatureRow({
@@ -231,6 +256,7 @@ describe("prior-features contract", () => {
       role: "banana" as never,
       step: 0,
       stepCount: 16,
+      meter: DEFAULT_AI_METER,
     });
     expect(foreign[roleOffset + 8]).toBe(1);
     // genre + style one-hots remain intact
@@ -244,13 +270,28 @@ describe("prior-features contract", () => {
       styleId: "techno.acid",
       stepCount: 32,
       padRoles: ["kick", "closedHat", "snare"],
+      meter: DEFAULT_AI_METER,
     });
     expect(rows.length).toBe(3 * 32);
     expect(rows[1]).toEqual(
-      buildPriorFeatureRow({ genre: "techno", styleId: "techno.acid", role: "kick", step: 1, stepCount: 32 }),
+      buildPriorFeatureRow({
+        genre: "techno",
+        styleId: "techno.acid",
+        role: "kick",
+        step: 1,
+        stepCount: 32,
+        meter: DEFAULT_AI_METER,
+      }),
     );
     expect(rows[32]).toEqual(
-      buildPriorFeatureRow({ genre: "techno", styleId: "techno.acid", role: "closedHat", step: 0, stepCount: 32 }),
+      buildPriorFeatureRow({
+        genre: "techno",
+        styleId: "techno.acid",
+        role: "closedHat",
+        step: 0,
+        stepCount: 32,
+        meter: DEFAULT_AI_METER,
+      }),
     );
   });
 });
