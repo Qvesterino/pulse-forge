@@ -77,8 +77,7 @@ WORKFLOW: MIX PASS ON EXISTING MATERIAL
   target-landing checks.
 
 LISTENING LOOP: kyx_audio_preview {bars: 2} attaches up to 4 opening bars as
-a WAV (no edit/download). Listen before/after one edit if your MCP client
-supports audio; otherwise say so. Pair it with render_summary/diagnose_mix.
+a WAV (no edit/download). Pair it with render_summary/diagnose_mix.
 
 WORKFLOW: LIVE PERFORMANCE + PUBLISHING
   kyx_state {subject: scenes} lists launchable scenes with @bar N.
