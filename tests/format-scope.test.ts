@@ -72,13 +72,7 @@ const GENERATED_TREES = ["public", "coverage", "dist", "build", "out", "release"
 /** Committed files under a tree — the tree as a fresh checkout sees it. */
 function filesUnder(tree: string): string[] {
   try {
-    return execFileSync("git", ["ls-files", "--", tree], {
-      cwd: ROOT,
-      encoding: "utf8",
-      maxBuffer: 16 * 1024 * 1024,
-    })
-      .split("\n")
-      .filter((line) => line.length > 0);
+    return gitTrackedFiles().filter((file) => file === tree || file.startsWith(`${tree}/`));
   } catch {
     return [];
   }
@@ -89,14 +83,20 @@ function filesUnder(tree: string): string[] {
  * test — otherwise a change to the script's own file list would move the
  * reference with it and the guard would be blind to exactly the thing it
  * exists to catch.
+ *
+ * `-z` matters: without it git QUOTES a path that contains non-ASCII
+ * characters ("Pulse Forge \342\200\224 Master Build Prompt.md"), so the two
+ * lists would differ for every such file and the guard would report a
+ * difference that is not there.
  */
 function gitTrackedFiles(): string[] {
-  return execFileSync("git", ["ls-files"], {
+  return execFileSync("git", ["ls-files", "-z"], {
     cwd: ROOT,
-    encoding: "utf8",
+    encoding: "buffer",
     maxBuffer: 64 * 1024 * 1024,
   })
-    .split("\n")
+    .toString("utf8")
+    .split("\u0000")
     .filter((line) => line.length > 0);
 }
 
