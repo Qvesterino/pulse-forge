@@ -191,6 +191,7 @@ describe("mcp tools — headless execution", async () => {
       "kyx_music",
       "kyx_catalog",
       "kyx_plugin_param",
+      "kyx_instrument_param",
       "kyx_meter",
       "kyx_automation",
       "kyx_clips",

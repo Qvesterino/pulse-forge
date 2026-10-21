@@ -1359,7 +1359,33 @@ export const MCP_TOOL_DEFS = [
         },
         instrument: {
           type: "string",
-          enum: ["analog", "bass", "808", "keys", "pluck", "acid", "reese", "brass", "flute", "sampler"],
+          enum: [
+            "sampler",
+            "analog",
+            "bass",
+            "808",
+            "texture",
+            "wavetable",
+            "granular",
+            "keys",
+            "organ",
+            "strings",
+            "bell",
+            "reese",
+            "clav",
+            "acid",
+            "brass",
+            "fm",
+            "pluck",
+            "flute",
+            "logdrum",
+            "spectral",
+            "vocalchop",
+            "drumsynth",
+            "tsar",
+            "kopa",
+            "choral",
+          ],
           description: "For addInstrument — the full kind catalog is in kyx_catalog subject:instruments",
         },
         name: {
@@ -2567,17 +2593,49 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_catalog",
     description:
-      "Discovery — what the DAW can do, machine-readable: list every effect type with its category and primary knob, the FULL parameter table of one effect (native range, unit, description, kind, step, taper and enum options), or the instrument kind catalog. Read-only; use it before kyx_plugin_param instead of guessing ranges.",
+      "Discovery — what the DAW can do, machine-readable: list every effect type with its category and primary knob, the FULL parameter table of one effect or instrument (native range, unit, description, kind, step, taper and enum options), or the instrument kind catalog. Read-only; use it before kyx_plugin_param or kyx_instrument_param instead of guessing ranges.",
     inputSchema: {
       type: "object",
       properties: {
         subject: {
           type: "string",
-          enum: ["effects", "effect", "instruments"],
+          enum: ["effects", "effect", "instruments", "instrument"],
         },
         effect: {
           type: "string",
           description: "Effect type for subject:effect (e.g. reverb, eq, compressor) — see subject:effects",
+        },
+        instrument: {
+          type: "string",
+          enum: [
+            "sampler",
+            "analog",
+            "bass",
+            "808",
+            "texture",
+            "wavetable",
+            "granular",
+            "keys",
+            "organ",
+            "strings",
+            "bell",
+            "reese",
+            "clav",
+            "acid",
+            "brass",
+            "fm",
+            "pluck",
+            "flute",
+            "logdrum",
+            "spectral",
+            "vocalchop",
+            "drumsynth",
+            "tsar",
+            "kopa",
+            "choral",
+          ],
+          maxLength: 32,
+          description: "Instrument kind for subject:instrument (e.g. kopa or tsar) — see subject:instruments",
         },
         requestId: {
           type: "string",
@@ -2603,7 +2661,7 @@ export const MCP_TOOL_DEFS = [
         },
         subject: {
           type: "string",
-          enum: ["effects", "effect", "instruments"],
+          enum: ["effects", "effect", "instruments", "instrument"],
         },
         effects: {
           type: "array",
@@ -2741,6 +2799,94 @@ export const MCP_TOOL_DEFS = [
             },
             required: ["kind", "name", "parameterCount"],
           },
+        },
+        instrument: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            kind: {
+              type: "string",
+            },
+            name: {
+              type: "string",
+            },
+            parameterCount: {
+              type: "integer",
+              minimum: 0,
+            },
+            parameters: {
+              type: "array",
+              maxItems: 128,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  id: {
+                    type: "string",
+                  },
+                  label: {
+                    type: "string",
+                  },
+                  min: {
+                    type: "number",
+                  },
+                  max: {
+                    type: "number",
+                  },
+                  default: {
+                    type: "number",
+                  },
+                  unit: {
+                    type: ["string", "null"],
+                  },
+                  description: {
+                    type: ["string", "null"],
+                  },
+                  kind: {
+                    type: ["string", "null"],
+                    enum: ["continuous", "enum", "toggle", "discrete", "unknown", null],
+                  },
+                  step: {
+                    type: ["number", "null"],
+                  },
+                  taper: {
+                    type: ["string", "null"],
+                    enum: ["linear", "log", null],
+                  },
+                  options: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      additionalProperties: false,
+                      properties: {
+                        value: {
+                          type: "number",
+                        },
+                        label: {
+                          type: "string",
+                        },
+                      },
+                      required: ["value", "label"],
+                    },
+                  },
+                },
+                required: [
+                  "id",
+                  "label",
+                  "min",
+                  "max",
+                  "default",
+                  "unit",
+                  "description",
+                  "kind",
+                  "step",
+                  "taper",
+                  "options",
+                ],
+              },
+            },
+          },
+          required: ["kind", "name", "parameterCount", "parameters"],
         },
       },
       required: ["status", "subject"],
@@ -3023,6 +3169,191 @@ export const MCP_TOOL_DEFS = [
         "truncatedCount",
         "undoSteps",
       ],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
+  },
+  {
+    name: "kyx_instrument_param",
+    description:
+      "Precise instrument control on ONE exact instrument track: list its current parameter values or set ONE parameter to an absolute native value. Read the parameter contract first with kyx_catalog subject:instrument; values are range-clamped and enum/discrete choices are validated. Exact trackId is required so identically named flagship instances are never changed by accident; writes return the committed value and create one undo step.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: {
+          type: "string",
+          enum: ["list", "set"],
+        },
+        trackId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "Exact instrument track id from kyx_state subject:tracks",
+        },
+        param: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "Canonical parameter id from kyx_catalog subject:instrument",
+        },
+        value: {
+          type: "number",
+          description: "Absolute NATIVE parameter value (not normalized unless its declared range is 0..1)",
+        },
+        requestId: {
+          type: "string",
+          maxLength: 128,
+          description:
+            "Optional idempotency key. Retrying a mutating or side-effecting call with the same requestId in this session returns the original outcome (replayed: true) instead of re-executing — safe retry for relative ops (deltas, groove steps, batches) and committed session records. Reads always execute fresh; failures with no committed change are not remembered, so correcting the request and retrying with the same id re-executes. A partially failed call with committed changes is replayed to avoid applying its committed prefix twice.",
+        },
+        dryRun: {
+          type: "boolean",
+          description:
+            "Preview mode: run document logic against a sandbox and report what WOULD change. Refused for runtime/export-side operations (transport, export, gallery, audio preview), SFZ import, checkpoint save/delete, and live mix preview because those effects cannot be sandboxed.",
+        },
+      },
+      required: ["op", "trackId"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        status: {
+          type: "string",
+          enum: ["listed", "updated", "no_change"],
+        },
+        op: {
+          type: "string",
+          enum: ["list", "set"],
+        },
+        trackId: {
+          type: "string",
+        },
+        trackName: {
+          type: "string",
+        },
+        instrument: {
+          type: "string",
+        },
+        parameters: {
+          type: "array",
+          maxItems: 128,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              id: {
+                type: "string",
+              },
+              label: {
+                type: "string",
+              },
+              value: {
+                type: ["number", "null"],
+              },
+              min: {
+                type: "number",
+              },
+              max: {
+                type: "number",
+              },
+              default: {
+                type: "number",
+              },
+              unit: {
+                type: ["string", "null"],
+              },
+              description: {
+                type: ["string", "null"],
+              },
+              kind: {
+                type: ["string", "null"],
+                enum: ["continuous", "enum", "toggle", "discrete", "unknown", null],
+              },
+              step: {
+                type: ["number", "null"],
+              },
+              taper: {
+                type: ["string", "null"],
+                enum: ["linear", "log", null],
+              },
+              options: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    value: {
+                      type: "number",
+                    },
+                    label: {
+                      type: "string",
+                    },
+                  },
+                  required: ["value", "label"],
+                },
+              },
+            },
+            required: [
+              "id",
+              "label",
+              "value",
+              "min",
+              "max",
+              "default",
+              "unit",
+              "description",
+              "kind",
+              "step",
+              "taper",
+              "options",
+            ],
+          },
+        },
+        change: {
+          type: ["object", "null"],
+          additionalProperties: false,
+          properties: {
+            param: {
+              type: "string",
+            },
+            beforeValue: {
+              type: ["number", "null"],
+            },
+            requestedValue: {
+              type: "number",
+            },
+            value: {
+              type: "number",
+            },
+            min: {
+              type: "number",
+            },
+            max: {
+              type: "number",
+            },
+            unit: {
+              type: ["string", "null"],
+            },
+            clamped: {
+              type: "boolean",
+            },
+            changed: {
+              type: "boolean",
+            },
+          },
+          required: ["param", "beforeValue", "requestedValue", "value", "min", "max", "unit", "clamped", "changed"],
+        },
+        undoSteps: {
+          type: "integer",
+          minimum: 0,
+          maximum: 1,
+        },
+      },
+      required: ["status", "op", "trackId", "trackName", "instrument", "parameters", "change", "undoSteps"],
     },
     annotations: {
       readOnlyHint: false,

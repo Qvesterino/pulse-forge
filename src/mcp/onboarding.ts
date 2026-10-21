@@ -93,13 +93,15 @@ WORKFLOW: ARRANGEMENT PASS
   {op: add/resize/reorder} -> kyx_clips {op: move/duplicate} ->
   kyx_markers {op: add}.
 
-TOOL INDEX (all 37 — grouped by job)
+TOOL INDEX (all 38 — grouped by job)
   read:        kyx_state (subjects incl. mixer) · kyx_meter · kyx_catalog
-               (effects/instruments) · kyx://project/* resources
+               (effects/instruments; subject:instrument returns full knob specs)
+               · kyx://project/* resources
   compose:     kyx_generate (seedable) · kyx_notes (melodic) ·
                kyx_steps (drum grid) · kyx_groove · kyx_music (tempo/key)
   edit:        kyx_tracks (CRUD + setGain/Pan/Mute/Solo + loadPreset/
-               listPresets) · kyx_fx · kyx_plugin_param · kyx_routing
+               listPresets) · kyx_fx · kyx_plugin_param · kyx_instrument_param
+               · kyx_routing
                (groups/sends) · kyx_automation · kyx_clips · kyx_steps ·
                kyx_markers
   arrange:     kyx_sections (add/remove/duplicate/reorder/resize/

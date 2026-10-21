@@ -78,6 +78,7 @@ export const TOOL_RISK: Readonly<Record<string, ToolRisk>> = {
   kyx_steps: "mutate",
   kyx_music: "mutate",
   kyx_plugin_param: "mutate",
+  kyx_instrument_param: "mutate",
   kyx_automation: "mutate",
   kyx_batch: "mutate",
   kyx_loudness: "mutate",

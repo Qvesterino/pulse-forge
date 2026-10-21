@@ -75,7 +75,26 @@ kyx_checkpoint {"op":"list"}
 If the user dislikes it: **Activity Center → REVERT SESSION** restores the
 project to before the session's first change, as one undoable step.
 
-### Worked example C — a destructive request, handled properly
+### Worked example C — control a flagship instrument by exact track ID
+
+```text
+kyx_catalog {"subject":"instruments"}
+  → registered instrument kinds, including kopa and tsar
+kyx_catalog {"subject":"instrument","instrument":"kopa"}
+  → KOPA's public parameters, native ranges, units, steps and choices
+kyx_tracks {"op":"addInstrument","instrument":"kopa"}
+kyx_state {"subject":"tracks"}
+  → retrieve the new track's exact id
+kyx_instrument_param {"op":"list","trackId":"<track-id>"}
+kyx_instrument_param {"op":"set","trackId":"<track-id>","param":"<catalog-id>","value":<native-value>}
+  → committed read-back; one undo step when the value changed
+```
+
+The same flow works for TSAR. Read the parameter catalog first and send an
+absolute native value. A successful state edit does not prove that the agent
+heard or auditioned the patch.
+
+### Worked example D — a destructive request, handled properly
 
 ```
 kyx_takes {"op":"deleteTake","takeId":"…"}       → POLICY_REFUSED while the

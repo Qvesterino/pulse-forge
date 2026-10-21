@@ -24,6 +24,7 @@ import {
 } from "./agentTrust";
 import { startJob } from "../services/jobCenter";
 import { setMasterConfig } from "../commands/master";
+import { setInstrumentParam } from "../commands/instrument";
 import { slipAudioClip, stretchAudioClip, setAudioClipsMute } from "../commands/audioClips";
 import {
   crossfadeAudioClips,
@@ -175,7 +176,7 @@ import { applyExactIntentCommand } from "../commands/intentRouting";
 import { applyGenerationResultCommand } from "../commands/aiPattern";
 import { isAutomationTargetValid, targetParamDef } from "../project-model/targets";
 import { clampEffectParam, EFFECT_META, type EffectDefinitionMeta } from "../effects/definitions";
-import { INSTRUMENT_DEFS } from "../instruments/registry";
+import { clampInstrumentParam, INSTRUMENT_DEFS, INSTRUMENT_ORDER } from "../instruments/registry";
 import type { McpAudioContent, McpAudioPreviewArtifact } from "./audio-preview";
 
 /**
@@ -992,7 +993,7 @@ const OUTPUT_CATALOG: McpOutputSchema = {
   additionalProperties: false,
   properties: {
     status: { type: "string", enum: ["listed"] },
-    subject: { type: "string", enum: ["effects", "effect", "instruments"] },
+    subject: { type: "string", enum: ["effects", "effect", "instruments", "instrument"] },
     effects: {
       type: "array",
       items: {
@@ -1076,8 +1077,134 @@ const OUTPUT_CATALOG: McpOutputSchema = {
         required: ["kind", "name", "parameterCount"],
       },
     },
+    instrument: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        kind: { type: "string" },
+        name: { type: "string" },
+        parameterCount: { type: "integer", minimum: 0 },
+        parameters: {
+          type: "array",
+          maxItems: 128,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              id: { type: "string" },
+              label: { type: "string" },
+              min: { type: "number" },
+              max: { type: "number" },
+              default: { type: "number" },
+              unit: { type: ["string", "null"] },
+              description: { type: ["string", "null"] },
+              kind: { type: ["string", "null"], enum: ["continuous", "enum", "toggle", "discrete", "unknown", null] },
+              step: { type: ["number", "null"] },
+              taper: { type: ["string", "null"], enum: ["linear", "log", null] },
+              options: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: { value: { type: "number" }, label: { type: "string" } },
+                  required: ["value", "label"],
+                },
+              },
+            },
+            required: [
+              "id",
+              "label",
+              "min",
+              "max",
+              "default",
+              "unit",
+              "description",
+              "kind",
+              "step",
+              "taper",
+              "options",
+            ],
+          },
+        },
+      },
+      required: ["kind", "name", "parameterCount", "parameters"],
+    },
   },
   required: ["status", "subject"],
+};
+/** kyx_instrument_param — exact-track inventory and verified parameter writes. */
+const OUTPUT_INSTRUMENT_PARAM: McpOutputSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    status: { type: "string", enum: ["listed", "updated", "no_change"] },
+    op: { type: "string", enum: ["list", "set"] },
+    trackId: { type: "string" },
+    trackName: { type: "string" },
+    instrument: { type: "string" },
+    parameters: {
+      type: "array",
+      maxItems: 128,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          id: { type: "string" },
+          label: { type: "string" },
+          value: { type: ["number", "null"] },
+          min: { type: "number" },
+          max: { type: "number" },
+          default: { type: "number" },
+          unit: { type: ["string", "null"] },
+          description: { type: ["string", "null"] },
+          kind: { type: ["string", "null"], enum: ["continuous", "enum", "toggle", "discrete", "unknown", null] },
+          step: { type: ["number", "null"] },
+          taper: { type: ["string", "null"], enum: ["linear", "log", null] },
+          options: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: { value: { type: "number" }, label: { type: "string" } },
+              required: ["value", "label"],
+            },
+          },
+        },
+        required: [
+          "id",
+          "label",
+          "value",
+          "min",
+          "max",
+          "default",
+          "unit",
+          "description",
+          "kind",
+          "step",
+          "taper",
+          "options",
+        ],
+      },
+    },
+    change: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      properties: {
+        param: { type: "string" },
+        beforeValue: { type: ["number", "null"] },
+        requestedValue: { type: "number" },
+        value: { type: "number" },
+        min: { type: "number" },
+        max: { type: "number" },
+        unit: { type: ["string", "null"] },
+        clamped: { type: "boolean" },
+        changed: { type: "boolean" },
+      },
+      required: ["param", "beforeValue", "requestedValue", "value", "min", "max", "unit", "clamped", "changed"],
+    },
+    undoSteps: { type: "integer", minimum: 0, maximum: 1 },
+  },
+  required: ["status", "op", "trackId", "trackName", "instrument", "parameters", "change", "undoSteps"],
 };
 /** kyx_plugin_param — bounded instance inventory and verified parameter writes. */
 const OUTPUT_PLUGIN_PARAM: McpOutputSchema = {
@@ -1760,7 +1887,7 @@ export const MCP_TOOLS: McpToolDef[] = [
         },
         instrument: {
           type: "string",
-          enum: ["analog", "bass", "808", "keys", "pluck", "acid", "reese", "brass", "flute", "sampler"],
+          enum: INSTRUMENT_ORDER,
           description: "For addInstrument — the full kind catalog is in kyx_catalog subject:instruments",
         },
         name: { type: "string", description: "New name for rename" },
@@ -1935,16 +2062,22 @@ export const MCP_TOOLS: McpToolDef[] = [
     description:
       "Discovery — what the DAW can do, machine-readable: list every effect " +
       "type with its category and primary knob, the FULL parameter table of " +
-      "one effect (native range, unit, description, kind, step, taper and enum options), or the " +
-      "instrument kind catalog. Read-only; use it before kyx_plugin_param " +
-      "instead of guessing ranges.",
+      "one effect or instrument (native range, unit, description, kind, step, taper and enum options), or the " +
+      "instrument kind catalog. Read-only; use it before kyx_plugin_param or " +
+      "kyx_instrument_param instead of guessing ranges.",
     inputSchema: {
       type: "object",
       properties: {
-        subject: { type: "string", enum: ["effects", "effect", "instruments"] },
+        subject: { type: "string", enum: ["effects", "effect", "instruments", "instrument"] },
         effect: {
           type: "string",
           description: "Effect type for subject:effect (e.g. reverb, eq, compressor) — see subject:effects",
+        },
+        instrument: {
+          type: "string",
+          enum: INSTRUMENT_ORDER,
+          maxLength: 32,
+          description: "Instrument kind for subject:instrument (e.g. kopa or tsar) — see subject:instruments",
         },
       },
       required: ["subject"],
@@ -2002,6 +2135,41 @@ export const MCP_TOOLS: McpToolDef[] = [
       required: ["op"],
     },
     outputSchema: OUTPUT_PLUGIN_PARAM,
+  },
+  {
+    name: "kyx_instrument_param",
+    description:
+      "Precise instrument control on ONE exact instrument track: list its " +
+      "current parameter values or set ONE parameter to an absolute native " +
+      "value. Read the parameter contract first with kyx_catalog " +
+      "subject:instrument; values are range-clamped and enum/discrete choices " +
+      "are validated. Exact trackId is required so identically named flagship " +
+      "instances are never changed by accident; writes return the committed " +
+      "value and create one undo step.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["list", "set"] },
+        trackId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "Exact instrument track id from kyx_state subject:tracks",
+        },
+        param: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          description: "Canonical parameter id from kyx_catalog subject:instrument",
+        },
+        value: {
+          type: "number",
+          description: "Absolute NATIVE parameter value (not normalized unless its declared range is 0..1)",
+        },
+      },
+      required: ["op", "trackId"],
+    },
+    outputSchema: OUTPUT_INSTRUMENT_PARAM,
   },
   {
     name: "kyx_meter",
@@ -4816,7 +4984,20 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         return { text: command.label, mutated: true };
       }
       if (op === "addInstrument") {
-        const kind = (typeof record.instrument === "string" ? record.instrument : "analog") as InstrumentKind;
+        const requestedKind = record.instrument === undefined ? "analog" : record.instrument;
+        if (typeof requestedKind !== "string") {
+          return mcpError("INVALID_ARGUMENTS", "instrument must be a registered instrument kind from kyx_catalog");
+        }
+        if (requestedKind.length > 32) {
+          return mcpError("INVALID_ARGUMENTS", "instrument kind must be at most 32 characters");
+        }
+        const kind = INSTRUMENT_ORDER.find((candidate) => candidate === requestedKind);
+        if (kind == null) {
+          return mcpError(
+            "UNKNOWN_TARGET",
+            `unknown instrument "${requestedKind}" — see kyx_catalog subject:instruments`,
+          );
+        }
         const command = createInstrumentTrack(ctx.getDoc(), kind);
         ctx.execute(command);
         return { text: command.label, mutated: true };
@@ -5029,6 +5210,8 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       return catalogSnapshot(record);
     case "kyx_plugin_param":
       return executePluginParamTool(ctx, record);
+    case "kyx_instrument_param":
+      return executeInstrumentParamTool(ctx, record);
     case "kyx_automation":
       return executeAutomationTool(ctx, record);
     case "kyx_clips":
@@ -8606,21 +8789,47 @@ async function executeBatchTool(ctx: McpToolContext, record: Record<string, unkn
   };
 }
 
+type McpInstrumentParamDef = (typeof INSTRUMENT_DEFS)[InstrumentKind]["params"][number];
+
+function publicInstrumentParams(kind: InstrumentKind): McpInstrumentParamDef[] {
+  return INSTRUMENT_DEFS[kind].params.filter((param) => param.deprecated !== true);
+}
+
+function instrumentParamDefinition(param: McpInstrumentParamDef) {
+  return {
+    id: param.id,
+    label: param.label,
+    min: param.min,
+    max: param.max,
+    default: param.default,
+    unit: param.unit ?? null,
+    description: param.description ?? null,
+    kind: param.kind ?? null,
+    step: param.step ?? null,
+    taper: param.taper ?? null,
+    options: (param.options ?? []).map((option) => ({ value: option.value, label: option.label })),
+  };
+}
+
+function instrumentParamReadback(param: McpInstrumentParamDef, value: number | null) {
+  return { ...instrumentParamDefinition(param), value };
+}
+
 /** kyx_catalog — machine-readable discovery over the registries. */
 function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
   if (record.subject !== undefined && typeof record.subject !== "string") {
-    return mcpError("INVALID_ARGUMENTS", "subject must be effects, effect, or instruments");
+    return mcpError("INVALID_ARGUMENTS", "subject must be effects, effect, instruments, or instrument");
   }
   const subject = (record.subject ?? "effects") as string;
   if (subject.length > 32) return mcpError("INVALID_ARGUMENTS", "subject must be at most 32 characters");
-  if (subject !== "effects" && subject !== "effect" && subject !== "instruments") {
+  if (subject !== "effects" && subject !== "effect" && subject !== "instruments" && subject !== "instrument") {
     return mcpError("UNKNOWN_REQUEST", `unknown catalog subject: ${subject.slice(0, 32)}`);
   }
   if (subject === "instruments") {
-    const instruments = Object.values(INSTRUMENT_DEFS).map((def) => ({
-      kind: def.kind,
-      name: def.name,
-      parameterCount: def.params.length,
+    const instruments = INSTRUMENT_ORDER.map((kind) => ({
+      kind,
+      name: INSTRUMENT_DEFS[kind].name,
+      parameterCount: publicInstrumentParams(kind).length,
     }));
     const lines = instruments.map(
       (instrument) => `${instrument.kind} — ${instrument.name} (${instrument.parameterCount} params)`,
@@ -8629,6 +8838,50 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
       text: `${lines.length} instrument kinds:\n${lines.join("\n")}`,
       mutated: false,
       data: { status: "listed", subject, instruments },
+    };
+  }
+  if (subject === "instrument") {
+    if (typeof record.instrument !== "string" || record.instrument.trim() === "") {
+      return mcpError("INVALID_ARGUMENTS", "subject:instrument needs an instrument kind");
+    }
+    const requestedKind = record.instrument.trim();
+    if (requestedKind.length > 32)
+      return mcpError("INVALID_ARGUMENTS", "instrument kind must be at most 32 characters");
+    const kind = INSTRUMENT_ORDER.find((candidate) => candidate === requestedKind);
+    if (kind == null) {
+      return mcpError("UNKNOWN_TARGET", `unknown instrument "${requestedKind}" — see kyx_catalog subject:instruments`);
+    }
+    const definition = INSTRUMENT_DEFS[kind];
+    const params = publicInstrumentParams(kind);
+    if (params.length > 128) {
+      return mcpError("RESOURCE_LIMIT", `${kind} has more than 128 public parameters; catalog response is capped`);
+    }
+    const parameters = params.map(instrumentParamDefinition);
+    const lines = [
+      `${kind} — ${definition.name} (${parameters.length} parameters)`,
+      "parameters (native units; set through kyx_instrument_param):",
+      ...params.map((param) => {
+        const extras = [
+          param.unit != null ? `unit ${param.unit}` : null,
+          param.kind ?? null,
+          param.step != null ? `step ${param.step}` : null,
+          param.taper != null ? `${param.taper} taper` : null,
+          param.options != null
+            ? `options: ${param.options.map((option) => `${option.value}=${option.label}`).join("|")}`
+            : null,
+        ].filter(Boolean);
+        const line = `  ${param.id} "${param.label}": ${param.min} .. ${param.max}, default ${param.default}${extras.length > 0 ? ` (${extras.join(", ")})` : ""}`;
+        return param.description != null ? `${line}\n      ${param.description}` : line;
+      }),
+    ];
+    return {
+      text: lines.join("\n"),
+      mutated: false,
+      data: {
+        status: "listed",
+        subject,
+        instrument: { kind, name: definition.name, parameterCount: parameters.length, parameters },
+      },
     };
   }
   if (subject === "effect") {
@@ -8716,6 +8969,142 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
       lines.join("\n"),
     mutated: false,
     data: { status: "listed", subject, effects },
+  };
+}
+
+/** kyx_instrument_param — exact-track, registry-bounded instrument control. */
+function executeInstrumentParamTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+  const op = record.op === undefined ? "list" : record.op;
+  if (typeof op !== "string") return mcpError("INVALID_ARGUMENTS", "op must be list or set");
+  if (op !== "list" && op !== "set") return mcpError("UNKNOWN_REQUEST", `unknown op: ${op} (list | set)`);
+
+  const rawTrackId = record.trackId;
+  if (typeof rawTrackId !== "string" || rawTrackId.trim() === "" || rawTrackId.length > 128) {
+    return mcpError("INVALID_ARGUMENTS", "trackId must be a non-empty string of at most 128 characters");
+  }
+  const trackId = rawTrackId.trim();
+  const doc = ctx.getDoc();
+  const track = doc.tracks.find((candidate) => candidate.id === trackId);
+  if (track == null) {
+    return mcpError("UNKNOWN_TARGET", `no track with id "${trackId}" — list ids via kyx_state subject:tracks`);
+  }
+  if (track.kind !== "instrument") {
+    return mcpError("UNKNOWN_TARGET", `track "${trackId}" is not an instrument track`);
+  }
+
+  const params = publicInstrumentParams(track.instrument);
+  if (params.length > 128) {
+    return mcpError("RESOURCE_LIMIT", `${track.instrument} has more than 128 public parameters; response is capped`);
+  }
+  const valueOf = (param: McpInstrumentParamDef): number | null => {
+    const value = track.params[param.id] ?? param.default;
+    return Number.isFinite(value) ? value : null;
+  };
+  if (op === "list") {
+    const parameters = params.map((param) => instrumentParamReadback(param, valueOf(param)));
+    const lines = params.map((param) => {
+      const value = valueOf(param);
+      const unit = param.unit ? ` ${param.unit}` : "";
+      const current = value == null ? "invalid" : String(value);
+      const description = param.description ? ` — ${param.description}` : "";
+      return `  ${param.id} (${param.label}) = ${current}${unit} [${param.min}..${param.max}]${description}`;
+    });
+    return {
+      text: `${track.instrument} track "${track.name}" (${track.id}) — ${params.length} parameters:\n${lines.join("\n")}`,
+      mutated: false,
+      data: {
+        status: "listed",
+        op,
+        trackId: track.id,
+        trackName: track.name,
+        instrument: track.instrument,
+        parameters,
+        change: null,
+        undoSteps: 0,
+      },
+    };
+  }
+
+  if (typeof record.param !== "string" || record.param.trim() === "" || record.param.length > 128) {
+    return mcpError("INVALID_ARGUMENTS", "set needs a canonical parameter id from kyx_catalog subject:instrument");
+  }
+  const paramId = record.param.trim();
+  const param = params.find((candidate) => candidate.id === paramId);
+  if (param == null) {
+    return mcpError(
+      "UNKNOWN_TARGET",
+      `unknown param "${paramId}" on ${track.instrument} — parameters: ${params.map((candidate) => candidate.id).join(", ")}`,
+    );
+  }
+  if (typeof record.value !== "number" || !Number.isFinite(record.value)) {
+    return mcpError(
+      "INVALID_ARGUMENTS",
+      `set needs a finite native value (${paramId}: ${param.min}..${param.max}${param.unit ? ` ${param.unit}` : ""}, default ${param.default})`,
+    );
+  }
+
+  const requestedValue = record.value;
+  const value = clampInstrumentParam(track.instrument, paramId, requestedValue);
+  if (param.kind === "toggle" && value !== 0 && value !== 1) {
+    return mcpError("INVALID_ARGUMENTS", `${track.instrument}.${paramId} is a toggle and accepts only 0 or 1`);
+  }
+  if (param.options?.length && !param.options.some((option) => option.value === value)) {
+    return mcpError(
+      "INVALID_ARGUMENTS",
+      `${track.instrument}.${paramId} accepts only: ${param.options.map((option) => option.value).join(", ")}`,
+    );
+  }
+  if (param.step != null) {
+    const stepCount = (value - param.min) / param.step;
+    if (!Number.isFinite(stepCount) || Math.abs(stepCount - Math.round(stepCount)) > 1e-7) {
+      return mcpError(
+        "INVALID_ARGUMENTS",
+        `${track.instrument}.${paramId} must use increments of ${param.step} from ${param.min}`,
+      );
+    }
+  }
+
+  const beforeValue = valueOf(param);
+  const changed = beforeValue !== value;
+  if (changed) ctx.execute(setInstrumentParam(doc, track.id, paramId, value));
+  const after = ctx.getDoc();
+  const afterTrack = after.tracks.find((candidate) => candidate.id === track.id);
+  const landedValue = afterTrack?.kind === "instrument" ? (afterTrack.params[paramId] ?? param.default) : Number.NaN;
+  const readbackValue = Number.isFinite(landedValue) ? landedValue : null;
+  const change = {
+    param: paramId,
+    beforeValue,
+    requestedValue,
+    value: readbackValue ?? value,
+    min: param.min,
+    max: param.max,
+    unit: param.unit ?? null,
+    clamped: value !== requestedValue,
+    changed: beforeValue !== readbackValue,
+  };
+  const parameters = [instrumentParamReadback(param, readbackValue)];
+  const data = {
+    status: changed ? "updated" : "no_change",
+    op,
+    trackId: track.id,
+    trackName: track.name,
+    instrument: track.instrument,
+    parameters,
+    change,
+    undoSteps: changed ? 1 : 0,
+  } as const;
+  if (readbackValue !== value) {
+    return mcpError("PARTIAL_FAILURE", `${track.instrument}.${paramId} did not match the committed read-back`, {
+      mutated: changed,
+      data,
+    });
+  }
+  const before = beforeValue == null ? "invalid" : String(beforeValue);
+  const clampText = change.clamped ? ` (requested ${requestedValue}; clamped to ${value})` : "";
+  return {
+    text: `${track.instrument}.${paramId}: ${before} → ${value}${param.unit ? ` ${param.unit}` : ""}${clampText}${changed ? " — one undo step" : " — already at that value"}`,
+    mutated: changed,
+    data,
   };
 }
 

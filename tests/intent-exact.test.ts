@@ -131,6 +131,14 @@ describe("parseExactIntent", () => {
     ]);
   });
 
+  it("recognizes KOPA and TSAR as explicit instrument-track requests", () => {
+    for (const instrument of ["kopa", "tsar"] as const) {
+      expect(parseExactIntent(`add a ${instrument} track`)?.ops).toEqual([
+        { kind: "addTrack", trackKind: "instrument", instrument },
+      ]);
+    }
+  });
+
   it("transport recognizes clear session and metronome phrasings", () => {
     expect(parseTransportIntent("Press play on the session")).toBe("play");
     expect(parseTransportIntent("Switch the click on for the take")).toBe("metronomeOn");
@@ -196,6 +204,19 @@ describe("applyExactIntentCommand", () => {
     const plan = parseExactIntent("set tempo to 142")!;
     const next = applyExactIntentCommand(d, plan).execute(d);
     expect(next.bpm).toBe(142);
+  });
+
+  it("adds KOPA and TSAR instrument tracks through one undoable exact command", () => {
+    for (const instrument of ["kopa", "tsar"] as const) {
+      const before = doc();
+      const plan = parseExactIntent(`add a ${instrument} track`)!;
+      const command = applyExactIntentCommand(before, plan);
+      const after = command.execute(before);
+      const added = after.tracks[after.tracks.length - 1];
+
+      expect(added).toMatchObject({ kind: "instrument", instrument });
+      expect(command.undo(after)).toEqual(before);
+    }
   });
 
   it("mute the bass flips the bass track and undo restores it", () => {

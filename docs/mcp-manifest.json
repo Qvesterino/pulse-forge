@@ -165,6 +165,15 @@
       }
     },
     {
+      "name": "kyx_instrument_param",
+      "risk": "mutate",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false
+      }
+    },
+    {
       "name": "kyx_meter",
       "risk": "read",
       "annotations": {
