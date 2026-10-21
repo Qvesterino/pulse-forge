@@ -24,6 +24,7 @@ import { setBpm, setPadParams, setTrackParams } from "./project";
 import { setProjectKey, setTimeSignature } from "./metadata";
 import { setPatternLength } from "./patterns";
 import { barsPerPattern, stepsPerBar } from "../project-model/grid";
+import { meterChangeClause } from "../project-model/meter-disclosure";
 import { setGroove } from "./groove";
 import { setMasterConfig } from "./master";
 import { setBeatManglerSteps, setEffectParam } from "./effectParams";
@@ -334,9 +335,15 @@ export function exactReadback(before: ProjectDocument, after: ProjectDocument, p
         before.timeSignature.numerator !== after.timeSignature.numerator ||
         before.timeSignature.denominator !== after.timeSignature.denominator
       ) {
+        // …and the meter is NOT changed silently (ADR 0056): the read-back says
+        // what the new metre MEASURES and what happens to the pattern that was
+        // authored in the old one. The clause is the shared one — the same
+        // words the transfer dialog and the MCP surface use.
+        const clause = meterChangeClause(before, after.timeSignature);
         entries.push(
           `time signature ${before.timeSignature.numerator}/${before.timeSignature.denominator}→` +
-            `${after.timeSignature.numerator}/${after.timeSignature.denominator} ✓`,
+            `${after.timeSignature.numerator}/${after.timeSignature.denominator} ✓` +
+            (clause ? ` (${clause})` : ""),
         );
       }
     } else if (op.kind === "transpose") {

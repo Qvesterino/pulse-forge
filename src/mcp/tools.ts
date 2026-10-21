@@ -9687,7 +9687,17 @@ function executeMusicTool(ctx: McpToolContext, record: Record<string, unknown>):
       setTimeSignature(before, numerator, denominator),
       (doc) => doc.timeSignature.numerator === numerator && doc.timeSignature.denominator === denominator,
       (doc) => ({ numerator: doc.timeSignature.numerator, denominator: doc.timeSignature.denominator }),
-      (doc) => `time signature is now ${doc.timeSignature.numerator}/${doc.timeSignature.denominator} (one undo step)`,
+      (doc) => {
+        // The meter is NOT changed silently (ADR 0056): the read-back says what
+        // the new metre MEASURES and what happens to a pattern authored in the
+        // old one. The clause is the shared one — the same words the intent
+        // read-back and the transfer dialog use.
+        const clause = meterChangeClause(before, doc.timeSignature);
+        return (
+          `time signature is now ${doc.timeSignature.numerator}/${doc.timeSignature.denominator} (one undo step)` +
+          (clause ? ` — ${clause}` : "")
+        );
+      },
     );
   }
 

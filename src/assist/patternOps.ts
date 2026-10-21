@@ -11,6 +11,26 @@
  *
  * Pure functions over pattern data — no audio engine or provider imports,
  * unit-testable and safe to reuse from preview/apply workflows.
+ *
+ * ## The metre (ADR 0057 Stage 2g)
+ *
+ * Every op below used to believe that one bar is SIXTEEN sixteenth steps: the
+ * build expanded to `bars * 16`, the fill's zone was the last sixteen steps,
+ * the style grooves were tiled every sixteen steps, and "the beat" was
+ * `step % 4`. Those are 4/4 CONTENT wearing the clothes of arithmetic — in a
+ * 6/8 document the build produced 1.33 bars, the fill's zone started a third
+ * of a bar past the bar line, and the "four-on-floor" kick landed on the
+ * eighths instead of the dotted quarter.
+ *
+ * The ops now speak the document's METER. The metrical facts are NOT
+ * re-derived here: `src/ai/meter.ts` owns the pulse, the backbeat and the
+ * bar length, and `src/ai/groove-view.ts` owns how 4/4 material says itself
+ * in another metre. This file only asks those two questions.
+ *
+ * **4/4 is the identity.** Every op takes the meter as its LAST argument and
+ * defaults to `DEFAULT_AI_METER` (4/4), so a caller that knows no meter keeps
+ * the legacy behaviour byte-for-byte — the same promise ADR 0057 Stage 2b/2c
+ * made for the generator.
  */
 import { mulberry32, hashString } from "../shared/rng";
 import {
@@ -22,6 +42,9 @@ import {
   type StepMeta,
 } from "../project-model/types";
 import { buildPhrasePlan } from "../ai/phrase";
+import { DEFAULT_AI_METER, isBackbeatAnchor, isPulse, type AiMeter } from "../ai/meter";
+import { projectRowToMeter } from "../ai/groove-view";
+import type { PadRole } from "../ai/pad-roles";
 import type { AssistTarget } from "./types";
 import { humanizeNotes } from "../midi/creative";
 
@@ -64,6 +87,23 @@ function randFromSeed(seed: string): () => number {
 }
 
 const clampV = (v: number) => Math.max(0.08, Math.min(1, v));
+
+/**
+ * True when a step carries a METRICAL ANCHOR — the positions the metre's
+ * skeleton puts a hit on: the pulse (the kick's ride) and the backbeat (the
+ * snare's place).
+ *
+ * In 4/4 this is exactly the legacy `step % 4 === 0`: the pulse is the quarter
+ * note (0, 4, 8, 12) and the backbeat (4, 12) already sits inside it. In 6/8
+ * the pulse is the dotted quarter (0, 6) and the backbeat the shuffle's
+ * "2 & 5" (2, 8), so the union protects four positions per bar — and, crucially,
+ * keeps the backbeat safe from a thinning pass that would otherwise delete
+ * it (the legacy protected every fourth step, which in 6/8 is NOT the
+ * backbeat).
+ */
+function isMetricalAnchor(meter: AiMeter, step: number): boolean {
+  return isPulse(meter, step) || isBackbeatAnchor(meter, step);
+}
 
 export type RowsPatch = {
   rows: Record<string, number[]>;
