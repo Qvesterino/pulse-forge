@@ -550,13 +550,14 @@ export function replaceRows(
   const family = fams[target === "kicks" ? "kicks" : target === "snares" ? "snares" : "hats"];
   const stepsPerBar = meter.stepsPerBar;
   const hits = projectStyleToMeter(groove, STYLE_ROLE[target], meter);
-
   const rows: Record<string, number[]> = {};
   // Every pad NOT in the family is passed through untouched.
   for (const [padId, row] of Object.entries(pattern.rows)) {
     rows[padId] = family.some((p) => p.id === padId) ? row : [...row];
   }
-  const baseBars = Math.max(1, Math.round(pattern.stepCount / stepsPerBar));
+  // The style tiles across the source's metrical bars — the same bar count the
+  // build uses (one owner: assistSourceAlignment).
+  const baseBars = assistSourceAlignment(pattern, meter).bars;
   for (const [familyIndex, pad] of family.entries()) {
     const row = new Array<number>(pattern.stepCount).fill(0);
     for (let bar = 0; bar < baseBars; bar++) {
