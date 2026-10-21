@@ -286,6 +286,7 @@ export function DiceProvider({
           bars: 4,
           target: "hats",
           style: "house",
+          timeSignature: doc.timeSignature,
         });
         const hits = Object.values(patch.rows).reduce((s, r) => s + r.filter((v) => v > 0).length, 0);
         return {

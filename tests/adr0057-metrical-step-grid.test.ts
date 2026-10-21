@@ -286,8 +286,6 @@ const ALLOWED_FORMULA_FILES = new Set(["src/project-model/grid.ts"]);
  * the ledger may only shrink (ADR 0057 Stage 2 owns the rest).
  */
 const LEDGER_4_4_SITES: Record<string, string> = {
-  "src/ui/AssistPanel.tsx":
-    "the assist preview draws a fixed 16-cell 4/4 preview — the generator's output shape (ADR 0057 Stage 2)",
   "src/ui/GenerateDialog.tsx":
     "the generate preview draws a fixed 16-cell 4/4 preview — the generator's output shape (ADR 0057 Stage 2)",
   "src/ui/DiceTray.tsx":

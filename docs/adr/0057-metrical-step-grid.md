@@ -1,6 +1,6 @@
 # ADR 0057 — The step grid follows the meter: one bar is `ticksPerBar(doc) / STEP_TICKS` steps
 
-Date: 2026-10-20 · Status: Accepted (v6 — Stage 1, 1b, 2a, 2b, 2c, 2d and 2e shipped) · Scope: pattern grid, sequencer ruler, piano roll grid, pattern labels, transfer disclosure, intent engine, MCP surface, AI layer, AI groove material, MIDI import, pinned model feature contracts
+Date: 2026-10-20 · Status: Accepted (v7 — Stage 1, 1b, 2a, 2b, 2c, 2d, 2e, 2f, 2g and 2h shipped) · Scope: pattern grid, sequencer ruler, piano roll grid, pattern labels, transfer disclosure, intent engine, MCP surface, AI layer, AI groove material, MIDI import, pinned model feature contracts, assist layer, metre disclosure
 
 ## Context
 
@@ -649,7 +649,158 @@ step, and still open.
   with a twelve-step bar misaligns the copy, while copying a whole metrical bar
   drops four steps of the user's material. So this needs a POLICY for
   non-aligned sources (copy the content's own bars, or the metrical bar and
-  say what was dropped), not a parameter.
+  say what was dropped), not a parameter. **DONE in Stage 2g** — the policy is
+  the metrical bar, and the cut is counted and stated.
+
+## Stage 2f — the METER is a first-class part of the REQUEST
+
+Every layer above now spoke the document's metre. The REQUEST did not: the metre
+was reachable only as the literal phrase "time signature 3/4" (`src/intent/exact.ts`),
+which is an API spelling, not a human one. A user who typed "make me a beat in
+6/8" got a 4/4 beat and a 4/4 project — the metre word was silently ignored,
+which is the worst kind of failure: no error, just a beat in the wrong metre.
+
+### One owner of the metrical vocabulary
+
+`src/intent/meter-phrase.ts` is the one module that answers "which metre does
+this text ask for?", and BOTH parsers ask it — the text parser (the generation
+path) and the exact parser (the command path). Two parsers that read the same
+sentence must not disagree about the metre.
+
+The vocabulary is deliberately narrow:
+
+- the NAMED form — "time signature 3/4", "meter 6/8", "takt 7/8", "signatura
+  5/4" — with the word on either side of the number;
+- the NAMED FEEL — "waltz" / "valčík" is a 3/4 in every genre;
+- the BARE form ("6/8") is offered SEPARATELY, and only to the generation path.
+  The command path must not take it: "make me a 3/4 beat" would become a
+  document change with no beat — the user would get a metre and no music;
+- **"shuffle" is NOT a metre.** A UKG shuffle is 4/4 with a swung sixteenth, a
+  feel and not a bar. Mapping it to 6/8 would hijack every UKG request and
+  change the genre's sound, so the word is left alone.
+
+### The ORDER is the substance
+
+A sentence can name a metre AND a length ("make it 2 bars in 3/4"), and the
+length is read in the DOCUMENT's meter at the moment it is applied. So the
+metre op is applied FIRST (a stable sort), or "2 bars in 3/4" would add 32
+steps — two 4/4 bars — instead of 24, two 3/4 bars.
+
+The requested metre also decides the LENGTH itself: `normalizeIntent` resolves
+the bar length from the REQUESTED metre (`intent.timeSignature ?? doc.timeSignature`),
+so "two bars in 3/4" is 24 steps before the document is even touched.
+
+### 4/4 is byte-identical
+
+The requested metre is carried on the intent spec **only where the request
+names one** — the same rule Stage 2a used for `bars`. A 4/4 request produces
+the same spec, the same canonical intent hash, the same generated beat and the
+same learned preferences as before. The metre reaches the document only when
+the user asked for it (the generation apply carries it: twelve steps in a 6/8
+bar is exactly one bar).
+
+Pinned by `tests/adr0057-requested-meter.test.ts` (11 specs).
+
+## Stage 2g — the ASSIST layer counts bars in the document's metre
+
+The assist layer was the last producer that counted bars by hand. Its four
+operations and its thinning pass all believed that a bar is sixteen sixteenth
+steps:
+
+| site                                        | what it said                       | in 6/8                                             |
+| ------------------------------------------- | ---------------------------------- | -------------------------------------------------- |
+| `expandWithBuild` — `baseBars`, `stepCount` | `round(stepCount / 16)`, `bars*16` | a four-bar build was 64 steps = **5.33 bars**      |
+| `expandWithBuild` — the copy                | `baseRow[bar*16 + s]`, `s < 16`    | the source was copied in 4/4 bars                  |
+| `expandWithBuild` — the notes               | `16 * STEP_TICKS` per bar          | the notes repeated every 4/4 bar                   |
+| `replaceRows` — the style grooves           | tiled every 16 steps               | the "four-on-floor" kick rode the EIGHTHS          |
+| `makeFill` — the zone                       | `stepCount - 16`                   | the fill's zone was 1.33 bars, crossing a bar line |
+| `varyPattern` / `thinStepSelection`         | `i % 4 === 0`                      | 6/8's backbeat was thinnable                       |
+
+### The metre is asked of the ONE owner, not re-derived
+
+`src/assist/patternOps.ts` does not compute a bar length. It asks
+`src/ai/meter.ts` (the pulse, the backbeat, the bar) and
+`src/ai/groove-view.ts` (how 4/4 material says itself in another metre). Every
+operation takes the meter as its LAST argument and defaults to
+`DEFAULT_AI_METER` (4/4), so a caller that knows no meter keeps the legacy
+behaviour byte-for-byte.
+
+The request carries the metre (`AssistRequest.timeSignature`, optional and
+absent in 4/4); the pipeline resolves it once; the commands pass the
+document's metre (`src/commands/patternAssist.ts`,
+`src/commands/assistSelectionCommands.ts`); the UI passes it in the preview
+(`src/ui/AssistPanel.tsx`, `src/ui/DiceContext.tsx`, `src/ui/IntentPanel.tsx`).
+A broken signature is DROPPED, not repaired: with no usable metre the layer
+runs in 4/4, the identity, and never invents a bar length.
+
+### The anchors are the metre's, not "every fourth step"
+
+The pulse AND the backbeat are the metre's skeleton, and they are what the
+assist layer protects. In 4/4 the union is exactly the legacy `step % 4 === 0`
+(the pulse is the quarter note, and the backbeat already sits inside it). In
+6/8 the pulse is the dotted quarter (0, 6) and the backbeat the shuffle's
+"2 & 5" (2, 8) — and the legacy rule would have let a thinning pass DELETE the
+backbeat. Measured over 200 seeds: the legacy removed the 6/8 backbeat in 16 of
+them, the metrical layer in 0.
+
+### The style grooves are re-voiced, not truncated
+
+The style tables ("four-on-floor", "backbeat", "house"…) are 4/4 material, so
+they go through the same metrical view as the groove library: the kick rides
+the metre's pulse, the snare the metre's backbeat, and the hats keep their
+folded positions (a hat is not the metre's skeleton). The REPLACE operation
+therefore keeps the style's MEANING in the new metre instead of cutting it at
+the bar line.
+
+### The policy for a source that does not fill whole bars
+
+The build copies the source BAR BY BAR, and the bar is the document's. A source
+that is a whole number of the metrical bars — the normal case, and the case
+every producer in this product now produces — is copied exactly. A source that
+is NOT (sixteen steps in a 6/8 project is 1.33 bars) is cut at the bar line,
+which is the LEGACY's own policy (a twenty-step source in 4/4 lost four steps
+the same way) with the bar length corrected. The cut is COUNTED
+(`assistSourceAlignment`) and STATED — in the command's detail and in the
+Assist preview — because a cut the user cannot see is a cut the user cannot
+undo either.
+
+### The visible surface followed, and the ledger shrank
+
+The Assist preview drew a fixed sixteen-cell bar with 4/4 beat markers — the
+last visible 4/4 site in this layer. It now draws ONE METRICAL BAR (twelve
+cells in 6/8) with the metre's own beat markers, and the visible-surface
+ledger in `tests/adr0057-metrical-step-grid.test.ts` lost its entry. The
+ledger may only shrink; this stage shrank it.
+
+### 4/4 is byte-identical — measured, not assumed
+
+The pre-patch implementation (extracted verbatim from the parent commit into
+the same process) and the metrical one, on the same fixture, with the same
+seeds: **8 of 8 operations byte-identical** — VARY (with and without an
+explicit 4/4 meter), BUILD, REPLACE (hats, kicks, snares), FILL and the
+thinning pass.
+
+### What changed in 6/8
+
+Measured on the same script, before and after, in a 6/8 document (24 steps =
+two 6/8 bars):
+
+| what                    | legacy                          | metrical                                  |
+| ----------------------- | ------------------------------- | ----------------------------------------- |
+| BUILD to four bars      | 64 steps = 5.33 bars            | **48 steps = 4.00 bars**                  |
+| BUILD's phrase plan     | bars at 0/16/32/48              | **bars at 0/12/24/36**                    |
+| FILL's zone (24 steps)  | starts at 8 (the last 16 steps) | **starts at 12 (the last 6/8 bar)**       |
+| FILL's zone (32 steps)  | starts at 16                    | **starts at 20**                          |
+| REPLACE four-on-floor   | 0, 4, 8, 12, 16, 20, 24, 28     | **0, 6, 12, 18** (the dotted quarter)     |
+| REPLACE backbeat        | 4, 12, 20, 28                   | **2, 8, 14, 20** (the shuffle's "2 & 5")  |
+| REPLACE house hats      | 2, 6, 10, 14, 18, 22, 26, 30    | **2, 6, 10, 14, 18, 22** (the folded bar) |
+| VARY thins the backbeat | 16 of 200 seeds                 | **0 of 200 seeds**                        |
+
+The hats are the one row that did NOT gain a skeleton, and that is the
+projection's own rule: a hat is not the metre's skeleton, so it keeps the
+folded positions of the 4/4 style.
+
+Pinned by `tests/adr0057-assist-meter.test.ts` (14 specs).
 
 ## Stage 2h — the metre is never changed silently
 
@@ -669,7 +820,7 @@ were asked to say:
 | ------------------ | ------------------------------------------- | ------------------- |
 | `setTimeSignature` | `Time signature 6/8` (the undo label)       | what 6/8 measures   |
 | the intent path    | `time signature 4/4→6/8 ✓`                  | what 6/8 measures   |
-| the MCP surface    | `time signature is now 6/8 (one undo step)`  | what 6/8 measures   |
+| the MCP surface    | `time signature is now 6/8 (one undo step)` | what 6/8 measures   |
 
 And a fourth surface was not in that list at all: the AI GENERATION path
 (`src/commands/aiPattern.ts`) writes `doc.timeSignature` DIRECTLY, so it never
@@ -719,12 +870,12 @@ pins: a disclosure that fires on a no-op is a disclosure nobody reads.
 
 ### The four surfaces
 
-| surface            | where the disclosure lands                                       |
-| ------------------ | ---------------------------------------------------------------- |
+| surface            | where the disclosure lands                                                      |
+| ------------------ | ------------------------------------------------------------------------------- |
 | `setTimeSignature` | `Command.detail` — the consequence note the command toast shows under the label |
-| the intent path    | the read-back line (`exactReadback`) — the intent's own receipt    |
-| the MCP surface    | the tool response text                                            |
-| the AI path        | `Command.detail` — the BAR clause only                           |
+| the intent path    | the read-back line (`exactReadback`) — the intent's own receipt                 |
+| the MCP surface    | the tool response text                                                          |
+| the AI path        | `Command.detail` — the BAR clause only                                          |
 
 Two details are deliberate:
 
@@ -801,12 +952,20 @@ document's meter. The highest-risk sites, mapped (read-only sweep,
    it would break every model silently. Stage 2c kept the Markov model's frame
    for the same reason — the model generates its own bar and the metrical view
    maps it.
+6. **The assist layer.** **DONE in Stage 2g** — the four operations and the
+   thinning pass count bars in the document's metre, the style grooves are
+   re-voiced through the metrical view, the anchors are the metre's pulse and
+   backbeat, and the visible preview follows (the ledger shrank).
+7. **The REQUESTED metre.** **DONE in Stage 2f** — the metre is a first-class
+   part of the request, with one owner for the vocabulary and the order that
+   settles the metre before the length.
 
 The visible surface's remaining 4/4 sites are declared in the guard's ledger
-(`tests/adr0057-metrical-step-grid.test.ts`): the assist / generate / dice
-preview grids (16 cells, because the generator's output shape is 16), the
-automation lane's beat grid, the brief's length readout, and the hum-to-melody
-contour's bar lines. **The ledger may only shrink.**
+(`tests/adr0057-metrical-step-grid.test.ts`): the generate / dice preview
+grids (16 cells, because the generator's output shape is 16), the automation
+lane's beat grid, the brief's length readout, and the hum-to-melody contour's
+bar lines. **The ledger may only shrink** — and Stage 2g shrank it: the Assist
+preview drew a fixed sixteen-cell 4/4 bar, and it now draws one metrical bar.
 
 ## Acceptance gates
 
@@ -848,6 +1007,15 @@ contour's bar lines. **The ledger may only shrink.**
   projects the library's 4/4 material into the document's metre, the anchors
   carry the groove's OWN loudness (not a nearest-neighbour guess), and no
   projected hit is a value the source row did not have.
+- **The requested metre is a request**: "time signature 6/8", "meter 3/4" and
+  "waltz" are read by ONE vocabulary owner, the metre is settled BEFORE the
+  length, and a request that names no metre leaves the intent hash — and the
+  generated beat — untouched.
+- **The assist layer speaks the document's metre**: a build of N bars is N
+  bars of the metre, the fill's zone is the last metrical bar, the style
+  grooves are re-voiced on the metre's anchors, and the thinning pass cannot
+  delete the metre's backbeat. 4/4 stays byte-identical, and a source that
+  does not fill whole bars says how much was cut.
 - **The metrical view is the identity in 4/4** — for every groove, every pad,
   every row: same positions, same values, same length.
 - **An irregular bar is not given a skeleton it does not have** — 7/8 keeps the

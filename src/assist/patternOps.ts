@@ -112,7 +112,46 @@ export type RowsPatch = {
   clearStepMeta?: { from: number; to: number; padIds?: string[] };
   phrasePlan?: PatternPhraseBar[];
   stepCount?: number;
+  /**
+   * How the source's material met the document's metre — present when the
+   * operation copies the source BAR BY BAR, so the user can be told what the
+   * copy did (and what it left out).
+   */
+  sourceAlignment?: SourceAlignment;
 };
+
+/**
+ * How a bar-by-bar copy meets the document's metre.
+ *
+ * The build copies the source one BAR at a time, and a bar is the document's
+ * bar. A source that is a whole number of the metrical bars — the normal
+ * case, and the case every producer in this product now produces — is copied
+ * exactly. A source that is NOT (sixteen steps in a 6/8 project is 1.33 bars)
+ * is cut at the bar line, and the cut is COUNTED: the legacy had the same
+ * policy (a twenty-step source in 4/4 lost four steps the same way), with the
+ * bar length corrected. A cut that is not counted is a cut the user cannot
+ * see.
+ */
+export interface SourceAlignment {
+  /** The source's own bar count, in the document's metre. */
+  bars: number;
+  /** The source's steps that fall outside those bars — the material not copied. */
+  cutSteps: number;
+}
+
+/**
+ * The source's alignment with the document's metre.
+ *
+ * The source's bar count is ROUNDED, exactly as the legacy rounded it against
+ * sixteen steps: a source that is a little over a bar keeps its last partial
+ * bar's material (the copy fills the rest with silence), and a source that is
+ * a little under a bar is one bar with silence in it.
+ */
+export function assistSourceAlignment(pattern: Pattern, meter: AiMeter = DEFAULT_AI_METER): SourceAlignment {
+  const stepsPerBar = meter.stepsPerBar;
+  const bars = Math.max(1, Math.round(pattern.stepCount / stepsPerBar));
+  return { bars, cutSteps: Math.max(0, pattern.stepCount - bars * stepsPerBar) };
+}
 
 export interface StepSelectionScope {
   padIds: readonly string[];
@@ -180,10 +219,17 @@ export function applyAssistPatchToStepSelection(
 
 /**
  * Thin only selected drum cells by removing the softest selected off-beat
- * hits. Quarter-note anchors (steps divisible by four) are preserved. Removed
- * hits also lose their step locks/metadata; all other cells remain untouched.
+ * hits. The metrical ANCHORS are preserved — in 4/4 that is the legacy "every
+ * fourth step" (the quarter notes), in 6/8 the dotted quarter and the
+ * shuffle's backbeat. Removed hits also lose their step locks/metadata; all
+ * other cells remain untouched.
  */
-export function thinStepSelection(pattern: Pattern, selection: StepSelectionScope, amount = 0.4): Pattern {
+export function thinStepSelection(
+  pattern: Pattern,
+  selection: StepSelectionScope,
+  amount = 0.4,
+  meter: AiMeter = DEFAULT_AI_METER,
+): Pattern {
   if (!Number.isFinite(amount) || amount <= 0 || pattern.stepCount <= 0) return pattern;
   const from = Math.min(selection.from, selection.to);
   const to = Math.max(selection.from, selection.to);
@@ -200,7 +246,7 @@ export function thinStepSelection(pattern: Pattern, selection: StepSelectionScop
   for (const padId of padIds) {
     const row = pattern.rows[padId]!;
     const candidates = Array.from({ length: to - from + 1 }, (_, offset) => from + offset)
-      .filter((step) => step % 4 !== 0 && step < row.length && row[step]! > 0)
+      .filter((step) => !isMetricalAnchor(meter, step) && step < row.length && row[step]! > 0)
       .sort((a, b) => row[a]! - row[b]! || b - a);
     const removeCount = candidates.length > 0 ? Math.max(1, Math.floor(candidates.length * strength)) : 0;
     if (removeCount === 0) continue;
@@ -277,7 +323,13 @@ export function humanizeNoteSelection(
 
 // ─── VARY ─────────────────────────────────────────────────────────────────
 
-export function varyPattern(pattern: Pattern, pads: DrumPad[], seed: string, amount = 0.6): RowsPatch {
+export function varyPattern(
+  pattern: Pattern,
+  pads: DrumPad[],
+  seed: string,
+  amount = 0.6,
+  meter: AiMeter = DEFAULT_AI_METER,
+): RowsPatch {
   const rand = randFromSeed(seed);
   const fams = classifyPads(pads);
   const snareIds = new Set(fams.snares.map((p) => p.id));
@@ -287,7 +339,9 @@ export function varyPattern(pattern: Pattern, pads: DrumPad[], seed: string, amo
     const next = [...row];
     const padMeta: Record<number, StepMeta> = {};
     for (let i = 0; i < next.length; i++) {
-      const onBeat = i % 4 === 0;
+      // The metrical anchor, not "the fourth step": in 4/4 the two are the
+      // same set, in 6/8 the anchor is the dotted quarter and the backbeat.
+      const onBeat = isMetricalAnchor(meter, i);
       if (next[i] > 0) {
         // Velocity humanization — downbeats move less than ghosts.
         const wobble = (rand() - 0.5) * (onBeat ? 0.18 : 0.3) * amount;
@@ -316,11 +370,22 @@ export function varyPattern(pattern: Pattern, pads: DrumPad[], seed: string, amo
 
 const FAMILY_TIER: Array<keyof PadFamilies> = ["kicks", "snares", "hats", "others"];
 
-export function expandWithBuild(pattern: Pattern, pads: DrumPad[], bars: number, seed: string): RowsPatch {
+export function expandWithBuild(
+  pattern: Pattern,
+  pads: DrumPad[],
+  bars: number,
+  seed: string,
+  meter: AiMeter = DEFAULT_AI_METER,
+): RowsPatch {
   const rand = randFromSeed(seed);
   const fams = classifyPads(pads);
-  const baseBars = Math.max(1, Math.round(pattern.stepCount / 16));
-  const stepCount = bars * 16;
+  // The bar is the METRE's bar: sixteen steps in 4/4, twelve in 6/8, twenty
+  // in 5/4. Everything below counts in metrical bars, so a build of four bars
+  // is four bars of the document's metre — not 1.33 of them.
+  const stepsPerBar = meter.stepsPerBar;
+  const sourceAlignment = assistSourceAlignment(pattern, meter);
+  const baseBars = sourceAlignment.bars;
+  const stepCount = bars * stepsPerBar;
   // Element entry points across the build: kick always, each next family
   // joins at ~1/4, 1/2, 3/4 of the build (deterministic jitter per seed).
   const entryBar: Record<string, number> = {};
@@ -339,9 +404,9 @@ export function expandWithBuild(pattern: Pattern, pads: DrumPad[], bars: number,
       const sourceBar = bar % baseBars;
       // Energy ramp: early bars breathe, the last bar is full power.
       const energy = 0.72 + 0.28 * (bar / Math.max(1, bars - 1));
-      for (let s = 0; s < 16; s++) {
-        const v = baseRow[sourceBar * 16 + s] ?? 0;
-        if (v > 0) row[bar * 16 + s] = clampV(v * energy);
+      for (let s = 0; s < stepsPerBar; s++) {
+        const v = baseRow[sourceBar * stepsPerBar + s] ?? 0;
+        if (v > 0) row[bar * stepsPerBar + s] = clampV(v * energy);
       }
     }
     rows[padId] = row;
@@ -353,7 +418,7 @@ export function expandWithBuild(pattern: Pattern, pads: DrumPad[], bars: number,
     for (let bar = 0; bar < bars; bar++) {
       for (const [stepKey, meta] of Object.entries(sourceMeta)) {
         const sourceStep = Number(stepKey);
-        const step = bar * 16 + (sourceStep % 16);
+        const step = bar * stepsPerBar + (sourceStep % stepsPerBar);
         if ((rows[padId]?.[step] ?? 0) > 0) expanded[step] = { ...meta };
       }
     }
@@ -361,7 +426,7 @@ export function expandWithBuild(pattern: Pattern, pads: DrumPad[], bars: number,
   }
 
   const notes: Record<string, NoteEvent[]> = {};
-  const sourceBarTicks = 16 * STEP_TICKS;
+  const sourceBarTicks = stepsPerBar * STEP_TICKS;
   for (const [trackId, sourceNotes] of Object.entries(pattern.notes ?? {})) {
     const expanded: NoteEvent[] = [];
     for (let bar = 0; bar < bars; bar++) {
@@ -381,7 +446,7 @@ export function expandWithBuild(pattern: Pattern, pads: DrumPad[], bars: number,
     notes[trackId] = expanded;
   }
 
-  return { rows, notes, stepMeta, phrasePlan: buildPhrasePlan(stepCount), stepCount };
+  return { rows, notes, stepMeta, phrasePlan: buildPhrasePlan(stepCount, meter), stepCount, sourceAlignment };
 }
 
 // ─── REPLACE (pad family → style groove) ──────────────────────────────────
@@ -422,10 +487,48 @@ const SNARE_STYLES: Record<string, StyleRow> = {
 
 const STYLE_TABLES = { hats: HAT_STYLES, kicks: KICK_STYLES, snares: SNARE_STYLES } as const;
 
+/** The bar the style tables are written in — they are 4/4 material. */
+const STYLE_STEPS = 16;
+
+/**
+ * The semantic role each style family speaks for. The metrical view re-voices
+ * the kick on the pulse and the snare on the backbeat; the hats keep their
+ * folded positions (a hat is not the metre's skeleton).
+ */
+const STYLE_ROLE: Record<ReplaceTarget, PadRole> = {
+  kicks: "kick",
+  snares: "snare",
+  hats: "closedHat",
+};
+
 export type ReplaceTarget = AssistTarget;
 
 export function styleNames(target: ReplaceTarget): string[] {
   return Object.keys(STYLE_TABLES[target]);
+}
+
+/**
+ * The style groove as the DOCUMENT's metre says it.
+ *
+ * The tables above are sixteen-step 4/4 material: the "four-on-floor" kick is
+ * four quarter notes, the "backbeat" snare is on beats 2 and 4. In 6/8 that
+ * material is re-voiced by the metrical view — the kick rides the dotted
+ * quarter (0, 6) and the snare the shuffle's "2 & 5" (2, 8) — so the style
+ * keeps its MEANING in the new metre instead of being cut at the bar line.
+ *
+ * In 4/4 the projection is the identity, so the hits come back exactly as the
+ * table wrote them.
+ */
+function projectStyleToMeter(groove: StyleRow, role: PadRole, meter: AiMeter): StyleRow {
+  const dense = new Array<number>(STYLE_STEPS).fill(0);
+  for (const hit of groove) dense[hit.step] = hit.v;
+  const projected = projectRowToMeter(dense, role, meter);
+  const hits: StyleRow = [];
+  for (let step = 0; step < projected.length; step++) {
+    const value = projected[step] ?? 0;
+    if (value > 0) hits.push({ step, v: value });
+  }
+  return hits;
 }
 
 /**
@@ -438,26 +541,29 @@ export function replaceRows(
   target: ReplaceTarget,
   style: string,
   seed: string,
+  meter: AiMeter = DEFAULT_AI_METER,
 ): RowsPatch {
   const rand = randFromSeed(seed);
   const fams = classifyPads(pads);
   const table = STYLE_TABLES[target];
   const groove = table[style] ?? Object.values(table)[0];
   const family = fams[target === "kicks" ? "kicks" : target === "snares" ? "snares" : "hats"];
+  const stepsPerBar = meter.stepsPerBar;
+  const hits = projectStyleToMeter(groove, STYLE_ROLE[target], meter);
 
   const rows: Record<string, number[]> = {};
   // Every pad NOT in the family is passed through untouched.
   for (const [padId, row] of Object.entries(pattern.rows)) {
     rows[padId] = family.some((p) => p.id === padId) ? row : [...row];
   }
+  const baseBars = Math.max(1, Math.round(pattern.stepCount / stepsPerBar));
   for (const [familyIndex, pad] of family.entries()) {
     const row = new Array<number>(pattern.stepCount).fill(0);
-    const baseBars = Math.max(1, Math.round(pattern.stepCount / 16));
     for (let bar = 0; bar < baseBars; bar++) {
-      for (const hit of groove) {
+      for (const hit of hits) {
         // Second pad of the family plays a lighter shadow of the groove.
         const shade = familyIndex === 0 ? 1 : 0.5;
-        row[bar * 16 + hit.step] = clampV(hit.v * shade * (0.92 + rand() * 0.16));
+        row[bar * stepsPerBar + hit.step] = clampV(hit.v * shade * (0.92 + rand() * 0.16));
       }
     }
     rows[pad.id] = row;
@@ -467,10 +573,39 @@ export function replaceRows(
 
 // ─── FILL (crescendo over the last bar) ───────────────────────────────────
 
-export function makeFill(pattern: Pattern, pads: DrumPad[], seed: string): RowsPatch {
+/**
+ * The fill's crescendo, measured BACKWARDS from the end of the fill zone.
+ *
+ * The legacy shape was a sixteen-step 4/4 bar with hits at offsets
+ * 4, 8, 10, 12, 13, 14, 15 — i.e. at distances 11, 7, 5, 3, 2, 1, 0 from the
+ * zone's last step. Measuring from the END is what lets the same crescendo
+ * live in any bar: the offsets become `(barLength - 1) - distance`, so the
+ * fill always ends with its loudest hit on the pattern's last step and the
+ * sixteenth-note roll always sits in the bar's final quarter.
+ *
+ * In 4/4 this is the legacy shape by construction (15 - distance).
+ */
+const FILL_CRESCENDO: Array<{ fromEnd: number; v: number }> = [
+  { fromEnd: 11, v: 0.25 },
+  { fromEnd: 7, v: 0.4 },
+  { fromEnd: 5, v: 0.5 },
+  { fromEnd: 3, v: 0.65 },
+  { fromEnd: 2, v: 0.7 },
+  { fromEnd: 1, v: 0.85 },
+  { fromEnd: 0, v: 1 },
+];
+
+export function makeFill(
+  pattern: Pattern,
+  pads: DrumPad[],
+  seed: string,
+  meter: AiMeter = DEFAULT_AI_METER,
+): RowsPatch {
   const rand = randFromSeed(seed);
   const fams = classifyPads(pads);
-  const start = Math.max(0, pattern.stepCount - 16);
+  const stepsPerBar = meter.stepsPerBar;
+  // The zone is the LAST METRICAL BAR — sixteen steps in 4/4, twelve in 6/8.
+  const start = Math.max(0, pattern.stepCount - stepsPerBar);
   const rows: Record<string, number[]> = {};
   for (const [padId, row] of Object.entries(pattern.rows)) {
     rows[padId] = [...row];
@@ -483,26 +618,22 @@ export function makeFill(pattern: Pattern, pads: DrumPad[], seed: string): RowsP
   // via density steps and a velocity ramp with seeded jitter.
   const snare = fams.snares[0];
   if (snare) {
-    const hits = [
-      { step: 4, v: 0.25 },
-      { step: 8, v: 0.4 },
-      { step: 10, v: 0.5 },
-      { step: 12, v: 0.65 },
-      { step: 13, v: 0.7 },
-      { step: 14, v: 0.85 },
-      { step: 15, v: 1 },
-    ];
+    // A bar too short to hold the whole crescendo keeps its tail (the hits
+    // that still fit); nothing is stretched to make room.
+    const hits = FILL_CRESCENDO.map((hit) => ({ step: stepsPerBar - 1 - hit.fromEnd, v: hit.v })).filter(
+      (hit) => hit.step >= 0,
+    );
     for (const hit of hits) {
       rows[snare.id][start + hit.step] = clampV(hit.v * (0.92 + rand() * 0.16));
     }
     // Seeded optional tom/ghost flavor on the second snare-ish pad.
     const second = fams.snares[1];
     if (second && rand() < 0.6) {
-      rows[second.id][start + 12] = 0.5;
-      rows[second.id][start + 14] = 0.65;
+      rows[second.id][start + stepsPerBar - 1 - 3] = 0.5;
+      rows[second.id][start + stepsPerBar - 1 - 1] = 0.65;
     }
   }
-  const phrasePlan = buildPhrasePlan(pattern.stepCount);
+  const phrasePlan = buildPhrasePlan(pattern.stepCount, meter);
   if (phrasePlan.length > 0) {
     phrasePlan[phrasePlan.length - 1] = {
       ...phrasePlan[phrasePlan.length - 1],

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import {
   useActivePatternId,
   usePatterns,
@@ -27,6 +28,7 @@ import type { SelectedStepInstructionPlan } from "../assist/selected-step-plan";
 import { buildAssistPatch } from "../assist/pipeline";
 import { ASSIST_ENGINE_VERSION, type AssistOperation } from "../assist/types";
 import { getActivePattern, getDrumTrack } from "../project-model/types";
+import { stepsPerBar, stepsPerBeat } from "../project-model/grid";
 import { nextSeed } from "../shared/dice";
 import { applyArrangeOps, parseArrangeIntent, type ParsedArrange } from "../intent/arrangeWords";
 
@@ -115,6 +117,10 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
   };
 
   const stylesForTarget = styleNames(target);
+  // The preview draws ONE METRICAL BAR: twelve cells in 6/8, sixteen in 4/4,
+  // with the metre's own beat markers (ADR 0057 Stage 2g).
+  const barSteps = stepsPerBar(doc);
+  const beatSteps = stepsPerBeat(doc);
   const previewPatch = useMemo(
     () =>
       buildAssistPatch(pattern, drumPads, {
@@ -124,9 +130,13 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
         bars,
         target,
         style,
+        timeSignature: doc.timeSignature,
       }),
-    [pattern, drumPads, previewOperation, seed, amount, bars, target, style],
+    [pattern, drumPads, previewOperation, seed, amount, bars, target, style, doc.timeSignature],
   );
+  // What the bar-by-bar copy did to a source that does not fill whole metrical
+  // bars — the cut is stated, not silent.
+  const previewCut = previewPatch.sourceAlignment?.cutSteps ?? 0;
   const previewPad =
     drumPads.find((pad) => (previewPatch.rows[pad.id] ?? []).some((value) => value > 0)) ?? drumPads[0];
   const previewRow = previewPad ? (previewPatch.rows[previewPad.id] ?? []) : [];
@@ -139,9 +149,10 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
       bars,
       target,
       style,
+      timeSignature: doc.timeSignature,
     });
     return applyAssistPatchToStepSelection(pattern, patch, selectedStepScope);
-  }, [pattern, selectedDrumTrack, selectedStepScope, seed, amount, bars, target, style]);
+  }, [pattern, selectedDrumTrack, selectedStepScope, seed, amount, bars, target, style, doc.timeSignature]);
   const selectedStepInstructionPlan = useMemo((): SelectedStepInstructionPlan => {
     return planSelectedStepInstruction({
       text: selectedStepText,
@@ -153,8 +164,20 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
       bars,
       target,
       style,
+      timeSignature: doc.timeSignature,
     });
-  }, [selectedStepText, selectedStepScope, selectedDrumTrack, pattern, seed, amount, bars, target, style]);
+  }, [
+    selectedStepText,
+    selectedStepScope,
+    selectedDrumTrack,
+    pattern,
+    seed,
+    amount,
+    bars,
+    target,
+    style,
+    doc.timeSignature,
+  ]);
   const selectedNoteVariation = useMemo(
     () => (selectedNoteScope ? humanizeNoteSelection(pattern, selectedNoteScope, seed, amount) : null),
     [pattern, selectedNoteScope, seed, amount],
@@ -180,7 +203,7 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
   const selectedPreviewTo = selectedStepScope
     ? Math.max(0, Math.min(pattern.stepCount - 1, Math.floor(Math.max(selectedStepScope.from, selectedStepScope.to))))
     : 0;
-  const selectedPreviewBarStart = Math.floor(selectedPreviewFrom / 16) * 16;
+  const selectedPreviewBarStart = Math.floor(selectedPreviewFrom / barSteps) * barSteps;
   const selectedPreviewHitCount = selectedVariationPattern
     ? Object.values(selectedVariationPattern.rows).reduce(
         (total, row) => total + row.filter((velocity) => velocity > 0).length,
@@ -334,12 +357,18 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
         <div className="assist-preview-meta">
           {previewPad?.name ?? "No drum pad"} · {beforeHits} → {afterHits} hits ·{" "}
           {previewPatch.stepCount ?? pattern.stepCount} steps
+          {previewCut > 0 ? ` · ${previewCut} steps cut at the bar line` : ""}
         </div>
-        <div className="assist-preview-grid" role="img" aria-label={`${previewOperation} pattern preview`}>
-          {Array.from({ length: 16 }, (_, step) => (
+        <div
+          className="assist-preview-grid"
+          role="img"
+          aria-label={`${previewOperation} pattern preview`}
+          style={{ "--assist-preview-cells": barSteps } as CSSProperties}
+        >
+          {Array.from({ length: barSteps }, (_, step) => (
             <span
               key={step}
-              className={`assist-preview-cell${(previewRow[step] ?? 0) > 0 ? " active" : ""}${step % 4 === 0 ? " beat" : ""}`}
+              className={`assist-preview-cell${(previewRow[step] ?? 0) > 0 ? " active" : ""}${step % beatSteps === 0 ? " beat" : ""}`}
               style={(previewRow[step] ?? 0) > 0 ? { opacity: 0.3 + (previewRow[step] ?? 0) * 0.7 } : undefined}
             />
           ))}
@@ -395,17 +424,22 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
           </div>
           <div className="assist-preview-meta">
             {selectedDrumTrack.name} · {selectedPreviewPad?.name ?? "selected pad"} · bar{" "}
-            {Math.floor(selectedPreviewFrom / 16) + 1}, steps {selectedPreviewFrom + 1}–{selectedPreviewTo + 1} ·{" "}
+            {Math.floor(selectedPreviewFrom / barSteps) + 1}, steps {selectedPreviewFrom + 1}–{selectedPreviewTo + 1} ·{" "}
             {beforeHits} → {selectedPreviewHitCount} hits
           </div>
-          <div className="assist-preview-grid" role="img" aria-label="vary selected steps preview">
-            {Array.from({ length: 16 }, (_, step) => {
+          <div
+            className="assist-preview-grid"
+            role="img"
+            aria-label="vary selected steps preview"
+            style={{ "--assist-preview-cells": barSteps } as CSSProperties}
+          >
+            {Array.from({ length: barSteps }, (_, step) => {
               const absoluteStep = selectedPreviewBarStart + step;
               const selected = absoluteStep >= selectedPreviewFrom && absoluteStep <= selectedPreviewTo;
               return (
                 <span
                   key={step}
-                  className={`assist-preview-cell${(selectedPreviewRow[absoluteStep] ?? 0) > 0 ? " active" : ""}${step % 4 === 0 ? " beat" : ""}${selected ? " selected" : ""}`}
+                  className={`assist-preview-cell${(selectedPreviewRow[absoluteStep] ?? 0) > 0 ? " active" : ""}${step % beatSteps === 0 ? " beat" : ""}${selected ? " selected" : ""}`}
                   style={
                     (selectedPreviewRow[absoluteStep] ?? 0) > 0
                       ? { opacity: 0.3 + selectedPreviewRow[absoluteStep]! * 0.7 }
@@ -569,7 +603,9 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
             type="button"
             className="btn btn-export"
             onClick={() =>
-              apply(`Built to ${bars} bars`, () => services.store.execute(assistBuild(doc, pattern.id, bars, seed)))
+              apply(`Built to ${bars} bars${previewCut > 0 ? ` · ${previewCut} steps cut at the bar line` : ""}`, () =>
+                services.store.execute(assistBuild(doc, pattern.id, bars, seed)),
+              )
             }
           >
             BUILD

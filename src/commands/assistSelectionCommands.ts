@@ -7,6 +7,7 @@ import {
   type NoteSelectionScope,
   type StepSelectionScope,
 } from "../assist/patternOps";
+import { aiMeterFor } from "../ai/meter";
 import { snapshot } from "./core";
 import type { Command } from "./types";
 
@@ -40,7 +41,7 @@ export function assistVarySelectionCommand(
     throw new Error("Selected steps are outside the current pattern");
   }
 
-  const patch = varyPattern(pattern, drumTrack.pads, seed, amount);
+  const patch = varyPattern(pattern, drumTrack.pads, seed, amount, aiMeterFor(doc.timeSignature));
   const nextPattern = applyAssistPatchToStepSelection(pattern, patch, selection);
   if (nextPattern === pattern) throw new Error("Selected steps are outside the current pattern");
 
@@ -82,7 +83,7 @@ export function assistThinSelectionCommand(
     throw new Error("Selected steps are outside the current pattern");
   }
 
-  const nextPattern = thinStepSelection(pattern, selection, amount);
+  const nextPattern = thinStepSelection(pattern, selection, amount, aiMeterFor(doc.timeSignature));
   if (nextPattern === pattern) throw new Error("Selected steps contain no eligible off-beat hits to thin");
   const nextDoc: ProjectDocument = {
     ...doc,

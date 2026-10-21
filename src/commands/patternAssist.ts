@@ -16,6 +16,8 @@ import type { DrumPad, DrumTrack, PatternAssist, ProjectDocument, StepMeta } fro
 import { STEP_TICKS } from "../project-model/types";
 import type { Pattern } from "../project-model/types";
 import { buildAssistPatch, normalizeAssistRequest } from "../assist/pipeline";
+import { assistSourceAlignment } from "../assist/patternOps";
+import { aiMeterFor } from "../ai/meter";
 import { ASSIST_ENGINE_ID, ASSIST_ENGINE_VERSION, type AssistInput } from "../assist/types";
 import { canonicalizePattern, contentHash } from "../ai/evaluation";
 import { snapshot } from "./core";
@@ -104,11 +106,17 @@ function assistCommand(
   doc: ProjectDocument,
   patternId: string,
   input: AssistInput,
+  detail?: string,
 ): Command {
   const sourcePattern = doc.patterns.find((pattern) => pattern.id === patternId);
   if (!sourcePattern) throw new Error(`Pattern ${patternId} not found`);
   const request = normalizeAssistRequest(input);
-  const patch = buildAssistPatch(sourcePattern, drumPadsOf(doc), request);
+  // The document's metre rides along: the assist layer counts BARS in the
+  // document's bar, so a build in 6/8 is four 6/8 bars (ADR 0057 Stage 2g).
+  const patch = buildAssistPatch(sourcePattern, drumPadsOf(doc), {
+    ...request,
+    timeSignature: doc.timeSignature,
+  });
   const patchedDoc = applyRowsPatch(doc, patternId, patch);
   const patchedPattern = patchedDoc.patterns.find((pattern) => pattern.id === patternId);
   if (!patchedPattern) throw new Error(`Pattern ${patternId} disappeared during Assist operation`);
@@ -139,7 +147,8 @@ function assistCommand(
       return { ...pattern, assist, generation };
     }),
   };
-  return snapshot(type, label, doc, next);
+  const command = snapshot(type, label, doc, next);
+  return detail ? { ...command, detail } : command;
 }
 
 /** Vary the active pattern: velocity humanization + ghost notes + micro feel. */
@@ -157,11 +166,27 @@ export function assistVary(doc: ProjectDocument, patternId: string, seed: string
 export function assistBuild(doc: ProjectDocument, patternId: string, bars: number, seed: string): Command {
   const pattern = doc.patterns.find((p) => p.id === patternId);
   if (!pattern) throw new Error(`Pattern ${patternId} not found`);
-  return assistCommand("assistBuild", `Build ${pattern.name} to ${bars} bars`, doc, patternId, {
-    operation: "build",
-    bars,
-    seed,
-  });
+  // The build copies the source bar by bar, and a bar is the document's bar.
+  // A source that does not fill whole metrical bars loses its tail — and the
+  // command says so, because a cut the user cannot see is a cut the user
+  // cannot undo either.
+  const alignment = assistSourceAlignment(pattern, aiMeterFor(doc.timeSignature));
+  const detail =
+    alignment.cutSteps > 0
+      ? `${alignment.cutSteps} steps cut at the bar line — the source does not fill whole bars of this metre`
+      : undefined;
+  return assistCommand(
+    "assistBuild",
+    `Build ${pattern.name} to ${bars} bars`,
+    doc,
+    patternId,
+    {
+      operation: "build",
+      bars,
+      seed,
+    },
+    detail,
+  );
 }
 
 /** Replace one pad family's groove with a style (hats → house, kicks → trap…). */

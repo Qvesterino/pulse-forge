@@ -1,4 +1,4 @@
-import type { DrumTrack, Pattern } from "../project-model/types";
+import type { DrumTrack, Pattern, TimeSignature } from "../project-model/types";
 import {
   applyAssistPatchToStepSelection,
   classifyPads,
@@ -6,6 +6,7 @@ import {
   type ReplaceTarget,
   type StepSelectionScope,
 } from "./patternOps";
+import { aiMeterFor } from "../ai/meter";
 import { buildAssistPatch } from "./pipeline";
 import { parseSelectedStepIntent, type SelectedStepIntent } from "./selected-step-intent";
 
@@ -37,6 +38,8 @@ export interface SelectedStepPlanInput {
   bars: number;
   target: ReplaceTarget;
   style: string;
+  /** The document's metre — the scoped edits speak it too (ADR 0057 Stage 2g). */
+  timeSignature?: TimeSignature;
 }
 
 const emptyPlan = (error: string | null): SelectedStepInstructionPlan => ({
@@ -89,9 +92,10 @@ export function planSelectedStepInstruction(input: SelectedStepPlanInput): Selec
   }
 
   const scope: StepSelectionScope = { ...selection, padIds };
+  const meter = aiMeterFor(input.timeSignature);
   const previewPattern =
     intent.operation === "thin"
-      ? thinStepSelection(pattern, scope)
+      ? thinStepSelection(pattern, scope, 0.4, meter)
       : applyAssistPatchToStepSelection(
           pattern,
           buildAssistPatch(pattern, drumTrack.pads, {
@@ -101,6 +105,7 @@ export function planSelectedStepInstruction(input: SelectedStepPlanInput): Selec
             bars: input.bars,
             target: input.target,
             style: input.style,
+            timeSignature: input.timeSignature,
           }),
           scope,
         );

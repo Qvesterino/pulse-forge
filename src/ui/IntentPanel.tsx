@@ -4368,6 +4368,7 @@ export function IntentPanel() {
           bars: 4,
           target: route.intent.target ?? "hats",
           style: "house",
+          timeSignature: currentDoc.timeSignature,
         });
         if (
           plan.error ||
