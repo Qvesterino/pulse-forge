@@ -29,6 +29,8 @@ import { buildAssistPatch } from "../assist/pipeline";
 import { ASSIST_ENGINE_VERSION, type AssistOperation } from "../assist/types";
 import { getActivePattern, getDrumTrack } from "../project-model/types";
 import { stepsPerBar, stepsPerBeat } from "../project-model/grid";
+import { assistSourceAlignment } from "../assist/patternOps";
+import { aiMeterFor } from "../ai/meter";
 import { nextSeed } from "../shared/dice";
 import { applyArrangeOps, parseArrangeIntent, type ParsedArrange } from "../intent/arrangeWords";
 
@@ -137,6 +139,12 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
   // What the bar-by-bar copy did to a source that does not fill whole metrical
   // bars — the cut is stated, not silent.
   const previewCut = previewPatch.sourceAlignment?.cutSteps ?? 0;
+  // The BUILD's own cut: the preview may be showing another operation, and the
+  // button's flash must still say what the BUILD will drop.
+  const buildCut = useMemo(
+    () => assistSourceAlignment(pattern, aiMeterFor(doc.timeSignature)).cutSteps,
+    [pattern, doc.timeSignature],
+  );
   const previewPad =
     drumPads.find((pad) => (previewPatch.rows[pad.id] ?? []).some((value) => value > 0)) ?? drumPads[0];
   const previewRow = previewPad ? (previewPatch.rows[previewPad.id] ?? []) : [];
@@ -603,7 +611,7 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
             type="button"
             className="btn btn-export"
             onClick={() =>
-              apply(`Built to ${bars} bars${previewCut > 0 ? ` · ${previewCut} steps cut at the bar line` : ""}`, () =>
+              apply(`Built to ${bars} bars${buildCut > 0 ? ` · ${buildCut} steps cut at the bar line` : ""}`, () =>
                 services.store.execute(assistBuild(doc, pattern.id, bars, seed)),
               )
             }
