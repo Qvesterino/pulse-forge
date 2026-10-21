@@ -1,6 +1,7 @@
 # FEATURES.md
 
 # Pulse Forge
+
 ## Product Feature Specification
 
 ---

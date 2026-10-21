@@ -23,7 +23,7 @@
 - Ku odškrtnutej položke doplníme dátum + krátku poznámku (napr. `[x] — 2026-09-02, PR #123`).
 - Hotové položky **nemažeme** — slúžia ako história.
 - Nové nápady pridávame na koniec príslušnej priority sekcie.
-- Ak sa počas implementácie niečo zmení (objaví sa lepší prístup), poznačíme to pod položku ako *Poznámka*, nemeníme pôvodný zámer po ceste.
+- Ak sa počas implementácie niečo zmení (objaví sa lepší prístup), poznačíme to pod položku ako _Poznámka_, nemeníme pôvodný zámer po ceste.
 
 ### Definition of Done — pre každý nový efekt / modulátor
 
@@ -58,34 +58,34 @@ Kvalitatívne tier-y:
 
 ### 1.2 Efekty (17 v `src/effects/registry.ts`)
 
-| Efekt | Implementácia | Tier |
-|---|---|---|
-| EQ (6-pásmové) | 6× `BiquadFilterNode` | C |
-| Compressor | **AudioWorklet** *(2026-08-27)* — per-sample PEAK/RMS detektor (stereo-link), soft-knee gain computer, attack/release smoothing, **sidechain input + 2× one-pole SC HPF (12 dB/oct, len detektor)**, makeup+mix (parallel), GR metering; fallback = natívny DCN graf (degraded „reduced") | A |
-| Saturation | `WaveShaper` tanh (2x oversample) + tone LP | B |
-| Distortion | `WaveShaper` kubický soft-clip (2x) + tone | B |
-| Clipper | `WaveShaper` (4x), hard clip / tanh + ceiling + softness | B |
-| **Limiter** *(pridaný 2026-08-27)* | **AudioWorklet** — look-ahead max-deque, soft knee, program-dependent release, safety clamp, GR metering; fallback = transparentný bypass + warning | A |
-| Reverb | `ConvolverNode` + procedurálne IR (Web Worker, seeded), predelay + tone | B |
-| Delay | `DelayNode` + feedback + damping LP | C |
-| Pump | saw → duck-curve shaper → modulácia gainu, BPM-sync | B (clever hack, nie skutočný sidechain) |
-| **Tape Sat** *(pridaný 2026-08-28, P2.1)* | **AudioWorklet** — y[n]=tanh(drive·x[n]+hyst·y[n-1]), tone LP + denormal guard; fallback = bypass + warning | A |
-| **M/S EQ** *(pridaný 2026-08-28, P2.2)* | 2×2-pásmové M/S encode (L/R→M/S 0.5, low/high shelvy na M/S, decode M±S), `getAudioParam` pre bus | B |
-| **Haas Widener** *(pridaný 2026-08-28, P2.3)* | Delay 0.5–40 ms na L + width blend + feedback shimmer, mono-compatibilný | B |
-| **Multiband** *(pridaný 2026-08-28, P2.6)* | komplementárny 3-band crossover (wet−low→midHigh, midHigh−mid→high, unity-sum), −12..+12 dB na pásmo | B |
-| **Comb** *(pridaný 2026-08-28, P2.4)* | **AudioWorklet** — feedback comb y[n]=x[n]+fb·damp(y[n-D]), 0.5–60 ms, ±fb, damp LP, mix | A |
-| **Vowel** *(pridaný 2026-08-28, P2.5)* | **AudioWorklet** — 3× peaking cascade, 5 samohlások (A-E-I-O-U) log-morph, Q 3.5→9 / gain 7→15 dB, mix | A |
-| **Duck Delay** *(pridaný 2026-08-28, P2.7)* | **AudioWorklet** — delay 30–1000 ms + tone LP + duck env (thresh/attack/release) na wet | A |
-| Bitcrusher | **AudioWorklet** — kvantizácia + S&H downsample | A |
-| Chorus | 2× modulované delaye, 2 LFO | C |
-| Phaser | allpass kaskáda 2–8 stupňov + feedback | B |
-| Sidechain | **AudioWorklet** — 2-input, per-sample envelope follower | A |
-| Transient Shaper | **AudioWorklet** — fast/slow envelope rozdiel | A |
-| Drum Buss | kompozit natívnych nodeov (drive + comp + tone + boom) | C |
-| Bass Buss | kompozit natívnych nodeov; **`monoBassFrequency` existuje, ale nie je zapojený** | C |
-| Utility | M/S width + mono-bass crossover z primitív, polarita, swap | B |
-| Gate | **AudioWorklet** — envelope follower + hold + range | A |
-| Master limiter (vstavaný) | `DynamicsCompressorNode` 20:1 + tanh clipper; **bez look-ahead** | C |
+| Efekt                                         | Implementácia                                                                                                                                                                                                                                                                             | Tier                                    |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| EQ (6-pásmové)                                | 6× `BiquadFilterNode`                                                                                                                                                                                                                                                                     | C                                       |
+| Compressor                                    | **AudioWorklet** _(2026-08-27)_ — per-sample PEAK/RMS detektor (stereo-link), soft-knee gain computer, attack/release smoothing, **sidechain input + 2× one-pole SC HPF (12 dB/oct, len detektor)**, makeup+mix (parallel), GR metering; fallback = natívny DCN graf (degraded „reduced") | A                                       |
+| Saturation                                    | `WaveShaper` tanh (2x oversample) + tone LP                                                                                                                                                                                                                                               | B                                       |
+| Distortion                                    | `WaveShaper` kubický soft-clip (2x) + tone                                                                                                                                                                                                                                                | B                                       |
+| Clipper                                       | `WaveShaper` (4x), hard clip / tanh + ceiling + softness                                                                                                                                                                                                                                  | B                                       |
+| **Limiter** _(pridaný 2026-08-27)_            | **AudioWorklet** — look-ahead max-deque, soft knee, program-dependent release, safety clamp, GR metering; fallback = transparentný bypass + warning                                                                                                                                       | A                                       |
+| Reverb                                        | `ConvolverNode` + procedurálne IR (Web Worker, seeded), predelay + tone                                                                                                                                                                                                                   | B                                       |
+| Delay                                         | `DelayNode` + feedback + damping LP                                                                                                                                                                                                                                                       | C                                       |
+| Pump                                          | saw → duck-curve shaper → modulácia gainu, BPM-sync                                                                                                                                                                                                                                       | B (clever hack, nie skutočný sidechain) |
+| **Tape Sat** _(pridaný 2026-08-28, P2.1)_     | **AudioWorklet** — y[n]=tanh(drive·x[n]+hyst·y[n-1]), tone LP + denormal guard; fallback = bypass + warning                                                                                                                                                                               | A                                       |
+| **M/S EQ** _(pridaný 2026-08-28, P2.2)_       | 2×2-pásmové M/S encode (L/R→M/S 0.5, low/high shelvy na M/S, decode M±S), `getAudioParam` pre bus                                                                                                                                                                                         | B                                       |
+| **Haas Widener** _(pridaný 2026-08-28, P2.3)_ | Delay 0.5–40 ms na L + width blend + feedback shimmer, mono-compatibilný                                                                                                                                                                                                                  | B                                       |
+| **Multiband** _(pridaný 2026-08-28, P2.6)_    | komplementárny 3-band crossover (wet−low→midHigh, midHigh−mid→high, unity-sum), −12..+12 dB na pásmo                                                                                                                                                                                      | B                                       |
+| **Comb** _(pridaný 2026-08-28, P2.4)_         | **AudioWorklet** — feedback comb y[n]=x[n]+fb·damp(y[n-D]), 0.5–60 ms, ±fb, damp LP, mix                                                                                                                                                                                                  | A                                       |
+| **Vowel** _(pridaný 2026-08-28, P2.5)_        | **AudioWorklet** — 3× peaking cascade, 5 samohlások (A-E-I-O-U) log-morph, Q 3.5→9 / gain 7→15 dB, mix                                                                                                                                                                                    | A                                       |
+| **Duck Delay** _(pridaný 2026-08-28, P2.7)_   | **AudioWorklet** — delay 30–1000 ms + tone LP + duck env (thresh/attack/release) na wet                                                                                                                                                                                                   | A                                       |
+| Bitcrusher                                    | **AudioWorklet** — kvantizácia + S&H downsample                                                                                                                                                                                                                                           | A                                       |
+| Chorus                                        | 2× modulované delaye, 2 LFO                                                                                                                                                                                                                                                               | C                                       |
+| Phaser                                        | allpass kaskáda 2–8 stupňov + feedback                                                                                                                                                                                                                                                    | B                                       |
+| Sidechain                                     | **AudioWorklet** — 2-input, per-sample envelope follower                                                                                                                                                                                                                                  | A                                       |
+| Transient Shaper                              | **AudioWorklet** — fast/slow envelope rozdiel                                                                                                                                                                                                                                             | A                                       |
+| Drum Buss                                     | kompozit natívnych nodeov (drive + comp + tone + boom)                                                                                                                                                                                                                                    | C                                       |
+| Bass Buss                                     | kompozit natívnych nodeov; **`monoBassFrequency` existuje, ale nie je zapojený**                                                                                                                                                                                                          | C                                       |
+| Utility                                       | M/S width + mono-bass crossover z primitív, polarita, swap                                                                                                                                                                                                                                | B                                       |
+| Gate                                          | **AudioWorklet** — envelope follower + hold + range                                                                                                                                                                                                                                       | A                                       |
+| Master limiter (vstavaný)                     | `DynamicsCompressorNode` 20:1 + tanh clipper; **bez look-ahead**                                                                                                                                                                                                                          | C                                       |
 
 ### 1.3 Nástroje (všetky reálne, žiadne stuby — `src/instruments/registry.ts`)
 
@@ -138,11 +138,11 @@ Kvalitatívne tier-y:
 5. ~~**`monoBassFrequency` v Bass Busse nie je zapojený**~~ — **vyriešené 2026-08-27** (P0.0b); bonus: opravený aj nefunkčný mono súčet v Utility MONO BASS.
 6. **Žiadne zero-delay filtre (SVF/TPT)** — všetko legacy biquad; modulovaný cutoff neznie „analogovo".
 7. **LFO moduluje len track gain/pan** — nie filtre, nie FX parametre.
-8. **Flanger v dokumentoch, v kóde nie je.** Tiež chýba: tremolo ako efekt, autowah, multiband. *(limiter doplnený 2026-08-27)*
+8. **Flanger v dokumentoch, v kóde nie je.** Tiež chýba: tremolo ako efekt, autowah, multiband. _(limiter doplnený 2026-08-27)_
 9. **Žiadny spektrový analyzátor** — FFT dáta sú, UI nie je.
 10. **Žiadne denormal guards** vo workletoch (dlhé tails môžu stáť výkon).
 11. **Look-ahead limiter pridá latenciu** → treba PDC/kompenzáciu, inak stems vs. master frázovo nebudú sedieť (offline OK, live so sendami nie).
-    * *Update 2026-08-27:* minimálna PDC implementovaná (`syncPdc`) pre insert chainy (track+group); send/return cesty ostávajú nekompenzované (zdokumentované). *Update 2026-09-19:* send cesty kompenzované — každý send má vlastný delay node (`sendDelays`, `sendPdcDelaySec`: downstream group latencia mínus latencia returnu, tap je post-track-PDC); returny sa už neinflate-ujú do maxEffective, držia si pravé relatívne načasovanie. Dry vs wet sedí presne pre zero-latency returny (reverb/delay/duck/chorus/comb) z ľubovoľnej stopy/grupy. Zvyškové zdokumentované: return s vlastným latency FX (limiter na returne) krmený z nižšie-latentného reťazca mešká o (returnLat − downstream). *Poznámka: master worklet limiter pridáva uniformných ~5 ms latenciu celej mixovej zbernici aj keď je LIMIT vypnutý (mix=0 obchádza limiting, nie delay) — pre produkciu beatov irelevantné, pre live tracking mikrofónu v princípe neexistuje.*
+    - _Update 2026-08-27:_ minimálna PDC implementovaná (`syncPdc`) pre insert chainy (track+group); send/return cesty ostávajú nekompenzované (zdokumentované). _Update 2026-09-19:_ send cesty kompenzované — každý send má vlastný delay node (`sendDelays`, `sendPdcDelaySec`: downstream group latencia mínus latencia returnu, tap je post-track-PDC); returny sa už neinflate-ujú do maxEffective, držia si pravé relatívne načasovanie. Dry vs wet sedí presne pre zero-latency returny (reverb/delay/duck/chorus/comb) z ľubovoľnej stopy/grupy. Zvyškové zdokumentované: return s vlastným latency FX (limiter na returne) krmený z nižšie-latentného reťazca mešká o (returnLat − downstream). _Poznámka: master worklet limiter pridáva uniformných ~5 ms latenciu celej mixovej zbernici aj keď je LIMIT vypnutý (mix=0 obchádza limiting, nie delay) — pre produkciu beatov irelevantné, pre live tracking mikrofónu v princípe neexistuje._
 
 ---
 
@@ -151,7 +151,7 @@ Kvalitatívne tier-y:
 ### P0 — rozhoduje o „najlepšia kvalita v browsery"
 
 - [x] **P0.0 — Fallback fix (bugfix)** — 2026-08-27
-  Gate a Transient Shaper fallback nesmie byť tichý passthrough.
+      Gate a Transient Shaper fallback nesmie byť tichý passthrough.
   - [x] Zmeniť fallback na transparentný bypass (1:1 signál) — `bypassRuntime()` v registry; 2026-08-27
   - [x] UI warning badge „processor unavailable — bypassed" — `EffectRack` číta `engine.getDegradedFx()`, badge `.fx-device-warn`; flagy aj pre bitcrusher/sidechain fallbacky (reduced); 2026-08-27
   - [x] Zobraziť v browser-checks (`src/browser-checks.ts`) — 3× „fallback reports degraded state" + „fallback passes signal 1:1" + kontrastný test „worklet path gates"; 2026-08-27
@@ -160,13 +160,13 @@ Kvalitatívne tier-y:
   - [x] crossover rovnako ako v Utility (LP/HP split, súčet L/R × 0.5 do OBOCH výstupov = pravý mono sub, direct/crossover crossfade)
   - [x] Bonus bugfix: Utility „MONO BASS" predtým lows iba tlmil (-6 dB, stále stereo) — opravené na skutočný mono súčet do oboch kanálov
 - [x] **P0.1 — Look-ahead limiter (AudioWorklet)** — 2026-08-27
-  Ring buffer ~5 ms, stereo-link, soft-knee, program-dependent release, GR metering, ceiling v dBTP.
+      Ring buffer ~5 ms, stereo-link, soft-knee, program-dependent release, GR metering, ceiling v dBTP.
   - [x] Worklet processor (`limiter-processor.js`: max-deque sliding window, soft knee nad thresholdom, program-dependent release, hard safety clamp) + TS node wrapper (`limiter-node.ts`) + loader registrácia (cez core-processor.js); 2026-08-27
   - [x] GR metering do UI — `EffectRack` zobrazuje live GR bar + hodnotu dB pri Limiter device; 2026-08-27
   - [x] Latencia zdokumentovaná + kompenzácia v live grafe (PDC minimálne pre tento efekt) — `AudioEngine.syncPdc()`: track chainy sa alignujú na max effective latency (own chain + group chain); 2026-08-27
-    * Poznámka: send/return cesty kompenzované od 2026-09-19 (per-send delay; zvyšok len latentný return z nízkeho reťazca) — zdokumentované v kóde (`syncPdc`)
+    - Poznámka: send/return cesty kompenzované od 2026-09-19 (per-send delay; zvyšok len latentný return z nízkeho reťazca) — zdokumentované v kóde (`syncPdc`)
   - [x] Aceptačný test: browser-check „limiter: look-ahead worklet limits, meters and anticipates" — peak=ceiling presne (0.501/0.501), gr=5.1 dB, spread=1.017 (žiadne pumping), onset=221/221 vzorky (exaktný look-ahead delay); + „pdc: limiter track stays aligned with dry track (<2 ms)" — skew=0.70–0.88 ms; 2026-08-27
-    * Poznámka k ceiling: dBTP je aproximované cez sample-peak + safety clamp; skutočná true-peak limitácia (oversampling) ostáva ako P2 položka
+    - Poznámka k ceiling: dBTP je aproximované cez sample-peak + safety clamp; skutočná true-peak limitácia (oversampling) ostáva ako P2 položka
   - [x] **Bonus — master stage swap:** `buildMaster()` pripraví worklet limiter medzi clipper a natívny node (natívny = neutrálny passthrough + bez-workletový fallback); live splice po do-loadovaní (`upgradeMasterDynamics`); MasterMeter zobrazuje „GR x.x dB". Verifikácia: „master limiter: look-ahead brickwall pins export at ceiling" — peak=0.708/ceiling=0.708, a „master chain tames a hot mix" limited=0.891 (= presne -1 dBFS oproti 1.178 s natívnym nodeom); 2026-08-27
 - [ ] **P0.2 — Vlastný kompresor (AudioWorklet)** — **2026-08-27 DOKONČENÉ** (checkboxy nižšie sú história zadania):
   - [x] Per-sample detektor + RMS/peak prepínač (`detector` param, default RMS)

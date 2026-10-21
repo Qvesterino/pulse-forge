@@ -1,5 +1,9 @@
 import { createServer } from "vite";
-const server = await createServer({ root: process.cwd(), logLevel: "error", server: { port: 5242, host: "127.0.0.1", strictPort: true } });
+const server = await createServer({
+  root: process.cwd(),
+  logLevel: "error",
+  server: { port: 5242, host: "127.0.0.1", strictPort: true },
+});
 await server.listen();
 import { chromium } from "playwright";
 const browser = await chromium.launch();
@@ -38,7 +42,19 @@ const state = await page.evaluate(async () => {
     const route = nodes?.routeDestination;
     const aInput = engine.groupNodes.get(groupA.id)?.input;
     const bInput = engine.groupNodes.get(groupB.id)?.input;
-    console.log(label, "| route=A?", route === aInput, "| route=B?", route === bInput, "| route=master?", route === engine.master, "| A node?", Boolean(aInput), "| B node?", Boolean(bInput));
+    console.log(
+      label,
+      "| route=A?",
+      route === aInput,
+      "| route=B?",
+      route === bInput,
+      "| route=master?",
+      route === engine.master,
+      "| A node?",
+      Boolean(aInput),
+      "| B node?",
+      Boolean(bInput),
+    );
   };
   engine.setProject(doc);
   snap("after setProject(base)");
@@ -48,7 +64,9 @@ const state = await page.evaluate(async () => {
   snap("after setProject(B)");
   const nodes = engine.trackNodes.get(drum.id);
   const connected = context.createGain();
-  try { nodes.modMacroPan.connect(connected); } catch {}
+  try {
+    nodes.modMacroPan.connect(connected);
+  } catch {}
   const bInput = engine.groupNodes.get(groupB.id)?.input;
   return {
     routeIsB: nodes.routeDestination === bInput,

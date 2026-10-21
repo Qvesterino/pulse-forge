@@ -74,14 +74,14 @@ Array of marker objects. Each marker has a `tick` position and the computed `sec
 
 Marker types with built-in cue mappings:
 
-| type     | cue asset                  |
-|----------|----------------------------|
-| drop     | factory.fx.impact          |
-| buildup  | factory.fx.riser           |
-| riser    | factory.fx.riser           |
-| impact   | factory.fx.impact          |
-| cue      | (none)                     |
-| custom   | (none unless overridden)   |
+| type    | cue asset                |
+| ------- | ------------------------ |
+| drop    | factory.fx.impact        |
+| buildup | factory.fx.riser         |
+| riser   | factory.fx.riser         |
+| impact  | factory.fx.impact        |
+| cue     | (none)                   |
+| custom  | (none unless overridden) |
 
 ## automation.json
 
@@ -134,14 +134,14 @@ Per-scene intensity scalars and optional time-varying curves.
 
 ## Key
 
-| Field              | Unit       | Range         | Default |
-|--------------------|-----------|---------------|---------|
-| bpm                | beats/min | 20–300        | 124     |
-| timeSignature      |           |               | 4/4     |
-| key                |           |               | null    |
-| intensity          | scalar    | 0.0–1.0       | 0.7     |
-| marker.type        | enum      | drop/buildup/riser/impact/cue/custom | cue |
-| marker.tick        | ticks     | ≥0            | 0       |
+| Field         | Unit      | Range                                | Default |
+| ------------- | --------- | ------------------------------------ | ------- |
+| bpm           | beats/min | 20–300                               | 124     |
+| timeSignature |           |                                      | 4/4     |
+| key           |           |                                      | null    |
+| intensity     | scalar    | 0.0–1.0                              | 0.7     |
+| marker.type   | enum      | drop/buildup/riser/impact/cue/custom | cue     |
+| marker.tick   | ticks     | ≥0                                   | 0       |
 
 ## Rendering notes
 
@@ -151,4 +151,4 @@ Per-scene intensity scalars and optional time-varying curves.
 
 ---
 
-*Created by KYX v1.0*
+_Created by KYX v1.0_

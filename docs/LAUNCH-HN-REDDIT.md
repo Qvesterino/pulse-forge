@@ -107,14 +107,14 @@ Happy to go deeper on any layer.
 
 ### Očakávané otázky + tvoje odpovede (nauč sa, nekopíruj slovo od slova):
 
-| Kde | Odpoveď (hrať vlastnú vlnu) |
-|---|---|
-| „How is this different from Suno/Udio?" | „They're generation black boxes — you get a WAV and a prayer. KYX is a DAW the agent operates: every step is a command with a read-back, checkpointed and undoable. You produce WITH the agent; you don't gamble with one. And the protocol is open — swap Claude for any MCP client." |
-| „Web Audio = toy latency, no?" | „For production it's an offline-capable engine — the export renders offline through the same engine, bit-identical to what you hear. Live monitoring latency exists like in any DAW; this isn't (yet) a recording-studio replacement for native I/O — that's on the roadmap behind a separate ADR." |
-| „Does the audio go to the cloud?" | „No. Generation, mixing, rendering — all local and deterministic. The only network is the MCP client you deliberately connect, token-authed." |
-| „Why MCP instead of a plugin API?" | „One protocol, every client, zero per-vendor integration — and the agent story composes with tools people already have. CLAP plugin hosting exists on desktop too; they're not mutually exclusive." |
-| „License?" | `[PODĽA ROZHODNUTIA — rozhodni PRE-FLIGHT]` |
-| „Is this a wrapper around ChatGPT?" | „No model in the audio path at all. The composition engine is deterministic (seeded), runs in the browser. The connected agent is the director, not the instrument." |
+| Kde                                     | Odpoveď (hrať vlastnú vlnu)                                                                                                                                                                                                                                                                         |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| „How is this different from Suno/Udio?" | „They're generation black boxes — you get a WAV and a prayer. KYX is a DAW the agent operates: every step is a command with a read-back, checkpointed and undoable. You produce WITH the agent; you don't gamble with one. And the protocol is open — swap Claude for any MCP client."              |
+| „Web Audio = toy latency, no?"          | „For production it's an offline-capable engine — the export renders offline through the same engine, bit-identical to what you hear. Live monitoring latency exists like in any DAW; this isn't (yet) a recording-studio replacement for native I/O — that's on the roadmap behind a separate ADR." |
+| „Does the audio go to the cloud?"       | „No. Generation, mixing, rendering — all local and deterministic. The only network is the MCP client you deliberately connect, token-authed."                                                                                                                                                       |
+| „Why MCP instead of a plugin API?"      | „One protocol, every client, zero per-vendor integration — and the agent story composes with tools people already have. CLAP plugin hosting exists on desktop too; they're not mutually exclusive."                                                                                                 |
+| „License?"                              | `[PODĽA ROZHODNUTIA — rozhodni PRE-FLIGHT]`                                                                                                                                                                                                                                                         |
+| „Is this a wrapper around ChatGPT?"     | „No model in the audio path at all. The composition engine is deterministic (seeded), runs in the browser. The connected agent is the director, not the instrument."                                                                                                                                |
 
 ---
 
@@ -125,6 +125,7 @@ Happy to go deeper on any layer.
 **Title:** `I built a DAW that Claude Desktop can control over MCP — 26 tools, checkpoints, everything undoable`
 
 **Body:**
+
 ```
 I've been building KYX, a browser-first DAW, and I wired it up so Claude
 Desktop can actually produce music in it over MCP — not "generate a

@@ -18,14 +18,14 @@ for (const track of goldenTracks()) {
   const stepSec = 60 / track.bpm / 4;
   console.log(
     "truth bass (first 8):",
-    track.bass.slice(0, 8).map((n) => `step${n.step}@${((n.step * stepSec) * 1000).toFixed(0)}ms midi${n.pitch}`),
+    track.bass.slice(0, 8).map((n) => `step${n.step}@${(n.step * stepSec * 1000).toFixed(0)}ms midi${n.pitch}`),
   );
   // Kick onsets
   const kickSteps: number[] = [];
   track.drums.kick.forEach((bar, bi) => bar.forEach((v, s) => v > 0 && kickSteps.push(bi * 16 + s)));
   console.log(
     "kick steps (first 8):",
-    kickSteps.slice(0, 8).map((s) => `@${((s * stepSec) * 1000).toFixed(0)}ms`),
+    kickSteps.slice(0, 8).map((s) => `@${(s * stepSec * 1000).toFixed(0)}ms`),
   );
   // Raw pitch frames around first kick+bass
   const iso = applyLowPass(pcm.subarray(0, Math.floor(4 * SAMPLE_RATE)), SAMPLE_RATE, 300);
@@ -36,7 +36,9 @@ for (const track of goldenTracks()) {
   );
   console.log("pitch frames <1.5s (time ms / midi / clarity):");
   for (const f of frames) {
-    console.log(`  ${(f.timeSec * 1000).toFixed(0)}ms  midi ${f.midi.toFixed(1)}  cl ${f.clarity.toFixed(2)}  rms ${f.rms.toFixed(3)}`);
+    console.log(
+      `  ${(f.timeSec * 1000).toFixed(0)}ms  midi ${f.midi.toFixed(1)}  cl ${f.clarity.toFixed(2)}  rms ${f.rms.toFixed(3)}`,
+    );
   }
 }
 void SAMPLE_RATE;

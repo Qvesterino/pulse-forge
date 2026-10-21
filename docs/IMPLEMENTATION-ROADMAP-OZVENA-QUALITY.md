@@ -45,18 +45,18 @@ Hardening audit (2026-09-04/05) uzavrel:
 
 Zvukový audit — kde stojíme proti world-class referenciám (Valhalla VintageVerb, LiquidSonics, Neoverb):
 
-| Modul | Stav | Hlavný deficit |
-|---|---|---|
-| E2 Plate/Chamber | 🟡 solídny základ | 8 liniek FDN, skalárny bass shelf, +18 % T60 odchýlka |
-| E3 Hall | 🟡 solídny základ | to isté + density buildup je málo hustý na dlhé decaye |
-| E1 Reflections | 🟢 solídny | tapped delays štandardnej konštrukcie, drobnosti v O6 |
-| Konvolúcia | 🟢 konštrukcia | partitioned FFT + true-stereo OK; obsah IR je proceduralný šum |
-| Pre-delay | 🟢 | tempo sync + crossfade, nič riešiť |
-| Limiter | 🟢 po audite | — |
-| Shimmer | 🟡 funkčný | guard je čerstvý a never vozovaný; read nie je anti-aliased |
-| Mod pad | 🟡 | depth cap 20 sampleov — veľkú sálu nerozmiestni |
-| EQ | 🟡 | fixné 3-pásmo per sekcia, žiadne voľné body (stretch) |
-| T60 kalibrácia | 🟡 | ±18 % broadband odchýlka pri default dampingu |
+| Modul            | Stav              | Hlavný deficit                                                 |
+| ---------------- | ----------------- | -------------------------------------------------------------- |
+| E2 Plate/Chamber | 🟡 solídny základ | 8 liniek FDN, skalárny bass shelf, +18 % T60 odchýlka          |
+| E3 Hall          | 🟡 solídny základ | to isté + density buildup je málo hustý na dlhé decaye         |
+| E1 Reflections   | 🟢 solídny        | tapped delays štandardnej konštrukcie, drobnosti v O6          |
+| Konvolúcia       | 🟢 konštrukcia    | partitioned FFT + true-stereo OK; obsah IR je proceduralný šum |
+| Pre-delay        | 🟢                | tempo sync + crossfade, nič riešiť                             |
+| Limiter          | 🟢 po audite      | —                                                              |
+| Shimmer          | 🟡 funkčný        | guard je čerstvý a never vozovaný; read nie je anti-aliased    |
+| Mod pad          | 🟡                | depth cap 20 sampleov — veľkú sálu nerozmiestni                |
+| EQ               | 🟡                | fixné 3-pásmo per sekcia, žiadne voľné body (stretch)          |
+| T60 kalibrácia   | 🟡                | ±18 % broadband odchýlka pri default dampingu                  |
 
 ---
 
@@ -96,11 +96,11 @@ Zvukový audit — kde stojíme proti world-class referenciám (Valhalla Vintage
 
 **A/B dôkaz (merané O1 harnessom, 2026-09-05):**
 
-| Konfigurácia | Density | T60mid | RMS | Peak |
-|---|---|---|---|---|
-| small-room | 102 → **136**/s (+33 %) | 1.26 → 1.28 s | 2.63e-4 → 2.50e-4 | 0.017 → 0.017 |
-| hall-blend | 540 → 517/s (±5 %, už bol hustý) | 9.76 → 9.54 s | 2.14e-4 → 2.20e-4 | 0.009 → 0.008 |
-| shimmer | 717 → 719/s | 0.51 → 0.51 s | 1.49e-2 → 1.59e-2 | 0.330 → 0.374 |
+| Konfigurácia | Density                          | T60mid        | RMS               | Peak          |
+| ------------ | -------------------------------- | ------------- | ----------------- | ------------- |
+| small-room   | 102 → **136**/s (+33 %)          | 1.26 → 1.28 s | 2.63e-4 → 2.50e-4 | 0.017 → 0.017 |
+| hall-blend   | 540 → 517/s (±5 %, už bol hustý) | 9.76 → 9.54 s | 2.14e-4 → 2.20e-4 | 0.009 → 0.008 |
+| shimmer      | 717 → 719/s                      | 0.51 → 0.51 s | 1.49e-2 → 1.59e-2 | 0.330 → 0.374 |
 
 DENSITY_GAIN = √(N/8) zachováva úroveň aj T60; hustota rastie presne tam, kde 8-linový tank comb-oval. PF `ozvena-hardening` pásma aj golden parity prešli bez úprav. **Poznámka k CPU:** formálny perf gate pre Ozvenu v Pulse Forge neexistuje; náhradný dôkaz — soak render po O2 (prešiel). **Rozhodnutie o tier-párovaní: NIE** (počet liniek je konštantný naprieč quality tiermi). **Následok pre natívny C++ tank:** `crossValidation` engine-level sine parity testy sú `it.skip` s odkazom na O2, kým natívny tank prejde na 12/16 liniek (C++ práca, mimo tohto roadmapu).
 
@@ -239,4 +239,4 @@ Plus: A/B JSON z O1 harnessu pred/po, pripojený k commitu sonic zmeny.
 
 ---
 
-*Podklad pre tento dokument: hardening & self-audit Ozveny (2026-09-04/05) — zvuková časť hodnotenia "odozva / kvalita prejavu / modifikovateľnosť" oproti referenciám Valhalla VintageVerb, LiquidSonics a Neoverb.*
+_Podklad pre tento dokument: hardening & self-audit Ozveny (2026-09-04/05) — zvuková časť hodnotenia "odozva / kvalita prejavu / modifikovateľnosť" oproti referenciám Valhalla VintageVerb, LiquidSonics a Neoverb._

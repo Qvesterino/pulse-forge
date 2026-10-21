@@ -20,8 +20,15 @@ for (const stepCount of [16, 32, 64]) {
   }
   samples.sort((a, b) => a - b);
   const p95 = samples[Math.min(samples.length - 1, Math.ceil(samples.length * 0.95) - 1)];
-  rows.push({ stepCount, minMs: samples[0], medianMs: samples[Math.floor(samples.length / 2)], p95Ms: p95, maxMs: samples.at(-1) });
-  if (p95 > MAX_SYNC_PREVIEW_MS) throw new Error(`${stepCount}-step preview p95 ${p95.toFixed(2)}ms exceeds ${MAX_SYNC_PREVIEW_MS}ms`);
+  rows.push({
+    stepCount,
+    minMs: samples[0],
+    medianMs: samples[Math.floor(samples.length / 2)],
+    p95Ms: p95,
+    maxMs: samples.at(-1),
+  });
+  if (p95 > MAX_SYNC_PREVIEW_MS)
+    throw new Error(`${stepCount}-step preview p95 ${p95.toFixed(2)}ms exceeds ${MAX_SYNC_PREVIEW_MS}ms`);
 }
 
 console.log(JSON.stringify({ budgetMs: MAX_SYNC_PREVIEW_MS, rows }, null, 2));

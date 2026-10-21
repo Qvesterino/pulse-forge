@@ -16,6 +16,7 @@ Verify:
 - project version handling
 
 Search for:
+
 - duplicate IDs
 - orphaned entities
 - stale references
@@ -25,7 +26,6 @@ Search for:
 - derived state becoming stale
 
 Define key project invariants and test them.
-
 
 ## Global Rules
 
@@ -38,23 +38,26 @@ Define key project invariants and test them.
 - Avoid broad architectural rewrites unless the audit reveals a concrete defect that cannot be solved safely otherwise.
 - After every meaningful change, run relevant tests/checks.
 
-
-
 ## Completion Report
 
 At the end provide:
 
 ### Findings
+
 Confirmed defects, risks, or inconsistencies.
 
 ### Fixes
+
 What was changed and why.
 
 ### Tests Added
+
 Regression, integration, or E2E coverage added.
 
 ### Verification
+
 Exact commands/checks executed and their results.
 
 ### Remaining Risks
+
 Anything intentionally left unchanged or requiring manual/human review.

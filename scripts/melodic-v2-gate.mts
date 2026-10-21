@@ -82,7 +82,8 @@ async function degreeDistribution(semantic: number[]): Promise<number[]> {
 const darkDist = await degreeDistribution(await embedText("dark aggressive beat in the style of travis scott"));
 const brightDist = await degreeDistribution(await embedText("smooth happy uplifting beat in the style of amapiano"));
 
-const rms = (a: number[], b: number[]) => Math.sqrt(a.reduce((s, x, i) => s + (x - b[i]) * (x - b[i]), 0)) / Math.sqrt(a.length);
+const rms = (a: number[], b: number[]) =>
+  Math.sqrt(a.reduce((s, x, i) => s + (x - b[i]) * (x - b[i]), 0)) / Math.sqrt(a.length);
 const distance = rms(darkDist, brightDist);
 const sumsOk = [darkDist, brightDist].every((d) => Math.abs(d.reduce((s, x) => s + x, 0) - 1) < 0.01);
 const argmaxDark = darkDist.indexOf(Math.max(...darkDist));

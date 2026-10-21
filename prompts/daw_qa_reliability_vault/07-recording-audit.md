@@ -19,6 +19,7 @@ Verify where supported:
 - interrupted recording
 
 Check:
+
 - clip placement
 - timestamp alignment
 - recorded duration
@@ -27,7 +28,6 @@ Check:
 - preservation of captured audio when a later step fails
 
 Never silently discard captured audio.
-
 
 ## Global Rules
 
@@ -40,23 +40,26 @@ Never silently discard captured audio.
 - Avoid broad architectural rewrites unless the audit reveals a concrete defect that cannot be solved safely otherwise.
 - After every meaningful change, run relevant tests/checks.
 
-
-
 ## Completion Report
 
 At the end provide:
 
 ### Findings
+
 Confirmed defects, risks, or inconsistencies.
 
 ### Fixes
+
 What was changed and why.
 
 ### Tests Added
+
 Regression, integration, or E2E coverage added.
 
 ### Verification
+
 Exact commands/checks executed and their results.
 
 ### Remaining Risks
+
 Anything intentionally left unchanged or requiring manual/human review.

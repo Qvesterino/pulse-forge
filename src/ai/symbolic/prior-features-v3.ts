@@ -1,4 +1,5 @@
 import { buildPriorFeatureRow, PRIOR_FEATURE_COUNT, type PriorFeatureInput } from "./prior-features";
+import type { AiMeter } from "../meter";
 
 /**
  * prior-features-v3 — HYBRID conditioning (semantic + one-hot TOGETHER).
@@ -37,6 +38,8 @@ export interface PriorV3FeatureInput {
   role: PriorFeatureInput["role"];
   step: number;
   stepCount: number;
+  /** The metre the frame is read in (ADR 0057 Stage 2d). */
+  meter: AiMeter;
 }
 
 /** Build one fixed-order v3 feature row. Pure — same input ⇒ same row. */
@@ -51,6 +54,7 @@ export function buildPriorV3FeatureRow(input: PriorV3FeatureInput): number[] {
     role: input.role,
     step: input.step,
     stepCount: input.stepCount,
+    meter: input.meter,
   });
   for (let index = 0; index < v1.length; index++) {
     row[V3_SEMANTIC_DIMS + index] = v1[index];
@@ -65,6 +69,8 @@ export function buildPriorV3GridRows(params: {
   styleId: string;
   padRoles: readonly string[];
   stepCount: number;
+  /** The metre the grid is read in (ADR 0057 Stage 2d). */
+  meter: AiMeter;
 }): number[][] {
   const rows: number[][] = [];
   for (const role of params.padRoles) {
@@ -77,6 +83,7 @@ export function buildPriorV3GridRows(params: {
           role: role as PriorFeatureInput["role"],
           step,
           stepCount: params.stepCount,
+          meter: params.meter,
         }),
       );
     }

@@ -61,8 +61,8 @@ the chord sounding at the note's bar.
 7. **No factory presets in v1.** Presets require the browser loudness
    harness (coverage/clamp pins in the preset-loudness audit), and v1's
    value is the default patch + user samples. Preset family + curated bank
-   + loudness measurement are the follow-up wave. The Sample Forge import
-   path and `setInstrumentSample` are the user-sample route.
+   - loudness measurement are the follow-up wave. The Sample Forge import
+     path and `setInstrumentSample` are the user-sample route.
 8. **No dedicated panel in v1** (descope): every parameter is editable in
    the Inspector's generic instrument-params surface (it renders
    `INSTRUMENT_DEFS[kind].params` for any kind), and the source arrives via

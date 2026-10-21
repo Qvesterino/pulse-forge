@@ -67,10 +67,15 @@ bridge callback off the audio thread; it only feeds the existing parser.
 
 ```ts
 interface NativeFilesBridge {
-  pickDocuments(options?: { mimeTypes?: string[]; multiple?: boolean }):
-    Promise<Array<{ name: string; mimeType?: string; bytes: Uint8Array }>>;
-  saveDocument(payload: { name: string; mimeType?: string; bytes: Uint8Array }):
-    Promise<{ saved: boolean; name?: string }>;
+  pickDocuments(options?: {
+    mimeTypes?: string[];
+    multiple?: boolean;
+  }): Promise<Array<{ name: string; mimeType?: string; bytes: Uint8Array }>>;
+  saveDocument(payload: {
+    name: string;
+    mimeType?: string;
+    bytes: Uint8Array;
+  }): Promise<{ saved: boolean; name?: string }>;
 }
 ```
 
@@ -140,13 +145,13 @@ before `super.loadUrl`). Build/sign/upload remains the owner gate described in
 
 ## Repository integration points
 
-| Gap | Web-side entry point |
-| --- | --- |
-| MIDI | `src/midi/nativeMidi.ts` (`installNativeMidiShim`, `createNativeMidiAccess`) |
-| SAF save | `src/export/download.ts` → `src/mobile/nativeFiles.ts` |
-| SAF import | `src/mobile/nativeFiles.ts` (`pickNativeFiles`) |
-| Foreground/focus | `src/mobile/audioSession.ts`, wired in `src/services.ts` |
-| Shape validation | `src/mobile/nativeBridge.ts` |
+| Gap              | Web-side entry point                                                         |
+| ---------------- | ---------------------------------------------------------------------------- |
+| MIDI             | `src/midi/nativeMidi.ts` (`installNativeMidiShim`, `createNativeMidiAccess`) |
+| SAF save         | `src/export/download.ts` → `src/mobile/nativeFiles.ts`                       |
+| SAF import       | `src/mobile/nativeFiles.ts` (`pickNativeFiles`)                              |
+| Foreground/focus | `src/mobile/audioSession.ts`, wired in `src/services.ts`                     |
+| Shape validation | `src/mobile/nativeBridge.ts`                                                 |
 
 ## Acceptance checklist
 

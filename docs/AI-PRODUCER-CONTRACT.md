@@ -264,18 +264,18 @@ Numerical quality thresholds for model accuracy, latency and listener preference
 
 This contract extends the architecture already in the repository; it does not authorize a parallel DAW or mutation path:
 
-| Responsibility                             | Current foundation                                                                         |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| Parse and route intent                     | `src/intent/text-parser.ts`, `arrangeWords.ts`, `route.ts`                                 |
-| Normalize and validate intent              | `src/intent/types.ts`, `normalize.ts`, `schema.ts`, `brief-contract.ts`                    |
-| Build reproducible plans and proposals     | `src/intent/plan.ts`, `pipeline.ts`, provider interfaces                                   |
-| Generate, gate, repair and rank candidates | `src/ai/generator.ts`, `invariants.ts`, `src/intent/quality.ts`, candidate/ranking modules |
-| Audition and compare                       | `src/intent/audition.ts`, `candidate-bank.ts`, relevant UI                                 |
-| Apply with undo/redo                       | `src/commands/` and the project model                                                      |
+| Responsibility                             | Current foundation                                                                                                                                                                |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Parse and route intent                     | `src/intent/text-parser.ts`, `arrangeWords.ts`, `route.ts`                                                                                                                        |
+| Normalize and validate intent              | `src/intent/types.ts`, `normalize.ts`, `schema.ts`, `brief-contract.ts`                                                                                                           |
+| Build reproducible plans and proposals     | `src/intent/plan.ts`, `pipeline.ts`, provider interfaces                                                                                                                          |
+| Generate, gate, repair and rank candidates | `src/ai/generator.ts`, `invariants.ts`, `src/intent/quality.ts`, candidate/ranking modules                                                                                        |
+| Audition and compare                       | `src/intent/audition.ts`, `candidate-bank.ts`, relevant UI                                                                                                                        |
+| Apply with undo/redo                       | `src/commands/` and the project model                                                                                                                                             |
 | Separate session/project/taste memory      | `src/intent/session-context.ts`, `src/intent/project-brief.ts`, `src/project-model/producer-brief.ts`, `src/commands/producerBriefCommands.ts`, `src/intent/preference-ledger.ts` |
-| Render and evaluate audio                  | `src/audio-engine/`, `src/rendering/`, `src/intent/audio-feedback.ts`                      |
-| Optional generative performer              | `src/generative/` and MRT2 provider adapters                                               |
-| Local model safety and portability         | `src/ai/` workers/clients, `src/intent/providers/`, desktop model/runtime boundary         |
+| Render and evaluate audio                  | `src/audio-engine/`, `src/rendering/`, `src/intent/audio-feedback.ts`                                                                                                             |
+| Optional generative performer              | `src/generative/` and MRT2 provider adapters                                                                                                                                      |
+| Local model safety and portability         | `src/ai/` workers/clients, `src/intent/providers/`, desktop model/runtime boundary                                                                                                |
 
 The current deterministic parser, symbolic generators, rankers and LFM must remain distinguishable providers/capabilities. A small ONNX candidate ranker is not the LFM language model; a language model is not an audio generator; an MRT2 adapter is not proof that a platform can run MRT2 in real time.
 

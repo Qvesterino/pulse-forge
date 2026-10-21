@@ -83,7 +83,10 @@ try {
   const addEffectCount = await page.locator(".devices-panel select.devices-add-effect").count();
   console.log(`[production-smoke] FX add controls found: ${addEffectCount}`);
   if (addEffectCount === 0) {
-    const devices = await page.locator(".devices-panel").innerText().catch(() => "<missing devices panel>");
+    const devices = await page
+      .locator(".devices-panel")
+      .innerText()
+      .catch(() => "<missing devices panel>");
     throw new Error(`production FX add control missing; device panel text: ${devices}`);
   }
   const addEffectState = await addEffect.evaluate((element) => {
@@ -156,7 +159,11 @@ try {
       const makeBatch = () => {
         const batch = new Float32Array(manifest.featureCount * 3);
         for (let candidate = 0; candidate < 3; candidate++) {
-          batch.fill([0.1, 0.4, 0.9][candidate], candidate * manifest.featureCount, (candidate + 1) * manifest.featureCount);
+          batch.fill(
+            [0.1, 0.4, 0.9][candidate],
+            candidate * manifest.featureCount,
+            (candidate + 1) * manifest.featureCount,
+          );
         }
         return batch;
       };

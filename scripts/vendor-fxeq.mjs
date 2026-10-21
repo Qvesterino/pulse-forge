@@ -109,9 +109,7 @@ for (const rel of FILES) {
   const upstream = readFileSync(abs, "utf8");
   const out = join(DST, rel);
   if (existsSync(out)) {
-    const lost = [...reconciledMarkers(readFileSync(out, "utf8"))].filter(
-      (l) => !reconciledMarkers(upstream).has(l),
-    );
+    const lost = [...reconciledMarkers(readFileSync(out, "utf8"))].filter((l) => !reconciledMarkers(upstream).has(l));
     if (lost.length > 0) {
       conflicts.push(`  ${rel}:\n${lost.map((l) => `    ${l}`).join("\n")}`);
     }
@@ -147,4 +145,6 @@ mkdirSync("tests/fxeq-golden", { recursive: true });
 for (const name of readdirSync(join(FROM, "tests/golden")).filter((f) => f.endsWith(".json"))) {
   copyFileSync(join(FROM, "tests/golden", name), join("tests/fxeq-golden", name));
 }
-console.log("[vendor] golden fixtures synced (cases/helpers live in tests/fxeq-golden/, adapt imports if upstream moves)");
+console.log(
+  "[vendor] golden fixtures synced (cases/helpers live in tests/fxeq-golden/, adapt imports if upstream moves)",
+);

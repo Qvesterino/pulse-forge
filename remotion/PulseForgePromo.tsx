@@ -93,12 +93,7 @@ const Word: React.FC<{
   );
 };
 
-const Cursor: React.FC<{ x: number; y: number; scale?: number; clickAt?: number }> = ({
-  x,
-  y,
-  scale = 1,
-  clickAt,
-}) => {
+const Cursor: React.FC<{ x: number; y: number; scale?: number; clickAt?: number }> = ({ x, y, scale = 1, clickAt }) => {
   const f = useCurrentFrame();
   const clicked = clickAt !== undefined && f >= clickAt;
   const ring = clicked ? Math.max(0, (f - clickAt) / 12) : 0;
@@ -536,7 +531,9 @@ const S4InstantJam: React.FC = () => {
       >
         <Word text="The room is live." at={240} size={76} />
         <div style={{ marginTop: 26 }}>
-          <span style={{ ...chipStyle, color: ACCENT, borderColor: ACCENT }}>▶ SHARED TRANSPORT — EVERYONE IN SYNC</span>
+          <span style={{ ...chipStyle, color: ACCENT, borderColor: ACCENT }}>
+            ▶ SHARED TRANSPORT — EVERYONE IN SYNC
+          </span>
         </div>
       </div>
     </AbsoluteFill>

@@ -16,7 +16,7 @@
 ## Fáza 0 — Ešte dnes (ochrana práce)
 
 - [x] **Commitnúť working tree** — release hardening audit changes are committed together after final verification.
-  Odporúčané logické commity:
+      Odporúčané logické commity:
   1. `fix(audit): maintenance hardening pass — scheduler/collab/export/security fixes + regression tests`
   2. `chore(deps): fast-uri audit fix (non-breaking)`
   3. tvoj pôvodný WIP (FXEQ panel / EffectAbControls / ozvena-params) oddelene, ak je rozpracovaný
@@ -145,23 +145,23 @@ Najväčšia zostávajúca audio-korektnosť položka: live prehodenie scene BPM
 
 ## QA log (doplňovať po testovaní)
 
-| Dátum | Prehliadač | Verzia | Výsledok | Poznámky |
-| ----- | ---------- | ------ | -------- | -------- |
+| Dátum      | Prehliadač                      | Verzia           | Výsledok                                | Poznámky                                                                                                                                                                            |
+| ---------- | ------------------------------- | ---------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 2026-09-08 | Chromium (headless, Playwright) | commit `693d82a` | **197/197 PASS**, 0 console/page errors | boot/collab/embed/share/touch/AudioWorklet DSP (fxeq latency+PDC+metering+CPU)/offline generation/plugin workflow (add→bypass→undo→macro→play); Firefox/Safari/iOS zostáva manuálne |
 
 ---
 
 ## Stav exekúcie (session `pustiť sa do ROADMAP`)
 
-| Položka | Stav | Evidence |
-| ------- | ---- | -------- |
-| Fáza 0 — commit práce | ✅ | release hardening audit commit (main) |
-| 1.1 QA real browser | ✅ Chromium časť / ⏳ Firefox+iOS manuálne | `npm run test:browser` — **197/197 PASS** headless Chromium |
-| 1.2 Export parita | ✅ sceneAutomation + intensity | `tests/export/scene-automation-render.test.ts` + `tests/export/scene-intensity-render.test.ts`; live/offline zdieľajú scene-intensity writer |
-| 1.3 Snapshot restore UI | ✅ (už existovalo — WIP commit) | 12/12 testov `snapshots-panel.test.tsx` |
-| 1.4 Import limity + cancel | ✅ | `01834a1` + testy (mp3 abort, size limity) |
-| 2.1 Bundle headroom | ✅ | aktuálny build — entry **861/995 KB**, total JS **1648/2400 KB**, preview smoke bez chýb |
-| 2.3, 2.4, Fáza 3 | ✅ | detaily v checkedoch + Results log vyššie |
-| 2.5 Vitest migrácia | ⏳ deferované | dev-only advisory; po release |
+| Položka                    | Stav                                       | Evidence                                                                                                                                     |
+| -------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fáza 0 — commit práce      | ✅                                         | release hardening audit commit (main)                                                                                                        |
+| 1.1 QA real browser        | ✅ Chromium časť / ⏳ Firefox+iOS manuálne | `npm run test:browser` — **197/197 PASS** headless Chromium                                                                                  |
+| 1.2 Export parita          | ✅ sceneAutomation + intensity             | `tests/export/scene-automation-render.test.ts` + `tests/export/scene-intensity-render.test.ts`; live/offline zdieľajú scene-intensity writer |
+| 1.3 Snapshot restore UI    | ✅ (už existovalo — WIP commit)            | 12/12 testov `snapshots-panel.test.tsx`                                                                                                      |
+| 1.4 Import limity + cancel | ✅                                         | `01834a1` + testy (mp3 abort, size limity)                                                                                                   |
+| 2.1 Bundle headroom        | ✅                                         | aktuálny build — entry **861/995 KB**, total JS **1648/2400 KB**, preview smoke bez chýb                                                     |
+| 2.3, 2.4, Fáza 3           | ✅                                         | detaily v checkedoch + Results log vyššie                                                                                                    |
+| 2.5 Vitest migrácia        | ⏳ deferované                              | dev-only advisory; po release                                                                                                                |
 
 **Finálna verifikácia (2026-09-07):** `npm run typecheck:clean` ✓ · full suite **193/193 súborov, 1911 passed, 94 skipped, 0 failed** ✓ · `npm run build` ✓ (**861/995 KB entry, 1648/2400 KB total JS**) · `npm run test:browser` ✓ **197/197**. Pred release tagom ešte zostáva manuálna Firefox/Safari/iOS QA a kontrola clean worktree.

@@ -111,8 +111,7 @@ async function measure(page) {
       }
       out.sequencerVisibleRows = visible;
 
-
-// THE PITCH CHECK. This took three attempts and each wrong one is recorded,
+      // THE PITCH CHECK. This took three attempts and each wrong one is recorded,
       // because the shape of the mistake is the reusable part.
       //
       // WHAT ROW_HEIGHT MUST BE. `cumulativeHeights` sums getItemHeight() over
@@ -308,9 +307,7 @@ const collapsed = report.filter((r) => r.m.sequencer == null || r.m.sequencer.h 
 // The STYLESHEET's row box vs the COMPONENT's constant. Two independent
 // sources. Deliberately NOT the rendered pitch, which is derived from that same
 // constant and would make the check a tautology.
-const pitchMiss = report.filter(
-  (r) => r.m.rowBoxOverlapsSlot === true,
-);
+const pitchMiss = report.filter((r) => r.m.rowBoxOverlapsSlot === true);
 
 // The same two-source pitch check on the coarse branch, plus the branch itself:
 // a coarse pointer that still publishes the fine constant means the media query
@@ -318,9 +315,7 @@ const pitchMiss = report.filter(
 // tablet row pitch is wrong by 16px per row.
 const touchOverflow = touchReport.filter((r) => r.m.docWidth > r.m.vw);
 const touchCollapsed = touchReport.filter((r) => r.m.sequencer == null || r.m.sequencer.h < 40);
-const touchPitchMiss = touchReport.filter(
-  (r) => r.m.rowBoxOverlapsSlot === true,
-);
+const touchPitchMiss = touchReport.filter((r) => r.m.rowBoxOverlapsSlot === true);
 const touchWrongConstant = touchReport.filter((r) => r.m.rowPitchAssumed !== COARSE_ROW_PITCH);
 
 console.log("\n=== KYX studio shell - vertical budget ===\n");
@@ -415,7 +410,10 @@ const failed =
   touchWrongConstant.length;
 if (!failed) {
   console.log("PASS: no overflow, sequencer present at every viewport, row pitch matches the virtualizer");
-  if (TOUCH) console.log("PASS (coarse): " + TOUCH_VIEWPORTS.length + " touch viewports, ROW_HEIGHT " + COARSE_ROW_PITCH + "px == CSS box");
+  if (TOUCH)
+    console.log(
+      "PASS (coarse): " + TOUCH_VIEWPORTS.length + " touch viewports, ROW_HEIGHT " + COARSE_ROW_PITCH + "px == CSS box",
+    );
   else console.log("NOTE: coarse-pointer branch NOT measured - pass --touch to cover it");
 }
 process.exit(failed ? EXIT_GATE_FAILED : 0);

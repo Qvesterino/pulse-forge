@@ -636,9 +636,7 @@ describe("splitArrangementClipAtTick (ADR 0025 — scene split)", () => {
       patternPhaseOffsetAtTick(original, pattern, splitTick, BAR_TICKS),
     );
     // Scene automation time does not loop — it keeps elapsing.
-    expect(sceneOffsetAtTick(right, splitTick, BAR_TICKS)).toBe(
-      sceneOffsetAtTick(original, splitTick, BAR_TICKS),
-    );
+    expect(sceneOffsetAtTick(right, splitTick, BAR_TICKS)).toBe(sceneOffsetAtTick(original, splitTick, BAR_TICKS));
     expect(right.loop).toBe(true);
   });
 

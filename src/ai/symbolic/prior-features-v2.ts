@@ -1,4 +1,6 @@
 import { inferPadRole } from "../pad-roles";
+import type { AiMeter } from "../meter";
+import { roleFlags, stepInBarFeatures } from "./step-position";
 
 /**
  * prior-features-v2 — EMBEDDING-CONDITIONED drum prior contract.
@@ -30,6 +32,8 @@ export interface V2PriorFeatureInput {
   role: string;
   step: number;
   stepCount: number;
+  /** The metre the frame is read in (ADR 0057 Stage 2d). */
+  meter: AiMeter;
 }
 
 /** Build one fixed-order v2 feature row. Pure — same input ⇒ same row. */
@@ -49,22 +53,19 @@ export function buildPriorV2FeatureRow(input: V2PriorFeatureInput): number[] {
   offset += V2_ROLE_VOCAB.length;
 
   // Step-in-bar encoding
-  const s16 = ((input.step % 16) + 16) % 16;
-  row[offset++] = s16 / 16;
-  row[offset++] = Math.sin((2 * Math.PI * s16) / 16);
-  row[offset++] = Math.cos((2 * Math.PI * s16) / 16);
-  row[offset++] = Math.sin((4 * Math.PI * s16) / 16);
-  row[offset++] = Math.cos((4 * Math.PI * s16) / 16);
+  const position = stepInBarFeatures(input.meter, input.step);
+  for (const value of position) row[offset++] = value;
 
-  // Frame position
-  const frame = Math.max(16, input.stepCount);
+  // Frame position — the pattern's own length, at least one metrical bar.
+  const frame = Math.max(input.meter.stepsPerBar, input.stepCount);
   row[offset++] = input.step / frame;
   row[offset++] = Math.sin((2 * Math.PI * input.step) / frame);
   row[offset++] = Math.cos((2 * Math.PI * input.step) / frame);
 
   // Flags
-  row[offset++] = s16 === 0 ? 1 : 0;
-  row[offset] = s16 === 4 || s16 === 12 ? 1 : 0;
+  const flags = roleFlags(input.meter, input.step);
+  row[offset++] = flags.downbeat;
+  row[offset] = flags.backbeat;
 
   return row;
 }
@@ -74,6 +75,8 @@ export function buildPriorV2GridRows(params: {
   semantic: readonly number[];
   padRoles: readonly string[];
   stepCount: number;
+  /** The metre the grid is read in (ADR 0057 Stage 2d). */
+  meter: AiMeter;
 }): number[][] {
   const rows: number[][] = [];
   for (const role of params.padRoles) {
@@ -84,6 +87,7 @@ export function buildPriorV2GridRows(params: {
           role: role as V2PriorFeatureInput["role"],
           step,
           stepCount: params.stepCount,
+          meter: params.meter,
         }),
       );
     }

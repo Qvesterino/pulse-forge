@@ -1,6 +1,6 @@
 # ADR 0057 — The step grid follows the meter: one bar is `ticksPerBar(doc) / STEP_TICKS` steps
 
-Date: 2026-10-20 · Status: Accepted (v4 — Stage 1, 1b, 2a, 2b and 2d shipped) · Scope: pattern grid, sequencer ruler, piano roll grid, pattern labels, transfer disclosure, intent engine, MCP surface, AI layer, MIDI import
+Date: 2026-10-20 · Status: Accepted (v5 — Stage 1, 1b, 2a, 2b, 2c and 2d shipped) · Scope: pattern grid, sequencer ruler, piano roll grid, pattern labels, transfer disclosure, intent engine, MCP surface, AI layer, AI groove material, MIDI import
 
 ## Context
 
@@ -295,9 +295,10 @@ bar of a 3/4 pattern reached past the groove's material. It now folds at the
 
 4/4 is deliberately excluded from the WRITE path: that metre's behaviour is the
 promise the overwhelming majority of the product depends on, and its material
-already carries the metrical skeleton. **Stage 2c (metrical groove content)
-will retire the WRITE path everywhere**, because the reference will then hold
-the anchors itself.
+already carries the metrical skeleton. **Stage 2c narrowed the WRITE path to
+the irregular bars**, where the metrical view deliberately imposes no skeleton
+and the metre is still the last word on the downbeat — everywhere else the
+reference holds the anchors itself and REPAIR covers them.
 
 ### 4/4 is byte-identical — measured, not assumed
 
@@ -330,7 +331,141 @@ training frame, the pinned ONNX feature frames, the v2 feature contract's
 chord-duration fraction) are listed with their reasons, and **the ledger may
 only shrink**. The guard proves it can fail on a synthetic violation.
 
-### Stage 2d — the IMPORT speaks the document's bars
+## Stage 2c — the groove MATERIAL speaks the document's metre
+
+Stage 2b made the AI layer speak the document's metre: the bar count, the
+phrase cut, the fill, the kick, the snare. But the CONTENT it drew from was
+still a 4/4 groove read at the metrical bar — so the metre was a frame around
+4/4 material, not a language the material spoke.
+
+### What was measured, before anything changed
+
+The groove library is 4/4 material: 258 grooves, every row sixteen sixteenth
+steps, written for a bar that has four beats. Read at a twelve-step metrical
+bar, half of that material falls OUTSIDE the bar:
+
+- a UKG clap on the "and" of 3 and the "and" of 4 (steps 12 and 14) is past a
+  6/8 bar's end;
+- a rock backbeat on the "ands" of 1 and 3 lands on the wrong units;
+- a trap kick on the "and" of 4 is simply not there.
+
+Measured on the commit BEFORE this stage — the same script, the same seeds, in
+a worktree at that commit, against the same worktree plus this stage's patch:
+the anchor roles' hits that sat OFF the metre's skeleton (12 seeds × 3 genres,
+kick + snare + clap):
+
+| metre | before           | after                                                |
+| ----- | ---------------- | ---------------------------------------------------- |
+| 4/4   | 39.1 % (97/248)  | **39.1 % (97/248)** — the same 248 hits, the same 97 |
+| 3/4   | 28.0 % (74/264)  | **5.9 % (12/202)**                                   |
+| 6/8   | 3.0 % (6/198)    | **2.0 % (4/196)**                                    |
+| 5/4   | 25.9 % (109/421) | **6.0 % (20/332)**                                   |
+| 7/8   | 51.0 % (51/100)  | 56.6 % (47/83) — see the irregular limit below       |
+
+4/4 is the control: the genres' syncopation is CONTENT, not contamination, and
+the 4/4 byte-identity holds cell for cell (the four canonical hashes below).
+
+7/8 is the declared limit, not a silent one: an irregular bar has ONE pulse,
+so the grouping is CONTENT, and the library has no irregular grooves. Most of
+the anchor hits are therefore off the skeleton in both measurements — 7/8 has
+no skeleton for the snare at all. The projection refuses to invent a 7/8
+grouping, and the bar keeps the library's 4/4 shape.
+
+### One owner: `src/ai/groove-view.ts` — the metrical VIEW, not a second library
+
+The library stays 4/4 and stays the source of truth. The metrical view is a
+DERIVED PROJECTION of it, and it answers one question: "what does this groove
+say in THIS metre?".
+
+1. **The base** — the source row folded into the target bar. A longer source is
+   truncated (the bar is cut, never stretched); a shorter target tiles the
+   source (the material repeats rather than running out).
+2. **The skeleton** — the roles the metre re-voices: the kick on the pulse, the
+   snare and the clap on the backbeat. Every other role keeps the folded
+   positions, so the groove's own swing survives the fold.
+3. **The material** — the role's hits, collected from the WHOLE source row, in
+   order. The whole row matters: a 4/4 groove's beat-4 backbeat lives past a
+   3/4 bar's end, and it is exactly the material a shorter metre needs.
+4. **Re-voice** — the base's hits give way to the metre's skeleton. The
+   collected hits are re-emitted on the anchor positions in order; a metre with
+   more anchors than the groove has hits repeats them (a shuffle wants a
+   backbeat on both its "2" and its "5"), and a metre with fewer keeps the
+   first ones (a 3/4 bar has no beat 4).
+
+What the projection refuses to do:
+
+- a bar with ONE pulse (7/8, 5/8) has no skeleton to impose — the grouping is
+  content;
+- a role with no anchor in this metre (the snare in 7/8) keeps its material;
+- a role with no material at all (a groove with no clap) is not invented.
+
+The projection is LEVEL-AGNOSTIC: the same function maps the groove library's
+velocities and the Markov model's quantized levels, so the reference and the
+generated content can never disagree about where the metre puts a hit.
+
+### The model keeps its frame; the VIEW maps it
+
+The Markov model still generates the SOURCE bar — its own sixteen-position
+frame, the frame the library is trained on. The view maps that bar into the
+document's metre. Re-framing the model is a retrain with new manifests: the
+pinned frames are a MODEL CONTRACT (no manifest records the frame length, so
+changing it would break every model silently), and that is a separate stage.
+
+### The reference speaks the metre too — and the WRITE path is NARROWED
+
+Stage 2b had TWO anchor paths, because the library is 4/4 material: REPAIR
+(the reference has a hit at the anchor → put it back) and WRITE (the reference
+has nothing at the anchor → the metre writes it, wearing the groove's nearest
+loudness).
+
+The reference the generator reads is now the METRICAL VIEW, and in every metre
+with more than one pulse that view carries the anchors itself — so REPAIR
+covers them and WRITE does not fire there. What is left is the case the
+projection deliberately refuses to touch: an irregular metre, where the metre
+still insists on the downbeat. That is a real state, not a theory — 115 of the
+library's 802 kick rows have no hit at step 0 (`house.footwork` kicks on
+1/5/9/13), and 218 of the 744 snare/clap rows have no 4/4 backbeat hit.
+
+So the WRITE path is NARROWED, not retired: it is the metre's last word in the
+irregular bars, and nowhere else.
+
+What changed in the audible result is the loudness, not the positions. The
+positions were already right — Stage 2b's WRITE path put them there. Measured
+on `ukg.ukg` in 6/8, the same seed and the same script before and after:
+
+| lane | before           | after                |
+| ---- | ---------------- | -------------------- |
+| kick | 0: 0.65, 6: 0.41 | 0: 0.65, **6: 0.73** |
+| clap | 2: 0.45, 8: 0.67 | **2: 0.60**, 8: 0.67 |
+
+The shuffle's second pulse now carries the groove's own beat-2 kick instead of
+a nearest-neighbour guess, and its first backbeat carries the groove's beat-4
+clap — the material that used to fall off the end of the bar is back, in the
+metre's own voice.
+
+### 4/4 is byte-identical — measured, not assumed
+
+The projection does not run in 4/4: the metre IS the library's metre, so the
+material is already in the right shape. That is a short-circuit, not a
+comparison, and it is why the four canonical content hashes are unchanged:
+`17e1439d` (house), `688279c1` (trap), `47f20c59` (dnb), `b4f0ae78` (house-2).
+The gate is stronger than the four hashes: a library-wide guard walks all 258
+grooves and asserts that the metrical view is the IDENTITY for every row of
+every pad in 4/4 — same positions, same values, same length, including the
+one groove in the library that carries a fifteen-step row.
+
+### The guards
+
+- **The view invents nothing**: across the library and every metre, every hit
+  in a projected row is a value that exists in the source row.
+- **The kick sits exactly on the pulse** in every metre with more than one
+  pulse — the projection's own contract, checked over the whole library.
+- **The 4/4 identity** over the whole library, not over a fixture.
+- Stage 2b's third guard still holds: no module in `src/ai/` measures a bar as
+  sixteen steps. The Markov model's ledger entry now says why: the model keeps
+  its frame, and the VIEW maps it.
+
+## Stage 2d — the IMPORT speaks the document's bars
 
 The grid was truthful and the intent engine asked in bars, but one producer
 still padded in 4/4's steps: the MIDI import rounded the imported phrase up to
@@ -338,7 +473,7 @@ a multiple of SIXTEEN steps — 4/4's bar — whatever the document declared. In
 6/8 project that produced a 1.33-bar groove whose downbeat reached the bar line
 only every fourth bar, and the transfer dialog had to warn the user about it.
 
-#### What was measured, before anything changed
+### What was measured, before anything changed
 
 The import's length is `ceil(neededSteps / 16) * 16`, where `neededSteps` is the
 longest note end. In a 6/8 document that is a length the metrical bar does not
@@ -346,7 +481,7 @@ divide, so the imported groove drifts. The material itself was never the
 problem — the notes and the drum hits sit at absolute positions, and only the
 loop's LENGTH was wrong.
 
-#### The fix: pad UP to a whole number of the DOCUMENT's bars
+### The fix: pad UP to a whole number of the DOCUMENT's bars
 
 `stepsForWholeBars(doc, neededSteps)`
 (`src/project-model/grid.ts`) replaces the hard-coded multiple. The result is
@@ -355,18 +490,18 @@ material: nothing is ever cut to fit a bar. The drum-hit window is bounded by
 the same number, and because the window is never shorter than the longest
 note, no hit is dropped either.
 
-| metre | bar (steps) | material needs | old length | new length |
-| ----- | ----------- | -------------- | ---------- | ---------- |
+| metre | bar (steps) | material needs | old length | new length         |
+| ----- | ----------- | -------------- | ---------- | ------------------ |
 | 4/4   | 16          | 20             | 32         | **32** (unchanged) |
-| 3/4   | 12          | 20             | 32         | **24** (2 bars) |
-| 6/8   | 12          | 20             | 32         | **24** (2 bars) |
-| 2/4   | 8           | 20             | 32         | **24** (3 bars) |
-| 4/2   | 32          | 20             | 32         | **32** (1 bar) |
+| 3/4   | 12          | 20             | 32         | **24** (2 bars)    |
+| 6/8   | 12          | 20             | 32         | **24** (2 bars)    |
+| 2/4   | 8           | 20             | 32         | **24** (3 bars)    |
+| 4/2   | 32          | 20             | 32         | **32** (1 bar)     |
 
 4/4 is the same arithmetic, so every 4/4 project is byte-identical — the
 negative control, and not an optional one.
 
-#### The material does not move
+### The material does not move
 
 The two halves of the change are different questions and both are pinned:
 
@@ -378,7 +513,7 @@ The two halves of the change are different questions and both are pinned:
 A change that moved the user's notes would be a rewrite, not a rounding, and
 the repo's rule is that stored content is never re-expressed.
 
-#### The disclosure follows the truth
+### The disclosure follows the truth
 
 The import no longer drifts, so the warning that said it did became false —
 and a disclosure that states something untrue is worse than no disclosure. It
@@ -395,7 +530,7 @@ so a sixteen-step pattern is exactly TWO whole bars — it lands on the
 downbeat, and the old warning told the user its downbeat "reaches the bar
 line only every 2 bars", which was not a drift at all.
 
-#### What is still open (and where)
+### What is still open (and where)
 
 - **Stage 2c — metrical groove content.** The groove library is 4/4 material:
   the Markov model's state space is sixteen positions, the ONNX priors encode a
@@ -437,8 +572,10 @@ document's meter. The highest-risk sites, mapped (read-only sweep,
 1. **The AI layer.** **DONE in Stage 2b** — `src/ai/meter.ts` owns the metrical
    facts; the phrase, the anchors, the fills, the melodic density and the
    quality metrics follow the document's metre, and 4/4 is byte-identical
-   (measured against a captured baseline). The groove CONTENT is still 4/4 —
-   that is Stage 2c.
+   (measured against a captured baseline). The groove CONTENT is 4/4 —
+   **DONE in Stage 2c**: `src/ai/groove-view.ts` is the metrical view of the
+   library, and the material now carries the metre's anchors in the groove's
+   own voice.
 2. **The intent / brief contracts.** **DONE in Stage 2a** — the five gates
    (`src/intent/schema.ts`, `project-brief.ts`, `creative-task-contract.ts`,
    `src/project-model/producer-brief.ts`, `src/intent/normalize.ts`) no longer
@@ -454,7 +591,11 @@ document's meter. The highest-risk sites, mapped (read-only sweep,
    (`src/project-model/templates.ts`, `template-pack2.ts`).
 5. **The ONNX feature vectors.** `src/ai/symbolic/*` encodes a fixed 16-step
    bar into a fixed-width feature row; moving the grid means re-validating the
-   pinned model manifests under `public/models/`.
+   pinned model manifests under `public/models/`. This is **Stage 2e**, and it
+   is a retrain, not a flip: no manifest records the frame length, so changing
+   it would break every model silently. Stage 2c kept the Markov model's frame
+   for the same reason — the model generates its own bar and the metrical view
+   maps it.
 
 The visible surface's remaining 4/4 sites are declared in the guard's ledger
 (`tests/adr0057-metrical-step-grid.test.ts`): the assist / generate / dice
@@ -498,6 +639,14 @@ contour's bar lines. **The ledger may only shrink.**
   same anchors, the same recipe, and no metre in the recipe at all.
 - **No AI module measures a bar as sixteen steps** — the guard proves it can
   fail, and the 4/4 ledger may only shrink.
+- **The groove material speaks the document's metre**: the metrical view
+  projects the library's 4/4 material into the document's metre, the anchors
+  carry the groove's OWN loudness (not a nearest-neighbour guess), and no
+  projected hit is a value the source row did not have.
+- **The metrical view is the identity in 4/4** — for every groove, every pad,
+  every row: same positions, same values, same length.
+- **An irregular bar is not given a skeleton it does not have** — 7/8 keeps the
+  library's grouping, and the snare has no backbeat to be re-voiced onto.
 
 ## Consequences and scope limits
 
@@ -527,6 +676,7 @@ contour's bar lines. **The ledger may only shrink.**
 - `src/project-model/grid.ts` — the grid truth (one owner)
 - `src/project-model/schema.ts` — `ticksPerBarFor`, `ticksPerBeatFor`
 - `src/ai/meter.ts` — the AI layer's metrical truth (one owner)
+- `src/ai/groove-view.ts` — the metrical VIEW of the groove material (one owner)
 - `src/ui/Sequencer.tsx` — the ruler and the step cells
 - `src/ui/PianoRoll.tsx` — the bar lines, the note-length menu
 - `src/export/transfer-import.ts` — `patternGridWarning`
@@ -535,5 +685,7 @@ contour's bar lines. **The ledger may only shrink.**
   length, the material that does not move, and the 4/4 negative control
 - `tests/adr0057-metrical-intent-length.test.ts` — the intent engine's bars, the MCP surface's bars, and the second guard
 - `tests/adr0057-ai-meter.test.ts` — the AI layer's metre, the 4/4 baseline, and the third guard
+- `tests/adr0057-metrical-groove.test.ts` — the groove material's metre, the
+  library-wide guards, and the 4/4 negative control
 - `tests/adr0056-pattern-grid.test.ts` — the drift, and the whole-bar control
 - `docs/adr/0056-arrangement-bar-length-and-time-signature.md` — the arrangement's move onto the meter

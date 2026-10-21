@@ -1,650 +1,834 @@
 <!doctype html>
 <html lang="sk">
-<head>
-<meta charset="utf-8" />
-<title>KYX Listening Room</title>
-<style>
-  :root { color-scheme: dark; --acc: #f59e0b; --blue: #7aa2f7; --ok: #4ade80; }
-  body { font: 14px/1.5 ui-monospace, monospace; background: #101010; color: #ddd; margin: 20px auto; max-width: 1020px; padding: 0 14px; }
-  h1 { font-size: 17px; letter-spacing: 1px; }
-  h1 span { color: var(--acc); }
-  .hint { color: #888; font-size: 12px; }
-  .tabs { display: flex; gap: 6px; margin: 14px 0; position: sticky; top: 0; background: #101010; padding: 8px 0; z-index: 5; border-bottom: 1px solid #333; }
-  .tabs button { font: inherit; background: #1c1c1c; color: #aaa; border: 1px solid #333; border-radius: 4px; padding: 6px 14px; cursor: pointer; }
-  .tabs button.active { color: var(--acc); border-color: var(--acc); }
-  .suite { display: none; }
-  .suite.active { display: block; }
-  table { width: 100%; border-collapse: collapse; margin: 8px 0 20px; }
-  tr { border-bottom: 1px solid #242424; }
-  tr.playing { background: #191919; }
-  td { padding: 7px 9px; }
-  .cat, .desc { color: #777; font-size: 11px; }
-  button { font: inherit; background: #1e1e1e; color: #ccc; border: 1px solid #333; border-radius: 4px; padding: 3px 9px; cursor: pointer; }
-  button:hover { border-color: #666; }
-  .ab .active { border-color: var(--acc); color: var(--acc); }
-  .path .active { border-color: var(--blue); color: var(--blue); }
-  #player { width: 100%; margin: 8px 0 16px; }
-  .group { border: 1px solid #2a2a2a; border-radius: 8px; padding: 12px; margin: 14px 0; }
-  .group h3 { margin: 0 0 4px; font-size: 13px; }
-  .group .gk { color: #666; font-size: 11px; }
-  .cands { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin: 10px 0; }
-  .cand { border: 1px solid #333; border-radius: 6px; padding: 9px; cursor: pointer; }
-  .cand:hover { border-color: #777; }
-  .cand .rank { font-size: 20px; color: #555; min-height: 26px; }
-  .cand.r1 .rank { color: var(--ok); } .cand.r2 .rank { color: var(--blue); }
-  .cand.r3 .rank { color: var(--acc); } .cand.r4 .rank { color: #c084fc; }
-  .cand.playing { border-color: var(--acc); }
-  .cand .fav { margin-top: 6px; font-size: 12px; }
-  .cand .fav.on { color: var(--acc); border-color: var(--acc); }
-  .toolbar { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
-  .verdict-ok { color: var(--ok); }
-  .sent { color: var(--ok); font-size: 11px; margin-left: 8px; }
-  .blind-hidden { display: none !important; }
-  #blind-banner { color: var(--acc); border: 1px dashed var(--acc); border-radius: 6px; padding: 8px 12px; }
-  tr.lane-fits td { background: rgba(74, 222, 128, 0.08); }
-  tr.lane-off td { background: rgba(248, 113, 113, 0.08); }
-  tr.lane-hit td { background: rgba(245, 158, 11, 0.15); }
-  tr.lane-hit .lane-sent { color: var(--acc); }
-  .v-fits:hover { border-color: var(--ok); color: var(--ok); }
-  .v-off:hover { border-color: #f87171; color: #f87171; }
-  .v-hit:hover { border-color: var(--acc); color: var(--acc); }
-  .lane-refine { background: #161616; border: 1px solid #2a2a2a; border-radius: 6px; padding: 7px 9px; }
-  .lane-refine input[type="text"] { font: inherit; background: #0d0d0d; color: #ccc; border: 1px solid #333; border-radius: 4px; padding: 4px 7px; }
-  .dir-chip { font-size: 11px; padding: 2px 7px; }
-  .dir-chip.on { border-color: var(--acc); color: var(--acc); background: rgba(245, 158, 11, 0.08); }
-</style>
-</head>
-<body>
-<h1>KYX <span>Listening Room</span></h1>
-<p class="hint">Počúj, porovnaj, rozhodni — tvoje verdikty sa ukladajú (POST → listening/verdicts.json) a
-<code>npm run listening:ingest</code> ich pretaví do tréningu intent enginu (ranker golden + favorites retrain všetkých 3 modelov).</p>
-<p id="blind-banner" class="hint" style="display:none">BLIND režim (?blind=1) — názvy verzií sú skryté a poradie zamiešané;
-hodnotíš čistý zvuk. Verdikty sa ukladajú so skutočnými id. <button id="blind-reveal">REVEAL — odhaliť názvy</button></p>
-<div class="tabs">
-  <button data-suite="lanes" class="active">LANES ★ (nové)</button>
-  <button data-suite="morph">MORPH ★ (A/B)</button>
-  <button data-suite="scenes">SCENE presety (A/B)</button>
-  <button data-suite="intent">INTENT učenie (rank ★)</button>
-  <button data-suite="conditioning">CONDITIONING (v1 vs v3)</button>
-  <button data-suite="grooves">GROOVY ★ (nové)</button>
-  <button data-suite="packy">PACKY (staré packy)</button>
-</div>
+  <head>
+    <meta charset="utf-8" />
+    <title>KYX Listening Room</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --acc: #f59e0b;
+        --blue: #7aa2f7;
+        --ok: #4ade80;
+      }
+      body {
+        font:
+          14px/1.5 ui-monospace,
+          monospace;
+        background: #101010;
+        color: #ddd;
+        margin: 20px auto;
+        max-width: 1020px;
+        padding: 0 14px;
+      }
+      h1 {
+        font-size: 17px;
+        letter-spacing: 1px;
+      }
+      h1 span {
+        color: var(--acc);
+      }
+      .hint {
+        color: #888;
+        font-size: 12px;
+      }
+      .tabs {
+        display: flex;
+        gap: 6px;
+        margin: 14px 0;
+        position: sticky;
+        top: 0;
+        background: #101010;
+        padding: 8px 0;
+        z-index: 5;
+        border-bottom: 1px solid #333;
+      }
+      .tabs button {
+        font: inherit;
+        background: #1c1c1c;
+        color: #aaa;
+        border: 1px solid #333;
+        border-radius: 4px;
+        padding: 6px 14px;
+        cursor: pointer;
+      }
+      .tabs button.active {
+        color: var(--acc);
+        border-color: var(--acc);
+      }
+      .suite {
+        display: none;
+      }
+      .suite.active {
+        display: block;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 8px 0 20px;
+      }
+      tr {
+        border-bottom: 1px solid #242424;
+      }
+      tr.playing {
+        background: #191919;
+      }
+      td {
+        padding: 7px 9px;
+      }
+      .cat,
+      .desc {
+        color: #777;
+        font-size: 11px;
+      }
+      button {
+        font: inherit;
+        background: #1e1e1e;
+        color: #ccc;
+        border: 1px solid #333;
+        border-radius: 4px;
+        padding: 3px 9px;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: #666;
+      }
+      .ab .active {
+        border-color: var(--acc);
+        color: var(--acc);
+      }
+      .path .active {
+        border-color: var(--blue);
+        color: var(--blue);
+      }
+      #player {
+        width: 100%;
+        margin: 8px 0 16px;
+      }
+      .group {
+        border: 1px solid #2a2a2a;
+        border-radius: 8px;
+        padding: 12px;
+        margin: 14px 0;
+      }
+      .group h3 {
+        margin: 0 0 4px;
+        font-size: 13px;
+      }
+      .group .gk {
+        color: #666;
+        font-size: 11px;
+      }
+      .cands {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 8px;
+        margin: 10px 0;
+      }
+      .cand {
+        border: 1px solid #333;
+        border-radius: 6px;
+        padding: 9px;
+        cursor: pointer;
+      }
+      .cand:hover {
+        border-color: #777;
+      }
+      .cand .rank {
+        font-size: 20px;
+        color: #555;
+        min-height: 26px;
+      }
+      .cand.r1 .rank {
+        color: var(--ok);
+      }
+      .cand.r2 .rank {
+        color: var(--blue);
+      }
+      .cand.r3 .rank {
+        color: var(--acc);
+      }
+      .cand.r4 .rank {
+        color: #c084fc;
+      }
+      .cand.playing {
+        border-color: var(--acc);
+      }
+      .cand .fav {
+        margin-top: 6px;
+        font-size: 12px;
+      }
+      .cand .fav.on {
+        color: var(--acc);
+        border-color: var(--acc);
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin: 6px 0;
+      }
+      .verdict-ok {
+        color: var(--ok);
+      }
+      .sent {
+        color: var(--ok);
+        font-size: 11px;
+        margin-left: 8px;
+      }
+      .blind-hidden {
+        display: none !important;
+      }
+      #blind-banner {
+        color: var(--acc);
+        border: 1px dashed var(--acc);
+        border-radius: 6px;
+        padding: 8px 12px;
+      }
+      tr.lane-fits td {
+        background: rgba(74, 222, 128, 0.08);
+      }
+      tr.lane-off td {
+        background: rgba(248, 113, 113, 0.08);
+      }
+      tr.lane-hit td {
+        background: rgba(245, 158, 11, 0.15);
+      }
+      tr.lane-hit .lane-sent {
+        color: var(--acc);
+      }
+      .v-fits:hover {
+        border-color: var(--ok);
+        color: var(--ok);
+      }
+      .v-off:hover {
+        border-color: #f87171;
+        color: #f87171;
+      }
+      .v-hit:hover {
+        border-color: var(--acc);
+        color: var(--acc);
+      }
+      .lane-refine {
+        background: #161616;
+        border: 1px solid #2a2a2a;
+        border-radius: 6px;
+        padding: 7px 9px;
+      }
+      .lane-refine input[type="text"] {
+        font: inherit;
+        background: #0d0d0d;
+        color: #ccc;
+        border: 1px solid #333;
+        border-radius: 4px;
+        padding: 4px 7px;
+      }
+      .dir-chip {
+        font-size: 11px;
+        padding: 2px 7px;
+      }
+      .dir-chip.on {
+        border-color: var(--acc);
+        color: var(--acc);
+        background: rgba(245, 158, 11, 0.08);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>KYX <span>Listening Room</span></h1>
+    <p class="hint">
+      Počúj, porovnaj, rozhodni — tvoje verdikty sa ukladajú (POST → listening/verdicts.json) a
+      <code>npm run listening:ingest</code> ich pretaví do tréningu intent enginu (ranker golden + favorites retrain
+      všetkých 3 modelov).
+    </p>
+    <p id="blind-banner" class="hint" style="display: none">
+      BLIND režim (?blind=1) — názvy verzií sú skryté a poradie zamiešané; hodnotíš čistý zvuk. Verdikty sa ukladajú so
+      skutočnými id. <button id="blind-reveal">REVEAL — odhaliť názvy</button>
+    </p>
+    <div class="tabs">
+      <button data-suite="lanes" class="active">LANES ★ (nové)</button>
+      <button data-suite="morph">MORPH ★ (A/B)</button>
+      <button data-suite="scenes">SCENE presety (A/B)</button>
+      <button data-suite="intent">INTENT učenie (rank ★)</button>
+      <button data-suite="conditioning">CONDITIONING (v1 vs v3)</button>
+      <button data-suite="grooves">GROOVY ★ (nové)</button>
+      <button data-suite="packy">PACKY (staré packy)</button>
+    </div>
 
-<div id="playerWrap"><audio id="player" controls preload="auto" style="width:100%"></audio></div>
+    <div id="playerWrap"><audio id="player" controls preload="auto" style="width: 100%"></audio></div>
 
-<div class="suite active" id="suite-lanes"></div>
-<div class="suite" id="suite-morph"></div>
-<div class="suite" id="suite-scenes"></div>
-<div class="suite" id="suite-intent"></div>
-<div class="suite" id="suite-conditioning"></div>
-<div class="suite" id="suite-grooves"></div>
-<div class="suite" id="suite-packy"></div>
+    <div class="suite active" id="suite-lanes"></div>
+    <div class="suite" id="suite-morph"></div>
+    <div class="suite" id="suite-scenes"></div>
+    <div class="suite" id="suite-intent"></div>
+    <div class="suite" id="suite-conditioning"></div>
+    <div class="suite" id="suite-grooves"></div>
+    <div class="suite" id="suite-packy"></div>
 
-<p class="hint" id="verdicts-info">verdikty: …</p>
+    <p class="hint" id="verdicts-info">verdikty: …</p>
 
-<script>
-const player = document.getElementById("player");
-let currentSrc = null;
-function playFile(src, row) {
-  if (currentSrc === src && !player.paused) { player.pause(); return; }
-  currentSrc = src;
-  player.src = src;
-  player.play().catch(() => {});
-  document.querySelectorAll("tr.playing, .cand.playing").forEach((el) => el.classList.remove("playing"));
-  if (row) row.classList.add("playing");
-}
+    <script>
+      const player = document.getElementById("player");
+      let currentSrc = null;
+      function playFile(src, row) {
+        if (currentSrc === src && !player.paused) { player.pause(); return; }
+        currentSrc = src;
+        player.src = src;
+        player.play().catch(() => {});
+        document.querySelectorAll("tr.playing, .cand.playing").forEach((el) => el.classList.remove("playing"));
+        if (row) row.classList.add("playing");
+      }
 
-async function postVerdict(verdict) {
-  const res = await fetch("/api/verdict", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(verdict),
-  });
-  if (!res.ok) throw new Error("verdict POST failed");
-  loadVerdictCount();
-}
-
-async function loadVerdictCount() {
-  try {
-    const res = await fetch("/api/verdicts");
-    const data = await res.json();
-    document.getElementById("verdicts-info").textContent =
-      "uložené verdikty: " + data.count + "  (listening/verdicts.json → npm run listening:ingest)";
-  } catch { /* server without API — ignore */ }
-}
-
-// ── blind mode (?blind=1): mask identity + shuffle order; verdicts keep real ids ──
-const BLIND = new URLSearchParams(location.search).has("blind");
-function shuffleSiblings(el) {
-  const kids = Array.from(el.children);
-  for (let i = kids.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    el.append(kids[j]);
-  }
-}
-function applyBlind() {
-  if (!BLIND) return;
-  document.getElementById("blind-banner").style.display = "";
-  let n = 0;
-  const morphTable = document.querySelector("#suite-morph table");
-  morphTable.querySelectorAll("tr").forEach((tr) => {
-    const b = tr.querySelector("b");
-    b.dataset.blindOrig = b.textContent;
-    b.textContent = "Variant " + ++n;
-    tr.querySelectorAll(".cat, .desc").forEach((el) => el.classList.add("blind-hidden"));
-  });
-  shuffleSiblings(morphTable);
-  const scenes = document.getElementById("suite-scenes");
-  let m = 0;
-  scenes.querySelectorAll(".group h3").forEach((h3) => {
-    h3.dataset.blindOrig = h3.innerHTML;
-    h3.textContent = "Variant " + ++m;
-  });
-  scenes.querySelectorAll(".group .desc").forEach((el) => el.classList.add("blind-hidden"));
-  shuffleSiblings(scenes);
-  document.querySelectorAll("#suite-intent .group").forEach((div) => {
-    div.querySelector(".gk").classList.add("blind-hidden");
-    div.querySelectorAll(".cand .desc").forEach((el) => el.classList.add("blind-hidden"));
-    shuffleSiblings(div.querySelector(".cands"));
-  });
-  // conditioning: hide the v1/v3 identity + prompt phrasing, shuffle pairs
-  document.querySelectorAll("#suite-conditioning .group").forEach((div) => {
-    div.querySelector(".gk").classList.add("blind-hidden");
-    div.querySelectorAll(".cand .desc").forEach((el) => el.classList.add("blind-hidden"));
-    div.querySelectorAll(".cand b").forEach((el) => {
-      el.dataset.blindOrig = el.textContent;
-      el.textContent = "Verzia " + (el.textContent.includes("V1") ? "A" : "B");
-    });
-    shuffleSiblings(div.querySelector(".cands"));
-  });
-  // grooves: hide the groove id, shuffle patterns
-  document.querySelectorAll("#suite-grooves .group").forEach((div) => {
-    div.querySelector(".gk").classList.add("blind-hidden");
-    div.querySelectorAll(".cand .desc").forEach((el) => el.classList.add("blind-hidden"));
-    shuffleSiblings(div.querySelector(".cands"));
-  });
-}
-document.getElementById("blind-reveal").addEventListener("click", () => {
-  document.querySelectorAll("[data-blind-orig]").forEach((el) => {
-    el.innerHTML = el.dataset.blindOrig;
-    delete el.dataset.blindOrig;
-  });
-  document.querySelectorAll(".blind-hidden").forEach((el) => el.classList.remove("blind-hidden"));
-  document.getElementById("blind-reveal").disabled = true;
-});
-
-// ── suite builders ──────────────────────────────────────────────────────
-function buildMorph(entries) {
-  const root = document.getElementById("suite-morph");
-  const rows = entries.map((e) => {
-    const tr = document.createElement("tr");
-    const paths = Object.keys(e.files);
-    const hasTwo = paths.length > 1;
-    tr.innerHTML =
-      '<td class="star">' + (e.id === "bypass" ? "" : "★") + "</td>" +
-      "<td><b>" + e.label + '</b><span class="cat">' + (e.category || "") + "</span>" +
-      '<div class="desc">' + (e.description || "") + "</div></td>" +
-      (hasTwo ? '<td class="path">' + paths.map((p) => '<button data-path="' + e.files[p] + '">' + p.toUpperCase() + "</button>").join("") + "</td>" : "") +
-      '<td class="ab">' +
-      '<button class="a" data-file="' + (e.files.drums || Object.values(e.files)[0]) + '">A</button>' +
-      '<button class="b" data-file="' + (e.files["808"] || e.files.wet || Object.values(e.files)[0]) + '">B</button>' +
-      "</td>";
-    return tr;
-  });
-  const table = document.createElement("table");
-  table.append(...rows);
-  root.append(table);
-  rows.forEach((tr) => {
-    tr.querySelectorAll("button").forEach((btn) => {
-      btn.addEventListener("click", () => playFile(btn.dataset.file, tr));
-    });
-  });
-}
-
-function buildScenes(entries) {
-  const root = document.getElementById("suite-scenes");
-  for (const e of entries) {
-    const div = document.createElement("div");
-    div.className = "group";
-    div.innerHTML =
-      "<h3>" + e.label + ' <span class="cat">na ' + e.templateId + ' beate</span></h3>' +
-      '<div class="desc">' + (e.description || "") + "</div>" +
-      '<div class="toolbar">' +
-      '<button data-file="' + e.files.bypass + '">A · bypass</button>' +
-      '<button data-file="' + e.files.wet + '">B · preset</button>' +
-      "</div>";
-    div.querySelectorAll("button").forEach((btn) => {
-      btn.addEventListener("click", () => playFile(btn.dataset.file, div));
-    });
-    root.append(div);
-  }
-}
-
-function buildIntent(groups) {
-  const root = document.getElementById("suite-intent");
-  for (const g of groups) {
-    const div = document.createElement("div");
-    div.className = "group";
-    div.innerHTML =
-      "<h3>" + g.genre + " · " + g.style + "</h3>" +
-      '<div class="gk">' + g.groupKey + "</div>" +
-      '<div class="hint">Klikni kandidáta v poradí preferencie (1. = najlepší). ★ = favorite (učí všetky 3 modely).</div>' +
-      '<div class="cands"></div>' +
-      '<div class="toolbar"><button class="reset">RESET poradia</button><span class="sent"></span></div>';
-    const cands = div.querySelector(".cands");
-    const order = [];
-    const sent = div.querySelector(".sent");
-    const cards = g.candidates.map((c) => {
-      const card = document.createElement("div");
-      card.className = "cand";
-      card.innerHTML =
-        '<div class="rank">·</div><b>' + c.seed.split("-").slice(-1)[0] + "</b>" +
-        '<div class="desc">E' + Math.round((c.favorite?.energy ?? 0) * 100) +
-        " D" + Math.round((c.favorite?.density ?? 0) * 100) + "</div>" +
-        '<button class="fav">★ favorite</button>';
-      card.addEventListener("click", (ev) => {
-        if (ev.target.classList.contains("fav")) return;
-        if (card.dataset.rank) return;
-        const rank = order.length + 1;
-        if (rank > g.candidates.length) return;
-        card.dataset.rank = String(rank);
-        card.querySelector(".rank").textContent = String(rank);
-        card.classList.add("r" + rank);
-        order.push(c.seed);
-        if (order.length === g.candidates.length) {
-          postVerdict({ kind: "ranking", groupKey: g.groupKey, order, blind: BLIND, savedAt: Date.now() })
-            .then(() => { sent.textContent = "✓ odoslané"; })
-            .catch(() => { sent.textContent = "✗ server nefunguje — spusti listening:serve"; });
-        }
-        playFile(c.file, card);
-      });
-      card.querySelector(".fav").addEventListener("click", () => {
-        const on = card.querySelector(".fav").classList.toggle("on");
-        if (!on || !c.favorite) return;
-        postVerdict({ kind: "favorite", groupKey: g.groupKey, entry: c.favorite, blind: BLIND, savedAt: Date.now() })
-          .then(() => { sent.textContent = "✓ favorite uložený"; })
-          .catch(() => { sent.textContent = "✗ server nefunguje — spusti listening:serve"; });
-      });
-      card.querySelector("button.fav").addEventListener("click", (ev) => ev.stopPropagation());
-      cands.append(card);
-      return { card, c };
-    });
-    cards.forEach(({ card, c }) => {
-      card.addEventListener("dblclick", () => playFile(c.file, card));
-    });
-    div.querySelector(".reset").addEventListener("click", () => {
-      order.length = 0;
-      sent.textContent = "";
-      cards.forEach(({ card }) => {
-        delete card.dataset.rank;
-        card.className = "cand";
-        card.querySelector(".rank").textContent = "·";
-      });
-    });
-    cards.forEach(({ card, c }) => {
-      const playBtn = document.createElement("button");
-      playBtn.textContent = "▶";
-      playBtn.title = "prehrať";
-      playBtn.addEventListener("click", () => playFile(c.file, card));
-      card.prepend(playBtn);
-    });
-    root.append(div);
-  }
-}
-
-// ── CONDITIONING suite — v1 vs v3 pair ranking (flip-decision evidence) ──
-function buildConditioning(groups) {
-  const root = document.getElementById("suite-conditioning");
-  for (const g of groups) {
-    const div = document.createElement("div");
-    div.className = "group";
-    div.innerHTML =
-      "<h3>" + g.prompt + "</h3>" +
-      '<div class="gk">' + g.groupKey + "</div>" +
-      '<div class="hint">Dve verzie toho istého promptu (A = one-hot, B = hybrid — v blind mode skryté). Klikni v poradí, ktoré ti hrá lepšie. Tvoj verdikt rozhoduje o default conditioning kanáli.</div>' +
-      '<div class="cands"></div>' +
-      '<div class="toolbar"><button class="reset">RESET poradia</button><span class="sent"></span></div>';
-    const cands = div.querySelector(".cands");
-    const order = [];
-    const sent = div.querySelector(".sent");
-    const cards = g.candidates.map((c) => {
-      const card = document.createElement("div");
-      card.className = "cand";
-      card.innerHTML =
-        '<div class="rank">·</div><b>' + c.label.toUpperCase() + "</b>" +
-        '<div class="desc">' + (c.label === "v1" ? "one-hot conditioning" : "hybrid semantic conditioning") + "</div>";
-      card.addEventListener("click", () => {
-        if (card.dataset.rank) return;
-        const rank = order.length + 1;
-        if (rank > g.candidates.length) return;
-        card.dataset.rank = String(rank);
-        card.querySelector(".rank").textContent = String(rank);
-        card.classList.add("r" + rank);
-        order.push(c.label);
-        if (order.length === g.candidates.length) {
-          postVerdict({ kind: "ranking", groupKey: g.groupKey, order, prompt: g.prompt, blind: BLIND, savedAt: Date.now() })
-            .then(() => { sent.textContent = "✓ verdikt odoslaný"; })
-            .catch(() => { sent.textContent = "✗ server nefunguje — spusti listening:serve"; });
-        }
-        playFile(c.file, card);
-      });
-      cands.append(card);
-      return { card, c };
-    });
-    cards.forEach(({ card, c }) => {
-      const playBtn = document.createElement("button");
-      playBtn.textContent = "▶";
-      playBtn.addEventListener("click", () => playFile(c.file, card));
-      card.prepend(playBtn);
-    });
-    div.querySelector(".reset").addEventListener("click", () => {
-      order.length = 0;
-      sent.textContent = "";
-      cards.forEach(({ card }) => {
-        delete card.dataset.rank;
-        card.className = "cand";
-        card.querySelector(".rank").textContent = "·";
-      });
-    });
-    root.append(div);
-  }
-}
-
-// ── GROOVE suite — ★ the pattern that matches the reference identity ──
-function buildGrooves(grooves) {
-  const root = document.getElementById("suite-grooves");
-  for (const g of grooves) {
-    const div = document.createElement("div");
-    div.className = "group";
-    div.innerHTML =
-      "<h3>" + g.label + " · " + g.midBpm + " BPM</h3>" +
-      '<div class="gk">' + g.groupKey + "</div>" +
-      '<div class="hint">★ = tento pattern sedí referenčnej identite (roller = Macky Gee, horror = Suicideboys…). Favorite tečie do tréningu pri ďalšom retréne.</div>' +
-      '<div class="cands"></div>' +
-      '<div class="toolbar"><span class="sent"></span></div>';
-    const cands = div.querySelector(".cands");
-    const sent = div.querySelector(".sent");
-    for (const c of g.candidates) {
-      const card = document.createElement("div");
-      card.className = "cand";
-      card.innerHTML =
-        '<div class="rank">·</div><b>Pattern ' + (c.index + 1) + "</b>" +
-        '<div class="desc">' + g.grooveId + "</div>" +
-        '<button class="fav">★ sedí identite</button>';
-      card.addEventListener("click", (ev) => {
-        if (ev.target.classList.contains("fav")) return;
-        playFile(c.file, card);
-      });
-      card.querySelector(".fav").addEventListener("click", () => {
-        const on = card.querySelector(".fav").classList.toggle("on");
-        if (!on) return;
-        postVerdict({ kind: "favorite", groupKey: g.groupKey, entry: c.favorite, blind: BLIND, savedAt: Date.now() })
-          .then(() => { sent.textContent = "✓ favorite uložený"; })
-          .catch(() => { sent.textContent = "✗ server nefunguje — spusti listening:serve"; });
-      });
-      card.querySelector("button.fav").addEventListener("click", (ev) => ev.stopPropagation());
-      const playBtn = document.createElement("button");
-      playBtn.textContent = "▶";
-      playBtn.addEventListener("click", () => playFile(c.file, card));
-      card.prepend(playBtn);
-      cands.append(card);
-    }
-    root.append(div);
-  }
-}
-
-// ── LANES suite — ★ verdicts that tune the melodic dialects ────────────────
-// Two questions per lane: do the DRUMS match the identity, does the BASS
-// dialect match. Keyboard: ↑/↓ navigate, Space play, S = sedí, X = nesedí,
-// F = ★ hit. Progress counter tracks what you've already rated.
-const laneRatings = new Map(); // "laneId|pattern" -> "fits" | "off" | "hit"
-let laneCursor = 0;
-let laneRows = [];
-
-function buildLanes(lanes) {
-  const root = document.getElementById("suite-lanes");
-  const intro = document.createElement("div");
-  intro.className = "group";
-  intro.innerHTML =
-    "<h3>Nové laney — drums + basový dialekt</h3>" +
-    '<div class="hint">Dve otázky: (1) DRUMY sedia identite? (2) BASOVÝ DIALEKT sedí? ' +
-    "Klávesy: <b>↑/↓</b> navigácia · <b>medzerník</b> prehrať · <b>S</b> sedí · <b>X</b> nesedí · <b>F</b> ★ hit. " +
-    'Verdikty idú priamo do ladenia dialektov.</div><div class="gk" id="lanes-progress"></div>';
-  root.append(intro);
-  const table = document.createElement("table");
-  for (const lane of lanes) {
-    const row = document.createElement("tr");
-    row.dataset.laneKey = lane.id + "|" + lane.pattern;
-    row.innerHTML =
-      "<td><b>" + lane.id + "</b><div class='desc'>" + (lane.ref ?? "") + "</div></td>" +
-      "<td class='cat'>" + lane.bpm + " BPM · pattern " + lane.pattern + "</td>" +
-      "<td>" +
-      '<button class="play">▶</button> ' +
-      '<button class="v-fits">✓ sedí</button> ' +
-      '<button class="v-off">✗ nesedí</button> ' +
-      '<button class="v-hit">★ hit</button>' +
-      '<div class="lane-refine" style="display:none;margin-top:6px">' +
-      '<div class="hint" style="margin-bottom:3px">ČO nesedí? (môže byť viac)</div>' +
-      '<label style="margin-right:8px"><input type="checkbox" data-part="drums" /> DRUMY</label>' +
-      '<label style="margin-right:8px"><input type="checkbox" data-part="bass" /> BASA</label>' +
-      '<label style="margin-right:8px"><input type="checkbox" data-part="lead" /> MELODIA</label>' +
-      '<div class="hint" style="margin:3px 0">SMER (voliteľné, pre basu najužitočnejší):</div>' +
-      '<div class="lane-dir">' +
-      ['pridlhé', 'prirýchle', 'pritlmé', 'privysoké', 'husté'].map((dir) => (
-        '<button type="button" class="dir-chip" data-dir="' + dir + '">' + dir + '</button> '
-      )).join("") +
-      '</div>' +
-      '<input class="lane-note" type="text" placeholder="poznámka (voliteľné) — napr. basa má ísť hlbšie" style="width:90%;margin-top:4px" />' +
-      '<div style="margin-top:4px"><button class="refine-send">odoslať detail</button></div>' +
-      '</div>' +
-      "</td><td class='lane-sent sent'></td>";
-    row.querySelector(".play").addEventListener("click", () => playLane(lane, row));
-    const rate = (verdict) => rateLane(lane, row, verdict);
-    row.querySelector(".v-fits").addEventListener("click", () => rate("fits"));
-    row.querySelector(".v-off").addEventListener("click", () => {
-      rate("off");
-      // the refinement only appears where it is useful — a negative verdict
-      const refine = row.querySelector(".lane-refine");
-      refine.style.display = refine.style.display === "none" ? "block" : "block";
-    });
-    row.querySelector(".v-hit").addEventListener("click", () => {
-      rate("hit");
-      const refine = row.querySelector(".lane-refine");
-      refine.style.display = refine.style.display === "none" ? "block" : "block";
-      const note = refine.querySelector(".lane-note");
-      note.placeholder = "čo z neho robí hit? (voliteľné — stane sa referenciou)";
-    });
-    row.querySelector(".refine-send").addEventListener("click", () => {
-      const parts = [...row.querySelectorAll(".lane-refine input[data-part]:checked")].map((c) => c.dataset.part);
-      const dirs = [...row.querySelectorAll(".dir-chip.on")].map((c) => c.dataset.dir);
-      const note = row.querySelector(".lane-note").value.trim();
-      if (parts.length === 0 && !note && dirs.length === 0) return;
-      postVerdict({
-        kind: "lane-detail",
-        laneId: lane.id,
-        pattern: lane.pattern,
-        parts,
-        directions: dirs,
-        note,
-        blind: BLIND,
-        savedAt: Date.now(),
-      })
-        .then(() => {
-          row.querySelector(".lane-sent").textContent += " ✓ detail";
-          row.querySelector(".lane-refine").style.display = "none";
-        })
-        .catch(() => {
-          row.querySelector(".lane-sent").textContent = "✗ server nefunguje";
+      async function postVerdict(verdict) {
+        const res = await fetch("/api/verdict", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(verdict),
         });
-    });
-    row.querySelectorAll(".dir-chip").forEach((chip) => {
-      chip.addEventListener("click", () => chip.classList.toggle("on"));
-    });
-    laneRows.push({ lane, row });
-    table.append(row);
-  }
-  root.append(table);
-  updateLaneProgress();
-  if (laneRows.length > 0) laneRows[0]!.row.classList.add("playing");
-}
+        if (!res.ok) throw new Error("verdict POST failed");
+        loadVerdictCount();
+      }
 
-function playLane(lane, row) {
-  playFile("../" + lane.file, row);
-}
+      async function loadVerdictCount() {
+        try {
+          const res = await fetch("/api/verdicts");
+          const data = await res.json();
+          document.getElementById("verdicts-info").textContent =
+            "uložené verdikty: " + data.count + "  (listening/verdicts.json → npm run listening:ingest)";
+        } catch { /* server without API — ignore */ }
+      }
 
-function rateLane(lane, row, verdict) {
-  laneRatings.set(lane.id + "|" + lane.pattern, verdict);
-  row.className = row.className.replace(/ lane-(fits|off|hit)/g, "") + " lane-" + verdict;
-  const sent = row.querySelector(".lane-sent");
-  const icons = { fits: "✓ sedí", off: "✗ nesedí", hit: "★ HIT" };
-  sent.textContent = icons[verdict] ?? "";
-  postVerdict({
-    kind: "lane",
-    laneId: lane.id,
-    pattern: lane.pattern,
-    bpm: lane.bpm,
-    verdict,
-    blind: BLIND,
-    savedAt: Date.now(),
-  })
-    .then(() => {
-      sent.textContent += " ✓ odoslané";
-      updateLaneProgress();
-    })
-    .catch(() => {
-      sent.textContent = "✗ server nefunguje — spusti listening:serve";
-    });
-}
-
-function updateLaneProgress() {
-  const el = document.getElementById("lanes-progress");
-  if (el) el.textContent = "ohodnotené " + laneRatings.size + "/" + laneRows.length;
-}
-
-// Keyboard shortcuts — active when the LANES tab is visible
-document.addEventListener("keydown", (ev) => {
-  const lanesActive = document.getElementById("suite-lanes")?.classList.contains("active");
-  if (!lanesActive || ev.target.tagName === "INPUT" || ev.target.tagName === "TEXTAREA") return;
-  const current = laneRows[laneCursor];
-  if (!current) return;
-  if (ev.key === "ArrowDown") {
-    laneCursor = Math.min(laneRows.length - 1, laneCursor + 1);
-    laneRows.forEach((r) => r.row.classList.remove("playing"));
-    laneRows[laneCursor]!.row.classList.add("playing");
-    ev.preventDefault();
-  } else if (ev.key === "ArrowUp") {
-    laneCursor = Math.max(0, laneCursor - 1);
-    laneRows.forEach((r) => r.row.classList.remove("playing"));
-    laneRows[laneCursor]!.row.classList.add("playing");
-    ev.preventDefault();
-  } else if (ev.key === " ") {
-    playLane(current.lane, current.row);
-    ev.preventDefault();
-  } else if (ev.key === "s" || ev.key === "S") {
-    rateLane(current.lane, current.row, "fits");
-  } else if (ev.key === "x" || ev.key === "X") {
-    rateLane(current.lane, current.row, "off");
-  } else if (ev.key === "f" || ev.key === "F") {
-    rateLane(current.lane, current.row, "hit");
-  }
-});
-
-fetch("room.json")
-  .then((r) => r.json())
-  .then((room) => {
-    buildMorph(room.morph);
-    buildScenes(room.scenes);
-    buildIntent(room.intent);
-    buildConditioning(room.conditioning ?? []);
-    buildGrooves(room.grooves ?? []);
-    applyBlind();
-  });
-fetch("../lanes/lanes.json")
-  .then((r) => r.json())
-  .then((pack) => buildLanes(pack.lanes ?? []))
-  .catch(() => {
-    const root = document.getElementById("suite-lanes");
-    root.innerHTML = '<div class="hint">lanes/lanes.json nenájdené — spusti <b>node scripts/render-lane-listening.mjs</b></div>';
-  });
-
-// ── PACKY suite — the older flat packs under one generic tab ───────────────
-// Same three verdicts as LANES; one verdict per FILE (these packs carry no
-// manifest, the filename is the identity).
-const packyRatings = new Map(); // "pack|file" -> verdict
-
-async function buildPacky() {
-  const root = document.getElementById("suite-packy");
-  let packs;
-  try {
-    packs = (await (await fetch("/api/packs")).json()).packs;
-  } catch {
-    root.innerHTML = '<div class="hint">server bez /api/packs — spusti čerstvý listening:serve</div>';
-    return;
-  }
-  const bar = document.createElement("div");
-  bar.className = "toolbar";
-  const select = document.createElement("select");
-  select.style.cssText = "font:inherit;background:#1c1c1c;color:#ccc;border:1px solid #333;border-radius:4px;padding:5px 8px";
-  for (const pack of packs) {
-    const option = document.createElement("option");
-    option.value = pack.name;
-    option.textContent = pack.name + " (" + pack.files.length + " WAV)";
-    select.append(option);
-  }
-  bar.append(select);
-  const list = document.createElement("div");
-  bar.append(list);
-  root.append(bar);
-
-  const renderPack = (pack) => {
-    list.innerHTML = "";
-    for (const file of pack.files) {
-      const key = pack.name + "|" + file;
-      const row = document.createElement("table");
-      row.style.width = "100%";
-      const tr = document.createElement("tr");
-      tr.innerHTML =
-        "<td style='width:52%'><b>" + file + "</b></td>" +
-        "<td>" +
-        '<button class="play">▶</button> ' +
-        '<button class="v-fits">✓ sedí</button> ' +
-        '<button class="v-off">✗ nesedí</button> ' +
-        '<button class="v-hit">★ hit</button>' +
-        "</td><td class='packy-sent sent'>" + (packyRatings.get(key) ?? "") + "</td>";
-      tr.querySelector(".play").addEventListener("click", () => playFile("/pack/" + pack.name + "/" + file, tr));
-      const rate = (verdict) => {
-        packyRatings.set(key, verdict);
-        tr.querySelector(".packy-sent").textContent = verdict;
-        postVerdict({ kind: "pack-item", pack: pack.name, file, verdict, blind: BLIND, savedAt: Date.now() })
-          .then(() => loadVerdictCount())
-          .catch(() => {
-            tr.querySelector(".packy-sent").textContent = "✗ server nefunguje";
+      // ── blind mode (?blind=1): mask identity + shuffle order; verdicts keep real ids ──
+      const BLIND = new URLSearchParams(location.search).has("blind");
+      function shuffleSiblings(el) {
+        const kids = Array.from(el.children);
+        for (let i = kids.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          el.append(kids[j]);
+        }
+      }
+      function applyBlind() {
+        if (!BLIND) return;
+        document.getElementById("blind-banner").style.display = "";
+        let n = 0;
+        const morphTable = document.querySelector("#suite-morph table");
+        morphTable.querySelectorAll("tr").forEach((tr) => {
+          const b = tr.querySelector("b");
+          b.dataset.blindOrig = b.textContent;
+          b.textContent = "Variant " + ++n;
+          tr.querySelectorAll(".cat, .desc").forEach((el) => el.classList.add("blind-hidden"));
+        });
+        shuffleSiblings(morphTable);
+        const scenes = document.getElementById("suite-scenes");
+        let m = 0;
+        scenes.querySelectorAll(".group h3").forEach((h3) => {
+          h3.dataset.blindOrig = h3.innerHTML;
+          h3.textContent = "Variant " + ++m;
+        });
+        scenes.querySelectorAll(".group .desc").forEach((el) => el.classList.add("blind-hidden"));
+        shuffleSiblings(scenes);
+        document.querySelectorAll("#suite-intent .group").forEach((div) => {
+          div.querySelector(".gk").classList.add("blind-hidden");
+          div.querySelectorAll(".cand .desc").forEach((el) => el.classList.add("blind-hidden"));
+          shuffleSiblings(div.querySelector(".cands"));
+        });
+        // conditioning: hide the v1/v3 identity + prompt phrasing, shuffle pairs
+        document.querySelectorAll("#suite-conditioning .group").forEach((div) => {
+          div.querySelector(".gk").classList.add("blind-hidden");
+          div.querySelectorAll(".cand .desc").forEach((el) => el.classList.add("blind-hidden"));
+          div.querySelectorAll(".cand b").forEach((el) => {
+            el.dataset.blindOrig = el.textContent;
+            el.textContent = "Verzia " + (el.textContent.includes("V1") ? "A" : "B");
           });
-      };
-      tr.querySelector(".v-fits").addEventListener("click", () => rate("fits"));
-      tr.querySelector(".v-off").addEventListener("click", () => rate("off"));
-      tr.querySelector(".v-hit").addEventListener("click", () => rate("hit"));
-      row.append(tr);
-      list.append(row);
-    }
-  };
-  renderPack(packs[0] ?? { name: "", files: [] });
-  select.addEventListener("change", () => {
-    const pack = packs.find((p) => p.name === select.value);
-    if (pack) renderPack(pack);
-  });
-}
-buildPacky();
-loadVerdictCount();
+          shuffleSiblings(div.querySelector(".cands"));
+        });
+        // grooves: hide the groove id, shuffle patterns
+        document.querySelectorAll("#suite-grooves .group").forEach((div) => {
+          div.querySelector(".gk").classList.add("blind-hidden");
+          div.querySelectorAll(".cand .desc").forEach((el) => el.classList.add("blind-hidden"));
+          shuffleSiblings(div.querySelector(".cands"));
+        });
+      }
+      document.getElementById("blind-reveal").addEventListener("click", () => {
+        document.querySelectorAll("[data-blind-orig]").forEach((el) => {
+          el.innerHTML = el.dataset.blindOrig;
+          delete el.dataset.blindOrig;
+        });
+        document.querySelectorAll(".blind-hidden").forEach((el) => el.classList.remove("blind-hidden"));
+        document.getElementById("blind-reveal").disabled = true;
+      });
 
-document.querySelectorAll(".tabs button").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".tabs button").forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
-    document.querySelectorAll(".suite").forEach((s) => s.classList.remove("active"));
-    document.getElementById("suite-" + btn.dataset.suite).classList.add("active");
-  });
-});
-</script>
-</body>
+      // ── suite builders ──────────────────────────────────────────────────────
+      function buildMorph(entries) {
+        const root = document.getElementById("suite-morph");
+        const rows = entries.map((e) => {
+          const tr = document.createElement("tr");
+          const paths = Object.keys(e.files);
+          const hasTwo = paths.length > 1;
+          tr.innerHTML =
+            '<td class="star">' + (e.id === "bypass" ? "" : "★") + "</td>" +
+            "<td><b>" + e.label + '</b><span class="cat">' + (e.category || "") + "</span>" +
+            '<div class="desc">' + (e.description || "") + "</div></td>" +
+            (hasTwo ? '<td class="path">' + paths.map((p) => '<button data-path="' + e.files[p] + '">' + p.toUpperCase() + "</button>").join("") + "</td>" : "") +
+            '<td class="ab">' +
+            '<button class="a" data-file="' + (e.files.drums || Object.values(e.files)[0]) + '">A</button>' +
+            '<button class="b" data-file="' + (e.files["808"] || e.files.wet || Object.values(e.files)[0]) + '">B</button>' +
+            "</td>";
+          return tr;
+        });
+        const table = document.createElement("table");
+        table.append(...rows);
+        root.append(table);
+        rows.forEach((tr) => {
+          tr.querySelectorAll("button").forEach((btn) => {
+            btn.addEventListener("click", () => playFile(btn.dataset.file, tr));
+          });
+        });
+      }
+
+      function buildScenes(entries) {
+        const root = document.getElementById("suite-scenes");
+        for (const e of entries) {
+          const div = document.createElement("div");
+          div.className = "group";
+          div.innerHTML =
+            "<h3>" + e.label + ' <span class="cat">na ' + e.templateId + ' beate</span></h3>' +
+            '<div class="desc">' + (e.description || "") + "</div>" +
+            '<div class="toolbar">' +
+            '<button data-file="' + e.files.bypass + '">A · bypass</button>' +
+            '<button data-file="' + e.files.wet + '">B · preset</button>' +
+            "</div>";
+          div.querySelectorAll("button").forEach((btn) => {
+            btn.addEventListener("click", () => playFile(btn.dataset.file, div));
+          });
+          root.append(div);
+        }
+      }
+
+      function buildIntent(groups) {
+        const root = document.getElementById("suite-intent");
+        for (const g of groups) {
+          const div = document.createElement("div");
+          div.className = "group";
+          div.innerHTML =
+            "<h3>" + g.genre + " · " + g.style + "</h3>" +
+            '<div class="gk">' + g.groupKey + "</div>" +
+            '<div class="hint">Klikni kandidáta v poradí preferencie (1. = najlepší). ★ = favorite (učí všetky 3 modely).</div>' +
+            '<div class="cands"></div>' +
+            '<div class="toolbar"><button class="reset">RESET poradia</button><span class="sent"></span></div>';
+          const cands = div.querySelector(".cands");
+          const order = [];
+          const sent = div.querySelector(".sent");
+          const cards = g.candidates.map((c) => {
+            const card = document.createElement("div");
+            card.className = "cand";
+            card.innerHTML =
+              '<div class="rank">·</div><b>' + c.seed.split("-").slice(-1)[0] + "</b>" +
+              '<div class="desc">E' + Math.round((c.favorite?.energy ?? 0) * 100) +
+              " D" + Math.round((c.favorite?.density ?? 0) * 100) + "</div>" +
+              '<button class="fav">★ favorite</button>';
+            card.addEventListener("click", (ev) => {
+              if (ev.target.classList.contains("fav")) return;
+              if (card.dataset.rank) return;
+              const rank = order.length + 1;
+              if (rank > g.candidates.length) return;
+              card.dataset.rank = String(rank);
+              card.querySelector(".rank").textContent = String(rank);
+              card.classList.add("r" + rank);
+              order.push(c.seed);
+              if (order.length === g.candidates.length) {
+                postVerdict({ kind: "ranking", groupKey: g.groupKey, order, blind: BLIND, savedAt: Date.now() })
+                  .then(() => { sent.textContent = "✓ odoslané"; })
+                  .catch(() => { sent.textContent = "✗ server nefunguje — spusti listening:serve"; });
+              }
+              playFile(c.file, card);
+            });
+            card.querySelector(".fav").addEventListener("click", () => {
+              const on = card.querySelector(".fav").classList.toggle("on");
+              if (!on || !c.favorite) return;
+              postVerdict({ kind: "favorite", groupKey: g.groupKey, entry: c.favorite, blind: BLIND, savedAt: Date.now() })
+                .then(() => { sent.textContent = "✓ favorite uložený"; })
+                .catch(() => { sent.textContent = "✗ server nefunguje — spusti listening:serve"; });
+            });
+            card.querySelector("button.fav").addEventListener("click", (ev) => ev.stopPropagation());
+            cands.append(card);
+            return { card, c };
+          });
+          cards.forEach(({ card, c }) => {
+            card.addEventListener("dblclick", () => playFile(c.file, card));
+          });
+          div.querySelector(".reset").addEventListener("click", () => {
+            order.length = 0;
+            sent.textContent = "";
+            cards.forEach(({ card }) => {
+              delete card.dataset.rank;
+              card.className = "cand";
+              card.querySelector(".rank").textContent = "·";
+            });
+          });
+          cards.forEach(({ card, c }) => {
+            const playBtn = document.createElement("button");
+            playBtn.textContent = "▶";
+            playBtn.title = "prehrať";
+            playBtn.addEventListener("click", () => playFile(c.file, card));
+            card.prepend(playBtn);
+          });
+          root.append(div);
+        }
+      }
+
+      // ── CONDITIONING suite — v1 vs v3 pair ranking (flip-decision evidence) ──
+      function buildConditioning(groups) {
+        const root = document.getElementById("suite-conditioning");
+        for (const g of groups) {
+          const div = document.createElement("div");
+          div.className = "group";
+          div.innerHTML =
+            "<h3>" + g.prompt + "</h3>" +
+            '<div class="gk">' + g.groupKey + "</div>" +
+            '<div class="hint">Dve verzie toho istého promptu (A = one-hot, B = hybrid — v blind mode skryté). Klikni v poradí, ktoré ti hrá lepšie. Tvoj verdikt rozhoduje o default conditioning kanáli.</div>' +
+            '<div class="cands"></div>' +
+            '<div class="toolbar"><button class="reset">RESET poradia</button><span class="sent"></span></div>';
+          const cands = div.querySelector(".cands");
+          const order = [];
+          const sent = div.querySelector(".sent");
+          const cards = g.candidates.map((c) => {
+            const card = document.createElement("div");
+            card.className = "cand";
+            card.innerHTML =
+              '<div class="rank">·</div><b>' + c.label.toUpperCase() + "</b>" +
+              '<div class="desc">' + (c.label === "v1" ? "one-hot conditioning" : "hybrid semantic conditioning") + "</div>";
+            card.addEventListener("click", () => {
+              if (card.dataset.rank) return;
+              const rank = order.length + 1;
+              if (rank > g.candidates.length) return;
+              card.dataset.rank = String(rank);
+              card.querySelector(".rank").textContent = String(rank);
+              card.classList.add("r" + rank);
+              order.push(c.label);
+              if (order.length === g.candidates.length) {
+                postVerdict({ kind: "ranking", groupKey: g.groupKey, order, prompt: g.prompt, blind: BLIND, savedAt: Date.now() })
+                  .then(() => { sent.textContent = "✓ verdikt odoslaný"; })
+                  .catch(() => { sent.textContent = "✗ server nefunguje — spusti listening:serve"; });
+              }
+              playFile(c.file, card);
+            });
+            cands.append(card);
+            return { card, c };
+          });
+          cards.forEach(({ card, c }) => {
+            const playBtn = document.createElement("button");
+            playBtn.textContent = "▶";
+            playBtn.addEventListener("click", () => playFile(c.file, card));
+            card.prepend(playBtn);
+          });
+          div.querySelector(".reset").addEventListener("click", () => {
+            order.length = 0;
+            sent.textContent = "";
+            cards.forEach(({ card }) => {
+              delete card.dataset.rank;
+              card.className = "cand";
+              card.querySelector(".rank").textContent = "·";
+            });
+          });
+          root.append(div);
+        }
+      }
+
+      // ── GROOVE suite — ★ the pattern that matches the reference identity ──
+      function buildGrooves(grooves) {
+        const root = document.getElementById("suite-grooves");
+        for (const g of grooves) {
+          const div = document.createElement("div");
+          div.className = "group";
+          div.innerHTML =
+            "<h3>" + g.label + " · " + g.midBpm + " BPM</h3>" +
+            '<div class="gk">' + g.groupKey + "</div>" +
+            '<div class="hint">★ = tento pattern sedí referenčnej identite (roller = Macky Gee, horror = Suicideboys…). Favorite tečie do tréningu pri ďalšom retréne.</div>' +
+            '<div class="cands"></div>' +
+            '<div class="toolbar"><span class="sent"></span></div>';
+          const cands = div.querySelector(".cands");
+          const sent = div.querySelector(".sent");
+          for (const c of g.candidates) {
+            const card = document.createElement("div");
+            card.className = "cand";
+            card.innerHTML =
+              '<div class="rank">·</div><b>Pattern ' + (c.index + 1) + "</b>" +
+              '<div class="desc">' + g.grooveId + "</div>" +
+              '<button class="fav">★ sedí identite</button>';
+            card.addEventListener("click", (ev) => {
+              if (ev.target.classList.contains("fav")) return;
+              playFile(c.file, card);
+            });
+            card.querySelector(".fav").addEventListener("click", () => {
+              const on = card.querySelector(".fav").classList.toggle("on");
+              if (!on) return;
+              postVerdict({ kind: "favorite", groupKey: g.groupKey, entry: c.favorite, blind: BLIND, savedAt: Date.now() })
+                .then(() => { sent.textContent = "✓ favorite uložený"; })
+                .catch(() => { sent.textContent = "✗ server nefunguje — spusti listening:serve"; });
+            });
+            card.querySelector("button.fav").addEventListener("click", (ev) => ev.stopPropagation());
+            const playBtn = document.createElement("button");
+            playBtn.textContent = "▶";
+            playBtn.addEventListener("click", () => playFile(c.file, card));
+            card.prepend(playBtn);
+            cands.append(card);
+          }
+          root.append(div);
+        }
+      }
+
+      // ── LANES suite — ★ verdicts that tune the melodic dialects ────────────────
+      // Two questions per lane: do the DRUMS match the identity, does the BASS
+      // dialect match. Keyboard: ↑/↓ navigate, Space play, S = sedí, X = nesedí,
+      // F = ★ hit. Progress counter tracks what you've already rated.
+      const laneRatings = new Map(); // "laneId|pattern" -> "fits" | "off" | "hit"
+      let laneCursor = 0;
+      let laneRows = [];
+
+      function buildLanes(lanes) {
+        const root = document.getElementById("suite-lanes");
+        const intro = document.createElement("div");
+        intro.className = "group";
+        intro.innerHTML =
+          "<h3>Nové laney — drums + basový dialekt</h3>" +
+          '<div class="hint">Dve otázky: (1) DRUMY sedia identite? (2) BASOVÝ DIALEKT sedí? ' +
+          "Klávesy: <b>↑/↓</b> navigácia · <b>medzerník</b> prehrať · <b>S</b> sedí · <b>X</b> nesedí · <b>F</b> ★ hit. " +
+          'Verdikty idú priamo do ladenia dialektov.</div><div class="gk" id="lanes-progress"></div>';
+        root.append(intro);
+        const table = document.createElement("table");
+        for (const lane of lanes) {
+          const row = document.createElement("tr");
+          row.dataset.laneKey = lane.id + "|" + lane.pattern;
+          row.innerHTML =
+            "<td><b>" + lane.id + "</b><div class='desc'>" + (lane.ref ?? "") + "</div></td>" +
+            "<td class='cat'>" + lane.bpm + " BPM · pattern " + lane.pattern + "</td>" +
+            "<td>" +
+            '<button class="play">▶</button> ' +
+            '<button class="v-fits">✓ sedí</button> ' +
+            '<button class="v-off">✗ nesedí</button> ' +
+            '<button class="v-hit">★ hit</button>' +
+            '<div class="lane-refine" style="display:none;margin-top:6px">' +
+            '<div class="hint" style="margin-bottom:3px">ČO nesedí? (môže byť viac)</div>' +
+            '<label style="margin-right:8px"><input type="checkbox" data-part="drums" /> DRUMY</label>' +
+            '<label style="margin-right:8px"><input type="checkbox" data-part="bass" /> BASA</label>' +
+            '<label style="margin-right:8px"><input type="checkbox" data-part="lead" /> MELODIA</label>' +
+            '<div class="hint" style="margin:3px 0">SMER (voliteľné, pre basu najužitočnejší):</div>' +
+            '<div class="lane-dir">' +
+            ['pridlhé', 'prirýchle', 'pritlmé', 'privysoké', 'husté'].map((dir) => (
+              '<button type="button" class="dir-chip" data-dir="' + dir + '">' + dir + '</button> '
+            )).join("") +
+            '</div>' +
+            '<input class="lane-note" type="text" placeholder="poznámka (voliteľné) — napr. basa má ísť hlbšie" style="width:90%;margin-top:4px" />' +
+            '<div style="margin-top:4px"><button class="refine-send">odoslať detail</button></div>' +
+            '</div>' +
+            "</td><td class='lane-sent sent'></td>";
+          row.querySelector(".play").addEventListener("click", () => playLane(lane, row));
+          const rate = (verdict) => rateLane(lane, row, verdict);
+          row.querySelector(".v-fits").addEventListener("click", () => rate("fits"));
+          row.querySelector(".v-off").addEventListener("click", () => {
+            rate("off");
+            // the refinement only appears where it is useful — a negative verdict
+            const refine = row.querySelector(".lane-refine");
+            refine.style.display = refine.style.display === "none" ? "block" : "block";
+          });
+          row.querySelector(".v-hit").addEventListener("click", () => {
+            rate("hit");
+            const refine = row.querySelector(".lane-refine");
+            refine.style.display = refine.style.display === "none" ? "block" : "block";
+            const note = refine.querySelector(".lane-note");
+            note.placeholder = "čo z neho robí hit? (voliteľné — stane sa referenciou)";
+          });
+          row.querySelector(".refine-send").addEventListener("click", () => {
+            const parts = [...row.querySelectorAll(".lane-refine input[data-part]:checked")].map((c) => c.dataset.part);
+            const dirs = [...row.querySelectorAll(".dir-chip.on")].map((c) => c.dataset.dir);
+            const note = row.querySelector(".lane-note").value.trim();
+            if (parts.length === 0 && !note && dirs.length === 0) return;
+            postVerdict({
+              kind: "lane-detail",
+              laneId: lane.id,
+              pattern: lane.pattern,
+              parts,
+              directions: dirs,
+              note,
+              blind: BLIND,
+              savedAt: Date.now(),
+            })
+              .then(() => {
+                row.querySelector(".lane-sent").textContent += " ✓ detail";
+                row.querySelector(".lane-refine").style.display = "none";
+              })
+              .catch(() => {
+                row.querySelector(".lane-sent").textContent = "✗ server nefunguje";
+              });
+          });
+          row.querySelectorAll(".dir-chip").forEach((chip) => {
+            chip.addEventListener("click", () => chip.classList.toggle("on"));
+          });
+          laneRows.push({ lane, row });
+          table.append(row);
+        }
+        root.append(table);
+        updateLaneProgress();
+        if (laneRows.length > 0) laneRows[0]!.row.classList.add("playing");
+      }
+
+      function playLane(lane, row) {
+        playFile("../" + lane.file, row);
+      }
+
+      function rateLane(lane, row, verdict) {
+        laneRatings.set(lane.id + "|" + lane.pattern, verdict);
+        row.className = row.className.replace(/ lane-(fits|off|hit)/g, "") + " lane-" + verdict;
+        const sent = row.querySelector(".lane-sent");
+        const icons = { fits: "✓ sedí", off: "✗ nesedí", hit: "★ HIT" };
+        sent.textContent = icons[verdict] ?? "";
+        postVerdict({
+          kind: "lane",
+          laneId: lane.id,
+          pattern: lane.pattern,
+          bpm: lane.bpm,
+          verdict,
+          blind: BLIND,
+          savedAt: Date.now(),
+        })
+          .then(() => {
+            sent.textContent += " ✓ odoslané";
+            updateLaneProgress();
+          })
+          .catch(() => {
+            sent.textContent = "✗ server nefunguje — spusti listening:serve";
+          });
+      }
+
+      function updateLaneProgress() {
+        const el = document.getElementById("lanes-progress");
+        if (el) el.textContent = "ohodnotené " + laneRatings.size + "/" + laneRows.length;
+      }
+
+      // Keyboard shortcuts — active when the LANES tab is visible
+      document.addEventListener("keydown", (ev) => {
+        const lanesActive = document.getElementById("suite-lanes")?.classList.contains("active");
+        if (!lanesActive || ev.target.tagName === "INPUT" || ev.target.tagName === "TEXTAREA") return;
+        const current = laneRows[laneCursor];
+        if (!current) return;
+        if (ev.key === "ArrowDown") {
+          laneCursor = Math.min(laneRows.length - 1, laneCursor + 1);
+          laneRows.forEach((r) => r.row.classList.remove("playing"));
+          laneRows[laneCursor]!.row.classList.add("playing");
+          ev.preventDefault();
+        } else if (ev.key === "ArrowUp") {
+          laneCursor = Math.max(0, laneCursor - 1);
+          laneRows.forEach((r) => r.row.classList.remove("playing"));
+          laneRows[laneCursor]!.row.classList.add("playing");
+          ev.preventDefault();
+        } else if (ev.key === " ") {
+          playLane(current.lane, current.row);
+          ev.preventDefault();
+        } else if (ev.key === "s" || ev.key === "S") {
+          rateLane(current.lane, current.row, "fits");
+        } else if (ev.key === "x" || ev.key === "X") {
+          rateLane(current.lane, current.row, "off");
+        } else if (ev.key === "f" || ev.key === "F") {
+          rateLane(current.lane, current.row, "hit");
+        }
+      });
+
+      fetch("room.json")
+        .then((r) => r.json())
+        .then((room) => {
+          buildMorph(room.morph);
+          buildScenes(room.scenes);
+          buildIntent(room.intent);
+          buildConditioning(room.conditioning ?? []);
+          buildGrooves(room.grooves ?? []);
+          applyBlind();
+        });
+      fetch("../lanes/lanes.json")
+        .then((r) => r.json())
+        .then((pack) => buildLanes(pack.lanes ?? []))
+        .catch(() => {
+          const root = document.getElementById("suite-lanes");
+          root.innerHTML = '<div class="hint">lanes/lanes.json nenájdené — spusti <b>node scripts/render-lane-listening.mjs</b></div>';
+        });
+
+      // ── PACKY suite — the older flat packs under one generic tab ───────────────
+      // Same three verdicts as LANES; one verdict per FILE (these packs carry no
+      // manifest, the filename is the identity).
+      const packyRatings = new Map(); // "pack|file" -> verdict
+
+      async function buildPacky() {
+        const root = document.getElementById("suite-packy");
+        let packs;
+        try {
+          packs = (await (await fetch("/api/packs")).json()).packs;
+        } catch {
+          root.innerHTML = '<div class="hint">server bez /api/packs — spusti čerstvý listening:serve</div>';
+          return;
+        }
+        const bar = document.createElement("div");
+        bar.className = "toolbar";
+        const select = document.createElement("select");
+        select.style.cssText = "font:inherit;background:#1c1c1c;color:#ccc;border:1px solid #333;border-radius:4px;padding:5px 8px";
+        for (const pack of packs) {
+          const option = document.createElement("option");
+          option.value = pack.name;
+          option.textContent = pack.name + " (" + pack.files.length + " WAV)";
+          select.append(option);
+        }
+        bar.append(select);
+        const list = document.createElement("div");
+        bar.append(list);
+        root.append(bar);
+
+        const renderPack = (pack) => {
+          list.innerHTML = "";
+          for (const file of pack.files) {
+            const key = pack.name + "|" + file;
+            const row = document.createElement("table");
+            row.style.width = "100%";
+            const tr = document.createElement("tr");
+            tr.innerHTML =
+              "<td style='width:52%'><b>" + file + "</b></td>" +
+              "<td>" +
+              '<button class="play">▶</button> ' +
+              '<button class="v-fits">✓ sedí</button> ' +
+              '<button class="v-off">✗ nesedí</button> ' +
+              '<button class="v-hit">★ hit</button>' +
+              "</td><td class='packy-sent sent'>" + (packyRatings.get(key) ?? "") + "</td>";
+            tr.querySelector(".play").addEventListener("click", () => playFile("/pack/" + pack.name + "/" + file, tr));
+            const rate = (verdict) => {
+              packyRatings.set(key, verdict);
+              tr.querySelector(".packy-sent").textContent = verdict;
+              postVerdict({ kind: "pack-item", pack: pack.name, file, verdict, blind: BLIND, savedAt: Date.now() })
+                .then(() => loadVerdictCount())
+                .catch(() => {
+                  tr.querySelector(".packy-sent").textContent = "✗ server nefunguje";
+                });
+            };
+            tr.querySelector(".v-fits").addEventListener("click", () => rate("fits"));
+            tr.querySelector(".v-off").addEventListener("click", () => rate("off"));
+            tr.querySelector(".v-hit").addEventListener("click", () => rate("hit"));
+            row.append(tr);
+            list.append(row);
+          }
+        };
+        renderPack(packs[0] ?? { name: "", files: [] });
+        select.addEventListener("change", () => {
+          const pack = packs.find((p) => p.name === select.value);
+          if (pack) renderPack(pack);
+        });
+      }
+      buildPacky();
+      loadVerdictCount();
+
+      document.querySelectorAll(".tabs button").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".tabs button").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          document.querySelectorAll(".suite").forEach((s) => s.classList.remove("active"));
+          document.getElementById("suite-" + btn.dataset.suite).classList.add("active");
+        });
+      });
+    </script>
+  </body>
 </html>

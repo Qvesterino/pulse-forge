@@ -5,13 +5,13 @@
 
 Pulse Forge momentálne disponuje:
 
-| Sekcia | Počet | Kde |
-| --- | --- | --- |
-| Melodické inštrumenty (inštrumentová stopa) | **14** | `src/instruments/registry.ts` |
-| Drum syntetizátory (pady bubnovej stopy) | **7** | `src/project-model/types.ts` + `src/audio-engine/synth-voices.ts` |
-| Veľké pluginy (vendored DSP rack) | **3** — FXEQ, Ultina, Ozvena | `src/effects/*-core/` |
-| Ostatné mixové FX (effect rack) | **32** | `src/effects/registry.ts` |
-| Factory presety | **196 inštrumentových + 6 bubnových** | `src/presets/factory.ts` |
+| Sekcia                                      | Počet                                 | Kde                                                               |
+| ------------------------------------------- | ------------------------------------- | ----------------------------------------------------------------- |
+| Melodické inštrumenty (inštrumentová stopa) | **14**                                | `src/instruments/registry.ts`                                     |
+| Drum syntetizátory (pady bubnovej stopy)    | **7**                                 | `src/project-model/types.ts` + `src/audio-engine/synth-voices.ts` |
+| Veľké pluginy (vendored DSP rack)           | **3** — FXEQ, Ultina, Ozvena          | `src/effects/*-core/`                                             |
+| Ostatné mixové FX (effect rack)             | **32**                                | `src/effects/registry.ts`                                         |
+| Factory presety                             | **196 inštrumentových + 6 bubnových** | `src/presets/factory.ts`                                          |
 
 ---
 
@@ -33,27 +33,29 @@ Všetky inštrumenty sú WebAudio grafy na main threadu s per-voice stateful fil
 - **Panic/dispose** — okamžité utíšenie všetkých hlasov.
 
 ### 1.1 Sampler (`sampler`) — 16 hlasov
+
 Prehrávanie sample z banky s transpozíciou okolo root noty.
 
-| Parametre | Rozsah / možnosti |
-| --- | --- |
-| ROOT | nota 24–84 (default C4) |
-| **START** | štartovací offset v sample (0–100 %) — prístup k útokovým transientom, gating loopov z ľubovoľného miesta; v reverse móde sa mapuje od začiatku pôvodnej takeny |
-| ATTACK, RELEASE | ms obálky |
-| CUTOFF, RESO | per-voice LP filter |
-| **FILTER** | režim filtra **LP / BP / HP** (živá zmena; BP na chopoch znie formantovo) |
-| **KEY TRK** | keytracking — cutoff sleduje výšku noty (default 0 = neutrálne) |
-| **V-FLT** | velocity→filter — tichšie noty stmavujú cutoff až o dve oktávy (pri 100 %); klávesová vyjadrovosť |
-| GAIN | 0–100 % |
-| **Velocity layers / round-robin** | `velocityLayers` na stope (`SampleLayer[]`): disjunktné okná = velocity vrstvy (napr. factory kick kit soft→punch→deep→sub), **prekrývajúce sa okná sa striedajú round-robin**. Nastaviteľné cez `setVelocityLayersCommand`; žiadna zhoda = fallback na `sampleId`. Hotové beat kitmy v `FACTORY_BEAT_RR_KITS` (kick/snare/hat) — sample library obsahuje RR variácie (`.rr2`, `.rr3`: ±~1,5 % výška/dĺžka, ±4 % úroveň), takže beaty neprehrávajú bitovo rovnaký hit dvakrát
-| **Keyzones** | voliteľné `minPitch`/`maxPitch` vo vrstvách — sample podľa výšky noty (Kontakt-lite); helper `keyzoneLayers` + `FACTORY_TONAL_KEYZONES` |
-| STRETCH | **Pitch** (rýchlejšie = vyššie) alebo **Stretch** (time-stretch — výška sa mení bez zmeny dĺžky, interný PSOLA-like algoritmus + cache; **stereo** — každý kanál beží na rovnakej deterministickej grain mrie, takže L/R ostáva fázovo zarovnané) |
-| LOOP | One-shot / Loop s prerenderovaným seamless bufferom (Hann crossfade na šve, snap na nulovú osu) |
-| L-XFADE | dĺžka loop crossfade |
-| REVERSE | prehrávanie odzadu (cache obrátenej kópie) |
-| SPREAD | deterministický náhodný stereo pan na notu |
+| Parametre                         | Rozsah / možnosti                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ROOT                              | nota 24–84 (default C4)                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **START**                         | štartovací offset v sample (0–100 %) — prístup k útokovým transientom, gating loopov z ľubovoľného miesta; v reverse móde sa mapuje od začiatku pôvodnej takeny                                                                                                                                                                                                                                                                                                               |
+| ATTACK, RELEASE                   | ms obálky                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| CUTOFF, RESO                      | per-voice LP filter                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **FILTER**                        | režim filtra **LP / BP / HP** (živá zmena; BP na chopoch znie formantovo)                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **KEY TRK**                       | keytracking — cutoff sleduje výšku noty (default 0 = neutrálne)                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **V-FLT**                         | velocity→filter — tichšie noty stmavujú cutoff až o dve oktávy (pri 100 %); klávesová vyjadrovosť                                                                                                                                                                                                                                                                                                                                                                             |
+| GAIN                              | 0–100 %                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Velocity layers / round-robin** | `velocityLayers` na stope (`SampleLayer[]`): disjunktné okná = velocity vrstvy (napr. factory kick kit soft→punch→deep→sub), **prekrývajúce sa okná sa striedajú round-robin**. Nastaviteľné cez `setVelocityLayersCommand`; žiadna zhoda = fallback na `sampleId`. Hotové beat kitmy v `FACTORY_BEAT_RR_KITS` (kick/snare/hat) — sample library obsahuje RR variácie (`.rr2`, `.rr3`: ±~1,5 % výška/dĺžka, ±4 % úroveň), takže beaty neprehrávajú bitovo rovnaký hit dvakrát |
+| **Keyzones**                      | voliteľné `minPitch`/`maxPitch` vo vrstvách — sample podľa výšky noty (Kontakt-lite); helper `keyzoneLayers` + `FACTORY_TONAL_KEYZONES`                                                                                                                                                                                                                                                                                                                                       |
+| STRETCH                           | **Pitch** (rýchlejšie = vyššie) alebo **Stretch** (time-stretch — výška sa mení bez zmeny dĺžky, interný PSOLA-like algoritmus + cache; **stereo** — každý kanál beží na rovnakej deterministickej grain mrie, takže L/R ostáva fázovo zarovnané)                                                                                                                                                                                                                             |
+| LOOP                              | One-shot / Loop s prerenderovaným seamless bufferom (Hann crossfade na šve, snap na nulovú osu)                                                                                                                                                                                                                                                                                                                                                                               |
+| L-XFADE                           | dĺžka loop crossfade                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| REVERSE                           | prehrávanie odzadu (cache obrátenej kópie)                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| SPREAD                            | deterministický náhodný stereo pan na notu                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 ### 1.2 Analog Synth (`analog`) — 12 hlasov
+
 Klasické subtraction synth voicovanie: **OSC A + OSC B (detune) + sub osc −12 + noise** → per-voice SVF lowpass → amp.
 
 - OSC A/B: sine / triangle / saw / square, detune OSC B ±50 ct
@@ -66,6 +68,7 @@ Klasické subtraction synth voicovanie: **OSC A + OSC B (detune) + sub osc −12
 - LEVEL
 
 ### 1.3 Bass Synth (`bass`) — 8 hlasov
+
 Bass-first voicovanie: **saw + detuned square (telo, šíriteľné do sterea) + sine sub −12**.
 
 - SUB / BODY / PUNCH (tight filter env 200–2600 Hz) / GRIT (miera drive)
@@ -78,6 +81,7 @@ Bass-first voicovanie: **saw + detuned square (telo, šíriteľné do sterea) + 
 - WIDTH, CUTOFF, RESO, LEVEL
 
 ### 1.4 808 Synth (`808`) — monofónny
+
 Trap/808 basa: **sine s pitch dropom** na transiente + čistý **sub osc o oktávu nižšie** (mimo shapera).
 
 - DECAY (0,05–4 s), P-DROP (hĺbka pitch dropu), CLICK (noise transient cez HP)
@@ -86,6 +90,7 @@ Trap/808 basa: **sine s pitch dropom** na transiente + čistý **sub osc o oktá
 - **GLIDE** — 808 slides (priebežný portamento bez nového attacku)
 
 ### 1.5 Texture Synth (`texture`) — 4 hlasy
+
 Pad / drone / atmosférický engine. Signálová cesta na hlas:
 **OSC1 + OSC2 (detuned, sine alebo saw podľa TEXTURE) + filtrovaný noise → bandpass (modulovaný) → amp s tremolom → sum → dry + delay so spätnou väzbou**.
 
@@ -98,6 +103,7 @@ Pad / drone / atmosférický engine. Signálová cesta na hlas:
 - CHAOS — deterministické rozšírenie LFO rýchlostí (seed z ID stopy)
 
 ### 1.6 Wavetable Synth (`wavetable`) — 8 hlasov
+
 Morphing wavetable: každý hlas prehráva dve framy tabuľky crossfaded podľa MORPH, zdvojené ako detuned pár + voliteľný sub.
 
 - **5 factory tabuliek: Sine Grow, PWM, Formant, Digital, FM Drive** (aditívne syntetizované)
@@ -112,6 +118,7 @@ Morphing wavetable: každý hlas prehráva dve framy tabuľky crossfaded podľa 
 - UNISON 1–8× + SPREAD, CUTOFF/RESO, ATTACK/RELEASE, LEVEL
 
 ### 1.7 Granular Synth (`granular`) — 6 hlasov
+
 Granulárny sampler — každá nota naplánuje celý grain cloud dopredu (deterministický PRNG zo seedu stopy + noty).
 
 - POSITION — čítacia pozícia v sample
@@ -128,6 +135,7 @@ Granulárny sampler — každá nota naplánuje celý grain cloud dopredu (deter
 - Obe nové makrá sú default vypnuté a PRNG poradie ťahov ostáva zachované — staré presety znejú bitovo rovnako
 
 ### 1.8 Keys (`keys`) — 8 hlasov
+
 4-op FM elektrické piano: **dva paralelné FM páry** — A: 1:1 (telo/tine), B: nastaviteľný pomer 1–7 (bell) — sčítané cez spoločný lowpass.
 
 - TINE / BELL — modulačný index (jas FM)
@@ -140,6 +148,7 @@ Granulárny sampler — každá nota naplánuje celý grain cloud dopredu (deter
 - Velocity riadi FM jas — mäkšie údery = okrúhlejší zvuk
 
 ### 1.9 FM Synth (`fm`) — 10 hlasov
+
 Klasické **2-operačné DX-style FM**: modulátor → modGain → `carrier.frequency`, voliteľná self-feedback modulátora (128-vzorkové oneskorenie láme WebAudio cyklus) pre growl. Deviácia škáluje s frekvenciou nosiča → rovnomerná hustota bočných pásov po klávesnici.
 
 - RATIO — pomer modulátora (0,25–16), INDEX — hĺbka modulácie
@@ -150,6 +159,7 @@ Klasické **2-operačné DX-style FM**: modulátor → modGain → `carrier.freq
 - Velocity riadi INDEX (`0,45 + vel·0,55`, rovnaká krivka ako Keys) — mäkký úder = okrúhlejší zvuk
 
 ### 1.10 Pluck Synth (`pluck`) — 12 hlasov
+
 **Karplus-Strong fyzikálny model** — ladené oneskorenie (1/f) s tónovanou spätnou väzbou, excite krátkym noise burstom.
 
 - PICK — jas excitácie (soft = LP, bright = HP)
@@ -159,6 +169,7 @@ Klasické **2-operačné DX-style FM**: modulátor → modGain → `carrier.freq
 - DECAY, WIDTH (pan podľa noty), CUTOFF/RESO, ATTACK/RELEASE, LEVEL
 
 ### 1.11 Log Drum (`logdrum`) — 4 hlasy
+
 Amapiano log drum: **3 inharmonické sine partiale** (pomer 1 / ~2,15 / ~3,8, driftujúci s výškou) → tanh grit → notch (HOLLOW) → SVF lowpass.
 
 - DECAY, DROP (pitch drop na transiente, velocity-citlivý)
@@ -167,6 +178,7 @@ Amapiano log drum: **3 inharmonické sine partiale** (pomer 1 / ~2,15 / ~3,8, dr
 - WIDTH, **GLIDE**, LEVEL
 
 ### 1.12 Spectral Pad (`spectral`) — 6 hlasov
+
 Aditívny pad: až **8 sine partialov** na hlas, každý s vlastnou amplitúdou, decayom a priestorom.
 
 - PROFILE — amplitúdová krivka partialov: **Harmonic / Bright / Odd / Formant / Bell**
@@ -178,6 +190,7 @@ Aditívny pad: až **8 sine partialov** na hlas, každý s vlastnou amplitúdou,
 - ATTACK (do 4 s) / TAIL (do 8 s), CUTOFF/RESO, WIDTH (partialy roztvorené do sterea), LEVEL
 
 ### 1.13 Vocal Chop (`vocalchop`) — 8 hlasov
+
 Sampler ladený na vocal chopy a talkboxové leady: sample hrá cez **paralelnú trojpásmovú formantovú banku** (F1/F2/F3 volené samohlásky).
 
 - VOWEL — samohláska **A / E / I / O / U** (Peterson–Barney formanty)
@@ -192,6 +205,7 @@ Sampler ladený na vocal chopy a talkboxové leady: sample hrá cez **paralelnú
 - Defaultne dostane `factory.tonal.stab` sample, po pridaní stopy ihneď znie
 
 ### 1.14 Drum Synth (`drumsynth`) — 8 hlasov
+
 Analógovo modelované bicie na inštrumentovej stope — **hrateľné chromaticky z piano rollu**. TYPE prepína 13 modelov:
 
 - **Kick** — sine s pitch envelope (TONE = začiatočná výška, BODY = dĺžka dropu), SNAP = click
@@ -213,15 +227,15 @@ Analógovo modelované bicie na inštrumentovej stope — **hrateľné chromatic
 
 Drum track obsahuje pady; každý pad je buď **sample** (so slice, reverse, fade) alebo **syntetizovaný hlas** — keď nie je priradený asset, pad sa syntetizuje:
 
-| Typ | Popis |
-| --- | --- |
-| `kick` | kopák so pitch envelope a sub body |
-| `snare` | snare s body + snap |
-| `hatClosed` | uzavretý hi-hat |
-| `hatOpen` | otvorený hi-hat (dlhší decay) |
-| `clap` | clap |
-| `perc` | percusný hlas |
-| `cowbell` | cowbell |
+| Typ         | Popis                              |
+| ----------- | ---------------------------------- |
+| `kick`      | kopák so pitch envelope a sub body |
+| `snare`     | snare s body + snap                |
+| `hatClosed` | uzavretý hi-hat                    |
+| `hatOpen`   | otvorený hi-hat (dlhší decay)      |
+| `clap`      | clap                               |
+| `perc`      | percusný hlas                      |
+| `cowbell`   | cowbell                            |
 
 Každý syntetizovaný pad má 4 zdieľané parametre: **DECAY** (0,05–1,5 s), **TONE** (200–12 000 Hz), **SNAP** (attack/click/sizzle), **BODY** (low/sub/fat). Factory presetov pre bicie: 6 (`DrumSynthPreset`).
 
@@ -229,9 +243,10 @@ Každý syntetizovaný pad má 4 zdieľané parametre: **DECAY** (0,05–1,5 s),
 
 ## 3. Veľké pluginy (3)
 
-Všetky tri majú DSP v **AudioWorklete** a ich jadrá sú *vendored* z projektu **VocalForge_DAW** — bit-exact / parity-validované voči golden fixture (`tests/fxeq-golden.test.ts`, `tests/ultina-vectors.test.ts`, `tests/ozvena-golden.test.ts`). Ak worklet nie je dostupný, plugin spraví transparentný bypass (1:1 signál) — nikdy ticho nezlyhá.
+Všetky tri majú DSP v **AudioWorklete** a ich jadrá sú _vendored_ z projektu **VocalForge_DAW** — bit-exact / parity-validované voči golden fixture (`tests/fxeq-golden.test.ts`, `tests/ultina-vectors.test.ts`, `tests/ozvena-golden.test.ts`). Ak worklet nie je dostupný, plugin spraví transparentný bypass (1:1 signál) — nikdy ticho nezlyhá.
 
-### 3.1 FXEQ Multiband (`fxeq`) — kategória *character*
+### 3.1 FXEQ Multiband (`fxeq`) — kategória _character_
+
 Multiband character/saturation rack.
 
 - **2–6 pásem**, LR4 crossover
@@ -239,7 +254,8 @@ Multiband character/saturation rack.
 - Master **safety limiter** (CEIL −6…0 dB), IN/OUT gain, MIX
 - Rack expozízia: IN, BANDS, MIX, OUT, LIM, CEIL (per-band editácia príde s EQ-paint panelom)
 
-### 3.2 Ultina Suite (`ultina`) — kategória *dynamics*
+### 3.2 Ultina Suite (`ultina`) — kategória _dynamics_
+
 Neutron-class modulárna mixing suite.
 
 - **10 modulov:** EQ, Comp, Gate, Exciter, Transient, Clipper, Density, Sculptor, Phase, Unmask
@@ -247,7 +263,8 @@ Neutron-class modulárna mixing suite.
 - Rack expozízia: IN, MIX, OUT + quick toggles **COMP / ATTACK (transient) / EDGE (exciter) / UNMASK**
 - Factory presety: Vocal Air, Vocal Warmth, Vocal Presence, De-Ess (Dynamic), Low Cut 80 Hz, Tilt Bright, Vocal Glue, Vocal Punch, Master Bus Glue, Multiband Wide, Parallel Squash a ďalšie
 
-### 3.3 Ozvena Reverb (`ozvena`) — kategória *space*
+### 3.3 Ozvena Reverb (`ozvena`) — kategória _space_
+
 Neoverb-class tri-engine reverb.
 
 - **E1 Reflections** — ranné odrazy
@@ -264,13 +281,13 @@ Neoverb-class tri-engine reverb.
 
 Okrem troch veľkých pluginov disponuje effect rack každého tracku (aj drum) týmito efektmi, rozdelenými do 5 kategórií:
 
-| Kategória | Efekty |
-| --- | --- |
-| **Tone (5)** | EQ, M/S EQ, Multiband, SV Filter, Utility |
-| **Dynamics (5)** | Compressor, Limiter, Gate, Sidechain, Transient Shaper |
-| **Character (8)** | Saturation, Tape Sat, Clipper, Distortion, Bitcrusher, Shimmer, Drum Buss, Bass Buss |
+| Kategória         | Efekty                                                                                         |
+| ----------------- | ---------------------------------------------------------------------------------------------- |
+| **Tone (5)**      | EQ, M/S EQ, Multiband, SV Filter, Utility                                                      |
+| **Dynamics (5)**  | Compressor, Limiter, Gate, Sidechain, Transient Shaper                                         |
+| **Character (8)** | Saturation, Tape Sat, Clipper, Distortion, Bitcrusher, Shimmer, Drum Buss, Bass Buss           |
 | **Movement (11)** | Chorus, Flanger, Phaser, Tremolo, Autowah, Pump, Stutter, Step Gate, Comb, Vowel, Haas Widener |
-| **Space (3)** | Reverb, Delay, Duck Delay |
+| **Space (3)**     | Reverb, Delay, Duck Delay                                                                      |
 
 K tomu per-track sends do return stôp (`ReturnTrack`) a mute/solo/freeze (render do AudioBufferu šetriaci CPU).
 
@@ -280,26 +297,26 @@ K tomu per-track sends do return stôp (`ReturnTrack`) a mute/solo/freeze (rende
 
 Presety sú čisté dáta (žiadne volania do audio engine) — idú cez command do project modelu. Filtrované podľa **žánru** (house, techno, trap, ambient, score) a **mood** (dark, bright, warm, aggressive, clean, deep, atmosphere).
 
-| Inštrument | Počet presetov |
-| --- | --- |
-| Analog Synth | 26 |
-| Bass Synth | 20 |
-| Keys | 17 |
-| 808 Synth | 13 |
-| FM Synth | 13 |
-| Texture Synth | 13 |
-| Drum Synth | 12 |
-| Wavetable Synth | 15 |
-| Sampler | 11 |
-| Granular Synth | 10 |
-| Vocal Chop | 10 |
-| Pluck Synth | 9 |
-| Spectral Pad | 9 |
-| Log Drum | 10 |
-| Spectral Pad | 11 |
-| Drum Synth | 18 |
-| **Spolu inštrumenty** | **196** |
-| Drum bicie (kick, snare, hat, clap…) | 6 |
+| Inštrument                           | Počet presetov |
+| ------------------------------------ | -------------- |
+| Analog Synth                         | 26             |
+| Bass Synth                           | 20             |
+| Keys                                 | 17             |
+| 808 Synth                            | 13             |
+| FM Synth                             | 13             |
+| Texture Synth                        | 13             |
+| Drum Synth                           | 12             |
+| Wavetable Synth                      | 15             |
+| Sampler                              | 11             |
+| Granular Synth                       | 10             |
+| Vocal Chop                           | 10             |
+| Pluck Synth                          | 9              |
+| Spectral Pad                         | 9              |
+| Log Drum                             | 10             |
+| Spectral Pad                         | 11             |
+| Drum Synth                           | 18             |
+| **Spolu inštrumenty**                | **196**        |
+| Drum bicie (kick, snare, hat, clap…) | 6              |
 
 ---
 

@@ -49,7 +49,13 @@ function bigDoc(): ProjectDocument {
       const notes: ProjectDocument["patterns"][number]["notes"] = {};
       const list: Array<{ id: string; pitch: number; start: number; duration: number; velocity: number }> = [];
       for (let note = 0; note < 64; note++) {
-        list.push({ id: `n-${i}-${pi}-${note}`, pitch: 40 + (note % 24), start: note * 30, duration: 25, velocity: 0.7 });
+        list.push({
+          id: `n-${i}-${pi}-${note}`,
+          pitch: 40 + (note % 24),
+          start: note * 30,
+          duration: 25,
+          velocity: 0.7,
+        });
       }
       notes[n.id] = list;
       patterns.push({

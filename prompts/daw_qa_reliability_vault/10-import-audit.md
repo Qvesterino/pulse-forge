@@ -3,6 +3,7 @@
 Audit import robustness.
 
 Test where supported:
+
 - audio
 - MIDI
 - drag/drop
@@ -10,6 +11,7 @@ Test where supported:
 - project import
 
 Test malformed and unusual input:
+
 - zero-byte files
 - corrupted files
 - unsupported codecs
@@ -22,7 +24,6 @@ Test malformed and unusual input:
 
 Verify failed import cannot corrupt existing project state.
 
-
 ## Global Rules
 
 - Preserve intended product behavior unless a defect is clearly demonstrated.
@@ -34,23 +35,26 @@ Verify failed import cannot corrupt existing project state.
 - Avoid broad architectural rewrites unless the audit reveals a concrete defect that cannot be solved safely otherwise.
 - After every meaningful change, run relevant tests/checks.
 
-
-
 ## Completion Report
 
 At the end provide:
 
 ### Findings
+
 Confirmed defects, risks, or inconsistencies.
 
 ### Fixes
+
 What was changed and why.
 
 ### Tests Added
+
 Regression, integration, or E2E coverage added.
 
 ### Verification
+
 Exact commands/checks executed and their results.
 
 ### Remaining Risks
+
 Anything intentionally left unchanged or requiring manual/human review.

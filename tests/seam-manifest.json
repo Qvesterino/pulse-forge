@@ -731,11 +731,11 @@
     {
       "id": "intent-param-plan-preview",
       "status": "COVERED",
-      "entryPoint": "src/ui/IntentPanel.tsx intent textarea → paramPlanLines",
+      "entryPoint": "src/ui/IntentPanel.tsx intent textarea → planIntent",
       "spec": "tests/ui/IntentPanel.test.tsx",
-      "seamEvent": "shows the inferred param delta BEFORE execution",
+      "seamEvent": "shows the inferred intent plan BEFORE execution",
       "negativeSpec": "typing must not apply anything",
-      "note": "P3 (2026-10-20): typing a named-knob ask renders the resolved track, current value, destination, range fraction in the param's own domain and any clamp/add marker before the command is applied; the spec asserts the store was not executed."
+      "note": "P3 (2026-10-20) / step 3 (2026-10-21): typing a resolvable ask renders the SAME canonical command the executor would build, dry-run against the document value: resolved target, current value, destination, range fraction in the parameter's own domain and any clamp/add marker. The spec asserts the store was not executed."
     }
   ]
 }

@@ -20,26 +20,26 @@ Závisí od: existujúci deterministic generator, candidate bank, quality gates
 ## Aktuálny stav v repozitári
 
 - [x] `features.v1` extractor: 54 fixed-position features, `[0, 1]` clipping,
-  finite fallback, presence flags a UUID-free `featureHash`.
+      finite fallback, presence flags a UUID-free `featureHash`.
 - [x] Candidate-bank batch integration s deterministic heuristic fallbackom.
 - [x] Lazy ESM Worker a CPU/WASM-only ONNX runtime import.
 - [x] Local model + manifest s SHA-256 hash verification; model artifact je
-  24.7 KB a jeho ONNX input/output contract je validovaný.
+      24.7 KB a jeho ONNX input/output contract je validovaný.
 - [x] Production build + Chromium smoke načíta Worker, WASM, model a vykoná
-  score request.
+      score request.
 - [x] Default ranker mode is `active` (Fáza 0 audit 2026-09-24): golden
-  preferencie sú held out by exact dataset group, reviewed cez listening-room
-  a spĺňajú ≥12-pairwise aktivačnú podmienku (24 pairwise, 4 žánre).
+      preferencie sú held out by exact dataset group, reviewed cez listening-room
+      a spĺňajú ≥12-pairwise aktivačnú podmienku (24 pairwise, 4 žánre).
 - [x] Stará golden námitka (chýbajúce groupKey, duplicitné poradie, konvenčné
-  1.0) platila pre v1 súbor — ten je archivovaný ako
-  `intent-ranker-golden.v1-archive.json` a nahradený re-curovanou verziou.
+      1.0) platila pre v1 súbor — ten je archivovaný ako
+      `intent-ranker-golden.v1-archive.json` a nahradený re-curovanou verziou.
 - [x] Bežný sync `generateLocalResult` / `generatePatternCommand` nepoužíva
-  async ranker path; explicitná preview integration ešte nie je hotová.
+      async ranker path; explicitná preview integration ešte nie je hotová.
 - [ ] Model nemá ručne skontrolované golden preferencie ani dôkaz, že zlepšuje
-  hudobný výber oproti heuristic teacher — **ostáva ako Fáza 4** (favorites
-  ledger → retréning) v `IMPLEMENTATION-ROADMAP-AI-FIRST-PRODUCER.md`.
+      hudobný výber oproti heuristic teacher — **ostáva ako Fáza 4** (favorites
+      ledger → retréning) v `IMPLEMENTATION-ROADMAP-AI-FIRST-PRODUCER.md`.
 - [x] Safari/iOS cold-start, WASM memory, offline-cache a missing-asset
-  fallback nie sú pokryté kompletnou manuálnou matrixou.
+      fallback nie sú pokryté kompletnou manuálnou matrixou.
 
 ## Agent goal
 
@@ -58,7 +58,7 @@ AI model nesmie generovať ani priamo mutovať pattern. Jeho úloha je iba zorad
 - [x] Pre v1 zvoliť vlastný malý MLP ranker, nie všeobecný pretrained audio model.
 - [x] Vytrénovať a exportovať `intent-ranker.v1.onnx`.
 - [x] Overiť model proti heuristickému baseline na held-out skupinách; golden
-  preferencie od hudobného review ešte chýbajú.
+      preferencie od hudobného review ešte chýbajú.
 
 Odporúčaný tvar modelu:
 
@@ -282,6 +282,7 @@ finalScore = hardGate × (heuristicWeight × heuristicScore
 ## Implementačné poznámky v1 (2026-09-11)
 
 Dodané súbory:
+
 - `src/ai/features/pattern-features.ts` — features.v1 (54 featureov, pevné poradie, clamp 0..1, finite fallbacky, featureHash)
 - `src/ai/ranking/ranker-types.ts` / `ranker-worker.ts` / `ranker-client.ts` — ONNX worker (lazy, batch API load/score/dispose, manifest validácia, timeout + circuit breaker, kontrolovaný fallback)
 - `scripts/generate-intent-ranker-dataset.mts` — deterministický dataset (84 skupín, 336 kandidátov, genre×style×seed matica)
@@ -291,6 +292,7 @@ Dodané súbory:
 - Integrácia: `src/ai/ranking/rank-candidates.ts` + `LocalDeterministicProvider.generate()` — shadow default, feature flag `localStorage pf:intent-ranker` (off|shadow|active), provenance v `pattern.generation.ranker`
 
 Odchýlky od odporúčaní:
+
 - Tréner je Python/numpy (oficiálny onnx exporter) — presne podľa odporúčaného `scripts/train-intent-ranker.py`.
 - ONNX Runtime Web pridaný ako závislosť; WASM runtime súbory sa syncujú do `public/models/ort/` (`npm run ranker:ort-sync`) a worker ich fetchuje cez `env.wasm.wasmBinary` (vite dev necháva importovať .mjs z public).
 - Held-out report v1: val pairwise vs. heuristic teacher **0.843**, Spearman 0.788, top-1 agreement 0.765 — model REPRODUZUJE heuristickú heuristiku na held-out dátach; preukázateľné PREKONANIE vyžaduje ľudské golden preferencie (jediná otvorená položka vyššie). Preto default SHADOW mode a heuristika ostáva fallback.

@@ -87,26 +87,52 @@ const STEP_COUNT = 16;
 const PAD_ROLES = ["kick", "snare", "hat"] as const;
 
 // GATE 1 — mood-only pair (v1 is blind here: identical one-hot rows)
-const gridMoodA = buildPriorV3GridRows({ semantic: moodA, genre: priorGenreOf("techno"), styleId: "techno.peak", padRoles: PAD_ROLES as unknown as string[], stepCount: STEP_COUNT });
-const gridMoodB = buildPriorV3GridRows({ semantic: moodB, genre: priorGenreOf("techno"), styleId: "techno.peak", padRoles: PAD_ROLES as unknown as string[], stepCount: STEP_COUNT });
+const gridMoodA = buildPriorV3GridRows({
+  semantic: moodA,
+  genre: priorGenreOf("techno"),
+  styleId: "techno.peak",
+  padRoles: PAD_ROLES as unknown as string[],
+  stepCount: STEP_COUNT,
+});
+const gridMoodB = buildPriorV3GridRows({
+  semantic: moodB,
+  genre: priorGenreOf("techno"),
+  styleId: "techno.peak",
+  padRoles: PAD_ROLES as unknown as string[],
+  stepCount: STEP_COUNT,
+});
 const batch1 = new Float32Array((gridMoodA.length + gridMoodB.length) * V3_FEATURE_COUNT);
 gridMoodA.forEach((row, i) => batch1.set(row, i * V3_FEATURE_COUNT));
 gridMoodB.forEach((row, i) => batch1.set(row, (gridMoodA.length + i) * V3_FEATURE_COUNT));
 const v3Mood = await runModel("symbolic-prior-v3", batch1, gridMoodA.length + gridMoodB.length);
 const half = v3Mood.length / 2;
-const dist = (a: number[], b: number[]) => Math.sqrt(a.reduce((s, x, i) => s + (x - b[i]) * (x - b[i]), 0)) / Math.sqrt(a.length);
+const dist = (a: number[], b: number[]) =>
+  Math.sqrt(a.reduce((s, x, i) => s + (x - b[i]) * (x - b[i]), 0)) / Math.sqrt(a.length);
 const v3MoodDistance = dist(v3Mood.slice(0, half), v3Mood.slice(half));
 
 // v1 on the same pair — IDENTICAL one-hot rows → distance must be 0 (blindness)
-const v1A = buildPriorGridRows({ genre: priorGenreOf("techno"), styleId: "techno.peak", stepCount: STEP_COUNT, padRoles: PAD_ROLES as unknown as string[] });
+const v1A = buildPriorGridRows({
+  genre: priorGenreOf("techno"),
+  styleId: "techno.peak",
+  stepCount: STEP_COUNT,
+  padRoles: PAD_ROLES as unknown as string[],
+});
 const batchV1 = new Float32Array(v1A.length * PRIOR_FEATURE_COUNT);
 v1A.forEach((row, i) => batchV1.set(row, i * PRIOR_FEATURE_COUNT));
 await runModel("symbolic-prior-v1", batchV1, v1A.length);
 const v1MoodDistance = 0;
 
 // v2 on the same pair — the complementary reference (shadow A/B saw ≈0.54)
-const v2A = buildPriorV2GridRows({ semantic: moodA, padRoles: PAD_ROLES as unknown as string[], stepCount: STEP_COUNT });
-const v2B = buildPriorV2GridRows({ semantic: moodB, padRoles: PAD_ROLES as unknown as string[], stepCount: STEP_COUNT });
+const v2A = buildPriorV2GridRows({
+  semantic: moodA,
+  padRoles: PAD_ROLES as unknown as string[],
+  stepCount: STEP_COUNT,
+});
+const v2B = buildPriorV2GridRows({
+  semantic: moodB,
+  padRoles: PAD_ROLES as unknown as string[],
+  stepCount: STEP_COUNT,
+});
 const batchV2 = new Float32Array((v2A.length + v2B.length) * V2_FEATURE_COUNT);
 v2A.forEach((row, i) => batchV2.set(row, i * V2_FEATURE_COUNT));
 v2B.forEach((row, i) => batchV2.set(row, (v2A.length + i) * V2_FEATURE_COUNT));
@@ -119,8 +145,20 @@ const v2AlivePads = PAD_ROLES.filter((_, pad) =>
 ).length;
 
 // GATE 2 — style pair (same semantic, different style — v1's home turf)
-const gridStyleA = buildPriorV3GridRows({ semantic: moodA, genre: priorGenreOf("techno"), styleId: "techno.peak", padRoles: PAD_ROLES as unknown as string[], stepCount: STEP_COUNT });
-const gridStyleB = buildPriorV3GridRows({ semantic: moodA, genre: priorGenreOf("house"), styleId: "house.deep", padRoles: PAD_ROLES as unknown as string[], stepCount: STEP_COUNT });
+const gridStyleA = buildPriorV3GridRows({
+  semantic: moodA,
+  genre: priorGenreOf("techno"),
+  styleId: "techno.peak",
+  padRoles: PAD_ROLES as unknown as string[],
+  stepCount: STEP_COUNT,
+});
+const gridStyleB = buildPriorV3GridRows({
+  semantic: moodA,
+  genre: priorGenreOf("house"),
+  styleId: "house.deep",
+  padRoles: PAD_ROLES as unknown as string[],
+  stepCount: STEP_COUNT,
+});
 const batch2 = new Float32Array((gridStyleA.length + gridStyleB.length) * V3_FEATURE_COUNT);
 gridStyleA.forEach((row, i) => batch2.set(row, i * V3_FEATURE_COUNT));
 gridStyleB.forEach((row, i) => batch2.set(row, (gridStyleA.length + i) * V3_FEATURE_COUNT));
@@ -140,8 +178,12 @@ const walls = v3Mood.filter((p) => p === 0 || p === 1).length;
 const alivePads = PAD_ROLES.filter((_, pad) =>
   v3Mood.slice(pad * STEP_COUNT, (pad + 1) * STEP_COUNT).some((p) => p > 0.05),
 ).length;
-console.log(`  GATE 3 wall cells: v3 ${walls}/${v3Mood.length} vs v2 ${v2Walls}/${v2Mood.length} (sparse-grid walls are the family baseline)`);
-console.log(`  pads with a plausible hit: v3 ${alivePads}/${PAD_ROLES.length} vs v2 ${v2AlivePads}/${PAD_ROLES.length}`);
+console.log(
+  `  GATE 3 wall cells: v3 ${walls}/${v3Mood.length} vs v2 ${v2Walls}/${v2Mood.length} (sparse-grid walls are the family baseline)`,
+);
+console.log(
+  `  pads with a plausible hit: v3 ${alivePads}/${PAD_ROLES.length} vs v2 ${v2AlivePads}/${PAD_ROLES.length}`,
+);
 // Honest gates: (1) the semantic channel must be ALIVE — v1 was blind at
 // 0.0, and activating v2 conditioning for every candidate is meaningless
 // below that; (2) style discrimination survives at least as strongly as
@@ -151,6 +193,8 @@ console.log(`  pads with a plausible hit: v3 ${alivePads}/${PAD_ROLES.length} vs
 const gate1 = v3MoodDistance > 0.02;
 const gate2 = v3StyleDistance > 0.02 && v3StyleDistance >= v3MoodDistance;
 const gate3 = walls <= v2Walls && alivePads === PAD_ROLES.length;
-console.log(`  GATE 1 ${gate1 ? "PASS" : "FAIL"} · GATE 2 ${gate2 ? "PASS" : "FAIL"} · GATE 3 ${gate3 ? "PASS" : "FAIL"}`);
+console.log(
+  `  GATE 1 ${gate1 ? "PASS" : "FAIL"} · GATE 2 ${gate2 ? "PASS" : "FAIL"} · GATE 3 ${gate3 ? "PASS" : "FAIL"}`,
+);
 if (!(gate1 && gate2 && gate3)) process.exit(1);
 console.log("\n[v3-gate] hybrid keeps both channels alive — safe to activate for every candidate ✔");

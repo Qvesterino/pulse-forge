@@ -9,7 +9,7 @@ KYX ships as a downloadable Windows app, wrapped by a minimal Electron shell (`d
 
 The shell registers a custom `app://` scheme as **standard + secure** (with fetch API and stream support) before app ready, and serves `dist/` at `app://bundle/...` via `protocol.handle`. Because the scheme is standard, every root-absolute URL in the web app — the AudioWorklet bundles (`/core-worklet.js`, `/bitcrusher-worklet.js`, `/fxeq-worklet.js`, `/ultina-worklet.js`, `/ozvena-worklet.js`), the ONNX ranker assets (`/models/...`), curated samples (`/samples/...`) and Vite's `/assets/...` chunks — resolves against the `app://bundle` origin exactly as it does against an https origin. **No source changes are needed in the audio engine, persistence, or worklet loaders.**
 
-`file://` is rejected on purpose: root-absolute fetches resolve to the filesystem root there, and Chromium storage (IndexedDB/localStorage) has no stable origin. The `app://` scheme is secure, so IndexedDB projects, user samples and UI prefs persist under `%APPDATA%/KYX` and survive restarts *and app updates*.
+`file://` is rejected on purpose: root-absolute fetches resolve to the filesystem root there, and Chromium storage (IndexedDB/localStorage) has no stable origin. The `app://` scheme is secure, so IndexedDB projects, user samples and UI prefs persist under `%APPDATA%/KYX` and survive restarts _and app updates_.
 
 The shell adds exactly four browser-provided affordances:
 

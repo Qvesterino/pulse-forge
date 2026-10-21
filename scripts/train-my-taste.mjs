@@ -61,9 +61,7 @@ const verdictCount = Array.isArray(verdicts) ? verdicts.length : 0;
 const roomPack = readJson(PACK);
 const roomEntries = roomPack?.entries?.length ?? 0;
 mkdirSync(DICE_PACKS, { recursive: true });
-const diceFiles = existsSync(DICE_PACKS)
-  ? readdirSync(DICE_PACKS).filter((f) => f.endsWith(".json"))
-  : [];
+const diceFiles = existsSync(DICE_PACKS) ? readdirSync(DICE_PACKS).filter((f) => f.endsWith(".json")) : [];
 const golden = readJson(GOLDEN);
 const roomCombos = (golden?.combos ?? []).filter((c) => c.source === "listening-room").length;
 
@@ -96,11 +94,7 @@ if (!DRY && verdictCount > 0) {
 // Top-level reviewed flag — ranker:activate gates on it; listening-room
 // verdicts ARE the human review, so a room-sourced combo satisfies it.
 const goldenNow = readJson(GOLDEN);
-if (
-  goldenNow &&
-  (goldenNow.combos ?? []).some((c) => c.source === "listening-room") &&
-  goldenNow.reviewed !== true
-) {
+if (goldenNow && (goldenNow.combos ?? []).some((c) => c.source === "listening-room") && goldenNow.reviewed !== true) {
   goldenNow.reviewed = true;
   goldenNow.reviewedBy = "listening-room";
   goldenNow.reviewedAt = new Date().toISOString();
@@ -179,7 +173,9 @@ for (const file of allFiles) {
   const b = before[file];
   const a = after[file];
   const changed = !b || !a || b.hash !== a.hash;
-  console.log(`  ${changed ? "●" : " "} ${file.replace(".manifest.json", "")}${changed ? " — RETRAINED" : " — unchanged"}`);
+  console.log(
+    `  ${changed ? "●" : " "} ${file.replace(".manifest.json", "")}${changed ? " — RETRAINED" : " — unchanged"}`,
+  );
   if (changed && a?.report) {
     const entries = Object.entries(a.report).slice(0, 6);
     for (const [k, v] of entries) console.log(`      ${k}: ${typeof v === "number" ? Number(v).toFixed(4) : v}`);

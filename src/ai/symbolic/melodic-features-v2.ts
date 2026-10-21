@@ -1,4 +1,6 @@
 import { MELODIC_DEGREE_CLASSES, MELODIC_DURATION_CLASSES, contourClass, durationClass } from "./melodic-features";
+import type { AiMeter } from "../meter";
+import { stepInBarFeatures } from "./step-position";
 
 /**
  * melodic-features-v2 — EMBEDDING-CONDITIONED next-note contract (Fáza G).
@@ -35,7 +37,7 @@ export interface MelodicV2FeatureInput {
   /** PCA-projected MiniLM embedding of the intent text (16 dims). */
   semantic: readonly number[];
   role: "bass" | "chord" | "lead";
-  /** Note start position within the bar (cumulative durations mod 16). */
+  /** Note start position within the bar (cumulative durations mod the bar). */
   startStep: number;
   /** Previous note's degree (-1 = rest / sequence start). */
   prevDegree: number;
@@ -43,6 +45,8 @@ export interface MelodicV2FeatureInput {
   prevDuration: number;
   /** Degree before the previous note (-1 when unknown → contour "same"). */
   prevPrevDegree: number;
+  /** The metre the position is read in (ADR 0057 Stage 2d). */
+  meter: AiMeter;
 }
 
 /** Build one fixed-order v2 next-note context row. Pure — same input ⇒ same row. */
@@ -59,12 +63,8 @@ export function buildMelodicV2FeatureRow(input: MelodicV2FeatureInput): number[]
   row[offset + (roleIndex >= 0 ? roleIndex : 0)] = 1;
   offset += 3;
 
-  const s16 = ((input.startStep % 16) + 16) % 16;
-  row[offset++] = s16 / 16;
-  row[offset++] = Math.sin((2 * Math.PI * s16) / 16);
-  row[offset++] = Math.cos((2 * Math.PI * s16) / 16);
-  row[offset++] = Math.sin((4 * Math.PI * s16) / 16);
-  row[offset++] = Math.cos((4 * Math.PI * s16) / 16);
+  const position = stepInBarFeatures(input.meter, input.startStep);
+  for (const value of position) row[offset++] = value;
 
   // previous degree: -1 (rest) is class 0, degree d is class d + 1
   const prevClass = input.prevDegree < 0 ? 0 : Math.min(7, input.prevDegree + 1);

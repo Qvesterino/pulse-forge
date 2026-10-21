@@ -24,9 +24,7 @@ import { execFileSync } from "child_process";
 import { dirname, join, relative, resolve } from "path";
 
 const fromIndex = process.argv.indexOf("--from");
-const FROM = fromIndex >= 0
-  ? process.argv[fromIndex + 1]
-  : "D:/VocalForge_DAW/plugins/ultina";
+const FROM = fromIndex >= 0 ? process.argv[fromIndex + 1] : "D:/VocalForge_DAW/plugins/ultina";
 const ALLOW_DIRTY_UPSTREAM = process.argv.includes("--allow-dirty-upstream");
 const ALLOW_VENDOR_DRIFT = process.argv.includes("--allow-vendor-drift");
 const SRC = join(FROM, "src");
@@ -96,15 +94,17 @@ const HEADER = `/* eslint-disable */
 /** Mechanical transforms — extend only with type-marker fixes. */
 function applyTransforms(source) {
   // Analysis-layer unused locals (upstream tsconfig is laxer than ours).
-  return source
-    // AutoGainReading appears last in its import list (no trailing comma).
-    .replace(
-      "import { AutoGainController, AutoGainReading } from",
-      "import { AutoGainController, type AutoGainReading } from",
-    )
-    .replace(/const octaveBands = /, "const _octaveBands = ")
-    .replace(/const maxBlockSize = /, "const _maxBlockSize = ")
-    .replace(/const avgEnergy = /, "const _avgEnergy = ");
+  return (
+    source
+      // AutoGainReading appears last in its import list (no trailing comma).
+      .replace(
+        "import { AutoGainController, AutoGainReading } from",
+        "import { AutoGainController, type AutoGainReading } from",
+      )
+      .replace(/const octaveBands = /, "const _octaveBands = ")
+      .replace(/const maxBlockSize = /, "const _maxBlockSize = ")
+      .replace(/const avgEnergy = /, "const _avgEnergy = ")
+  );
 }
 
 /**
@@ -133,16 +133,16 @@ function assertUpstreamClean() {
     if (dirty) {
       console.error(
         `[vendor] REFUSING dirty upstream: ${FROM}\n` +
-        `${dirty}\n` +
-        "Commit or separate the upstream changes first, or rerun with " +
-        "--allow-dirty-upstream after reviewing the complete source diff.",
+          `${dirty}\n` +
+          "Commit or separate the upstream changes first, or rerun with " +
+          "--allow-dirty-upstream after reviewing the complete source diff.",
       );
       process.exit(1);
     }
   } catch (error) {
     console.error(
       `[vendor] cannot verify upstream Git state for ${FROM}. ` +
-      "Use --allow-dirty-upstream only for a reviewed non-Git source tree.",
+        "Use --allow-dirty-upstream only for a reviewed non-Git source tree.",
     );
     process.exit(1);
   }
@@ -192,9 +192,7 @@ if (lostMarkers.length > 0 && !process.argv.includes("--drop-reconciled")) {
       "allowed to diverge from upstream (owner decision, 2026-09-14) and " +
       "carries reconciled fixes the upstream snapshot does NOT have; " +
       "syncing now would silently revert them:\n" +
-      lostMarkers
-        .map(({ rel, lost }) => `  ${rel}:\n${lost.map((l) => `    ${l}`).join("\n")}`)
-        .join("\n") +
+      lostMarkers.map(({ rel, lost }) => `  ${rel}:\n${lost.map((l) => `    ${l}`).join("\n")}`).join("\n") +
       "\nPort them upstream first, or pass --drop-reconciled (together with " +
       "--allow-vendor-drift) when you really mean to drop them.",
   );
@@ -204,9 +202,10 @@ if (lostMarkers.length > 0 && !process.argv.includes("--drop-reconciled")) {
 if (vendorDrift.length && !ALLOW_VENDOR_DRIFT) {
   console.error(
     "[vendor] REFUSING vendor drift before write:\n" +
-    vendorDrift.map((rel) => `M ${rel}`).join("\n") + "\n" +
-    "Review the source/vendor diff, then rerun with --allow-vendor-drift " +
-    "for an intentional upstream→vendor replacement.",
+      vendorDrift.map((rel) => `M ${rel}`).join("\n") +
+      "\n" +
+      "Review the source/vendor diff, then rerun with --allow-vendor-drift " +
+      "for an intentional upstream→vendor replacement.",
   );
   process.exit(1);
 }

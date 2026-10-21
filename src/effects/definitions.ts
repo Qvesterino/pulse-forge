@@ -1635,6 +1635,65 @@ export const limiterParams: ParamDef[] = [
   { id: "lookaheadMs", label: "LOOKAHEAD", min: 1, max: 20, default: 5, unit: "ms", format: formatMs },
   { id: "link", label: "LINK", min: 0, max: 1, default: 1, format: formatPct },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  // ── The four controls the DSP ALREADY reads ──────────────────────────────
+  // `audio-worklets/limiter-node.ts` applies transientLink, releaseLink and
+  // character, and `audio-worklets/limiter-processor.js` exposes an
+  // `oversample` AudioParam (default 1, 1..2). These four ids were missing
+  // from THIS list, and that made them unreachable in a way nothing else
+  // warned about:
+  //   · the generic save path keeps only the ids present in
+  //     `defaultParamsOf(type)` (`project-model/schema.ts`), so the four were
+  //     STRIPPED on every save/reload;
+  //   · `setEffectParam` refused them outright ("Effect param … not defined
+  //     for limiter"), so the UI, MCP and automation could not reach them
+  //     either.
+  // They were live in the processor and dead everywhere else.
+  {
+    id: "transientLink",
+    label: "TRANSIENT LINK",
+    min: 0,
+    max: 1,
+    default: 1,
+    format: formatPct,
+    description:
+      "How much gain reduction the transient link shares between channels: 0 is independent per channel, 1 is fully linked.",
+  },
+  {
+    id: "releaseLink",
+    label: "RELEASE LINK",
+    min: 0,
+    max: 1,
+    default: 1,
+    format: formatPct,
+    description:
+      "How much the release is shared between the linked channels: 0 releases each channel on its own, 1 releases them together.",
+  },
+  {
+    id: "character",
+    label: "CHARACTER",
+    min: 0,
+    max: 2,
+    default: 0,
+    format: (v) => v.toFixed(2),
+    description:
+      "Limiter character: how the gain reduction is shaped on its way back up. 0 is the plain curve, 2 is the most aggressive shaping.",
+  },
+  {
+    id: "oversample",
+    label: "OVERSAMPLE",
+    min: 1,
+    max: 2,
+    default: 1,
+    kind: "enum",
+    step: 1,
+    options: [
+      { value: 1, label: "1x" },
+      { value: 2, label: "2x" },
+    ],
+    format: (v) => `${v}x`,
+    description:
+      "Oversampling factor of the limiter detector: 1x is transparent and adds no delay, 2x catches inter-sample peaks and adds the FIR oversampler delay.",
+  },
 ];
 
 export const stepGateParams: ParamDef[] = [

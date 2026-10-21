@@ -11,18 +11,18 @@ until now no document decided which of them was the truth.
   four quarter notes, whatever the document declares. It was the arrangement's
   bar unit: ruler drawing, clip placement, loop regions, markers, zoom, selection.
 - `ticksPerBar(doc)` (`src/project-model/schema.ts`) is
-  `PPQ * (4 / denominator) * numerator` — the *musical* bar length. It is what
+  `PPQ * (4 / denominator) * numerator` — the _musical_ bar length. It is what
   the metronome, the transport bar readout, the Inspector and the MIDI
   conditioning layer use.
 
 Measured divergence (the reproduction lives in
 `tests/audit17-bar-length-grids.test.ts`):
 
-| meter  | `ticksPerBar(doc)` | `BAR_TICKS` | clip placed at bar 2 | musical downbeat of bar 3 | delta |
-| ------ | ------------------ | ----------- | --------------------- | -------------------------- | ----- |
-| 4/4    | 1920               | 1920        | 3840                  | 3840                       | 0     |
-| 3/4    | 1440               | 1920        | 3840                  | 2880                       | 960   |
-| 6/8    | 1440               | 1920        | 3840                  | 2880                       | 960   |
+| meter | `ticksPerBar(doc)` | `BAR_TICKS` | clip placed at bar 2 | musical downbeat of bar 3 | delta |
+| ----- | ------------------ | ----------- | -------------------- | ------------------------- | ----- |
+| 4/4   | 1920               | 1920        | 3840                 | 3840                      | 0     |
+| 3/4   | 1440               | 1920        | 3840                 | 2880                      | 960   |
+| 6/8   | 1440               | 1920        | 3840                 | 2880                      | 960   |
 
 960 ticks is two beats. On a non-4/4 document, a clip placed at bar 2 started
 two beats after the bar-2 downbeat the metronome clicks.
@@ -32,8 +32,8 @@ ternary, two lines apart (`src/scheduler/Scheduler.ts:798-800`):
 
 ```ts
 const downbeat = inLeadIn
-  ? Math.abs((((cursor - clickAnchor) % BAR_TICKS) + BAR_TICKS) % BAR_TICKS) < 1e-6  // 4/4
-  : Math.abs(((cursor % barTicks) + barTicks) % barTicks) < 1e-6;                     // the document's meter
+  ? Math.abs((((cursor - clickAnchor) % BAR_TICKS) + BAR_TICKS) % BAR_TICKS) < 1e-6 // 4/4
+  : Math.abs(((cursor % barTicks) + barTicks) % barTicks) < 1e-6; // the document's meter
 ```
 
 The lead-in downbeat and the playback downbeat were computed against different
@@ -44,14 +44,14 @@ after the click that is meant to mark the same bar.
 The two units were not equally defensible, and the codebase was **half
 migrated** rather than consistently wrong:
 
-| Site                                                          | Unit            |
-| ------------------------------------------------------------- | --------------- |
-| `src/export/transfer-import.ts` (`secondsPerBar`)               | musical ✅      |
-| `src/scheduler/Scheduler.ts:785-786` metronome click            | musical ✅      |
-| `src/ui/playhead.ts:14` bar readout                             | musical ✅      |
-| `src/ui/Inspector.tsx` bar/beat readout                         | musical ✅      |
-| `src/ui/playhead.ts:79,109` arrangement playhead / current clip | 4/4 ❌          |
-| the remaining ~370 bar↔tick conversions across 55 files        | 4/4 ❌          |
+| Site                                                            | Unit       |
+| --------------------------------------------------------------- | ---------- |
+| `src/export/transfer-import.ts` (`secondsPerBar`)               | musical ✅ |
+| `src/scheduler/Scheduler.ts:785-786` metronome click            | musical ✅ |
+| `src/ui/playhead.ts:14` bar readout                             | musical ✅ |
+| `src/ui/Inspector.tsx` bar/beat readout                         | musical ✅ |
+| `src/ui/playhead.ts:79,109` arrangement playhead / current clip | 4/4 ❌     |
+| the remaining ~370 bar↔tick conversions across 55 files         | 4/4 ❌     |
 
 This is why the defect could not be patched site by site: the two conventions
 disagree, and "fixing" an individual site before the unit is decided flips it
@@ -67,7 +67,7 @@ user pick the meter, pre-fills it from the imported MIDI, and offers 3/4, 6/8,
 4/2 and 32/4 alongside 4/4. Nothing told the user that the arrangement grid
 stayed 4/4 regardless.
 
-MIDI note timing was *not* damaged by this: MIDI clips store `startTick`, so
+MIDI note timing was _not_ damaged by this: MIDI clips store `startTick`, so
 notes keep their absolute musical positions. The damage was to everything
 **bar-addressed** — ruler, clip placement, loop regions, markers, selection —
 plus the audible disagreement between the click and the audio.
@@ -105,16 +105,16 @@ plus the audible disagreement between the click and the audio.
    must stay identical through every later stage. It is pinned as an
    invariant, not as an accident.
 7. **The migration is staged, and each stage is independently mergeable:**
-   - *Stage 1* — disclose the mismatch. No model change, no on-disk change, no
+   - _Stage 1_ — disclose the mismatch. No model change, no on-disk change, no
      behavioural change to any 4/4 project. **Shipped** (`aa2e92c4`).
-   - *Stage 2* — `ticksPerBar(doc)` becomes the only way a bar index is
+   - _Stage 2_ — `ticksPerBar(doc)` becomes the only way a bar index is
      converted to ticks. **Shipped** (`1215b0ac`, `aa638640`, `f92cd156`,
      `8bc00ea1`). `BAR_TICKS` survives only as the definition of the pattern
      grid's own length (`PATTERN_TICKS`), as the 4/4 default of the global tick
      cap and as a no-document fallback.
-   - *Stage 3* — see the measured finding below: **no schema migration is
+   - _Stage 3_ — see the measured finding below: **no schema migration is
      needed.** The stored values are bar indices, not ticks derived from bars,
-     so what changes is their *interpretation*, which is the fix itself.
+     so what changes is their _interpretation_, which is the fix itself.
 8. **A meter is one-pattern-per-bar exactly when one bar spans four quarter
    notes.** `patternGridIsOneBar(sig)` encoded that musically when this ADR was
    written — and it is **gone now**. ADR 0057 replaced the question it asked
@@ -138,7 +138,7 @@ git grep -o BAR_TICKS -- 'src/*.ts' 'src/*.tsx' | wc -l
 ```
 
 (The ADR's first cut quoted "376 conversions"; that counted conversion
-*expressions*, and one expression can carry two tokens. The token count is the
+_expressions_, and one expression can carry two tokens. The token count is the
 ratchet because it is the number a single command reports.)
 
 **Batch 1 — the audible path** (shipped, `1215b0ac`): `commands/audioClips.ts`,
@@ -162,13 +162,13 @@ wave in `f92cd156` and `8bc00ea1`): the scene-time helpers, the command layer,
 the rendering layer, the project model and the whole UI pixel wave. **385 → 9
 tokens in 4 files.** Every one of the 9 is accounted for:
 
-| token | file | why it stays |
-| ----- | ---- | ------------ |
-| 2 | `src/project-model/types.ts` | the definition (`PPQ * 4`) and the pattern-grid alias (`PATTERN_TICKS = BAR_TICKS`) — a different unit that happens to have the same length in 4/4 |
-| 2 | `src/project-model/schema.ts` | `MAX_ARRANGEMENT_CLIP_TICKS` and its use — a loose global bound, not a grid (see the consequences) |
-| 1 | `src/project-model/schema.ts` | the no-document fallback of `sanitizeAudioClips`, which has no meter to read |
-| 1 | `src/project-model/schema.ts` | the import of the constant |
-| 3 | three files | comments that explain why the constant is not the grid |
+| token | file                          | why it stays                                                                                                                                       |
+| ----- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2     | `src/project-model/types.ts`  | the definition (`PPQ * 4`) and the pattern-grid alias (`PATTERN_TICKS = BAR_TICKS`) — a different unit that happens to have the same length in 4/4 |
+| 2     | `src/project-model/schema.ts` | `MAX_ARRANGEMENT_CLIP_TICKS` and its use — a loose global bound, not a grid (see the consequences)                                                 |
+| 1     | `src/project-model/schema.ts` | the no-document fallback of `sanitizeAudioClips`, which has no meter to read                                                                       |
+| 1     | `src/project-model/schema.ts` | the import of the constant                                                                                                                         |
+| 3     | three files                   | comments that explain why the constant is not the grid                                                                                             |
 
 The count is measured at HEAD, not asserted here: re-running the ratchet
 command above reproduces 9.
@@ -178,7 +178,7 @@ Three structural decisions the batch forced:
 - **Pure helpers take the bar length as a NUMBER, not a document.**
   `sceneBarsToSeconds`, `sceneSecondsToBars`, `tempoAtTick` and
   `arrangementSecondsBetweenTicks` take a required trailing `barUnitTicks`. A
-  default would have kept every caller on 4/4 semantics while *looking*
+  default would have kept every caller on 4/4 semantics while _looking_
   converted — the ratchet would have gone down and the defect would have
   stayed.
 - **The ruler's PIXEL width is not a musical unit.** `barWidth` stays a pixel
@@ -186,7 +186,7 @@ Three structural decisions the batch forced:
   on the drawn bar line instead of a quarter-bar off it.
 - **One constant, one meaning.** `song.ts` computed the 16th-note step as
   `BAR_TICKS / 16`, which is exactly `STEP_TICKS`; `midiTime.ts`, the hum→melody
-  fill and the piano roll's note-length menu used `BAR_TICKS` for the *pattern*
+  fill and the piano roll's note-length menu used `BAR_TICKS` for the _pattern_
   grid, which is `PATTERN_TICKS`. The pattern grid got its own name, because
   it is a different unit that happens to have the same length in 4/4.
 
@@ -196,9 +196,9 @@ Stage 2 made the arrangement metrical. The pattern grid stayed 16 steps, and
 the two do not agree outside 4/4-like meters. Measured, in a 6/8 document, the
 pattern's phase at successive musical bar lines:
 
-| bar | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
-| --- | - | - | - | - | - | - | - | - |
-| pattern phase (ticks) | 0 | 1440 | 960 | 480 | 0 | 1440 | 960 | 480 |
+| bar                   | 1   | 2    | 3   | 4   | 5   | 6    | 7   | 8   |
+| --------------------- | --- | ---- | --- | --- | --- | ---- | --- | --- |
+| pattern phase (ticks) | 0   | 1440 | 960 | 480 | 0   | 1440 | 960 | 480 |
 
 One pattern is 1920 ticks and a 6/8 bar is 1440, so the phrase is 1.33 bars
 long: the pattern's downbeat reaches the bar line only every **fourth** bar and
@@ -230,7 +230,7 @@ Measured on the model: the values the project stores are **bar indices**
 the values that must NOT move are **absolute ticks** (`MidiClip.startTick` /
 `lengthTicks`, `ArrangementAutomationClip.startTick` / `lengthTicks`). No
 stored value is an absolute tick that was derived from a bar conversion, so
-there is nothing to re-express: switching the unit changes the *meaning* of the
+there is nothing to re-express: switching the unit changes the _meaning_ of the
 stored number, and that is the fix.
 
 Consequence, stated plainly: in an existing non-4/4 document, bar-addressed
@@ -292,7 +292,7 @@ all, because MIDI clips store absolute ticks.
 - The audio-lane consequence is stated in the warning. `fittedLoopPlacement`
   measured the bar in beats and now measures it in ticks, so an imported lane
   is no longer truncated to a third of its length in 6/8. The remaining
-  limitation is that a lane's length is still *rounded up* to whole metrical
+  limitation is that a lane's length is still _rounded up_ to whole metrical
   bars, which leaves a tail of silence rather than a cut-off.
 - `MAX_ARRANGEMENT_CLIP_TICKS` is still derived from `BAR_TICKS`, so in a
   non-4/4 document it is a loose bound: it allows up to 1.33× the intended

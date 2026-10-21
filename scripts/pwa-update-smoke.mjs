@@ -45,7 +45,8 @@ const server = createServer((req, res) => {
     file = join(distDir, "index.html"); // SPA fallback
   }
   const noCache = file.endsWith("sw.js") || file.endsWith(".html");
-  if (process.env.SMOKE_DEBUG && urlPath.includes("sw.js")) console.log("REQ", urlPath, new Date().toISOString().slice(11, 19));
+  if (process.env.SMOKE_DEBUG && urlPath.includes("sw.js"))
+    console.log("REQ", urlPath, new Date().toISOString().slice(11, 19));
   readFile(file, (err, data) => {
     if (err) {
       res.writeHead(404);

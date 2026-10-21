@@ -29,8 +29,9 @@ import { normalizeProject } from "../src/project-model/schema";
 import { normalizeIntent } from "../src/intent/normalize";
 import { generateLocalResult } from "../src/intent/pipeline";
 import { canonicalizePattern, contentHash } from "../src/ai/evaluation";
-import { aiMeterFor, isAnchorForRole, type AiMeter } from "../src/ai/meter";
+import { aiMeterFor, isAnchorForRole } from "../src/ai/meter";
 import { inferPadRole } from "../src/ai/pad-roles";
+import { enforceDrumAnchors } from "../src/ai/quality";
 import { GROOVE_LIBRARY } from "../src/ai/grooves/index";
 import {
   anchorPositions,
@@ -162,6 +163,29 @@ describe("ADR 0057 Stage 2c — the projection", () => {
     expect(hitsOf(projected)).toEqual([0, 6]);
     expect(projected[0]).toBe(3);
     expect(projected[6]).toBe(2);
+  });
+
+  it("an irregular bar still gets the metre's DOWNBEAT when the groove's kick misses it", () => {
+    // The projection refuses to impose a skeleton on a 7/8 bar — the grouping
+    // is content — so the metre's last word there is the WRITE path. This is
+    // a real state, not a theory: 115 of the library's 802 kick rows have no
+    // hit at step 0 (house.footwork kicks on 1/5/9/13).
+    const sevenEight = aiMeterFor(SEVEN_EIGHT);
+    const references = [row(14, [1, 5, 9, 13])];
+    const target = new Array<number>(14).fill(0);
+    enforceDrumAnchors(target, references, "kick", sevenEight);
+    expect(hitsOf(target)).toContain(0);
+  });
+
+  it("a metre with more than one pulse needs no WRITE path — the view carries the anchors", () => {
+    // The reference IS the metrical view, so every anchor already has a hit
+    // and the repair path covers it. If the write path were still doing the
+    // work here, the metrical view's velocities would not show up.
+    const references = [projectRowToMeter(row(16, [12, 14]), "clap", threeFour)];
+    const target = new Array<number>(12).fill(0);
+    enforceDrumAnchors(target, references, "clap", threeFour);
+    expect(hitsOf(target)).toEqual([4]);
+    expect(target[4]).toBeCloseTo(0.85 * 0.8, 6);
   });
 });
 
@@ -316,7 +340,7 @@ describe("ADR 0057 Stage 2c — the content follows the metre", () => {
   });
 
   it("the anchors of every metre sit where the metre puts them", () => {
-    const cases: { sig: TimeSignature; kick: string[]; snare: string[] }[] = [
+    const cases: { sig: TimeSignature; kick: number[]; snare: number[] }[] = [
       { sig: THREE_FOUR, kick: [0, 4, 8], snare: [4] },
       { sig: SIX_EIGHT, kick: [0, 6], snare: [2, 8] },
       { sig: FIVE_FOUR, kick: [0, 4, 8, 12, 16], snare: [4, 12] },

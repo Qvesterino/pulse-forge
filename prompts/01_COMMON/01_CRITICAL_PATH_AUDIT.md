@@ -10,6 +10,7 @@ Audit the DAW's highest-value user journeys end to end and harden every reliabil
 Focus on flows such as project creation/opening, editing, playback, save/autosave, import, export, undo/redo, track operations, plugin/effect changes, and app/session shutdown.
 
 For each critical path:
+
 - trace UI/event entry points through command/state/audio/persistence layers;
 - identify illegal intermediate states, stale references, partial operations, race windows, and unhandled failures;
 - verify cancellation and retry behavior;

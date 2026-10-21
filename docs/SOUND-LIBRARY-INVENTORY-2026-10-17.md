@@ -15,23 +15,23 @@ The factory WAVs are KYX-rendered seeds, not a recorded KYX session library. The
 
 There are 155 manifest entries. **146 have curated WAV overrides**; nine remain procedural voices: `Snare Ghost`, `Ride Ding`, both Brushes, and five Field sounds (`Fridge Hum`, `Mains Buzz`, `Gravel Steps`, `Paper Turn`, and `Switch Click`). The lists below are the current manifest names.
 
-| Category | Count | Sounds |
-|---|---:|---|
-| Kick | 16 | Deep, Punch, Techno, Sub 808, Trap, Soft, 808 Drive, 808 Pure, Drill, Phonk, Jersey, DnB, Lo-Fi, Knock, 909, Pop |
-| Snare | 11 | Main, Tight, Punch, Trap, Drill, Phonk, Jersey, DnB, Lo-Fi, Room, Ghost Note |
-| Clap | 5 | Main, Soft, DnB, Traditional, Pop |
-| Hat | 11 | Closed, Closed Soft, Open, Open Short, Pedal, Drill, Phonk, Jersey, DnB, Open Cup, Wash |
-| Cymbal | 5 | Ride Ping, Ride Bell, Splash, Jazz Ride Wash, Ride Ding |
-| Crash | 7 | China Cymbal, Crash Roll, Crash, Dark, Short, Trash, Pop |
-| Brush | 2 | Tip, Swirl |
-| Percussion | 22 | Shaker Fast, Shaker Soft, Tick, Blip, Cowbell, Cowbell Dark, Cowbell Scream, Cowbell Drill, Cowbell Bright, Conga, Tambourine, Conga High, Bongos, Timbale, Tabla, Cajón, Agogô, Woodblock, Clave, Snap Stack, Shaker Long, Shaker Pop |
-| Tom | 5 | Low, Mid, High, Perc, Floor |
-| Rim | 4 | Chip, Hard, Snap, Pop |
-| Bass | 14 | Clean Sub, Reese, FM, Pluck, Wobble, Dist, 808 Soft, 808 Medium, 808 Hard, Sub Sine, Sub Square, Upright Jazz Bass, Acid Fast, Acid Slow |
-| Tonal | 28 | Pluck C4, Stab C4, Keys C4, Bell C5, Memphis Guitar, Dark Strings, Rhodes Tine, Mariachi Trumpet, Anime Pluck, Sad Piano, Warm Pad, Harp Tone, Vibraphone, Marimba, Celesta, Wurli Bark, Tonewheel Organ, Acoustic Guitar, Choir Pad, Cello, Violin, Pizzicato, Nylon Guitar, Orchestra Hit, Sitar, Erhu, Kalimba, Music Box |
-| Lead | 5 | Saw, Supersaw, Square, Pluck Bright, Pluck Dark |
-| FX | 11 | Riser, Downlifter, Impact, Sweep, Reverse Rise, White Noise, Sub Drop, Vinyl Crackle, Cinematic Impact, Short Riser, Noise Down |
-| Field | 9 | Room Tone, Fridge Hum, Mains Buzz, Distant Street, Gravel Steps, Paper Turn, Cloth Rustle, Switch Click, Match Strike |
+| Category   | Count | Sounds                                                                                                                                                                                                                                                                                                                       |
+| ---------- | ----: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Kick       |    16 | Deep, Punch, Techno, Sub 808, Trap, Soft, 808 Drive, 808 Pure, Drill, Phonk, Jersey, DnB, Lo-Fi, Knock, 909, Pop                                                                                                                                                                                                             |
+| Snare      |    11 | Main, Tight, Punch, Trap, Drill, Phonk, Jersey, DnB, Lo-Fi, Room, Ghost Note                                                                                                                                                                                                                                                 |
+| Clap       |     5 | Main, Soft, DnB, Traditional, Pop                                                                                                                                                                                                                                                                                            |
+| Hat        |    11 | Closed, Closed Soft, Open, Open Short, Pedal, Drill, Phonk, Jersey, DnB, Open Cup, Wash                                                                                                                                                                                                                                      |
+| Cymbal     |     5 | Ride Ping, Ride Bell, Splash, Jazz Ride Wash, Ride Ding                                                                                                                                                                                                                                                                      |
+| Crash      |     7 | China Cymbal, Crash Roll, Crash, Dark, Short, Trash, Pop                                                                                                                                                                                                                                                                     |
+| Brush      |     2 | Tip, Swirl                                                                                                                                                                                                                                                                                                                   |
+| Percussion |    22 | Shaker Fast, Shaker Soft, Tick, Blip, Cowbell, Cowbell Dark, Cowbell Scream, Cowbell Drill, Cowbell Bright, Conga, Tambourine, Conga High, Bongos, Timbale, Tabla, Cajón, Agogô, Woodblock, Clave, Snap Stack, Shaker Long, Shaker Pop                                                                                       |
+| Tom        |     5 | Low, Mid, High, Perc, Floor                                                                                                                                                                                                                                                                                                  |
+| Rim        |     4 | Chip, Hard, Snap, Pop                                                                                                                                                                                                                                                                                                        |
+| Bass       |    14 | Clean Sub, Reese, FM, Pluck, Wobble, Dist, 808 Soft, 808 Medium, 808 Hard, Sub Sine, Sub Square, Upright Jazz Bass, Acid Fast, Acid Slow                                                                                                                                                                                     |
+| Tonal      |    28 | Pluck C4, Stab C4, Keys C4, Bell C5, Memphis Guitar, Dark Strings, Rhodes Tine, Mariachi Trumpet, Anime Pluck, Sad Piano, Warm Pad, Harp Tone, Vibraphone, Marimba, Celesta, Wurli Bark, Tonewheel Organ, Acoustic Guitar, Choir Pad, Cello, Violin, Pizzicato, Nylon Guitar, Orchestra Hit, Sitar, Erhu, Kalimba, Music Box |
+| Lead       |     5 | Saw, Supersaw, Square, Pluck Bright, Pluck Dark                                                                                                                                                                                                                                                                              |
+| FX         |    11 | Riser, Downlifter, Impact, Sweep, Reverse Rise, White Noise, Sub Drop, Vinyl Crackle, Cinematic Impact, Short Riser, Noise Down                                                                                                                                                                                              |
+| Field      |     9 | Room Tone, Fridge Hum, Mains Buzz, Distant Street, Gravel Steps, Paper Turn, Cloth Rustle, Switch Click, Match Strike                                                                                                                                                                                                        |
 
 ### Instruments, presets, effects, and patterns
 
@@ -98,4 +98,3 @@ Keep the technically clean core and the existing 808/kick foundations. The highe
 - `npx vitest run tests/sound-library-gate.test.ts` passes all 5 checks for format, loudness, clipping, DC, leading silence, and mono-safe stereo behavior.
 - A fresh SHA-256 scan found no duplicate factory WAVs. Drum one-shots range from about 0.40 to 1.95 s; tonal/mallet voices reach 3.25 s; the longest Field/texture FX beds are about 4.06 s. Those long beds have a clear texture role and are not accidental tails.
 - No current asset met a safe, evidence-based threshold for processing or removal. The next audible gain still comes from genuine performances and a few phrase-scale loops, rather than another round of normalization or near-duplicate synthetic hits.
-

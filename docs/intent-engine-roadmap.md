@@ -429,11 +429,7 @@ interface GenerationProvider {
   id: string;
   version: string;
   capabilities: readonly string[];
-  generate(
-    intent: IntentSpec,
-    context: GenerationContext,
-    signal?: AbortSignal,
-  ): Promise<GenerationProposal>;
+  generate(intent: IntentSpec, context: GenerationContext, signal?: AbortSignal): Promise<GenerationProposal>;
 }
 ```
 

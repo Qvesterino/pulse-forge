@@ -15,9 +15,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const variant = process.argv[2] === "v2" ? "v2" : "v1";
 const modelsDir = path.join(ROOT, "public", "models");
-const manifest = JSON.parse(
-  readFileSync(path.join(modelsDir, `symbolic-melodic-${variant}.manifest.json`), "utf8"),
-);
+const manifest = JSON.parse(readFileSync(path.join(modelsDir, `symbolic-melodic-${variant}.manifest.json`), "utf8"));
 if (variant === "v2") {
   if (manifest.featureVersion !== "melodic-features-v2") {
     throw new Error(`v2 manifest featureVersion mismatch: ${manifest.featureVersion}`);
@@ -48,7 +46,8 @@ try {
   });
   if (session.inputNames[0] !== manifest.inputName) throw new Error(`input name mismatch: ${session.inputNames[0]}`);
   for (const name of [manifest.degreeOutputName, manifest.durationOutputName]) {
-    if (!session.outputNames.includes(name)) throw new Error(`missing output: ${name} (has ${session.outputNames.join(",")})`);
+    if (!session.outputNames.includes(name))
+      throw new Error(`missing output: ${name} (has ${session.outputNames.join(",")})`);
   }
 
   const featureCount = manifest.featureCount;
@@ -64,7 +63,8 @@ try {
   for (let index = 0; index < degree.length; index++) {
     if (again[manifest.degreeOutputName].data[index] !== degree[index]) throw new Error("non-deterministic inference");
   }
-  if (modelBytes.length > 1024 * 1024) throw new Error(`model artifact too large: ${(modelBytes.length / 1024).toFixed(1)} kB`);
+  if (modelBytes.length > 1024 * 1024)
+    throw new Error(`model artifact too large: ${(modelBytes.length / 1024).toFixed(1)} kB`);
 
   const softmaxAt = (data, row, size) => {
     const slice = [...data.slice(row * size, (row + 1) * size)];

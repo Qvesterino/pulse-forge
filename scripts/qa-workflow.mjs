@@ -16,7 +16,11 @@ function record(name, ok, msg = "") {
   console.log(`[${status}] ${name}${msg ? " — " + msg : ""}`);
 }
 
-const server = await createServer({ root, logLevel: "error", server: { port: PORT, host: "127.0.0.1", strictPort: true } });
+const server = await createServer({
+  root,
+  logLevel: "error",
+  server: { port: PORT, host: "127.0.0.1", strictPort: true },
+});
 await server.listen();
 
 let exit = 0;
@@ -24,7 +28,9 @@ try {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ acceptDownloads: true });
   const page = await context.newPage();
-  page.on("console", (m) => { if (m.type() === "error") errs.push(m.text()); });
+  page.on("console", (m) => {
+    if (m.type() === "error") errs.push(m.text());
+  });
   page.on("pageerror", (e) => errs.push(String(e)));
 
   // 1. Reset DB before first load to ensure a fresh default project
@@ -102,47 +108,51 @@ try {
   record("Ctrl+Y redoes the duplicate", patternChips3.length === 2, patternChips3.join(", "));
 
   // 8. switch to SONG mode
-  await page.click(".topbar button:has-text(\"PATTERN\")");
+  await page.click('.topbar button:has-text("PATTERN")');
   await page.waitForTimeout(100);
   const modeLabel = await page.textContent(".topbar button.btn-mode");
   record("PATTERN button toggles to SONG mode", modeLabel?.includes("SONG") ?? false, modeLabel ?? "");
 
   // toggle back
-  await page.click(".topbar button:has-text(\"SONG\")");
+  await page.click('.topbar button:has-text("SONG")');
   await page.waitForTimeout(100);
 
   // 9. open MIX panel
-  await page.click(".topbar button:has-text(\"MIX\")");
+  await page.click('.topbar button:has-text("MIX")');
   await page.waitForTimeout(200);
   const mixStrips = await page.$$(".mixer .channel-strip");
-  record("MIX panel renders channel strips", mixStrips.length >= 4, `strips: ${mixStrips.length} (2 tracks + 2 returns + master)`);
+  record(
+    "MIX panel renders channel strips",
+    mixStrips.length >= 4,
+    `strips: ${mixStrips.length} (2 tracks + 2 returns + master)`,
+  );
 
   // 10. open FX panel
-  await page.click(".topbar button:has-text(\"FX\")");
+  await page.click('.topbar button:has-text("FX")');
   await page.waitForTimeout(200);
   const fxOpen = await page.$(".effect-rack, [class*=effect]");
   record("FX panel opens", !!fxOpen, fxOpen?.className ?? "");
 
   // 11. open ARR panel
-  await page.click(".topbar button:has-text(\"ARR\")");
+  await page.click('.topbar button:has-text("ARR")');
   await page.waitForTimeout(200);
   const arrOpen = await page.$(".arrangement-panel, [class*=arrangement]");
   record("ARR panel opens", !!arrOpen, arrOpen?.className ?? "");
 
   // 12. open MOD panel
-  await page.click(".topbar button:has-text(\"MOD\")");
+  await page.click('.topbar button:has-text("MOD")');
   await page.waitForTimeout(200);
   const modOpen = await page.$(".mod-panel, [class*=mod-]");
   record("MOD panel opens", !!modOpen, modOpen?.className ?? "");
 
   // 13. open EXPORT panel
-  await page.click(".topbar button:has-text(\"EXPORT\")");
+  await page.click('.topbar button:has-text("EXPORT")');
   await page.waitForTimeout(200);
   const expOpen = await page.$(".export-panel");
   record("EXPORT panel opens", !!expOpen, expOpen?.className ?? "");
 
   // 14. trigger WAV export
-  const exportBtn = await page.$(".export-panel button:has-text(\"EXPORT MASTER\")");
+  const exportBtn = await page.$('.export-panel button:has-text("EXPORT MASTER")');
   if (exportBtn) {
     const downloadPromise = page.waitForEvent("download", { timeout: 60000 }).catch(() => null);
     await exportBtn.click();
@@ -154,8 +164,14 @@ try {
       try {
         const fs = await import("node:fs");
         size = fs.statSync(filePath).size;
-      } catch (e) { /* ignore */ }
-      record("WAV master export triggers download with valid file", fileName.endsWith(".wav") && size > 1000, `${fileName} (${size} bytes)`);
+      } catch (e) {
+        /* ignore */
+      }
+      record(
+        "WAV master export triggers download with valid file",
+        fileName.endsWith(".wav") && size > 1000,
+        `${fileName} (${size} bytes)`,
+      );
     } else {
       record("WAV master export triggers download", false, "no download event within 60s");
     }
@@ -164,7 +180,7 @@ try {
   }
 
   // 15. trigger stems export
-  const stemBtn = await page.$(".export-panel button:has-text(\"EXPORT STEMS\")");
+  const stemBtn = await page.$('.export-panel button:has-text("EXPORT STEMS")');
   if (stemBtn) {
     const downloadPromise = page.waitForEvent("download", { timeout: 60000 }).catch(() => null);
     await stemBtn.click();
@@ -178,7 +194,7 @@ try {
   }
 
   // 16. trigger tracks export
-  const trackBtn = await page.$(".export-panel button:has-text(\"EXPORT ALL TRACKS\")");
+  const trackBtn = await page.$('.export-panel button:has-text("EXPORT ALL TRACKS")');
   if (trackBtn) {
     const downloadPromise = page.waitForEvent("download", { timeout: 60000 }).catch(() => null);
     await trackBtn.click();
@@ -196,21 +212,27 @@ try {
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForSelector(".topbar", { timeout: 10000 });
   await page.waitForTimeout(500);
-  const patternChipsAfterReload = await page.$$eval(".pattern-chip", (els) => els.map((e) => e.textContent?.trim() ?? ""));
-  record("reload restores the project (2 patterns)", patternChipsAfterReload.length === 2, patternChipsAfterReload.join(", "));
+  const patternChipsAfterReload = await page.$$eval(".pattern-chip", (els) =>
+    els.map((e) => e.textContent?.trim() ?? ""),
+  );
+  record(
+    "reload restores the project (2 patterns)",
+    patternChipsAfterReload.length === 2,
+    patternChipsAfterReload.join(", "),
+  );
   const projectNameAfterReload = await page.inputValue(".project-name");
   record("reload restores the project name", projectNameAfterReload.length > 0, projectNameAfterReload);
 
   // 18. play - press Space, check that DIAG shows transportPlaying=true
-  await page.click(".topbar button:has-text(\"DIAG\")");
+  await page.click('.topbar button:has-text("DIAG")');
   await page.waitForTimeout(500);
   const diagBefore = await page.textContent(".diagnostics");
-  await page.click(".topbar button:has-text(\"DIAG\")");
+  await page.click('.topbar button:has-text("DIAG")');
   // press Space to play (focus body first)
   await page.locator("body").click();
   await page.keyboard.press("Space");
   await page.waitForTimeout(2500);
-  await page.click(".topbar button:has-text(\"DIAG\")");
+  await page.click('.topbar button:has-text("DIAG")');
   await page.waitForTimeout(500);
   const diagAfter = await page.textContent(".diagnostics");
   const transportPlaying = /transportPlaying\s+true/.test(diagAfter ?? "");
@@ -224,7 +246,7 @@ try {
   await page.waitForTimeout(300);
 
   // 19. mute test - mute a track, verify meter goes silent
-  const muteBtn = await page.$(".channel-strip .btn-small.btn-danger, .channel-strip button:has-text(\"M\")");
+  const muteBtn = await page.$('.channel-strip .btn-small.btn-danger, .channel-strip button:has-text("M")');
   // skip - hard to verify audio level via Playwright
 
   // 20. BPM change

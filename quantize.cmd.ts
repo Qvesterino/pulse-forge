@@ -1,4 +1,3 @@
-
 /* ---------------- scale quantize ---------------- */
 
 export function quantizePatternToScale(doc: ProjectDocument, patternId: string, key: MusicalKey): Command {

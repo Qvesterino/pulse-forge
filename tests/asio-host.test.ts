@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { PassThrough } from "node:stream";
@@ -70,9 +71,23 @@ describe("ASIO SDK vendor gate (scripts/vendor-asio.mjs)", () => {
     expect(manifest.license).toContain("NOT redistributable");
     expect(manifest.files.map((f: { path: string }) => f.path)).toContain("common/asio.h");
     expect(manifest.files.map((f: { path: string }) => f.path)).toContain("driver/asiosample/asiosmpl.cpp");
-    // The gitignored directory must never appear in git's index.
-    for (const file of manifest.files) {
-      expect(existsSync(path.join(REPO, "native", "asio-host", "asio-sdk", file.path))).toBe(nativeReady || true);
+    // The SDK bytes are NOT redistributable and the directory is gitignored:
+    // it exists only where scripts/vendor-asio.mjs has been run. The invariant
+    // that holds in EVERY checkout — including a CI runner that never vendored
+    // the SDK — is that those bytes never entered git's index. The previous
+    // form of this assertion read `nativeReady || true`, which is always true:
+    // it demanded the SDK on disk and could therefore never pass in CI.
+    const trackedSdkFiles = execFileSync("git", ["ls-files", "--", "native/asio-host/asio-sdk"], {
+      cwd: REPO,
+      encoding: "utf8",
+    }).trim();
+    expect(trackedSdkFiles, "the ASIO SDK must never appear in git's index").toBe("");
+    // Where the SDK WAS vendored, every file the manifest lists must be there.
+    const sdkRoot = path.join(REPO, "native", "asio-host", "asio-sdk");
+    if (existsSync(sdkRoot)) {
+      for (const file of manifest.files) {
+        expect(existsSync(path.join(sdkRoot, file.path)), `vendored SDK file ${file.path}`).toBe(true);
+      }
     }
   });
 });

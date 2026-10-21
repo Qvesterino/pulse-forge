@@ -95,9 +95,7 @@ async function capture(name, fn) {
   await context.close();
 
   const files = readdirSync(OUT).filter((f) => f.endsWith(".webm"));
-  const newest = files
-    .map((f) => ({ f, t: statSync(resolve(OUT, f)).mtimeMs }))
-    .sort((a, b) => b.t - a.t)[0];
+  const newest = files.map((f) => ({ f, t: statSync(resolve(OUT, f)).mtimeMs })).sort((a, b) => b.t - a.t)[0];
   if (newest) {
     try {
       renameSync(resolve(OUT, newest.f), resolve(OUT, `${name}.webm`));
@@ -110,7 +108,13 @@ async function capture(name, fn) {
 }
 
 const browser = await chromium.launch({
-  args: ["--use-gl=swiftshader", "--enable-webgl", "--ignore-gpu-blocklist", "--no-sandbox", "--autoplay-policy=no-user-gesture-required"],
+  args: [
+    "--use-gl=swiftshader",
+    "--enable-webgl",
+    "--ignore-gpu-blocklist",
+    "--no-sandbox",
+    "--autoplay-policy=no-user-gesture-required",
+  ],
 });
 
 log(`capturing from ${BASE}`);

@@ -57,12 +57,12 @@ as marginal, not as a pass.
 
 ## Decision matrix
 
-| Acoustic round trip (stable) | `nativeHostForTracking` | Action |
-| --- | --- | --- |
-| ≤ 15 ms | `no` | Web Audio meets live monitoring; no native host |
-| 15–25 ms, or unstable | `marginal` | Native host only if professional monitoring is required; otherwise tune defaults/guidance |
-| > 25 ms | `yes` | Native host is justified for tracking; open the implementation ADR |
-| no measurement | `unmeasured` | Do not decide; run the protocol |
+| Acoustic round trip (stable) | `nativeHostForTracking` | Action                                                                                    |
+| ---------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
+| ≤ 15 ms                      | `no`                    | Web Audio meets live monitoring; no native host                                           |
+| 15–25 ms, or unstable        | `marginal`              | Native host only if professional monitoring is required; otherwise tune defaults/guidance |
+| > 25 ms                      | `yes`                   | Native host is justified for tracking; open the implementation ADR                        |
+| no measurement               | `unmeasured`            | Do not decide; run the protocol                                                           |
 
 A `yes` on a supported device class justifies the native host for that class,
 not a migration of composition/mixing away from Web Audio. A hybrid path is
@@ -70,13 +70,13 @@ allowed.
 
 ## Device matrix template
 
-| Device | SoC/RAM | Android | Browser/TWA | Run 1 | Run 2 | Run 3 | Stable | Verdict |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| (low-end) | | | | | | | | |
-| (mid-range) | | | | | | | | |
-| (flagship) | | | | | | | | |
-| tablet | | | | | | | | |
-| TWA build | | | | | | | | |
+| Device      | SoC/RAM | Android | Browser/TWA | Run 1 | Run 2 | Run 3 | Stable | Verdict |
+| ----------- | ------- | ------- | ----------- | ----- | ----- | ----- | ------ | ------- |
+| (low-end)   |         |         |             |       |       |       |        |         |
+| (mid-range) |         |         |             |       |       |       |        |         |
+| (flagship)  |         |         |             |       |       |       |        |         |
+| tablet      |         |         |             |       |       |       |        |         |
+| TWA build   |         |         |             |       |       |       |        |         |
 
 Record the JSON reports next to the table. Do not average across devices; the
 decision is per device class.

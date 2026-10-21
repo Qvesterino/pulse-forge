@@ -49,16 +49,16 @@ and DSP algorithms/golden vectors**, not the React UI.
 KYX Mobile v1 ships the same web app as an installable PWA and, when packaged
 for Google Play, as a TWA. Its supported promise is:
 
-| Capability | v1 contract |
-| --- | --- |
-| Sequencing, arrangement, automation, mixing | Supported, touch-first |
-| Built-in instruments/effects, offline render/export | Supported |
-| On-screen keyboard/pads, MIDI-file import/export | Supported |
-| IndexedDB projects, offline app shell | Supported |
-| Live microphone/instrument monitoring | **Best-effort, not a low-latency claim** |
-| USB/BLE MIDI input | **Not in v1** (needs a native bridge) |
-| Background playback while the app is hidden | **Not guaranteed** |
-| Third-party plug-in hosting | **Not in v1** |
+| Capability                                          | v1 contract                              |
+| --------------------------------------------------- | ---------------------------------------- |
+| Sequencing, arrangement, automation, mixing         | Supported, touch-first                   |
+| Built-in instruments/effects, offline render/export | Supported                                |
+| On-screen keyboard/pads, MIDI-file import/export    | Supported                                |
+| IndexedDB projects, offline app shell               | Supported                                |
+| Live microphone/instrument monitoring               | **Best-effort, not a low-latency claim** |
+| USB/BLE MIDI input                                  | **Not in v1** (needs a native bridge)    |
+| Background playback while the app is hidden         | **Not guaranteed**                       |
+| Third-party plug-in hosting                         | **Not in v1**                            |
 
 The UI must state the measured/declared latency and the unsupported features
 instead of implying desktop-class tracking.

@@ -1,0 +1,33 @@
+=== KYX typecheck ===
+
+> pulse-forge@0.1.0 typecheck
+> tsc --noEmit
+
+src/ui/IntentPanel.tsx(160,1): error TS6192: All imports in import declaration are unused.
+src/ui/IntentPanel.tsx(1010,19): error TS2304: Cannot find name 'paramPlanLines'.
+tests/adr0057-metrical-groove.test.ts(32,44): error TS6133: 'AiMeter' is declared but its value is never read.
+tests/adr0057-metrical-groove.test.ts(320,33): error TS2322: Type 'number' is not assignable to type 'string'.
+tests/adr0057-metrical-groove.test.ts(320,36): error TS2322: Type 'number' is not assignable to type 'string'.
+tests/adr0057-metrical-groove.test.ts(320,39): error TS2322: Type 'number' is not assignable to type 'string'.
+tests/adr0057-metrical-groove.test.ts(320,51): error TS2322: Type 'number' is not assignable to type 'string'.
+tests/adr0057-metrical-groove.test.ts(321,32): error TS2322: Type 'number' is not assignable to type 'string'.
+tests/adr0057-metrical-groove.test.ts(321,35): error TS2322: Type 'number' is not assignable to type 'string'.
+tests/adr0057-metrical-groove.test.ts(321,47): error TS2322: Type 'number' is not assignable to type 'string'.
+tests/adr0057-metrical-groove.test.ts(321,50): error TS2322: Type 'number' is not assignable to type 'string'.
+tests/adr0057-metrical-groove.test.ts(322,32): error TS2322: Type 'number' is not assignable to type 'string'.
+tests/adr0057-metrical-groove.test.ts(322,35): error TS2322: Type 'number' is not assignable to type 'string'.
+tests/adr0057-metrical-groove.test.ts(322,38): error TS2322: Type 'number' is not assignable to type 'string'.
+tests/adr0057-metrical-groove.test.ts(322,41): error TS2322: Type 'number' is not assignable to type 'string'.
+tests/adr0057-metrical-groove.test.ts(322,45): error TS2322: Type 'number' is not assignable to type 'string'.
+tests/adr0057-metrical-groove.test.ts(322,58): error TS2322: Type 'number' is not assignable to type 'string'.
+tests/adr0057-metrical-groove.test.ts(322,61): error TS2322: Type 'number' is not assignable to type 'string'.
+tests/adr0057-metrical-groove.test.ts(329,33): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.
+tests/adr0057-metrical-groove.test.ts(330,34): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.
+typecheck EXIT=2
+=== KYX drift:check ===
+
+> pulse-forge@0.1.0 drift:check
+> vite-node scripts/drift-check.ts
+
+[drift] section mcp-mirrors (npm run gen:mcp-mirrors)
+[drift] section domain-goldens (npm run goldens:capture)

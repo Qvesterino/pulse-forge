@@ -90,17 +90,18 @@ show the gallery read-only from the deployed site.
 
 _Najlepší záver: „toto nie je generátor, to je producent, ktorý počúva."_
 
-| Čas | Akcia | Replay |
-|-----|-------|--------|
-| 0–10s | **🎤 IDEA** — „pozri, spievam nápad, nemusím vedieť nič o beatoch" — zahučám 4 tóny, STOP | „engine počul moje tempo, tóninu a melódiu" |
-| 10–25s | Napíšem `sad phonk at 145` → **♪ SONG** | „celý track — sekcie, prechody, mix, loudness — v mojom tempe a tóne, moja melódia je hook" |
-| 25–35s | Do baru: `zníž basu` → potom `popovejšie` | „hovorím s ním ako s producentom — a REALNE sa to zmení, jedno undo" |
-| 35–45s | **🎧 VOCAL** → **⬇ BEAT ONLY** | „loop na nacvičenie, beat bez master chain do telefónu — idem si zaspievať" |
+| Čas    | Akcia                                                                                     | Replay                                                                                      |
+| ------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| 0–10s  | **🎤 IDEA** — „pozri, spievam nápad, nemusím vedieť nič o beatoch" — zahučám 4 tóny, STOP | „engine počul moje tempo, tóninu a melódiu"                                                 |
+| 10–25s | Napíšem `sad phonk at 145` → **♪ SONG**                                                   | „celý track — sekcie, prechody, mix, loudness — v mojom tempe a tóne, moja melódia je hook" |
+| 25–35s | Do baru: `zníž basu` → potom `popovejšie`                                                 | „hovorím s ním ako s producentom — a REALNE sa to zmení, jedno undo"                        |
+| 35–45s | **🎧 VOCAL** → **⬇ BEAT ONLY**                                                            | „loop na nacvičenie, beat bez master chain do telefónu — idem si zaspievať"                 |
 
 _Klokovacia veta: „Jedna veta, jeden hun, jeden WAV — a mám nahrávku hotovú.
 Bez jediného akordu. To je workflow, ktorý bude štandardom."_
 
 ### Fallbacky pre tento blok
+
 - Mikrofón nefunguje → 🎧 REF: nahodím WAV a poviem „engine počuje referenciu
   — žáner, tempo, tón, groove" → 🥁→DRUMS.
 - Song trvá dlho (starý stroj) → predviesť len GENERATE + konverzáciu

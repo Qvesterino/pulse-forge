@@ -92,7 +92,7 @@ function pca(data: Float32Array[], nComponents: number) {
   for (const vec of centered) {
     for (let i = 0; i < dim; i++) {
       for (let j = 0; j < dim; j++) {
-        cov[i * dim + j] += vec[i] * vec[j] / n;
+        cov[i * dim + j] += (vec[i] * vec[j]) / n;
       }
     }
   }
@@ -102,7 +102,7 @@ function pca(data: Float32Array[], nComponents: number) {
   const deflated = Float64Array.from(cov);
   for (let k = 0; k < nComponents; k++) {
     let v = new Float64Array(dim);
-    for (let d = 0; d < dim; d++) v[d] = Math.sin(d * 12.9898 + k * 78.233) * 43758.5453 % 1;
+    for (let d = 0; d < dim; d++) v[d] = (Math.sin(d * 12.9898 + k * 78.233) * 43758.5453) % 1;
     let eigenvalue = 0;
     for (let iter = 0; iter < 200; iter++) {
       const next = new Float64Array(dim);
@@ -113,7 +113,11 @@ function pca(data: Float32Array[], nComponents: number) {
       if (norm < 1e-12) break;
       for (let d = 0; d < dim; d++) next[d] /= norm;
       const newEigen = next.reduce((s, x, i) => s + x * next[i], 0);
-      if (Math.abs(newEigen - eigenvalue) < 1e-10) { eigenvalue = newEigen; v = next; break; }
+      if (Math.abs(newEigen - eigenvalue) < 1e-10) {
+        eigenvalue = newEigen;
+        v = next;
+        break;
+      }
       eigenvalue = newEigen;
       v = next;
     }
@@ -126,18 +130,21 @@ function pca(data: Float32Array[], nComponents: number) {
       }
     }
   }
-  return { mean: Array.from(mean), components: eigenvectors.map(v => Array.from(v)), eigenvalues };
+  return { mean: Array.from(mean), components: eigenvectors.map((v) => Array.from(v)), eigenvalues };
 }
 
 console.log("[embed-prior] computing PCA 384→16 …");
 const pcaResult = pca(embeddings, 16);
 const projected = embeddings.map((vec) => {
   const centered = vec.map((v, d) => v - pcaResult.mean[d]);
-  return pcaResult.components.map((comp) =>
-    comp.reduce((sum, c, d) => sum + c * centered[d], 0)
-  );
+  return pcaResult.components.map((comp) => comp.reduce((sum, c, d) => sum + c * centered[d], 0));
 });
-console.log(`[embed-prior] PCA done: ${pcaResult.eigenvalues.slice(0, 4).map(v => v.toFixed(3)).join(", ")} …`);
+console.log(
+  `[embed-prior] PCA done: ${pcaResult.eigenvalues
+    .slice(0, 4)
+    .map((v) => v.toFixed(3))
+    .join(", ")} …`,
+);
 
 // Save PCA model
 writeFileSync(
@@ -149,7 +156,7 @@ writeFileSync(
     mean: pcaResult.mean,
     components: pcaResult.components,
     eigenvalues: pcaResult.eigenvalues,
-  })
+  }),
 );
 console.log("[embed-prior] PCA projection saved");
 
@@ -167,7 +174,7 @@ writeFileSync(
       text,
       embedding: Array.from(projected[i]),
     })),
-  })
+  }),
 );
 console.log(`[embed-prior] embedding descriptions saved → ${path.join(OUT_DIR, "embedding-descriptions.json")}`);
 console.log("[embed-prior] Phase A-C done. Now run:");

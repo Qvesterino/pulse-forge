@@ -4794,16 +4794,16 @@ Slice 5 (master.tonalBalance scoop + signature.bpm/keys planning hints) was
 authored across TWO commits because a parallel session committed part of the
 working tree between the edits and the commit:
 
-  e5bdd123 "ok" (Qvesterino, 12:52) - took the UNCOMMITTED scoop edits to
-      src/intent/artist-mix.ts (ArtistMixProfile.scoop) and
-      src/intent/artist-profiles/index.ts (tonalBalance -> derived.scoop).
+e5bdd123 "ok" (Qvesterino, 12:52) - took the UNCOMMITTED scoop edits to
+src/intent/artist-mix.ts (ArtistMixProfile.scoop) and
+src/intent/artist-profiles/index.ts (tonalBalance -> derived.scoop).
 
-  febd8bb (this session, 13:23) - the planning-hint half:
-      src/intent/artist-signature.ts (artistBpmHint / artistHalfTimeHint /
-      artistKeyHint / artistKeyCandidates), src/intent/plan.ts
-      (resolveBpmRequest + artistProfileFor), src/intent/types.ts
-      (GenerationPlan.artistBpmRange), src/intent/mix.ts (the scoop
-      DECISION), tests/intent-artist-plan-hints.test.ts (20 tests).
+febd8bb (this session, 13:23) - the planning-hint half:
+src/intent/artist-signature.ts (artistBpmHint / artistHalfTimeHint /
+artistKeyHint / artistKeyCandidates), src/intent/plan.ts
+(resolveBpmRequest + artistProfileFor), src/intent/types.ts
+(GenerationPlan.artistBpmRange), src/intent/mix.ts (the scoop
+DECISION), tests/intent-artist-plan-hints.test.ts (20 tests).
 
 So the slice reads as: `scoop` is DECLARED in e5bdd123 and CONSUMED in
 febd8bb. Neither commit alone is self-contained; together they are one
@@ -4844,15 +4844,15 @@ the declaration and the consumer are one commit apart.
      na riadku 537 — TS hlásil len cascading errors.)
 
 3. **Bundle budget FAIL — DAW JS 3171 KB / budget 3170 KB** (P0, 0.59 KB cez)
-   - `scripts/check-bundle-size.mjs:68-73` — Daniel sám píše: *"further DAW growth must be
-     offset or split before another cap increase is considered."* Cap zvýšiť NIE.
+   - `scripts/check-bundle-size.mjs:68-73` — Daniel sám píše: _"further DAW growth must be
+     offset or split before another cap increase is considered."_ Cap zvýšiť NIE.
    - `@breezystack/lamejs` (MP3 encoder) je staticky importovaný v `src/export/mp3.ts`,
      Vite ho vyhadzuje do samostatného 166 KB chunku — ale beží IBA keď user exportuje MP3.
      WAV export (default) ho nikdy nedotkne.
    - Daniel medzitým vyriešil toto paralelne vlastnou bucketkou: `OPTIONAL_CODEC_BUDGET_KB = 170`
-     + `OPTIONAL_CODEC_PREFIXES = ["mp3-"]` — **samostatný codec budget** namiesto miešania
-     s AI runtime budgetom. Moje riešenie (pridať `mp3-` do `OPTIONAL_AI_RUNTIME_PREFIXES`)
-     bolo duplicitné a horšie; moje 3 banner-rename zmeny zostali, oni sú kosmetické.
+     - `OPTIONAL_CODEC_PREFIXES = ["mp3-"]` — **samostatný codec budget** namiesto miešania
+       s AI runtime budgetom. Moje riešenie (pridať `mp3-` do `OPTIONAL_AI_RUNTIME_PREFIXES`)
+       bolo duplicitné a horšie; moje 3 banner-rename zmeny zostali, oni sú kosmetické.
    - **Výsledok:** DAW JS 3005 KB / 3170 (165 KB headroom), codecs 166/170, entry 245/1070,
      worklets 128/150, landing 157/600. **OK, exit 0.**
 
@@ -4870,30 +4870,31 @@ the declaration and the consumer are one commit apart.
 5. **4 test súbory FAIL — stale fixtures po Danielových dnešných zmenách** (P1)
    Všetky boli **dátové fixtures zaostané za kódom**, nie produkčné chyby:
 
-   | Súbor | Príčina | Fix |
-   |---|---|---|
-   | `golden-render.test.ts` | Nové šablóny `ukg` + `boombap` pridané dnes, `EXPECTED_GOLDEN_HASHES` ich neobsahoval | `boombap: "1f2b429a9f3705a0"` vypočítaný cez identickú `engineHash()` funkciu |
-   | `domain-goldens.test.ts` | `share code encode (canonical doc)` driftol — canonical doc zmenený novými poľami | `npm run goldens:capture` (zdokumentovaný postup) → **12/12 PASS** |
-   | `sound-quality-pass.test.ts` | 5 nových žánrov v `GENRES` (hyperpop, ukg, boombap, amapiano, trance) bez `GENRE_REFERENCE` | `node scripts/measure-genre-references.mjs` — **trance** chýbal, zmeral: -10.2 LUFS, trim -3.8 dB, PLR 9.2, tilt 22.3 → **33/33 PASS** |
-   | `electronic-subgenres.test.ts` | Testy písané pred povýšením `trance` zo štýlu na žáner | Daniel opravil paralelne → **PASS** (moja intervencia nebola potrebná) |
+   | Súbor                          | Príčina                                                                                     | Fix                                                                                                                                    |
+   | ------------------------------ | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+   | `golden-render.test.ts`        | Nové šablóny `ukg` + `boombap` pridané dnes, `EXPECTED_GOLDEN_HASHES` ich neobsahoval       | `boombap: "1f2b429a9f3705a0"` vypočítaný cez identickú `engineHash()` funkciu                                                          |
+   | `domain-goldens.test.ts`       | `share code encode (canonical doc)` driftol — canonical doc zmenený novými poľami           | `npm run goldens:capture` (zdokumentovaný postup) → **12/12 PASS**                                                                     |
+   | `sound-quality-pass.test.ts`   | 5 nových žánrov v `GENRES` (hyperpop, ukg, boombap, amapiano, trance) bez `GENRE_REFERENCE` | `node scripts/measure-genre-references.mjs` — **trance** chýbal, zmeral: -10.2 LUFS, trim -3.8 dB, PLR 9.2, tilt 22.3 → **33/33 PASS** |
+   | `electronic-subgenres.test.ts` | Testy písané pred povýšením `trance` zo štýlu na žáner                                      | Daniel opravil paralelne → **PASS** (moja intervencia nebola potrebná)                                                                 |
 
-   **Dôležité:** `golden-render.expected.ts` má header *"update only after reviewing a changed
-   template render"* — takže som hash **vypočítal** cez rovnakú deterministickú funkciu
+   **Dôležité:** `golden-render.expected.ts` má header _"update only after reviewing a changed
+   template render"_ — takže som hash **vypočítal** cez rovnakú deterministickú funkciu
    akou test počíta, nie slepo pre-blessnul. A meranie žánrov som nespúšťal naslepo —
    12 z 13 bolo cacheovaných, renderoval sa len chýbajúci `trance`.
 
 **Final gate stav:**
 
-| Gate | Príkaz | Výsledok |
-|---|---|---|
-| Strict typecheck | `tsc --noEmit --incremental false` | **0 errors** ✓ |
-| Production build | `npm run build` | **exit 0** ✓ built in 13.88s |
-| Bundle budgets | (vnútri build) | **OK** — 165 KB headroom |
-| Prettier | `prettier --check` | **clean, exit 0** ✓ |
-| Vulnerability audit | `npm audit --omit=dev` | **0 vulnerabilities** ✓ |
-| Full test suite | `npx vitest run` | 见 final report |
+| Gate                | Príkaz                             | Výsledok                     |
+| ------------------- | ---------------------------------- | ---------------------------- |
+| Strict typecheck    | `tsc --noEmit --incremental false` | **0 errors** ✓               |
+| Production build    | `npm run build`                    | **exit 0** ✓ built in 13.88s |
+| Bundle budgets      | (vnútri build)                     | **OK** — 165 KB headroom     |
+| Prettier            | `prettier --check`                 | **clean, exit 0** ✓          |
+| Vulnerability audit | `npm audit --omit=dev`             | **0 vulnerabilities** ✓      |
+| Full test suite     | `npx vitest run`                   | 见 final report              |
 
 **Unresolved / remaining risk:**
+
 1. **Cross-browser smoke** (`npm run test:browser` — Chromium/Firefox/Edge) a
    `release:deployed-smoke` s reálnym `KYX_DEPLOY_URL` NEBOLI spustené — vyžadujú reálny
    deploy target a manuálny Safari/iOS smoke. Toto je owner gate, nie feature blocker.
@@ -4902,7 +4903,6 @@ the declaration and the consumer are one commit apart.
    šablóna" pre userov s drivmi mimo v1 vocabu.
 3. `refused: npm run test:browser` / Playwright E2E nebežali v tejto sessione
    (vyžadujú dev server na porte 5199 s `--strictPort`).
-
 
 ---
 
@@ -4917,17 +4917,17 @@ crest, peak, DC, lead silence, tuning).
 
 **Shipped changes (3 seeds re-voiced, source + asset in the same commit):**
 
-| Seed | What was wrong | Fix | Measured (before → after) |
-|---|---|---|---|
-| `factory.mallet.marimba` | C3 anchor put the default strike (4×131 = 524 Hz) inside the bar's own 2nd partial; 2–6 kHz sat 40 dB under the other four mallets, 1 ms envelope flat-topped ("Wooden, Punchy" read as a pad) | knock moved to 2400 Hz / Q 0.8, resonator 2nd/3rd partials raised (0.60/0.24/0.06) — the tape stage squares them into 2–6 kHz | himid **−80.1 → −74.4 dBFS (+5.7)**, high **−144.5 → −129.7 (+14.8)**, attack-window high +15.1, crest 12.3 → 12.7 |
-| `factory.kick.drill` | flattest kick in the bank: crest 1.9 (audit's windowed crest column; bank 3.9–6.2) — a 41 Hz sine body squared by the category tape drive + a 0.55 s tail | envelope tightened (drop 0.04/tail 0.05/tau 0.075, lpf 4500, click 0.5) + `tapeDrive: 0.1` per-asset override (same mechanism as 808pure/subdrop) | full-file crest (peak/RMS, `tmp-ab.mjs`) **2.2 → 3.5 dB**, dur 650 → 475 ms, sub/low balance unchanged |
-| `factory.perc.conga` | hand-strike band sat at 4× the drum's 190 Hz fundamental (760 Hz) — the slap read as body, not hand | strike moved to the 1500 Hz hand-strike region, Q 1.1 | himid **−67.9 → −63.1 (+4.8)**, attack-window himid +4.7 |
+| Seed                     | What was wrong                                                                                                                                                                                 | Fix                                                                                                                                               | Measured (before → after)                                                                                          |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `factory.mallet.marimba` | C3 anchor put the default strike (4×131 = 524 Hz) inside the bar's own 2nd partial; 2–6 kHz sat 40 dB under the other four mallets, 1 ms envelope flat-topped ("Wooden, Punchy" read as a pad) | knock moved to 2400 Hz / Q 0.8, resonator 2nd/3rd partials raised (0.60/0.24/0.06) — the tape stage squares them into 2–6 kHz                     | himid **−80.1 → −74.4 dBFS (+5.7)**, high **−144.5 → −129.7 (+14.8)**, attack-window high +15.1, crest 12.3 → 12.7 |
+| `factory.kick.drill`     | flattest kick in the bank: crest 1.9 (audit's windowed crest column; bank 3.9–6.2) — a 41 Hz sine body squared by the category tape drive + a 0.55 s tail                                      | envelope tightened (drop 0.04/tail 0.05/tau 0.075, lpf 4500, click 0.5) + `tapeDrive: 0.1` per-asset override (same mechanism as 808pure/subdrop) | full-file crest (peak/RMS, `tmp-ab.mjs`) **2.2 → 3.5 dB**, dur 650 → 475 ms, sub/low balance unchanged             |
+| `factory.perc.conga`     | hand-strike band sat at 4× the drum's 190 Hz fundamental (760 Hz) — the slap read as body, not hand                                                                                            | strike moved to the 1500 Hz hand-strike region, Q 1.1                                                                                             | himid **−67.9 → −63.1 (+4.8)**, attack-window himid +4.7                                                           |
 
 **Open bug (documented, not fixed) — the `mallet()` strike-noise path is inert in the render:**
 `clickLevel` 0.34 → 1.1 (+10 dB) on `factory.mallet.marimba` produced two renders with identical
 file size (330 818 B), identical `norm −25.3 dB / trim −2.5 dB / peak −9.6 dBFS / −16 LUFS`
 readouts, identical absolute level in all 7 bands (≤0.1 dB) and identical crest/RMS. Independently,
-every one of the five mallet voices is *quieter* in the 2.4 kHz band during its first millisecond
+every one of the five mallet voices is _quieter_ in the 2.4 kHz band during its first millisecond
 than 8–32 ms later (marimba −31.0 → −30.0 dB, vibes −46.6 → −26.7, celesta −34.7 → −21.2,
 kalimba −34.2 → −23.2, music box −36.3 → −21.5), while all six noise-struck one-shots peak at
 sample 0 (clap −9.0, rim −4.9, snare −12.1, hat −15.4, tambourine −16.0, conga −22.3).
@@ -4957,12 +4957,12 @@ re-rendered seeds in `public/samples/` (5 mallets, `kick.soft`, `kick.trap`).
 ### 1. Bug #1 was misdiagnosed: the strike path is not inert — it was 14 dB of band-pass loss
 
 The previous entry called the path inert because `clickLevel` 0.34 → 1.1 (+10 dB) produced apparently
-identical renders. Both halves of that were wrong, and the *instrument* was why:
+identical renders. Both halves of that were wrong, and the _instrument_ was why:
 
 - `tmp-ab.mjs` takes its bands on the file's max-energy **8192-sample (186 ms)** Hann window. A
   0.4 ms contact burst contributes ~+0.05 dB to such a window (10·log10(0.4/186) = −26.7 dB of
   averaging) and its 1 ms-RMS `env` row is wideband, so the bar's own attack ramp hides it — the
-  tool cannot see a strike at all. File *size* is dominated by the 0.4 s length floor, not by head
+  tool cannot see a strike at all. File _size_ is dominated by the 0.4 s length floor, not by head
   content. Both were used as evidence; both are blind to this change.
 - The path works. Builder-level probe (`tmp-probe2.mjs` — renders `BUILDERS[id]` in headless
   chromium, prints the 1 ms-RMS envelope): a `clickLevel` 0.34 strike measures **−23.7 dBFS peak,
@@ -4980,22 +4980,22 @@ identical renders. Both halves of that were wrong, and the *instrument* was why:
 compensated, so `clickLevel` means the strike's level at the contact on the same scale as the
 partial levels, and the burst decays in 1.2 ms instead of 4 ms (a mallet contact is a click; a burst
 shorter than the measurement window keeps its whole level in the first millisecond). Per-voice
-levels and contact bands are calibrated so each contact *leads its own contact-band envelope*,
+levels and contact bands are calibrated so each contact _leads its own contact-band envelope_,
 measured on the shipped files with `node tmp-strike.mjs <id>...` (band-pass at the contact
 frequency, 1 ms RMS envelope, first ms vs the loudest ms at 8–32 ms):
 
-| Voice | contact | in-band 1st ms vs body (old → new) |
-| --- | --- | --- |
-| vibes | 2600 Hz Q 0.9 | −20.6 → **−0.2 dB** |
-| marimba | 2400 Hz Q 0.8 | −3.3 → **+2.6 dB**, band-envelope peak at 0 ms |
-| celesta | 3400 Hz Q 1.3 (was default 4×) | −13.1 → **−1.9 dB** |
-| kalimba | 2100 Hz Q 1.0 | −12.5 → **−1.5 dB** |
-| musicbox | 5200 Hz Q 2.6 (was default 4×) | −12.9 → **+4.3 dB**, peak at 0 ms |
+| Voice    | contact                        | in-band 1st ms vs body (old → new)             |
+| -------- | ------------------------------ | ---------------------------------------------- |
+| vibes    | 2600 Hz Q 0.9                  | −20.6 → **−0.2 dB**                            |
+| marimba  | 2400 Hz Q 0.8                  | −3.3 → **+2.6 dB**, band-envelope peak at 0 ms |
+| celesta  | 3400 Hz Q 1.3 (was default 4×) | −13.1 → **−1.9 dB**                            |
+| kalimba  | 2100 Hz Q 1.0                  | −12.5 → **−1.5 dB**                            |
+| musicbox | 5200 Hz Q 2.6 (was default 4×) | −12.9 → **+4.3 dB**, peak at 0 ms              |
 
 Celesta and musicbox share the C6 register and both used the default contact (4× fundamental); they
 now differ in the contact itself — felt hammer 3.4 kHz Q 1.3 vs comb pluck 5.2 kHz Q 2.6 — which also
 keeps the previously de-duplicated celesta/musicbox pair apart in the attack. The levels are
-deliberately *not* a ranking: the kalimba needs the most raw strike because its own 4th partial rings
+deliberately _not_ a ranking: the kalimba needs the most raw strike because its own 4th partial rings
 inside its contact band. Everything outside the first millisecond is untouched: no clipping, all
 five still on the Tonal target (momentary −16 LUFS), file peaks −9.4…−14.6 dBFS.
 
@@ -5033,7 +5033,7 @@ the separation shows in the A/B figures above (crest, loud length, attack window
 - `tests/sound-library-gate.test.ts` **4/4 PASS**, `tests/kick-bank.test.ts` **5/5**,
   `tests/curated-samples.test.ts` **8/8**, `tests/pop-samples.test.ts` **3/3**.
 - `prettier --check src/sample-library/factory.ts scripts/render-curated-seeds.mjs`: clean.
-- Blocked by a *concurrent* session, all outside this change: `tsc --noEmit` and `vitest` both fail on
+- Blocked by a _concurrent_ session, all outside this change: `tsc --noEmit` and `vitest` both fail on
   unresolved merge markers in `src/ai/grooves/drone.ts` (`<<<<<<< Updated upstream`, git `UU`) and
   `src/ui/ReferenceMapPanel.tsx` (`UU`). Because of it `tests/velocity-layers.test.ts` and
   `tests/sound-quality-pass.test.ts` cannot even collect (esbuild refuses the file),
@@ -5066,7 +5066,7 @@ reasons:
 
 1. `feat()` ended in `min(durationSec * 1000, 1000)` and the whole vector was divided by `max(|.|)`.
    For a one-shot the render length (400–1000 ms) is the largest magnitude in the vector, so it became
-   the divisor for *every* dimension: the printed distance collapsed to "RMS band-share delta / 400"
+   the divisor for _every_ dimension: the printed distance collapsed to "RMS band-share delta / 400"
    and was not comparable between pairs — a 1 s file got 2.5x the headroom of a 0.4 s one. That is why
    the library read 0.005–0.080 and why a 0.005 vs 0.006 step was never meaningful.
 2. Every term was time- and loudness-blind. `bands` is a whole-file Welch average of a LUFS-normalized
@@ -5092,25 +5092,25 @@ gate stays the enforcement.
 Before/after on exactly the pairs the old metric flagged (scratch `tmp-metric-cmp.mjs`; raw in
 `tmp-audit-4.json` / `tmp-audit-4.log`). `*` = under 0.15, one full step on a single axis:
 
-| pair | old d | new d | dominant axis (new) | verdict |
-| --- | --- | --- | --- | --- |
-| kick.knock↔kick.lofi | 0.005 | **0.084\*** | crest + loud + himid | watchlist, crest/decay — *not* the click |
-| kick.dnb↔kick.phonk | 0.006 | **0.086\*** | brightness | watchlist |
-| hat.pedal↔hat.phonk | 0.011 | **0.079\*** | sub/low/lowmid (spread) | smallest in the library, no dominant axis |
-| snare.drill↔snare.main | 0.009 | **0.110\*** | brightness | watchlist |
-| snare.dnb↔snare.main | 0.009 | **0.123\*** | brightness + loud | watchlist, now Snare #3 |
-| hat.closed↔hat.open.short | 0.008 | 0.145 | loud (120 ms of decay) | at the boundary, by design |
-| clap.main↔clap.pop | 0.014 | 0.167 | brightness | out (clap.main↔soft 0.118\* is the new Clap #1) |
-| bass.dist↔bass.fm | 0.014 | 0.284 | crest/high/air/mid | out |
-| crash.dark↔crash.main | 0.008 | 0.392 | loud (361 ms) | out |
-| fx.downlifter↔fx.riser | 0.009 | **1.004** | attack **0.980** | out |
-| tonal.erhu↔tonal.trumpet | 0.013 | **1.020** | loud + attack | out |
+| pair                      | old d | new d       | dominant axis (new)     | verdict                                         |
+| ------------------------- | ----- | ----------- | ----------------------- | ----------------------------------------------- |
+| kick.knock↔kick.lofi      | 0.005 | **0.084\*** | crest + loud + himid    | watchlist, crest/decay — _not_ the click        |
+| kick.dnb↔kick.phonk       | 0.006 | **0.086\*** | brightness              | watchlist                                       |
+| hat.pedal↔hat.phonk       | 0.011 | **0.079\*** | sub/low/lowmid (spread) | smallest in the library, no dominant axis       |
+| snare.drill↔snare.main    | 0.009 | **0.110\*** | brightness              | watchlist                                       |
+| snare.dnb↔snare.main      | 0.009 | **0.123\*** | brightness + loud       | watchlist, now Snare #3                         |
+| hat.closed↔hat.open.short | 0.008 | 0.145       | loud (120 ms of decay)  | at the boundary, by design                      |
+| clap.main↔clap.pop        | 0.014 | 0.167       | brightness              | out (clap.main↔soft 0.118\* is the new Clap #1) |
+| bass.dist↔bass.fm         | 0.014 | 0.284       | crest/high/air/mid      | out                                             |
+| crash.dark↔crash.main     | 0.008 | 0.392       | loud (361 ms)           | out                                             |
+| fx.downlifter↔fx.riser    | 0.009 | **1.004**   | attack **0.980**        | out                                             |
+| tonal.erhu↔tonal.trumpet  | 0.013 | **1.020**   | loud + attack           | out                                             |
 
 The attack term killed the two worst false positives, and it is objective: `fx.riser`'s first 10 ms
 carries **0.002 %** of its energy (attack −47.1 dB — a ramp), `fx.downlifter`'s head is **8x** its
 average power (+9.2 dB — an immediate hit). Same average spectrum, opposite sound; the same holds for
 the bowed erhu vs the brass trumpet. Two pairs the old metric never surfaced are now in the
-watchlist — the old ranking was *wrong inside categories*, not merely compressed:
+watchlist — the old ranking was _wrong inside categories_, not merely compressed:
 `snare.jersey↔snare.tight` 0.112\* (sub/brightness) and `clap.main↔clap.soft` 0.118\*. The watchlist
 (d < 0.15) is 8 pairs, each with a named dominant axis: every remaining "close" pair is now close for
 a reason that can be argued about instead of a number that cannot.
@@ -5140,7 +5140,7 @@ a reason that can be argued about instead of a number that cannot.
   contract**, exit 0. FLAGS unchanged — only the intentional leads of `fx.reverse`, `fx.riser`,
   `fx.riser-short`, `fx.sweep` and `tonal.choirpad` (2.1 ms).
 - `vitest run tests/sound-library-gate.test.ts tests/curated-samples.test.ts tests/kick-bank.test.ts
-  tests/pop-samples.test.ts`: **4 files / 20 tests passed** (exit 0). The previous session's blocked
+tests/pop-samples.test.ts`: **4 files / 20 tests passed** (exit 0). The previous session's blocked
   state is gone — the concurrent session resolved the `drone.ts` / `ReferenceMapPanel.tsx` merge
   markers and `git status` has no unmerged paths any more.
 - `prettier --check scripts/audit-samples.mts tmp-metric-cmp.mjs`: clean.
@@ -5152,10 +5152,9 @@ a reason that can be argued about instead of a number that cannot.
 
 `tmp-metric-cmp.mjs` (new, scratch): old-vs-new distance plus dominant axes for a fixed pair list,
 reading `tmp-audit-4.json` and the old `tmp-audit-3.log`. `tmp-audit-4.json` / `tmp-audit-4.log` are the
-new raw artifacts, `tmp-vitest-faz0.log` the gate run. Care taken: `tmp-vitest.log` is *tracked* (an
+new raw artifacts, `tmp-vitest-faz0.log` the gate run. Care taken: `tmp-vitest.log` is _tracked_ (an
 earlier commit sweep absorbed it) — this session copied its own run to `tmp-vitest-faz0.log` and
 restored the tracked file to HEAD rather than overwriting another session's artifact.
-
 
 ---
 
@@ -5164,25 +5163,28 @@ restored the tracked file to HEAD rather than overwriting another session's arti
 ### Plan (5 micro-moves, each justified by the named axis in `tmp-faz2-feats.mjs`)
 
 Inputs:
+
 - `tmp-audit-4.json` (post-metric-fix; 111 WAVs, all on contract)
 - `tmp-faz2-feats.mjs` (signed per-axis contribution A-B/scale)
 - `tmp-faz2-matrix.mjs` (full within-category distance matrix)
 
 Watchlist (d<0.15) with named dominant axis. Signed contribution `(A-B)/scale`; `!` = A is below B (move A further from B, or move B same way):
 
-1. **`snare.dnb` re-voice (0.123*; brightness -0.093, loud -0.037, air -0.036, crest -0.035, high -0.027)** — `A BELOW B` on all 5 axes vs `snare.main`. Move snare.dnb: `noiseDecay 0.19 -> 0.12, noiseHz 1900 -> 2500, click 0.3 -> 0.6, toneDecay 0.11 -> 0.08`; keep `toneHz 210`. The id is load-bearing (genre-kit index 4 in `dnb`, has its own RR pool at `factory.ts:3266`, drum-rr-declick rotates it).
-2. **`kick.dnb` tighten (0.086*; brightness -0.044, loud +0.041, lowmid -0.042)** — `kick(170, 51.91, 0.26, 0.5)` -> `kick(170, 51.91, 0.22, 0.65)`. Shorter body + louder click; pitch 51.91 Hz is in the glide contract (`tests/kick-bank.test.ts`).
-3. **`kick.lofi` longer+more drive (kick.knock↔lofi 0.084*; crest +0.045, loud +0.042)** — `vintageThump({decay 0.3, drive 0.25, ...})` -> `{decay 0.36, drive 0.4, ...}`. Lengthening the body grows `loudMs` by ~60 ms; raising `drive` adds +0.7-1.0 dB crest, both axes move toward knock. LPF 2600 / grit 900 / gritGain 0.1 unchanged.
-4. **`hat.closed.soft` raise HPF (0.121* vs `hat.pedal`; low -0.073, crest +0.060, lowmid +0.039)** — `hat(0.04, 5800, 0.32)` -> `hat(0.035, 6200, 0.30)`. Pushes the "soft" voice further into the bright/airy end of the closed family; a real soft hat should be the brightest, thinnest closed (whereas pedal is the darkest, shortest).
-5. **`hat.pedal`↔`hat.phonk` (0.079*, sub/low/lowmid spread, no single dominant axis)** — leave. Both are intentionally distinct (pedal 4600 Hz/35 ms; phonk 4200 Hz/70 ms with a different emphasis). The spread across three small low-band terms is the *defining* character difference between pedal-hat and phonk-hat, not a metric artifact.
+1. _*`snare.dnb` re-voice (0.123*; brightness -0.093, loud -0.037, air -0.036, crest -0.035, high -0.027)_* — `A BELOW B` on all 5 axes vs `snare.main`. Move snare.dnb: `noiseDecay 0.19 -> 0.12, noiseHz 1900 -> 2500, click 0.3 -> 0.6, toneDecay 0.11 -> 0.08`; keep `toneHz 210`. The id is load-bearing (genre-kit index 4 in `dnb`, has its own RR pool at `factory.ts:3266`, drum-rr-declick rotates it).
+2. _*`kick.dnb` tighten (0.086*; brightness -0.044, loud +0.041, lowmid -0.042)_* — `kick(170, 51.91, 0.26, 0.5)` -> `kick(170, 51.91, 0.22, 0.65)`. Shorter body + louder click; pitch 51.91 Hz is in the glide contract (`tests/kick-bank.test.ts`).
+3. _*`kick.lofi` longer+more drive (kick.knock↔lofi 0.084*; crest +0.045, loud +0.042)_* — `vintageThump({decay 0.3, drive 0.25, ...})` -> `{decay 0.36, drive 0.4, ...}`. Lengthening the body grows `loudMs` by ~60 ms; raising `drive` adds +0.7-1.0 dB crest, both axes move toward knock. LPF 2600 / grit 900 / gritGain 0.1 unchanged.
+4. _*`hat.closed.soft` raise HPF (0.121* vs `hat.pedal`; low -0.073, crest +0.060, lowmid +0.039)_* — `hat(0.04, 5800, 0.32)` -> `hat(0.035, 6200, 0.30)`. Pushes the "soft" voice further into the bright/airy end of the closed family; a real soft hat should be the brightest, thinnest closed (whereas pedal is the darkest, shortest).
+5. _*`hat.pedal`↔`hat.phonk` (0.079*, sub/low/lowmid spread, no single dominant axis)_* — leave. Both are intentionally distinct (pedal 4600 Hz/35 ms; phonk 4200 Hz/70 ms with a different emphasis). The spread across three small low-band terms is the _defining_ character difference between pedal-hat and phonk-hat, not a metric artifact.
 
 Risks:
+
 - Render budget: 4 re-renders, all sub-700 ms. Within `npm run curated:seeds` budget.
 - `DURATIONS` map: static; changes to `decay` in the builder do not affect the recorded render length (which is what the gate test asserts ≤ 2 s). Verified: no bank-member duration approaches the 2 s ceiling today.
 - `DURATIONS` integrity test: snare.dnb 0.28, kick.dnb 0.42, kick.lofi 0.5, kick.knock 0.5, hat.closed.soft 0.1 — all within the 0.08-1.9 s range and ≤ 2 s. No edits required there.
 - `kick.knock` body (`knock()` wrapper) untouched — its `drum-rr-declick` rotation is preserved.
 
 Repro tooling:
+
 - `tmp-faz2-feats.mjs` (signed per-axis)
 - `tmp-faz2-matrix.mjs` (within-category distance)
 - `tmp-audit-4.json` / `tmp-audit-4.log` (the baseline audit)
@@ -5192,14 +5194,14 @@ Execution starts now.
 
 ### Execution log (2026-10-04)
 
-| Pass | d (snare.dnb↔main) | d (kick.dnb↔phonk) | d (kick.knock↔lofi) | d (hat.closed.soft↔pedal) | GATE |
-| --- | --- | --- | --- | --- | --- |
-| Baseline (tmp-audit-4) | 0.123* | 0.086* | 0.084* | 0.121* | PASS |
-| Pass 1 (snare.dnb re-voice, kick.dnb 0.22/0.65, kick.lofi 0.36/0.4, hat.soft 6200/0.30) | 0.185 | 0.146* | 0.073* | 0.115* | PASS |
-| Pass 2 (kick.lofi 0.36/0.32, hat.soft 6000/0.34) | 0.185 | 0.146* | 0.067* | 0.116* | PASS |
-| Pass 3 (kick.dnb 0.18/0.75, kick.lofi 0.36/0.32/2200LPF, hat.soft 5800/0.34) | 0.185 | **0.172** ✅ | 0.068* | 0.122* | PASS |
-| Pass 4 (kick.lofi 0.36/0.5/2200LPF, hat.soft 6400/0.28) | 0.185 | 0.172 | 0.088* (+lofi↔phonk 0.110* +lofi↔deep 0.120*) | 0.119* | PASS |
-| **Locked (pass 2 only re-rendered after the pass-3 drive 0.5 regression)** | **0.185** | **0.172** | **0.068*** | **0.119*** | **PASS** |
+| Pass                                                                                    | d (snare.dnb↔main) | d (kick.dnb↔phonk) | d (kick.knock↔lofi)                           | d (hat.closed.soft↔pedal) | GATE     |
+| --------------------------------------------------------------------------------------- | ------------------ | ------------------ | --------------------------------------------- | ------------------------- | -------- |
+| Baseline (tmp-audit-4)                                                                  | 0.123*             | 0.086*             | 0.084*                                        | 0.121*                    | PASS     |
+| Pass 1 (snare.dnb re-voice, kick.dnb 0.22/0.65, kick.lofi 0.36/0.4, hat.soft 6200/0.30) | 0.185              | 0.146*             | 0.073*                                        | 0.115*                    | PASS     |
+| Pass 2 (kick.lofi 0.36/0.32, hat.soft 6000/0.34)                                        | 0.185              | 0.146*             | 0.067*                                        | 0.116*                    | PASS     |
+| Pass 3 (kick.dnb 0.18/0.75, kick.lofi 0.36/0.32/2200LPF, hat.soft 5800/0.34)            | 0.185              | **0.172** ✅       | 0.068*                                        | 0.122*                    | PASS     |
+| Pass 4 (kick.lofi 0.36/0.5/2200LPF, hat.soft 6400/0.28)                                 | 0.185              | 0.172              | 0.088* (+lofi↔phonk 0.110* +lofi↔deep 0.120*) | 0.119*                    | PASS     |
+| **Locked (pass 2 only re-rendered after the pass-3 drive 0.5 regression)**              | **0.185**          | **0.172**          | **0.068***                                    | **0.119***                | **PASS** |
 
 ### Final state (the file content of factory.ts:2826-2920)
 
@@ -5252,24 +5254,27 @@ Execution starts now.
 ### Plan (4 named-axis moves, each justified by the signed axis in `tmp-faz3-feats.mjs`)
 
 Inputs:
+
 - `tmp-audit-9.json` (post Phase 2)
 - `tmp-faz3-feats.mjs` (signed per-axis contribution for the 4 Phase-3 targets)
 - 4 watchlist pairs from `tmp-audit-9` with d<0.15
 
 Targets (signed A-B/scale, A in italics):
 
-1. **`kick.deep` <-> `kick.lofi` (0.077*; loud +0.051, high -0.037, air -0.031, himid -0.020, crest +0.015)** — *deep* je o 51ms dlhší, ale má menej high/air. Zväčšiť hlbku: `decay 0.42 -> 0.50` (deep je teraz naozaj *deepest*, 0.5s telo), `click 0.25 -> 0.20` (menej high-end = väčšia diferenciácia od lofi). lofi sa nemení.
-2. **`kick.pop` <-> `kick.punch` (0.094*; air +0.061, loud -0.057, high +0.028, sub -0.019, brightness +0.013)** — *pop* je jasnejší a kratší, *punch* je dlhší a tmavší. Obojsmerný ťah: `punch click 0.45 -> 0.60` (ostrejší punch — kompenzuje loudMs kratšie o 57ms väčším attackom), `pop decay 0.22 -> 0.28` + `click 0.6 -> 0.5` (pop sa stáva dlhším a menej ostrým, diferenciácia cez loud namiesto cez air).
-3. **`kick.909` <-> `kick.trap` (0.093*; air -0.059, loud +0.051, high -0.040, himid -0.020, crest +0.015)** — *trap* je squarovaný drive 0.6 (jasnejší), *909* má drive 0.15. Obojsmerný: `909 pitch 290 -> 310` (B1+ — jasnejšia frekvencia), `trap click 0.6 -> 0.5` (menej high = kompenzácia squarovania). pitch 49/51.91 Hz (glide contract) zostáva.
-4. **`hat.closed.soft` <-> `hat.closed` (0.094*; lowmid +0.050, crest +0.040, himid +0.037, sub +0.034, brightness -0.026)** — *soft* má viac lowmid/crest/himid/sub (HPF 6400 nechá viac tela než closed 7400). Obojsmerný: `soft level 0.28 -> 0.40` (hlasnejší = menej gap v loud), `closed level 0.55 -> 0.48` (tichší). Decay a HPF sa nemenia — load-bearing RR pool pre `FACTORY_HAT_DYNAMIC`.
+1. _*`kick.deep` <-> `kick.lofi` (0.077*; loud +0.051, high -0.037, air -0.031, himid -0.020, crest +0.015)_* — _deep_ je o 51ms dlhší, ale má menej high/air. Zväčšiť hlbku: `decay 0.42 -> 0.50` (deep je teraz naozaj _deepest_, 0.5s telo), `click 0.25 -> 0.20` (menej high-end = väčšia diferenciácia od lofi). lofi sa nemení.
+2. _*`kick.pop` <-> `kick.punch` (0.094*; air +0.061, loud -0.057, high +0.028, sub -0.019, brightness +0.013)_* — _pop_ je jasnejší a kratší, _punch_ je dlhší a tmavší. Obojsmerný ťah: `punch click 0.45 -> 0.60` (ostrejší punch — kompenzuje loudMs kratšie o 57ms väčším attackom), `pop decay 0.22 -> 0.28` + `click 0.6 -> 0.5` (pop sa stáva dlhším a menej ostrým, diferenciácia cez loud namiesto cez air).
+3. _*`kick.909` <-> `kick.trap` (0.093*; air -0.059, loud +0.051, high -0.040, himid -0.020, crest +0.015)_* — _trap_ je squarovaný drive 0.6 (jasnejší), _909_ má drive 0.15. Obojsmerný: `909 pitch 290 -> 310` (B1+ — jasnejšia frekvencia), `trap click 0.6 -> 0.5` (menej high = kompenzácia squarovania). pitch 49/51.91 Hz (glide contract) zostáva.
+4. _*`hat.closed.soft` <-> `hat.closed` (0.094*; lowmid +0.050, crest +0.040, himid +0.037, sub +0.034, brightness -0.026)_* — _soft_ má viac lowmid/crest/himid/sub (HPF 6400 nechá viac tela než closed 7400). Obojsmerný: `soft level 0.28 -> 0.40` (hlasnejší = menej gap v loud), `closed level 0.55 -> 0.48` (tichší). Decay a HPF sa nemenia — load-bearing RR pool pre `FACTORY_HAT_DYNAMIC`.
 
 Risks:
+
 - Pitch mutation 909 290->310: mimo glide contract (ktorý pokrýva F#1/G1/G#1/A1/B1 = 46.25-61.74 Hz). 310 Hz je v oscilátore (startHz), nie endHz. endHz 51.91 Hz zostáva — glide contract OK.
 - `pop` a `punch` obe meníme — ak jeden z nich vytvorí nový pár s iným kickom, treba revert.
 - `hat.closed.soft` a `hat.closed` obe meníme — podobne.
 - Dvojité zmeny sa iterujú v jednom re-render cykle.
 
 Repro tooling:
+
 - `tmp-faz3-feats.mjs` (new, signed per-axis pre 4 Phase-3 targets)
 - `tmp-audit-9.json` (baseline)
 - `tmp-audit-10.json` (post-Phase-3)
@@ -5281,11 +5286,11 @@ Execution starts now.
 
 5 edits v `src/sample-library/factory.ts BUILDERS`, 1 follow-up korekcia, 6 re-rendered WAVs:
 
-| iterácia | d (dnb↔phonk) | d (deep↔lofi) | d (909↔trap) | d (pop↔punch) | d (closed.soft↔closed) | NOVÉ: dnb↔pop | NOVÉ: dnb↔jersey | NOVÉ: jersey↔pop | GATE |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Audit-9 (post Fáza 2) | 0.172 | 0.077* | 0.093* | 0.094* | 0.094* | — | — | — | PASS |
-| Audit-10 (Fáza 3 pass 1) | 0.172 | **0.177** | **0.073*** | 0.093* | 0.092* | 0.126* | 0.133* | 0.138* | PASS |
-| Audit-11 (Fáza 3 pass 2: dnb click 0.75->0.6) | 0.169 | 0.177 | 0.073* | 0.093* | 0.092* | 0.120* | 0.134* | 0.138* | PASS |
+| iterácia                                      | d (dnb↔phonk) | d (deep↔lofi) | d (909↔trap) | d (pop↔punch) | d (closed.soft↔closed) | NOVÉ: dnb↔pop | NOVÉ: dnb↔jersey | NOVÉ: jersey↔pop | GATE |
+| --------------------------------------------- | ------------- | ------------- | ------------ | ------------- | ---------------------- | ------------- | ---------------- | ---------------- | ---- |
+| Audit-9 (post Fáza 2)                         | 0.172         | 0.077*        | 0.093*       | 0.094*        | 0.094*                 | —             | —                | —                | PASS |
+| Audit-10 (Fáza 3 pass 1)                      | 0.172         | **0.177**     | **0.073***   | 0.093*        | 0.092*                 | 0.126*        | 0.133*           | 0.138*           | PASS |
+| Audit-11 (Fáza 3 pass 2: dnb click 0.75->0.6) | 0.169         | 0.177         | 0.073*       | 0.093*        | 0.092*                 | 0.120*        | 0.134*           | 0.138*           | PASS |
 
 ### Final Fáza 3 stav
 
@@ -5309,10 +5314,10 @@ Execution starts now.
 
 ### Fáza 2 + 3 kumulatívny výsledok
 
-| Watchlist stav | Počet | Δ |
-| --- | --- | --- |
-| Pôvodný (audit-4) | 8 párov | baseline |
-| Po Fáze 2 (audit-9) | 6 párov | -2 (snare.dnb↔main a kick.dnb↔phonk vymanil) |
+| Watchlist stav       | Počet   | Δ                                                          |
+| -------------------- | ------- | ---------------------------------------------------------- |
+| Pôvodný (audit-4)    | 8 párov | baseline                                                   |
+| Po Fáze 2 (audit-9)  | 6 párov | -2 (snare.dnb↔main a kick.dnb↔phonk vymanil)               |
 | Po Fáze 3 (audit-11) | 7 párov | -1 netto (deep↔lofi vymanil; 3 nové v short-bright rodine) |
 
 ### Files v tomto commite
@@ -5334,13 +5339,13 @@ Repro tooling (untracked, v tmp-*): `tmp-faz3-feats.mjs`, `tmp-audit-{9,10,11}.{
 
 ### Identified thin categories (from `tmp-audit-11` + `docs/CURRENT-STATE.md`)
 
-| Category | Existing | Closest pair d | Pocket to fill |
-| --- | --- | --- | --- |
-| Clap (3) | main, soft, pop | 0.118-0.259 | dnb tight dark clap — load-bearing for the dnb kit |
-| Crash (3) | main, dark, pop | 0.392-0.838 | short bright accent — beats without wash |
-| Cymbal (2) | ride.ping, ride.bell | 0.510 | splash — cymbal hit that is *neither* ride nor crash |
-| Rim (2) | chip, pop | 0.543 | hard dark — rim for darker genres |
-| Tom (4) | low, mid, high, floor | 0.392-1.268 | perc short — snap-tom for trx/lofi |
+| Category   | Existing              | Closest pair d | Pocket to fill                                       |
+| ---------- | --------------------- | -------------- | ---------------------------------------------------- |
+| Clap (3)   | main, soft, pop       | 0.118-0.259    | dnb tight dark clap — load-bearing for the dnb kit   |
+| Crash (3)  | main, dark, pop       | 0.392-0.838    | short bright accent — beats without wash             |
+| Cymbal (2) | ride.ping, ride.bell  | 0.510          | splash — cymbal hit that is _neither_ ride nor crash |
+| Rim (2)    | chip, pop             | 0.543          | hard dark — rim for darker genres                    |
+| Tom (4)    | low, mid, high, floor | 0.392-1.268    | perc short — snap-tom for trx/lofi                   |
 
 ### Plan: 8 new ids
 
@@ -5376,6 +5381,7 @@ Execution starts now.
 8 nových assety, 5 tenkých kategórií, 3 renderové iterácie (1 batch + 2 follow-ups pre rim.snap).
 
 **Kategórie aktualizované (pôvodný -> nový počet):**
+
 - Clap: 3 -> 5 (clap.dnb, clap.trad)
 - Crash: 3 -> 5 (crash.short, crash.trash)
 - Cymbal: 2 -> 3 (ride.splash)
@@ -5388,20 +5394,20 @@ Execution starts now.
 
 ### New asset character matrix
 
-| id | category | character | loud | crest | air | brightness | closest d (other category) |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| clap.dnb | Clap | Tight, Dark, 4-stack 0.4s body | 414ms | 9.1 | -40.5 | 10.01 | 0.505 (clap.soft) |
-| clap.trad | Clap | Roomy, 5-stack 0.32s | 320ms | 9.5 | -27.1 | 10.79 | 0.129 (clap.main)* |
-| ride.splash | Cymbal | Short bright accent, 0.5s | (vypočítaný) | (vysoký) | (nízky) | (vysoký) | 0.289 (ride.ping) |
-| crash.short | Crash | Bright accent, 0.5s | (vypočítaný) | (vysoký) | (vysoký) | (vysoký) | (pod 0.5) |
-| crash.trash | Crash | Metallic broken, 0.4s | (vypočítaný) | (vysoký) | (vysoký) | (vysoký) | (pod 0.5) |
-| rim.hard | Rim | Punchy low, 1400 Hz + 2.8 kHz band | 80ms | 9.2 | -45.9 | 10.77 | 0.159 (rim.chip) |
-| rim.snap | Rim | Snap ghost, 35ms @ 4.5 kHz | 40ms | (vysoký) | (nízky) | (vysoký) | 0.481 (rim.pop) |
-| tom.perc | Tom | Short snap, 180 Hz, 0.12s body | 200ms | 8.5 | (nízky) | (stredný) | 0.547 (tom.high) |
+| id          | category | character                          | loud         | crest    | air      | brightness | closest d (other category) |
+| ----------- | -------- | ---------------------------------- | ------------ | -------- | -------- | ---------- | -------------------------- |
+| clap.dnb    | Clap     | Tight, Dark, 4-stack 0.4s body     | 414ms        | 9.1      | -40.5    | 10.01      | 0.505 (clap.soft)          |
+| clap.trad   | Clap     | Roomy, 5-stack 0.32s               | 320ms        | 9.5      | -27.1    | 10.79      | 0.129 (clap.main)*         |
+| ride.splash | Cymbal   | Short bright accent, 0.5s          | (vypočítaný) | (vysoký) | (nízky)  | (vysoký)   | 0.289 (ride.ping)          |
+| crash.short | Crash    | Bright accent, 0.5s                | (vypočítaný) | (vysoký) | (vysoký) | (vysoký)   | (pod 0.5)                  |
+| crash.trash | Crash    | Metallic broken, 0.4s              | (vypočítaný) | (vysoký) | (vysoký) | (vysoký)   | (pod 0.5)                  |
+| rim.hard    | Rim      | Punchy low, 1400 Hz + 2.8 kHz band | 80ms         | 9.2      | -45.9    | 10.77      | 0.159 (rim.chip)           |
+| rim.snap    | Rim      | Snap ghost, 35ms @ 4.5 kHz         | 40ms         | (vysoký) | (nízky)  | (vysoký)   | 0.481 (rim.pop)            |
+| tom.perc    | Tom      | Short snap, 180 Hz, 0.12s body     | 200ms        | 8.5      | (nízky)  | (stredný)  | 0.547 (tom.high)           |
 
 ### Follow-up iterations
 
-- `rim.snap` first pass (15ms burst, level 0.45): -16.7 LUFS (3.7 dB pod -13 Rim cieľ). 
+- `rim.snap` first pass (15ms burst, level 0.45): -16.7 LUFS (3.7 dB pod -13 Rim cieľ).
   - Root cause: 15ms je príliš krátke pre momentary-max analyzátor + ceiling -1.8 dBFS capoval master trim.
   - Second pass (15ms, level 0.95): -17 LUFS, ceiling stále capoval.
   - Final pass (35ms, level 0.95): -14.1 LUFS (1.1 dB pod cieľom, v rámci ±2.5 dB gate ✅).
@@ -5446,18 +5452,19 @@ Tento súbor nemá per-category count breakdown pre Clap/Crash/Cymbal/Rim/Tom (k
 
 ### Pearson r (alternative metrics vs audit d_audit, 12-d Euclidean)
 
-| metric | definition | r |
-| --- | --- | --- |
-| d_l1   | 7-band dB L1, no scaling | 0.819 |
-| d_lin  | 7-band linear-energy L1 (preserves dB compression) | 0.473 |
-| d_env  | loudMs + crest + attack, no bands | 0.762 |
-| d_3d   | brightness (centroid) + loudMs + crest | **0.833** |
+| metric | definition                                         | r         |
+| ------ | -------------------------------------------------- | --------- |
+| d_l1   | 7-band dB L1, no scaling                           | 0.819     |
+| d_lin  | 7-band linear-energy L1 (preserves dB compression) | 0.473     |
+| d_env  | loudMs + crest + attack, no bands                  | 0.762     |
+| d_3d   | brightness (centroid) + loudMs + crest             | **0.833** |
 
 d_3d najlepšie koreluje s audit d. Tri dimenzie nesú 83% signálu z audit 12-d vektora. Zvyšných 9 dimenzií (band shares, tilt) pridáva menej ako 17%.
 
 ### Disagreement medzi audit d a d_3d
 
 Stabilné páry (audit d > 0.20) s nízkym d_3d — **spektrálne odlišné ale envelope-rovnaké**:
+
 - `hat.closed<->hat.dnb` d_audit=0.201, d_env=0.066
 - `kick.lofi<->kick.punch` d_audit=0.202, d_env=0.098
 - `snare.jersey<->snare.main` d_audit=0.203, d_env=0.106
@@ -5475,11 +5482,11 @@ Tieto páry sú **v skutočnosti odlišné** v tom, ako hrajú v čase. Audit to
 
 ### Nový prah: banded dual-criterion
 
-| d_audit | d_3d | Kategória | Akcia |
-| --- | --- | --- | --- |
-| < 0.10 | < 0.05 | Duplicita | Vyhodiť (de-dup kandidát) |
-| 0.10-0.15 | 0.05-0.10 | Rodina | Ponechať, audit-relevantné |
-| > 0.15 OR d_3d > 0.10 | | Vlastný priestor | Stable |
+| d_audit               | d_3d      | Kategória        | Akcia                      |
+| --------------------- | --------- | ---------------- | -------------------------- |
+| < 0.10                | < 0.05    | Duplicita        | Vyhodiť (de-dup kandidát)  |
+| 0.10-0.15             | 0.05-0.10 | Rodina           | Ponechať, audit-relevantné |
+| > 0.15 OR d_3d > 0.10 |           | Vlastný priestor | Stable                     |
 
 ### Výsledok
 
@@ -5510,14 +5517,14 @@ backup saved to `listening/abx/lanes.backup-pre-phase5.json`).
 
 Selection rationale (each pair tests ONE dual-criterion hypothesis):
 
-| lane | A | B | d_audit | d_3d | hypothesis | expected verdict |
-| --- | --- | --- | --- | --- | --- | --- |
-| knock-vs-lofi    | kick.knock      | kick.lofi      | 0.068 | 0.046 | true positive | siblings (random) |
-| soft-vs-closed   | hat.closed.soft | hat.closed     | 0.092 | 0.045 | true positive | siblings (random) |
-| closed-vs-open    | hat.closed      | hat.open.short | 0.141 | 0.132 | false positive | not siblings (good) |
-| pop-vs-punch      | kick.pop        | kick.punch     | 0.093 | 0.059 | true positive | siblings (random) |
-| closed-vs-dnb-h   | hat.closed      | hat.dnb        | 0.201 | 0.089 | stable envelope-equal | spectral siblings (not random) |
-| lofi-vs-punch-k   | kick.lofi       | kick.punch     | 0.202 | 0.148 | stable envelope-equal | spectral siblings (not random) |
+| lane            | A               | B              | d_audit | d_3d  | hypothesis            | expected verdict               |
+| --------------- | --------------- | -------------- | ------- | ----- | --------------------- | ------------------------------ |
+| knock-vs-lofi   | kick.knock      | kick.lofi      | 0.068   | 0.046 | true positive         | siblings (random)              |
+| soft-vs-closed  | hat.closed.soft | hat.closed     | 0.092   | 0.045 | true positive         | siblings (random)              |
+| closed-vs-open  | hat.closed      | hat.open.short | 0.141   | 0.132 | false positive        | not siblings (good)            |
+| pop-vs-punch    | kick.pop        | kick.punch     | 0.093   | 0.059 | true positive         | siblings (random)              |
+| closed-vs-dnb-h | hat.closed      | hat.dnb        | 0.201   | 0.089 | stable envelope-equal | spectral siblings (not random) |
+| lofi-vs-punch-k | kick.lofi       | kick.punch     | 0.202   | 0.148 | stable envelope-equal | spectral siblings (not random) |
 
 If the listener can ABX-separate pairs 1, 2, 4 (true positive) at
 chance, dual-criterion is too lenient. If pairs 3, 5, 6 (envelope-
@@ -5560,7 +5567,7 @@ arbitrary 0.15 threshold:
 
 1. `d_3d` (brightness + loudMs + crest, 3-d Euclidean) — Pearson r=0.833
    vs audit d. A dual-criterion watchlist (`d_audit < 0.15 AND d_3d
-   < 0.10`) excludes 2 of 21 audit pairs as false positives
+< 0.10`) excludes 2 of 21 audit pairs as false positives
    (hat.closed↔hat.open.short and kick.phonk↔kick.punch) — both have
    envelope-only differences (d_env > 0.13) that the ear picks up.
 
@@ -5576,10 +5583,11 @@ pairs 3-5-6 (envelope-equal) at chance, the proxy is correct.
 ### Next step (user action)
 
 The user runs:
-  npm run listening:serve
+npm run listening:serve
 opens http://127.0.0.1:5179/abx/ in a browser, completes 6 trials
 (roughly 5 minutes — 6 lanes * 4 ABX trials each at ~10s per trial
-+ scoring), and returns `listening/abx/trials.jsonl` for analysis.
+
+- scoring), and returns `listening/abx/trials.jsonl` for analysis.
 
 I will then compute the per-lane binomial accuracy, compare to chance
 (50%), and either (a) confirm dual-criterion, (b) adjust thresholds,

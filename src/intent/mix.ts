@@ -742,8 +742,6 @@ export const EFFECT_KNOB: Partial<Record<EffectType, string>> = {
   rezonans: "formant",
 };
 
-
-
 /** Scene role → the tracks its instrumentation plays (song-builder map). */
 const ROLE_TARGETS: Record<string, MixTarget[]> = {
   intro: ["drums", "bass"],

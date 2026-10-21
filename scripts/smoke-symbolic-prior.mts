@@ -56,7 +56,9 @@ async function priorFor(styleId: string, genre: "house" | "techno" | "trap" | "a
   const rows = buildPriorGridRows({ genre, styleId, stepCount, padRoles: [...KIT_ROLES] });
   const batch = new Float32Array(rows.length * PRIOR_FEATURE_COUNT);
   rows.forEach((row, index) => batch.set(row, index * PRIOR_FEATURE_COUNT));
-  const results = await session.run({ [manifest.inputName]: new ort.Tensor("float32", batch, [rows.length, PRIOR_FEATURE_COUNT]) });
+  const results = await session.run({
+    [manifest.inputName]: new ort.Tensor("float32", batch, [rows.length, PRIOR_FEATURE_COUNT]),
+  });
   const logits = results[manifest.outputName].data as Float32Array;
   const probs = Array.from(logits, (value) => 1 / (1 + Math.exp(-value)));
   return (padIndex: number, step: number) => probs[padIndex * stepCount + step];
@@ -88,7 +90,10 @@ const trap = await priorFor("trap.classic", "trap");
 
 // 1. house kick on every quarter (deep house four-on-the-floor prior)
 const houseKickQuarters = [0, 4, 8, 12].map((step) => house(0, step));
-checks.push([`house kick quarters high (${houseKickQuarters.map((p) => p.toFixed(2)).join("/")})`, houseKickQuarters.every((p) => p > 0.5)]);
+checks.push([
+  `house kick quarters high (${houseKickQuarters.map((p) => p.toFixed(2)).join("/")})`,
+  houseKickQuarters.every((p) => p > 0.5),
+]);
 
 // 2. styles differentiate: house keeps 4/4 kick quarters, trap breaks them
 // (strong downbeat anchor but weaker off-quarters — that IS the trap prior)
@@ -139,7 +144,14 @@ const softmax = (values: number[]) => {
   return exp.map((value) => value / exp.reduce((s, v) => s + v, 0));
 };
 async function melodicDist(genre: string, role: string, startStep: number, prevDegree: number) {
-  const row = buildMelodicFeatureRow({ genre: genre as never, role: role as never, startStep, prevDegree, prevDuration: 2, prevPrevDegree: -1 });
+  const row = buildMelodicFeatureRow({
+    genre: genre as never,
+    role: role as never,
+    startStep,
+    prevDegree,
+    prevDuration: 2,
+    prevPrevDegree: -1,
+  });
   const results = await melodicSession.run({
     [melodicManifest.inputName]: new ort.Tensor("float32", Float32Array.from(row), [1, MELODIC_FEATURE_COUNT]),
   });
@@ -177,5 +189,7 @@ for (const [label, ok] of melodicChecks) {
   if (!ok) failed += 1;
 }
 
-console.log(`[smoke] ${checks.length + melodicChecks.length - failed}/${checks.length + melodicChecks.length} checks passed`);
+console.log(
+  `[smoke] ${checks.length + melodicChecks.length - failed}/${checks.length + melodicChecks.length} checks passed`,
+);
 if (failed > 0) process.exit(1);

@@ -100,7 +100,7 @@ None (decode is atomic). **Limits.** Codec support = host decoder's.
 and `sample-library/curated.ts` delegate here (identical previous behavior).
 **Native implementation.** Inject the platform codec wrapper.
 **Deliberately out of scope:** `RecordingRecoveryRepository
-.materializeStoredSample` — it *creates* an empty buffer from raw PCM
+.materializeStoredSample` — it _creates_ an empty buffer from raw PCM
 (allocation, not decode) and keeps its own platform guard.
 
 ---

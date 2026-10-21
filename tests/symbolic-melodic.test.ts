@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { testDoc } from "./fixtures/doc";
 import { MELODIC_BY_GENRE } from "../src/ai/grooves/melodic-data";
+import { DEFAULT_AI_METER } from "../src/ai/meter";
 import {
   MELODIC_FEATURE_COUNT,
   buildMelodicFeatureRow,
@@ -78,6 +79,8 @@ describe("melodic-features contract", () => {
       prevDegree: 0,
       prevDuration: 2,
       prevPrevDegree: 4,
+      // The contract's training frame (ADR 0057 Stage 2d).
+      meter: DEFAULT_AI_METER,
     };
     const a = buildMelodicFeatureRow(input);
     const b = buildMelodicFeatureRow(input);

@@ -53,7 +53,11 @@ function contentRatio(file, second) {
 }
 
 const durationOf = (file) =>
-  Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file]).toString().trim());
+  Number(
+    execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file])
+      .toString()
+      .trim(),
+  );
 
 for (const name of readdirSync(CAPTURES).filter((f) => f.endsWith(".webm"))) {
   const file = resolve(CAPTURES, name);

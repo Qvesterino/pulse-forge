@@ -522,6 +522,8 @@ export function paramValueFraction(effectType: EffectType, paramId: string, valu
  */
 export interface ParamPlanLine {
   target: MixTarget;
+  /** The resolved track name (the label the producer sees), or the family. */
+  trackName: string;
   effectType: EffectType;
   paramId: string;
   domain: "log" | "linear";
@@ -547,6 +549,7 @@ export function paramPlan(intent: ParamIntent, doc: Parameters<typeof applyMixIn
     if (ids.length === 0) {
       lines.push({
         target,
+        trackName: target,
         effectType: intent.effectType,
         paramId: intent.paramId,
         domain,
@@ -579,6 +582,7 @@ export function paramPlan(intent: ParamIntent, doc: Parameters<typeof applyMixIn
       `${clamped && preview.mode !== "set" ? " (clamped)" : ""}${adding ? " (add)" : ""}`;
     lines.push({
       target,
+      trackName,
       effectType: intent.effectType,
       paramId: intent.paramId,
       domain,

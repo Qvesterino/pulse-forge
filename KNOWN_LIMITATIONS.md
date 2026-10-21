@@ -235,7 +235,7 @@ the bounded memory footprint of the prepare-time delay reservation:
   fallback krátkeho vstupu fill-uje nulou namiesto kopírovania hlavy (duplex audio do
   neskorších chunkov); `validateState` clampuje hodnoty podľa vlastnej hlavičky;
   `extractFeatures` odmieta sampleRate <= 0/NaN (kompletná kontaminácia analýzy + ~200 MB
-   akumulátor pre 10-min buffer). Všetko zmirrorované do upstreamu.
+  akumulátor pre 10-min buffer). Všetko zmirrorované do upstreamu.
 
 ### Ultina — mŕtve front-panel ovládače (opravené 2026-10-04)
 

@@ -32,14 +32,7 @@ const RATE = 48000;
 const DRIVER_NAME = argValue("--name");
 const IS_FIXTURE = !DRIVER_NAME;
 
-const hostPath = path.join(
-  projectRoot,
-  "native",
-  "asio-host",
-  "build",
-  "Release",
-  "asio-host.exe",
-);
+const hostPath = path.join(projectRoot, "native", "asio-host", "build", "Release", "asio-host.exe");
 if (!existsSync(hostPath)) {
   console.error(`[soak] asio-host missing (${hostPath}) — run npm run build:asio-probe`);
   process.exit(1);
@@ -56,7 +49,9 @@ const args = DRIVER_NAME
       String(SECONDS),
     ];
 
-console.log(`[soak] ${SECONDS} s @ ${RATE} Hz — ${DRIVER_NAME ? `hardware driver "${DRIVER_NAME}"` : "fixture driver"}`);
+console.log(
+  `[soak] ${SECONDS} s @ ${RATE} Hz — ${DRIVER_NAME ? `hardware driver "${DRIVER_NAME}"` : "fixture driver"}`,
+);
 const source = new PcmPipeSource({ hostPath, args });
 
 let frames = 0;
@@ -68,7 +63,10 @@ let driverFrames = null;
 let done = false;
 
 const verdict = await new Promise((resolve, reject) => {
-  const timer = setTimeout(() => reject(new Error("soak exceeded the hard deadline (SECONDS*4+30 s)")), SECONDS * 4000 + 30_000);
+  const timer = setTimeout(
+    () => reject(new Error("soak exceeded the hard deadline (SECONDS*4+30 s)")),
+    SECONDS * 4000 + 30_000,
+  );
   source.on("format", (f) => {
     startedAt = Date.now();
     console.log(`[soak] format: ${JSON.stringify(f)}`);
@@ -86,7 +84,9 @@ const verdict = await new Promise((resolve, reject) => {
     if (startedAt && elapsed - lastProgress >= 30) {
       lastProgress = elapsed;
       const drift = frames / (elapsed * RATE);
-      console.log(`[soak] ${elapsed.toFixed(0).padStart(4)} s | ${frames.toLocaleString()} frames | drift ${drift.toFixed(3)}× realtime`);
+      console.log(
+        `[soak] ${elapsed.toFixed(0).padStart(4)} s | ${frames.toLocaleString()} frames | drift ${drift.toFixed(3)}× realtime`,
+      );
     }
   });
   source.on("stats", (e) => {
@@ -121,7 +121,9 @@ console.log("=== ASIO SOAK VERDICT ===");
 for (const [name, ok] of Object.entries(checks)) {
   console.log(`  ${ok ? "PASS" : "FAIL"}  ${name}`);
 }
-console.log(`  frames ${stats.pcmFramesReceived.toLocaleString()} / expected ${expected.toLocaleString()} | seqGaps ${stats.seqGaps} | nonFinite ${nonFinite} | elapsed ${verdict.elapsed.toFixed(1)} s`);
+console.log(
+  `  frames ${stats.pcmFramesReceived.toLocaleString()} / expected ${expected.toLocaleString()} | seqGaps ${stats.seqGaps} | nonFinite ${nonFinite} | elapsed ${verdict.elapsed.toFixed(1)} s`,
+);
 
 const report = {
   at: new Date().toISOString(),

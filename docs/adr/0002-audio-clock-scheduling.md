@@ -9,7 +9,7 @@ Consequence: BPM changes during playback rebase the transport anchor rather than
 
 ## Amendment (2026-09-29, Wave 3 — audio-clock tick driver)
 
-The 25 ms `setInterval` remains the scheduler's *fallback* tick source, but when a realtime AudioContext exists the tick cadence comes from the audio device: an `rt-ticker-processor` AudioWorklet (part of the core worklet bundle) posts one message every 8 render quanta (~21.3 ms @ 48 kHz) and `Scheduler.setDriver()` routes ticks through `AudioTickerSchedulerDriver` instead of the main-thread timer.
+The 25 ms `setInterval` remains the scheduler's _fallback_ tick source, but when a realtime AudioContext exists the tick cadence comes from the audio device: an `rt-ticker-processor` AudioWorklet (part of the core worklet bundle) posts one message every 8 render quanta (~21.3 ms @ 48 kHz) and `Scheduler.setDriver()` routes ticks through `AudioTickerSchedulerDriver` instead of the main-thread timer.
 
 Why: a `setInterval` tick inherits every bit of main-thread jank (React render, GC, layout) and browser timer clamping; a late tick erodes the 120 ms lookahead window and events are scheduled late — audible during exactly the moments a DAW is busiest. The ticker's cadence and timestamps follow the audio clock; a stalled main thread turns into a burst of queued messages (absorbed by the scheduler's plan-from-transport-position tick) rather than a clamped timer.
 

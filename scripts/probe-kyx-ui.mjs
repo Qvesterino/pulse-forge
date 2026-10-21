@@ -40,7 +40,10 @@ const report = await page.evaluate(() => {
   const landmarks = {
     canvas: document.querySelectorAll("canvas").length,
     audio: document.querySelectorAll("audio").length,
-    headings: [...document.querySelectorAll("h1,h2,h3")].filter(vis).map((h) => h.textContent.trim().slice(0, 40)).slice(0, 20),
+    headings: [...document.querySelectorAll("h1,h2,h3")]
+      .filter(vis)
+      .map((h) => h.textContent.trim().slice(0, 40))
+      .slice(0, 20),
   };
   return { inputs, buttons, landmarks, title: document.title };
 });

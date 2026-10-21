@@ -7,12 +7,12 @@ Audiotool aplikácie.
 
 Na **https://developer.audiotool.com/applications** vytvor novú aplikáciu:
 
-| Pole                | Hodnota                                              |
-| ------------------- | ---------------------------------------------------- |
-| Názov               | KYX (Qvester Studio)                                 |
-| Scope               | `project:write`                                      |
-| Redirect URI (dev)  | `http://127.0.0.1:5173`                              |
-| Redirect URI (prod) | `https://qvesterstudio.com`                          |
+| Pole                | Hodnota                     |
+| ------------------- | --------------------------- |
+| Názov               | KYX (Qvester Studio)        |
+| Scope               | `project:write`             |
+| Redirect URI (dev)  | `http://127.0.0.1:5173`     |
+| Redirect URI (prod) | `https://qvesterstudio.com` |
 
 **Scope `project:write` je jediný, o ktorý KYX žiada.** Nič iné — žiadny
 prístup k účtu, žiadne čítanie profilu, žiadne zdieľanie.
@@ -23,7 +23,7 @@ Kod používa `window.location.origin`, takže použi ten, čo ti sedí.
 
 ## Krok 2 — pošli mi clientId
 
-ClientId nie je tajomstvo (je to *public* client id pre SPA), ale ani tak
+ClientId nie je tajomstvo (je to _public_ client id pre SPA), ale ani tak
 ho nechaj v `.env.local`, nie v `package.json` a nie v commite.
 
 Vytvor súbor `D:\pulse-forge\.env.local`:

@@ -14,6 +14,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 ## VERIFIED FIXED
 
 ### U0.5 tempo rewrite measured a phantom pulse on steady tones
+
 - Area: `src/ai/audio-tempo-key.ts` (UN-SUNO U0.5 flux rewrite 464f512d)
 - Root cause: the rewrite dropped the old `onsets < 8 → null` honesty gate; a stationary sine leaves periodic spectral-leakage wobble in the rectified flux envelope which the self-normalizing candidate scorer promotes to "150 BPM @ 0.979".
 - Fix: crest gate — baseline envelope peak/mean < 8 → null. Measured: sine ≈ 4.8, click trains 29–38, golden fixtures 20–44.
@@ -22,6 +23,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Date/session: 2026-10-06, commit `dfe6bf06`
 
 ### format:check was red on 103 files with three different causes
+
 - Area: Prettier gate (`npm run format:check`)
 - Root cause: (a) 68 files of real drift accumulated by feature waves that skipped `npm run format`; (b) 35 worktree-only eol artifacts (see VERIFIED OPEN — eol policy); (c) tool-generated artifacts (vendored cores, generated presets, golden JSONs) that no emitter formats.
 - Fix: `.prettierignore` now scopes the gate to first-party code (vendored plugin-core trees = script-generated mirrors, same precedent as `public/licenses/`; generated presets + golden JSONs = emitters own the byte shape); 34 first-party files formatted.
@@ -30,6 +32,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Date/session: 2026-10-06, commit `a3823bbb`
 
 ### Three suites still tested the deleted inline multitap runtime
+
 - Area: tests/invariants, tests/fx-tempo-sync, tests/multi-tap-delay
 - Root cause: multi-tap migrated to an AudioWorklet wrapper (449039ad era); pins and fake-context tests never followed.
 - Fix: invariant #7 pin now documents MixPreviewChipLazy (kyx_mix_idea A/B preview, private-context owner, 65e117f8) next to SpectralEditPanel; tempo-sync grep points at multitap-node.ts's scheduled-write path; live-sync tests drive createMultitapNode directly (beatmangler fake-worklet pattern).
@@ -37,6 +40,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Date/session: 2026-10-06, commit `d9304cc3`
 
 ### kyx_mix_idea landing missed its own surface bookkeeping
+
 - Area: MCP surface contracts
 - Root cause: the 35th tool shipped with mirrors synced but count pins (34), name lists, and the ROT GUARD playbook text untouched; two adjacent tests also raced the Fáza 2b factory-bank warm gate.
 - Fix: pins 34→35 with kyx_mix_idea in MCP_TOOLS order; playbook documents it inside the 8000-char compactness budget (diagnose_mix gloss compressed to pay); checkpoint-diff test awaits its mutations (probe-verified product code was correct); web-host crash test polls for the mcp-result with a 5 s bound; mirrors regenerated.
@@ -44,6 +48,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Date/session: 2026-10-06, commit `6ee711a5`
 
 ### Contract pins lagged three shipped features
+
 - Area: domain goldens, gallery REST, ux-audit shortcut table
 - Root cause: pitchCorrect (47→48 effects — CURRENT-STATE already said 48) without golden re-capture; 091b8cfb subpath-mount share-link change without serialization re-capture; battles flywheel (9d5d3b0b) response shape; ROADMAP-UI-2027 V1 Alt+7/8 shortcuts.
 - Fix: goldens:capture re-run — surgical diff (+10 lines pitchCorrect row, 1 line share code; decode-goldens preserved by design); pins updated to current contracts.
@@ -51,6 +56,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Date/session: 2026-10-06, commit `9e477015`
 
 ### Ultina group-bus automation pin predated 16th-grid interpolation
+
 - Area: tests/ultina-core-hardening
 - Root cause: AutomationBridge (badfd106) interpolates continuous device params on a 16th-note grid; the pin expected the pre-decomposition endpoint-only writes.
 - Fix: pin follows the documented interpolation (5 writes for a 480-tick ramp).
@@ -58,6 +64,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Date/session: 2026-10-06, commit `4061bdcb`
 
 ### MCP agent-surface audit: notes-delete loophole + SFZ pre-decode cap (user-picked proposal 4)
+
 - Area: all 36 MCP tools (docs/MCP-AGENT-SURFACE-AUDIT-2026-10-06.md)
 - Fixed: kyx_notes op:delete shipped WITHOUT the D4 destructive gate (the only removal loophole — every other removal is gated); kyx_import_sfz decoded the whole payload before its 256 MB cap (desktop stdio unbounded → OOM-scale allocation; now a pre-decode estimate refuses early).
 - By-design recorded: checkpoint restore ungated (documented recovery path, one-undo), checkpoint delete (agent-owned bounded data).
@@ -68,6 +75,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Date/session: 2026-10-06, commits 9699bea1 + 492d9a69
 
 ### drift:check — the derivable-artifact gate (user-picked proposal 3)
+
 - Area: scripts/drift-check.mts (+ tests/drift-check.test.ts, 7 pins)
 - Built: one command regenerating MCP mirrors (gen:mcp-mirrors), domain goldens (goldens:capture) and the CURRENT-STATE counts (EFFECT_META / INSTRUMENT_META / TEMPLATES / spec-file count) with the same npm commands humans use, diffing vs HEAD. Exit 0 clean / 1 drift (drift:bless + review + commit) / 2 tool error; a detected drift is re-verified by a second regeneration (flaky-generator verdict); dirty-before paths SKIPPED never restored (shared-tree guardrail); clean paths normalized back (generator LF vs autocrlf checkout CRLF phantom).
 - First-run catches (validated live): domain goldens stale at 47 vs 51 effect defaults since ZENIT M2 (tests/domain-goldens.test.ts red on main, fixed 8d2216a0), mirrors lagging two MCP waves, CURRENT-STATE spec count stale twice within the hour.
@@ -75,6 +83,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Date/session: 2026-10-06, commits 13d22879/8d2216a0/cb767793 (machinery partially absorbed into concurrent commits — content verified in HEAD)
 
 ### Honest-gate sweep wave 2: DC offset fabricated section-mix findings
+
 - Area: src/analysis/sectionMixDoctor.ts (+ verified-clean src/vocal/ + src/analysis/ scorers)
 - Root cause: the low-band measurement ran raw signal through a one-pole LP at 120 Hz, which passes DC COMPLETELY — a render with a DC offset measured "100 % low-band, no transient contrast" and fabricated low-masking findings (probe: pure DC → 2 findings, music+DC → 97 % low share where clean had none).
 - Fix: sections measured DC-free (per-slice mean subtracted); zero-mean material unchanged, U5 calibrated KPI floors green, positive-control pin proves genuine findings still fire.
@@ -83,6 +92,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Date/session: 2026-10-06, commit d9e9567a
 
 ### ZENIT/M2 param audit: one dead knob, one broken macro coupling, CI typecheck red
+
 - Area: ZENIT composite + APEKS/ŠÍRKA/PRÚD (docs/ZENIT-M2-PARAM-AUDIT-2026-10-06.md)
 - Root cause (×3): APEKS release blended the GR one-pole with the KEEP fraction (≈1) instead of (1−keep) — knob inaudible; ZENIT ceiling moves never re-derived the LIMIT threshold (macro coupling broken + load-order dependent); the M2 wave committed tests/m2-dsp.test.ts importing untyped processor .js without the house .d.ts stubs — tsc red on main since the landing.
 - Fix: relBlend form + bundle rebuild; limit value tracked + re-derived on ceiling, order-independent; three .d.ts stubs.
@@ -91,6 +101,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Date/session: 2026-10-06, commits 308c15f9 + a8a84939 (part of the fix absorbed into the sibling's 218fc3d9)
 
 ### Honest-gate sweep: two estimators promoted stationary input into confident readings
+
 - Area: `src/reference/analysis/rhythm.ts` (F1 lane) + `src/ai/audio-tempo-key.ts` (estimateTempo gate placement, estimateKey); full audit in `docs/HONEST-GATE-AUDIT-2026-10-06.md`
 - Root cause: confidence mixes dominated by SELF-NORMALIZED scores (share of the signal's own max) with no absolute floor. F1 reported "86 BPM @ 0.585, no warning" on a bare sine and "~126 BPM @ 0.640" on pink noise; estimateKey fabricated keys on any noise color (margin cannot gate: real boombap 0.025 vs pink 0.235); the dfe6bf06 tempo crest gate sat on the baseline-REMOVED envelope where removal AMPLIFIES noise wobble (5.9/6.0 raw → 10.5/10.8 removed) so pink leaked.
 - Fix: shared `onsetEnvelopeCrest()` + `ONSET_CREST_FLOOR = 8` in spectralFlux.ts; analyzeRhythm gates the RAW envelope (stationary ≤ 5.3, rhythmic ≥ 11.5); estimateTempo gate moved to the raw envelope (stationary ≤ 6, clicks ≥ 36); estimateKey gains two measured absolute floors (chroma concentration ≥ 2, best correlation ≥ 0.6 — bare sine keeps its root by design).
@@ -100,6 +111,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 ## VERIFIED OPEN
 
 ### Intent/symbolic/grooves/melodic + engine-pin test family (~24 tests) red — NOW MACHINE-READABLE
+
 - Area: **the classification lives in `suite-expectations.json` (repo root) as of 2026-10-06** — this prose entry is the narrative companion, the JSON is the source of truth the gate enforces.
 - Families (24 entries, recordedAgainst 445c117d): intent-model artifact pins ×7, symbolic/grooves/melodic wave ×8, ONNX model-pack hashes ×2, sample-license credits render ×1, engine source-grep pins (trigger/warp, waves 4e/4f) ×2, vendor SDK owner gates asio+clap ×3(+collection), SFT corpus ×1.
 - Evidence: seeded from a full-suite JSON run in the clean D:/pf-verify worktree at 445c117d (824 files · 8982 passed · 24 failed · 121 skipped); `npm run test:expectations:eval` exits 0 against that report.
@@ -110,6 +122,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Priority: enforced by `npm run test:expectations` (CI test job) — no longer priority-tracked by hand
 
 ### format:check still red on ~35 eol-artifact files + in-flight sibling files — RESOLVED 2026-10-06
+
 - Area: Prettier gate, whole repo
 - RESOLUTION (2026-10-06): `.gitattributes` committed (`* text=auto eol=lf` + binary exclusions, 33b7f0c4); index was already 100% LF so NO renormalize was needed; 108 clean worktree CRLF/mixed files converted in place (sibling dirty untouched); fresh-checkout acceptance PASSED (0 CRLF on autocrlf=true Windows); format:check noise 103 flags -> 1 owned flag. Session log follow-up 7.
 - Evidence: committed content of those files passes Prettier; worktree copies differ only in CRLF/LF. `core.autocrlf=true`, NO `.gitattributes` exists.
@@ -120,6 +133,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Priority: high (structural, keeps re-breaking a merge gate)
 
 ### Tool emitters don't format their output
+
 - Area: scripts/capture-domain-goldens.mts (JSON.stringify vs Prettier style), preset-pack generators (measure-preset-loudness.mjs etc.)
 - Evidence: golden JSONs + *.generated.ts were the bulk of real format drift; now prettier-ignored, so the gate no longer forces it.
 - Root cause: emitters write raw serializations; nothing runs Prettier on their output.
@@ -130,6 +144,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 ## NEEDS INVESTIGATION
 
 ### docs/AGENTS.md effect/instrument counts drifted from CURRENT-STATE
+
 - Area: AGENTS.md §2 ("42 core effects", "15 instrument kinds" vs CURRENT-STATE 48 effects / memory's 22 instruments)
 - Suspicion/evidence: AGENTS.md repository-map one-liners were never bump-tracked; CURRENT-STATE is the canonical count file.
 - What remains unknown: exact instrument count from a fresh grep; whether other AGENTS.md numbers drifted.
@@ -138,6 +153,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 ## BLOCKED
 
 ### Deployed smoke + LICENSE (carried from earlier campaigns)
+
 - Blocker: user-owned deploy URL + LICENSE decision.
 - Required dependency / information / environment: `KYX_DEPLOY_URL`, LICENSE file.
 - Safe next action once unblocked: `npm run release:deployed-smoke`.
@@ -145,6 +161,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 ## DO NOT TOUCH
 
 ### Stem separation (UN-SUNO S-wave) + loudness/mixer refactor zone
+
 - Reason: a concurrent session is actively working here (S0 HPSS core f493d5ef + 8f0de079 loudness harness; worktree edits in AudioEngine.ts, meteringRig.ts, Meter.tsx, Mixer.tsx, intentRouting.ts, measure-preset-loudness.mjs, preset-loudness*, 03-mixer.css during this session).
 - Known constraint: shared working tree — stage explicit paths only, commit early.
 - Conditions under which modification would become safe: their wave commits and this file records it.
@@ -152,9 +169,11 @@ Last updated: 2026-10-06 (session sess_85d94465)
 ## DEFERRED / OUT OF SCOPE
 
 ### `.gitattributes` eol policy + renormalization — DONE 2026-10-06 (see follow-up 7)
+
 - Resolution: shipped without a full renormalize (index already LF); only clean worktree copies converted.
 
 ### AGENTS.md count refresh
+
 - Reason: docs-only, needs a grep-verified sweep; not blocking.
 - Relevant future campaign: Documentation ↔ Code Reconciliation.
 
@@ -192,12 +211,14 @@ Last updated: 2026-10-06 (session sess_85d94465)
 ## SESSION LOG
 
 ### 2026-10-07 (later) / W1 session 2 — gate plumbing + the pre-registered FAIL (92b1c372)
+
 - Built: gate --feature-v3 path (library folds, classical.* corpus train-only, --v3-no-corpus baseline); trainer v3 split fix (corpus groups train-only — the classical.* prefix was invisible to the old midi# check so corpus rows could land in VALIDATION); generator --no-midi-corpus baseline variant.
 - VERDICT (pre-registered, both fold counts): criterion (a) degree PASSED — 2-fold within tolerance, 3-fold corpus HELPS (+0.0072): chord conditioning confirmed, the W2 degree failure mode is gone with harmony context. Criterion (b) duration FAILED (2-fold -0.078, 3-fold -0.023): corpus legato still biases the duration head. FAIL (must hold all) -> no artefact ships, corpus stays out, v3 model unchanged/inert.
 - The W1 hypothesis is SPLIT, not dead: harmony transfers, texture does not. W1b (duration-preserving integration) recorded as an UNREGISTERED follow-up in the plan §4b — needs its own pre-registration before any rerun (no fishing).
 - Recommended continuation: W1b pre-registration + rerun, OR leave the corpus parked and move on; owner items unchanged.
 
 ### 2026-10-07 (late) / W1 chord-aware session 1 — discovery + the corpus bridge (cdba00af)
+
 - Discovery: W1 was HALF-BUILT (v3 contract 68 dims, dataset generator, TRAINED symbolic-melodic-v3 with gatePassed None + midiCorpusSamples 0, inert runMelodicNextV3 with no caller). The generator's corpus path assigned SYNTHETIC house/ambient ladders to classical pieces — the W2 conditioning mistake reborn; the W1 hypothesis was untested.
 - Built: docs/W1-CHORD-AWARE-PLAN.md rewritten to the REAL contract with the pre-registered gate (§4); v3 genre list + honest 5th "classical" slot (69 dims, contract grows pre-gate); deriveCorpusChordEvents (joint root+quality match + extra-tone penalty, inversions correct, honest skips, 7 pins); generator corpus path on raw PD MIDI, every role >= 8 events.
 - Dataset: 22 341 samples (289 library + 21 109 corpus, 230/345 pieces) - 747 groups.
@@ -205,6 +226,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Remaining W1: python/gate plumbing, gated retrain vs §4, provider routing only on PASS.
 
 ### 2026-10-06 (follow-up 7) / eol policy — the quiet-window session (last structural item)
+
 - Did: .gitattributes (LF + binary exclusions + bat/cmd CRLF guard, 33b7f0c4); inventory proved the index was already 100% LF (autocrlf normalized on check-in for years) so renormalize was unnecessary; converted 108 clean worktree CRLF/mixed files to LF; formatted 8 committed-drift files from the mastering/DNA waves (ebc4cbc7).
 - Proved: fresh worktree checkout on autocrlf=true Windows produces 0 CRLF (the policy's acceptance test); format:check 103 -> 1 owned flag; drift:check EXIT 0 'no drift'.
 - Earned on the way: drift-check --bless silently vanished via argv slice(3) under vite-node (fixed 6f99db8d, full-argv read); the sibling landed mid-bless — artifacts blessed in the CLEAN worktree (never baking their in-flight tools.ts) and the content landed through their absorb (1ef04e55); arbiters 15/15.
@@ -213,6 +235,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Recommended continuation: nothing structural left from the 10-06 list — the two standing gates own the remaining reds (all owned/active-wave). format:check's only flag is the sibling's in-flight file.
 
 ### 2026-10-06 (follow-up 6) / MCP agent-surface audit (user-picked proposal 4)
+
 - Inspected: 36 tools classified read-only/mutating/destructive/network/file; 6 allowDestructive gate sites vs the full removal inventory; byte paths (SFZ/export/gallery) for caps; token/relay/auth invariants.
 - Fixed: notes-delete gate loophole; SFZ pre-decode cap; kyx_master pins + ROT GUARD; 2 stale-pin suites green.
 - Unresolved: none in scope. Remaining candidate: none from the original list — all four proposals delivered (ratchet, honest-gate ×2, drift:check, MCP audit).
@@ -220,6 +243,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Recommended continuation: let the two gates run (suite-expectations + drift:check); next high-value windows: the eol policy session (unblocks format:check fully) or wave-based re-audits when the current storm of sibling landings settles.
 
 ### 2026-10-06 (follow-up 5) / drift:check — derivable-artifact gate (user-picked proposal 3)
+
 - Built: scripts/drift-check.mts + 7 unit pins + npm scripts (drift:check / drift:bless) + AGENTS.md gate row + cheat sheet.
 - Caught live: domain goldens 47 vs 51 (M2 landing, test red on main — fixed), mirrors two waves behind (sibling self-fixed mid-session), spec count stale twice (832/834 re-measured).
 - Verified: drift:check EXIT 0 "no drift" on final run; domain-goldens 12/12; mirror-sync green; drift-check tests 7/7.
@@ -228,6 +252,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Recommended continuation: remaining audit candidates from the ranking: MCP agent-surface security/capability audit (proposal 4).
 
 ### 2026-10-06 (follow-up 4) / Honest-gate sweep wave 2 — src/vocal + src/analysis
+
 - Inspected: comping.ts barScore (self-normalized energyCurve = by-design shape question, absolute dimension via snrBonus), analyze.ts estimateSnrDb (bounded, silence/constant → 0), mixDoctor thresholds (calibrated, flags are TRUE statements), sectionMixDoctor, levelMatch, arrangement-lane take-scoring (anchor-based everywhere).
 - Fixed: sectionMixDoctor DC contamination (probe-confirmed fabricated findings).
 - Verified: 41/41 honest-gates + section-mix + comping + level-match; 136/136 broader adjacency; typecheck EXIT 0.
@@ -236,6 +261,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Recommended continuation: honest-gate sweep is COMPLETE for reference+ai+vocal+analysis; remaining candidates from the ranking: drift:check (proposal 3) and the MCP agent-surface audit (proposal 4).
 
 ### 2026-10-06 (follow-up 3) / ZENIT + M2 param audit (user-picked proposal 1)
+
 - Inspected: all five new mastering surfaces against NEW-EFFECT-CHECKLIST (5 death modes, 5 registration surfaces, per-param min/max rule); ran the worklet-loaded browser audit on the four effects (report in docs/); probe-measured APEKS release/preserve across six excitation families.
 - Fixed: APEKS release dead knob; ZENIT ceiling↔limit coupling; .d.ts trio (CI typecheck red since M2 landing).
 - Verified: 26/26 across zenit-m2-param-audit + m2-dsp + zenit-composite; param-range-coherence + honest-gates green; typecheck EXIT 0; shipped bundle contains the fix.
@@ -243,8 +269,8 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Commits: 308c15f9, a8a84939 (+ sibling absorb 218fc3d9).
 - Recommended continuation: wave 2 honest-gate sweep (src/vocal + src/analysis) or drift:check — both still open.
 
-
 ### 2026-10-06 (follow-up 2) / Honest-gate sweep — confidence metrics audit (user-picked idea C)
+
 - Inspected: every confidence producer in src/reference/ + src/ai/ (11 entries classified, verdict table in docs/HONEST-GATE-AUDIT-2026-10-06.md); adversarial probe (sine, white/pink/lowpassed noise, silence, clicks, 5 golden fixtures) with measured thresholds.
 - Fixed: F1 analyzeRhythm crest gate (phantom "86 BPM @ 0.585 no warning" on sine, "~126 @ 0.640" on pink → honest null); estimateTempo gate moved to the RAW envelope (baseline removal amplifies noise wobble — pink leaked the removed-envelope gate); estimateKey dual absolute floor (concentration ≥ 2 + correlation ≥ 0.6).
 - Verified: honest-gates.test.ts 10/10; reference family + estimators + unsuno golden KPIs 209/209; snapshot diff reviewed then regenerated; typecheck clean on my files (2 remaining tsc errors = sibling's untracked studio-io.test.ts + asio-host-manager.cjs mid-landing).
@@ -253,6 +279,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Recommended continuation: let the ratchet drive; next window = eol policy session (item 1) or the vocal/presets confidence follow-up sweep.
 
 ### 2026-10-06 (follow-up) / Suite expectations ledger — the Chromium ratchet (user-picked top idea)
+
 - Built: `scripts/suite-expectations.mjs` (+ `.d.mts` types, 17 unit pins) — parses vitest `--reporter=json`, diffs against `suite-expectations.json`: new reds FAIL, cured reds FAIL (baseline only shrinks), TODO owners FAIL, `flaky:true` exempts both ways, collection errors surface as pseudo-ids. `npm run test:expectations` (--run + eval), `:eval` re-evaluates the last report; CI's test job runs it instead of plain `npm test`.
 - Seeded: full-suite JSON run in the clean worktree at 445c117d (824 files · 8982 passed · 24 failed · 121 skipped) → ledger with 24 classified entries across 7 owned families; eval exits 0.
 - Found on the way (fixed): **shebang + CRLF breaks vite's transform** — `#!/usr/bin/env node` on a test-imported `.mjs` + a Windows checkout (autocrlf, no .gitattributes) = "Invalid or unexpected token" while plain node parses the same bytes; shebang dropped (445c117d), precedent `validate-intent-ranker-golden.mjs` is shebang-free too. Cross-tree report normalization anchored at `/tests/` (38e8620d).
@@ -261,6 +288,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Recommended continuation: NEXT HIGHEST VALUE WORK item 1 (eol policy — would also retire the shebang/CRLF hazard class entirely), then let the ratchet drive ledger shrinkage.
 
 ### 2026-10-06 / Build & Toolchain — gate integrity & post-feature verification
+
 - Inspected: CAMPAIGN_STATE (closed predecessor), git history (UN-SUNO U0–U7 + concurrent stem-separation S0 + loudness waves), 103 Prettier-flagged files (classified against committed content), full-suite failure set (34 → 32 → 23 fails across runs) against the 10-03 baseline classification, D:/pf-verify worktree at HEAD for falsification (5 suspect failures proven pre-existing at 8f0de079).
 - Fixed: 10 commits — dfe6bf06 (tempo honesty gate + wiring fixture), a3823bbb (format gate scoping + 34 files), d9304cc3 (multitap/invariants re-pins), 6ee711a5 (MCP surface bookkeeping ×5 files), 9e477015 (goldens/gallery/ux-audit re-baselines), 4061bdcb (ultina pin), 5ab7bbc7 (format follow-up), a70f5a49 (dead helper).
 - Verified: every fix green solo at HEAD; typecheck EXIT 0; full suite 804/822 files green with all 18 remaining failures owned/classified; production build EXIT 0 with budgets respected.

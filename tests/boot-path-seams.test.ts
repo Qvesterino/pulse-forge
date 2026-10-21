@@ -150,9 +150,7 @@ describe("studio boot path seams", () => {
   });
 
   it("keeps the heavy modules out of the boot path", () => {
-    const leaked = MUST_STAY_OUT.filter((relativePath) =>
-      closure.has(join(ROOT, relativePath).replace(/\\/g, "/")),
-    );
+    const leaked = MUST_STAY_OUT.filter((relativePath) => closure.has(join(ROOT, relativePath).replace(/\\/g, "/")));
     expect(
       leaked,
       leaked.length === 0

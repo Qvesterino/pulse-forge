@@ -207,9 +207,7 @@ const Console: React.FC = () => {
             <TypedLine key={`${line.at}-${line.text}`} line={line} />
           ))}
           {f > 620 && (
-            <div style={{ fontFamily: MONO, fontSize: 27, color: ACCENT, marginTop: 6 }}>
-              {cursorOn ? "▌" : " "}
-            </div>
+            <div style={{ fontFamily: MONO, fontSize: 27, color: ACCENT, marginTop: 6 }}>{cursorOn ? "▌" : " "}</div>
           )}
         </div>
       </div>

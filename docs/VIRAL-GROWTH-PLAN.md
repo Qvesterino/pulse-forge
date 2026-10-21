@@ -9,12 +9,12 @@
 
 ## 1. North-star a metriky
 
-| Metrika | Definícia | Cieľ |
-|---|---|---|
-| **TTFB** (time-to-first-beat) | Prvé otvorenie stránky → používateľ počuje **vlastný** vygenerovaný beat | < 60 s prvýkrát, < 30 s pri druhej návšteve |
-| Prompt→zvuk konverzia | % návštevníkov landing page, ktorí aspoň raz prehrajú výsledok promptu | > 25 % |
-| Share moment | % úspešne vygenerovaných beatov, po ktorých používateľ klikne Publish / Video / Copy link | > 10 % |
-| Galéria ako vstup | % nových session začatých cez Remix/Regenerate z galérie | rast mesiac nad mesiacom |
+| Metrika                       | Definícia                                                                                 | Cieľ                                        |
+| ----------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------- |
+| **TTFB** (time-to-first-beat) | Prvé otvorenie stránky → používateľ počuje **vlastný** vygenerovaný beat                  | < 60 s prvýkrát, < 30 s pri druhej návšteve |
+| Prompt→zvuk konverzia         | % návštevníkov landing page, ktorí aspoň raz prehrajú výsledok promptu                    | > 25 %                                      |
+| Share moment                  | % úspešne vygenerovaných beatov, po ktorých používateľ klikne Publish / Video / Copy link | > 10 %                                      |
+| Galéria ako vstup             | % nových session začatých cez Remix/Regenerate z galérie                                  | rast mesiac nad mesiacom                    |
 
 Meriame jednoducho (Fáza A4): čítače v `localStorage` + neskôr voliteľný beacon. Žiadne accounty, žiadny server pre core.
 
@@ -23,6 +23,7 @@ Meriame jednoducho (Fáza A4): čítače v `localStorage` + neskôr voliteľný 
 ## 2. Audit funnelsu — kde presakujú používatelia (overené v kóde)
 
 ### Čo už existuje a funguje
+
 - **Intent engine**: `src/intent/` — parser EN+SK, kandidátsky bank + ranking, audition, revise routing („viac energie“), song builder (verš/refren/bridge), mix chain, semantická vrstva (lazy, 118 MB model len pri slabom parsovaní).
 - **Video export** pre Reels/TikTok: `src/export/video.ts` (canvas + audio mux, formát guard `canExportVideo()`).
 - **Galéria** s publish + remix: `src/gallery/` (`GalleryPage`, `PublishButton`, `remix.ts`).
@@ -31,6 +32,7 @@ Meriame jednoducho (Fáza A4): čítače v `localStorage` + neskôr voliteľný 
 - **First-run routing**: `src/main.tsx` (`pf-onboarded` flag, `enterStudio()`), demo projekt po vstupe.
 
 ### Kde funnel presakuje
+
 1. **Landing predáva DAW, nie kúzlo.** Features sú „Chop beats“, „Pro plugin suites“ — jazyk pre ľudí, ktorí vedia čo je MPC. Intent engine (jediný skutočný diferenciátor) nie je na landing page spomenutý ani ukázaný.
 2. **V štúdiu musí nový používateľ INTENT nájsť.** Panel nie je defaultne otvorený; demo projekt hrá, ale nepatrá používateľovi.
 3. **Share moment nie je naviazaný na generovanie.** Po `USE` (aplikovaní kandidáta) žiadne CTA — používateľ si má sám nájsť ExportPanel/Publish.
@@ -43,6 +45,7 @@ Meriame jednoducho (Fáza A4): čítače v `localStorage` + neskôr voliteľný 
 Všetky diely existujú; Fáza A je **wiring + UI**. Cieľ: typu „napíš → počuj → vlastníš → zdieľaj“ bez jediného kliku zbytočne.
 
 ### A1 — Prompt box na landing page (`M`, jadro fázy)
+
 `src/landing/LandingPage.tsx`
 
 - Nový komponent `LandingPrompt` nad hero playerom: input + žánrové chips („dark trap 140“, „sunny house 124“, „lo-fi 85“…) + tlačidlo **Forge it**.
@@ -54,26 +57,30 @@ Všetky diely existujú; Fáza A je **wiring + UI**. Cieľ: typu „napíš → 
 - Landing copy: hero nadpis doplniť o promise — „**Describe it. Hear it. Own it.**“ / SK „Napíš to. Počuj to. Vlastni to.“ Features sekcia dostane prvú kartu **„Type a beat into existence“**.
 
 ### A2 — Prvé spustenie v štúdiu: INTENT defaultne (`S`)
+
 `src/main.tsx` + `src/ui/IntentPanel.tsx`
 
 - Nový flag `pf-intent-seen`: pri **prvom** vstupe do štúdia sa IntentPanel otvorí automaticky s focusom v poli (demo projekt ostane pod tým — niečo hrá hneď).
 - Ak prišiel pending doc z A1, IntentPanel sa otvorí s predvyplneným promptom a statusom „Your beat — tweak it or Forge another“.
 
 ### A3 — Share moment po USE (`S`)
+
 `src/ui/IntentPanel.tsx` (+ malý zdieľaný CTA komponent)
 
 - Po úspešnom `applyGenerationResultCommand` sa vedľa statusu „✓ 3 candidates“ objaví **Share CTA**: `Publish to gallery` · `Export VIDEO` · `Copy link`. Všetky tri existujú (`PublishButton`, `recordVideo`, `encodeShareCode`) — len sa zapoja na miesto momentu hrdosti.
 - Po prvom USE jeden toast: „This beat is yours — it autosaves locally. Share it?“
 
 ### A4 — Meracie hooky (`S`)
+
 Nový malý modul `src/services/funnel.ts`: `funnelEvent(name)` → `localStorage` čítače + `console.debug`. Eventy: `landing_prompt_played`, `landing_forged`, `studio_first_apply`, `share_clicked` (s variantom). Diagnostics panel si ich neskôr vypíše.
 
 ### Akceptačné kritériá Fázy A
-- [x] Z landing page: napíšem prompt → klik → počujem beat. **Bez vstupu do štúdia.** *(A1 dodané 2026-09-20)*
-- [x] Klik na Forge it → štúdio sa otvorí s týmto beatom, IntentPanel je otvorený a predvyplnený. *(A1+A2 dodané)*
-- [x] Úplne prvá návšteva štúdia (bez promptu) → IntentPanel otvorený, pole má focus. *(A2)*
-- [x] Po každom USE sú viditeľné tri share akcie; každá funguje ako doteraz. *(A3 dodané 2026-09-20 — Publish / VIDEO (canExportVideo guard) / Copy link + funnel eventy share_publish / share_video / share_copy)*
-- [x] Funnel eventy sa zapisujú (`pf-funnel-v1`); landing bundle sa nezväčší o model ani engine navýše existujúceho EmbedApp path. *(A4-lite)*
+
+- [x] Z landing page: napíšem prompt → klik → počujem beat. **Bez vstupu do štúdia.** _(A1 dodané 2026-09-20)_
+- [x] Klik na Forge it → štúdio sa otvorí s týmto beatom, IntentPanel je otvorený a predvyplnený. _(A1+A2 dodané)_
+- [x] Úplne prvá návšteva štúdia (bez promptu) → IntentPanel otvorený, pole má focus. _(A2)_
+- [x] Po každom USE sú viditeľné tri share akcie; každá funguje ako doteraz. _(A3 dodané 2026-09-20 — Publish / VIDEO (canExportVideo guard) / Copy link + funnel eventy share_publish / share_video / share_copy)_
+- [x] Funnel eventy sa zapisujú (`pf-funnel-v1`); landing bundle sa nezväčší o model ani engine navýše existujúceho EmbedApp path. _(A4-lite)_
 - [x] E2E smoke: landing prompt → studio (rozšírený `01-landing-to-studio`, plný forge test v Chromium).
 
 **Poznámky z implementácie (2026-09-20):** handoff beží peek+clear-po-úspechu (StrictMode dvojité mountnutie Bootu by take-and-clear prehltil); corrupt handoff padá na normálne otvorenie štúdia; corrupt `?import=` link zostáva viditeľná chyba. E2E helpery seedujú `pf-intent-opened`, nech generické špecy držia klasický default dock — auto-open pokrýva dedikovaný forge špec.
@@ -83,6 +90,7 @@ Nový malý modul `src/services/funnel.ts`: `funnelEvent(name)` → `localStorag
 ## 4. FÁZA B — Galéria ako vstupný bod (share loop) — **DODANÉ 2026-09-20**
 
 ### B1 — Regenerate with intent na každej karte ✅
+
 - **REGEN 🎲** tlačidlo na kartách, ktorých beat nesie intent provenance (server extrahuje `regenerable` + `genre` z pattern.intent pri publikovaní — žiadne klient-side dekódovanie feedu).
 - Flow: `/?import=<code>&regen=1` → Boot stashuje flag → štúdio sa otvorí s beatom → IntentPanel sa auto-otvorí, prefillne charakter beatu („trap 145 high energy”) a **auto-spustí jednu generáciu s čerstvým seedom** (StrictMode singleton guard).
 - `src/gallery/intentCarry.ts` — čisté funkcie: výber snapshotu (drop-scene priorita), prompt z intentu, čerstvý seed.
@@ -90,9 +98,11 @@ Nový malý modul `src/services/funnel.ts`: `funnelEvent(name)` → `localStorag
 - Funnel event: `gallery_regen_opened`.
 
 ### B2 — CTA na share pohľade ✅
+
 - EmbedApp: druhé CTA **„REMIX IN KYX”** (ghost štýl) vedľa OPEN IN KYX — len keď beat nesie intent (regenerable check z dekódovaného doc, bez re-dekódu).
 
 ### B3 — Žánrové filtre ✅
+
 - Server ukladá `genre` (validovaný) pri publikovaní; `GalleryItem.genre?: string | null`.
 - Galéria: amber žánrové chips počítadlami, klik = filter (kombinovateľné s tagmi a searchom); legacy beaty bez žánru sa len nefiltrujú.
 - CSS fix: `.gallery-card-actions` flex-wrap (7 akcií sa teraz čisto láme).
@@ -112,16 +122,16 @@ Nový malý modul `src/services/funnel.ts`: `funnelEvent(name)` → `localStorag
 
 ## 6. Poradie a veľkosti
 
-| Krok | Veľkosť | Závislosti |
-|---|---|---|
-| A1 Landing prompt box | **M** | — |
-| A2 Prvé spustenie → INTENT | S | A1 (pending doc) |
-| A3 Share moment po USE | S | — |
-| A4 Funnel eventy | S | — |
-| B1 Regenerate z galérie | M | publish payload rozšírenie |
-| B2 Share view CTA | S | — |
-| B3 Žánrové filtre | S | B1 |
-| C Rozpočty a meranie | S | A1, A4 |
+| Krok                       | Veľkosť | Závislosti                 |
+| -------------------------- | ------- | -------------------------- |
+| A1 Landing prompt box      | **M**   | —                          |
+| A2 Prvé spustenie → INTENT | S       | A1 (pending doc)           |
+| A3 Share moment po USE     | S       | —                          |
+| A4 Funnel eventy           | S       | —                          |
+| B1 Regenerate z galérie    | M       | publish payload rozšírenie |
+| B2 Share view CTA          | S       | —                          |
+| B3 Žánrové filtre          | S       | B1                         |
+| C Rozpočty a meranie       | S       | A1, A4                     |
 
 Odporúčané dodanie: **A1+A2 ako jeden kus** (spolu tvoria cestu „napíš → vlastníš“), potom A3+A4, potom B.
 
@@ -138,14 +148,14 @@ Odporúčané dodanie: **A1+A2 ako jeden kus** (spolu tvoria cestu „napíš �
 
 ## 8. Riziká a mitigácie
 
-| Riziko | Mitigácia |
-|---|---|
-| Autoplay policy na landing | Prehratie vždy na klik (gesture); typ sám nič nehrá. |
-| Mobil / Safari: video export obmedzený | `canExportVideo()` guard už existuje; CTA skryje nepodporované varianty. |
-| Dlhé share kódy v URL pri handoff | sessionStorage primárne; fallback normálny vstup do štúdia. |
-| Slabý internet: model download | Landing používa len keyword parser; semantická vrstva sa nestahuje (existujúce správanie). |
-| Concurrent session v repu | Fáza A sa dotýka `LandingPage.tsx`, `main.tsx`, `IntentPanel.tsx` — pred prácou skontrolovať `git status` a dohoda kto čo drží. |
-| Kvalita generácií z krátkych promptov | Landing chips predvyplňujú overené prompty; engine už má invariant gating + fallback. |
+| Riziko                                 | Mitigácia                                                                                                                       |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Autoplay policy na landing             | Prehratie vždy na klik (gesture); typ sám nič nehrá.                                                                            |
+| Mobil / Safari: video export obmedzený | `canExportVideo()` guard už existuje; CTA skryje nepodporované varianty.                                                        |
+| Dlhé share kódy v URL pri handoff      | sessionStorage primárne; fallback normálny vstup do štúdia.                                                                     |
+| Slabý internet: model download         | Landing používa len keyword parser; semantická vrstva sa nestahuje (existujúce správanie).                                      |
+| Concurrent session v repu              | Fáza A sa dotýka `LandingPage.tsx`, `main.tsx`, `IntentPanel.tsx` — pred prácou skontrolovať `git status` a dohoda kto čo drží. |
+| Kvalita generácií z krátkych promptov  | Landing chips predvyplňujú overené prompty; engine už má invariant gating + fallback.                                           |
 
 ---
 

@@ -91,7 +91,12 @@ const result = await page.evaluate(
   ({ checks, ladder }) => {
     const bump = (map, key) => map.set(key, (map.get(key) ?? 0) + 1);
     const top = (map, n) =>
-      Object.fromEntries([...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => [k, v]));
+      Object.fromEntries(
+        [...map.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, n)
+          .map(([k, v]) => [k, v]),
+      );
     const pxOf = (el) => Math.round(parseFloat(getComputedStyle(el).fontSize) * 10) / 10;
     const isVisible = (el) => {
       const cs = getComputedStyle(el);
@@ -132,7 +137,9 @@ const result = await page.evaluate(
       const key = `${tag}@${px}`;
       bump(byTag, key);
       if (ladder[tag] !== undefined && px !== ladder[tag]) {
-        ladderWrong.push(`${tag} "${(el.textContent || "").trim().slice(0, 18)}" is ${px}px, ladder says ${ladder[tag]}px`);
+        ladderWrong.push(
+          `${tag} "${(el.textContent || "").trim().slice(0, 18)}" is ${px}px, ladder says ${ladder[tag]}px`,
+        );
       }
     }
     const ladderCheck = {
@@ -200,10 +207,7 @@ const result = await page.evaluate(
       regions: Object.fromEntries(
         [...regions.entries()]
           .sort((a, b) => b[1].narrow - a[1].narrow)
-          .map(([name, r]) => [
-            name,
-            { total: r.total, narrow: r.narrow, topLeaves: top(leaves.get(name), 6) },
-          ]),
+          .map(([name, r]) => [name, { total: r.total, narrow: r.narrow, topLeaves: top(leaves.get(name), 6) }]),
       ),
     };
     return { measured, ladderCheck, report };
@@ -233,7 +237,9 @@ for (const m of [...result.measured, result.ladderCheck]) {
 console.log(`\ntype mass: ${result.report.totalTextNodes} text nodes, narrow band ${result.report.narrowBandShare}%`);
 console.log(`distribution: ${JSON.stringify(result.report.distribution)}`);
 for (const [name, r] of Object.entries(result.report.regions)) {
-  console.log(`  ${name.padEnd(16)} total ${String(r.total).padStart(4)}  narrow ${String(r.narrow).padStart(4)}  ${JSON.stringify(r.topLeaves)}`);
+  console.log(
+    `  ${name.padEnd(16)} total ${String(r.total).padStart(4)}  narrow ${String(r.narrow).padStart(4)}  ${JSON.stringify(r.topLeaves)}`,
+  );
 }
 
 await browser.close();

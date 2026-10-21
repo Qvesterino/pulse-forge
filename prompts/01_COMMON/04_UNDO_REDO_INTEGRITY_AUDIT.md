@@ -10,6 +10,7 @@ Audit the command history and all destructive or state-changing operations for u
 Verify command boundaries, grouping/coalescing, inverse operations, redo invalidation after divergent edits, nested commands, async operations, project reload, selection-only changes, automation edits, plugin/effect edits, track/clip/note operations, import actions, and archival/recovery actions.
 
 Required properties:
+
 - undo restores the exact prior semantic state;
 - redo restores the exact post-command semantic state;
 - repeated undo/redo cycles are stable;

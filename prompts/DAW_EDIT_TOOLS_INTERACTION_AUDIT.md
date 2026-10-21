@@ -510,21 +510,27 @@ Verify that the final project remains internally valid and behaves as expected.
 At the end provide:
 
 ## Fixed
+
 Confirmed editing and interaction bugs corrected.
 
 ## Tools Verified
+
 List editing tools and operations actually checked.
 
 ## Edge Cases
+
 Important boundary or interaction scenarios tested.
 
 ## Tests Added
+
 Regression or interaction coverage added.
 
 ## Verification
+
 Exact tests/build/typecheck/E2E commands run.
 
 ## Remaining Risks
+
 Anything that still requires manual interaction testing, browser/platform-specific verification, or a product decision.
 
 Do not claim all editing tools are perfect unless sufficient evidence exists.

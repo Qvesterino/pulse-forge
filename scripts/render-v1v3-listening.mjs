@@ -77,11 +77,7 @@ for (const [index, prompt] of PROMPTS.entries()) {
           text: prompt,
         });
         const plan = planGeneration(intent, doc);
-        const { entries } = await symbolicPriorProvider.collectCandidates(
-          plan,
-          { project: doc, mode: "apply" },
-          0,
-        );
+        const { entries } = await symbolicPriorProvider.collectCandidates(plan, { project: doc, mode: "apply" }, 0);
         const pattern = entries[0]?.pattern;
         if (!pattern) {
           out.push({ mode, error: "no candidate" });

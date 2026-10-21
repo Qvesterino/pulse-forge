@@ -6,4 +6,7 @@ const factorySrc = readFileSync("src/presets/factory.ts", "utf8");
 console.log("generated map size:", measured.size);
 // which factory preset ids are missing from the map
 const ids = [...factorySrc.matchAll(/id: "([^"]+)"/g)].map((m) => m[1]);
-console.log("factory ids missing from map:", ids.filter((id) => !measured.has(id) && id !== "factory.piano.real").slice(0, 8));
+console.log(
+  "factory ids missing from map:",
+  ids.filter((id) => !measured.has(id) && id !== "factory.piano.real").slice(0, 8),
+);

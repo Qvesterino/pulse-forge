@@ -1,4 +1,6 @@
 import type { GenerateOptions } from "../types";
+import type { AiMeter } from "../meter";
+import { stepInBarFeatures } from "./step-position";
 
 /**
  * melodic-features.v1 — the fixed, versioned input contract for the symbolic
@@ -46,7 +48,7 @@ export const MELODIC_FEATURE_COUNT =
 export interface MelodicFeatureInput {
   genre: MelodicGenre;
   role: MelodicRole;
-  /** Note start position within the bar (cumulative durations mod 16). */
+  /** Note start position within the bar (cumulative durations mod the bar). */
   startStep: number;
   /** Previous note's degree (-1 = rest / sequence start). */
   prevDegree: number;
@@ -54,6 +56,8 @@ export interface MelodicFeatureInput {
   prevDuration: number;
   /** Degree before the previous note (-1 when unknown → contour "same"). */
   prevPrevDegree: number;
+  /** The metre the position is read in (ADR 0057 Stage 2d). */
+  meter: AiMeter;
 }
 
 function oneHot(values: readonly string[], value: string, offset: number, row: number[]): void {
@@ -95,12 +99,8 @@ export function buildMelodicFeatureRow(input: MelodicFeatureInput): number[] {
   oneHot(MELODIC_ROLE_VOCAB, input.role, offset, row);
   offset += MELODIC_ROLE_VOCAB.length;
 
-  const s16 = ((input.startStep % 16) + 16) % 16;
-  row[offset++] = s16 / 16;
-  row[offset++] = Math.sin((2 * Math.PI * s16) / 16);
-  row[offset++] = Math.cos((2 * Math.PI * s16) / 16);
-  row[offset++] = Math.sin((4 * Math.PI * s16) / 16);
-  row[offset++] = Math.cos((4 * Math.PI * s16) / 16);
+  const position = stepInBarFeatures(input.meter, input.startStep);
+  for (const value of position) row[offset++] = value;
 
   // previous degree: -1 (rest) is class 0, degree d is class d + 1
   const prevClass = input.prevDegree < 0 ? 0 : Math.min(7, input.prevDegree + 1);

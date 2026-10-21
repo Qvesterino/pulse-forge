@@ -178,8 +178,13 @@ export function isIntentModelManifest(value: unknown): value is IntentModelManif
   return true;
 }
 
-async function sha256Hex(data: ArrayBuffer | string): Promise<string> {
-  const bytes = typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data);
+async function sha256Hex(data: ArrayBuffer | Uint8Array | string): Promise<string> {
+  const bytes =
+    typeof data === "string"
+      ? new TextEncoder().encode(data)
+      : data instanceof Uint8Array
+        ? data
+        : new Uint8Array(data);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -197,7 +202,7 @@ export async function manifestGrammarDrift(manifest: IntentModelManifest): Promi
   return null;
 }
 
-export async function sha256Mismatch(weights: ArrayBuffer, expectedHex: string): Promise<string | null> {
+export async function sha256Mismatch(weights: ArrayBuffer | Uint8Array, expectedHex: string): Promise<string | null> {
   const digest = await sha256Hex(weights);
   if (digest !== expectedHex.toLowerCase()) {
     return `model hash mismatch: expected ${expectedHex.slice(0, 12)}… got ${digest.slice(0, 12)}…`;

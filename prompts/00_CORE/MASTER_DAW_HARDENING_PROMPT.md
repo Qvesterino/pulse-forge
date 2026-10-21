@@ -1,9 +1,11 @@
 # Master DAW Hardening Prompt
 
 ## Purpose
+
 Perform production-grade hardening on a DAW codebase. Treat reliability, data integrity, audio correctness, recoverability, and intent preservation as higher priorities than architectural novelty.
 
 ## Operating mode
+
 Work in the following loop until the scoped audit is complete:
 
 1. Inspect the relevant architecture, tests, runtime paths, persistence model, and existing documentation.
@@ -16,6 +18,7 @@ Work in the following loop until the scoped audit is complete:
 8. Continue until no safe, high-confidence issue remains inside the current audit scope.
 
 ## Non-negotiable rules
+
 - Do not redesign a working subsystem merely because another architecture looks cleaner.
 - Hardening is not permission for speculative refactoring.
 - Do not rename public contracts, project fields, command names, plugin parameters, IPC channels, persisted identifiers, or user-visible behavior unless required to fix a proven defect.
@@ -28,7 +31,9 @@ Work in the following loop until the scoped audit is complete:
 - If a risky issue cannot be safely fixed, isolate it, document it, add a failing or quarantined regression test if appropriate, and explain the exact blocker.
 
 ## Required output at completion
+
 Report:
+
 - defects found and fixed;
 - tests added or strengthened;
 - commands executed and outcomes;

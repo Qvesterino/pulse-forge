@@ -188,11 +188,11 @@ ktorý nikto nečítal.
 
 **A PRIAVOLI TO VYSAŤ PRVÉ VECI — BUDGET.**
 
-| Kedy                                      | Boot path   | DAW total   | Výsledok   |
-| ----------------------------------------- | ----------- | ----------- | ---------- |
-| `4d99b05a` (2026-10-12) — posledný zelený | **2122 KB** | 5186 KB     | exit 0     |
-| `590e972c` (2026-10-18)                   | 2305 KB     | 5222 KB     | **FAIL**   |
-| `92f01de5` (HEAD, 2026-10-21)             | **2358 KB** | **5476 KB** | **FAIL**   |
+| Kedy                                      | Boot path   | DAW total   | Výsledok |
+| ----------------------------------------- | ----------- | ----------- | -------- |
+| `4d99b05a` (2026-10-12) — posledný zelený | **2122 KB** | 5186 KB     | exit 0   |
+| `590e972c` (2026-10-18)                   | 2305 KB     | 5222 KB     | **FAIL** |
+| `92f01de5` (HEAD, 2026-10-21)             | **2358 KB** | **5476 KB** | **FAIL** |
 
 Podlaha boot path je **2200 KB** a celkový DAW graf **5186 KB**. Build bol
 **červený najmenej tri dni** a nikto si to všimol, pretože exit code buildu sa
@@ -201,17 +201,17 @@ existuje, ale nemá zuby.
 
 **ČO PRIBUDLO DO BOOT CESTY** (rozdiel chunkov medzi zeleným stavom a HEAD):
 
-| Chunk                                          | Zmena  | Čo to je                                   |
-| ---------------------------------------------- | ------ | ------------------------------------------ |
-| `App`                                          | +78 KB | difúzne pribudnutie aplikačného kódu      |
-| `midiFile`                                     | +36 KB | **NOVÝ** v boot ceste — MIDI import/export |
-| `curated-layer`                                | +17 KB | vzorka knižnice                            |
-| `renderManifest`                               | +11 KB | **NOVÝ** v boot ceste — manifest rendera   |
-| `factory`                                      | +9 KB  | fabrikové presety                          |
-| `intentRouting`                                | +9 KB  | smerovanie intentu                         |
-| `events`                                       | +7 KB  | **NOVÝ** v boot ceste — event bus          |
-| `normalize`, `services`                        | +8 KB  | drobnosti                                  |
-| `zip`, `FrozenBufferRepository`, `audio-import-capabilities` | +5 KB | **NOVÉ** v boot ceste       |
+| Chunk                                                        | Zmena  | Čo to je                                   |
+| ------------------------------------------------------------ | ------ | ------------------------------------------ |
+| `App`                                                        | +78 KB | difúzne pribudnutie aplikačného kódu       |
+| `midiFile`                                                   | +36 KB | **NOVÝ** v boot ceste — MIDI import/export |
+| `curated-layer`                                              | +17 KB | vzorka knižnice                            |
+| `renderManifest`                                             | +11 KB | **NOVÝ** v boot ceste — manifest rendera   |
+| `factory`                                                    | +9 KB  | fabrikové presety                          |
+| `intentRouting`                                              | +9 KB  | smerovanie intentu                         |
+| `events`                                                     | +7 KB  | **NOVÝ** v boot ceste — event bus          |
+| `normalize`, `services`                                      | +8 KB  | drobnosti                                  |
+| `zip`, `FrozenBufferRepository`, `audio-import-capabilities` | +5 KB  | **NOVÉ** v boot ceste                      |
 
 `midiFile` a `renderManifest` sú **funkcie, ktoré sa používajú len pri
 importe/exporte a pri renderovaní** — a platia sa pri každom boote štúdia.
@@ -264,12 +264,12 @@ aby si badge-y nevykupovali viac miesta než čitateľnosť. `ROW_HEIGHT` v
 Plán tvrdil, že „dnes je všetko 9–11 px a rovnocenné". Zmerané
 (`scripts/typography-audit.mjs`, 1440×900, House Beat, 2 panely v docku):
 
-| Tvrdenie                | Zmerané                                                       |
-| ----------------------- | ------------------------------------------------------------- |
-| 74 % textu je 8–11 px   | Pravda, ale **806 z 1543 uzlov je jeden zoznam vzoriek**      |
+| Tvrdenie                | Zmerané                                                        |
+| ----------------------- | -------------------------------------------------------------- |
+| 74 % textu je 8–11 px   | Pravda, ale **806 z 1543 uzlov je jeden zoznam vzoriek**       |
 |                         | (`.sample-name` 270, `.sample-preview` 268, `.sample-fav` 268) |
 |                         | + 79 `<option>` v zatvorených `<select>` — neviditeľný text    |
-| Panel nadpisy sú ploché | **Nie.** 4× `h2` = 15 px, 4× `h3` = 12 px — rebrík existuje     |
+| Panel nadpisy sú ploché | **Nie.** 4× `h2` = 15 px, 4× `h3` = 12 px — rebrík existuje    |
 | Chýba vrchol stupnice   | V shelli nie, ale ani v pláne nebolo kam vystúpiť              |
 
 Takže „74 % je ploché" bolo meranie **katalógu**, nie shella. Rozhodnutie:
@@ -277,22 +277,22 @@ nemeriť sa priemerom, ale **rolami**.
 
 **Vykonané zmeny** (`58-typography-scale.css`):
 
-| Rola              | bolo  | je    | Prečo                                          |
-| ----------------- | ----- | ----- | ---------------------------------------------- |
-| Dock tab          | 11 px | 12 px | primárna navigácia spodnej polovice            |
-| Názov kanála (riadok)  | 12 px | 13 px | jedna rola — dva nosiče                      |
+| Rola                        | bolo  | je    | Prečo                                                 |
+| --------------------------- | ----- | ----- | ----------------------------------------------------- |
+| Dock tab                    | 11 px | 12 px | primárna navigácia spodnej polovice                   |
+| Názov kanála (riadok)       | 12 px | 13 px | jedna rola — dva nosiče                               |
 | Názov kanála (track header) | 12 px | 13 px | **isté slovo, dve veľkosti** — jediný skutočný defekt |
-| Index riadka      | 8 px  | 8 px  | metadata, pripnuté zámerne                     |
+| Index riadka                | 8 px  | 8 px  | metadata, pripnuté zámerne                            |
 
 **Zamietnuté zmeny** (zaznamenané, aby sa nezopakovali na rovnakom dôkaze):
 
-- *Nadpisy panelov na 15 px* — zflattenovalo by h2 aj h3 na jeden stupeň.
+- _Nadpisy panelov na 15 px_ — zflattenovalo by h2 aj h3 na jeden stupeň.
   Brána teraz rebrík chráni.
-- *Nadpisy skupín na 12 px* — argument „nadpis menší než obsah = prevrátená
+- _Nadpisy skupín na 12 px_ — argument „nadpis menší než obsah = prevrátená
   hierarchia" bol merateľný (9 px vs 11 px) ale **záver nebol**. `51` ich
   zámerne volí ako „ALL-CAPS metadata, not primary controls" a kapitón pod
   obsahom je správna konvencia aj vo FL Studiu.
-- *Transport tlačidlá na 10 px* — reverzovalo rozloženie: bez toho má
+- _Transport tlačidlá na 10 px_ — reverzovalo rozloženie: bez toho má
   transport 12/14 px tlačidlá a 15 px readout, čo je jediné miesto v shelli
   so skutočným rozptylom veľkostí.
 
@@ -320,17 +320,17 @@ kedy nikto nevidel `box-shadow` v prepočítanom štýle. Zmerané
 povrchov** a bevel na nich **už existuje** — asi 217 povrchov nesie 1px inset
 horný svetlý lúč. Nie je teda chýbajúci materiál, **chýba jediný recept**.
 
-| Sila horného svetla | Počet povrchov            |
-| -------------------- | ------------------------ |
-| `rgba(255,255,255,.055)` | 2                    |
-| `rgba(255,255,255,.06)`  | 122                  |
-| `rgba(255,255,255,.075)` | 67                   |
-| `rgba(255,255,255,.08)`  | 2                    |
-| `rgba(255,255,255,.24)`  | 2                    |
-| `rgba(255,255,255,.30)`  | 8                    |
-| `rgba(255,255,255,.32)`  | 1                    |
-| `rgba(255,255,255,.9)`   | 1                    |
-| farebné (`color(srgb …)`) | 11 (farby padov)    |
+| Sila horného svetla       | Počet povrchov   |
+| ------------------------- | ---------------- |
+| `rgba(255,255,255,.055)`  | 2                |
+| `rgba(255,255,255,.06)`   | 122              |
+| `rgba(255,255,255,.075)`  | 67               |
+| `rgba(255,255,255,.08)`   | 2                |
+| `rgba(255,255,255,.24)`   | 2                |
+| `rgba(255,255,255,.30)`   | 8                |
+| `rgba(255,255,255,.32)`   | 1                |
+| `rgba(255,255,255,.9)`    | 1                |
+| farebné (`color(srgb …)`) | 11 (farby padov) |
 
 **Dvanásť rôznych síl na susediacich ovládacích prvkoch.** Oko si nedokáže
 vytvoriť konzistentné očakávanie „toto je vybočené", pretože susedné tlačidlá

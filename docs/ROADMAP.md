@@ -11,7 +11,7 @@ _Last updated 2026-10-05._
 | Order | Document                                 | Answers                                                                                                                              |
 | ----- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | 1     | **`docs/AI-STRATEGY.md`**                | _Which game are we playing?_ The quality-vs-control decision, the bidirectional note-frame change, the kill list. **Read this one.** |
-| 2     | **`docs/intent-killer-feature-plan.md`** | _How is that game being executed?_ Waves W0–W8, priority matrix, KPIs, invariants. Engineering plan. |
+| 2     | **`docs/intent-killer-feature-plan.md`** | _How is that game being executed?_ Waves W0–W8, priority matrix, KPIs, invariants. Engineering plan.                                 |
 
 Sound-engine work (instruments/effects) is tracked separately, not in the AI
 strategy index: `docs/KOPA-KOREN-IMPLEMENTATION-PLAN.md` (KOREŇ bass exciter +

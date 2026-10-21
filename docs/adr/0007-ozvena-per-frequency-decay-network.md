@@ -11,12 +11,12 @@ na −5.7..−10.4 % T60 odchýlky (solo sweep, merané). Cieľ O4 — **pod 5 %
 skalárnymi prostriedkami nedá dosiahnuť. V sedení 2026-09-05 boli implementované
 a odmerané tri prístupy, všetky dokumentované v kóde engineov:
 
-| Prístup | Výsledok | Prečo |
-|---|---|---|
-| skalár 1/damperLoss@1 kHz v mid band gain | **+27 %** T60 (band-share double-count) | inverz pôsobí na band share, nie na plný signál |
-| presný FIR inverz damperu (1 − b·z⁻¹)/a v mid band | **nestabilné** pri dlhých decayoch (loop gain > 1 v upper mid) | rovnaký double-count, zosilnený pri 1/dampMag > 1 |
-| skalár 1/loss@80 Hz na low band | **runaway** fb·gLow = 1.09 | frekvenčne závislá strata kompenzovaná konštantou prebije nad referenciou |
-| scalar 1/loss@300 Hz + hard gCap (0.995/fb) | **−5.7..−10.4 %, stabilné** | odoslaný kompromis |
+| Prístup                                            | Výsledok                                                       | Prečo                                                                     |
+| -------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| skalár 1/damperLoss@1 kHz v mid band gain          | **+27 %** T60 (band-share double-count)                        | inverz pôsobí na band share, nie na plný signál                           |
+| presný FIR inverz damperu (1 − b·z⁻¹)/a v mid band | **nestabilné** pri dlhých decayoch (loop gain > 1 v upper mid) | rovnaký double-count, zosilnený pri 1/dampMag > 1                         |
+| skalár 1/loss@80 Hz na low band                    | **runaway** fb·gLow = 1.09                                     | frekvenčne závislá strata kompenzovaná konštantou prebije nad referenciou |
+| scalar 1/loss@300 Hz + hard gCap (0.995/fb)        | **−5.7..−10.4 %, stabilné**                                    | odoslaný kompromis                                                        |
 
 Fyzikálny jadro problému: v rámci 250–3500 Hz "mid" pásma damper mení decay rate
 o viac ako 2× (0.99 pri 250 Hz vs 0.57 pri 3.5 kHz pri default dampingu). Žiadna
@@ -38,7 +38,7 @@ nie chyby kalibrácie.
    `narrowMid()` helper. Wide-band čísla ostávajú ako reportovaná informácia.
 3. **Voliteľné per-frekvenčné doladenie.** Ak aj po (1)+(2) high band nechce
    sedieť: auto-kalibračná lookup tabuľka `dampingAmount × dampingFreqHz × SR →
-   highBandGain` vygenerovaná z O1 harnessu pri vydaní (build-time skript, nie
+highBandGain` vygenerovaná z O1 harnessu pri vydaní (build-time skript, nie
    runtime meranie). Runtime auto-kalibrácia renderovaním je zakázaná
    (real-time invariant).
 

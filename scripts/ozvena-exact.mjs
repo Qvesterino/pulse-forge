@@ -41,64 +41,112 @@ function mulberry32(seed) {
 
 const CASES = [
   ["default", null],
-  ["hall-heavy", (s) => {
-    s.engines.e2.enabled = false;
-    s.blendPad = { ...s.blendPad, x: 0.5, y: 1.0, injectER: 0.8 };
-    s.engines.e3 = { ...s.engines.e3, time: 24000, shimmer: 0.7, bassDecay: 4, stereoWidth: 0 };
-  }],
-  ["plate-algo", (s) => {
-    s.engines.e3.enabled = false;
-    s.engines.e2 = { ...s.engines.e2, algo: "plate", time: 14000, dampingAmount: 11, dampingFreqHz: 30 };
-    s.blendPad = { ...s.blendPad, x: 1.0, y: 0.0 };
-  }],
-  ["medium-chamber", (s) => {
-    s.engines.e2 = { ...s.engines.e2, algo: "mediumChamber", stereoWidth: 0.3, shimmer: 1 };
-    s.engines.e3 = { ...s.engines.e3, algo: "largeChamber", stereoWidth: 0.6 };
-  }],
-  ["conv-cathedral", (s) => {
-    s.convolution = { ...s.convolution, mode: "convolution", irId: "cathedral", wet: 60 };
-  }],
-  ["conv-hybrid", (s) => {
-    s.convolution = { ...s.convolution, mode: "hybrid", irId: "hall", wet: 100 };
-  }],
-  ["mod-pitch-max", (s) => {
-    s.mod = { enabled: true, mode: "pitch", depthX: 1.25, rateY: 1 };
-    s.engines.e2 = { ...s.engines.e2, shimmer: 1 };
-    s.engines.e3 = { ...s.engines.e3, shimmer: 1 };
-  }],
-  ["mod-randomfat", (s) => {
-    s.mod = { enabled: true, mode: "randomFat", depthX: 1.25, rateY: 0.9 };
-  }],
-  ["freeze-gate", (s) => {
-    s.global.freeze = true;
-    s.global.gate = true;
-  }],
-  ["predelay-sync", (s) => {
-    s.preDelay = { enabled: true, ms: 20, syncEnabled: true, syncNote: "1/4." };
-  }],
-  ["predelay-long", (s) => {
-    s.preDelay = { enabled: true, ms: 500, syncEnabled: false, syncNote: "1/4" };
-  }],
-  ["eq-smear", (s) => {
-    s.smoother = { enabled: true, amount: 100 };
-    s.preEq = {
-      ...s.preEq, enabled: true,
-      band1: { enabled: true, freqHz: 80, gainDb: 12, q: 6, shape: "lowShelf" },
-      band2: { enabled: true, freqHz: 1200, gainDb: -9, q: 12, shape: "bell" },
-      band3: { enabled: true, freqHz: 9000, gainDb: 6, q: 4, shape: "highShelf" },
-    };
-    s.reverbEq = {
-      ...s.reverbEq, enabled: true,
-      band2: { enabled: true, freqHz: 2500, gainDb: -12, q: 8, shape: "bell" },
-    };
-  }],
-  ["quality-eco", (s) => { s.global.quality = "eco"; }],
-  ["quality-high", (s) => { s.global.quality = "high"; }],
-  ["input-hot", (s) => {
-    s.global.inputGainDb = 24;
-    s.global.outputGainDb = 24;
-    s.global.levelDb = 6;
-  }],
+  [
+    "hall-heavy",
+    (s) => {
+      s.engines.e2.enabled = false;
+      s.blendPad = { ...s.blendPad, x: 0.5, y: 1.0, injectER: 0.8 };
+      s.engines.e3 = { ...s.engines.e3, time: 24000, shimmer: 0.7, bassDecay: 4, stereoWidth: 0 };
+    },
+  ],
+  [
+    "plate-algo",
+    (s) => {
+      s.engines.e3.enabled = false;
+      s.engines.e2 = { ...s.engines.e2, algo: "plate", time: 14000, dampingAmount: 11, dampingFreqHz: 30 };
+      s.blendPad = { ...s.blendPad, x: 1.0, y: 0.0 };
+    },
+  ],
+  [
+    "medium-chamber",
+    (s) => {
+      s.engines.e2 = { ...s.engines.e2, algo: "mediumChamber", stereoWidth: 0.3, shimmer: 1 };
+      s.engines.e3 = { ...s.engines.e3, algo: "largeChamber", stereoWidth: 0.6 };
+    },
+  ],
+  [
+    "conv-cathedral",
+    (s) => {
+      s.convolution = { ...s.convolution, mode: "convolution", irId: "cathedral", wet: 60 };
+    },
+  ],
+  [
+    "conv-hybrid",
+    (s) => {
+      s.convolution = { ...s.convolution, mode: "hybrid", irId: "hall", wet: 100 };
+    },
+  ],
+  [
+    "mod-pitch-max",
+    (s) => {
+      s.mod = { enabled: true, mode: "pitch", depthX: 1.25, rateY: 1 };
+      s.engines.e2 = { ...s.engines.e2, shimmer: 1 };
+      s.engines.e3 = { ...s.engines.e3, shimmer: 1 };
+    },
+  ],
+  [
+    "mod-randomfat",
+    (s) => {
+      s.mod = { enabled: true, mode: "randomFat", depthX: 1.25, rateY: 0.9 };
+    },
+  ],
+  [
+    "freeze-gate",
+    (s) => {
+      s.global.freeze = true;
+      s.global.gate = true;
+    },
+  ],
+  [
+    "predelay-sync",
+    (s) => {
+      s.preDelay = { enabled: true, ms: 20, syncEnabled: true, syncNote: "1/4." };
+    },
+  ],
+  [
+    "predelay-long",
+    (s) => {
+      s.preDelay = { enabled: true, ms: 500, syncEnabled: false, syncNote: "1/4" };
+    },
+  ],
+  [
+    "eq-smear",
+    (s) => {
+      s.smoother = { enabled: true, amount: 100 };
+      s.preEq = {
+        ...s.preEq,
+        enabled: true,
+        band1: { enabled: true, freqHz: 80, gainDb: 12, q: 6, shape: "lowShelf" },
+        band2: { enabled: true, freqHz: 1200, gainDb: -9, q: 12, shape: "bell" },
+        band3: { enabled: true, freqHz: 9000, gainDb: 6, q: 4, shape: "highShelf" },
+      };
+      s.reverbEq = {
+        ...s.reverbEq,
+        enabled: true,
+        band2: { enabled: true, freqHz: 2500, gainDb: -12, q: 8, shape: "bell" },
+      };
+    },
+  ],
+  [
+    "quality-eco",
+    (s) => {
+      s.global.quality = "eco";
+    },
+  ],
+  [
+    "quality-high",
+    (s) => {
+      s.global.quality = "high";
+    },
+  ],
+  [
+    "input-hot",
+    (s) => {
+      s.global.inputGainDb = 24;
+      s.global.outputGainDb = 24;
+      s.global.levelDb = 6;
+    },
+  ],
 ];
 
 const SAMPLE_RATES = [44100, 48000];
@@ -124,10 +172,7 @@ function render(name, mutate, sr) {
     chR[i] = v * 0.8;
   }
   for (let off = 0; off < frames; off += BLOCK) {
-    proc.process(
-      [chL.subarray(off, off + BLOCK), chR.subarray(off, off + BLOCK)],
-      Math.min(BLOCK, frames - off),
-    );
+    proc.process([chL.subarray(off, off + BLOCK), chR.subarray(off, off + BLOCK)], Math.min(BLOCK, frames - off));
   }
   return [chL, chR];
 }
@@ -174,10 +219,15 @@ if (check) {
       } else if (maxDiff > 0) {
         console.log(`ok   ${key}: max|Δ|=${maxDiff.toExponential(2)} rel=${rel.toExponential(2)} (≤ f32 ULP)`);
       }
-      if (rel > worst) { worst = rel; worstCase = key; }
+      if (rel > worst) {
+        worst = rel;
+        worstCase = key;
+      }
     }
   }
-  console.log(`\n${fail === 0 ? "PASS" : "FAIL"}: ${count - fail}/${count} cases within tolerance; worst rel=${worst.toExponential(2)} (${worstCase})`);
+  console.log(
+    `\n${fail === 0 ? "PASS" : "FAIL"}: ${count - fail}/${count} cases within tolerance; worst rel=${worst.toExponential(2)} (${worstCase})`,
+  );
   process.exit(fail ? 1 : 0);
 } else {
   mkdirSync(DUMP_DIR, { recursive: true });

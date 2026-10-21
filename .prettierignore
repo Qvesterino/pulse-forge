@@ -12,3 +12,13 @@ src/presets/*.generated.ts
 tests/domain-goldens/*.json
 tests/fxeq-golden/*.json
 tests/morph-dynamics-golden/*.json
+
+# Datasets and the hash-pinned manifests over them. The SFT manifest's bytes
+# are hashed into public/models/intent-model-report.json and the manifest
+# writer refuses to run when they disagree (scripts/write-intent-model-manifest.mts),
+# so reformatting them breaks the training pin — they are inputs, not code.
+scripts/data/
+
+# Generated audit reports. The emitter owns their byte shape; the audit
+# scripts rewrite them in place.
+docs/**/*.report.json

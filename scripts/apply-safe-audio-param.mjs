@@ -95,7 +95,7 @@ for (const name of readdirSync(dir)) {
   }
 
   // Add the import next to the EffectRuntime import (safe to keep duplicated).
-  if (!src.includes('import { safeApplyAudioParam }')) {
+  if (!src.includes("import { safeApplyAudioParam }")) {
     src = src.replace(
       /^(import type \{ EffectRuntime \} from "\.\.\/effects\/types";)$/m,
       `$1\nimport { safeApplyAudioParam } from "./safeAudioParam";`,
@@ -104,12 +104,8 @@ for (const name of readdirSync(dir)) {
 
   // Convert all inline `setParam(...)` call sites into helper invocations.
   // The setParam closure got removed above; remaining references are calls.
-  src = src.replace(
-    /setParam\(\s*("[^"]+"|`[^`]+`)\s*,\s*([^,]+?)(?:,\s*([^)]+))?\s*\)/g,
-    (_match, id, value, when) =>
-      when
-        ? `safeApplyAudioParam(node, ${id}, ${value}, ${when})`
-        : `safeApplyAudioParam(node, ${id}, ${value})`,
+  src = src.replace(/setParam\(\s*("[^"]+"|`[^`]+`)\s*,\s*([^,]+?)(?:,\s*([^)]+))?\s*\)/g, (_match, id, value, when) =>
+    when ? `safeApplyAudioParam(node, ${id}, ${value}, ${when})` : `safeApplyAudioParam(node, ${id}, ${value})`,
   );
 
   // Re-pattern header used in some files where the body has been removed but
@@ -120,6 +116,4 @@ for (const name of readdirSync(dir)) {
   touched++;
 }
 
-console.log(
-  JSON.stringify({ touched, alreadySafe, canonical, mapped, skipped }, null, 2),
-);
+console.log(JSON.stringify({ touched, alreadySafe, canonical, mapped, skipped }, null, 2));

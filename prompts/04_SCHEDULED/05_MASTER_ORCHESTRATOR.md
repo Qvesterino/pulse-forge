@@ -8,6 +8,7 @@
 Execute hardening in controlled phases. Do not run all audits as one giant refactor.
 
 Phase order:
+
 1. Critical path — `01_COMMON/01_CRITICAL_PATH_AUDIT.md`
 2. Project/data integrity — `01_COMMON/03_PROJECT_DATA_INTEGRITY_AUDIT.md`
 3. Recovery — `01_COMMON/02_RECOVERY_PATH_AUDIT.md`

@@ -1,6 +1,7 @@
 # VISION.md
 
 # Pulse Forge
+
 ### A production-grade music workstation for creation, recording and sound design
 
 > Create music quickly. Shape it deeply. Connect it to motion.

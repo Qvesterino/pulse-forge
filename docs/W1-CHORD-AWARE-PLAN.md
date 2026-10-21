@@ -74,10 +74,10 @@ documents the falsification. No artefact ships on a FAIL — the W2 rule.
 Ran exactly as pre-registered (same harness, identical library folds,
 baseline = same folds minus `classical.*` rows):
 
-| run | 2-fold degree | 2-fold duration | 3-fold degree | 3-fold duration |
-| --- | ---: | ---: | ---: | ---: |
-| baseline (no corpus) | 0.4933 | 0.5512 | 0.4850 | 0.5610 |
-| + corpus (20 407 classical rows, train-only) | 0.4891 | 0.4736 | 0.4922 | 0.5383 |
+| run                                          | 2-fold degree | 2-fold duration | 3-fold degree | 3-fold duration |
+| -------------------------------------------- | ------------: | --------------: | ------------: | --------------: |
+| baseline (no corpus)                         |        0.4933 |          0.5512 |        0.4850 |          0.5610 |
+| + corpus (20 407 classical rows, train-only) |        0.4891 |          0.4736 |        0.4922 |          0.5383 |
 
 - Criterion (a) degree: **PASSED both folds** — 2-fold within tolerance
   (−0.0042), 3-fold the corpus actually HELPS (+0.0072). The chord-

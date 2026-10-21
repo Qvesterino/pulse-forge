@@ -156,7 +156,8 @@ import {
   planMixProfile,
   sendReadback,
 } from "../intent/mix";
-import { applyParamIntent, paramPlanLines, paramReadback } from "../intent/param-intent";
+import { applyParamIntent, paramReadback } from "../intent/param-intent";
+import { formatPlan, planIntent } from "../intent/semantics/intent-plan";
 import { measureParamVerification } from "../intent/param-readback";
 import {
   attentiveStatusLine,
@@ -991,23 +992,24 @@ export function IntentPanel() {
   }, [text]);
 
   /**
-   * P3 (2026-10-20): LIVE PARAM PLAN — before execution, show the resolved
-   * knob, the current value, the destination, the range fraction in the
-   * param's OWN domain and whether the applier will clamp or add the effect.
-   * The route is pure; nothing here touches the store. `useDeferredValue`
-   * keeps typing responsive on long prompts.
+   * P3 (2026-10-20) / STEP 3 (2026-10-21): LIVE INTENT PLAN — before execution,
+   * show the resolved target, the current value, the destination, the range
+   * fraction in the parameter's OWN domain and any clamp/add. The plan is the
+   * SAME canonical command the executor will build, dry-run against the
+   * document value; it never touches the store. `useDeferredValue` keeps
+   * typing responsive on long prompts.
    */
   const deferredPrompt = useDeferredValue(text);
-  const paramPlanPreview = useMemo(() => {
+  const intentPlanPreview = useMemo(() => {
     const prompt = deferredPrompt.trim();
     if (!prompt) return null;
     // A genre brief is a GENERATION prompt; showing a knob plan under it would
     // be noise (and the submit path takes the generation lane first).
     if (parsed?.input.genre) return null;
     const route = routeIntentText(prompt, doc);
-    if (route.kind !== "paramIntent") return null;
-    const lines = paramPlanLines(route.intent, doc);
-    return lines.length > 0 ? lines : null;
+    if (route.kind === "clarify" || route.kind === "pattern" || route.kind === "revise") return null;
+    const plan = planIntent(doc, route);
+    return plan.executable ? formatPlan(plan) : null;
   }, [deferredPrompt, doc, parsed]);
 
   useEffect(() => {
@@ -5359,9 +5361,9 @@ export function IntentPanel() {
           {detectedText}
         </div>
       )}
-      {paramPlanPreview && (
-        <div className="intent-detected" role="status" aria-label="Param plan">
-          🔧 {paramPlanPreview.join("  ·  ")}
+      {intentPlanPreview && (
+        <div className="intent-detected" role="status" aria-label="Intent plan">
+          🔧 {intentPlanPreview}
         </div>
       )}
       {(() => {

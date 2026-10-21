@@ -121,7 +121,9 @@ async function ensureOnnxBackend(manifest: IntentModelManifest, weights: ArrayBu
   if (!features) throw new Error("onnx backend requires a manifest features pin");
   if (!features.url) throw new Error("onnx backend requires features.url (vocab artifact)");
   const vocabBytes = await fetchWithPackCache(features.url);
-  const vocabError = await sha256Mismatch(vocabBytes, features.vocabSha256);
+  // The pin is over the repository's bytes (LF), not over whatever line
+  // endings the machine that served the file happens to use.
+  const vocabError = await sha256Mismatch(repositoryTextBytes(new Uint8Array(vocabBytes)), features.vocabSha256);
   if (vocabError) throw new Error(`vocab ${vocabError}`);
   const vocab = JSON.parse(new TextDecoder().decode(vocabBytes)) as unknown;
   if (!isVocabArtifact(vocab)) throw new Error("vocab artifact malformed");

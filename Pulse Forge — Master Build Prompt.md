@@ -658,7 +658,7 @@ sampleEngine.trigger({
   gain,
   pitch,
   start,
-  duration
+  duration,
 });
 ```
 

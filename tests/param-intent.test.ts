@@ -9,6 +9,7 @@ import {
 } from "../src/intent/param-intent";
 import { routeIntentText } from "../src/intent/route";
 import { buildCapabilityMatrix, capabilityIssues } from "../src/intent/semantics/param-registry";
+import { formatPlan, planIntent } from "../src/intent/semantics/intent-plan";
 import { EFFECT_META } from "../src/effects/definitions";
 import { testDoc } from "./fixtures/doc";
 
@@ -518,5 +519,116 @@ describe("param registry & capability matrix", () => {
         }
       }
     }
+  });
+});
+
+/**
+ * PLAN IR (2026-10-21) — the dry run IS the execution path.
+ *
+ * `planIntent` builds the same canonical command the executor would build and
+ * runs it against the document VALUE. These tests pin the four parameterized
+ * families, the compound sequence, clamping, and the purity property (the
+ * source document is untouched).
+ */
+describe("intent plan — dry-run before execution", () => {
+  const planFor = (text: string, doc = testDoc()) => {
+    const route = routeIntentText(text, doc);
+    return { route, plan: planIntent(doc, route) };
+  };
+
+  it("a fader plan shows the real gain and factor", () => {
+    const { plan } = planFor("turn down the bass a little");
+    expect(plan.executable).toBe(true);
+    expect(plan.mutates).toBe(true);
+    expect(plan.steps).toHaveLength(1);
+    const step = plan.steps[0]!;
+    expect(step.kind).toBe("number");
+    if (step.kind !== "number") return;
+    expect(step.target).toBe("808");
+    expect(step.parameter).toBe("fader.gain");
+    expect(step.before).toBeCloseTo(0.85, 2);
+    expect(step.next).toBeCloseTo(0.78, 2);
+    expect(step.note).toContain("×0.918");
+    expect(formatPlan(plan)).toContain("808: fader.gain 0.85 → 0.78");
+  });
+
+  it("a param plan shows the add and the domain fraction", () => {
+    const { plan } = planFor("slightly longer reverb decay on the 808");
+    expect(plan.steps.map((step) => step.kind)).toEqual(["number"]);
+    const number = plan.steps.find((step) => step.kind === "number");
+    expect(number?.kind).toBe("number");
+    if (number?.kind !== "number") return;
+    expect(number.parameter).toBe("reverb.decay");
+    expect(number.beforeLabel).toBe("1.80 s");
+    expect(number.nextLabel).toBe("3.39 s");
+    expect(number.note).toContain("8% linear");
+    expect(number.note).toContain("add effect");
+  });
+
+  it("an effect plan diffs the primary knob and the add", () => {
+    const { plan } = planFor("more reverb on the pads");
+    expect(plan.steps.map((step) => step.kind)).toEqual(["state", "number"]);
+    const number = plan.steps.find((step) => step.kind === "number");
+    expect(number?.kind).toBe("number");
+    if (number?.kind !== "number") return;
+    expect(number.target).toBe("Chords");
+    expect(number.parameter).toBe("reverb.mix");
+    expect(number.before).toBeCloseTo(0.3, 2);
+    expect(number.next).toBeCloseTo(0.34, 2);
+  });
+
+  it("mute, tempo and compound are described without mutating", () => {
+    const mute = planFor("mute the drums").plan;
+    expect(mute.steps[0]).toMatchObject({
+      kind: "state",
+      target: "drums",
+      parameter: "mute",
+      beforeLabel: "off",
+      afterLabel: "on",
+    });
+
+    const tempoDoc = testDoc();
+    const tempo = planFor("zníž tempo", tempoDoc).plan;
+    const tempoStep = tempo.steps[0];
+    expect(tempoStep?.kind).toBe("number");
+    if (tempoStep?.kind === "number") {
+      expect(tempoStep.before).toBe(tempoDoc.bpm);
+      expect(tempoStep.next).toBeLessThan(tempoDoc.bpm);
+    }
+
+    const compound = planFor("mute the drums and set tempo to 140").plan;
+    expect(compound.steps).toHaveLength(2);
+    expect(compound.steps[0]?.kind).toBe("state");
+    expect(compound.steps[1]?.kind).toBe("number");
+  });
+
+  it("clamping is visible in the step, the warning and the line", () => {
+    const { plan } = planFor("set filter Q to 2.5 on the 808");
+    const step = plan.steps.find((entry) => entry.kind === "number");
+    expect(step?.kind).toBe("number");
+    if (step?.kind !== "number") return;
+    expect(step.clamped).toBe(true);
+    expect(step.nextLabel).toBe("100%");
+    expect(plan.warnings.some((warning) => warning.includes("will clamp"))).toBe(true);
+    expect(formatPlan(plan)).toContain("clamped to 100%");
+  });
+
+  it("the dry run never touches the source document", () => {
+    const doc = testDoc();
+    const before = doc.tracks.find((track) => track.name === "808")!.gain;
+    const { plan } = planFor("turn down the bass a little", doc);
+    expect(doc.tracks.find((track) => track.name === "808")!.gain).toBe(before);
+    expect(plan.after.tracks.find((track) => track.name === "808")!.gain).toBeLessThan(before);
+  });
+
+  it("generation and clarification are not pretend-executable", () => {
+    expect(planFor("a beat that is dark and warm").plan).toMatchObject({
+      executable: false,
+      mutates: false,
+    });
+    expect(planFor("make the reverb tail a little longer").plan).toMatchObject({
+      executable: false,
+      mutates: false,
+    });
   });
 });

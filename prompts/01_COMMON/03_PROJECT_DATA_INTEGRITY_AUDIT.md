@@ -10,6 +10,7 @@ Audit project persistence as if project files are precious user assets.
 Inspect save, save-as, autosave, serialization, deserialization, schema validation, migrations, media references, IDs, ordering, optional fields, defaulting, versioning, partial writes, atomic replacement, corrupted input, unknown future fields, and backwards compatibility.
 
 Required invariants:
+
 - saving then loading preserves semantically identical project state;
 - no valid persisted entity becomes orphaned or duplicated;
 - partial writes cannot replace a valid project with corrupt data;

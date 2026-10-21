@@ -29,6 +29,7 @@ import {
   type MelodicRole,
   type MelodicGenre,
 } from "./symbolic/melodic-features";
+import { DEFAULT_AI_METER } from "./meter";
 import { CHORD_INTERVALS, type ChordQuality, type HarmonicFunction } from "./harmony";
 
 // ── Krumhansl-Kessler key profiles (same values as src/ai/audio-tempo-key.ts) ──
@@ -243,7 +244,19 @@ export function collectSamples(
   ) => {
     const note = events[noteIndex];
     samples.push({
-      x: buildMelodicFeatureRow({ genre: genreKey, role, startStep, prevDegree, prevDuration, prevPrevDegree }),
+      x: buildMelodicFeatureRow({
+        genre: genreKey,
+        role,
+        startStep,
+        prevDegree,
+        prevDuration,
+        prevPrevDegree,
+        // The corpus IS 4/4 material (Mutopia sheet music), and the pinned
+        // models were trained on these very rows — so the corpus declares the
+        // training frame explicitly and its rows stay byte-identical
+        // (ADR 0057 Stage 2d).
+        meter: DEFAULT_AI_METER,
+      }),
       degree: note.degree < 0 ? 0 : Math.min(7, note.degree + 1),
       duration: durationClass(note.duration),
       group: `${groupPrefix}#${role}`,

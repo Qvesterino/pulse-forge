@@ -3,6 +3,7 @@
 Audit performance under realistic and worst-case workloads.
 
 Stress:
+
 - many tracks
 - many clips
 - long project
@@ -15,6 +16,7 @@ Stress:
 - repeated editing
 
 Inspect:
+
 - CPU spikes
 - memory growth
 - long tasks
@@ -25,7 +27,6 @@ Inspect:
 - expensive selectors/calculations
 
 Optimize only where there is evidence.
-
 
 ## Global Rules
 
@@ -38,23 +39,26 @@ Optimize only where there is evidence.
 - Avoid broad architectural rewrites unless the audit reveals a concrete defect that cannot be solved safely otherwise.
 - After every meaningful change, run relevant tests/checks.
 
-
-
 ## Completion Report
 
 At the end provide:
 
 ### Findings
+
 Confirmed defects, risks, or inconsistencies.
 
 ### Fixes
+
 What was changed and why.
 
 ### Tests Added
+
 Regression, integration, or E2E coverage added.
 
 ### Verification
+
 Exact commands/checks executed and their results.
 
 ### Remaining Risks
+
 Anything intentionally left unchanged or requiring manual/human review.

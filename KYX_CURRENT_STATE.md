@@ -14,7 +14,7 @@ KYX is a **browser-first, local-first electronic-music production workstation** 
 - **Type:** hybrid. Core interaction loop is a drum-machine/step-sequencer (pattern mode), but it also has a clip-based arrangement timeline (song mode), a piano roll, a full mixer with sends/returns/groups, 14 synth engines, 36 effect types (including four large "flagship" multi-effect plugins — PRISM/FXEQ, VLYX/Ultina, DRIFT/Ozvena and RIFT; see `docs/CURRENT-STATE.md` for the canonical inventory), offline rendering and multi-format export.
 - **Architecture:** pure web app (Vite + React 18 + strict TypeScript, PWA with offline install via `vite-plugin-pwa` in `vite.config.ts`, update lifecycle in `src/sw-update.ts`). No desktop shell. A small optional Node server (`server/collab-server.mjs`) provides CRDT relay + a public gallery; the studio itself runs entirely client-side against IndexedDB.
 - **Primary workflow:** open app → landing page (`src/landing/LandingPage.tsx`) → project browser (12 genre templates; `src/project-model/templates.ts`) → studio. In the studio: edit 16/32-step drum grid and/or piano-roll notes per track, apply presets/FX, play scenes (clip launcher semantics), arrange clips on the timeline, then export WAV/MP3/stems/scorepack/MIDI/video or share a link.
-- **Designed primarily for:** beatmaking + composition at the core, with substantial sound design (synth/FX depth) and live performance features (pads, note repeat, macros, quantized scene launches, multi-user jam). It is explicitly *not* an attempt to clone Ableton/FL feature-for-feature (`Pulse Forge — Master Build Prompt.md:5`).
+- **Designed primarily for:** beatmaking + composition at the core, with substantial sound design (synth/FX depth) and live performance features (pads, note repeat, macros, quantized scene launches, multi-user jam). It is explicitly _not_ an attempt to clone Ableton/FL feature-for-feature (`Pulse Forge — Master Build Prompt.md:5`).
 - **Maturity:** unusually high for a browser DAW. ~127k lines of application TypeScript, ~55k lines of tests across 282 test files, CI enforcing clean typecheck + unit tests + production build + release preflight (`.github/workflows/ci.yml`). The audio path is verified with real-Chromium browser tests (`scripts/verify-browser.mjs`, golden render/vector tests).
 
 **What a user can actually do end-to-end today:** create a House/Techno/Trap/Ambient/UKG/… project from a template (each ships a working groove, instrument tracks, macros and often a pre-built arrangement), generate patterns from a text prompt ("dark rolling techno at 140") or the Dice tray, edit everything by hand, mix with real metering, master through limiter/clipper/LUFS metering, render the exact playback to WAV/MP3/stems, package a scorepack, export/import MIDI, and publish the beat to a public gallery or a share link that renders identically for anyone who opens it.
@@ -27,27 +27,27 @@ UI shell: `src/ui/App.tsx` (1,299 lines). React function components; heavy panel
 
 Top-level surfaces (verified in `App.tsx:1147-1191` render tree):
 
-| Surface | File | Purpose / data |
-|---|---|---|
-| **Landing page** | `src/landing/LandingPage.tsx` | Marketing/entry page with a live embed-rendered hero beat; "ENTER STUDIO" CTA. |
-| **Project browser** | `src/ui/ProjectBrowser.tsx` | Continue-last-project card, project list (open/duplicate/rename/delete), 12-template grid, "import" (JSON file / share code). Reads/writes `ProjectRepository` (IndexedDB). |
-| **TopBar** | `src/ui/TopBar.tsx` | Transport (play/stop), BPM, play-mode (pattern/song), loop IN/OUT, metronome/count-in/pre-roll, scene launcher trigger, master meter, save status, panel toggles, command palette (Ctrl+K). |
-| **TrackTabs / RackStrip** | `src/ui/TrackTabs.tsx`, `src/ui/RackStrip.tsx` | Track selection + 16-pad drum rack per drum track (click = audition/rebind, pad colors, slice markers). |
-| **Sequencer** | `src/ui/Sequencer.tsx` | 16/32-step grid, virtualized, per-track rows. Toggle steps, vertical drag velocity, shift-drag rectangle multi-select, right-click step editor (PROB / RATCHET / MICRO / p-locks, verified at `Sequencer.tsx:843-867`), remote collab cursors. Mutates `pattern.rows` + `pattern.stepMeta`. |
-| **PianoRoll** | `src/ui/PianoRoll.tsx` | Melodic note editor for instrument tracks: draw/move/resize notes (pitch/start/duration ticks/velocity), slide notes, quantize, duplicate/split/glue (commands in `src/commands/commands.ts:1601-1978`). |
-| **PatternBar** | `src/ui/PatternBar.tsx` | Pattern chips (create/duplicate/rename/reorder), groove drag controls (SWING / HUM·T / HUM·V), MUT/FILL variation buttons, pattern launch queueing. |
-| **Inspector** | `src/ui/Inspector.tsx` | Per-track instrument parameter panel driven by `INSTRUMENT_DEFS[kind].params` metadata; embedded preset browser (genre/mood chips, favorites, save-as-user-preset). |
-| **Bottom dock (8 panels)** | `src/ui/dockLayout.ts:1` | `mixer`, `fx`, `arr`, `mod`, `exp`, `midi`, `dice`, `intent` — two dockable slots + height. |
-| **Mixer** | `src/ui/Mixer.tsx` | Channel strips (rename/volume/pan/mute/solo/delete/color/group), real peak meters, send knobs per return, return strips, master strip (IN/CEIL/LIMIT/CLIP/tape/M-S), group collapse. |
-| **EffectRack / FxEqPanel / UltinaPanel / OzvenaPanel / KaskadaPanel** | `src/ui/EffectRack.tsx` + flagship panels | Per-track insert rack: add/remove/reorder/bypass, parameter editors; flagship plugins get full custom editors (EQ curve drag, spectral displays, A/B, presets). Also opens in `FloatingPlugin.tsx` windows. |
-| **ArrangementPanel** | `src/ui/ArrangementPanel.tsx` | Song timeline: scene clips (move/resize/duplicate), audio clips (drag, split at playhead, trim, fades, warp/stretch), markers, arrangement transitions, tempo per scene, auto-arrange. |
-| **ModPanel** | `src/ui/ModPanel.tsx` | Automation lanes, LFO/modulators (osc/random/step/envFollower), macro → target mappings, MIDI CC mappings. |
-| **ExportPanel** | `src/ui/ExportPanel.tsx` | Master WAV (16/24/32-bit, 44.1/48 kHz), MP3 192/320, video (Reels/TikTok framing), grouped + per-track stems, SCOREPACK, MIDI export. Shows measured peak/true-peak/RMS/correlation after every render. |
-| **MidiPanel** | `src/ui/MidiPanel.tsx` | Web MIDI device setup, drum note map, CC mappings, program change/bank/aftertouch, MIDI clock master/slave. |
-| **DiceTray / IntentPanel** | `src/ui/DiceTray.tsx`, `src/ui/IntentPanel.tsx` | Generative surfaces (see §9): text prompt → intent; dice session with locks/favorites/jitter. |
-| **Others** | `SceneLauncher`, `ScalePanel`, `SliceLab`, `GranularPanel`, `WavetablePanel`, `EnvEditor`, `MacroPerformanceBar`, `Goniometer`, `SpectrumAnalyzer`, `LoudnessHistory`, `LatencyCalibrationWizard`, `UndoHistoryPanel`, `Diagnostics`, `OnboardingTour`, `HelpOverlay`, `ThemePanel`, `CollabPanel`, `FreezeButton` | All present and wired; each has a dedicated test under `tests/ui/`. |
-| **Gallery page** | `src/gallery/GalleryPage.tsx` + `galleryApi.ts` | Public beat feed (list/play/report/remix) served by the collab server's `/api/gallery`. |
-| **Embed page** | `src/embed/EmbedApp.tsx` | `/embed/#p=<share-code>`: decodes a full project from the URL, renders it with the *same offline engine*, minimal play/seek chrome, "Open in KYX" hand-off. No IndexedDB, no services booted. |
+| Surface                                                               | File                                                                                                                                                                                                                                                                                                               | Purpose / data                                                                                                                                                                                                                                                                              |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Landing page**                                                      | `src/landing/LandingPage.tsx`                                                                                                                                                                                                                                                                                      | Marketing/entry page with a live embed-rendered hero beat; "ENTER STUDIO" CTA.                                                                                                                                                                                                              |
+| **Project browser**                                                   | `src/ui/ProjectBrowser.tsx`                                                                                                                                                                                                                                                                                        | Continue-last-project card, project list (open/duplicate/rename/delete), 12-template grid, "import" (JSON file / share code). Reads/writes `ProjectRepository` (IndexedDB).                                                                                                                 |
+| **TopBar**                                                            | `src/ui/TopBar.tsx`                                                                                                                                                                                                                                                                                                | Transport (play/stop), BPM, play-mode (pattern/song), loop IN/OUT, metronome/count-in/pre-roll, scene launcher trigger, master meter, save status, panel toggles, command palette (Ctrl+K).                                                                                                 |
+| **TrackTabs / RackStrip**                                             | `src/ui/TrackTabs.tsx`, `src/ui/RackStrip.tsx`                                                                                                                                                                                                                                                                     | Track selection + 16-pad drum rack per drum track (click = audition/rebind, pad colors, slice markers).                                                                                                                                                                                     |
+| **Sequencer**                                                         | `src/ui/Sequencer.tsx`                                                                                                                                                                                                                                                                                             | 16/32-step grid, virtualized, per-track rows. Toggle steps, vertical drag velocity, shift-drag rectangle multi-select, right-click step editor (PROB / RATCHET / MICRO / p-locks, verified at `Sequencer.tsx:843-867`), remote collab cursors. Mutates `pattern.rows` + `pattern.stepMeta`. |
+| **PianoRoll**                                                         | `src/ui/PianoRoll.tsx`                                                                                                                                                                                                                                                                                             | Melodic note editor for instrument tracks: draw/move/resize notes (pitch/start/duration ticks/velocity), slide notes, quantize, duplicate/split/glue (commands in `src/commands/commands.ts:1601-1978`).                                                                                    |
+| **PatternBar**                                                        | `src/ui/PatternBar.tsx`                                                                                                                                                                                                                                                                                            | Pattern chips (create/duplicate/rename/reorder), groove drag controls (SWING / HUM·T / HUM·V), MUT/FILL variation buttons, pattern launch queueing.                                                                                                                                         |
+| **Inspector**                                                         | `src/ui/Inspector.tsx`                                                                                                                                                                                                                                                                                             | Per-track instrument parameter panel driven by `INSTRUMENT_DEFS[kind].params` metadata; embedded preset browser (genre/mood chips, favorites, save-as-user-preset).                                                                                                                         |
+| **Bottom dock (8 panels)**                                            | `src/ui/dockLayout.ts:1`                                                                                                                                                                                                                                                                                           | `mixer`, `fx`, `arr`, `mod`, `exp`, `midi`, `dice`, `intent` — two dockable slots + height.                                                                                                                                                                                                 |
+| **Mixer**                                                             | `src/ui/Mixer.tsx`                                                                                                                                                                                                                                                                                                 | Channel strips (rename/volume/pan/mute/solo/delete/color/group), real peak meters, send knobs per return, return strips, master strip (IN/CEIL/LIMIT/CLIP/tape/M-S), group collapse.                                                                                                        |
+| **EffectRack / FxEqPanel / UltinaPanel / OzvenaPanel / KaskadaPanel** | `src/ui/EffectRack.tsx` + flagship panels                                                                                                                                                                                                                                                                          | Per-track insert rack: add/remove/reorder/bypass, parameter editors; flagship plugins get full custom editors (EQ curve drag, spectral displays, A/B, presets). Also opens in `FloatingPlugin.tsx` windows.                                                                                 |
+| **ArrangementPanel**                                                  | `src/ui/ArrangementPanel.tsx`                                                                                                                                                                                                                                                                                      | Song timeline: scene clips (move/resize/duplicate), audio clips (drag, split at playhead, trim, fades, warp/stretch), markers, arrangement transitions, tempo per scene, auto-arrange.                                                                                                      |
+| **ModPanel**                                                          | `src/ui/ModPanel.tsx`                                                                                                                                                                                                                                                                                              | Automation lanes, LFO/modulators (osc/random/step/envFollower), macro → target mappings, MIDI CC mappings.                                                                                                                                                                                  |
+| **ExportPanel**                                                       | `src/ui/ExportPanel.tsx`                                                                                                                                                                                                                                                                                           | Master WAV (16/24/32-bit, 44.1/48 kHz), MP3 192/320, video (Reels/TikTok framing), grouped + per-track stems, SCOREPACK, MIDI export. Shows measured peak/true-peak/RMS/correlation after every render.                                                                                     |
+| **MidiPanel**                                                         | `src/ui/MidiPanel.tsx`                                                                                                                                                                                                                                                                                             | Web MIDI device setup, drum note map, CC mappings, program change/bank/aftertouch, MIDI clock master/slave.                                                                                                                                                                                 |
+| **DiceTray / IntentPanel**                                            | `src/ui/DiceTray.tsx`, `src/ui/IntentPanel.tsx`                                                                                                                                                                                                                                                                    | Generative surfaces (see §9): text prompt → intent; dice session with locks/favorites/jitter.                                                                                                                                                                                               |
+| **Others**                                                            | `SceneLauncher`, `ScalePanel`, `SliceLab`, `GranularPanel`, `WavetablePanel`, `EnvEditor`, `MacroPerformanceBar`, `Goniometer`, `SpectrumAnalyzer`, `LoudnessHistory`, `LatencyCalibrationWizard`, `UndoHistoryPanel`, `Diagnostics`, `OnboardingTour`, `HelpOverlay`, `ThemePanel`, `CollabPanel`, `FreezeButton` | All present and wired; each has a dedicated test under `tests/ui/`.                                                                                                                                                                                                                         |
+| **Gallery page**                                                      | `src/gallery/GalleryPage.tsx` + `galleryApi.ts`                                                                                                                                                                                                                                                                    | Public beat feed (list/play/report/remix) served by the collab server's `/api/gallery`.                                                                                                                                                                                                     |
+| **Embed page**                                                        | `src/embed/EmbedApp.tsx`                                                                                                                                                                                                                                                                                           | `/embed/#p=<share-code>`: decodes a full project from the URL, renders it with the _same offline engine_, minimal play/seek chrome, "Open in KYX" hand-off. No IndexedDB, no services booted.                                                                                               |
 
 All panels are functional; nothing in the shell is a stub. The panel-to-app communication is uniformly: read via `useDoc()` (reactive `ProjectDocument`), mutate via a command factory + `services.store.execute(command)`.
 
@@ -95,7 +95,7 @@ playback: Scheduler.tick() every 25 ms ─► drumHitsInWindow()/noteEventsInWin
 
 **Worklets:** 26 AudioWorklet processors in `src/audio-worklets/*-processor.js` plus 5 pre-bundled plugin worklets in `public/` (core, fxeq, ultina, ozvena, bitcrusher). A loader (`src/audio-worklets/loader.ts`) pre-loads exactly the modules a project uses; every worklet effect has a non-worklet fallback path and reports degraded status (`WORKLET_EFFECTS` map, `effectProcessorStatus` in `src/effects/registry.ts:90-127`; `engine.getDegradedFx()`).
 
-**Offline rendering:** `src/rendering/renderer.ts:172 renderProject()` constructs an `OfflineAudioContext`, loads the same worklets, instantiates a **fresh `AudioEngine`** on it, and schedules with the *same* deterministic event-expansion modules (`groove.ts`, `events.ts`), the same tempo-map math (`buildTempoMap`), scene-intensity points, scene automation, and offline modulator sweeps. Live/export parity is an explicit, tested design goal (`tests/offline-parity.test.ts`, `tests/render-event-parity.test.ts`, `KNOWN_LIMITATIONS.md` documents the remaining ≤25 ms scene-boundary residuals).
+**Offline rendering:** `src/rendering/renderer.ts:172 renderProject()` constructs an `OfflineAudioContext`, loads the same worklets, instantiates a **fresh `AudioEngine`** on it, and schedules with the _same_ deterministic event-expansion modules (`groove.ts`, `events.ts`), the same tempo-map math (`buildTempoMap`), scene-intensity points, scene automation, and offline modulator sweeps. Live/export parity is an explicit, tested design goal (`tests/offline-parity.test.ts`, `tests/render-event-parity.test.ts`, `KNOWN_LIMITATIONS.md` documents the remaining ≤25 ms scene-boundary residuals).
 
 **Verdict on timing infrastructure:** this is one of the most robust browser-audio scheduling stacks I have inspected — the known browser failure modes (tab suspension, device change, mid-window edits, tempo seams, loop wraps) are each individually handled and pinned by tests. The code is heavily annotated with defect IDs from dedicated audits (`prompts/01_COMMON/*`, `docs/` audit roadmaps).
 
@@ -144,7 +144,7 @@ interface AudioClip  { trackId; bufferId; startBar; lengthBars; trimStart/End; g
 
 Key observations:
 
-- **Time** is integer ticks (PPQ 480, `STEP_TICKS = 120` = 1/16). Velocity 0..1, probability 0..1, ratchet 1..8, microtiming −1..+1 (fraction of a step). Swing/humanize are *project-level* and applied deterministically at schedule time, not stored per event.
+- **Time** is integer ticks (PPQ 480, `STEP_TICKS = 120` = 1/16). Velocity 0..1, probability 0..1, ratchet 1..8, microtiming −1..+1 (fraction of a step). Swing/humanize are _project-level_ and applied deterministically at schedule time, not stored per event.
 - **Two clip worlds:** scene clips (`ArrangementClip` → `Scene` → `Pattern`) and audio clips (`AudioClip` → stored buffer). Both live on one timeline measured in bars.
 - **Provenance is first-class:** every AI-generated pattern carries a full reproducibility recipe (`PatternGeneration`, `types.ts:387-431`) including seed, content hashes, the normalized intent snapshot, ranker version/mode, and quality diagnostics.
 - **Stability:** the model is mature and heavily guarded (`tests/project-invariants.test.ts`, `tests/persistence/round-trip-integrity.test.ts`, `tests/state-store-adversarial.test.ts`). Fields added later are optional with normalization defaults, so old projects keep loading (schema v1 has never broken).
@@ -156,14 +156,14 @@ Key observations:
 
 No Redux/Zustand. Hand-rolled, framework-free stores consumed via React 18 `useSyncExternalStore`.
 
-| Store | File | Role |
-|---|---|---|
-| **ProjectStore** | `src/store/ProjectStore.ts` | The plain-document authority. Holds `doc_`, undo/redo stacks (cap 256), command coalescing (1 s window, e.g. CC sweeps), history diffs via `computeDocDelta` (`src/commands/docDelta.ts`), `replaceDoc` for project switches, save status. Mutations only through `execute/undo/redo/replaceDoc`. |
-| **YDocStore** | `src/collab/YDocStore.ts` | Drop-in replacement with the *same public surface* backed by a Yjs `Y.Doc`; per-user undo via `Y.UndoManager`, role gating (`jamRoles.ts`), normalization of remote merges. Collab is loaded lazily only when a session starts (`services.ts:279-299`). |
-| **Transport** | `src/transport/Transport.ts` | Musical clock (not persisted except BPM which lives in the doc). |
-| **SelectionStore / ToolStore** | `src/store/SelectionStore.ts`, `src/store/ToolStore.ts` | UI-only (selection, active tool). |
-| **AudioEngine state** | `AudioEngine.ts` | Derived cache: node graphs, instrument runtimes, FX runtimes, LFO runtimes, meter rings, stretch/warp caches. Rebuilt by diffing on every `setProject`. Holds **no** musical truth. |
-| **Repositories** | `src/persistence/*Repository.ts` | IndexedDB-backed side data (projects, presets, samples, kits, snapshots). |
+| Store                          | File                                                    | Role                                                                                                                                                                                                                                                                                              |
+| ------------------------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **ProjectStore**               | `src/store/ProjectStore.ts`                             | The plain-document authority. Holds `doc_`, undo/redo stacks (cap 256), command coalescing (1 s window, e.g. CC sweeps), history diffs via `computeDocDelta` (`src/commands/docDelta.ts`), `replaceDoc` for project switches, save status. Mutations only through `execute/undo/redo/replaceDoc`. |
+| **YDocStore**                  | `src/collab/YDocStore.ts`                               | Drop-in replacement with the _same public surface_ backed by a Yjs `Y.Doc`; per-user undo via `Y.UndoManager`, role gating (`jamRoles.ts`), normalization of remote merges. Collab is loaded lazily only when a session starts (`services.ts:279-299`).                                           |
+| **Transport**                  | `src/transport/Transport.ts`                            | Musical clock (not persisted except BPM which lives in the doc).                                                                                                                                                                                                                                  |
+| **SelectionStore / ToolStore** | `src/store/SelectionStore.ts`, `src/store/ToolStore.ts` | UI-only (selection, active tool).                                                                                                                                                                                                                                                                 |
+| **AudioEngine state**          | `AudioEngine.ts`                                        | Derived cache: node graphs, instrument runtimes, FX runtimes, LFO runtimes, meter rings, stretch/warp caches. Rebuilt by diffing on every `setProject`. Holds **no** musical truth.                                                                                                               |
+| **Repositories**               | `src/persistence/*Repository.ts`                        | IndexedDB-backed side data (projects, presets, samples, kits, snapshots).                                                                                                                                                                                                                         |
 
 **Boundaries (verified):**
 
@@ -195,15 +195,15 @@ Verified implemented (all backed by `src/commands/commands.ts` and unit tests):
 
 Registry: `src/instruments/registry.ts` (5,190 lines), `INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition>` at line 5144 — **14 instruments**, each a metadata table (`ParamDef[]` with ranges/defaults/formats — this metadata directly drives the Inspector UI and parameter clamping) plus a `factory(ctx, track, env) → InstrumentRuntime`:
 
-| Kind | Architecture (from implementation) |
-|---|---|
-| `sampler` | Single sample or **velocity layers / round-robin** (`SampleLayer` with velocity + key zones), root note, keytrack, loop with crossfade, reverse, time-stretch option, filter+envelope |
-| `analog` | 2 osc + sub + noise, state-variable filter w/ env + keytrack, unison up to 8× with spread, LFO with sync, full ADSR with shapes/loop/hold/delay |
-| `bass` | Sub/body/punch/grit model with glide, distortion types, unison, SVF |
-| `808` | Pitch-dropping sine bass: decay, P-DROP, click, drive, glide, distortion, gate, mono |
-| `texture` | Granular/scenic texture engine (color/motion/space/density/chaos/drift/diffuse, sync delay) |
-| `wavetable` | Morphing wavetable voice (worklet-backed `wtvoice-processor.js`), tables in `src/instruments/wavetables.ts`, unison, SVF |
-| `granular` | Grain engine (position/size/rate/spread/sync) over a sample, worklet-backed (`granular-voice-processor.js`) |
+| Kind                                                                   | Architecture (from implementation)                                                                                                                                                                                                                     |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `sampler`                                                              | Single sample or **velocity layers / round-robin** (`SampleLayer` with velocity + key zones), root note, keytrack, loop with crossfade, reverse, time-stretch option, filter+envelope                                                                  |
+| `analog`                                                               | 2 osc + sub + noise, state-variable filter w/ env + keytrack, unison up to 8× with spread, LFO with sync, full ADSR with shapes/loop/hold/delay                                                                                                        |
+| `bass`                                                                 | Sub/body/punch/grit model with glide, distortion types, unison, SVF                                                                                                                                                                                    |
+| `808`                                                                  | Pitch-dropping sine bass: decay, P-DROP, click, drive, glide, distortion, gate, mono                                                                                                                                                                   |
+| `texture`                                                              | Granular/scenic texture engine (color/motion/space/density/chaos/drift/diffuse, sync delay)                                                                                                                                                            |
+| `wavetable`                                                            | Morphing wavetable voice (worklet-backed `wtvoice-processor.js`), tables in `src/instruments/wavetables.ts`, unison, SVF                                                                                                                               |
+| `granular`                                                             | Grain engine (position/size/rate/spread/sync) over a sample, worklet-backed (`granular-voice-processor.js`)                                                                                                                                            |
 | `keys`, `fm`, `pluck`, `logdrum`, `spectral`, `vocalchop`, `drumsynth` | Additional engines (FM operator pair, plucked string model, log-drum, spectral resynth, vocal-chop slicer, synthetic drum voice) — all with parameter tables and runtimes; covered by `tests/instruments.test.ts`, `tests/ui/new-instruments.test.tsx` |
 
 - **Presets:** 199 factory preset objects in `src/presets/factory.ts` (README claims 172 — count drift, see §"Docs vs code"), tagged genre (House/Techno/Trap/Ambient/Score) + mood, with a "similar presets" feature (`src/presets/similar.ts`), favorites/recents in IndexedDB, audio-quality gate for presets (`src/presets/audioQuality.ts`). User presets persist via `PresetRepository`.
@@ -226,7 +226,7 @@ Groups (all verified in `src/effects/registry.ts` + `src/audio-worklets/`):
 
 **Mixer architecture:** per-track strip (gain/pan/mute/solo/group/color), group tracks with collapsed nesting, solo-is-global + pad-solo-per-track, post-fader sends to returns, return strips with gain + FX, master strip with IN/CEIL/LIMIT/CLIP/tape/M-S/LUFS target. Metering: per-track Analysers, stereo master L/R with correlation, K-weighted LUFS with history, goniometer, spectrum analyser, per-FX meters on demand. Batch operations (`tests/mixer-batch.test.ts`).
 
-Reusability: the `EffectRuntime` + `EffectDefinition` contract (`src/effects/types.ts`) is uniform — the same definition drives UI metadata, live runtime, and offline render. The four flagship plugins (PRISM/FXEQ, VLYX/Ultina, DRIFT/Ozvena and RIFT) are also *vendored cores* kept in sync with an upstream plugin repo (`scripts/vendor-*.mjs`, golden-vector tests), i.e. they are genuine plugin-grade DSP, not toy chains.
+Reusability: the `EffectRuntime` + `EffectDefinition` contract (`src/effects/types.ts`) is uniform — the same definition drives UI metadata, live runtime, and offline render. The four flagship plugins (PRISM/FXEQ, VLYX/Ultina, DRIFT/Ozvena and RIFT) are also _vendored cores_ kept in sync with an upstream plugin repo (`scripts/vendor-*.mjs`, golden-vector tests), i.e. they are genuine plugin-grade DSP, not toy chains.
 
 ---
 
@@ -235,6 +235,7 @@ Reusability: the `EffectRuntime` + `EffectDefinition` contract (`src/effects/typ
 This is a major, heavily engineered subsystem — not a demo. Verified breakdown:
 
 ### Fully implemented
+
 - **Rule/statistical generation core** (`src/ai/`): curated groove libraries for 4 genres × styles (`src/ai/grooves/*.ts` with drum + melodic reference data), **Markov chain** drum generation with velocity-level states (`src/ai/markov.ts`), melodic generator for bass/chords/lead constrained to the project key (`src/ai/melodic.ts`), quality gates (style distance, syncopation, anchor coverage, motif repetition — `src/ai/quality.ts`, `style-quality.ts`), adversarial-correctness tests (`tests/ai-correctness.test.ts`, `tests/ai-adversarial.test.ts`, golden baselines `tests/fixtures/ai-baseline.*`).
 - **Intent pipeline** (`src/intent/`): `IntentInput` (untrusted) → `normalizeIntent` → `IntentSpec` (versioned, hashable, serializable contract, `intent/types.ts:25`) → `planGeneration` (role plans, sub-seeds, candidate seeds) → `localDeterministicProvider` → quality gate (accepted / repaired / fallback / rejected) → `Pattern` with full provenance. **Callable headlessly and synchronously**: `generateLocalResult(doc, input)` (`src/intent/pipeline.ts:25`).
 - **Natural-language prompt parser** (`src/intent/text-parser.ts`): deterministic keyword extraction of genre/style/energy/density/complexity/variation/BPM/roles from text like "dark rolling techno at 140" — no network, no RNG.
@@ -246,12 +247,15 @@ This is a major, heavily engineered subsystem — not a demo. Verified breakdown
 - **AI bandmate** (`src/collab/bandmate.ts`): in jam sessions an AI drummer listens to performed notes (call & response) and generates into the shared doc.
 
 ### Partially implemented
+
 - The ranker defaults to `"active"` (`ranker-client.ts:24`) but its own manifest notes val top-1 agreement with the heuristic is only 0.6 — the heuristic gates and repairs still dominate outcomes; the model re-ranks candidates rather than generating.
 
 ### Stub/prototype
+
 - None found in this area — earlier-phase stubs were replaced by the real pipeline.
 
 ### Documentation/planned only
+
 - `docs/intent-engine-roadmap.md`, `docs/intent-engine-ai-ranker-goal.md`, `.agent/plans/deep-dice-engine.md` — forward-looking plans; the implemented state already covers most of the near-term items.
 
 **Intent → project flow:** `text prompt / sliders / dice` → `IntentSpec` (hashed) → candidate patterns (N seeds) → quality gate + ranker → winning `Pattern` (+`PatternGeneration` provenance) → command factory applies it (new or replace mode, optionally per-role and per-target-track, optionally also groove settings and BPM from the intent range) → standard undoable store mutation. No black boxes outside the deterministic local provider.
@@ -263,7 +267,7 @@ This is a major, heavily engineered subsystem — not a demo. Verified breakdown
 - **IndexedDB** database `pulse-forge`, version 10, **11 object stores** (`src/persistence/db.ts`): projects, meta, presets, library (favorites/recent), user-samples (+ separate audio-blob store), frozen-audio, user-kits, groove-pool, project-snapshots (+ index), ultina-presets.
 - **Autosave:** debounced 800 ms with a 5 s / 50-arm max-defer ceiling (`src/persistence/autosave-debouncer.ts`, wired at `services.ts:660-676`), revision-capture against racing edits, flush on `visibilitychange`/`pagehide`/`beforeunload` (`src/persistence/save-lifecycle.ts`), status indicator with retry.
 - **Snapshots:** one at session start + daily, full-document copies pruned to newest 20 (`SnapshotRepository`, `services.ts:302-322`).
-- **Simplified project JSON** — the exported file *is* the `ProjectDocument` of §4 (pretty-printed): `{"schemaVersion":1,"id":"…","name":"…","bpm":124,"tracks":[…],"patterns":[…],"scenes":[…],"arrangement":{…},"master":{…},…}`. Export as `<name>.kyx.json`; import validates shape (`validateProjectShape`) then migrates + normalizes; 10 MB import ceiling (`src/export/project-io.ts`).
+- **Simplified project JSON** — the exported file _is_ the `ProjectDocument` of §4 (pretty-printed): `{"schemaVersion":1,"id":"…","name":"…","bpm":124,"tracks":[…],"patterns":[…],"scenes":[…],"arrangement":{…},"master":{…},…}`. Export as `<name>.kyx.json`; import validates shape (`validateProjectShape`) then migrates + normalizes; 10 MB import ceiling (`src/export/project-io.ts`).
 - **Programmatic safety:** yes — round-trip integrity is explicitly tested (`tests/persistence/round-trip-integrity.test.ts`, `tests/export/project-io.test.ts`), and every read path funnels through `normalizeProject`. Share codes (lz-string URI tokens) additionally enforce decompression-bomb caps (`src/export/shareCode.ts:18-20`).
 - Collab rooms live in server memory (Y.Doc per room, `server/collab-server.mjs:409`); the **gallery persists to `gallery.json`** on the server. `y-indexeddb` is a declared dependency but is not imported anywhere in `src/collab` (offline CRDT persistence is currently not wired — the plain project store covers local durability).
 
@@ -271,17 +275,17 @@ This is a major, heavily engineered subsystem — not a demo. Verified breakdown
 
 ## 11. Import / Export (genuinely implemented)
 
-| Direction | Format | Implementation |
-|---|---|---|
-| Export | **WAV master** 16/24/32-bit float/PCM, 44.1/48 kHz, deterministic dither for 16-bit (`src/rendering/wav.ts`, `src/export/quantize.ts`) + measured peak/true-peak/RMS/correlation readout | ✅ |
-| Export | **MP3** 192/320 via `@breezystack/lamejs`, lazily fetched (`src/export/mp3.ts`) | ✅ |
-| Export | **Stems** — grouped Drums/Bass/Music (`src/rendering/stems.ts`) + one-stem-per-track | ✅ |
-| Export | **SCOREPACK** (`.scorepack` = ZIP): master WAV + stems + marker cue WAVs + `score.json` + `markers.json` + `automation.json` + `intensity.json` + README (`src/export/scorepack.ts`, hand-written ZIP `src/export/zip.ts`) | ✅ — note `ARCHITECTURE.md` §94 still labels this "potential future structure"; **the code is implemented and tested** (`tests/scorepack.test.ts`) |
-| Export | **MIDI** — active pattern as format-1 SMF, drums on ch 10 (`src/midi/midiFile.ts` hand-written SMF writer, `src/midi/midiProject.ts:215`) | ✅ |
-| Export | **Video** — MediaRecorder render of the waveform + audio, Reels/TikTok framing (`src/export/video.ts`) | ✅ (codec-granularity caveats documented) |
-| Export | **Share code / embed link** — whole project compressed into URL token; `/embed` renders it | ✅ |
-| Export | Project JSON, kit codes, pack codes, theme codes, keybind codes (`src/export/*.ts`) | ✅ |
-| Import | Project JSON (`.kyx.json`, legacy `.pulseforge.json`), share-code URLs (`?import=`), MIDI files (full parser → `importMidiCommand` creates tracks/notes, `midiProject.ts:82`), audio files (user samples), Freesound search, kit/pack/theme/bind codes | ✅ |
+| Direction | Format                                                                                                                                                                                                                                                 | Implementation                                                                                                                                     |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Export    | **WAV master** 16/24/32-bit float/PCM, 44.1/48 kHz, deterministic dither for 16-bit (`src/rendering/wav.ts`, `src/export/quantize.ts`) + measured peak/true-peak/RMS/correlation readout                                                               | ✅                                                                                                                                                 |
+| Export    | **MP3** 192/320 via `@breezystack/lamejs`, lazily fetched (`src/export/mp3.ts`)                                                                                                                                                                        | ✅                                                                                                                                                 |
+| Export    | **Stems** — grouped Drums/Bass/Music (`src/rendering/stems.ts`) + one-stem-per-track                                                                                                                                                                   | ✅                                                                                                                                                 |
+| Export    | **SCOREPACK** (`.scorepack` = ZIP): master WAV + stems + marker cue WAVs + `score.json` + `markers.json` + `automation.json` + `intensity.json` + README (`src/export/scorepack.ts`, hand-written ZIP `src/export/zip.ts`)                             | ✅ — note `ARCHITECTURE.md` §94 still labels this "potential future structure"; **the code is implemented and tested** (`tests/scorepack.test.ts`) |
+| Export    | **MIDI** — active pattern as format-1 SMF, drums on ch 10 (`src/midi/midiFile.ts` hand-written SMF writer, `src/midi/midiProject.ts:215`)                                                                                                              | ✅                                                                                                                                                 |
+| Export    | **Video** — MediaRecorder render of the waveform + audio, Reels/TikTok framing (`src/export/video.ts`)                                                                                                                                                 | ✅ (codec-granularity caveats documented)                                                                                                          |
+| Export    | **Share code / embed link** — whole project compressed into URL token; `/embed` renders it                                                                                                                                                             | ✅                                                                                                                                                 |
+| Export    | Project JSON, kit codes, pack codes, theme codes, keybind codes (`src/export/*.ts`)                                                                                                                                                                    | ✅                                                                                                                                                 |
+| Import    | Project JSON (`.kyx.json`, legacy `.pulseforge.json`), share-code URLs (`?import=`), MIDI files (full parser → `importMidiCommand` creates tracks/notes, `midiProject.ts:82`), audio files (user samples), Freesound search, kit/pack/theme/bind codes | ✅                                                                                                                                                 |
 
 ---
 
@@ -298,16 +302,16 @@ This is where KYX is unusually well-prepared. The reusable boundaries that alrea
 
 ### Could an external module currently…
 
-| Capability | Answer | How |
-|---|---|---|
-| Read the KYX project | **Yes** | `store.getDoc()` in-process, or decode a share code / import the JSON file out-of-process. |
-| Enumerate tracks / inspect notes / patterns / instruments / effects | **Yes** | Plain field access on the doc (`doc.tracks`, `pattern.rows/notes/stepMeta`, `track.params`, `track.effects`); pure helpers exist (`drumTracksOf`, `instrumentTracksOf`, `activeTrackNotes` in schema.ts/commands.ts). |
-| Change tempo | **Yes** | `setBpm(doc, 140)` → `store.execute`. Transport follows via `onDocChanged`. |
-| Create tracks / patterns / insert notes | **Yes** | Command factories above; every one is undoable and schema-normalized. |
-| Change instrument / effect parameters | **Yes** | `setInstrumentParam` / `setEffectParam` (clamped against the same metadata tables the UI uses). |
+| Capability                                                                      | Answer               | How                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Read the KYX project                                                            | **Yes**              | `store.getDoc()` in-process, or decode a share code / import the JSON file out-of-process.                                                                                                                                                                            |
+| Enumerate tracks / inspect notes / patterns / instruments / effects             | **Yes**              | Plain field access on the doc (`doc.tracks`, `pattern.rows/notes/stepMeta`, `track.params`, `track.effects`); pure helpers exist (`drumTracksOf`, `instrumentTracksOf`, `activeTrackNotes` in schema.ts/commands.ts).                                                 |
+| Change tempo                                                                    | **Yes**              | `setBpm(doc, 140)` → `store.execute`. Transport follows via `onDocChanged`.                                                                                                                                                                                           |
+| Create tracks / patterns / insert notes                                         | **Yes**              | Command factories above; every one is undoable and schema-normalized.                                                                                                                                                                                                 |
+| Change instrument / effect parameters                                           | **Yes**              | `setInstrumentParam` / `setEffectParam` (clamped against the same metadata tables the UI uses).                                                                                                                                                                       |
 | Do any of the above **from a separate process/device against a running studio** | **No dedicated API** | There is no HTTP/RPC/PostMessage control API for the studio. The only live external write path is joining a collab room as a Yjs client (full CRDT access, gated by jam roles), or shipping code that runs in-page. This is the one seam that would need to be built. |
 
-**Architectural note:** nothing *requires* going through React components; the store boundary is real and tested. But there is **no fine-grained change feed** — observers see "the doc changed", not "note X was added" (deltas can be computed via `computeDocDelta`, as the history panel does, at O(doc) cost).
+**Architectural note:** nothing _requires_ going through React components; the store boundary is real and tested. But there is **no fine-grained change feed** — observers see "the doc changed", not "note X was added" (deltas can be computed via `computeDocDelta`, as the history panel does, at O(doc) cost).
 
 ---
 
@@ -328,7 +332,7 @@ This is where KYX is unusually well-prepared. The reusable boundaries that alrea
 - **No reference to Audiotool anywhere** (searched `src/`, `docs/`, root `.md`, `server/`). No WebMIDI-to-Audiotool, no Audiotool API client, no mention in roadmaps.
 - **Existing interchange assets relevant to any DAW integration:**
   - MIDI: full import (multi-track → command), export (SMF format-1), Web MIDI in/out with clock master/slave (`src/midi/`), MPE support (per-note pressure/timbre in runtimes), GM drum mapping, program change/bank select.
-  - SCOREPACK: self-describing ZIP with `score.json` (tempo map, scene timing), `markers.json`, `automation.json`, `intensity.json` + 24-bit WAVs — designed by the author as a *transport format* ("The package should be a transport format. Not an internal runtime dependency." — `ARCHITECTURE.md` §94).
+  - SCOREPACK: self-describing ZIP with `score.json` (tempo map, scene timing), `markers.json`, `automation.json`, `intensity.json` + 24-bit WAVs — designed by the author as a _transport format_ ("The package should be a transport format. Not an internal runtime dependency." — `ARCHITECTURE.md` §94).
   - Share codes/embed URLs: lossless project transport with zero backend.
   - `ARCHITECTURE.md` §93 "Qvester Interoperability" prescribes exactly this direction: exchange via explicit schemas (BPM, markers, stems, intensity, automation, scene timing), no direct runtime coupling. `VISION.md:117` states "Designed for interoperability with other Qvester applications."
   - Docs reject full Ableton-warp parity as a goal (`FEATURES.md:1911`), yet the code implements a scoped warp/stretch system (`warpMarkers`, `phase-vocoder.ts`, `time-stretch.ts`) sufficient for beat-level fit.
@@ -408,7 +412,7 @@ D:\pulse-forge\
 - **Whole-doc change granularity.** `onDocChanged` fires per mutation with the full doc; consumers must diff themselves. Consequence: an integration wanting "note added" events must compute deltas (`computeDocDelta`) or re-derive; very chatty external syncs would be O(doc) per event.
 - **Monolithic hotspots.** `commands.ts` (5,776 lines), `AudioEngine.ts` (4,548), `instruments/registry.ts` (5,190), `effects/registry.ts` (3,474). Consequence: merge conflicts and review cost; also `AudioEngine.setProject` re-diffs the entire doc on every mutation — fine today (reference-equality fast paths exist in the scheduler), but an integration issuing hundreds of micro-commands per second (e.g. streaming AI edits) would amplify this cost.
 - **Two store implementations to keep in lockstep** (`ProjectStore` vs `YDocStore`). Tests pin parity (`tests/collab-contract-parity.test.ts`), but a new integration feature touching the store surface must be implemented twice or fail in collab mode.
-- **No external runtime control API.** Driving a *running* studio from outside the page currently means joining the Yjs room (heavy, protocol-level) or in-page code. Consequence: an Audiotool-side connector cannot simply REST-call into KYX today.
+- **No external runtime control API.** Driving a _running_ studio from outside the page currently means joining the Yjs room (heavy, protocol-level) or in-page code. Consequence: an Audiotool-side connector cannot simply REST-call into KYX today.
 - **IDs are runtime-generated strings** (`uid()` — `src/shared/ids.ts`). Stable within a project's lifetime and persisted, but there is no namespacing/global uniqueness contract for cross-app merges; importing two projects into one would need an id-mapping pass.
 - **Collab rooms are in-memory server-side** (`server/collab-server.mjs:409`): a server restart kills jam sessions. Gallery persists; rooms don't.
 - **Doc/README drift:** README claims 51 factory sounds / 172 presets; the manifest defines 41 synthesized asset ids (+7 curated WAVs) and `presets/factory.ts` holds ~199 preset objects. Cosmetic, but plan against the code, not the README.
@@ -418,26 +422,26 @@ D:\pulse-forge\
 
 ## 18. Implementation Maturity
 
-| System | Status | Evidence | Notes |
-|---|---|---|---|
-| Audio engine | **Production-ready / mature** | `AudioEngine.ts` + audit-driven defect fixes; `tests/audio-engine-*`, browser verification suite | Context lifecycle, degradation fallbacks, metering |
-| Sequencer/scheduler | **Production-ready / mature** | `Scheduler.ts` guards; `tests/scheduler.test.ts`, precision-audit fixes | Scene-tempo residual ≤25 ms documented |
-| Project model | **Production-ready / mature** | `schema.ts` normalizers, `tests/project-invariants*`, round-trip tests | schemaVersion 1, no breaking migrations so far |
-| Mixer | **Production-ready / mature** | `Mixer.tsx`, groups, sends, true-peak/K-metering tests | Group freeze explicitly unsupported (documented) |
-| Instruments (14) | **Production-ready** | `instruments/registry.ts`, `tests/instruments.test.ts`, `tests/ui/new-instruments.test.tsx` | Preset bank large + quality-gated |
-| Effects (36) | **Production-ready**, flagship cores golden-locked | `tests/fxeq-*` (~25 files), `tests/ultina-*` (~15), `tests/ozvena-*` (~10) | Vendored cores synced to upstream plugin repo |
-| Save/load | **Production-ready** | autosave debouncer + lifecycle tests, snapshot repo, adversarial persistence tests | |
-| Export (WAV/MP3/stems/scorepack/MIDI/video) | **Production-ready** | `tests/export/*`, `tests/offline-parity.test.ts` | Documented scene-boundary residuals |
-| AI / intent | **Functional, actively maturing** | full pipeline + tests + trained ONNX ranker | Ranker val top-1 agreement 0.6 → heuristic still dominant |
-| Collab / jam | **Functional but needs polishing** | `tests/collab-*` (12 files) | Server rooms in-memory; roles gate writes |
-| UI | **Production-ready** | 90+ UI test files, e2e specs, onboarding, touch/mobile tests | |
-| External integration readiness | **Strong seams, no facade** | §12 | Adapter needed for out-of-process control |
+| System                                      | Status                                             | Evidence                                                                                         | Notes                                                     |
+| ------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| Audio engine                                | **Production-ready / mature**                      | `AudioEngine.ts` + audit-driven defect fixes; `tests/audio-engine-*`, browser verification suite | Context lifecycle, degradation fallbacks, metering        |
+| Sequencer/scheduler                         | **Production-ready / mature**                      | `Scheduler.ts` guards; `tests/scheduler.test.ts`, precision-audit fixes                          | Scene-tempo residual ≤25 ms documented                    |
+| Project model                               | **Production-ready / mature**                      | `schema.ts` normalizers, `tests/project-invariants*`, round-trip tests                           | schemaVersion 1, no breaking migrations so far            |
+| Mixer                                       | **Production-ready / mature**                      | `Mixer.tsx`, groups, sends, true-peak/K-metering tests                                           | Group freeze explicitly unsupported (documented)          |
+| Instruments (14)                            | **Production-ready**                               | `instruments/registry.ts`, `tests/instruments.test.ts`, `tests/ui/new-instruments.test.tsx`      | Preset bank large + quality-gated                         |
+| Effects (36)                                | **Production-ready**, flagship cores golden-locked | `tests/fxeq-*` (~25 files), `tests/ultina-*` (~15), `tests/ozvena-*` (~10)                       | Vendored cores synced to upstream plugin repo             |
+| Save/load                                   | **Production-ready**                               | autosave debouncer + lifecycle tests, snapshot repo, adversarial persistence tests               |                                                           |
+| Export (WAV/MP3/stems/scorepack/MIDI/video) | **Production-ready**                               | `tests/export/*`, `tests/offline-parity.test.ts`                                                 | Documented scene-boundary residuals                       |
+| AI / intent                                 | **Functional, actively maturing**                  | full pipeline + tests + trained ONNX ranker                                                      | Ranker val top-1 agreement 0.6 → heuristic still dominant |
+| Collab / jam                                | **Functional but needs polishing**                 | `tests/collab-*` (12 files)                                                                      | Server rooms in-memory; roles gate writes                 |
+| UI                                          | **Production-ready**                               | 90+ UI test files, e2e specs, onboarding, touch/mobile tests                                     |                                                           |
+| External integration readiness              | **Strong seams, no facade**                        | §12                                                                                              | Adapter needed for out-of-process control                 |
 
 ---
 
 ## 19. KYX's Current Differentiator (implemented, not aspirational)
 
-1. **Prompt-to-pattern intent engine with full provenance** — deterministic NL parsing + genre grooves + Markov + scale-constrained melodic generation + quality gates + a *trained* ONNX ranker, every result reproducible from its recorded recipe.
+1. **Prompt-to-pattern intent engine with full provenance** — deterministic NL parsing + genre grooves + Markov + scale-constrained melodic generation + quality gates + a _trained_ ONNX ranker, every result reproducible from its recorded recipe.
 2. **Bit-honest live/export parity** — the same DSP, event expansion, groove, tempo-map and modulator math render offline; exports measure their own true-peak/RMS/correlation.
 3. **Plugin-grade native effect suite in the browser** — four flagship multi-engine plugins (PRISM/FXEQ, VLYX/Ultina, DRIFT/Ozvena, RIFT) with worklet DSP, golden-vector locks, A/B state, preset systems — plus 32 more effect types.
 4. **Performance DNA** — quantized scene launches, pattern queueing, capture-last-take, note repeat, macro/intensity modulation, 4 performance macros per project, pads + melodic QWERTY, MPE.
@@ -450,16 +454,19 @@ D:\pulse-forge\
 ## 20. Audiotool "Let's Build!" Hackathon Relevance (capability mapping only)
 
 **Composition / Songstarter**
+
 - Already implemented: intent engine (`generateLocalResult`) produces genre/style/BPM/role-aware patterns + `autoArrangeSong` builds a full arrangement from scenes — together a genuine songstarter primitive; templates + provenance make outputs reproducible; `arrangeWords` maps scene words to structure.
 - Small extension: expose the intent pipeline + arrangement skeleton behind a thin adapter (§21); feed Audiotool-side metadata (genre/mood/key) straight into `IntentSpec`.
 - Major new feature: server-side generation service, or model-driven arrangement length/energy shaping beyond `autoArrangeSong` heuristics.
 
 **Sound Design**
+
 - Already implemented: 14 synth engines with metadata-driven parameter surfaces, preset catalog with genre/mood tags + similar-presets, auto-sampling/preset quality gates; flagship FX with presets and mix-assist (Ultina analyzes and proposes settings).
 - Small extension: preset/pattern export via existing code/pack codes; map Audiotool device params ↔ `EffectInstance.params` (both are flat numeric records with schema metadata).
 - Major new feature: bidirectional device state translation for Audiotool's native devices.
 
 **Connect**
+
 - Already implemented: the collab stack is the closest analog — Yjs CRDT rooms over WebSocket, shared transport pulses, roles, remote cursors; plus share codes and a gallery with remix lineage.
 - Small extension: room persistence server-side (currently in-memory), auth/handshake, room tokens.
 - Major new feature: an Audiotool-hosted relay or protocol bridge; identity linking.
@@ -477,15 +484,15 @@ The seams already exist; a thin adapter over them would look like:
 // names below map 1:1 to real exports in the repo.
 interface KyxProjectAdapter {
   // Read (already pure — src/project-model/types.ts + schema.ts helpers)
-  getProject(): ProjectDocument;                 // store.getDoc()
-  getTracks(): Track[];                          // doc.tracks
-  getPattern(id: ID): Pattern | undefined;       // doc.patterns.find
-  listEffects(trackId: ID): EffectInstance[];    // track.effects
+  getProject(): ProjectDocument; // store.getDoc()
+  getTracks(): Track[]; // doc.tracks
+  getPattern(id: ID): Pattern | undefined; // doc.patterns.find
+  listEffects(trackId: ID): EffectInstance[]; // track.effects
 
   // Write (already pure command factories — src/commands/commands.ts)
-  setTempo(bpm: number): void;                   // setBpm(doc, bpm)
-  createTrack(kind: InstrumentKind): void;       // createInstrumentTrack(doc, kind)
-  createPattern(name?: string): void;            // createPattern(doc, name)
+  setTempo(bpm: number): void; // setBpm(doc, bpm)
+  createTrack(kind: InstrumentKind): void; // createInstrumentTrack(doc, kind)
+  createPattern(name?: string): void; // createPattern(doc, name)
   addNotes(trackId: ID, notes: NoteEvent[]): void; // addNote(...) per note
   setInstrumentParam(trackId: ID, paramId: string, v: number): void;
   updateEffect(trackId: ID, fxId: ID, paramId: string, v: number): void; // setEffectParam
@@ -494,44 +501,53 @@ interface KyxProjectAdapter {
   generate(input: IntentInput): GenerationResult; // generateLocalResult(doc, input)
 
   // Observe (already exists — src/store/ProjectStore.ts)
-  subscribe(listener: () => void): () => void;   // store.subscribe
+  subscribe(listener: () => void): () => void; // store.subscribe
   onDocChanged(cb: (doc: ProjectDocument) => void): void;
 
   // Transport (already exists — services)
-  play(): void; stop(): void; seekTick(tick: number): void;  // playback.playPause/stop/seek
+  play(): void;
+  stop(): void;
+  seekTick(tick: number): void; // playback.playPause/stop/seek
 
   // Transport out (already exists — src/export/*)
-  encodeShareCode(): string;                     // shareCode.encodeShareCode(doc)
-  buildScorepack(): Promise<Blob>;               // scorepack.buildScorepack(...)
-  exportMidi(): Uint8Array;                      // midiProject.patternToMidi(...)
+  encodeShareCode(): string; // shareCode.encodeShareCode(doc)
+  buildScorepack(): Promise<Blob>; // scorepack.buildScorepack(...)
+  exportMidi(): Uint8Array; // midiProject.patternToMidi(...)
 }
 ```
 
-**Where a thin adapter is genuinely required:** mounting this interface onto a *running studio from outside the page* (the missing facade — e.g. a small in-page bridge or a channel to the collab room), and fine-grained change events (derive from `computeDocDelta`). Everything inside the interface is existing, tested code.
+**Where a thin adapter is genuinely required:** mounting this interface onto a _running studio from outside the page_ (the missing facade — e.g. a small in-page bridge or a channel to the collab room), and fine-grained change events (derive from `computeDocDelta`). Everything inside the interface is existing, tested code.
 
 ---
 
 ## 22. Final Executive Summary
 
 ### KYX in one sentence
+
 KYX is a mature, browser-first electronic-music workstation — step sequencer + piano roll + 14 synths + 36 effects (four plugin-grade: PRISM/FXEQ, VLYX/Ultina, DRIFT/Ozvena, RIFT) + clip arrangement — with a deterministic, provenance-tracking AI intent engine and bit-honest offline export, all built on a clean serializable project model and a pure command system.
 
 ### KYX in one paragraph
+
 KYX (repo codename `pulse-forge`) boots into a project browser with 12 genre templates and runs entirely client-side: a React UI subscribes to a framework-free `ProjectStore` whose document (`ProjectDocument`) is plain versioned JSON; all edits flow through ~150 pure, undoable command factories; a tick-based `Transport` and a 25 ms look-ahead `Scheduler` expand patterns (with swing, humanize, probability, ratchets, microtiming, p-locks) into AudioContext-scheduled events executed by a shared `AudioEngine` whose graph (tracks → insert FX → sends → returns → master chain) is diffed from the document on every change; the identical engine and event math render projects deterministically to WAV/MP3/stems/scorepack/video/MIDI. A distinctive generative stack (NL prompt → `IntentSpec` → genre grooves + Markov + scale-constrained melody → quality gates → trained ONNX ranker) writes fully-provenanced patterns, and a Yjs collab layer adds multiplayer jams with shared transport and an AI drummer. Persistence is IndexedDB with autosave/snapshots; sharing works with zero backend via URL share codes and an `/embed` renderer.
 
 ### Current strongest capabilities
+
 Deterministic live/export parity; the command/project-model separation; the intent/generative pipeline with reproducibility; the flagship DSP suite; performance/jam features; lossless portability (share codes, JSON, scorepack); test/CI discipline.
 
 ### Current weak/incomplete areas
+
 No out-of-process control API for a running studio; whole-doc-only change notifications; monolithic mega-modules (commands/AudioEngine/registries); collab rooms not persisted server-side; ranker quality still heuristic-dominated; minor doc/code drift (preset/sample counts, scorepack labeled "future"); `y-indexeddb` dependency present but unused.
 
 ### Most important architectural components
+
 `ProjectDocument` (types/schema) → command layer → `ProjectStore` → `Transport` → `Scheduler` → `AudioEngine` (+ worklet effects) → offline `renderer`/export — wired in `services.ts`; generative entry `intent/pipeline.ts`; interchange artifacts `shareCode.ts`/`scorepack.ts`.
 
 ### External integration readiness
+
 **Manageable — leaning easy for anything that can run in-process or consume files; significant work only for live out-of-process control of a running studio.** The project model, command API, generative API, and export/share artifacts are already clean, typed, and tested integration seams; the missing piece is a facade (fine-grained events + a runtime bridge), which the `services.ts` composition root would host naturally.
 
 ### Five things another engineer MUST understand before modifying KYX
+
 1. **The document is the truth.** Never mutate `ProjectDocument` in place; create a command (pure `execute/undo`) and `store.execute` it — normalization, undo, autosave, engine diff, collab all hang off that single path.
 2. **Live and offline must stay identical.** Any scheduling/timing change must go through the shared modules (`project-model/groove.ts`, `events.ts`, tempo-map math) so playback and export don't diverge; parity tests will pin you.
 3. **`normalizeProject` is the border.** Every doc entering the store (import, collab, test fixture) passes schema validation; new optional fields need defaulting rules there or old projects will break.
@@ -539,6 +555,7 @@ No out-of-process control API for a running studio; whole-doc-only change notifi
 5. **Ids and invariants matter.** `activePatternId` must always resolve (documented invariant with dedicated tests); ids are opaque strings — never parse or regenerate them casually.
 
 ### Five things another engineer SHOULD NOT assume about KYX
+
 1. **That a React component is required to change music** — the whole model is drivable headlessly (tests and Node scripts do it).
 2. **That the README numbers are current** — code is authority (e.g., 41 synthesized factory assets + 7 curated WAVs, ~199 presets, not the README's 51/172).
 3. **That effects always run their full DSP** — worklet-backed effects silently degrade to fallbacks when worklets are unavailable; consult `getDegradedFx()`, not just the doc.

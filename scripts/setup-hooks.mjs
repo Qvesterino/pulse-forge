@@ -24,5 +24,7 @@ echo "[pre-commit] skipped (typecheck gate off) — run npm run typecheck:clean 
 
 if (!existsSync(hookDir)) mkdirSync(hookDir, { recursive: true });
 writeFileSync(hookPath, hook.replace(/\r\n/g, "\n"), "utf8");
-try { chmodSync(hookPath, 0o755); } catch {}
+try {
+  chmodSync(hookPath, 0o755);
+} catch {}
 console.log(`[setup-hooks] installed ${hookPath}`);

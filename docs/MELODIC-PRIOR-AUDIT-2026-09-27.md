@@ -17,15 +17,15 @@ head (proven, fixed, retrained). The first pass of this audit also had a
 
 ## 1. Headline findings
 
-| # | Finding | Evidence |
-| - | ------- | -------- |
-| 1 | **The v2/v1 comparison is not apples-to-apples.** v1's shipped artifact trained on **190** samples (ds.v1), v2 on **239** (ds.v2). The library grew between the two training runs, so "v2 regressed" partly means "v2 saw different data". | `symbolic-melodic-validation.json` (`samples: 190`) vs `symbolic-melodic-v2-validation.json` (`samples: 239`) |
-| 2 | **The shipped 15 % split validates on 29 rows in 4 groups.** Any single valDegreeAcc from it is noise-dominated (95 % CI ≈ ±18 pp). | `audit-melodic-prior.py`: `val split: 29 rows in 4 groups` |
-| 3 | **v2's DURATION head collapsed toward the rare class** — worse than the majority baseline. | honest: v2 dur **0.3793** vs majority 0.4997; 55 predictions for 12 truths of class 8 |
-| 4 | **Root cause: a double-multiplied class weight** in the duration gradient (`train-symbolic-melodic.py:105`). The head effectively optimises `wt²`, amplifying the relative pull toward rare classes by up to **10.2×**. | finite-difference check: analytic norm 0.0224 vs true 0.1463 on the buggy path |
-| 5 | **The bug is fixed and the retrained v2 passes the gate.** | honest split: degree 0.4828 → **0.5517**, duration 0.3793 → **0.5517** (§4) |
-| 6 | **The one-hot v1 recipe cannot represent dnb at all** — all 49 dnb rows carry the house one-hot block, and the runtime maps dnb→house too. | `audit-melodic-dnb-onehot.py`: `group genre 'dnb': one-hot writes {'house': 49}` |
-| 7 | **Data gaps**: degree classes `d1`/`d5` have **zero** unseen examples; duration-8 has 12 samples; dnb has **0 augmented rows**. | `audit-melodic-prior.py`, `audit-melodic-dataset-vintage.py` |
+| #   | Finding                                                                                                                                                                                                                                    | Evidence                                                                                                      |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| 1   | **The v2/v1 comparison is not apples-to-apples.** v1's shipped artifact trained on **190** samples (ds.v1), v2 on **239** (ds.v2). The library grew between the two training runs, so "v2 regressed" partly means "v2 saw different data". | `symbolic-melodic-validation.json` (`samples: 190`) vs `symbolic-melodic-v2-validation.json` (`samples: 239`) |
+| 2   | **The shipped 15 % split validates on 29 rows in 4 groups.** Any single valDegreeAcc from it is noise-dominated (95 % CI ≈ ±18 pp).                                                                                                        | `audit-melodic-prior.py`: `val split: 29 rows in 4 groups`                                                    |
+| 3   | **v2's DURATION head collapsed toward the rare class** — worse than the majority baseline.                                                                                                                                                 | honest: v2 dur **0.3793** vs majority 0.4997; 55 predictions for 12 truths of class 8                         |
+| 4   | **Root cause: a double-multiplied class weight** in the duration gradient (`train-symbolic-melodic.py:105`). The head effectively optimises `wt²`, amplifying the relative pull toward rare classes by up to **10.2×**.                    | finite-difference check: analytic norm 0.0224 vs true 0.1463 on the buggy path                                |
+| 5   | **The bug is fixed and the retrained v2 passes the gate.**                                                                                                                                                                                 | honest split: degree 0.4828 → **0.5517**, duration 0.3793 → **0.5517** (§4)                                   |
+| 6   | **The one-hot v1 recipe cannot represent dnb at all** — all 49 dnb rows carry the house one-hot block, and the runtime maps dnb→house too.                                                                                                 | `audit-melodic-dnb-onehot.py`: `group genre 'dnb': one-hot writes {'house': 49}`                              |
+| 7   | **Data gaps**: degree classes `d1`/`d5` have **zero** unseen examples; duration-8 has 12 samples; dnb has **0 augmented rows**.                                                                                                            | `audit-melodic-prior.py`, `audit-melodic-dataset-vintage.py`                                                  |
 
 ## 2. Error breakdown (v1, shipped 29-dim artifact)
 
@@ -49,7 +49,7 @@ calibration:           mean confidence 0.743 vs accuracy 0.690 -> over-confident
 2. **Sequence start (42.9 %)** — with no history the model guesses. The
    template engine's opening bar is therefore where the prior contributes least.
 3. **Degree classes d4 / d6 (40 % / 0 %)** — high scale degrees have almost no
-   validation examples (d1 and d5 have *zero*), so per-class numbers there are
+   validation examples (d1 and d5 have _zero_), so per-class numbers there are
    not yet meaningful; the classes need more library coverage before they can
    be judged.
 
@@ -62,12 +62,12 @@ The **first version of this document** reported v2 degree **0.7521** and called
 it "better than v1". That was a **leakage artefact**, caught by
 `audit-melodic-leakage-check.py` while building the retrain gate:
 
-| metric | rows the model trained on | rows it never saw (honest) |
-| ------ | ------------------------- | -------------------------- |
-| v2 degree | 0.7952 | **0.4828** |
-| v2 duration | 0.4667 | **0.3793** |
+| metric      | rows the model trained on | rows it never saw (honest) |
+| ----------- | ------------------------- | -------------------------- |
+| v2 degree   | 0.7952                    | **0.4828**                 |
+| v2 duration | 0.4667                    | **0.3793**                 |
 
-A *shipped* model was trained with one specific 15 % split held out. Evaluating
+A _shipped_ model was trained with one specific 15 % split held out. Evaluating
 it on all 5 k-fold splits therefore measures **training accuracy** on every fold
 that does not contain those 4 held-out groups — 210 of 239 rows. The k-fold
 number averaged leaked and honest rows, inflating the result.
@@ -96,10 +96,10 @@ Chosen by measurement, not taste — the gate was run at 0.5 and 1.0 (§5).
 
 ### Measured result (shipped 15 % split, apples-to-apples)
 
-| head | shipped v2 | retrained v2 | delta |
-| ---- | ---------: | -----------: | ----: |
-| degree | 0.4828 | **0.5517** | +0.0689 |
-| duration | 0.3793 | **0.5517** | +0.1724 |
+| head     | shipped v2 | retrained v2 |   delta |
+| -------- | ---------: | -----------: | ------: |
+| degree   |     0.4828 |   **0.5517** | +0.0689 |
+| duration |     0.3793 |   **0.5517** | +0.1724 |
 
 Both heads now use their full class range (8/8 and 4/4). Train fit is 0.802 /
 0.900, so the model is not over-fitting. `node scripts/validate-symbolic-melodic.mjs v2`
@@ -139,14 +139,14 @@ Pre-registered gate: duration ≥ majority baseline (0.4997), degree ≥ shipped
 (0.4828), no class collapse (measured on training predictions — a 28-row fold
 may simply not contain the rare class).
 
-| recipe | data | degree | duration | verdict |
-| ------ | ---- | -----: | -------: | ------- |
-| embedding, power 0.5 (**shipped v2**) | ds.v2 | **0.5021** | 0.6025 | PASS (k-fold) |
-| embedding, power 1.0 | ds.v2 | 0.4770 | 0.5439 | FAIL (degree) |
-| one-hot, power 0.5 | ds.v2 | 0.4812 | 0.5941 | PASS (k-fold) |
-| one-hot, power 1.0 | ds.v2 | 0.4854 | 0.6067 | PASS (k-fold) |
-| one-hot, power 0.5 | ds.v1 (no dnb) | 0.5263 | 0.5263 | PASS (k-fold) |
-| one-hot, power 0.5 | ds.v1, shipped split | **0.7143** | **0.7143** | PASS |
+| recipe                                | data                 |     degree |   duration | verdict       |
+| ------------------------------------- | -------------------- | ---------: | ---------: | ------------- |
+| embedding, power 0.5 (**shipped v2**) | ds.v2                | **0.5021** |     0.6025 | PASS (k-fold) |
+| embedding, power 1.0                  | ds.v2                |     0.4770 |     0.5439 | FAIL (degree) |
+| one-hot, power 0.5                    | ds.v2                |     0.4812 |     0.5941 | PASS (k-fold) |
+| one-hot, power 1.0                    | ds.v2                |     0.4854 |     0.6067 | PASS (k-fold) |
+| one-hot, power 0.5                    | ds.v1 (no dnb)       |     0.5263 |     0.5263 | PASS (k-fold) |
+| one-hot, power 0.5                    | ds.v1, shipped split | **0.7143** | **0.7143** | PASS          |
 
 The last row is notable: the **fixed one-hot recipe trained on the ds.v1
 problem space beats the shipped v1** on its own split (0.7143/0.7143 vs
@@ -166,19 +166,17 @@ dnb — is the next real lever, and should be measured against these gate number
 
 ## 7. Audit artifacts
 
-| Script | Purpose |
-| ------ | ------- |
-| `scripts/audit-melodic-prior.py` | Full breakdown + per-class/context/calibration |
-| `scripts/audit-melodic-duration-collapse.py` | Names the duration failure mode |
-| `scripts/audit-melodic-leakage-check.py` | Quantifies seen-vs-unseen accuracy of a shipped model |
-| `scripts/audit-melodic-v1-honest.py` | Reconstructs the ds.v1 split and measures v1 honestly |
-| `scripts/audit-melodic-v1-vintage-check.py` | Shows which groups the reproduced split holds out |
-| `scripts/audit-melodic-dataset-vintage.py` | Dataset composition per genre and vintage |
-| `scripts/audit-melodic-dnb-onehot.py` | Proves dnb collapses to the house one-hot |
-| `scripts/gate-melodic-retrain.py` | Pre-registered retrain gate (trains fresh models per fold) |
-| `scripts/audit-melodic-double-weight-proof.py` | Finite-difference proof of the gradient bug |
-| `scripts/train_symbolic_melodic_lib.py` | Shared trainer primitives (gate and trainer share one code path) |
+| Script                                         | Purpose                                                          |
+| ---------------------------------------------- | ---------------------------------------------------------------- |
+| `scripts/audit-melodic-prior.py`               | Full breakdown + per-class/context/calibration                   |
+| `scripts/audit-melodic-duration-collapse.py`   | Names the duration failure mode                                  |
+| `scripts/audit-melodic-leakage-check.py`       | Quantifies seen-vs-unseen accuracy of a shipped model            |
+| `scripts/audit-melodic-v1-honest.py`           | Reconstructs the ds.v1 split and measures v1 honestly            |
+| `scripts/audit-melodic-v1-vintage-check.py`    | Shows which groups the reproduced split holds out                |
+| `scripts/audit-melodic-dataset-vintage.py`     | Dataset composition per genre and vintage                        |
+| `scripts/audit-melodic-dnb-onehot.py`          | Proves dnb collapses to the house one-hot                        |
+| `scripts/gate-melodic-retrain.py`              | Pre-registered retrain gate (trains fresh models per fold)       |
+| `scripts/audit-melodic-double-weight-proof.py` | Finite-difference proof of the gradient bug                      |
+| `scripts/train_symbolic_melodic_lib.py`        | Shared trainer primitives (gate and trainer share one code path) |
 
 All audit scripts are read-only: they never write `public/models/`.
-
-

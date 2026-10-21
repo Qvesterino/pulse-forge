@@ -43,7 +43,9 @@ if (golden.reviewed !== true || !golden.reviewedBy || !golden.reviewedAt) {
   );
   process.exit(1);
 }
-console.log(`[activate] golden review by ${golden.reviewedBy} at ${golden.reviewedAt} — ${golden.combos.length} combo(s)`);
+console.log(
+  `[activate] golden review by ${golden.reviewedBy} at ${golden.reviewedAt} — ${golden.combos.length} combo(s)`,
+);
 
 // 2. Retrain + validate on golden labels.
 run("npm run ranker:train");

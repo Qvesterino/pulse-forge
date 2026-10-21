@@ -9,6 +9,7 @@ import {
   buildPriorV2GridRows,
 } from "../src/ai/symbolic/prior-features-v2";
 import { projectEmbedding, pcaInputDims, pcaOutputDims, pcaVersion } from "../src/ai/symbolic/pca-projection";
+import { DEFAULT_AI_METER } from "../src/ai/meter";
 import { runPriorGrid, runPriorGridV2, runPriorGridV3 } from "../src/ai/symbolic/prior-client";
 import { buildPriorV3FeatureRow, V3_FEATURE_COUNT, V3_SEMANTIC_DIMS } from "../src/ai/symbolic/prior-features-v3";
 import { PRIOR_FEATURE_COUNT } from "../src/ai/symbolic/prior-features";
@@ -80,7 +81,14 @@ describe("prior-features-v2 contract", () => {
 
   it("produces 35-dim rows: semantic(16) + role(9) + step(5) + frame(3) + flags(2)", () => {
     expect(V2_FEATURE_COUNT).toBe(35);
-    const row = buildPriorV2FeatureRow({ semantic: SEMANTIC, role: "kick", step: 0, stepCount: 16 });
+    const row = buildPriorV2FeatureRow({
+      semantic: SEMANTIC,
+      role: "kick",
+      step: 0,
+      stepCount: 16,
+      // The contract's training frame (ADR 0057 Stage 2d).
+      meter: DEFAULT_AI_METER,
+    });
     expect(row.length).toBe(V2_FEATURE_COUNT);
     // semantic projection copied verbatim
     expect(row.slice(0, V2_SEMANTIC_DIMS)).toEqual(SEMANTIC);
@@ -103,10 +111,10 @@ describe("prior-features-v2 contract", () => {
   it("builds pad-major grid rows deterministically", () => {
     const padRoles = ["kick", "snare", "closedHat"];
     const stepCount = 16;
-    const rows = buildPriorV2GridRows({ semantic: SEMANTIC, padRoles, stepCount });
+    const rows = buildPriorV2GridRows({ semantic: SEMANTIC, padRoles, stepCount, meter: DEFAULT_AI_METER });
     expect(rows.length).toBe(padRoles.length * stepCount);
     expect(rows.map((row) => row.length).every((length) => length === V2_FEATURE_COUNT)).toBe(true);
-    const again = buildPriorV2GridRows({ semantic: SEMANTIC, padRoles, stepCount });
+    const again = buildPriorV2GridRows({ semantic: SEMANTIC, padRoles, stepCount, meter: DEFAULT_AI_METER });
     expect(rows).toEqual(again);
     // second pad block starts at padRoles[1]
     expect(rows[stepCount].slice(V2_SEMANTIC_DIMS, V2_SEMANTIC_DIMS + V2_ROLE_VOCAB.length).indexOf(1)).toBe(
@@ -232,6 +240,8 @@ describe("provider embedding-conditioned path", () => {
         role: "kick",
         step: 0,
         stepCount: 16,
+        // The contract's training frame (ADR 0057 Stage 2d).
+        meter: DEFAULT_AI_METER,
       });
       expect(sampleV3.length).toBe(V3_FEATURE_COUNT);
       expect(V3_FEATURE_COUNT).toBe(V3_SEMANTIC_DIMS + PRIOR_FEATURE_COUNT);

@@ -55,7 +55,4 @@ export interface InFlightAnnotation {
 
 export declare function gitDirtyPaths(): Set<string>;
 export declare function firstLevelImports(specPath: string): Set<string>;
-export declare function annotateInFlight(
-  newReds: readonly string[],
-  dirty?: ReadonlySet<string>,
-): InFlightAnnotation[];
+export declare function annotateInFlight(newReds: readonly string[], dirty?: ReadonlySet<string>): InFlightAnnotation[];

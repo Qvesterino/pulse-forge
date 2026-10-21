@@ -71,7 +71,10 @@ const survey = await page.evaluate(() => {
     candidateBlocks: document.querySelectorAll(".intent-candidate").length,
     useButtons: [...document.querySelectorAll(".intent-use-btn")].filter(vis).length,
     buttons: [...new Set(buttons)].slice(0, 45),
-    headings: [...document.querySelectorAll("h1,h2,h3,.intent-panel__title")].filter(vis).map((h) => h.textContent.trim().slice(0, 40)).slice(0, 12),
+    headings: [...document.querySelectorAll("h1,h2,h3,.intent-panel__title")]
+      .filter(vis)
+      .map((h) => h.textContent.trim().slice(0, 40))
+      .slice(0, 12),
   };
 });
 console.log(JSON.stringify(survey, null, 2));

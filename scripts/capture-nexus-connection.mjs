@@ -37,9 +37,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const OUT =
-  process.env.KYX_CAPTURE_OUT ??
-  resolve(HERE, "../../QVESTER_LANDING_PAGE/remotion/audiotool-demo/public");
+const OUT = process.env.KYX_CAPTURE_OUT ?? resolve(HERE, "../../QVESTER_LANDING_PAGE/remotion/audiotool-demo/public");
 const ORIGIN = process.env.NEXUS_ORIGIN ?? "http://127.0.0.1:5173";
 
 mkdirSync(OUT, { recursive: true });
@@ -268,9 +266,7 @@ await context.close();
 await browser.close();
 
 const files = readdirSync(OUT).filter((f) => f.endsWith(".webm"));
-const newest = files
-  .map((f) => ({ f, t: statSync(resolve(OUT, f)).mtimeMs }))
-  .sort((a, b) => b.t - a.t)[0];
+const newest = files.map((f) => ({ f, t: statSync(resolve(OUT, f)).mtimeMs })).sort((a, b) => b.t - a.t)[0];
 if (newest) {
   const target = resolve(OUT, "06-nexus-connect.webm");
   renameSync(resolve(OUT, newest.f), target);

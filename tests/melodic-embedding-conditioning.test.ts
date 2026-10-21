@@ -6,6 +6,7 @@ import {
   buildMelodicV2FeatureRow,
 } from "../src/ai/symbolic/melodic-features-v2";
 import { MELODIC_DURATION_CLASSES, MELODIC_DEGREE_CLASSES } from "../src/ai/symbolic/melodic-features";
+import { DEFAULT_AI_METER } from "../src/ai/meter";
 import { projectEmbedding } from "../src/ai/symbolic/pca-projection";
 import { normalizeIntent } from "../src/intent/normalize";
 import { planGeneration } from "../src/intent/plan";
@@ -123,6 +124,8 @@ describe("melodic-features-v2 contract", () => {
       prevDegree: -1,
       prevDuration: 2,
       prevPrevDegree: -1,
+      // The contract's training frame (ADR 0057 Stage 2d).
+      meter: DEFAULT_AI_METER,
     });
     expect(row.length).toBe(MELV2_FEATURE_COUNT);
     // semantic projection copied verbatim
@@ -147,6 +150,8 @@ describe("melodic-features-v2 contract", () => {
       prevDegree: 3,
       prevDuration: 4,
       prevPrevDegree: 1,
+      // The contract's training frame (ADR 0057 Stage 2d).
+      meter: DEFAULT_AI_METER,
     };
     const a = buildMelodicV2FeatureRow(input);
     const b = buildMelodicV2FeatureRow(input);

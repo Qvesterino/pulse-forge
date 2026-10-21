@@ -7,6 +7,7 @@ import {
   type MelodicFeatureInputV3,
 } from "../src/ai/symbolic/melodic-features-v3";
 import { expandProgression } from "../src/ai/harmony";
+import { DEFAULT_AI_METER } from "../src/ai/meter";
 
 /**
  * W1 — melodic-features v3 contract tests. The harmony-aware feature row
@@ -25,6 +26,8 @@ const BASE: MelodicFeatureInputV3 = {
   nextChord: { degree: 5, quality: "maj", duration: 4, func: "S" },
   stepsIntoChord: 0,
   motifId: 1,
+  // The contract's training frame (ADR 0057 Stage 2d).
+  meter: DEFAULT_AI_METER,
 };
 
 describe("melodic-features-v3", () => {

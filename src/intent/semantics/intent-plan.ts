@@ -82,10 +82,7 @@ function fmt(value: number, digits = 2): string {
 }
 
 function paramFormat(def: ParamDef): (value: number) => string {
-  return (
-    def.format ??
-    ((value: number) => (def.unit ? `${fmt(value, def.max <= 1 ? 2 : 1)} ${def.unit}` : fmt(value)))
-  );
+  return def.format ?? ((value: number) => (def.unit ? `${fmt(value, def.max <= 1 ? 2 : 1)} ${def.unit}` : fmt(value)));
 }
 
 function domainOf(def: ParamDef): PlanDomain {
@@ -121,7 +118,11 @@ function numberStep(
   };
 }
 
-function faderSteps(before: ProjectDocument, after: ProjectDocument, intent: Extract<RoutedIntent, { kind: "fader" }>["intent"]): PlanStep[] {
+function faderSteps(
+  before: ProjectDocument,
+  after: ProjectDocument,
+  intent: Extract<RoutedIntent, { kind: "fader" }>["intent"],
+): PlanStep[] {
   const steps: PlanStep[] = [];
   const gain = (target: string, from: number | undefined, to: number | undefined): void => {
     if (from == null || to == null || from === to) return;
@@ -186,7 +187,10 @@ function faderSteps(before: ProjectDocument, after: ProjectDocument, intent: Ext
   return steps;
 }
 
-function paramSteps(doc: ProjectDocument, intent: Extract<RoutedIntent, { kind: "paramIntent" }>["intent"]): PlanStep[] {
+function paramSteps(
+  doc: ProjectDocument,
+  intent: Extract<RoutedIntent, { kind: "paramIntent" }>["intent"],
+): PlanStep[] {
   const steps: PlanStep[] = [];
   for (const line of paramPlan(intent, doc)) {
     const def = EFFECT_META[line.effectType]?.params.find((param) => param.id === line.paramId);
@@ -229,10 +233,31 @@ function effectSteps(
       const oldFx = oldTrack.effects.find((effect) => effect.type === intent.effectType);
       const newFx = newTrack.effects.find((effect) => effect.type === intent.effectType);
       if (oldFx && !newFx) {
-        steps.push({ kind: "state", target: oldTrack.name, parameter: `${intent.effectType}`, beforeLabel: "on", afterLabel: "removed" });
+        steps.push({
+          kind: "state",
+          target: oldTrack.name,
+          parameter: `${intent.effectType}`,
+          beforeLabel: "on",
+          afterLabel: "removed",
+        });
         continue;
       }
-      const paramIds = new Set([...(oldFx ? Object.keys(oldFx.params) : []), ...(newFx ? Object.keys(newFx.params) : [])]);
+      if (!oldFx && newFx) {
+        // The add is a change even when the knob lands on its default value
+        // ("set reverb mix to 30%": the effect appears, the mix is unchanged).
+        steps.push({
+          kind: "state",
+          target: oldTrack.name,
+          parameter: intent.effectType,
+          beforeLabel: "off",
+          afterLabel: "on",
+          note: "add effect",
+        });
+      }
+      const paramIds = new Set([
+        ...(oldFx ? Object.keys(oldFx.params) : []),
+        ...(newFx ? Object.keys(newFx.params) : []),
+      ]);
       if (knob) paramIds.add(knob);
       for (const paramId of paramIds) {
         const def = EFFECT_META[intent.effectType]?.params.find((param) => param.id === paramId);
@@ -253,16 +278,7 @@ function effectSteps(
           });
         } else {
           steps.push(
-            numberStep(
-              oldTrack.name,
-              `${intent.effectType}.${paramId}`,
-              from,
-              to,
-              to,
-              label,
-              domainOf(def),
-              note,
-            ),
+            numberStep(oldTrack.name, `${intent.effectType}.${paramId}`, from, to, to, label, domainOf(def), note),
           );
         }
       }
@@ -295,7 +311,13 @@ function exactSteps(
         });
         break;
       case "pan":
-        steps.push({ kind: "state", target: op.target, parameter: "pan", beforeLabel: "current", afterLabel: fmt(op.value, 0) });
+        steps.push({
+          kind: "state",
+          target: op.target,
+          parameter: "pan",
+          beforeLabel: "current",
+          afterLabel: fmt(op.value, 0),
+        });
         break;
       case "gainDb":
         steps.push({
@@ -307,7 +329,13 @@ function exactSteps(
         });
         break;
       case "gainDbAbsolute":
-        steps.push({ kind: "state", target: op.target, parameter: "gain", beforeLabel: "current", afterLabel: `${op.absDb} dB` });
+        steps.push({
+          kind: "state",
+          target: op.target,
+          parameter: "gain",
+          beforeLabel: "current",
+          afterLabel: `${op.absDb} dB`,
+        });
         break;
       case "transpose":
         steps.push({
@@ -319,7 +347,13 @@ function exactSteps(
         });
         break;
       case "patternLength":
-        steps.push({ kind: "state", target: "pattern", parameter: "length", beforeLabel: "current", afterLabel: `${op.steps} steps` });
+        steps.push({
+          kind: "state",
+          target: "pattern",
+          parameter: "length",
+          beforeLabel: "current",
+          afterLabel: `${op.steps} steps`,
+        });
         break;
       case "patternLengthDelta":
         steps.push({
@@ -331,10 +365,22 @@ function exactSteps(
         });
         break;
       case "patternLengthBars":
-        steps.push({ kind: "state", target: "pattern", parameter: "length", beforeLabel: "current", afterLabel: `${op.bars} bars` });
+        steps.push({
+          kind: "state",
+          target: "pattern",
+          parameter: "length",
+          beforeLabel: "current",
+          afterLabel: `${op.bars} bars`,
+        });
         break;
       case "swing":
-        steps.push({ kind: "state", target: "groove", parameter: "swing", beforeLabel: "current", afterLabel: `${op.percent}%` });
+        steps.push({
+          kind: "state",
+          target: "groove",
+          parameter: "swing",
+          beforeLabel: "current",
+          afterLabel: `${op.percent}%`,
+        });
         break;
       case "timeSignature":
         steps.push({
@@ -442,13 +488,13 @@ function unavailable(doc: ProjectDocument, route: RoutedIntent, warning: string)
 export function planIntent(doc: ProjectDocument, route: RoutedIntent): IntentPlan {
   const command = buildIntentCommand(doc, route);
   if (!command) {
-    return unavailable(
-      doc,
-      route,
+    const message =
       route.kind === "pattern" || route.kind === "revise"
         ? "generation runs in the app and needs auditioning — no dry-run command"
-        : `"${route.kind}" has no dry-runnable command (it needs app services)`,
-    );
+        : route.kind === "clarify"
+          ? "the router asks a question — nothing to execute"
+          : `"${route.kind}" has no dry-runnable command (it needs app services)`;
+    return unavailable(doc, route, message);
   }
   let after: ProjectDocument;
   try {

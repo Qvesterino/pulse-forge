@@ -16,7 +16,7 @@ but not a native audio engine.
 A native host (Oboe/AAudio + C++ DSP) is a second engine. It would need its own
 voice/effect graph, live/offline parity, golden vectors, background service,
 device matrix and long-term maintenance. Building it because a vendor number
-*looks* high would be a speculative rewrite. Building it only after measuring
+_looks_ high would be a speculative rewrite. Building it only after measuring
 the actual acoustic path is the discipline this ADR encodes.
 
 The repository already has the measurement primitive:
@@ -53,12 +53,12 @@ browser-reported and optimistic. The acoustic loopback round trip is the gate.
 
 The report computes `verdicts.nativeHostForTracking`:
 
-| Acoustic round trip (stable) | Verdict | Action |
-| --- | --- | --- |
-| ≤ 15 ms | `no` | Web Audio meets live monitoring; no native host |
-| 15–25 ms, or ≤ 15 ms but unstable | `marginal` | Native host only if professional monitoring is a product requirement; otherwise improve device guidance/buffer/effect defaults |
-| > 25 ms | `yes` | Native host is justified for tracking; start a separate implementation ADR |
-| no measurement | `unmeasured` | Do not decide; run the protocol |
+| Acoustic round trip (stable)      | Verdict      | Action                                                                                                                         |
+| --------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| ≤ 15 ms                           | `no`         | Web Audio meets live monitoring; no native host                                                                                |
+| 15–25 ms, or ≤ 15 ms but unstable | `marginal`   | Native host only if professional monitoring is a product requirement; otherwise improve device guidance/buffer/effect defaults |
+| > 25 ms                           | `yes`        | Native host is justified for tracking; start a separate implementation ADR                                                     |
+| no measurement                    | `unmeasured` | Do not decide; run the protocol                                                                                                |
 
 A `yes` on any **supported** target device is sufficient to justify the native
 host only for that class; it is not a mandate to move sequencing/mixing off Web

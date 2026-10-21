@@ -8,6 +8,7 @@ import {
 } from "../src/intent/personal-melodic-training";
 import { PERSONAL_MIN_ENTRIES } from "../src/intent/personal-melodic-trainer";
 import { buildMelodicFeatureRow, type MelodicGenre } from "../src/ai/symbolic/melodic-features";
+import { DEFAULT_AI_METER } from "../src/ai/meter";
 import type { FavoriteLedgerEntry } from "../src/intent/favorites-core";
 
 /**
@@ -167,6 +168,8 @@ describe("favorite conversion parity (the training labels)", () => {
       prevDegree: -1,
       prevDuration: 2,
       prevPrevDegree: -1,
+      // The contract's training frame (ADR 0057 Stage 2d).
+      meter: DEFAULT_AI_METER,
     });
     expect(row.length).toBe(29);
   });

@@ -3,6 +3,7 @@
 Audit ownership and cleanup of runtime resources.
 
 Inspect:
+
 - AudioBuffers
 - AudioNodes
 - AudioWorklets
@@ -17,6 +18,7 @@ Inspect:
 - history objects
 
 Stress:
+
 - open/close projects
 - add/remove tracks
 - add/remove plugins
@@ -24,7 +26,6 @@ Stress:
 - open/close panels repeatedly
 
 Memory should stabilize rather than grow continuously.
-
 
 ## Global Rules
 
@@ -37,23 +38,26 @@ Memory should stabilize rather than grow continuously.
 - Avoid broad architectural rewrites unless the audit reveals a concrete defect that cannot be solved safely otherwise.
 - After every meaningful change, run relevant tests/checks.
 
-
-
 ## Completion Report
 
 At the end provide:
 
 ### Findings
+
 Confirmed defects, risks, or inconsistencies.
 
 ### Fixes
+
 What was changed and why.
 
 ### Tests Added
+
 Regression, integration, or E2E coverage added.
 
 ### Verification
+
 Exact commands/checks executed and their results.
 
 ### Remaining Risks
+
 Anything intentionally left unchanged or requiring manual/human review.

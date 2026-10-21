@@ -40,7 +40,9 @@ if (!Array.isArray(verdicts) || verdicts.length === 0) {
 
 const rankings = verdicts.filter((v) => v.kind === "ranking" && Array.isArray(v.order) && v.groupKey);
 const favourites = verdicts.filter((v) => v.kind === "favorite" && v.entry && v.groupKey);
-const conditioning = verdicts.filter((v) => v.kind === "ranking" && String(v.groupKey ?? "").startsWith("conditioning::"));
+const conditioning = verdicts.filter(
+  (v) => v.kind === "ranking" && String(v.groupKey ?? "").startsWith("conditioning::"),
+);
 
 // ── 1) rankings → ranker golden ────────────────────────────────────────────
 let matched = 0;
@@ -54,9 +56,7 @@ if (rankings.length > 0) {
     console.warn("[ingest] ranker dataset not found — skipping membership check");
   }
 
-  const golden = existsSync(goldenPath)
-    ? JSON.parse(readFileSync(goldenPath, "utf8"))
-    : { version: 1, combos: [] };
+  const golden = existsSync(goldenPath) ? JSON.parse(readFileSync(goldenPath, "utf8")) : { version: 1, combos: [] };
   if (!Array.isArray(golden.combos)) golden.combos = [];
 
   for (const verdict of rankings) {
@@ -151,9 +151,15 @@ if (conditioning.length > 0) {
   });
   const v3Wins = summary.filter((entry) => entry.winner === "v3").length;
   const outPath = path.join(ROOT, "listening", "conditioning-verdicts.json");
-  const summaryJson = JSON.stringify({ version: 1, generatedAt: new Date().toISOString(), v3Wins, total: summary.length, verdicts: summary }, null, 2);
+  const summaryJson = JSON.stringify(
+    { version: 1, generatedAt: new Date().toISOString(), v3Wins, total: summary.length, verdicts: summary },
+    null,
+    2,
+  );
   writeFileSync(outPath, summaryJson + "\n");
-  console.log(`[ingest] conditioning: ${summary.length} pair verdict(s) → v3 wins ${v3Wins}/${summary.length} → listening/conditioning-verdicts.json`);
+  console.log(
+    `[ingest] conditioning: ${summary.length} pair verdict(s) → v3 wins ${v3Wins}/${summary.length} → listening/conditioning-verdicts.json`,
+  );
   if (summary.length >= 4 && v3Wins / summary.length >= 0.75) {
     console.log("[ingest] → ear evidence supports pf:embedding-conditioned default ON");
   } else if (summary.length >= 4 && v3Wins / summary.length <= 0.25) {
@@ -162,7 +168,8 @@ if (conditioning.length > 0) {
 }
 
 console.log(`[ingest] rankings: ${rankings.length} total → ${matched} merged into intent-ranker-golden.json`);
-if (unmatched.length > 0) console.warn(`[ingest] unmatched groupKeys (not in dataset): ${[...new Set(unmatched)].join(", ")}`);
+if (unmatched.length > 0)
+  console.warn(`[ingest] unmatched groupKeys (not in dataset): ${[...new Set(unmatched)].join(", ")}`);
 console.log(`[ingest] favourites: ${favourites.length} → listening/favorites-pack.json (${packCount} entries)`);
 if (packCount > 0) {
   console.log("[ingest] retrain all three models with:");

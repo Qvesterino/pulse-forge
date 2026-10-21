@@ -31,9 +31,9 @@ for (const name of FILES) {
   }
   const to = resolve(DEST, name);
   copyFileSync(from, to);
-  console.log(`[vendor-nexus-wasm] ${basename(from)} -> public/audiotool-nexus/${name} (${(statSync(to).size / 1024).toFixed(0)} KB)`);
+  console.log(
+    `[vendor-nexus-wasm] ${basename(from)} -> public/audiotool-nexus/${name} (${(statSync(to).size / 1024).toFixed(0)} KB)`,
+  );
 }
 
-console.log(
-  "[vendor-nexus-wasm] done. Make sure VITE_WASM_ASSETS_PREFIX=/audiotool-nexus/ is set in .env.local",
-);
+console.log("[vendor-nexus-wasm] done. Make sure VITE_WASM_ASSETS_PREFIX=/audiotool-nexus/ is set in .env.local");

@@ -244,7 +244,14 @@ const EndCard: React.FC = () => {
   const k = interpolate(f, [AT, AT + 26], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const e = E.out(k);
   return (
-    <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", background: `rgba(5,7,12,${0.88 * e})`, padding: "0 80px" }}>
+    <AbsoluteFill
+      style={{
+        justifyContent: "center",
+        alignItems: "center",
+        background: `rgba(5,7,12,${0.88 * e})`,
+        padding: "0 80px",
+      }}
+    >
       <div style={{ textAlign: "center", transform: `translateY(${(1 - e) * 30}px)` }}>
         <div style={{ fontFamily: SANS, fontSize: 92, fontWeight: 800, color: INK(0.97), lineHeight: 1.08 }}>
           AI agents

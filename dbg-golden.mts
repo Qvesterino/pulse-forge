@@ -5,7 +5,9 @@ const families = buildFamilies([]);
 for (const family of families) {
   const committed = JSON.parse(readFileSync(`tests/domain-goldens/${family.file}`, "utf8"));
   if (family.cases.length !== committed.cases.length) {
-    console.log(`COUNT MISMATCH ${family.file}: computed ${family.cases.length} vs committed ${committed.cases.length}`);
+    console.log(
+      `COUNT MISMATCH ${family.file}: computed ${family.cases.length} vs committed ${committed.cases.length}`,
+    );
     const computedNames = family.cases.map((c) => c.name);
     const committedNames = committed.cases.map((c) => c.name);
     for (let i = 0; i < Math.max(computedNames.length, committedNames.length); i++) {

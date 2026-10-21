@@ -20,13 +20,13 @@ Verify:
 Check UI value vs actual DSP value.
 
 Look for:
+
 - dropped automation
 - stale automation targets
 - excessive event storms
 - incorrect interpolation
 - automation tied to UI frame rate
 - invalid references after plugin deletion
-
 
 ## Global Rules
 
@@ -39,23 +39,26 @@ Look for:
 - Avoid broad architectural rewrites unless the audit reveals a concrete defect that cannot be solved safely otherwise.
 - After every meaningful change, run relevant tests/checks.
 
-
-
 ## Completion Report
 
 At the end provide:
 
 ### Findings
+
 Confirmed defects, risks, or inconsistencies.
 
 ### Fixes
+
 What was changed and why.
 
 ### Tests Added
+
 Regression, integration, or E2E coverage added.
 
 ### Verification
+
 Exact commands/checks executed and their results.
 
 ### Remaining Risks
+
 Anything intentionally left unchanged or requiring manual/human review.

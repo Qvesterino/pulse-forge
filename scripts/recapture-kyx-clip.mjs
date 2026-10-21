@@ -68,9 +68,7 @@ await context.close();
 await browser.close();
 
 const files = readdirSync(OUT).filter((f) => f.endsWith(".webm"));
-const newest = files
-  .map((f) => ({ f, t: statSync(resolve(OUT, f)).mtimeMs }))
-  .sort((a, b) => b.t - a.t)[0];
+const newest = files.map((f) => ({ f, t: statSync(resolve(OUT, f)).mtimeMs })).sort((a, b) => b.t - a.t)[0];
 if (newest) {
   const target = resolve(OUT, `${name}.webm`);
   renameSync(resolve(OUT, newest.f), target);

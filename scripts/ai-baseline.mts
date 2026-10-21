@@ -38,7 +38,13 @@ for (const testCase of AI_BASELINE_CASES) {
   }
 }
 
-console.log(JSON.stringify({
-  engine: { id: LOCAL_ENGINE_ID, version: LOCAL_ENGINE_VERSION },
-  cases,
-}, null, 2));
+console.log(
+  JSON.stringify(
+    {
+      engine: { id: LOCAL_ENGINE_ID, version: LOCAL_ENGINE_VERSION },
+      cases,
+    },
+    null,
+    2,
+  ),
+);

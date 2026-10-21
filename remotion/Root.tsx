@@ -1,12 +1,6 @@
 import { Composition } from "remotion";
 import { PulseForgePromo, PROMO_DURATION_FRAMES, PROMO_FPS, PROMO_HEIGHT, PROMO_WIDTH } from "./PulseForgePromo";
-import {
-  AGENT_DURATION_FRAMES,
-  AGENT_FPS,
-  AGENT_HEIGHT,
-  AGENT_WIDTH,
-  McpAgentSession,
-} from "./McpAgentSession";
+import { AGENT_DURATION_FRAMES, AGENT_FPS, AGENT_HEIGHT, AGENT_WIDTH, McpAgentSession } from "./McpAgentSession";
 import {
   VAGENT_DURATION_FRAMES,
   VAGENT_FPS,

@@ -55,76 +55,70 @@ let failures = 0;
 
 for (const grooveId of GROOVE_IDS) {
   console.log(`[grooves] rendering ${grooveId} …`);
-  const rendered = await page.evaluate(
-    async (grooveId) => {
-      const schema = await import("/src/project-model/schema.ts");
-      const wav = await import("/src/rendering/wav.ts");
-      const renderer = await import("/src/rendering/renderer.ts");
-      const { generateFactoryBank } = await import("/src/sample-library/factory.ts");
-      const { getGrooveById, GROOVE_LIBRARY } = await import("/src/ai/grooves/index.ts");
-      const { generatePattern } = await import("/src/ai/generator.ts");
-      const { normalizeIntent } = await import("/src/intent/normalize.ts");
-      const { planGeneration } = await import("/src/intent/plan.ts");
+  const rendered = await page.evaluate(async (grooveId) => {
+    const schema = await import("/src/project-model/schema.ts");
+    const wav = await import("/src/rendering/wav.ts");
+    const renderer = await import("/src/rendering/renderer.ts");
+    const { generateFactoryBank } = await import("/src/sample-library/factory.ts");
+    const { getGrooveById, GROOVE_LIBRARY } = await import("/src/ai/grooves/index.ts");
+    const { generatePattern } = await import("/src/ai/generator.ts");
+    const { normalizeIntent } = await import("/src/intent/normalize.ts");
+    const { planGeneration } = await import("/src/intent/plan.ts");
 
-      const groove = getGrooveById(grooveId);
-      if (!groove) return { error: `groove ${grooveId} not found` };
+    const groove = getGrooveById(grooveId);
+    if (!groove) return { error: `groove ${grooveId} not found` };
 
-      const bank = await generateFactoryBank();
-      // doc.bpm = the groove's tempo midpoint so generatePattern stays in feel
-      const midBpm = Math.round((groove.bpm[0] + groove.bpm[1]) / 2);
-      const doc = { ...schema.createDefaultProject(), bpm: midBpm };
-      const out = [];
-      // render up to 2 patterns per groove for variety
-      for (const [patternIndex, pattern] of groove.patterns.slice(0, 2).entries()) {
-        const patternDoc = {
-          ...doc,
-          patterns: [
-            ...doc.patterns,
-            {
-              id: `groove-render-${grooveId}-${patternIndex}`,
-              name: `${groove.name} ${patternIndex + 1}`,
-              trackId: doc.tracks.find((t) => t.kind === "drum")?.id ?? doc.tracks[0]?.id ?? "",
-              stepCount: 16,
-              rows: pattern,
-              swing: groove.swing,
-            },
-          ],
-          activePatternId: `groove-render-${grooveId}-${patternIndex}`,
-        };
-        const intent = normalizeIntent({
-          genre: groove.genre,
-          seed: `groove-${grooveId}-${patternIndex}`,
-          roles: ["drums"],
-          bpmRange: [midBpm, midBpm],
-        });
-        const plan = planGeneration(intent, patternDoc);
-        const generated = generatePattern(patternDoc, plan.options);
-        const renderDoc = {
-          ...patternDoc,
-          patterns: [
-            ...patternDoc.patterns.slice(0, doc.patterns.length),
-            generated,
-          ],
-          activePatternId: generated.id,
-        };
-        const buffer = await renderer.renderProject(renderDoc, bank, {
-          mode: "pattern",
-          sampleRate: 44100,
-          tailSeconds: 0.8,
-        });
-        const encoded = wav.encodeWav(buffer, 16);
-        const bytes = new Uint8Array(encoded);
-        let binary = "";
-        const CHUNK = 0x8000;
-        for (let i = 0; i < bytes.length; i += CHUNK) {
-          binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-        }
-        out.push({ patternIndex, b64: btoa(binary) });
+    const bank = await generateFactoryBank();
+    // doc.bpm = the groove's tempo midpoint so generatePattern stays in feel
+    const midBpm = Math.round((groove.bpm[0] + groove.bpm[1]) / 2);
+    const doc = { ...schema.createDefaultProject(), bpm: midBpm };
+    const out = [];
+    // render up to 2 patterns per groove for variety
+    for (const [patternIndex, pattern] of groove.patterns.slice(0, 2).entries()) {
+      const patternDoc = {
+        ...doc,
+        patterns: [
+          ...doc.patterns,
+          {
+            id: `groove-render-${grooveId}-${patternIndex}`,
+            name: `${groove.name} ${patternIndex + 1}`,
+            trackId: doc.tracks.find((t) => t.kind === "drum")?.id ?? doc.tracks[0]?.id ?? "",
+            stepCount: 16,
+            rows: pattern,
+            swing: groove.swing,
+          },
+        ],
+        activePatternId: `groove-render-${grooveId}-${patternIndex}`,
+      };
+      const intent = normalizeIntent({
+        genre: groove.genre,
+        seed: `groove-${grooveId}-${patternIndex}`,
+        roles: ["drums"],
+        bpmRange: [midBpm, midBpm],
+      });
+      const plan = planGeneration(intent, patternDoc);
+      const generated = generatePattern(patternDoc, plan.options);
+      const renderDoc = {
+        ...patternDoc,
+        patterns: [...patternDoc.patterns.slice(0, doc.patterns.length), generated],
+        activePatternId: generated.id,
+      };
+      const buffer = await renderer.renderProject(renderDoc, bank, {
+        mode: "pattern",
+        sampleRate: 44100,
+        tailSeconds: 0.8,
+      });
+      const encoded = wav.encodeWav(buffer, 16);
+      const bytes = new Uint8Array(encoded);
+      let binary = "";
+      const CHUNK = 0x8000;
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
       }
-      return { out, midBpm };
-    },
-    grooveId,
-  );
+      out.push({ patternIndex, b64: btoa(binary) });
+    }
+    return { out, midBpm };
+  }, grooveId);
 
   if (rendered.error) {
     console.log(`[grooves] ERROR: ${rendered.error}`);

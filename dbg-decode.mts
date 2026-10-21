@@ -10,7 +10,10 @@ const decoded = decodeShareCode(code) as { doc: unknown };
 function diff(a: unknown, b: unknown, path: string): void {
   if (JSON.stringify(a) === JSON.stringify(b)) return;
   if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) { console.log(`${path}: LEN ${a.length} vs ${b.length}`); return; }
+    if (a.length !== b.length) {
+      console.log(`${path}: LEN ${a.length} vs ${b.length}`);
+      return;
+    }
     for (let i = 0; i < a.length; i++) diff(a[i], b[i], `${path}[${i}]`);
     return;
   }

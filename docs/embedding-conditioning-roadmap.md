@@ -44,6 +44,7 @@ blízke. Nové žánre不需要 nové one-hot dimenzie.
 ## FÁZA A — Text-description generator (~2-3 hod)
 
 ### A.1 Čo
+
 Pre každý pattern v knižnici procedurálne vygenerovať 20-50 textových
 popisov, ktoré ho POPISUJÚ. Napríklad pre `house.deep`:
 
@@ -56,7 +57,9 @@ popisov, ktoré ho POPISUJÚ. Napríklad pre `house.deep`:
 ```
 
 ### A.2 Ako
+
 Šablóny kombinujú:
+
 - Žáner synonyms ("house", "deep house", "four-on-floor")
 - Style descriptors ("deep", "smooth", "rolling", "jazzy")
 - Mood words ("dark", "uplifting", "melancholic", "euphoric")
@@ -77,6 +80,7 @@ Každý pattern z groove knižnice dostane N popisov (EN + SK).
 Každý popis → MiniLM embedding → uložený ako tréningový príklad.
 
 ### A.5 Testy
+
 - Každý groove štýl má aspoň 20 popisov
 - Popisy obsahujú kľúčové slová zo svojho štýlu ("acid" pre acid techno)
 - EN + SK pokrytie
@@ -86,10 +90,12 @@ Každý popis → MiniLM embedding → uložený ako tréningový príklad.
 ## FÁZA B — Embedding pipeline (~1 hod)
 
 ### B.1 Čo
+
 MiniLM embeduje každý popis → 384-dim vektor. Tieto vektory sa uložia
 do enriched tréningového datasetu.
 
 ### B.2 Ako
+
 Nový skript `scripts/embed-descriptions.mts`:
 
 ```
@@ -111,6 +117,7 @@ Nový skript `scripts/embed-descriptions.mts`:
 ```
 
 ### B.4 Poznámka
+
 MiniLM embedding je deterministický (rovnaký text → rovnaký vektor).
 Nemenný — model sa nemení, len číta.
 
@@ -120,13 +127,14 @@ Nemenný — model sa nemení, len číta.
 
 ### C.1 Možnosti
 
-| Prístup | Pros | Cons |
-|---------|------|------|
-| **PCA (16 komponentov)** | Žiadne tréning, deterministický | Zachytí len lineárnu varianciu |
-| **UMAP (16 dims)** | Zachytí nelineárnu štruktúru | Neneterministický, pomalý |
-| **Learned projection (MLP 384→16)** | Najlepší fit, trénovaný s prior | Potrebuje tréningové dáta |
+| Prístup                             | Pros                            | Cons                           |
+| ----------------------------------- | ------------------------------- | ------------------------------ |
+| **PCA (16 komponentov)**            | Žiadne tréning, deterministický | Zachytí len lineárnu varianciu |
+| **UMAP (16 dims)**                  | Zachytí nelineárnu štruktúru    | Neneterministický, pomalý      |
+| **Learned projection (MLP 384→16)** | Najlepší fit, trénovaný s prior | Potrebuje tréningové dáta      |
 
 ### C.2 Odporúčanie pre v1: PCA
+
 PCA na embeddings corpus (500+ popisov) → top-16 komponentov.
 Deterministické, žiadne extra tréning, dobre understandované.
 
@@ -134,6 +142,7 @@ Uloženie: PCA matica (16×384) + mean (384) do manifest.json.
 Projection: `projected = (embedding - mean) @ components.T` → 16-dim.
 
 ### C.3 Pre v2: Learned projection
+
 Keď bude viac dát, natrénovať malý MLP projection (384→64→16) spolu
 s prior modelom. To vyžaduje end-to-end tréning — väčší zásah.
 
@@ -165,6 +174,7 @@ Trunk: 35 → 64 → 32 → 1 (rovnaká architektúra ako v1)
 ```
 
 ### D.3 Kľúčová zmena
+
 Žiadne genre/style one-hot. Namiesto toho **semantic projection** ktorý
 kóduje žáner + style + mood + tempo v CONTINUUAálnom priestore.
 
@@ -172,7 +182,9 @@ Model sa učí: "embeddingy v TOMTO regióne semantic space produkujú
 TAKTO vyzerajúce patterny." Nové štýly = nové regióny, nie nové one-hot.
 
 ### D.4 Spätná kompatibilita
+
 Prior v1 (one-hot) ostáva ako FALLBACK. Prior v2 sa použije len keď:
+
 1. Semantic layer je available (MiniLM beží)
 2. Text obsahuje dostatok informácie na embedding
 3. Flag `pf:embedding-conditioned` = on
@@ -193,6 +205,7 @@ Tréning kombinuje 1+2 pre structural features a 3 pre embedding.
 Alternatívne: 3 nahradí 1+2 úplne (model sa učí čisto z text space).
 
 ### E.2 Validácia
+
 - Held-out: žánre/style ktoré model NEVIDEL v tréningu
 - Metriky: valAUC (drum), valDegreeAcc (melodic), semantic generalization
 - Kľúčová otázka: **generalizuje model na NOVÉ textové popisy?**
@@ -200,6 +213,7 @@ Alternatívne: 3 nahradí 1+2 úplne (model sa učí čisto z text space).
   aj keď "berlin" nevidel v tréningu.
 
 ### E.3 Aktivácia
+
 `pf:embedding-conditioned = on|off` — off = one-hot v1, on = embedding v2.
 Graduálny rollout: shadow → active (rovnaký vzor ako ranker).
 
@@ -246,15 +260,15 @@ Rovnaký vzor ako pre drum prior, ale pre melodický model:
 
 ## Časový plán
 
-| Fáza | Čo | Effort | Kritická cesta? |
-|---|---|---|---|
-| A | Text description generator | 2-3 hod | Áno — bez popisov niet dát |
-| B | Embedding pipeline | 1 hod | Nie — mechanické |
-| C | PCA projection | 1-2 hod | Nie — štandardný math |
-| D | Prior v2 architektúra | 2 hod | Áno — nový kontrakt |
-| E | Tréning + validácia | 1 hod | Nie — šablóna existuje |
-| F | Generácia integrácia | 2 hod | Áno — provider zmeny |
-| G | Melodic prior v2 | 2 hod | Paralelne s D-F |
+| Fáza | Čo                         | Effort  | Kritická cesta?            |
+| ---- | -------------------------- | ------- | -------------------------- |
+| A    | Text description generator | 2-3 hod | Áno — bez popisov niet dát |
+| B    | Embedding pipeline         | 1 hod   | Nie — mechanické           |
+| C    | PCA projection             | 1-2 hod | Nie — štandardný math      |
+| D    | Prior v2 architektúra      | 2 hod   | Áno — nový kontrakt        |
+| E    | Tréning + validácia        | 1 hod   | Nie — šablóna existuje     |
+| F    | Generácia integrácia       | 2 hod   | Áno — provider zmeny       |
+| G    | Melodic prior v2           | 2 hod   | Paralelne s D-F            |
 
 **Celkovo: ~11-13 hodín čistej práce.** Rozdeliť do 2-3 sessions.
 

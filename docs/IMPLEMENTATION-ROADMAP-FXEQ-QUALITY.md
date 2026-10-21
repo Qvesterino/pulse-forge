@@ -7,16 +7,16 @@
 
 ## Priebežný stav implementácie
 
-| Fáza | Stav | Poznámka |
-|---|---|---|
-| Q1 reverb 8 liniek + modulácia | ✅ hotové 2026-09-05 | A/B + regenerované fixtúry, parity 8/8 bit-exaktná |
-| Q2 tempo sync (delay+mod) | ✅ hotové 2026-09-05 | default off → staré presety bit-identické |
-| Q3 per-band EQ modul | ✅ hotové 2026-09-05 | default off, `band{n}.eq{Param}` id priestor |
-| Q4 limiter PDR | ✅ hotové 2026-09-05 | default 0, pdr=0 bit-identické |
-| Q5 crossover monotónnosť | ✅ hotové 2026-09-05 | UI writeback follow-up (commands.ts vlastní iný agent) |
-| Q6 envelope routing | ✅ hotové 2026-09-05 | default off; 9 targetov; +8 testov |
-| Q7 linear-phase | ⬜ otvorené | L — samostatný design dokument |
-| P polish | 🟡 čiastočne | ping-pong hermite ✅; phaser smoothing a dyn attack otvorené (sonic zmeny) |
+| Fáza                           | Stav                 | Poznámka                                                                   |
+| ------------------------------ | -------------------- | -------------------------------------------------------------------------- |
+| Q1 reverb 8 liniek + modulácia | ✅ hotové 2026-09-05 | A/B + regenerované fixtúry, parity 8/8 bit-exaktná                         |
+| Q2 tempo sync (delay+mod)      | ✅ hotové 2026-09-05 | default off → staré presety bit-identické                                  |
+| Q3 per-band EQ modul           | ✅ hotové 2026-09-05 | default off, `band{n}.eq{Param}` id priestor                               |
+| Q4 limiter PDR                 | ✅ hotové 2026-09-05 | default 0, pdr=0 bit-identické                                             |
+| Q5 crossover monotónnosť       | ✅ hotové 2026-09-05 | UI writeback follow-up (commands.ts vlastní iný agent)                     |
+| Q6 envelope routing            | ✅ hotové 2026-09-05 | default off; 9 targetov; +8 testov                                         |
+| Q7 linear-phase                | ⬜ otvorené          | L — samostatný design dokument                                             |
+| P polish                       | 🟡 čiastočne         | ping-pong hermite ✅; phaser smoothing a dyn attack otvorené (sonic zmeny) |
 
 ## Pracovný kontrakt
 
@@ -24,10 +24,11 @@
 > VocalForge_DAW je **mimo rozsahu** tejto implementácie. FXEQ core sa od momentu tohto zápisu vyvíja
 > **priamo v Pulse Forge (`src/effects/fxeq-core/**`)** — core je odteraz fork, nie byte-faithful kópia.
 > Dôsledky, ktoré agent musí rešpektovať:
+>
 > - `scripts/vendor-fxeq.mjs` **NESMIE bežať**, kým Q-fázy nie sú portované do upstreamu — prepísala by
 >   fork aj lokálne regenerované golden fixtúry;
 > - golden fixtúry sa pri sonic zmenách regenerujú **lokálne** (`UPDATE_GOLDEN=1 npx vitest run
->   tests/fxeq-golden.test.ts` — podpora doplnená v `tests/fxeq-golden.test.ts`), A/B delta sa zapisuje
+tests/fxeq-golden.test.ts` — podpora doplnená v `tests/fxeq-golden.test.ts`), A/B delta sa zapisuje
 >   do tohto dokumentu;
 > - regression testy novej kvality vznikajú v Pulse Forge (`tests/fxeq-*.test.ts`), nie v upstream teste.
 
@@ -65,16 +66,16 @@ Hardening audit (2026-09-04) uzavrel:
 
 Zvukový audit — kde stojíme proti world-class referenciám (FabFilter Pro-MB/Pro-L, Ozone, Valhalla):
 
-| Modul | Stav | Hlavný deficit |
-|---|---|---|
-| Limiter | 🟢 world-class konštrukcia | one-pole release → pumping na mix materiáli |
-| Saturácia | 🟢 blízko špičky | — (ADAA + 2/4/8× oversampling) |
-| Crossover | 🟢 nadpriemer, 🟡 fáza | IIR LR4, žiadny linear-phase mód |
-| Delay | 🟢 solídny | žiadny tempo sync; ping-pong cross-read lineárny |
-| Dyn EQ | 🟡 útlm | instant attack detekcie |
-| Modulácia | 🟡 priemer | phaser skokové koeficienty, žiadny tempo sync |
-| Reverb | 🟡 najväčší deficit | 4 linky FDN, statický tank, žiadna modulácia |
-| Flexibilita | 🟡 | žiadne per-band EQ body, crossover sa dá prekrížiť, modulácia fixne zapojená |
+| Modul       | Stav                       | Hlavný deficit                                                               |
+| ----------- | -------------------------- | ---------------------------------------------------------------------------- |
+| Limiter     | 🟢 world-class konštrukcia | one-pole release → pumping na mix materiáli                                  |
+| Saturácia   | 🟢 blízko špičky           | — (ADAA + 2/4/8× oversampling)                                               |
+| Crossover   | 🟢 nadpriemer, 🟡 fáza     | IIR LR4, žiadny linear-phase mód                                             |
+| Delay       | 🟢 solídny                 | žiadny tempo sync; ping-pong cross-read lineárny                             |
+| Dyn EQ      | 🟡 útlm                    | instant attack detekcie                                                      |
+| Modulácia   | 🟡 priemer                 | phaser skokové koeficienty, žiadny tempo sync                                |
+| Reverb      | 🟡 najväčší deficit        | 4 linky FDN, statický tank, žiadna modulácia                                 |
+| Flexibilita | 🟡                         | žiadne per-band EQ body, crossover sa dá prekrížiť, modulácia fixne zapojená |
 
 ---
 
@@ -95,11 +96,11 @@ Zvukový audit — kde stojíme proti world-class referenciám (FabFilter Pro-MB
 
 **Zvukový kontrakt — A/B výsledok (2026-09-05, 8 liniek, modDepth 0):**
 
-| prípad | peak | rms | maxEnvelopeΔ | hash |
-|---|---|---|---|---|
-| reverb-plate | 0.534975 → **0.534975** | 0.325401 → 0.325093 (−0.09 %) | 5.1e-2 | zmenený |
-| combined-chain | 0.380915 → **0.380915** | 0.128681 → 0.128594 (−0.07 %) | 7.2e-4 | zmenený |
-| ostatných 6 | identické | identické | 0 | **nezmenený** |
+| prípad         | peak                    | rms                           | maxEnvelopeΔ | hash          |
+| -------------- | ----------------------- | ----------------------------- | ------------ | ------------- |
+| reverb-plate   | 0.534975 → **0.534975** | 0.325401 → 0.325093 (−0.09 %) | 5.1e-2       | zmenený       |
+| combined-chain | 0.380915 → **0.380915** | 0.128681 → 0.128594 (−0.07 %) | 7.2e-4       | zmenený       |
+| ostatných 6    | identické               | identické                     | 0            | **nezmenený** |
 
 Interpretácia: gain staging nedotknutý (peak identický), rms mierne nižší = menej comb-rezonančnej buildupu, chvostová energia pres redistribuovaná do hustejšej štruktúry — presne zamýšľaný efekt. Fixtúry regenerované lokálne (`UPDATE_GOLDEN=1`), parity 8/8 bit-exaktná na nových fixtúrach.
 
@@ -186,11 +187,11 @@ Interpretácia: gain staging nedotknutý (peak identický), rms mierne nižší 
       hranice aj pre legacy/prekrížený document state; regression coverage je
       v `tests/fxeq-paint-editor.test.tsx` (17/17), commit `64ca7e4`;
 - [x] `crossoverOrder` expose — **hotové 2026-09-12**: rack ponúka kanonické
-  voľby LR2/LR4/LR8, DSP alokuje max. 4 sekcie a pri downswitchi retired
-  state flattenuje/resetuje; live switch je finite-tested. `crossoverEqualize`
-  prepína komplementárnu phase path a oba structural parametre sú vyradené z
-  A/B morph interpolácie. Registry/command/persistence boundary ich kanonicky
-  snapuje; targeted contract je v `tests/fxeq-crossover-order.test.ts`.
+      voľby LR2/LR4/LR8, DSP alokuje max. 4 sekcie a pri downswitchi retired
+      state flattenuje/resetuje; live switch je finite-tested. `crossoverEqualize`
+      prepína komplementárnu phase path a oba structural parametre sú vyradené z
+      A/B morph interpolácie. Registry/command/persistence boundary ich kanonicky
+      snapuje; targeted contract je v `tests/fxeq-crossover-order.test.ts`.
 
 **Stav:** hotové 2026-09-05; UI split follow-up je hotový v `64ca7e4`; structural
 crossover order follow-up je hotový 2026-09-12. Všetky default sanity hodnoty
@@ -251,23 +252,22 @@ sa správajú identicky — golden parity 8/8 bit-exaktná.
 
 ## Verifikačný log (Q1–Q5 + P, 2026-09-05)
 
-| Check | Výsledok |
-|---|---|
-| fxeq sady (12 súborov: band-eq, tempo-sync, core-hardening, prepare-hardening, golden, sweep, morph, perf gates, rack-contract, node-latency, worklets, effects) | **111 passed / 42 skipped** |
-| Golden parity | **8/8 bit-exaktná** (reverb-plate + combined-chain regenerované, A/B v Q1) |
-| Perf gates | fully-loaded 6.8× (budget 22), preset load 3.5× (35), morph 2.18× (**rekalinbrovaný budget 2.4** — pozri Q3) |
-| Typecheck | fxeq súbory 0 chýb (2 zostávajúce chyby v ModPanel/mixer-batch patria súbežnému agentovi) |
-| Vite build + size budget | OK — entry 963/995 KB, chunks 1607/2400 KB |
-| Browser Chromium (nový worklet bundl) | **9/9 fxeq PASS** — CPU 30.8 % worst case (DoD limit 40 %), multi-instance 11.7 %/inštancia, latency 2.698 ms, metering gated, MIX knob end-to-end |
-| Full repo suite | 1736 passed + 1 morph perf gate fail → rekalinbrácia → perf file 3/3; boot/E2E UI faily = súbežný agent (app sa nebootol) |
-| Sample rates | 44.1/48/96 kHz sweep cez všetkých 83 presetov — finitné a bounded |
+| Check                                                                                                                                                            | Výsledok                                                                                                                                           |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| fxeq sady (12 súborov: band-eq, tempo-sync, core-hardening, prepare-hardening, golden, sweep, morph, perf gates, rack-contract, node-latency, worklets, effects) | **111 passed / 42 skipped**                                                                                                                        |
+| Golden parity                                                                                                                                                    | **8/8 bit-exaktná** (reverb-plate + combined-chain regenerované, A/B v Q1)                                                                         |
+| Perf gates                                                                                                                                                       | fully-loaded 6.8× (budget 22), preset load 3.5× (35), morph 2.18× (**rekalinbrovaný budget 2.4** — pozri Q3)                                       |
+| Typecheck                                                                                                                                                        | fxeq súbory 0 chýb (2 zostávajúce chyby v ModPanel/mixer-batch patria súbežnému agentovi)                                                          |
+| Vite build + size budget                                                                                                                                         | OK — entry 963/995 KB, chunks 1607/2400 KB                                                                                                         |
+| Browser Chromium (nový worklet bundl)                                                                                                                            | **9/9 fxeq PASS** — CPU 30.8 % worst case (DoD limit 40 %), multi-instance 11.7 %/inštancia, latency 2.698 ms, metering gated, MIX knob end-to-end |
+| Full repo suite                                                                                                                                                  | 1736 passed + 1 morph perf gate fail → rekalinbrácia → perf file 3/3; boot/E2E UI faily = súbežný agent (app sa nebootol)                          |
+| Sample rates                                                                                                                                                     | 44.1/48/96 kHz sweep cez všetkých 83 presetov — finitné a bounded                                                                                  |
 
 Nové/regresné testy: `fxeq-tempo-sync.test.ts` (9), `fxeq-band-eq.test.ts` (9), `fxeq-env-routing.test.ts` (8, Q6), core-hardening +10 (crossover guard 2, PDR 3, ping-pong 1, reverb tank 3, staré 16→27), golden UPDATE_GOLDEN=1 path.
 
 **Verifikácia Q6 (2026-09-05):** fxeq sady 13 súborov **119 passed**; golden parity 8/8 bit-exaktná; typecheck čistý; worklet bundl rebuildnutý (envModTarget prítomný); browser Chromium **197/197** (všetkých 9 fxeq PASS, CPU 28.1 % worst case).
 
 ## Verifikačný matrix (po každej fáze)
-
 
 ```bash
 # upstream (VocalForge_DAW)

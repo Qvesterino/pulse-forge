@@ -7,7 +7,11 @@ import path from "node:path";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = 5201;
 
-const server = await createServer({ root, logLevel: "error", server: { port: PORT, host: "127.0.0.1", strictPort: true } });
+const server = await createServer({
+  root,
+  logLevel: "error",
+  server: { port: PORT, host: "127.0.0.1", strictPort: true },
+});
 await server.listen();
 
 try {
@@ -44,21 +48,21 @@ try {
   console.log("After 2nd click:", await page.textContent(".topbar button.btn-mode"));
 
   // Test 2: play via Space
-  await page.locator(".topbar button:has-text(\"DIAG\")").click();
+  await page.locator('.topbar button:has-text("DIAG")').click();
   await page.waitForTimeout(500);
   const diagIdle = await page.textContent(".diagnostics");
   console.log("DIAG idle (transportPlaying):", /transportPlaying\s+(\w+)/.exec(diagIdle)?.[1]);
   console.log("DIAG idle (scheduledEvents):", /scheduledEvents\s+(\d+)/.exec(diagIdle)?.[1]);
 
   // close diag
-  await page.locator(".topbar button:has-text(\"DIAG\")").click();
+  await page.locator('.topbar button:has-text("DIAG")').click();
   await page.waitForTimeout(200);
 
   // try focus body and press space
   await page.locator("body").click({ position: { x: 5, y: 5 } });
   await page.keyboard.press("Space");
   await page.waitForTimeout(2500);
-  await page.locator(".topbar button:has-text(\"DIAG\")").click();
+  await page.locator('.topbar button:has-text("DIAG")').click();
   await page.waitForTimeout(500);
   const diagPlaying = await page.textContent(".diagnostics");
   console.log("DIAG playing (transportPlaying):", /transportPlaying\s+(\w+)/.exec(diagPlaying)?.[1]);

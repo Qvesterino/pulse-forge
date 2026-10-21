@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
@@ -118,8 +118,14 @@ async function makeConsistentPack(): Promise<ModelPack> {
 
 describe("model pack registry", () => {
   const manifestPath = path.resolve(import.meta.dirname ?? ".", "..", "public", "models", "semantic", "manifest.json");
+  // The semantic pack is fetched at dev time ("npm run semantic:fetch") and is
+  // gitignored — it is NOT part of the repository, so a fresh checkout (and
+  // every CI runner) has no manifest to pin the registry against. Where the
+  // pack was fetched the registry must mirror it exactly; where it was not,
+  // there is nothing to compare and the guard has no subject.
+  const packFetched = existsSync(manifestPath);
 
-  it("file hashes mirror the dev-time fetch manifest (single source of truth)", () => {
+  it.skipIf(!packFetched)("file hashes mirror the dev-time fetch manifest (single source of truth)", () => {
     const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as {
       modelId: string;
       files: Record<string, string>;
@@ -133,7 +139,7 @@ describe("model pack registry", () => {
     expect(SEMANTIC_PACK.files).toHaveLength(Object.keys(manifest.files).length);
   });
 
-  it("manifestContent parses and pins the loader contract", () => {
+  it.skipIf(!packFetched)("manifestContent parses and pins the loader contract", () => {
     const parsed = JSON.parse(SEMANTIC_PACK.manifestContent) as {
       semanticVersion: string;
       modelId: string;

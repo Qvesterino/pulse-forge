@@ -183,7 +183,8 @@ const census = await page.evaluate((candidates) => {
     };
     const hiColor = topHi(cs.boxShadow);
     if (hiColor) bump(highlightAlpha, hiColor);
-    else if (cs.boxShadow && cs.boxShadow !== "none") bump(shadowShapes, (cs.boxShadow || "").replace(/\s+/g, " ").slice(0, 90));
+    else if (cs.boxShadow && cs.boxShadow !== "none")
+      bump(shadowShapes, (cs.boxShadow || "").replace(/\s+/g, " ").slice(0, 90));
     const rec = m.get(key);
     rec.count += 1;
     // "onScreen" = actually inside the viewport a user is looking at. A
@@ -234,7 +235,8 @@ const hi = Object.entries(census.topHighlightAlpha);
 if (!hi.length) console.log("  none found — no raised surface carries a 1px inset top light");
 for (const [alpha, n] of hi) console.log(`  ${alpha.padEnd(24)} ${n} surfaces`);
 console.log("\n--- other shadow recipes (no measurable top light) ---");
-for (const [shape, n] of Object.entries(census.otherShadowRecipes)) console.log(`  x${String(n).padStart(4)}  ${shape}`);
+for (const [shape, n] of Object.entries(census.otherShadowRecipes))
+  console.log(`  x${String(n).padStart(4)}  ${shape}`);
 console.log("");
 for (const [kind, table] of [
   ["RAISED", census.raised],

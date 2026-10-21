@@ -26,6 +26,7 @@ Verify where implemented:
 Test each operation under normal use, rapid repeated interaction, undo/redo, zoomed-in/out states, and near timeline boundaries.
 
 Pay special attention to:
+
 - invalid durations
 - negative positions
 - wrong source offsets
@@ -34,7 +35,6 @@ Pay special attention to:
 - stale selection
 - ghost clips
 - visual state disagreeing with project state
-
 
 ## Global Rules
 
@@ -47,23 +47,26 @@ Pay special attention to:
 - Avoid broad architectural rewrites unless the audit reveals a concrete defect that cannot be solved safely otherwise.
 - After every meaningful change, run relevant tests/checks.
 
-
-
 ## Completion Report
 
 At the end provide:
 
 ### Findings
+
 Confirmed defects, risks, or inconsistencies.
 
 ### Fixes
+
 What was changed and why.
 
 ### Tests Added
+
 Regression, integration, or E2E coverage added.
 
 ### Verification
+
 Exact commands/checks executed and their results.
 
 ### Remaining Risks
+
 Anything intentionally left unchanged or requiring manual/human review.

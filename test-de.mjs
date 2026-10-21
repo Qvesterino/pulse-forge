@@ -26,9 +26,15 @@ async function main() {
   addReq.onsuccess = () => console.log("add onsuccess");
   try {
     await new Promise((resolve, reject) => {
-      tx2.oncomplete = () => { console.log("tx2.oncomplete"); resolve(); };
+      tx2.oncomplete = () => {
+        console.log("tx2.oncomplete");
+        resolve();
+      };
       tx2.onerror = () => reject(tx2.error);
-      tx2.onabort = () => { console.log("tx2.onabort:", tx2.error?.name); reject(tx2.error); };
+      tx2.onabort = () => {
+        console.log("tx2.onabort:", tx2.error?.name);
+        reject(tx2.error);
+      };
     });
   } catch (e) {
     console.log("caught from tx2:", e?.constructor?.name, e?.name, e instanceof Error);
@@ -41,13 +47,24 @@ async function main() {
   putReq.onsuccess = () => console.log("put onsuccess");
   try {
     await new Promise((resolve, reject) => {
-      tx3.oncomplete = () => { console.log("tx3.oncomplete"); resolve(); };
+      tx3.oncomplete = () => {
+        console.log("tx3.oncomplete");
+        resolve();
+      };
       tx3.onerror = () => reject(tx3.error);
-      tx3.onabort = () => { console.log("tx3.onabort:", tx3.error?.name); reject(tx3.error); };
+      tx3.onabort = () => {
+        console.log("tx3.onabort:", tx3.error?.name);
+        reject(tx3.error);
+      };
     });
   } catch (e) {
     console.log("caught from tx3:", e?.constructor?.name, e?.name, e instanceof Error);
   }
 }
 
-main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });
+main()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });

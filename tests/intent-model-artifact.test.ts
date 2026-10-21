@@ -5,6 +5,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 import { toGbnfGrammar } from "../src/intent/model-schema";
+import { repositoryTextBytes } from "../src/intent/model-artifact-bytes";
 import { isIntentModelManifest, manifestGatePassed } from "../src/intent/model-loader-types";
 import {
   buildIntentBow,
@@ -36,6 +37,14 @@ const SFT_DATA_DIR = path.join(ROOT, "scripts", "data", "intent-sft");
 const VALIDATION_REPORT_PATH = path.join(ROOT, "scripts", "data", "intent-model-validation-report.json");
 
 const sha256 = (data: string | Uint8Array): string => createHash("sha256").update(data).digest("hex");
+
+/**
+ * The vocab is a TEXT artifact: the repository stores it with LF endings, and
+ * the pin must mean the same thing on every machine. Hashing the raw on-disk
+ * bytes made the pin a property of the machine that wrote it — a clean
+ * checkout (LF) could never satisfy a pin taken over a CRLF file.
+ */
+const sha256OfRepositoryText = (data: Uint8Array): string => sha256(repositoryTextBytes(data));
 
 interface ValidationReport {
   schemaVersion: number;
@@ -112,7 +121,7 @@ describe("intent model artifact lock", () => {
     expect(sha256(modelBytes)).toBe(manifest.model.sha256.toLowerCase());
 
     const vocabBytes = readFileSync(path.join(MODELS_DIR, "intent-model-v1.vocab.json"));
-    expect(sha256(vocabBytes)).toBe(manifest.features.vocabSha256.toLowerCase());
+    expect(sha256OfRepositoryText(vocabBytes)).toBe(manifest.features.vocabSha256.toLowerCase());
     const vocab = JSON.parse(vocabBytes.toString("utf8")) as IntentModelVocab;
     expect(vocab.tokens.length).toBe(manifest.features.vocabSize);
     expect(vocab.heads.map((head) => `head_${head.name}`)).toEqual(manifest.features.outputNames);

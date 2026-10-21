@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
-import {
-  addAudioClip,
-  buildClipClipboard,
-  cutClips,
-  duplicateClips,
-  pasteClips,
-} from "../src/commands/commands";
+import { addAudioClip, buildClipClipboard, cutClips, duplicateClips, pasteClips } from "../src/commands/commands";
 import type { AudioClip, ProjectDocument } from "../src/project-model/types";
 
 /**
@@ -106,9 +100,7 @@ describe("clipboard commands survive concurrent edits (audit 2026-10-20)", () =>
     const concurrent = addAudioClip(doc, trackId, "buf-concurrent", 8, 2).execute(doc);
     const after = command.execute(concurrent);
 
-    expect(after.arrangement.audioClips!.length).toBeGreaterThan(
-      audioClipsOf(concurrent).length,
-    );
+    expect(after.arrangement.audioClips!.length).toBeGreaterThan(audioClipsOf(concurrent).length);
     expect(
       hasBuffer(after, "buf-concurrent"),
       "pasteClips reverted a concurrent edit: the command pinned the whole document instead of the change",

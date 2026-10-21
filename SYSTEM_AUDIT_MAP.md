@@ -117,19 +117,19 @@ Two service tiers — the load-bearing seam of the app:
 
 ## 12. High-risk areas
 
-| Area | Risk | Evidence |
-|---|---|---|
-| `src/commands/commands.ts` (~6.8k L) | Central ownership; ~22 `applyToYDoc` fast paths must mirror `execute()` | GOAL 02 sweep, re-verified 2026-09-20 |
-| `src/audio-engine/AudioEngine.ts` (~5.8k L) | Graph lifecycle, diff-sync; long-lived `this.doc` aliases undo snapshots (dev-only freeze) | GOAL 02 sweep |
-| Concurrent-session churn | TWO hard resets of uncommitted work (2026-09-20); commit campaign fixes promptly; uncommitted mallet pack in tree 2026-09-24 | work log incidents |
-| intent/ ↔ commands/ folder cycle | commands.ts imports intent/{production,pipeline,exact}; intent/{song,mix} import commands back — acyclic by file-level accident; one import from closing a hard cycle | GOAL 02 §17.6 |
-| Ranker ACTIVE in prod path | activation resolved the shadow risk; new risk class: ranker regressions are user-visible → golden gate (`rerank:fit`, holdout) is the guard | ranker-client.ts:24 |
-| MRT2 companion boundary | `native/mrt2-host/` + `companion/mrt2-windows/` + desktop IPC are release-gated separately (ADR 0012/0013); macOS artifact unsigned/unnotarized, no model-inference proof | docs/CURRENT-STATE.md |
-| DI bypasses in UI | Morph/Ultina preset repos constructed in panels (GroovePool fixed) | §17.2 |
-| Funnel telemetry | data ships unread | §13 |
-| Offline render non-cancellable mid-render; offline scene-BPM message-port seam | export residuals | KNOWN_LIMITATIONS |
-| jsdom full-suite runtime | 494 files; 15–90 min on this machine; historical flaky-timeout class mostly fixed (revoke guards) | work log |
-| Root tracked leftovers | `quantize.cmd.ts`, `test-de.mjs`, `cdot/`, `qffx-schema.md`, `tests/_debug_archive/`, stray logs are TRACKED scratch — cleanup candidates (GOAL 11) | `git ls-files` 2026-09-24 |
+| Area                                                                           | Risk                                                                                                                                                                      | Evidence                              |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `src/commands/commands.ts` (~6.8k L)                                           | Central ownership; ~22 `applyToYDoc` fast paths must mirror `execute()`                                                                                                   | GOAL 02 sweep, re-verified 2026-09-20 |
+| `src/audio-engine/AudioEngine.ts` (~5.8k L)                                    | Graph lifecycle, diff-sync; long-lived `this.doc` aliases undo snapshots (dev-only freeze)                                                                                | GOAL 02 sweep                         |
+| Concurrent-session churn                                                       | TWO hard resets of uncommitted work (2026-09-20); commit campaign fixes promptly; uncommitted mallet pack in tree 2026-09-24                                              | work log incidents                    |
+| intent/ ↔ commands/ folder cycle                                               | commands.ts imports intent/{production,pipeline,exact}; intent/{song,mix} import commands back — acyclic by file-level accident; one import from closing a hard cycle     | GOAL 02 §17.6                         |
+| Ranker ACTIVE in prod path                                                     | activation resolved the shadow risk; new risk class: ranker regressions are user-visible → golden gate (`rerank:fit`, holdout) is the guard                               | ranker-client.ts:24                   |
+| MRT2 companion boundary                                                        | `native/mrt2-host/` + `companion/mrt2-windows/` + desktop IPC are release-gated separately (ADR 0012/0013); macOS artifact unsigned/unnotarized, no model-inference proof | docs/CURRENT-STATE.md                 |
+| DI bypasses in UI                                                              | Morph/Ultina preset repos constructed in panels (GroovePool fixed)                                                                                                        | §17.2                                 |
+| Funnel telemetry                                                               | data ships unread                                                                                                                                                         | §13                                   |
+| Offline render non-cancellable mid-render; offline scene-BPM message-port seam | export residuals                                                                                                                                                          | KNOWN_LIMITATIONS                     |
+| jsdom full-suite runtime                                                       | 494 files; 15–90 min on this machine; historical flaky-timeout class mostly fixed (revoke guards)                                                                         | work log                              |
+| Root tracked leftovers                                                         | `quantize.cmd.ts`, `test-de.mjs`, `cdot/`, `qffx-schema.md`, `tests/_debug_archive/`, stray logs are TRACKED scratch — cleanup candidates (GOAL 11)                       | `git ls-files` 2026-09-24             |
 
 ## 13. Discrepancies (docs vs reality — refreshed 2026-09-24)
 

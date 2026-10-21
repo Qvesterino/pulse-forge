@@ -38,7 +38,8 @@ try {
     graphOptimizationLevel: "all",
   });
   if (session.inputNames[0] !== manifest.inputName) throw new Error(`input name mismatch: ${session.inputNames[0]}`);
-  if (session.outputNames[0] !== manifest.outputName) throw new Error(`output name mismatch: ${session.outputNames[0]}`);
+  if (session.outputNames[0] !== manifest.outputName)
+    throw new Error(`output name mismatch: ${session.outputNames[0]}`);
 
   const featureCount = manifest.featureCount;
   const probe = new ort.Tensor("float32", new Float32Array(featureCount * 3).fill(0.4), [3, featureCount]);
@@ -50,7 +51,8 @@ try {
   for (let index = 0; index < scores.length; index++) {
     if (resultsAgain[manifest.outputName].data[index] !== scores[index]) throw new Error("non-deterministic inference");
   }
-  if (modelBytes.length > 1024 * 1024) throw new Error(`model artifact too large: ${(modelBytes.length / 1024).toFixed(1)} kB`);
+  if (modelBytes.length > 1024 * 1024)
+    throw new Error(`model artifact too large: ${(modelBytes.length / 1024).toFixed(1)} kB`);
   console.log(
     `[validate] OK — candidates=3 outputs=[${[...scores].map((score) => Number(score).toFixed(4))}] ` +
       `size=${(modelBytes.length / 1024).toFixed(1)} kB sha256=${actualHash.slice(0, 16)}…`,

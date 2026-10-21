@@ -3,6 +3,7 @@
 Audit referential and structural integrity of project data.
 
 Verify:
+
 - IDs are unique
 - references point to valid entities
 - clips reference valid tracks
@@ -13,12 +14,12 @@ Verify:
 - project graph remains internally consistent
 
 Check for:
+
 - orphaned entities
 - dangling references
 - duplicate runtime objects
 - partial deletes
 - stale history references
-
 
 ## Global Rules
 
@@ -31,23 +32,26 @@ Check for:
 - Avoid broad architectural rewrites unless the audit reveals a concrete defect that cannot be solved safely otherwise.
 - After every meaningful change, run relevant tests/checks.
 
-
-
 ## Completion Report
 
 At the end provide:
 
 ### Findings
+
 Confirmed defects, risks, or inconsistencies.
 
 ### Fixes
+
 What was changed and why.
 
 ### Tests Added
+
 Regression, integration, or E2E coverage added.
 
 ### Verification
+
 Exact commands/checks executed and their results.
 
 ### Remaining Risks
+
 Anything intentionally left unchanged or requiring manual/human review.

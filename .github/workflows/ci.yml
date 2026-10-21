@@ -28,6 +28,27 @@ jobs:
       # cross-agent typecheck regression.
       - run: npm run typecheck:clean
 
+  hygiene:
+    name: Hygiene (format + drift)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Every MAINTAINED source tree must be prettier-clean. The scope lives in
+      # package.json ("format:check") and is deliberately not just src+tests:
+      # the two-directory scope left scripts/, docs/, prompts/ and the desktop
+      # shell unchecked, so 190+ files drifted without anyone noticing.
+      - run: npm run format:check
+      # Every DERIVABLE artifact must match its generator: the MCP tool
+      # mirrors, the domain goldens, and the counts in docs/CURRENT-STATE.md.
+      # Drift here means "the feature landed, the artifact is stale" — the bug
+      # class this repo keeps shipping, and the one no unit test can see.
+      - run: npm run drift:check
+
   test:
     name: Unit tests (vitest)
     runs-on: ubuntu-latest

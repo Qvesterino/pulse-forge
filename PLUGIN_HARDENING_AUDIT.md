@@ -37,10 +37,10 @@ rounds predated or missed. Full detail in `AGENT_WORK_LOG.md`
   playback (44.1 kHz uploads played ~+8.8 % sharp — the stored
   `sampleRate` was never applied) + malformed-event boundary validation;
   bitcrusher per-channel hold phase/state (L/R hold grids were offset)
-  + NaN-latch guard; flanger/comb rings sized from the runtime sample
-  rate; granularfreeze grain positions to Float64; ducking-delay node
-  SYNC interception; limiter NaN-latency PDC guard; bitcrusher/chorus
-  native AudioParam write guards.
+  - NaN-latch guard; flanger/comb rings sized from the runtime sample
+    rate; granularfreeze grain positions to Float64; ducking-delay node
+    SYNC interception; limiter NaN-latency PDC guard; bitcrusher/chorus
+    native AudioParam write guards.
 - **P3** gate look-ahead ring flush + mono→stereo mirrors, align-phase
   NaN coercion (stutter/stepgate), vinyl seed 0, per-block closure
   hoists (limiter/chorus), sample-loop `exp` hoists, kwmeter restore-state
@@ -226,11 +226,11 @@ gate is now `"wowFlutter"`, and the type is registered in the loader.
 
 **Measured result (production build):**
 
-| Bundle | Before | After | Budget |
-|---|---:|---:|---:|
+| Bundle                                | Before |      After | Budget |
+| ------------------------------------- | -----: | ---------: | -----: |
 | core worklets (`bitcrusher` + `core`) | 160 KB | **111 KB** | 150 KB |
-| `fx-extra-worklet.js` (lazy) | — | **50 KB** | 64 KB |
-| generative player | 3 KB | 3 KB | 4 KB |
+| `fx-extra-worklet.js` (lazy)          |      — |  **50 KB** |  64 KB |
+| generative player                     |   3 KB |       3 KB |   4 KB |
 
 `core-worklet.js` is 112,189 bytes; `fx-extra-worklet.js` is 50,948 bytes.
 A shipped-bundle probe confirms the seam is real: `core` registers
@@ -306,16 +306,16 @@ Verified by reading code, existing regression tests, and the dedicated
 `tests/audio-engine-lifecycle.test.ts` source-grep harness. Invariants
 that matter here:
 
-| Invariant | Guard | Source |
-|---|---|---|
-| `AudioEngine.useContext()` fully disposes prior-context graph state | Disposes every `trackNodes` / `returnNodes` / `groupNodes` runtime, every LFO/follower, every voice + previewVoice, every instrumentPreviewVoice, every frozen source, every `warpInflight`/stretch cache before rebuilding | `src/audio-engine/AudioEngine.ts:516-705` (Defect 1.1 + A04.D1) |
-| AudioWorklet render-thread allocations stay zero | `scratch` Float32Array preallocated per processor at construction (`scratch = [new Float32Array(MAX_BLOCK), …]`); `pendingParams` queue uses `splice`/`index` (never `filter()`/`map()`); `PENDING_PARAMS_CAP = 4096` rejects unbounded growth | `src/effects/ultina-worklet.entry.js:27`, `fxeq-worklet.entry.js:23-86` |
-| Automation queues never poison the audio thread | Render-clock consumption via `applyDueParams(horizon)` checks `pendingParams[0].when > horizon` first; manual `param` messages drop matching pending entries in-place | `ultina-worklet.entry.js:153-174`, `fxeq-worklet.entry.js:120-138` |
-| Meters don't drain performance with no panel attached | Every meter-emitting processor honors `setMeters`/`setMetersEnabled` toggle; rate divided by `Math.round(sampleRate / 128 / 20)` ≈ 20 Hz | `ultina-worklet.entry.js:114-118`, `fxeq-worklet.entry.js:31-36` |
-| `setParameter(value=NaN)` must never throw `TypeError` | **NEW**: `safeApplyAudioParam` drops non-finite values | `src/audio-worklets/safeAudioParam.ts` (added FázA §6) |
-| Reopened plugin UI never duplicates audio processing | Every node wrapper checks a `disposed` flag; `dispose()` sets it, immediately nulls `port.onmessage`, closes the port, and disconnects all native nodes (`input`, `output`, sidechain feeds). Re-creation constructs fresh wrappers — no shared state. | Per-node, e.g. `fxeqNode.ts:309-336`, `compressor-node.ts:103-117` |
-| Plugin lifetime parameters can't survive the document they came from | `EngineContext` is one-shot per `useContext(ctx)`; the only path that fully discards prior state is also the only path that owns the new one | `src/audio-engine/AudioEngine.ts:516-705` |
-| Offline rendering matches realtime | Offline render runs the SAME DSP core through `lib/render/track-renderer.ts`; tempo sync, BPM, IR loading, sidechain wiring all share the runtime API | `src/rendering/track-renderer.ts:17-25` |
+| Invariant                                                            | Guard                                                                                                                                                                                                                                                  | Source                                                                  |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `AudioEngine.useContext()` fully disposes prior-context graph state  | Disposes every `trackNodes` / `returnNodes` / `groupNodes` runtime, every LFO/follower, every voice + previewVoice, every instrumentPreviewVoice, every frozen source, every `warpInflight`/stretch cache before rebuilding                            | `src/audio-engine/AudioEngine.ts:516-705` (Defect 1.1 + A04.D1)         |
+| AudioWorklet render-thread allocations stay zero                     | `scratch` Float32Array preallocated per processor at construction (`scratch = [new Float32Array(MAX_BLOCK), …]`); `pendingParams` queue uses `splice`/`index` (never `filter()`/`map()`); `PENDING_PARAMS_CAP = 4096` rejects unbounded growth         | `src/effects/ultina-worklet.entry.js:27`, `fxeq-worklet.entry.js:23-86` |
+| Automation queues never poison the audio thread                      | Render-clock consumption via `applyDueParams(horizon)` checks `pendingParams[0].when > horizon` first; manual `param` messages drop matching pending entries in-place                                                                                  | `ultina-worklet.entry.js:153-174`, `fxeq-worklet.entry.js:120-138`      |
+| Meters don't drain performance with no panel attached                | Every meter-emitting processor honors `setMeters`/`setMetersEnabled` toggle; rate divided by `Math.round(sampleRate / 128 / 20)` ≈ 20 Hz                                                                                                               | `ultina-worklet.entry.js:114-118`, `fxeq-worklet.entry.js:31-36`        |
+| `setParameter(value=NaN)` must never throw `TypeError`               | **NEW**: `safeApplyAudioParam` drops non-finite values                                                                                                                                                                                                 | `src/audio-worklets/safeAudioParam.ts` (added FázA §6)                  |
+| Reopened plugin UI never duplicates audio processing                 | Every node wrapper checks a `disposed` flag; `dispose()` sets it, immediately nulls `port.onmessage`, closes the port, and disconnects all native nodes (`input`, `output`, sidechain feeds). Re-creation constructs fresh wrappers — no shared state. | Per-node, e.g. `fxeqNode.ts:309-336`, `compressor-node.ts:103-117`      |
+| Plugin lifetime parameters can't survive the document they came from | `EngineContext` is one-shot per `useContext(ctx)`; the only path that fully discards prior state is also the only path that owns the new one                                                                                                           | `src/audio-engine/AudioEngine.ts:516-705`                               |
+| Offline rendering matches realtime                                   | Offline render runs the SAME DSP core through `lib/render/track-renderer.ts`; tempo sync, BPM, IR loading, sidechain wiring all share the runtime API                                                                                                  | `src/rendering/track-renderer.ts:17-25`                                 |
 
 ## 2. Architecture Map (Objective §2)
 
@@ -451,7 +451,7 @@ sonic identity (objective §50). The remaining items, in priority order:
    `git stash`. TypeScript narrowing bug that the runtime is unlikely
    to trip today but a future refactor could.
 2. **`embed/EmbedApp.tsx:223`** — `Property 'intent' does not exist on
-   type 'Pattern'`. Pre-existing. The EmbedApp consumes a richer
+type 'Pattern'`. Pre-existing. The EmbedApp consumes a richer
    projection of `Pattern` than the production code paths; the
    widening helper (or its inverse, the explicit annotation) was
    dropped.
@@ -475,7 +475,7 @@ sonic identity (objective §50). The remaining items, in priority order:
    campaign: add a `clampBeforeForwarded` wrapper that re-uses
    `clampEffectParam`.
 6. **Voice-set ordering** — `AudioEngine` uses `this.voices =
-   new Set<Voice>()`; the order is insertion order. `voices.clear()`
+new Set<Voice>()`; the order is insertion order. `voices.clear()`
    in `useContext` is followed by `frozenSources.stop()` to avoid
    `onended` callbacks deleting entries from a fresh Map. Verified
    clean in FázA §6 reading.

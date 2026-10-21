@@ -1,6 +1,7 @@
 # INSTRUMENT-ROADMAP.md
 
 # Pulse Forge — Instrument Quality Roadmap
+
 > Implementačná roadmapa pre rozmanitosť a editovateľnosť nástrojov. Nadstavba na `DSP-ROADMAP.md` a `VISION.md:187` (20 excelentných > 100 mediocre).
 
 **Filozofia:** Pulse Forge je nástroj **východne na beaty/inštrumentály** — žiadny vokál, žiadne VST. Každý nový nástroj musí pokryť reálnu beatmaking potrebu (kick, snare, keys, pluck, bass, texture) a priniesť **editovateľnosť** (p-lock, automatizácia, preset). Kvantita je zmrazená na 9–10 druhov, rastie kvalita.
@@ -8,6 +9,7 @@
 ---
 
 ## 0. Ako používať tento dokument
+
 - Odškrtávame `- [x]` až keď je vec **implementovaná a overená** (`npm run typecheck` + `vitest` + `live==offline` render). Ku odškrtnutej položke doplň dátum + PR.
 - Hotové položky **nemažeme** — história.
 - Nové nápady pridávame na koniec príslušnej fázy.
@@ -19,18 +21,18 @@
 
 Inventár `src/instruments/registry.ts:1577` a `src/project-model/types.ts:47`:
 
-| Nástroj | Paramy | Hlasy | Jadro | Tier | Stav 03. 09. 2026 |
-|---|---|---|---|---|---|
-| Sampler | root/attack/release/cutoff/reso/gain/stretch/spread | 16 | `BufferSource` + `SVF` (fallback `Biquad`) + `time-stretch` | B | **B5 hotovo** — `stretch` pitch bez dĺžky (granular WSOLA), `spread` seeded pan |
-| Analog | oscA/B/sub/noise/cutoff/reso/env/unison/spread/lfoRate/lfoDepth/level | 12 | 2 osc + sub + noise → `SVF` → amp, per-voice LFO | B+ | **B4+expresivita** — SVF + unison 8× + cutoff LFO (osc→AudioParam) |
-| Bass | sub/body/punch/grit/movement/width/cutoff/reso/level | 4 | saw+square+sub + drive → `SVF` | C | sémantické makrá, SVF |
-| 808 | decay/pDrop/click/drive/tone/gain | mono | sine drop + click | C | ok |
-| Texture | color/motion/space/density/texture/chaos/level | 4 | 3 LFO + delay | C | ok |
-| Wavetable | table/morph/detune/sub/unison/spread/cutoff/reso/attack/release/level | 8 | 2× frame looper + sub → `SVF`, N× unison table-pair | A- | **unison hotovo** — N detuned frame-pairů fanned stereo |
-| Granular | position/size/rate/jitter/spread/pitch/reverse/tone/shape/attack/release/gain | 6/512 grainov | deterministic grain cloud | B+ | deterministický |
-| Keys (FM/Rhodes) | tine/bell/body/damp/tremolo/width/cutoff/reso/lfoRate/lfoDepth/attack/release/level | 8 | 4-op FM `1→2` + `3.5→4` → `SVF` → amp + trem + FM-LFO | B+ | **B1+osc LFO** — audio-rate `Osc→modGain.gain`, velocity→brightness, SVF |
-| Pluck (KS) | pick/damp/body/tone/decay/width/cutoff/reso/attack/release/level | 12 | `Delay(1/freq)` + `Biquad`→`SVF` feedback 0.82..0.995+vel | B | **B2+vel** — `feedback += (vel-0.8)*0.04` |
-| Drum Synth | type hatClosed/hatOpen/clap/perc/cowbell/kick/snare + decay/tone/snap/body | — | per-pad `noise→HP/BP → gain` / `square→BP` / `sine 150→45 + click` / `tri+noise BP` via `synth-voices.ts` | B+ | **4-knob hotovo** — snap=attack/sizzle, body=sub/fat, 6 `factory.drum.*` presetov |
+| Nástroj          | Paramy                                                                              | Hlasy         | Jadro                                                                                                     | Tier | Stav 03. 09. 2026                                                                 |
+| ---------------- | ----------------------------------------------------------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------- |
+| Sampler          | root/attack/release/cutoff/reso/gain/stretch/spread                                 | 16            | `BufferSource` + `SVF` (fallback `Biquad`) + `time-stretch`                                               | B    | **B5 hotovo** — `stretch` pitch bez dĺžky (granular WSOLA), `spread` seeded pan   |
+| Analog           | oscA/B/sub/noise/cutoff/reso/env/unison/spread/lfoRate/lfoDepth/level               | 12            | 2 osc + sub + noise → `SVF` → amp, per-voice LFO                                                          | B+   | **B4+expresivita** — SVF + unison 8× + cutoff LFO (osc→AudioParam)                |
+| Bass             | sub/body/punch/grit/movement/width/cutoff/reso/level                                | 4             | saw+square+sub + drive → `SVF`                                                                            | C    | sémantické makrá, SVF                                                             |
+| 808              | decay/pDrop/click/drive/tone/gain                                                   | mono          | sine drop + click                                                                                         | C    | ok                                                                                |
+| Texture          | color/motion/space/density/texture/chaos/level                                      | 4             | 3 LFO + delay                                                                                             | C    | ok                                                                                |
+| Wavetable        | table/morph/detune/sub/unison/spread/cutoff/reso/attack/release/level               | 8             | 2× frame looper + sub → `SVF`, N× unison table-pair                                                       | A-   | **unison hotovo** — N detuned frame-pairů fanned stereo                           |
+| Granular         | position/size/rate/jitter/spread/pitch/reverse/tone/shape/attack/release/gain       | 6/512 grainov | deterministic grain cloud                                                                                 | B+   | deterministický                                                                   |
+| Keys (FM/Rhodes) | tine/bell/body/damp/tremolo/width/cutoff/reso/lfoRate/lfoDepth/attack/release/level | 8             | 4-op FM `1→2` + `3.5→4` → `SVF` → amp + trem + FM-LFO                                                     | B+   | **B1+osc LFO** — audio-rate `Osc→modGain.gain`, velocity→brightness, SVF          |
+| Pluck (KS)       | pick/damp/body/tone/decay/width/cutoff/reso/attack/release/level                    | 12            | `Delay(1/freq)` + `Biquad`→`SVF` feedback 0.82..0.995+vel                                                 | B    | **B2+vel** — `feedback += (vel-0.8)*0.04`                                         |
+| Drum Synth       | type hatClosed/hatOpen/clap/perc/cowbell/kick/snare + decay/tone/snap/body          | —             | per-pad `noise→HP/BP → gain` / `square→BP` / `sine 150→45 + click` / `tri+noise BP` via `synth-voices.ts` | B+   | **4-knob hotovo** — snap=attack/sizzle, body=sub/fat, 6 `factory.drum.*` presetov |
 
 **P-locky** `src/project-model/types.ts:205` `pitch|gain|pan|cutoff|sampleStart|length` (6) — per-step, `live==offline` cez `groove.ts:29` → `AudioEngine.ts:1914` → `renderer.ts:95`.
 

@@ -81,5 +81,8 @@ const template = {
   combos,
 };
 
-writeFileSync(path.join(ROOT, "scripts", "data", "intent-ranker-golden.json"), JSON.stringify(template, null, 2) + "\n");
+writeFileSync(
+  path.join(ROOT, "scripts", "data", "intent-ranker-golden.json"),
+  JSON.stringify(template, null, 2) + "\n",
+);
 console.log(`[golden-template] ${combos.length} combos (reviewed: false) → scripts/data/intent-ranker-golden.json`);

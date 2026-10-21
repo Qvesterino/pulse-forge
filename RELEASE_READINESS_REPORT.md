@@ -29,14 +29,14 @@ resolves them (list below).
 
 ## GATE RESULTS (2026-09-21, 20:28-21:52)
 
-| Gate | Result | Evidence |
-|---|---|---|
-| tsc --noEmit (strict, whole tree) | PASS | 0 errors after the concurrent session's harmony test imports were cleaned (mechanical fix committed `6668a0a`) |
-| Full Vitest suite | 4097 passed / 4 failed / 117 skipped (394 files, 82 min) | failures itemized below, all Sep 20-21 concurrent-session surfaces |
-| npm run build | PASS | entry 364/1070 KB, DAW chunks 2374/2400 KB, semantic 568/650 KB, core worklets 111/150 KB, landing route 546/600 KB, precache 116 entries / 10.9 MB |
-| release:preflight (NODE_ENV=production, explicit CORS_ORIGIN) | PASS | production config + shipped-artifact branding scan clean after the VocalForge leak fix (`6668a0a`) |
-| release:server-smoke | PASS | real entrypoint health/CORS/origin/admin contract |
-| npm audit --omit=dev | PASS | 0 vulnerabilities |
+| Gate                                                          | Result                                                   | Evidence                                                                                                                                            |
+| ------------------------------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| tsc --noEmit (strict, whole tree)                             | PASS                                                     | 0 errors after the concurrent session's harmony test imports were cleaned (mechanical fix committed `6668a0a`)                                      |
+| Full Vitest suite                                             | 4097 passed / 4 failed / 117 skipped (394 files, 82 min) | failures itemized below, all Sep 20-21 concurrent-session surfaces                                                                                  |
+| npm run build                                                 | PASS                                                     | entry 364/1070 KB, DAW chunks 2374/2400 KB, semantic 568/650 KB, core worklets 111/150 KB, landing route 546/600 KB, precache 116 entries / 10.9 MB |
+| release:preflight (NODE_ENV=production, explicit CORS_ORIGIN) | PASS                                                     | production config + shipped-artifact branding scan clean after the VocalForge leak fix (`6668a0a`)                                                  |
+| release:server-smoke                                          | PASS                                                     | real entrypoint health/CORS/origin/admin contract                                                                                                   |
+| npm audit --omit=dev                                          | PASS                                                     | 0 vulnerabilities                                                                                                                                   |
 
 ---
 

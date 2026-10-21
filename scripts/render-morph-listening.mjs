@@ -245,7 +245,10 @@ const md = [
   "",
   "| Preset | Cesta | Súbor |",
   "| ------ | ----- | ----- |",
-  ...packs.presets.flatMap((p) => [`| ${p.label} | drums | ${p.id}--drums.wav |`, `| ${p.label} | 808 | ${p.id}--808.wav |`]),
+  ...packs.presets.flatMap((p) => [
+    `| ${p.label} | drums | ${p.id}--drums.wav |`,
+    `| ${p.label} | 808 | ${p.id}--808.wav |`,
+  ]),
 ].join("\n");
 writeFileSync(path.join(OUT, "LISTENING.md"), md);
 

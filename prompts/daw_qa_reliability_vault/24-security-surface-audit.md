@@ -3,6 +3,7 @@
 Perform a defensive security-surface audit.
 
 Inspect relevant trust boundaries involving:
+
 - imported files
 - project JSON
 - URLs
@@ -15,6 +16,7 @@ Inspect relevant trust boundaries involving:
 - local persistence
 
 Look for:
+
 - unsafe HTML
 - injection
 - unsafe URL schemes
@@ -25,7 +27,6 @@ Look for:
 - sensitive logging
 
 Do not invent hypothetical vulnerabilities without a plausible path.
-
 
 ## Global Rules
 
@@ -38,23 +39,26 @@ Do not invent hypothetical vulnerabilities without a plausible path.
 - Avoid broad architectural rewrites unless the audit reveals a concrete defect that cannot be solved safely otherwise.
 - After every meaningful change, run relevant tests/checks.
 
-
-
 ## Completion Report
 
 At the end provide:
 
 ### Findings
+
 Confirmed defects, risks, or inconsistencies.
 
 ### Fixes
+
 What was changed and why.
 
 ### Tests Added
+
 Regression, integration, or E2E coverage added.
 
 ### Verification
+
 Exact commands/checks executed and their results.
 
 ### Remaining Risks
+
 Anything intentionally left unchanged or requiring manual/human review.

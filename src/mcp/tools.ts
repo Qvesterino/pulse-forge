@@ -64,11 +64,9 @@ import { collectDevices, diffSnapshots, snapshotSummary, type AbSnapshot } from 
 const masterAbStore = new Map<string, Map<string, AbSnapshot>>();
 import { MASTER_SIGNAL_FLOW, type MasterSignalFlowStageId } from "../mastering/signalFlow";
 import { isCreativeBriefRoute } from "../intent/model-fallback-policy";
-import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
 import {
   applyBypassIntent,
   applyEffectIntent,
-  applySendIntent,
   applyMixIntent,
   bypassReadback,
   effectReadback,
@@ -76,7 +74,6 @@ import {
   planMixProfile,
   type MixOverrides,
 } from "../intent/mix";
-import { applyParamIntent } from "../intent/param-intent";
 import { noteAppliedRoute, noteExternalMutation, noteUndoRedo } from "../intent/apply-boundary";
 import { buildIntentCommand as intentCommand } from "../intent/command-for-route";
 import { transcribeTrack } from "../reference/transcribe";
@@ -91,17 +88,9 @@ import {
 } from "../analysis/similarity-advisory";
 import type { SongSectionSpec } from "../intent/song";
 import { reviseSectionTransitions } from "../intent/song";
-import { applyCompoundIntent } from "../intent/compound";
 import { productionReadback } from "../intent/production";
-import {
-  applyAutomateIntent,
-  applyGrooveIntent,
-  applyMarkerIntent,
-  applySectionGrooveIntent,
-  type SectionGrooveIntent,
-} from "../intent/studio-words";
-import { applyClipArrangeOps, applyArrangeOps, sceneRoleOf } from "../intent/arrangeWords";
-import { applySoundSwapIntent, applyStepEditIntent } from "../intent/sound-words";
+import { applyGrooveIntent, applySectionGrooveIntent, type SectionGrooveIntent } from "../intent/studio-words";
+import { applyArrangeOps, sceneRoleOf } from "../intent/arrangeWords";
 import { generateLocalResult } from "../intent/pipeline";
 import { MCP_PLAYBOOK_TEXT, MCP_VOCAB_TEXT } from "./onboarding";
 import { normalizeIntent } from "../intent/normalize";
@@ -182,7 +171,7 @@ import {
   setTimeSignature,
 } from "../commands/commands";
 // F2 eager diet: intent graph loads with the MCP surface, not at boot.
-import { applyExactIntentCommand, applyProductionIntentCommand } from "../commands/intentRouting";
+import { applyExactIntentCommand } from "../commands/intentRouting";
 import { applyGenerationResultCommand } from "../commands/aiPattern";
 import { isAutomationTargetValid, targetParamDef } from "../project-model/targets";
 import { clampEffectParam, EFFECT_META, type EffectDefinitionMeta } from "../effects/definitions";

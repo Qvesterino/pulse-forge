@@ -3,6 +3,7 @@
 Audit interaction responsiveness.
 
 Test:
+
 - dragging clips
 - trimming
 - resizing panels
@@ -17,6 +18,7 @@ Test:
 - narrow layouts
 
 Look for:
+
 - dropped input events
 - laggy controls
 - layout thrashing
@@ -24,7 +26,6 @@ Look for:
 - missed clicks
 - delayed state commit
 - UI freeze while audio remains active
-
 
 ## Global Rules
 
@@ -37,23 +38,26 @@ Look for:
 - Avoid broad architectural rewrites unless the audit reveals a concrete defect that cannot be solved safely otherwise.
 - After every meaningful change, run relevant tests/checks.
 
-
-
 ## Completion Report
 
 At the end provide:
 
 ### Findings
+
 Confirmed defects, risks, or inconsistencies.
 
 ### Fixes
+
 What was changed and why.
 
 ### Tests Added
+
 Regression, integration, or E2E coverage added.
 
 ### Verification
+
 Exact commands/checks executed and their results.
 
 ### Remaining Risks
+
 Anything intentionally left unchanged or requiring manual/human review.

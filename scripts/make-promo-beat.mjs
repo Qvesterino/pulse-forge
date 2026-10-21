@@ -38,7 +38,9 @@ const add = (i, v, pan = 0) => {
 const kick = (startSec, gain = 1) => {
   const start = Math.floor(startSec * SR);
   const len = Math.floor(0.28 * SR);
-  const fStart = 160, fEnd = 44, fDrop = 0.045;
+  const fStart = 160,
+    fEnd = 44,
+    fDrop = 0.045;
   let phase = 0;
   for (let i = 0; i < len; i++) {
     const t = i / SR;
@@ -93,8 +95,7 @@ const bass = (startSec, durSec, freq, gain = 1) => {
     const phaseInBeat = (t % BEAT) / BEAT;
     const duck = 0.35 + 0.65 * Math.min(1, phaseInBeat * 3.2);
     const env = Math.min(1, t / 0.01) * Math.exp(-t / (durSec * 0.9));
-    const v =
-      (Math.sin(2 * Math.PI * freq * t) * 0.8 + Math.sin(4 * Math.PI * freq * t) * 0.12) * env * duck * gain;
+    const v = (Math.sin(2 * Math.PI * freq * t) * 0.8 + Math.sin(4 * Math.PI * freq * t) * 0.12) * env * duck * gain;
     add(start + i, v);
   }
 };

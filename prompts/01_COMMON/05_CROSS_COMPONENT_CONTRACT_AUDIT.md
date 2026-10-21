@@ -10,6 +10,7 @@ Audit contracts across UI, commands, project model, audio engine, persistence, w
 Look for duplicated source of truth, undocumented nullable behavior, unit mismatches, stale caches, inconsistent IDs, ordering assumptions, ownership ambiguity, race-prone callbacks, implicit conversions, and call sites violating callee preconditions.
 
 For every risky boundary:
+
 - identify the producer and consumer contract;
 - define the invariant in code/tests if it is currently implicit;
 - enforce validation at the correct boundary;

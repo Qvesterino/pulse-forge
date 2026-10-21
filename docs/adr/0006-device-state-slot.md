@@ -21,7 +21,7 @@ state that is not audio).
    kind means adding a validator branch next to `sanitizeUltinaAbState`
    (`ultina-ab-v1` today).
 3. **Meter data never persists.** `capturedLufs` and friends are session
-   state. An A/B snapshot restores *parameters*, never a stale LUFS lock —
+   state. An A/B snapshot restores _parameters_, never a stale LUFS lock —
    gain-match re-arms truthfully (`WAITING FOR SIGNAL`) until real signal
    arrives.
 4. **A/B activation is one command.** `loadUltinaAbSlot` restores params

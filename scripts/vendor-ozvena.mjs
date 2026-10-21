@@ -122,9 +122,7 @@ for (const rel of FILES) {
     // Strip the vendored header from the current copy before comparing:
     // markers live in body comments, the header is prepended by us.
     const current = readFileSync(out, "utf8").split("\n").slice(13).join("\n");
-    const lost = [...reconciledMarkers(current)].filter(
-      (l) => !reconciledMarkers(upstream).has(l),
-    );
+    const lost = [...reconciledMarkers(current)].filter((l) => !reconciledMarkers(upstream).has(l));
     if (lost.length > 0) {
       conflicts.push(`  ${rel}:\n${lost.map((l) => `    ${l}`).join("\n")}`);
     }

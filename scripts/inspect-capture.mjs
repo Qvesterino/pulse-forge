@@ -27,16 +27,5 @@ if (!hasFfmpeg()) {
   process.exit(1);
 }
 
-execFileSync("ffmpeg", [
-  "-y",
-  "-ss",
-  ts,
-  "-i",
-  input,
-  "-frames:v",
-  "1",
-  "-q:v",
-  "2",
-  out,
-]);
+execFileSync("ffmpeg", ["-y", "-ss", ts, "-i", input, "-frames:v", "1", "-q:v", "2", out]);
 console.log("wrote", out, existsSync(out) ? "(ok)" : "(MISSING)");

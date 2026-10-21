@@ -8,6 +8,7 @@
 Perform an autonomous reliability pass focused on finding real defects rather than generating a large report.
 
 Rules for this run:
+
 - prioritize recently changed or weakly tested code, then critical paths;
 - find one high-confidence reliability issue at a time;
 - reproduce/prove it;

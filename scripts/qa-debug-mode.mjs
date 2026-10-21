@@ -6,13 +6,19 @@ import path from "node:path";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = 5203;
 
-const server = await createServer({ root, logLevel: "error", server: { port: PORT, host: "127.0.0.1", strictPort: true } });
+const server = await createServer({
+  root,
+  logLevel: "error",
+  server: { port: PORT, host: "127.0.0.1", strictPort: true },
+});
 await server.listen();
 
 try {
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newContext().then(c => c.newPage());
-  page.on("console", (m) => { if (m.type() === "error") console.log(`[err]`, m.text()); });
+  const page = await browser.newContext().then((c) => c.newPage());
+  page.on("console", (m) => {
+    if (m.type() === "error") console.log(`[err]`, m.text());
+  });
   page.on("pageerror", (e) => console.log("[pageerror]", String(e)));
 
   await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });

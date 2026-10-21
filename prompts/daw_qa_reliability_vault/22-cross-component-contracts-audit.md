@@ -3,6 +3,7 @@
 Audit contracts between major subsystems.
 
 Inspect:
+
 - UI ↔ project state
 - project state ↔ audio engine
 - audio engine ↔ plugin host
@@ -12,6 +13,7 @@ Inspect:
 - worker ↔ main thread
 
 For each boundary identify:
+
 - inputs
 - outputs
 - ownership
@@ -21,7 +23,6 @@ For each boundary identify:
 - error semantics
 
 Search for contract drift and duplicated definitions.
-
 
 ## Global Rules
 
@@ -34,23 +35,26 @@ Search for contract drift and duplicated definitions.
 - Avoid broad architectural rewrites unless the audit reveals a concrete defect that cannot be solved safely otherwise.
 - After every meaningful change, run relevant tests/checks.
 
-
-
 ## Completion Report
 
 At the end provide:
 
 ### Findings
+
 Confirmed defects, risks, or inconsistencies.
 
 ### Fixes
+
 What was changed and why.
 
 ### Tests Added
+
 Regression, integration, or E2E coverage added.
 
 ### Verification
+
 Exact commands/checks executed and their results.
 
 ### Remaining Risks
+
 Anything intentionally left unchanged or requiring manual/human review.

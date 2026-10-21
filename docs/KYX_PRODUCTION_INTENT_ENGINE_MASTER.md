@@ -351,21 +351,25 @@ How does KYX safely execute the proposal?
 ### Suggested responsibilities
 
 **Text encoder**
+
 - semantic intent matching
 - paraphrase handling
 - multilingual interpretation
 
 **Audio encoder**
+
 - semantic audio similarity
 - reference matching
 - timbral context
 
 **Small decision model / ranker**
+
 - rank candidate actions
 - combine intent, DSP features and project role
 - choose among safe pre-defined production plans
 
 **Existing deterministic systems**
+
 - parsing exact values
 - invariants
 - clamps

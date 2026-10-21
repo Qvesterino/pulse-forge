@@ -17,12 +17,7 @@ import type { RoutedIntent } from "./route";
 import { applyFaderIntent, applyTempoIntent } from "./conversation";
 import { applyExactIntentCommand, applyProductionIntentCommand } from "../commands/intentRouting";
 import { applyPresetIntentCommand } from "./preset-intent";
-import {
-  applyAutomateIntent,
-  applyGrooveIntent,
-  applyMarkerIntent,
-  applySectionGrooveIntent,
-} from "./studio-words";
+import { applyAutomateIntent, applyGrooveIntent, applyMarkerIntent, applySectionGrooveIntent } from "./studio-words";
 import { applyArrangeOps, applyClipArrangeOps } from "./arrangeWords";
 import { applySoundSwapIntent, applyStepEditIntent } from "./sound-words";
 import { applyBypassIntent, applyEffectIntent, applySendIntent } from "./mix";

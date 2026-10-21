@@ -10,6 +10,7 @@ Perform a final whole-codebase reliability sweep after targeted hardening work h
 Do not repeat earlier audits mechanically. Instead search for interactions between previously modified systems and defects that escaped domain-specific review.
 
 Prioritize:
+
 - regressions introduced by hardening changes;
 - inconsistent error handling;
 - untested repaired paths;

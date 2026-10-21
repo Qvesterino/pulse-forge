@@ -1,6 +1,8 @@
 import type { PadRole } from "../pad-roles";
 import { inferPadRole } from "../pad-roles";
 import type { GenerateOptions } from "../types";
+import type { AiMeter } from "../meter";
+import { roleFlags, stepInBarFeatures } from "./step-position";
 
 /**
  * prior-features.v1 — the fixed, versioned input contract for the symbolic
@@ -80,6 +82,15 @@ export interface PriorFeatureInput {
   step: number;
   /** Pattern frame length in steps (multiple of 16). */
   stepCount: number;
+  /**
+   * The metre the frame is read in (ADR 0057 Stage 2d). REQUIRED: a default
+   * would leave every caller on 4/4 while the code LOOKED converted.
+   *
+   * The pinned model's frame is sixteen steps, but the POSITION inside the bar
+   * is the document's: a 6/8 bar is twelve steps, and the old encoding called
+   * its last eighth "10/16" — a position that does not exist in that bar.
+   */
+  meter: AiMeter;
 }
 
 function oneHot(values: readonly string[], value: string, offset: number, row: number[]): void {
@@ -106,20 +117,20 @@ export function buildPriorFeatureRow(input: PriorFeatureInput): number[] {
   oneHot(PRIOR_ROLE_VOCAB, role, offset, row);
   offset += PRIOR_ROLE_VOCAB.length;
 
-  const s16 = ((input.step % 16) + 16) % 16;
-  row[offset++] = s16 / 16;
-  row[offset++] = Math.sin((2 * Math.PI * s16) / 16);
-  row[offset++] = Math.cos((2 * Math.PI * s16) / 16);
-  row[offset++] = Math.sin((4 * Math.PI * s16) / 16);
-  row[offset++] = Math.cos((4 * Math.PI * s16) / 16);
+  const position = stepInBarFeatures(input.meter, input.step);
+  for (const value of position) row[offset++] = value;
 
-  const frame = Math.max(16, input.stepCount);
+  // The frame is the pattern's own length, at least one metrical bar. The
+  // legacy floor of sixteen steps made a 6/8 bar look like the first three
+  // quarters of a 4/4 one.
+  const frame = Math.max(input.meter.stepsPerBar, input.stepCount);
   row[offset++] = input.step / frame;
   row[offset++] = Math.sin((2 * Math.PI * input.step) / frame);
   row[offset++] = Math.cos((2 * Math.PI * input.step) / frame);
 
-  row[offset++] = s16 === 0 ? 1 : 0;
-  row[offset] = s16 === 4 || s16 === 12 ? 1 : 0;
+  const flags = roleFlags(input.meter, input.step);
+  row[offset++] = flags.downbeat;
+  row[offset] = flags.backbeat;
   return row;
 }
 
@@ -139,12 +150,21 @@ export function buildPriorGridRows(params: {
   styleId: string;
   stepCount: number;
   padRoles: readonly PadRole[];
+  /** The metre the grid is read in (ADR 0057 Stage 2d). */
+  meter: AiMeter;
 }): number[][] {
   const rows: number[][] = [];
   for (const role of params.padRoles) {
     for (let step = 0; step < params.stepCount; step++) {
       rows.push(
-        buildPriorFeatureRow({ genre: params.genre, styleId: params.styleId, role, step, stepCount: params.stepCount }),
+        buildPriorFeatureRow({
+          genre: params.genre,
+          styleId: params.styleId,
+          role,
+          step,
+          stepCount: params.stepCount,
+          meter: params.meter,
+        }),
       );
     }
   }

@@ -3,6 +3,7 @@
 Audit keyboard interaction.
 
 Verify:
+
 - copy/paste
 - delete
 - duplicate
@@ -15,13 +16,13 @@ Verify:
 - key repeat
 
 Test focus-sensitive behavior:
+
 - text fields
 - search fields
 - numeric inputs
 - modal dialogs
 
 Ensure destructive shortcuts do not fire while typing into unrelated controls.
-
 
 ## Global Rules
 
@@ -34,23 +35,26 @@ Ensure destructive shortcuts do not fire while typing into unrelated controls.
 - Avoid broad architectural rewrites unless the audit reveals a concrete defect that cannot be solved safely otherwise.
 - After every meaningful change, run relevant tests/checks.
 
-
-
 ## Completion Report
 
 At the end provide:
 
 ### Findings
+
 Confirmed defects, risks, or inconsistencies.
 
 ### Fixes
+
 What was changed and why.
 
 ### Tests Added
+
 Regression, integration, or E2E coverage added.
 
 ### Verification
+
 Exact commands/checks executed and their results.
 
 ### Remaining Risks
+
 Anything intentionally left unchanged or requiring manual/human review.

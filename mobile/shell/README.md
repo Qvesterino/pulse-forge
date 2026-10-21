@@ -51,13 +51,13 @@ not a second UI.
 
 ## Must be implemented before any claim
 
-| Surface | Native work |
-| --- | --- |
-| MIDI | `MidiManager` USB + BLE MIDI GATT, hot-plug, note-off flush, one output thread per port |
-| SAF | `ACTION_OPEN_DOCUMENT` / `ACTION_CREATE_DOCUMENT`, chunked binary transfer, no raw paths to the page |
-| Foreground service | media-playback / microphone service types, notification permission, start/stop on refcount |
-| Audio focus | `AUDIOFOCUS_GAIN`, abandon on last release, `subscribeFocus` on loss |
-| Manifest | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `FOREGROUND_SERVICE_MICROPHONE`, `POST_NOTIFICATIONS`, `RECORD_AUDIO` as applicable |
+| Surface            | Native work                                                                                                                                    |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| MIDI               | `MidiManager` USB + BLE MIDI GATT, hot-plug, note-off flush, one output thread per port                                                        |
+| SAF                | `ACTION_OPEN_DOCUMENT` / `ACTION_CREATE_DOCUMENT`, chunked binary transfer, no raw paths to the page                                           |
+| Foreground service | media-playback / microphone service types, notification permission, start/stop on refcount                                                     |
+| Audio focus        | `AUDIOFOCUS_GAIN`, abandon on last release, `subscribeFocus` on loss                                                                           |
+| Manifest           | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `FOREGROUND_SERVICE_MICROPHONE`, `POST_NOTIFICATIONS`, `RECORD_AUDIO` as applicable |
 
 ## Acceptance (do not skip)
 

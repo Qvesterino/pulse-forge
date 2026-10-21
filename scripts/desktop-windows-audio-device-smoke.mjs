@@ -32,12 +32,15 @@ function parseOptions(argv) {
   const sampleRateHz = Number(options["sample-rate-hz"] ?? 48_000);
   const periodFrames = Number(options["period-frames"] ?? 480);
   const durationMs = Number(options["duration-ms"] ?? 30_000);
-  const inputChannelMap = String(options["capture-channels"] ?? "0,1").split(",").map(Number);
-  const outputChannelMap = String(options["render-channels"] ?? "0,1").split(",").map(Number);
+  const inputChannelMap = String(options["capture-channels"] ?? "0,1")
+    .split(",")
+    .map(Number);
+  const outputChannelMap = String(options["render-channels"] ?? "0,1")
+    .split(",")
+    .map(Number);
   for (const [name, value] of Object.entries({ sampleRateHz, periodFrames, durationMs }))
     if (!Number.isSafeInteger(value)) throw new Error(name + " must be an integer");
-  if (durationMs < 5_000 || durationMs > 1_800_000)
-    throw new Error("durationMs must be between 5000 and 1800000");
+  if (durationMs < 5_000 || durationMs > 1_800_000) throw new Error("durationMs must be between 5000 and 1800000");
   return {
     durationMs,
     request: {

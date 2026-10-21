@@ -15,6 +15,7 @@ import { degreeToPitch } from "../ai/melodic";
 import { MELODIC_BY_GENRE } from "../ai/grooves/melodic-data";
 import { buildMelodicFeatureRow, durationClass, melodicGenreOf } from "../ai/symbolic/melodic-features";
 import { buildPriorFeatureRow, padRoleForIndex, priorGenreOf, PRIOR_STYLE_VOCAB } from "../ai/symbolic/prior-features";
+import { DEFAULT_AI_METER } from "../ai/meter";
 
 export const LEDGER_CAP = 200;
 
@@ -141,6 +142,10 @@ export function favoritesToDrumSamples(entries: FavoriteLedgerEntry[], weight = 
             role,
             step,
             stepCount: row.length,
+            // A favourite is stored 4/4 material — it was captured in a 4/4
+            // project — so it declares the training frame explicitly rather
+            // than inheriting one (ADR 0057 Stage 2d).
+            meter: DEFAULT_AI_METER,
           }),
           y: velocity > 0 ? 1 : 0,
           weight,
@@ -227,7 +232,16 @@ export function favoritesToMelodicSamples(entries: FavoriteLedgerEntry[], weight
           }
         }
         samples.push({
-          x: buildMelodicFeatureRow({ genre, role, startStep, prevDegree, prevDuration, prevPrevDegree }),
+          x: buildMelodicFeatureRow({
+            genre,
+            role,
+            startStep,
+            prevDegree,
+            prevDuration,
+            prevPrevDegree,
+            // A favourite is stored 4/4 material (ADR 0057 Stage 2d).
+            meter: DEFAULT_AI_METER,
+          }),
           degree: degree + 1,
           duration: durationClass(durationSteps),
           weight,

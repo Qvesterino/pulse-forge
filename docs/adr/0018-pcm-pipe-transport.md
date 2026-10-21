@@ -89,14 +89,14 @@ blockFrames}`, streams PCM blocks, closes with STATS and EOF.
 
 ## Support matrix
 
-| Capability                                       | Status                                                                          |
-| ------------------------------------------------ | ------------------------------------------------------------------------------- |
-| Framed PCM pipe protocol + Node consumer         | Shipped, acceptance-tested                                                      |
-| Reference source (deterministic generator)       | Shipped                                                                         |
-| ASIO streaming host (driver → frames)            | Shipped against the fixture driver (wave 2.5); real-hardware soak = owner gate  |
-| Renderer ring and AudioWorklet components         | Component tests pass; Electron integration is not verified                      |
-| Desktop "hear it" wiring (EXT PCM chip over IPC) | Not shipped; Electron cannot clone the ring SAB across processes                 |
-| Resampling (source rate ≠ context rate)           | Component tests pass; end-to-end bridge awaits a valid ring transport            |
+| Capability                                       | Status                                                                         |
+| ------------------------------------------------ | ------------------------------------------------------------------------------ |
+| Framed PCM pipe protocol + Node consumer         | Shipped, acceptance-tested                                                     |
+| Reference source (deterministic generator)       | Shipped                                                                        |
+| ASIO streaming host (driver → frames)            | Shipped against the fixture driver (wave 2.5); real-hardware soak = owner gate |
+| Renderer ring and AudioWorklet components        | Component tests pass; Electron integration is not verified                     |
+| Desktop "hear it" wiring (EXT PCM chip over IPC) | Not shipped; Electron cannot clone the ring SAB across processes               |
+| Resampling (source rate ≠ context rate)          | Component tests pass; end-to-end bridge awaits a valid ring transport          |
 
 ## Consequences
 

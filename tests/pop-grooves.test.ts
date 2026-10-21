@@ -4,6 +4,7 @@ import { getGrooveById, getGroovesForGenre, getStyleNamesForGenre } from "../src
 import { resolveGroove } from "../src/ai/generator";
 import { generateLocalResult } from "../src/intent/pipeline";
 import { PRIOR_STYLE_VOCAB, buildPriorFeatureRow, type PriorGenre } from "../src/ai/symbolic/prior-features";
+import { DEFAULT_AI_METER } from "../src/ai/meter";
 import type { PadRole } from "../src/ai/pad-roles";
 import type { GrooveData } from "../src/ai/types";
 
@@ -101,6 +102,8 @@ describe("prior contract untouched (new styles degrade to unknown)", () => {
       role: "kick" as PadRole,
       step: 0,
       stepCount: 16,
+      // The groove library is 4/4 material — the training frame.
+      meter: DEFAULT_AI_METER,
     });
     expect(row.slice(4, 4 + PRIOR_STYLE_VOCAB.length)).toEqual(Array(PRIOR_STYLE_VOCAB.length).fill(0));
   });

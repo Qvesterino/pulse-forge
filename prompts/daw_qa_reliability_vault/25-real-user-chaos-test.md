@@ -42,6 +42,7 @@ Run simultaneously where supported:
 - repeated edits
 
 Observe:
+
 - audio glitches
 - UI freezes
 - stale state
@@ -54,6 +55,7 @@ Observe:
 ## Scenario C — Failure Injection
 
 During active use simulate:
+
 - failed import
 - failed plugin load
 - unavailable device
@@ -73,7 +75,6 @@ When a confirmed issue is found:
 4. fix safely
 5. rerun the combined scenario
 
-
 ## Global Rules
 
 - Preserve intended product behavior unless a defect is clearly demonstrated.
@@ -85,23 +86,26 @@ When a confirmed issue is found:
 - Avoid broad architectural rewrites unless the audit reveals a concrete defect that cannot be solved safely otherwise.
 - After every meaningful change, run relevant tests/checks.
 
-
-
 ## Completion Report
 
 At the end provide:
 
 ### Findings
+
 Confirmed defects, risks, or inconsistencies.
 
 ### Fixes
+
 What was changed and why.
 
 ### Tests Added
+
 Regression, integration, or E2E coverage added.
 
 ### Verification
+
 Exact commands/checks executed and their results.
 
 ### Remaining Risks
+
 Anything intentionally left unchanged or requiring manual/human review.

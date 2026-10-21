@@ -44,6 +44,7 @@ Checklist, ktorý musí splniť každá implementácia (overené na Kaskade a st
 **Zvuková podstata:** varispeed — write head do kruhového buffera beží stále 1.0×, read-head rate sa easingom spomalí na 0 (STOP) alebo prepne smer/rozhýbe (SPIN). Pitch padá prirodzene s rýchlosťou — to je ten žiadaný efekt.
 
 **Implementácia:**
+
 - **AudioWorklet** (native Web Audio nemá varispeed na živom streame): ring buffer 2 s, read pointer `rate` param s per-sample easing; interpolácia linear (stačí, FM-artefakty sú súčasťou šarmu).
 - Params: `mode` (stop / spin / restart), `time` 0.1–8 s, `curve` (exp / lin / smooth), `direction` (fwd/rev spin), `mix` (dry/wet pre momentárne použitie), `retrigger` (gate/stepGate-style trigger neskôr).
 - Momentárny charakter: tlačidlo v UI nastaví `engaged=1` a runtime easing spraví zvyšok (param `engaged` 0/1 — rovnaký pattern ako bypass).
@@ -63,6 +64,7 @@ Checklist, ktorý musí splniť každá implementácia (overené na Kaskade a st
 **Prečo:** metalické/robotické percusie, RS-232 textúry na hi-hate — klasika, ktorá sa nedá dosiahnuť filtrom.
 
 **Implementácia v1:** worklet `out = in × sin(2π·f·t)` (ring mod = násobenie; native GainNode s oscilátormi na gain param má DC-offset a krosstalk problémy — worklet je čistejší a lacnejší).
+
 - Params: `frequency` 0.1–2000 Hz (log), `mix`, `feedback` (output späť do modulácie pre metallic ring).
 - v2 (neskôr, oddelene): **Frequency Shifter** cez Hilbert allpass pair — single-sideband posun (neprelieva harmonické, „iný" zvuk než pitch shift).
 
@@ -79,6 +81,7 @@ Checklist, ktorý musí splniť každá implementácia (overené na Kaskade a st
 **Prečo:** klubový master štandard — pod zvolenou frekvenciou zmixovať mono (M/S side lowpass). Máme utility s M/S? — dostupné obežne cez `haasWidener`/`msEq` kusy, ale jeden otočný parameter „BASS MONO 120 Hz" na mastri je to, čo beatmaker skutočne použije.
 
 **Implementácia:** **master-only upgrade** — do master chain (za tape, pred clipper) M/S split: `side` kanál cez lowpass(`bassMonoFreq` 60–400 Hz, default 120) → merge. Native Web Audio (splitter + biquad + merger), žiadny worklet.
+
 - Params na MasterConfig: `bassMonoEnabled`, `bassMonoFreq`.
 - UI: master strip prepínač + drag číslo (rovnaký pattern ako IN/CEIL).
 
@@ -95,6 +98,7 @@ Checklist, ktorý musí splniť každá implementácia (overené na Kaskade a st
 **Prečo:** vocal chops a 808 posuny bez zmeny dĺžky — druhá najväčšia diera.
 
 **Implementácia (dva stupne, jeden efekt):**
+
 - **v1 — granulárny shifter (worklet):** dva prekrývajúce sa grain voices na kruhovom bufferi s modulovaným read-rate a krížovým fade (klasický real-time pitch shifter). Artifacts = charakter, pre FX prijateľné. Params: `semitones` ±12, `fine` ±50 centov, `grain` 20–120 ms, `mix`, `width` (dva nezávislé grain voices L/R).
 - **v2 — formant mód:** recykluje `src/audio-engine/phase-vocoder.ts` (už máš phase-vocoder jadro z time-stretch!) — formant preserve pre vokály. Až po v1, oddelený parameter `formant` 0/1.
 - **Offline parity:** povinný test — pitch shift musí byť deterministický (seedovaná fáza grainov z track id, pattern `hashString(track.id:pitch)` z texture synthe).
@@ -106,6 +110,7 @@ Checklist, ktorý musí splniť každá implementácia (overené na Kaskade a st
 **Prečo:** filly, call-and-response, ping-pong hy hi-hatu — jednoduchý delay+feedback nestačí.
 
 **Implementácia: NATIVE Web Audio (žiadny worklet)** — 4× `DelayNode`+`Gain`+`StereoPanner` paralelne z inputu.
+
 - Params: `taps` 1–4, per-tap `division` (1/16…1/1, sync — `syncBpm`), `gain`, `pan`; globálne `feedback`, `tone`, `mix`, `pingpong`.
 - Data model: per-tap parametre ako ploché params (`tap1Div`, `tap1Gain`, …) — žiadne polia, žiadna schema zmena.
 
@@ -116,6 +121,7 @@ Checklist, ktorý musí splniť každá implementácia (overené na Kaskade a st
 **Prečo:** lo-fi/phonk/boom-bap žánre; kúsky existujú (PRISM lofi modul, bitcrusher, tapeSat) — ale beatmaker chce jeden nástroj, ktorý vie aj rýchlo (AGE) aj hlboko (moduly).
 
 **Implementácia (worklet) — finálna podoba:**
+
 - **crackle**: Poisson-timed pop stream (nie fixná mriežka) — `crackle` (densita), `crackleTone` (400 Hz–9 kHz klik), `crackleDecay` (tight click ↔ dlhý chvost); každý pop pristane na jednom kanáli deterministicky.
 - **hiss**: spojitý filtrovaný noise floor — `hiss` + `hissTone`.
 - **rumble**: motor/turntable low-end — `rumble` + `rumbleTone` (30–120 Hz).
@@ -142,6 +148,7 @@ Checklist, ktorý musí splniť každá implementácia (overené na Kaskade a st
 **Prečo:** HALFTIME, scratch fill, repeat bridge, 2× speed — najrozpoznateľnejší beatmaking efekt dekády a najväčšia diera tohto DAW. stutter/pump/stepGate sú fragmenty; tento ich zjednotí pod jednu beat-synced obálku.
 
 **Zvuková podstata (worklet):** kruhový buffer 1 bar (kapacita pre 300 BPM @ 48 kHz ≈ 2 s → 2-bar buffer), write beží vždy; read head číta podľa **priebežných obálok** normalizovaných na bar:
+
 - `volumeSteps[]` — 16/32 krokov 0..1 (gain obálka),
 - `pitchSteps[]` — 16/32 krokov ±24 st (read-rate multiplikátor),
 - `playMode`: normal / **half** (read rate 0.5 = halftime) / **double** (2×) / **reverse**,
@@ -160,13 +167,13 @@ Checklist, ktorý musí splniť každá implementácia (overené na Kaskade a st
 
 ## 5. FÁZA 4 — Nice-to-have (podľa chuti / dát z používania)
 
-| Položka | Podstata | Effort |
-|---|---|---|
-| **Vocoder** (`vocoder`) | filterbank 8–16 pásiem, modulator = vokálny track (sidechain-style routing z `sidechainTrackId` precedensu!), carrier = vlastný track; worklet | 3–4 dni |
-| **Frequency Shifter** (Hilbert SSb) | rozšírenie ringMod v2 | 1 deň |
-| **Reverse-swell FX** | live reverse envelope namiesto statického sampleu | 0,5 dňa |
-| **Granular Freeze send** | texture engine zapuzdrený ako send-efekt | 1–2 dni |
-| **Telephone preset pack** | SVF + distortion presety (žiadny kód) | 2 hodiny |
+| Položka                             | Podstata                                                                                                                                       | Effort   |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| **Vocoder** (`vocoder`)             | filterbank 8–16 pásiem, modulator = vokálny track (sidechain-style routing z `sidechainTrackId` precedensu!), carrier = vlastný track; worklet | 3–4 dni  |
+| **Frequency Shifter** (Hilbert SSb) | rozšírenie ringMod v2                                                                                                                          | 1 deň    |
+| **Reverse-swell FX**                | live reverse envelope namiesto statického sampleu                                                                                              | 0,5 dňa  |
+| **Granular Freeze send**            | texture engine zapuzdrený ako send-efekt                                                                                                       | 1–2 dni  |
+| **Telephone preset pack**           | SVF + distortion presety (žiadny kód)                                                                                                          | 2 hodiny |
 
 ---
 
@@ -199,13 +206,13 @@ Každý efekt = samostatný commit (`feat(fx): <name> — <one-liner>`), každá
 
 ## 8. Riziká a mitigácie
 
-| Riziko | Mitigácia |
-|---|---|
-| Core worklet budget (144/150 KB) | Tape stop/ring mod/vinyl sú malé (~2–4 KB každý); beatMangler ~6 KB — bump s komentárom, alebo rozdeliť bundle (rozhodnutie v čase fázy 3) |
-| Latencia grain-based shiftu | Dokumentovaná (~grain size), mix default wet<1 |
-| beatMangler BPM sync na hranici bar | Rovnaká seam-matematika ako scene-tempo v schedulery (piecewise map) — testy na seamoch povinné |
-| Schema growth (políčka na EffectInstance) | `normalizeEffects` sanitizér + round-trip test (pattern stepGate) |
-| Entry budget (registry je core) | Každý efekt ~3–8 KB; po fáze 2 zvážiť lazy registry chunk pre „MORE" efekty |
+| Riziko                                    | Mitigácia                                                                                                                                  |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Core worklet budget (144/150 KB)          | Tape stop/ring mod/vinyl sú malé (~2–4 KB každý); beatMangler ~6 KB — bump s komentárom, alebo rozdeliť bundle (rozhodnutie v čase fázy 3) |
+| Latencia grain-based shiftu               | Dokumentovaná (~grain size), mix default wet<1                                                                                             |
+| beatMangler BPM sync na hranici bar       | Rovnaká seam-matematika ako scene-tempo v schedulery (piecewise map) — testy na seamoch povinné                                            |
+| Schema growth (políčka na EffectInstance) | `normalizeEffects` sanitizér + round-trip test (pattern stepGate)                                                                          |
+| Entry budget (registry je core)           | Každý efekt ~3–8 KB; po fáze 2 zvážiť lazy registry chunk pre „MORE" efekty                                                                |
 
 ---
 

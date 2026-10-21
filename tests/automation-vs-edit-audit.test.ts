@@ -148,7 +148,9 @@ describe("A4 duplicate: shifted copy, shared lane by design", () => {
     const f = fixture();
     f.store.execute(duplicateArrangementClip(f.store.doc, f.clipId));
     const copy = f.store.doc.arrangement.clips[1]!;
-    expect(sceneBaseTickForClip(copy, BAR)).toBe(sceneBaseTickForClip(f.store.doc.arrangement.clips[0]!, BAR) + 8 * BAR);
+    expect(sceneBaseTickForClip(copy, BAR)).toBe(
+      sceneBaseTickForClip(f.store.doc.arrangement.clips[0]!, BAR) + 8 * BAR,
+    );
     // Same sceneId → the SAME lane plays inside both windows (scene-keyed by
     // design: a duplicate plays the same scene content, automation included).
     expect(copy.sceneId).toBe(f.store.doc.arrangement.clips[0]!.sceneId);

@@ -116,10 +116,13 @@ export async function sampleMelodicParts(
 ): Promise<Record<MelodicRole, NoteEvent[]> | null> {
   const options = plan.options;
   const stepCount = options.stepCount;
+  // The metre the melody is written in, and the frame its feature rows are
+  // read in (ADR 0057 Stage 2c/2d).
+  const meter = aiMeterFor(options.timeSignature);
   // The melody's budget is per METRICAL bar (ADR 0057 Stage 2c). A bar is
   // sixteen sixteenth steps in 4/4 and twelve in 3/4 — asking for sixteen here
   // gave a 3/4 melody two thirds of the notes it should have.
-  const bars = stepCount / aiMeterFor(options.timeSignature).stepsPerBar;
+  const bars = stepCount / meter.stepsPerBar;
   const genre = melodicGenreOf(options.genre);
   const temperature = plan.intent.controls.temperature;
   const velocitySpread = 0.08 + plan.intent.controls.velocityVariation * 0.1;
@@ -161,6 +164,7 @@ export async function sampleMelodicParts(
               prevDegree,
               prevDuration,
               prevPrevDegree,
+              meter,
             })
           : buildMelodicFeatureRow({
               genre,
@@ -169,6 +173,7 @@ export async function sampleMelodicParts(
               prevDegree,
               prevDuration,
               prevPrevDegree,
+              meter,
             });
       if (row.length !== (conditioning && conditioning.length > 0 ? MELV2_FEATURE_COUNT : MELODIC_FEATURE_COUNT)) {
         return null;
@@ -251,6 +256,10 @@ export class SymbolicPriorProvider implements GenerationProvider {
     const options = plan.options;
     const stepCount = options.stepCount;
     const doc = context.project;
+    // The metre the prior's feature rows are read in (ADR 0057 Stage 2d): the
+    // pinned models' frame is sixteen steps, but the POSITION inside the bar
+    // is the document's.
+    const meter = aiMeterFor(options.timeSignature ?? doc.timeSignature);
 
     const drumTracks = doc.tracks.filter((track) => track.kind === "drum");
     const targetDrumTrack = options.drumTrackId
@@ -400,6 +409,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
               styleId,
               padRoles,
               stepCount,
+              meter,
             });
             const batch = new Float32Array(featureRows.length * V3_FEATURE_COUNT);
             featureRows.forEach((row, index) => batch.set(row, index * V3_FEATURE_COUNT));
@@ -412,7 +422,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
             }
           }
           if (semantic && !run?.ok && !v2Unavailable) {
-            const featureRows = buildPriorV2GridRows({ semantic, padRoles, stepCount });
+            const featureRows = buildPriorV2GridRows({ semantic, padRoles, stepCount, meter });
             const batch = new Float32Array(featureRows.length * V2_FEATURE_COUNT);
             featureRows.forEach((row, index) => batch.set(row, index * V2_FEATURE_COUNT));
             run = await runPriorGridV2(batch, featureRows.length);
@@ -429,6 +439,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
               styleId,
               stepCount,
               padRoles,
+              meter,
             });
             const batch = new Float32Array(featureRows.length * PRIOR_FEATURE_COUNT);
             featureRows.forEach((row, index) => batch.set(row, index * PRIOR_FEATURE_COUNT));

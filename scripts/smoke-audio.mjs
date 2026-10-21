@@ -96,14 +96,13 @@ const [kick, hat, clap, crash] = await Promise.all([
 const top1 = (results) => results[0]?.label.toLowerCase() ?? "";
 checks.push([
   `every sample classifies (kick: ${top1(kick)}, hat: ${top1(hat)}, clap: ${top1(clap)}, crash: ${top1(crash)})`,
-  [kick, hat, clap, crash].every((r) => r.length > 0 && r.every((e) => Number.isFinite(e.score) && e.score >= 0 && e.score <= 1)),
+  [kick, hat, clap, crash].every(
+    (r) => r.length > 0 && r.every((e) => Number.isFinite(e.score) && e.score >= 0 && e.score <= 1),
+  ),
 ]);
 
 // kick is tonal/bassy — its top label differs from the noisy crash top label
-checks.push([
-  `kick and crash get DISTINCT top labels (${top1(kick)} vs ${top1(crash)})`,
-  top1(kick) !== top1(crash),
-]);
+checks.push([`kick and crash get DISTINCT top labels (${top1(kick)} vs ${top1(crash)})`, top1(kick) !== top1(crash)]);
 
 // kick leans electronic/tonal (drum machine / synth family)
 checks.push([
@@ -113,10 +112,7 @@ checks.push([
 
 // same file classified twice is deterministic
 const kickAgain = await classifySample(path.join(SAMPLES_DIR, "factory.kick.punch.wav"));
-checks.push([
-  `classification is deterministic`,
-  JSON.stringify(kick) === JSON.stringify(kickAgain),
-]);
+checks.push([`classification is deterministic`, JSON.stringify(kick) === JSON.stringify(kickAgain)]);
 
 let failed = 0;
 for (const [label, ok] of checks) {

@@ -262,11 +262,7 @@ export function createFallbackPattern(doc: ProjectDocument, options: GenerateOpt
       if (!groove.activePads.includes(padIndex)) continue;
       // The groove's material in the DOCUMENT's metre (ADR 0057 Stage 2c): the
       // fallback must not be the only path that plays a truncated 4/4 bar.
-      const base = projectRowToMeter(
-        groove.patterns[0]?.[padIndex] ?? [],
-        inferPadRole(pad.name, padIndex),
-        meter,
-      );
+      const base = projectRowToMeter(groove.patterns[0]?.[padIndex] ?? [], inferPadRole(pad.name, padIndex), meter);
       // The groove's material is folded at the METRICAL bar, so the second
       // bar of a pattern draws the groove's first bar again.
       rows[pad.id] = Array.from({ length: options.stepCount }, (_, step) =>

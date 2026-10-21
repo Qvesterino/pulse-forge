@@ -1,4 +1,6 @@
 import type { ChordEvent } from "../harmony";
+import type { AiMeter } from "../meter";
+import { stepInBarFeatures } from "./step-position";
 
 /**
  * melodic-features.v3 — harmony-aware next-note context (W1,
@@ -83,6 +85,8 @@ export interface MelodicFeatureInputV3 {
   stepsIntoChord: number;
   /** Deterministic motif id — same motif = same hash = same embedding input. */
   motifId: number;
+  /** The metre the position is read in (ADR 0057 Stage 2d). */
+  meter: AiMeter;
 }
 
 function oneHot(values: readonly string[], value: string, offset: number, row: number[]): void {
@@ -121,12 +125,8 @@ export function buildMelodicFeatureRowV3(input: MelodicFeatureInputV3): number[]
   offset += MELODIC_ROLE_VOCAB.length;
 
   // ── v1 base: position sin/cos ──
-  const s16 = ((input.startStep % 16) + 16) % 16;
-  row[offset++] = s16 / 16;
-  row[offset++] = Math.sin((2 * Math.PI * s16) / 16);
-  row[offset++] = Math.cos((2 * Math.PI * s16) / 16);
-  row[offset++] = Math.sin((4 * Math.PI * s16) / 16);
-  row[offset++] = Math.cos((4 * Math.PI * s16) / 16);
+  const position = stepInBarFeatures(input.meter, input.startStep);
+  for (const value of position) row[offset++] = value;
 
   // ── v1 base: previous degree one-hot ──
   const prevClass = input.prevDegree < 0 ? 0 : Math.min(7, input.prevDegree + 1);

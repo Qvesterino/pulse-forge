@@ -291,15 +291,15 @@ describe("IntentPanel", () => {
     expect(detected.textContent!.length).toBeGreaterThan(0);
   });
 
-  it("shows the inferred param delta BEFORE execution", async () => {
+  it("shows the inferred intent plan BEFORE execution", async () => {
     const project = createProjectFromTemplate("house");
     const services = mockServices(project);
     renderWithContext(<IntentPanel />, { services });
     fireEvent.change(screen.getByLabelText(/Intent description/i), {
       target: { value: "make the reverb tail a little longer on the 808" },
     });
-    const plan = await screen.findByLabelText("Param plan");
-    expect(plan.textContent).toContain("reverb.decay");
+    const plan = await screen.findByLabelText("Intent plan");
+    expect(plan.textContent).toContain("808: reverb.decay");
     expect(plan.textContent).toContain("1.80 s");
     expect(plan.textContent).toContain("3.39 s");
     expect(plan.textContent).toContain("8% linear");
