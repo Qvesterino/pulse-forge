@@ -77,12 +77,7 @@ import {
   type MixOverrides,
 } from "../intent/mix";
 import { applyParamIntent } from "../intent/param-intent";
-import {
-  clearAdjustmentLedger,
-  recordEffectAdjustment,
-  recordFaderAdjustment,
-  recordParamAdjustment,
-} from "../intent/adjustment-recording";
+import { noteAppliedRoute, noteExternalMutation, noteUndoRedo } from "../intent/apply-boundary";
 import { transcribeTrack } from "../reference/transcribe";
 import { unsunoCommand } from "../reference/unsuno";
 import { restyleCommand } from "../reference/restyle";
@@ -3922,7 +3917,7 @@ ${preview.text}`,
   if (result.mutated === true) {
     // Any non-intent mutation supersedes the remembered fader move; the intent
     // path records/clears itself, and kyx_undo clears when it actually moves.
-    if (name !== "kyx_intent" && name !== "kyx_undo") clearAdjustmentLedger();
+    if (name !== "kyx_intent" && name !== "kyx_undo") noteExternalMutation();
     const doc = ctx.getDoc();
     result.text = `${result.text}\nmutated on ${ctx.agentId ? `${ctx.agentId} · ` : ""}document "${doc.name}" (id ${doc.id})`;
     result.docId = doc.id;
@@ -4066,7 +4061,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         failure = error instanceof Error ? error.message : String(error);
       }
       // The move a prior-delta reference points at is no longer applied.
-      if (done > 0) clearAdjustmentLedger();
+      if (done > 0) noteUndoRedo(done);
       let text = `${action} ×${done}`;
       if (failure) text += ` — step failed after ${done}: ${failure}`;
       if (done > 0 && reverted.length > 0) {
@@ -11138,18 +11133,6 @@ function executeIntentTool(ctx: McpToolContext, instruction: string): McpToolRes
  * model fallback land here, so the destructive gate, the UI-local refusals
  * and the verification read-back apply to BOTH brains identically. */
 function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolResult {
-  // The prior-adjustment ledger is session-scoped and invalidated by any
-  // other mutation / generation / undo; the three recordable routes re-record
-  // after their command lands.
-  if (
-    route.kind !== "fader" &&
-    route.kind !== "paramIntent" &&
-    route.kind !== "effectIntent" &&
-    route.kind !== "clarify" &&
-    route.kind !== "queryIntent"
-  ) {
-    clearAdjustmentLedger();
-  }
   // Generation kinds are proposals, not commands — honest refusal over MCP
   // (candidates need in-app auditioning).
   if (route.kind === "pattern" || route.kind === "revise") {
@@ -11255,9 +11238,7 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
       return { text: "intent understood but nothing changed (already matches or no target)", mutated: false };
     }
     ctx.execute(command);
-    if (route.kind === "fader") recordFaderAdjustment(before.id, route.intent, before, ctx.getDoc());
-    else if (route.kind === "effectIntent") recordEffectAdjustment(before.id, route.intent, before, ctx.getDoc());
-    else if (route.kind === "paramIntent") recordParamAdjustment(before.id, route.intent, before, ctx.getDoc());
+    noteAppliedRoute(route, before, ctx.getDoc());
     const extra = route.kind === "production" ? ` — ${productionReadback(before, ctx.getDoc(), route.intent)}` : "";
     return { text: `${command.label}${extra} — verification: applied, one undo step in KYX`, mutated: true };
   } catch (error) {

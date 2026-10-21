@@ -12,8 +12,8 @@ import {
   ticksPerBarFor,
 } from "../project-model/schema";
 import {
-  PATTERN_TICKS,
   STEP_TICKS,
+  STEPS_PER_PATTERN,
   type InstrumentTrack,
   type Pattern,
   type ProjectDocument,
@@ -487,52 +487,30 @@ export function midiImportWarnings(parsed: ParsedMidi | null): string[] {
 /**
  * The ARRANGEMENT follows the document's meter (ADR 0056 Stage 2): the ruler,
  * clip placement, loop regions, the metronome and the bar readouts all measure
- * the metrical bar. The PATTERN grid follows it too now (ADR 0057): one bar is
+ * the metrical bar. The PATTERN grid follows it too (ADR 0057): one bar is
  * `ticksPerBar(doc) / STEP_TICKS` sixteenth steps, and the grid draws that bar
  * line.
  *
- * What still needs disclosing is the IMPORTED PATTERN'S OWN LENGTH. A pattern
- * is a musical duration in sixteenth notes, and the imported one carries the
- * source project's length — a 4/4 bar of 16 sixteenth notes (1920 ticks), which
- * is 1.33 bars of 6/8. A pattern that is not a whole number of bars drifts
- * against the ruler: its downbeat reaches the bar line only every fourth bar.
- * That is measured, not assumed (see `tests/adr0056-pattern-grid.test.ts`), and
- * the dialog discloses it BEFORE the song is imported rather than shipping a
- * project whose grooves quietly drift against its own ruler.
+ * What the user still has to be told is what the CHOOSEN METER does to their
+ * import. The imported groove is padded UP to a whole number of the document's
+ * bars (`stepsForWholeBars`, `src/project-model/grid.ts`), so it lands on the
+ * downbeat in every meter — but the padding is the document's metre, not 4/4's
+ * sixteen steps, and a groove that was 1.33 bars of 6/8 is now two whole bars
+ * of 6/8. Saying so before the import is what keeps the dialog honest: the
+ * previous wording claimed the imported pattern DRIFTS against the ruler, and
+ * that stopped being true the moment the import began rounding to the
+ * document's bar.
  *
- * `null` when a 16-step pattern is exactly a whole number of bars of the
- * chosen meter (4/4, 2/2, 8/8, 2/4).
+ * `null` when the document's bar is 4/4's bar (16 steps): 4/4, 2/2 and 8/8.
  */
 export function patternGridWarning(sig: TimeSignature): string | null {
   const barTicks = ticksPerBarFor(sig);
-  const patternTicks = PATTERN_TICKS;
   const stepsPerBar = Math.max(1, Math.round(barTicks / STEP_TICKS));
-  // A 16-step pattern is a whole number of bars only when the metrical bar
-  // divides it. In 6/8 the bar is 12 steps and 16 is not a multiple of 12.
-  if ((PATTERN_TICKS / STEP_TICKS) % stepsPerBar === 0) return null;
-  // How many bars one 4/4 bar of pattern spans (fractional in 3/4 and 6/8).
-  const barsPerPattern = patternTicks / barTicks;
-  // How many bars pass between two pattern downbeats that land on a bar line.
-  const downbeatEveryBars = patternTicks / greatestCommonDivisor(patternTicks, barTicks);
+  // The grid's bar is 4/4's bar in 4/4, 2/2 and 8/8 — nothing to say there.
+  if (stepsPerBar === STEPS_PER_PATTERN) return null;
   return (
-    `KYX's arrangement follows your ${sig.numerator}/${sig.denominator} meter — every ruler bar, ` +
-    `clip placement and loop region is ${barTicks} ticks, and the step grid follows the meter as well. ` +
-    `But the imported pattern keeps its own length: 16 sixteenth notes (${patternTicks} ticks = four ` +
-    `quarter notes) is ${barsPerPattern.toFixed(2)} bars of ${sig.numerator}/${sig.denominator}, so a ` +
-    `pattern that is not a whole number of bars drifts against the ruler — its downbeat reaches the bar ` +
-    `line only every ${downbeatEveryBars} ${downbeatEveryBars === 1 ? "bar" : "bars"}. The grid draws ` +
-    `that bar line now, and the pattern length control offers whole bars (${stepsPerBar} steps) if you ` +
-    `want the groove to land on the downbeat.`
+    `KYX reads your project in ${sig.numerator}/${sig.denominator}: every ruler bar, clip placement and ` +
+    `loop region is ${barTicks} ticks, and the step grid's bar is ${stepsPerBar} sixteenth steps. Your ` +
+    `imported groove is padded to a whole number of those bars, so it lands on the downbeat.`
   );
-}
-
-function greatestCommonDivisor(a: number, b: number): number {
-  let x = Math.abs(a);
-  let y = Math.abs(b);
-  while (y !== 0) {
-    const next = x % y;
-    x = y;
-    y = next;
-  }
-  return x || 1;
 }

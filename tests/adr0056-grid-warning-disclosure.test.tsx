@@ -19,17 +19,17 @@
  *
  * Stage 2 changed WHICH grid the disclosure is about. The arrangement now follows the meter
  * (ruler, placement, loop regions, metronome, readouts), so the old "the arrangement grid is
- * 4/4" text became false. The unit that did NOT move is the PATTERN grid: a pattern is 16
- * sixteenth steps whatever the meter declares, so in 6/8 a groove's downbeat drifts against the
- * ruler. The disclosure now says that — before the meter is committed, as before.
+ * 4/4" text became false. ADR 0057 then moved the PATTERN grid onto the meter as well: one bar
+ * is `ticksPerBar(doc) / STEP_TICKS` steps, and the imported groove is padded UP to a whole
+ * number of the document's bars. The disclosure now states what the chosen METER does to the
+ * import — before the meter is committed, as before.
  */
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { CoreServices } from "../src/services";
 import { TransferImportDialog } from "../src/ui/TransferImportDialog";
-import { PATTERN_TICKS } from "../src/project-model/types";
 
-const GRID_WARNING = /step grid follows the meter/i;
+const GRID_WARNING = /reads your project in/i;
 
 function renderDialog(): { container: HTMLElement } {
   const core = { repo: { save: vi.fn() }, bank: { remove: vi.fn() }, engine: {} } as unknown as CoreServices;
@@ -38,7 +38,7 @@ function renderDialog(): { container: HTMLElement } {
 }
 
 describe("ADR 0056 — the grid is disclosed before the meter is committed", () => {
-  it("a non-4/4 meter says the grid is 4/4 even with NO file chosen", async () => {
+  it("a non-4/4 meter says what it does to the import, with NO file chosen", async () => {
     // This is the defect. The meter control is live before anything is chosen, so the dialog has
     // to speak at that moment — not once the files land.
     renderDialog();
@@ -46,10 +46,11 @@ describe("ADR 0056 — the grid is disclosed before the meter is committed", () 
     fireEvent.change(screen.getByLabelText(/beats per bar/i), { target: { value: "3" } });
 
     const warning = await screen.findByText(GRID_WARNING);
-    // It has to name BOTH tick lengths, or it does not tell the user what the disagreement is.
+    // It has to name the metrical bar in BOTH units, or it does not tell the user what the
+    // metre means for their project.
     expect(warning.textContent).toContain("3/4");
-    expect(warning.textContent).toContain("1440"); // the 3/4 bar
-    expect(warning.textContent).toContain(String(PATTERN_TICKS)); // 1920 — the pattern grid
+    expect(warning.textContent).toContain("1440"); // the 3/4 bar, in ticks
+    expect(warning.textContent).toContain("12 sixteenth steps"); // the 3/4 bar, in steps
   });
 
   it("a non-4/4 BEAT UNIT says it too", async () => {
@@ -62,7 +63,7 @@ describe("ADR 0056 — the grid is disclosed before the meter is committed", () 
 
     const warning = await screen.findByText(GRID_WARNING);
     expect(warning.textContent).toContain("6/8");
-    expect(warning.textContent).toContain(String(PATTERN_TICKS));
+    expect(warning.textContent).toContain("12 sixteenth steps");
   });
 
   it("NEGATIVE CONTROL: 4/4 with no file chosen says nothing", () => {
@@ -73,7 +74,8 @@ describe("ADR 0056 — the grid is disclosed before the meter is committed", () 
   });
 
   it("NEGATIVE CONTROL: 2/2 and 8/8 match the grid and say nothing", () => {
-    // A meter matches the pattern grid when one bar spans four quarter notes — 2/2 and 8/8 do.
+    // A meter matches the pattern grid when its bar is 4/4's bar — sixteen steps.
+    // 2/2 and 8/8 are both 1920 ticks, so they are 4/4-length bars.
     for (const [num, den] of [
       [2, 2],
       [8, 8],

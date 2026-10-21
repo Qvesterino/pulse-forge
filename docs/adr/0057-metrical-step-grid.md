@@ -1,6 +1,6 @@
 # ADR 0057 — The step grid follows the meter: one bar is `ticksPerBar(doc) / STEP_TICKS` steps
 
-Date: 2026-10-20 · Status: Accepted (v3 — Stage 1, 1b, 2a and 2b shipped) · Scope: pattern grid, sequencer ruler, piano roll grid, pattern labels, transfer disclosure, intent engine, MCP surface, AI layer
+Date: 2026-10-20 · Status: Accepted (v4 — Stage 1, 1b, 2a, 2b and 2d shipped) · Scope: pattern grid, sequencer ruler, piano roll grid, pattern labels, transfer disclosure, intent engine, MCP surface, AI layer, MIDI import
 
 ## Context
 
@@ -330,18 +330,99 @@ training frame, the pinned ONNX feature frames, the v2 feature contract's
 chord-duration fraction) are listed with their reasons, and **the ledger may
 only shrink**. The guard proves it can fail on a synthetic violation.
 
-### What is still open (and where)
+### Stage 2d — the IMPORT speaks the document's bars
+
+The grid was truthful and the intent engine asked in bars, but one producer
+still padded in 4/4's steps: the MIDI import rounded the imported phrase up to
+a multiple of SIXTEEN steps — 4/4's bar — whatever the document declared. In a
+6/8 project that produced a 1.33-bar groove whose downbeat reached the bar line
+only every fourth bar, and the transfer dialog had to warn the user about it.
+
+#### What was measured, before anything changed
+
+The import's length is `ceil(neededSteps / 16) * 16`, where `neededSteps` is the
+longest note end. In a 6/8 document that is a length the metrical bar does not
+divide, so the imported groove drifts. The material itself was never the
+problem — the notes and the drum hits sit at absolute positions, and only the
+loop's LENGTH was wrong.
+
+#### The fix: pad UP to a whole number of the DOCUMENT's bars
+
+`stepsForWholeBars(doc, neededSteps)`
+(`src/project-model/grid.ts`) replaces the hard-coded multiple. The result is
+**always at least `neededSteps`** — rounding UP is what keeps the user's
+material: nothing is ever cut to fit a bar. The drum-hit window is bounded by
+the same number, and because the window is never shorter than the longest
+note, no hit is dropped either.
+
+| metre | bar (steps) | material needs | old length | new length |
+| ----- | ----------- | -------------- | ---------- | ---------- |
+| 4/4   | 16          | 20             | 32         | **32** (unchanged) |
+| 3/4   | 12          | 20             | 32         | **24** (2 bars) |
+| 6/8   | 12          | 20             | 32         | **24** (2 bars) |
+| 2/4   | 8           | 20             | 32         | **24** (3 bars) |
+| 4/2   | 32          | 20             | 32         | **32** (1 bar) |
+
+4/4 is the same arithmetic, so every 4/4 project is byte-identical — the
+negative control, and not an optional one.
+
+#### The material does not move
+
+The two halves of the change are different questions and both are pinned:
+
+1. The LENGTH becomes a whole number of the document's bars. That is the fix.
+2. The MATERIAL does not move. The same file imported into 4/4 and into 6/8
+   lands its drum hits on the SAME steps and keeps the same note start and
+   duration. Only the loop's length changes — the padding, not the content.
+
+A change that moved the user's notes would be a rewrite, not a rounding, and
+the repo's rule is that stored content is never re-expressed.
+
+#### The disclosure follows the truth
+
+The import no longer drifts, so the warning that said it did became false —
+and a disclosure that states something untrue is worse than no disclosure. It
+now states what the chosen metre does: the arrangement and the step grid follow
+it, and the imported groove is padded to a whole number of the document's bars
+so it lands on the downbeat. The old predicate that asked "is the bar four
+quarter notes" (`patternGridIsOneBar`) was production-dead the moment ADR 0057
+landed — kept alive only by its own tests, which is how a guard ends up
+guarding nothing. The grid's owner answers the better question:
+`isWholeBarPatternFor(sig, steps)`.
+
+The question changed one answer for the better: in 2/4 the bar is eight steps,
+so a sixteen-step pattern is exactly TWO whole bars — it lands on the
+downbeat, and the old warning told the user its downbeat "reaches the bar
+line only every 2 bars", which was not a drift at all.
+
+#### What is still open (and where)
 
 - **Stage 2c — metrical groove content.** The groove library is 4/4 material:
   the Markov model's state space is sixteen positions, the ONNX priors encode a
   sixteen-step bar, and the corpus was ingested on that frame. Those are pinned
   model contracts; changing them is a versioned step (a `features.v3` contract
   with an explicitly metrical frame, and re-validating the pinned manifests).
-- **Content-shaped producers** — the MIDI import's 16-rounding, live capture's
-  16-slot grid, the 4/4 templates — still resize or wrap user material. They
-  are producers of content, not readers of the metre.
-- **The assist layer** (`src/assist/patternOps.ts`) still counts bars by hand,
-  because an assist operation works on a pattern and has no document.
+- **Content-shaped producers** — live capture's 16-slot grid and the 4/4
+  templates — still wrap or carry user material at 4/4's length. The MIDI
+  import's 16-rounding is **done in Stage 2d**. The remaining two are
+  producers of content, not readers of the metre, and the reason is
+  measurable: the capture FOLDS the take into the grid (`relStep % 16`), so
+  changing the grid's length RE-ARRANGES the recording — a hit at step 13
+  wraps to step 1 in a twelve-step grid, and the groove the player performed
+  is no longer the groove that comes back. The import never had that problem:
+  it placed the material at absolute positions and changed only the padding.
+  The templates' grooves are 4/4 by composition.
+- **The assist layer** (`src/assist/patternOps.ts`) still counts bars by hand.
+  Measured, the obstacle is NOT the missing document: three of the four
+  `buildAssistPatch` call sites (`commands/patternAssist.ts`, `ui/AssistPanel.tsx`,
+  `assist/selected-step-plan.ts`) HAVE the document. The obstacle is that the
+  assist operation copies content BAR BY BAR, and the SOURCE bar and the TARGET
+  bar are different units whenever the source is not bar-aligned: a 16-step
+  pattern in a 6/8 project has its own sixteen-step structure, and reading it
+  with a twelve-step bar misaligns the copy, while copying a whole metrical bar
+  drops four steps of the user's material. So this needs a POLICY for
+  non-aligned sources (copy the content's own bars, or the metrical bar and
+  say what was dropped), not a parameter.
 
 ## Stage 2 — what is still open (and where)
 
@@ -366,7 +447,9 @@ document's meter. The highest-risk sites, mapped (read-only sweep,
    document's bars, `setPatternLength` takes bars or steps and reads back
    both, and the creative-task request resolves the length against the meter.
 4. **Content-shaped producers.** The MIDI import's 16-rounding
-   (`src/midi/midiProject.ts`), live capture's 16-slot grid
+   (`src/midi/midiProject.ts`) is **DONE in Stage 2d** — the imported pattern
+   is padded up to a whole number of the document's bars, and the material
+   does not move. Still open: live capture's 16-slot grid
    (`src/arrangement/capture.ts`) and the 4/4 templates
    (`src/project-model/templates.ts`, `template-pack2.ts`).
 5. **The ONNX feature vectors.** `src/ai/symbolic/*` encodes a fixed 16-step
@@ -406,6 +489,9 @@ contour's bar lines. **The ledger may only shrink.**
 - **The AI layer speaks the document's metre**: the bar count, the phrase cut,
   the fill, the kick and the snare sit where that metre puts them, and the
   groove reference folds at the metrical bar.
+- **The import speaks the document's bars**: the imported pattern's length is a
+  whole number of the document's bars, the material does not move, and 4/4 is
+  byte-identical.
 - **A compound metre gets a shuffle, not a tresillo**: in 6/8 the backbeat is
   the second unit inside each group of three.
 - **4/4 keeps the same generated beat** — the same canonical content hash, the
@@ -445,6 +531,8 @@ contour's bar lines. **The ledger may only shrink.**
 - `src/ui/PianoRoll.tsx` — the bar lines, the note-length menu
 - `src/export/transfer-import.ts` — `patternGridWarning`
 - `tests/adr0057-metrical-step-grid.test.ts` — the truth table and the guard
+- `tests/adr0057-metrical-import-length.test.ts` — the import's metrical
+  length, the material that does not move, and the 4/4 negative control
 - `tests/adr0057-metrical-intent-length.test.ts` — the intent engine's bars, the MCP surface's bars, and the second guard
 - `tests/adr0057-ai-meter.test.ts` — the AI layer's metre, the 4/4 baseline, and the third guard
 - `tests/adr0056-pattern-grid.test.ts` — the drift, and the whole-bar control

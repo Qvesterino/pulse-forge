@@ -77,10 +77,43 @@ export function barsPerPattern(doc: Pick<ProjectDocument, "timeSignature">, step
   return perBar > 0 ? stepCount / perBar : 0;
 }
 
-/** True when a pattern of `stepCount` steps is a whole number of bars. */
+/**
+ * True when a pattern of `stepCount` steps is a whole number of bars.
+ */
 export function isWholeBarPattern(doc: Pick<ProjectDocument, "timeSignature">, stepCount: number): boolean {
-  const perBar = stepsPerBar(doc);
+  return isWholeBarPatternFor(doc?.timeSignature, stepCount);
+}
+
+/**
+ * The same question, asked with the METER instead of the document — for the
+ * surfaces that only know the signature (the transfer dialog's disclosure).
+ *
+ * ADR 0057: the question this answers is NOT "is the metrical bar four quarter
+ * notes" (that was the old `patternGridIsOneBar`, which is gone) but "does a
+ * pattern of this length land on the metrical bar line". The two are different
+ * questions: in 2/4 the bar is eight steps, so a sixteen-step pattern is
+ * exactly TWO whole bars — it lands on the downbeat and needs no warning, even
+ * though the bar is not four quarter notes.
+ */
+export function isWholeBarPatternFor(sig: TimeSignature | undefined, stepCount: number): boolean {
+  const perBar = stepsPerBarFor(sig);
   return perBar > 0 && stepCount % perBar === 0;
+}
+
+/**
+ * How many steps a pattern needs to cover `neededSteps` in WHOLE bars of the
+ * document's meter.
+ *
+ * The producer-side rounding (the MIDI import pads an imported phrase to a
+ * whole number of bars) lives here, next to the formula it obeys, so a
+ * producer cannot round to 4/4's sixteen steps by accident. The result is
+ * ALWAYS at least `neededSteps` — rounding UP is what keeps the user's
+ * material: nothing is ever cut to fit a bar.
+ */
+export function stepsForWholeBars(doc: Pick<ProjectDocument, "timeSignature">, neededSteps: number): number {
+  const perBar = stepsPerBar(doc);
+  if (perBar <= 0) return Math.max(0, Math.ceil(neededSteps));
+  return Math.max(perBar, Math.ceil(neededSteps / perBar) * perBar);
 }
 
 /** The bar counts the pattern-length control offers, with the steps they mean. */

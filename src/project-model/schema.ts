@@ -36,7 +36,7 @@ import type {
   AutomationTarget,
   TimeSignature,
 } from "./types";
-import { BAR_TICKS, PATTERN_TICKS, PPQ, STEP_TICKS, STEPS_PER_PATTERN, isMusicalKey } from "./types";
+import { BAR_TICKS, PPQ, STEP_TICKS, STEPS_PER_PATTERN, isMusicalKey } from "./types";
 import { tempoAtTick } from "./scene-time";
 import { CHORD_QUALITIES } from "./chords";
 import { sanitizeProjectProducerBrief } from "./producer-brief";
@@ -3658,25 +3658,6 @@ export function ticksPerBeatFor(sig: TimeSignature): number {
 
 export function ticksPerBeat(doc: Pick<ProjectDocument, "timeSignature">): number {
   return ticksPerBeatFor(doc.timeSignature);
-}
-
-/**
- * Is one 16-step PATTERN exactly one bar of the given meter?
- *
- * ADR 0056 Stage 2 moved the arrangement onto the document's meter: the ruler,
- * clip placement, the metronome and the readouts all measure the metrical bar
- * now. The PATTERN grid is the one unit that did not move — a pattern is 16
- * sixteenth steps (`PATTERN_TICKS`, four quarter notes) whatever the meter
- * declares. A meter is "one bar per pattern" only when its bar is also four
- * quarter notes: 4/4, 2/2 and 8/8 are; 3/4, 6/8, 4/2, 12/8 and 2/4 are not.
- *
- * Where it is not, a pattern's phrase does not line up with the bar: in 6/8 one
- * pattern is 1.33 bars long and its downbeat reaches the bar line only every
- * fourth bar. That gap is measured and recorded in ADR 0056; it is the one the
- * transfer dialog discloses.
- */
-export function patternGridIsOneBar(sig: TimeSignature): boolean {
-  return ticksPerBarFor(sig) === PATTERN_TICKS;
 }
 
 /**

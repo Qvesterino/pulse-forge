@@ -23,9 +23,11 @@
  * hats" would replace the producer's song.
  */
 import { beforeEach, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { routeIntentText } from "../src/intent/route";
 import { applyFaderIntent, parseFaderIntent } from "../src/intent/conversation";
 import { recordFaderAdjustment } from "../src/intent/adjustment-recording";
+import { ROUTE_ADJUSTMENT, noteAppliedRoute, noteExternalMutation, noteUndoRedo } from "../src/intent/apply-boundary";
 import { clearAdjustments, lastAdjustment, rememberAdjustment } from "../src/intent/adjustment-ledger";
 import { isPriorDeltaReference, stripPriorDeltaReference } from "../src/intent/reference-delta";
 import { createProjectFromTemplate } from "../src/project-model/templates";
@@ -224,5 +226,90 @@ describe("the safety property — a reference must never reach the generation ro
     const route = routeIntentText("play it again", doc);
     expect(route.kind).toBe("transport");
     expect((route as { action: string }).action).toBe("play");
+  });
+});
+
+/**
+ * STEP 1 (2026-10-21) — ONE MUTATION BOUNDARY.
+ *
+ * The ledger used to be updated in six places (UI dispatch + three branches,
+ * MCP executor + undo + tool wrapper). The boundary classifies every route
+ * kind in one Record and both surfaces call it, so a new route cannot quietly
+ * skip the rule. These tests pin the classification, the no-op case and the
+ * source ownership.
+ */
+describe("mutation boundary — one place owns ledger invalidation", () => {
+  it("classifies the three recordable routes and the non-mutating routes", () => {
+    expect(ROUTE_ADJUSTMENT.fader).toBe("fader");
+    expect(ROUTE_ADJUSTMENT.effectIntent).toBe("effect");
+    expect(ROUTE_ADJUSTMENT.paramIntent).toBe("param");
+    expect(ROUTE_ADJUSTMENT.clarify).toBe("none");
+    expect(ROUTE_ADJUSTMENT.queryIntent).toBe("none");
+    expect(ROUTE_ADJUSTMENT.transport).toBe("none");
+    expect(ROUTE_ADJUSTMENT.select).toBe("none");
+    expect(ROUTE_ADJUSTMENT.exact).toBe("other");
+    expect(ROUTE_ADJUSTMENT.undoIntent).toBe("other");
+    expect(ROUTE_ADJUSTMENT.pattern).toBe("other");
+    expect(ROUTE_ADJUSTMENT.revise).toBe("other");
+  });
+
+  it("records a fader route that landed, and keeps it across a clarify", () => {
+    const intent = parseFaderIntent("turn the bass down a little");
+    expect(intent).not.toBeNull();
+    const command = applyFaderIntent(doc, intent!);
+    expect(command).not.toBeNull();
+    const after = command!.execute(doc);
+    noteAppliedRoute({ kind: "fader", intent: intent! }, doc, after);
+    const entry = lastAdjustment(doc.id);
+    expect(entry).not.toBeNull();
+    expect(entry!.factor).toBeLessThan(1);
+
+    // A clarify does not mutate; the reference stays valid.
+    noteAppliedRoute({ kind: "clarify", reason: "param-target", suggestions: [] }, after, after);
+    expect(lastAdjustment(doc.id)).toEqual(entry);
+  });
+
+  it("clears for a different mutation and for an effect/param change", () => {
+    const intent = parseFaderIntent("turn the bass down a little")!;
+    const after = applyFaderIntent(doc, intent)!.execute(doc);
+    noteAppliedRoute({ kind: "fader", intent }, doc, after);
+    expect(lastAdjustment(doc.id)).not.toBeNull();
+
+    const otherMutation = routeIntentText("set tempo to 131", after);
+    expect(ROUTE_ADJUSTMENT[otherMutation.kind]).toBe("other");
+    noteAppliedRoute(otherMutation, after, after);
+    expect(lastAdjustment(doc.id)).toBeNull();
+
+    // Re-record, then an effect change supersedes it.
+    noteAppliedRoute({ kind: "fader", intent }, doc, after);
+    const effect = routeIntentText("more reverb on the pads", after);
+    expect(effect.kind).toBe("effectIntent");
+    noteAppliedRoute(effect, after, after);
+    expect(lastAdjustment(doc.id)).toBeNull();
+  });
+
+  it("undo/redo clears only when it actually moved, external mutation always clears", () => {
+    const intent = parseFaderIntent("turn the bass down a little")!;
+    const after = applyFaderIntent(doc, intent)!.execute(doc);
+    noteAppliedRoute({ kind: "fader", intent }, doc, after);
+    noteUndoRedo(0);
+    expect(lastAdjustment(doc.id)).not.toBeNull();
+    noteUndoRedo(1);
+    expect(lastAdjustment(doc.id)).toBeNull();
+
+    noteAppliedRoute({ kind: "fader", intent }, doc, after);
+    noteExternalMutation();
+    expect(lastAdjustment(doc.id)).toBeNull();
+  });
+
+  it("the UI and MCP surfaces cannot bypass the boundary with the recorder", () => {
+    const surfaces = ["src/ui/IntentPanel.tsx", "src/mcp/tools.ts"];
+    for (const path of surfaces) {
+      const source = readFileSync(path, "utf8");
+      expect(source, path).toContain("apply-boundary");
+      expect(source, path).not.toContain("adjustment-recording");
+    }
+    const boundary = readFileSync("src/intent/apply-boundary.ts", "utf8");
+    expect(boundary).toContain("adjustment-recording");
   });
 });

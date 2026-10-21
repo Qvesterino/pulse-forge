@@ -1,6 +1,6 @@
-# ADR 0056 — One bar length: the musical meter wins, the 16-step pattern grid stays and is disclosed
+# ADR 0056 — One bar length: the musical meter wins (and the pattern grid moved on to ADR 0057)
 
-Date: 2026-10-20 · Status: Accepted (v2 — Stage 2 shipped) · Scope: project model, Scheduler, arrangement grid, transfer import, meter surfaces
+Date: 2026-10-20 · Status: Accepted (v3 — Stage 2 shipped; the pattern grid handed to ADR 0057) · Scope: project model, Scheduler, arrangement grid, transfer import, meter surfaces
 
 ## Context
 
@@ -83,21 +83,19 @@ plus the audible disagreement between the click and the audio.
    clip placement grid, the loop regions, the markers, the selection, the zoom,
    the metronome and the readouts all measure the same bar. A 4/4 document is
    unchanged, because there the two units were already identical.
-3. **The PATTERN grid is the unit that does not follow the meter, and it is
-   disclosed.** A pattern is 16 sixteenth steps — `PATTERN_TICKS`, four quarter
-   notes — whatever the document declares. That is a property of the 16-step
-   sequencer, not of the document, and Stage 2 does not change it (it would
-   change every pattern's length, every drum row and the sequencer UI — a
-   separate change, not a patch). The consequence is real and measured (see
-   below), so the transfer dialog discloses it before the user commits to a
-   meter: `patternGridWarning()` (`src/export/transfer-import.ts`) states that
-   the arrangement follows the chosen meter, that the pattern grid does not,
-   and how far a pattern's downbeat drifts from the bar line. The warning
-   participates in the dialog's existing acknowledgement gate, so it cannot be
-   scrolled past and imported without ticking the review box.
+3. **The PATTERN grid has its own ADR, and it has moved.** When this ADR was
+   written, the pattern grid was the unit that did not follow the meter: a
+   pattern was 16 sixteenth steps — `PATTERN_TICKS`, four quarter notes —
+   whatever the document declared. **ADR 0057** has since moved the grid onto
+   the meter: one bar is now `ticksPerBar(doc) / STEP_TICKS` steps, owned by
+   `src/project-model/grid.ts`, and the ruler, the sequencer's beat count and
+   the piano roll's bar lines are metrical in every meter. This ADR keeps the
+   ARRANGEMENT's bar; ADR 0057 owns the grid's. What the transfer dialog
+   discloses is therefore no longer "the grid ignores your metre" — it states
+   what the chosen metre does to the import: the imported groove is padded UP
+   to a whole number of the document's bars, so it lands on the downbeat.
 4. **No surface may change the meter silently.** Every surface that can select
-   a non-4/4 meter must disclose the pattern-grid mismatch before the user
-   commits to it.
+   a non-4/4 meter must disclose the consequence before the user commits to it.
 5. **The dialog displays exactly what it asks the user to acknowledge.** The
    warning list renders the merged, de-duplicated warning set (inspection
    warnings + MIDI import warnings + the grid warning) instead of the
@@ -118,9 +116,16 @@ plus the audible disagreement between the click and the audio.
      needed.** The stored values are bar indices, not ticks derived from bars,
      so what changes is their *interpretation*, which is the fix itself.
 8. **A meter is one-pattern-per-bar exactly when one bar spans four quarter
-   notes.** `patternGridIsOneBar(sig)` encodes that musically, not numerically:
-   4/4, 2/2 and 8/8 are one pattern per bar; 3/4, 6/8, 4/2, 12/8 and 2/4 are
-   not. A meter that is produces no warning.
+   notes.** `patternGridIsOneBar(sig)` encoded that musically when this ADR was
+   written — and it is **gone now**. ADR 0057 replaced the question it asked
+   with a better one, and the grid's owner (`src/project-model/grid.ts`)
+   answers it: `isWholeBarPatternFor(sig, steps)` asks whether a pattern of
+   that length lands on the metrical bar line. The two questions differ, and
+   the difference is not academic — in 2/4 the bar is eight steps, so a
+   sixteen-step pattern is exactly TWO whole bars: it lands on the downbeat and
+   needs no warning, even though its bar is not four quarter notes. The old
+   predicate was production-dead the moment ADR 0057 landed, kept alive only by
+   its own tests, which is how a guard ends up guarding nothing.
 
 ### Stage 2 — what was measured, and the ratchet
 
@@ -201,11 +206,21 @@ is a quarter note late in between. In 4/4 the same measurement is 0 at every bar
 line — the negative control. Pinned by
 `tests/adr0056-pattern-grid.test.ts`.
 
-This is the honest remainder of the migration, and it is what the dialog now
-discloses. It is also the next thing that has to change: a metrical step grid
-(12 steps in 6/8) is a separate change with its own ADR, because it changes
-every pattern's length, every drum row, the sequencer UI and every stored
-pattern.
+This was the honest remainder of the migration, and it named the next step: "a
+metrical step grid (12 steps in 6/8) is a separate change with its own ADR,
+because it changes every pattern's length, every drum row, the sequencer UI and
+every stored pattern."
+
+**That ADR is ADR 0057, and it has shipped.** The grid is metrical now (one bar
+is `ticksPerBar(doc) / STEP_TICKS` steps), and the measurement above survives as
+its motivation rather than as the current state: a pattern of 16 steps in 6/8
+still drifts, but the GRID no longer disagrees with the ruler — the pattern's
+LENGTH does, and the import now pads to whole metrical bars so a fresh import
+does not drift at all.
+
+What this ADR therefore no longer says: that the pattern grid ignores the
+meter. The truth is the grid follows it, and a pattern that was AUTHORED at
+another length keeps its length until the user snaps it.
 
 ### Stage 3 — no schema migration is needed
 
@@ -227,13 +242,16 @@ all, because MIDI clips store absolute ticks.
 
 - A 4/4 document is unchanged: `ticksPerBar(doc) === BAR_TICKS`, and the
   transfer dialog raises no grid warning.
-- `patternGridIsOneBar` is true exactly for 4/4, 2/2 and 8/8, and false for
-  3/4, 6/8, 4/2, 12/8 and 2/4.
+- `isWholeBarPatternFor(sig, 16)` — the grid's own question ("does a 16-step
+  pattern land on the metrical bar line") — is true exactly for 4/4, 2/2, 8/8
+  and 2/4, and false for 3/4, 6/8, 4/2 and 12/8. The 2/4 case is the one that
+  changed: the old predicate asked a different question and put 2/4 on the
+  other side of the line.
 - `ticksPerBar(doc)` and `ticksPerBarFor(doc.timeSignature)` return the same
   value — the formula has one implementation.
 - Choosing a non-4/4 meter in the transfer dialog shows the grid warning,
-  naming both the pattern grid's tick length and the meter's, and the import
-  button stays disabled until the review box is ticked.
+  naming the metrical bar in ticks and in steps, and the import button stays
+  disabled until the review box is ticked.
   The warning is shown **as soon as the meter says so — before any file is
   chosen**. The meter control is live from the moment the dialog opens, so a
   disclosure that waits for the file inspection discloses the mismatch only
@@ -242,9 +260,13 @@ all, because MIDI clips store absolute ticks.
   wording above did not pin the timing, which is how the hole survived its own
   acceptance gate. Pinned by
   `tests/adr0056-grid-warning-disclosure.test.tsx`.
-- The warning says the ARRANGEMENT follows the meter and the PATTERN grid does
-  not. The Stage 1 text ("the arrangement grid is 4/4") became false when
-  Stage 2 landed and was replaced rather than left standing.
+- The warning says what is TRUE about the chosen metre: the arrangement and the
+  step grid follow it, and the imported groove is padded to a whole number of
+  the document's bars. The Stage 1 text ("the arrangement grid is 4/4") became
+  false when Stage 2 landed and was replaced rather than left standing; the
+  Stage 2 text ("the pattern grid is fixed at 16 steps") became false when
+  ADR 0057 landed and was replaced the same way. A disclosure that states
+  something untrue is worse than no disclosure.
 - The warnings the dialog asks the user to acknowledge are the warnings the
   dialog displays.
 - The existing 4/4 transfer-import behaviour and its specs are unchanged.
@@ -255,15 +277,18 @@ all, because MIDI clips store absolute ticks.
   A 6/8 or 3/4 import is a metrical project end to end: the ruler's bar, the
   clip placement, the loop region, the count-in accent, the render length and
   the bar's audible duration are all the metrical bar.
-- **The pattern grid did not move, and in a non-4/4 meter a groove's downbeat
-  drifts against the ruler.** Measured in 6/8: the pattern's phrase is 1.33
-  bars long and reaches the bar line only every fourth bar. This is disclosed
-  at import; it is not fixed. Fixing it means a metrical step grid and its own
-  ADR.
+- **The pattern grid moved on to ADR 0057, and the import moved with it.** The
+  grid is metrical now (one bar is `ticksPerBar(doc) / STEP_TICKS` steps), and
+  the MIDI import pads the imported phrase UP to a whole number of the
+  document's bars — so a fresh 6/8 import lands on the downbeat instead of
+  1.33 bars into the bar. What is left is the pattern's own LENGTH: a groove
+  authored at another length keeps it until the user snaps it to a whole bar,
+  and the grid now SHOWS that ("1.33 bars") instead of hiding it.
 - Before Stage 2 the pattern grid and the 4/4 arrangement grid agreed with each
   other and disagreed with the metronome. Stage 2 traded that: the click and
-  the ruler now agree, and the pattern grid is the odd one out. Both
-  disagreements are 4/4-invisible, so no 4/4 project changed.
+  the ruler agree, and for a while the pattern grid was the odd one out.
+  ADR 0057 removed the odd one out. Both disagreements were 4/4-invisible, so
+  no 4/4 project changed at any point.
 - The audio-lane consequence is stated in the warning. `fittedLoopPlacement`
   measured the bar in beats and now measures it in ticks, so an imported lane
   is no longer truncated to a third of its length in 6/8. The remaining
@@ -302,6 +327,11 @@ all, because MIDI clips store absolute ticks.
   measured non-4/4 divergence
 - `tests/adr0056-pattern-grid.test.ts` — the measured pattern-grid drift and
   its 4/4 negative control
+- `tests/adr0057-metrical-import-length.test.ts` — the import's metrical
+  length: a whole number of the document's bars, the material unmoved, and the
+  4/4 negative control
+- `docs/adr/0057-metrical-step-grid.md` — the pattern grid's own ADR: the
+  metrical step grid, the AI layer's metre, and the import's bar-length
 - `tests/adr0056-pattern-grid-warning.test.tsx` — the warning's truth table
   (`patternGridIsOneBar`) and the 4/4 negative control
 - `tests/adr0056-grid-warning-disclosure.test.tsx` — the disclosure arrives

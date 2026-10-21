@@ -220,3 +220,110 @@ describe("F2 adversarial router corpus (INTENT-AUDIT-2026-10)", () => {
     expect(CASES.length).toBeGreaterThanOrEqual(100);
   });
 });
+
+/**
+ * PRECEDENCE CONTRACT (2026-10-21).
+ *
+ * The table in `src/intent/route-precedence.ts` is the readable contract; this
+ * suite pins the winners for the stages whose ORDER has actually mattered, and
+ * guards the bug-prone relative positions both behaviorally and at the source
+ * level. A reorder that keeps the table but changes the chain fails here.
+ */
+describe("route precedence contract", () => {
+  interface PrecedenceCase {
+    stage: string;
+    text: string;
+    kind: string;
+    scenes?: boolean;
+  }
+
+  const CASES: PrecedenceCase[] = [
+    { stage: "safety-fences", text: "don't make the bass quieter", kind: "clarify" },
+    { stage: "transport-session", text: "stop", kind: "transport" },
+    { stage: "undo-query", text: "undo that", kind: "undoIntent" },
+    { stage: "undo-query", text: "how many tracks are there", kind: "queryIntent" },
+    { stage: "complaint", text: "the lead is harsh", kind: "complaintIntent" },
+    { stage: "descriptive-decline", text: "the bass is quieter than the lead", kind: "clarify" },
+    // The two measured wrong-target bugs: param must beat tempo and fader.
+    { stage: "param", text: "much faster compressor attack on the drums", kind: "paramIntent" },
+    { stage: "param", text: "lower filter cutoff on the lead", kind: "paramIntent" },
+    { stage: "studio-words", text: "more swing on the drums", kind: "grooveIntent" },
+    { stage: "clips-arrange", text: "shorten the intro to 2 bars", kind: "arrange", scenes: true },
+    { stage: "compound", text: "mute the drums and set tempo to 140", kind: "compound" },
+    { stage: "exact", text: "mute the drums", kind: "exact" },
+    { stage: "select-preset-scene", text: "select the bass", kind: "select" },
+    {
+      stage: "select-preset-scene",
+      text: "set the drop intensity to 80%",
+      kind: "sceneIntensity",
+      scenes: true,
+    },
+    { stage: "send", text: "more reverb send on the lead", kind: "sendIntent" },
+    { stage: "fader", text: "turn down the bass", kind: "fader" },
+    { stage: "loudness-tempo", text: "make it louder", kind: "loudness" },
+    { stage: "loudness-tempo", text: "zníž tempo", kind: "tempo" },
+    { stage: "bypass", text: "bypass the delay on the lead", kind: "bypassIntent" },
+    { stage: "effect", text: "even less reverb on the bass", kind: "effectIntent" },
+    { stage: "production-mix", text: "make the bass warmer", kind: "production" },
+    { stage: "production-mix", text: "make the mix brighter", kind: "mix" },
+    { stage: "revise", text: "more energetic", kind: "revise" },
+    { stage: "clarification", text: "make the reverb tail a little longer", kind: "clarify" },
+    { stage: "pattern", text: "a beat that is dark and warm", kind: "pattern" },
+  ];
+
+  it("every declared stage is either exercised or explicitly context-only", () => {
+    const stageById = new Map(ROUTE_PRECEDENCE.map((stage) => [stage.id, stage]));
+    const covered = new Set<string>();
+    for (const entry of CASES) {
+      const stage = stageById.get(entry.stage);
+      expect(stage, `unknown stage ${entry.stage}`).toBeDefined();
+      const route = routeIntentText(entry.text, entry.scenes ? sceneDoc : doc);
+      expect(route.kind, entry.text).toBe(entry.kind);
+      covered.add(entry.stage);
+    }
+    for (const stage of ROUTE_PRECEDENCE) {
+      if (stage.contextOnly) continue;
+      expect(covered.has(stage.id), `stage ${stage.id} has no precedence case`).toBe(true);
+    }
+  });
+
+  it("the bug-prone order is explicit in the table", () => {
+    const at = (id: string): number => {
+      const index = ROUTE_PRECEDENCE.findIndex((stage) => stage.id === id);
+      expect(index, id).toBeGreaterThanOrEqual(0);
+      return index;
+    };
+    expect(at("safety-fences")).toBeLessThan(at("descriptive-decline"));
+    expect(at("descriptive-decline")).toBeLessThan(at("param"));
+    expect(at("param")).toBeLessThan(at("fader"));
+    expect(at("param")).toBeLessThan(at("loudness-tempo"));
+    expect(at("compound")).toBeLessThan(at("exact"));
+    expect(at("exact")).toBeLessThan(at("fader"));
+    expect(at("clips-arrange")).toBeLessThan(at("compound"));
+    expect(at("clarification")).toBeLessThan(at("pattern"));
+  });
+
+  it("the implementation order still matches the contract", () => {
+    const source = readFileSync("src/intent/route.ts", "utf8");
+    const body = source.slice(source.indexOf("export function routeIntentText"));
+    const at = (needle: string): number => {
+      const index = body.indexOf(needle);
+      expect(index, needle).toBeGreaterThan(-1);
+      return index;
+    };
+    const safety = at("NEGATED_MUTATION_COMMAND.test(text)");
+    const descriptive = at("isDescriptiveStatement(text)");
+    const param = at("const paramIntent = parseParamIntent(text)");
+    const compound = at("const compound = parseCompoundIntent(text)");
+    const exact = at("const exact = parseExactIntent(text)");
+    const fader = at("const fader = parseFaderIntent(text)");
+    const tempo = at("const tempo = parseTempoIntent(text)");
+    expect(safety).toBeLessThan(descriptive);
+    expect(descriptive).toBeLessThan(param);
+    expect(param).toBeLessThan(compound);
+    expect(compound).toBeLessThan(exact);
+    expect(exact).toBeLessThan(fader);
+    expect(param).toBeLessThan(tempo);
+    expect(fader).toBeLessThan(tempo);
+  });
+});

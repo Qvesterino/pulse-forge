@@ -31,6 +31,7 @@ import {
 } from "../project-model/types";
 import { downloadBlob } from "../export/download";
 import { drumHitsInWindow } from "../project-model/groove";
+import { stepsForWholeBars } from "../project-model/grid";
 import {
   arrangementAutomationSegmentsInWindow,
   automationClipEventsInWindow,
@@ -248,14 +249,20 @@ export function importMidiCommand(
   const drums = parsed.tracks.filter((t) => t.channel === GM_DRUM_CHANNEL);
   const drumNotes = drums.flatMap((t) => t.notes);
 
-  // Pattern length: longest note end, rounded up to whole bars (16 steps).
+  // Pattern length: the longest note end, rounded UP to a whole number of the
+  // DOCUMENT's bars (ADR 0057). In 4/4 this is exactly the old behaviour — a
+  // multiple of sixteen steps — so every 4/4 project stays byte-identical. In
+  // 6/8 a bar is twelve steps, so an imported groove lands ON the downbeat
+  // instead of 1.33 bars into the bar. Rounding UP is what keeps the user's
+  // material: the result is never shorter than the longest note, so nothing is
+  // ever cut to fit a bar.
   let maxTick = 0;
   for (const track of parsed.tracks) {
     for (const note of track.notes) maxTick = Math.max(maxTick, toProjectTick(note.endTick));
     for (const controller of track.controllers) maxTick = Math.max(maxTick, toProjectTick(controller.tick));
   }
   const neededSteps = Math.ceil(maxTick / STEP_TICKS);
-  const stepCount = Math.max(16, Math.min(MAX_PATTERN_STEPS, Math.ceil(neededSteps / 16) * 16));
+  const stepCount = Math.min(MAX_PATTERN_STEPS, stepsForWholeBars(doc, neededSteps));
   const raw: ProjectDocument = { ...doc, tracks: [...doc.tracks] };
   const trackNames: string[] = [];
 

@@ -79,12 +79,7 @@ import { buildTheatrePlan, stageLabel, type TheatreRun } from "../intent/produce
 import { personaBySlug } from "../intent/producer-personas";
 import { mutateBeat } from "../gallery/lineage";
 import { applyFaderIntent, applyTempoIntent, faderReadback } from "../intent/conversation";
-import {
-  clearAdjustmentLedger,
-  recordEffectAdjustment,
-  recordFaderAdjustment,
-  recordParamAdjustment,
-} from "../intent/adjustment-recording";
+import { noteAppliedRoute } from "../intent/apply-boundary";
 import { applyCompoundIntent, compoundReadback } from "../intent/compound";
 import {
   applyAutomateIntent,
@@ -4112,19 +4107,6 @@ export function IntentPanel() {
         });
       preRoutedRef.current = null;
       executedRoute = route;
-      // Prior-delta references ("half that adjustment") are session-scoped:
-      // any OTHER mutation, a new generation, an undo/redo or a project switch
-      // makes the remembered move stale. Clear before dispatch, then the three
-      // recordable routes write the new record after their command lands.
-      if (
-        route.kind !== "fader" &&
-        route.kind !== "paramIntent" &&
-        route.kind !== "effectIntent" &&
-        route.kind !== "clarify" &&
-        route.kind !== "queryIntent"
-      ) {
-        clearAdjustmentLedger();
-      }
       if (route.kind === "revise" && rejectUnresolvedBriefConflicts()) return;
       if (lastGeneration() && resolveProducerFollowUp(source, lastGeneration()?.intent ?? null)) {
         const followUp = resolveProducerFollowUp(source, lastGeneration()?.intent ?? null)!;
@@ -4593,7 +4575,6 @@ export function IntentPanel() {
         try {
           const command = applyParamIntent(doc, route.intent);
           services.store.execute(command);
-          recordParamAdjustment(doc.id, route.intent, doc, services.store.getDoc());
           const readback = paramReadback(doc, services.store.getDoc(), route.intent);
           setStatus(`⚡ ${route.intent.detected.join(" · ")}${readback ? ` — ${readback}` : ""} (one undo step)`);
           const afterDoc = services.store.getDoc();
@@ -4625,7 +4606,6 @@ export function IntentPanel() {
         stopAudition();
         const command = applyEffectIntent(doc, route.intent);
         services.store.execute(command);
-        recordEffectAdjustment(doc.id, route.intent, doc, services.store.getDoc());
         const readback = effectReadback(doc, services.store.getDoc(), route.intent);
         setStatus(`⚡ ${route.intent.detected.join(" · ")}${readback ? ` — ${readback}` : ""}${checkpointNote}`);
       } else if (route.kind === "sendIntent") {
@@ -4673,7 +4653,6 @@ export function IntentPanel() {
           return;
         }
         services.store.execute(command);
-        recordFaderAdjustment(doc.id, route.intent, doc, services.store.getDoc());
         const readback = faderReadback(doc, services.store.getDoc(), route.intent);
         setStatus(`${command.label}${readback ? ` — ${readback}` : ""} (one undo step)`);
       } else if (route.kind === "compound") {
@@ -4943,6 +4922,11 @@ export function IntentPanel() {
     } finally {
       setRouteBusy(false);
       if (executedRoute && !delegatedToNestedRoute) {
+        // ONE mutation boundary: record a fader move, or invalidate the
+        // remembered move for any other mutation. A no-op (unchanged document
+        // identity) leaves the reference valid.
+        const afterRoute = services.store.getDoc();
+        if (afterRoute !== docBeforeRoute) noteAppliedRoute(executedRoute, docBeforeRoute, afterRoute);
         const registration = noteIntentProposal(
           executedRoute,
           docBeforeRoute,

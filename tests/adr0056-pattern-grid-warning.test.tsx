@@ -1,11 +1,10 @@
 /**
- * ADR 0056 — the PATTERN grid is the grid that does not follow the meter.
+ * ADR 0056 → 0057 — the meter is musical, and the grid speaks it too.
  *
- * Stage 2 moved the arrangement onto the document's meter. The one unit that
- * stayed put is the 16-step PATTERN grid: a pattern is 16 sixteenth steps
- * (`PATTERN_TICKS` = four quarter notes) whatever the meter declares, so in
- * 6/8 one pattern is 1.33 bars long and its downbeat reaches the bar line only
- * every fourth bar.
+ * Stage 2 moved the arrangement onto the document's meter. ADR 0057 moved the
+ * PATTERN grid after it: one bar is `ticksPerBar(doc) / STEP_TICKS` steps, and
+ * the imported groove is padded UP to a whole number of the document's bars, so
+ * it lands on the downbeat in every meter.
  *
  * These specs are the gate for that disclosure. The 4/4 case is the negative
  * control and it is not optional: a dialog that warned on 4/4 too would train
@@ -18,9 +17,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { CoreServices } from "../src/services";
-import { patternGridIsOneBar, ticksPerBar, ticksPerBarFor } from "../src/project-model/schema";
+import { ticksPerBar, ticksPerBarFor } from "../src/project-model/schema";
+import { isWholeBarPatternFor } from "../src/project-model/grid";
 import { createProjectFromTemplate } from "../src/project-model/templates";
-import { PATTERN_TICKS } from "../src/project-model/types";
+import { PATTERN_TICKS, STEPS_PER_PATTERN } from "../src/project-model/types";
 import { patternGridWarning } from "../src/export/transfer-import";
 import { writeMidiFile } from "../src/midi/midiFile";
 import { TransferImportDialog } from "../src/ui/TransferImportDialog";
@@ -34,7 +34,7 @@ vi.mock("../src/persistence/UserSampleRepository", () => ({
   },
 }));
 
-const GRID_WARNING = /step grid follows the meter/i;
+const GRID_WARNING = /reads your project in/i;
 
 function midiFile(sig?: { num: number; den: number }): File {
   const bytes = writeMidiFile({
@@ -61,28 +61,32 @@ function renderDialog(): { container: HTMLElement } {
   return { container };
 }
 
-describe("ADR 0056 — the meter is musical; the PATTERN grid stays 16 steps", () => {
+describe("ADR 0056/0057 — the meter is musical, and the grid speaks it", () => {
   beforeEach(() => {
     importAudioFileMock.mockReset();
     removeSampleMock.mockClear();
   });
 
-  it("a meter is one-pattern-per-bar exactly when one bar spans four quarter notes", () => {
+  it("a 16-step pattern is a whole number of bars exactly when the metrical bar divides it", () => {
     for (const sig of [
       { numerator: 4, denominator: 4 },
       { numerator: 2, denominator: 2 },
       { numerator: 8, denominator: 8 },
+      // 2/4 moved to this side when ADR 0057 asked the RIGHT question. The old
+      // predicate asked "is the bar four quarter notes"; this one asks "does a
+      // 16-step pattern land on the bar line", and in 2/4 the bar is eight
+      // steps, so a 16-step pattern is exactly two whole bars.
+      { numerator: 2, denominator: 4 },
     ]) {
-      expect(patternGridIsOneBar(sig)).toBe(true);
+      expect(isWholeBarPatternFor(sig, STEPS_PER_PATTERN)).toBe(true);
     }
     for (const sig of [
       { numerator: 3, denominator: 4 },
       { numerator: 6, denominator: 8 },
       { numerator: 4, denominator: 2 },
       { numerator: 12, denominator: 8 },
-      { numerator: 2, denominator: 4 },
     ]) {
-      expect(patternGridIsOneBar(sig)).toBe(false);
+      expect(isWholeBarPatternFor(sig, STEPS_PER_PATTERN)).toBe(false);
     }
   });
 
@@ -93,26 +97,31 @@ describe("ADR 0056 — the meter is musical; the PATTERN grid stays 16 steps", (
     expect(ticksPerBarFor({ numerator: 4, denominator: 4 })).toBe(PATTERN_TICKS);
   });
 
-  it("the warning names BOTH tick lengths and stays silent on 4/4", () => {
+  it("the warning names the metrical bar and its step count, and stays silent on 4/4", () => {
     expect(patternGridWarning({ numerator: 4, denominator: 4 })).toBeNull();
 
     const warning = patternGridWarning({ numerator: 6, denominator: 8 });
     expect(warning).not.toBeNull();
     expect(warning).toContain("6/8");
-    expect(warning).toContain(String(PATTERN_TICKS)); // 1920 — the pattern grid
-    expect(warning).toContain("1440"); // the 6/8 bar
-    // The arrangement part of the sentence must now say the arrangement FOLLOWS
+    expect(warning).toContain("1440"); // the 6/8 bar, in ticks
+    expect(warning).toContain("12"); // the 6/8 bar, in sixteenth steps
+    // The arrangement part of the sentence must say the arrangement FOLLOWS
     // the meter — the old text claimed the opposite and became false.
-    expect(warning).toContain("arrangement follows your 6/8 meter");
+    expect(warning).toContain("loop region is 1440 ticks");
     expect(warning).not.toContain("arrangement grid is 4/4");
   });
 
-  it("quotes the measured drift: how long a pattern is, and how often it reaches the bar", () => {
+  it("states the padding, and does NOT claim a drift the import no longer has", () => {
     const warning = patternGridWarning({ numerator: 6, denominator: 8 })!;
-    // One 1920-tick pattern in a 1440-tick bar is 1.33 bars long…
-    expect(warning).toContain("1.33 bars");
-    // …and it reaches the bar line only every fourth bar.
-    expect(warning).toContain("every 4 bars");
+    // The import rounds UP to a whole number of the document's bars, so the
+    // groove lands on the downbeat. The old wording ("1.33 bars", "every 4
+    // bars") described a drift that the import no longer produces — a
+    // disclosure that says something untrue is worse than no disclosure.
+    expect(warning).toContain("padded to a whole number");
+    expect(warning).toContain("lands on the downbeat");
+    expect(warning).not.toMatch(/drift/i);
+    expect(warning).not.toContain("1.33 bars");
+    expect(warning).not.toContain("every 4 bars");
   });
 
   it("a 6/8 MIDI pre-fills the meter, raises the grid warning and holds the import until it is acknowledged", async () => {
@@ -125,7 +134,9 @@ describe("ADR 0056 — the meter is musical; the PATTERN grid stays 16 steps", (
     const warning = await screen.findByText(GRID_WARNING);
     expect(warning.textContent).toContain("6/8");
     expect(warning.textContent).toContain("1440");
-    expect(warning.textContent).toContain("1920");
+    // The 6/8 bar in STEPS — the grid's bar is metrical, so the dialog quotes
+    // the metrical length, not 4/4's 1920 ticks.
+    expect(warning.textContent).toContain("12 sixteenth steps");
 
     const importButton = screen.getByRole("button", { name: /IMPORT AS NEW KYX PROJECT/i });
     expect(importButton).toBeDisabled();
