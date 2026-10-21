@@ -45,6 +45,8 @@ const ENTRY = join(SRC, "ui", "App.tsx");
  *     event-name constant.
  *   intentRouting, mix-idea          — the intent routing table (91.8 KB
  *     built) and the FX add assistant.
+ *   mix                              — the mix planner (83 KB built), reached
+ *     through one word table the arrangement parser needed.
  *   renderManifest, zip              — the render manifest (11.1 KB) and the
  *     zip writer (1.7 KB).
  *   trustReport, sessionStory        — the download builders behind the
@@ -52,6 +54,10 @@ const ENTRY = join(SRC, "ui", "App.tsx");
  *   freezeSignature                  — the freeze-signature reader, which
  *     carries the render manifest.
  *   midiFile, midiProject, hum-to-notes — the MIDI format writers.
+ *   HumToMelody                      — the hum-to-melody panel and its pitch
+ *     tracker, opened by a button.
+ *   checkpoints                      — the checkpoint reader behind the
+ *     REVERT action.
  *   pipeline, song, aiPattern        — the intent engine's hot paths.
  */
 const MUST_STAY_OUT = [
@@ -59,6 +65,7 @@ const MUST_STAY_OUT = [
   "src/intent/preference-ledger.ts",
   "src/commands/intentRouting.ts",
   "src/mcp/mix-idea.ts",
+  "src/intent/mix.ts",
   "src/export/renderManifest.ts",
   "src/export/zip.ts",
   "src/services/trustReport.ts",
@@ -66,6 +73,9 @@ const MUST_STAY_OUT = [
   "src/rendering/freezeSignature.ts",
   "src/midi/midiFile.ts",
   "src/midi/midiProject.ts",
+  "src/midi/hum-to-notes.ts",
+  "src/ui/HumToMelody.tsx",
+  "src/intent/checkpoints.ts",
   "src/intent/pipeline.ts",
   "src/intent/song.ts",
   "src/commands/aiPattern.ts",

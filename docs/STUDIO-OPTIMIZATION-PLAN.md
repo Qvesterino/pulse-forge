@@ -229,6 +229,80 @@ je **vedome zvýšenie podlahy**, nie chyba.
 do uzatvoreniny sa nedostanú — overené prepočtom statických importov, nie
 odhadom. Do celkového grafu pridali 27 KB z 290 KB prekročenia.
 
+### 3.7 Vlna 6 — bootstrap diet: šesť rezov, 282 KB z boot cesty (2026-10-21)
+
+§3.6 povedala, že rozpočet je červený a prečo. Tu je, čo sa s tým urobilo.
+
+**MERANIE NAJPRV.** Boot path je vlastnosť **zdrojového importového grafu**,
+takže sa dá prečítať zo zdrojov — bez buildu, za sekundy. Nástroj
+(`pf-boot-graph.mjs`, mimo repo) prejde statické importy od `src/ui/App.tsx`
+a vypíše reťazec ku každému modulu. To je lacnejšie a presnejšie než
+hľadať v chunkoch, kto čo ťahá.
+
+**JEDEN PÁNTAV DRŽAL 225 KB.** `src/intent/style-observation.ts` importovala
+`PREFERENCE_LEDGER_CLEARED_EVENT` — **jednu stringovú konštantu** — z
+`src/intent/preference-ledger.ts`. Tento jeden import ťahal do boot cesty celý
+AI engine:
+
+```
+TopBar → CollabPanel → services.ts → style-observation
+       → preference-ledger → ai/features/pattern-features
+       → ai/generator → ai/grooves/*        (≈200 KB postavené)
+```
+
+Konštanta sa oddelila do `src/intent/preference-ledger-events.ts` — reťazec
+neexistuje. Názov eventu je rovnaký, ledger ho stále re-exportuje.
+
+**ŠESŤ REZOV, VŠETKY ZMERANÉ:**
+
+| # | Hrana, ktorá sa preťala                                       | Čo odišlo z boot cesty              |
+| - | ------------------------------------------------------------ | ----------------------------------- |
+| 1 | `style-observation → preference-ledger` (konštanta)          | AI engine, grooves, generator       |
+| 2 | `mix-preview → mix-idea` (plánovač)                          | `intentRouting` chunk (91,8 KB)      |
+| 3 | `ActivityCenter → trustReport` / `→ sessionStory`            | `renderManifest` (11,1) + `zip`     |
+| 4 | `services.ts → rendering/freezeSignature`                    | manifest z cesty služieb             |
+| 5 | `arrangeWords → mix` (tabuľka slov) → `src/intent/effect-words.ts` | mix planner (83 KB)            |
+| 6 | `PianoRoll → HumToMelody` (lazy komponent)                   | MIDI writer, pitch tracker           |
+
+**VÝSLEDOK:**
+
+| Kedy                                    | Boot path   | DAW total | Výsledok |
+| --------------------------------------- | ----------- | --------- | -------- |
+| `d55aa453` — baseline vlny 6            | 2354,4 KB   | —         | FAIL     |
+| po rezoch 1–4                           | 2199,2 KB   | 5483 KB   | boot OK  |
+| po rezoch 5–6 (`9c24df81`)              | **2072 KB** | 5494 KB   | FAIL (DAW) |
+| po zvýšení DAW podlahy                  | **2072 KB** | 5502 KB   | **exit 0** |
+
+Boot path **−282 KB (−12 %)**, a **128 KB rezervy** pod podlahou 2200 KB.
+Nič o produkte sa nezmenilo — zmenilo sa len *kedy* sa modul načíta.
+
+**LEKCIA, KTORÁ STOJÍ ZA TÝMTO VETOM.** Modul odchádza z boot cesty až vtedy,
+keď ho **už žiadny** modul v uzatvorenine neimportuje staticky. Presun jedného
+súboru za `await import()` nestačí, ak ho tridsať iných boot-modulov ťahá cez
+barrel — Rollup ho potom zdvihne do spoločného chunku, ktorý boot cesta
+importuje staticky. Rezy, ktoré sa oplatili, boli tie, kde sa podstatný import
+odstránil **naprieč** volajúcimi.
+
+**BRÁNA, NECH TO NEREZNI.** `tests/boot-path-seams.test.ts` prejde ten istý
+zdrojový graf za **6 ms** a zlyhá, keď sa ťažký modul vráti. Rozpočtový skript
+stojí 2,5-minútový build; táto brána stojí sekundu a beží v test job-e. V zozname
+je aj `src/intent/mix.ts`, `src/ui/HumToMelody.tsx`, `src/midi/hum-to-notes.ts`,
+`src/intent/checkpoints.ts`, `src/commands/intentRouting.ts`,
+`src/export/renderManifest.ts`, `src/export/zip.ts`, `src/midi/midiFile.ts` —
+každý s vlastným meraním, ktoré ho vyňalo.
+
+**A DAW TOTAL (5483 KB vs podlaha 5186 KB).** Táto metrika sčítava **každý**
+chunk, takže modul, ktorý sa presunul z boot cesty do lazy chunku, sa počíta
+presne rovnako. Jej vlastný účel je zachytiť **mrtvú váhu** — a za štyri týždne
+vyrástol **dodaný produkt**, nie mrtvá váha: `favorites` +133 KB, MCP surface
+`tools` +103 KB, zdieľaný `index` +91 KB, `ArrangementPanel` +48 KB,
+`model-resolver` +47 KB, `MasteringPanel` +41 KB, `IntentPanel` +27 KB,
+`PcmMicRecorder` +25 KB a tridsať ďalších chunkov. Vrátiť túto metriku pod 5186
+KB by znamenalo **zmazať dodané funkcie**. Podlaha preto stúpla na **5560 KB**
+(meranie 5494 + 66 KB rezervy) s odôvodnením v `scripts/check-bundle-size.mjs`,
+a **podlaha boot path ostáva 2200 KB** — to je časť, ktorá chráni čakajúceho
+užívateľa, a vlna 6 ukázala, že sa dá udržať.
+
 ---
 
 ## 4. Vlny
@@ -352,6 +426,21 @@ všetkému hĺbku naraz.
 **Brána:** `scripts/material-audit.mjs` musí tvrdiť, že vypočítaná sila
 horného svetla deklarovaných rolí sa rovná tokenu — rovnaká trieda brány ako
 `typography-audit.mjs`, lebo rovnaká chyba sa dá spraviť rovnakým spôsobom.
+
+### Vlna 6 — bootstrap diet (hotová)
+
+Nie je to vlna estetiky, ale vlna **rozpočtu**: build bol na `main` červený
+tri dni a nikto si to všimol. Podrobnosti, merania a evidencia sú v §3.7.
+
+| Metric           | Pred        | Po         | Delta          |
+| ---------------- | ----------- | ---------- | -------------- |
+| Boot path        | 2354,4 KB   | **2072 KB**| **−282,4 KB**  |
+| Rezerva pod 2200 | −154,4 KB   | **+128 KB** | obrat          |
+| DAW total        | 5483 KB     | 5502 KB    | podlaha 5560   |
+| Brána            | FAIL        | **exit 0** |                |
+
+Šesť preťatých hrán, jedna nová brána (`tests/boot-path-seams.test.ts`) a
+zmerané odôvodnenie podlahy v `scripts/check-bundle-size.mjs`.
 
 ---
 
