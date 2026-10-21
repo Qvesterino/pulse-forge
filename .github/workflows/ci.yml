@@ -43,8 +43,9 @@ jobs:
       # the two-directory scope left scripts/, docs/, prompts/ and the desktop
       # shell unchecked, so 190+ files drifted without anyone noticing.
       #
-      # The output also goes into the JOB SUMMARY — a failed job's log sits
-      # behind a login, and the summary is part of the run page's own HTML.
+      # The output also goes into the JOB SUMMARY and an ERROR ANNOTATION — a
+      # failed job's log sits behind a login, and both of those can be read
+      # without an account.
       - name: Run npm run format:check
         run: |
           set +e
@@ -57,6 +58,8 @@ jobs:
               tail -60 /tmp/format.log
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
+            printf '::error title=npm run format:check failed (exit %s)::%s\n' "$status" \
+              "$(tail -60 /tmp/format.log | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 8000)"
           fi
           exit $status
       # Every DERIVABLE artifact must match its generator: the MCP tool
@@ -114,10 +117,11 @@ jobs:
       # tsc --noEmit + vite build — catches bundler-level regressions that
       # unit tests never see (dynamic imports, PWA precache, chunking).
       #
-      # The output also goes into the JOB SUMMARY. A failed job's log sits
-      # behind a login, so for 134 consecutive runs every job died at
-      # `npm ci` and nobody could read why — the summary is part of the run
-      # page's own HTML and can be read without an account. The exit code is
+      # A failed job's LOG sits behind a login, so for 134 consecutive runs
+      # every job died at `npm ci` and nobody could read why. The failure text
+      # therefore goes to two places: the job summary (for a human on the run
+      # page) and an ERROR ANNOTATION (for anything that can read the
+      # check-run's annotations API without an account). The exit code is
       # passed through unchanged.
       - name: Run npm run build
         run: |
@@ -128,9 +132,11 @@ jobs:
             {
               echo "### npm run build FAILED (exit $status)"
               echo '```'
-              tail -100 /tmp/build.log
+              tail -120 /tmp/build.log
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
+            printf '::error title=npm run build failed (exit %s)::%s\n' "$status" \
+              "$(tail -120 /tmp/build.log | tr -d '\r' | tr '\n' ' ' | sed -e 's/%/%25/g' | head -c 8000)"
           fi
           exit $status
       # Hand the EXACT dist this job produced to the UI-gate job. The gates
