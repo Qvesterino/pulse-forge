@@ -37,9 +37,9 @@ const EXIT_HARNESS_ERROR = 2;
 const GATES = [
   {
     name: "proportion",
-    what: "the shell's proportions across viewports (and the coarse-pointer pass)",
+    what: "the shell's proportions across 5 viewports x 3 media branches (mouse, touch, reduced motion)",
     tool: "vite-node",
-    args: (url) => ["scripts/ui-proportion.mjs", "--url", url, "--touch"],
+    args: (url) => ["scripts/ui-proportion.mjs", "--url", url],
   },
   {
     name: "typography",

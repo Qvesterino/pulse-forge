@@ -68,14 +68,43 @@
   }
 }
 
-/* A narrow touch viewport may also be a small window on a desktop with a
-   touchscreen; it still needs the larger targets above. The explicit profile
-   attribute lets the shell opt into the same rules when the viewport is wide
-   but the primary input is touch (e.g. a tablet in landscape). */
-@media (min-width: 821px) {
-  [data-input-mode="touch"] .btn,
-  [data-input-mode="touch"] button,
-  [data-input-mode="touch"] select {
-    min-height: var(--touch-target-large);
-  }
-}
+/* WHY THERE IS NO WIDE-VIEWPORT TOUCH BLOCK
+   ------------------------------------------
+   This sheet used to end with
+
+     @media (min-width: 821px) {
+       [data-input-mode="touch"] .btn,
+       [data-input-mode="touch"] button,
+       [data-input-mode="touch"] select { min-height: var(--touch-target-large); }
+     }
+
+   Its stated purpose was "the same targets above, for a wide viewport whose
+   primary input is touch (a tablet in landscape)". That purpose was already
+   served by the `@media (pointer: coarse)` block above it: the profile sets
+   data-input-mode="touch" if and only if matchMedia("(pointer: coarse)")
+   matches (src/shared/mobileProfile.ts:54 and :71), so the wide block was a
+   strict SUBSET of the coarse block — it re-declared 44px for the very same
+   devices.
+
+   A redundant rule is harmless until its specificity is higher than the rules
+   it duplicates, and this one was: [data-input-mode="touch"] button scores
+   (0,1,1) while the sequencer row's own touch budget
+   `@media (pointer: coarse) { .row-pad, .row-toggle { min-height: 42px } }`
+   (src/styles/10-scale-panel-popover-2.css:80) scores (0,1,0). So on every
+   viewport of 821px or more the wide block won, the row's pad/toggle grew
+   from 42px to 44px, the label column grew with it, and the sequencer row box
+   measured 48px inside a 46px virtualizer slot — every row overlapping the
+   next by 2px.
+
+   Measured (scripts/ui-proportion.mjs, coarse pointer):
+     800x900   row box 46px   slot 46px   OK
+     1024x768  row box 48px   slot 46px   OVERLAP
+     1440x900  row box 48px   slot 46px   OVERLAP
+
+   The pointer axis now has ONE owner: the `@media (pointer: coarse)` block.
+   The attribute stays for diagnostics (Diagnostics -> Device -> Input mode).
+
+   If data-input-mode ever becomes a real user-facing opt-in rather than a
+   mirror of the pointer query, re-add the rule then — but scope it so it
+   cannot reach into the sequencer row: .row-pad and .row-toggle own their
+   pitch, and the row pitch is a contract with Sequencer.tsx's ROW_HEIGHT. */
