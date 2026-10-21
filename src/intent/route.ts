@@ -1081,10 +1081,10 @@ export function routeIntentText(
   const effectIntent = parseEffectIntent(text);
   const normalizedEffectText = deaccent(text).toLowerCase();
   const hasExplicitEffectVerb =
-    /\b(?:add|apply|insert|remove|take out|less|more|reduce|ease off|pull|turn down|bypass|disable|increase|decrease|set)\b.{0,32}\b(?:reverb|delay|echo|chorus|compress(?:ion|or)?|saturat\w*|sidechain|pump|eq)\b/.test(
+    /\b(?:add|apply|insert|remove|take out|less|more|reduce|ease off|pull|turn down|bypass|disable|increase|decrease|set)\b.{0,32}\b(?:reverb|delay|echo|chorus|compress(?:ion|or)?|saturat\w*|sidechain|pump|eq|bass.?harmon|koren|harmonik)\b/.test(
       normalizedEffectText,
     ) ||
-    /\b(?:reverb|delay|echo|chorus|compress(?:ion|or)?|saturat\w*|sidechain|pump|eq)\b.{0,32}\b(?:less|more|reduce|ease off|pull back|turn down|bypass|disable|increase|decrease)\b/.test(
+    /\b(?:reverb|delay|echo|chorus|compress(?:ion|or)?|saturat\w*|sidechain|pump|eq|bass.?harmon|koren|harmonik)\b.{0,32}\b(?:less|more|reduce|ease off|pull back|turn down|bypass|disable|increase|decrease)\b/.test(
       normalizedEffectText,
     );
   if (effectIntent && (!studioGenreSignal || hasExplicitEffectVerb)) {

@@ -115,6 +115,18 @@ const CONTRACTS: Contract[] = [
     name: "the deterministic-id mode is restored after the unit",
     holds: (s) => /finally\s*\{\s*restore\(\);/.test(s),
   },
+  {
+    // Without this contract the other four stay true even when the scope is
+    // UNWRAPPED: the bases and the restore would still be in the file, and the
+    // audit would measure random ids again. The scope has to be AROUND the
+    // work, not merely present.
+    name: "every measurement unit runs its work INSIDE the deterministic scope",
+    holds: (s) =>
+      /withDeterministicIds\(\(\) => sweepEffect\(/.test(s) &&
+      /withDeterministicIds\(\(\) => hostTestEffect\(/.test(s) &&
+      /withDeterministicIds\(\(\) => auditInstrument\(/.test(s) &&
+      /withDeterministicIds\(\(\) => auditInteractions\(/.test(s),
+  },
 ];
 
 const audit = read(AUDIT_SOURCE);
@@ -151,6 +163,13 @@ describe("plugin audit — the reproducibility contract (structural)", () => {
       {
         contract: "the deterministic-id mode is restored after the unit",
         mutate: (s) => s.replace(/finally\s*\{\s*restore\(\);/g, "finally { /* not restored */"),
+      },
+      {
+        contract: "every measurement unit runs its work INSIDE the deterministic scope",
+        mutate: (s) =>
+          s
+            .replace(/withDeterministicIds\(\(\) => sweepEffect\(/g, "sweepEffect(")
+            .replace(/withDeterministicIds\(\(\) => hostTestEffect\(/g, "hostTestEffect("),
       },
     ];
     for (const { contract, mutate } of mutations) {

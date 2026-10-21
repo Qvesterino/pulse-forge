@@ -1152,7 +1152,7 @@ describe("desktop mcp stdio forwarder (subprocess)", () => {
     return { child, writeLine, nextLine };
   }
 
-  it("initialize → tools/list (37 tools) → tools/call round-trips through the bridge", async () => {
+  it("initialize → tools/list (38 tools) → tools/call round-trips through the bridge", async () => {
     const { child, writeLine, nextLine } = await startChain(true);
     writeLine({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} });
     const init = JSON.parse(await nextLine()) as {
@@ -1306,7 +1306,7 @@ describe("official MCP SDK client over the desktop stdio transport", () => {
     try {
       await client.connect(transport);
       const tools = await client.listTools();
-      expect(tools.tools).toHaveLength(37);
+      expect(tools.tools).toHaveLength(38);
       expect(tools.tools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toBeDefined();
 
       const preview = await client.callTool({ name: "kyx_audio_preview", arguments: { bars: 1 } });

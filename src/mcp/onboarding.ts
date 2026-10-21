@@ -174,14 +174,14 @@ PRODUCTION CONCEPTS (target-aware, per family: drums/bass/lead/chords):
   sharper, reverse, crunchy, vinyl, wide, sub, air, deess, phone
   ("make the bass deeper", "warmer 808 please", "wobbly drill" -> generation,
   "phone-ready bass" / "na telefóne" -> GROW harmonics + air EQ)
-COMPLAINTS (the listening loop — measured diagnosis + executable proposals):
+COMPLAINTS (measured diagnosis + executable proposals):
   empty / thin / muddy / harsh / no punch + role or family
   ("the drop is empty", "the lead is harsh", "no punch")
-STEP EDITS (drum grid):
+STEP EDITS:
   remove/delete, ghost, accent/add + kick/snare/clap/hat/perc/tom +
   bar/beat/last 16th ("remove the kick on beat 3 of bar 2", "pridaj ghost
   snare na poslednú 16tinu")
-SOUND SWAP (pad descriptor -> factory asset within the family):
+SOUND SWAP (pad descriptor -> factory asset):
   "swap the snare to something fatter", "make the kick darker"
 SECTIONS (arrangement):
   intro, build, verse, chorus, drop, break, bridge, fill, outro

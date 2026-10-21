@@ -11618,7 +11618,13 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
     }
     ctx.execute(command);
     noteAppliedRoute(route, before, ctx.getDoc());
-    const extra = route.kind === "production" ? ` — ${productionReadback(before, ctx.getDoc(), route.intent)}` : "";
+    const after = ctx.getDoc();
+    const extra =
+      route.kind === "production"
+        ? ` — ${productionReadback(before, after, route.intent)}`
+        : route.kind === "effectIntent"
+          ? ` — read-back: ${effectReadback(before, after, route.intent)}`
+          : "";
     return { text: `${command.label}${extra} — verification: applied, one undo step in KYX`, mutated: true };
   } catch (error) {
     // The intent appliers throw on no-target / already-matches — surface as

@@ -58,15 +58,15 @@ describe("mcp core — protocol with an authenticated session", () => {
     return { hub, delivered };
   }
 
-  it("initialize returns capabilities + serverInfo; tools/list returns the 37 tools", async () => {
+  it("initialize returns capabilities + serverInfo; tools/list returns the 38 tools", async () => {
     const { hub } = makeHub();
     const init = await handleMcpRequest(hub, TOKEN, TOKEN, rpc("initialize", {}, 1));
     expect(init.result.protocolVersion).toBe("2026-07-28");
     expect(init.result.capabilities.tools).toBeDefined();
     const list = await handleMcpRequest(hub as any, TOKEN, TOKEN, rpc("tools/list", {}, 2));
     const listedTools = (list.result as { tools: Array<{ name: string; outputSchema?: unknown }> }).tools;
-    expect(listedTools).toHaveLength(37);
-    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(24);
+    expect(listedTools).toHaveLength(38);
+    expect(listedTools.filter((tool) => tool.outputSchema != null)).toHaveLength(25);
     expect(listedTools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema,
     );
@@ -140,6 +140,7 @@ describe("mcp core — protocol with an authenticated session", () => {
       "kyx_music",
       "kyx_catalog",
       "kyx_plugin_param",
+      "kyx_instrument_param",
       "kyx_meter",
       "kyx_automation",
       "kyx_clips",
@@ -1009,7 +1010,7 @@ describe("mcp core — protocol with an authenticated session", () => {
     expect(delivered).toHaveLength(1);
   });
 
-  it("tool definitions match the KYX surface (37 tools, known names)", () => {
+  it("tool definitions match the KYX surface (38 tools, known names)", () => {
     expect(MCP_TOOL_DEFS.map((tool: { name: string }) => tool.name)).toEqual([
       "kyx_intent",
       "kyx_state",
@@ -1029,6 +1030,7 @@ describe("mcp core — protocol with an authenticated session", () => {
       "kyx_music",
       "kyx_catalog",
       "kyx_plugin_param",
+      "kyx_instrument_param",
       "kyx_meter",
       "kyx_automation",
       "kyx_clips",
