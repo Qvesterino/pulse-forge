@@ -1,0 +1,204 @@
+# KOPA · TSAR · KOREŇ — spoločná implementačná roadmapa
+
+**Stav:** návrh poradia ďalšej práce
+
+**Aktualizované:** 2026-10-21
+
+**Rozsah:** produktové a implementačné kroky pre tri hlavné KYX nástroje; bez sľubovaných termínov vydania.
+
+Tento dokument spája prácu naprieč tromi pluginmi a určuje odporúčané poradie. Detailné technické checklisty zostávajú v [KOPA + KOREŇ V2 backloge](KOPA-KOREN-V2-ROADMAP.md) a [TSAR implementačnej roadmape](TSAR-IMPLEMENTATION-ROADMAP.md). Tento plán ich nenahrádza.
+
+## Zámer a hranice
+
+- **KOPA** tvorí nový kick. Jej telo, pitch sweep, click, sub, tail a fázovo viazané harmoniky patria do jedného nástroja.
+- **TSAR** premieňa vzorky aj syntetické zdroje na hrateľné hybridné patche a dáva priestor na ich ďalšiu tvorbu.
+- **KOREŇ** spracúva už existujúci basový signál, sleduje jeho fundament a pridáva harmonické, ktoré zlepšia jeho čitateľnosť.
+- Nástroje sa dopĺňajú. KOPA má vlastnú pitch synchronizovanú harmonickú vrstvu; KOREŇ zostáva všeobecným trackerom pre ľubovoľný basový vstup.
+- Spoločným cieľom je skrátiť cestu od nápadu po počuteľný výsledok priamo v projekte, s preview, porovnaním a vratným potvrdením.
+
+## Čo už máme
+
+Základné zvukové schopnosti existujú. Ďalšia práca má najprv potvrdiť ich správanie a zlepšiť tvorivý workflow.
+
+| Plugin | Už dodaná schopnosť                                                                                                 | Najbližšia otvorená otázka                                                                                                       |
+| ------ | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| KOPA   | Samostatná kick syntéza, click/body/sub/tail, pitch obálka, harmoniky, režimy `ONE SHOT`/`GATED` a factory presety. | Zhodné velocity a fallback správanie, MIDI/retrigger kontrakt, produkčná hlasitosť a rýchlejšie vizuálne tvarovanie kicku.       |
+| TSAR   | Dva zdrojové sloty, sampler/wavetable/granular, modulácia, Forge analýza a deterministický A/B turnaj mutácií.      | Uzavrieť priame live/export porovnanie. Forge dnes po analýze zvolí a aplikuje jeden plán; chýba výber z počuteľných alternatív. |
+| KOREŇ  | Sledovanie fundamentu, harmonická syntéza, stav `LOCKED`/`HOLD`/`SEARCH`, confidence a monitor-only `PHONE CHECK`.  | Doplniť level-matched wet/dry počúvanie a uzavrieť merania trackingu, mono kompatibility, aliasingu a CPU.                       |
+
+Podrobné plány KOPA/KOREŇ a TSAR uvádzajú posledný zdokumentovaný correctness stav k **15. 10. 2026**. Pred vykonaním konkrétnej fázy treba ich otvorené položky porovnať s aktuálnym kódom a aktuálnymi výsledkami; tento dokument sám osebe neoznačuje žiadnu z nich za hotovú.
+
+## Odporúčané poradie
+
+| Vlna                                | Priorita    | Výsledok                                                                                | Závisí od                            |
+| ----------------------------------- | ----------- | --------------------------------------------------------------------------------------- | ------------------------------------ |
+| 0. Spoľahlivé základy               | P0          | Uzavreté správne správanie, live/export kontrola a zvukový review každého pluginu.      | Aktuálny kód a merania               |
+| 1. KOREŇ A/B                        | P1          | Používateľ počuje, čo harmonická vrstva pridáva, pri porovnateľnej hlasitosti.          | Vlna 0 pre KOREŇ                     |
+| 2. KOPA editor                      | P1          | Kick sa dá rýchlo tvarovať zrozumiteľnými krivkami a vrstvami.                          | Vlna 0 pre KOPA                      |
+| 3. TSAR zdroje a Forge              | P1          | Vzorku možno znovu použiť a pred aplikovaním vypočuť viac tvorivých interpretácií.      | Vlna 0 pre TSAR; kontrakt zdrojov    |
+| 4. TSAR mutácie                     | P1          | Variácie zachovávajú používateľom uzamknuté časti a majú ovládateľnú intenzitu.         | Stabilné parametre a mutačný preview |
+| 5. Výraz a špecializované workflowy | P2          | ORBIT a prípadné pitch/monitor režimy riešia overené potreby z predchádzajúcich vĺn.    | Automatizácia a posluchové zistenia  |
+| 6. Low-End Assist                   | P2 / výskum | KOPA, basová stopa a KOREŇ spolu navrhnú a umožnia vypočuť úpravu celého nízkeho pásma. | Vlny 0–4                             |
+
+Vlny predstavujú poradie a brány, nie pevné termíny. Každý plugin môže mať vlastný reviewable diff; spoločné správanie sa integruje až po stabilizácii jednotlivých častí.
+
+## Vlna 0 — spoľahlivé základy
+
+Najprv obnoviť aktuálny baseline. Doterajšie roadmapy obsahujú konkrétne otvorené merania; výsledky zo 15. októbra sú dobrý východiskový bod, nie náhrada za nové meranie.
+
+### KOPA
+
+- [ ] Zmerať pomer click/body/harmonics pri nízkej, strednej a plnej velocity na worklete aj natívnom fallbacku.
+- [ ] Uzavrieť `ONE SHOT`/`GATED`, krátke MIDI noty, note-off, retrigger, choke a voice stealing bez klikov alebo useknutého tailu.
+- [ ] Premerať factory presety vrátane true peak a porovnania hlasitosti v praktickom gain kontexte; vypočuť ich v mixe.
+- [ ] Potvrdiť účinok parametrov cez UI → command → project/runtime → počuteľný výsledok aj pri automatizácii.
+
+### KOREŇ
+
+- [ ] Zmerať pitch error a lock/unlock časy na basových zdrojoch, glisse a kombinácii kick + basa. Pri neistom fundamente musí generovanie bezpečne ustúpiť.
+- [ ] Zmerať správny spektrálny cieľ každého parametra, low sample rate, aliasing, gain, mono fold-down a CPU v náročnom nastavení.
+- [ ] Vypočuť level-matched bypass/wet porovnanie; potvrdiť, že PHONE CHECK ostáva monitor-only.
+- [ ] Overiť, že stav trackera a confidence pravdivo zodpovedajú tomu, čo práve hrá.
+
+### TSAR
+
+- [ ] Uzavrieť priamy level-matched live playback ↔ offline export na rovnakom patchi a udalostiach.
+- [ ] Vypočuť a kurátorsky skontrolovať ponúkané presety v mixe; automatický loudness/finiteness audit sám osebe nepreukazuje ich hudobnú kvalitu.
+- [ ] Potvrdiť, že každý viditeľný zdroj a parameter ovplyvňuje aktívny hlas a že worklet sa načíta po pridaní TSAR do už otvoreného projektu.
+
+**Brána:** uzavrieť len položky, ku ktorým existuje reprodukovateľný test alebo zdokumentovaný posluchový výsledok. Známe rozdiely medzi fallbackom a workletom pomenovať v UI alebo v podpore zariadení.
+
+## Vlna 1 — KOREŇ: dôveryhodné A/B počúvanie
+
+### Dodávka
+
+- Pridať okamžité bypass/wet A/B s dorovnaním vnímanej hlasitosti na monitorovacej ceste.
+- Pridať možnosť samostatne počuť generovanú harmonickú vetvu, aby sa dalo rozlíšiť, čo KOREŇ vytvoril a čo zostalo vo vstupe.
+- Zachovať PHONE CHECK ako monitorovací filter; všetky porovnávacie režimy musia byť mimo projektovej state a exportného signálového reťazca.
+- Zobraziť jasný stav porovnania a vysvetliť rolu `lowCut`, `subAnchor` a `mix` podľa skutočného signálového modelu.
+
+### Kritériá hotovosti
+
+- A/B porovnanie nemení uložené parametre, automatizáciu, mix ani export.
+- Dorovnanie hlasitosti sa kontroluje na reprezentatívnych vstupoch; pri tichu alebo neistom trackingu sa nezobrazuje falošný prínos.
+- Ovládanie funguje aj pri zatvorenom paneli v tom zmysle, že DSP nespolieha na otvorenú UI telemetriu.
+- Používateľ dokáže v krátkom posluchovom teste určiť, čo harmonická vrstva pridala a či zlepšila čitateľnosť.
+
+### Neskoršie rozšírenie
+
+Po vyhodnotení A/B možno pridať monitorovacie profily pre malý mono reproduktor, laptop a širokopásmový systém. Profily ostanú monitor-only. Pitch režim `Audio / MIDI / Hybrid` sa začne až vtedy, ak korpus potvrdí, že MIDI koreň reálne znižuje oktávové chyby bez nových chybných lockov.
+
+## Vlna 2 — KOPA: vizuálne tvarovanie kicku
+
+### Dodávka
+
+- Pridať spoločnú časovú os s oddelenými click/body/sub/tail vrstvami a vizualizáciou existujúcej pitch obálky.
+- Umožniť upraviť základné časovanie a úrovne priamo v grafike; pokročilé nastavenia ponechať dostupné v parametroch.
+- Vychádzať najprv z existujúcich parametrov: editor má byť zrozumiteľnejším ovládaním existujúceho DSP, nie dôvodom na pridávanie knobov bez preukázanej potreby.
+- Umožniť rýchly preview a porovnanie pred/po. Potvrdenie zapíše zmenu cez kanonický command ako jednu undo akciu.
+
+### Kritériá hotovosti
+
+- Grafika zobrazuje hodnoty uložené v projekte; ťahanie mení len priradené parametre a prejde cez command/undo/redo.
+- Preview nemení projekt a používa tú istú zvukovú cestu ako reálne prehrávanie.
+- Tvar a dĺžka kicku sú zrozumiteľné pri krátkom punch aj dlhom 808 kicku; UI ostáva použiteľné pri úzkom paneli a klávesnici.
+- Zmeny editorom zachovajú MIDI, velocity, ladenie a live/offline paritu.
+
+### Neskoršie rozšírenie
+
+Po dokončení základného editora preveriť ladenie podľa tóniny projektu, BPM/groove-aware dĺžky a presný render velocity → sample. Nový pitch alebo drive DSP pridať iba vtedy, keď zvukové merania a posluch ukážu medzeru, ktorú existujúce vrstvy nepokryjú.
+
+## Vlna 3 — TSAR: zdroje a viac možností z Forge
+
+Táto vlna nadväzuje na R2 a R3 v [TSAR pláne](TSAR-IMPLEMENTATION-ROADMAP.md). Pred rozšírením Forge treba určiť, ako vzorka žije nezávisle od konkrétneho patcha.
+
+### Dodávka
+
+- Navrhnúť lokálny zdrojový záznam s identitou, názvom, technickými metadátami, informáciami o root/loop bodoch, pôvode a stave chýbajúceho súboru. Pred pridaním nového ukladacieho modelu skontrolovať existujúce sample knižnice a persistence.
+- Ak sa mení uložený projektový tvar, najprv opísať migračný kontrakt a až potom meniť schému.
+- Z jedného importu pripraviť niekoľko odlišných, deterministických Forge návrhov: hrateľný sampler, ladený/wavetable zvuk alebo textúru cez granular, ak to vstup podporuje.
+- Pri každom návrhu ukázať meraný dôkaz, istotu koreňa, upozornenia a dôvod voľby enginu. Slabá istota nesmie byť prezentovaná ako presná tónina.
+- Umožniť kandidátov vypočuť a porovnať bez zmeny projektu. Vybraný plán sa aplikuje do Source A alebo B jedným undoable commandom.
+
+### Kritériá hotovosti
+
+- Rovnaký súbor a nastavenia dávajú rovnaké kandidáty; prázdne alebo nečitateľné audio nedostane vymyslený koreň.
+- Preview nemení zdroje ani parametre tracku. Apply nastaví očakávaný slot a zmena sa vráti jedným undo.
+- Zdroj možno znovu použiť vo viacerých patchoch; chýbajúci alebo poškodený zdroj je viditeľný a riešiteľný.
+- Vzorky zostávajú v lokálnom workflowe a pribalený factory obsah má doložený pôvod/licenciu.
+
+## Vlna 4 — TSAR: riadené mutácie
+
+Existujúci deterministický A/B turnaj mutácií ostáva základom. Rozšírenie sa sústreďuje na to, čo môže producent zachovať a ako ďaleko sa má patch zmeniť.
+
+### Dodávka
+
+- Pridať zámky pre skupiny parametrov, minimálne zdroj, ladenie, obálku a moduláciu.
+- Pridať rozsah mutácie od jemnej zmeny po výraznejšiu premenu.
+- Zobraziť seed a ponechať možnosť vyvolať rovnaké variácie neskôr.
+- Zachovať aktuálny tournament preview; potvrdenie víťaza použije jeden undoable command.
+
+### Kritériá hotovosti
+
+- Rovnaký patch, seed, počet variantov, rozsah a zámky dávajú rovnaké výsledky.
+- Zamknuté parametre zostanú bitovo nezmenené; všetky zmenené hodnoty sú v rozsahu a patch ostane hrateľný.
+- Náhľad neprepíše originál a pôvodný patch možno vždy znovu vypočuť.
+- Varianty sú odlišné aj zvukovo; iba odlišné číselné hodnoty nie sú dôkazom kvality.
+
+## Vlna 5 — výrazové ovládanie a podmienené rozšírenia
+
+### TSAR ORBIT
+
+- Pridať jednoduchú 2D X/Y plochu s voliteľným priradením na stabilné ciele, napríklad source morph, cutoff a intenzitu modulácie.
+- Mapovanie sa uloží s patchom; pohyb sa zaznamená cez existujúcu projektovú automatizáciu.
+- Overiť myš, dotyk a klávesnicu. MIDI learn/MPE rozšíriť po kontrole celej vstup → projekt → prehrávanie → export cesty.
+
+**Brána ORBIT:** pohyb má počuteľnú odozvu; nahraná automatizácia prežije uloženie, prehrávanie aj offline export; obnovenie mapovania je jednoduché.
+
+### KOREŇ monitor a pitch režimy
+
+Monitor profily dokončiť iba po posluchovom potvrdení, že prinášajú užitočné porovnanie. Audio/MIDI/Hybrid pitch zdroj pridať iba po meraní na korpuse a po definovaní správania pri nezhode MIDI a audio detekcie.
+
+### KOPA rozšírené ladenie a zvuk
+
+Najskôr preveriť čitateľnosť pitch krivky, ladenie k tónine a dĺžku podľa tempa cez existujúce parametre. Ďalšie click modely, transient DSP, drive krivky či oversampling otvoriť ako samostatnú úlohu len po meranom alias/gain/CPU probléme.
+
+## Vlna 6 — spoločný Low-End Assist
+
+Po stabilizácii jednotlivých pluginov môže KYX pridať nástroj, ktorý vypočuje krátku slučku a pomôže s kickom a basou naprieč KOPA, basovým trackom a KOREŇOM.
+
+### Navrhovaný workflow
+
+1. Vybrať úsek, ktorý obsahuje kick a basu; analyzovať ich úrovne, spektrá, trvanie a časové prekrytie.
+2. Navrhnúť niekoľko vysvetliteľných variantov, napríklad Tight, Heavy a Readable. Každý uvedie, či mení KOPA tail, rozostup, harmonické alebo úroveň.
+3. Vypočuť varianty pri dorovnanej hlasitosti a v kontexte slučky.
+4. Potvrdiť výber ako jednu transakčnú, undoable zmenu projektu.
+
+### Brána pred implementáciou
+
+- Existujú stabilné analyzátory a KOPA/KOREŇ preview bez skrytých zmien projektu.
+- Varianty sa dajú odlíšiť meraním aj počutím; používateľ vidí, ktoré tracky a parametre sa zmenia.
+- Funkcia nemení projekt automaticky počas prehrávania a výsledok sa správne prehrá aj vyrenderuje offline.
+- Prvá verzia používa obmedzené, vysvetliteľné návrhy; automatické ladenie modelom sa rieši až po preukázaní kvality základných pravidiel.
+
+## Spoločné implementačné a QA pravidlá
+
+Každý implementačný diff sa riadi [AGENTS.md](../AGENTS.md), relevantnými ADR a [NEW-EFFECT-CHECKLIST.md](NEW-EFFECT-CHECKLIST.md).
+
+- **Projektová pravda:** UI vydáva zmenu cez canonical command. Zmena má správne undo/redo a persistence round-trip.
+- **Zvuková pravda:** realtime aj export používajú rovnaký DSP a význam MIDI/audio udalostí. Ak architektúra vyžaduje výnimku, zdokumentovať ju a overiť jej zvukový dopad.
+- **Dôkaz parametra:** každý viditeľný parameter mení očakávanú merateľnú vlastnosť na hraniciach rozsahu a pri každej enum hodnote; preveriť sanitizáciu, automatizáciu a podporované sample rate.
+- **Determinizmus:** zhodný projekt, seed a udalosť dávajú opakovateľný výsledok. Preview aj generovanie kandidátov nesmú závisieť od skrytého času.
+- **Realtime rozpočet:** meria sa CPU, pamäť, hlasová cena a worklet bundle. V `process()` sa nepridávajú neohraničené alokácie.
+- **Loudness a mono:** presety a A/B sa porovnávajú pri dorovnanej hlasitosti; KOPA/KOREŇ sa preveria v mono a v relevantnom nízkofrekvenčnom pásme.
+- **Žiadne duplicity bez dôkazu:** KOPA harmoniky nenahrádzajú všeobecný KOREŇ tracker. Nový parameter alebo DSP sa pridá až keď existujúce schopnosti nepokryjú potvrdený používateľský cieľ.
+- **Dokumentácia:** pri zmene počtu alebo shipped schopnosti upraviť `docs/CURRENT-STATE.md`; pri zmene architektonického kontraktu aktualizovať alebo pridať ADR.
+
+## Najbližší vykonateľný krok
+
+1. Obnoviť current baseline pre všetky tri pluginy a uzavrieť zostávajúce brány z vlny 0.
+2. Ako prvý nový používateľský workflow implementovať **KOREŇ level-matched A/B a počúvanie generovanej harmonickej vetvy**.
+3. Následne postaviť **KOPA vizuálny editor existujúcich vrstiev a pitch obálky**.
+4. Potom rozšíriť **TSAR zdrojový workflow a Forge preview viacerých návrhov**.
+
+Po každej vlne aktualizovať jej stav dôkazmi z testov, meraní a posluchového review. Názov položky v tejto roadmap-e neznamená, že už bola implementovaná.
