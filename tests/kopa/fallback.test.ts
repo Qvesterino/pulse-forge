@@ -21,13 +21,21 @@ function fakeContext(): {
   started: Started[];
   stopped: number[];
   connections: Array<[number, number]>;
-  gains: { value: number; events: { type: string; value: number; time: number }[]; setValueAtTime: (v: number, t: number) => void }[];
+  gains: {
+    value: number;
+    events: { type: string; value: number; time: number }[];
+    setValueAtTime: (v: number, t: number) => void;
+  }[];
 } {
   let nodeId = 0;
   const started: Started[] = [];
   const stopped: number[] = [];
   const connections: Array<[number, number]> = [];
-  const gains: { value: number; events: { type: string; value: number; time: number }[]; setValueAtTime: (v: number, t: number) => void }[] = [];
+  const gains: {
+    value: number;
+    events: { type: string; value: number; time: number }[];
+    setValueAtTime: (v: number, t: number) => void;
+  }[] = [];
 
   const mkParam = (initial = 0) => {
     const param = {
