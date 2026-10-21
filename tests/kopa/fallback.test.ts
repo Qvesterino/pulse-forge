@@ -21,25 +21,30 @@ function fakeContext(): {
   started: Started[];
   stopped: number[];
   connections: Array<[number, number]>;
-  gains: { value: number; setValueAtTime: (v: number, t: number) => void }[];
+  gains: { value: number; events: { type: string; value: number; time: number }[]; setValueAtTime: (v: number, t: number) => void }[];
 } {
   let nodeId = 0;
   const started: Started[] = [];
   const stopped: number[] = [];
   const connections: Array<[number, number]> = [];
-  const gains: { value: number; setValueAtTime: (v: number, t: number) => void }[] = [];
+  const gains: { value: number; events: { type: string; value: number; time: number }[]; setValueAtTime: (v: number, t: number) => void }[] = [];
 
   const mkParam = (initial = 0) => {
     const param = {
       value: initial,
-      setValueAtTime: (v: number) => {
+      /** Automation timeline — the guard reads the TIMES, not the values. */
+      events: [] as { type: string; value: number; time: number }[],
+      setValueAtTime: (v: number, t: number) => {
         param.value = v;
+        param.events.push({ type: "value", value: v, time: t });
       },
-      exponentialRampToValueAtTime: (v: number) => {
+      exponentialRampToValueAtTime: (v: number, t: number) => {
         param.value = v;
+        param.events.push({ type: "ramp", value: v, time: t });
       },
-      setTargetAtTime: (v: number) => {
+      setTargetAtTime: (v: number, t: number) => {
         param.value = v;
+        param.events.push({ type: "target", value: v, time: t });
       },
       cancelScheduledValues: () => {},
     };
@@ -145,13 +150,42 @@ describe("KOPA native fallback runtime", () => {
     const runtime = createKopaFallbackRuntime(ctx, track);
     const level = Math.pow(10, -6 / 20);
     runtime.noteOn(36, 0.5, 0.01, 0.1);
-    expect(gains[1]!.value).toBeCloseTo(0.9 * 0.5 * level, 6);
+    // The worklet's voice chain is layers -> velocity -> level -> the
+    // processor's 0.5 output factor. The fallback mirrors it: the voice gain
+    // carries velocity*level and the RUNTIME OUTPUT carries the 0.5. Before
+    // the fix the voice gain had its own 0.9 and no 0.5 anywhere, so the
+    // emergency path was 1.8x (+5.1 dB) louder than the production path.
+    expect(gains[1]!.value).toBeCloseTo(0.5 * level, 6);
+    expect(gains[0]!.value).toBeCloseTo(0.5, 6);
 
     const silentContext = fakeContext();
     const silentRuntime = createKopaFallbackRuntime(silentContext.ctx, track);
     silentRuntime.noteOn(36, 0, 0.01, 0.1);
     expect(silentContext.started).toHaveLength(0);
     expect(silentContext.gains).toHaveLength(1); // only the runtime output node
+  });
+
+  it("never schedules a decay target before the attack ramp it follows ends", () => {
+    // A setTargetAtTime scheduled BEFORE the ramp's end event is superseded
+    // by that end event: the parameter keeps the ramp's end value and never
+    // decays. Measured on the KOPA fallback: the sub layer's ramp ended at
+    // when+4 ms while its target was scheduled at `when`, so the sub held its
+    // level for the whole voice and the fallback's RMS stayed flat
+    // (drill.hardstyle: 0.0975 at 10 ms, still 0.109 at 700 ms) while the
+    // worklet decayed to 0.0004.
+    const { ctx, gains } = fakeContext();
+    const runtime = createKopaFallbackRuntime(ctx, track);
+    runtime.noteOn(36, 1, 0.01, 0.1);
+    expect(gains.length).toBeGreaterThan(1);
+    for (const param of gains) {
+      const rampEnd = param.events.filter((e) => e.type === "ramp").map((e) => e.time);
+      if (rampEnd.length === 0) continue;
+      for (const target of param.events.filter((e) => e.type === "target")) {
+        for (const end of rampEnd) {
+          expect(target.time).toBeGreaterThanOrEqual(end);
+        }
+      }
+    }
   });
 
   it("keeps the sine click's short stop time instead of replacing it with voice cleanup", () => {

@@ -132,6 +132,12 @@ export interface KopaFallbackOptions {
  */
 export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: InstrumentTrack): KopaRuntime {
   const output = ctx.createGain();
+  // The worklet scales the summed voice by 0.5 (`left[frame] = outL * 0.5`) —
+  // the polyphony headroom that keeps sixteen simultaneous kicks from summing
+  // into the clip. The fallback has to apply the SAME factor, or the emergency
+  // path is 1.8x (+5.1 dB) louder than the production path before any timbre
+  // difference is counted.
+  output.gain.value = 0.5;
   let params: Record<string, number> = { ...track.params };
   const voices = new Map<number, { pitch: number; sources: AudioScheduledSourceNode[]; gain: GainNode }>();
   let voiceId = 0;
@@ -192,7 +198,11 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
         gain.gain.setValueAtTime(0, when);
       } else {
         gain.gain.setValueAtTime(0.0001, when);
-        gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.9 * vel * level), when + 0.002);
+        // The worklet's voice chain is layers -> velocity -> level -> the
+        // processor's 0.5 output factor; the 0.9 that used to live here was
+        // the fallback's own headroom factor and doubled the level against
+        // the production path. The output node carries the 0.5 instead.
+        gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, vel * level), when + 0.002);
       }
       const voiceInput = ctx.createGain();
       if (drive > 0 || punch > 0) {
@@ -284,7 +294,14 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
         const subGain = ctx.createGain();
         subGain.gain.setValueAtTime(0.0001, when);
         subGain.gain.exponentialRampToValueAtTime(Math.max(0.0001, subLevel * 0.5), when + 0.004);
-        subGain.gain.setTargetAtTime(0, when, Math.max(0.01, subDecay * 0.33));
+        // The decay target must START where the attack ramp ENDS. A target
+        // scheduled before the ramp's end is superseded by the ramp's end
+        // event, and the sub then holds its level for the whole voice — the
+        // fallback's RMS stayed flat (measured on drill.hardstyle: 0.0975 at
+        // 10 ms and still 0.109 at 700 ms, while the worklet decayed to
+        // 0.0004). The codebase convention is the same everywhere else
+        // (registry.ts: setTargetAtTime(..., when + attack, ...)).
+        subGain.gain.setTargetAtTime(0, when + 0.004, Math.max(0.01, subDecay * 0.33));
         sub.connect(subGain).connect(voiceInput);
         sub.start(when);
         sources.push(sub);
