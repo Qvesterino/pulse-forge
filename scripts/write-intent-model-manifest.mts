@@ -19,6 +19,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { toGbnfGrammar } from "../src/intent/model-schema";
+import { repositoryTextBytes } from "../src/intent/model-artifact-bytes";
 import { isIntentModelManifest } from "../src/intent/model-loader-types";
 import type { IntentModelVocab } from "../src/intent/model-decoder";
 
@@ -146,8 +147,10 @@ const manifest = {
   },
   features: {
     version: "intent-features.v2",
-    // raw file bytes — the validator hashes the file, not a re-serialization
-    vocabSha256: sha256(vocabBytes),
+    // The repository's bytes, not the writing machine's: the vocab is a text
+    // artifact and git stores it with LF endings, so a pin taken over raw
+    // on-disk bytes would only ever match the machine that wrote the file.
+    vocabSha256: sha256(repositoryTextBytes(vocabBytes)),
     vocabSize: vocab.tokens.length,
     url: "/models/intent-model-v1.vocab.json",
     inputName: "features",

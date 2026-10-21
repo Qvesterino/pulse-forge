@@ -25,8 +25,9 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { toGbnfGrammar } from "../src/intent/model-schema";
+import { repositoryTextBytes } from "../src/intent/model-artifact-bytes";
 import { INTENT_MODEL_ABSTAIN_MARGIN, INTENT_MODEL_KIND_MARGIN } from "../src/intent/model-decoder";
-import { isIntentModelManifest } from "../src/intent/model-loader-types";
+import { isIntentModelManifest, type IntentModelManifest } from "../src/intent/model-loader-types";
 import {
   buildIntentBow,
   canonicalModelJson,
@@ -59,8 +60,12 @@ const rate = (numerator: number, denominator: number): number =>
   denominator === 0 ? 0 : Number((numerator / denominator).toFixed(6));
 
 const manifestBytes = readFileSync(MANIFEST_PATH);
-const manifest = JSON.parse(manifestBytes.toString("utf8")) as unknown;
-if (!isIntentModelManifest(manifest)) throw new Error("manifest malformed");
+const parsedManifest: unknown = JSON.parse(manifestBytes.toString("utf8"));
+if (!isIntentModelManifest(parsedManifest)) throw new Error("manifest malformed");
+// Declared with its type, not with a narrowing: a narrowing that comes from a
+// type guard does not survive into the nested function below, and `as unknown`
+// would throw that narrowing away for good.
+const manifest: IntentModelManifest = parsedManifest;
 if (manifest.features === undefined) throw new Error("manifest has no features pin");
 const validatorSourceBytes = readFileSync(VALIDATOR_SOURCE_PATH);
 const decoderSourceBytes = readFileSync(MODEL_DECODER_PATH);
@@ -82,7 +87,9 @@ if (modelBytes.byteLength !== manifest.model.bytes) throw new Error("model byte 
 
 const vocabBytes = readFileSync(vocabPath);
 const vocab = JSON.parse(vocabBytes.toString("utf8")) as IntentModelVocab;
-const vocabDigest = createHash("sha256").update(vocabBytes.toString("utf8")).digest("hex");
+// The pin is over the repository's bytes (LF). Hashing the raw on-disk bytes
+// made the digest a property of the writing machine.
+const vocabDigest = createHash("sha256").update(repositoryTextBytes(vocabBytes)).digest("hex");
 if (vocabDigest !== manifest.features.vocabSha256.toLowerCase()) throw new Error("vocab hash mismatch");
 if (vocab.tokens.length !== manifest.features.vocabSize) throw new Error("vocab size mismatch");
 
@@ -343,7 +350,10 @@ const exactInstructionOverlap = {
 const pinnedInputs = [
   { label: "model manifest", path: MANIFEST_PATH, sha256: sha256(manifestBytes) },
   { label: "ONNX model", path: modelPath, sha256: modelDigest },
-  { label: "model vocabulary", path: vocabPath, sha256: vocabDigest },
+  // The RAW digest, not the pin: this list answers "did the file change while
+  // we were evaluating?", which is a question about bytes on disk. The pin
+  // itself (vocabDigest) is over the repository's bytes.
+  { label: "model vocabulary", path: vocabPath, sha256: sha256(vocabBytes) },
   { label: "dataset manifest", path: datasetManifestPath, sha256: sha256(datasetManifestBytes) },
   { label: "train split", path: path.join(DATA_DIR, "train.jsonl"), sha256: sha256(trainData.bytes) },
   { label: "validation split", path: path.join(DATA_DIR, "val.jsonl"), sha256: sha256(valData.bytes) },

@@ -17,6 +17,7 @@
 
 import { assetUrl } from "../shared/assetUrls";
 import { buildIntentBow, decodeIntentHeads, type IntentModelVocab } from "./model-decoder";
+import { repositoryTextBytes } from "./model-artifact-bytes";
 import {
   buildIntentModelPrompt,
   isIntentModelManifest,

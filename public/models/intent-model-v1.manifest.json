@@ -22,7 +22,7 @@
   },
   "features": {
     "version": "intent-features.v2",
-    "vocabSha256": "4923582e6f2bc473130110f08111c55726d22a90a10f837133867235d9b1ad2c",
+    "vocabSha256": "37f24f1d9b7edfba39b9f3557804cce746e352a67bc7cf6c8c62dd5d0485b931",
     "vocabSize": 6144,
     "url": "/models/intent-model-v1.vocab.json",
     "inputName": "features",
@@ -1022,6 +1022,6 @@
     },
     "gate": "scripts/validate-intent-model.mts — attempted-exact >= 0.95, wrongKind = 0",
     "validationReportPath": "scripts/data/intent-model-validation-report.json",
-    "validationReportSha256": "9f7940227a9bf805a71025166d2b7b8cb8638c217c6ad6ead082b17f8a8bfe8b"
+    "validationReportSha256": "fa800e3ae001bd0e64a55a8067f58bf727848e0e39fe5ee1bb6ccad953df36a0"
   }
 }
