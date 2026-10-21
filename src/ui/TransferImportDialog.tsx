@@ -102,8 +102,9 @@ export function TransferImportDialog({ core, onCancel, onImported }: TransferImp
     }
   };
 
-  // The arrangement grid is 4/4 whatever meter the user picks, so the mismatch
-  // is a property of the LIVE meter state, not of the inspected files (ADR 0056).
+  // What the chosen meter DOES to the import is a property of the LIVE meter state, not of the
+  // inspected files (ADR 0056/0057): the arrangement and the step grid follow the metre, and the
+  // imported groove is padded up to a whole number of the document's bars.
   //
   // It is therefore NOT gated on the inspection. The meter control is live from the moment the
   // dialog opens, so a user who set 3/4 before choosing any file was told nothing about the grid

@@ -7,10 +7,10 @@ import type { ProjectDocument, TimeSignature } from "./types";
  *
  * ADR 0056 Stage 2 put the ARRANGEMENT on the document's meter: the ruler,
  * the clip placement, the metronome and the readouts all measure the
- * metrical bar. The PATTERN grid was the one unit left behind — a pattern is
+ * metrical bar. The PATTERN grid was the one unit left behind — a pattern WAS
  * 16 sixteenth steps (`PATTERN_TICKS`, four quarter notes) whatever the meter
- * declares. Measured in 6/8: one pattern is 1.33 bars long and its downbeat
- * reaches the bar line only every fourth bar, so a groove drifts against the
+ * declares. Measured in 6/8: one pattern was 1.33 bars long and its downbeat
+ * reached the bar line only every fourth bar, so a groove drifted against the
  * ruler that sits right above it. ADR 0056 named the fix — "a metrical step
  * grid and its own ADR" — and this module is that fix's single owner.
  *
