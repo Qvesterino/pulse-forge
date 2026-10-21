@@ -1022,6 +1022,6 @@
     },
     "gate": "scripts/validate-intent-model.mts — attempted-exact >= 0.95, wrongKind = 0",
     "validationReportPath": "scripts/data/intent-model-validation-report.json",
-    "validationReportSha256": "fa800e3ae001bd0e64a55a8067f58bf727848e0e39fe5ee1bb6ccad953df36a0"
+    "validationReportSha256": "e10a9e0be238428f4fe4f5421051e445b60bd229815e2ac38414b1b2d44243a2"
   }
 }
