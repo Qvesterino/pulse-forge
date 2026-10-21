@@ -752,15 +752,15 @@
       "presetsFinite": 4,
       "presetsTotal": 4,
       "hostProcesses": true,
-      "hostDelta": 1.1936203961667722,
+      "hostDelta": 1.1931903620368092,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint free1Gain=24, hpFreq=1000",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 1.021132268668941,
+      "automationDelta": 1.0212256592525009,
       "automationFinite": true,
-      "restoreMaxDiff": 2.980232238769531e-7,
-      "restoreRmsDiff": 6.329782739165009e-11,
+      "restoreMaxDiff": 2.384185791015625e-7,
+      "restoreRmsDiff": 1.12591751219464e-9,
       "name": "EQ",
       "category": "tone"
     },
@@ -778,8 +778,8 @@
           "maxPeak": 0.4668046832084656,
           "responsive": false,
           "bestExtreme": "max",
-          "metric": "",
-          "delta": 0,
+          "metric": "env",
+          "delta": 0.00475602755100661,
           "extremes": [
             {
               "extreme": "min",
@@ -790,23 +790,23 @@
             {
               "extreme": "max",
               "value": 500,
-              "delta": 0,
-              "dryDelta": 0.008432015877347565
+              "delta": 0.00475602755100661,
+              "dryDelta": 0.005492954139111275
             }
           ],
-          "stimulus": "tone",
-          "gatedDelta": 1.0297040085483615
+          "stimulus": "broadband",
+          "gatedDelta": 0.9983797253847637
         },
         {
           "id": "midLowGain",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4680437445640564,
-          "maxPeak": 1.2854622602462769,
+          "maxPeak": 1.2854554653167725,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 3.184517601427975,
+          "delta": 3.1844821661900347,
           "extremes": [
             {
               "extreme": "min",
@@ -817,8 +817,8 @@
             {
               "extreme": "max",
               "value": 15,
-              "delta": 3.184517601427975,
-              "dryDelta": 3.184517610945481
+              "delta": 3.1844821661900347,
+              "dryDelta": 3.1844821757074597
             }
           ],
           "stimulus": "tone"
@@ -830,21 +830,21 @@
           "minPeak": 0.4668046832084656,
           "maxPeak": 0.4668046832084656,
           "responsive": true,
-          "bestExtreme": "max",
+          "bestExtreme": "min",
           "metric": "env",
           "delta": 0.05036200376016288,
           "extremes": [
             {
               "extreme": "min",
               "value": 1500,
-              "delta": 0,
-              "dryDelta": 0.008432015877347565
+              "delta": 0.05036200376016288,
+              "dryDelta": 0.05836936642218971
             },
             {
               "extreme": "max",
               "value": 16000,
-              "delta": 0.05036200376016288,
-              "dryDelta": 0.05836936642218971
+              "delta": 0,
+              "dryDelta": 0.008432015877347565
             }
           ],
           "stimulus": "tone"
@@ -863,8 +863,8 @@
             {
               "extreme": "min",
               "value": -15,
-              "delta": 0.04955624463416786,
-              "dryDelta": 0.04955624702133864
+              "delta": 0.06661397209061505,
+              "dryDelta": 0.07448429789764136
             },
             {
               "extreme": "max",
@@ -895,8 +895,8 @@
             {
               "extreme": "max",
               "value": 500,
-              "delta": 0.00475602755100661,
-              "dryDelta": 0.005492954139111275
+              "delta": 0.05036200376016288,
+              "dryDelta": 0.05836936642218971
             }
           ],
           "stimulus": "tone"
@@ -905,24 +905,24 @@
           "id": "sideLowGain",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.48075973987579346,
+          "minPeak": 0.48075976967811584,
           "maxPeak": 0.6970970034599304,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 1.1876652223272484,
+          "delta": 1.1876655733619885,
           "extremes": [
             {
               "extreme": "min",
               "value": -15,
-              "delta": 0.5056436897688975,
-              "dryDelta": 0.5056436931934197
+              "delta": 0.505643644432609,
+              "dryDelta": 0.5056436478571311
             },
             {
               "extreme": "max",
               "value": 15,
-              "delta": 1.1876652223272484,
-              "dryDelta": 1.1876652214623848
+              "delta": 1.1876655733619885,
+              "dryDelta": 1.1876655724971248
             }
           ],
           "stimulus": "broadband"
@@ -947,12 +947,12 @@
             {
               "extreme": "max",
               "value": 16000,
-              "delta": 0.00475602755100661,
-              "dryDelta": 0.005492954139111275
+              "delta": 0,
+              "dryDelta": 0.008432015877347565
             }
           ],
           "stimulus": "broadband",
-          "gatedDelta": 0.08223852202140929
+          "gatedDelta": 0.08223852191605843
         },
         {
           "id": "sideHighGain",
@@ -991,15 +991,15 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 1.8924930456805338,
+      "hostDelta": 1.8241580229430063,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint midLowGain=15, sideLowGain=15",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 1.8924929951081304,
+      "automationDelta": 1.8241580200655267,
       "automationFinite": true,
-      "restoreMaxDiff": 0.7395349815487862,
-      "restoreRmsDiff": 4.265953010741633e-8,
+      "restoreMaxDiff": 0.00002574920654296875,
+      "restoreRmsDiff": 2.272998443204816e-9,
       "name": "M/S EQ",
       "category": "tone"
     },
@@ -1040,17 +1040,17 @@
           "id": "highFreq",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.44953566789627075,
-          "maxPeak": 0.45092904567718506,
+          "minPeak": 0.449535608291626,
+          "maxPeak": 0.45092901587486267,
           "responsive": false,
           "bestExtreme": "min",
           "metric": "crest",
-          "delta": 0.002043441265190142,
+          "delta": 0.0020435740412070086,
           "extremes": [
             {
               "extreme": "min",
               "value": 800,
-              "delta": 0.002043441265190142,
+              "delta": 0.0020435740412070086,
               "dryDelta": 0.05684574071280447
             },
             {
@@ -1072,19 +1072,19 @@
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 2.2259759240949943,
+          "delta": 2.225975924828818,
           "extremes": [
             {
               "extreme": "min",
               "value": -12,
-              "delta": 0.3586034057059813,
-              "dryDelta": 0.3702699112616089
+              "delta": 0.3586034131882657,
+              "dryDelta": 0.3702699140473724
             },
             {
               "extreme": "max",
               "value": 12,
-              "delta": 2.2259759240949943,
-              "dryDelta": 2.2222566704487736
+              "delta": 2.225975924828818,
+              "dryDelta": 2.222256669447665
             }
           ],
           "stimulus": "tone"
@@ -1098,19 +1098,19 @@
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 3.9862606608357276,
+          "delta": 3.986260662721087,
           "extremes": [
             {
               "extreme": "min",
               "value": -12,
-              "delta": 0.3721330995134374,
-              "dryDelta": 0.37271472033480973
+              "delta": 0.3721330992196856,
+              "dryDelta": 0.3727147202784399
             },
             {
               "extreme": "max",
               "value": 12,
-              "delta": 3.9862606608357276,
-              "dryDelta": 3.9816416675126454
+              "delta": 3.986260662721087,
+              "dryDelta": 3.9816416675132293
             }
           ],
           "stimulus": "tone"
@@ -1119,24 +1119,24 @@
           "id": "highGain",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4644886255264282,
-          "maxPeak": 1.1462732553482056,
+          "minPeak": 0.46448859572410583,
+          "maxPeak": 1.146273136138916,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "crest",
-          "delta": 1.4788774900926065,
+          "delta": 1.4788772305103917,
           "extremes": [
             {
               "extreme": "min",
               "value": -12,
-              "delta": 0.13620342845483369,
-              "dryDelta": 0.13911696655390646
+              "delta": 0.13620343564389292,
+              "dryDelta": 0.1391169760764754
             },
             {
               "extreme": "max",
               "value": 12,
-              "delta": 1.4788774900926065,
-              "dryDelta": 1.3945346359353672
+              "delta": 1.4788772305103917,
+              "dryDelta": 1.3945343864739774
             }
           ],
           "stimulus": "tone"
@@ -1146,23 +1146,23 @@
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4504019618034363,
-          "maxPeak": 0.5000491738319397,
+          "maxPeak": 0.5000491142272949,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.437620631668325,
+          "delta": 0.43762063247684607,
           "extremes": [
             {
               "extreme": "min",
               "value": 0,
-              "delta": 1.040528263713148e-7,
-              "dryDelta": 0.05656446321008915
+              "delta": 5.274597790145607e-9,
+              "dryDelta": 0.012109587439599407
             },
             {
               "extreme": "max",
               "value": 1,
-              "delta": 0.437620631668325,
-              "dryDelta": 0.43784768672037044
+              "delta": 0.43762063247684607,
+              "dryDelta": 0.43784768671959445
             }
           ],
           "stimulus": "broadband"
@@ -1174,24 +1174,24 @@
           "minPeak": 0.4504019618034363,
           "maxPeak": 0.4504019618034363,
           "responsive": false,
-          "bestExtreme": "min",
-          "metric": "dyn",
-          "delta": 3.242256036745009e-9,
+          "bestExtreme": "max",
+          "metric": "env",
+          "delta": 1.040528263713148e-7,
           "extremes": [
             {
               "extreme": "min",
               "value": 0,
-              "delta": 3.242256036745009e-9,
+              "delta": 1.1763714192558872e-8,
               "dryDelta": 0.012109587439599407
             },
             {
               "extreme": "max",
               "value": 1,
-              "delta": 2.146013289642539e-9,
-              "dryDelta": 0.012109587439599407
+              "delta": 1.040528263713148e-7,
+              "dryDelta": 0.05656446321008915
             }
           ],
-          "stimulus": "broadband",
+          "stimulus": "tone",
           "gatedDelta": 0
         },
         {
@@ -1202,23 +1202,23 @@
           "maxPeak": 0.4504019618034363,
           "responsive": false,
           "bestExtreme": "min",
-          "metric": "dyn",
-          "delta": 2.941661274427999e-9,
+          "metric": "env",
+          "delta": 1.040528263713148e-7,
           "extremes": [
             {
               "extreme": "min",
               "value": 0,
-              "delta": 2.941661274427999e-9,
-              "dryDelta": 0.012109587439599407
+              "delta": 1.040528263713148e-7,
+              "dryDelta": 0.05656446321008915
             },
             {
               "extreme": "max",
               "value": 1,
-              "delta": 2.146013289642539e-9,
-              "dryDelta": 0.012109587439599407
+              "delta": 1.040528263713148e-7,
+              "dryDelta": 0.05656446321008915
             }
           ],
-          "stimulus": "broadband",
+          "stimulus": "tone",
           "gatedDelta": 0
         },
         {
@@ -1228,24 +1228,24 @@
           "minPeak": 0.4504019618034363,
           "maxPeak": 0.4504019618034363,
           "responsive": false,
-          "bestExtreme": "max",
-          "metric": "dyn",
-          "delta": 1.3796055980587143e-8,
+          "bestExtreme": "min",
+          "metric": "env",
+          "delta": 1.040528263713148e-7,
           "extremes": [
             {
               "extreme": "min",
               "value": 0,
-              "delta": 2.9692915740048205e-9,
+              "delta": 1.040528263713148e-7,
               "dryDelta": 0.05656446321008915
             },
             {
               "extreme": "max",
               "value": 1,
-              "delta": 1.3796055980587143e-8,
+              "delta": 5.274597790145607e-9,
               "dryDelta": 0.012109587439599407
             }
           ],
-          "stimulus": "broadband",
+          "stimulus": "tone",
           "gatedDelta": 0
         },
         {
@@ -1268,7 +1268,7 @@
             {
               "extreme": "max",
               "value": 1,
-              "delta": 2.941661274427999e-9,
+              "delta": 5.274597790145607e-9,
               "dryDelta": 0.012109587439599407
             }
           ],
@@ -1288,16 +1288,16 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 1.5465742696573666,
-      "hostMixDelta": 0.01505135848292666,
+      "hostDelta": 1.5466786050654762,
+      "hostMixDelta": 0.015076186735971296,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint midGain=12, lowGain=12",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 1.5465742697667484,
+      "automationDelta": 1.5466786038445215,
       "automationFinite": true,
-      "restoreMaxDiff": 0.000001430511474609375,
-      "restoreRmsDiff": 2.6989503773107444e-10,
+      "restoreMaxDiff": 0.0014777183532714844,
+      "restoreRmsDiff": 3.824291242577886e-7,
       "name": "Multiband",
       "category": "tone"
     },
@@ -1632,16 +1632,16 @@
       "presetsFinite": 4,
       "presetsTotal": 4,
       "hostProcesses": true,
-      "hostDelta": 0.5794307201322538,
-      "hostMixDelta": 0.38307429461018777,
+      "hostDelta": 0.5795435746888392,
+      "hostMixDelta": 0.3976338675232279,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint makeup=24, threshold=-60",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.7023168034738014,
+      "automationDelta": 0.7024573713257445,
       "automationFinite": true,
       "restoreMaxDiff": 4.76837158203125e-7,
-      "restoreRmsDiff": 1.065519512295728e-10,
+      "restoreRmsDiff": 1.206590580798342e-10,
       "name": "Compressor",
       "category": "dynamics"
     },
@@ -1841,16 +1841,16 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 2.5198589439470642,
-      "hostMixDelta": 0.4960080322875515,
+      "hostDelta": 2.4366882651033164,
+      "hostMixDelta": 0.49598977095239943,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint output=12, bias=1",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 1.9402892695742506,
+      "automationDelta": 1.940318753007357,
       "automationFinite": true,
-      "restoreMaxDiff": 0.00026869773864746094,
-      "restoreRmsDiff": 3.6527588124141004e-7,
+      "restoreMaxDiff": 0.0021041035652160645,
+      "restoreRmsDiff": 3.332901106055233e-7,
       "name": "Saturation",
       "category": "character"
     },
@@ -1998,16 +1998,16 @@
       "presetsFinite": 4,
       "presetsTotal": 4,
       "hostProcesses": true,
-      "hostDelta": 3.811607354874207,
-      "hostMixDelta": 1.3018217606593787,
+      "hostDelta": 3.6979334716659458,
+      "hostMixDelta": 1.2474721406609668,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint output=12, drive=0",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 1.360526420657679,
+      "automationDelta": 1.3605514248419555,
       "automationFinite": true,
       "restoreMaxDiff": 4.76837158203125e-7,
-      "restoreRmsDiff": 1.9225288058283303e-11,
+      "restoreRmsDiff": 2.5890312237550033e-10,
       "name": "Tape Sat",
       "category": "character"
     },
@@ -2212,16 +2212,16 @@
       "presetsFinite": 2,
       "presetsTotal": 2,
       "hostProcesses": true,
-      "hostDelta": 1.7001555996822018,
-      "hostMixDelta": 1.7366294154513915,
+      "hostDelta": 1.6351252346519065,
+      "hostMixDelta": 1.6372572486575094,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "effect at defaults",
-      "hostBypassEqualsRemoved": true,
+      "hostBypassEqualsRemoved": false,
       "hostFinite": true,
-      "automationDelta": 1.5323655749463478,
+      "automationDelta": 1.5331416417080532,
       "automationFinite": true,
-      "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 1.8725984980890515e-12,
+      "restoreMaxDiff": 1.7881393432617188e-7,
+      "restoreRmsDiff": 6.475083279590074e-11,
       "name": "Wow & Flutter",
       "category": "character"
     },
@@ -2369,16 +2369,16 @@
       "presetsFinite": 2,
       "presetsTotal": 2,
       "hostProcesses": true,
-      "hostDelta": 0.7365452258006537,
-      "hostMixDelta": 0.44208386584936427,
+      "hostDelta": 0.7365778609128479,
+      "hostMixDelta": 0.44212825254627075,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint drive=1, output=12",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
       "automationDelta": 0.6467589586771437,
       "automationFinite": true,
-      "restoreMaxDiff": 0.000004172325134277344,
-      "restoreRmsDiff": 1.0134375691339583e-10,
+      "restoreMaxDiff": 0.000004231929779052734,
+      "restoreRmsDiff": 1.4961227730567085e-10,
       "name": "Clipper",
       "category": "character"
     },
@@ -2547,12 +2547,124 @@
           ],
           "stimulus": "tone",
           "gatedDelta": 3.566060435274162
+        },
+        {
+          "id": "transientLink",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4656618535518646,
+          "maxPeak": 0.4656618535518646,
+          "responsive": false,
+          "bestExtreme": "min",
+          "metric": "env",
+          "delta": 0.006182137817538735,
+          "extremes": [
+            {
+              "extreme": "min",
+              "value": 0,
+              "delta": 0.006182137817538735,
+              "dryDelta": 0.05845535207072323
+            },
+            {
+              "extreme": "max",
+              "value": 1,
+              "delta": 0,
+              "dryDelta": 0.062550391236572
+            }
+          ],
+          "stimulus": "tone",
+          "gatedDelta": 0
+        },
+        {
+          "id": "releaseLink",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4656618535518646,
+          "maxPeak": 0.4656618535518646,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0,
+          "extremes": [
+            {
+              "extreme": "min",
+              "value": 0,
+              "delta": 0,
+              "dryDelta": 0.062550391236572
+            },
+            {
+              "extreme": "max",
+              "value": 1,
+              "delta": 0,
+              "dryDelta": 0.062550391236572
+            }
+          ],
+          "stimulus": "tone",
+          "gatedDelta": 0
+        },
+        {
+          "id": "character",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4656618535518646,
+          "maxPeak": 0.46541306376457214,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "env",
+          "delta": 0.0006578832227342967,
+          "extremes": [
+            {
+              "extreme": "min",
+              "value": 0,
+              "delta": 0,
+              "dryDelta": 0.062550391236572
+            },
+            {
+              "extreme": "max",
+              "value": 2,
+              "delta": 0.0006578832227342967,
+              "dryDelta": 0.06270689716543468
+            }
+          ],
+          "stimulus": "tone",
+          "gatedDelta": 0
+        },
+        {
+          "id": "oversample",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4656618535518646,
+          "maxPeak": 0.4656618535518646,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0,
+          "extremes": [
+            {
+              "extreme": "min",
+              "value": 1,
+              "delta": 0,
+              "dryDelta": 0.062550391236572
+            },
+            {
+              "extreme": "max",
+              "value": 2,
+              "delta": 0,
+              "dryDelta": 0.062550391236572
+            }
+          ],
+          "stimulus": "tone",
+          "gatedDelta": 0
         }
       ],
       "deadParams": [
         "threshold",
         "release",
-        "link"
+        "link",
+        "transientLink",
+        "releaseLink",
+        "character",
+        "oversample"
       ],
       "gatedParams": [
         "mix"
@@ -2562,16 +2674,16 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 0.4941721403883152,
-      "hostMixDelta": 0.26737268870550907,
+      "hostDelta": 0.506104424165609,
+      "hostMixDelta": 0.26737725106879506,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint ceiling=-24, lookaheadMs=20",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.40138982443582577,
+      "automationDelta": 0.4010317694843271,
       "automationFinite": true,
-      "restoreMaxDiff": 1.4901161193847656e-7,
-      "restoreRmsDiff": 7.339404463403853e-11,
+      "restoreMaxDiff": 1.1920928955078125e-7,
+      "restoreRmsDiff": 7.97557972284461e-11,
       "name": "Limiter",
       "category": "dynamics"
     },
@@ -2693,16 +2805,16 @@
       "presetsFinite": 4,
       "presetsTotal": 4,
       "hostProcesses": true,
-      "hostDelta": 0.16610440409338145,
-      "hostMixDelta": 0.16610440409338145,
+      "hostDelta": 0.16970598462007339,
+      "hostMixDelta": 0.16970598651397362,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "effect at defaults",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.11914882429171407,
+      "automationDelta": 0.11914883776524257,
       "automationFinite": true,
-      "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 1.460740340221483e-11,
+      "restoreMaxDiff": 0.0005798935890197754,
+      "restoreRmsDiff": 0.00000101287924614293,
       "name": "Step Gate",
       "category": "movement"
     },
@@ -2850,16 +2962,16 @@
       "presetsFinite": 9,
       "presetsTotal": 9,
       "hostProcesses": true,
-      "hostDelta": 1.7322291728493797,
-      "hostMixDelta": 0.03468726651336659,
+      "hostDelta": 1.6669372377174911,
+      "hostMixDelta": 0.03644540074642388,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint resonance=1, cutoff=20",
-      "hostBypassEqualsRemoved": true,
+      "hostBypassEqualsRemoved": false,
       "hostFinite": true,
-      "automationDelta": 3.38322417241982,
+      "automationDelta": 3.383277842696762,
       "automationFinite": true,
-      "restoreMaxDiff": 1.1920928955078125e-7,
-      "restoreRmsDiff": 1.2447949207754731e-10,
+      "restoreMaxDiff": 1.4901161193847656e-7,
+      "restoreRmsDiff": 8.242235076716293e-11,
       "name": "SV Filter",
       "category": "tone"
     },
@@ -3088,16 +3200,16 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 24.26083276451027,
-      "hostMixDelta": 5.722587651561952,
+      "hostDelta": 24.26204141367366,
+      "hostMixDelta": 5.7228727382706435,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint feedback=0.95, base=20",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 7.478972905048664,
+      "automationDelta": 7.478972894797338,
       "automationFinite": true,
-      "restoreMaxDiff": 4.76837158203125e-7,
-      "restoreRmsDiff": 2.5357580115520916e-11,
+      "restoreMaxDiff": 5.960464477539062e-7,
+      "restoreRmsDiff": 4.0382733170369333e-10,
       "name": "Flanger",
       "category": "movement"
     },
@@ -3271,16 +3383,16 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 3.033185510595463,
-      "hostMixDelta": 0.22757884061889846,
+      "hostDelta": 3.0333366137684776,
+      "hostMixDelta": 0.24581010909073608,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint mode=1, rate=20",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 3.3350796212691454,
+      "automationDelta": 3.335241108580133,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 1.5428741920890633e-10,
+      "restoreRmsDiff": 6.890080798058795e-11,
       "name": "Tremolo",
       "category": "movement"
     },
@@ -3558,16 +3670,16 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 7.86432120899662,
-      "hostMixDelta": 0.48535957784556094,
+      "hostDelta": 7.864808854700302,
+      "hostMixDelta": 0.4975301290066614,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint resonance=1, drive=1",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 9.674128346028871,
+      "automationDelta": 9.674055691607418,
       "automationFinite": true,
-      "restoreMaxDiff": 0.000008046627044677734,
-      "restoreRmsDiff": 1.9441058524361126e-8,
+      "restoreMaxDiff": 0.000005125999450683594,
+      "restoreRmsDiff": 8.527085451330766e-9,
       "name": "Autowah",
       "category": "movement"
     },
@@ -3700,8 +3812,8 @@
       "hostFinite": true,
       "automationDelta": 0.7797819052627912,
       "automationFinite": true,
-      "restoreMaxDiff": 1.1920928955078125e-7,
-      "restoreRmsDiff": 2.460912744581585e-11,
+      "restoreMaxDiff": 1.7881393432617188e-7,
+      "restoreRmsDiff": 1.0074371748450807e-10,
       "name": "Stutter",
       "category": "movement"
     },
@@ -3849,16 +3961,16 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 2.988218071403576,
-      "hostMixDelta": 5.137698526959926,
+      "hostDelta": 2.9883669435598716,
+      "hostMixDelta": 5.137954480270427,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint feedback=-0.95, delayMs=0.5",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.16778770019060613,
+      "automationDelta": 0.1677869808204219,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 1.6985819366148406e-10,
+      "restoreRmsDiff": 1.3219651589079277e-11,
       "name": "Comb",
       "category": "movement"
     },
@@ -3954,17 +4066,17 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 0.7211657025286645,
-      "hostMixDelta": 0.5168118754564067,
+      "hostDelta": 0.7211581238830881,
+      "hostMixDelta": 0.5165283946464281,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint vowel=4, resonance=1",
-      "hostBypassEqualsRemoved": true,
+      "hostBypassEqualsRemoved": false,
       "hostFinite": true,
-      "automationDelta": 0.1347258879864477,
+      "automationDelta": 0.13493368083631876,
       "automationExempt": "formant-Q lane is spectral-only - moves the formant shape by ~0.2% rms/centroid; writes ride the native AudioParam schedule",
       "automationFinite": true,
-      "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 2.4397983960733036e-10,
+      "restoreMaxDiff": 3.5762786865234375e-7,
+      "restoreRmsDiff": 3.3270243892140147e-10,
       "name": "Vowel",
       "category": "movement"
     },
@@ -4269,17 +4381,17 @@
       "presetsTotal": 5,
       "hostExemptReason": "host has no modulator track — carrier passthrough is correct; sweep carries the processing evidence",
       "hostProcesses": false,
-      "hostDelta": 4.1712360188173464e-8,
-      "hostMixDelta": 2.54214435008264e-9,
+      "hostDelta": 1.4608491671194731e-8,
+      "hostMixDelta": 1.1213443597447182e-8,
       "hostMaterial": "Drums (drum bus)",
-      "hostState": "fingerprint q=1, sibilance=1",
+      "hostState": "effect at defaults",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 1.577122751033563e-8,
+      "automationDelta": 1.2684830358392082e-8,
       "automationExempt": "host has no modulator track — carrier passthrough is correct; sweep carries the processing evidence",
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 3.740970406391882e-10,
+      "restoreRmsDiff": 1.5631461414831813e-10,
       "name": "Vocoder",
       "category": "character"
     },
@@ -4494,16 +4606,16 @@
       "presetsFinite": 4,
       "presetsTotal": 4,
       "hostProcesses": true,
-      "hostDelta": 0.024654677752453794,
-      "hostMixDelta": 3.609373128892478e-8,
+      "hostDelta": 0.024674285702331725,
+      "hostMixDelta": 3.902346155452402e-9,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint engaged=1, time=0.25",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.024654677752453794,
+      "automationDelta": 0.024674285702331725,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 2.6732092131867745e-10,
+      "restoreRmsDiff": 1.616917502998594e-10,
       "name": "Reverse Swell",
       "category": "movement"
     },
@@ -4800,16 +4912,16 @@
       "presetsFinite": 5,
       "presetsTotal": 5,
       "hostProcesses": true,
-      "hostDelta": 0.5077535442130146,
-      "hostMixDelta": 4.073953521046352e-8,
+      "hostDelta": 0.5193707911483872,
+      "hostMixDelta": 3.782153389926541e-8,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint freeze=1",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.507753540806895,
+      "automationDelta": 0.5193707887476404,
       "automationFinite": true,
       "restoreMaxDiff": 1.7881393432617188e-7,
-      "restoreRmsDiff": 2.976157808331042e-11,
+      "restoreRmsDiff": 4.116331827985061e-11,
       "name": "Granular Freeze",
       "category": "space"
     },
@@ -5120,15 +5232,15 @@
       "presetsTotal": 3,
       "hostProcesses": true,
       "hostDelta": 0.27657763451729056,
-      "hostMixDelta": 0.4249972622809835,
+      "hostMixDelta": 0.42499760271392356,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint feedback=0.85, duckAmount=1",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.27106156141520293,
+      "automationDelta": 0.2710616055058477,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 2.1984989251623197e-11,
+      "restoreRmsDiff": 5.598204922709115e-11,
       "name": "Duck Delay",
       "category": "space"
     },
@@ -5731,16 +5843,16 @@
       "presetsFinite": 7,
       "presetsTotal": 7,
       "hostProcesses": true,
-      "hostDelta": 0.5506988667617301,
-      "hostMixDelta": 2.20279546422537,
+      "hostDelta": 0.5507127485486494,
+      "hostMixDelta": 2.2028509953297153,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "effect at defaults",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.6575383406520543,
+      "automationDelta": 0.6575544411103225,
       "automationFinite": true,
-      "restoreMaxDiff": 1.1920928955078125e-7,
-      "restoreRmsDiff": 1.0725792980753516e-10,
+      "restoreMaxDiff": 1.7881393432617188e-7,
+      "restoreRmsDiff": 4.643824250716299e-12,
       "name": "RIFT",
       "category": "space"
     },
@@ -5995,8 +6107,8 @@
       "presetsFinite": 6,
       "presetsTotal": 6,
       "hostProcesses": true,
-      "hostDelta": 2.139199647075307,
-      "hostMixDelta": 5.5920021475596915,
+      "hostDelta": 2.139253576175492,
+      "hostMixDelta": 5.592143115404324,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint t1Div=7, tone=500",
       "hostBypassEqualsRemoved": true,
@@ -6004,7 +6116,7 @@
       "automationDelta": 0.23780722330559087,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 4.958641835615178e-11,
+      "restoreRmsDiff": 1.362672383439234e-10,
       "name": "Multi-Tap",
       "category": "space"
     },
@@ -6204,16 +6316,16 @@
       "presetsFinite": 4,
       "presetsTotal": 4,
       "hostProcesses": true,
-      "hostDelta": 7.126668991787008,
-      "hostMixDelta": 7.865687389111951,
+      "hostDelta": 7.126848649066704,
+      "hostMixDelta": 7.865885687521227,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint predelay=250, decay=20",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 2.0201508957732552,
+      "automationDelta": 2.0201508975944087,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 5.714533326778987e-11,
+      "restoreRmsDiff": 2.2370272731158677e-11,
       "name": "Reverb",
       "category": "space"
     },
@@ -6392,16 +6504,16 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 0.6018799883707362,
-      "hostMixDelta": 1.0740954536136713,
+      "hostDelta": 0.5549900316475738,
+      "hostMixDelta": 1.0133712281511011,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint feedback=0.85, tone=500",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.6025992972186961,
+      "automationDelta": 0.6025999083791568,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 7.448257108047793e-12,
+      "restoreRmsDiff": 7.376816751282867e-11,
       "name": "Delay",
       "category": "space"
     },
@@ -6497,16 +6609,16 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 0.020826562148245093,
+      "hostDelta": 0.02168634506897104,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint amount=1, rate=4",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.12635902998910703,
+      "automationDelta": 0.15186677303597154,
       "automationExempt": "duck-depth lane keeps average loudness flat on an already-dynamic bus; write path instrumented OK, depth covered by the dedicated pump check",
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 4.686403813609533e-10,
+      "restoreRmsDiff": 6.403793972946829e-11,
       "name": "Pump",
       "category": "movement"
     },
@@ -6706,16 +6818,16 @@
       "presetsFinite": 2,
       "presetsTotal": 2,
       "hostProcesses": true,
-      "hostDelta": 2.5446952592133694,
-      "hostMixDelta": 0.5181760775882275,
+      "hostDelta": 2.4408956553145673,
+      "hostMixDelta": 0.5181594278828211,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint bias=1, output=12",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 1.9062891555387012,
+      "automationDelta": 1.9063269761156758,
       "automationFinite": true,
-      "restoreMaxDiff": 0.0009930133819580078,
-      "restoreRmsDiff": 4.493996766123371e-7,
+      "restoreMaxDiff": 0.0010442733764648438,
+      "restoreRmsDiff": 0.0000010837011971462556,
       "name": "Distortion",
       "category": "character"
     },
@@ -6892,16 +7004,16 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 0.9961558647717436,
-      "hostMixDelta": 0.019159596490552433,
+      "hostDelta": 0.9961714380701471,
+      "hostMixDelta": 0.028607795312397898,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint bits=1, drive=1",
-      "hostBypassEqualsRemoved": false,
+      "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.9992155441177825,
+      "automationDelta": 0.9992483613831562,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 4.410026858314907e-11,
+      "restoreRmsDiff": 1.5057897215405007e-11,
       "name": "Bitcrusher",
       "category": "character"
     },
@@ -7179,16 +7291,16 @@
       "presetsFinite": 4,
       "presetsTotal": 4,
       "hostProcesses": true,
-      "hostDelta": 3.0403467468019607,
-      "hostMixDelta": 0.27511163244524967,
+      "hostDelta": 2.9220574977607705,
+      "hostMixDelta": 0.2751252320798647,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint output=12, feedback=0.85",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 3.1678693822079658,
+      "automationDelta": 3.1704319736826303,
       "automationFinite": true,
       "restoreMaxDiff": 9.5367431640625e-7,
-      "restoreRmsDiff": 1.6731266882329248e-10,
+      "restoreRmsDiff": 1.667597910014933e-10,
       "name": "Chorus",
       "category": "movement"
     },
@@ -7420,16 +7532,16 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 7.255322435161643,
-      "hostMixDelta": 3.199301259924997,
+      "hostDelta": 7.255499754370809,
+      "hostMixDelta": 3.199501004639612,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint rate=8, feedback=0.9",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 1.8388673311063195,
+      "automationDelta": 1.8391310328628125,
       "automationFinite": true,
-      "restoreMaxDiff": 0.00006501376628875732,
-      "restoreRmsDiff": 1.0733638240984524e-7,
+      "restoreMaxDiff": 0.00004458427429199219,
+      "restoreRmsDiff": 0.0000014039828653773458,
       "name": "Phaser",
       "category": "movement"
     },
@@ -7577,15 +7689,15 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 5.687635542952427,
+      "hostDelta": 5.687778924139804,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "effect at defaults",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.42485406223488126,
+      "automationDelta": 0.4248540628779268,
       "automationFinite": true,
-      "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 4.398063370963817e-11,
+      "restoreMaxDiff": 0.0014777183532714844,
+      "restoreRmsDiff": 0.000003229088302384033,
       "name": "Haas Widener",
       "category": "movement"
     },
@@ -7760,16 +7872,16 @@
       "presetsTotal": 4,
       "hostExemptReason": "host has no key track — dry path is correct; sweep carries the processing evidence",
       "hostProcesses": false,
-      "hostDelta": 1.7787358059864964e-8,
+      "hostDelta": 1.7776093937743995e-8,
       "hostMaterial": "Drums (drum bus)",
-      "hostState": "fingerprint attack=0.5, release=0.02",
+      "hostState": "effect at defaults",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 9.247083096049275e-9,
+      "automationDelta": 1.303323497795899e-8,
       "automationExempt": "host has no key track — dry path is correct; sweep carries the processing evidence",
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 4.964480549590987e-11,
+      "restoreRmsDiff": 6.627333319958501e-11,
       "name": "Sidechain",
       "category": "dynamics"
     },
@@ -7917,16 +8029,16 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 16.767993508618805,
-      "hostMixDelta": 0.1380562887166455,
+      "hostDelta": 16.247794439982613,
+      "hostMixDelta": 0.13811207286048618,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint output=24, attack=1",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 17.17770014292799,
+      "automationDelta": 17.177739527598987,
       "automationFinite": true,
-      "restoreMaxDiff": 0.0000019073486328125,
-      "restoreRmsDiff": 2.3307599978675906e-11,
+      "restoreMaxDiff": 0.000003814697265625,
+      "restoreRmsDiff": 4.9226480433431924e-11,
       "name": "Transient Shaper",
       "category": "dynamics"
     },
@@ -8152,16 +8264,16 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 3.751450134540796,
-      "hostMixDelta": 0.41560870032833874,
+      "hostDelta": 3.612341080290631,
+      "hostMixDelta": 0.4156112900106231,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint output=18, transient=-1",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 4.822730355469156,
+      "automationDelta": 4.821261277869176,
       "automationFinite": true,
-      "restoreMaxDiff": 0.00019788742065429688,
-      "restoreRmsDiff": 4.0566551977378784e-7,
+      "restoreMaxDiff": 0.00014901161193847656,
+      "restoreRmsDiff": 4.195305828905093e-7,
       "name": "Drum Buss",
       "category": "character"
     },
@@ -8169,7 +8281,7 @@
       "type": "bassBuss",
       "defaultPeak": 0.5337198972702026,
       "defaultFinite": true,
-      "bypassDelta": 0.38956066277533274,
+      "bypassDelta": 0.38956066283938195,
       "params": [
         {
           "id": "drive",
@@ -8180,7 +8292,7 @@
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.43852743220771284,
+          "delta": 0.43852743230767377,
           "extremes": [
             {
               "extreme": "min",
@@ -8191,7 +8303,7 @@
             {
               "extreme": "max",
               "value": 1,
-              "delta": 0.43852743220771284,
+              "delta": 0.43852743230767377,
               "dryDelta": 0.8577018102112602
             }
           ],
@@ -8212,7 +8324,7 @@
               "extreme": "min",
               "value": 0,
               "delta": 0.08288623305103976,
-              "dryDelta": 0.3810191608614663
+              "dryDelta": 0.38101916095984
             },
             {
               "extreme": "max",
@@ -8231,19 +8343,19 @@
           "maxPeak": 0.5337198972702026,
           "responsive": false,
           "bestExtreme": "min",
-          "metric": "centroid",
-          "delta": 6.282881484234144e-10,
+          "metric": "env",
+          "delta": 8.057032834906483e-8,
           "extremes": [
             {
               "extreme": "min",
               "value": 0,
-              "delta": 6.282881484234144e-10,
+              "delta": 8.057032834906483e-8,
               "dryDelta": 0.3895606627774106
             },
             {
               "extreme": "max",
               "value": 1,
-              "delta": 0,
+              "delta": 8.057032834906483e-8,
               "dryDelta": 0.38956066277533274
             }
           ],
@@ -8285,18 +8397,18 @@
           "responsive": true,
           "bestExtreme": "min",
           "metric": "rms",
-          "delta": 1.5009171816338291,
+          "delta": 1.5009171817589568,
           "extremes": [
             {
               "extreme": "min",
               "value": 0,
-              "delta": 1.5009171816338291,
-              "dryDelta": 2.464274964752408
+              "delta": 1.5009171817589568,
+              "dryDelta": 2.4642749647378346
             },
             {
               "extreme": "max",
               "value": 1,
-              "delta": 0.9370724233042925,
+              "delta": 0.9370724283743881,
               "dryDelta": 0.9328316225637724
             }
           ],
@@ -8311,7 +8423,7 @@
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.7036634642048956,
+          "delta": 0.7036634583924868,
           "extremes": [
             {
               "extreme": "min",
@@ -8322,8 +8434,8 @@
             {
               "extreme": "max",
               "value": 0.2,
-              "delta": 0.7036634642048956,
-              "dryDelta": 0.8142568981578207
+              "delta": 0.7036634583924868,
+              "dryDelta": 0.8142568976790312
             }
           ],
           "stimulus": "tone"
@@ -8342,8 +8454,8 @@
             {
               "extreme": "min",
               "value": 0.02,
-              "delta": 0.0582190099516867,
-              "dryDelta": 0.4420369244793006
+              "delta": 0.058218934072076976,
+              "dryDelta": 0.44203692448078297
             },
             {
               "extreme": "max",
@@ -8368,7 +8480,7 @@
             {
               "extreme": "min",
               "value": 0,
-              "delta": 0.2701188935967597,
+              "delta": 0.270118893647478,
               "dryDelta": 0.3499522496436659
             },
             {
@@ -8400,8 +8512,8 @@
             {
               "extreme": "max",
               "value": 1,
-              "delta": 6.282881484234144e-10,
-              "dryDelta": 0.3895606627774106
+              "delta": 0,
+              "dryDelta": 0.38956066283938195
             }
           ],
           "stimulus": "tone"
@@ -8415,7 +8527,7 @@
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 6.941126800990621,
+          "delta": 6.941126800624589,
           "extremes": [
             {
               "extreme": "min",
@@ -8426,7 +8538,7 @@
             {
               "extreme": "max",
               "value": 18,
-              "delta": 6.941126800990621,
+              "delta": 6.941126800624589,
               "dryDelta": 10.034677420767485
             }
           ],
@@ -8442,16 +8554,16 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 7.291664176649177,
-      "hostMixDelta": 0.4398647685039432,
+      "hostDelta": 7.118419467977518,
+      "hostMixDelta": 0.43987047968878984,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint output=18, compression=0",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 10.14424252091906,
+      "automationDelta": 10.140037914506204,
       "automationFinite": true,
-      "restoreMaxDiff": 0.00034427642822265625,
-      "restoreRmsDiff": 2.4746197559013165e-7,
+      "restoreMaxDiff": 0.00048792362213134766,
+      "restoreRmsDiff": 4.1900556701911563e-7,
       "name": "Bass Buss",
       "category": "character"
     },
@@ -8465,12 +8577,12 @@
           "id": "gain",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.03584597632288933,
+          "minPeak": 0.035845980048179626,
           "maxPeak": 8.161337852478027,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 14.844814795406185,
+          "delta": 14.844814794749613,
           "extremes": [
             {
               "extreme": "min",
@@ -8481,8 +8593,8 @@
             {
               "extreme": "max",
               "value": 24,
-              "delta": 14.844814795406185,
-              "dryDelta": 15.084861531196472
+              "delta": 14.844814794749613,
+              "dryDelta": 15.084861542131115
             }
           ],
           "stimulus": "tone"
@@ -8491,24 +8603,24 @@
           "id": "pan",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.8407250642776489,
+          "minPeak": 0.8407251238822937,
           "maxPeak": 0.840725302696228,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "crest",
-          "delta": 729.9042544581464,
+          "delta": 729.9042580679671,
           "extremes": [
             {
               "extreme": "min",
               "value": -1,
-              "delta": 0.8229923466804369,
-              "dryDelta": 0.941608458613442
+              "delta": 0.8229923482858988,
+              "dryDelta": 0.9416084606609415
             },
             {
               "extreme": "max",
               "value": 1,
-              "delta": 729.9042544581464,
-              "dryDelta": 797.2914529205572
+              "delta": 729.9042580679671,
+              "dryDelta": 797.2914571834417
             }
           ],
           "stimulus": "tone"
@@ -8522,19 +8634,19 @@
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 1.0000011757080802,
+          "delta": 1.0000011756308973,
           "extremes": [
             {
               "extreme": "min",
               "value": 0,
-              "delta": 1,
-              "dryDelta": 1
+              "delta": 0.9999999859354451,
+              "dryDelta": 0.9999999858440313
             },
             {
               "extreme": "max",
               "value": 2,
-              "delta": 1.0000011757080802,
-              "dryDelta": 1.0130003595733388
+              "delta": 1.0000011756308973,
+              "dryDelta": 1.0130003595442927
             }
           ],
           "stimulus": "tone"
@@ -8548,19 +8660,19 @@
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.9218047820476337,
+          "delta": 0.9218047663700643,
           "extremes": [
             {
               "extreme": "min",
               "value": 0,
-              "delta": 3.3204588413187134e-9,
+              "delta": 3.6807368351223515e-10,
               "dryDelta": 0.22452479506457684
             },
             {
               "extreme": "max",
               "value": 200,
-              "delta": 0.9218047820476337,
-              "dryDelta": 1.0468502939258615
+              "delta": 0.9218047663700643,
+              "dryDelta": 1.0468502775840771
             }
           ],
           "stimulus": "tone"
@@ -8579,7 +8691,7 @@
             {
               "extreme": "min",
               "value": 0,
-              "delta": 5.958228503297207e-9,
+              "delta": 3.669696857263409e-11,
               "dryDelta": 0.22452479506457684
             },
             {
@@ -8600,46 +8712,46 @@
           "responsive": false,
           "bestExtreme": "max",
           "metric": "crest",
-          "delta": 0.013885474123477357,
+          "delta": 0.013885474519075056,
           "extremes": [
             {
               "extreme": "min",
               "value": 0,
-              "delta": 5.966383009702294e-9,
+              "delta": 5.466872713992582e-12,
               "dryDelta": 0.22452479506457684
             },
             {
               "extreme": "max",
               "value": 1,
-              "delta": 0.013885474123477357,
+              "delta": 0.013885474519075056,
               "dryDelta": 0.22452479506457684
             }
           ],
           "stimulus": "tone",
-          "gatedDelta": 0.5782078636191379
+          "gatedDelta": 0.5783286305172587
         },
         {
           "id": "dcBlock",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.517643392086029,
-          "maxPeak": 0.5659383535385132,
+          "maxPeak": 0.5659976005554199,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "crest",
-          "delta": 0.08784586982372049,
+          "delta": 0.08796003050313023,
           "extremes": [
             {
               "extreme": "min",
               "value": 0,
-              "delta": 6.7073014367687476e-9,
+              "delta": 3.6807368351223515e-10,
               "dryDelta": 0.22452479506457684
             },
             {
               "extreme": "max",
               "value": 1,
-              "delta": 0.08784586982372049,
-              "dryDelta": 0.2545569809970315
+              "delta": 0.08796003050313023,
+              "dryDelta": 0.254568592415526
             }
           ],
           "stimulus": "tone"
@@ -8654,15 +8766,15 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 207.2259084390987,
+      "hostDelta": 207.2311501848922,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint pan=1, gain=24",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 202.88604048742485,
+      "automationDelta": 202.89271251992474,
       "automationFinite": true,
-      "restoreMaxDiff": 0.001514434814453125,
-      "restoreRmsDiff": 1.8250835296319462e-11,
+      "restoreMaxDiff": 0.00186920166015625,
+      "restoreRmsDiff": 3.2097497478571624e-12,
       "name": "Utility",
       "category": "tone"
     },
@@ -8888,16 +9000,16 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 0.5031397899372412,
-      "hostMixDelta": 0.20672287336209644,
+      "hostDelta": 0.5179142634746804,
+      "hostMixDelta": 0.20195588717023427,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint threshold=0, release=0.001",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.5882565715267153,
+      "automationDelta": 0.5989156084323335,
       "automationFinite": true,
-      "restoreMaxDiff": 1.1920928955078125e-7,
-      "restoreRmsDiff": 2.8481124592285308e-11,
+      "restoreMaxDiff": 1.7881393432617188e-7,
+      "restoreRmsDiff": 6.71043315133203e-11,
       "name": "Gate",
       "category": "dynamics"
     },
@@ -8905,7 +9017,7 @@
       "type": "shimmer",
       "defaultPeak": 0.49318334460258484,
       "defaultFinite": true,
-      "bypassDelta": 0.6655587200637284,
+      "bypassDelta": 0.6655587196596804,
       "params": [
         {
           "id": "amount",
@@ -8916,19 +9028,19 @@
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 1.4193010344032444,
+          "delta": 1.419301032881356,
           "extremes": [
             {
               "extreme": "min",
               "value": 0,
-              "delta": 0.35521376810082017,
+              "delta": 0.355213767931915,
               "dryDelta": 0.3998521360973078
             },
             {
               "extreme": "max",
               "value": 1,
-              "delta": 1.4193010344032444,
-              "dryDelta": 1.7175306982052085
+              "delta": 1.419301032881356,
+              "dryDelta": 1.717530688082255
             }
           ],
           "stimulus": "tone"
@@ -8942,13 +9054,13 @@
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.15933646211122615,
+          "delta": 0.15933645645352507,
           "extremes": [
             {
               "extreme": "min",
               "value": 0,
-              "delta": 0.15933646211122615,
-              "dryDelta": 0.9303548547883858
+              "delta": 0.15933645645352507,
+              "dryDelta": 0.9303548549585342
             },
             {
               "extreme": "max",
@@ -8963,7 +9075,7 @@
           "id": "decay",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4931833744049072,
+          "minPeak": 0.49318334460258484,
           "maxPeak": 0.4931833744049072,
           "responsive": true,
           "bestExtreme": "max",
@@ -8974,13 +9086,13 @@
               "extreme": "min",
               "value": 0,
               "delta": 0.016495701322562097,
-              "dryDelta": 0.6680624463142623
+              "dryDelta": 0.6680623462253721
             },
             {
               "extreme": "max",
               "value": 1,
               "delta": 0.0966231519406058,
-              "dryDelta": 0.6343829752071832
+              "dryDelta": 0.6343829751592621
             }
           ],
           "stimulus": "tone"
@@ -8990,7 +9102,7 @@
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.49318334460258484,
-          "maxPeak": 0.4931833744049072,
+          "maxPeak": 0.49318334460258484,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "env",
@@ -9000,13 +9112,13 @@
               "extreme": "min",
               "value": -12,
               "delta": 0.05094145805336108,
-              "dryDelta": 0.6513950352172372
+              "dryDelta": 0.6513950353257041
             },
             {
               "extreme": "max",
               "value": 12,
-              "delta": 5.962374177747037e-8,
-              "dryDelta": 0.6655588193705714
+              "delta": 5.528392593265555e-12,
+              "dryDelta": 0.6655587196504725
             }
           ],
           "stimulus": "tone"
@@ -9020,18 +9132,18 @@
           "responsive": true,
           "bestExtreme": "min",
           "metric": "crest",
-          "delta": 0.1621369477985014,
+          "delta": 0.16213694817250074,
           "extremes": [
             {
               "extreme": "min",
               "value": 0,
-              "delta": 0.1621369477985014,
-              "dryDelta": 0.3955101128134168
+              "delta": 0.16213694817250074,
+              "dryDelta": 0.3955101118519621
             },
             {
               "extreme": "max",
               "value": 1,
-              "delta": 0.13189945182327487,
+              "delta": 0.13189945532762945,
               "dryDelta": 0.8241387168039813
             }
           ],
@@ -9046,19 +9158,19 @@
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 83.18543362543201,
+          "delta": 83.18543388866865,
           "extremes": [
             {
               "extreme": "min",
               "value": 0,
-              "delta": 0.5873355704339682,
+              "delta": 0.587335570497474,
               "dryDelta": 0
             },
             {
               "extreme": "max",
               "value": 1,
-              "delta": 83.18543362543201,
-              "dryDelta": 93.56305642231064
+              "delta": 83.18543388866865,
+              "dryDelta": 93.56305642523002
             }
           ],
           "stimulus": "tone"
@@ -9071,16 +9183,16 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 0.43990007728068803,
-      "hostMixDelta": 0.3814967446786361,
+      "hostDelta": 0.4397557899769867,
+      "hostMixDelta": 0.3947163479099322,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint amount=1, shimmer=0",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.32181181472707776,
+      "automationDelta": 0.32177483980828026,
       "automationFinite": true,
-      "restoreMaxDiff": 0.0000012516975402832031,
-      "restoreRmsDiff": 2.642509581448243e-10,
+      "restoreMaxDiff": 0.0000011473894119262695,
+      "restoreRmsDiff": 2.2915137746681828e-10,
       "name": "Shimmer",
       "category": "character"
     },
@@ -9306,16 +9418,16 @@
       "presetsFinite": 0,
       "presetsTotal": 0,
       "hostProcesses": true,
-      "hostDelta": 10.144412767373078,
-      "hostMixDelta": 0.3570447116197275,
+      "hostDelta": 10.144822492321717,
+      "hostMixDelta": 0.35704775198167493,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint outputGainDb=24, inputGainDb=24",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.00003090417852933145,
+      "automationDelta": 1.1518740126279949e-7,
       "automationFinite": true,
-      "restoreMaxDiff": 0.000030994415283203125,
-      "restoreRmsDiff": 1.5409215281006888e-8,
+      "restoreMaxDiff": 0.000019073486328125,
+      "restoreRmsDiff": 1.1150926565751733e-8,
       "name": "PRISM",
       "category": "character"
     },
@@ -9581,16 +9693,16 @@
       "presetsFinite": 0,
       "presetsTotal": 0,
       "hostProcesses": true,
-      "hostDelta": 41.19608425759434,
-      "hostMixDelta": 0.000021647426022086313,
+      "hostDelta": 41.19721782789737,
+      "hostMixDelta": 3.800831324089875e-9,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint global.inputGainDb=24, global.outputGainDb=24",
-      "hostBypassEqualsRemoved": false,
+      "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 41.19616209921035,
+      "automationDelta": 41.19721780774552,
       "automationFinite": true,
-      "restoreMaxDiff": 0.000003814697265625,
-      "restoreRmsDiff": 1.5218879097402804e-11,
+      "restoreMaxDiff": 0.0000057220458984375,
+      "restoreRmsDiff": 2.2819195845359253e-11,
       "name": "VLYX",
       "category": "dynamics"
     },
@@ -9842,16 +9954,16 @@
       "presetsFinite": 0,
       "presetsTotal": 0,
       "hostProcesses": true,
-      "hostDelta": 8.905330802219567,
-      "hostMixDelta": 8.754936407971494,
+      "hostDelta": 8.905597283099171,
+      "hostMixDelta": 8.755198352297814,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint global.outputGainDb=24, global.inputGainDb=24",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 2.822216066466455,
+      "automationDelta": 2.8222160748561387,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 6.157354156982257e-10,
+      "restoreRmsDiff": 7.454923447190203e-10,
       "name": "DRIFT",
       "category": "space"
     },
@@ -10106,16 +10218,16 @@
       "presetsFinite": 0,
       "presetsTotal": 0,
       "hostProcesses": true,
-      "hostDelta": 15.726402692914718,
-      "hostMixDelta": 0.5248566283681367,
+      "hostDelta": 15.726919098478763,
+      "hostMixDelta": 0.5248723340348055,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint global.outputGainDb=24, global.inputGainDb=24",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 17.814410816796222,
+      "automationDelta": 17.81428074865539,
       "automationFinite": true,
       "restoreMaxDiff": 0.00000286102294921875,
-      "restoreRmsDiff": 4.725845139921232e-11,
+      "restoreRmsDiff": 2.855240574762554e-11,
       "name": "MORPH",
       "category": "dynamics"
     },
@@ -10237,16 +10349,16 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 0.31871036531219105,
-      "hostMixDelta": 0.3187103683018883,
+      "hostDelta": 0.3109635703354152,
+      "hostMixDelta": 0.31096356876648784,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "effect at defaults",
-      "hostBypassEqualsRemoved": false,
+      "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.17993173450130806,
+      "automationDelta": 0.18022136233403316,
       "automationFinite": true,
-      "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 1.76494706257806e-10,
+      "restoreMaxDiff": 1.7881393432617188e-7,
+      "restoreRmsDiff": 3.1001686199886556e-10,
       "name": "Ring Mod",
       "category": "movement"
     },
@@ -10404,16 +10516,16 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 1.36078427926313,
-      "hostMixDelta": 9.266894876951513e-9,
+      "hostDelta": 1.3871292205177717,
+      "hostMixDelta": 2.114998672939828e-8,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint engaged=1",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 1.360784232958145,
+      "automationDelta": 1.387129171589363,
       "automationFinite": true,
-      "restoreMaxDiff": 1.7881393432617188e-7,
-      "restoreRmsDiff": 3.860513455961685e-11,
+      "restoreMaxDiff": 2.384185791015625e-7,
+      "restoreRmsDiff": 1.055766023616789e-11,
       "name": "Tape Stop",
       "category": "movement"
     },
@@ -10754,16 +10866,16 @@
       "presetsFinite": 7,
       "presetsTotal": 7,
       "hostProcesses": true,
-      "hostDelta": 0.8217934112226662,
-      "hostMixDelta": 0.3231352357373089,
+      "hostDelta": 0.8217933346232476,
+      "hostMixDelta": 0.3231432670059382,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint feedback=0.9, drive=1",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.8217934331082023,
+      "automationDelta": 0.8217933236804681,
       "automationFinite": true,
-      "restoreMaxDiff": 0.00007712841033935547,
-      "restoreRmsDiff": 3.3158576949132204e-9,
+      "restoreMaxDiff": 0.00004184246063232422,
+      "restoreRmsDiff": 1.1962689108156601e-8,
       "name": "Freq Shift",
       "category": "movement"
     },
@@ -10911,16 +11023,16 @@
       "presetsFinite": 4,
       "presetsTotal": 4,
       "hostProcesses": true,
-      "hostDelta": 8.537648665630824,
-      "hostMixDelta": 8.076675565520329,
+      "hostDelta": 8.537904115480544,
+      "hostMixDelta": 8.076917216969221,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint grainMs=120, fine=100",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.5401200879642023,
+      "automationDelta": 0.53331578959278,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 1.2463759624990187e-11,
+      "restoreRmsDiff": 8.719335409445416e-11,
       "name": "Pitch Shift",
       "category": "character"
     },
@@ -11068,16 +11180,16 @@
       "presetsFinite": 2,
       "presetsTotal": 2,
       "hostProcesses": true,
-      "hostDelta": 0.1439820390488853,
-      "hostMixDelta": 0.1439820390488853,
+      "hostDelta": 0.134478323675671,
+      "hostMixDelta": 0.13447832744144586,
       "hostMaterial": "Chords (melodic)",
       "hostState": "effect at defaults",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.07488809215334197,
+      "automationDelta": 0.1292156590770557,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 2.3720355266299458e-11,
+      "restoreRmsDiff": 4.2661921491899174e-11,
       "name": "Pitch Correct",
       "category": "character"
     },
@@ -11578,16 +11690,16 @@
       "presetsFinite": 7,
       "presetsTotal": 7,
       "hostProcesses": true,
-      "hostDelta": 3.598455043020032,
-      "hostMixDelta": 1.2026412858209856,
+      "hostDelta": 3.5985475708868337,
+      "hostMixDelta": 1.2026370960186352,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint year=0, drive=1",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 1.9918391344113717,
+      "automationDelta": 1.99201467989473,
       "automationFinite": true,
-      "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 7.406933965163202e-11,
+      "restoreMaxDiff": 1.7881393432617188e-7,
+      "restoreRmsDiff": 2.2300450874691953e-10,
       "name": "Vinyl Suite",
       "category": "character"
     },
@@ -11758,7 +11870,7 @@
             }
           ],
           "stimulus": "tone",
-          "gatedDelta": 0.11610221993823563
+          "gatedDelta": 0.11598499038510983
         },
         {
           "id": "gate",
@@ -11832,47 +11944,47 @@
       "presetsFinite": 2,
       "presetsTotal": 2,
       "hostProcesses": true,
-      "hostDelta": 0.7055043551467478,
-      "hostMixDelta": 2.8514036477563814e-8,
+      "hostDelta": 0.7244244390253936,
+      "hostMixDelta": 5.523083877495802e-9,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint trigger=1, playMode=0",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.7055043634070151,
+      "automationDelta": 0.7244244249270531,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 9.28693536230489e-13,
+      "restoreRmsDiff": 3.9178729284922437e-11,
       "name": "Beat Mangler",
       "category": "movement"
     },
     {
       "type": "zenit",
-      "defaultPeak": 0.87417072057724,
+      "defaultPeak": 0.8741707801818848,
       "defaultFinite": true,
-      "bypassDelta": 2.1939832533499057,
+      "bypassDelta": 2.1939832416330938,
       "params": [
         {
           "id": "eqLow",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.8764997720718384,
-          "maxPeak": 0.8789993524551392,
+          "minPeak": 0.8764998912811279,
+          "maxPeak": 0.8789992928504944,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.32399479649077567,
+          "delta": 0.32399482748062114,
           "extremes": [
             {
               "extreme": "min",
               "value": -6,
-              "delta": 0.17459426228450928,
-              "dryDelta": 2.3054698273236824
+              "delta": 0.1745942071025578,
+              "dryDelta": 2.3054698316545035
             },
             {
               "extreme": "max",
               "value": 6,
-              "delta": 0.32399479649077567,
-              "dryDelta": 2.2417319996735476
+              "delta": 0.32399482748062114,
+              "dryDelta": 2.2417319662903235
             }
           ],
           "stimulus": "tone"
@@ -11881,24 +11993,24 @@
           "id": "eqMid",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.876664400100708,
-          "maxPeak": 0.875398576259613,
+          "minPeak": 0.8766645193099976,
+          "maxPeak": 0.8753983974456787,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.1102753172360763,
+          "delta": 0.11027530582616787,
           "extremes": [
             {
               "extreme": "min",
               "value": -6,
-              "delta": 0.09170962416290203,
-              "dryDelta": 2.0685155849217076
+              "delta": 0.09170965119983618,
+              "dryDelta": 2.0685155883541007
             },
             {
               "extreme": "max",
               "value": 6,
-              "delta": 0.1102753172360763,
-              "dryDelta": 2.3718347816753194
+              "delta": 0.11027530582616787,
+              "dryDelta": 2.371834768933118
             }
           ],
           "stimulus": "tone"
@@ -11907,24 +12019,24 @@
           "id": "eqHigh",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.879758358001709,
-          "maxPeak": 0.8691312670707703,
+          "minPeak": 0.8797582983970642,
+          "maxPeak": 0.869131326675415,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "env",
-          "delta": 0.05914180604634032,
+          "delta": 0.05914170930350806,
           "extremes": [
             {
               "extreme": "min",
               "value": -6,
-              "delta": 0.01903328921749545,
-              "dryDelta": 2.194053139942597
+              "delta": 0.01903329113732531,
+              "dryDelta": 2.1940531197494293
             },
             {
               "extreme": "max",
               "value": 6,
-              "delta": 0.05914180604634032,
-              "dryDelta": 2.0568072385304395
+              "delta": 0.05914170930350806,
+              "dryDelta": 2.056807217726153
             }
           ],
           "stimulus": "tone"
@@ -11934,23 +12046,23 @@
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.8741706013679504,
-          "maxPeak": 0.699493408203125,
+          "maxPeak": 0.6994934678077698,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "crest",
-          "delta": 0.6825058824982099,
+          "delta": 0.6825059013748648,
           "extremes": [
             {
               "extreme": "min",
               "value": 0,
-              "delta": 1.337971651179783e-7,
+              "delta": 2.0564976733612578e-7,
               "dryDelta": 2.193983245137325
             },
             {
               "extreme": "max",
               "value": 1,
-              "delta": 0.6825058824982099,
-              "dryDelta": 0.5190197252847841
+              "delta": 0.6825059013748648,
+              "dryDelta": 0.5190197285342298
             }
           ],
           "stimulus": "tone"
@@ -11959,24 +12071,24 @@
           "id": "drive",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.8741708397865295,
+          "minPeak": 0.87417072057724,
           "maxPeak": 0.8604669570922852,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.6725367470431275,
+          "delta": 0.6725367442461162,
           "extremes": [
             {
               "extreme": "min",
               "value": 0,
-              "delta": 1.3616035769670108e-7,
-              "dryDelta": 2.1939832540144883
+              "delta": 1.0282402059606262e-7,
+              "dryDelta": 2.1939832533499057
             },
             {
               "extreme": "max",
               "value": 1,
-              "delta": 0.6725367470431275,
-              "dryDelta": 4.342054360668077
+              "delta": 0.6725367442461162,
+              "dryDelta": 4.34205433213767
             }
           ],
           "stimulus": "tone"
@@ -11985,24 +12097,24 @@
           "id": "width",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.8654345870018005,
-          "maxPeak": 0.8802202343940735,
+          "minPeak": 0.8654346466064453,
+          "maxPeak": 0.8802201747894287,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 1.9329710547233614,
+          "delta": 1.932971285914066,
           "extremes": [
             {
               "extreme": "min",
               "value": 0,
-              "delta": 1.9329710547233614,
-              "dryDelta": 1.6594732470289908
+              "delta": 1.932971285914066,
+              "dryDelta": 1.6594732451976297
             },
             {
               "extreme": "max",
               "value": 2,
-              "delta": 0.49818597976253004,
-              "dryDelta": 3.5448249877121754
+              "delta": 0.49818598164186817,
+              "dryDelta": 3.5448249761391275
             }
           ],
           "stimulus": "tone"
@@ -12011,24 +12123,24 @@
           "id": "bassMono",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.8741708397865295,
-          "maxPeak": 0.8649724721908569,
+          "minPeak": 0.87417072057724,
+          "maxPeak": 0.8649722933769226,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.4949001699539395,
+          "delta": 0.49490029372049504,
           "extremes": [
             {
               "extreme": "min",
               "value": 0,
-              "delta": 1.3560628490562261e-7,
-              "dryDelta": 2.1939832557841874
+              "delta": 1.0282402059606262e-7,
+              "dryDelta": 2.1939832626261824
             },
             {
               "extreme": "max",
               "value": 200,
-              "delta": 0.4949001699539395,
-              "dryDelta": 2.464980839435243
+              "delta": 0.49490029372049504,
+              "dryDelta": 2.4649808480197164
             }
           ],
           "stimulus": "tone"
@@ -12037,24 +12149,24 @@
           "id": "ceiling",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4881654977798462,
-          "maxPeak": 0.981749951839447,
+          "minPeak": 0.4881654679775238,
+          "maxPeak": 0.9817503094673157,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "env",
-          "delta": 0.4443939521378862,
+          "delta": 0.4443938950082326,
           "extremes": [
             {
               "extreme": "min",
               "value": -6,
-              "delta": 0.4443939521378862,
-              "dryDelta": 0.7942596196522624
+              "delta": 0.4443938950082326,
+              "dryDelta": 0.7942596141474418
             },
             {
               "extreme": "max",
               "value": 0,
-              "delta": 0.12217277129196803,
-              "dryDelta": 2.5842010388717997
+              "delta": 0.12217277678779408,
+              "dryDelta": 2.5842010432770888
             }
           ],
           "stimulus": "tone"
@@ -12063,8 +12175,8 @@
           "id": "limit",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.8741707801818848,
-          "maxPeak": 0.8737561702728271,
+          "minPeak": 0.87417072057724,
+          "maxPeak": 0.8737559914588928,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "env",
@@ -12073,14 +12185,14 @@
             {
               "extreme": "min",
               "value": 0,
-              "delta": 7.002621026313276e-8,
-              "dryDelta": 2.1939832474666057
+              "delta": 1.0282402059606262e-7,
+              "dryDelta": 2.193983251542418
             },
             {
               "extreme": "max",
               "value": 1,
               "delta": 0.004445465151132876,
-              "dryDelta": 2.193723468617826
+              "dryDelta": 2.1937234532358234
             }
           ],
           "stimulus": "tone",
@@ -12090,7 +12202,7 @@
           "id": "tpSafe",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.8757432103157043,
+          "minPeak": 0.8757430911064148,
           "maxPeak": 0.8741707801818848,
           "responsive": false,
           "bestExtreme": "min",
@@ -12101,17 +12213,17 @@
               "extreme": "min",
               "value": 0,
               "delta": 0.008805844170566275,
-              "dryDelta": 2.1948829179904337
+              "dryDelta": 2.194882927702149
             },
             {
               "extreme": "max",
               "value": 1,
-              "delta": 7.370350537432588e-8,
-              "dryDelta": 2.1939832357213875
+              "delta": 1.0282402059606262e-7,
+              "dryDelta": 2.1939832487055506
             }
           ],
           "stimulus": "tone",
-          "gatedDelta": 7.480069082865646e-8
+          "gatedDelta": 0.000002635645598060134
         }
       ],
       "deadParams": [
@@ -12124,15 +12236,15 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 0.46000322986798986,
+      "hostDelta": 0.460003226859506,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "effect at defaults",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.345881177414001,
+      "automationDelta": 0.3458798495034849,
       "automationFinite": true,
-      "restoreMaxDiff": 0.0002504587173461914,
-      "restoreRmsDiff": 5.57984254653428e-7,
+      "restoreMaxDiff": 0.00025022029876708984,
+      "restoreRmsDiff": 3.7672752878029437e-7,
       "name": "ZENIT",
       "category": "dynamics"
     },
@@ -12335,16 +12447,16 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 6.6377760197624776,
-      "hostMixDelta": 0.25955939387204635,
+      "hostDelta": 6.722527303561499,
+      "hostMixDelta": 0.25954087209785953,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint output=12, drive=1",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 5.916874470711272,
+      "automationDelta": 5.916869542131501,
       "automationFinite": true,
       "restoreMaxDiff": 4.76837158203125e-7,
-      "restoreRmsDiff": 2.346757685683042e-10,
+      "restoreRmsDiff": 4.046854215647584e-11,
       "name": "APEX",
       "category": "dynamics"
     },
@@ -12525,16 +12637,16 @@
       "presetsFinite": 2,
       "presetsTotal": 2,
       "hostProcesses": true,
-      "hostDelta": 0.6370104316865921,
-      "hostMixDelta": 1.3801877335352171e-9,
+      "hostDelta": 0.6370104307947084,
+      "hostMixDelta": 1.1939693551614508e-8,
       "hostMaterial": "Drums (drum bus, spread kit)",
       "hostState": "fingerprint midWidth=0, lowWidth=2",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.6370104332456957,
+      "automationDelta": 0.6370104320076712,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 5.1966539508581584e-11,
+      "restoreRmsDiff": 1.0719970010787209e-11,
       "name": "SPAN",
       "category": "movement"
     },
@@ -12850,15 +12962,15 @@
       "presetsFinite": 2,
       "presetsTotal": 2,
       "hostProcesses": true,
-      "hostDelta": 1.1771401185046646,
+      "hostDelta": 1.17717709376141,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint output=12, freq1=80",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 1.190588512406162,
+      "automationDelta": 1.1906296623640857,
       "automationFinite": true,
-      "restoreMaxDiff": 4.76837158203125e-7,
-      "restoreRmsDiff": 1.1565386558097296e-10,
+      "restoreMaxDiff": 9.5367431640625e-7,
+      "restoreRmsDiff": 2.8706141537723524e-10,
       "name": "TIDE",
       "category": "tone"
     },
@@ -13344,16 +13456,16 @@
       "presetsFinite": 4,
       "presetsTotal": 4,
       "hostProcesses": true,
-      "hostDelta": 0.25674566670873905,
-      "hostMixDelta": 0.268303523274963,
+      "hostDelta": 0.24933171162330495,
+      "hostMixDelta": 0.26097973278493863,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint focusHz=40, release=0.01",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.013030742512032822,
+      "automationDelta": 0.013032137058734725,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 9.122701057957322e-12,
+      "restoreRmsDiff": 3.163850759884223e-10,
       "name": "GROW",
       "category": "character"
     },
@@ -13858,16 +13970,16 @@
       "presetsFinite": 24,
       "presetsTotal": 24,
       "hostProcesses": true,
-      "hostDelta": 1.5414991146441601,
-      "hostMixDelta": 0.15187549222818852,
+      "hostDelta": 1.5415431441260437,
+      "hostMixDelta": 0.16799473926988376,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint output=12, field=1",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 1.5352983160067357,
+      "automationDelta": 1.5352960442516488,
       "automationFinite": true,
-      "restoreMaxDiff": 9.5367431640625e-7,
-      "restoreRmsDiff": 1.2735278048827663e-10,
+      "restoreMaxDiff": 4.76837158203125e-7,
+      "restoreRmsDiff": 2.4202784452229967e-11,
       "name": "TWIST",
       "category": "character"
     },
@@ -14313,16 +14425,16 @@
       "presetsFinite": 7,
       "presetsTotal": 7,
       "hostProcesses": true,
-      "hostDelta": 0.2919679968048268,
-      "hostMixDelta": 0.41452018878282676,
+      "hostDelta": 0.292219828668983,
+      "hostMixDelta": 0.41450502055459637,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "effect at defaults",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.3469164087473743,
+      "automationDelta": 0.3469187099419337,
       "automationFinite": true,
       "restoreMaxDiff": 1.7881393432617188e-7,
-      "restoreRmsDiff": 2.3343441517191094e-10,
+      "restoreRmsDiff": 2.996418599471506e-12,
       "name": "PORTAL",
       "category": "space"
     },
@@ -15455,16 +15567,16 @@
       "presetsFinite": 6,
       "presetsTotal": 7,
       "hostProcesses": true,
-      "hostDelta": 0.37929864600049384,
-      "hostMixDelta": 0.3015314836845318,
+      "hostDelta": 0.3794165502817844,
+      "hostMixDelta": 0.30160609593369353,
       "hostMaterial": "Drums (drum bus)",
       "hostState": "fingerprint quality=2, detect.clarity=1",
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.19710659520823948,
+      "automationDelta": 0.1970684775554066,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 6.085697131615556e-11,
+      "restoreRmsDiff": 1.3886466131185993e-10,
       "name": "REZONANS",
       "category": "character"
     }
@@ -15498,7 +15610,7 @@
       "kind": "analog",
       "name": "Analog Synth",
       "defaultAudible": true,
-      "defaultPeak": 0.3690568804740906,
+      "defaultPeak": 0.3690568506717682,
       "unstableParams": [],
       "deadParams": [
         "filterEnv",
@@ -15526,8 +15638,8 @@
       "defaultPeak": 0.7581660747528076,
       "unstableParams": [],
       "deadParams": [
-        "spread",
-        "modBSrc"
+        "glide",
+        "modBDst"
       ],
       "wiredParams": 22,
       "totalParams": 24,
@@ -15648,7 +15760,7 @@
       "kind": "strings",
       "name": "Strings",
       "defaultAudible": true,
-      "defaultPeak": 0.5496591925621033,
+      "defaultPeak": 0.5496586561203003,
       "unstableParams": [],
       "deadParams": [
         "vibrato",
@@ -15694,7 +15806,7 @@
       "kind": "clav",
       "name": "Clavinet",
       "defaultAudible": true,
-      "defaultPeak": 0.02077651582658291,
+      "defaultPeak": 0.02077651023864746,
       "unstableParams": [],
       "deadParams": [
         "click",
@@ -15711,10 +15823,8 @@
       "defaultAudible": true,
       "defaultPeak": 0.4159984588623047,
       "unstableParams": [],
-      "deadParams": [
-        "glide"
-      ],
-      "wiredParams": 8,
+      "deadParams": [],
+      "wiredParams": 9,
       "totalParams": 9,
       "transientWired": []
     },
@@ -15778,7 +15888,7 @@
       "kind": "logdrum",
       "name": "Log Drum",
       "defaultAudible": true,
-      "defaultPeak": 0.3228076100349426,
+      "defaultPeak": 0.32280775904655457,
       "unstableParams": [],
       "deadParams": [
         "glide",
@@ -15892,20 +16002,20 @@
   ],
   "interactions": {
     "chainFinite": true,
-    "chainPeak": 0.7398303151130676,
-    "chainRestoreDiff": 0.02144165337085724,
+    "chainPeak": 0.7405202984809875,
+    "chainRestoreDiff": 0.02369210124015808,
     "chainDeterministic": true,
-    "chainDeterminismDiff": 0.02031722664833069,
-    "duplicateDelta": 0.6571741012830927,
+    "chainDeterminismDiff": 0.0036728978157043457,
+    "duplicateDelta": 0.6571439215958895,
     "duplicateFinite": true,
     "liveInsertRemoveClean": true,
     "rapidSyncsClean": true,
     "notes": [
       "determinism gate: one-way render step (environment module update mid-gate) — settled tail is stable",
-      "chain restore diff=2.14e-2"
+      "chain restore diff=2.37e-2"
     ]
   },
-  "harness": "d6bcbbe8e9dfe802",
-  "startedAt": "2026-10-21T05:48:41.703Z",
-  "finishedAt": "2026-10-21T06:13:46.135Z"
+  "harness": "34617ef5785d8b65",
+  "startedAt": "2026-10-21T11:57:32.722Z",
+  "finishedAt": "2026-10-21T12:17:17.255Z"
 }
