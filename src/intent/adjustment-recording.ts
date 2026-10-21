@@ -33,54 +33,55 @@ interface GainPair {
   after: number;
 }
 
-function changedGain(before: ProjectDocument, after: ProjectDocument, intent: FaderIntent): GainPair | null {
+function changedGains(before: ProjectDocument, after: ProjectDocument, intent: FaderIntent): GainPair[] {
+  const changes: GainPair[] = [];
   const pair = (previous: number | undefined, next: number | undefined): GainPair | null =>
     previous != null && next != null && previous !== next ? { before: previous, after: next } : null;
+  const add = (previous: number | undefined, next: number | undefined): void => {
+    const hit = pair(previous, next);
+    if (hit) changes.push(hit);
+  };
 
   for (const target of intent.targets) {
     if (target === "master") {
-      const hit = pair(before.master?.masterGain ?? 1, after.master?.masterGain ?? 1);
-      if (hit) return hit;
+      add(before.master?.masterGain ?? 1, after.master?.masterGain ?? 1);
       continue;
     }
     for (const trackId of trackIdsForTarget(before, target)) {
-      const hit = pair(
+      add(
         before.tracks.find((track) => track.id === trackId)?.gain,
         after.tracks.find((track) => track.id === trackId)?.gain,
       );
-      if (hit) return hit;
     }
   }
   for (const trackId of intent.trackIds ?? []) {
-    const hit = pair(
+    add(
       before.tracks.find((track) => track.id === trackId)?.gain,
       after.tracks.find((track) => track.id === trackId)?.gain,
     );
-    if (hit) return hit;
   }
   for (const returnId of intent.returnIds ?? []) {
-    const hit = pair(
+    add(
       before.returns.find((item) => item.id === returnId)?.gain,
       after.returns.find((item) => item.id === returnId)?.gain,
     );
-    if (hit) return hit;
   }
   if ((intent.pads?.length ?? 0) > 0) {
     const drumBefore = before.tracks.find((track): track is DrumTrack => track.kind === "drum");
     const drumAfter = after.tracks.find((track): track is DrumTrack => track.kind === "drum");
-    if (!drumBefore || !drumAfter) return null;
+    if (!drumBefore || !drumAfter) return changes;
     for (const [index, pad] of drumBefore.pads.entries()) {
-      const hit = pair(pad.gain, drumAfter.pads[index]?.gain);
-      if (hit) return hit;
+      add(pad.gain, drumAfter.pads[index]?.gain);
     }
   }
-  return null;
+  return changes;
 }
 
 /**
- * Record the relative fader move that landed. No record for an absolute set or
- * a zero baseline: neither can be safely scaled, and a stale record is worse
- * than none.
+ * Record the relative fader move that landed. No record for an absolute set, a
+ * zero baseline, or a multi-target move whose actual factors differ (usually
+ * because a target hit a bound): none of those can be replayed with one factor.
+ * A stale record is worse than none.
  */
 export function recordFaderAdjustment(
   docId: string,
@@ -92,15 +93,30 @@ export function recordFaderAdjustment(
     clearAdjustmentLedger();
     return;
   }
-  const change = changedGain(before, after, intent);
-  if (!change || change.before <= 0) {
+  const changes = changedGains(before, after, intent);
+  if (changes.length === 0 || changes.some(({ before: previous }) => previous <= 0)) {
+    clearAdjustmentLedger();
+    return;
+  }
+  const factors = changes.map(({ before: previous, after: next }) => next / previous);
+  const factor = factors[0];
+  if (
+    factor == null ||
+    !Number.isFinite(factor) ||
+    factor <= 0 ||
+    factors.some((candidate) => !Number.isFinite(candidate) || Math.abs(candidate - factor) > Number.EPSILON * 8)
+  ) {
+    // A single replay factor would misrepresent at least one target when the
+    // original operation hit different bounds. Keep the successful command,
+    // but make a follow-up clarify instead of replaying the first target's
+    // measured delta across every target.
     clearAdjustmentLedger();
     return;
   }
   rememberAdjustment({
     docId,
     direction: intent.direction,
-    factor: change.after / change.before,
+    factor,
     targets: [...intent.targets],
     pads: [...(intent.pads ?? [])],
     trackIds: [...(intent.trackIds ?? [])],

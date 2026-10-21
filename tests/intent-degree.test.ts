@@ -722,6 +722,49 @@ describe("prior-adjustment ledger", () => {
     expect(same.intent.trackIds).toEqual([second.id]);
   });
 
+  it("does not remember one factor when a multi-target move hits different bounds", () => {
+    clearAdjustmentLedger();
+    const doc = testDoc();
+    const bass = doc.tracks.find((track) => track.name === "808")!;
+    const drums = doc.tracks.find((track) => track.kind === "drum")!;
+    const before = {
+      ...doc,
+      tracks: doc.tracks.map((track) =>
+        track.id === bass.id ? { ...track, gain: 1.49 } : track.id === drums.id ? { ...track, gain: 0.7 } : track,
+      ),
+    };
+    const intent = parseFaderIntent("turn the bass and drums up a little")!;
+    const after = applyFaderIntent(before, intent)!.execute(before);
+
+    recordFaderAdjustment(before.id, intent, before, after);
+
+    expect(lastAdjustment(before.id)).toBeNull();
+    expect(resolvePriorAdjustment("half that adjustment", after)).toEqual({
+      kind: "clarify",
+      reason: "last-adjustment-reference",
+    });
+  });
+
+  it("remembers a multi-target move when every target landed at the same factor", () => {
+    clearAdjustmentLedger();
+    const doc = testDoc();
+    const bass = doc.tracks.find((track) => track.name === "808")!;
+    const drums = doc.tracks.find((track) => track.kind === "drum")!;
+    const before = {
+      ...doc,
+      tracks: doc.tracks.map((track) =>
+        track.id === bass.id || track.id === drums.id ? { ...track, gain: 0.8 } : track,
+      ),
+    };
+    const intent = parseFaderIntent("turn the bass and drums down a little")!;
+    const after = applyFaderIntent(before, intent)!.execute(before);
+
+    recordFaderAdjustment(before.id, intent, before, after);
+
+    expect(lastAdjustment(before.id)?.factor).toBeGreaterThan(0);
+    expect(lastAdjustment(before.id)?.targets).toEqual(["bass", "drums"]);
+  });
+
   it("the ROUTER returns the executable fader route, not a guess or a pattern", () => {
     const { after1 } = recorded();
     const route = routeIntentText("no, half that adjustment", after1);
