@@ -1,17 +1,23 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { getLayoutSnapshot, initLayout, resetLayout, setLayout, subscribeLayout } from "../src/ui/layout";
 import { initTheme, getThemeSnapshot, resetTheme, setTheme } from "../src/ui/theme";
-import { LAYOUT_STORAGE_KEY, LEGACY_DOCK_KEY, LEGACY_THEME_KEY } from "../src/shared/layout-data";
+import {
+  DOCK_HEIGHT_SHIFT,
+  LAYOUT_SCHEMA_VERSION,
+  LAYOUT_STORAGE_KEY,
+  LEGACY_DOCK_KEY,
+  LEGACY_THEME_KEY,
+} from "../src/shared/layout-data";
 import { decodeLayoutCode, encodeLayoutCode } from "../src/export/layoutCode";
 
 /**
  * ADR 0036 — the LIVE bridge.
  *
  * `shared/layout-data.test.ts` proves the pure contract. This file proves the
- * part that only exists with a DOM: that `pf-layout-v1` is now the single
- * writer, that the two legacy stores are folded in exactly once, and that the
- * old `theme.ts` API still round-trips — because shared packs already carry a
- * `ThemeState` and would be orphaned by a shape change.
+ * part that only exists with a DOM: that the stable layout key is now the
+ * single writer, that the older stores are folded in exactly once, and that
+ * the old `theme.ts` API still round-trips — because shared packs already
+ * carry a `ThemeState` and would be orphaned by a shape change.
  *
  * The failure this guards against is the quiet one: a bridge that compiles and
  * passes its own tests while a user's saved palette silently disappears on the
@@ -27,12 +33,15 @@ describe("ui/layout · single writer", () => {
     resetLayout();
   });
 
-  it("writes the merged state to pf-layout-v1 and no longer to the legacy keys", () => {
+  it("writes the merged state to the STABLE key and no longer to the legacy keys", () => {
     setLayout({ dockHeight: 333, inspectorWidth: 300 });
     expect(read(LAYOUT_STORAGE_KEY)).not.toBeNull();
     const stored = JSON.parse(read(LAYOUT_STORAGE_KEY)!);
     expect(stored.dockHeight).toBe(333);
     expect(stored.inspectorWidth).toBe(300);
+    // The version travels WITH the blob: the next schema change reads this,
+    // migrates it and writes it back under the same key.
+    expect(stored.schemaVersion).toBe(LAYOUT_SCHEMA_VERSION);
     // The legacy keys are read for migration but never written back, so a
     // downgrade to an older build still finds the user's old preferences.
     expect(read(LEGACY_THEME_KEY)).toBeNull();
@@ -119,7 +128,14 @@ describe("ui/layout · legacy migration runs exactly once", () => {
     expect(state.uiScale).toBe(1.15);
     expect(state.density).toBe("compact");
     expect(state.reduceMotion).toBe(true);
-    expect(state.dockHeight).toBe(420);
+    // The legacy dock height is on the v1 scale (its default was 220), so it
+    // gets the NUMERIC SHIFT instead of being carried over as it is: 420 on
+    // the old scale is proportionally the same "tall dock" as 321 on the new
+    // one (420/220 == 321/168 == 1.91x the default). Carrying 420 over raw
+    // would have re-imported exactly the height the proportion pass retires —
+    // and a WIPE would have thrown away the palette and the panels too.
+    expect(state.dockHeight).toBe(Math.round(420 * DOCK_HEIGHT_SHIFT));
+    expect(state.dockHeight).toBe(321);
     expect(state.slotA).toBe("devices");
     expect(state.slotB).toBe("arr");
   });

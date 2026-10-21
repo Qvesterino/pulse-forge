@@ -4,9 +4,12 @@ import {
   DEFAULT_LAYOUT_STATE,
   isCompactDensity,
   isTokenName,
+  LAYOUT_SCHEMA_VERSION,
   LAYOUT_STORAGE_KEY,
   LEGACY_DOCK_KEY,
   LEGACY_THEME_KEY,
+  LEGACY_V1_KEY,
+  LEGACY_V2_KEY,
   normalizeLayoutState,
   resolveLayoutState,
   type LayoutState,
@@ -18,8 +21,8 @@ import { hexOrHslToSoft, PRESET_OWNED_VARS, presetById } from "../shared/theme-d
  *
  * `shared/layout-data.ts` owns the pure data; this module owns everything that
  * needs a browser: reading localStorage, applying the state to the document
- * root, and notifying React. It is the only place that reads or writes
- * `pf-layout-v1`.
+ * root, and notifying React. It is the only place that reads or writes the
+ * layout key.
  *
  * The bridge keeps the OLD public APIs alive so nothing else has to change in
  * this wave:
@@ -28,8 +31,9 @@ import { hexOrHslToSoft, PRESET_OWNED_VARS, presetById } from "../shared/theme-d
  * - `dockLayout.ts` reads/writes the dock fields of the SAME state, so a dock
  *   height and a palette can no longer drift apart.
  *
- * The legacy keys (`pf-theme-v1`, `pf-dock-v1`) are read once for migration and
- * never written back — a user on an older build keeps their preferences.
+ * The legacy keys (`pf-layout-v2`, `pf-layout-v1`, `pf-theme-v1`, `pf-dock-v1`)
+ * are read once for migration and never written back — a user on an older
+ * build keeps their preferences.
  */
 
 /** Class the applier toggles when the user overrides the label width. */
@@ -134,19 +138,38 @@ export function applyLayoutToDocument(next: LayoutState): void {
  * Boot-time: load the merged layout and apply it before the first paint.
  *
  * Order is load → apply → persist-if-migrated. Persisting the migrated copy is
- * what makes the migration a ONE-TIME fold: the next boot reads pf-layout-v1
+ * what makes the migration a ONE-TIME fold: the next boot reads the stable key
  * directly and the legacy keys are never consulted again.
+ *
+ * The legacy keys are still READ, because the stable key is new: a machine
+ * that has been running the pre-envelope release has its layout under
+ * `pf-layout-v2`, and that layout must survive the upgrade.
  */
 export function initLayout(): LayoutState {
-  const resolved = resolveLayoutState(readKey(LAYOUT_STORAGE_KEY), readKey(LEGACY_THEME_KEY), readKey(LEGACY_DOCK_KEY));
+  const resolved = resolveLayoutState({
+    current: readKey(LAYOUT_STORAGE_KEY),
+    v2: readKey(LEGACY_V2_KEY),
+    v1: readKey(LEGACY_V1_KEY),
+    theme: readKey(LEGACY_THEME_KEY),
+    dock: readKey(LEGACY_DOCK_KEY),
+  });
   state = resolved.state;
   applyLayoutToDocument(state);
   if (resolved.migrated) persist();
   return state;
 }
 
+/**
+ * Write the state under the stable key, together with the schema version it
+ * was written with.
+ *
+ * The version is part of the blob, NOT part of the key name. That is the whole
+ * point: the next schema change reads this blob, migrates it, and writes it
+ * back under the SAME key, so the user's choices survive instead of being
+ * wiped by a rename.
+ */
 function persist(): void {
-  writeKey(LAYOUT_STORAGE_KEY, JSON.stringify(state));
+  writeKey(LAYOUT_STORAGE_KEY, JSON.stringify({ ...state, schemaVersion: LAYOUT_SCHEMA_VERSION }));
 }
 
 /** Apply a patch and notify. Normalized on the way in, like the theme store. */
@@ -191,7 +214,7 @@ export function useLayout(): LayoutState {
 export function flushLayout(): void {
   if (typeof localStorage === "undefined") return;
   try {
-    localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify({ ...state, schemaVersion: LAYOUT_SCHEMA_VERSION }));
   } catch {
     /* stay silent */
   }

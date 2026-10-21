@@ -101,22 +101,67 @@ export interface LayoutState {
 }
 
 /**
- * Bumped to v2 with the proportion pass of 2026-10-15.
+ * THE STORAGE KEY. Stable — its NAME carries no version.
  *
- * v1 stored `dockHeight: 220` as its default, which gave the always-on dock
- * panel more vertical space than the step sequencer — the primary instrument
- * of a step-based DAW. Measured at 1440x900 with scripts/ui-proportion.mjs:
- * sequencer ~70px (7.8% of the viewport) against dock 220px (24%).
+ * WHAT WAS WRONG (and what the plan says about it)
+ * -------------------------------------------------
+ * The layout used to live under a key that carried its own version:
+ * `pf-layout-v1`, then `pf-layout-v2`. Every schema change therefore needed a
+ * NEW KEY, and a new key means a RESET: the old blob is not read at all, so
+ * the user's palette, zoom, density and dock height are gone. The v1 -> v2
+ * commit (e5109496) said so out loud: "KYX has no shipped user base, so the
+ * honest migration is a clean one".
  *
- * KYX has no shipped user base, so the honest migration is a clean one: a new
- * key resets every stored layout to the new defaults instead of leaving
- * machines on the old proportion. The two legacy keys below are deliberately
- * NOT carried into v2 — folding a legacy dock height forward would re-import
- * exactly the 220px this change exists to retire.
+ * That is a defensible choice at zero users. It is not a choice that can be
+ * made again after the first release, which is why
+ * docs/STUDIO-OPTIMIZATION-PLAN.md §5.1 lists it as the first thing that must
+ * change before a real deployment: "treba verziu schémy a číselný posun, nie
+ * výmaz" — a schema version and a numeric shift, not a wipe.
+ *
+ * THE SHAPE NOW
+ * -------------
+ * One stable key holding the state PLUS the schema version it was written
+ * with:
+ *
+ *   { schemaVersion: 2, preset: "molten", dockHeight: 168, ... }
+ *
+ * The version travels with the state, so the next schema change reads the old
+ * blob, runs the migration chain, and writes the new shape back under the same
+ * key. The user keeps every choice they made.
  */
-export const LAYOUT_STORAGE_KEY = "pf-layout-v2";
+export const LAYOUT_STORAGE_KEY = "pf-layout";
+
+/**
+ * The schema version of the blob stored under LAYOUT_STORAGE_KEY.
+ *
+ * Bump it TOGETHER WITH a step in LAYOUT_MIGRATIONS. tests/layout-data.test.ts
+ * asserts the chain has no holes, so a bump without a step fails the suite
+ * instead of silently skipping a migration.
+ */
+export const LAYOUT_SCHEMA_VERSION = 2;
+
+/**
+ * `pf-layout-v2` — the key the pre-envelope release wrote. Read-only: its
+ * blobs are bare states (no schema version) already on the v2 scale, so they
+ * are read as-is and copied into the envelope.
+ */
+export const LEGACY_V2_KEY = "pf-layout-v2";
+
+/**
+ * `pf-layout-v1` — the oldest key. Read-only: its blobs are bare states on
+ * the v1 scale, so the dock height needs the numeric shift.
+ */
+export const LEGACY_V1_KEY = "pf-layout-v1";
+
+/** `pf-theme-v1` / `pf-dock-v1` — the two stores that predate the layout. */
 export const LEGACY_THEME_KEY = "pf-theme-v1";
 export const LEGACY_DOCK_KEY = "pf-dock-v1";
+
+/**
+ * The dock default schema v1 stored, and the one schema v2 stores. The ratio
+ * between them IS the numeric shift.
+ */
+export const LAYOUT_V1_DOCK_HEIGHT = 220;
 
 // ── Bounds (one place; the applier and the tests read these) ───────────────
 
@@ -273,6 +318,60 @@ export function normalizeLayoutState(partial: Partial<LayoutState>): LayoutState
   };
 }
 
+// ── The migration chain (plan §5.1) ────────────────────────────────────────
+
+/**
+ * The numeric shift between the v1 and the v2 dock scale.
+ *
+ * Proportional, not absolute: the v1 default (220px) maps onto the v2 default
+ * (168px), and a user's taller dock (350px) stays proportionally taller
+ * (267px) instead of being flattened to the default. A wipe would have thrown
+ * away the fact that this user wanted a tall dock at all.
+ */
+export const DOCK_HEIGHT_SHIFT = DEFAULT_LAYOUT_STATE.dockHeight / LAYOUT_V1_DOCK_HEIGHT;
+
+/**
+ * LAYOUT_MIGRATIONS[v] upgrades a state stored under schema version v to v+1.
+ *
+ * The chain must be CONTIGUOUS from 1 to LAYOUT_SCHEMA_VERSION: a hole would
+ * silently skip a migration. The test asserts that, so a hole is a red suite
+ * rather than a runtime surprise.
+ *
+ * The steps work on a PARTIAL state on purpose — the stored value is shifted
+ * BEFORE it is clamped, so a dock persisted at 800px (v1's ceiling) becomes
+ * 611px and is then clamped to today's 560px, instead of being clamped to
+ * 560px first and then shifted down to 427px.
+ */
+export const LAYOUT_MIGRATIONS: Record<number, (state: Partial<LayoutState>) => Partial<LayoutState>> = {
+  // v1 -> v2 (the proportion pass of 2026-10-15): the dock's default height
+  // fell from 220px to 168px, because the dock was taking a third of the
+  // viewport while the sequencer took a seventh. The dock height is the ONLY
+  // field whose scale changed — every other v1 default was already v2's
+  // default (verified against e5109496^).
+  1: (state) => ({
+    ...state,
+    dockHeight: isFiniteNumber(state.dockHeight) ? Math.round(state.dockHeight * DOCK_HEIGHT_SHIFT) : state.dockHeight,
+  }),
+};
+
+/**
+ * Run the migration chain from `fromVersion` up to the current schema version.
+ *
+ * A HOLE in the chain stops the walk instead of skipping ahead: skipping would
+ * apply a later step to a shape it does not understand. The chain's
+ * contiguity is asserted by tests/layout-data.test.ts, so a hole is a red
+ * suite rather than a runtime surprise.
+ */
+export function migrateLayoutState(partial: Partial<LayoutState>, fromVersion: number): LayoutState {
+  let state: Partial<LayoutState> = { ...partial };
+  for (let version = fromVersion; version < LAYOUT_SCHEMA_VERSION; version++) {
+    const step = LAYOUT_MIGRATIONS[version];
+    if (!step) break;
+    state = step(state);
+  }
+  return normalizeLayoutState(state);
+}
+
 // ── Legacy migration (ADR 0036 §3) ────────────────────────────────────────
 
 /** Parse a legacy JSON blob; null on anything unparseable. */
@@ -329,30 +428,116 @@ export function migrateLegacyLayout(themeRaw: string | null, dockRaw: string | n
 }
 
 /**
- * Resolve the stored layout: prefer `pf-layout-v1`; otherwise migrate the two
- * legacy stores; otherwise defaults. Returns the state plus whether the
- * migration path ran, so the applier can decide to persist a copy.
+ * The schema version a stored blob declares, or null when it declares none.
  *
- * `storedRaw` is passed in rather than read here — this module never touches
- * storage.
+ * A blob without a version is a BARE state — the shape the pre-envelope
+ * releases wrote. Which version it is comes from the KEY it was found under,
+ * because the bare era covered two schemas.
  */
-export function resolveLayoutState(
-  storedRaw: string | null,
-  themeRaw: string | null,
-  dockRaw: string | null,
-): {
+function readSchemaVersion(blob: Record<string, unknown>): number | null {
+  const value = blob.schemaVersion;
+  if (!isFiniteNumber(value)) return null;
+  const version = Math.trunc(value);
+  return version >= 1 ? version : null;
+}
+
+/**
+ * Every place a stored layout can come from. Each is a raw localStorage
+ * string — this module never touches storage itself.
+ */
+export interface LayoutStorageSources {
+  /** `pf-layout` — the stable key. Carries `schemaVersion`. */
+  current: string | null;
+  /** `pf-layout-v2` — a bare state from the pre-envelope release. */
+  v2: string | null;
+  /** `pf-layout-v1` — the oldest bare state (dock on the 220px scale). */
+  v1: string | null;
+  /** `pf-theme-v1` — the theme store that predates the layout. */
+  theme: string | null;
+  /** `pf-dock-v1` — the dock store that predates the layout. */
+  dock: string | null;
+}
+
+export interface ResolvedLayout {
   state: LayoutState;
+  /**
+   * True when the stored data was not already in the current shape, so the
+   * applier should write the migrated copy back.
+   */
   migrated: boolean;
-} {
-  const stored = parseBlob(storedRaw);
-  if (stored) return { state: normalizeLayoutState(stored as Partial<LayoutState>), migrated: false };
-  if (storedRaw !== null) {
-    // Present but corrupt: fall through to the legacy/default path rather than
-    // trusting a half-parsed object.
-    return { state: migrateLegacyLayout(themeRaw, dockRaw), migrated: true };
+}
+
+/**
+ * Resolve the stored layout from every source, in the order the plan §5.1
+ * demands: a schema version and a numeric shift, never a wipe.
+ *
+ * THE ORDER
+ * ---------
+ * 1. `pf-layout` — the stable key. Its `schemaVersion` decides what happens:
+ *    - the current version -> read as it is;
+ *    - an older version -> run the migration chain and shift the numbers;
+ *    - a NEWER version -> do not touch it (see below);
+ *    - no version -> foreign data, read as the current version.
+ * 2. `pf-layout-v2` — a bare state already on the v2 scale. Copied as it is.
+ * 3. `pf-layout-v1` — a bare state on the v1 scale. The dock height is
+ *    shifted.
+ * 4. `pf-theme-v1` + `pf-dock-v1` — the two stores that predate the layout.
+ *    The legacy dock height was `Math.min(220, ...)`, i.e. the v1 scale, so
+ *    the folded result is shifted too.
+ *
+ * WHY A NEWER VERSION IS NOT TOUCHED
+ * -----------------------------------
+ * A blob written by a future build cannot be understood here, and writing over
+ * it would destroy data we cannot read. So the future version falls back to
+ * the older sources WITHOUT claiming a migration — `migrated: false` is what
+ * stops the applier from persisting over the newer build's state. The same
+ * rule the project schema follows: reject an unknown future version.
+ */
+export function resolveLayoutState(sources: LayoutStorageSources): ResolvedLayout {
+  const current = parseBlob(sources.current);
+  if (current) {
+    const version = readSchemaVersion(current);
+    if (version === null) {
+      // A bare object under the stable key: the stable key has only ever been
+      // written as a versioned blob, so this is foreign data with no declared
+      // version. Read it as the CURRENT version — shifting a value we cannot
+      // place would CHANGE a number the user never asked to change, and that
+      // is worse than reading it as it was written.
+      return { state: normalizeLayoutState(current as Partial<LayoutState>), migrated: false };
+    }
+    if (version > LAYOUT_SCHEMA_VERSION) {
+      const older = readOlderSources(sources);
+      return { state: older ?? { ...DEFAULT_LAYOUT_STATE }, migrated: false };
+    }
+    if (version === LAYOUT_SCHEMA_VERSION) {
+      return { state: normalizeLayoutState(current as Partial<LayoutState>), migrated: false };
+    }
+    return { state: migrateLayoutState(current as Partial<LayoutState>, version), migrated: true };
   }
-  if (themeRaw !== null || dockRaw !== null) return { state: migrateLegacyLayout(themeRaw, dockRaw), migrated: true };
+
+  const older = readOlderSources(sources);
+  if (older) return { state: older, migrated: true };
+  if (sources.current !== null) {
+    // Present but corrupt, and there is nothing older to fall back to: the
+    // fallback is a REPAIR, so the applier writes it back.
+    return { state: { ...DEFAULT_LAYOUT_STATE }, migrated: true };
+  }
   return { state: { ...DEFAULT_LAYOUT_STATE }, migrated: false };
+}
+
+/**
+ * The older sources, in order: the v2 mirror, the v1 key, the two legacy
+ * stores. Null when none of them exists.
+ */
+function readOlderSources(sources: LayoutStorageSources): LayoutState | null {
+  const v2 = parseBlob(sources.v2);
+  if (v2) return normalizeLayoutState(v2 as Partial<LayoutState>);
+  const v1 = parseBlob(sources.v1);
+  if (v1) return migrateLayoutState(v1 as Partial<LayoutState>, 1);
+  if (sources.theme !== null || sources.dock !== null) {
+    return migrateLayoutState(migrateLegacyLayout(sources.theme, sources.dock), 1);
+  }
+  return null;
 }
 
 // ── Derived reads ─────────────────────────────────────────────────────────

@@ -3,12 +3,17 @@ import { compressToEncodedURIComponent as compress } from "lz-string";
 import {
   DENSITY_LEVELS,
   DEFAULT_LAYOUT_STATE,
+  DOCK_HEIGHT_SHIFT,
   isCompactDensity,
   isTokenName,
   LAYOUT_BOUNDS,
+  LAYOUT_MIGRATIONS,
+  LAYOUT_SCHEMA_VERSION,
   LAYOUT_STORAGE_KEY,
   LEGACY_DOCK_KEY,
   LEGACY_THEME_KEY,
+  LEGACY_V1_KEY,
+  LEGACY_V2_KEY,
   MAX_COLOR_OVERRIDES,
   migrateLegacyLayout,
   normalizeLayoutState,
@@ -18,6 +23,7 @@ import {
   sanitizeColorOverrides,
   type Density,
   type LayoutState,
+  type LayoutStorageSources,
 } from "../src/shared/layout-data";
 import { decodeLayoutCode, encodeLayoutCode, LAYOUT_CODE_PREFIX } from "../src/export/layoutCode";
 
@@ -264,53 +270,160 @@ describe("layout-data · legacy migration (ADR 0036 §3)", () => {
   });
 });
 
-describe("layout-data · resolveLayoutState prefers the new key", () => {
+/** No source has anything stored. */
+const emptySources = (): LayoutStorageSources => ({
+  current: null,
+  v2: null,
+  v1: null,
+  theme: null,
+  dock: null,
+});
+
+describe("layout-data · the storage schema is VERSIONED, not a reset", () => {
   it("uses defaults when nothing is stored", () => {
-    const { state, migrated } = resolveLayoutState(null, null, null);
+    const { state, migrated } = resolveLayoutState(emptySources());
     expect(state).toEqual(DEFAULT_LAYOUT_STATE);
     expect(migrated).toBe(false);
   });
 
-  it("uses pf-layout-v1 when present and does NOT re-migrate", () => {
-    const { state, migrated } = resolveLayoutState(JSON.stringify(fullState()), null, null);
-    expect(state.rackColumns).toBe(12);
-    expect(state.inspectorWidth).toBe(340);
-    expect(migrated).toBe(false);
-  });
-
-  it("migrates when only the legacy keys exist", () => {
-    const { state, migrated } = resolveLayoutState(
-      null,
-      JSON.stringify({ preset: "matrix", scale: 1.1 }),
-      JSON.stringify({ height: 350, slotA: "dice" }),
-    );
-    expect(migrated).toBe(true);
-    expect(state.preset).toBe("matrix");
-    expect(state.uiScale).toBe(1.1);
-    expect(state.slotA).toBe("dice");
-  });
-
-  it("a corrupt pf-layout-v1 falls through to legacy instead of a half-parsed object", () => {
-    const { state, migrated } = resolveLayoutState("{broken", JSON.stringify({ preset: "cyan" }), null);
-    expect(migrated).toBe(true);
-    expect(state.preset).toBe("cyan");
-  });
-
-  it("names the storage keys so the applier and this test cannot drift", () => {
-    // v2 (proportion pass, 2026-10-15): the v1 key stored a 220px dock
-    // default. KYX has no shipped user base, so the honest migration is a new
-    // key rather than a carry-forward that would re-import the exact height
-    // the change retires. This pin exists so the applier and the key cannot
-    // drift apart again — bump it in the same commit as any future bump.
-    expect(LAYOUT_STORAGE_KEY).toBe("pf-layout-v2");
+  it("names a STABLE key and a schema version — a renamed key IS a reset", () => {
+    // The key must not carry a version. Renaming the key is exactly what the
+    // plan §5.1 forbids before the first real deployment: the old blob stops
+    // being read, so the user's choices are gone.
+    expect(LAYOUT_STORAGE_KEY).toBe("pf-layout");
+    expect(LAYOUT_STORAGE_KEY).not.toMatch(/v\d/);
+    expect(LAYOUT_SCHEMA_VERSION).toBe(2);
+    expect(LEGACY_V2_KEY).toBe("pf-layout-v2");
+    expect(LEGACY_V1_KEY).toBe("pf-layout-v1");
     expect(LEGACY_THEME_KEY).toBe("pf-theme-v1");
     expect(LEGACY_DOCK_KEY).toBe("pf-dock-v1");
   });
 
+  it("reads a blob that carries the current schema version and does NOT re-migrate", () => {
+    const { state, migrated } = resolveLayoutState({
+      ...emptySources(),
+      current: JSON.stringify({ ...fullState(), schemaVersion: LAYOUT_SCHEMA_VERSION }),
+    });
+    expect(state.rackColumns).toBe(12);
+    expect(state.inspectorWidth).toBe(340);
+    expect(state.dockHeight).toBe(400);
+    expect(migrated).toBe(false);
+  });
+
+  it("SHIFTS a v1 dock height instead of wiping the layout", () => {
+    // The v1 default (220) maps onto the v2 default (168) — the numeric shift
+    // the plan asks for. A wipe would have thrown away the user's palette,
+    // zoom and panels along with the number.
+    const { state, migrated } = resolveLayoutState({
+      ...emptySources(),
+      v1: JSON.stringify({ ...fullState(), dockHeight: 220 }),
+    });
+    expect(state.dockHeight).toBe(DEFAULT_LAYOUT_STATE.dockHeight);
+    expect(state.preset).toBe("matrix");
+    expect(state.hue).toBe(200);
+    expect(state.slotA).toBe("devices");
+    expect(migrated).toBe(true);
+  });
+
+  it("keeps a taller dock proportionally taller", () => {
+    const { state } = resolveLayoutState({
+      ...emptySources(),
+      v1: JSON.stringify({ ...fullState(), dockHeight: 350 }),
+    });
+    expect(state.dockHeight).toBe(Math.round(350 * DOCK_HEIGHT_SHIFT));
+    expect(state.dockHeight).toBeGreaterThan(DEFAULT_LAYOUT_STATE.dockHeight);
+    expect(state.dockHeight).toBeLessThan(350);
+  });
+
+  it("does NOT shift a v2 blob — that number is already on today's scale", () => {
+    const { state } = resolveLayoutState({
+      ...emptySources(),
+      v2: JSON.stringify({ ...fullState(), dockHeight: 350 }),
+    });
+    expect(state.dockHeight).toBe(350);
+  });
+
+  it("folds the two pre-layout stores AND shifts their dock height", () => {
+    // The legacy dock's default was Math.min(220, ...) — the v1 scale — so the
+    // folded result is a v1 state and gets the same shift.
+    const { state, migrated } = resolveLayoutState({
+      ...emptySources(),
+      theme: JSON.stringify({ preset: "matrix", scale: 1.1 }),
+      dock: JSON.stringify({ height: 220, slotA: "dice" }),
+    });
+    expect(migrated).toBe(true);
+    expect(state.preset).toBe("matrix");
+    expect(state.uiScale).toBe(1.1);
+    expect(state.slotA).toBe("dice");
+    expect(state.dockHeight).toBe(DEFAULT_LAYOUT_STATE.dockHeight);
+  });
+
+  it("prefers the stable key over every older source", () => {
+    const { state } = resolveLayoutState({
+      current: JSON.stringify({ ...fullState({ preset: "cyan" }), schemaVersion: LAYOUT_SCHEMA_VERSION }),
+      v2: JSON.stringify({ ...fullState({ preset: "violet" }) }),
+      v1: JSON.stringify({ ...fullState({ preset: "forge" }) }),
+      theme: JSON.stringify({ preset: "matrix" }),
+      dock: null,
+    });
+    expect(state.preset).toBe("cyan");
+  });
+
+  it("does NOT overwrite a blob written by a NEWER build", () => {
+    // A future version cannot be understood here, and writing over it would
+    // destroy data we cannot read. migrated=false is what stops the applier
+    // from persisting over the newer build's state.
+    const { state, migrated } = resolveLayoutState({
+      ...emptySources(),
+      current: JSON.stringify({ ...fullState(), schemaVersion: LAYOUT_SCHEMA_VERSION + 1 }),
+    });
+    expect(migrated).toBe(false);
+    expect(state).toEqual(DEFAULT_LAYOUT_STATE);
+  });
+
+  it("reads a bare blob under the stable key as the CURRENT version", () => {
+    // Foreign data with no declared version. Reading it as it was written is
+    // better than shifting a number we cannot place — a shift would CHANGE a
+    // value the user never asked to change.
+    const { state, migrated } = resolveLayoutState({
+      ...emptySources(),
+      current: JSON.stringify(fullState({ dockHeight: 333 })),
+    });
+    expect(state.dockHeight).toBe(333);
+    expect(migrated).toBe(false);
+  });
+
+  it("a corrupt stable key falls through to the older sources instead of a half-parsed object", () => {
+    const { state, migrated } = resolveLayoutState({
+      ...emptySources(),
+      current: "{broken",
+      v2: JSON.stringify({ preset: "cyan" }),
+    });
+    expect(state.preset).toBe("cyan");
+    expect(migrated).toBe(true);
+  });
+
   it("normalizes a stored blob, so an out-of-band value can never come back", () => {
-    const { state } = resolveLayoutState(JSON.stringify({ inspectorWidth: 9999, rackColumns: 2 }), null, null);
+    const { state } = resolveLayoutState({
+      ...emptySources(),
+      current: JSON.stringify({ inspectorWidth: 9999, rackColumns: 2, schemaVersion: LAYOUT_SCHEMA_VERSION }),
+    });
     expect(state.inspectorWidth).toBe(LAYOUT_BOUNDS.inspectorWidth.max);
     expect(state.rackColumns).toBe(LAYOUT_BOUNDS.rackColumns.min);
+  });
+});
+
+describe("layout-data · the migration chain has no holes", () => {
+  it("has a step for every version between 1 and the current one", () => {
+    // A hole would silently skip a migration for every user who has data at
+    // that version. The chain's contiguity is what makes a version bump safe.
+    for (let version = 1; version < LAYOUT_SCHEMA_VERSION; version++) {
+      expect(typeof LAYOUT_MIGRATIONS[version]).toBe("function");
+    }
+  });
+
+  it("shifts the dock height by the measured ratio", () => {
+    expect(DOCK_HEIGHT_SHIFT).toBeCloseTo(DEFAULT_LAYOUT_STATE.dockHeight / 220, 10);
   });
 });
 
