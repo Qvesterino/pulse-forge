@@ -20,6 +20,7 @@ import {
 } from "../src/intent/adjustment-recording";
 import { lastAdjustment } from "../src/intent/adjustment-ledger";
 import { resolvePriorAdjustment } from "../src/intent/prior-adjustment";
+import { CANONICAL_DEGREE_WORDS } from "../src/intent/semantics/degree-contract";
 import { testDoc } from "./fixtures/doc";
 
 /**
@@ -32,8 +33,8 @@ import { testDoc } from "./fixtures/doc";
  *
  *   1. every level resolves, in both directions;
  *   2. ordering is monotonic in all three calibration domains;
- *   3. every pre-existing word keeps its exact old bucket and its exact old
- *      number (additive-only rule — nothing a human has listened to moves);
+ *   3. every word resolves to the CANONICAL level (2026-10-21 alignment:
+ *      much 6→5, noticeably/quite 5→4; documented behavior change);
  *   4. the cross-domain defects the audit found are actually gone.
  */
 
@@ -41,9 +42,9 @@ const LEVELS: ReadonlyArray<readonly [DegreeLevel, readonly string[]]> = [
   [1, ["barely", "almost imperceptibly", "hardly", "the tiniest bit"]],
   [2, ["a touch", "a hair", "tiny bit", "a tiny bit", "just a tiny bit", "a tad"]],
   [3, ["slightly", "a little", "a bit", "trochu", "subtle"]],
-  [4, ["somewhat", "moderately", "fairly"]],
-  [5, ["considerably", "significantly", "noticeably", "quite"]],
-  [6, ["much", "a lot", "dramatically", "huge", "veľmi"]],
+  [4, ["somewhat", "moderately", "fairly", "noticeably", "quite"]],
+  [5, ["considerably", "significantly", "much"]],
+  [6, ["a lot", "dramatically", "huge", "really", "way"]],
   [7, ["fully", "completely", "maximal", "as much as possible", "úplne"]],
 ];
 
@@ -117,7 +118,7 @@ describe("degree taxonomy — the seven ordered levels", () => {
     // Anchor at the SECOND concept: the leading "much" must not bleed onto it.
     const text = "slightly punchier drums, much deeper bass";
     const secondConcept = text.indexOf("deeper");
-    expect(parseDegree(text, secondConcept)!.level).toBe(6);
+    expect(parseDegree(text, secondConcept)!.level).toBe(5);
     const firstConcept = text.indexOf("punchier");
     expect(parseDegree(text, firstConcept)!.level).toBe(3);
   });
@@ -160,22 +161,25 @@ describe("degree calibration — monotone in every domain", () => {
   });
 });
 
-describe("additive-only rule — no previously handled word moved", () => {
-  it("the gain anchors reproduce FADER_FACTORS exactly", () => {
-    expect(calibrateFaderFactor(0.35, "down")).toBe(0.92); // subtle
+describe("calibration anchors — the canonical curve in every domain", () => {
+  it("the gain anchors follow the canonical ladder", () => {
+    expect(calibrateFaderFactor(0.35, "down")).toBe(0.92); // small
     expect(calibrateFaderFactor(0.35, "up")).toBe(1.08);
-    expect(calibrateFaderFactor(0.7, "down")).toBe(0.82); // normal
-    expect(calibrateFaderFactor(0.7, "up")).toBe(1.22);
-    expect(calibrateFaderFactor(0.85, "down")).toBe(0.7); // big
+    expect(calibrateFaderFactor(0.7, "down")).toBe(0.75); // much (L5)
+    expect(calibrateFaderFactor(0.7, "up")).toBe(1.33);
+    // The unqualified "normal" default sits at L4 (0.55).
+    expect(calibrateFaderFactor(0.55, "down")).toBe(0.82);
+    expect(calibrateFaderFactor(0.55, "up")).toBe(1.22);
+    expect(calibrateFaderFactor(0.85, "down")).toBe(0.7); // a lot (L6)
     expect(calibrateFaderFactor(0.85, "up")).toBe(1.35);
     expect(calibrateFaderFactor(0.95, "down")).toBe(0.5); // full
     expect(calibrateFaderFactor(0.95, "up")).toBe(1.6);
   });
 
-  it("the knob anchors reproduce AMOUNT_SCALE exactly", () => {
-    expect(calibrateKnobScale(0.35)).toBe(0.5); // subtle
-    expect(calibrateKnobScale(0.7)).toBe(1); // medium
-    expect(calibrateKnobScale(0.85)).toBe(1.75); // huge
+  it("the knob anchors follow the canonical physical scale", () => {
+    expect(calibrateKnobScale(0.35)).toBe(0.5); // small
+    expect(calibrateKnobScale(0.7)).toBe(1.25); // much (L5)
+    expect(calibrateKnobScale(0.85)).toBe(1.75); // a lot (L6)
   });
 
   it("the param anchors reproduce AMOUNT_FRACTION exactly", () => {
@@ -207,12 +211,15 @@ describe("additive-only rule — no previously handled word moved", () => {
     expect(parseParamIntent("dlhsi chvost na reverbe na leade")).toMatchObject({ amount: "medium" });
   });
 
-  it("the enum projection matches every legacy word", () => {
+  it("the enum projection matches the canonical levels", () => {
     expect(degreeToFaderAmount(3)).toBe("subtle");
+    expect(degreeToFaderAmount(4)).toBe("normal");
+    expect(degreeToFaderAmount(5)).toBe("big");
     expect(degreeToFaderAmount(6)).toBe("big");
     expect(degreeToFaderAmount(7)).toBe("full");
     expect(degreeToEffectAmount(3)).toBe("subtle");
-    expect(degreeToEffectAmount(5)).toBe("medium");
+    expect(degreeToEffectAmount(4)).toBe("medium");
+    expect(degreeToEffectAmount(5)).toBe("huge");
     expect(degreeToEffectAmount(6)).toBe("huge");
   });
 });
@@ -229,14 +236,13 @@ describe("the audit's cross-domain defects are gone", () => {
     expect(viaParam?.degree?.level).toBe(3);
   });
 
-  it("'much' outranks the medium default instead of falling into it", () => {
-    // Was: "much" had no rung in mix.ts or param-intent.ts, so "much more
-    // reverb" was medium while "a lot more reverb" was huge — inverted.
+  it("'much' outranks the medium default and sits below 'a lot'", () => {
     const much = parseEffectIntent("much more reverb on the pads")!;
     const lot = parseEffectIntent("a lot more reverb on the pads")!;
     expect(much.amount).toBe("huge");
-    expect(effectKnobDelta(much)).toBeGreaterThan(effectKnobDelta(lot) * 0.9);
-    expect(much.amount).toBe(lot.amount);
+    expect(lot.amount).toBe("huge");
+    // Canonical order: much (L5) < a lot (L6).
+    expect(effectKnobDelta(lot)).toBeGreaterThan(effectKnobDelta(much));
   });
 
   it("'barely' moves less than 'a little', which moves less than 'a lot'", () => {
@@ -377,7 +383,7 @@ describe("false-positive guard — descriptive sentences stay descriptive", () =
     expect(parseFaderIntent("turn down the master considerably")?.degree?.level).toBe(5);
     expect(parseFaderIntent("turn down the master barely")?.degree?.level).toBe(1);
     expect(parseEffectIntent("slightly more reverb on the pads")?.degree?.level).toBe(3);
-    expect(parseEffectIntent("much more reverb on the pads")?.degree?.level).toBe(6);
+    expect(parseEffectIntent("much more reverb on the pads")?.degree?.level).toBe(5);
   });
 
   it("a negated command does not mutate, even when the verb is 'make'", () => {
@@ -510,7 +516,7 @@ describe("comparative and less-magnitude phrases", () => {
 
   it("much/way/a little less resolve DOWN with the named magnitude", () => {
     expect(parseFaderIntent("make the bass much less loud")?.direction).toBe("down");
-    expect(parseFaderIntent("make the bass much less loud")?.degree?.level).toBe(6);
+    expect(parseFaderIntent("make the bass much less loud")?.degree?.level).toBe(5);
     expect(parseFaderIntent("make the bass way less")?.direction).toBe("down");
     expect(parseFaderIntent("make the bass a little less")?.degree?.level).toBe(3);
     expect(parseFaderIntent("less bass")?.direction).toBe("down");
@@ -799,5 +805,31 @@ describe("prior-adjustment ledger", () => {
     const result = resolvePriorAdjustment("no, half that adjustment", withoutBass);
     expect(result).toEqual({ kind: "clarify", reason: "prior-adjustment-target" });
     expect(doc.id).toBe(after1.id);
+  });
+});
+
+/**
+ * CANONICAL CONTRACT (2026-10-21).
+ *
+ * The same word must resolve to the same level in KYX and VocalForge. The
+ * contract table marks KYX-only extensions (quite/pretty/really) explicitly;
+ * every shared word must match its canonical level. The cross-engine parity
+ * script (scripts/check-intent-degree-parity.mjs) compares the same table to
+ * the VocalForge checkout when it is present.
+ */
+describe("canonical degree contract", () => {
+  it("every contract word resolves to its canonical level", () => {
+    for (const entry of CANONICAL_DEGREE_WORDS) {
+      const degree = parseDegree(entry.word);
+      expect(degree, entry.word).not.toBeNull();
+      expect(degree!.level, entry.word).toBe(entry.level);
+    }
+  });
+
+  it("the three divergent words are resolved", () => {
+    expect(parseDegree("much")!.level).toBe(5);
+    expect(parseDegree("noticeably")!.level).toBe(4);
+    expect(parseDegree("quite")!.level).toBe(4);
+    expect(parseDegree("a lot")!.level).toBe(6);
   });
 });

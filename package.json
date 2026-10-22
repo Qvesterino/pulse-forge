@@ -200,7 +200,8 @@
     "verify:intent-model": "node scripts/verify-intent-model-browser.mts",
     "verify:param-readback": "node scripts/verify-param-readback-browser.mts",
     "intent:cycle": "vite-node scripts/intent-cycle.mts",
-    "build:choral": "node scripts/build-choral-worklet.mjs"
+    "build:choral": "node scripts/build-choral-worklet.mjs",
+    "intent:degree-parity": "node scripts/check-intent-degree-parity.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

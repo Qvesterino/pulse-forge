@@ -448,7 +448,8 @@ describe("fade degree calibration", () => {
 
   it("a relative ask scales the CURRENT fade by the spoken level", () => {
     // 8 bars at 120 BPM = 16 s clip.
-    expect(secondsOf("fade out the selected clip much longer")).toBeCloseTo(1.5, 6);
+    expect(secondsOf("fade out the selected clip much longer")).toBeCloseTo(1.35, 6);
+    expect(secondsOf("fade out the selected clip a lot longer")).toBeCloseTo(1.5, 6);
     expect(secondsOf("fade out the selected clip slightly shorter")).toBeCloseTo(0.9, 6);
     expect(secondsOf("fade out the selected clip a little longer")).toBeCloseTo(1.1, 6);
   });

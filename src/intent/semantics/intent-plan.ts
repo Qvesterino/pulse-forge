@@ -200,7 +200,9 @@ function paramSteps(
       continue;
     }
     const noteParts: string[] = [];
-    if (line.fractionPct != null) noteParts.push(`${line.fractionPct}% ${line.domain}`);
+    if (line.deltaLabel !== "set") {
+      noteParts.push(line.family === "db" ? line.deltaLabel : `${line.deltaLabel} (${line.family})`);
+    }
     if (line.adding) noteParts.push("add effect");
     steps.push(
       numberStep(

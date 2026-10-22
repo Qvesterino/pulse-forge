@@ -115,13 +115,14 @@ const DEGREE_BANDS: readonly DegreeBand[] = [
     name: "small",
     // 0.35 — the exact value production.ts already returns for this band.
     value: 0.35,
-    words: /\b(?:slightly|subtle|a bit|a little|smidge|trochu|mierne|jemne|naputok|kusok|malic(?:ko|y)?|mali|mahko)\b/,
+    words:
+      /\b(?:slightly|subtly|gently|subtle|a bit|a little|smidge|trochu|mierne|jemne|naputok|kusok|malic(?:ko|y)?|mali|mahko)\b/,
   },
   {
     level: 4,
     name: "moderate",
     value: 0.55,
-    words: /\b(?:somewhat|fairly|moderately|reasonably|rather|stredne|primerane|pomerne)\b/,
+    words: /\b(?:somewhat|fairly|moderately|reasonably|noticeably|quite|pretty|rather|stredne|primerane|pomerne)\b/,
   },
   {
     level: 5,
@@ -139,7 +140,7 @@ const DEGREE_BANDS: readonly DegreeBand[] = [
     // 0.85 to keep ×0.70.
     value: 0.7,
     words:
-      /\b(?:quite|pretty|notably|substantially|significantly|noticeably|considerably|considerrably|znacne|znaene|vyrazne|markedly)\b/,
+      /\b(?:notably|substantially|significantly|considerably|considerrably|much|velmi\w*|znacne|znaene|vyrazne|markedly)\b/,
   },
   {
     level: 6,
@@ -148,7 +149,7 @@ const DEGREE_BANDS: readonly DegreeBand[] = [
     // this band in the fader/effect/param ladders too, which is defect 2 above.
     value: 0.85,
     words:
-      /\b(?:much|way|a lot|lots|heavily|strongly|dramatically|drastically|huge|massively|really|obri|vela|hodn\w*|velmi\w*|mocne|poriadne|dost|dosť)\b/,
+      /\b(?:way|a lot|lots|heavily|strongly|dramatically|drastically|huge|massively|really|obri|vela|hodn\w*|mocne|poriadne|dost|dosť)\b/,
   },
   {
     level: 7,
@@ -162,7 +163,7 @@ const DEGREE_BANDS: readonly DegreeBand[] = [
     // a barely-up move, not a maximum-up one).
     value: 0.95,
     words:
-      /\b(?:max(?:imal|imum)?|fully|totally|completely|complete|plne|upln|uplne|naplno|extrem\w*|as far as possible|as much(?:\s+[a-z-]+){0,3}\s+as possible|as much as you can|as loud(?:\s+[a-z-]+){0,3}\s+as possible|as loudly as possible|as quiet(?:\s+[a-z-]+){0,3}\s+as possible|as quietly as possible|as quiet as you can|as soft(?:\s+[a-z-]+){0,3}\s+as possible|as low(?:\s+[a-z-]+){0,3}\s+as possible|as far down as possible|as (?:dry|wet|long|dark|bright|warm|cold)(?:\s+[a-z-]+){0,3}\s+as possible|to the limit|to the minimum|to the max|all the way|nast maximum|maximalne)\b/,
+      /\b(?:max(?:imal|imum)?|maximally|fully|totally|completely|complete|plne|upln|uplne|naplno|extrem\w*|as far as possible|as much(?:\s+[a-z-]+){0,3}\s+as possible|as much as you can|as loud(?:\s+[a-z-]+){0,3}\s+as possible|as loudly as possible|as quiet(?:\s+[a-z-]+){0,3}\s+as possible|as quietly as possible|as quiet as you can|as soft(?:\s+[a-z-]+){0,3}\s+as possible|as low(?:\s+[a-z-]+){0,3}\s+as possible|as far down as possible|as (?:dry|wet|long|dark|bright|warm|cold)(?:\s+[a-z-]+){0,3}\s+as possible|to the limit|to the minimum|to the max|all the way|nast maximum|maximalne)\b/,
   },
 ];
 
@@ -279,6 +280,13 @@ export function parseDegree(text: string, anchor?: number): Degree | null {
     // The softener band (level 1 or 3) wins outright over the "much" inside.
     if (band) return { level: band.level, name: band.name, value: band.value, matched: soft[0] };
   }
+  // "Quite a bit" is an idiom stronger than "a bit". "quite" now sits at the
+  // conservative level 4, but the phrase as a whole stays at level 5.
+  const quiteABit = /\bquite\s+(?:a\s+)?bit\b/.exec(lower);
+  if (quiteABit) {
+    const band = DEGREE_BANDS.find((b) => b.level === 5);
+    if (band) return { level: 5, name: band.name, value: band.value, matched: quiteABit[0] };
+  }
 
   const target = anchor === undefined ? 0 : deaccentLower(text.slice(0, Math.max(0, anchor))).length - 1;
   let best: { degree: Degree; distance: number } | null = null;
@@ -335,14 +343,14 @@ function lerpAnchors(anchors: ReadonlyArray<readonly [number, number]>, value: n
 const FADER_ANCHORS_DOWN: ReadonlyArray<readonly [number, number]> = [
   [0, 1],
   [0.35, 0.92],
-  [0.7, 0.82],
+  [0.7, 0.75],
   [0.85, 0.7],
   [0.95, 0.5],
 ];
 const FADER_ANCHORS_UP: ReadonlyArray<readonly [number, number]> = [
   [0, 1],
   [0.35, 1.08],
-  [0.7, 1.22],
+  [0.7, 1.33],
   [0.85, 1.35],
   [0.95, 1.6],
 ];
@@ -362,7 +370,7 @@ export function calibrateFaderFactor(value: number, direction: "down" | "up"): n
 const KNOB_ANCHORS: ReadonlyArray<readonly [number, number]> = [
   [0, 0],
   [0.35, 0.5],
-  [0.7, 1],
+  [0.7, 1.25],
   [0.85, 1.75],
 ];
 
@@ -408,13 +416,18 @@ export type FaderAmountName = "subtle" | "normal" | "big" | "full";
  *                              much / way / hugely)
  *   level 7   -> "full"    (legacy: úplne / plne / maximálne / complete / fully)
  *
- * Levels 4 and 5 calibrate to a factor BETWEEN subtle and normal, so labelling
- * them "normal" is the honest bucket: the label is a range, not the magnitude.
+ *   level 4   -> "normal"  (moderate: somewhat / fairly / noticeably / quite)
+ *   level 5-6 -> "big"     (large / very large: much, significantly, a lot)
+ *   level 7   -> "full"    (úplne / plne / maximálne / complete / fully)
+ *
+ * The unqualified default is the ENUM "normal", which sits at level 4; a named
+ * "much" (level 5) is therefore stronger than the default instead of colliding
+ * with it (the old ladder anchored "much" to 0.85 and normal to 0.70).
  */
 export function degreeToFaderAmount(level: DegreeLevel): FaderAmountName {
   if (level <= 3) return "subtle";
-  if (level <= 5) return "normal";
-  if (level === 6) return "big";
+  if (level === 4) return "normal";
+  if (level <= 6) return "big";
   return "full";
 }
 
@@ -422,7 +435,7 @@ export type EffectAmountName = "subtle" | "medium" | "huge";
 
 export function degreeToEffectAmount(level: DegreeLevel): EffectAmountName {
   if (level <= 3) return "subtle";
-  if (level <= 5) return "medium";
+  if (level === 4) return "medium";
   return "huge";
 }
 

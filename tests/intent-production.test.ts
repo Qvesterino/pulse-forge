@@ -28,9 +28,9 @@ describe("parseProductionIntent", () => {
     expect(intent!.goals).toEqual([{ concept: "deeper", amount: 0.7 }]);
   });
 
-  it("amount modifiers: 'much punchier drums' → 0.85, 'slightly darker' → 0.35", () => {
+  it("amount modifiers: 'much punchier drums' → 0.70, 'slightly darker' → 0.35", () => {
     const much = parseProductionIntent("make the drums much punchier");
-    expect(much!.goals[0]).toEqual({ concept: "punchier", amount: 0.85 });
+    expect(much!.goals[0]).toEqual({ concept: "punchier", amount: 0.7 });
     expect(much!.targets).toContain("drums");
     const slight = parseProductionIntent("slightly darker");
     expect(slight!.goals[0]).toEqual({ concept: "darker", amount: 0.35 });
@@ -244,7 +244,7 @@ describe("named-plugin concepts (Vlna 8 — pluginy cez intent)", () => {
   });
 
   it("stutter → tighter division at high intent amount", () => {
-    const hard = planProductionActions(doc(), parseProductionIntent("much stutter drums")!);
+    const hard = planProductionActions(doc(), parseProductionIntent("a lot stutter drums")!);
     const hardStutter = hard.actions.find((a) => a.type === "stutter")!;
     expect(hardStutter.params.division).toBe(5);
     const soft = planProductionActions(doc(), parseProductionIntent("stutter drums")!);

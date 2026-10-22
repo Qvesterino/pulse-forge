@@ -301,8 +301,8 @@ describe("IntentPanel", () => {
     const plan = await screen.findByLabelText("Intent plan");
     expect(plan.textContent).toContain("808: reverb.decay");
     expect(plan.textContent).toContain("1.80 s");
-    expect(plan.textContent).toContain("3.39 s");
-    expect(plan.textContent).toContain("8% linear");
+    expect(plan.textContent).toContain("1.98 s");
+    expect(plan.textContent).toContain("+10% (time)");
     // The preview is a PLAN: typing must not apply anything.
     expect(services.store.execute).not.toHaveBeenCalled();
   });

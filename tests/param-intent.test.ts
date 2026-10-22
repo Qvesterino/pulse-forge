@@ -103,24 +103,37 @@ describe("parseParamIntent — domain-true interpolation", () => {
     expect(half.value).toBeLessThan(300);
   });
 
-  it("a relative degree is a constant RATIO on a log knob", () => {
+  it("a relative time degree is a constant RATIO on a log knob", () => {
     const intent = mustParse("slightly longer delay time on the lead");
     const quiet = paramMovePreview(intent, 100)!;
     const loud = paramMovePreview(intent, 1000)!;
     expect(quiet.domain).toBe("log");
-    expect(quiet.fraction).toBeCloseTo(0.08, 6);
-    // Same fraction, same ratio — no matter where the knob currently sits.
+    expect(quiet.family).toBe("time");
+    expect(quiet.deltaLabel).toBe("+10%");
+    // Same proportional time step, wherever the knob currently sits.
+    expect(quiet.next / 100).toBeCloseTo(1.1, 6);
     expect(quiet.next / 100).toBeCloseTo(loud.next / 1000, 6);
     expect(quiet.next).toBeGreaterThan(100);
   });
 
-  it("a relative degree is a constant ADDITIVE step on a linear knob", () => {
-    const intent = mustParse("slightly longer reverb decay on the lead");
-    const low = paramMovePreview(intent, 1)!;
-    const high = paramMovePreview(intent, 10)!;
+  it("time is proportional while dB is additive", () => {
+    const time = mustParse("slightly longer reverb decay on the lead");
+    const low = paramMovePreview(time, 1)!;
+    const high = paramMovePreview(time, 10)!;
     expect(low.domain).toBe("linear");
-    expect(low.next - 1).toBeCloseTo(high.next - 10, 6);
+    expect(low.family).toBe("time");
+    expect(low.next / 1).toBeCloseTo(high.next / 10, 6);
     expect(high.next).toBeLessThanOrEqual(20);
+
+    // A dB family step is absolute: the same degree moves the same number of
+    // dB at any starting threshold. The old range-fraction moved 4.8 dB for
+    // "slightly" on a 60 dB control; the family ladder moves 0.75 dB.
+    const db = mustParse("slightly lower compressor threshold on the drums");
+    const dbLow = paramMovePreview(db, -18)!;
+    const dbHigh = paramMovePreview(db, -40)!;
+    expect(dbLow.family).toBe("db");
+    expect(dbLow.next - -18).toBeCloseTo(dbHigh.next - -40, 6);
+    expect(dbLow.next).toBeCloseTo(-18.75, 6);
   });
 
   it("the inferred fraction is monotone in the spoken degree", () => {
@@ -247,8 +260,8 @@ describe("seven-level calibration across parameter families", () => {
     [2, "a touch"],
     [3, "slightly"],
     [4, "somewhat"],
-    [5, "quite"],
-    [6, "much"],
+    [5, "much"],
+    [6, "a lot"],
     [7, "as much as possible"],
   ];
 
@@ -419,8 +432,8 @@ describe("seven-level calibration across parameter families", () => {
     const line = plan.join(" ");
     expect(line).toContain("808: reverb.decay");
     expect(line).toContain("1.80 s");
-    expect(line).toContain("3.39 s");
-    expect(line).toContain("8% linear");
+    expect(line).toContain("1.98 s");
+    expect(line).toContain("+10% (time)");
     expect(line).toContain("(add)");
     expect(paramPlanLines(mustParse("slightly longer reverb decay on the lead"), testDoc())).toEqual([
       "lead: no matching track",
@@ -443,8 +456,8 @@ describe("param registry & capability matrix", () => {
     [2, "a touch"],
     [3, "slightly"],
     [4, "somewhat"],
-    [5, "quite"],
-    [6, "much"],
+    [5, "much"],
+    [6, "a lot"],
     [7, "as much as possible"],
   ];
 
@@ -560,8 +573,8 @@ describe("intent plan — dry-run before execution", () => {
     if (number?.kind !== "number") return;
     expect(number.parameter).toBe("reverb.decay");
     expect(number.beforeLabel).toBe("1.80 s");
-    expect(number.nextLabel).toBe("3.39 s");
-    expect(number.note).toContain("8% linear");
+    expect(number.nextLabel).toBe("1.98 s");
+    expect(number.note).toContain("+10% (time)");
     expect(number.note).toContain("add effect");
   });
 

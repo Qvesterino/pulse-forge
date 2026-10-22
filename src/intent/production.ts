@@ -438,11 +438,14 @@ const DEFAULT_AMOUNT = 0.7;
 const DEGREE_LADDER: readonly (readonly [RegExp, number])[] = [
   // --- strongest ---
   [/\b(?:max(?:imal|imum)?|fully|totally|completely|maximálne|naplno|úplne)\b/, 0.95],
-  [/\b(?:much|way|a lot|lots|heavily|hard|strongly|ve\u013emi|mocno|poriadne|silne|dos\u0165)\b/, 0.85],
+  [
+    /\b(?:way|a lot|lots|heavily|hard|strongly|dramatically|drastically|massively|really|mocno|poriadne|silne|dosť)\b/,
+    0.85,
+  ],
   // --- strong-ish ---
-  [/\b(?:quite|pretty|notably|substantially|significantly|noticeably|značne|vyrazne)\b/, 0.7],
+  [/\b(?:significantly|considerably|substantially|notably|much|veľmi|značne|vyrazne|markedly)\b/, 0.7],
   // --- the default band ---
-  [/\b(?:somewhat|fairly|moderately|reasonably|rather|stredne|primerane|pomerne)\b/, 0.55],
+  [/\b(?:somewhat|fairly|moderately|reasonably|noticeably|quite|pretty|rather|stredne|primerane|pomerne)\b/, 0.55],
   // --- attenuated ---
   // Level 2 is its own rung: "a touch / a tad" is weaker than "slightly".
   // Before this, production.ts bucketed them with "a bit" at 0.35 while the

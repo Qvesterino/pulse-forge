@@ -16,25 +16,28 @@ describe("level 1 — magnitude: English-first degree ladder", () => {
   });
 
   it("'much deeper' outranks the default", () => {
-    expect(amountOf("make the bass much deeper", "deeper")).toBe(0.85);
+    expect(amountOf("make the bass much deeper", "deeper")).toBe(0.7);
   });
 
   it("'slightly deeper' lands below the default", () => {
     expect(amountOf("make the bass slightly deeper", "deeper")).toBe(0.35);
   });
 
-  it("gives each attenuator its own step instead of one shared value", () => {
-    // The old binary made these two identical, which is the whole point of
-    // the ladder: the engine could not tell a polite ask from a real one.
+  it("gives each semantic LEVEL its own step; synonyms share a rung", () => {
+    // The ladder is ordered by canonical level, not by word. "fairly" and
+    // "quite" are both level 4 (moderate) by the 2026-10-21 contract; words
+    // within a level intentionally share the magnitude.
     const barely = amountOf("make the bass barely deeper", "deeper");
     const slightly = amountOf("make the bass slightly deeper", "deeper");
     const fairly = amountOf("make the bass fairly deeper", "deeper");
     const quite = amountOf("make the bass quite deeper", "deeper");
     const much = amountOf("make the bass much deeper", "deeper");
+    const lot = amountOf("make the bass a lot deeper", "deeper");
     const fully = amountOf("make the bass fully deeper", "deeper");
-    expect([barely, slightly, fairly, quite, much, fully]).toEqual([0.2, 0.35, 0.55, 0.7, 0.85, 0.95]);
-    // Strictly increasing — the ladder never collapses two words together.
-    const steps = [barely, slightly, fairly, quite, much, fully] as number[];
+    expect(fairly).toBe(quite);
+    expect([barely, slightly, fairly, much, lot, fully]).toEqual([0.2, 0.35, 0.55, 0.7, 0.85, 0.95]);
+    // Strictly increasing across levels — no level collapses into another.
+    const steps = [barely, slightly, fairly, much, lot, fully] as number[];
     for (let i = 1; i < steps.length; i++) expect(steps[i]).toBeGreaterThan(steps[i - 1]);
   });
 
@@ -89,7 +92,7 @@ describe("level 1 — magnitude: the degree is scoped to its own clause", () => 
     const punch = intent!.goals.find((g) => g.concept === "punchier")!.amount;
     const deeper = intent!.goals.find((g) => g.concept === "deeper")!.amount;
     expect(punch).toBeGreaterThan(deeper);
-    expect(punch).toBe(0.85);
+    expect(punch).toBe(0.7);
     expect(deeper).toBe(0.35);
   });
 
@@ -137,7 +140,7 @@ describe("level 2 — targeting: two clauses land on two different tracks", () =
     const intent = parseProductionIntent("slightly punchier drums, much deeper bass");
     expect(intent!.targets.sort()).toEqual(["bass", "drums"]);
     expect(intent!.goals.find((g) => g.concept === "punchier")!.amount).toBe(0.35);
-    expect(intent!.goals.find((g) => g.concept === "deeper")!.amount).toBe(0.85);
+    expect(intent!.goals.find((g) => g.concept === "deeper")!.amount).toBe(0.7);
   });
 
   it("a third clause adds a third target", () => {

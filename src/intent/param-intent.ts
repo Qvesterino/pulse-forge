@@ -30,7 +30,8 @@ import {
   type MixDecision,
   type MixTarget,
 } from "./mix";
-import { calibrateParamFraction, degreeToEffectAmount, parseDegree, type Degree } from "./degree";
+import { degreeToEffectAmount, parseDegree, type Degree, type DegreeLevel } from "./degree";
+import { calibrationFamily, physicalStep, type CalibrationFamily } from "./semantics/calibration";
 import { isPriorDeltaReference } from "./reference-delta";
 import { isDescriptiveStatement } from "./declarative";
 import { PARAM_ROLES, directionForRole, type ParamRole } from "./semantics/param-registry";
@@ -79,8 +80,6 @@ export interface ParamIntent {
   percent?: number;
   detected: string[];
 }
-
-const AMOUNT_FRACTION: Record<ParamIntent["amount"], number> = { subtle: 0.08, medium: 0.18, huge: 0.32 };
 
 function deaccentLower(text: string): string {
   return ` ${text
@@ -457,8 +456,12 @@ export interface ParamMovePreview {
   paramId: string;
   mode: ParamIntent["mode"];
   domain: "log" | "linear";
+  /** The physical calibration family used for the move. */
+  family: CalibrationFamily;
   /** Fraction of the param's range in its own domain; null for an absolute set. */
   fraction: number | null;
+  /** Human physical delta: "+0.75 dB", "+10%", "+2 pts", "to limit". */
+  deltaLabel: string;
   current: number;
   /** Destination before the ParamDef clamp. */
   proposed: number;
@@ -466,10 +469,18 @@ export interface ParamMovePreview {
   next: number;
 }
 
+/** Legacy amount class → the semantic degree it always meant. */
+const AMOUNT_DEGREE: Readonly<Record<ParamIntent["amount"], DegreeLevel>> = {
+  subtle: 3,
+  medium: 5,
+  huge: 6,
+};
+
 export function paramMovePreview(intent: ParamIntent, current: number): ParamMovePreview | null {
   const param = paramDefOf(intent.effectType, intent.paramId);
   if (!param) return null;
   const domain: ParamMovePreview["domain"] = param.taper === "log" ? "log" : "linear";
+  const family = calibrationFamily(param, intent.role);
   if (intent.mode === "set") {
     const proposed = intent.requestedValue ?? intent.value ?? current;
     return {
@@ -477,29 +488,50 @@ export function paramMovePreview(intent: ParamIntent, current: number): ParamMov
       paramId: intent.paramId,
       mode: "set",
       domain,
+      family,
       fraction: null,
+      deltaLabel: "set",
       current,
       proposed,
       next: clampEffectParam(intent.effectType, intent.paramId, proposed),
     };
   }
-  const fraction =
-    intent.percent != null
-      ? intent.percent / 100
-      : intent.degree
-        ? calibrateParamFraction(intent.degree.value)
-        : AMOUNT_FRACTION[intent.amount];
-  const step = intent.mode === "less" ? -fraction : fraction;
-  const proposed = valueAtFraction(param, fractionOf(param, current) + step);
+  // An explicit percent is a RANGE fraction; it stays the caller's unit.
+  if (intent.percent != null) {
+    const fraction = intent.percent / 100;
+    const step = intent.mode === "less" ? -fraction : fraction;
+    const proposed = valueAtFraction(param, fractionOf(param, current) + step);
+    return {
+      effectType: intent.effectType,
+      paramId: intent.paramId,
+      mode: intent.mode,
+      domain,
+      family,
+      fraction,
+      deltaLabel: `${intent.mode === "less" ? "−" : "+"}${intent.percent}% range`,
+      current,
+      proposed,
+      next: clampEffectParam(intent.effectType, intent.paramId, proposed),
+    };
+  }
+  // Qualitative degree → PHYSICAL family step, not a fraction of the range.
+  // The old range-fraction made "much" on a 60 dB threshold a 19.2 dB jump;
+  // the family ladder makes it 4 dB (see semantics/calibration.ts).
+  const degree = intent.degree?.level ?? AMOUNT_DEGREE[intent.amount] ?? 5;
+  const physical = physicalStep(param, intent.role, degree, current, intent.mode);
+  const next = clampEffectParam(intent.effectType, intent.paramId, physical.next);
+  const fraction = Math.abs(fractionOf(param, next) - fractionOf(param, current));
   return {
     effectType: intent.effectType,
     paramId: intent.paramId,
     mode: intent.mode,
     domain,
+    family,
     fraction,
+    deltaLabel: physical.deltaLabel,
     current,
-    proposed,
-    next: clampEffectParam(intent.effectType, intent.paramId, proposed),
+    proposed: physical.proposed,
+    next,
   };
 }
 
@@ -527,8 +559,12 @@ export interface ParamPlanLine {
   effectType: EffectType;
   paramId: string;
   domain: "log" | "linear";
+  /** The physical calibration family used for the move. */
+  family: CalibrationFamily;
   /** Percent of the param's range in its own domain; null for an absolute set. */
   fractionPct: number | null;
+  /** Human physical delta: "+0.75 dB", "+10%", "+2 pts", "to limit". */
+  deltaLabel: string;
   current: number;
   proposed: number;
   next: number;
@@ -553,7 +589,9 @@ export function paramPlan(intent: ParamIntent, doc: Parameters<typeof applyMixIn
         effectType: intent.effectType,
         paramId: intent.paramId,
         domain,
+        family: calibrationFamily(param, intent.role),
         fractionPct: null,
+        deltaLabel: "—",
         current: 0,
         proposed: 0,
         next: 0,
@@ -578,7 +616,7 @@ export function paramPlan(intent: ParamIntent, doc: Parameters<typeof applyMixIn
         : `${fmt(preview.current)} → ${fmt(preview.next)}`;
     const label =
       `${trackName}: ${intent.effectType}.${intent.paramId} ${values} · ` +
-      `${fractionPct != null ? `${fractionPct}% ${preview.domain}` : "set"}` +
+      `${preview.deltaLabel}${preview.family === "normalized" ? "" : ` (${preview.family})`}` +
       `${clamped && preview.mode !== "set" ? " (clamped)" : ""}${adding ? " (add)" : ""}`;
     lines.push({
       target,
@@ -586,7 +624,9 @@ export function paramPlan(intent: ParamIntent, doc: Parameters<typeof applyMixIn
       effectType: intent.effectType,
       paramId: intent.paramId,
       domain,
+      family: preview.family,
       fractionPct,
+      deltaLabel: preview.deltaLabel,
       current: preview.current,
       proposed: preview.proposed,
       next: preview.next,

@@ -206,7 +206,7 @@ describe("level 3 — planned params survive normalizeProject", () => {
 describe("level 3 — the degree ladder reaches the new concepts", () => {
   it("a stronger ask cuts a lower filter", () => {
     const gentle = actionsFor("add a slight autofilter to the lead")!.actions.find((a) => a.type === "svFilter")!;
-    const hard = actionsFor("add a much stronger autofilter to the lead")!.actions.find((a) => a.type === "svFilter")!;
+    const hard = actionsFor("add a lot stronger autofilter to the lead")!.actions.find((a) => a.type === "svFilter")!;
     expect(hard.params.cutoff).toBeLessThan(gentle.params.cutoff);
   });
 

@@ -75,6 +75,39 @@ The plan is deliberately not a second calculator. A preview that recomputes a
 delta can disagree with execution; a plan that executes the command on a value
 cannot.
 
+## Follow-up (2026-10-21): physical calibration and the canonical contract
+
+The first P2 pass calibrated every plugin parameter as a fraction of its range.
+That is wrong for wide physical controls: `compressor.threshold` spans 60 dB, so
+"much" (0.32 of range) became **19.2 dB**; attack became ~12× and cutoff ~9×.
+The host's `relativeParam` already used family-specific physical steps.
+
+Decision:
+
+- `src/intent/semantics/calibration.ts` owns the family ladder:
+  dB `0.25/0.5/0.75/1.5/2.5/4`, time and frequency proportional, Q relative,
+  percent/normalized points. Degree 7 targets the declared bound. The fader and
+  effect-knob anchors were shifted so a named "much" (level 5) is stronger than
+  the unqualified enum default (level 4).
+- `src/intent/semantics/degree-contract.ts` is the canonical word→level table.
+  The 2026-10-21 alignment moved `much` 6→5, `noticeably` 5→4 and
+  `quite/pretty` 5→4 to match the host contract; KYX-only words are marked as
+  extensions. `npm run intent:degree-parity` compares 36 shared words against
+  the VocalForge checkout and currently reports **0 divergences**.
+- `plugins/mastering-suite/src/contracts/macroIntent.ts` (VocalForge) is the
+  first cross-repo consumer: a bounded macro plan over the existing reversible
+  `applyMasteringSuiteMacros` chain. The parser stays in the host; the plugin
+  exports the contract.
+- Agentic Vocal relative tool args are deferred: `ToolSpec.resolve` does not
+  receive current parameter state, so a correct implementation first needs a
+  shared `param-calibration` package and a resolve-time state contract. Adding
+  a third local step table would violate this ADR.
+
+These are audible behavior changes: "much" is now a level-5 move, the fader and
+knob curves moved at levels 5/6, and plugin parameters use physical steps. The
+unit tests pin ordering, bounds and exact family steps; a human listening pass
+is still required before calling the magnitudes final.
+
 ## Consequences
 
 - Adding a parameter family is one registry entry; parser, matrix, corpus and
