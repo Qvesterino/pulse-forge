@@ -99,6 +99,37 @@ export const PARITY_FX_EXCLUSIONS: ReadonlyMap<EffectType, string> = new Map<Eff
   ["chorus", "free-running LFO phase"],
   ["tremolo", "free-running LFO phase"],
   ["autowah", "free-running LFO phase"],
+  // RING MOD: the carrier's phase is seeded by the PROCESSOR's construction —
+  // ringmod-processor.js does `this.phase += phaseInc` per sample starting
+  // from the constructor's `this.phase = 0`. The live branch builds the chain
+  // right before the capture, the offline branch builds it at the render
+  // origin, so the two modulate from a DIFFERENT phase; the gap between
+  // construction and the event is load-dependent, which is why the null VALUE
+  // moves between runs (-0.8 dB in the probe run, +0.7 dB in the gate run,
+  // both measured on 2026-10-23) while the magnitude spectrum and the level do not
+  // (cosine 0.9998, RMS 1.005x). Same sound, different modulation phase.
+  // Offline determinism is exact (control -331.8 dB) and the effect's own
+  // render determinism is asserted bit-identical by the FX-expansion audit
+  // (src/browser-checks.ts: auditFxExpansion), so the processing path is not
+  // in question — only the carrier's start phase, which no per-sample null
+  // can judge.
+  ["ringMod", "free-running carrier phase (the ring modulator starts at the processor's construction)"],
+  // PITCH SHIFT: the same class, one layer down. The granular tap delay
+  // accumulates `this.tapDelay[v] += dRate` per output sample from the
+  // constructor (pitchshift-processor.js), and it only snaps back into
+  // [2H, 4H] at a grain start, so the live instance reads the ring buffer at a
+  // different offset than the cold offline one. Measured 2026-10-23: null
+  // -0.1 dB at corr 0.4570, magnitude spectrum 0.9908, RMS 0.901x, offline
+  // determinism control -334.0 dB.
+  ["pitchShift", "free-running grain tap-delay accumulator (the shifter's read offset differs from the cold render)"],
+  // VINYL: the wow/flutter delay is modulated by free-running LFOs
+  // (vinyl-processor.js: `this.lfoPhase = 0`, `this.flutterPhase = 0`), so the
+  // live instance is mid-modulation when the capture starts and the offline one
+  // starts from phase zero — the same reason phaser/flanger/chorus/tremolo/
+  // autowah carry. Measured 2026-10-23: null +0.5 dB at corr 0.4384,
+  // magnitude spectrum 0.9886, RMS 1.000x, offline determinism control
+  // -321.4 dB. The tail diverges, the head matches.
+  ["vinyl", "free-running wow/flutter LFO phase (the vinyl instance is mid-modulation at capture)"],
   // Reverb's comb read positions are detuned by a 0.5 Hz free-running
   // MODULATOR (reverb-processor.js: modPhase -> driftL/driftR). Over a
   // 1.8 s tail the device-clock jitter of a realtime context and that
@@ -750,9 +781,11 @@ async function nullTestCase(
       4,
     )} liveRepeat=${Number.isFinite(m.liveRepeatNullDb) ? m.liveRepeatNullDb.toFixed(1) : "n/a"} dB rms=${rmsRatio.toFixed(
       3,
-    )}× spectrum=${phaseInsensitive?.spectralCosine.toFixed(4) ?? "n/a"} windows=${phaseInsensitive?.windows ?? 0} offlineSpectrum=${m.phaseInsensitiveControl?.spectralCosine.toFixed(4) ?? "n/a"} liveRepeatSpectrum=${m.phaseInsensitiveRepeat?.spectralCosine.toFixed(4) ?? "n/a"} liveRepeatRMS=${m.phaseInsensitiveRepeat?.rmsRatio.toFixed(3) ?? "n/a"} offset=${m.alignOffset} samples repeatOffset=${m.liveRepeatAlignOffset} samples control=${m.controlNullDb.toFixed(1)} dB realtimeNondeterministic=${m.realtimeNondeterministic} (needs ≤ ${
+    )}× spectrum=${phaseInsensitive?.spectralCosine.toFixed(4) ?? "n/a"} windows=${phaseInsensitive?.windows ?? 0} offlineSpectrum=${m.phaseInsensitiveControl?.spectralCosine.toFixed(4) ?? "n/a"} liveRepeatSpectrum=${m.phaseInsensitiveRepeat?.spectralCosine.toFixed(4) ?? "n/a"} liveRepeatRMS=${m.phaseInsensitiveRepeat?.rmsRatio.toFixed(3) ?? "n/a"} segHead=${m.segmentNullDb.head.toFixed(1)} dB segTail=${m.segmentNullDb.tail.toFixed(1)} dB livePeak=${m.livePeak.toFixed(4)} refPeak=${m.refPeak.toFixed(4)} offset=${m.alignOffset} samples repeatOffset=${m.liveRepeatAlignOffset} samples control=${m.controlNullDb.toFixed(1)} dB realtimeNondeterministic=${m.realtimeNondeterministic} (needs ≤ ${
       PARITY_NULL_FLOOR_DB
-    } dB, corr ≥ ${PARITY_MIN_CORRELATION}, or deterministic offline control plus ≥${PARITY_MIN_SPECTRAL_COSINE} spectral cosine and RMS ${PARITY_SPECTRAL_RMS_RATIO_MIN}–${PARITY_SPECTRAL_RMS_RATIO_MAX} across live/offline, offline repeat, and live repeat)`;
+    } dB; the phase-insensitive numbers above are DIAGNOSTIC in this corpus, NOT an acceptance criterion — the effect corpus accepts a case only when the waveform null is clean, or when the REALTIME branch is itself nondeterministic (live↔live within 3 dB of live↔offline, offline control clean) and corr ≥ ${
+      PARITY_MIN_CORRELATION
+    }, i.e. the divergence is the device clock rather than the engine)`;
   }
   return null;
 }

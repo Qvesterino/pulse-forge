@@ -98,10 +98,7 @@ export function grooveBarSteps(groove: GrooveData): number {
  * Behaves as a REFINEMENT: an empty result returns the incoming list, so a
  * genre that holds nothing but odd-metre grooves still generates.
  */
-export function preferGroovesForMeter(
-  grooves: readonly GrooveData[],
-  meter: AiMeter,
-): readonly GrooveData[] {
+export function preferGroovesForMeter(grooves: readonly GrooveData[], meter: AiMeter): readonly GrooveData[] {
   const inMetre = grooves.filter((groove) => sameSignature(groove.timeSignature, meter.signature));
   if (inMetre.length > 0) return inMetre;
   const fourFour = grooves.filter((groove) => isDefaultMeter(groove.timeSignature));

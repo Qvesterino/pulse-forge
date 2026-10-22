@@ -36,8 +36,15 @@ const BOOT_TIMEOUT_MS = 600_000;
  * So the app-boot gate tolerates a refused request to that optional service —
  * and ONLY when EVERY failed request went there. Any other failed request
  * keeps the gate red, so this cannot hide a real network fault.
+ *
+ * The pattern covers ws:// as well: the collab RELAY lives on the same port
+ * (the default relay URL is ws://<host>:1234), and a refused WebSocket
+ * handshake is the same optional service. It is also the one failure the
+ * `requestfailed` event does NOT report (a WebSocket handshake is not a
+ * request), so its URL cannot be collected the way the HTTP ones are — it
+ * shows up as a console error only.
  */
-const OPTIONAL_LOCAL_SERVICE_URL = /^https?:\/\/(?:127\.0\.0\.1|localhost):1234(?:\/|$)/;
+const OPTIONAL_LOCAL_SERVICE_URL = /^(?:https?|wss?):\/\/(?:127\.0\.0\.1|localhost):1234(?:\/|$)/;
 
 const server = await createServer({
   root,
@@ -453,9 +460,17 @@ try {
         !/AudioContext|autoplay|user gesture/i.test(e) &&
         !(optionalServiceOnly && /Failed to load resource: net::ERR_CONNECTION_REFUSED/.test(e)),
     );
+    // The failed requests, GROUPED by URL: the console text carries no URL, so
+    // without this a red app-boot gate says only "N refused" and the reader
+    // has to guess which service. The URLs are what the filter above judged.
+    const refusedByUrl = new Map();
+    for (const request of appFailedRequests) {
+      refusedByUrl.set(request.url, (refusedByUrl.get(request.url) ?? 0) + 1);
+    }
+    const refusedSummary = [...refusedByUrl.entries()].map(([url, count]) => `${count}× ${url}`).join(", ");
     if (optionalServiceOnly) {
       console.log(
-        `[info] app boot — ignored ${appFailedRequests.length} refused request(s) to the optional local gallery service`,
+        `[info] app boot — ignored ${appFailedRequests.length} refused request(s) to the optional local gallery service: ${refusedSummary}`,
       );
     }
     if (fatal.length === 0) {
@@ -463,6 +478,9 @@ try {
       console.log("[PASS] app boots into browser, opens a template, panels mount, project listed on return");
     } else {
       console.log("[FAIL] app boot — console errors:", fatal.slice(0, 5));
+      console.log(
+        `  failed requests (${appFailedRequests.length}): ${refusedSummary || "none reported by requestfailed"}`,
+      );
     }
   } catch (error) {
     console.log("[FAIL] app boot — UI did not mount:", error?.stack ?? String(error));

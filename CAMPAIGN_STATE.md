@@ -211,6 +211,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 ## SESSION LOG
 
 ### 2026-10-07 (latest) / Timeline unification session 1 — ADR 0025 completion audit + the last adapter seams (23aa2e1a)
+
 - Discovery: ADR 0025's program LANDED (eff88f7b — scene split, timeline-wide ripple, timelineItemsOf with 23 consumers); the physical storage merge stays REJECTED (no revisit trigger fired: no collab dual-order conflicts, no cross-type field demand, no perf wall). The campaign is therefore COMPLETION, not redesign.
 - The last hand-rolled dual-site: commands/timeRange.ts (duplicate/consolidate) — audit-01's silent audioClips loss + the NaN guards both lived here; 13 repeated geometry sites, 6 read forms, the write-guard dance.
 - Built: timeline.ts seams — sceneSpanTicks (one home for startBar*barUnit, meter-true per ADR 0056), audioSpanBars, audioLaneOf, withAudioLane (field-absence-preserving write-back). timeRange migrated; consolidateTimeRangeToAudio keeps its UNCONDITIONAL write (audio-CREATING op — the print clip must land even lane-less); YDocAdapter's guard is presence MIRRORING, a different concern, untouched.
@@ -219,6 +220,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Commits: 23aa2e1a.
 
 ### 2026-10-07 (latest) / W1b — per-head data rights, FAIL, corpus parked permanently (a200601e)
+
 - Pre-registered §4c BEFORE the rerun (same criteria, no relaxation): corpus rows train trunk+degree only — per-row duration_mask in MLP.train_step (divisor = full batch, masked rows contribute zero to the loss too), duration class weights from the library slice. Gate --w1b-heads-split + trainer --w1b-heads-split (shipping parity).
 - Verdict: FAIL on both criteria, both fold counts. degree 2-fold 0.4710 < 0.4833 floor — WORSE than baseline AND the §4b shared run (the split trunk torn between two input distributions); duration moved toward baseline (0.5109/0.5688) but never reached it (the corpus-trained trunk IS the duration head's input — a shared representation cannot be fully quarantined).
 - CORPUS PARKS PERMANENTLY per §4c: two mechanisms, one verdict each. Left reusable: corpus→ChordEvent bridge, gate v3 path, per-head mask primitive, classical slot, and two clean negatives fencing the idea space (next classical idea = different model family, e.g. sequence attention over harmony — not a merge trick).

@@ -347,10 +347,7 @@ export function isDefaultMeter(signature: TimeSignature | undefined | null): boo
  * the irregular library (ADR 0057 Stage 2j) compare a groove's declared metre
  * with the document's without a second table of rules.
  */
-export function sameSignature(
-  a: TimeSignature | undefined | null,
-  b: TimeSignature | undefined | null,
-): boolean {
+export function sameSignature(a: TimeSignature | undefined | null, b: TimeSignature | undefined | null): boolean {
   const left = a ?? DEFAULT_TIME_SIGNATURE;
   const right = b ?? DEFAULT_TIME_SIGNATURE;
   return left.numerator === right.numerator && left.denominator === right.denominator;
