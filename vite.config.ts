@@ -45,6 +45,28 @@ export default defineConfig({
     // entry — and the cold-cache build then dies on
     // "Could not resolve ./array.test.js".
     entries: ["index.html"],
+    // Deps the optimizer would otherwise meet LATE.
+    //
+    // The scanner crawls the entry graph; a WORKER module is not in it (Vite
+    // bundles workers separately), so a bare import inside a worker is
+    // discovered only when the worker is created — i.e. when the studio boots
+    // the AI runtime. A runtime discovery re-runs the optimizer, which changes
+    // the ?v= hash of EVERY optimized dep and triggers a FULL PAGE RELOAD
+    // (measured 2026-10-22: the page loaded react.js?v=5e019cbd AND
+    // react.js?v=e2debdb6 — two React instances, "Invalid hook call" — and the
+    // reload destroyed the DOM the app-boot gate was waiting for, which it
+    // reported as "UI did not mount").
+    //
+    // Pre-declared so the FIRST optimizer pass already knows them - no
+    // runtime discovery, no re-optimize, no reload.
+    include: ["@huggingface/transformers", "onnxruntime-web/wasm"],
+    // zod comes from the SIBLING's interop-types barrel, so it resolves to
+    // the sibling's zod 3.25.76 - the same copy the production build uses.
+    // It must NOT be pre-bundled: `include` resolves from the ROOT, where the
+    // app happens to carry zod 4.5.4 as a transitive dep, and dev would then
+    // run a different zod than prod. Excluding keeps the resolution exactly
+    // as it is and only skips the optimizer.
+    exclude: ["zod"],
   },
   server: {
     host: "127.0.0.1",
@@ -54,6 +76,19 @@ export default defineConfig({
   },
   plugins: [react(), ...(desktopBuild ? [] : [VitePWA(pwaOptions)])],
   resolve: {
+    // ONE React for the whole graph.
+    //
+    // Measured (tests/react-single-copy.test.ts): the QMR HUD ships as TS
+    // SOURCE from the SIBLING checkout, so its bare `import ... from "react"`
+    // resolves through node resolution from THAT tree and lands on
+    // D:\QVESTER_LANDING_PAGE\node_modules\react (19.3.0) instead of this
+    // app's own 18.3.1. The production build merges both into one
+    // vendor-react chunk, so the app ships a single React - the dev server
+    // must not be allowed to resolve a second one.
+    //
+    // @vitejs/plugin-react already contributes this list; stating it here
+    // keeps the invariant visible in THIS repo and survives a plugin swap.
+    dedupe: ["react", "react-dom"],
     alias: [
       // `virtual:pwa-register` is a plugin-only module that has no on-disk
       // implementation. The vitest graph does not include the PWA plugin,

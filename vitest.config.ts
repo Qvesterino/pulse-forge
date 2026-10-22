@@ -7,6 +7,12 @@ const virtualPwaRegisterStub = fileURLToPath(new URL("./tests/_stubs/virtual-pwa
 export default defineConfig({
   plugins: [react()],
   resolve: {
+    // ONE React for the whole graph - mirror vite.config.ts so tests, dev and
+    // prod agree. The QMR HUD source lives in the sibling checkout and would
+    // otherwise resolve React 19.3.0 from there while the app runs 18.3.1
+    // (measured: tests/react-single-copy.test.ts). @vitejs/plugin-react also
+    // contributes this list; stating it here keeps it visible in this repo.
+    dedupe: ["react", "react-dom"],
     alias: [
       // `virtual:pwa-register` is provided by vite-plugin-pwa in dev/build
       // but is not present in the vitest graph (no PWA plugin). The vitest
