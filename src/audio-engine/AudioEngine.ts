@@ -135,6 +135,14 @@ interface FxChainState {
    */
   chainTail?: AudioNode | null;
   chainSink?: AudioNode | null;
+  /** First effect input (or the chain input for a dry path), retained while a live rebuild crossfades. */
+  chainInput?: AudioNode | null;
+  /** Output branch gain used by a live chain transition. */
+  outputGain?: GainNode | null;
+  /** Final bus receiving this chain; stable across its rebuilds. */
+  outputDestination?: AudioNode | null;
+  /** Old graph branches kept alive only until their audio-clock crossfade completes. */
+  retiring?: Set<RetiredFxChain>;
   /**
    * Latency-change subscriptions from runtimes whose DSP latency is only
    * known asynchronously (worklet plugins). Each fires syncPdc() so PDC
@@ -142,6 +150,21 @@ interface FxChainState {
    */
   latencySubs: Array<() => void>;
 }
+
+interface RetiredFxChain {
+  input: AudioNode;
+  chainInput: AudioNode;
+  chainTail: AudioNode;
+  outputGain: GainNode;
+  pdcDelay: DelayNode | null;
+  runtimes: Map<string, EffectRuntime>;
+  clock: ConstantSourceNode;
+  silence: GainNode;
+  disposed: boolean;
+}
+
+const FX_REBUILD_CROSSFADE_SEC = 0.02;
+const FX_REBUILD_RETIRE_PAD_SEC = 0.01;
 
 export type EffectIntentPreviewEndReason = "manual" | "projectChanged" | "transportStarted" | "restoreFailed";
 
@@ -1191,8 +1214,77 @@ export class AudioEngine {
     );
   }
 
+  private rampFxTransitionGain(gain: GainNode, target: number, start: number, end: number): void {
+    const param = gain.gain;
+    try {
+      if (typeof param.cancelAndHoldAtTime === "function") param.cancelAndHoldAtTime(start);
+      else {
+        param.cancelScheduledValues(start);
+        param.setValueAtTime(param.value, start);
+      }
+      param.linearRampToValueAtTime(target, end);
+    } catch {
+      // A context can close between the project edit and its graph update.
+      // The next context rebuild will provide a fresh, correctly routed chain.
+    }
+  }
+
+  private disposeRetiredFxChain(state: FxChainState, retired: RetiredFxChain): void {
+    if (retired.disposed) return;
+    retired.disposed = true;
+    retired.clock.onended = null;
+    try {
+      retired.clock.stop();
+    } catch {
+      /* already stopped or the context has closed */
+    }
+    try {
+      retired.clock.disconnect();
+      retired.silence.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    if (retired.chainInput !== retired.input) {
+      try {
+        retired.input.disconnect(retired.chainInput);
+      } catch {
+        /* the graph may already have been torn down */
+      }
+    }
+    try {
+      retired.chainTail.disconnect(retired.pdcDelay ?? retired.outputGain);
+    } catch {
+      /* a runtime disposer may already have removed this edge */
+    }
+    try {
+      retired.pdcDelay?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    for (const runtime of retired.runtimes.values()) {
+      try {
+        runtime.dispose();
+      } catch {
+        /* a failing runtime must not strand the rest of the retiring chain */
+      }
+    }
+    try {
+      retired.outputGain.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    state.retiring?.delete(retired);
+  }
+
+  private disposeRetiredFxChains(state: FxChainState): void {
+    if (!state.retiring) return;
+    for (const retired of [...state.retiring]) this.disposeRetiredFxChain(state, retired);
+    state.retiring.clear();
+  }
+
   /** Release master insert runtimes before their AudioContext is replaced. */
   private disposeFxChainForContextSwap(state: FxChainState): void {
+    this.disposeRetiredFxChains(state);
     for (const unsubscribe of state.latencySubs) unsubscribe();
     state.latencySubs.length = 0;
     for (const runtime of state.runtimes.values()) {
@@ -1210,6 +1302,16 @@ export class AudioEngine {
       /* already disconnected */
     }
     state.pdcDelay = null;
+    try {
+      state.outputGain?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    state.outputGain = null;
+    state.outputDestination = null;
+    state.chainInput = null;
+    state.chainTail = null;
+    state.chainSink = null;
     state.signature = null;
   }
 
@@ -1222,16 +1324,85 @@ export class AudioEngine {
   ): void {
     const ctx = this.ctx;
     if (!ctx) return;
-    for (const unsub of state.latencySubs) unsub();
-    state.latencySubs.length = 0;
-    for (const rt of state.runtimes.values()) {
+    const transition =
+      isLiveAudioContext(ctx) &&
+      ctx.state === "running" &&
+      state.signature !== null &&
+      state.chainTail != null &&
+      state.outputGain != null;
+    const previousFxIds = [...state.params.keys()];
+    let retirementClockScheduled = false;
+    let retired: RetiredFxChain | null = null;
+    if (transition) {
+      const outputGain = state.outputGain!;
+      const output = state.outputDestination ?? outputGain.context.destination;
+      const now = ctx.currentTime;
+      const end = now + FX_REBUILD_CROSSFADE_SEC;
+      const silence = ctx.createGain();
+      silence.gain.value = 0;
+      const clock = ctx.createConstantSource();
+      clock.connect(silence);
+      silence.connect(ctx.destination);
+      retired = {
+        input,
+        chainInput: state.chainInput ?? state.runtimes.values().next().value?.input ?? input,
+        chainTail: state.chainTail!,
+        outputGain,
+        pdcDelay: state.pdcDelay,
+        runtimes: state.runtimes,
+        clock,
+        silence,
+        disposed: false,
+      };
+      state.retiring ??= new Set();
+      state.retiring.add(retired);
+      for (const unsub of state.latencySubs) unsub();
+      state.latencySubs = [];
+      state.runtimes = new Map();
+      state.params = new Map();
+      state.pdcDelay = null;
+      state.chainInput = null;
+      state.chainTail = null;
+      state.chainSink = null;
+      state.outputGain = null;
+      state.outputDestination = output;
+      this.rampFxTransitionGain(outputGain, 0, now, end);
+      clock.onended = () => this.disposeRetiredFxChain(state, retired!);
       try {
-        rt.dispose();
+        clock.start(now);
+        clock.stop(end + FX_REBUILD_RETIRE_PAD_SEC);
+        retirementClockScheduled = true;
       } catch {
-        /* a failing runtime must not abort the chain rebuild */
+        // If the context stopped during setup, finish the old graph after the
+        // replacement is connected below rather than retaining a dead branch.
       }
+    } else {
+      for (const unsub of state.latencySubs) unsub();
+      state.latencySubs.length = 0;
+      for (const rt of state.runtimes.values()) {
+        try {
+          rt.dispose();
+        } catch {
+          /* a failing runtime must not abort the chain rebuild */
+        }
+      }
+      state.runtimes.clear();
+      try {
+        state.pdcDelay?.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+      state.pdcDelay = null;
+      try {
+        state.outputGain?.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+      state.outputGain = null;
+      state.outputDestination = output;
+      state.chainInput = null;
+      input.disconnect();
     }
-    state.runtimes.clear();
     // The chain rebuild replaced these effect instances — the meter flags of
     // effects that are actually GONE must not survive as unreachable entries
     // that grow across every add/remove/reorder for the life of the session.
@@ -1249,20 +1420,13 @@ export class AudioEngine {
     // is still mounted, and this same loop is what restores the flag when the
     // effect is un-bypassed.
     const liveFxIds = new Set(effects.map((fx) => fx.id));
-    for (const fxId of state.params.keys()) {
+    for (const fxId of previousFxIds) {
       if (!liveFxIds.has(fxId)) this.fxMetersEnabled.delete(fxId);
     }
-    state.params.clear();
-    input.disconnect();
-    if (state.pdcDelay) {
-      try {
-        state.pdcDelay.disconnect();
-      } catch {
-        /* already disconnected */
-      }
-    }
+    if (!transition) state.params.clear();
     const bpm = this.doc?.bpm ?? 124;
     let head: AudioNode = input;
+    let chainInput: AudioNode = input;
     for (const fx of effects) {
       if (fx.bypassed) continue;
       const def = EFFECT_DEFS[fx.type];
@@ -1358,6 +1522,7 @@ export class AudioEngine {
           rt.setSidechainInput(null);
         }
       }
+      if (state.runtimes.size === 0) chainInput = rt.input;
       head.connect(rt.input);
       head = rt.output;
       state.runtimes.set(fx.id, rt);
@@ -1387,17 +1552,31 @@ export class AudioEngine {
     // one. The node is now allocated on demand, so the graph cost is paid only
     // when the alignment needs it.
     state.chainTail = head;
-    state.chainSink = output;
+    state.chainInput = chainInput;
+    const outputGain = isLiveAudioContext(ctx) ? ctx.createGain() : null;
+    if (outputGain) {
+      if (retired) {
+        outputGain.gain.setValueAtTime(0, ctx.currentTime);
+        this.rampFxTransitionGain(outputGain, 1, ctx.currentTime, ctx.currentTime + FX_REBUILD_CROSSFADE_SEC);
+      } else {
+        outputGain.gain.value = 1;
+      }
+      outputGain.connect(output);
+    }
+    state.outputGain = outputGain;
+    state.outputDestination = output;
+    const chainSink = outputGain ?? output;
+    state.chainSink = chainSink;
     if (effects.some((fx) => !fx.bypassed)) {
       if (!state.pdcDelay) state.pdcDelay = ctx.createDelay(0.2);
       head.connect(state.pdcDelay);
-      state.pdcDelay.connect(output);
+      state.pdcDelay.connect(chainSink);
     } else {
-      state.pdcDelay?.disconnect();
       state.pdcDelay = null;
-      head.connect(output);
+      head.connect(chainSink);
     }
     state.signature = this.fxSignature(effects);
+    if (retired && !retirementClockScheduled) this.disposeRetiredFxChain(state, retired);
   }
 
   /**
@@ -1544,6 +1723,7 @@ export class AudioEngine {
     this.setGenerativeSourceConnection(id, nodes, false);
     this.generativeSources.delete(id);
     this.connectedGenerativeSources.delete(id);
+    this.disposeRetiredFxChains(nodes.fx);
     for (const unsub of nodes.fx.latencySubs) unsub();
     nodes.fx.latencySubs.length = 0;
     // Defect 12.1 (audio-engine audit): the instrument path below already
@@ -1562,6 +1742,8 @@ export class AudioEngine {
     for (const fxId of nodes.fx.params.keys()) this.fxMetersEnabled.delete(fxId);
     nodes.fx.params.clear();
     nodes.fx.pdcDelay?.disconnect();
+    nodes.fx.outputGain?.disconnect();
+    nodes.fx.outputGain = null;
     for (const send of nodes.sends.values()) send.disconnect();
     nodes.sends.clear();
     for (const delay of nodes.sendDelays.values()) delay.disconnect();
@@ -1595,6 +1777,7 @@ export class AudioEngine {
   }
 
   private disposeReturnNodes(id: string, nodes: ReturnNodes): void {
+    this.disposeRetiredFxChains(nodes.fx);
     for (const unsub of nodes.fx.latencySubs) unsub();
     nodes.fx.latencySubs.length = 0;
     for (const rt of nodes.fx.runtimes.values()) {
@@ -1608,6 +1791,8 @@ export class AudioEngine {
     for (const fxId of nodes.fx.params.keys()) this.fxMetersEnabled.delete(fxId);
     nodes.fx.params.clear();
     nodes.fx.pdcDelay?.disconnect();
+    nodes.fx.outputGain?.disconnect();
+    nodes.fx.outputGain = null;
     nodes.input.disconnect();
     nodes.gain.disconnect();
     nodes.modAutoGain.disconnect();
@@ -1617,6 +1802,7 @@ export class AudioEngine {
   }
 
   private disposeGroupNodes(id: string, nodes: GroupNodes): void {
+    this.disposeRetiredFxChains(nodes.fx);
     for (const unsub of nodes.fx.latencySubs) unsub();
     nodes.fx.latencySubs.length = 0;
     for (const rt of nodes.fx.runtimes.values()) {
@@ -1630,6 +1816,8 @@ export class AudioEngine {
     for (const fxId of nodes.fx.params.keys()) this.fxMetersEnabled.delete(fxId);
     nodes.fx.params.clear();
     nodes.fx.pdcDelay?.disconnect();
+    nodes.fx.outputGain?.disconnect();
+    nodes.fx.outputGain = null;
     nodes.input.disconnect();
     nodes.panner.disconnect();
     nodes.gain.disconnect();

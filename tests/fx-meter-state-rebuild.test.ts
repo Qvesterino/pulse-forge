@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AudioEngine } from "../src/audio-engine/AudioEngine";
 import { createDrumTrackModel, normalizeProject } from "../src/project-model/schema";
 import type { ProjectDocument, EffectInstance } from "../src/project-model/types";
@@ -35,23 +35,33 @@ import type { ProjectDocument, EffectInstance } from "../src/project-model/types
 
 function param(initial = 0) {
   let value = initial;
+  const events: Array<{ kind: string; value: number; time?: number }> = [];
   return {
+    events,
     get value() {
       return value;
     },
     set value(v: number) {
       value = v;
     },
-    setTargetAtTime(v: number) {
+    setTargetAtTime(v: number, time?: number) {
       value = v;
+      events.push({ kind: "target", value: v, time });
     },
-    setValueAtTime(v: number) {
+    setValueAtTime(v: number, time?: number) {
       value = v;
+      events.push({ kind: "set", value: v, time });
     },
-    linearRampToValueAtTime(v: number) {
+    linearRampToValueAtTime(v: number, time?: number) {
       value = v;
+      events.push({ kind: "ramp", value: v, time });
     },
-    cancelScheduledValues() {},
+    cancelScheduledValues(time?: number) {
+      events.push({ kind: "cancel", value, time });
+    },
+    cancelAndHoldAtTime(time?: number) {
+      events.push({ kind: "hold", value, time });
+    },
   };
 }
 
@@ -92,8 +102,16 @@ function mockNode() {
   };
 }
 
+class MockLiveAudioContext {}
+
 function mockCtx() {
+  const constantSources: Array<{
+    onended: (() => void) | null;
+    connections: Set<unknown>;
+    fireEnded: () => void;
+  }> = [];
   const ctx = {
+    constantSources,
     currentTime: 0,
     sampleRate: 48000,
     state: "running",
@@ -115,7 +133,22 @@ function mockCtx() {
     createChannelSplitter: () => mockNode(),
     createChannelMerger: () => mockNode(),
     createWaveShaper: () => ({ ...mockNode(), oversample: "none" as OverSampleType, curve: null }),
-    createConstantSource: () => ({ ...mockNode(), offset: param(0), start() {}, stop() {} }),
+    createConstantSource: () => {
+      const base = mockNode();
+      const source = {
+        ...base,
+        connections: (base as unknown as { connections: Set<unknown> }).connections,
+        offset: param(0),
+        onended: null as (() => void) | null,
+        start() {},
+        stop() {},
+        fireEnded() {
+          source.onended?.();
+        },
+      };
+      constantSources.push(source);
+      return source;
+    },
     createOscillator: () => ({ ...mockNode(), type: "sine", start() {}, stop() {} }),
     createBufferSource: () => ({ ...mockNode(), buffer: null, playbackRate: param(1), start() {}, stop() {} }),
     createBuffer: (channels: number, len: number, rate: number) => ({
@@ -136,6 +169,7 @@ function mockCtx() {
     resume: () => Promise.resolve(),
     close: () => Promise.resolve(),
   };
+  Object.setPrototypeOf(ctx, MockLiveAudioContext.prototype);
   return ctx;
 }
 
@@ -318,6 +352,96 @@ describe("effect chain churn returns to baseline", () => {
       expect(fxState(engine)?.params.size, `cycle ${cycle}: param cache does not track the runtime`).toBe(
         bypassed ? 1 : 2,
       );
+    }
+  });
+});
+
+describe("live FX chain rebuild transition", () => {
+  it("crossfades to the replacement and retires the old runtime on the audio clock", async () => {
+    const engine = new AudioEngine();
+    const ctx = mockCtx();
+    engine.useContext(ctx as unknown as BaseAudioContext);
+    await flush();
+    vi.stubGlobal("AudioContext", MockLiveAudioContext);
+    try {
+      await engine.setProject(docWith([fx("fx-sat", "saturation")]));
+      const internals = engine as unknown as {
+        trackNodes: Map<
+          string,
+          {
+            fx: {
+              runtimes: Map<string, unknown>;
+              outputGain: { gain: { events: Array<{ kind: string; value: number }> }; connections: Set<unknown> };
+              retiring?: Set<{
+                outputGain: { connections: Set<unknown> };
+                input: { connections: Set<unknown> };
+                chainInput: { connections: Set<unknown> };
+                disposed: boolean;
+                clock: { fireEnded: () => void };
+              }>;
+            };
+          }
+        >;
+      };
+      const state = internals.trackNodes.get(TRACK_ID)!.fx;
+      const oldOutput = state.outputGain;
+      await engine.setProject(docWith([fx("fx-sat", "saturation"), fx("fx-phaser", "phaser")]));
+      await flush();
+
+      expect(state.outputGain).not.toBe(oldOutput);
+      expect(oldOutput.gain.events.some((event) => event.kind === "ramp" && event.value === 0)).toBe(true);
+      expect(state.outputGain.gain.events.some((event) => event.kind === "ramp" && event.value === 1)).toBe(true);
+      expect(state.retiring?.size).toBe(1);
+      expect(ctx.constantSources).toHaveLength(1);
+
+      const retired = [...state.retiring!][0]!;
+      expect(retired.disposed).toBe(false);
+      expect(retired.input.connections.has(retired.chainInput)).toBe(true);
+      retired.clock.fireEnded();
+      expect(retired.disposed).toBe(true);
+      expect(retired.input.connections.has(retired.chainInput)).toBe(false);
+      expect(retired.outputGain.connections.size).toBe(0);
+      expect(state.retiring?.size).toBe(0);
+    } finally {
+      engine.dispose();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("releases a pending old branch if the engine is disposed before its crossfade ends", async () => {
+    const engine = new AudioEngine();
+    const ctx = mockCtx();
+    engine.useContext(ctx as unknown as BaseAudioContext);
+    await flush();
+    vi.stubGlobal("AudioContext", MockLiveAudioContext);
+    try {
+      await engine.setProject(docWith([fx("fx-sat", "saturation")]));
+      const internals = engine as unknown as {
+        trackNodes: Map<
+          string,
+          {
+            fx: {
+              retiring?: Set<{
+                outputGain: { connections: Set<unknown> };
+                disposed: boolean;
+                clock: { onended: (() => void) | null };
+              }>;
+            };
+          }
+        >;
+      };
+      await engine.setProject(docWith([fx("fx-sat", "saturation"), fx("fx-phaser", "phaser")]));
+      await flush();
+      const retired = [...internals.trackNodes.get(TRACK_ID)!.fx.retiring!][0]!;
+
+      engine.dispose();
+
+      expect(retired.disposed).toBe(true);
+      expect(retired.clock.onended).toBeNull();
+      expect(retired.outputGain.connections.size).toBe(0);
+    } finally {
+      engine.dispose();
+      vi.unstubAllGlobals();
     }
   });
 });
