@@ -488,7 +488,12 @@ function unavailable(doc: ProjectDocument, route: RoutedIntent, warning: string)
  * store.
  */
 export function planIntent(doc: ProjectDocument, route: RoutedIntent): IntentPlan {
-  const command = buildIntentCommand(doc, route);
+  let command: ReturnType<typeof buildIntentCommand>;
+  try {
+    command = buildIntentCommand(doc, route);
+  } catch (error) {
+    return unavailable(doc, route, error instanceof Error ? error.message : String(error));
+  }
   if (!command) {
     const message =
       route.kind === "pattern" || route.kind === "revise"

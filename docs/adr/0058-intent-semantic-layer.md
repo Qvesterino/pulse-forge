@@ -115,6 +115,32 @@ direction, degree}` tool. `ToolSpec.resolve` receives the running
   intentionally model-facing and the deterministic parser calls the same
   shared package.
 
+## Deterministic tuning (2026-10-22)
+
+- **Scoreboard.** `tests/intent-router-corpus.test.ts` now scores 276 cases
+  across every param family × seven levels × both directions, fader/effect
+  levels, exact operations and a negative/safety corpus. Current report:
+  route/target/direction/degree/plan/safety **100 %**, 0 failures. The printed
+  `INTENT_SCOREBOARD` JSON is the diffable report.
+- **One target registry.** `src/intent/semantics/target-registry.ts` owns the
+  family/pad/scene aliases; `conversation.ts` and `mix.ts` derive their tables
+  from it. Layer-specific spellings (fader "hats" = pad, mix "hats" = drum
+  family) are explicit properties, not divergent copies.
+- **Quantity parser.** `src/intent/semantics/quantity.ts` distinguishes
+  destinations (`to −9 dB`), movements (`by 2 dB`), factors (`half`, `twice`)
+  and step counts (`one step further`); a bare number without a unit is not a
+  quantity.
+- **Ledger coverage.** `adjustment-ledger.ts` now records a measured fader
+  factor, effect step fraction or param range fraction. `prior-adjustment.ts`
+  resolves “half that adjustment”, “a little less than last time”, “do the same
+  on <family>” and “one step further” for all three. Effect/param target
+  switching uses families; an ordinal track remains fader-only until a
+  track-id targeting contract exists.
+- **Model gate.** `src/intent/model-route-gate.ts` is the final authority: a
+  specific deterministic route outranks the model, a description cannot become
+  a mutation, and a model mutation must produce an executable, actually-changing
+  `IntentPlan`. Both the UI fallback and MCP `kyx_intent` call it.
+
 These are audible behavior changes: "much" is now a level-5 move, the fader and
 knob curves moved at levels 5/6, and plugin parameters use physical steps. The
 unit tests pin ordering, bounds and exact family steps; a human listening pass
@@ -128,8 +154,9 @@ is still required before calling the magnitudes final.
   classification.
 - The UI can explain a fader/effect/exact ask before it lands, not only a named
   knob.
-- No schema, persistence or dependency change. The ledger remains session-only
-  and fader-only; effect/param prior references still decline honestly.
+- No schema or persistence change. The ledger is session-only and now records
+  fader, effect and param relative moves; an ordinal track target remains a
+  fader-only capability.
 - The plan does not cover lanes that need app services (generation, loudness
   measure/trim, mix-profile audition). `executable: false` states that; it is
   not a silent fallback.
@@ -152,6 +179,8 @@ is still required before calling the magnitudes final.
 ## References
 
 - `src/intent/semantics/param-registry.ts`, `src/intent/semantics/intent-plan.ts`
+- `src/intent/semantics/target-registry.ts`, `src/intent/semantics/quantity.ts`,
+  `src/intent/model-route-gate.ts`
 - `src/intent/apply-boundary.ts`, `src/intent/route-precedence.ts`,
   `src/intent/command-for-route.ts`
 - `tests/param-intent.test.ts`, `tests/param-readback.test.ts`,

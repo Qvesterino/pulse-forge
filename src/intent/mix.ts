@@ -21,6 +21,7 @@ import { isPriorDeltaReference } from "./reference-delta";
 import { isDescriptiveStatement } from "./declarative";
 import { calibrateKnobScale, degreeToEffectAmount, parseDegree, type Degree } from "./degree";
 import type { IntentSpec } from "./types";
+import { MIX_TARGET_WORDS, ROLE_TARGETS } from "./semantics/target-registry";
 
 /**
  * INTENT → MIX CHAIN (INTENT_ENGINE.md D1) — the intent shapes not just the
@@ -743,25 +744,8 @@ export const EFFECT_KNOB: Partial<Record<EffectType, string>> = {
 };
 
 /** Scene role → the tracks its instrumentation plays (song-builder map). */
-const ROLE_TARGETS: Record<string, MixTarget[]> = {
-  intro: ["drums", "bass"],
-  outro: ["drums", "bass"],
-  verse: ["drums", "bass", "chords"],
-  build: ["drums", "bass", "chords"],
-  break: ["chords", "lead"],
-  bridge: ["chords", "lead"],
-  chorus: ["drums", "bass", "chords", "lead"],
-  drop: ["drums", "bass", "chords", "lead"],
-  fill: ["drums"],
-};
-
-export const TARGET_WORDS: ReadonlyArray<readonly [RegExp, MixTarget]> = [
-  [/\bdrum|\bbic|\bhats?\b|\bhi.?hat/, "drums"],
-  [/\bbass\w*|\bbas(?:a|e|u|y|i|ou|ov|om)?\b|\b808\w*/, "bass"],
-  [/\bchord|\bakord|\bpad/, "chords"],
-  [/\blead(?:e|om|u|a)?\b|\bmelod/, "lead"],
-  [/\bvocals?\b|\bvok[a\u00e1]l\w*|\bspev\w*/i, "vocal"],
-];
+export { ROLE_TARGETS };
+export const TARGET_WORDS: ReadonlyArray<readonly [RegExp, MixTarget]> = MIX_TARGET_WORDS;
 
 /**
  * The FIRST track family named in a sentence — read on the reference-stripped

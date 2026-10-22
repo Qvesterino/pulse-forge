@@ -52,7 +52,7 @@ import {
 import type { Command } from "../commands/types";
 import { routeIntentText, type RoutedIntent } from "../intent/route";
 import { clarifyMessage } from "../intent/clarify-messages";
-import { isDescriptiveStatement } from "../intent/declarative";
+import { gateModelRoute } from "../intent/model-route-gate";
 import { routeIsDestructive } from "../intent/route-guard";
 import { presetsForEffect } from "../effects/presets";
 import { planMasterSettings, planReferenceMastering, resolveMasterAssistantStepValue } from "./master-assistant";
@@ -4143,14 +4143,15 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         }
         const modelRoute = await tryModelRoute(trimmed, ctx.getDoc(), deterministic);
         if (modelRoute != null) {
-          // P0 SAFETY: a model route may not override the deterministic
-          // description guard with a mutation.
-          if (isDescriptiveStatement(trimmed) && modelRoute.kind !== "clarify" && modelRoute.kind !== "queryIntent") {
-            logIntentMiningEvent({ prompt: trimmed, outcome: "clarify", reason: "descriptive-not-a-command" });
-            return { text: clarifyMessage("descriptive-not-a-command"), mutated: false };
+          // DETERMINISTIC GATE: no model override of a specific rule route,
+          // no mutation from a description, no mutation without a real plan.
+          const gated = gateModelRoute(trimmed, modelRoute, ctx.getDoc());
+          if (gated == null) {
+            logIntentMiningEvent({ prompt: trimmed, outcome: "clarify", reason: "model-route-rejected" });
+            return { text: clarifyMessage("model-route-rejected"), mutated: false };
           }
-          logIntentMiningEvent({ prompt: trimmed, outcome: "model-hit", routeKind: modelRoute.kind });
-          const result = executeRoutedIntent(ctx, modelRoute);
+          logIntentMiningEvent({ prompt: trimmed, outcome: "model-hit", routeKind: gated.kind });
+          const result = executeRoutedIntent(ctx, gated);
           return { ...result, text: `🤖 local model — ${result.text}` };
         }
         if (deterministic.kind === "clarify") {

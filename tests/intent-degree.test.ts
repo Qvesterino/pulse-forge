@@ -18,9 +18,10 @@ import {
   recordEffectAdjustment,
   recordFaderAdjustment,
 } from "../src/intent/adjustment-recording";
-import { lastAdjustment } from "../src/intent/adjustment-ledger";
+import { lastAdjustment, type FaderRecord } from "../src/intent/adjustment-ledger";
 import { resolvePriorAdjustment } from "../src/intent/prior-adjustment";
 import { CANONICAL_DEGREE_WORDS } from "../src/intent/semantics/degree-contract";
+import { parseQuantity, formatQuantity } from "../src/intent/semantics/quantity";
 import { testDoc } from "./fixtures/doc";
 
 /**
@@ -666,7 +667,7 @@ describe("prior-adjustment ledger", () => {
 
   it("'half that adjustment' halves the dB move that actually landed", () => {
     const { doc, after1 } = recorded();
-    const entry = lastAdjustment(doc.id)!;
+    const entry = lastAdjustment(doc.id) as FaderRecord;
     expect(entry.factor).toBeLessThan(1);
     const half = resolvePriorAdjustment("no, half that adjustment", after1);
     expect(half?.kind).toBe("fader");
@@ -706,7 +707,7 @@ describe("prior-adjustment ledger", () => {
 
   it("'do the same on track three' reuses the factor on the NEW track", () => {
     const { doc, after1 } = recorded();
-    const entry = lastAdjustment(doc.id)!;
+    const entry = lastAdjustment(doc.id) as FaderRecord;
     const chords = doc.tracks.find((track) => track.name === "Chords")!;
     const same = resolvePriorAdjustment("do the same on track three", after1);
     expect(same?.kind).toBe("fader");
@@ -767,7 +768,7 @@ describe("prior-adjustment ledger", () => {
 
     recordFaderAdjustment(before.id, intent, before, after);
 
-    expect(lastAdjustment(before.id)?.factor).toBeGreaterThan(0);
+    expect((lastAdjustment(before.id) as FaderRecord).factor).toBeGreaterThan(0);
     expect(lastAdjustment(before.id)?.targets).toEqual(["bass", "drums"]);
   });
 
@@ -831,5 +832,36 @@ describe("canonical degree contract", () => {
     expect(parseDegree("noticeably")!.level).toBe(4);
     expect(parseDegree("quite")!.level).toBe(4);
     expect(parseDegree("a lot")!.level).toBe(6);
+  });
+});
+
+describe("quantity parser — explicit numbers are not degrees", () => {
+  it("distinguishes a destination from a movement", () => {
+    expect(parseQuantity("set the bass to -9 dB")).toEqual({ kind: "db", value: -9, absolute: true });
+    expect(parseQuantity("lower the bass by 2.5 db")).toEqual({ kind: "db", value: 2.5, absolute: false });
+    expect(parseQuantity("+3 dB on the lead")).toEqual({ kind: "db", value: 3, absolute: false });
+  });
+
+  it("reads percent destinations and movements", () => {
+    expect(parseQuantity("set width to 50%")).toEqual({ kind: "percent", value: 50, absolute: true });
+    expect(parseQuantity("by 10 %")).toEqual({ kind: "percent", value: 10, absolute: false });
+  });
+
+  it("reads scaling and step counts", () => {
+    expect(parseQuantity("half that adjustment")).toEqual({ kind: "factor", value: 0.5 });
+    expect(parseQuantity("twice as much")).toEqual({ kind: "factor", value: 2 });
+    expect(parseQuantity("one step further")).toEqual({ kind: "steps", count: 1 });
+    expect(parseQuantity("two notches back")).toEqual({ kind: "steps", count: 2 });
+  });
+
+  it("does not invent a unit for a bare number", () => {
+    expect(parseQuantity("make it 3")).toBeNull();
+    expect(parseQuantity("track 2")).toBeNull();
+  });
+
+  it("formats the same shape the resolver stores", () => {
+    expect(formatQuantity({ kind: "db", value: -9, absolute: true })).toBe("to -9 dB");
+    expect(formatQuantity({ kind: "factor", value: 0.5 })).toBe("×0.5");
+    expect(formatQuantity({ kind: "steps", count: 2 })).toBe("2 steps");
   });
 });

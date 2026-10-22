@@ -30,6 +30,7 @@ import type { DrumTrack, ProjectDocument } from "../project-model/types";
 import { MAX_BPM, MIN_BPM } from "../project-model/schema";
 import type { ProductionIntent, ProductionTarget } from "./production";
 import type { DeclinedIntentClarification } from "./mix";
+import { FADER_PADS, FADER_TARGETS } from "./semantics/target-registry";
 
 // ── FADER ("zníž basu", "hlasnejšie bicie", "turn down the drums") ──────────
 
@@ -160,30 +161,6 @@ const SK_ADD_FADER = /\bpridaj\s+(?:(?:hlasitos\w*|volume)\s+)?(?:bas\w*|lead\w*
 /** UP stems that unambiguously name a direction (loud-words excluded). */
 const FADER_UP_DIRECTIONAL =
   /\bzvis\b|\bzvys|\bvyss\b|\btazs\w*|\bpotiahni hore|\btahaj hore|\bdaj hore|\bhore\b|\bturn up\b|\bbring up\b|\braise\b|\bpush up\b|\blouder\b|\b(?:bring|turn|push|move)\b.{0,36}\bup\b|\btake\b.{0,36}\bup\b(?!\s+(?:less|fewer)\b)|\bpridaj\s+(?:(?:hlasitos\w*|volume)\s+)?(?:bas\w*|lead\w*|master\w*|bic\w*)\b|\b(?:bring|move|push)\b.{0,28}\bforward\b/;
-
-const FADER_TARGETS: ReadonlyArray<readonly [RegExp, FaderTarget]> = [
-  [/\bbas(?:u|e|y|ov|om)?\b|\bbass\w*|\b808\w*/, "bass"],
-  [/\bbic(?:i|ie|ich)?\b|\bbubn\w*|\bdrums?\b|\bbeat\b/, "drums"],
-  [/\bklaves|\bakord\w*|\bchords?\b|\bkeys\b|\bpadov?\b/, "chords"],
-  [/\blead\w*\b|\bmelodi\w*|\bsynth\w*\b/, "lead"],
-  // "vocal" — but never the volume NOUN/ADJECTIVE ("hlasnejšie", "hlasitosť"
-  // are loud-words, not the voice; the lookahead keeps "zníž hlasitosť basu"
-  // a BASS ask). Deaccented SK: spev/hlas/vokal.
-  [/\bvocals?\b|\bvox\b|\bvokal\w*|\bspev\w*|\bhlas(?!nej|it|ilo)\w*/, "vocal"],
-  [
-    /\bmaster\w*|\bvsetk\w*|\bcely (?:mix|beat)\b|\beverything\b|\bwhole (?:mix|beat)\b|\bmaster (?:fader|gain)\b/,
-    "master",
-  ],
-];
-
-const FADER_PADS: ReadonlyArray<readonly [RegExp, FaderPadFamily]> = [
-  [/\bkick\w*/, "kick"],
-  [/\bsnare\w*/, "snare"],
-  [/\bclap\w*/, "clap"],
-  [/\bhat\w*|\bhi.?hat\w*|\bcinel\w*/, "hat"],
-  [/\btoms?\b/, "tom"],
-  [/\bperc(?:ussion\w*|s)?\b|\bperkus\w*/, "perc"],
-];
 
 /** De-accented lowercase with boundary padding (the module's house style). */
 function normalizedLower(text: string): string {

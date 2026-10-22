@@ -3,6 +3,11 @@ import { readFileSync } from "node:fs";
 import { routeIntentText } from "../src/intent/route";
 import { ROUTE_PRECEDENCE } from "../src/intent/route-precedence";
 import { ROUTE_ADJUSTMENT } from "../src/intent/apply-boundary";
+import { buildCapabilityMatrix } from "../src/intent/semantics/param-registry";
+import { planIntent } from "../src/intent/semantics/intent-plan";
+import { gateModelRoute } from "../src/intent/model-route-gate";
+import { parseFaderIntent } from "../src/intent/conversation";
+import { parseEffectIntent } from "../src/intent/mix";
 import { testDoc } from "./fixtures/doc";
 import type { ProjectDocument } from "../src/project-model/types";
 
@@ -335,5 +340,266 @@ describe("route precedence contract", () => {
     expect(exact).toBeLessThan(fader);
     expect(param).toBeLessThan(tempo);
     expect(fader).toBeLessThan(tempo);
+  });
+});
+
+/**
+ * DETERMINISTIC SCOREBOARD (2026-10-22).
+ *
+ * A repeatable precision report over the deterministic layer: route, target,
+ * direction, degree/quantity and plan executability across every param family,
+ * fader, effect and a negative/safety corpus. It is a corpus test, not a
+ * benchmark: a failure is a finding, and the printed JSON is the scoreboard a
+ * human can diff between sessions.
+ */
+describe("deterministic intent scoreboard", () => {
+  const LEVELS: ReadonlyArray<readonly [number, string]> = [
+    [1, "barely"],
+    [2, "a touch"],
+    [3, "slightly"],
+    [4, "somewhat"],
+    [5, "much"],
+    [6, "a lot"],
+    [7, "as much as possible"],
+  ];
+
+  interface Expected {
+    kind: string;
+    effectType?: string;
+    paramId?: string;
+    direction?: "up" | "down" | "more" | "less";
+    degree?: number;
+    target?: string;
+    mutates: boolean;
+  }
+
+  const targetFromExample = (text: string): string | undefined => {
+    if (/\bon the 808\b/.test(text)) return "bass";
+    if (/\bon the drums\b/.test(text)) return "drums";
+    if (/\bon the chords\b/.test(text)) return "chords";
+    if (/\bon the lead\b/.test(text)) return "lead";
+    return undefined;
+  };
+
+  const routes = (route: ReturnType<typeof routeIntentText>): string[] => {
+    if (route.kind === "paramIntent" || route.kind === "effectIntent") return route.intent.targets;
+    if (route.kind === "exact") {
+      return route.plan.ops.flatMap((op) => ("target" in op && typeof op.target === "string" ? [op.target] : []));
+    }
+    if (route.kind === "fader") return [...route.intent.targets, ...(route.intent.pads ?? [])];
+    return [];
+  };
+
+  it("scores the deterministic corpus at 100% and prints the report", () => {
+    const doc = testDoc();
+    const metrics = {
+      cases: 0,
+      route: 0,
+      target: 0,
+      direction: 0,
+      degree: 0,
+      plan: 0,
+      safety: 0,
+      failures: [] as string[],
+    };
+    const check = (text: string, expected: Expected): void => {
+      metrics.cases += 1;
+      const route = routeIntentText(text, doc);
+      const plan = planIntent(doc, route);
+      if (route.kind !== expected.kind) {
+        metrics.failures.push(`${text}: route ${route.kind} != ${expected.kind}`);
+        return;
+      }
+      metrics.route += 1;
+      if (expected.target && !routes(route).includes(expected.target)) {
+        metrics.failures.push(`${text}: target ${routes(route).join("+") || "-"} missing ${expected.target}`);
+        return;
+      }
+      metrics.target += 1;
+      if (expected.direction) {
+        const actual =
+          route.kind === "paramIntent"
+            ? route.intent.mode
+            : route.kind === "effectIntent"
+              ? route.intent.direction
+              : route.kind === "fader"
+                ? route.intent.direction
+                : undefined;
+        if (actual !== expected.direction) {
+          metrics.failures.push(`${text}: direction ${actual} != ${expected.direction}`);
+          return;
+        }
+      }
+      metrics.direction += 1;
+      if (expected.degree != null) {
+        const actual =
+          route.kind === "paramIntent" || route.kind === "effectIntent" || route.kind === "fader"
+            ? route.intent.degree?.level
+            : undefined;
+        if (actual !== expected.degree) {
+          metrics.failures.push(`${text}: degree ${actual} != ${expected.degree}`);
+          return;
+        }
+      }
+      metrics.degree += 1;
+      if (expected.kind === "paramIntent" && route.kind === "paramIntent") {
+        if (route.intent.effectType !== expected.effectType || route.intent.paramId !== expected.paramId) {
+          metrics.failures.push(
+            `${text}: param ${route.intent.effectType}.${route.intent.paramId} != ${expected.effectType}.${expected.paramId}`,
+          );
+          return;
+        }
+      }
+      if (expected.kind === "effectIntent" && route.kind === "effectIntent") {
+        if (route.intent.effectType !== expected.effectType) {
+          metrics.failures.push(`${text}: effect ${route.intent.effectType} != ${expected.effectType}`);
+          return;
+        }
+      }
+      if (expected.mutates) {
+        if (!plan.executable || !plan.mutates || plan.steps.length === 0) {
+          metrics.failures.push(`${text}: plan not executable/mutating (${plan.warnings.join("; ")})`);
+          return;
+        }
+      } else {
+        if (plan.mutates) {
+          metrics.failures.push(`${text}: negative case mutated`);
+          return;
+        }
+        metrics.safety += 1;
+      }
+      metrics.plan += 1;
+    };
+
+    // Param families × both directions × all seven levels.
+    for (const row of buildCapabilityMatrix().filter((entry) => entry.exposedBy === "param")) {
+      for (const direction of ["more", "less"] as const) {
+        for (const [level, word] of LEVELS) {
+          const text = row.examples[direction].replace("${degree}", word);
+          check(text, {
+            kind: "paramIntent",
+            effectType: row.effectType,
+            paramId: row.paramId,
+            direction,
+            degree: level,
+            target: targetFromExample(text),
+            mutates: true,
+          });
+        }
+      }
+    }
+
+    // Fader up/down × all seven levels.
+    for (const [level, word] of LEVELS) {
+      check(`turn down the master ${word}`, {
+        kind: "fader",
+        direction: "down",
+        degree: level,
+        target: "master",
+        mutates: true,
+      });
+      check(`turn up the master ${word}`, {
+        kind: "fader",
+        direction: "up",
+        degree: level,
+        target: "master",
+        mutates: true,
+      });
+    }
+
+    // Effect primary knob × both directions × all seven levels.
+    for (const [level, word] of LEVELS) {
+      check(`${word} more reverb on the pads`, {
+        kind: "effectIntent",
+        effectType: "reverb",
+        direction: "more",
+        degree: level,
+        target: "chords",
+        mutates: true,
+      });
+      check(`${word} less reverb on the pads`, {
+        kind: "effectIntent",
+        effectType: "reverb",
+        direction: "less",
+        degree: level,
+        target: "chords",
+        mutates: true,
+      });
+    }
+
+    // Exact operations stay exact.
+    check("lower the drums by 2 db", { kind: "exact", target: "drums", mutates: true });
+    check("mute the drums", { kind: "exact", target: "drums", mutates: true });
+    check("set tempo to 140", { kind: "exact", mutates: true });
+
+    // Safety corpus: descriptions, negation, hypothetical and unresolvable
+    // references must never mutate.
+    for (const text of [
+      "the bass is quieter than the lead",
+      "the pads have too much reverb",
+      "don't make the bass quieter",
+      "the bass is as quiet as possible",
+      "make the reverb tail a little longer",
+      "the mix is significantly louder than the reference",
+      "the bass is much less loud than the lead",
+    ]) {
+      check(text, { kind: "clarify", mutates: false });
+    }
+
+    console.log(
+      "INTENT_SCOREBOARD " +
+        JSON.stringify({
+          cases: metrics.cases,
+          routeAccuracy: Number((metrics.route / metrics.cases).toFixed(4)),
+          targetAccuracy: Number((metrics.target / metrics.cases).toFixed(4)),
+          directionAccuracy: Number((metrics.direction / metrics.cases).toFixed(4)),
+          degreeAccuracy: Number((metrics.degree / metrics.cases).toFixed(4)),
+          planAccuracy: Number((metrics.plan / metrics.cases).toFixed(4)),
+          safety: Number((metrics.safety / 7).toFixed(4)),
+          failures: metrics.failures.length,
+        }),
+    );
+    expect(metrics.failures).toEqual([]);
+    expect(metrics.cases).toBeGreaterThanOrEqual(250);
+  });
+});
+
+/**
+ * D (2026-10-22) — the deterministic layer gates every model proposal.
+ *
+ * The model is a fallback, not an authority: it may not overrule a specific
+ * rule route, mutate from a description, or propose a mutation whose plan is
+ * not executable. These tests use real parsed routes, not hand-built shapes.
+ */
+describe("model route gate", () => {
+  const doc = testDoc();
+  const fader = parseFaderIntent("turn down the bass")!;
+  const effect = parseEffectIntent("slightly more reverb on the pads")!;
+  const pattern = routeIntentText("a beat that is dark and warm", doc);
+
+  it("rejects a model mutation from a description", () => {
+    expect(gateModelRoute("the bass is quieter than the lead", { kind: "fader", intent: fader }, doc)).toBeNull();
+  });
+
+  it("returns the specific deterministic route instead of the model's", () => {
+    const gated = gateModelRoute("turn down the bass", { kind: "effectIntent", intent: effect }, doc);
+    expect(gated?.kind).toBe("fader");
+  });
+
+  it("accepts a model mutation only when its plan is executable", () => {
+    expect(pattern.kind).toBe("pattern");
+    const gated = gateModelRoute("a beat that is dark and warm", { kind: "effectIntent", intent: effect }, doc);
+    expect(gated?.kind).toBe("effectIntent");
+
+    // "on the lead" names no track in the house fixture: no executable plan.
+    const noTarget = parseEffectIntent("more reverb on the lead")!;
+    expect(gateModelRoute("a beat that is dark and warm", { kind: "effectIntent", intent: noTarget }, doc)).toBeNull();
+  });
+
+  it("rejects model generation and accepts a read-only answer", () => {
+    expect(gateModelRoute("a beat that is dark and warm", pattern, doc)).toBeNull();
+    expect(
+      gateModelRoute("a beat that is dark and warm", { kind: "clarify", reason: "x", suggestions: [] }, doc)?.kind,
+    ).toBe("clarify");
   });
 });

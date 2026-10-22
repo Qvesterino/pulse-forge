@@ -36,6 +36,8 @@ export const CLARIFY_MESSAGES: Readonly<Record<string, string>> = {
     "That refers to an earlier change I don't have in this session, so I didn't change anything — name the target and the amount, or say 'undo that'.",
   "descriptive-not-a-command":
     'That describes how the mix sounds right now, so I didn\'t change anything. Say what you want changed, for example "turn down the bass".',
+  "model-route-rejected":
+    "The local model proposed a change that could not be validated against the project, so I didn't change anything. Name the target and the action.",
   "param-target": "That names a parameter but not the track it belongs to. I didn't change anything — pick a track.",
   "prior-adjustment-target":
     "I remember the last adjustment, but not which track you mean. I didn't change anything — name the track.",

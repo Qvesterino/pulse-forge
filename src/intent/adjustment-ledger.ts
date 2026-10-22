@@ -31,10 +31,17 @@
  * This module is deliberately a STORE and nothing else: one record, one
  * writer's contract, no parsing and no policy.
  */
+import type { EffectType } from "../project-model/types";
 import type { FaderPadFamily, FaderTarget } from "./conversation";
+import type { DegreeLevel } from "./degree";
+import type { MixTarget } from "./mix";
+import type { ParamRole } from "./param-intent";
 
-/** One remembered change, in the only form the resolver can replay. */
-export interface AdjustmentRecord {
+/** One remembered relative change, in the form the resolver can replay. */
+export type AdjustmentRecord = FaderRecord | EffectRecord | ParamRecord;
+
+export interface FaderRecord {
+  kind: "fader";
   /**
    * The document the change happened in. "Last time" means "in this project":
    * a track id from another project names a track that does not exist here.
@@ -57,6 +64,31 @@ export interface AdjustmentRecord {
   trackIds?: readonly string[];
   /** Return buses, when the change hit one. */
   returnIds?: readonly string[];
+}
+
+export interface EffectRecord {
+  kind: "effect";
+  docId: string;
+  effectType: EffectType;
+  direction: "more" | "less";
+  targets: readonly MixTarget[];
+  /** Measured |after − before| / knob range on the primary knob. */
+  stepFraction: number;
+  /** The semantic rung the original ask named (or the amount-class default). */
+  degreeLevel: DegreeLevel;
+}
+
+export interface ParamRecord {
+  kind: "param";
+  docId: string;
+  effectType: EffectType;
+  role: ParamRole;
+  paramId: string;
+  mode: "more" | "less";
+  targets: readonly MixTarget[];
+  /** Measured |after − before| as a fraction of the param range, in its domain. */
+  fraction: number;
+  degreeLevel: DegreeLevel;
 }
 
 let last: AdjustmentRecord | null = null;

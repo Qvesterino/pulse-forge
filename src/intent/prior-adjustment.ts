@@ -1,21 +1,28 @@
 /**
  * PRIOR-ADJUSTMENT RESOLVER — turn "half that adjustment", "a little less than
- * last time" and "do the same on track two" into a NEW, validated fader intent.
+ * last time", "do the same on track two" and "one step further" into a NEW,
+ * validated intent.
  *
- * P1 (audit 2026-10-20). These phrases used to apply the phrase's own nominal
- * step as a guess, or fall through to pattern generation. The session ledger
- * remembers the measured last RELATIVE FADER move; this module scales or
+ * The session ledger remembers the measured last RELATIVE move: a fader
+ * factor, an effect-knob step or a param range fraction. This module scales or
  * reuses it. Everything here is a PLAN — execution still goes through the
- * canonical fader applier (clamps, one snapshot, read-back).
+ * canonical appliers (clamps, one snapshot, read-back).
  *
- * The ledger is fader-only by design (see `adjustment-ledger.ts`). References
- * after an effect/param change therefore decline with the focused
- * `last-adjustment-reference` message rather than replaying an older fader
- * move. That is honest, and it is the documented boundary of this slice.
+ * Target switching:
+ *   - fader: family/pad names, ordinal tracks ("track two"), or the prior target
+ *   - effect/param: family names, or the prior family; an ordinal track is not
+ *     silently treated as a family (it needs a track-id targeting contract, so
+ *     it clarifies instead)
  */
 import type { ProjectDocument } from "../project-model/types";
-import { calibrateFaderFactor, degreeForLevel, degreeToFaderAmount, type DegreeLevel } from "./degree";
-import { lastAdjustment } from "./adjustment-ledger";
+import {
+  calibrateFaderFactor,
+  degreeForLevel,
+  degreeToEffectAmount,
+  degreeToFaderAmount,
+  type DegreeLevel,
+} from "./degree";
+import { lastAdjustment, type EffectRecord, type FaderRecord, type ParamRecord } from "./adjustment-ledger";
 import {
   faderTargetsIn,
   trackIdsForTarget,
@@ -23,9 +30,15 @@ import {
   type FaderPadFamily,
   type FaderTarget,
 } from "./conversation";
+import { TARGET_WORDS, type EffectIntent, type MixTarget } from "./mix";
+import { trackIdsForMixTarget, type ParamIntent } from "./param-intent";
 import { isPriorDeltaReference } from "./reference-delta";
 
-export type PriorResolution = { kind: "fader"; intent: FaderIntent } | { kind: "clarify"; reason: string };
+export type PriorResolution =
+  | { kind: "fader"; intent: FaderIntent }
+  | { kind: "effect"; intent: EffectIntent }
+  | { kind: "param"; intent: ParamIntent }
+  | { kind: "clarify"; reason: string };
 
 type Scale = { kind: "half" } | { kind: "rungs"; count: 1 | 2 } | { kind: "reuse" };
 
@@ -34,7 +47,7 @@ const HALF =
 const MUCH_LESS = /\b(?:much|way|a\s+lot|far)\s+less\s+than\s+(?:the\s+)?(?:last|previous|prior)\b/;
 const LESS_THAN = /\bless\s+than\s+(?:the\s+)?(?:last|previous|prior)\b/;
 const REUSE =
-  /\b(?:do|apply|use|repeat)\s+(?:the\s+)?same\b|\b(?:same|identical)\s+(?:adjustment|change)\s+as\b|\b(?:same|that|it)\s+again\b|\bdo\s+(?:that|it)\s+again\b|\bas\s+much\s+as\s+(?:the\s+)?(?:last|previous|prior)\b|\brepeat\s+(?:that|it|the\s+last\b)|\b(?:same|identical)\s+(?:amount|volume|level|value|delta)\s+as\b|\bagain\s*[.!?]?\s*$/;
+  /\b(?:do|apply|use|repeat)\s+(?:the\s+)?same\b|\b(?:same|identical)\s+(?:adjustment|change)\s+as\b|\b(?:same|that|it)\s+again\b|\bdo\s+(?:that|it)\s+again\b|\bas\s+much\s+as\s+(?:the\s+)?(?:last|previous|prior)\b|\brepeat\s+(?:that|it|the\s+last\b)|\b(?:same|identical)\s+(?:amount|volume|level|value|delta)\s+as\b|\bone\s+(?:more\s+)?step\b|\banother\s+step\b|\bagain\s*[.!?]?\s*$/;
 
 function normalized(text: string): string {
   return ` ${text
@@ -110,11 +123,7 @@ interface FaderTargets {
   returnIds: string[];
 }
 
-function resolveFaderTargets(
-  text: string,
-  doc: ProjectDocument,
-  entry: NonNullable<ReturnType<typeof lastAdjustment>>,
-): FaderTargets | null {
+function resolveFaderTargets(text: string, doc: ProjectDocument, entry: FaderRecord): FaderTargets | null {
   const found = faderTargetsIn(text);
   if (found.targets.length > 0 || found.pads.length > 0) {
     return { ...found, trackIds: [], returnIds: [] };
@@ -126,11 +135,9 @@ function resolveFaderTargets(
     if (!track) return null;
     return { targets: [], pads: [], trackIds: [track.id], returnIds: [] };
   }
-  // Half / "less than last time" always refer to the SAME target; a bare
-  // repeat ("the same adjustment") does too.
   return {
-    targets: [...entry.targets] as FaderTarget[],
-    pads: [...entry.pads] as FaderPadFamily[],
+    targets: [...entry.targets],
+    pads: [...entry.pads],
     trackIds: [...(entry.trackIds ?? [])],
     returnIds: [...(entry.returnIds ?? [])],
   };
@@ -144,11 +151,32 @@ function faderTargetsExist(doc: ProjectDocument, chosen: FaderTargets): boolean 
   return false;
 }
 
+function mixTargetsIn(text: string): MixTarget[] {
+  const lower = normalized(text);
+  const targets = new Set<MixTarget>();
+  for (const [pattern, target] of TARGET_WORDS) {
+    if (pattern.test(lower)) targets.add(target);
+  }
+  return [...targets];
+}
+
+function resolveMixTargets(text: string, entry: EffectRecord | ParamRecord): MixTarget[] | null {
+  const named = mixTargetsIn(text);
+  if (named.length > 0) return named;
+  // An ordinal track has no family id; do not guess that "track two" is the
+  // bass family. The caller gets a focused target clarification instead.
+  if (ordinalTrackIndex(text) != null) return null;
+  return [...entry.targets];
+}
+
+function mixTargetsExist(doc: ProjectDocument, targets: readonly MixTarget[]): boolean {
+  return targets.some((target) => trackIdsForMixTarget(doc, target).length > 0);
+}
+
 /**
  * Recover which semantic rung produced the measured factor. The ledger keeps
  * the number, not the words; the calibration curve is monotone, so nearest
- * anchor is the rung. Rounding in the gain clamp can move the measured factor
- * by ~0.5 %, which never crosses two rungs.
+ * anchor is the rung.
  */
 function levelFromFactor(factor: number, direction: "up" | "down"): DegreeLevel {
   let best: DegreeLevel = 5;
@@ -168,31 +196,17 @@ function rungLevel(prior: DegreeLevel, count: 1 | 2): DegreeLevel {
   return Math.max(1, prior - count) as DegreeLevel;
 }
 
-export function resolvePriorAdjustment(text: string, doc: ProjectDocument): PriorResolution | null {
-  if (!isPriorDeltaReference(text)) return null;
-  // A bare "again" could be transport ("play again") or a repeat of the last
-  // adjustment. It is not specific enough to execute either; ask. Qualified
-  // repeats ("same again", "do it again", "repeat the last change") resolve.
-  if (/^\s*again(?:\s+please)?\s*[.!?]?\s*$/i.test(text)) {
-    return { kind: "clarify", reason: "last-adjustment-reference" };
-  }
-  const entry = lastAdjustment(doc.id);
-  if (!entry) return { kind: "clarify", reason: "last-adjustment-reference" };
-  const scale = scaleOf(text);
-  if (!scale) return { kind: "clarify", reason: "last-adjustment-reference" };
-
+function resolveFader(text: string, doc: ProjectDocument, entry: FaderRecord, scale: Scale): PriorResolution {
   const chosen = resolveFaderTargets(text, doc, entry);
   if (!chosen || !faderTargetsExist(doc, chosen)) {
     return { kind: "clarify", reason: "prior-adjustment-target" };
   }
   const base = { ...chosen };
-
   if (scale.kind === "half") {
     if (!(entry.factor > 0)) return { kind: "clarify", reason: "last-adjustment-reference" };
     const factor = Math.sqrt(entry.factor);
     return { kind: "fader", intent: { ...base, direction: factor < 1 ? "down" : "up", factor } };
   }
-
   if (scale.kind === "rungs") {
     const level = rungLevel(levelFromFactor(entry.factor, entry.direction), scale.count);
     return {
@@ -205,6 +219,113 @@ export function resolvePriorAdjustment(text: string, doc: ProjectDocument): Prio
       },
     };
   }
-
   return { kind: "fader", intent: { ...base, direction: entry.direction, factor: entry.factor } };
+}
+
+function resolveEffect(text: string, doc: ProjectDocument, entry: EffectRecord, scale: Scale): PriorResolution {
+  const targets = resolveMixTargets(text, entry);
+  if (!targets || !mixTargetsExist(doc, targets)) {
+    return { kind: "clarify", reason: "prior-adjustment-target" };
+  }
+  const amount = degreeToEffectAmount(entry.degreeLevel);
+  const detected = [`prior ${scale.kind}`, `${entry.effectType} ${entry.direction}`];
+  if (scale.kind === "half") {
+    if (!(entry.stepFraction > 0)) return { kind: "clarify", reason: "last-adjustment-reference" };
+    return {
+      kind: "effect",
+      intent: {
+        effectType: entry.effectType,
+        targets,
+        direction: entry.direction,
+        amount,
+        percent: Math.max(0, Math.min(100, entry.stepFraction * 50)),
+        detected,
+      },
+    };
+  }
+  if (scale.kind === "rungs") {
+    const level = rungLevel(entry.degreeLevel, scale.count);
+    return {
+      kind: "effect",
+      intent: {
+        effectType: entry.effectType,
+        targets,
+        direction: entry.direction,
+        degree: degreeForLevel(level),
+        amount: degreeToEffectAmount(level),
+        detected,
+      },
+    };
+  }
+  if (!(entry.stepFraction > 0)) return { kind: "clarify", reason: "last-adjustment-reference" };
+  return {
+    kind: "effect",
+    intent: {
+      effectType: entry.effectType,
+      targets,
+      direction: entry.direction,
+      amount,
+      percent: Math.max(0, Math.min(100, entry.stepFraction * 100)),
+      detected,
+    },
+  };
+}
+
+function resolveParam(text: string, doc: ProjectDocument, entry: ParamRecord, scale: Scale): PriorResolution {
+  const targets = resolveMixTargets(text, entry);
+  if (!targets || !mixTargetsExist(doc, targets)) {
+    return { kind: "clarify", reason: "prior-adjustment-target" };
+  }
+  const amount = degreeToEffectAmount(entry.degreeLevel);
+  const detected = [`prior ${scale.kind}`, `${entry.effectType}.${entry.paramId} ${entry.mode}`];
+  const base = {
+    effectType: entry.effectType,
+    role: entry.role,
+    paramId: entry.paramId,
+    targets,
+    mode: entry.mode,
+    amount,
+    detected,
+  };
+  if (scale.kind === "half") {
+    if (!(entry.fraction > 0)) return { kind: "clarify", reason: "last-adjustment-reference" };
+    return {
+      kind: "param",
+      intent: { ...base, percent: Math.max(0, Math.min(100, entry.fraction * 50)) },
+    };
+  }
+  if (scale.kind === "rungs") {
+    const level = rungLevel(entry.degreeLevel, scale.count);
+    return {
+      kind: "param",
+      intent: { ...base, degree: degreeForLevel(level), amount: degreeToEffectAmount(level) },
+    };
+  }
+  if (!(entry.fraction > 0)) return { kind: "clarify", reason: "last-adjustment-reference" };
+  return {
+    kind: "param",
+    intent: { ...base, percent: Math.max(0, Math.min(100, entry.fraction * 100)) },
+  };
+}
+
+export function resolvePriorAdjustment(text: string, doc: ProjectDocument): PriorResolution | null {
+  if (!isPriorDeltaReference(text)) return null;
+  // A bare "again" could be transport ("play again") or a repeat of the last
+  // adjustment. It is not specific enough to execute either; ask. Qualified
+  // repeats ("same again", "do it again", "one step further") resolve.
+  if (/^\s*again(?:\s+please)?\s*[.!?]?\s*$/i.test(text)) {
+    return { kind: "clarify", reason: "last-adjustment-reference" };
+  }
+  const entry = lastAdjustment(doc.id);
+  if (!entry) return { kind: "clarify", reason: "last-adjustment-reference" };
+  const scale = scaleOf(text);
+  if (!scale) return { kind: "clarify", reason: "last-adjustment-reference" };
+  switch (entry.kind) {
+    case "fader":
+      return resolveFader(text, doc, entry, scale);
+    case "effect":
+      return resolveEffect(text, doc, entry, scale);
+    case "param":
+      return resolveParam(text, doc, entry, scale);
+  }
 }

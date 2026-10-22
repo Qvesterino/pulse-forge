@@ -26,11 +26,25 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { routeIntentText } from "../src/intent/route";
 import { applyFaderIntent, parseFaderIntent } from "../src/intent/conversation";
-import { recordFaderAdjustment } from "../src/intent/adjustment-recording";
+import {
+  recordEffectAdjustment,
+  recordFaderAdjustment,
+  recordParamAdjustment,
+} from "../src/intent/adjustment-recording";
 import { ROUTE_ADJUSTMENT, noteAppliedRoute, noteExternalMutation, noteUndoRedo } from "../src/intent/apply-boundary";
-import { clearAdjustments, lastAdjustment, rememberAdjustment } from "../src/intent/adjustment-ledger";
+import {
+  clearAdjustments,
+  lastAdjustment,
+  rememberAdjustment,
+  type EffectRecord,
+  type FaderRecord,
+} from "../src/intent/adjustment-ledger";
 import { isPriorDeltaReference, stripPriorDeltaReference } from "../src/intent/reference-delta";
+import { applyEffectIntent, parseEffectIntent } from "../src/intent/mix";
+import { applyParamIntent, parseParamIntent } from "../src/intent/param-intent";
+import { resolvePriorAdjustment } from "../src/intent/prior-adjustment";
 import { createProjectFromTemplate } from "../src/project-model/templates";
+import { addEffectToTracks } from "../src/commands/commands";
 import type { ProjectDocument } from "../src/project-model/types";
 
 /** One document for the whole file — `createProjectFromTemplate` mints a new id per call. */
@@ -52,6 +66,7 @@ beforeEach(() => {
 describe("the ledger — one session-scoped record of the last relative fader move", () => {
   it("remembers a change and hands it back for the SAME project", () => {
     rememberAdjustment({
+      kind: "fader",
       docId: "project-a",
       direction: "up",
       factor: 1.35,
@@ -60,7 +75,7 @@ describe("the ledger — one session-scoped record of the last relative fader mo
       trackIds: [],
       returnIds: [],
     });
-    const entry = lastAdjustment("project-a");
+    const entry = lastAdjustment("project-a") as FaderRecord;
     expect(entry).not.toBeNull();
     expect(entry!.factor).toBe(1.35);
     expect(entry!.direction).toBe("up");
@@ -69,6 +84,7 @@ describe("the ledger — one session-scoped record of the last relative fader mo
 
   it("does NOT hand a change of another project back — its track ids name tracks that do not exist here", () => {
     rememberAdjustment({
+      kind: "fader",
       docId: "project-a",
       direction: "up",
       factor: 1.35,
@@ -82,6 +98,7 @@ describe("the ledger — one session-scoped record of the last relative fader mo
 
   it("forgets on clear — an undo or a different kind of change invalidates the record", () => {
     rememberAdjustment({
+      kind: "fader",
       docId: "project-a",
       direction: "up",
       factor: 1.35,
@@ -137,7 +154,7 @@ describe("the vocabulary — which sentences name an earlier change", () => {
 describe("the resolution — the remembered change comes back as a fader intent", () => {
   it("a measured fader move is recorded with the factor that actually landed", () => {
     perform("raise the bass by 10%");
-    const entry = lastAdjustment(doc.id);
+    const entry = lastAdjustment(doc.id) as FaderRecord;
     expect(entry).not.toBeNull();
     expect(entry!.direction).toBe("up");
     // The factor is the MEASURED gain change, not the phrase's nominal step.
@@ -148,7 +165,7 @@ describe("the resolution — the remembered change comes back as a fader intent"
 
   it("'half as much as last time' comes back as a fader move, not a decline", () => {
     perform("raise the bass by 10%");
-    const before = lastAdjustment(doc.id)!.factor;
+    const before = (lastAdjustment(doc.id) as FaderRecord).factor;
     const route = routeIntentText("half as much as last time", doc);
     expect(route.kind).toBe("fader");
     const intent = (route as { kind: "fader"; intent: { factor?: number; direction: string } }).intent;
@@ -159,7 +176,7 @@ describe("the resolution — the remembered change comes back as a fader intent"
 
   it("'as much as last time' comes back as the SAME magnitude", () => {
     perform("raise the bass by 10%");
-    const before = lastAdjustment(doc.id)!.factor;
+    const before = (lastAdjustment(doc.id) as FaderRecord).factor;
     const route = routeIntentText("as much as last time", doc);
     expect(route.kind).toBe("fader");
     const intent = (route as { kind: "fader"; intent: { factor?: number } }).intent;
@@ -168,7 +185,7 @@ describe("the resolution — the remembered change comes back as a fader intent"
 
   it("'same again but on the hats' repeats the move on the NEW target", () => {
     perform("raise the bass by 10%");
-    const before = lastAdjustment(doc.id)!.factor;
+    const before = (lastAdjustment(doc.id) as FaderRecord).factor;
     const route = routeIntentText("same again but on the hats", doc);
     expect(route.kind).toBe("fader");
     const intent = (route as { kind: "fader"; intent: { factor?: number; pads?: string[] } }).intent;
@@ -260,7 +277,7 @@ describe("mutation boundary — one place owns ledger invalidation", () => {
     expect(command).not.toBeNull();
     const after = command!.execute(doc);
     noteAppliedRoute({ kind: "fader", intent: intent! }, doc, after);
-    const entry = lastAdjustment(doc.id);
+    const entry = lastAdjustment(doc.id) as FaderRecord;
     expect(entry).not.toBeNull();
     expect(entry!.factor).toBeLessThan(1);
 
@@ -311,5 +328,89 @@ describe("mutation boundary — one place owns ledger invalidation", () => {
     }
     const boundary = readFileSync("src/intent/apply-boundary.ts", "utf8");
     expect(boundary).toContain("adjustment-recording");
+  });
+});
+
+/**
+ * C (2026-10-22) — the ledger now covers effect and param moves too.
+ *
+ * The measured step is the number the resolver scales: half of an effect knob
+ * step is half the knob range; half of a param fraction is half the param
+ * range. "One step further" is a reuse of that measured step.
+ */
+describe("prior adjustment — effect and param moves", () => {
+  const mixOf = (document: ProjectDocument, trackName: string): number => {
+    const track = document.tracks.find((entry) => entry.name === trackName);
+    const effect = track?.effects.find((entry) => entry.type === "reverb");
+    if (!effect) throw new Error(`no reverb on ${trackName}`);
+    return effect.params.mix;
+  };
+  const decayOf = (document: ProjectDocument, trackName: string): number => {
+    const track = document.tracks.find((entry) => entry.name === trackName);
+    const effect = track?.effects.find((entry) => entry.type === "reverb");
+    if (!effect) throw new Error(`no reverb on ${trackName}`);
+    return effect.params.decay;
+  };
+
+  it("half of an effect move is half the knob step", () => {
+    const intent = parseEffectIntent("slightly more reverb on the pads")!;
+    const after1 = applyEffectIntent(doc, intent)!.execute(doc);
+    const beforeMix = 0.3; // reverb.mix default
+    recordEffectAdjustment(doc.id, intent, doc, after1);
+    const half = resolvePriorAdjustment("half that adjustment", after1);
+    expect(half?.kind).toBe("effect");
+    if (half?.kind !== "effect") return;
+    const after2 = applyEffectIntent(after1, half.intent)!.execute(after1);
+    const firstDelta = mixOf(after1, "Chords") - beforeMix;
+    const secondDelta = mixOf(after2, "Chords") - mixOf(after1, "Chords");
+    expect(firstDelta).toBeGreaterThan(0);
+    expect(secondDelta).toBeCloseTo(firstDelta / 2, 3);
+  });
+
+  it("'do the same on the bass' reuses the effect step on the new family", () => {
+    const intent = parseEffectIntent("slightly more reverb on the pads")!;
+    const after1 = applyEffectIntent(doc, intent)!.execute(doc);
+    recordEffectAdjustment(doc.id, intent, doc, after1);
+    const entry = lastAdjustment(doc.id) as EffectRecord;
+    const same = resolvePriorAdjustment("do the same on the bass", after1);
+    expect(same?.kind).toBe("effect");
+    if (same?.kind !== "effect") return;
+    expect(same.intent.targets).toEqual(["bass"]);
+    const bass = doc.tracks.find((track) => track.name === "808")!;
+    const added = addEffectToTracks(after1, [bass.id], "reverb").execute(after1);
+    const beforeBass = mixOf(added, "808");
+    const after2 = applyEffectIntent(after1, same.intent)!.execute(after1);
+    expect(mixOf(after2, "808") - beforeBass).toBeCloseTo(entry.stepFraction, 3);
+  });
+
+  it("half of a param move is half the range fraction", () => {
+    const intent = parseParamIntent("slightly longer reverb decay on the 808")!;
+    const after1 = applyParamIntent(doc, intent)!.execute(doc);
+    recordParamAdjustment(doc.id, intent, doc, after1);
+    const half = resolvePriorAdjustment("half that adjustment", after1);
+    expect(half?.kind).toBe("param");
+    if (half?.kind !== "param") return;
+    const after2 = applyParamIntent(after1, half.intent)!.execute(after1);
+    const firstDelta = decayOf(after1, "808") - 1.8;
+    const secondDelta = decayOf(after2, "808") - decayOf(after1, "808");
+    expect(firstDelta).toBeGreaterThan(0);
+    expect(secondDelta).toBeCloseTo(firstDelta / 2, 2);
+  });
+
+  it("'one step further' repeats the measured step", () => {
+    perform("turn down the bass a little");
+    const entry = lastAdjustment(doc.id) as FaderRecord;
+    const next = resolvePriorAdjustment("one step further", doc);
+    expect(next?.kind).toBe("fader");
+    if (next?.kind !== "fader") return;
+    expect(next.intent.factor).toBeCloseTo(entry.factor, 6);
+  });
+
+  it("a newer effect move supersedes the older fader record", () => {
+    perform("turn down the bass a little");
+    const intent = parseEffectIntent("slightly more reverb on the pads")!;
+    const after = applyEffectIntent(doc, intent)!.execute(doc);
+    recordEffectAdjustment(doc.id, intent, doc, after);
+    expect(resolvePriorAdjustment("half that adjustment", after)?.kind).toBe("effect");
   });
 });

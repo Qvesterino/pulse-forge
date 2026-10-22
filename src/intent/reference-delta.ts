@@ -54,6 +54,9 @@ const PRIOR_DELTA_SOURCE = [
   // decides that one), and only a sentence that IS the repeat is a reference
   // to the last change.
   String.raw`^\s*(?:again|again\s+please|same\s+again|that\s+again|do\s+it\s+again)\s*[.!?]?\s*$`,
+  // "one step further", "one more step", "another step" — repeat the last
+  // calibrated step (the ledger holds the measured delta).
+  String.raw`\b(?:one\s+(?:more\s+)?step|another\s+step)\b`,
 ].join("|");
 
 const PRIOR_DELTA_REFERENCE = new RegExp(PRIOR_DELTA_SOURCE, "i");

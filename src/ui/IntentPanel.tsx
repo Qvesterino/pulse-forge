@@ -199,7 +199,7 @@ import { snapshot } from "../commands/core";
 import { getIntentModelProvider, tryModelRoute } from "../intent/model-resolver";
 import { isCreativeBriefRoute, UNMATCHED_ROUTE_CLARIFY } from "../intent/model-fallback-policy";
 import { clarifyMessage } from "../intent/clarify-messages";
-import { isDescriptiveStatement } from "../intent/declarative";
+import { gateModelRoute } from "../intent/model-route-gate";
 import { partitionClarifySuggestions } from "../intent/clarify-suggestions";
 import { installIntentFailureDevtools, logIntentMiningEvent } from "../intent/failure-log";
 import { diagnoseComplaint } from "../intent/complaints";
@@ -4868,36 +4868,32 @@ export function IntentPanel() {
         }
         const modelRoute = await tryModelRoute(source, doc, route);
         if (modelRoute) {
-          // P0 SAFETY: the model may not turn a DESCRIPTION into a mutation.
-          // The deterministic layer already declined it; overriding that with
-          // a model-produced fader/effect route is exactly the silent-change
-          // failure the guard exists to prevent. Queries/clarifies still pass.
-          if (isDescriptiveStatement(source) && modelRoute.kind !== "clarify" && modelRoute.kind !== "queryIntent") {
-            logIntentMiningEvent({ prompt: source, outcome: "clarify", reason: "descriptive-not-a-command" });
+          // DETERMINISTIC GATE: the model may not overrule a specific rule
+          // route, turn a description into a mutation, or propose a mutation
+          // without an executable, actually-changing plan.
+          const gated = gateModelRoute(source, modelRoute, doc);
+          if (!gated) {
+            logIntentMiningEvent({ prompt: source, outcome: "clarify", reason: "model-route-rejected" });
             stopAudition();
-            const split = partitionClarifySuggestions(
-              [],
-              ['Say what to change, for example "turn down the bass".'],
-              doc,
-            );
+            const split = partitionClarifySuggestions([], ["Name the target and the action."], doc);
             setClarify({
-              reason: "descriptive-not-a-command",
-              message: clarifyMessage("descriptive-not-a-command"),
+              reason: "model-route-rejected",
+              message: clarifyMessage("model-route-rejected"),
               executable: split.executable,
               advice: split.advice,
               prompt: source,
             });
             return;
           }
-          preRoutedRef.current = modelRoute;
+          preRoutedRef.current = gated;
           // The nested call owns the proposal from here: its route is the one
           // that executes, so THIS invocation must not register a row for a
           // route that never ran.
           delegatedToNestedRoute = true;
           // MINING: what the model caught (kind drift monitoring — a kind
           // takeover here that users keep undoing is a wrongKind in hiding)
-          logIntentMiningEvent({ prompt: source, outcome: "model-hit", routeKind: modelRoute.kind });
-          setStatus("🤖 lokálny model — akcia rozpoznaná");
+          logIntentMiningEvent({ prompt: source, outcome: "model-hit", routeKind: gated.kind });
+          setStatus(gated === modelRoute ? "🤖 lokálny model — akcia rozpoznaná" : "🎯 deterministická akcia");
           void routeAndExecute();
           return;
         }

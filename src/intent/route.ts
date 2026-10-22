@@ -1023,6 +1023,8 @@ export function routeIntentText(
   const priorAdjustment = resolvePriorAdjustment(text, doc);
   if (priorAdjustment) {
     if (priorAdjustment.kind === "clarify") return clarifyPriorReference(text, priorAdjustment.reason);
+    if (priorAdjustment.kind === "effect") return { kind: "effectIntent", intent: priorAdjustment.intent };
+    if (priorAdjustment.kind === "param") return { kind: "paramIntent", intent: priorAdjustment.intent };
     return priorAdjustment;
   }
   const fader = parseFaderIntent(text);
