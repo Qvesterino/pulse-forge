@@ -125,10 +125,7 @@ export const PARITY_FX_EXCLUSIONS: ReadonlyMap<EffectType, string> = new Map<Eff
   // because the echo's timing follows the modulation phase. The offline
   // determinism control is exact (-316.7 dB), so this is the modulation, not
   // a processing-path difference.
-  [
-    "kaskada",
-    "free-running delay-modulation LFO phase (the echo's timing); the head of the window matches at -66 dB",
-  ],
+  ["kaskada", "free-running delay-modulation LFO phase (the echo's timing); the head of the window matches at -66 dB"],
   // WOW/FLUTTER: the wow/flutter delay is modulated by a free-running LFO too,
   // so the live instance is mid-modulation when the capture starts and the
   // offline one starts from phase zero. Measured 2026-10-25: the tail

@@ -217,9 +217,7 @@ export function withOfflineEffectParams<T>(ctx: BaseAudioContext, fn: () => T): 
 }
 
 const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) =>
-  offlineParamRegime && when <= offlineNow
-    ? param.setValueAtTime(value, when)
-    : param.setTargetAtTime(value, when, tc);
+  offlineParamRegime && when <= offlineNow ? param.setValueAtTime(value, when) : param.setTargetAtTime(value, when, tc);
 
 interface MixBus {
   input: GainNode;
