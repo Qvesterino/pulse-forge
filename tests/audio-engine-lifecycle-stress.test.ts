@@ -769,10 +769,9 @@ describe("plugin-runtime containment at every call site", () => {
       ...doc,
       tracks: doc.tracks.map((t) => (t.kind === "instrument" ? { ...t, sampleId: "late-sample" } : t)),
     }));
-    const internals = internalsOf(engine);
     const states = instrumentStates(engine);
     expect(states.length, "the house template must carry more than one instrument track").toBeGreaterThan(1);
-    const [first, second] = states as [[string, { runtime: StubRuntime }], [string, { runtime: StubRuntime }]];
+    const [first, second] = states;
 
     let reached = false;
     const received: string[] = [];
@@ -789,10 +788,9 @@ describe("plugin-runtime containment at every call site", () => {
     bank.add("late-sample", ctx.createBuffer(1, 4800, ctx.sampleRate) as unknown as AudioBuffer);
 
     expect(reached, "the throwing runtime was never reached — the probe measured nothing").toBe(true);
-    expect(
-      received,
-      "a throwing runtime must not stop the late sample from reaching the other instruments",
-    ).toContain("late-sample");
+    expect(received, "a throwing runtime must not stop the late sample from reaching the other instruments").toContain(
+      "late-sample",
+    );
   });
 
   it("a late-arriving bank sample still reaches every instrument waiting for it on the B slot", async () => {
@@ -800,10 +798,9 @@ describe("plugin-runtime containment at every call site", () => {
       ...doc,
       tracks: doc.tracks.map((t) => (t.kind === "instrument" ? { ...t, sampleIdB: "late-sample-b" } : t)),
     }));
-    const internals = internalsOf(engine);
     const states = instrumentStates(engine);
     expect(states.length, "the house template must carry more than one instrument track").toBeGreaterThan(1);
-    const [first, second] = states as [[string, { runtime: StubRuntime }], [string, { runtime: StubRuntime }]];
+    const [first, second] = states;
 
     let reached = false;
     const received: (string | null)[] = [];
@@ -830,7 +827,7 @@ describe("plugin-runtime containment at every call site", () => {
     const { engine } = await buildHouse();
     const returns = effectReturns(engine);
     expect(returns.length, "the house template must carry more than one effect-bearing return").toBeGreaterThan(1);
-    const [firstId, firstChain] = returns[0]!;
+    const [, firstChain] = returns[0]!;
     const [secondId, secondChain] = returns[1]!;
 
     let reached = false;
@@ -846,10 +843,9 @@ describe("plugin-runtime containment at every call site", () => {
     engine.transportStarted(1, 0, 0);
 
     expect(reached, "the throwing runtime was never reached — the probe measured nothing").toBe(true);
-    expect(
-      started,
-      "a throwing runtime must not stop the transport start from reaching the other strips",
-    ).toContain(secondId);
+    expect(started, "a throwing runtime must not stop the transport start from reaching the other strips").toContain(
+      secondId,
+    );
   });
 
   it("a chain rebuild whose new runtime throws still lands the chain in the graph", async () => {
@@ -918,7 +914,6 @@ describe("plugin-runtime containment at every call site", () => {
 
   it("a latency probe that throws does not cancel the project's tempo push", async () => {
     const { engine, doc } = await buildHouse();
-    const internals = internalsOf(engine);
     const returns = effectReturns(engine);
     expect(returns.length, "the house template must carry an effect-bearing return").toBeGreaterThan(0);
     const [, firstChain] = returns[0]!;
@@ -945,10 +940,7 @@ describe("plugin-runtime containment at every call site", () => {
     await flush();
 
     expect(reached, "the throwing runtime was never reached — the probe measured nothing").toBe(true);
-    expect(
-      observed,
-      "a throwing latency probe must not cancel the tempo push for the whole project",
-    ).toContain(140);
+    expect(observed, "a throwing latency probe must not cancel the tempo push for the whole project").toContain(140);
   });
 
   it("the master insert latency still counts the inserts that answer", async () => {
@@ -1008,16 +1000,18 @@ describe("plugin-runtime containment at every call site", () => {
     const { engine, doc } = await buildHouse();
     const states = instrumentStates(engine);
     expect(states.length, "the house template must carry more than one instrument track").toBeGreaterThan(1);
-    const [firstId, first] = states as [[string, { runtime: StubRuntime }], [string, { runtime: StubRuntime }]];
-    const [secondId, second] = states as [[string, { runtime: StubRuntime }], [string, { runtime: StubRuntime }]];
+    const [firstEntry, secondEntry] = states;
+    const firstId = firstEntry[0];
+    const first = firstEntry[1];
+    const second = secondEntry[1];
 
     let reached = false;
     const received: string[] = [];
-    first[1].runtime.setSample = () => {
+    first.runtime.setSample = () => {
       reached = true;
       throw new Error("instrument runtime setSample failed");
     };
-    second[1].runtime.setSample = (id) => {
+    second.runtime.setSample = (id) => {
       received.push(id);
     };
 
@@ -1032,27 +1026,27 @@ describe("plugin-runtime containment at every call site", () => {
     await flush();
 
     expect(reached, "the throwing runtime was never reached — the probe measured nothing").toBe(true);
-    expect(
-      received,
-      "a throwing runtime must not stop the sample swap from reaching the other instruments",
-    ).toContain("sample-b");
-    expect(secondId).toBeTruthy();
+    expect(received, "a throwing runtime must not stop the sample swap from reaching the other instruments").toContain(
+      "sample-b",
+    );
   });
 
   it("a B-slot sample swap that throws on one instrument does not strand the next instrument", async () => {
     const { engine, doc } = await buildHouse();
     const states = instrumentStates(engine);
     expect(states.length, "the house template must carry more than one instrument track").toBeGreaterThan(1);
-    const [firstId, first] = states as [[string, { runtime: StubRuntime }], [string, { runtime: StubRuntime }]];
-    const [, second] = states as [[string, { runtime: StubRuntime }], [string, { runtime: StubRuntime }]];
+    const [firstEntry, secondEntry] = states;
+    const firstId = firstEntry[0];
+    const first = firstEntry[1];
+    const second = secondEntry[1];
 
     let reached = false;
     const received: (string | null)[] = [];
-    first[1].runtime.setSampleB = () => {
+    first.runtime.setSampleB = () => {
       reached = true;
       throw new Error("instrument runtime setSampleB failed");
     };
-    second[1].runtime.setSampleB = (id) => {
+    second.runtime.setSampleB = (id) => {
       received.push(id);
     };
 
@@ -1105,8 +1099,6 @@ describe("plugin-runtime containment at every call site", () => {
     engine.noteOn(trackId, 60, 0.8, 1.01, 0.2);
 
     expect(reached, "the throwing runtime was never reached — the probe measured nothing").toBe(true);
-    expect(hints, "a throwing insert must not stop the pitch hint from reaching the next insert").toContain(
-      "hintHz",
-    );
+    expect(hints, "a throwing insert must not stop the pitch hint from reaching the next insert").toContain("hintHz");
   });
 });
