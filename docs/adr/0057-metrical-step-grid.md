@@ -212,16 +212,16 @@ re-implement the bar formula — `stepsPerBarFor` / `stepsPerBeatFor` come from
 `src/project-model/grid.ts`, so the pattern grid and the generator cannot drift
 apart. It owns the **pulse rule**:
 
-| metre | pulse             | kick            | backbeat                    |
-| ----- | ----------------- | --------------- | --------------------------- |
-| 4/4   | quarter (4)       | 0, 4, 8, 12     | 4, 12                       |
-| 3/4   | quarter (4)       | 0, 4, 8         | 4                           |
-| 2/4   | quarter (4)       | 0, 4            | 4                           |
-| 5/4   | quarter (4)       | 0, 4, 8, 12, 16 | 4, 12                       |
-| 2/2   | half (8)          | 0, 8            | 8                           |
-| 6/8   | dotted quarter(6) | 0, 6            | 2, 8 (the "2 & 5")          |
-| 12/8  | dotted quarter(6) | 0, 6, 12, 18    | 2, 8, 14, 20                |
-| 7/8   | the whole bar     | 0               | — (the grouping is content) |
+| metre | pulse             | kick            | backbeat             |
+| ----- | ----------------- | --------------- | -------------------- |
+| 4/4   | quarter (4)       | 0, 4, 8, 12     | 4, 12                |
+| 3/4   | quarter (4)       | 0, 4, 8         | 4                    |
+| 2/4   | quarter (4)       | 0, 4            | 4                    |
+| 5/4   | quarter (4)       | 0, 4, 8, 12, 16 | 4, 12                |
+| 2/2   | half (8)          | 0, 8            | 8                    |
+| 6/8   | dotted quarter(6) | 0, 6            | 2, 8 (the "2 & 5")   |
+| 12/8  | dotted quarter(6) | 0, 6, 12, 18    | 2, 8, 14, 20         |
+| 7/8   | the whole bar     | 0, 4, 8         | 8 (the accent group) |
 
 Three regimes:
 
@@ -234,9 +234,14 @@ Three regimes:
    compound meter deliberately does NOT get "every second pulse": that would put
    the snare on the second dotted quarter and turn a shuffle into a tresillo.
 3. **IRREGULAR** — a bar that does not divide into equal pulses of at least a
-   quarter note (7/8, 5/8, 3/16): the whole bar is one pulse, only the downbeat
-   is anchored, and the grouping (2+2+3) is GROOVE CONTENT, not arithmetic.
-   Declared, not guessed.
+   quarter note (7/8, 5/8, 11/8): the whole bar is one PULSE — but a pulse is
+   not a structure. A DECLARED irregular metre (7/8, 5/8) carries its GROUPS
+   (2+2+3, 3+2), and the groups are where the accents are: the kick rides the
+   group downbeats, the backbeat sits on the accent group. An UNDECLARED one
+   (11/8) keeps the whole bar as a single group: the grouping is unknown, so
+   the product imposes nothing. Declared, not guessed. (Stage 2c wrote this
+   regime as "the grouping is GROOVE CONTENT, not arithmetic"; Stage 2i
+   superseded it — a metre with no content is a metre that does not work.)
 
 ### The seam: the metre travels in the options, and only when it is not 4/4
 
@@ -299,6 +304,10 @@ already carries the metrical skeleton. **Stage 2c narrowed the WRITE path to
 the irregular bars**, where the metrical view deliberately imposes no skeleton
 and the metre is still the last word on the downbeat — everywhere else the
 reference holds the anchors itself and REPAIR covers them.
+
+**SUPERSEDED IN STAGE 2i** — the irregular bars no longer need the WRITE path
+either: a DECLARED irregular metre carries its GROUPS, the metrical view
+imposes them, and REPAIR covers the anchors there as in every other metre.
 
 ### 4/4 is byte-identical — measured, not assumed
 
@@ -371,6 +380,14 @@ the anchor hits are therefore off the skeleton in both measurements — 7/8 has
 no skeleton for the snare at all. The projection refuses to invent a 7/8
 grouping, and the bar keeps the library's 4/4 shape.
 
+**SUPERSEDED IN STAGE 2i.** The library still has no irregular grooves, but the
+metrical view no longer refuses: 7/8 and 5/8 DECLARE their grouping (2+2+3 and
+3+2), so the projection imposes it — the kick on the group downbeats, the snare
+on the accent — and the bar stops keeping the library's 4/4 shape. The
+refusal survives for a metre whose grouping is NOT declared (11/8). The
+measurement above stands as the record of what the irregular lane looked like
+before this stage.
+
 ### One owner: `src/ai/groove-view.ts` — the metrical VIEW, not a second library
 
 The library stays 4/4 and stays the source of truth. The metrical view is a
@@ -394,9 +411,12 @@ say in THIS metre?".
 
 What the projection refuses to do:
 
-- a bar with ONE pulse (7/8, 5/8) has no skeleton to impose — the grouping is
-  content;
-- a role with no anchor in this metre (the snare in 7/8) keeps its material;
+- a bar with ONE group (an irregular metre whose grouping is NOT declared, like
+  11/8) has no skeleton to impose — the grouping is unknown, so the material
+  keeps the shape the groove gave it. A DECLARED irregular metre (7/8, 5/8) is
+  imposed from Stage 2i on;
+- a role with no anchor in this metre (the snare in an UNDECLARED irregular bar)
+  keeps its material;
 - a role with no material at all (a groove with no clap) is not invented.
 
 The projection is LEVEL-AGNOSTIC: the same function maps the groove library's
