@@ -98,10 +98,22 @@ Decision:
   first cross-repo consumer: a bounded macro plan over the existing reversible
   `applyMasteringSuiteMacros` chain. The parser stays in the host; the plugin
   exports the contract.
-- Agentic Vocal relative tool args are deferred: `ToolSpec.resolve` does not
-  receive current parameter state, so a correct implementation first needs a
-  shared `param-calibration` package and a resolve-time state contract. Adding
-  a third local step table would violate this ADR.
+- `relativeParam` moved into `@vocalforge/param-calibration` (VocalForge
+  workspace package). SoloFlow Command, Agent Runtime and Agentic Vocal consume
+  that one package; KYX keeps its TypeScript twin and
+  `npm run intent:calibration-parity` asserts the six family ladders are
+  identical (currently 0 divergences).
+- Agentic Vocal now has a model-facing `adjust_parameter {parameterId,
+  direction, degree}` tool. `ToolSpec.resolve` receives the running
+  `ToolContext.currentParams`, so relative moves compose within one plan; a
+  per-action `moduleFor` applies the existing module-exclusion rule to the
+  target parameter; discrete controls and values outside the agent-safe range
+  are refused. The shared calibration also gained a `normalized` family for
+  0..1 controls and a camel-case Q match (`eq.band1Q`), both found by this
+  integration.
+- The natural-language parser still lives in the host; the plugin tool is
+  intentionally model-facing and the deterministic parser calls the same
+  shared package.
 
 These are audible behavior changes: "much" is now a level-5 move, the fader and
 knob curves moved at levels 5/6, and plugin parameters use physical steps. The
@@ -145,3 +157,6 @@ is still required before calling the magnitudes final.
 - `tests/param-intent.test.ts`, `tests/param-readback.test.ts`,
   `tests/intent-router-corpus.test.ts`, `tests/intent-conversation-memory.test.ts`,
   `tests/ui/IntentPanel.test.tsx`
+- `scripts/check-intent-degree-parity.mjs`, `scripts/check-intent-calibration-parity.mjs`
+- VocalForge: `packages/param-calibration`, `plugins/agentic-vocal/src/agent/toolRegistry.ts`,
+  `plugins/agentic-vocal/tests/tools.test.ts`

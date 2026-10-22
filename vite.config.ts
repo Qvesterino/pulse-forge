@@ -33,6 +33,19 @@ export const studioAppBase = process.env.STUDIO_APP_BASE ?? "/";
 
 export default defineConfig({
   base: studioAppBase,
+  // The dep-optimizer cache must NOT live in node_modules. A checkout whose
+  // node_modules is a JUNCTION into another checkout shares that cache, so
+  // two Vite servers overwrite each other's optimized deps — the page then
+  // loads two copies of React ("Invalid hook call") and the app never
+  // mounts. One cache per CHECKOUT ROOT instead of per node_modules.
+  cacheDir: ".vite-cache",
+  optimizeDeps: {
+    // Pin the scan to the app entry. The default crawl (every *.html under the
+    // root) reaches into package "exports" maps — lib0 ships a `test.js`
+    // entry — and the cold-cache build then dies on
+    // "Could not resolve ./array.test.js".
+    entries: ["index.html"],
+  },
   server: {
     host: "127.0.0.1",
     // Keep an opt-in long audio soak isolated from HMR caused by edits in the

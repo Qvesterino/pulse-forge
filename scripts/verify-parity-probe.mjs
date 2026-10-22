@@ -48,7 +48,7 @@ try {
   page.on("console", (msg) => {
     if (msg.type() === "log" && msg.text().startsWith("[parity]")) console.log(msg.text());
   });
-  await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 180_000 });
+  await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 420_000 });
 
   const cases = (process.env.KYX_PARITY_CASES ?? "bitcrusher,eq,utility,reverb,compressor,limiter,kaskada")
     .split(",")
@@ -99,7 +99,7 @@ try {
     } catch (error) {
       if (attempt === 4 || !/context was destroyed|navigation|interrupted/i.test(String(error))) throw error;
       console.log(`[retry] evaluate attempt ${attempt} lost its context - reloading page`);
-      await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 180_000 });
+      await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 420_000 });
     }
   }
 

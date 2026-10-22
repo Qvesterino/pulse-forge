@@ -34,6 +34,7 @@ import { describe, expect, it } from "vitest";
 import { createDefaultProject } from "../src/project-model/schema";
 import { getDrumTrack } from "../src/project-model/types";
 import { generatePattern } from "../src/ai/generator";
+import { DEFAULT_GENERATE_OPTIONS } from "../src/ai/types";
 import {
   accentAnchor,
   aiMeterFor,
@@ -44,7 +45,6 @@ import {
   isKickAnchor,
   isPulse,
   stepInBar,
-  type AiMeter,
 } from "../src/ai/meter";
 import { anchorPositions, projectRowToMeter } from "../src/ai/groove-view";
 import { enforceSyncopationBudget, syncopationWeight } from "../src/ai/style-quality";
@@ -91,6 +91,7 @@ function hitsOf(source: readonly number[]): number[] {
 function generatedHits(sig: TimeSignature, genre: string, seed: string, stepCount: number): Map<string, number[]> {
   const doc = createDefaultProject();
   const pattern = generatePattern(doc, {
+    ...DEFAULT_GENERATE_OPTIONS,
     genre: genre as "house",
     seed,
     stepCount,

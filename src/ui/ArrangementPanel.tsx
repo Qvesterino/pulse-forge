@@ -2260,6 +2260,36 @@ export function ArrangementPanel() {
     return out;
   }, [viewport, totalBars]);
 
+  /**
+   * Ruler marks for the visible bars only — one mark every 4 bars.
+   *
+   * The ruler is a SIBLING of the lane inside the scroller and it was NOT
+   * windowed: one mark per 4 bars over the WHOLE timeline, so its node count
+   * grew with the project's length. That was hidden by the extent cap, which
+   * is exactly the cap that made every clip past bar 512 unreachable — the two
+   * facts are the same fact seen from opposite ends.
+   *
+   * The marks are absolutely positioned inside the scrollable content, so the
+   * ones outside the window are off-screen anyway; rendering only the visible
+   * ones is a pure win, and it keeps the DOM census flat as the project grows
+   * (the gate is `tests/ui/arrangement-dom-census.test.tsx`).
+   *
+   * The UNMEASURED fallback keeps a bounded budget so the first frame — the
+   * one that runs before the panel knows its width — cannot allocate a mark
+   * per bar of a huge project.
+   */
+  const rulerMarkIndices = useMemo(() => {
+    if (!viewport) {
+      const count = Math.ceil(Math.min(totalBars, RULER_MARK_BAR_BUDGET) / 4);
+      return Array.from({ length: count }, (_, index) => index);
+    }
+    const first = Math.max(0, Math.floor(viewport.firstBar / 4));
+    const last = Math.min(Math.ceil(totalBars / 4), Math.ceil(viewport.lastBar / 4) + 1);
+    const out: number[] = [];
+    for (let index = first; index < last; index++) out.push(index);
+    return out;
+  }, [viewport, totalBars]);
+
   const selectedScene = scenes.find((scene) => scene.id === selectedSceneId) ?? scenes[0];
   const selectedClip = clips.find((clip) => clip.id === selectedClipId);
   const selectedClipScene = selectedClip ? scenes.find((scene) => scene.id === selectedClip.sceneId) : undefined;
@@ -5227,7 +5257,7 @@ export function ArrangementPanel() {
               if (closest) execute(removeMarker(services.store.doc, closest.id));
             }}
           >
-            {Array.from({ length: Math.ceil(Math.min(totalBars, RULER_MARK_BAR_BUDGET) / 4) }, (_, index) => {
+            {rulerMarkIndices.map((index) => {
               const barNum = index * 4 + 1;
               return (
                 <span key={index} className="arr-ruler-mark" style={{ left: index * 4 * barWidth }}>

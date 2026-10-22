@@ -1,4 +1,9 @@
 node_modules/
+# Vite's dep-optimizer cache. It lives at the PROJECT ROOT on purpose (see
+# vite.config.ts): inside node_modules it would be shared by every checkout
+# whose node_modules is a junction into the same one, and two Vite servers
+# would overwrite each other's optimized deps ("Invalid hook call").
+.vite-cache/
 
 # Generated: contract + mission fragment reassembly (npm run prompts:build)
 prompts/_built/
