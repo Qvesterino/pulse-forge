@@ -523,8 +523,8 @@ export class AudioEngine {
     this.bankUnsubscribe?.();
     this.bankUnsubscribe = bank.onSampleAdded((id) => {
       for (const state of this.instruments.values()) {
-        if (state.sampleId === id) state.runtime.setSample?.(id);
-        if (state.sampleIdB === id) state.runtime.setSampleB?.(id);
+        if (state.sampleId === id) this.callRuntime(() => state.runtime.setSample?.(id));
+        if (state.sampleIdB === id) this.callRuntime(() => state.runtime.setSampleB?.(id));
       }
     });
   }
@@ -1187,7 +1187,7 @@ export class AudioEngine {
     // with the transport for the whole play.
     for (const nodes of [...this.trackNodes.values(), ...this.groupNodes.values(), ...this.returnNodes.values()]) {
       for (const rt of nodes.fx.runtimes.values()) {
-        rt.onTransportStarted?.(time, beatPhase, positionBeats);
+        this.callRuntime(() => rt.onTransportStarted?.(time, beatPhase, positionBeats));
       }
     }
   }
@@ -1488,7 +1488,7 @@ export class AudioEngine {
       }) as EffectRuntime;
       const positionTick = this.transportTickNow();
       const beatPhase = (((positionTick % PPQ) + PPQ) % PPQ) / PPQ;
-      rt.onTransportStarted?.(ctx.currentTime, beatPhase, positionTick / PPQ);
+      this.callRuntime(() => rt.onTransportStarted?.(ctx.currentTime, beatPhase, positionTick / PPQ));
       // PRISM's runtime morph slots are intentionally transient audio state,
       // but their source snapshots are document-owned. Rehydrate them here so
       // a lazy worklet swap or chain rebuild cannot silently empty A/B.
@@ -2148,12 +2148,12 @@ export class AudioEngine {
     // immediately regardless (their processors cannot schedule) — those stay
     // last-write-wins across offline windows (vendor constraint on ozvena).
     for (const nodes of [...this.trackNodes.values(), ...this.groupNodes.values(), ...this.returnNodes.values()]) {
-      for (const rt of nodes.fx.runtimes.values()) rt.syncBpm?.(bpm, when);
+      for (const rt of nodes.fx.runtimes.values()) this.callRuntime(() => rt.syncBpm?.(bpm, when));
     }
     // Instrument runtimes: tempo-synced modulators (LFO sync, texture delay,
     // granular rate sync) pick the new tempo up live. `when` schedules the
     // write for offline scene lanes where the runtime supports it.
-    for (const inst of this.instruments.values()) inst.runtime.syncBpm?.(bpm, when);
+    for (const inst of this.instruments.values()) this.callRuntime(() => inst.runtime.syncBpm?.(bpm, when));
   }
 
   /**
@@ -2180,7 +2180,7 @@ export class AudioEngine {
     if (this.offlineRenderLocked) return; // a rendering graph must not be mutated
     const chainLatency = (state: FxChainState): number => {
       let total = 0;
-      for (const rt of state.runtimes.values()) total += rt.getLatencySec?.() ?? 0;
+      for (const rt of state.runtimes.values()) total += this.callRuntime(() => rt.getLatencySec?.()) ?? 0;
       return total;
     };
     const groupLatency = new Map<string, number>();
@@ -2246,7 +2246,7 @@ export class AudioEngine {
   private masterInsertLatencySec(): number {
     let seconds = Math.max(0, this.masterFx.pdcDelay?.delayTime.value ?? 0);
     for (const runtime of this.masterFx.runtimes.values()) {
-      const latency = runtime.getLatencySec?.() ?? 0;
+      const latency = this.callRuntime(() => runtime.getLatencySec?.()) ?? 0;
       if (Number.isFinite(latency) && latency > 0) seconds += latency;
     }
     return seconds;
@@ -2313,7 +2313,7 @@ export class AudioEngine {
     // its queue via processorOptions instead.
     for (const state of this.instruments.values()) {
       const runtime = state.runtime as { prepareOfflineRender?: () => void };
-      runtime.prepareOfflineRender?.();
+      this.callRuntime(() => runtime.prepareOfflineRender?.());
     }
     // Switch to exact writes FIRST, then run the final sizing pass with
     // them, then lock: a mid-glide final write would defeat the whole
@@ -2408,12 +2408,12 @@ export class AudioEngine {
       state.normGain.gain.setTargetAtTime(dbToLinear(targetNormDb), ctx.currentTime, 0.01);
     }
     if (state.sampleId !== track.sampleId) {
-      state.runtime.setSample?.(track.sampleId);
+      this.callRuntime(() => state.runtime.setSample?.(track.sampleId));
       state.sampleId = track.sampleId;
     }
     const sampleIdB = track.sampleIdB ?? null;
     if (state.sampleIdB !== sampleIdB) {
-      state.runtime.setSampleB?.(sampleIdB);
+      this.callRuntime(() => state.runtime.setSampleB?.(sampleIdB));
       state.sampleIdB = sampleIdB;
     }
     if (state.layers !== track.velocityLayers) {
@@ -2471,7 +2471,7 @@ export class AudioEngine {
     const hz = top == null ? 0 : 440 * Math.pow(2, (top - 69) / 12);
     const runtimes = this.trackNodes.get(trackId)?.fx.runtimes;
     if (!runtimes) return;
-    for (const rt of runtimes.values()) rt.setParameterAt?.("hintHz", hz, when);
+    for (const rt of runtimes.values()) this.callRuntime(() => rt.setParameterAt?.("hintHz", hz, when));
   }
 
   private pushHeldPitch(trackId: string, pitch: number, when: number): void {
@@ -3171,6 +3171,23 @@ export class AudioEngine {
       } catch {
         /* already stopped */
       }
+    }
+  }
+
+  /**
+   * Call a plugin runtime and CONTAIN a throw.
+   *
+   * A runtime is third-party code behind a uniform interface. Every other
+   * runtime call in this engine is contained (see the dispose and panic
+   * paths): a runtime that throws must not strand the REST of the graph — the
+   * other strips must still get their tempo, their transport re-anchor, their
+   * sample, their latency.
+   */
+  private callRuntime<T>(fn: () => T): T | undefined {
+    try {
+      return fn();
+    } catch {
+      return undefined;
     }
   }
 

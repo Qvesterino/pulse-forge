@@ -537,7 +537,10 @@ describe("engine lifecycle stress gate", () => {
  */
 describe("instrument-runtime disposal isolation", () => {
   interface InstrumentInternals {
-    instruments: Map<string, { runtime: { dispose: () => void; panic: () => void } }>;
+    instruments: Map<
+      string,
+      { runtime: { dispose: () => void; panic: () => void; syncBpm?: (bpm: number, when?: number) => void } }
+    >;
     returnNodes: Map<string, Record<string, unknown>>;
   }
 
@@ -644,5 +647,35 @@ describe("instrument-runtime disposal isolation", () => {
     // "everything off, now" reset, and the runtimes after the throwing one
     // must still be silenced.
     expect(secondPanicked, "a throwing runtime must not stop the panic from reaching the others").toBe(true);
+  });
+
+  it("a runtime that throws on syncBpm does not stop the other runtimes from getting the tempo", async () => {
+    const { engine } = await buildHouse();
+    const internals = internalsOf(engine);
+
+    const ids = [...internals.instruments.keys()];
+    expect(ids.length, "the house template must carry more than one instrument track").toBeGreaterThan(1);
+    const first = internals.instruments.get(ids[0]!);
+    const second = internals.instruments.get(ids[1]!);
+    expect(first).toBeTruthy();
+    expect(second).toBeTruthy();
+
+    first!.runtime.syncBpm = () => {
+      throw new Error("instrument runtime syncBpm failed");
+    };
+    let secondSynced = false;
+    const original = second!.runtime.syncBpm?.bind(second!.runtime);
+    second!.runtime.syncBpm = (bpm: number, when?: number) => {
+      secondSynced = true;
+      original?.(bpm, when);
+    };
+
+    // A tempo change is a WHOLE-PROJECT operation: a scene tempo flip, a
+    // tempo drag, a scene lane. One runtime throwing must not leave the
+    // others running at the previous tempo — that is a silent desync the
+    // user cannot see or hear until the bars disagree.
+    engine.setEffectiveBpm(140);
+
+    expect(secondSynced, "a throwing runtime must not stop the tempo from reaching the others").toBe(true);
   });
 });
