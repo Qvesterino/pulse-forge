@@ -36,6 +36,7 @@
  */
 import { GROOVE_LIBRARY } from "./index";
 import { ARTIST_PRESETS } from "../../intent/artists";
+import { sameSignature } from "../meter";
 import type { GrooveData } from "../types";
 
 export type DupSeverity = "dup" | "warn";
