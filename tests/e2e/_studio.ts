@@ -23,6 +23,28 @@ import { dockTabLocator } from "./_helpers";
 
 const STUDIO_TIMEOUT = 60_000;
 
+/**
+ * Open the house template — the single-clip starter the editor specs expect.
+ *
+ * The project browser used to mark that card with a "START HERE" badge.
+ * 8d11f16b removed the badge and moved the template list into a disclosure
+ * that is COLLAPSED on first run, so the harness kept clicking a button that
+ * no longer existed: every studio spec failed at the boot step, before a
+ * single editor assertion ran.
+ *
+ * The "EXPLORE ALL PROJECT TEMPLATES" summary is the signal that the project
+ * list has LOADED (the disclosure starts open and collapses once the list
+ * arrives), so the summary is what makes the expansion deterministic.
+ */
+async function openStarterProject(page: Page): Promise<void> {
+  const firstRunSummary = page.locator("summary", { hasText: "EXPLORE ALL PROJECT TEMPLATES" });
+  await firstRunSummary.waitFor({ state: "visible", timeout: STUDIO_TIMEOUT });
+  await firstRunSummary.click({ timeout: STUDIO_TIMEOUT });
+  const house = page.locator("button.pb-template").first();
+  await house.waitFor({ state: "visible", timeout: STUDIO_TIMEOUT });
+  await house.click({ timeout: STUDIO_TIMEOUT });
+}
+
 /** Deterministic boot: returning user, tour dismissed, arrangement open. */
 export async function openArrangement(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -30,10 +52,7 @@ export async function openArrangement(page: Page): Promise<void> {
     window.localStorage.setItem("pf-tour-v1", "1");
   });
   await page.goto("/", { waitUntil: "domcontentloaded", timeout: 45_000 });
-  await page
-    .getByRole("button", { name: /start here/i })
-    .first()
-    .click({ timeout: STUDIO_TIMEOUT });
+  await openStarterProject(page);
   await dockTabLocator(page, "ARR").waitFor({ state: "attached", timeout: STUDIO_TIMEOUT });
   await dockTabLocator(page, "ARR").click();
   await page.locator(".arr-lane").first().waitFor({ state: "attached", timeout: STUDIO_TIMEOUT });

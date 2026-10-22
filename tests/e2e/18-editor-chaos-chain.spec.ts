@@ -36,7 +36,11 @@ function isNoise(message: string): boolean {
  */
 async function openStudio(page: Page): Promise<void> {
   await openArrangement(page);
-  const int = page.getByRole("button", { name: "INT" }).first();
+  // `exact` matters: the dock's INTENT button has an accessible name that
+  // CONTAINS "int" ("Toggle intent panel"), and a substring match put THAT
+  // button first — one that has no aria-pressed, so the guard read null and
+  // blamed the editor instead of the locator.
+  const int = page.getByRole("button", { name: "INT", exact: true }).first();
   expect(await int.getAttribute("aria-pressed"), "INT must be on for this chain").toBe("true");
 }
 

@@ -186,46 +186,67 @@ the arrangement panel passes it at all three call sites — the clip body, the t
 the smart-comp measurement. The wall length handed to it is the clip's own tempo-aware
 duration, so the envelope now follows the clip while it is being dragged.
 
+### F13 — The browser E2E suite could not boot the studio at all (P1, test infrastructure)
+
+`tests/e2e/_studio.ts` — the shared harness every editor spec boots through — clicked a
+button named "Start here". **That button stopped existing on 2026-10-20**: commit `8d11f16b`
+removed the "START HERE" badge from the house-template card **and** moved the template list
+into a disclosure that is collapsed on first run. Every spec that opens the studio failed
+at the boot step, before a single editor assertion ran — and the harness's own comment
+warns that such a failure "looks like an editor defect, which is the most expensive kind
+of wrong answer this suite can give". It did exactly that: 17 specs failed identically at
+`_studio.ts:36`.
+
+Measured, not assumed. A browser probe against the live app found the landing page
+rendering with **ten** buttons and **none** matching /start here/i, **zero** console
+errors, and 706 KB of rendered studio DOM — the app was healthy, the selector was stale.
+
+_Fix:_ `openStarterProject` waits for the first-run summary ("EXPLORE ALL PROJECT
+TEMPLATES" — the signal that the project list has loaded and the disclosure has collapsed)
+and opens the house template card, which is the single-clip starter the editor specs
+expect. `snap-grid` then passes in Chromium: bar width 30 px, the dragged copy snapped to
+7 bars, and to 5 bars after two zoom steps.
+
 ---
 
 ## Editing Tools Verified
 
 Verified by reading the implementation and by the regression suites named below.
 
-| Area                                                                       | State                                                                                                                                    |
-| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Selection (single / multi / modifier / marquee / select-all / cross-track) | Verified; the app-level invariant (every selected id names a live object) is exercised in the chaos chain                                |
-| Move / drag, cross-track, multi-selection                                  | Verified                                                                                                                                 |
-| Trim left / right, minimum duration, source boundaries, repeat, undo       | **Defect fixed (F1–F3)**                                                                                                                 |
-| Split at playhead / arbitrary / repeated / multi-selection                 | Verified; **phase defect fixed (F4)**                                                                                                    |
-| Copy / paste / duplicate                                                   | Verified (clipboard captures the change, not the document)                                                                               |
-| Delete / removal, dead references, runtime cleanup                         | Verified                                                                                                                                 |
-| Fade in / out, clamping inside the clip bounds                             | Verified (`clip-fade-bounds-invariant`)                                                                                                  |
-| Crossfades                                                                 | Audited — the crossfade path is owned by `crossfadeAudioClips`; no defect found                                                          |
-| Snap / grid (beat, subdivision, clip edge, marker, playhead)               | Audited; snapping is grid-quantised and zoom-independent                                                                                 |
-| Timeline coordinate conversion (px ↔ bar ↔ tick ↔ seconds ↔ samples)       | Audited; **one conversion rule consolidated (F2)**                                                                                       |
-| Zoom / scroll / viewport                                                   | **Two defects fixed (F9, F10)**; zoom never alters project timing                                                                        |
-| Overlap semantics                                                          | Audited — audio clips LAYER by contract (the engine sums them), arrangement clips are no-overlap; both systems keep their own rule       |
-| Loop / stretch / slip / ripple                                             | Audited where supported; **stretch's rate accounting unified (F2)**                                                                      |
-| Playhead and editing during playback                                       | Audited — the live-resume offset uses the same source-vs-wall conversion                                                                 |
-| Keyboard shortcuts                                                         | Audited — destructive shortcuts are gated on a typing guard; the modal/text-field path is covered by `tests/e2e/keyboard-guards.spec.ts` |
-| Pointer / drag state machine                                               | Audited — every gesture has a deterministic commit or cancel path (`usePointerDragGuard`)                                                |
-| Cancel and recovery (Escape, pointer cancel, lost focus, tool switch)      | Audited; the cancel terminator clears the transient state and the live preview                                                           |
-| Context menus                                                              | Audited — actions read the live selection                                                                                                |
-| Undo / redo and transaction boundaries                                     | **Defect fixed (F7)**                                                                                                                    |
-| Editor ↔ project state                                                     | Verified — the panel reads the live document, never a render memo, where it matters                                                      |
-| Editor ↔ audio engine                                                      | Audited — the engine's playable window is the reference the waveform and the trim now agree with                                         |
-| Waveform / MIDI rendering                                                  | **Defect fixed (F12)** — the drawn window and the played window are the same window, in resample, stretch, offset, trim and loop shapes  |
-| Automation / markers integration                                           | Audited — structural edits do not leave automation attached to invalid targets                                                           |
-| Track-level editing                                                        | Audited                                                                                                                                  |
-| Locking                                                                    | Audited — `assertClipEditable` is centralised at the command level, so every entry point (UI, MCP, intent, collab) is covered            |
-| Clipboard                                                                  | Audited — the payload captures the changed entity, not the document                                                                      |
-| Rapid interaction races                                                    | Verified by the chaos chain (move → undo → move × 12)                                                                                    |
-| Numerical precision                                                        | **Defect fixed (F8, F11)** — tick-aligned geometry                                                                                       |
-| Responsive layout                                                          | **Defect fixed (F10)**                                                                                                                   |
-| Performance                                                                | **Defect fixed (F6)** — the DOM no longer grows with the project length                                                                  |
-| Memory / resource cleanup                                                  | Audited — the panel's unmount path cancels the recorder, the slice analysis and the pointer guard                                        |
-| Error handling                                                             | Audited — malformed clips are dropped by the sanitiser, not fatal                                                                        |
+| Area                                                                       | State                                                                                                                                                                   |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Selection (single / multi / modifier / marquee / select-all / cross-track) | Verified; the app-level invariant (every selected id names a live object) is exercised in the chaos chain                                                               |
+| Move / drag, cross-track, multi-selection                                  | Verified                                                                                                                                                                |
+| Trim left / right, minimum duration, source boundaries, repeat, undo       | **Defect fixed (F1–F3)**                                                                                                                                                |
+| Split at playhead / arbitrary / repeated / multi-selection                 | Verified; **phase defect fixed (F4)**                                                                                                                                   |
+| Copy / paste / duplicate                                                   | Verified (clipboard captures the change, not the document)                                                                                                              |
+| Delete / removal, dead references, runtime cleanup                         | Verified                                                                                                                                                                |
+| Fade in / out, clamping inside the clip bounds                             | Verified (`clip-fade-bounds-invariant`)                                                                                                                                 |
+| Crossfades                                                                 | Audited — the crossfade path is owned by `crossfadeAudioClips`; no defect found                                                                                         |
+| Snap / grid (beat, subdivision, clip edge, marker, playhead)               | Audited; snapping is grid-quantised and zoom-independent                                                                                                                |
+| Timeline coordinate conversion (px ↔ bar ↔ tick ↔ seconds ↔ samples)       | Audited; **one conversion rule consolidated (F2)**                                                                                                                      |
+| Zoom / scroll / viewport                                                   | **Two defects fixed (F9, F10)**; zoom never alters project timing                                                                                                       |
+| Overlap semantics                                                          | Audited — audio clips LAYER by contract (the engine sums them), arrangement clips are no-overlap; both systems keep their own rule                                      |
+| Loop / stretch / slip / ripple                                             | Audited where supported; **stretch's rate accounting unified (F2)**                                                                                                     |
+| Playhead and editing during playback                                       | Audited — the live-resume offset uses the same source-vs-wall conversion                                                                                                |
+| Keyboard shortcuts                                                         | Audited — destructive shortcuts are gated on a typing guard; the modal/text-field path is covered by `tests/e2e/keyboard-guards.spec.ts`, which now **runs** and passes |
+| Pointer / drag state machine                                               | Audited — every gesture has a deterministic commit or cancel path (`usePointerDragGuard`)                                                                               |
+| Cancel and recovery (Escape, pointer cancel, lost focus, tool switch)      | Audited; the cancel terminator clears the transient state and the live preview                                                                                          |
+| Context menus                                                              | Audited — actions read the live selection                                                                                                                               |
+| Undo / redo and transaction boundaries                                     | **Defect fixed (F7)**                                                                                                                                                   |
+| Editor ↔ project state                                                     | Verified — the panel reads the live document, never a render memo, where it matters                                                                                     |
+| Editor ↔ audio engine                                                      | Audited — the engine's playable window is the reference the waveform and the trim now agree with                                                                        |
+| Waveform / MIDI rendering                                                  | **Defect fixed (F12)** — the drawn window and the played window are the same window, in resample, stretch, offset, trim and loop shapes                                 |
+| Automation / markers integration                                           | Audited — structural edits do not leave automation attached to invalid targets                                                                                          |
+| Track-level editing                                                        | Audited                                                                                                                                                                 |
+| Locking                                                                    | Audited — `assertClipEditable` is centralised at the command level, so every entry point (UI, MCP, intent, collab) is covered                                           |
+| Clipboard                                                                  | Audited — the payload captures the changed entity, not the document                                                                                                     |
+| Rapid interaction races                                                    | Verified by the chaos chain (move → undo → move × 12)                                                                                                                   |
+| Numerical precision                                                        | **Defect fixed (F8, F11)** — tick-aligned geometry                                                                                                                      |
+| Responsive layout                                                          | **Defect fixed (F10)**                                                                                                                                                  |
+| Performance                                                                | **Defect fixed (F6)** — the DOM no longer grows with the project length                                                                                                 |
+| Memory / resource cleanup                                                  | Audited — the panel's unmount path cancels the recorder, the slice analysis and the pointer guard                                                                       |
+| Error handling                                                             | Audited — malformed clips are dropped by the sanitiser, not fatal                                                                                                       |
 
 ---
 
@@ -262,6 +283,9 @@ Verified by reading the implementation and by the regression suites named below.
 - A MIDI clip's phase matches the phase it plays at after a trim or a split (F4).
 - The zoom anchor follows the document's metre (F9).
 - The viewport follows a pane resize (F10).
+- The waveform envelope follows the clip while it is being dragged: the window is
+  recomputed from the clip's own wall length, so a right-edge trim redraws the envelope as the
+  preview grows and shrinks — the user trims against the shape they are about to hear (F12).
 
 ---
 
@@ -279,15 +303,16 @@ Verified by reading the implementation and by the regression suites named below.
 
 ## Tests Added
 
-| File                                            | Guards                                                                                                                                                                                                                                                                           |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/ui/audio-trim-stretch-rate.test.tsx`     | F1, F2, F3 — the committed clip is the dragged clip; the source skip scales with the rate; the skip is counted once; the picture window and the played window agree                                                                                                              |
-| `tests/ui/arrangement-timeline-reach.test.tsx`  | F5, F6 — the scrollable lane reaches every bar the document holds; the unmeasured frame and the ruler stay bounded                                                                                                                                                               |
-| `tests/undo-history-window-pairing.test.ts`     | F7 — every visible row's diff belongs to its own label, past the 64-snapshot cap                                                                                                                                                                                                 |
-| `tests/midi-clip-phase-period.test.ts`          | F4 — the phase is wrapped against the phrase period, in both trim and split                                                                                                                                                                                                      |
-| `tests/clip-slice-fragment-window.test.ts`      | F8 — each fragment plays exactly its segment; the fragments tile the parent's source                                                                                                                                                                                             |
-| `tests/editor-chaos-chain.test.ts`              | The real-user chain (import → move → trim → fade → split → duplicate → move → multi-select → group move → delete → undo ×8 → redo → post-undo action) with the invariants checked after every step; a rapid move → undo → move ×12; a duplicate's independence from its original |
-| `tests/audio-clip-played-source-window.test.ts` | F12 — the drawn waveform window is the engine's played window, in resample, pitch-preserving stretch, offset, trim, loop and reverse shapes; the cap reaches every call site                                                                                                     |
+| File                                                                                       | Guards                                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/ui/audio-trim-stretch-rate.test.tsx`                                                | F1, F2, F3 — the committed clip is the dragged clip; the source skip scales with the rate; the skip is counted once; the picture window and the played window agree                                                                                                              |
+| `tests/ui/arrangement-timeline-reach.test.tsx`                                             | F5, F6 — the scrollable lane reaches every bar the document holds; the unmeasured frame and the ruler stay bounded                                                                                                                                                               |
+| `tests/undo-history-window-pairing.test.ts`                                                | F7 — every visible row's diff belongs to its own label, past the 64-snapshot cap                                                                                                                                                                                                 |
+| `tests/midi-clip-phase-period.test.ts`                                                     | F4 — the phase is wrapped against the phrase period, in both trim and split                                                                                                                                                                                                      |
+| `tests/clip-slice-fragment-window.test.ts`                                                 | F8 — each fragment plays exactly its segment; the fragments tile the parent's source                                                                                                                                                                                             |
+| `tests/editor-chaos-chain.test.ts`                                                         | The real-user chain (import → move → trim → fade → split → duplicate → move → multi-select → group move → delete → undo ×8 → redo → post-undo action) with the invariants checked after every step; a rapid move → undo → move ×12; a duplicate's independence from its original |
+| `tests/audio-clip-played-source-window.test.ts`                                            | F12 — the drawn waveform window is the engine's played window, in resample, pitch-preserving stretch, offset, trim, loop and reverse shapes; the cap reaches every call site                                                                                                     |
+| `tests/e2e/_studio.ts`, `tests/e2e/_helpers.ts`, `tests/e2e/18-editor-chaos-chain.spec.ts` | F13 — the shared studio harness opens the house template the current UI offers, and the INT guard targets the arrangement toggle instead of the dock's INTENT button; with them the editor E2E suite boots and runs                                                              |
 
 Each of these was confirmed to **fail** with its fix reverted.
 
@@ -295,34 +320,41 @@ Each of these was confirmed to **fail** with its fix reverted.
 
 ## Verification
 
-Exactly what was executed in this session:
+Exactly what was executed, and what it returned. Every number below comes from a run.
 
-- **Editor-focused suites** — `npx vitest run` over 23 files (the six new regression
-  suites, the ten baseline editor suites, the DOM-census gate, `ArrangementPanel`,
+- **Editor-focused suites** — `npx vitest run` over 26 files (the seven new regression
+  suites, the baseline editor suites, the DOM-census gate, `ArrangementPanel`,
   `audio-clip-slip`, `edit-tools-audit3`, `arrangement-trim-start`,
-  `audio-trim-stale-offset`, `midi-clip-window`, `midi-clip-lanes`):
-  **23 files passed, 247 tests passed, 0 failed.**
+  `audio-trim-stale-offset`, `midi-clip-window`, `midi-clip-lanes`, the waveform-window
+  and recording-audit suites):
+  **26 files passed, 279 tests passed, 0 failed.**
 - **Full suite** — `npx vitest run`:
-  **1163 of 1167 files passed; 13119 of 13259 tests passed; 10 failed.**
-  All 10 failures are `TypeError: bank.has is not a function`
-  (`src/sample-library/factory.ts:5156`, reached from `openProject`) in
-  `tests/services/wiring.test.ts` and `tests/services-close-race.test.ts`. **That
-  breakage is not from this audit**: it was introduced by commit `c6824b4c`
-  ("feat(samples): the factory catalogue leaves the boot path", 2026-10-22 01:57), which
-  was already in the tree at this session's starting HEAD (`30a5852a`) — the sample
-  bank's test mocks do not implement `has`. The concurrent session's working tree
-  already updates those mocks.
+  **1166 of 1168 files passed; 13 152 tests passed.** Two failures, both accounted for:
+  - `tests/drift-check.test.ts` — "CURRENT-STATE says 1166, code measures 1167". This
+    audit's own new spec file moved the committed count and the count row had not
+    followed it (a concurrent session's `git add .` swept the spec into `main` without
+    the row). Fixed in `c6c55d9b`; re-run in isolation: **7/7 pass**.
+  - `tests/stress.test.ts` — "expected 119.31 to be less than 100": a wall-clock budget
+    measured while two other suites ran on the same machine. Re-run in isolation:
+    **9/9 pass.**
 - **Typecheck** — `npx tsc --noEmit`: **clean, exit 0, no errors.**
 - **Format gate** — `npm run format:check`: every file this audit touched reports
-  "All matched files use Prettier code style!". The gate's 3 warnings are
-  `tests/offline-effect-params.test.ts`, `tests/pdc-offline.test.ts` and
-  `tests/worklet-flush-coverage.test.ts` — all of them modified in the concurrent
-  session's working tree, none of them touched here.
+  "All matched files use Prettier code style!". The one remaining warning is
+  `src/effects/registry.ts` — another session's uncommitted file, untouched here.
 - **Production build** — `npm run build`: **passed**, every bundle budget OK —
-  entry 403 KB (budget 1070), DAW JS chunks 5526 KB (budget 5560), studio boot path
-  2084 KB (budget 2200), optional on-demand runtimes 647 KB (budget 650), core worklets
-  112 KB (budget 150), shipped JS total 8028 KB.
-- **Guard verification** — each of the six new regression suites was re-run with its fix
+  entry 404 KB (budget 1070), DAW JS chunks 5534 KB (budget 5560), studio boot path
+  2087 KB (budget 2200), optional on-demand runtimes 647 KB (budget 650), core worklets
+  112 KB (budget 150), shipped JS total 8036 KB.
+- **Browser E2E (Chromium)** — `npx playwright test --project=chromium` over 11 editor
+  specs (`snap-grid`, `18-editor-chaos-chain`, `28-sub-bar-drag-undo`, `keyboard-guards`,
+  `hit-test-sweep`, `audio-fades`, `ripple-semantics`, `12-audio-take-groups`,
+  `13-audio-consolidation`, `20-audio-edit-render`, `27-midi-arrangement-browser`):
+  **18 passed, 2 skipped, 0 failed (3.0 min).** Before F13's harness repair the same
+  set was **17 failed** — every one of them at the boot step, none of them an editor
+  defect. The chaos chain now completes in a real browser: 3 clips, **0 JS errors**,
+  playback and seek, a delete with the selection following it, and a narrow-viewport
+  pass.
+- **Guard verification** — each new regression suite was re-run with its fix
   reverted and was confirmed to fail:
   - trim suite → `expected 12.774 to be close to 25.548` (the missing ×rate),
   - timeline-reach suite → `lane width 15360px does not reach bar 600`,
@@ -331,12 +363,13 @@ Exactly what was executed in this session:
   - slice-window suite → `fragment 0 must play exactly its segment: expected 0.4839 to
 be close to 0.4`,
   - the DOM-census gate → `element count must not grow with project length: expected
-1287 to be 537` when the ruler was left un-windowed.
-
-**Not executed:** the Playwright E2E suite (`tests/e2e/`) — it needs a browser harness
-that was not available in this session. The E2E specs that touch the changed surfaces
-(`keyboard-guards`, `snap-grid`, `11-audio-input-recording`) were reviewed by reading,
-not by running.
+1287 to be 537` when the ruler was left un-windowed,
+  - the played-source suite → `expected 10 to be close to 4` (a 4-second clip in a
+    10-second file drew 10 seconds), `expected 10 to be close to 8` (resample rate 2),
+    `expected 10 to be close to 2` (pitch-preserving stretch rate 2) and
+    `expected 6.5 to be close to 4` (offset and trims).
+- **Process hygiene** — `node-gc`: **ABANDONED: none.** The dev server this session
+  started for the E2E run was stopped.
 
 ---
 
@@ -397,7 +430,20 @@ question rather than a bug.
 
 ---
 
-_The editor is not proven bug-free. This pass found and fixed eight defects that were
-reproducible and reachable through ordinary use, and it leaves five identified items
-behind — four of them needing a human decision or a platform/browser check rather than
-another patch._
+### R8 — The browser E2E was exercised on Chromium only (P3, platform check)
+
+The editor E2E suite was repaired and run on **Chromium** (18 passed, 2 skipped). The
+repo's `firefox-midi-arrangement`, `firefox-mastering-session` and `webkit` projects were
+**not** run: the Playwright Windows WebKit build ships without a media stack, and the
+Firefox projects target different specs. Real Safari-on-macOS and Firefox behaviour for
+the arrangement gestures still needs a human pass.
+
+---
+
+_This pass found and fixed thirteen defects that were reproducible and reachable through
+ordinary use — eight in the editor itself, two in how the editor and the engine agree on
+source time, one in the undo window, one in the timeline's reach, and one in the browser
+test harness that made the whole editor E2E suite unable to boot. It leaves seven
+identified items behind — six of them needing a human decision or a platform/browser check
+rather than another patch. The editor is not proven bug-free; it is now measurably
+harder to break, and every fix above is guarded by a test that was seen failing first._

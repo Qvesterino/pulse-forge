@@ -123,10 +123,16 @@ export async function openHouseTemplate(page: Page, options: { timeoutMs?: numbe
 
 async function openFirstProjectTemplate(page: Page): Promise<void> {
   const firstTemplate = page.locator(".pb-template").first();
-  if (!(await firstTemplate.isVisible().catch(() => false))) {
-    const expandTemplates = page.getByText("EXPLORE ALL PROJECT TEMPLATES", { exact: true });
-    if (await expandTemplates.isVisible().catch(() => false)) await expandTemplates.click();
-  }
+  // The template disclosure starts OPEN and COLLAPSES once the project list
+  // loads, so the expansion has to happen AFTER the list arrives — the
+  // first-run summary ("EXPLORE ALL PROJECT TEMPLATES") is that signal.
+  // Expanding before the list arrives was a race the card then lost.
+  const expandTemplates = page.getByText("EXPLORE ALL PROJECT TEMPLATES", { exact: true });
+  const firstRun = await expandTemplates
+    .waitFor({ state: "visible", timeout: 15_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (firstRun) await expandTemplates.click();
   await firstTemplate.waitFor({ state: "visible", timeout: 15_000 });
   await firstTemplate.click();
 }
