@@ -36,12 +36,26 @@ const read = (relative: string): string => readFileSync(fileURLToPath(new URL(re
 const servicesSource = read("../src/services.ts");
 const rendererSource = read("../src/rendering/renderer.ts");
 const factorySource = read("../src/sample-library/factory.ts");
+const masteringSource = read("../src/mastering/sessionRender.ts");
+const audioIndexSource = read("../src/sample-library/audio-index.ts");
+const portableSource = read("../src/export/portable-project.ts");
 
 interface StructuralContract {
   name: string;
   holds: (source: string) => boolean;
   mutate: (source: string) => string;
+  /** Which file the contract is read from; the name-based fallback stays for the old rows. */
+  file?: "services" | "renderer" | "factory" | "mastering" | "audioIndex" | "portable";
 }
+
+const SOURCES = {
+  services: servicesSource,
+  renderer: rendererSource,
+  factory: factorySource,
+  mastering: masteringSource,
+  audioIndex: audioIndexSource,
+  portable: portableSource,
+} as const;
 
 const structuralContracts: StructuralContract[] = [
   {
@@ -77,6 +91,27 @@ const structuralContracts: StructuralContract[] = [
       /export function factoryBankReady\(bank: SampleBank\): Promise<void> \{[\s\S]*?state\.assets\.values\(\)/.test(s),
     mutate: (s) => s.replace(/const inFlight = \[\.\.\.state\.assets\.values\(\)\];/, ""),
   },
+  {
+    name: "the mastering render waits for the catalogue BEFORE it copies the bank",
+    file: "mastering",
+    holds: (s) =>
+      /await factoryBankReady\(bank\);[\s\S]*?for \(const \[id, buffer\] of bank\.entries\(\)\) renderBank\.add\(id, buffer\);/.test(
+        s,
+      ),
+    mutate: (s) => s.replace(/await factoryBankReady\(bank\);/, ""),
+  },
+  {
+    name: "the audio index waits for the catalogue BEFORE it reads the bank",
+    file: "audioIndex",
+    holds: (s) => /await factoryBankReady\(bank\);[\s\S]*?const entries = bank\.entries\(\);/.test(s),
+    mutate: (s) => s.replace(/await factoryBankReady\(bank\);/, ""),
+  },
+  {
+    name: "the portable-project install waits for the catalogue BEFORE it reads the bank",
+    file: "portable",
+    holds: (s) => /await factoryBankReady\(bank\);[\s\S]*?bank\.entries\(\)\.map/.test(s),
+    mutate: (s) => s.replace(/await factoryBankReady\(bank\);/, ""),
+  },
 ];
 
 describe("the factory catalogue is rendered off the boot's critical path", () => {
@@ -102,8 +137,9 @@ describe("the factory catalogue is rendered off the boot's critical path", () =>
 
   for (const contract of structuralContracts) {
     it(`contract: ${contract.name}`, () => {
-      const source =
-        contract.name.includes("boot") || contract.name.includes("project open")
+      const source = contract.file
+        ? SOURCES[contract.file]
+        : contract.name.includes("boot") || contract.name.includes("project open")
           ? servicesSource
           : contract.name.includes("export")
             ? rendererSource

@@ -6,6 +6,7 @@
  */
 import type { ProjectDocument, Track } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
+import { factoryBankReady } from "../sample-library/factory";
 import { MAX_AUDIO_IMPORT_BYTES } from "../audio-import-capabilities";
 import { decodeAudioData } from "../services/audio-decode";
 import { encodeWav, sanitizeFilename } from "../rendering/wav";
@@ -269,6 +270,10 @@ export async function installPortableProjectAssets(
   const sampleIdMap = new Map<string, string>();
   const frozenIdMap = new Map<string, string>();
   const existingSampleRows = new Map((await sampleRepository.list()).map((asset) => [asset.id, asset]));
+  // The factory catalogue builds in the BACKGROUND, so wait for it: the
+  // occupied-id set is what keeps an installed portable project from
+  // colliding with a factory sample that has not arrived yet.
+  await factoryBankReady(bank);
   const occupiedIds = new Set([...existingSampleRows.keys(), ...bank.entries().map(([id]) => id)]);
 
   const rollback = async () => {

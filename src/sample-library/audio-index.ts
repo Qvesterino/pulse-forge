@@ -1,4 +1,5 @@
 import type { SampleBank } from "./factory";
+import { factoryBankReady } from "./factory";
 import { classifyAudio } from "../ai/audio/audio-client";
 import type { AudioLabel } from "../ai/audio/audio-types";
 
@@ -119,6 +120,10 @@ export async function buildAudioIndex(
 ): Promise<AudioSampleIndex | null> {
   // NOTE: availability is the CLASSIFY fn's concern (classifyAudio probes the
   // model itself) — an injected test classifier must not be gated by it.
+  // The factory catalogue builds in the BACKGROUND, so wait for it: an index
+  // built from a half-built catalogue would leave the missing assets
+  // unsearchable, and the user would never know which ones.
+  await factoryBankReady(bank);
   const entries = bank.entries();
   const index: AudioIndexEntry[] = [];
   let done = 0;

@@ -4,6 +4,7 @@ import { PPQ } from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { SampleBank } from "../sample-library/factory";
+import { factoryBankReady } from "../sample-library/factory";
 import type { SampleBank as SampleBankType } from "../sample-library/factory";
 import { estimateRenderPcmBytes, renderProject } from "../rendering/renderer";
 import type { ExportQuality, OfflineRenderRuntimeDiagnostics } from "../rendering/renderer";
@@ -171,6 +172,11 @@ export async function renderMasteringSessionSource(
   assertMasteringSessionWorkingSetBudget(workingSetBytes);
   const sourceBufferId = uid("mastering-session-source");
   const doc = createMasteringSessionRenderDocument(source.duration, master, sourceBufferId);
+  // The factory catalogue builds in the BACKGROUND (src/services.ts), so this
+  // copy can race it. Copying a half-built catalogue would render the master
+  // without the samples the project references — silently, because the copy
+  // is the only place the bank is read.
+  await factoryBankReady(bank);
   const renderBank = new SampleBank();
   for (const [id, buffer] of bank.entries()) renderBank.add(id, buffer);
   renderBank.add(sourceBufferId, source);
