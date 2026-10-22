@@ -115,3 +115,41 @@ súboru pred editom).
 
 **Kontrola, že si dodržal:** po commit-e `git branch --show-current` musí
 vrátiť `main`, a `git status` nesmie mať tvoje súbory unstaged.
+
+## 9. INDEX je zdieľaný — pred commitom ho vráť na HEAD
+
+Pravidlo 3 hovorí „staguj len vlastné súbory". To nestačí: **index je tiež
+zdieľaný**. `git commit` **bez pathspec** commituje **celý index** — teda aj to,
+čo tam pred tebou nastagovala iná session. Tvoj `git add -- <tvoj súbor>`
+pridá k tomu, čo už tam je.
+
+Incidencia 2026-10-23: commit `6dd5b76e` bol spravený cez `git commit -F <msg>`
+(bez pathspec, aby sa scope-riadky načítali zo súboru) a zobral **štyri cudzie
+cesty**, ktoré mala paralelná session nastagované (`CAMPAIGN_STATE.md`,
+`src/ai/grooves/index.ts`, `src/ai/meter.ts`, `src/intent/candidate-search.ts`).
+Commit bol pushnutý skôr, než som to zistil, takže ho už nebolo možné amendnúť
+bez force-pushe na zdieľanom `main` — force-push je horšia chyba než vysvetlenie
+v správe. Cudzia práca zostala zachovaná a zverejnená (to session chcela), no
+správa o commite neopisovala tie štyri cesty.
+
+**Pravidlo — postup, ktorý funguje:**
+
+```bash
+git reset                                  # index := HEAD; pracovný strom sa NEMENÍ
+git add -- <tvoj-súbor1> <tvoj-súbor2>    # stage presne tvoje cesty
+git diff --cached --stat                   # KONTROLA: v indexe sú len tvoje cesty
+git commit -F "<absolútna cesta k msg súboru>"
+```
+
+`git reset` (mixed) vráti index na HEAD a **pracovný strom nechá tak, ako je** —
+cudzia nastagovaná práca teda neprejde, ostane v strome nezastagovaná (kto ju
+potrebuje, znova ju `git add`-ne). Vec, ktorú `git diff --cached --stat`
+ukáže navyše, patrí cudzej session: necommituj ju, odlož ju do nového commitu
+alebo ju nechaj v strome.
+
+**Nepoužívaj `git commit -- <cesta>` ako náhradu:** ten commituje **pracovný
+strom** pre danú cestu, nie index — takže by zCommitoval aj cudziu WIP, ktorý
+si práve editoval. `git commit --only <cesta>` má rovnaké správanie.
+
+Súvisiace pravidlá: 1 (commituj skoro), 3 (staguj len vlastné), 4 (skontroluj
+vlastníctvo), 8 (commituj na `main`).
