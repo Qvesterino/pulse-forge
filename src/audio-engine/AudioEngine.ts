@@ -1665,16 +1665,8 @@ export class AudioEngine {
     for (const [id, nodes] of [...this.trackNodes]) {
       if (!liveTrackIds.has(id)) this.disposeTrackNodes(id, nodes);
     }
-    for (const [id, state] of [...this.instruments]) {
-      if (!liveTrackIds.has(id)) {
-        state.runtime.dispose();
-        try {
-          state.normGain.disconnect();
-        } catch {
-          /* already disconnected */
-        }
-        this.instruments.delete(id);
-      }
+    for (const id of [...this.instruments.keys()]) {
+      if (!liveTrackIds.has(id)) this.disposeInstrumentRuntime(id);
     }
     const liveReturnIds = new Set(doc.returns.map((r) => r.id));
     for (const [id, nodes] of [...this.returnNodes]) {
@@ -2981,7 +2973,17 @@ export class AudioEngine {
     this.automation.disposeLfos();
     this.triggerEngine.panicVoices(now);
     this.warpManager.disposeAllFrozen(now);
-    for (const state of this.instruments.values()) state.runtime.panic();
+    // A runtime that throws on panic must not strand the runtimes AFTER it:
+    // their voices would keep ringing past a Stop, because the loop below is
+    // what silences them. Same contract as the no-context branch above and
+    // as teardownGraph() — a failing runtime must not strand the rest.
+    for (const state of this.instruments.values()) {
+      try {
+        state.runtime.panic();
+      } catch {
+        /* already stopped */
+      }
+    }
   }
 
   /** Apply a MIDI CC value directly to a target parameter. */

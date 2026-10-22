@@ -273,11 +273,11 @@ function makeHarness(file: string, entry: FlushEntry, forceWet: boolean): Harnes
       process: (i: Float32Array[][], o: Float32Array[][], p: Record<string, Float32Array>) =>
         processor.process(i, o, p),
     },
-    { parameters },
+    { parameters, processor },
   );
 }
 
-type HarnessWithParams = Harness & { parameters: Record<string, Float32Array> };
+type HarnessWithParams = Harness & { parameters: Record<string, Float32Array>; processor: unknown };
 
 interface TailReport {
   last: number;
@@ -375,6 +375,97 @@ function runQuietImpulse(file: string, entry: FlushEntry): QuietReport {
   return { tailPeak, firstTailBlock };
 }
 
+/**
+ * STATE FLUSH — the probe the output-based gate above structurally CANNOT see.
+ *
+ * Both existing probes watch the OUTPUT. A processor that flushes its output
+ * but leaves its INTERNAL state decaying into the subnormal range passes both
+ * of them: the output is exactly zero, so there is no tail and no stored
+ * energy — while the filter memories inside keep non-zero values forever.
+ *
+ * That residue is not free. x86 subnormal arithmetic is up to ~100x slower
+ * than normal float, so a processor that keeps a subnormal in its state burns
+ * CPU on every block for the rest of the session, long after the sound it
+ * was processing is gone. It is also a state that never reaches zero, which
+ * is exactly what the gate's contract says must not happen.
+ *
+ * The probe therefore excites the processor, runs it into silence, and then
+ * inspects the processor's OWN state.
+ *
+ * The threshold is the TRUE subnormal floor, not the repo's 1e-20 musical
+ * flush floor. Those are different things: 1e-20 is an aesthetic silence
+ * floor (and a config constant in several processors), while the subnormal
+ * floor is where the CPU actually degrades — 1.18e-38 for Float32 and
+ * 2.23e-308 for Float64. Flagging the 1e-20 band instead would report the
+ * deliberate 1e-20 thresholds themselves and every quiet-but-normal state
+ * value, which is noise, not a defect.
+ */
+const FLOAT32_SUBNORMAL = 1.1754944e-38;
+const FLOAT64_SUBNORMAL = 2.2250738585072014e-308;
+
+function collectResidue(value: unknown, path: string, out: string[], depth = 0): void {
+  if (depth > 6) return;
+  if (typeof value === "number") {
+    if (value !== 0 && Math.abs(value) < FLOAT64_SUBNORMAL) out.push(`${path} = ${value}`);
+    return;
+  }
+  if (value instanceof Float32Array) {
+    for (let i = 0; i < value.length; i += 1) {
+      const element = value[i]!;
+      if (element !== 0 && Math.abs(element) < FLOAT32_SUBNORMAL) out.push(`${path}[${i}] = ${element}`);
+    }
+    return;
+  }
+  if (value instanceof Float64Array) {
+    for (let i = 0; i < value.length; i += 1) {
+      const element = value[i]!;
+      if (element !== 0 && Math.abs(element) < FLOAT64_SUBNORMAL) out.push(`${path}[${i}] = ${element}`);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i += 1) collectResidue(value[i], `${path}[${i}]`, out, depth + 1);
+    return;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    for (const key of Object.keys(record)) collectResidue(record[key], `${path}.${key}`, out, depth + 1);
+  }
+}
+function runIntoSilenceThenReadState(file: string, entry: FlushEntry): string[] {
+  const harness = makeHarness(file, entry, false) as HarnessWithParams;
+  const parameters = harness.parameters;
+  const impulseL = new Float32Array(BLOCK);
+  const impulseR = new Float32Array(BLOCK);
+  impulseL[0] = 0.5;
+  impulseR[0] = 0.5;
+  const outL = new Float32Array(BLOCK);
+  const outR = new Float32Array(BLOCK);
+  const outputs = [[outL, outR]];
+  harness.process([[impulseL, impulseR]], outputs, parameters);
+
+  // REAL zeros, not an empty input array: several processors early-return
+  // when nothing is connected (`input.length === 0`), and that would freeze
+  // the state instead of letting it decay — the probe would then measure
+  // nothing at all.
+  const silenceL = new Float32Array(BLOCK);
+  const silenceR = new Float32Array(BLOCK);
+  // Long enough for any feedback/decay tail to reach the flush zone.
+  const blocks = Math.round((4 * SAMPLE_RATE) / BLOCK);
+  for (let block = 0; block < blocks; block += 1) {
+    (globalThis as unknown as { currentFrame: number }).currentFrame = (block + 1) * BLOCK;
+    silenceL.fill(0);
+    silenceR.fill(0);
+    outL.fill(0);
+    outR.fill(0);
+    harness.process([[silenceL, silenceR]], outputs, parameters);
+  }
+
+  const residue: string[] = [];
+  collectResidue(harness.processor, "state", residue);
+  return residue;
+}
+
 describe("worklet flush coverage gate", () => {
   it("every processor file is classified (a new file must be added deliberately)", () => {
     const files = processorFiles();
@@ -436,4 +527,122 @@ describe("worklet flush coverage gate", () => {
       ).toBe(0);
     });
   }
+
+  for (const [file, entry] of Object.entries(FLUSHED)) {
+    it(`${file} leaves no subnormal residue in its own state`, () => {
+      const residue = runIntoSilenceThenReadState(file, entry);
+      expect(
+        residue.slice(0, 6),
+        `${file} kept a subnormal in its own state after the signal stopped — ` +
+          "the output is flushed but the internal state is not, so the processor " +
+          "keeps doing subnormal arithmetic forever (and the state never reaches zero)",
+      ).toEqual([]);
+    });
+  }
+});
+
+/**
+ * THE STATE MUST REACH EXACTLY ZERO — targeted at the two processors whose
+ * filter memories were left un-flushed.
+ *
+ * The generic sweep above cannot see these: their state decays SLOWLY (a
+ * narrow band-pass has poles almost on the unit circle), so it takes seconds
+ * of silence to cross into the subnormal band. The defect is still real — the
+ * contract is that the state reaches EXACTLY zero, and an un-flushed state
+ * only ever gets there by gradual underflow, after passing through the slow
+ * subnormal range.
+ *
+ * These specs drive the filter directly, which makes them fast and exact.
+ */
+describe("worklet state flush — targeted", () => {
+  it("kaskada-processor.js flushes its biquad STATE, not only its output", () => {
+    const harness = makeHarness(
+      "kaskada-processor.js",
+      { params: { feedback: 0.7, time: 30 }, capSeconds: 8 },
+      false,
+    ) as HarnessWithParams;
+    const processor = harness.processor as unknown as {
+      makeUmBiquad: (channels: number) => { z1: Float32Array; z2: Float32Array };
+      umBandpass: (bq: unknown, freq: number, q: number) => void;
+      umSample: (bq: unknown, ch: number, x: number) => number;
+    };
+
+    const bq = processor.makeUmBiquad(1);
+    processor.umBandpass(bq, 125, 2);
+    processor.umSample(bq, 0, 1);
+    // 125 Hz / Q 2 at 48 kHz has poles at r ≈ 0.99986 — the ring needs
+    // ~330 000 samples to cross the 1e-20 flush floor, which is exactly the
+    // window where an un-flushed state sits in the subnormal range.
+    for (let i = 0; i < 400000; i += 1) processor.umSample(bq, 0, 0);
+
+    expect(
+      bq.z1[0],
+      "the biquad's first state memory must reach exactly zero, not merely get quiet",
+    ).toBe(0);
+    expect(
+      bq.z2[0],
+      "the biquad's second state memory must reach exactly zero, not merely get quiet",
+    ).toBe(0);
+  });
+
+  it("prud-processor.js flushes its detector and cut state, not only its output", () => {
+    const harness = makeHarness("prud-processor.js", {}, false) as HarnessWithParams;
+    const parameters = harness.parameters;
+    const processor = harness.processor as unknown as {
+      det: Array<{ z1: number; z2: number; env: number; grDb: number }>;
+      cut: Array<Array<{ x1: number; x2: number; y1: number; y2: number }>>;
+    };
+
+    const impulseL = new Float32Array(BLOCK);
+    const impulseR = new Float32Array(BLOCK);
+    impulseL[0] = 0.5;
+    impulseR[0] = 0.5;
+    const outL = new Float32Array(BLOCK);
+    const outR = new Float32Array(BLOCK);
+    const outputs = [[outL, outR]];
+    harness.process([[impulseL, impulseR]], outputs, parameters);
+
+    // REAL zeros, not an empty input array: the processor early-returns on an
+    // empty input (nothing connected), which would freeze the state and hide
+    // what this spec is about — the DECAY of the state under silence.
+    const silenceL = new Float32Array(BLOCK);
+    const silenceR = new Float32Array(BLOCK);
+    // 4000 blocks ≈ 27 s of silence. The detector envelope is the slowest
+    // state (release 0.2 s ⇒ a ~9600-sample time constant), so it needs
+    // ~440 000 samples to cross the 1e-20 flush floor.
+    for (let block = 0; block < 4000; block += 1) {
+      (globalThis as unknown as { currentFrame: number }).currentFrame = (block + 1) * BLOCK;
+      silenceL.fill(0);
+      silenceR.fill(0);
+      outL.fill(0);
+      outR.fill(0);
+      harness.process([[silenceL, silenceR]], outputs, parameters);
+    }
+
+    // `grDb` is NOT decaying state — the band rides to its `amount` setting,
+    // so it settles on a real value. Everything else must be exactly zero.
+    const offenders: string[] = [];
+    for (let b = 0; b < processor.det.length; b += 1) {
+      const det = processor.det[b]!;
+      if (det.z1 !== 0) offenders.push(`det[${b}].z1 = ${det.z1}`);
+      if (det.z2 !== 0) offenders.push(`det[${b}].z2 = ${det.z2}`);
+      if (det.env !== 0) offenders.push(`det[${b}].env = ${det.env}`);
+    }
+    for (let ch = 0; ch < processor.cut.length; ch += 1) {
+      for (let b = 0; b < processor.cut[ch]!.length; b += 1) {
+        const cut = processor.cut[ch]![b]!;
+        if (cut.x1 !== 0) offenders.push(`cut[${ch}][${b}].x1 = ${cut.x1}`);
+        if (cut.x2 !== 0) offenders.push(`cut[${ch}][${b}].x2 = ${cut.x2}`);
+        if (cut.y1 !== 0) offenders.push(`cut[${ch}][${b}].y1 = ${cut.y1}`);
+        if (cut.y2 !== 0) offenders.push(`cut[${ch}][${b}].y2 = ${cut.y2}`);
+      }
+    }
+
+    expect(
+      offenders,
+      "the dynamic EQ kept decaying state that never reached zero — the output is " +
+        "flushed but the state is not, so it crawls through the subnormal range " +
+        "instead of being flushed to zero",
+    ).toEqual([]);
+  });
 });

@@ -53,6 +53,37 @@ function sliceFunction(source: string, signature: RegExp): string {
   return source.slice(start);
 }
 
+/**
+ * Extract the block assigned to a handler, e.g. `ext.oncontextrestored = () => { … }`.
+ *
+ * The context-lifecycle guard used to assert on a fixed 800-character window
+ * after the string "oncontextrestored". That window was a proxy for "inside
+ * this handler", and it broke the moment the handler grew a comment — which
+ * is exactly what happened when the worklet-readiness re-arm was added: the
+ * BEHAVIOUR was intact, only the distance changed, and the guard went red on
+ * a healthy implementation.
+ *
+ * Brace-walking pins the assertion to the handler that owns the call, so the
+ * guard still fails when a refactor drops the call, and it no longer fails
+ * when a comment grows.
+ */
+function sliceHandler(source: string, assignment: RegExp): string {
+  const start = source.search(assignment);
+  if (start < 0) return "";
+  const openBrace = source.indexOf("{", start);
+  if (openBrace < 0) return "";
+  let depth = 0;
+  for (let i = openBrace; i < source.length; i += 1) {
+    const c = source[i];
+    if (c === "{") depth += 1;
+    else if (c === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, i + 1);
+    }
+  }
+  return source.slice(start);
+}
+
 describe("AudioEngine — lifecycle hardening (source-grep)", () => {
   it("routes a dry input monitor through a live, non-frozen track and exposes edge cleanup", () => {
     const body = sliceFunction(readEngine(), /attachDryInputMonitor\s*\(/);
@@ -141,11 +172,15 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     expect(useContext).toMatch(/event\.preventDefault\(\)/);
     // contextlost must clear this.ctx so the next ensureContext() rebuilds
     // against a fresh context rather than recursing on the broken handle.
-    expect(useContext).toMatch(/oncontextlost[\s\S]{0,800}this\.ctx\s*=\s*null/);
+    const lostHandler = sliceHandler(useContext, /oncontextlost\s*=\s*\(event:\s*Event\)\s*=>\s*\{/);
+    expect(lostHandler, "oncontextlost handler not found").not.toBe("");
+    expect(lostHandler).toMatch(/this\.ctx\s*=\s*null/);
     // contextrestored must call useContext(ctx) to rebuild against the SAME
     // restored context — the browser kept the AudioContext alive, allocating
     // a new one would leak the original.
-    expect(useContext).toMatch(/oncontextrestored[\s\S]{0,800}this\.useContext\(ctx\)/);
+    const restoredHandler = sliceHandler(useContext, /oncontextrestored\s*=\s*\(\)\s*=>\s*\{/);
+    expect(restoredHandler, "oncontextrestored handler not found").not.toBe("");
+    expect(restoredHandler).toMatch(/this\.useContext\(ctx\)/);
   });
 
   it("panic() disposes LFO + follower state in BOTH the live-context and no-context paths", () => {

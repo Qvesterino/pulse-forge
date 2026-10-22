@@ -238,7 +238,15 @@ export function sliceAudioClipToArrangement(doc: ProjectDocument, clipId: string
   // STORED (rounded) length so repeated slices never drift onto each other.
   const originalEndBar = clip.startBar + clip.lengthBars;
   const newClips: AudioClip[] = [];
-  let currentBar = Math.round((originalEndBar + 0.5) * 100) / 100;
+  // The PLACEMENT grid must be the same grid the stored lengths live on.
+  // `storedBars` is tick-aligned — every other audio-clip write quantizes with
+  // `quantizeAudioBar(x, ticksPerBar(doc))` — but the placement used to round
+  // to 1/100 bar. Mixing the two grids made the 0.25-bar gap between slices
+  // wrong by up to half a hundredth of a bar (0.0049 bar measured), and the
+  // error compounded with every slice: the fragments drifted off the grid
+  // that every other audio-clip write can produce.
+  const barUnitTicks = ticksPerBar(doc);
+  let currentBar = quantizeAudioBar(originalEndBar + 0.5, barUnitTicks);
   for (const seg of segments) {
     const segWallSec = seg.endSec - seg.startSec;
     // The fragment's WALL LENGTH must be its segment's own length.
@@ -269,7 +277,7 @@ export function sliceAudioClipToArrangement(doc: ProjectDocument, clipId: string
       fadeOut,
       warpMarkers: undefined,
     });
-    currentBar = Math.round((currentBar + storedBars + 0.25) * 100) / 100;
+    currentBar = quantizeAudioBar(currentBar + storedBars + 0.25, barUnitTicks);
   }
   const next: ProjectDocument = {
     ...doc,

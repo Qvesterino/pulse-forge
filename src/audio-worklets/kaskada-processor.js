@@ -507,10 +507,21 @@ class KaskadaProcessor extends AudioWorkletProcessor {
   }
 
   umSample(bq, ch, x) {
-    const y = bq.b0 * x + bq.z1[ch];
-    bq.z1[ch] = bq.b1 * x - bq.a1 * y + bq.z2[ch];
-    bq.z2[ch] = bq.b2 * x - bq.a2 * y;
-    return y < 1e-20 && y > -1e-20 ? 0 : y; // denormal flush
+    let y = bq.b0 * x + bq.z1[ch];
+    // The OUTPUT alone is not enough: the two state memories are what decay
+    // toward zero, and an un-flushed state only ever gets there by gradual
+    // underflow — it passes through the subnormal range, where x86 float
+    // arithmetic is up to ~100x slower, and it parks there forever. The
+    // 125 Hz band-pass has poles at r ~= 0.99986, so the ring needs ~330 000
+    // samples to reach the 1e-20 floor: the state was sitting at -2.6e-43
+    // (a true Float32 subnormal) long after the sound had stopped.
+    // Same idiom as the envelope states elsewhere: flush BEFORE storing.
+    if (y > -1e-20 && y < 1e-20) y = 0;
+    let z1 = bq.b1 * x - bq.a1 * y + bq.z2[ch];
+    let z2 = bq.b2 * x - bq.a2 * y;
+    bq.z1[ch] = z1 > -1e-20 && z1 < 1e-20 ? 0 : z1;
+    bq.z2[ch] = z2 > -1e-20 && z2 < 1e-20 ? 0 : z2;
+    return y;
   }
 
   /** Refresh the active-band list + bell gains (chunk cadence) — only

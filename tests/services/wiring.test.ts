@@ -87,10 +87,36 @@ function makeRepo(): CoreServices["repo"] {
   } as unknown as CoreServices["repo"];
 }
 
+/**
+ * A bank stub that reports every factory sample as ALREADY PRESENT.
+ *
+ * `openProject` awaits `ensureFactorySamples(bank, …)` before the project
+ * becomes playable. That call asks the bank whether it already holds each
+ * referenced sample and only renders the missing ones.
+ *
+ * This suite is about scheduler wiring, note-expression forwarding and
+ * project open — not about sample synthesis — and rendering a factory sample
+ * needs a real AudioContext, which jsdom does not have. Reporting "already
+ * present" keeps the suite hermetic AND honest about what it depends on.
+ *
+ * The previous stub was a bare `{}`, so the open path threw
+ * `bank.has is not a function` and took the WHOLE file down: 15 of 15 specs
+ * failed on committed main, and the suite-expectations ratchet (which is
+ * pinned at zero owned-red) had no entry for it.
+ */
+function makeBank(): CoreServices["bank"] {
+  return {
+    has: () => true,
+    get: () => undefined,
+    add: () => {},
+    remove: () => {},
+  } as unknown as CoreServices["bank"];
+}
+
 function makeCore(engine: AudioEngine, repo: CoreServices["repo"] = makeRepo()): CoreServices {
   return {
     engine,
-    bank: {} as CoreServices["bank"],
+    bank: makeBank(),
     repo,
     snapshots: {
       list: vi.fn(async () => []),

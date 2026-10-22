@@ -99,9 +99,31 @@ export function readRecoveryBuffer(): RecoveryBuffer | null {
   return { projectId: rec.projectId, savedAt: rec.savedAt, doc: rec.doc };
 }
 
-export function clearRecoveryBuffer(): void {
+/**
+ * Drop the buffer.
+ *
+ * `projectId` scopes the clear to ONE project. The buffer holds the ONLY copy
+ * of the work that was uncommitted when the tab died (the unload IndexedDB
+ * flush provably never commits), so a save of project Q must NOT destroy
+ * project P's buffer — P's work is still the only copy of itself. The
+ * contract above ("cleared the moment a save of THE SAME project commits")
+ * depends on this check; without it, the first autosave of any other project
+ * silently threw the user's uncommitted work away.
+ *
+ * Omit `projectId` to drop the buffer unconditionally — the user recovered it,
+ * dismissed it, or it is corrupt and must not be offered.
+ */
+export function clearRecoveryBuffer(projectId?: string): void {
+  const store = storage();
+  if (!store) return;
+  if (projectId !== undefined) {
+    const buffer = readRecoveryBuffer();
+    // A missing or unreadable buffer is already gone; a buffer belonging to
+    // another project must survive this project's save.
+    if (buffer && buffer.projectId !== projectId) return;
+  }
   try {
-    storage()?.removeItem(RECOVERY_KEY);
+    store.removeItem(RECOVERY_KEY);
   } catch {
     /* nothing to do - the buffer is best-effort by construction */
   }

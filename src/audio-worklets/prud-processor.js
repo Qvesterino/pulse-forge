@@ -140,6 +140,20 @@ class PrudProcessor extends AudioWorkletProcessor {
           c.y1 = y;
           outData[i] = y;
         }
+        // Flush the DECAYING state. Every other processor in the worklet tree
+        // uses the 1e-20 idiom on its envelope/filter states; this one had
+        // none, so the detector memories and the envelope crawled toward zero
+        // through the subnormal range — where x86 float arithmetic is up to
+        // ~100x slower — and only reached zero by gradual underflow.
+        // `grDb` is deliberately NOT flushed: the band rides to its `amount`
+        // setting, so a real resting value is correct there.
+        if (z1 > -1e-20 && z1 < 1e-20) z1 = 0;
+        if (z2 > -1e-20 && z2 < 1e-20) z2 = 0;
+        if (env > -1e-20 && env < 1e-20) env = 0;
+        if (c.x1 > -1e-20 && c.x1 < 1e-20) c.x1 = 0;
+        if (c.x2 > -1e-20 && c.x2 < 1e-20) c.x2 = 0;
+        if (c.y1 > -1e-20 && c.y1 < 1e-20) c.y1 = 0;
+        if (c.y2 > -1e-20 && c.y2 < 1e-20) c.y2 = 0;
         det.z1 = z1;
         det.z2 = z2;
         det.env = env;

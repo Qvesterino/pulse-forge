@@ -4,7 +4,7 @@
     "bass-harmonic-worklet.js": "38ca70e3f89a2e53c399ae57f6eb0b7e6dc10b29cf245aa32d2496e0fbba230a",
     "bitcrusher-worklet.js": "8cc87639d6d10ea3474bb043bdff8bd979c1b41a65dfbf1d5b90d34f555be0d6",
     "choral-worklet.js": "1cbb5d1a71b2532350cf7d3cc2d3e56abd5c67fda9a4eb7767e3619bbc6b9f5e",
-    "core-worklet.js": "b6d3e7391806ca1a9df337aecd2b10d62a63947da0c28e3d7ca649bb243e67f3",
+    "core-worklet.js": "3fbf6800e0b7845af09b1a3d35b018312ec5ae1643726d3e7b8f65ce009c4ddd",
     "fx-extra-worklet.js": "4a4ec2ab7419b277a1cd4fad442686bad7e574b207329bdd66be89a5a6913dbb",
     "fxeq-worklet.js": "5a06b7f37c05bbe5a35adbc8a4c99a4e5230428d53511b78e551511cbae0aa1d",
     "generative-player-worklet.js": "e6b9c29e46bfe293b3562734ce0d8f424f50b5bc483261d167c569e1bf812de0",

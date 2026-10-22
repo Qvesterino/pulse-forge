@@ -515,3 +515,134 @@ describe("engine lifecycle stress gate", () => {
     expect(engine.voiceCount).toBe(0);
   });
 });
+
+/**
+ * A FAILING DISPOSE MUST NOT STRAND THE REST OF THE GRAPH.
+ *
+ * `syncProject()` walks the graph in a fixed order: dead strips, then dead
+ * instrument runtimes, then dead returns, then the live ones. The disposal of
+ * a dead instrument runtime used to run INLINE and UNGUARDED, while every
+ * other dispose in the engine (the FX runtimes, the instrument helper, the
+ * context swap) wrapped the call in a try/catch.
+ *
+ * A runtime whose `dispose()` throws therefore aborted `syncProject()` at that
+ * point. Everything AFTER it in the same walk never ran:
+ *
+ *   - the dead return buses were never disposed, so a DELETED bus kept its
+ *     nodes in the graph and kept passing audio to the master,
+ *   - a newly added return was never created at all.
+ *
+ * The failure was silent: `setProject()` catches a thrown body and logs it,
+ * so the studio looked alive while the graph drifted away from the document.
+ */
+describe("instrument-runtime disposal isolation", () => {
+  interface InstrumentInternals {
+    instruments: Map<string, { runtime: { dispose: () => void; panic: () => void } }>;
+    returnNodes: Map<string, Record<string, unknown>>;
+  }
+
+  function internalsOf(engine: AudioEngine): InstrumentInternals {
+    return engine as unknown as InstrumentInternals;
+  }
+
+  async function buildHouse() {
+    const ctx = makeCtx();
+    const engine = new AudioEngine();
+    engine.useContext(ctx as unknown as AudioContext);
+    const doc = createProjectFromTemplate("house");
+    engine.setProject(doc);
+    await flush();
+    return { ctx, engine, doc };
+  }
+
+  it("a dead instrument track whose runtime throws on dispose does not abort the rest of the sync", async () => {
+    const { engine, doc } = await buildHouse();
+    const internals = internalsOf(engine);
+
+    const instrument = doc.tracks.find((t) => t.kind === "instrument");
+    expect(instrument, "the house template must carry an instrument track").toBeTruthy();
+    const state = internals.instruments.get(instrument!.id);
+    expect(state, "the engine must own a runtime for the instrument track").toBeTruthy();
+
+    // A runtime that refuses to die. The engine's own contract — asserted for
+    // every other dispose in the file — is that a failing dispose must not
+    // strand the rest of the channel.
+    state!.runtime.dispose = () => {
+      throw new Error("instrument runtime dispose failed");
+    };
+
+    const deadReturn = doc.returns[0].id;
+    const liveReturn = doc.returns[1].id;
+    const next: ProjectDocument = {
+      ...doc,
+      tracks: doc.tracks.filter((t) => t.id !== instrument!.id),
+      returns: doc.returns.filter((r) => r.id !== deadReturn),
+    };
+
+    engine.setProject(next);
+    await flush();
+
+    // 1. The dead runtime is still FORGOTTEN — the throw must not skip the
+    //    bookkeeping, or the track's nodes leak for the rest of the session.
+    expect(internals.instruments.has(instrument!.id), "the dead runtime must be forgotten").toBe(false);
+    // 2. The sync CONTINUED past the throw: the deleted return bus is out of
+    //    the graph. Before the fix this loop never ran, and the bus kept
+    //    feeding the master.
+    expect(internals.returnNodes.has(deadReturn), "a deleted return bus must leave the graph").toBe(false);
+    // 3. NEGATIVE CONTROL: a return that was NOT deleted is still wired.
+    expect(internals.returnNodes.has(liveReturn), "a surviving return bus must stay in the graph").toBe(true);
+  });
+
+  it("a healthy instrument runtime IS disposed when its track is deleted (the control for the spec above)", async () => {
+    const { engine, doc } = await buildHouse();
+    const internals = internalsOf(engine);
+
+    const instrument = doc.tracks.find((t) => t.kind === "instrument");
+    const state = internals.instruments.get(instrument!.id);
+    expect(state).toBeTruthy();
+
+    let disposed = false;
+    const original = state!.runtime.dispose.bind(state!.runtime);
+    state!.runtime.dispose = () => {
+      disposed = true;
+      original();
+    };
+
+    engine.setProject({ ...doc, tracks: doc.tracks.filter((t) => t.id !== instrument!.id) });
+    await flush();
+
+    expect(disposed, "deleting a track must dispose its instrument runtime").toBe(true);
+    expect(internals.instruments.has(instrument!.id)).toBe(false);
+  });
+
+  it("a runtime that throws on panic does not silence the stop for the runtimes after it", async () => {
+    const { engine } = await buildHouse();
+    const internals = internalsOf(engine);
+
+    // Use the engine's OWN map order, not the document's: the panic walks the
+    // map, so the throwing runtime has to be the one it reaches FIRST.
+    const ids = [...internals.instruments.keys()];
+    expect(ids.length, "the house template must carry more than one instrument track").toBeGreaterThan(1);
+    const first = internals.instruments.get(ids[0]!);
+    const second = internals.instruments.get(ids[1]!);
+    expect(first).toBeTruthy();
+    expect(second).toBeTruthy();
+
+    first!.runtime.panic = () => {
+      throw new Error("instrument runtime panic failed");
+    };
+    let secondPanicked = false;
+    const original = second!.runtime.panic.bind(second!.runtime);
+    second!.runtime.panic = () => {
+      secondPanicked = true;
+      original();
+    };
+
+    engine.panic();
+
+    // A Stop that leaves a voice ringing is a broken Stop: `panic()` is the
+    // "everything off, now" reset, and the runtimes after the throwing one
+    // must still be silenced.
+    expect(secondPanicked, "a throwing runtime must not stop the panic from reaching the others").toBe(true);
+  });
+});

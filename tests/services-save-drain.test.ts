@@ -20,10 +20,30 @@ function makeDoc(): ProjectDocument {
   return createProjectFromTemplate("house");
 }
 
+/**
+ * A bank stub that reports every factory sample as ALREADY PRESENT.
+ *
+ * `openProject` awaits `ensureFactorySamples(bank, …)`, which asks the bank
+ * whether it already holds each referenced sample. The previous stub was a
+ * bare `{}`, so the open path threw `bank.has is not a function`.
+ *
+ * Reporting "already present" keeps the suite hermetic: rendering a factory
+ * sample needs a real AudioContext, which jsdom does not have, and nothing
+ * here is about sample synthesis.
+ */
+function makeBank(): SampleBank {
+  return {
+    has: () => true,
+    get: () => undefined,
+    add: () => {},
+    remove: () => {},
+  } as unknown as SampleBank;
+}
+
 function makeCore(engine: AudioEngine, repo: CoreServices["repo"]): CoreServices {
   return {
     engine,
-    bank: {} as SampleBank,
+    bank: makeBank(),
     repo,
     snapshots: {
       list: vi.fn(async () => []),

@@ -1141,7 +1141,12 @@ export async function openProject(
       // The save committed, so nothing is uncommitted any more: the unload
       // buffer (D20) must not survive it, or the next boot would offer to
       // "recover" work that is already on disk.
-      clearRecoveryBuffer();
+      //
+      // Scoped to THIS project: the buffer is a single slot holding the only
+      // copy of whatever was uncommitted when some tab died. Clearing it
+      // unconditionally let the first autosave of an unrelated project throw
+      // that work away — the user was never even offered it.
+      clearRecoveryBuffer(documentAtStart.id);
       // Journal trails the data on purpose (recorded AFTER the commit): a
       // crash between the two leaves the journal conservative — it reports
       // an unclean session even though this revision landed. Detection may

@@ -159,7 +159,17 @@ async function makeEngine(doc: ProjectDocument) {
   return engine;
 }
 
-type DelayParam = { calls: ParamCall[]; value: number };
+/**
+ * The mock AudioParam this file asserts against (see `mockNode`'s `param()`).
+ *
+ * `lastValue` is NOT part of the DOM `AudioParam` — it is the mock's own
+ * "last write regardless of mode" reader, and it is what the wiring specs
+ * below use to assert the compensation delay was actually written. Leaving it
+ * off this type made the file fail `tsc --noEmit`, which is the first half of
+ * `npm run build` — so the whole production build was red over a type that
+ * did not match the mock three lines above it.
+ */
+type DelayParam = { calls: ParamCall[]; value: number; lastValue: () => number };
 type LatencyRuntime = {
   getLatencySec?: () => number;
   waitForLatencyReport?: (timeoutMs: number) => Promise<boolean>;
@@ -379,7 +389,14 @@ describe("PDC — a dry chain waits out the graph's latency", () => {
       {
         input: { connections: Set<unknown> };
         panner: { connections: Set<unknown> };
-        fx: { runtimes: Map<string, LatencyRuntime>; pdcDelay: { delayTime: DelayParam } | null };
+        // The delay node is a `mockNode()`, so it carries the same
+        // `connections` edge set the other mock nodes do — that edge set is
+        // how the spec below proves the delay sits BETWEEN the chain's tail
+        // and its sink.
+        fx: {
+          runtimes: Map<string, LatencyRuntime>;
+          pdcDelay: { delayTime: DelayParam; connections: Set<unknown> } | null;
+        };
       }
     >;
     syncPdc: () => void;

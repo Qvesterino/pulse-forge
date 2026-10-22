@@ -82,6 +82,14 @@ class SirkaProcessor extends AudioWorkletProcessor {
       lOut[i] = l * (1 - mix) + nl * mix;
       rOut[i] = r * (1 - mix) + nr * mix;
     }
+    // Flush the one-pole states (the same 1e-20 idiom the other processors
+    // use): they decay toward zero but only ever reach it by gradual
+    // underflow, parking in the subnormal range — where x86 float arithmetic
+    // is up to ~100x slower — for the rest of the session.
+    if (Math.abs(lowL) < 1e-20) lowL = 0;
+    if (Math.abs(lowR) < 1e-20) lowR = 0;
+    if (Math.abs(midL) < 1e-20) midL = 0;
+    if (Math.abs(midR) < 1e-20) midR = 0;
     this.lowL = lowL;
     this.lowR = lowR;
     this.midL = midL;
