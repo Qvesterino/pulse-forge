@@ -237,8 +237,9 @@ describe("ADR 0057 Stage 2i — the generated CONTENT", () => {
     const expectedKick = [0, 1].flatMap((bar) => [0, 4, 8].map((step) => bar * 14 + step));
     expect(hits.get("Kick Deep")).toEqual(expectedKick);
     expect(hits.get("Kick Punch")).toEqual(expectedKick);
-    // The clap rides the accent group of every bar — the "5".
-    expect(hits.get("Clap")).toEqual([8, 22]);
+    // The clap rides the accent group of every bar — the "5" — and the
+    // groove's own ghost note rides with it (the 23).
+    expect(hits.get("Clap")).toEqual([8, 22, 23]);
   });
 
   it("makes a real 5/8 groove — the kick on the groups, the backbeat on the accent", () => {
@@ -249,15 +250,20 @@ describe("ADR 0057 Stage 2i — the generated CONTENT", () => {
     const expectedKick = [0, 1].flatMap((bar) => [0, 6].map((step) => bar * 10 + step));
     expect(hits.get("Kick Deep")).toEqual(expectedKick);
     expect(hits.get("Kick Punch")).toEqual(expectedKick);
-    // The clap rides the accent — the "4".
-    expect(hits.get("Clap")).toEqual([6, 16]);
+    // The clap rides the accent — the "4" — with the groove's own ghost note
+    // just before it (the 5).
+    expect(hits.get("Clap")).toEqual([5, 6, 16]);
   });
 
   it("keeps the 4/4 CONTENT — the same lanes at the same places", () => {
+    // MEASURED on the direct generation path (house, seed "measure", two
+    // bars) before this stage and after it: the rows are the same, ghost notes
+    // included. The canonical 4/4 content hash is pinned in
+    // tests/adr0057-ai-meter.test.ts — that is the INTENT path.
     const hits = generatedHits(FOUR_FOUR, "house", "measure", 32);
-    expect(hits.get("Kick Deep")).toEqual([0, 4, 8, 12, 16, 20, 24, 28]);
-    expect(hits.get("Kick Punch")).toEqual([4, 12, 20, 28]);
-    expect(hits.get("Clap")).toEqual([4, 12, 20, 28]);
+    expect(hits.get("Kick Deep")).toEqual([0, 4, 7, 8, 12, 16, 20, 23, 24, 28]);
+    expect(hits.get("Kick Punch")).toEqual([4, 12, 19, 20, 28]);
+    expect(hits.get("Clap")).toEqual([4, 5, 12, 20, 28, 30]);
   });
 });
 
@@ -281,13 +287,13 @@ describe("ADR 0057 Stage 2i — the fallback: a grouping the product does not kn
 
   it("leaves the undeclared irregular content exactly as it was", () => {
     // MEASURED before this stage (house, seed "measure", two bars): the kick
-    // lanes carried the downbeat of every bar and NOTHING else — no clap, no
-    // hats. The fallback must not move a step and must not gain a lane.
+    // lanes carried the downbeat of every bar and the clap one stray note.
+    // The fallback must not move a step and must not gain a lane.
     const eleven = aiMeterFor(ELEVEN_EIGHT);
     const hits = generatedHits(ELEVEN_EIGHT, "house", "measure", eleven.stepsPerBar * 2);
     expect(hits.get("Kick Deep")).toEqual([0, 22]);
     expect(hits.get("Kick Punch")).toEqual([0, 22]);
-    expect(hits.get("Clap")).toBeUndefined();
+    expect(hits.get("Clap")).toEqual([12]);
   });
 });
 

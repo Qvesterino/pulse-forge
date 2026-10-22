@@ -935,15 +935,20 @@ That regime was RIGHT about the arithmetic and WRONG about the consequence.
 
 ### What was measured, before anything changed
 
-A 7/8 document (house, seed "measure", two bars) produced:
+A 7/8 document (house, seed "measure", two bars, the product's canonical
+generation options) produced:
 
 ```
-kick  [0, 14]            <- the downbeat of each bar, and nothing else
+Kick Deep   [0, 14]      <- the downbeat of each bar, and nothing else
+Kick Punch  [0, 14]
+Clap        [12]          <- one stray note
+Hat Closed  [1]
+Hat Open    [6]
 ```
 
-A bare click on the beat 1 of every bar. No snare, no clap, no hats — the
-groove was GONE, not merely sparse. A 5/8 document produced kick [0, 10] and
-one stray hat at step 6.
+The kick was a bare click on the beat 1 of every bar: the groove was GONE, not
+merely sparse. A 5/8 document produced Kick Deep [0, 10] and Kick Punch
+[0, 10] — the same bare click — with a few stray notes around it.
 
 Two rules in the code produced that, and both are real:
 
@@ -961,6 +966,18 @@ Rule 2 was a DELIBERATE product decision from Stage 2c and rule 1 was its
 consequence. Stage 2i supersedes the decision — not because it was wrong in
 principle, but because the product had no irregular CONTENT to put in place of
 the grouping, and a metre with no content is a metre that does not work.
+
+The same script and the same seed, after this stage:
+
+```
+Kick Deep   [0, 4, 8, 14, 18, 22]   <- the 2+2+3's downbeats
+Kick Punch  [0, 4, 8, 14, 18, 22]
+Clap        [8, 22, 23]              <- the accent group ("5") and a ghost
+Hat Closed  [1, 4, 5, 8, 11, 15, 17, 19, 21, 25, 27]
+```
+
+The 5/8 document went from Kick [0, 10] to Kick Deep [0, 6, 10, 16] and Clap
+[5, 6, 16] — the 3+2's "1" and "4", with the backbeat on the accent.
 
 ### The one owner: `src/ai/meter.ts` — the GROUPS
 
@@ -1019,19 +1036,25 @@ group's half.
 ### 4/4 and every regular metre are byte-identical — measured, not assumed
 
 The four canonical content hashes are unchanged (17e1439d, 688279c1, 47f20c59,
-b4f0ae78) and the generated rows are the same lane by lane. The metrical
-facts are legacy for every regular metre, and the identity is structural, not
-lucky: for a simple metre the groups ARE the pulses, and the half-grid test
-is the legacy `pulseSteps / 2` test, step by step. The spec re-implements the
-legacy formula and compares it against the production one, so the control
-cannot be satisfied by the code agreeing with itself.
+b4f0ae78) and the generated rows are the same lane by lane. MEASURED on the
+direct generation path (the same script, the same seed, before and after):
+4/4 `Kick Deep [0, 4, 7, 8, 12, 16, 20, 23, 24, 28]`, `Kick Punch
+[4, 12, 19, 20, 28]`, `Clap [4, 5, 12, 20, 28, 30]`; 6/8 `Kick Deep
+[0, 6, 12, 18]`, `Clap [2, 8, 14, 20]` — identical to the last step.
+
+The metrical facts are legacy for every regular metre, and the identity is
+structural, not lucky: for a simple metre the groups ARE the pulses, and the
+half-grid test is the legacy `pulseSteps / 2` test, step by step. The spec
+re-implements the legacy formula and compares it against the production one, so
+the control cannot be satisfied by the code agreeing with itself.
 
 ### The fallback: a grouping the product does not know
 
 An irregular metre that is NOT declared (11/8) keeps the whole bar as one
 group: one anchor (the downbeat), no backbeat, the projection's refusal
-stands, and the content is exactly what it was — MEASURED before and after:
-kick [0, 22] per bar, no other lane. The product does not guess a grouping.
+stands, and the content is exactly what it was — MEASURED before and after,
+lane by lane: `Kick Deep [0, 22]`, `Kick Punch [0, 22]`, `Clap [12]`, `Hat
+Closed [1]`, `Hat Open [14]`. The product does not guess a grouping.
 
 ### The pinned models are NOT retrained — and NOT edited
 
