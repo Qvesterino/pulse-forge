@@ -263,6 +263,15 @@ try {
     );
     await clickPanelAction(appPage, "EXPORT");
     await appPage.waitForSelector('.export-panel[aria-label="Export"]', { timeout: 5000 });
+    // "EXPORT JSON ONLY" lives inside a COLLAPSED <details> ("MORE OPTIONS ·
+    // LINKS · BUNDLES · BACKUP", ExportPanel.tsx:1570, since 2026-10-15). The
+    // button exists but is not visible while the section is closed, so the
+    // click waits for a hidden element and times out. The step was never
+    // reached while the app failed to mount; open the section first.
+    const moreOptions = appPage.locator(".export-panel details.export-more-options");
+    if ((await moreOptions.count()) > 0 && !(await moreOptions.evaluate((element) => element.open))) {
+      await moreOptions.locator("summary").click();
+    }
     // `waitForEvent` arms its own timeout NOW, so if anything between here and
     // the await below throws (a missing button, a closed panel), this promise
     // rejects later with NO handler attached — an unhandled rejection, which
