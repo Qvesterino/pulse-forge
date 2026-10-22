@@ -22,6 +22,23 @@ const PORT = Number(process.env.PORT) || 5199;
  */
 const BOOT_TIMEOUT_MS = 600_000;
 
+/**
+ * The gallery/collab server is an OPTIONAL process (server/collab-server.mjs).
+ *
+ * In dev it lives on the default relay port (src/collab/collabShared.ts →
+ * defaultServerUrl → ws://<host>:1234; src/gallery/galleryApi.ts →
+ * galleryBaseUrl → http://127.0.0.1:1234). A studio without it is local-only
+ * and perfectly healthy — but the IntakeTray polls its /api/intake endpoint
+ * every 8 s, and the BROWSER logs each refused request as a console error.
+ * The app swallows it (the tray simply stays quiet); the console noise is
+ * not a boot failure.
+ *
+ * So the app-boot gate tolerates a refused request to that optional service —
+ * and ONLY when EVERY failed request went there. Any other failed request
+ * keeps the gate red, so this cannot hide a real network fault.
+ */
+const OPTIONAL_LOCAL_SERVICE_URL = /^https?:\/\/(?:127\.0\.0\.1|localhost):1234(?:\/|$)/;
+
 const server = await createServer({
   root,
   logLevel: "error",
@@ -150,11 +167,17 @@ try {
 
   let appBootOk = false;
   const appErrors = [];
+  const appFailedRequests = [];
   const appPage = await browser.newPage();
   appPage.on("console", (msg) => {
     if (msg.type() === "error") appErrors.push(msg.text());
   });
   appPage.on("pageerror", (err) => appErrors.push(String(err)));
+  // The console text of a failed request carries no URL — record them here so
+  // the filter below can tell an optional-service refusal from a real fault.
+  appPage.on("requestfailed", (req) => {
+    appFailedRequests.push({ url: req.url(), error: req.failure()?.errorText ?? "unknown" });
+  });
   await appPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: BOOT_TIMEOUT_MS });
   // Mount-retry: under concurrent load (a second dev session transforming
   // files), the first lazy-chunk load can outrun the 30 s selector window.
@@ -421,7 +444,20 @@ try {
     await appPage.locator('.topbar button:has-text("PROJECTS")').first().click();
     await appPage.waitForSelector(".project-browser", { timeout: 30_000 });
     await appPage.waitForSelector(".pb-row", { timeout: 15000 });
-    const fatal = appErrors.filter((e) => !/AudioContext|autoplay|user gesture/i.test(e));
+    // A refused request to the OPTIONAL local gallery/collab service is not a
+    // boot failure — but only when EVERY failed request went there.
+    const optionalServiceOnly =
+      appFailedRequests.length > 0 && appFailedRequests.every((r) => OPTIONAL_LOCAL_SERVICE_URL.test(r.url));
+    const fatal = appErrors.filter(
+      (e) =>
+        !/AudioContext|autoplay|user gesture/i.test(e) &&
+        !(optionalServiceOnly && /Failed to load resource: net::ERR_CONNECTION_REFUSED/.test(e)),
+    );
+    if (optionalServiceOnly) {
+      console.log(
+        `[info] app boot — ignored ${appFailedRequests.length} refused request(s) to the optional local gallery service`,
+      );
+    }
     if (fatal.length === 0) {
       appBootOk = true;
       console.log("[PASS] app boots into browser, opens a template, panels mount, project listed on return");
