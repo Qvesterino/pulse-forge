@@ -49,9 +49,22 @@ export interface GrooveData {
   bpm: [number, number];
   swing: number;
   /**
+   * The groove's OWN metre (ADR 0057 Stage 2j).
+   *
+   * ABSENT means 4/4 — the metre the whole library was written in — so the
+   * 258 existing grooves carry no field, decode byte-identically and pick
+   * exactly as they did before the irregular library existed.
+   *
+   * PRESENT when the groove is written in another metre (7/8, 5/8). Then the
+   * groove's rows are that metrical bar long, and the groove is only ever a
+   * candidate for a document in the same metre.
+   */
+  timeSignature?: import("../project-model/types").TimeSignature;
+  /**
    * Per-pad velocity arrays. Keys are pad indices (0-15).
    * Each value is an array of velocity values (0 = off, 0.1-1 = hit).
-   * All patterns within a groove must have the same length (16 steps).
+   * All patterns within a groove must have the same length: the groove's own
+   * metrical bar (16 steps for 4/4, 14 for 7/8, 10 for 5/8).
    */
   patterns: { [padIndex: number]: number[] }[];
   /** Which pad indices are active in this groove */

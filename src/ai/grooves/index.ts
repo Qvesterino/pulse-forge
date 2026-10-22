@@ -1,4 +1,5 @@
 import type { GrooveData } from "../types";
+import { aiMeterFor, isDefaultMeter, sameSignature, type AiMeter } from "../meter";
 import { HOUSE_GROOVES } from "./house";
 import { TECHNO_GROOVES } from "./techno";
 import { TRAP_GROOVES } from "./trap";
@@ -62,6 +63,49 @@ export const GROOVE_LIBRARY: readonly GrooveData[] = [
 /** Get all groove styles for a genre */
 export function getGroovesForGenre(genre: GrooveData["genre"]): readonly GrooveData[] {
   return GROOVE_LIBRARY.filter((g) => g.genre === genre);
+}
+
+/**
+ * The groove's OWN bar, in steps.
+ *
+ * A 4/4 groove is sixteen steps; a groove written in 7/8 is fourteen and one
+ * in 5/8 is ten. The metrical facts own that number (ADR 0057 Stage 2b) — this
+ * asks them, it does not re-derive the arithmetic.
+ */
+export function grooveBarSteps(groove: GrooveData): number {
+  return aiMeterFor(groove.timeSignature ?? null).stepsPerBar;
+}
+
+/**
+ * Narrow a genre's grooves to the ones that LIVE in the document's metre
+ * (ADR 0057 Stage 2j — the irregular library).
+ *
+ * A groove declares its metre (7/8, 5/8) or does not (4/4 — the library's
+ * default). The rules, in order:
+ *
+ * 1. **A groove only ever plays its own metre.** A 7/8 groove is never a
+ *    candidate for a 4/4 document, and a 4/4 groove is never a candidate for
+ *    a 7/8 document when the library HAS 7/8 material.
+ * 2. **4/4 keeps its candidate set exactly.** Only the grooves that declare
+ *    nothing are eligible, and that is the set the 4/4 pick has always hashed
+ *    over — which is what keeps the 4/4 content bit-identical after the
+ *    irregular library lands. (The pick is a rendezvous hash, so an extra
+ *    candidate would win ~1/(N+1) of the seeds.)
+ * 3. **A metre the library does NOT have falls back to the 4/4 material**, and
+ *    the metrical view projects it into the document's metre — today's
+ *    behaviour, unchanged.
+ *
+ * Behaves as a REFINEMENT: an empty result returns the incoming list, so a
+ * genre that holds nothing but odd-metre grooves still generates.
+ */
+export function preferGroovesForMeter(
+  grooves: readonly GrooveData[],
+  meter: AiMeter,
+): readonly GrooveData[] {
+  const inMetre = grooves.filter((groove) => sameSignature(groove.timeSignature, meter.signature));
+  if (inMetre.length > 0) return inMetre;
+  const fourFour = grooves.filter((groove) => isDefaultMeter(groove.timeSignature));
+  return fourFour.length > 0 ? fourFour : grooves;
 }
 
 /**

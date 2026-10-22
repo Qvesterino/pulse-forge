@@ -1,11 +1,12 @@
 import type { StepMeta } from "../project-model/types";
 import type { GenerateOptions, GrooveData, VelocityLevel } from "./types";
-import { generatePadSequence, dequantizeVelocity, getGroovePadModel, MODEL_FRAME_STEPS } from "./markov";
+import { generatePadSequence, dequantizeVelocity, getGroovePadModel } from "./markov";
 import { canRatchet, ghostMultiplier, inferPadRole, type PadRole } from "./pad-roles";
 import { applyPhraseDynamics, buildPhrasePlan } from "./phrase";
 import { enforceDrumAnchors, repairDrumRow } from "./quality";
 import { enforceSyncopationBudget } from "./style-quality";
 import { metricalGroovePadRows, projectRowToMeter } from "./groove-view";
+import { grooveBarSteps } from "./grooves/index";
 import { accentGroupSteps, aiMeterFor, barCount, isPulse, metricalTier, type AiMeter } from "./meter";
 
 export interface DrumRandomStreams {
@@ -139,11 +140,17 @@ export function generateDrumPattern(
     // (ADR 0057 Stage 2c) — in 4/4 it is the very same rows as before.
     const padPatterns = metricalGroovePadRows(groove, padIndex, role, meter);
 
-    // The model generates the SOURCE bar — the library's own sixteen-position
-    // frame — and the metrical view maps that bar into the document's metre.
-    // The model therefore keeps its frame (a retrain is a versioned step), and
-    // the CONTENT follows the metre.
-    const sourceSequence = generatePadSequence(model, MODEL_FRAME_STEPS, rand, options.temperature);
+    // The model generates the SOURCE bar — the groove's OWN bar — and the
+    // metrical view maps that bar into the document's metre. The model keeps
+    // its frame (a retrain is a versioned step) and the CONTENT follows the
+    // metre.
+    //
+    // The source bar is as long as the groove's own bar: sixteen steps for the
+    // 4/4 library, fourteen for a groove written in 7/8, ten for one in 5/8
+    // (ADR 0057 Stage 2j). Asking the model for the groove's own length is
+    // what makes an irregular groove generate AS ITSELF instead of a bar with
+    // two steps of a fallback tail.
+    const sourceSequence = generatePadSequence(model, grooveBarSteps(groove), rand, options.temperature);
     const baseSequence = projectRowToMeter(sourceSequence, role, meter);
 
     // Extend to full stepCount with bar-level variation (dice complexity/variation widens it)

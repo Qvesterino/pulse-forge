@@ -340,6 +340,23 @@ export function isDefaultMeter(signature: TimeSignature | undefined | null): boo
 }
 
 /**
+ * True when two signatures are the SAME metre.
+ *
+ * An absent signature IS 4/4 (the default the AI layer used to assume), so an
+ * undeclared groove and a 4/4 document are the same metre — which is what lets
+ * the irregular library (ADR 0057 Stage 2j) compare a groove's declared metre
+ * with the document's without a second table of rules.
+ */
+export function sameSignature(
+  a: TimeSignature | undefined | null,
+  b: TimeSignature | undefined | null,
+): boolean {
+  const left = a ?? DEFAULT_TIME_SIGNATURE;
+  const right = b ?? DEFAULT_TIME_SIGNATURE;
+  return left.numerator === right.numerator && left.denominator === right.denominator;
+}
+
+/**
  * The signature as it travels inside a CONTRACT (generation options, the
  * generation recipe): PRESENT only when it is not the 4/4 default.
  *

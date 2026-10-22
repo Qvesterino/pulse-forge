@@ -1,5 +1,6 @@
 import { generateOptionsFromIntent } from "./plan";
-import { getGroovesForGenre } from "../ai/grooves";
+import { getGroovesForGenre, preferGroovesForMeter } from "../ai/grooves";
+import { aiMeterFor } from "../ai/meter";
 import { candidatePlan } from "./providers/candidate";
 import type { GenerationPlan, IntentSpec } from "./types";
 import type { PersonalSearchBias } from "./personal-ranker";
@@ -127,7 +128,10 @@ function experimentalGroove(
     return null;
   }
 
-  const grooves = getGroovesForGenre(plan.intent.genre);
+  // Only the grooves that live in the document's metre are candidates: a 7/8
+  // groove must not be offered as an alternative in a 4/4 bar (ADR 0057
+  // Stage 2j).
+  const grooves = preferGroovesForMeter(getGroovesForGenre(plan.intent.genre), aiMeterFor(plan.options.timeSignature ?? null));
   if (grooves.length < 2) return null;
   const baseIndex = Math.max(
     0,
@@ -168,7 +172,7 @@ function personalGroove(
     return null;
   }
 
-  const grooves = getGroovesForGenre(plan.intent.genre);
+  const grooves = preferGroovesForMeter(getGroovesForGenre(plan.intent.genre), aiMeterFor(plan.options.timeSignature ?? null));
   const baseline = grooves.find((groove) => groove.id === plan.groove.id);
   if (!baseline || grooves.length < 2) return null;
   const baseSyncopation = grooveSyncopation(baseline);

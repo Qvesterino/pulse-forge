@@ -104,11 +104,15 @@ export function findGrooveDuplicates(library: readonly GrooveData[] = GROOVE_LIB
       // generator actually uses to shape the pattern, so it has to match too.
       const sameKit =
         a.activePads.length === b.activePads.length && a.activePads.every((p, i) => p === b.activePads[i]);
+      // The METRE is part of the identity too (ADR 0057 Stage 2j): a 7/8
+      // groove and a 4/4 groove can share a tempo, a swing and a kit and
+      // still be two different pockets — they are not even the same length.
+      const sameMetre = sameSignature(a.timeSignature, b.timeSignature);
 
-      if (sameWindow && sameSwing && sameKit) {
+      if (sameWindow && sameSwing && sameKit && sameMetre) {
         findings.push({
           severity: "dup",
-          reason: "identical BPM window, swing and active pads",
+          reason: "identical BPM window, swing, active pads and metre",
           a: brief(a),
           b: brief(b),
           overlap,

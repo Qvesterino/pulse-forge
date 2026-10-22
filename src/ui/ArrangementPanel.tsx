@@ -20,6 +20,7 @@ import { requestMidiClipEditorNavigation } from "./arrangement/midiClipEditorNav
 import { AutomationClipLanes } from "./arrangement/AutomationClipLanes";
 import {
   clearTimelineGroupDragPreview,
+  groupDragPreviewStartBar,
   publishTimelineGroupDragPreview,
   useTimelineGroupDragPreview,
 } from "./arrangement/groupDragPreview";
@@ -86,7 +87,12 @@ import {
 import { generatePatternCommand } from "../commands/aiPattern";
 import { makeMidiClipUnique } from "../commands/midiClips";
 import { MAX_ARRANGEMENT_CLIP_BARS, sceneRoleOf, ticksPerBar } from "../project-model/schema";
-import { audioClipPlayedSourceSec, audioClipSourceSecondsPerWallSecond } from "../project-model/audio-clip-warp";
+import {
+  audioClipAudibleWidthFraction,
+  audioClipPlayedSourceSec,
+  audioClipSourceSecondsPerWallSecond,
+  audioClipWallSourceSec,
+} from "../project-model/audio-clip-warp";
 import { stepsPerBar } from "../project-model/grid";
 import { applySmartComp, planBars, planSmartComp, type SmartCompPlan } from "../commands/smart-comp";
 import { sectionFxChips } from "./arrangement/sectionFxChips";
@@ -3480,7 +3486,17 @@ export function ArrangementPanel() {
       setAudioDragLive({ startBar: cur.origStart, lengthBars: Math.max(0.25, endEdge - cur.origStart) });
     } else if (cur.mode === "trimStart") {
       // Snap the START edge; the length is whatever remains up to the fixed end.
-      const newStart = Math.max(0, snapTo(cur.origStart + delta));
+      //
+      // EXTEND-LEFT IS BOUNDED BY THE SOURCE'S HEADROOM. `offsetSec` is a
+      // position in the ORIGINAL sample, so the source can only move back as
+      // far as the file goes back: `origOffsetSec` seconds of headroom, which
+      // is `headroom / factor` wall seconds, which is `headroomBars` bars.
+      // Without the bound the head moved left with no material behind it, the
+      // commit clamped the source position to 0, and the clip silently grew
+      // while playing the SAME material — the gesture stopped meaning "reveal
+      // earlier material". The head now stops at the file's start.
+      const headroomBars = cur.origOffsetSec / cur.sourcePerWallSecond / secPerBar;
+      const newStart = Math.max(0, cur.origStart - headroomBars, snapTo(cur.origStart + delta));
       const newLen = Math.max(0.25, cur.origStart + cur.origLength - newStart);
       setAudioDragLive({ startBar: newStart, lengthBars: newLen });
     } else if (cur.mode === "stretch") {
@@ -5679,8 +5695,8 @@ export function ArrangementPanel() {
               const ghostShift = ghostShiftFor(clip.id, clip.startBar, rippleGhost?.fromScene ?? 0);
               const multiMoving = dragRef.current?.movingIds?.includes(clip.id) && multiDrag !== null;
               const groupStartBar =
-                groupDragPreview?.projectId === doc.id && groupDragPreview.clipIds.includes(clip.id)
-                  ? (groupDragPreview.startTicks[clip.id] ?? clip.startBar * barUnit) / barUnit
+                groupDragPreview?.projectId === doc.id
+                  ? groupDragPreviewStartBar(groupDragPreview, clip.id, clip.startBar)
                   : undefined;
               const startBar =
                 groupStartBar ?? (multiMoving ? clip.startBar + multiDrag : isDragging ? drag.startBar : clip.startBar);
@@ -5787,8 +5803,8 @@ export function ArrangementPanel() {
               const audioGhostShift =
                 isDragging || multiMovingAudio ? 0 : ghostShiftFor(clip.id, clip.startBar, rippleGhost?.fromAudio ?? 0);
               const groupStartBar =
-                groupDragPreview?.projectId === doc.id && groupDragPreview.clipIds.includes(clip.id)
-                  ? (groupDragPreview.startTicks[clip.id] ?? clip.startBar * barUnit) / barUnit
+                groupDragPreview?.projectId === doc.id
+                  ? groupDragPreviewStartBar(groupDragPreview, clip.id, clip.startBar)
                   : undefined;
               const startBar =
                 groupStartBar ??
@@ -5930,6 +5946,10 @@ export function ArrangementPanel() {
                     playedSourceSec={audioClipPlayedSourceSec(
                       { ...clip, offsetSec: effOffsetSec, stretchRate: effRate },
                       buffer?.duration ?? 0,
+                      lengthBars * clipSecPerBar,
+                    )}
+                    wallSourceSec={audioClipWallSourceSec(
+                      { ...clip, stretchRate: effRate },
                       lengthBars * clipSecPerBar,
                     )}
                   />
@@ -6255,6 +6275,10 @@ export function ArrangementPanel() {
                               playedSourceSec={audioClipPlayedSourceSec(
                                 clip,
                                 laneBuffer?.duration ?? 0,
+                                audioClipDurationSec(doc, clip.lengthBars, clip.startBar),
+                              )}
+                              wallSourceSec={audioClipWallSourceSec(
+                                clip,
                                 audioClipDurationSec(doc, clip.lengthBars, clip.startBar),
                               )}
                             />
@@ -6985,6 +7009,7 @@ function AudioClipWaveform({
   trimStart = 0,
   trimEnd = 0,
   playedSourceSec,
+  wallSourceSec,
 }: {
   buffer: AudioBuffer | null;
   bufferId: string;
@@ -7000,6 +7025,11 @@ function AudioClipWaveform({
    * seconds (`audioClipPlayedSourceSec`). The drawn envelope must stop here:
    * past this point the picture shows material the clip never plays. */
   playedSourceSec?: number;
+  /** The source seconds the clip's WALL LENGTH is worth
+   * (`audioClipWallSourceSec`). When the source is shorter than that, the
+   * clip plays what it has and the rest of its span is silence — so the
+   * envelope covers only the fraction of the width that carries material. */
+  wallSourceSec?: number;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const onsets = useOnsetDots(bufferId, sourceChannel, showOnsets && buffer !== null);
@@ -7024,6 +7054,13 @@ function AudioClipWaveform({
     // shorter than its source draws only the part it actually plays.
     const windowSec = audioClipWaveformWindow(buffer.duration, offsetSec, trimStart, trimEnd, playedSourceSec);
     const windowDur = windowSec.endSec - windowSec.startSec;
+    // HOW MUCH OF THE WIDTH CARRIES MATERIAL. A clip longer than its source
+    // plays the source and then silence; drawn across the full width, the
+    // envelope would claim sound where the transport plays nothing. The
+    // fraction is the engine's own ratio: the material covers the first
+    // `played / (wall × factor)` of the clip's span.
+    const audibleFraction = audioClipAudibleWidthFraction(playedSourceSec ?? windowDur, wallSourceSec ?? windowDur);
+    const envelopeWidth = w * audibleFraction;
     const sampleRate = buffer.sampleRate > 0 ? buffer.sampleRate : 1;
     const startSample = Math.max(0, Math.min(data.length - 1, Math.round(windowSec.startSec * sampleRate)));
     const endSample = Math.max(startSample + 1, Math.min(data.length, Math.round(windowSec.endSec * sampleRate)));
@@ -7055,7 +7092,7 @@ function AudioClipWaveform({
         if (v < min) min = v;
         if (v > max) max = v;
       }
-      const x = (c / columns) * w;
+      const x = (c / columns) * envelopeWidth;
       const y0 = h / 2 - max * (h / 2 - 2);
       const y1 = h / 2 - min * (h / 2 - 2);
       ctx.moveTo(x, y0);
@@ -7067,7 +7104,7 @@ function AudioClipWaveform({
       ctx.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.6)`;
       for (const t of onsets) {
         if (t < windowSec.startSec || t > windowSec.endSec) continue;
-        const x = ((reverse ? windowSec.endSec - t : t - windowSec.startSec) / windowDur) * w;
+        const x = ((reverse ? windowSec.endSec - t : t - windowSec.startSec) / windowDur) * envelopeWidth;
         if (x < 0 || x > w) continue;
         ctx.fillRect(x - 1, h - 6, 2, 5);
       }
@@ -7077,7 +7114,19 @@ function AudioClipWaveform({
     ctx.globalAlpha = 0.25;
     ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, w, h);
-  }, [buffer, bufferId, sourceChannel, reverse, showOnsets, onsets, offsetSec, trimStart, trimEnd, playedSourceSec]);
+  }, [
+    buffer,
+    bufferId,
+    sourceChannel,
+    reverse,
+    showOnsets,
+    onsets,
+    offsetSec,
+    trimStart,
+    trimEnd,
+    playedSourceSec,
+    wallSourceSec,
+  ]);
   if (!buffer) return <div className="audio-waveform-empty">no buffer</div>;
   return (
     <canvas

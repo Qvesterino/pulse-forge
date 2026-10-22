@@ -40,6 +40,47 @@ export function audioClipSourceSecondsPerWallSecond(clip: {
 }
 
 /**
+ * THE SOURCE SECONDS A CLIP'S WALL LENGTH CORRESPONDS TO — the material the
+ * clip would consume if the source were long enough.
+ *
+ * The counterpart of `audioClipSourceSecondsPerWallSecond` for a LENGTH rather
+ * than a rate: `wall × factor`. A clip's wall duration is the time the
+ * transport gives it; this is how much of the original sample that time is
+ * worth. When the source has less than this, the clip plays what it has and
+ * the rest of its span is SILENCE — which the waveform has to show.
+ */
+export function audioClipWallSourceSec(
+  clip: {
+    stretchRate?: number;
+    stretchMode?: "resample" | "stretch";
+  },
+  wallDurationSec: number,
+): number {
+  const wall = Number.isFinite(wallDurationSec) ? Math.max(0, wallDurationSec) : 0;
+  return wall * audioClipSourceSecondsPerWallSecond(clip);
+}
+
+/**
+ * THE FRACTION OF A CLIP'S WIDTH THAT ITS SOURCE COVERS — the rest is
+ * silence.
+ *
+ * The material occupies the first `played / factor` wall seconds of the clip,
+ * so it covers `played / (wall × factor)` of the clip's width. The engine
+ * says the same thing from the other side: `duration / requestedDuration` is
+ * the fraction of the clip's wall duration that actually plays.
+ *
+ * A clip longer than its source (or one whose source tail is trimmed off)
+ * therefore has a fraction below 1, and the envelope has to stop there. Drawn
+ * across the FULL width, the envelope would claim sound where the transport
+ * plays nothing.
+ */
+export function audioClipAudibleWidthFraction(playedSourceSec: number, wallSourceSec: number): number {
+  if (!Number.isFinite(wallSourceSec) || wallSourceSec <= 0) return 1;
+  if (!Number.isFinite(playedSourceSec) || playedSourceSec <= 0) return 0;
+  return Math.min(1, playedSourceSec / wallSourceSec);
+}
+
+/**
  * HOW MUCH OF THE ORIGINAL SAMPLE A CLIP ACTUALLY PLAYS — the second half of
  * the source-vs-wall rule.
  *

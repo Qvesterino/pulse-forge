@@ -2,7 +2,13 @@ import type { ProjectDocument, Pattern, NoteEvent, StepMeta } from "../project-m
 import type { GenerateOptions, GrooveData } from "./types";
 import { forkRandom, hashString } from "../shared/rng";
 import { uid } from "../shared/ids";
-import { getGroovesForGenre, getGrooveById, preferGroovesByLanes, preferGroovesForWindow } from "./grooves/index";
+import {
+  getGroovesForGenre,
+  getGrooveById,
+  preferGroovesByLanes,
+  preferGroovesForMeter,
+  preferGroovesForWindow,
+} from "./grooves/index";
 import { generateDrumPattern } from "./drums";
 import { generateMelodicParts, hasMelodicDialect } from "./melodic";
 import { generateMultiVoice } from "../intent/multi-voice";
@@ -12,7 +18,7 @@ import { canonicalizePattern, contentHash, createGenerationRecipe } from "./eval
 import { measureDrumQuality, measureMelodicQuality } from "./quality";
 import { evaluateStyleDistance } from "./style-quality";
 import { buildPhrasePlan } from "./phrase";
-import { aiMeterFor, meterCarrier } from "./meter";
+import { aiMeterFor, DEFAULT_AI_METER, meterCarrier, type AiMeter } from "./meter";
 
 /**
  * Stable seeded groove selection — ARCHITECTURE.md #67 / invariant #4
@@ -63,6 +69,12 @@ export function resolveGrooveSeeded(
   grooveBpmWindow?: [number, number] | null,
   /** Artist groove lanes: refines the tempo pocket to the lanes they occupy. */
   grooveLanes?: readonly string[] | null,
+  /**
+   * The document's metre (ADR 0057 Stage 2j). Absent means 4/4 — the metre
+   * every groove in the library was written in before the irregular library
+   * existed — and the candidate set is then exactly the set it always was.
+   */
+  meter?: AiMeter,
 ): GrooveData {
   if (style) {
     const byId = getGrooveById(`${genre}.${style.toLowerCase().replace(/\s+/g, "")}`);
@@ -72,15 +84,18 @@ export function resolveGrooveSeeded(
     if (named) return named;
   }
 
-  // The artist tempo pocket narrows WHICH grooves are eligible before the
-  // rendezvous pick. A seed that already resolved inside the window keeps its
-  // groove; only seeds that would have fallen outside move. No window, or a
-  // window nothing overlaps, leaves the candidate set exactly as it was.
-  // Tempo first, then lanes: the window says which tempos are allowed, the
-  // lanes say which grooves the artist actually occupies inside them. Each
-  // filter is a refinement that falls back to its input, so a profile that
-  // over-specifies one of them still resolves on the other.
-  let grooves = preferGroovesByLanes(preferGroovesForWindow(getGroovesForGenre(genre), grooveBpmWindow), grooveLanes);
+  // The METRE first: a groove only ever plays its own metre, so this filter
+  // cannot be reordered behind the tempo pocket without letting a 4/4 groove
+  // into a 7/8 bar. Then the artist tempo pocket narrows WHICH grooves are
+  // eligible before the rendezvous pick. A seed that already resolved inside
+  // the window keeps its groove; only seeds that would have fallen outside
+  // move. No window, or a window nothing overlaps, leaves the candidate set
+  // exactly as it was. Tempo first, then lanes: the window says which tempos
+  // are allowed, the lanes say which grooves the artist actually occupies
+  // inside them. Each filter is a refinement that falls back to its input, so
+  // a profile that over-specifies one of them still resolves on the other.
+  const metered = preferGroovesForMeter(getGroovesForGenre(genre), meter ?? DEFAULT_AI_METER);
+  let grooves = preferGroovesByLanes(preferGroovesForWindow(metered, grooveBpmWindow), grooveLanes);
   if (grooves.length === 0) {
     // Fallback for unknown / mistyped genres — never let the indexed lookup
     // dereference `undefined.id` and throw into the generator pipeline.
@@ -141,6 +156,10 @@ export function resolveGrooveForGeneration(doc: ProjectDocument, options: Genera
     effectiveSeed,
     options.grooveBpmWindow ?? null,
     options.grooveLanes ?? null,
+    // The document's metre decides which material may play (ADR 0057 Stage 2j):
+    // a 7/8 document plays 7/8 grooves, a 4/4 document plays 4/4 grooves, and
+    // the 4/4 candidate set is the one it has always hashed over.
+    aiMeterFor(options.timeSignature ?? doc.timeSignature),
   );
 }
 

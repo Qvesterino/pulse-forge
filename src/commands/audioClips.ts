@@ -717,6 +717,18 @@ export function trimAudioClipStart(
     ? Math.max(0, quantizeAudioBar(patch.startBar as number, barUnitTicks))
     : clip.startBar;
   const trimStart = Number.isFinite(patch.trimStart) ? Math.max(0, patch.trimStart) : clip.trimStart;
+  // EXTEND-LEFT IS BOUNDED BY THE SOURCE'S HEADROOM. `offsetSec` is a
+  // position in the ORIGINAL sample, so a negative value is a position before
+  // the file starts. The command used to clamp it to 0 SILENTLY: the head
+  // moved left with no material behind it, the clip grew on the timeline, and
+  // the source stayed exactly where it was — so the gesture stopped meaning
+  // "reveal earlier material" and became "play more of the same material",
+  // which is the right-extend wearing the left-extend's clothes. The scene-clip
+  // twin refuses the same gesture outright ("extend-left is a separate verb");
+  // this is the audio twin of that rule, expressed in the source's own terms.
+  if (Number.isFinite(patch.offsetSec) && patch.offsetSec < 0) {
+    throw new Error("Trim start must not move the source before the file starts (extend-left is a separate verb)");
+  }
   const offsetSec = Number.isFinite(patch.offsetSec) ? Math.max(0, patch.offsetSec) : clip.offsetSec;
   // Fades must stay inside the trimmed clip (same rule as resizeAudioClip) or
   // the fade handles desync from the clip's visual width. Note `clip` is the

@@ -3,7 +3,9 @@ import { AudioEngine } from "../src/audio-engine/AudioEngine";
 import { SampleBank } from "../src/sample-library/factory";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { createDrumTrack } from "../src/commands/commands";
-import type { DrumPad, ProjectDocument } from "../src/project-model/types";
+import { EFFECT_DEFS } from "../src/effects/registry";
+import type { EffectRuntime } from "../src/effects/types";
+import type { DrumPad, EffectInstance, ProjectDocument } from "../src/project-model/types";
 
 /**
  * ENGINE LIFECYCLE STRESS GATE (engine audit 2026-10-18)
@@ -677,5 +679,434 @@ describe("instrument-runtime disposal isolation", () => {
     engine.setEffectiveBpm(140);
 
     expect(secondSynced, "a throwing runtime must not stop the tempo from reaching the others").toBe(true);
+  });
+});
+
+/**
+ * EVERY PLUGIN-RUNTIME CALL SITE MUST BE CONTAINED.
+ *
+ * The engine calls INTO plugin runtimes in a dozen places: the sample-bank
+ * subscription, the transport-start broadcast, the chain rebuild, the tempo
+ * push, the latency probe, the offline-render arming, the instrument sync and
+ * the pitch-hint write. A plugin runtime is THIRD-PARTY code — a vendored
+ * worklet core, an instrument voice, a user insert whose processor died. It
+ * can throw: a worklet whose port closed, a voice whose AudioParam was
+ * detached, a degraded runtime that lost its processor.
+ *
+ * Before the containment pass those calls were unguarded, and the failure
+ * mode was never a visible crash. It was a SILENT TRUNCATION of the engine's
+ * own work: the loop that was walking the strips stopped at the throwing
+ * runtime, so every strip behind it kept the OLD tempo, never received the
+ * late-arriving sample, lost its pitch hint — or, worst of all, a chain
+ * rebuild aborted half-way and left a bus permanently disconnected while the
+ * insert stayed visible in the project.
+ *
+ * `callRuntime()` is the single containment seam. These specs are its teeth.
+ * Each one makes a runtime throw and then asserts that the ENGINE'S OWN WORK
+ * CONTINUED for the runtime behind it. Every spec also asserts that the
+ * throwing runtime was really reached — a guard that never fires is not a
+ * guard, and a spec that never reaches its probe proves nothing.
+ */
+describe("plugin-runtime containment at every call site", () => {
+  /** The optional surface the engine calls into on a runtime. */
+  interface StubRuntime extends Record<string, unknown> {
+    onTransportStarted?: (time: number, beatPhase: number, positionBeats: number) => void;
+    syncBpm?: (bpm: number, when?: number) => void;
+    getLatencySec?: () => number;
+    setParameterAt?: (id: string, value: number, when: number) => void;
+    setSample?: (id: string) => void;
+    setSampleB?: (id: string | null) => void;
+    prepareOfflineRender?: () => void;
+  }
+
+  interface FxChain {
+    runtimes: Map<string, StubRuntime>;
+    signature: string | null;
+  }
+
+  interface ContainmentInternals {
+    instruments: Map<string, { runtime: StubRuntime; sampleId: string | null; sampleIdB: string | null }>;
+    trackNodes: Map<string, { fx: FxChain }>;
+    returnNodes: Map<string, { fx: FxChain }>;
+    groupNodes: Map<string, { fx: FxChain }>;
+    masterFx: { runtimes: Map<string, StubRuntime> };
+    masterChain: { masterBypassDelay: { delayTime: { value: number } } | null };
+    offlineExactPdc: boolean;
+    offlineRenderLocked: boolean;
+  }
+
+  function internalsOf(engine: AudioEngine): ContainmentInternals {
+    return engine as unknown as ContainmentInternals;
+  }
+
+  /** Build the house template on the mock context, optionally mutating the doc first. */
+  async function buildHouse(mutate?: (doc: ProjectDocument) => ProjectDocument) {
+    const ctx = makeCtx();
+    const engine = new AudioEngine();
+    engine.useContext(ctx as unknown as AudioContext);
+    const base = createProjectFromTemplate("house");
+    const doc = mutate ? mutate(base) : base;
+    engine.setProject(doc);
+    await flush();
+    await flush();
+    return { ctx, engine, doc };
+  }
+
+  /** The effect-bearing return chains, in the ENGINE's own map order. */
+  function effectReturns(engine: AudioEngine): [string, FxChain][] {
+    return [...internalsOf(engine).returnNodes.entries()]
+      .filter(([, nodes]) => nodes.fx.runtimes.size > 0)
+      .map(([id, nodes]) => [id, nodes.fx]);
+  }
+
+  /** The instrument runtimes, in the ENGINE's own map order. */
+  function instrumentStates(engine: AudioEngine) {
+    return [...internalsOf(engine).instruments.entries()];
+  }
+
+  it("a late-arriving bank sample still reaches every instrument waiting for it", async () => {
+    const { ctx, engine } = await buildHouse((doc) => ({
+      ...doc,
+      tracks: doc.tracks.map((t) => (t.kind === "instrument" ? { ...t, sampleId: "late-sample" } : t)),
+    }));
+    const internals = internalsOf(engine);
+    const states = instrumentStates(engine);
+    expect(states.length, "the house template must carry more than one instrument track").toBeGreaterThan(1);
+    const [first, second] = states as [[string, { runtime: StubRuntime }], [string, { runtime: StubRuntime }]];
+
+    let reached = false;
+    const received: string[] = [];
+    first[1].runtime.setSample = () => {
+      reached = true;
+      throw new Error("instrument runtime setSample failed");
+    };
+    second[1].runtime.setSample = (id) => {
+      received.push(id);
+    };
+
+    const bank = new SampleBank();
+    engine.attachBank(bank);
+    bank.add("late-sample", ctx.createBuffer(1, 4800, ctx.sampleRate) as unknown as AudioBuffer);
+
+    expect(reached, "the throwing runtime was never reached — the probe measured nothing").toBe(true);
+    expect(
+      received,
+      "a throwing runtime must not stop the late sample from reaching the other instruments",
+    ).toContain("late-sample");
+  });
+
+  it("a late-arriving bank sample still reaches every instrument waiting for it on the B slot", async () => {
+    const { ctx, engine } = await buildHouse((doc) => ({
+      ...doc,
+      tracks: doc.tracks.map((t) => (t.kind === "instrument" ? { ...t, sampleIdB: "late-sample-b" } : t)),
+    }));
+    const internals = internalsOf(engine);
+    const states = instrumentStates(engine);
+    expect(states.length, "the house template must carry more than one instrument track").toBeGreaterThan(1);
+    const [first, second] = states as [[string, { runtime: StubRuntime }], [string, { runtime: StubRuntime }]];
+
+    let reached = false;
+    const received: (string | null)[] = [];
+    first[1].runtime.setSampleB = () => {
+      reached = true;
+      throw new Error("instrument runtime setSampleB failed");
+    };
+    second[1].runtime.setSampleB = (id) => {
+      received.push(id);
+    };
+
+    const bank = new SampleBank();
+    engine.attachBank(bank);
+    bank.add("late-sample-b", ctx.createBuffer(1, 4800, ctx.sampleRate) as unknown as AudioBuffer);
+
+    expect(reached, "the throwing runtime was never reached — the probe measured nothing").toBe(true);
+    expect(
+      received,
+      "a throwing runtime must not stop the late B-slot sample from reaching the other instruments",
+    ).toContain("late-sample-b");
+  });
+
+  it("a strip whose effect runtime throws on transport start does not strand the strips behind it", async () => {
+    const { engine } = await buildHouse();
+    const returns = effectReturns(engine);
+    expect(returns.length, "the house template must carry more than one effect-bearing return").toBeGreaterThan(1);
+    const [firstId, firstChain] = returns[0]!;
+    const [secondId, secondChain] = returns[1]!;
+
+    let reached = false;
+    const started: string[] = [];
+    [...firstChain.runtimes.values()][0]!.onTransportStarted = () => {
+      reached = true;
+      throw new Error("effect runtime onTransportStarted failed");
+    };
+    [...secondChain.runtimes.values()][0]!.onTransportStarted = () => {
+      started.push(secondId);
+    };
+
+    engine.transportStarted(1, 0, 0);
+
+    expect(reached, "the throwing runtime was never reached — the probe measured nothing").toBe(true);
+    expect(
+      started,
+      "a throwing runtime must not stop the transport start from reaching the other strips",
+    ).toContain(secondId);
+  });
+
+  it("a chain rebuild whose new runtime throws still lands the chain in the graph", async () => {
+    const { engine, doc } = await buildHouse();
+    const internals = internalsOf(engine);
+    const returnId = doc.returns[0]!.id;
+    const effectType = doc.returns[0]!.effects[0]!.type;
+
+    // The rebuild creates the runtime through the registry factory, so the
+    // throw has to be injected THERE — the engine calls onTransportStarted on
+    // the runtime before it is registered, so patching an existing instance
+    // would arrive too late.
+    const def = EFFECT_DEFS[effectType] as unknown as { factory: (...args: unknown[]) => EffectRuntime };
+    const originalFactory = def.factory;
+    def.factory = (...args: unknown[]) => {
+      const runtime = originalFactory(...args);
+      runtime.onTransportStarted = () => {
+        throw new Error("effect runtime onTransportStarted failed");
+      };
+      return runtime;
+    };
+
+    try {
+      // A new effect id changes the chain signature → the chain is rebuilt.
+      const next: ProjectDocument = {
+        ...doc,
+        returns: doc.returns.map((r) =>
+          r.id === returnId ? { ...r, effects: r.effects.map((e) => ({ ...e, id: `${e.id}-v2` })) } : r,
+        ),
+      };
+      engine.setProject(next);
+      await flush();
+      await flush();
+
+      const chain = internals.returnNodes.get(returnId)!.fx;
+      expect(chain.runtimes.size, "the rebuilt chain lost its effect — the bus went silent").toBe(1);
+      expect(chain.signature, "the rebuilt chain never recorded its signature").not.toBeNull();
+    } finally {
+      def.factory = originalFactory;
+    }
+  });
+
+  it("a tempo change still reaches every strip after one effect runtime throws", async () => {
+    const { engine } = await buildHouse();
+    const returns = effectReturns(engine);
+    expect(returns.length, "the house template must carry more than one effect-bearing return").toBeGreaterThan(1);
+    const [, firstChain] = returns[0]!;
+    const [secondId, secondChain] = returns[1]!;
+
+    let reached = false;
+    const bpms: number[] = [];
+    [...firstChain.runtimes.values()][0]!.syncBpm = () => {
+      reached = true;
+      throw new Error("effect runtime syncBpm failed");
+    };
+    [...secondChain.runtimes.values()][0]!.syncBpm = (bpm) => {
+      bpms.push(bpm);
+    };
+
+    engine.setEffectiveBpm(140);
+
+    expect(reached, "the throwing runtime was never reached — the probe measured nothing").toBe(true);
+    expect(bpms, "a throwing runtime must not stop the tempo from reaching the other strips").toContain(140);
+    expect(secondId).toBeTruthy();
+  });
+
+  it("a latency probe that throws does not cancel the project's tempo push", async () => {
+    const { engine, doc } = await buildHouse();
+    const internals = internalsOf(engine);
+    const returns = effectReturns(engine);
+    expect(returns.length, "the house template must carry an effect-bearing return").toBeGreaterThan(0);
+    const [, firstChain] = returns[0]!;
+
+    let reached = false;
+    [...firstChain.runtimes.values()][0]!.getLatencySec = () => {
+      reached = true;
+      throw new Error("effect runtime getLatencySec failed");
+    };
+
+    // The observer is an instrument runtime — it follows the project tempo.
+    const states = instrumentStates(engine);
+    const observer = states.find(([, state]) => typeof state.runtime.syncBpm === "function");
+    expect(observer, "the house template must carry an instrument runtime that follows the tempo").toBeTruthy();
+    const observed: number[] = [];
+    const original = observer![1].runtime.syncBpm!;
+    observer![1].runtime.syncBpm = (bpm, when) => {
+      observed.push(bpm);
+      original(bpm, when);
+    };
+
+    engine.setProject({ ...doc, bpm: 140 });
+    await flush();
+    await flush();
+
+    expect(reached, "the throwing runtime was never reached — the probe measured nothing").toBe(true);
+    expect(
+      observed,
+      "a throwing latency probe must not cancel the tempo push for the whole project",
+    ).toContain(140);
+  });
+
+  it("the master insert latency still counts the inserts that answer", async () => {
+    const masterEffects: EffectInstance[] = [
+      { id: "fx-master-probe-a", type: "delay", bypassed: false, params: {} },
+      { id: "fx-master-probe-b", type: "reverb", bypassed: false, params: {} },
+    ];
+    const { engine, doc } = await buildHouse((d) => ({ ...d, master: { ...d.master, effects: masterEffects } }));
+    const internals = internalsOf(engine);
+    const masterRuntimes = [...internals.masterFx.runtimes.entries()];
+    expect(masterRuntimes.length, "the master chain must carry both probe inserts").toBe(2);
+
+    let reached = false;
+    masterRuntimes[0]![1].getLatencySec = () => {
+      reached = true;
+      throw new Error("master insert getLatencySec failed");
+    };
+    masterRuntimes[1]![1].getLatencySec = () => 0.02;
+
+    // A re-sync runs the PDC pass again, which sizes the master latency.
+    engine.setProject({ ...doc });
+    await flush();
+    await flush();
+
+    const delay = internals.masterChain.masterBypassDelay;
+    expect(delay, "the master monitor-bypass delay must exist to measure the alignment").toBeTruthy();
+    expect(reached, "the throwing runtime was never reached — the probe measured nothing").toBe(true);
+    expect(
+      delay!.delayTime.value,
+      "a broken master latency probe must not erase the other inserts' latency",
+    ).toBeCloseTo(0.02, 3);
+  });
+
+  it("an instrument runtime that throws while arming the offline render does not abort the export", async () => {
+    const { engine } = await buildHouse();
+    const internals = internalsOf(engine);
+    const states = instrumentStates(engine);
+    expect(states.length, "the house template must carry an instrument track").toBeGreaterThan(0);
+
+    let reached = false;
+    states[0]![1].runtime.prepareOfflineRender = () => {
+      reached = true;
+      throw new Error("instrument runtime prepareOfflineRender failed");
+    };
+
+    await expect(
+      engine.prepareOfflineRender(),
+      "one broken instrument runtime must not abort the whole export",
+    ).resolves.toBeUndefined();
+
+    expect(reached, "the throwing runtime was never reached — the probe measured nothing").toBe(true);
+    expect(internals.offlineExactPdc, "the render must still arm the exact PDC write path").toBe(true);
+    expect(internals.offlineRenderLocked, "the render graph must still be locked for the export").toBe(true);
+  });
+
+  it("a sample swap that throws on one instrument does not strand the next instrument", async () => {
+    const { engine, doc } = await buildHouse();
+    const states = instrumentStates(engine);
+    expect(states.length, "the house template must carry more than one instrument track").toBeGreaterThan(1);
+    const [firstId, first] = states as [[string, { runtime: StubRuntime }], [string, { runtime: StubRuntime }]];
+    const [secondId, second] = states as [[string, { runtime: StubRuntime }], [string, { runtime: StubRuntime }]];
+
+    let reached = false;
+    const received: string[] = [];
+    first[1].runtime.setSample = () => {
+      reached = true;
+      throw new Error("instrument runtime setSample failed");
+    };
+    second[1].runtime.setSample = (id) => {
+      received.push(id);
+    };
+
+    const next: ProjectDocument = {
+      ...doc,
+      tracks: doc.tracks.map((t) =>
+        t.kind === "instrument" ? { ...t, sampleId: t.id === firstId ? "sample-a" : "sample-b" } : t,
+      ),
+    };
+    engine.setProject(next);
+    await flush();
+    await flush();
+
+    expect(reached, "the throwing runtime was never reached — the probe measured nothing").toBe(true);
+    expect(
+      received,
+      "a throwing runtime must not stop the sample swap from reaching the other instruments",
+    ).toContain("sample-b");
+    expect(secondId).toBeTruthy();
+  });
+
+  it("a B-slot sample swap that throws on one instrument does not strand the next instrument", async () => {
+    const { engine, doc } = await buildHouse();
+    const states = instrumentStates(engine);
+    expect(states.length, "the house template must carry more than one instrument track").toBeGreaterThan(1);
+    const [firstId, first] = states as [[string, { runtime: StubRuntime }], [string, { runtime: StubRuntime }]];
+    const [, second] = states as [[string, { runtime: StubRuntime }], [string, { runtime: StubRuntime }]];
+
+    let reached = false;
+    const received: (string | null)[] = [];
+    first[1].runtime.setSampleB = () => {
+      reached = true;
+      throw new Error("instrument runtime setSampleB failed");
+    };
+    second[1].runtime.setSampleB = (id) => {
+      received.push(id);
+    };
+
+    const next: ProjectDocument = {
+      ...doc,
+      tracks: doc.tracks.map((t) =>
+        t.kind === "instrument" ? { ...t, sampleIdB: t.id === firstId ? "sample-b-a" : "sample-b-b" } : t,
+      ),
+    };
+    engine.setProject(next);
+    await flush();
+    await flush();
+
+    expect(reached, "the throwing runtime was never reached — the probe measured nothing").toBe(true);
+    expect(
+      received,
+      "a throwing runtime must not stop the B-slot sample swap from reaching the other instruments",
+    ).toContain("sample-b-b");
+  });
+
+  it("a pitch hint that throws on one insert still reaches the next insert", async () => {
+    const { engine, doc } = await buildHouse((d) => {
+      const target = d.tracks.find((t) => t.kind === "instrument");
+      expect(target, "the house template must carry an instrument track").toBeTruthy();
+      const effects: EffectInstance[] = [
+        { id: "fx-hint-probe-a", type: "reverb", bypassed: false, params: {} },
+        { id: "fx-hint-probe-b", type: "delay", bypassed: false, params: {} },
+      ];
+      return {
+        ...d,
+        tracks: d.tracks.map((t) => (t.id === target!.id ? { ...t, effects } : t)),
+      };
+    });
+    const internals = internalsOf(engine);
+    const trackId = doc.tracks.find((t) => t.kind === "instrument")!.id;
+    const chain = internals.trackNodes.get(trackId)!.fx;
+    const runtimes = [...chain.runtimes.values()];
+    expect(runtimes.length, "the probe track must carry two inserts").toBe(2);
+
+    let reached = false;
+    const hints: string[] = [];
+    runtimes[0]!.setParameterAt = () => {
+      reached = true;
+      throw new Error("effect runtime setParameterAt failed");
+    };
+    runtimes[1]!.setParameterAt = (id) => {
+      hints.push(id);
+    };
+
+    engine.noteOn(trackId, 60, 0.8, 1.01, 0.2);
+
+    expect(reached, "the throwing runtime was never reached — the probe measured nothing").toBe(true);
+    expect(hints, "a throwing insert must not stop the pitch hint from reaching the next insert").toContain(
+      "hintHz",
+    );
   });
 });

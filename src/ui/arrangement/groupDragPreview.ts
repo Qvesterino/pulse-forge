@@ -11,6 +11,35 @@ export interface TimelineGroupDragPreview {
   clipIds: string[];
   /** Planned start positions in ticks, as returned by the real nudge command. */
   startTicks: Record<string, number>;
+  /**
+   * The bar unit the ticks were computed with — the document's metre at
+   * publish time. The ticks are meaningless without it: the consumer used to
+   * divide them by the LIVE bar unit, so a metre change between the publish
+   * and the read moved the preview away from the place the commit would put
+   * the block.
+   */
+  barUnit: number;
+}
+
+/**
+ * A CLIP'S START IN BARS, from a group-drag preview.
+ *
+ * The conversion is made with the unit the ticks were computed with, so the
+ * preview cannot disagree with itself. A clip that is not part of the preview
+ * has no previewed position; a malformed preview falls back to the clip's own
+ * start rather than to a guess.
+ */
+export function groupDragPreviewStartBar(
+  preview: TimelineGroupDragPreview,
+  clipId: string,
+  fallbackStartBar: number,
+): number | undefined {
+  if (!preview.clipIds.includes(clipId)) return undefined;
+  const unit = preview.barUnit;
+  if (!Number.isFinite(unit) || unit <= 0) return fallbackStartBar;
+  const ticks = preview.startTicks[clipId];
+  if (typeof ticks !== "number" || !Number.isFinite(ticks)) return fallbackStartBar;
+  return ticks / unit;
 }
 
 export function publishTimelineGroupDragPreview(
@@ -20,16 +49,18 @@ export function publishTimelineGroupDragPreview(
 ): void {
   if (typeof window === "undefined") return;
   const memberIds = new Set(clipIds);
+  const barUnit = ticksPerBar(doc);
   const startTicks = Object.fromEntries(
     timelineItemsOf(doc)
       .filter((item) => memberIds.has(item.id))
-      .map((item) => [item.id, item.startBar * ticksPerBar(doc)]),
+      .map((item) => [item.id, item.startBar * barUnit]),
   );
   const detail: TimelineGroupDragPreview = {
     projectId: doc.id,
     groupId,
     clipIds: [...memberIds],
     startTicks,
+    barUnit,
   };
   window.dispatchEvent(new CustomEvent<TimelineGroupDragPreview>(GROUP_DRAG_PREVIEW_EVENT, { detail }));
 }
@@ -54,7 +85,10 @@ export function useTimelineGroupDragPreview(): TimelineGroupDragPreview | null {
         typeof detail.groupId !== "string" ||
         !Array.isArray(detail.clipIds) ||
         typeof detail.startTicks !== "object" ||
-        detail.startTicks === null
+        detail.startTicks === null ||
+        typeof detail.barUnit !== "number" ||
+        !Number.isFinite(detail.barUnit) ||
+        detail.barUnit <= 0
       ) {
         return;
       }
