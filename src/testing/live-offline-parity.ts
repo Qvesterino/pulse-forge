@@ -689,10 +689,26 @@ function effectDoc(template: ProjectDocument, type: EffectType): ProjectDocument
   return { ...template, bpm: 120, tracks: [{ ...drum, id: "parity-drums", effects: [fx] }] };
 }
 
+/**
+ * Instruments whose runtime needs an UPLOADED source before it makes a sound.
+ *
+ * CHORÁL is a "drop-a-hum" instrument (ADR 0054): its worklet SUSTAINS the
+ * uploaded sample, so with no source BOTH branches render silence and the null
+ * test measures nothing (measured 2026-10-22: windows=0, rms=0.000x, and the
+ * case failed on a 0.0 dB "null" of two silent buffers — it would pass or fail
+ * by accident). The corpus therefore hands the track a factory source, which
+ * makes the case REAL: the worklet has something to voice in both branches.
+ */
+const PARITY_INSTRUMENT_SOURCES: Partial<Record<InstrumentKind, string>> = {
+  choral: "factory.tonal.keys",
+};
+
 function instrumentDoc(template: ProjectDocument, kind: InstrumentKind): ProjectDocument {
   const track = createInstrumentTrackModel(kind, 0);
   track.id = "parity-inst";
   track.params = defaultInstrumentParams(kind);
+  const source = PARITY_INSTRUMENT_SOURCES[kind];
+  if (source) track.sampleId = source;
   return { ...template, bpm: 120, tracks: [track] };
 }
 
@@ -1071,6 +1087,20 @@ export async function measureParityCase(
     phaseInsensitiveControl,
     phaseInsensitiveRepeat,
   };
+}
+
+/** Probe hook: run one INSTRUMENT case end-to-end and return its measurement. */
+export async function __runParityInstrumentCaseForProbe(
+  bank: SampleBank,
+  kind: InstrumentKind,
+  leadSec = 0,
+): Promise<ParityMeasurement> {
+  const template = createProjectFromTemplate("house");
+  const doc = instrumentDoc(template, kind);
+  const script: ParityScript = (engine, at) => {
+    engine.noteOn("parity-inst", 60, 0.85, at(0.05), 0.3);
+  };
+  return measureParityCase(bank, doc, script, leadSec);
 }
 
 /** Probe hook: run one effect case end-to-end and return its measurement. */

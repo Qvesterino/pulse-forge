@@ -78,7 +78,7 @@ try {
   const leadSec = Number(process.env.KYX_PARITY_LEAD ?? 0);
   // "reverb:mod=0" pins a single param for that type so a failure can be
   // bisected. Per-type, not global: a case WITHOUT a spec keeps defaults.
-  const wanted = cases.map((c) => c.split(":")[0]);
+  const wanted = cases.map((c) => (c.startsWith("instrument:") ? c : c.split(":")[0]));
   // Only ONE type may be pinned per run (the probe evaluates one spec per
   // case), so the override object is flat {param: value} and the runner
   // passes it to the case being evaluated.
@@ -107,7 +107,12 @@ try {
           const results = [];
           for (const type of types) {
             try {
-              const m = await mod.__runParityCaseForProbe(bank, type, lead, overrides ?? {});
+              // "instrument:<kind>" runs the INSTRUMENT case (the effect hook
+              // only knows EffectType), so a source-based instrument (CHORÁL)
+              // can be measured instead of guessed at.
+              const m = type.startsWith("instrument:")
+                ? await mod.__runParityInstrumentCaseForProbe(bank, type.slice("instrument:".length), lead)
+                : await mod.__runParityCaseForProbe(bank, type, lead, overrides ?? {});
               results.push({ type, ...m });
             } catch (error) {
               results.push({ type, error: String(error) });

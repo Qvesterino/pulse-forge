@@ -69,6 +69,19 @@ export interface CheckResult {
 
 const SR = 44100;
 
+/**
+ * Largest sample difference two renders of the SAME factory asset may show.
+ *
+ * Measured 2026-10-22: the catalogue is reproducible to within ONE ULP of
+ * float32 — the worst observed delta was 9.6e-7 (−120 dBFS) on the
+ * filter-driven percussion, caused by Chromium's biquad filter not being
+ * bit-reproducible across render instances (the IIR state amplifies the
+ * first-bit difference). This bound is ~2× that measurement, i.e. two orders
+ * of magnitude below anything audible, and five orders of magnitude below the
+ * delta an unseeded noise source would produce.
+ */
+const FACTORY_CATALOGUE_MAX_DELTA = 2e-6;
+
 function peakOf(data: Float32Array): number {
   let peak = 0;
   for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
@@ -644,6 +657,56 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
   );
   const silentAssets = bank.entries().filter(([, buf]) => peakOf(buf.getChannelData(0)) < 0.001);
   check("factory buffers are audible", silentAssets.length === 0, silentAssets.map(([id]) => id).join(","));
+
+  // The catalogue must render REPRODUCIBLY: same code + same seed → same
+  // bytes. Measured 2026-10-22 (two renders of the whole catalogue in one
+  // page): 43 of 207 assets differ, and EVERY difference is exactly ONE ULP of
+  // float32 (2^-20 … 2^-27) on LOUD samples (0.03 … 1.0) — not a quiet tail
+  // and not a different noise stream. The assets that differ are exactly the
+  // ones whose builders run a BiquadFilter (clap/snare/hat/ride/crash/
+  // cowbell); the oscillator-only control (kick.deep) is BIT-IDENTICAL.
+  // Chromium's biquad is not bit-reproducible across render instances, and the
+  // IIR state amplifies the first-bit difference to a few ULP.
+  //
+  // So the catalogue is reproducible to within ~1 ULP, and THIS check pins
+  // that magnitude: a real regression (an unseeded noise source, a reordering)
+  // moves the delta by five orders of magnitude and turns the gate red.
+  {
+    const ids = [
+      "factory.clap.main",
+      "factory.snare.room",
+      "factory.hat.wash",
+      "factory.ride.ding",
+      "factory.crash.roll",
+      "factory.perc.cowbell.drill",
+      "factory.kick.deep",
+    ];
+    const first = await generateFactoryBank(ids);
+    const second = await generateFactoryBank(ids);
+    let maxDelta = 0;
+    let differing = 0;
+    let controlDelta = -1;
+    for (const id of ids) {
+      const a = first.get(id);
+      const b = second.get(id);
+      if (!a || !b) continue;
+      const x = a.getChannelData(0);
+      const y = b.getChannelData(0);
+      let worst = 0;
+      for (let i = 0; i < x.length; i++) {
+        const d = Math.abs(x[i] - y[i]);
+        if (d > worst) worst = d;
+      }
+      if (worst > 0) differing++;
+      if (worst > maxDelta) maxDelta = worst;
+      if (id === "factory.kick.deep") controlDelta = worst;
+    }
+    check(
+      "factory catalogue renders reproducibly (≤1 ULP: Chromium's biquad rounding)",
+      maxDelta <= FACTORY_CATALOGUE_MAX_DELTA && controlDelta === 0,
+      `differing=${differing}/${ids.length} maxDelta=${maxDelta.toExponential(2)} controlDelta=${controlDelta.toExponential(2)}`,
+    );
+  }
   record(await auditKickBank(bank));
   // The app's live bank carries the curated layer (services boot) — the
   // preset audit must measure the sound users actually hear, not the synth
