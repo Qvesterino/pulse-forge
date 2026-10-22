@@ -210,6 +210,14 @@ Last updated: 2026-10-06 (session sess_85d94465)
 
 ## SESSION LOG
 
+### 2026-10-07 (latest) / W1b — per-head data rights, FAIL, corpus parked permanently (a200601e)
+- Pre-registered §4c BEFORE the rerun (same criteria, no relaxation): corpus rows train trunk+degree only — per-row duration_mask in MLP.train_step (divisor = full batch, masked rows contribute zero to the loss too), duration class weights from the library slice. Gate --w1b-heads-split + trainer --w1b-heads-split (shipping parity).
+- Verdict: FAIL on both criteria, both fold counts. degree 2-fold 0.4710 < 0.4833 floor — WORSE than baseline AND the §4b shared run (the split trunk torn between two input distributions); duration moved toward baseline (0.5109/0.5688) but never reached it (the corpus-trained trunk IS the duration head's input — a shared representation cannot be fully quarantined).
+- CORPUS PARKS PERMANENTLY per §4c: two mechanisms, one verdict each. Left reusable: corpus→ChordEvent bridge, gate v3 path, per-head mask primitive, classical slot, and two clean negatives fencing the idea space (next classical idea = different model family, e.g. sequence attention over harmony — not a merge trick).
+- Earned: the shipped trainer duplicates MLP/train_step (imports only SemanticLookup) — parity patches must hit BOTH copies; argparse attr = flag name with underscores (--w1b-heads-split → args.w1b_heads_split).
+- Commits: a200601e.
+- Recommended continuation: W1/W1b/W2 are CLOSED as a campaign (honest negatives recorded). Next real architectural fork, ranked: timeline unification (dual clip operation paths), engine re-growth map (2497→3997 lines in 3 weeks), or W1c-class model-family work ONLY with a new pre-registration.
+
 ### 2026-10-07 (later) / W1 session 2 — gate plumbing + the pre-registered FAIL (92b1c372)
 
 - Built: gate --feature-v3 path (library folds, classical.* corpus train-only, --v3-no-corpus baseline); trainer v3 split fix (corpus groups train-only — the classical.* prefix was invisible to the old midi# check so corpus rows could land in VALIDATION); generator --no-midi-corpus baseline variant.
