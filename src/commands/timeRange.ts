@@ -32,6 +32,7 @@ import { snapshot } from "./core";
 import { cloneStepMeta, unlinkMarkersOfClips } from "./docOps";
 import { addAudioClip } from "./audioClips";
 import { splitAudioClipAtTickWithMinimumFragment } from "./clipEditing";
+import { audioLaneOf, audioSpanBars, sceneSpanTicks, withAudioLane } from "../project-model/timeline";
 
 /* ---------------- time range ---------------- */
 /**
@@ -66,8 +67,7 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
   // overlapping arrangement.
   if (
     doc.arrangement.clips.some((c) => {
-      const cFrom = c.startBar * barUnit;
-      const cTo = (c.startBar + c.lengthBars) * barUnit;
+      const { from: cFrom, to: cTo } = sceneSpanTicks(c, barUnit);
       return (cFrom < from && cTo > from) || (cFrom < to && cTo > to);
     })
   ) {
@@ -79,8 +79,7 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
   // Verify stem routing for tracks that contribute to the zone (guardrail)
   const zoneTrackIds = new Set<string>();
   for (const clip of doc.arrangement.clips) {
-    const cFrom = clip.startBar * barUnit;
-    const cTo = (clip.startBar + clip.lengthBars) * barUnit;
+    const { from: cFrom, to: cTo } = sceneSpanTicks(clip, barUnit);
     if (cFrom >= from && cTo <= to) {
       const scene = doc.scenes.find((s) => s.id === clip.sceneId);
       if (scene) {
@@ -106,11 +105,12 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
 
   // 1) Arrangement clips: wholly-inside are duplicated; trailing clips are shifted forward by deltaBars
   const whollyInside = doc.arrangement.clips.filter((c) => {
-    const cFrom = c.startBar * barUnit;
-    const cTo = (c.startBar + c.lengthBars) * barUnit;
+    const { from: cFrom, to: cTo } = sceneSpanTicks(c, barUnit);
     return cFrom >= from && cTo <= to;
   });
-  const trailingIds = new Set(doc.arrangement.clips.filter((c) => c.startBar * barUnit >= to).map((c) => c.id));
+  const trailingIds = new Set(
+    doc.arrangement.clips.filter((c) => sceneSpanTicks(c, barUnit).from >= to).map((c) => c.id),
+  );
   const baseClips: ArrangementClip[] = doc.arrangement.clips.map((c) =>
     trailingIds.has(c.id) ? { ...c, startBar: c.startBar + deltaBars } : c,
   );
@@ -149,9 +149,15 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
   // with the timeline, including their absolute warp-pin ticks.
   const fromBar = from / barUnit;
   const toBar = to / barUnit;
-  const audioClips = doc.arrangement.audioClips ?? [];
-  const overlapsRange = (clip: AudioClip) => clip.startBar < toBar && clip.startBar + clip.lengthBars > fromBar;
-  const isWhollyInsideRange = (clip: AudioClip) => clip.startBar >= fromBar && clip.startBar + clip.lengthBars <= toBar;
+  const audioClips = audioLaneOf(doc.arrangement);
+  const overlapsRange = (clip: AudioClip) => {
+    const { fromBar: f, toBar: t } = audioSpanBars(clip);
+    return f < toBar && t > fromBar;
+  };
+  const isWhollyInsideRange = (clip: AudioClip) => {
+    const { fromBar: f, toBar: t } = audioSpanBars(clip);
+    return f >= fromBar && t <= toBar;
+  };
   if (audioClips.some((clip) => overlapsRange(clip) && !isWhollyInsideRange(clip))) {
     throw new Error("Cannot duplicate a time range when an audio clip crosses its boundary; adjust the range first.");
   }
@@ -182,12 +188,7 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
       return [clip];
     })
     .sort((a, b) => a.startBar - b.startBar);
-  if (doc.arrangement.audioClips !== undefined) {
-    nextDoc = {
-      ...nextDoc,
-      arrangement: { ...nextDoc.arrangement, audioClips: nextAudioClips },
-    };
-  }
+  nextDoc = withAudioLane(nextDoc, nextAudioClips);
 
   // Markers inside zone are duplicated; trailing markers are shifted
   const nextMarkers = doc.markers.flatMap((m) => {
@@ -508,14 +509,14 @@ function splitAudioClipsForConsolidationRange(
     }
 
     let rangeClipId = sourceClip.id;
-    const currentClip = () => project.arrangement.audioClips?.find((clip) => clip.id === rangeClipId);
+    const currentClip = () => audioLaneOf(project.arrangement).find((clip) => clip.id === rangeClipId);
     const initial = currentClip();
     if (!initial) throw new Error(`AudioClip ${sourceClip.id} disappeared during range consolidation.`);
 
     const splitAt = (clipId: string, tick: number): AudioClip[] => {
-      const priorIds = new Set((project.arrangement.audioClips ?? []).map((clip) => clip.id));
+      const priorIds = new Set(audioLaneOf(project.arrangement).map((clip) => clip.id));
       project = splitAudioClipAtTickWithMinimumFragment(project, clipId, tick, sourceDuration, 0).execute(project);
-      const pieces = (project.arrangement.audioClips ?? []).filter(
+      const pieces = audioLaneOf(project.arrangement).filter(
         (clip) =>
           !priorIds.has(clip.id) && clip.bufferId === sourceClip.bufferId && clip.trackId === sourceClip.trackId,
       );
@@ -585,7 +586,7 @@ export function consolidateTimeRangeToAudio(
   }
   const overlaps = (startBar: number, bars: number) => startBar < toBar && startBar + bars > fromBar;
   const sourceClips = doc.arrangement.clips.filter((clip) => overlaps(clip.startBar, clip.lengthBars));
-  const sourceAudio = (doc.arrangement.audioClips ?? []).filter((clip) => overlaps(clip.startBar, clip.lengthBars));
+  const sourceAudio = audioLaneOf(doc.arrangement).filter((clip) => overlaps(clip.startBar, clip.lengthBars));
 
   const splitAudio = splitAudioClipsForConsolidationRange(doc, sourceAudio, from, to, sourceDurationsByBufferId);
 
@@ -609,7 +610,7 @@ export function consolidateTimeRangeToAudio(
     fadeIn: 0.003,
     fadeOut: 0.003,
   }).execute(withPrintTrack);
-  const printClip = withPrintClip.arrangement.audioClips?.find(
+  const printClip = audioLaneOf(withPrintClip.arrangement).find(
     (clip) => clip.trackId === printTrack.id && clip.bufferId === bufferId,
   );
   if (!printClip) throw new Error("The rendered audio clip could not be added to the print track.");
@@ -687,7 +688,7 @@ export function consolidateTimeRangeToAudio(
     nextClips.push(placeholder);
   }
   nextClips.sort((a, b) => a.startBar - b.startBar);
-  const nextAudioClips = (withPrintClip.arrangement.audioClips ?? [])
+  const nextAudioClips = audioLaneOf(withPrintClip.arrangement)
     .filter((clip) => !splitAudio.removedClipIds.has(clip.id))
     .sort((a, b) => a.startBar - b.startBar);
   const liveTakeGroupIds = new Set(nextAudioClips.flatMap((clip) => (clip.takeGroupId ? [clip.takeGroupId] : [])));
