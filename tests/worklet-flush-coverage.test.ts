@@ -575,14 +575,8 @@ describe("worklet state flush — targeted", () => {
     // window where an un-flushed state sits in the subnormal range.
     for (let i = 0; i < 400000; i += 1) processor.umSample(bq, 0, 0);
 
-    expect(
-      bq.z1[0],
-      "the biquad's first state memory must reach exactly zero, not merely get quiet",
-    ).toBe(0);
-    expect(
-      bq.z2[0],
-      "the biquad's second state memory must reach exactly zero, not merely get quiet",
-    ).toBe(0);
+    expect(bq.z1[0], "the biquad's first state memory must reach exactly zero, not merely get quiet").toBe(0);
+    expect(bq.z2[0], "the biquad's second state memory must reach exactly zero, not merely get quiet").toBe(0);
   });
 
   it("prud-processor.js flushes its detector and cut state, not only its output", () => {
