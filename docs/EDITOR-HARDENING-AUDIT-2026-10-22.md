@@ -209,6 +209,49 @@ expect. `snap-grid` then passes in Chromium: bar width 30 px, the dragged copy s
 
 ---
 
+### F14 — Extending a clip's head left had no headroom contract (P2)
+
+The audio trim gesture let the head move **left**. That is a valid gesture exactly as long
+as the SOURCE can move back with it: `offsetSec` is a position in the ORIGINAL sample, so a
+clip whose source starts 4 s into the file can grow left by 4 s of material.
+
+With no headroom (`offsetSec === 0`) the source could not move back, and the command
+**clamped it to 0 silently**. The head still moved, the clip still grew, and the source
+stayed exactly where it was — so the gesture stopped meaning "reveal earlier material" and
+became "play more of the same material": the right-extend wearing the left-extend's
+clothes. The scene-clip twin refuses the same gesture outright ("extend-left is a
+separate verb"); the audio twin had no contract at all.
+
+_Fix:_ the head is bounded by the source's headroom (`origOffsetSec` seconds, converted
+through the clip's rate) — it stops at the file's start instead of moving into nothing —
+and `trimAudioClipStart` **refuses** a source position before the file's start, so no
+other caller (intent, MCP, collab) can write the same clip.
+
+### F15 — The waveform painted over the clip's silence (P2)
+
+F12 bounded the AMOUNT of source the envelope covers. Where that material **sits** was
+still wrong: the canvas stretched the source window across the clip's full width, so a
+clip longer than its source — the engine plays the source and then nothing — had its
+envelope drawn over the silent tail. The picture claimed sound where the transport played
+silence.
+
+_Fix:_ `audioClipWallSourceSec` (the source the clip's wall length is worth) and
+`audioClipAudibleWidthFraction` (the share of the width that carries material). The
+envelope **and** the transient ticks are scaled by that fraction, so both stop where the
+sound stops. The fraction is the engine's own ratio — `duration / requestedDuration` —
+which is exactly what the guard asserts.
+
+### F16 — The group-drag preview divided the ticks by the live bar unit (P3)
+
+The preview publishes `startTicks` computed with the document's bar unit at publish time;
+the consumer divided them by the **live** `barUnit`. The two agree until the document's
+metre changes between the publish and the read — and then the preview shows the block at
+one place and the commit puts it at another.
+
+_Fix:_ the unit travels with the ticks (`barUnit` in the payload), and one exported
+conversion (`groupDragPreviewStartBar`) makes the bar position with the unit the ticks
+were computed with. Both consumers in the panel go through it.
+
 ## Editing Tools Verified
 
 Verified by reading the implementation and by the regression suites named below.
@@ -216,8 +259,8 @@ Verified by reading the implementation and by the regression suites named below.
 | Area                                                                       | State                                                                                                                                                                   |
 | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Selection (single / multi / modifier / marquee / select-all / cross-track) | Verified; the app-level invariant (every selected id names a live object) is exercised in the chaos chain                                                               |
-| Move / drag, cross-track, multi-selection                                  | Verified                                                                                                                                                                |
-| Trim left / right, minimum duration, source boundaries, repeat, undo       | **Defect fixed (F1–F3)**                                                                                                                                                |
+| Move / drag, cross-track, multi-selection                                  | **Defect fixed (F16)** — the group-drag preview carries the bar unit it was published with                                                                              |
+| Trim left / right, minimum duration, source boundaries, repeat, undo       | **Defect fixed (F1–F3, F14)** — the head stops at the source's headroom                                                                                                 |
 | Split at playhead / arbitrary / repeated / multi-selection                 | Verified; **phase defect fixed (F4)**                                                                                                                                   |
 | Copy / paste / duplicate                                                   | Verified (clipboard captures the change, not the document)                                                                                                              |
 | Delete / removal, dead references, runtime cleanup                         | Verified                                                                                                                                                                |
@@ -236,7 +279,7 @@ Verified by reading the implementation and by the regression suites named below.
 | Undo / redo and transaction boundaries                                     | **Defect fixed (F7)**                                                                                                                                                   |
 | Editor ↔ project state                                                     | Verified — the panel reads the live document, never a render memo, where it matters                                                                                     |
 | Editor ↔ audio engine                                                      | Audited — the engine's playable window is the reference the waveform and the trim now agree with                                                                        |
-| Waveform / MIDI rendering                                                  | **Defect fixed (F12)** — the drawn window and the played window are the same window, in resample, stretch, offset, trim and loop shapes                                 |
+| Waveform / MIDI rendering                                                  | **Defect fixed (F12, F15)** — the drawn window and the played window are the same window, in resample, stretch, offset, trim and loop shapes                            |
 | Automation / markers integration                                           | Audited — structural edits do not leave automation attached to invalid targets                                                                                          |
 | Track-level editing                                                        | Audited                                                                                                                                                                 |
 | Locking                                                                    | Audited — `assertClipEditable` is centralised at the command level, so every entry point (UI, MCP, intent, collab) is covered                                           |
@@ -286,6 +329,12 @@ Verified by reading the implementation and by the regression suites named below.
 - The waveform envelope follows the clip while it is being dragged: the window is
   recomputed from the clip's own wall length, so a right-edge trim redraws the envelope as the
   preview grows and shrinks — the user trims against the shape they are about to hear (F12).
+- The trim gesture's head now stops at the **source's headroom** instead of growing the
+  clip into silence: the gesture keeps meaning "reveal earlier material" (F14).
+- The waveform's envelope and its onset ticks stop where the **sound** stops — the
+  fraction is the engine's own `duration / requestedDuration` (F15).
+- The group-drag preview carries the **bar unit it was published with**, so the preview
+  and the commit cannot disagree about where a block lands (F16).
 
 ---
 
@@ -314,6 +363,10 @@ Verified by reading the implementation and by the regression suites named below.
 | `tests/audio-clip-played-source-window.test.ts`                                            | F12 — the drawn waveform window is the engine's played window, in resample, pitch-preserving stretch, offset, trim, loop and reverse shapes; the cap reaches every call site                                                                                                     |
 | `tests/e2e/_studio.ts`, `tests/e2e/_helpers.ts`, `tests/e2e/18-editor-chaos-chain.spec.ts` | F13 — the shared studio harness opens the house template the current UI offers, and the INT guard targets the arrangement toggle instead of the dock's INTENT button; with them the editor E2E suite boots and runs                                                              |
 
+| `tests/ui/audio-trim-extend-left-headroom.test.tsx` | F14 — a real pointer drag of the head stops at the source's headroom instead of growing the clip into silence; the command refuses a source position before the file's start |
+| `tests/audio-clip-audible-width.test.ts` | F15 — the audible fraction is the engine's own `duration / requestedDuration`, so the drawn envelope and the onset ticks stop exactly where the sound stops |
+| `tests/group-drag-preview-bar-unit.test.ts` | F16 — the preview carries the bar unit it was published with, and the conversion cannot disagree with the commit that follows |
+
 Each of these was confirmed to **fail** with its fix reverted.
 
 ---
@@ -321,6 +374,8 @@ Each of these was confirmed to **fail** with its fix reverted.
 ## Verification
 
 Exactly what was executed, and what it returned. Every number below comes from a run.
+
+### Wave 1 — the original sweep
 
 - **Editor-focused suites** — `npx vitest run` over 26 files (the seven new regression
   suites, the baseline editor suites, the DOM-census gate, `ArrangementPanel`,
@@ -371,39 +426,82 @@ be close to 0.4`,
 - **Process hygiene** — `node-gc`: **ABANDONED: none.** The dev server this session
   started for the E2E run was stopped.
 
+### Wave 2 — the P1 follow-up (R4, R6, R2)
+
+The second wave fixed three of the report's remaining risks: the trim head's headroom
+contract (F14), the waveform's silent tail (F15) and the group-drag preview's bar unit (F16).
+
+- **Editor-focused suites** — `npx vitest run` over 29 files (wave 1's 26 plus the three new
+  regression suites): **29 files passed, 295 tests passed, 0 failed.**
+- **Typecheck** — `npx tsc --noEmit`: **no errors in any file this wave touched.** The run exits
+  non-zero overall, and the reason is not this wave: `main` itself does not typecheck right now,
+  because another session committed `src/ai/grooves/dedup.ts` calling `sameSignature` without
+  importing it (`TS2304`), and the shared working tree adds a second, unrelated
+  `TS6133` in `src/ui/MasteringPanel.tsx`. A run filtered to this wave's files reports **zero**
+  diagnostics.
+- **Production build** — `npm run build`, measured on an **isolated worktree** at the commit that
+  carries this wave (`git worktree add --detach`), because the shared working tree holds other
+  sessions' uncommitted files: **passed**, every budget OK — entry **404 KB** (budget 1070), DAW
+  JS **5535 KB** (budget 5560), studio boot path **2088 KB** (budget 2200), optional on-demand
+  runtimes **647 KB** (budget 650), core worklets **112 KB** (budget 150), shipped JS total
+  **8037 KB**. One foreign compile error had to be patched **inside the throwaway worktree
+  only** (the `sameSignature` import above) for the build to run at all; the patch was never
+  applied to the repository.
+- **Format gate** — `npx prettier --check` over every file this wave touched, including the
+  report: **"All matched files use Prettier code style!"**
+- **Process hygiene** — `node-gc`: **ABANDONED: none** (45 node processes checked). The dev
+  server this session started for the E2E run was stopped and port 5188 was verified free.
+- **Guard verification** — each new suite was re-run with its fix reverted and was confirmed
+  to fail:
+  - headroom suite → `the head must not move before the source's start: expected 3.933333333333333 to be close to 4`
+    and `expected [Function] to throw an error` (the command's own refusal),
+  - audible-width suite → `expected 1 to be greater than or equal to 2` (the envelope still
+    covered the whole width of a clip whose source is half as long),
+  - bar-unit suite → `expected '…' to contain 'groupDragPreviewStartBar('` (the consumer
+    still divided by the live bar unit).
+- **Browser E2E (Chromium)** — `npx playwright test --project=chromium` over the same 11 editor
+  specs wave 1 ran, against a dev server warmed on purpose: **18 passed, 2 skipped, 0 failed
+  (3.5 min)** — the same result wave 1 measured, with wave 2's changes in place. The two
+  earlier attempts failed on cold-start `page.goto` timeouts; they are described below
+  rather than hidden.
+
+**What the E2E attempts actually measured — and why the first two runs failed.**
+
+The first run of the 11 editor specs reported **13 failed, 5 passed, 2 skipped** (8.8 min);
+the second, run serially, reported **5 failed, 13 passed, 2 skipped** (14.1 min). Every
+failure in both runs had the same cause, and it was not the editor:
+
+```
+TimeoutError: page.goto: Timeout 60000ms exceeded.
+  - navigating to "http://127.0.0.1:5188/", waiting until "domcontentloaded"
+```
+
+The `page.goto` never completed — the Vite **dev** server could not answer within the
+spec's 60 s budget. Measured directly against that server, a cold transform of the app's
+own modules took **16 s** for `/`, **24 s** for `/src/main.tsx`, **13 s** for
+`/src/audio-engine/AudioEngine.ts` and **33 s** for `/src/rendering/renderer.ts` — on a
+machine that other agent sessions were holding at 74–100 % CPU throughout. The failing
+specs were exactly the ones that ran in the cold window; every spec that ran after the
+server was warm passed.
+
+The final run therefore used a dev server warmed on purpose (the five heaviest modules
+fetched first), with the same 2-worker configuration wave 1 used: **18 passed, 2 skipped,
+0 failed (3.5 min)** — the same result wave 1 measured, with wave 2's changes in place.
+The dev server was stopped afterwards and the port was verified free.
+
+**This is a property of the environment, not a verdict on the change — but it is also not
+a clean bill of health.** The honest statement is: the editor E2E suite passes once the
+dev server is warm, and this machine could not always give it a warm server. A cold-start
+E2E run on a loaded machine is a flaky gate, and it should not be counted as a defect —
+nor as a pass.
+
 ---
 
 ## Remaining Risks
 
 These are real, identified, and deliberately **not** fixed here.
 
-### R6 — A clip longer than its source still paints its envelope over the silent tail (P3)
-
-The played-source cap (F12) bounds the envelope to the material that plays, but the canvas
-still stretches that window across the clip's **full** width. When the clip is longer than
-its source — the user extended the right edge past the end of the file — the engine plays
-the file and then silence, while the envelope is drawn over the silent part. The material
-shown is now only material that plays; its _placement_ is still approximate.
-
-Drawing it correctly means mapping the columns to absolute source positions and leaving
-the out-of-source tail blank, which changes the drawing loop and needs a product decision
-on how the empty tail should look. Deliberately left alone.
-
-### R7 — A warp-marker clip's envelope is linear while its playback is bent (P3)
-
-A clip with warp pins plays a phase-vocoder buffer whose source-to-wall mapping follows
-the pins; the waveform draws the straight mapping. F12's cap bounds the _amount_ of
-source, which stays right, but the envelope's internal shape does not follow the pins.
-This is a rendering approximation, not a wrong edit — and it predates this audit.
-
-### R2 — The group drag preview converts ticks with the live bar unit (P3)
-
-`groupDragPreview` publishes `startTicks` computed with the document's bar unit at
-publish time; the consumer divides them by the _live_ `barUnit`. The two disagree only
-if the document's meter changes mid-gesture. The fix would change a cross-module event
-payload; the exposure is a one-frame preview offset in an extremely rare window.
-
-### R3 — The whole-document-pin command family in `src/ui` and `src/intent` (P3, latent)
+### R1 — The whole-document-pin command family in `src/ui` and `src/intent` (P3, latent)
 
 Commands that capture the _whole document_ rather than the change it makes are pinned
 against `src/commands` only. The sites in `src/ui` and `src/intent` (e.g. `App.tsx`'s
@@ -412,25 +510,22 @@ masked by the fact that the store applies commands synchronously, so the render-
 document cannot be stale by the time the command runs. Migrating them is a broad change
 with no currently reachable defect — deliberately left alone.
 
-### R4 — Extending a clip's start edge leftward has no headroom contract (P3)
-
-The audio trim gesture allows dragging the head _left_ (the scene twin refuses: "extend-
-left is a separate verb"). When the source has no headroom, the source offset clamps at
-0 and the clip plays less than its duration. The same is true of the scene twin's
-refusal, but there it is an explicit error rather than a silent clamp.
-
-### R5 — The scene clip's "no overlap" rule and the audio clip's "layer" rule are two
-
-policies in one timeline (design, not a defect)
+### R2 — The scene clip's "no overlap" rule and the audio clip's "layer" rule are two policies in one timeline (design, not a defect)
 
 Documented in `duplicateAudioClip`: audio clips layer (the engine sums them), arrangement
 clips are no-overlap. Both are intentional and each system keeps its own rule. A user
 mixing the two clip kinds in one lane gets two different behaviours, which is a product
 question rather than a bug.
 
----
+### R3 — A warp-marker clip's envelope is linear while its playback is bent (P3)
 
-### R8 — The browser E2E was exercised on Chromium only (P3, platform check)
+A clip with warp pins plays a phase-vocoder buffer whose source-to-wall mapping follows
+the pins; the waveform draws the straight mapping. F12's cap bounds the _amount_ of
+source and F15's fraction bounds where it sits, but the envelope's internal shape does
+not follow the pins. This is a rendering approximation, not a wrong edit — and it predates
+this audit.
+
+### R4 — The browser E2E was exercised on Chromium only (P3, platform check)
 
 The editor E2E suite was repaired and run on **Chromium** (18 passed, 2 skipped). The
 repo's `firefox-midi-arrangement`, `firefox-mastering-session` and `webkit` projects were
@@ -440,10 +535,11 @@ the arrangement gestures still needs a human pass.
 
 ---
 
-_This pass found and fixed thirteen defects that were reproducible and reachable through
-ordinary use — eight in the editor itself, two in how the editor and the engine agree on
-source time, one in the undo window, one in the timeline's reach, and one in the browser
-test harness that made the whole editor E2E suite unable to boot. It leaves seven
-identified items behind — six of them needing a human decision or a platform/browser check
-rather than another patch. The editor is not proven bug-free; it is now measurably
-harder to break, and every fix above is guarded by a test that was seen failing first._
+_This pass found and fixed sixteen defects that were reproducible and reachable through
+ordinary use — eight in the editor itself, four in how the editor and the engine agree on
+source time, one in the undo window, one in the timeline's reach, one in the browser
+test harness that made the whole editor E2E suite unable to boot, and one in a cross-
+module drag preview. It leaves four identified items behind — all of them needing a human
+decision or a platform/browser check rather than another patch. The editor is not proven
+bug-free; it is now measurably harder to break, and every fix above is guarded by a test
+that was seen failing first._
