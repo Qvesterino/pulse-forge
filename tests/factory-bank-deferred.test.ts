@@ -24,6 +24,9 @@ import { FACTORY_ASSETS } from "../src/sample-library/manifest";
  *   5. ensure renders only what is missing and JOINS an in-flight render
  *      (STRUCTURAL — the render itself needs an AudioContext, so the
  *      browser measurement is the behavioural half)
+ *   6. the catalogue wait also covers a render that is still IN FLIGHT —
+ *      the background build's promise does not include a sample a project
+ *      open asked for on its own (STRUCTURAL)
  *
  * Every structural contract carries a mutation that has to break it: a guard
  * that cannot fail is not a guard.
@@ -67,6 +70,12 @@ const structuralContracts: StructuralContract[] = [
       /const existing = state\.assets\.get\(asset\.id\);/.test(s) &&
       /state\.assets\.set\(asset\.id, render\);/.test(s),
     mutate: (s) => s.replace(/if \(bank\.has\(asset\.id\)\) continue;/, ""),
+  },
+  {
+    name: "the catalogue wait ALSO covers a render that is still in flight",
+    holds: (s) =>
+      /export function factoryBankReady\(bank: SampleBank\): Promise<void> \{[\s\S]*?state\.assets\.values\(\)/.test(s),
+    mutate: (s) => s.replace(/const inFlight = \[\.\.\.state\.assets\.values\(\)\];/, ""),
   },
 ];
 

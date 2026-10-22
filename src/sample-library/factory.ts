@@ -5172,9 +5172,19 @@ export async function ensureFactorySamples(bank: SampleBank, ids: readonly strin
  * Resolve when the whole factory catalogue has been rendered into this bank.
  * The export path awaits it: an export that starts before the catalogue is
  * complete would silently drop the samples it has not reached yet.
+ *
+ * It waits for the background build AND for every individual render still in
+ * flight. The second part is not redundant: a project open can ask for a
+ * sample the background build has not reached yet, and that render is not
+ * part of the build's own promise. Awaiting only the build would let an
+ * export start while that sample is still being rendered — and the export
+ * would ship without it, silently.
  */
 export function factoryBankReady(bank: SampleBank): Promise<void> {
-  return buildState(bank).full ?? Promise.resolve();
+  const state = buildState(bank);
+  const inFlight = [...state.assets.values()];
+  if (!state.full) return inFlight.length > 0 ? Promise.all(inFlight).then(() => undefined) : Promise.resolve();
+  return Promise.all([state.full, ...inFlight]).then(() => undefined);
 }
 
 /**
