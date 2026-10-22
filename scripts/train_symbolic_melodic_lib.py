@@ -65,7 +65,14 @@ class MLP:
         duration_weights: np.ndarray,
         lr: float,
         label_smoothing: float = 0.0,
+        duration_mask: np.ndarray | None = None,
     ) -> float:
+        """W1b per-head data rights: `duration_mask` (0/1 per row, None = all
+        ones) zeroes a row's DURATION-head loss and gradient while its
+        DEGREE gradient still flows through the shared trunk. Corpus rows
+        teach voice-leading, never rhythm (docs/W1-CHORD-AWARE-PLAN.md §4c).
+        The divisor stays the FULL batch size, so masked rows contribute
+        exactly zero to the duration term of the reported loss too."""
         n = len(x)
         h0, h1, degree_logits, duration_logits = self.forward(x)
         degree_probs = softmax(degree_logits)
@@ -78,12 +85,15 @@ class MLP:
         target_duration = np.full_like(duration_probs, label_smoothing / n_duration_classes)
         target_duration[np.arange(n), y_duration] += 1.0 - label_smoothing
 
+        if duration_mask is None:
+            duration_mask = np.ones(n, dtype=np.float64)
+
         wd = degree_weights[y_degree]
         wt = duration_weights[y_duration]
         eps = 1e-7
         loss = float(
             np.mean(wd * -np.sum(target_degree * np.log(degree_probs + eps), axis=1))
-            + np.mean(wt * -np.sum(target_duration * np.log(duration_probs + eps), axis=1))
+            + np.mean(duration_mask * wt * -np.sum(target_duration * np.log(duration_probs + eps), axis=1))
         )
 
         # BOTH heads are weighted exactly ONCE, matching the loss above.
@@ -92,7 +102,7 @@ class MLP:
         # scripts/audit-melodic-double-weight-proof.py), which made the head
         # optimise wt^2 and collapse onto the rarest duration class.
         d_degree = (degree_probs - target_degree) * (wd / n)[:, None]
-        d_duration = (duration_probs - target_duration) * (wt / n)[:, None]
+        d_duration = (duration_probs - target_duration) * (wt / n)[:, None] * duration_mask[:, None]
 
         delta1 = d_degree @ self.wd.T + d_duration @ self.wt.T
         masked1 = delta1 * (h1 > 0)

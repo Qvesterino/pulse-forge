@@ -99,6 +99,62 @@ corpus integration (re-balance corpus duration classes toward the library
 distribution, or drop the duration head's corpus loss term) may convert this
 to a PASS. Requires its own pre-registration before any rerun.
 
+## 4c. W1b PRE-REGISTRATION — per-head data rights (locked before the rerun)
+
+W1's verdict split the hypothesis: harmony transfers (degree PASSED, 3-fold
+corpus helps +0.0072), texture does not (duration FAILED, -0.078/-0.023).
+W1b turns that split into the mechanism:
+
+**Mechanism (the architectural decision):** corpus rows train the SHARED
+TRUNK and the DEGREE head only. Their contribution to the DURATION head's
+loss and gradient is ZERO (per-row duration mask in `MLP.train_step`), and
+the duration head's class weights are computed from the library slice only.
+The duration head is taught exclusively by the electronic library; the
+corpus teaches voice-leading over harmony, nothing else.
+
+**Gate criteria — IDENTICAL to §4, no relaxation:**
+
+- a) 2-fold and 3-fold degree(corpus, heads-split) ≥ degree(baseline) − 0.01;
+- b) duration(corpus, heads-split) not worse than duration(baseline) by
+  > 0.02 — with the mechanism in place the expected value is ≈ baseline
+  > (shared-trunk drift aside), so this is now an honest test of "the corpus
+  > does not damage what it does not teach".
+
+PASS (both, both fold counts) → the corpus ships as a DEGREE teacher:
+retrain the shipped v3 with --w1b-heads-split, manifest records the recipe,
+provider routing lands. FAIL → the corpus parks PERMANENTLY (two mechanisms,
+one verdict each — no third roll without a new architectural idea).
+
+## 4d. W1b VERDICT — FAIL (2026-10-07); the corpus parks permanently
+
+Ran exactly as pre-registered in §4c (same folds, mask mechanism,
+library-only duration class weights):
+
+| run                      | 2-fold degree | 2-fold duration | 3-fold degree | 3-fold duration |
+| ------------------------ | ------------: | --------------: | ------------: | --------------: |
+| baseline (no corpus)     |        0.4933 |          0.5512 |        0.4850 |          0.5610 |
+| W1 shared-training (§4b) |        0.4891 |          0.4736 |        0.4922 |          0.5383 |
+| W1b heads-split          |        0.4710 |          0.5109 |        0.4783 |          0.5688 |
+
+- Criterion (a) degree: **FAILED** — 2-fold 0.4710 < 0.4833 (worse than
+  BOTH the baseline and the §4b shared run). Splitting the heads tore the
+  shared trunk between two input distributions; degree lost more than the
+  corpus ever gave it.
+- Criterion (b) duration: **FAILED** — 2-fold 0.5109 vs 0.5512 (−0.040).
+  The mask moved duration toward baseline (vs §4b's 0.4736) but never
+  reached it: the trunk the corpus trains is the duration head's input.
+
+**Verdict: FAIL. The corpus parks PERMANENTLY** — two architectural
+mechanisms (shared training; per-head data rights), one verdict each, and
+§4c allows no third roll without a genuinely new idea. What the campaign
+leaves behind, all reusable: the corpus→ChordEvent bridge, the gate's v3
+path, the trainer's per-head mask (a correct, tested primitive), the
+"classical" conditioning slot, and TWO clean negative results that fence
+the idea space: classical melodic texture does not transfer into this
+electronic-library prior under ANY integration tried, harmony alone or
+masked. The next chord idea needs a different model family (sequence
+models with attention over harmony), not a different merge trick.
+
 ## 5. Non-goals
 
 - No change to the drum prior, the ranker, or v2's shipped artefacts.

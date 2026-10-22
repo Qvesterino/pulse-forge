@@ -77,7 +77,11 @@ class TwoHeadMLP:
         duration_weights: np.ndarray,
         lr: float,
         label_smoothing: float = 0.0,
+        duration_mask: np.ndarray | None = None,
     ) -> float:
+        """W1b per-head data rights (mirrors train_symbolic_melodic_lib):
+        rows with duration_mask == 0 contribute NO duration-head loss or
+        gradient; their degree gradient still flows through the shared trunk."""
         n = len(x)
         h0, h1, degree_logits, duration_logits = self.forward(x)
         degree_probs = softmax(degree_logits)
@@ -96,10 +100,12 @@ class TwoHeadMLP:
 
         wd = degree_weights[y_degree]
         wt = duration_weights[y_duration]
+        if duration_mask is None:
+            duration_mask = np.ones(n, dtype=np.float64)
         eps = 1e-7
         loss = float(
             np.mean(wd * -np.sum(target_degree * np.log(degree_probs + eps), axis=1))
-            + np.mean(wt * -np.sum(target_duration * np.log(duration_probs + eps), axis=1))
+            + np.mean(duration_mask * wt * -np.sum(target_duration * np.log(duration_probs + eps), axis=1))
         )
 
         d_degree = (degree_probs - target_degree) * (wd / n)[:, None]
@@ -110,7 +116,7 @@ class TwoHeadMLP:
         # analytic gradient 0.0224 disagreed with the true 0.1463). The
         # relative pull toward rare classes was inflated by up to 10.2x,
         # collapsing the duration head onto duration-8.
-        d_duration = (duration_probs - target_duration) * (wt / n)[:, None]
+        d_duration = (duration_probs - target_duration) * (wt / n)[:, None] * duration_mask[:, None]
 
         # backprop: heads → trunk (ReLU masks) → input
         delta1 = d_degree @ self.wd.T + d_duration @ self.wt.T  # into h1 (pre-ReLU)
@@ -199,6 +205,13 @@ def main() -> None:
         "--v3-dataset",
         default="scripts/data/melodic-v3-dataset.json",
         help="melodic-v3-dataset.json path (generate-melodic-v3-dataset.mts output)",
+    )
+    parser.add_argument(
+        "--w1b-heads-split",
+        action="store_true",
+        help="W1b: corpus (classical.*) rows train the trunk+degree head only — "
+        "zero duration-head gradient, duration class weights from the library "
+        "slice (docs/W1-CHORD-AWARE-PLAN.md §4c)",
     )
     parser.add_argument(
         "--midi-corpus",
@@ -326,10 +339,15 @@ def main() -> None:
     # W1/W2 rule: corpus rows are TRAIN-ONLY. The v3 dataset's corpus groups
     # carry the classical.* prefix — exclude them from the validation group
     # pool so validation stays library-pure (the corpus still trains).
+    duration_mask_all: np.ndarray | None = None
     if feature_version == "melodic-features.v3":
         library_mask = np.array([not str(g).startswith("classical.") for g in groups])
+        if args.w1b_heads_split:
+            duration_mask_all = np.where(library_mask, 1.0, 0.0)
         unique_groups = np.unique(groups[library_mask])
     else:
+        if args.w1b_heads_split:
+            raise SystemExit("--w1b-heads-split is a v3-recipe flag")
         unique_groups = np.unique(groups)
     rng.shuffle(unique_groups)
     val_count = max(1, int(len(unique_groups) * VAL_FRACTION))
@@ -472,7 +490,12 @@ def main() -> None:
             print(f"[train] favorites merged: {len(favorite_x)} weighted next-note samples")
 
     dw = class_weights(yd_train, DEGREE_CLASSES, args.weight_power)
-    tw = class_weights(yt_train, DURATION_CLASSES, args.weight_power)
+    train_duration_mask: np.ndarray | None = None
+    if duration_mask_all is not None:
+        train_duration_mask = duration_mask_all[: len(yd_train)]
+        tw = class_weights(yt_train[duration_mask_all[: len(yd_train)] == 1.0], DURATION_CLASSES, args.weight_power)
+    else:
+        tw = class_weights(yt_train, DURATION_CLASSES, args.weight_power)
     print(
         f"[train] samples={len(x_all)} train={len(x_train)} val={len(x_val)} "
         f"degreeBaseline={max(np.bincount(yd_train, minlength=DEGREE_CLASSES)) / max(1, len(yd_train)):.3f} "
@@ -487,7 +510,10 @@ def main() -> None:
         for start in range(0, len(order), BATCH):
             batch = order[start : start + BATCH]
             smoothing = 0.1 if embedding_mode else 0.0
-            epoch_loss += model.train_step(x_train[batch], yd_train[batch], yt_train[batch], dw, tw, LR, smoothing)
+            epoch_loss += model.train_step(
+                x_train[batch], yd_train[batch], yt_train[batch], dw, tw, LR, smoothing,
+                train_duration_mask[batch] if train_duration_mask is not None else None,
+            )
             batches += 1
         if (epoch + 1) % 100 == 0 or epoch == 0:
             _, _, vd, vt = model.forward(x_val)

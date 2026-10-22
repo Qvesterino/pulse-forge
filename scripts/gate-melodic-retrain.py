@@ -82,7 +82,9 @@ def to_v2_rows(x_v1: np.ndarray, groups: np.ndarray) -> np.ndarray | None:
     return np.array(rows, dtype=np.float64)
 
 
-def train_fold(base, aug, corpus, held_groups, weight_power: float, smoothing: float, embedding: bool):
+def train_fold(
+    base, aug, corpus, held_groups, weight_power: float, smoothing: float, embedding: bool, w1b: bool = False
+):
     xb = np.array([s["x"] for s in base], dtype=np.float64)
     ybd = np.array([s["degree"] for s in base], dtype=np.int64)
     ybt = np.array([s["duration"] for s in base], dtype=np.int64)
@@ -152,20 +154,38 @@ def train_fold(base, aug, corpus, held_groups, weight_power: float, smoothing: f
         cx.append(row)
         cd.append(int(sample["degree"]))
         ct.append(int(sample["duration"]))
+    duration_mask = None
     if cx:
         x_train = np.concatenate([x_train, np.array(cx, dtype=np.float64)])
         yd_train = np.concatenate([yd_train, np.array(cd, dtype=np.int64)])
         yt_train = np.concatenate([yt_train, np.array(ct, dtype=np.int64)])
+        if w1b:
+            # W1b per-head data rights: corpus rows (appended LAST) never
+            # train the duration head, and its class weights come from the
+            # library slice only — the corpus is a degree teacher, nothing else.
+            duration_mask = np.concatenate([np.ones(len(yt_train) - len(ct)), np.zeros(len(ct))])
+            tw = None  # recomputed below from the library slice
 
     rng = np.random.default_rng(SEED)
     model = MLP(x_train.shape[1], rng)
     dw = class_weights(yd_train, DEGREE_CLASSES, weight_power)
     tw = class_weights(yt_train, DURATION_CLASSES, weight_power)
+    if duration_mask is not None:
+        tw = class_weights(yt_train[: -len(ct)], DURATION_CLASSES, weight_power)
     for _ in range(EPOCHS):
         order = rng.permutation(len(x_train))
         for start in range(0, len(order), BATCH):
             batch = order[start : start + BATCH]
-            model.train_step(x_train[batch], yd_train[batch], yt_train[batch], dw, tw, LR, smoothing)
+            model.train_step(
+                x_train[batch],
+                yd_train[batch],
+                yt_train[batch],
+                dw,
+                tw,
+                LR,
+                smoothing,
+                duration_mask[batch] if duration_mask is not None else None,
+            )
 
     _, _, vd, vt = model.forward(x_val)
     _, _, td, tt = model.forward(x_train)
@@ -218,6 +238,13 @@ def main() -> None:
         action="store_true",
         help="drop classical.* rows — the corpus-free BASELINE of the W1 comparison",
     )
+    parser.add_argument(
+        "--w1b-heads-split",
+        action="store_true",
+        help="W1b per-head data rights: corpus rows train the trunk+degree head "
+        "only (zero duration-head gradient; duration class weights from the "
+        "library slice). Pre-registered docs/W1-CHORD-AWARE-PLAN.md §4c.",
+    )
     args = parser.parse_args()
 
     aug: list[dict] = []
@@ -232,6 +259,8 @@ def main() -> None:
             corpus = [s for s in samples if str(s["group"]).startswith("classical.")]
         if args.embedding or args.midi_corpus:
             raise SystemExit("--feature-v3 is self-contained: no --embedding/--midi-corpus")
+        if args.w1b_heads_split and args.v3_no_corpus:
+            raise SystemExit("--w1b-heads-split needs corpus rows; --v3-no-corpus contradicts it")
     else:
         base, aug = load_datasets()
         if args.midi_corpus:
@@ -263,7 +292,9 @@ def main() -> None:
     mode = "shipped 15% split" if args.shipped_split else f"{args.folds}-fold group CV"
     vintage = f"{dataset_version} -- no dnb" if args.exclude_dnb else f"{dataset_version} (current)"
     corpus_label = (
-        f", midi corpus {len(corpus)} rows (classical.*, train-only)"
+        f", midi corpus {len(corpus)} rows (classical.*, train-only"
+        + (", W1b degree-only" if args.w1b_heads_split else "")
+        + ")"
         if corpus
         else (", corpus rows DROPPED (--v3-no-corpus baseline)" if args.feature_v3 else ", no midi corpus")
     )
@@ -275,7 +306,7 @@ def main() -> None:
 
     all_vd, all_yd, all_vt, all_yt, all_td, all_tt = [], [], [], [], [], []
     for index, held in enumerate(folds):
-        vd, yd, vt, yt, td, tt = train_fold(base, aug, corpus, held, args.weight_power, 0.1, args.embedding)
+        vd, yd, vt, yt, td, tt = train_fold(base, aug, corpus, held, args.weight_power, 0.1, args.embedding, args.w1b_heads_split)
         all_vd.append(vd)
         all_yd.append(yd)
         all_vt.append(vt)
