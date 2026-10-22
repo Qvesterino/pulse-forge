@@ -1144,7 +1144,15 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
   return {
     name: "live↔offline null test: same engine + events on both contexts",
     ok: failures.length === 0,
-    message: failures.length === 0 ? `passed=${cases}/${cases}` : failures.slice(0, 8).join(" | "),
+    // The message used to list the FIRST EIGHT failures and nothing else, so
+    // a gate that had been red for twenty cases reported eight of them —
+    // and fixing those eight REVEALED the next eight instead of turning the
+    // gate green. A gate must report how many cases failed, not how many fit
+    // in one line.
+    message:
+      failures.length === 0
+        ? `passed=${cases}/${cases}`
+        : `failed=${failures.length}/${cases} (first ${Math.min(8, failures.length)} shown) — ${failures.slice(0, 8).join(" | ")}`,
   };
 }
 
