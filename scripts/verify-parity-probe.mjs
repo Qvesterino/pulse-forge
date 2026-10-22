@@ -30,11 +30,18 @@ const server = await createServer({
   // Vite servers then overwrite each other's optimized deps — the page loads
   // two copies of React ("Invalid hook call") and the app never mounts.
   cacheDir: path.join(root, ".vite-cache"),
-  // Pin the scan to the entry: without it the scan crawls into package
-  // "test.js" exports (lib0 ships one) and the cold-cache build dies on
-  // "Could not resolve ./array.test.js".
-  optimizeDeps: { entries: ["index.html"] },
-  server: { port: PORT, host: "127.0.0.1", strictPort: true },
+  // NO dep scan: the probe imports the modules it needs from the page
+  // context, so the app's crawl is not needed — and the crawl is what breaks
+  // on a shared tree (a parallel session's broken import kills the scan, the
+  // page then never loads and the run dies on a timeout instead of a
+  // measurement). The client is still loaded (see the routed document): Vite
+  // asks it to reload when a new dependency is discovered mid-import.
+  optimizeDeps: { entries: [] },
+  // HMR off: a parallel session saving a file mid-measure restarts the
+  // server, and the dep scan dies with "The server is being restarted or
+  // closed. Request is outdated" — the page then never loads and the run
+  // times out on page.goto instead of reporting a measurement.
+  server: { port: PORT, host: "127.0.0.1", strictPort: true, hmr: false },
 });
 await server.listen();
 
@@ -47,6 +54,18 @@ try {
   page.on("pageerror", (err) => console.error("[pageerror]", String(err)));
   page.on("console", (msg) => {
     if (msg.type() === "log" && msg.text().startsWith("[parity]")) console.log(msg.text());
+  });
+  // A MINIMAL same-origin document instead of the app: the probe does not
+  // need the UI, and the app's module graph is what drags the dep optimizer
+  // (and the app's own broken imports from a parallel session) into the run.
+  // The Vite client is included on purpose — Vite asks it to reload when a
+  // new dependency is discovered during the import.
+  await page.route(`http://127.0.0.1:${PORT}/`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: `<!doctype html><html><head><meta charset="utf-8"><script type="module" src="/@vite/client"></script></head><body>parity probe</body></html>`,
+    });
   });
   await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 420_000 });
 
@@ -118,6 +137,7 @@ try {
         `control=${fmt(r.controlNullDb)}dB`,
         `rt-nondet=${r.realtimeNondeterministic}`,
         `offset=${r.alignOffset}`,
+        `segHead=${fmt(r.segmentNullDb?.head)}dB segTail=${fmt(r.segmentNullDb?.tail)}dB`,
         `livePeak=${num(r.livePeak)} refPeak=${num(r.refPeak)}`,
         `frames live=${r.liveFrames}/ref=${r.refFrames}`,
       ].join("  "),

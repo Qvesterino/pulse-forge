@@ -163,6 +163,29 @@ so a nudged clip landed on a position no other audio-clip write could produce.
 
 _Fix:_ `quantizeAudioBar`.
 
+### F12 — The waveform drew more source than the clip played (P2)
+
+The engine plays `min(wall length × factor, source that is left)` seconds of the original
+sample (`audioClipPlayWindow`). The waveform drew the **whole remaining source**
+(`audioClipWaveformWindow` ended at `duration − trimEnd`) and stretched it across the
+clip's full pixel width. A clip shorter than its source therefore drew the tail of the
+file that is never heard — the picture and the sound disagreed, and the envelope the user
+trims against was not the envelope they hear.
+
+That is not a rare shape. `resizeAudioClip` rewrites `lengthBars` only — it moves neither
+`trimEnd` nor `offsetSec` — so **every right-edge trim** produces exactly that clip. The
+clip was also drawn wrong in the two other directions: a resample clip at rate 2 draws the
+source stretched 2× (the engine plays 2× the material), and a pitch-preserving stretch clip
+at rate 2 draws the source compressed (the engine plays half the material).
+
+_Fix:_ the played amount of source is now one rule — `audioClipPlayedSourceSec`
+(`src/project-model/audio-clip-warp.ts`), the second half of the owner F2 established:
+`min(available, wall × factor)`, with the forward-loop exception (a looping clip repeats
+its whole trimmed region, so all of it plays). `audioClipWaveformWindow` takes that cap, and
+the arrangement panel passes it at all three call sites — the clip body, the take lanes and
+the smart-comp measurement. The wall length handed to it is the clip's own tempo-aware
+duration, so the envelope now follows the clip while it is being dragged.
+
 ---
 
 ## Editing Tools Verified
@@ -192,7 +215,7 @@ Verified by reading the implementation and by the regression suites named below.
 | Undo / redo and transaction boundaries                                     | **Defect fixed (F7)**                                                                                                                    |
 | Editor ↔ project state                                                     | Verified — the panel reads the live document, never a render memo, where it matters                                                      |
 | Editor ↔ audio engine                                                      | Audited — the engine's playable window is the reference the waveform and the trim now agree with                                         |
-| Waveform / MIDI rendering                                                  | Audited; the waveform window and the played window share the same start (`offsetSec + trimStart`)                                        |
+| Waveform / MIDI rendering                                                  | **Defect fixed (F12)** — the drawn window and the played window are the same window, in resample, stretch, offset, trim and loop shapes  |
 | Automation / markers integration                                           | Audited — structural edits do not leave automation attached to invalid targets                                                           |
 | Track-level editing                                                        | Audited                                                                                                                                  |
 | Locking                                                                    | Audited — `assertClipEditable` is centralised at the command level, so every entry point (UI, MCP, intent, collab) is covered            |
@@ -224,9 +247,10 @@ Verified by reading the implementation and by the regression suites named below.
 - **History.** Undo frames restore the document _exactly_ (deep equality), and redo
   re-applies it exactly — a history frame that shared a nested object with the live
   document would mutate it, and that is what the equality check catches.
-- **Source mapping.** The audible source start is `offsetSec + trimStart`; the engine
-  (`audioClipPlayWindow`), the waveform (`audioClipWaveformWindow`) and the trim gesture
-  now all agree on it.
+- **Source mapping.** The audible source start is `offsetSec + trimStart`, and the amount
+  of source a clip plays is `min(available, wall × factor)`. The engine
+  (`audioClipPlayWindow`), the waveform (`audioClipWaveformWindow` + F12's
+  `audioClipPlayedSourceSec`) and the trim gesture now all agree on both.
 
 ---
 
@@ -255,14 +279,15 @@ Verified by reading the implementation and by the regression suites named below.
 
 ## Tests Added
 
-| File                                           | Guards                                                                                                                                                                                                                                                                           |
-| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/ui/audio-trim-stretch-rate.test.tsx`    | F1, F2, F3 — the committed clip is the dragged clip; the source skip scales with the rate; the skip is counted once; the picture window and the played window agree                                                                                                              |
-| `tests/ui/arrangement-timeline-reach.test.tsx` | F5, F6 — the scrollable lane reaches every bar the document holds; the unmeasured frame and the ruler stay bounded                                                                                                                                                               |
-| `tests/undo-history-window-pairing.test.ts`    | F7 — every visible row's diff belongs to its own label, past the 64-snapshot cap                                                                                                                                                                                                 |
-| `tests/midi-clip-phase-period.test.ts`         | F4 — the phase is wrapped against the phrase period, in both trim and split                                                                                                                                                                                                      |
-| `tests/clip-slice-fragment-window.test.ts`     | F8 — each fragment plays exactly its segment; the fragments tile the parent's source                                                                                                                                                                                             |
-| `tests/editor-chaos-chain.test.ts`             | The real-user chain (import → move → trim → fade → split → duplicate → move → multi-select → group move → delete → undo ×8 → redo → post-undo action) with the invariants checked after every step; a rapid move → undo → move ×12; a duplicate's independence from its original |
+| File                                            | Guards                                                                                                                                                                                                                                                                           |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/ui/audio-trim-stretch-rate.test.tsx`     | F1, F2, F3 — the committed clip is the dragged clip; the source skip scales with the rate; the skip is counted once; the picture window and the played window agree                                                                                                              |
+| `tests/ui/arrangement-timeline-reach.test.tsx`  | F5, F6 — the scrollable lane reaches every bar the document holds; the unmeasured frame and the ruler stay bounded                                                                                                                                                               |
+| `tests/undo-history-window-pairing.test.ts`     | F7 — every visible row's diff belongs to its own label, past the 64-snapshot cap                                                                                                                                                                                                 |
+| `tests/midi-clip-phase-period.test.ts`          | F4 — the phase is wrapped against the phrase period, in both trim and split                                                                                                                                                                                                      |
+| `tests/clip-slice-fragment-window.test.ts`      | F8 — each fragment plays exactly its segment; the fragments tile the parent's source                                                                                                                                                                                             |
+| `tests/editor-chaos-chain.test.ts`              | The real-user chain (import → move → trim → fade → split → duplicate → move → multi-select → group move → delete → undo ×8 → redo → post-undo action) with the invariants checked after every step; a rapid move → undo → move ×12; a duplicate's independence from its original |
+| `tests/audio-clip-played-source-window.test.ts` | F12 — the drawn waveform window is the engine's played window, in resample, pitch-preserving stretch, offset, trim, loop and reverse shapes; the cap reaches every call site                                                                                                     |
 
 Each of these was confirmed to **fail** with its fix reverted.
 
@@ -319,20 +344,24 @@ not by running.
 
 These are real, identified, and deliberately **not** fixed here.
 
-### R1 — The waveform shows more source than the clip plays (P2, needs a product decision)
+### R6 — A clip longer than its source still paints its envelope over the silent tail (P3)
 
-`audioClipWaveformWindow` returns `[offsetSec + trimStart, bufferDuration - trimEnd]` —
-the whole remaining source — while the engine plays
-`min(requested wall duration, available source)`. When a clip is shorter than its
-source (after a right-edge trim, which does not move `trimEnd`), the waveform draws
-source that is never heard.
+The played-source cap (F12) bounds the envelope to the material that plays, but the canvas
+still stretches that window across the clip's **full** width. When the clip is longer than
+its source — the user extended the right edge past the end of the file — the engine plays
+the file and then silence, while the envelope is drawn over the silent part. The material
+shown is now only material that plays; its _placement_ is still approximate.
 
-This is a **visual-convention** question with a large blast radius: every clip, both
-waveform call sites, and a source-pinned test (`tests/recording-audit.test.ts` pins the
-exact call). Ableton and Logic draw the discarded tail _dimmed_ rather than truncating
-the envelope, so "show the whole source" is defensible — but then the engine should
-play the whole source, which is a different change again. This needs a human decision,
-not an audit fix.
+Drawing it correctly means mapping the columns to absolute source positions and leaving
+the out-of-source tail blank, which changes the drawing loop and needs a product decision
+on how the empty tail should look. Deliberately left alone.
+
+### R7 — A warp-marker clip's envelope is linear while its playback is bent (P3)
+
+A clip with warp pins plays a phase-vocoder buffer whose source-to-wall mapping follows
+the pins; the waveform draws the straight mapping. F12's cap bounds the _amount_ of
+source, which stays right, but the envelope's internal shape does not follow the pins.
+This is a rendering approximation, not a wrong edit — and it predates this audit.
 
 ### R2 — The group drag preview converts ticks with the live bar unit (P3)
 

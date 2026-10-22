@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { EFFECT_DEFS, withOfflineEffectParams } from "../src/effects/registry";
 import { defaultParamsOf } from "../src/effects/definitions";
-import type { EffectInstance } from "../src/project-model/types";
+import { createDrumTrackModel } from "../src/project-model/schema";
+import type { EffectInstance, ProjectDocument } from "../src/project-model/types";
 
 /**
  * OFFLINE parameter regime (live↔offline null test).
@@ -20,8 +21,9 @@ import type { EffectInstance } from "../src/project-model/types";
  * construction (setValueAtTime), so the render starts from the same values
  * the settled live chain plays.
  *
- * These specs pin the WRITE MODE (instant vs glide) and the SCOPE of the
- * regime — the audible proof is the browser parity gate.
+ * These specs pin the WRITE MODE (instant vs glide), the SCOPE of the
+ * regime, and the engine's routing by context type. The audible proof is
+ * the browser parity gate.
  */
 
 type ParamCall = { method: "setTargetAtTime" | "setValueAtTime"; value: number; when: number };
@@ -98,37 +100,59 @@ function mockNode(kind: string): MockNode {
   return node;
 }
 
-interface MockCtx {
-  currentTime: number;
-  sampleRate: number;
-  created: { gain: MockNode[]; biquad: MockNode[]; waveshaper: MockNode[] };
-  createGain(): MockNode;
-  createBiquadFilter(): MockNode;
-  createWaveShaper(): MockNode;
+/** A context that records every AudioParam write it receives. */
+class MockAudioContext {
+  currentTime = 0;
+  sampleRate = 48000;
+  readonly created: { gain: MockNode[]; biquad: MockNode[]; waveshaper: MockNode[] } = {
+    gain: [],
+    biquad: [],
+    waveshaper: [],
+  };
+  createGain(): MockNode {
+    const node = mockNode("gain");
+    this.created.gain.push(node);
+    return node;
+  }
+  createBiquadFilter(): MockNode {
+    const node = mockNode("biquad");
+    this.created.biquad.push(node);
+    return node;
+  }
+  createWaveShaper(): MockNode {
+    const node = mockNode("waveshaper");
+    this.created.waveshaper.push(node);
+    return node;
+  }
+  createStereoPanner(): MockNode {
+    return mockNode("panner");
+  }
+  createAnalyser(): MockNode {
+    return mockNode("analyser");
+  }
+  createDelay(): MockNode {
+    return mockNode("delay");
+  }
+  createDynamicsCompressor(): MockNode {
+    return mockNode("compressor");
+  }
+  createChannelSplitter(): MockNode {
+    return mockNode("splitter");
+  }
+  createChannelMerger(): MockNode {
+    return mockNode("merger");
+  }
 }
 
-function mockCtx(): MockCtx {
-  const created: MockCtx["created"] = { gain: [], biquad: [], waveshaper: [] };
-  return {
-    currentTime: 0,
-    sampleRate: 48000,
-    created,
-    createGain() {
-      const node = mockNode("gain");
-      created.gain.push(node);
-      return node;
-    },
-    createBiquadFilter() {
-      const node = mockNode("biquad");
-      created.biquad.push(node);
-      return node;
-    },
-    createWaveShaper() {
-      const node = mockNode("waveshaper");
-      created.waveshaper.push(node);
-      return node;
-    },
-  };
+/** The engine decides the regime by context TYPE (src/audio-engine/liveContext.ts). */
+class FakeOfflineAudioContext extends MockAudioContext {}
+
+const globals = globalThis as unknown as { OfflineAudioContext?: unknown };
+
+/** Install (or remove) the fake OfflineAudioContext global. */
+function useOfflineGlobal(enabled: boolean): void {
+  if (enabled) globals.OfflineAudioContext = FakeOfflineAudioContext;
+  else delete globals.OfflineAudioContext;
 }
 
 function saturationInstance(): EffectInstance {
@@ -142,20 +166,23 @@ function saturationInstance(): EffectInstance {
 
 /** Build the saturation chain; `offline` picks the parameter regime. */
 function buildSaturation(offline: boolean) {
-  const ctx = mockCtx();
-  const runtime = withOfflineEffectParams(offline, () =>
-    EFFECT_DEFS.saturation.factory(ctx as unknown as BaseAudioContext, saturationInstance(), { bpm: 124 }),
-  );
-  return {
-    ctx,
-    runtime,
-    /** The TONE lowpass — the second biquad the factory builds. */
-    tone: ctx.created.biquad[1],
-    /** The mix bus wet gain — the 4th gain the factory builds. */
-    wet: ctx.created.gain[3],
-    /** The effect's output gain. */
-    out: ctx.created.gain[4],
-  };
+  useOfflineGlobal(offline);
+  try {
+    const ctx = offline ? new FakeOfflineAudioContext() : new MockAudioContext();
+    const runtime = withOfflineEffectParams(ctx as unknown as BaseAudioContext, () =>
+      EFFECT_DEFS.saturation.factory(ctx as unknown as BaseAudioContext, saturationInstance(), { bpm: 124 }),
+    );
+    return {
+      ctx,
+      runtime,
+      /** The TONE lowpass — the second biquad the factory builds. */
+      tone: ctx.created.biquad[1],
+      /** The mix bus wet gain — the 4th gain the factory builds. */
+      wet: ctx.created.gain[3],
+    };
+  } finally {
+    useOfflineGlobal(false);
+  }
 }
 
 describe("offline effect parameter regime", () => {
@@ -179,23 +206,113 @@ describe("offline effect parameter regime", () => {
     expect(wet.gain.calls.every((call) => call.method === "setValueAtTime")).toBe(true);
   });
 
+  it("keeps the glide for a write scheduled AFTER the construction moment", () => {
+    useOfflineGlobal(true);
+    try {
+      const ctx = new FakeOfflineAudioContext();
+      const runtime = withOfflineEffectParams(ctx as unknown as BaseAudioContext, () =>
+        EFFECT_DEFS.saturation.factory(ctx as unknown as BaseAudioContext, saturationInstance(), { bpm: 124 }),
+      );
+      const tone = ctx.created.biquad[1];
+      const before = tone.frequency.calls.length;
+      // A scheduled ramp the live engine would have heard must be heard by the
+      // export too — only the CONSTRUCTION write is exact.
+      runtime.setParameterAt?.("tone", 4000, 0.5);
+      const added = tone.frequency.calls.slice(before);
+      expect(added).toEqual([{ method: "setTargetAtTime", value: 4000, when: 0.5 }]);
+    } finally {
+      useOfflineGlobal(false);
+    }
+  });
+
   it("scopes the regime to the call — a later live build still glides", () => {
-    const ctx = mockCtx();
-    withOfflineEffectParams(true, () =>
+    const ctx = new MockAudioContext();
+    withOfflineEffectParams(ctx as unknown as BaseAudioContext, () =>
       EFFECT_DEFS.saturation.factory(ctx as unknown as BaseAudioContext, saturationInstance(), { bpm: 124 }),
     );
-    const liveCtx = mockCtx();
+    const liveCtx = new MockAudioContext();
     EFFECT_DEFS.saturation.factory(liveCtx as unknown as BaseAudioContext, saturationInstance(), { bpm: 124 });
     expect(liveCtx.created.biquad[1].frequency.calls[0]?.method).toBe("setTargetAtTime");
   });
 
   it("restores the regime even when the factory throws", () => {
     expect(() =>
-      withOfflineEffectParams(true, () => {
+      withOfflineEffectParams(new MockAudioContext() as unknown as BaseAudioContext, () => {
         throw new Error("boom");
       }),
     ).toThrow("boom");
     const { tone } = buildSaturation(false);
     expect(tone.frequency.calls[0]?.method).toBe("setTargetAtTime");
   });
+});
+
+/**
+ * The ENGINE wiring: the regime follows the CONTEXT TYPE. The renderer hands
+ * the engine an OfflineAudioContext and the chain is built from the
+ * document's values; a live engine keeps its glide so a knob move does not
+ * click.
+ */
+describe("the engine routes the parameter regime by context type", () => {
+  const docWithSaturation = () => {
+    const track = createDrumTrackModel("A");
+    return {
+      schemaVersion: 1,
+      id: "offline-params-doc",
+      name: "offline params",
+      bpm: 124,
+      timeSignature: { numerator: 4, denominator: 4 },
+      tracks: [
+        {
+          ...track,
+          effects: [{ id: "fx-1", type: "saturation", bypassed: false, params: defaultParamsOf("saturation") }],
+        },
+      ],
+      patterns: [],
+      activePatternId: "",
+      scenes: [],
+      arrangement: { clips: [] },
+      markers: [],
+      sceneAutomation: [],
+      automation: [],
+      lfos: [],
+      macros: [],
+      returns: [],
+      master: { masterGain: 1, ceilingDb: -1, limiterEnabled: false, clipperEnabled: false },
+      createdAt: "",
+      updatedAt: "",
+    } as unknown as ProjectDocument;
+  };
+
+  /** The tone lowpass is the biquad whose frequency was written with 8000 Hz. */
+  const toneOf = (ctx: MockAudioContext) =>
+    ctx.created.biquad.find((node) => node.frequency.calls.some((c) => c.value === 8000));
+
+  it("builds the chain with exact writes on an OfflineAudioContext", async () => {
+    const { AudioEngine } = await import("../src/audio-engine/AudioEngine");
+    useOfflineGlobal(true);
+    try {
+      const ctx = new FakeOfflineAudioContext();
+      const engine = new AudioEngine();
+      engine.useContext(ctx as unknown as BaseAudioContext);
+      await engine.setProject(docWithSaturation());
+      const tone = toneOf(ctx);
+      expect(tone, "the saturation chain must be built").toBeTruthy();
+      expect(tone!.frequency.calls[0]?.method).toBe("setValueAtTime");
+      expect(tone!.frequency.calls.some((c) => c.method === "setTargetAtTime")).toBe(false);
+    } finally {
+      useOfflineGlobal(false);
+    }
+  }, 30_000);
+
+  it("keeps the glide on a live context", async () => {
+    const { AudioEngine } = await import("../src/audio-engine/AudioEngine");
+    useOfflineGlobal(false);
+    const ctx = new MockAudioContext();
+    const engine = new AudioEngine();
+    engine.useContext(ctx as unknown as BaseAudioContext);
+    await engine.setProject(docWithSaturation());
+    const tone = toneOf(ctx);
+    expect(tone, "the saturation chain must be built").toBeTruthy();
+    expect(tone!.frequency.calls[0]?.method).toBe("setTargetAtTime");
+  }, 30_000);
 });

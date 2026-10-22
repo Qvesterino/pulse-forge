@@ -1,6 +1,7 @@
 import type { EffectDefinition, EffectRuntime } from "./types";
 import type { EffectInstance, EffectType } from "../project-model/types";
 import { hashString, mulberry32 } from "../shared/rng";
+import { isOfflineAudioContext } from "../audio-engine/liveContext";
 import { isWorkletReady, type WorkletType } from "../audio-worklets/loader";
 import { attachProcessorErrorGuard } from "../audio-worklets/processor-errors";
 import { safeApplyAudioParam } from "../audio-worklets/safeAudioParam";
@@ -182,30 +183,43 @@ const dbToLin = (db: number) => Math.pow(10, db / 20);
  * exactly like the settled live chain does — at t = 0 there is no signal
  * yet, so the discontinuity is inaudible.
  *
+ * A write scheduled LATER than the construction moment keeps its glide even
+ * in the offline regime: a ramp that the live engine would have heard is a
+ * ramp the export has to hear too. The construction moment is the context's
+ * time at the factory call (t = 0 in an offline render).
+ *
  * Automation is NOT affected: it writes through the automation bridge
  * (setValueAtTime / linearRampToValueAtTime), never through smooth().
  * Runtime parameter updates (a knob moved while playing) keep their glide
  * in both branches, because they are scheduled outside the factory call.
  */
 let offlineParamRegime = false;
+let offlineNow = 0;
 
 /**
- * Run `fn` with the offline parameter regime on or off. The regime is
- * scoped to the call (restored in `finally`), so a live chain rebuilt
- * while an export runs is not affected.
+ * Run `fn` with the offline parameter regime derived from the CONTEXT: an
+ * OfflineAudioContext means an offline render, and the construction moment
+ * is that context's current time. The regime is scoped to the call (restored
+ * in `finally`), so a live chain rebuilt while an export runs is not
+ * affected.
  */
-export function withOfflineEffectParams<T>(enabled: boolean, fn: () => T): T {
-  const previous = offlineParamRegime;
-  offlineParamRegime = enabled;
+export function withOfflineEffectParams<T>(ctx: BaseAudioContext, fn: () => T): T {
+  const previousRegime = offlineParamRegime;
+  const previousNow = offlineNow;
+  offlineParamRegime = isOfflineAudioContext(ctx);
+  offlineNow = ctx.currentTime;
   try {
     return fn();
   } finally {
-    offlineParamRegime = previous;
+    offlineParamRegime = previousRegime;
+    offlineNow = previousNow;
   }
 }
 
 const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) =>
-  offlineParamRegime ? param.setValueAtTime(value, when) : param.setTargetAtTime(value, when, tc);
+  offlineParamRegime && when <= offlineNow
+    ? param.setValueAtTime(value, when)
+    : param.setTargetAtTime(value, when, tc);
 
 interface MixBus {
   input: GainNode;
@@ -672,7 +686,7 @@ const haasWidener: EffectDefinition = {
     // just the L comb filter the old version produced.
     const xf = ctx.createGain();
     const applyXf = (level: number, invert: boolean, when: number): void => {
-      xf.gain.setTargetAtTime(Math.max(0, Math.min(1, level)) * (invert ? -1 : 1) * 0.8, when, 0.03);
+      smooth(xf.gain, Math.max(0, Math.min(1, level)) * (invert ? -1 : 1) * 0.8, when, 0.03);
     };
     applyXf(instance.params.crossfeed ?? 0.4, Math.round(instance.params.invert ?? 0) >= 0.5, ctx.currentTime);
     const fb = ctx.createGain();
@@ -802,11 +816,11 @@ const multiband: EffectDefinition = {
       output.connect(solo);
       const setComp = (amount: number, when: number): void => {
         const a = Math.max(0, Math.min(1, amount));
-        compWet.gain.setTargetAtTime(a, when, 0.03);
-        dry.gain.setTargetAtTime(1 - a, when, 0.03);
+        smooth(compWet.gain, a, when, 0.03);
+        smooth(dry.gain, 1 - a, when, 0.03);
       };
       const setSolo = (soloed: boolean, when: number): void => {
-        solo.gain.setTargetAtTime(soloed ? 1 : 0, when, 0.015);
+        smooth(solo.gain, soloed ? 1 : 0, when, 0.015);
       };
       const dispose = (): void => {
         input.disconnect();
@@ -1607,7 +1621,7 @@ const pump: EffectDefinition = {
         case "release":
           release = v;
           applyCurve();
-          if (keyReleaseParam) keyReleaseParam.setTargetAtTime(releaseMsOf(v) / 1000, when, 0.05);
+          if (keyReleaseParam) smooth(keyReleaseParam, releaseMsOf(v) / 1000, when, 0.05);
           else if (smoothLp) smooth(smoothLp.frequency, releaseLpFreq(v), when, 0.05);
           break;
       }
@@ -1894,15 +1908,15 @@ function chorusNativeFallback(ctx: BaseAudioContext, instance: EffectInstance): 
   const apply = (id: string, v: number, when: number) => {
     switch (id) {
       case "rate": {
-        lfo1.frequency.setTargetAtTime(v, when, 0.05);
+        smooth(lfo1.frequency, v, when, 0.05);
         // Second LFO is offset for richer movement
-        lfo2.frequency.setTargetAtTime(v * 1.4, when, 0.05);
+        smooth(lfo2.frequency, v * 1.4, when, 0.05);
         break;
       }
       case "depth": {
         const d = 0.001 + v * 0.008;
-        lfo1Depth.gain.setTargetAtTime(d, when, 0.05);
-        lfo2Depth.gain.setTargetAtTime(d * 1.25, when, 0.05);
+        smooth(lfo1Depth.gain, d, when, 0.05);
+        smooth(lfo2Depth.gain, d * 1.25, when, 0.05);
         break;
       }
       case "mix":
@@ -1928,8 +1942,8 @@ function chorusNativeFallback(ctx: BaseAudioContext, instance: EffectInstance): 
       // `when` (offline scene lanes) schedules the snap at the window start.
       const at = when ?? ctx.currentTime;
       const beatHz = bpm / 60 / 4;
-      lfo1.frequency.setTargetAtTime(beatHz, at, 0.05);
-      lfo2.frequency.setTargetAtTime(beatHz * 1.4, at, 0.05);
+      smooth(lfo1.frequency, beatHz, at, 0.05);
+      smooth(lfo2.frequency, beatHz * 1.4, at, 0.05);
     },
     dispose: () => {
       try {
@@ -2050,8 +2064,8 @@ const phaser: EffectDefinition = {
     const fbL = ctx.createGain();
     const fbR = ctx.createGain();
     const setFeedback = (v: number, when: number): void => {
-      fbL.gain.setTargetAtTime(v, when, 0.05);
-      fbR.gain.setTargetAtTime(v, when, 0.05);
+      smooth(fbL.gain, v, when, 0.05);
+      smooth(fbR.gain, v, when, 0.05);
     };
     setFeedback(instance.params.feedback ?? 0.3, ctx.currentTime);
     const wetL = ctx.createGain();
@@ -2121,8 +2135,8 @@ const phaser: EffectDefinition = {
     // tracks the same writes with the spread detune applied.
     const writeRates = (hz: number, when: number): void => {
       const safe = Math.max(0.05, hz);
-      oscL.frequency.setTargetAtTime(safe, when, 0.05);
-      oscR.frequency.setTargetAtTime(safe * (1 + 0.03 * spreadVal), when, 0.05);
+      smooth(oscL.frequency, safe, when, 0.05);
+      smooth(oscR.frequency, safe * (1 + 0.03 * spreadVal), when, 0.05);
     };
     const lfoSync = createLfoSyncController({
       rateParamId: "rate",
@@ -2140,13 +2154,13 @@ const phaser: EffectDefinition = {
           lfoSync.parameter(id, v, when);
           break;
         case "depth":
-          depthL.gain.setTargetAtTime(1500 * v, when, 0.05);
-          depthR.gain.setTargetAtTime(1500 * v, when, 0.05);
+          smooth(depthL.gain, 1500 * v, when, 0.05);
+          smooth(depthR.gain, 1500 * v, when, 0.05);
           break;
         case "center":
           centerHz = v;
-          baseL.gain.setTargetAtTime(centerHz, when, 0.05);
-          baseR.gain.setTargetAtTime(centerHz, when, 0.05);
+          smooth(baseL.gain, centerHz, when, 0.05);
+          smooth(baseR.gain, centerHz, when, 0.05);
           break;
         case "spread":
           spreadVal = v;
@@ -2284,7 +2298,7 @@ const sidechain: EffectDefinition = {
     const tick = () => {
       if (!active) return;
       const g = computeTargetGain();
-      target.gain.setTargetAtTime(g, ctx.currentTime, 0.005);
+      smooth(target.gain, g, ctx.currentTime, 0.005);
     };
     if (typeof setInterval === "function") {
       interval = setInterval(tick, SIDE_UPDATE_MS);
@@ -2333,7 +2347,7 @@ const sidechain: EffectDefinition = {
           node.connect(analyser);
         } else {
           // When sidechain is removed, restore the target gain to neutral.
-          target.gain.setTargetAtTime(1, ctx.currentTime, 0.02);
+          smooth(target.gain, 1, ctx.currentTime, 0.02);
         }
       },
       dispose: () => {
@@ -2534,20 +2548,20 @@ const shimmer: EffectDefinition = {
         switch (id) {
           case "amount":
             shaper.curve = buildCurve(value);
-            exciteGain.gain.setTargetAtTime(0.7 + value * 0.6, ctx.currentTime, 0.02);
+            smooth(exciteGain.gain, 0.7 + value * 0.6, ctx.currentTime, 0.02);
             break;
           case "tone":
-            hp.frequency.setTargetAtTime(2200 + value * 7800, ctx.currentTime, 0.02);
-            lp.frequency.setTargetAtTime(5200 + value * 3000, ctx.currentTime, 0.02);
+            smooth(hp.frequency, 2200 + value * 7800, ctx.currentTime, 0.02);
+            smooth(lp.frequency, 5200 + value * 3000, ctx.currentTime, 0.02);
             break;
           case "decay":
-            fb.gain.setTargetAtTime(value * 0.55, ctx.currentTime, 0.02);
+            smooth(fb.gain, value * 0.55, ctx.currentTime, 0.02);
             break;
           case "shift":
             shiftNode?.setParameter("semitones", value);
             break;
           case "shimmer":
-            shimmerGain.gain.setTargetAtTime(value, ctx.currentTime, 0.03);
+            smooth(shimmerGain.gain, value, ctx.currentTime, 0.03);
             break;
           case "mix":
             mix.setMix(value, ctx.currentTime);
@@ -3050,7 +3064,7 @@ const bassBuss: EffectDefinition = {
           break;
         case "subOsc":
           subOsc?.port.postMessage({ type: "amount", value });
-          subGain.gain.setTargetAtTime(value * 0.7, when, 0.05);
+          smooth(subGain.gain, value * 0.7, when, 0.05);
           break;
         case "subFrequency":
           smooth(low.frequency, value, when);

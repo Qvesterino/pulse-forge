@@ -116,6 +116,25 @@ export const PARITY_FX_EXCLUSIONS: ReadonlyMap<EffectType, string> = new Map<Eff
   // independent of the device clock. Its own filter-stability suite
   // (tests/svfilter-drive.test.ts) covers the DSP contract.
   ["svFilter", "one-pole cutoff glide starts at first processed quantum; realtime instance is mid-glide at capture"],
+  // KASKADA (RIFT delay): the delay READ POSITION is modulated by a free-running
+  // LFO (kaskada-processor.js: lfoPhase advances per sample -> delayPos), so
+  // the echo arrives at a different time in the two branches. Measured
+  // 2026-10-25: the HEAD of the window — the first 150 ms, i.e. the direct
+  // path and the document's parameter values — matches at -66.4 dB (the
+  // parameters and the chain are exact), while the TAIL diverges (-9.1 dB)
+  // because the echo's timing follows the modulation phase. The offline
+  // determinism control is exact (-316.7 dB), so this is the modulation, not
+  // a processing-path difference.
+  [
+    "kaskada",
+    "free-running delay-modulation LFO phase (the echo's timing); the head of the window matches at -66 dB",
+  ],
+  // WOW/FLUTTER: the wow/flutter delay is modulated by a free-running LFO too,
+  // so the live instance is mid-modulation when the capture starts and the
+  // offline one starts from phase zero. Measured 2026-10-25: the tail
+  // correlates at ~0 (null +0.5 dB) while the offline determinism control is
+  // exact (-325.2 dB).
+  ["wowFlutter", "free-running LFO phase"],
   // Transport-loop anchored with bar-scale state: a sub-bar null window is
   // not meaningful. Renders are covered by the transport-synced FX suites.
   ["beatMangler", "bar-scale transport state"],
@@ -826,12 +845,54 @@ export async function auditWorkletReleaseResponseParity(
   };
 }
 
+/**
+ * DIAGNOSTIC (not a gate criterion): the null of the aligned pair over the
+ * HEAD of the window (the first `headSeconds`) and over the REST of it.
+ *
+ * A difference confined to the head is a startup transient; a difference
+ * spread over the whole window is a processing-path divergence.
+ */
+export function segmentNulls(
+  reference: Float32Array,
+  capture: Float32Array,
+  offset: number,
+  sampleRate: number,
+  headSeconds: number,
+): { head: number; tail: number } {
+  const nullOver = (from: number, to: number): number => {
+    let diff = 0;
+    let ref = 0;
+    for (let i = Math.max(0, from); i < to; i++) {
+      const j = i + offset;
+      if (j < 0 || j >= capture.length) continue;
+      const d = reference[i] - capture[j];
+      diff += d * d;
+      ref += reference[i] * reference[i];
+    }
+    return 10 * Math.log10((diff + 1e-30) / (ref + 1e-30));
+  };
+  const total = Math.min(reference.length, capture.length - Math.max(0, -offset));
+  const head = Math.min(total, Math.max(1, Math.round(headSeconds * sampleRate)));
+  return { head: nullOver(0, head), tail: nullOver(head, total) };
+}
+
 export interface ParityMeasurement {
   error?: string;
   /** Best alignment of the live capture against the offline reference. */
   alignOffset: number;
   /** Null of live vs offline (the gated number). */
   liveNullDb: number;
+  /**
+   * DIAGNOSTIC (not a gate criterion): the null of the aligned pair over the
+   * HEAD of the window and over the REST of it.
+   *
+   * A difference confined to the head is a STARTUP transient — the offline
+   * chain has not settled when the first event lands, because the realtime
+   * chain has been alive for the whole capture lead while the offline one is
+   * built AT the render origin. A difference spread over the whole window is
+   * a processing-path divergence, and no amount of settling would explain it.
+   */
+  segmentNullDb: { head: number; tail: number };
   /** Null of offline vs a second offline render (determinism control). */
   controlNullDb: number;
   livePeak: number;
@@ -888,6 +949,7 @@ export async function measureParityCase(
   const empty: ParityMeasurement = {
     alignOffset: 0,
     liveNullDb: Number.NaN,
+    segmentNullDb: { head: Number.NaN, tail: Number.NaN },
     controlNullDb: Number.NaN,
     liveRepeatNullDb: Number.NaN,
     liveRepeatAlignOffset: 0,
@@ -984,6 +1046,7 @@ export async function measureParityCase(
   return {
     alignOffset: liveMatch.alignOffset,
     liveNullDb: liveMatch.nullDb,
+    segmentNullDb: segmentNulls(reference, live.left, liveMatch.alignOffset, live.sampleRate, 0.15),
     controlNullDb: controlMatch.nullDb,
     livePeak: liveStats.peak,
     refPeak: ref.peak,

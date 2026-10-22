@@ -42,21 +42,34 @@ export interface AudioClipWaveformWindow {
  * the envelope with playback for every recorded take (count-in head trimmed
  * via offsetSec), loop pass and manual trim. Degenerate windows collapse to a
  * minimal span so callers can still render something instead of crashing.
+ *
+ * `playedSourceSec` caps the window at the source the clip ACTUALLY plays
+ * (`audioClipPlayedSourceSec`): the clip's wall length converted to source
+ * seconds, limited by the source that is left. Without the cap a clip shorter
+ * than its source — every right-edge trim, because `resizeAudioClip` rewrites
+ * `lengthBars` only — draws the tail of the file it never plays, and the
+ * picture and the sound disagree.
  */
 export function audioClipWaveformWindow(
   bufferDurationSec: number,
   offsetSec = 0,
   trimStartSec = 0,
   trimEndSec = 0,
+  playedSourceSec?: number,
 ): AudioClipWaveformWindow {
   const duration = Number.isFinite(bufferDurationSec) ? bufferDurationSec : 0;
   const start =
     Math.max(0, Number.isFinite(offsetSec) ? offsetSec : 0) +
     Math.max(0, Number.isFinite(trimStartSec) ? trimStartSec : 0);
-  const end = duration - Math.max(0, Number.isFinite(trimEndSec) ? trimEndSec : 0);
+  let end = duration - Math.max(0, Number.isFinite(trimEndSec) ? trimEndSec : 0);
+  // The clip plays at most `playedSourceSec` of the original sample. Drawing
+  // past that point shows material the clip never plays.
+  const capped = typeof playedSourceSec === "number" && Number.isFinite(playedSourceSec);
+  if (capped) end = Math.min(end, start + Math.max(0, playedSourceSec));
   if (duration <= 0) return { startSec: 0, endSec: 0 };
   if (end - start >= 0.001) return { startSec: start, endSec: Math.min(end, duration) };
   // Offset/trims consume the entire buffer: show the last audible sliver.
   const clampedStart = Math.min(start, duration - 0.001);
+  if (capped) return { startSec: Math.max(0, clampedStart), endSec: Math.max(0, clampedStart) + 0.001 };
   return { startSec: Math.max(0, clampedStart), endSec: Math.max(Math.max(0, clampedStart) + 0.001, duration) };
 }

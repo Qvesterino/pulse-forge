@@ -33,6 +33,7 @@ import {
   addArrangementTransition,
   addAudioClip,
   addMarker,
+  audioClipDurationSec,
   consolidateAudioClips,
   compAudioTakeRange,
   autoArrangeSong,
@@ -85,7 +86,7 @@ import {
 import { generatePatternCommand } from "../commands/aiPattern";
 import { makeMidiClipUnique } from "../commands/midiClips";
 import { MAX_ARRANGEMENT_CLIP_BARS, sceneRoleOf, ticksPerBar } from "../project-model/schema";
-import { audioClipSourceSecondsPerWallSecond } from "../project-model/audio-clip-warp";
+import { audioClipPlayedSourceSec, audioClipSourceSecondsPerWallSecond } from "../project-model/audio-clip-warp";
 import { stepsPerBar } from "../project-model/grid";
 import { applySmartComp, planBars, planSmartComp, type SmartCompPlan } from "../commands/smart-comp";
 import { sectionFxChips } from "./arrangement/sectionFxChips";
@@ -2399,7 +2400,17 @@ export function ArrangementPanel() {
         if (!clip) return null;
         const buffer = services.bank.get(clip.bufferId);
         if (!buffer) return null;
-        const windowSec = audioClipWaveformWindow(buffer.duration, clip.offsetSec, clip.trimStart, clip.trimEnd);
+        const windowSec = audioClipWaveformWindow(
+          buffer.duration,
+          clip.offsetSec,
+          clip.trimStart,
+          clip.trimEnd,
+          audioClipPlayedSourceSec(
+            clip,
+            buffer.duration,
+            audioClipDurationSec(services.store.doc, clip.lengthBars, clip.startBar),
+          ),
+        );
         const channel = audioClipChannelData(buffer, clip.sourceChannel);
         const from = Math.max(0, Math.floor(windowSec.startSec * buffer.sampleRate));
         const to = Math.min(channel.length, Math.ceil(windowSec.endSec * buffer.sampleRate));
@@ -5916,6 +5927,11 @@ export function ArrangementPanel() {
                     offsetSec={effOffsetSec}
                     trimStart={clip.trimStart ?? 0}
                     trimEnd={clip.trimEnd ?? 0}
+                    playedSourceSec={audioClipPlayedSourceSec(
+                      { ...clip, offsetSec: effOffsetSec, stretchRate: effRate },
+                      buffer?.duration ?? 0,
+                      lengthBars * clipSecPerBar,
+                    )}
                   />
                   <WarpPinsOverlay
                     clip={clip}
@@ -6212,31 +6228,39 @@ export function ArrangementPanel() {
                             }}
                           />
                         )}
-                      {laneClips.map((clip) => (
-                        <button
-                          type="button"
-                          className={`arr-audio-take-lane-segment${isCompTake ? " comp" : ""}`}
-                          key={clip.id}
-                          aria-label={`Select ${laneLabel} segment at bar ${Math.floor(clip.startBar) + 1}`}
-                          title={`${laneLabel} · bars ${clip.startBar + 1}–${clip.startBar + clip.lengthBars}`}
-                          style={{
-                            left: clip.startBar * barWidth,
-                            width: Math.max(12, clip.lengthBars * barWidth - 3),
-                          }}
-                          onClick={activateTake}
-                        >
-                          <AudioClipWaveform
-                            buffer={services.bank.get(clip.bufferId) ?? null}
-                            bufferId={clip.bufferId}
-                            sourceChannel={clip.sourceChannel}
-                            reverse={clip.reverse}
-                            showOnsets={false}
-                            offsetSec={clip.offsetSec ?? 0}
-                            trimStart={clip.trimStart ?? 0}
-                            trimEnd={clip.trimEnd ?? 0}
-                          />
-                        </button>
-                      ))}
+                      {laneClips.map((clip) => {
+                        const laneBuffer = services.bank.get(clip.bufferId) ?? null;
+                        return (
+                          <button
+                            type="button"
+                            className={`arr-audio-take-lane-segment${isCompTake ? " comp" : ""}`}
+                            key={clip.id}
+                            aria-label={`Select ${laneLabel} segment at bar ${Math.floor(clip.startBar) + 1}`}
+                            title={`${laneLabel} · bars ${clip.startBar + 1}–${clip.startBar + clip.lengthBars}`}
+                            style={{
+                              left: clip.startBar * barWidth,
+                              width: Math.max(12, clip.lengthBars * barWidth - 3),
+                            }}
+                            onClick={activateTake}
+                          >
+                            <AudioClipWaveform
+                              buffer={laneBuffer}
+                              bufferId={clip.bufferId}
+                              sourceChannel={clip.sourceChannel}
+                              reverse={clip.reverse}
+                              showOnsets={false}
+                              offsetSec={clip.offsetSec ?? 0}
+                              trimStart={clip.trimStart ?? 0}
+                              trimEnd={clip.trimEnd ?? 0}
+                              playedSourceSec={audioClipPlayedSourceSec(
+                                clip,
+                                laneBuffer?.duration ?? 0,
+                                audioClipDurationSec(doc, clip.lengthBars, clip.startBar),
+                              )}
+                            />
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -6960,6 +6984,7 @@ function AudioClipWaveform({
   offsetSec = 0,
   trimStart = 0,
   trimEnd = 0,
+  playedSourceSec,
 }: {
   buffer: AudioBuffer | null;
   bufferId: string;
@@ -6971,6 +6996,10 @@ function AudioClipWaveform({
   offsetSec?: number;
   trimStart?: number;
   trimEnd?: number;
+  /** How much of the ORIGINAL sample the clip actually plays, in source
+   * seconds (`audioClipPlayedSourceSec`). The drawn envelope must stop here:
+   * past this point the picture shows material the clip never plays. */
+  playedSourceSec?: number;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const onsets = useOnsetDots(bufferId, sourceChannel, showOnsets && buffer !== null);
@@ -6991,7 +7020,9 @@ function AudioClipWaveform({
     const columns = Math.min(w, 240);
     // Map columns onto the clip's playable window (offsetSec+trimStart →
     // duration-trimEnd), not the raw buffer, so the envelope tracks playback.
-    const windowSec = audioClipWaveformWindow(buffer.duration, offsetSec, trimStart, trimEnd);
+    // `playedSourceSec` stops the envelope where the sound stops: a clip
+    // shorter than its source draws only the part it actually plays.
+    const windowSec = audioClipWaveformWindow(buffer.duration, offsetSec, trimStart, trimEnd, playedSourceSec);
     const windowDur = windowSec.endSec - windowSec.startSec;
     const sampleRate = buffer.sampleRate > 0 ? buffer.sampleRate : 1;
     const startSample = Math.max(0, Math.min(data.length - 1, Math.round(windowSec.startSec * sampleRate)));
@@ -7046,7 +7077,7 @@ function AudioClipWaveform({
     ctx.globalAlpha = 0.25;
     ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, w, h);
-  }, [buffer, bufferId, sourceChannel, reverse, showOnsets, onsets, offsetSec, trimStart, trimEnd]);
+  }, [buffer, bufferId, sourceChannel, reverse, showOnsets, onsets, offsetSec, trimStart, trimEnd, playedSourceSec]);
   if (!buffer) return <div className="audio-waveform-empty">no buffer</div>;
   return (
     <canvas

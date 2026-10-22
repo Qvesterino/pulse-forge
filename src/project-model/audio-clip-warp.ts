@@ -38,6 +38,60 @@ export function audioClipSourceSecondsPerWallSecond(clip: {
   const preservingStretch = clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01;
   return preservingStretch ? 1 / rate : rate;
 }
+
+/**
+ * HOW MUCH OF THE ORIGINAL SAMPLE A CLIP ACTUALLY PLAYS — the second half of
+ * the source-vs-wall rule.
+ *
+ * `audioClipSourceSecondsPerWallSecond` converts wall time to source time; this
+ * converts the clip's WALL LENGTH into the amount of source it consumes, capped
+ * by the source that is actually left after the trims:
+ *
+ *     played = min(available, wall × factor)
+ *
+ * The engine plays exactly this. `audioClipPlayWindow` resolves
+ * `bufferDuration = min(requested × playbackRate, maxDur)` in play-buffer
+ * seconds; for the resample branch the play buffer IS the original (so
+ * `bufferDuration` is source seconds) and for the pitch-preserving branch it is
+ * the pre-rendered `original × rate` buffer (so the source consumed is
+ * `bufferDuration / rate`). Both reduce to the formula above.
+ *
+ * WHY IT MATTERS. The waveform draws one window; the engine plays another.
+ * When the clip is shorter than its source — which is exactly what a
+ * right-edge trim produces, because `resizeAudioClip` rewrites `lengthBars`
+ * only — a waveform that draws the whole remaining source shows material the
+ * clip never plays. The picture and the sound disagree, and the envelope the
+ * user trims against is not the envelope they hear.
+ *
+ * THE EXCEPTION. A forward-looping clip repeats its whole trimmed region for
+ * the clip's wall length (`audioClipPlayWindow`: `loopingForward`), so all of
+ * that source plays.
+ */
+export function audioClipPlayedSourceSec(
+  clip: {
+    offsetSec?: number;
+    trimStart?: number;
+    trimEnd?: number;
+    stretchRate?: number;
+    stretchMode?: "resample" | "stretch";
+    loop?: boolean;
+    reverse?: boolean;
+  },
+  sourceDurationSec: number,
+  wallDurationSec: number,
+): number {
+  const finite = (value: number | undefined): number =>
+    typeof value === "number" && Number.isFinite(value) ? value : 0;
+  const duration = Math.max(0, finite(sourceDurationSec));
+  const offsetSec = Math.max(0, finite(clip.offsetSec));
+  const trimStart = Math.max(0, finite(clip.trimStart));
+  const trimEnd = Math.max(0, finite(clip.trimEnd));
+  const available = Math.max(0, duration - offsetSec - trimStart - trimEnd);
+  // Forward loop: the whole trimmed region repeats for the clip's wall length.
+  if (clip.loop === true && clip.reverse !== true && available > 0.02) return available;
+  const wall = Math.max(0, finite(wallDurationSec));
+  return Math.min(available, wall * audioClipSourceSecondsPerWallSecond(clip));
+}
 export interface WarpBufferTimeAtTickOptions {
   markers: ReadonlyArray<{ timeSec: number; tick: number }>;
   clipStartTick: number;

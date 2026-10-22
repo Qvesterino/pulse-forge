@@ -124,7 +124,9 @@ describe("overdub start-anchor refresh (recording audit 2026-10-01)", () => {
 
   it("the waveform renders the clip's playable window, not the raw buffer (source pins)", () => {
     const panel = readFileSync(resolve(process.cwd(), "src/ui/ArrangementPanel.tsx"), "utf8");
-    expect(panel).toContain("audioClipWaveformWindow(buffer.duration, offsetSec, trimStart, trimEnd)");
+    // The window is the played source: the clip's own window PLUS the cap that
+    // stops the envelope where the sound stops.
+    expect(panel).toContain("audioClipWaveformWindow(buffer.duration, offsetSec, trimStart, trimEnd, playedSourceSec)");
     // Both call sites (main clip body + take lanes) pass the clip's window.
     expect((panel.match(/trimEnd=\{clip\.trimEnd \?\? 0\}/g) ?? []).length).toBe(2);
   });

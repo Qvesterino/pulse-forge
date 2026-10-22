@@ -49,7 +49,7 @@ import { targetOwner } from "../project-model/targets";
 import { DeviceLookup } from "./deviceLookup";
 import { MasterChain } from "./masterChain";
 import type { MasterStage } from "./masterChain";
-import { isLiveAudioContext, isOfflineAudioContext } from "./liveContext";
+import { isLiveAudioContext } from "./liveContext";
 import type { MasterMeterSnapshot, TrackMeterSnapshot } from "./metering-types";
 import type { Frame, ChannelLevels } from "./metering";
 
@@ -1456,7 +1456,7 @@ export class AudioEngine {
       // values INSTANTLY in the offline regime: at t = 0 there is no signal
       // yet, so the discontinuity is inaudible. Automation is NOT affected —
       // it writes through the automation bridge, never through smooth().
-      const rawRuntime = withOfflineEffectParams(isOfflineAudioContext(ctx), () =>
+      const rawRuntime = withOfflineEffectParams(ctx, () =>
         def.factory(ctx, fx, { bpm, seed, harmonyContext: resolveHarmonyContext(this.doc) }),
       );
       const trimGain = ctx.createGain();
