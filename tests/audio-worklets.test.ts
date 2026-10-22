@@ -327,7 +327,10 @@ describe("AudioWorklet loader × engine contextrestore integration", () => {
     return ctx as unknown as BaseAudioContext;
   }
 
-  it("oncontextrestored re-arms and re-registers when the scope was rebuilt", { timeout: 20000 }, async () => {
+  // AudioEngine's cold dynamic import traverses the full effect/instrument
+  // registry graph; on Windows that transform can exceed the normal test
+  // timeout. Keep the readiness assertions below bounded at 5 s each.
+  it("oncontextrestored re-arms and re-registers when the scope was rebuilt", { timeout: 60000 }, async () => {
     const { AudioEngine } = await import("../src/audio-engine/AudioEngine");
     const previousAudioContext = (globalThis as unknown as { AudioContext?: unknown }).AudioContext;
     const previousNode = (globalThis as unknown as { AudioWorkletNode?: unknown }).AudioWorkletNode;
@@ -352,6 +355,9 @@ describe("AudioWorklet loader × engine contextrestore integration", () => {
           throw new Error("processor not registered");
         }
       };
+      // Reproduce a deferred FX rebuild that still owns the engine's
+      // per-context refresh lock when the browser restores a rebuilt scope.
+      (engine as unknown as { workletRefreshQueuedFor: BaseAudioContext | null }).workletRefreshQueuedFor = ctx;
       (ctx as unknown as { oncontextrestored: () => void }).oncontextrestored?.();
 
       // The stale marks were invalidated, the engine re-adopted the

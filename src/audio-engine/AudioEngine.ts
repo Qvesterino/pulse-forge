@@ -925,7 +925,15 @@ export class AudioEngine {
         // readiness marks lying — probe and re-arm BEFORE rebuilding so the
         // refresh inside useContext re-registers; a surviving scope no-ops
         // (see workletScopeAlive/invalidateWorkletReadiness in the loader).
-        if (!workletScopeAlive(ctx)) invalidateWorkletReadiness(ctx);
+        if (!workletScopeAlive(ctx)) {
+          invalidateWorkletReadiness(ctx);
+          // Readiness can be invalidated while the engine's deferred FX
+          // rebuild for this same context still owns the refresh lock. That
+          // stale callback may already have observed the old ready mark; it
+          // must not suppress the fresh addModule() calls for the rebuilt
+          // worklet scope.
+          if (this.workletRefreshQueuedFor === ctx) this.workletRefreshQueuedFor = null;
+        }
         if (this.ctx === ctx || this.ctx === null) {
           // Re-adopt the restored handle (contextlost dropped it) instead of
           // letting the next ensureContext() allocate a second live context.

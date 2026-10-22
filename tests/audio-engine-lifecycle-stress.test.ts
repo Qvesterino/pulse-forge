@@ -308,8 +308,9 @@ describe("engine lifecycle stress gate", () => {
       engine.useContext(ctx as unknown as AudioContext);
       const sink = { context: ctx } as unknown as AudioNode;
       engine.setLiveAudioOutputSink(sink);
-      const chain = (engine as unknown as { masterChain: { monitorLowpass: MockNode; liveOutputSink: AudioNode | null } })
-        .masterChain;
+      const chain = (
+        engine as unknown as { masterChain: { monitorLowpass: MockNode; liveOutputSink: AudioNode | null } }
+      ).masterChain;
       expect(chain.monitorLowpass.connections.has(sink as unknown as MockNode)).toBe(true);
 
       engine.useContext(ctx as unknown as AudioContext);
