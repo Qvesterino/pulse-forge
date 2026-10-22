@@ -50,10 +50,7 @@ function dynamicBareImports(file: string): string[] {
 
 async function viteConfig() {
   // Vite 6 requires the command as the second argument ("serve" = dev server).
-  return resolveConfig(
-    { root: repoRoot, configFile: path.join(repoRoot, "vite.config.ts") },
-    "serve",
-  );
+  return resolveConfig({ root: repoRoot, configFile: path.join(repoRoot, "vite.config.ts") }, "serve");
 }
 
 describe("the dev server never discovers a dependency while the app boots", () => {
