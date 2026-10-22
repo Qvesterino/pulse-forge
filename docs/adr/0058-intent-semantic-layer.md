@@ -104,7 +104,7 @@ Decision:
   `npm run intent:calibration-parity` asserts the six family ladders are
   identical (currently 0 divergences).
 - Agentic Vocal now has a model-facing `adjust_parameter {parameterId,
-  direction, degree}` tool. `ToolSpec.resolve` receives the running
+direction, degree}` tool. `ToolSpec.resolve` receives the running
   `ToolContext.currentParams`, so relative moves compose within one plan; a
   per-action `moduleFor` applies the existing module-exclusion rule to the
   target parameter; discrete controls and values outside the agent-safe range

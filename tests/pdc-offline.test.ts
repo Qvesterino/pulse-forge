@@ -198,6 +198,10 @@ function addLatency(chain: { runtimes: Map<string, LatencyRuntime> }, id: string
 }
 
 describe("PDC offline determinism (Wave 2)", () => {
+  // The engine's setProject() waits for worklet preparation against a mock
+  // context that has no audioWorklet, so this spec costs seconds — 3.3 s on
+  // a quiet machine, 7 s on a loaded one. The default 5 s timeout turned
+  // that into a flaky failure that has nothing to do with the assertion.
   it("live (unarmed) syncPdc still glides via setTargetAtTime", async () => {
     const { doc, groupId, trackA } = twoTrackDoc();
     const engine = await makeEngine(doc);
@@ -207,11 +211,7 @@ describe("PDC offline determinism (Wave 2)", () => {
     const delay = anyEngine.trackNodes.get(trackA)!.fx.pdcDelay!.delayTime;
     expect(delay.calls.some((c) => c.method === "setTargetAtTime")).toBe(true);
     expect(delay.calls.some((c) => c.method === "setValueAtTime")).toBe(false);
-  }, // The engine's setProject() waits for worklet preparation against a mock
-  // context that has no audioWorklet, so this spec costs seconds — 3.3 s on
-  // a quiet machine, 7 s on a loaded one. The default 5 s timeout turned
-  // that into a flaky failure that has nothing to do with the assertion.
-  30_000);
+  }, 30_000);
 
   it("prepareOfflineRender sizes the graph from LATE-arriving latency and writes exact setValueAtTime", async () => {
     const { doc, groupId, trackA, trackB } = twoTrackDoc();
