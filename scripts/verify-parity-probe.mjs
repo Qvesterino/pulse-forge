@@ -30,6 +30,10 @@ const server = await createServer({
   // Vite servers then overwrite each other's optimized deps — the page loads
   // two copies of React ("Invalid hook call") and the app never mounts.
   cacheDir: path.join(root, ".vite-cache"),
+  // Pin the scan to the entry: without it the scan crawls into package
+  // "test.js" exports (lib0 ships one) and the cold-cache build dies on
+  // "Could not resolve ./array.test.js".
+  optimizeDeps: { entries: ["index.html"] },
   server: { port: PORT, host: "127.0.0.1", strictPort: true },
 });
 await server.listen();

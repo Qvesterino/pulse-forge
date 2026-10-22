@@ -562,6 +562,19 @@ export function ArrangementPanel() {
   const zoomAnchorRef = useRef<{ tick: number; cursorX: number } | null>(null);
   zoomRef.current = zoom;
   /**
+   * The document's bar length in ticks, in a REF.
+   *
+   * The Ctrl+wheel listener below is registered once (a native, non-passive
+   * listener cannot be re-registered per render without dropping the gesture),
+   * so it must not close over a render-scope value. It used to close over
+   * `barUnit`, which is `ticksPerBar(doc)` — so after the document's meter
+   * changed (ADR 0057) the anchor computed its tick with the OLD bar length
+   * while the lanes drew with the NEW one, and every Ctrl+wheel zoom jumped
+   * to the wrong place.
+   */
+  const barUnitRef = useRef(barUnit);
+  barUnitRef.current = barUnit;
+  /**
    * The bar range the lane is actually showing. `null` means "never measured"
    * and renders the whole song — the safe direction, because an unmeasured
    * window must never mean "nothing renders".
@@ -945,7 +958,7 @@ export function ArrangementPanel() {
       event.preventDefault();
       const rect = el.getBoundingClientRect();
       const cursorX = event.clientX - rect.left;
-      const tickAtCursor = ((el.scrollLeft + cursorX) / (BASE_BAR_WIDTH * zoomRef.current)) * barUnit;
+      const tickAtCursor = ((el.scrollLeft + cursorX) / (BASE_BAR_WIDTH * zoomRef.current)) * barUnitRef.current;
       const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoomRef.current * Math.exp(-event.deltaY * 0.002)));
       if (next === zoomRef.current) return;
       // Keep the tick under the cursor stable across the zoom.
@@ -974,6 +987,24 @@ export function ArrangementPanel() {
   useEffect(() => {
     measureViewport();
   }, [measureViewport, zoom]);
+
+  // A PANE RESIZE changes the visible bar range without any scroll or zoom.
+  //
+  // The window was only re-measured on mount, on zoom and on scroll — so
+  // widening the arrangement pane left the new right-hand part of the
+  // timeline BLANK: the windowing filter still cut at the old `lastBar`, and
+  // the clips now inside the viewport were not rendered until the next scroll
+  // event. Narrowing it left the opposite (extra DOM, no wrong geometry).
+  //
+  // `ResizeObserver` is absent in jsdom and in older browsers; the guard
+  // keeps the panel working without it (the scroll/zoom paths still measure).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => measureViewport());
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [measureViewport]);
 
   // Actionable delete toast — dismisses itself; UNDO stays available while shown.
   useEffect(() => {
@@ -5590,8 +5621,10 @@ export function ArrangementPanel() {
                 }}
               />
             )}
-            {(visibleBarIndices ?? Array.from({ length: Math.min(totalBars, UNMEASURED_GRID_BAR_CAP) }, (_, index) => index)).map(
-              (index) => (
+            {(
+              visibleBarIndices ??
+              Array.from({ length: Math.min(totalBars, UNMEASURED_GRID_BAR_CAP) }, (_, index) => index)
+            ).map((index) => (
               <div
                 key={index}
                 className={`arr-bar-grid${index % 4 === 0 ? " bar-strong" : ""}`}

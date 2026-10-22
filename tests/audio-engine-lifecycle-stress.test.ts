@@ -247,6 +247,84 @@ describe("engine lifecycle stress gate", () => {
     expect(engine.voiceCount, "voices survived teardown").toBe(0);
   });
 
+  it("survives 24 process → dispose → reinitialize cycles across sample rates", async () => {
+    const engine = new AudioEngine();
+    const doc = createProjectFromTemplate("house");
+    const instrument = doc.tracks.find((track) => track.kind === "instrument");
+    expect(instrument, "house must seed an instrument track").toBeDefined();
+
+    let ctx = makeCtx(44100);
+    engine.useContext(ctx as unknown as AudioContext);
+    engine.setProject(doc);
+    await flush();
+    await flush();
+    const target = attachPadBank(engine, doc, ctx);
+    expect(target, "house must provide a sample-backed stress pad").not.toBeNull();
+    const expectedSizes = sizes(engine);
+    const expectedNodes = liveStripNodes(engine);
+    expect(expectedSizes.tracks).toBeGreaterThan(0);
+
+    for (let cycle = 0; cycle < 24; cycle += 1) {
+      engine.noteOn(instrument!.id, 60 + (cycle % 12), 0.8, ctx.currentTime + 0.01, 0.1);
+      engine.trigger(target!.drum, target!.pad, ctx.currentTime + 0.01, 0.9);
+      await flush();
+      expect(engine.voiceCount, `cycle ${cycle} did not create a voice`).toBeGreaterThan(0);
+
+      engine.dispose();
+      expect(engine.context, `cycle ${cycle} retained its disposed context`).toBeNull();
+      expect(sizes(engine), `cycle ${cycle} retained graph maps`).toEqual({ tracks: 0, groups: 0, returns: 0 });
+      expect(engine.voiceCount, `cycle ${cycle} retained voices`).toBe(0);
+      const edgesIntoDisposedDestination = ctx.created.reduce(
+        (total, node) => total + (node.connections.has(ctx.destination as unknown as MockNode) ? 1 : 0),
+        0,
+      );
+      expect(edgesIntoDisposedDestination, `cycle ${cycle} retained an output edge`).toBe(0);
+
+      ctx = makeCtx([48000, 96000, 44100][cycle % 3]!);
+      engine.useContext(ctx as unknown as AudioContext);
+      await flush();
+      await flush();
+      expect(sizes(engine), `cycle ${cycle} did not rebuild the project strips`).toEqual(expectedSizes);
+      expect(liveStripNodes(engine), `cycle ${cycle} changed the live graph size`).toBe(expectedNodes);
+    }
+
+    engine.dispose();
+    expect(engine.voiceCount).toBe(0);
+    expect(engine.context).toBeNull();
+  });
+
+  it("keeps a same-context live output sink through graph rebuilds and releases it on dispose", () => {
+    const globals = globalThis as unknown as { AudioContext?: unknown };
+    const RealAudioContext = globals.AudioContext;
+    class StubAudioContext {
+      constructor() {
+        Object.assign(this, makeCtx());
+      }
+    }
+    globals.AudioContext = StubAudioContext;
+    const engine = new AudioEngine();
+    try {
+      const ctx = new StubAudioContext();
+      engine.useContext(ctx as unknown as AudioContext);
+      const sink = { context: ctx } as unknown as AudioNode;
+      engine.setLiveAudioOutputSink(sink);
+      const chain = (engine as unknown as { masterChain: { monitorLowpass: MockNode; liveOutputSink: AudioNode | null } })
+        .masterChain;
+      expect(chain.monitorLowpass.connections.has(sink as unknown as MockNode)).toBe(true);
+
+      engine.useContext(ctx as unknown as AudioContext);
+      expect(chain.liveOutputSink).toBe(sink);
+      expect(chain.monitorLowpass.connections.has(sink as unknown as MockNode)).toBe(true);
+
+      engine.dispose();
+      expect(chain.liveOutputSink).toBeNull();
+    } finally {
+      engine.dispose();
+      if (RealAudioContext === undefined) delete globals.AudioContext;
+      else globals.AudioContext = RealAudioContext;
+    }
+  });
+
   it("coalesces a re-entrant setProject: only the latest document lands", async () => {
     const ctx = makeCtx();
     const engine = new AudioEngine();

@@ -16,7 +16,7 @@ import { audioClipSourceSecondsPerWallSecond, warpBufferTimeAtTick } from "../pr
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
 import { assertClipEditable } from "./clipGroups";
-import { addAudioClip, audioClipDurationSec, clampClipFades } from "./audioClips";
+import { addAudioClip, audioClipDurationSec, clampClipFades, quantizeAudioBar } from "./audioClips";
 
 /* ---------------- clip editing ---------------- */
 /**
@@ -241,8 +241,18 @@ export function sliceAudioClipToArrangement(doc: ProjectDocument, clipId: string
   let currentBar = Math.round((originalEndBar + 0.5) * 100) / 100;
   for (const seg of segments) {
     const segWallSec = seg.endSec - seg.startSec;
-    const segBars = Math.max(0.25, segWallSec / (spt * ticksPerBar(doc)));
-    const storedBars = Math.round(segBars * 100) / 100;
+    // The fragment's WALL LENGTH must be its segment's own length.
+    //
+    // The floor this used to carry (0.25 bars) made a SHORT segment's fragment
+    // longer than the segment: the fragment played past its own material into
+    // the NEXT segment's, so the slices overlapped audibly while the waveform
+    // showed one region per fragment. The document model accepts any positive
+    // clip length on purpose ("Recorded comp fragments can be shorter than the
+    // normal UI clip-size floor" — sanitizeAudioClips), and the audio-clip
+    // geometry is TICK-ALIGNED, so the segment's own tick length is the
+    // correct one.
+    const segBars = segWallSec / (spt * ticksPerBar(doc));
+    const storedBars = Math.max(1 / ticksPerBar(doc), quantizeAudioBar(segBars, ticksPerBar(doc)));
     // A slice is typically far shorter than the clip it came from, so the
     // parent's fades are re-bounded by the slice's own STORED length, at the
     // tempo where the slice actually sits.
@@ -554,7 +564,12 @@ export function stripSilenceAudioClip(
     const wallDurSec = (seg.end - seg.start) / sourcePerWall;
     const segBars = wallDurSec / (spt * ticksPerBar(doc));
     const segStartTick = startTick + (seg.start - windowStart) / sourcePerWall / spt;
-    const storedBars = Math.max(0.05, Math.round(segBars * 100) / 100);
+    // The fragment's WALL LENGTH must be its fragment's own length: a floor
+    // here made a short fragment play past its own material, into the next
+    // fragment's, so the stripped pieces overlapped audibly. The model accepts
+    // any positive clip length (sanitizeAudioClips) and the geometry is
+    // TICK-ALIGNED.
+    const storedBars = Math.max(1 / ticksPerBar(doc), quantizeAudioBar(segBars, ticksPerBar(doc)));
     // Stripped segments are by definition much shorter than the source clip —
     // a 4s fadeIn cannot survive on a 0.1s blip. Bounded at the fragment's own
     // timeline position (scene-pinned tempo may differ from the parent's).
@@ -852,7 +867,10 @@ export function nudgeClips(doc: ProjectDocument, clipIds: readonly string[], del
   const movedAudio = new Map<string, number>();
   for (const clip of doc.arrangement.audioClips ?? []) {
     if (!ids.has(clip.id) || clip.locked || blocked.has(clip.id)) continue;
-    const target = Math.max(0, Math.round((clip.startBar + deltaBars) * 100) / 100);
+    // TICK-ALIGNED, like every other audio-clip geometry write: the old 0.01
+    // -bar grid is not the document's tick grid, so a nudge landed on a
+    // position no other audio-clip write could produce.
+    const target = Math.max(0, quantizeAudioBar(clip.startBar + deltaBars, ticksPerBar(doc)));
     if (target !== clip.startBar) movedAudio.set(clip.id, target);
   }
   const movedMidi = new Map<string, number>();

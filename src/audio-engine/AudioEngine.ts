@@ -16,7 +16,7 @@ import { hashString } from "../shared/rng";
 import { PPQ } from "../project-model/types";
 import { createAudioBoundaryDiagnostics, type AudioBoundaryDiagnostics } from "./audioBoundaryDiagnostics";
 import type { SampleBank } from "../sample-library/factory";
-import { EFFECT_DEFS, clampEffectParam } from "../effects/registry";
+import { EFFECT_DEFS, clampEffectParam, withOfflineEffectParams } from "../effects/registry";
 import type { EffectGainReductionReading, EffectRuntime } from "../effects/types";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { dbToLinear, presetNormalizationGainDb } from "../presets/normalization";
@@ -49,7 +49,7 @@ import { targetOwner } from "../project-model/targets";
 import { DeviceLookup } from "./deviceLookup";
 import { MasterChain } from "./masterChain";
 import type { MasterStage } from "./masterChain";
-import { isLiveAudioContext } from "./liveContext";
+import { isLiveAudioContext, isOfflineAudioContext } from "./liveContext";
 import type { MasterMeterSnapshot, TrackMeterSnapshot } from "./metering-types";
 import type { Frame, ChannelLevels } from "./metering";
 
@@ -751,6 +751,7 @@ export class AudioEngine {
     const previousContext = this.ctx;
     const previousOwned = this.ownedContext;
     this.teardownGraph(previousContext);
+    this.masterChain.dispose();
     this.ctx = null;
     this.ownedContext = null;
     if (previousContext && previousContext === previousOwned) {
@@ -1274,7 +1275,18 @@ export class AudioEngine {
           });
       }
       const seed = this.doc ? hashString(`${this.doc.id}|${ownerId}|${fx.id}|fx-dsp-v1`) : undefined;
-      const rawRuntime = def.factory(ctx, fx, { bpm, seed, harmonyContext: resolveHarmonyContext(this.doc) });
+      // An OFFLINE render builds the chain AT the render origin, so the
+      // construction-time smoothing is still in flight when the first event
+      // lands (50 ms = 2.5 time constants → 91.8 % of the way to the
+      // target). The live chain is built half a second before its first note
+      // and has fully settled by then, so the two branches disagree on the
+      // very first samples of the export. Apply the document's parameter
+      // values INSTANTLY in the offline regime: at t = 0 there is no signal
+      // yet, so the discontinuity is inaudible. Automation is NOT affected —
+      // it writes through the automation bridge, never through smooth().
+      const rawRuntime = withOfflineEffectParams(isOfflineAudioContext(ctx), () =>
+        def.factory(ctx, fx, { bpm, seed, harmonyContext: resolveHarmonyContext(this.doc) }),
+      );
       const trimGain = ctx.createGain();
       trimGain.gain.value = dbToLinear(fx.outputTrimDb ?? 0);
       rawRuntime.output.connect(trimGain);

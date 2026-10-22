@@ -152,6 +152,7 @@ export class MasterChain {
     sideLP: BiquadFilterNode;
     sideWet: GainNode;
     sideDry: GainNode;
+    ownedNodes: AudioNode[];
   } | null = null;
   // @ts-ignore — reserved for master ms stage
   private masterMs: {
@@ -162,6 +163,7 @@ export class MasterChain {
     midGain: GainNode;
     sideGain: GainNode;
     sideInv: GainNode;
+    ownedNodes: AudioNode[];
   } | null = null;
 
   /** Expose the master-stage handles the metering rig reads. */
@@ -412,6 +414,88 @@ export class MasterChain {
     return this.masterInsertOutput;
   }
 
+  /** Release every node and runtime owned by the master graph. */
+  private releaseGraph(): void {
+    const disconnect = (node: AudioNode | null | undefined): void => {
+      try {
+        node?.disconnect();
+      } catch {
+        /* already disconnected or its context has closed */
+      }
+    };
+    const dispose = (runtime: { dispose: () => void } | null): void => {
+      try {
+        runtime?.dispose();
+      } catch {
+        /* one failed runtime must not strand the rest of the master graph */
+      }
+    };
+
+    this.deps.metering.disconnectMasterTaps();
+    for (const node of [
+      this.master,
+      this.masterLimiter,
+      this.masterClipper,
+      this.masterInsertInput,
+      this.masterInsertOutput,
+      this.masterInputGain,
+      this.masterBypassWet,
+      this.masterBypassDry,
+      this.monitorBypassOutputGain,
+      this.monitorHighpass,
+      this.monitorLowpass,
+      this.masterBypassDelay,
+      this.masterDc,
+      this.masterGlueNative,
+      this.masterTiltLow,
+      this.masterTiltHigh,
+      ...(this.masterMatchEqStages ?? []),
+      ...(this.masterBassMono?.ownedNodes ?? []),
+      ...(this.masterMs?.ownedNodes ?? []),
+    ]) {
+      disconnect(node);
+    }
+    dispose(this.masterLimiterWorklet);
+    dispose(this.kwMeter);
+    dispose(this.rtMonitor);
+    dispose(this.masterTape);
+    dispose(this.masterGlue);
+
+    this.master = null;
+    this.masterLimiter = null;
+    this.masterClipper = null;
+    this.masterInsertInput = null;
+    this.masterInsertOutput = null;
+    this.masterInputGain = null;
+    this.masterBypassWet = null;
+    this.masterBypassDry = null;
+    this.monitorBypassOutputGain = null;
+    this.monitorHighpass = null;
+    this.monitorLowpass = null;
+    this.masterBypassDelay = null;
+    this.monitorBypassAutomation = null;
+    this.monitorBypassLatencyWarning = null;
+    this.masterLimiterWorklet = null;
+    this.kwMeter = null;
+    this.rtMonitor = null;
+    this.masterTape = null;
+    this.masterDc = null;
+    this.masterTiltLow = null;
+    this.masterTiltHigh = null;
+    this.masterMatchEqStages = null;
+    this.masterGlue = null;
+    this.masterGlueNative = null;
+    this.masterBassMono = null;
+    this.masterMs = null;
+  }
+
+  /** Dispose the graph without closing the caller-owned AudioContext. */
+  dispose(): void {
+    this.releaseGraph();
+    this.liveOutputSink = null;
+    this.deps.metering.resetMeterHistory();
+  }
+
   bypassForOfflineRender(): void {
     const ctx = this.deps.ctx();
     if (!ctx || isLiveAudioContext(ctx)) {
@@ -430,117 +514,7 @@ export class MasterChain {
     if (this.liveOutputSink && this.liveOutputSink.context !== ctx) this.liveOutputSink = null;
     this.deps.metering.resetMeterHistory();
     // Disconnect old master chain if re-invoked (e.g. useContext with new context).
-    this.deps.metering.disconnectMasterTaps();
-    try {
-      this.masterLimiter?.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    try {
-      this.masterClipper?.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    try {
-      this.masterInsertInput?.disconnect();
-      this.masterInsertOutput?.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    this.masterInsertInput = null;
-    this.masterInsertOutput = null;
-    try {
-      this.masterInputGain?.disconnect();
-      this.masterBypassWet?.disconnect();
-      this.masterBypassDry?.disconnect();
-      this.monitorBypassOutputGain?.disconnect();
-      this.monitorHighpass?.disconnect();
-      this.monitorLowpass?.disconnect();
-      this.masterBypassDelay?.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    this.masterInputGain = null;
-    this.masterBypassWet = null;
-    this.masterBypassDry = null;
-    this.monitorBypassOutputGain = null;
-    this.monitorHighpass = null;
-    this.monitorLowpass = null;
-    this.masterBypassDelay = null;
-    this.monitorBypassAutomation = null;
-    this.monitorBypassLatencyWarning = null;
-    try {
-      this.master?.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    this.masterLimiterWorklet?.dispose();
-    this.masterLimiterWorklet = null;
-    this.kwMeter?.dispose();
-    this.kwMeter = null;
-    this.rtMonitor?.dispose();
-    this.rtMonitor = null;
-    this.masterTape?.dispose();
-    this.masterTape = null;
-    try {
-      this.masterDc?.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    this.masterDc = null;
-    try {
-      this.masterTiltLow?.disconnect();
-      this.masterTiltHigh?.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    for (const stage of this.masterMatchEqStages ?? []) {
-      try {
-        stage.disconnect();
-      } catch {
-        /* already disconnected */
-      }
-    }
-    this.masterMatchEqStages = null;
-    this.masterTiltLow = null;
-    this.masterTiltHigh = null;
-    this.masterGlue?.dispose();
-    this.masterGlue = null;
-    this.masterGlueNative = null;
-    try {
-      this.masterBassMono?.sideLP.disconnect();
-      this.masterBassMono?.sideWet.disconnect();
-      this.masterBassMono?.sideDry.disconnect();
-      this.masterBassMono?.input.disconnect();
-      this.masterBassMono?.output.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    this.masterBassMono = null;
-    if (this.masterMs) {
-      try {
-        this.masterMs.splitter.disconnect();
-      } catch {}
-      try {
-        this.masterMs.merger.disconnect();
-      } catch {}
-      try {
-        this.masterMs.midGain.disconnect();
-      } catch {}
-      try {
-        this.masterMs.sideGain.disconnect();
-      } catch {}
-      try {
-        this.masterMs.sideInv.disconnect();
-      } catch {}
-      try {
-        this.masterMs.input.disconnect();
-      } catch {}
-      try {
-        this.masterMs.output.disconnect();
-      } catch {}
-      this.masterMs = null;
-    }
+    this.releaseGraph();
     // Bass Mono stage (M/S whose side passes a lowpass) — always in the
     // chain; applyMasterConfig() crossfades dry/wet side paths.
     {
@@ -598,7 +572,30 @@ export class MasterChain {
       sideOut.connect(invR);
       invR.connect(merger, 0, 1);
       merger.connect(output);
-      this.masterBassMono = { input, output, sideLP, sideWet, sideDry };
+      this.masterBassMono = {
+        input,
+        output,
+        sideLP,
+        sideWet,
+        sideDry,
+        ownedNodes: [
+          input,
+          output,
+          splitter,
+          merger,
+          midL,
+          midR,
+          midSum,
+          sideL,
+          sideR,
+          sideSum,
+          sideLP,
+          sideWet,
+          sideDry,
+          invR,
+          sideOut,
+        ],
+      };
     }
     this.master = ctx.createGain();
     this.master.gain.value = 1;
@@ -682,7 +679,32 @@ export class MasterChain {
       midToR.connect(merger, 0, 1);
       sideToRInv.connect(merger, 0, 1);
       merger.connect(output);
-      this.masterMs = { input, output, splitter, merger, midGain, sideGain, sideInv };
+      this.masterMs = {
+        input,
+        output,
+        splitter,
+        merger,
+        midGain,
+        sideGain,
+        sideInv,
+        ownedNodes: [
+          input,
+          output,
+          splitter,
+          merger,
+          midGain,
+          sideGain,
+          sideInv,
+          lToMid,
+          rToMid,
+          lToSide,
+          rToSide,
+          midToL,
+          sideToL,
+          midToR,
+          sideToRInv,
+        ],
+      };
       // Keep helper gains for cleanup
       (
         this.masterMs as unknown as {

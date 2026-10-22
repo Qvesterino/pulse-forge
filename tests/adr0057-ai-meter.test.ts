@@ -114,12 +114,16 @@ describe("ADR 0057 Stage 2b — the AI layer's metrical facts", () => {
     expect(range(20).filter((step) => isBackbeatAnchor(fiveFour, step))).toEqual([4, 12]);
   });
 
-  it("treats an irregular bar as one pulse and declares the grouping as content", () => {
+  it("treats an irregular bar as one pulse and declares its grouping", () => {
     const sevenEight = aiMeterFor(SEVEN_EIGHT);
     expect(sevenEight.stepsPerBar).toBe(14);
+    // The pulse is still the whole bar — that fact says the pulse does not
+    // repeat, and it is not what the accents are made of.
     expect(sevenEight.pulseSteps).toBe(14);
-    expect(range(14).filter((step) => isKickAnchor(sevenEight, step))).toEqual([0]);
-    expect(range(14).filter((step) => isBackbeatAnchor(sevenEight, step))).toEqual([]);
+    // The GROUPS are (ADR 0057 Stage 2i): 7/8 is 2+2+3, so the kick rides
+    // the group's downbeats and the backbeat sits on the accent group.
+    expect(range(14).filter((step) => isKickAnchor(sevenEight, step))).toEqual([0, 4, 8]);
+    expect(range(14).filter((step) => isBackbeatAnchor(sevenEight, step))).toEqual([8]);
   });
 
   it("carries the metre in a contract only when it is not 4/4", () => {

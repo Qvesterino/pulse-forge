@@ -24,6 +24,23 @@ function patternOf(doc: ProjectDocument, patternId: string): Pattern {
   return pattern;
 }
 
+/**
+ * The phase period of a MIDI clip's source pattern, in ticks.
+ *
+ * The period is the PHRASE length, not the step grid: a MIDI note may
+ * outlive the grid, and BOTH the renderer (`MidiClipLanes`) and the scheduler
+ * (`noteEventsInWindow`) repeat the pattern at the phrase length. The
+ * commands used the grid, so a trimmed or split clip wrapped its phase
+ * against a different period than the one it plays — and the notes after the
+ * edit were DIFFERENT notes at different times.
+ *
+ * One owner, so the phase the commands write and the phase the engine plays
+ * cannot drift apart again.
+ */
+function phasePeriodTicks(pattern: Pattern, trackId: string): number {
+  return midiPhraseLengthTicks(pattern.stepCount, pattern.notes?.[trackId] ?? []);
+}
+
 /** Transform shared by every note in each selected MIDI object. Blank UI fields are omitted. */
 export interface MidiObjectNoteEdit {
   /** Add an integer number of MIDI semitones. */
@@ -293,7 +310,7 @@ export function trimMidiClipStart(doc: ProjectDocument, clipId: string, startTic
   const endTick = clip.startTick + clip.lengthTicks;
   const nextStart = Math.max(0, Math.min(endTick - 1, Math.round(startTick)));
   const pattern = patternOf(doc, clip.patternId);
-  const patternTicks = pattern.stepCount * STEP_TICKS;
+  const patternTicks = phasePeriodTicks(pattern, clip.trackId);
   const phaseOffsetTicks =
     patternTicks > 0 ? modulo((clip.phaseOffsetTicks ?? 0) + nextStart - clip.startTick, patternTicks) : 0;
   const nextClip: MidiClip = {
@@ -320,7 +337,7 @@ export function splitMidiClipAtTick(doc: ProjectDocument, clipId: string, splitT
   const end = clip.startTick + clip.lengthTicks;
   if (split <= clip.startTick || split >= end) throw new Error("Split must leave two non-empty MIDI clips");
   const pattern = patternOf(doc, clip.patternId);
-  const patternTicks = pattern.stepCount * STEP_TICKS;
+  const patternTicks = phasePeriodTicks(pattern, clip.trackId);
   const phaseOffsetTicks =
     patternTicks > 0 ? modulo((clip.phaseOffsetTicks ?? 0) + split - clip.startTick, patternTicks) : 0;
   const right: MidiClip = {

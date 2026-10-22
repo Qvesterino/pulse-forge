@@ -158,7 +158,54 @@ export {
 } from "./definitions";
 
 const dbToLin = (db: number) => Math.pow(10, db / 20);
-const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) => param.setTargetAtTime(value, when, tc);
+
+/**
+ * OFFLINE parameter regime.
+ *
+ * In the REALTIME branch an effect chain is built long before its first note
+ * is audible (the engine builds the graph, then the transport plays), so the
+ * smoothing ramp below has fully settled by the time anything reaches the
+ * speaker — the parity harness alone gives it a 0.5 s capture lead plus a
+ * 50 ms event offset, i.e. 27 time constants at tc = 20 ms.
+ *
+ * In an OFFLINE render the chain is built AT the render origin, so the very
+ * same ramp is still in flight when the first event lands (50 ms = 2.5 time
+ * constants → the parameter is only 91.8 % of the way to its target). The
+ * export would therefore start from the NODE's default parameter values and
+ * glide into the document's values: audibly different from what the live
+ * engine plays. That is the live↔offline null test (saturation, multiband,
+ * clipper, kaskada, ... measured liveNull ≈ -17…-33 dB against a -40 dB
+ * floor, while the offline-vs-offline control stayed at ≈ -330 dB).
+ *
+ * While the offline regime is on, CONSTRUCTION-time writes land INSTANTLY
+ * (setValueAtTime), so the offline render starts from the document's values
+ * exactly like the settled live chain does — at t = 0 there is no signal
+ * yet, so the discontinuity is inaudible.
+ *
+ * Automation is NOT affected: it writes through the automation bridge
+ * (setValueAtTime / linearRampToValueAtTime), never through smooth().
+ * Runtime parameter updates (a knob moved while playing) keep their glide
+ * in both branches, because they are scheduled outside the factory call.
+ */
+let offlineParamRegime = false;
+
+/**
+ * Run `fn` with the offline parameter regime on or off. The regime is
+ * scoped to the call (restored in `finally`), so a live chain rebuilt
+ * while an export runs is not affected.
+ */
+export function withOfflineEffectParams<T>(enabled: boolean, fn: () => T): T {
+  const previous = offlineParamRegime;
+  offlineParamRegime = enabled;
+  try {
+    return fn();
+  } finally {
+    offlineParamRegime = previous;
+  }
+}
+
+const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) =>
+  offlineParamRegime ? param.setValueAtTime(value, when) : param.setTargetAtTime(value, when, tc);
 
 interface MixBus {
   input: GainNode;

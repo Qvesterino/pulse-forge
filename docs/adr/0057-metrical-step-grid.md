@@ -1,6 +1,6 @@
 # ADR 0057 — The step grid follows the meter: one bar is `ticksPerBar(doc) / STEP_TICKS` steps
 
-Date: 2026-10-20 · Status: Accepted (v7 — Stage 1, 1b, 2a, 2b, 2c, 2d, 2e, 2f, 2g and 2h shipped) · Scope: pattern grid, sequencer ruler, piano roll grid, pattern labels, transfer disclosure, intent engine, MCP surface, AI layer, AI groove material, MIDI import, pinned model feature contracts, assist layer, metre disclosure
+Date: 2026-10-20 · Status: Accepted (v8 — Stage 1, 1b, 2a, 2b, 2c, 2d, 2e, 2f, 2g, 2h and 2i shipped) · Scope: pattern grid, sequencer ruler, piano roll grid, pattern labels, transfer disclosure, intent engine, MCP surface, AI layer, AI groove material, MIDI import, pinned model feature contracts, assist layer, metre disclosure, irregular metres
 
 ## Context
 
@@ -428,6 +428,14 @@ library's 802 kick rows have no hit at step 0 (`house.footwork` kicks on
 
 So the WRITE path is NARROWED, not retired: it is the metre's last word in the
 irregular bars, and nowhere else.
+
+**SUPERSEDED IN STAGE 2i.** The irregular bars no longer need the WRITE path: a
+DECLARED irregular metre (7/8, 5/8) carries its GROUPS, the metrical view
+imposes them, and — exactly like every other metre with more than one group —
+REPAIR covers the anchors and WRITE does not fire. What is left for WRITE is
+the reference that genuinely misses an anchor (the 115 kick rows and 218
+snare/clap rows measured above). The measurements in this section stand; the
+sentence about the irregular bars does not.
 
 What changed in the audible result is the loudness, not the positions. The
 positions were already right — Stage 2b's WRITE path put them there. Measured
@@ -915,6 +923,133 @@ retrain stays a to-do, and it is the same to-do as in Stage 2e: a versioned
 `features.v3` contract, re-validated manifests, and metrical training data
 that does not exist yet (the corpus is 4/4 sheet music).
 
+## Stage 2i — an IRREGULAR bar has GROUPS, not a pulse
+
+Stage 2b made the AI layer speak the document's metre, 2c made the groove
+MATERIAL speak it, and 2g made the assist layer count the document's bars. An
+irregular bar was left with a regime of its own: the whole bar was ONE pulse,
+only the downbeat was anchored, and the grouping was declared "content, not
+arithmetic".
+
+That regime was RIGHT about the arithmetic and WRONG about the consequence.
+
+### What was measured, before anything changed
+
+A 7/8 document (house, seed "measure", two bars) produced:
+
+```
+kick  [0, 14]            <- the downbeat of each bar, and nothing else
+```
+
+A bare click on the beat 1 of every bar. No snare, no clap, no hats — the
+groove was GONE, not merely sparse. A 5/8 document produced kick [0, 10] and
+one stray hat at step 6.
+
+Two rules in the code produced that, and both are real:
+
+1. **The syncopation budget.** `enforceSyncopationBudget`
+   (`src/ai/style-quality.ts`) removes every hit whose syncopation weight is
+   above zero and that is not an anchor. The weight treated only
+   `position % meter.pulseSteps === 0` as on-grid. In 7/8 the pulse IS the
+   whole bar (fourteen steps), so every hit off the downbeat weighed **1** —
+   the maximum — and the budget stripped the groove lane by lane.
+2. **The metrical view's refusal.** `src/ai/groove-view.ts` refused to
+   re-voice the kick in a metre with one pulse, on the ground that "the
+   grouping is content". So even the material that survived had nowhere to go.
+
+Rule 2 was a DELIBERATE product decision from Stage 2c and rule 1 was its
+consequence. Stage 2i supersedes the decision — not because it was wrong in
+principle, but because the product had no irregular CONTENT to put in place of
+the grouping, and a metre with no content is a metre that does not work.
+
+### The one owner: `src/ai/meter.ts` — the GROUPS
+
+An irregular bar's structure is not a PULSE but a LIST OF GROUPS. The metrical
+facts carry them:
+
+| fact         | 4/4      | 6/8   | 7/8       | 5/8      | 11/8  |
+| ------------ | -------- | ----- | --------- | -------- | ----- |
+| `pulseSteps` | 4        | 6     | **14**    | **10**   | 22    |
+| `groups`     | 4,4,4,4  | 6,6   | **4,4,6** | **6,4**  | 22    |
+| `irregular`  | false    | false | **true**  | **true** | false |
+| the kick     | 0,4,8,12 | 0,6   | **0,4,8** | **0,6**  | 0     |
+| the backbeat | 4,12     | 2,8   | **8**     | **6**    | —     |
+
+The pulse value is NOT changed. 7/8's `pulseSteps` is still 14, because that
+fact says the pulse does not repeat — and the GROUPS say where the accents
+are. Replacing the legacy value would have hidden the difference between the
+two, and `tests/adr0057-irregular-metre.test.ts` pins both.
+
+**The groupings are DECLARED, not guessed.** 7/8 is not one metre but several
+(2+2+3, 2+3+2, 3+2+2, 2+2+2+1) and 5/8 likewise (3+2, 2+3). The signature does
+not say which, and the groove library cannot say it either — MEASURED: the
+library is 4/4 material (258 grooves, every row sixteen steps), and
+`src/ai/grooves/balkan.ts` carries eurodance-flavoured 4/4 grooves, not 7/8
+content. So the product DECLARES the common ones and says so:
+`IRREGULAR_GROUPINGS = { "7/8": [2, 2, 3], "5/8": [3, 2] }`.
+
+**The accent is the LAST group.** In 2+2+3 the accent is the long group's
+downbeat (the "5"); in 3+2 it is the only group downbeat besides the
+downbeat (the "4"). Both are the last group, so both fall there — and both are
+where a snare lives. The kick rides the GROUP downbeats: the "1", the "3" and
+the "5" of a 2+2+3.
+
+**The grid follows the group.** The eighths inside a 2+2+3 are 0, 2, 4, 6, 8,
+10, 12 — counted from each group's own downbeat, so the long group's third
+eighth (12) is on the grid even though it is not a multiple of the short
+group's half.
+
+### The change, layer by layer
+
+- **The anchors.** `isPulse` is the group downbeat in an irregular metre; the
+  backbeat is the accent group.
+- **The metrical view.** The projection imposes the declared grouping: the
+  kick on the group downbeats, the snare on the accent. A bar with ONE group
+  still keeps the groove's own shape — the refusal survives, it is simply
+  narrower than it was.
+- **The syncopation grid.** The weight is the metrical grid: the group
+  downbeat is 0, the eighths inside the group are 0.35, everything else is 1.
+- **The accent hierarchy.** The downbeat, the accent group, the group
+  downbeats, the rest — the shape the phrase dynamics apply.
+- **The fill.** A fill swells into the ACCENT group (the 2+2+3's last three
+  eighths), not into "the last pulse".
+- **The quality metrics.** The off-pulse test asks the grid, not the pulse.
+- **The intent verbs.** The off-beat is "not a group downbeat".
+
+### 4/4 and every regular metre are byte-identical — measured, not assumed
+
+The four canonical content hashes are unchanged (17e1439d, 688279c1, 47f20c59,
+b4f0ae78) and the generated rows are the same lane by lane. The metrical
+facts are legacy for every regular metre, and the identity is structural, not
+lucky: for a simple metre the groups ARE the pulses, and the half-grid test
+is the legacy `pulseSteps / 2` test, step by step. The spec re-implements the
+legacy formula and compares it against the production one, so the control
+cannot be satisfied by the code agreeing with itself.
+
+### The fallback: a grouping the product does not know
+
+An irregular metre that is NOT declared (11/8) keeps the whole bar as one
+group: one anchor (the downbeat), no backbeat, the projection's refusal
+stands, and the content is exactly what it was — MEASURED before and after:
+kick [0, 22] per bar, no other lane. The product does not guess a grouping.
+
+### The pinned models are NOT retrained — and NOT edited
+
+The pinned ONNX feature files are not touched. The backbeat FLAG follows the
+metre, because that is what Stage 2e established ("the two flags come from
+Stage 2b's metre"), and the feature COUNT and the pinned manifests are
+unchanged: no retrain. The models are still 4/4-TRAINED, and the irregular
+lane has no training data at all — that is the same to-do as in Stage 2e: a
+versioned `features.v3` contract, re-validated manifests, and metrical
+training data that does not exist yet.
+
+### The groove LIBRARY is still 4/4
+
+An irregular groove is produced by the METRICAL VIEW, not by a library entry.
+A library of real 7/8 grooves is a content project, and for the model to
+learn them it is also the retrain above. What ships now is a 7/8 document
+that finally plays like 7/8 instead of clicking on the downbeat.
+
 ## Stage 2 — what is still open (and where)
 
 The grid now tells the truth, a NEW pattern is right, the intent engine asks in
@@ -931,7 +1066,11 @@ document's meter. The highest-risk sites, mapped (read-only sweep,
    (measured against a captured baseline). The groove CONTENT is 4/4 —
    **DONE in Stage 2c**: `src/ai/groove-view.ts` is the metrical view of the
    library, and the material now carries the metre's anchors in the groove's
-   own voice.
+   own voice. **The IRREGULAR metres** — **DONE in Stage 2i**: an irregular bar
+   has GROUPS (7/8 is 2+2+3, 5/8 is 3+2), the kick rides the group downbeats,
+   the backbeat sits on the accent, and the syncopation grid follows the
+   group — so a 7/8 document finally plays like 7/8 instead of clicking on
+   the downbeat.
 2. **The intent / brief contracts.** **DONE in Stage 2a** — the five gates
    (`src/intent/schema.ts`, `project-brief.ts`, `creative-task-contract.ts`,
    `src/project-model/producer-brief.ts`, `src/intent/normalize.ts`) no longer
@@ -1018,8 +1157,15 @@ preview drew a fixed sixteen-cell 4/4 bar, and it now draws one metrical bar.
   does not fill whole bars says how much was cut.
 - **The metrical view is the identity in 4/4** — for every groove, every pad,
   every row: same positions, same values, same length.
-- **An irregular bar is not given a skeleton it does not have** — 7/8 keeps the
-  library's grouping, and the snare has no backbeat to be re-voiced onto.
+- **An irregular bar is given the skeleton it DECLARES, and not one it does
+  not** — 7/8 is 2+2+3 and 5/8 is 3+2, so the kick rides the group downbeats
+  and the backbeat sits on the accent group; an irregular metre whose grouping
+  is NOT declared (11/8) keeps the library's grouping and has no backbeat to
+  be re-voiced onto.
+- **An irregular bar plays like itself** — a 7/8 document produces a 7/8 groove
+  (the kick on the groups, the backbeat on the accent), not a click on the
+  downbeat; and 4/4 and every regular metre are byte-identical to what they
+  were before this stage.
 - **The metre is never changed silently**: every surface that can change a
   project's metre discloses what the new metre MEASURES and what happens to
   the material, and they all say the same words.
@@ -1068,6 +1214,8 @@ preview drew a fixed sixteen-cell 4/4 bar, and it now draws one metrical bar.
 - `tests/adr0057-ai-meter.test.ts` — the AI layer's metre, the 4/4 baseline, and the third guard
 - `tests/adr0057-metrical-groove.test.ts` — the groove material's metre, the
   library-wide guards, and the 4/4 negative control
+- `tests/adr0057-irregular-metre.test.ts` — the irregular metres' groups, their
+  anchors, their generated content, and the undeclared fallback
 - `tests/adr0056-pattern-grid.test.ts` — the drift, and the whole-bar control
 - `tests/adr0057-meter-disclosure.test.ts` — the disclosure on every surface,
   the 4/4 negative control, the metre-site guard, and its falsification

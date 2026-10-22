@@ -17,8 +17,9 @@
  *      metrical view is the IDENTITY for every groove in the library.
  *   2. The projection does what it says — the base folds, the anchors are
  *      re-voiced, the material is collected from the whole source row, and the
- *      things it refuses to do (invent material, impose a skeleton on an
- *      irregular bar) stay refused.
+ *      things it refuses to do (invent material, impose a skeleton on a bar
+ *      whose grouping is NOT declared) stay refused. A DECLARED irregular
+ *      metre (7/8, 5/8) is imposed from Stage 2i on.
  *   3. The content follows the metre — 3/4 gets three beats, 6/8 gets the
  *      shuffle's "2 & 5", and the off-skeleton contamination drops to a
  *      measured few per cent.
@@ -146,15 +147,21 @@ describe("ADR 0057 Stage 2c — the projection", () => {
     expect(projectRowToMeter(source, "clap", sixEight)).toEqual(new Array(12).fill(0));
   });
 
-  it("refuses to impose a skeleton on an irregular bar — the grouping is content", () => {
+  it("imposes the declared grouping, and refuses to invent an undeclared one", () => {
     const sevenEight = aiMeterFor(SEVEN_EIGHT);
-    // 7/8 is ONE pulse: the kick keeps the groove's own hits, and the snare
-    // has no backbeat to be re-voiced onto.
+    // 7/8 is DECLARED (2+2+3, ADR 0057 Stage 2i): the kick is re-voiced onto
+    // the group downbeats and the snare onto the accent group.
     const kick = row(16, [0, 4, 8, 12]);
-    expect(hitsOf(projectRowToMeter(kick, "kick", sevenEight))).toEqual([0, 4, 8, 12]);
+    expect(hitsOf(projectRowToMeter(kick, "kick", sevenEight))).toEqual([0, 4, 8]);
     const snare = row(16, [4, 12]);
-    expect(hitsOf(projectRowToMeter(snare, "snare", sevenEight))).toEqual([4, 12]);
-    expect(anchorPositions(sevenEight, "snare")).toEqual([]);
+    expect(hitsOf(projectRowToMeter(snare, "snare", sevenEight))).toEqual([8]);
+    expect(anchorPositions(sevenEight, "snare")).toEqual([8]);
+
+    // 11/8 is NOT declared: the grouping is unknown, so the product imposes
+    // nothing — the material keeps the shape the groove gave it.
+    const eleven = aiMeterFor({ numerator: 11, denominator: 8 });
+    expect(hitsOf(projectRowToMeter(kick, "kick", eleven))).toEqual([0, 4, 8, 12, 16, 20]);
+    expect(anchorPositions(eleven, "snare")).toEqual([]);
   });
 
   it("is level-agnostic — the same projection maps velocities and levels", () => {
@@ -166,10 +173,17 @@ describe("ADR 0057 Stage 2c — the projection", () => {
   });
 
   it("an irregular bar still gets the metre's DOWNBEAT when the groove's kick misses it", () => {
-    // The projection refuses to impose a skeleton on a 7/8 bar — the grouping
-    // is content — so the metre's last word there is the WRITE path. This is
-    // a real state, not a theory: 115 of the library's 802 kick rows have no
-    // hit at step 0 (house.footwork kicks on 1/5/9/13).
+    // The WRITE path: the reference has NOTHING at the anchor, so the metre
+    // writes it and the groove still writes its loudness (the nearest
+    // reference hit of that role). This is a real state, not a theory: 115 of
+    // the library's 802 kick rows have no hit at step 0 (house.footwork kicks
+    // on 1/5/9/13).
+    //
+    // Stage 2i changed WHERE this path applies: in a declared irregular metre
+    // the metrical view now carries the anchors itself, so the REPAIR path
+    // covers them and the WRITE path does not fire (as in every other metre
+    // with more than one pulse). What is left is a reference that misses the
+    // anchor — which is what this row is.
     const sevenEight = aiMeterFor(SEVEN_EIGHT);
     const references = [row(14, [1, 5, 9, 13])];
     const target = new Array<number>(14).fill(0);
@@ -356,10 +370,24 @@ describe("ADR 0057 Stage 2c — the content follows the metre", () => {
     }
   });
 
-  it("7/8 keeps the groove's own grouping — the projection does not invent one", () => {
+  it("7/8 takes the DECLARED grouping — the projection imposes 2+2+3", () => {
+    // Stage 2i supersedes Stage 2c's rule: an irregular metre whose grouping
+    // is declared (7/8, 5/8) no longer keeps the groove's own grouping — the
+    // grouping IS the metre's structure, and the projection imposes it. The
+    // pulse is still the whole bar (that fact does not change), but the
+    // accents are the groups'.
     const sevenEight = aiMeterFor(SEVEN_EIGHT);
     expect(sevenEight.pulseSteps).toBe(sevenEight.stepsPerBar);
-    expect(anchorPositions(sevenEight, "kick")).toEqual([0]);
-    expect(anchorPositions(sevenEight, "snare")).toEqual([]);
+    expect(anchorPositions(sevenEight, "kick")).toEqual([0, 4, 8]);
+    expect(anchorPositions(sevenEight, "snare")).toEqual([8]);
+  });
+
+  it("an UNDECLARED irregular metre keeps the groove's own grouping", () => {
+    // The honest fallback: the product does not guess a grouping it does not
+    // know, so 11/8 keeps exactly what it had — one group, one anchor.
+    const eleven = aiMeterFor({ numerator: 11, denominator: 8 });
+    expect(eleven.pulseSteps).toBe(eleven.stepsPerBar);
+    expect(anchorPositions(eleven, "kick")).toEqual([0]);
+    expect(anchorPositions(eleven, "snare")).toEqual([]);
   });
 });
