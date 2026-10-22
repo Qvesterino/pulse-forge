@@ -25,6 +25,11 @@ const PORT = Number(process.env.PORT) || 5341;
 const server = await createServer({
   root,
   logLevel: "error",
+  // The dep-optimizer cache must NOT live in node_modules: a checkout whose
+  // node_modules is a junction into another one shares the cache, and two
+  // Vite servers then overwrite each other's optimized deps — the page loads
+  // two copies of React ("Invalid hook call") and the app never mounts.
+  cacheDir: path.join(root, ".vite-cache"),
   server: { port: PORT, host: "127.0.0.1", strictPort: true },
 });
 await server.listen();

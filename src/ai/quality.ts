@@ -3,7 +3,15 @@ import { parseKey, SCALE_INTERVALS } from "../project-model/scales";
 import type { GrooveData } from "./types";
 import type { PadRole } from "./pad-roles";
 import { metricalGroovePatterns } from "./groove-view";
-import { DEFAULT_AI_METER, isAnchorForRole, isDefaultMeter, referencePhase, stepInBar, type AiMeter } from "./meter";
+import {
+  DEFAULT_AI_METER,
+  isAnchorForRole,
+  isDefaultMeter,
+  isHalfGroupStart,
+  isPulse,
+  referencePhase,
+  type AiMeter,
+} from "./meter";
 
 function clampVelocity(value: number): number {
   if (!Number.isFinite(value) || value <= 0) return 0;
@@ -142,7 +150,6 @@ export function measureDrumQuality(
   let syncopated = 0;
   let anchors = 0;
   let coveredAnchors = 0;
-  const halfPulse = meter.pulseSteps / 2;
   // The reference in the document's metre (ADR 0057 Stage 2c): the anchors the
   // metre writes are the anchors the reference carries, so the coverage asks
   // the right question.
@@ -156,10 +163,11 @@ export function measureDrumQuality(
     const length = referenceLength(references);
     for (let step = 0; step < stepCount; step++) {
       const value = row[step] ?? 0;
-      const inBar = stepInBar(meter, step);
       if (value > 0) {
         hits.push(value);
-        const offPulse = inBar % meter.pulseSteps !== 0 && (halfPulse <= 0 || inBar % halfPulse !== 0);
+        // Off the metrical grid (ADR 0057 Stage 2i): not the pulse, not the
+        // grid inside the pulse. In 4/4 this is the legacy test.
+        const offPulse = !isPulse(meter, step) && !isHalfGroupStart(meter, step);
         if (offPulse) syncopated++;
       }
       const isAnchor =

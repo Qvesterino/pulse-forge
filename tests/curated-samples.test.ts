@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  CURATED_MAX_TOTAL_BYTES,
   CURATED_SAMPLES,
   curatedReadyWithin,
   ensureCuratedLayer,
@@ -201,6 +202,88 @@ describe("curated coverage — full-kit contract", () => {
     for (const sample of CURATED_SAMPLES) {
       const file = path.resolve(__dirname, "..", "public", "samples", sample.file);
       expect(() => readFileSync(file), `${sample.file} missing`).not.toThrow();
+    }
+  });
+
+  it("the shipped curated layer fits UNDER the byte ceiling", async () => {
+    // The ceiling is a guard, not a budget: a layer that crosses it loses
+    // masters SILENTLY. The shipped layer is 35.5 MB of WAV, so the ceiling
+    // has to cover it — the old 30 MB ceiling truncated ~15 % of the
+    // product's own masters on every boot.
+    const { statSync } = await import("node:fs");
+    const path = await import("node:path");
+    let total = 0;
+    for (const sample of CURATED_SAMPLES) {
+      const file = path.resolve(__dirname, "..", "public", "samples", sample.file);
+      total += statSync(file).size;
+    }
+    expect(total, `the curated layer is ${(total / 1024 / 1024).toFixed(1)} MB`).toBeLessThan(CURATED_MAX_TOTAL_BYTES);
+  });
+});
+
+/**
+ * The byte ceiling must truncate DETERMINISTICALLY.
+ *
+ * The bytes used to be counted in FETCH-COMPLETION order, so which samples
+ * crossed the ceiling depended on which download answered first: the same
+ * project exported twice carried different masters (17 skipped in one run,
+ * 15 in the next). The accounting now runs in the canonical sample order.
+ */
+describe("curated layer — the byte ceiling truncates deterministically", () => {
+  const IDS = CURATED_SAMPLES.slice(0, 8).map((s) => s.id);
+  const CEILING = 10 * 1024;
+  const PAYLOAD = 4 * 1024;
+
+  /** A fetch whose answers arrive in the requested order. */
+  function orderedFetch(order: "canonical" | "reverse"): typeof fetch {
+    const rankOf = new Map(CURATED_SAMPLES.slice(0, 8).map((s, i) => [s.file, order === "canonical" ? i : 7 - i]));
+    return (async (input: RequestInfo | URL) => {
+      const file = String(input).split("/").pop() ?? "";
+      await new Promise((r) => setTimeout(r, (rankOf.get(file) ?? 0) * 4));
+      return okResponse(new ArrayBuffer(PAYLOAD));
+    }) as unknown as typeof fetch;
+  }
+
+  it("truncates the same samples whichever download answers first", async () => {
+    // The round-robin re-derivation needs a real AudioBuffer, which Node does
+    // not have — the loader treats that as best-effort and warns.
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const bankA = new SampleBank();
+      const resultA = await loadCuratedLayer(bankA, {
+        ids: IDS,
+        fetchImpl: orderedFetch("canonical"),
+        decode: decodeOk,
+        maxTotalBytes: CEILING,
+      });
+      const bankB = new SampleBank();
+      const resultB = await loadCuratedLayer(bankB, {
+        ids: IDS,
+        fetchImpl: orderedFetch("reverse"),
+        decode: decodeOk,
+        maxTotalBytes: CEILING,
+      });
+
+      // The ceiling really was reached — otherwise this proves nothing.
+      expect(resultA.skipped.length, "the fixture must cross the ceiling").toBeGreaterThan(0);
+      expect(resultA.loaded, "some samples must still fit").toBeGreaterThan(0);
+      // The same slots, whichever order the downloads answered in.
+      expect([...resultA.skipped].sort()).toEqual([...resultB.skipped].sort());
+      expect(resultA.loaded).toBe(resultB.loaded);
+      // And the same slots carry the curated master.
+      expect(
+        bankA
+          .entries()
+          .map(([id]) => id)
+          .sort(),
+      ).toEqual(
+        bankB
+          .entries()
+          .map(([id]) => id)
+          .sort(),
+      );
+    } finally {
+      warning.mockRestore();
     }
   });
 });

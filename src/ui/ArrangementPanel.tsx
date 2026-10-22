@@ -85,6 +85,7 @@ import {
 import { generatePatternCommand } from "../commands/aiPattern";
 import { makeMidiClipUnique } from "../commands/midiClips";
 import { MAX_ARRANGEMENT_CLIP_BARS, sceneRoleOf, ticksPerBar } from "../project-model/schema";
+import { audioClipSourceSecondsPerWallSecond } from "../project-model/audio-clip-warp";
 import { stepsPerBar } from "../project-model/grid";
 import { applySmartComp, planBars, planSmartComp, type SmartCompPlan } from "../commands/smart-comp";
 import { sectionFxChips } from "./arrangement/sectionFxChips";
@@ -351,17 +352,52 @@ interface DragState {
  * what the viewport shows; this one runs before the first measurement and
  * exists so that frame is never empty. It must therefore stay a number the
  * browser can allocate, whatever the document claims.
+ *
+ * This budget bounds NODE COUNT ONLY. It used to bound the timeline's extent
+ * as well, and that made every clip past bar 512 unreachable: the lane's
+ * scrollable width stopped there, the browser clamped `scrollLeft` to
+ * `scrollWidth - clientWidth`, and the clips were filtered out of the DOM as
+ * well — so they could be neither seen, selected nor edited. The extent has its
+ * own ceiling below; this one only decides how many grid cells one frame
+ * allocates.
  */
 const UNMEASURED_GRID_BAR_CAP = 512;
 
 /**
+ * Ruler marks (one per 4 bars) the ruler allocates. The ruler is a SIBLING of
+ * the lane and is NOT windowed, so its node count follows the timeline's
+ * extent. 4096 bars = 1024 marks, which covers any real arrangement while
+ * keeping a pathological document from turning every pointermove into a
+ * thousand-node reconciliation.
+ */
+const RULER_MARK_BAR_BUDGET = 4096;
+
+/**
+ * The furthest bar the timeline extent may reach.
+ *
+ * This is a PIXEL budget, not a musical one: the lane's width is
+ * `extent × BASE_BAR_WIDTH × zoom`, and at the maximum zoom (40 → 1200 px per
+ * bar) 16384 bars is 19.7 Mpx — inside the ~33.5 Mpx element ceiling every
+ * browser enforces. 16384 bars in 4/4 is about 11.6 hours of music, far
+ * beyond the `MAX_ARRANGEMENT_CLIP_BARS` (8192) the document model already
+ * treats as the outer edge of a real arrangement, so no legal song can reach
+ * this ceiling.
+ */
+const MAX_TIMELINE_BARS = 16384;
+
+/**
  * Timeline extent in bars: the furthest bar any clip reaches, plus 4 bars of
- * tail, floored at 16 and capped at the unmeasured-grid budget.
+ * tail, floored at 16.
  *
  * Non-finite contributions are dropped rather than clamped into range. A clip
  * whose position is NaN has no position to clamp, and inventing one (0) would
  * drag the whole timeline to bar 0; an absurd FINITE position is a real
  * distance, so it is capped — which shortens the ruler's tail, not the song.
+ *
+ * The extent is the TIMELINE's reach, not a rendering budget: it decides how
+ * wide the scrollable lane is, and therefore how far the user can scroll. A
+ * clip that exists in the document must be scrollable to, or it is content the
+ * editor cannot reach.
  */
 function timelineExtentBars(
   clips: readonly Pick<ArrangementClip, "startBar" | "lengthBars">[],
@@ -389,7 +425,7 @@ function timelineExtentBars(
     if (!Number.isFinite(end)) continue;
     if (end > extent) extent = end;
   }
-  return Math.min(UNMEASURED_GRID_BAR_CAP, Math.max(16, Math.ceil(extent)));
+  return Math.min(MAX_TIMELINE_BARS, Math.max(16, Math.ceil(extent)));
 }
 
 /**
@@ -1879,6 +1915,13 @@ export function ArrangementPanel() {
     origStart: number;
     origLength: number;
     origRate: number;
+    /**
+     * The clip's SOURCE seconds per WALL second at pointerdown — the factor
+     * that converts a timeline gesture into a source position. Captured with
+     * the rest of the gesture state, for the same reason `barWidth` is: a
+     * gesture must use one unit system for its whole span.
+     */
+    sourcePerWallSecond: number;
     origTrimStart: number;
     /** Slip gesture: the captured content offset and its content-coverage ceiling. */
     origOffsetSec: number;
@@ -3231,9 +3274,12 @@ export function ArrangementPanel() {
     // the sample bank — the gesture injects the duration, the same pattern as
     // splitAudioClipAtTick's sourceDuration.
     const slipBuffer = mode === "slip" ? services.bank.get(clip.bufferId) : undefined;
-    // Wall length in SOURCE seconds: resample consumes wall×rate, and the
-    // stretch buffer is original/rate long — same ×rate accounting.
-    const slipWallSourceSec = mode === "slip" ? clipWallSec * (clip.stretchRate ?? 1) : 0;
+    // Wall length in SOURCE seconds: the clip consumes `wall ×
+    // sourceSecondsPerWallSecond` of the original sample. The factor is the
+    // rate for a resample clip and `1 / rate` for a pitch-preserving stretch
+    // clip — one owner for the rule (`audioClipSourceSecondsPerWallSecond`).
+    const sourcePerWallSecond = audioClipSourceSecondsPerWallSecond(clip);
+    const slipWallSourceSec = mode === "slip" ? clipWallSec * sourcePerWallSecond : 0;
     const maxOffsetSec =
       mode === "slip" && slipBuffer
         ? Math.max(0, slipBuffer.duration - (clip.trimStart ?? 0) - (clip.trimEnd ?? 0) - slipWallSourceSec)
@@ -3246,6 +3292,7 @@ export function ArrangementPanel() {
       origStart: clip.startBar,
       origLength: clip.lengthBars,
       origRate: clip.stretchRate ?? 1,
+      sourcePerWallSecond,
       origTrimStart: clip.trimStart ?? 0,
       origOffsetSec: clip.offsetSec ?? 0,
       maxOffsetSec,
@@ -3389,9 +3436,20 @@ export function ArrangementPanel() {
       // Content follows the pointer: dragging the content LEFT reveals later
       // source material (offset grows), right reveals earlier (offset
       // shrinks). Ceiling keeps the playable window covering the whole clip.
+      //
+      // `offsetSec` is a position in the ORIGINAL sample, so the pointer's
+      // WALL travel has to be converted before it is written: one wall second
+      // of drag moves the source by `sourceSecondsPerWallSecond` source
+      // seconds (the rate for a resample clip, `1 / rate` for a
+      // pitch-preserving stretch clip). Without the factor the content lagged
+      // the pointer by the rate on a stretched clip — and the ceiling above,
+      // which is source-denominated, disagreed with the movement.
       const next = Math.max(
         0,
-        Math.min(cur.maxOffsetSec ?? Number.POSITIVE_INFINITY, cur.origOffsetSec - delta * secPerBar),
+        Math.min(
+          cur.maxOffsetSec ?? Number.POSITIVE_INFINITY,
+          cur.origOffsetSec - delta * secPerBar * cur.sourcePerWallSecond,
+        ),
       );
       setAudioSlipLive({ clipId: cur.clipId, offsetSec: next });
     } else if (cur.mode === "fadeIn") {
@@ -3521,7 +3579,8 @@ export function ArrangementPanel() {
           ticksPerBar(doc),
         );
         const lengthChanged = final.lengthBars !== cur.origLength;
-        if (Math.abs(deltaSec) > 0.001 || lengthChanged) {
+        const startChanged = final.startBar !== cur.origStart;
+        if (Math.abs(deltaSec) > 0.001 || lengthChanged || startChanged) {
           // The clip can be edited or deleted under this gesture (collab merge,
           // undo). `audioClips` is a render-scope memo, so it still holds the
           // PRE-change offsetSec here — passing that to a command that runs
@@ -3532,15 +3591,44 @@ export function ArrangementPanel() {
           // in `onClipPointerUp`; read the live clip, never the memo.
           const liveClip = (services.store.doc.arrangement.audioClips ?? []).find((c) => c.id === cur.clipId);
           if (!liveClip) return;
+          // `deltaSec` above is WALL time on the timeline; `trimStart` and
+          // `offsetSec` are positions in the ORIGINAL sample, so ONE WALL
+          // SECOND of trim moves the source by `sourceSecondsPerWallSecond`
+          // source seconds. Without the factor the trim skipped the wrong
+          // amount of the sample and the clip played a different region than
+          // its waveform showed.
+          //
+          // The factor is NOT simply the rate: a pitch-preserving "stretch"
+          // clip plays a pre-rendered `original × rate` buffer at
+          // `playbackRate = 1`, so it consumes `1 / rate` original seconds
+          // per wall second. `audioClipSourceSecondsPerWallSecond` is the one
+          // owner of that rule (the split and the stem renderer use it too).
+          const sourceDeltaSec = deltaSec * audioClipSourceSecondsPerWallSecond(liveClip);
           // ONE command for the whole trim: the source offset and the new length
           // are the same gesture. Two commands here meant a single Ctrl+Z undid
           // only the resize, leaving the clip playing a different region of the
           // sample at its original length.
+          //
+          // The AUDIBLE source start is `offsetSec + trimStart`
+          // (audioClipPlayWindow). The trim advances that sum by exactly
+          // `sourceDeltaSec`, so it advances `offsetSec` ONLY and leaves
+          // `trimStart` riding untouched: advancing both counted the same skip
+          // twice and the clip played twice as deep into the sample as the
+          // gesture asked for. `offsetSec` is also the field the SPLIT uses to
+          // carry the source advance (`elapsedSec * clip.stretchRate`), so the
+          // two structural edits agree on where the source position lives.
           execute(
             trimAudioClipStart(services.store.doc, cur.clipId, {
+              // The start edge moves RIGHT and the end edge never moves — the
+              // same contract the scene-clip twin `trimArrangementClipStart`
+              // owns. The commit used to leave `startBar` alone, so the clip
+              // stayed where it was and shrank from the RIGHT while the drag
+              // preview showed it moving right: the committed geometry and the
+              // preview the user was looking at were two different clips.
+              startBar: final.startBar,
               lengthBars: final.lengthBars,
-              trimStart: cur.origTrimStart + deltaSec,
-              offsetSec: liveClip.offsetSec + deltaSec,
+              trimStart: liveClip.trimStart ?? 0,
+              offsetSec: liveClip.offsetSec + sourceDeltaSec,
             }),
           );
         }
@@ -5108,7 +5196,7 @@ export function ArrangementPanel() {
               if (closest) execute(removeMarker(services.store.doc, closest.id));
             }}
           >
-            {Array.from({ length: Math.ceil(totalBars / 4) }, (_, index) => {
+            {Array.from({ length: Math.ceil(Math.min(totalBars, RULER_MARK_BAR_BUDGET) / 4) }, (_, index) => {
               const barNum = index * 4 + 1;
               return (
                 <span key={index} className="arr-ruler-mark" style={{ left: index * 4 * barWidth }}>
@@ -5502,7 +5590,8 @@ export function ArrangementPanel() {
                 }}
               />
             )}
-            {(visibleBarIndices ?? Array.from({ length: totalBars }, (_, index) => index)).map((index) => (
+            {(visibleBarIndices ?? Array.from({ length: Math.min(totalBars, UNMEASURED_GRID_BAR_CAP) }, (_, index) => index)).map(
+              (index) => (
               <div
                 key={index}
                 className={`arr-bar-grid${index % 4 === 0 ? " bar-strong" : ""}`}

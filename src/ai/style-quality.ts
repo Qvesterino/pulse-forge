@@ -1,7 +1,7 @@
 import type { GrooveData } from "./types";
 import type { PadRole } from "./pad-roles";
 import { metricalGroovePatterns } from "./groove-view";
-import { DEFAULT_AI_METER, isAnchorForRole, referencePhase, stepInBar, type AiMeter } from "./meter";
+import { DEFAULT_AI_METER, isAnchorForRole, isHalfGroupStart, isPulse, referencePhase, type AiMeter } from "./meter";
 
 export interface StyleQualityProfile {
   densityRange: readonly [number, number];
@@ -105,15 +105,19 @@ function round(value: number): number {
 /**
  * Weight an off-grid 16th more strongly when it follows an empty step.
  *
- * The grid is the DOCUMENT's metrical pulse (ADR 0057 Stage 2b): in 4/4 this
- * is the legacy "on the quarter → 0, on the eighth → 0.35, else 1", and in
- * 6/8 the eighth inside the dotted-quarter pulse is the half-pulse.
+ * The grid is the DOCUMENT's metrical grid (ADR 0057 Stage 2b, extended by
+ * Stage 2i to the irregular metres): in 4/4 this is the legacy "on the
+ * quarter -> 0, on the eighth -> 0.35, else 1", in 6/8 the eighth inside the
+ * dotted-quarter pulse is the half-pulse, and in a DECLARED irregular metre
+ * (7/8, 5/8) the grid is the group's own downbeat and the eighths inside it.
+ *
+ * The irregular case is the whole point of Stage 2i: while the pulse of a 7/8
+ * bar was the whole bar, EVERY hit off the downbeat weighed 1 — and the
+ * syncopation budget below stripped the groove away, leaving a bare click.
  */
 export function syncopationWeight(step: number, meter: AiMeter = DEFAULT_AI_METER): number {
-  const position = stepInBar(meter, step);
-  if (position % meter.pulseSteps === 0) return 0;
-  const half = Math.max(1, Math.floor(meter.pulseSteps / 2));
-  if (position % half === 0) return 0.35;
+  if (isPulse(meter, step)) return 0;
+  if (isHalfGroupStart(meter, step)) return 0.35;
   return 1;
 }
 
@@ -152,7 +156,7 @@ function rowMetrics(
       hits++;
       velocityTotal += velocity;
       syncHits += syncopationWeight(step, meter);
-      if (stepInBar(meter, step) % meter.pulseSteps === 0) downbeats++;
+      if (isPulse(meter, step)) downbeats++;
     }
   }
   const denominator = Math.max(1, activeRows.length * stepCount);

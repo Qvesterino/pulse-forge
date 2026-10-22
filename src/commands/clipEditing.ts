@@ -12,7 +12,7 @@ import { PPQ } from "../project-model/types";
 import { arrangementSecondsBetweenTicks, tempoAtTick } from "../project-model/scene-time";
 import { MAX_ARRANGEMENT_CLIP_TICKS, normalizeProject, ticksPerBar } from "../project-model/schema";
 import { buildStemProject } from "../rendering/stems";
-import { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
+import { audioClipSourceSecondsPerWallSecond, warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
 import { assertClipEditable } from "./clipGroups";
@@ -221,9 +221,7 @@ export function sliceAudioClipToArrangement(doc: ProjectDocument, clipId: string
     ticksPerBar(doc),
   );
   const spt = 60 / (tempoAtTick(doc.arrangement.clips, doc.scenes, startTick, doc.bpm, ticksPerBar(doc)) * PPQ);
-  const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
-  const preservingStretch = clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01;
-  const sourcePerWall = preservingStretch ? 1 / rate : rate;
+  const sourcePerWall = audioClipSourceSecondsPerWallSecond(clip);
   const sourceStart = (clip.offsetSec ?? 0) + (clip.trimStart ?? 0);
   // Build segments in wall seconds: [0, t1), [t1, t2), ..., [last, end)
   const sorted = [...sliceTimesSec].filter((t) => Number.isFinite(t) && t > 0 && t < wallDurSec).sort((a, b) => a - b);
@@ -373,9 +371,7 @@ export function splitAudioClipAtTickWithMinimumFragment(
   );
   const secondsPerTick =
     60 / (tempoAtTick(doc.arrangement.clips, doc.scenes, startTick, doc.bpm, ticksPerBar(doc)) * PPQ);
-  const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
-  const preservingStretch = clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01;
-  const sourceSecondsPerWallSecond = preservingStretch ? 1 / rate : rate;
+  const sourceSecondsPerWallSecond = audioClipSourceSecondsPerWallSecond(clip);
   const leftSourceSec = leftSec * sourceSecondsPerWallSecond;
   const rightSourceSec = rightSec * sourceSecondsPerWallSecond;
   const rightOffset = (clip.offsetSec ?? 0) + (clip.trimStart ?? 0) + leftSourceSec;
@@ -526,9 +522,7 @@ export function stripSilenceAudioClip(
   // wall clock the transport never runs at (same bug class the split fix
   // documented).
   const spt = 60 / (tempoAtTick(doc.arrangement.clips, doc.scenes, startTick, doc.bpm, ticksPerBar(doc)) * PPQ);
-  const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
-  const preservingStretch = clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01;
-  const sourcePerWall = preservingStretch ? 1 / rate : rate;
+  const sourcePerWall = audioClipSourceSecondsPerWallSecond(clip);
   const windowStart = (clip.offsetSec ?? 0) + (clip.trimStart ?? 0);
   const windowEnd =
     Number.isFinite(sourceDurationSec) && sourceDurationSec! > windowStart

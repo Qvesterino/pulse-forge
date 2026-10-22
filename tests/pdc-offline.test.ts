@@ -118,6 +118,12 @@ function twoTrackDoc(): { doc: ProjectDocument; groupId: string; trackA: string;
   // (lazy-PDC, 2026-10-17), so a truly dry chain could not witness the writes
   // these specs assert. The injected look-ahead latency still lands on the
   // GROUP runtime, exactly as before.
+  //
+  // (2026-10-22: the delay node is now allocated ON DEMAND — see "a dry chain
+  // waits out the graph's latency" below. These specs keep the effect on the
+  // chains because the latency they inject lands on the GROUP, and a track
+  // inside a group waits that latency out THROUGH the group: its own
+  // compensation is 0, so it would have no node and no write to witness.)
   const eqFx = () => [{ id: "eq", type: "eq", bypassed: false, params: {} }] as never;
   const a = { ...createDrumTrackModel("A"), groupId: group.id, effects: eqFx() };
   const b = { ...createDrumTrackModel("B"), groupId: group.id, effects: eqFx() };
@@ -191,7 +197,11 @@ describe("PDC offline determinism (Wave 2)", () => {
     const delay = anyEngine.trackNodes.get(trackA)!.fx.pdcDelay!.delayTime;
     expect(delay.calls.some((c) => c.method === "setTargetAtTime")).toBe(true);
     expect(delay.calls.some((c) => c.method === "setValueAtTime")).toBe(false);
-  });
+  }, // The engine's setProject() waits for worklet preparation against a mock
+  // context that has no audioWorklet, so this spec costs seconds — 3.3 s on
+  // a quiet machine, 7 s on a loaded one. The default 5 s timeout turned
+  // that into a flaky failure that has nothing to do with the assertion.
+  30_000);
 
   it("prepareOfflineRender sizes the graph from LATE-arriving latency and writes exact setValueAtTime", async () => {
     const { doc, groupId, trackA, trackB } = twoTrackDoc();
@@ -317,5 +327,98 @@ describe("PDC offline determinism (Wave 2)", () => {
     const exact = sendDelay.calls.find((c) => c.method === "setValueAtTime");
     expect(exact, "send PDC must write exact offline").toBeTruthy();
     expect(exact!.value).toBeCloseTo(0.003, 6);
+  });
+});
+
+/**
+ * PDC — a DRY chain waits out the latency the rest of the graph imposes.
+ *
+ * The compensation is not for a chain's OWN latency, it is for the latency
+ * OTHER chains impose. So the chain that needs it most is the dry one: it
+ * carries no latency of its own, and while the delay node existed only for
+ * chains that HAVE effects, the compensation computed for a dry chain had
+ * nowhere to go — it was calculated and then dropped.
+ *
+ * The browser verifier measured the consequence: a dry track landed 2.5 ms
+ * (the gate's look-ahead) EARLIER than the gated one — alignedDelta = 120
+ * samples at 48 kHz, byte-identical on a clean baseline checkout, so it was
+ * not a regression but a long-standing misalignment.
+ */
+describe("PDC — a dry chain waits out the graph's latency", () => {
+  function dryAndLatentDoc(): { doc: ProjectDocument; trackDry: string; trackLate: string } {
+    const eqFx = () => [{ id: "eq", type: "eq", bypassed: false, params: {} }] as never;
+    const dry = { ...createDrumTrackModel("Dry") };
+    const late = { ...createDrumTrackModel("Late"), effects: eqFx() };
+    const doc = {
+      schemaVersion: 1,
+      id: "pdc-dry-doc",
+      name: "PDC dry",
+      bpm: 124,
+      timeSignature: { numerator: 4, denominator: 4 },
+      tracks: [dry, late],
+      patterns: [],
+      activePatternId: "",
+      scenes: [],
+      arrangement: { clips: [] },
+      markers: [],
+      sceneAutomation: [],
+      automation: [],
+      lfos: [],
+      macros: [],
+      returns: [],
+      master: { masterGain: 1, ceilingDb: -1, limiterEnabled: false, clipperEnabled: false },
+      createdAt: "",
+      updatedAt: "",
+    } as unknown as ProjectDocument;
+    return { doc, trackDry: dry.id, trackLate: late.id };
+  }
+
+  type DryInternals = {
+    trackNodes: Map<
+      string,
+      {
+        input: { connections: Set<unknown> };
+        panner: { connections: Set<unknown> };
+        fx: { runtimes: Map<string, LatencyRuntime>; pdcDelay: { delayTime: DelayParam } | null };
+      }
+    >;
+    syncPdc: () => void;
+  };
+
+  it("a dry track owns a compensation delay once another chain carries the latency", async () => {
+    const { doc, trackDry, trackLate } = dryAndLatentDoc();
+    const engine = await makeEngine(doc);
+    const anyEngine = internalsOf(engine) as unknown as DryInternals;
+    // The other chain reports the gate's 2.5 ms look-ahead.
+    addLatency(anyEngine.trackNodes.get(trackLate)!.fx, "gate", 0.0025);
+    anyEngine.syncPdc();
+    const dryDelay = anyEngine.trackNodes.get(trackDry)!.fx.pdcDelay;
+    expect(dryDelay, "a dry chain must own a delay once it has to wait one out").not.toBeNull();
+    expect(dryDelay!.delayTime.lastValue()).toBeCloseTo(0.0025, 6);
+  });
+
+  it("the compensation delay sits between the chain's tail and its sink", async () => {
+    const { doc, trackDry, trackLate } = dryAndLatentDoc();
+    const engine = await makeEngine(doc);
+    const anyEngine = internalsOf(engine) as unknown as DryInternals;
+    addLatency(anyEngine.trackNodes.get(trackLate)!.fx, "gate", 0.0025);
+    anyEngine.syncPdc();
+    const nodes = anyEngine.trackNodes.get(trackDry)!;
+    const delay = nodes.fx.pdcDelay!;
+    expect(nodes.input.connections.has(delay), "the tail must feed the delay").toBe(true);
+    expect(nodes.input.connections.has(nodes.panner), "the tail must no longer feed the sink directly").toBe(false);
+    expect(delay.connections.has(nodes.panner), "the delay must feed the sink").toBe(true);
+  });
+
+  it("a graph with no latency anywhere allocates no delay node at all", async () => {
+    // NEGATIVE CONTROL for the memory contract: the node is allocated ON
+    // DEMAND, so a project whose graph carries no latency still pays for no
+    // delay nodes — the reason the node was made lazy in the first place
+    // (ADR 0048: 100 delays for 100 effect-free tracks).
+    const { doc, trackDry } = dryAndLatentDoc();
+    const engine = await makeEngine(doc);
+    const anyEngine = internalsOf(engine) as unknown as DryInternals;
+    anyEngine.syncPdc();
+    expect(anyEngine.trackNodes.get(trackDry)!.fx.pdcDelay).toBeNull();
   });
 });

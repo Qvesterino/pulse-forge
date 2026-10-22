@@ -688,41 +688,61 @@ export function resizeAudioClip(doc: ProjectDocument, clipId: string, lengthBars
  * same time. Issuing `updateAudioClip` followed by `resizeAudioClip` produced
  * two history entries, so a single Ctrl+Z undid only the resize and left the
  * clip playing a different region of the sample at its original length.
+ *
+ * THE START EDGE MOVES RIGHT, THE END EDGE NEVER MOVES — the same contract the
+ * scene-clip twin `trimArrangementClipStart` owns. `patch.startBar` is the new
+ * start position; the caller passes the PREVIEWED value so the committed
+ * geometry is the geometry the user was shown while dragging. Omitting it
+ * leaves the clip where it was, which shortened the clip from the RIGHT while
+ * the drag preview showed it moving right.
+ *
+ * The SOURCE position (`offsetSec` + `trimStart` — the audible start the engine
+ * plays and the waveform draws) is the caller's business: the command writes
+ * what it is told. The arrangement panel's trim gesture advances `offsetSec`
+ * by the source-time delta and leaves `trimStart` riding.
  */
 export function trimAudioClipStart(
   doc: ProjectDocument,
   clipId: string,
-  patch: { lengthBars: number; trimStart: number; offsetSec: number },
+  patch: { startBar?: number; lengthBars: number; trimStart: number; offsetSec: number },
 ): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
   assertClipEditable(clip, "trim");
+  const barUnitTicks = ticksPerBar(doc);
   const bars = Number.isFinite(patch.lengthBars)
-    ? Math.max(0.25, quantizeAudioBar(patch.lengthBars, ticksPerBar(doc)))
+    ? Math.max(0.25, quantizeAudioBar(patch.lengthBars, barUnitTicks))
     : clip.lengthBars;
+  const startBar = Number.isFinite(patch.startBar)
+    ? Math.max(0, quantizeAudioBar(patch.startBar as number, barUnitTicks))
+    : clip.startBar;
   const trimStart = Number.isFinite(patch.trimStart) ? Math.max(0, patch.trimStart) : clip.trimStart;
   const offsetSec = Number.isFinite(patch.offsetSec) ? Math.max(0, patch.offsetSec) : clip.offsetSec;
   // Fades must stay inside the trimmed clip (same rule as resizeAudioClip) or
   // the fade handles desync from the clip's visual width. Note `clip` is the
   // PARENT: the parent fadeIn rides along and has to be re-bounded by the
-  // trimmed length.
-  const { fadeIn, fadeOut } = clampClipFades(doc, clip, bars, clip.startBar);
+  // trimmed length — measured at the clip's NEW start, which is where it now
+  // plays (the tempo map is position-dependent).
+  const { fadeIn, fadeOut } = clampClipFades(doc, clip, bars, startBar);
   const next: ProjectDocument = {
     ...doc,
     arrangement: {
       ...doc.arrangement,
-      audioClips: (doc.arrangement.audioClips ?? []).map((c) =>
-        c.id === clipId
-          ? {
-              ...c,
-              lengthBars: bars,
-              trimStart,
-              offsetSec,
-              fadeIn,
-              fadeOut,
-            }
-          : c,
-      ),
+      audioClips: (doc.arrangement.audioClips ?? [])
+        .map((c) =>
+          c.id === clipId
+            ? {
+                ...c,
+                startBar,
+                lengthBars: bars,
+                trimStart,
+                offsetSec,
+                fadeIn,
+                fadeOut,
+              }
+            : c,
+        )
+        .sort((a, b) => a.startBar - b.startBar),
     },
   };
   return snapshot("trimAudioClipStart", `Trim audio clip start to ${trimStart.toFixed(3)}s`, doc, next);

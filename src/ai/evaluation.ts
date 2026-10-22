@@ -1,7 +1,7 @@
 import type { NoteEvent, Pattern, PatternGeneration, ProjectDocument, StepMeta } from "../project-model/types";
 import type { GenerateOptions } from "./types";
 import { hashString } from "../shared/rng";
-import { DEFAULT_AI_METER, meterCarrier, stepInBar, type AiMeter } from "./meter";
+import { DEFAULT_AI_METER, isPulse, meterCarrier, type AiMeter } from "./meter";
 
 /** Stable identity for the pre-IntentSpec local generator baseline. */
 export const LOCAL_ENGINE_ID = "pulse-forge.local-groove";
@@ -225,7 +225,7 @@ export function measurePattern(pattern: Pattern, meter: AiMeter = DEFAULT_AI_MET
     for (let step = 0; step < row.length; step++) {
       if (row[step] > 0) {
         drumHits++;
-        if (stepInBar(meter, step) % meter.pulseSteps === 0) downbeatHits++;
+        if (isPulse(meter, step)) downbeatHits++;
       }
     }
   }

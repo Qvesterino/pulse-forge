@@ -3,6 +3,41 @@
  * clip's warp markers. Kept in the project-model layer so editing commands,
  * UI gestures, and the audio engine can share one deterministic mapping.
  */
+
+/**
+ * THE SOURCE-vs-WALL CONVERSION FACTOR — one owner for every caller.
+ *
+ * `offsetSec`, `trimStart` and `trimEnd` are positions in the ORIGINAL sample.
+ * A gesture measured in WALL time (seconds on the timeline) becomes a source
+ * position only after this conversion, and getting it wrong makes the clip
+ * play a different region of its sample than the gesture asked for.
+ *
+ * There are TWO answers, one per stretch mode:
+ *
+ * - "resample" (the default): the clip plays the ORIGINAL buffer at
+ *   `playbackRate = stretchRate`, so ONE WALL SECOND consumes `stretchRate`
+ *   original seconds. The rate is also a SPEED change — a 220 Hz source at
+ *   rate 0.5 arrives at 110 Hz.
+ * - "stretch" (pitch-preserving): the clip plays a PRE-RENDERED buffer that is
+ *   `original × stretchRate` long at `playbackRate = 1`, so ONE WALL SECOND
+ *   consumes `1 / stretchRate` original seconds. The pitch is preserved.
+ *
+ * The engine's two branches (`triggerEngine.ts`: `playbackRate = rate` vs
+ * `1 / rate`, and `timeScale = 1` vs `stretchRate`) are the authority.
+ *
+ * This rule was previously written out by hand in the split command
+ * (`clipEditing.ts`) and in the stem renderer (`bounce.ts`). Two copies is one
+ * copy too many: the trim and slip gestures were the third and fourth, and
+ * they are the ones that were wrong. ONE owner, four callers.
+ */
+export function audioClipSourceSecondsPerWallSecond(clip: {
+  stretchRate?: number;
+  stretchMode?: "resample" | "stretch";
+}): number {
+  const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
+  const preservingStretch = clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01;
+  return preservingStretch ? 1 / rate : rate;
+}
 export interface WarpBufferTimeAtTickOptions {
   markers: ReadonlyArray<{ timeSec: number; tick: number }>;
   clipStartTick: number;

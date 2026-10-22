@@ -15,7 +15,7 @@
  */
 import type { DrumPad, Pattern, TimeSignature } from "../project-model/types";
 import { classifyPads } from "../assist/patternOps";
-import { aiMeterFor, stepInBar } from "../ai/meter";
+import { aiMeterFor, isPulse, stepInBar } from "../ai/meter";
 
 export type PatternVerbKind = "thin" | "densify" | "ghosts" | "simplify" | "swing";
 export type VerbFamily = "kicks" | "snares" | "hats" | "others" | "all";
@@ -169,7 +169,10 @@ export function applyVerbRows(
       const hits = row.filter((v) => v > 0).length;
       for (let step = 0; step < row.length; step++) {
         const isDownbeat = stepInBar(meter, step) === 0;
-        const isOffBeat = stepInBar(meter, step) % meter.pulseSteps !== 0;
+        // Off the metrical grid's strong positions: in 4/4 the off-beat is
+        // everything that is not the pulse, in an irregular metre everything
+        // that is not a group downbeat (ADR 0057 Stage 2i).
+        const isOffBeat = !isPulse(meter, step);
         switch (verb.kind) {
           case "thin":
             if (row[step] > 0 && !isDownbeat && hits > 1 && rng() < 0.45) {

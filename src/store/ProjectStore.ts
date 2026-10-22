@@ -380,8 +380,24 @@ export class ProjectStore {
     }
     this.doc_ = normalizeProject(undone);
     this.redoStack.push(command);
-    this.historyDocs.length = Math.min(this.historyDocs.length, this.undoStack.length + 1);
-    this.historyDocs[this.historyDocs.length - 1] = this.doc_;
+    // SLIDE the snapshot window, do not overwrite it.
+    //
+    // `historyDocs` is a contiguous run of document states ENDING at the
+    // current document: each adjacent pair is the (before, after) of exactly
+    // one command, and `diffForIndex` pairs them by
+    // `offset = undoStack.length + 1 - historyDocs.length`. The undo popped one
+    // command, so the window must lose its TAIL (the popped command's "after"
+    // snapshot) and the post-undo document becomes the new tail.
+    //
+    // The old code truncated with `Math.min(historyDocs.length,
+    // undoStack.length + 1)`, which is a NO-OP once the window sits at its
+    // 64-snapshot cap (the undo stack outgrew it): the tail was then
+    // OVERWRITTEN in place, so the window stayed one snapshot too early, the
+    // same document occupied two slots, and every visible history row showed
+    // the NEXT command's diff. `endUndoFrame` already slides the window for
+    // exactly this reason.
+    this.historyDocs.pop();
+    if (this.historyDocs.length > 0) this.historyDocs[this.historyDocs.length - 1] = this.doc_;
     // Snapshot index pairing shifted — drop the cache.
     this.diffCache.clear();
     this.afterMutation();

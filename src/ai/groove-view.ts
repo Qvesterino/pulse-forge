@@ -38,9 +38,13 @@ import { getGroovePadModel } from "./markov";
  *
  * ## What the projection refuses to do
  *
- * - A bar with ONE pulse (7/8, 5/8) has no skeleton to impose: the grouping
- *   is CONTENT, so the material keeps the shape the groove gave it.
- * - A role with no anchor in this metre (the snare in 7/8) keeps its material.
+ * - A bar with ONE group (an irregular metre whose grouping is NOT declared,
+ *   like 11/8) has no skeleton to impose: the material keeps the shape the
+ *   groove gave it. A DECLARED irregular metre (7/8, 5/8) has its groups,
+ *   and the view imposes them — the kick on the group downbeats, the snare
+ *   on the accent group.
+ * - A role with no anchor in this metre (the snare in an undeclared
+ *   irregular bar) keeps its material.
  * - A role with no material at all (a groove with no clap) is not invented.
  *
  * ## 4/4 is the identity
@@ -99,9 +103,11 @@ export function projectRowToMeter(row: readonly number[], role: PadRole, meter: 
   // 2. THE SKELETON — the anchors this metre gives the role.
   const anchors = anchorPositions(meter, role);
   if (anchors.length === 0) return base;
-  // A bar with ONE pulse has no skeleton to impose: in 7/8 the grouping is
-  // content, so the material keeps the shape the groove gave it.
-  if (role === "kick" && meter.pulseSteps >= meter.stepsPerBar) return base;
+  // A bar with ONE group has no skeleton to impose: the grouping is unknown,
+  // so the material keeps the shape the groove gave it. A DECLARED irregular
+  // metre (7/8, 5/8) has its groups, and the view imposes them — that is the
+  // whole point of the grouping (ADR 0057 Stage 2i).
+  if (role === "kick" && meter.groups.length < 2) return base;
 
   // 3. THE MATERIAL — the role's hits, from the WHOLE source row, in order.
   const hits: number[] = [];

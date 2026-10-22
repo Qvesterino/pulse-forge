@@ -198,8 +198,21 @@ export const CURATED_SAMPLES: CuratedSample[] = [
 
 /** Concurrency cap for parallel fetch+decode. */
 const MAX_PARALLEL = 4;
-/** Whole-layer byte ceiling — a hostile/oversized set must not balloon memory. */
-const MAX_TOTAL_BYTES = 30 * 1024 * 1024;
+/**
+ * Whole-layer byte ceiling.
+ *
+ * The SHIPPED curated layer is 35.5 MB of WAV, so the old 30 MB ceiling
+ * truncated ~15 % of the product's own masters — and because the bytes were
+ * counted in FETCH-COMPLETION order, WHICH slots were truncated changed
+ * between runs (17 skipped in one run, 15 in the next). The same project
+ * exported twice carried different sounds.
+ *
+ * The ceiling now covers the shipped layer with headroom, and the accounting
+ * runs in the canonical sample order, so a future layer that DOES exceed the
+ * ceiling truncates deterministically instead of randomly.
+ * tests/curated-samples.test.ts guards both halves.
+ */
+export const CURATED_MAX_TOTAL_BYTES = 40 * 1024 * 1024;
 
 export interface CuratedLoadResult {
   loaded: number;
@@ -234,11 +247,18 @@ export async function loadCuratedLayer(
     fetchImpl?: typeof fetch;
     decode?: (data: ArrayBuffer) => Promise<AudioBuffer>;
     signal?: AbortSignal;
+    /**
+     * The whole-layer byte ceiling. Defaults to CURATED_MAX_TOTAL_BYTES; the
+     * knob exists so the ORDER the truncation happens in can be tested with a
+     * small ceiling instead of a 40 MB fixture.
+     */
+    maxTotalBytes?: number;
   } = {},
 ): Promise<CuratedLoadResult> {
   const doFetch =
     options.fetchImpl ?? ((input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init));
   const decode = options.decode ?? defaultDecode;
+  const maxTotalBytes = options.maxTotalBytes ?? CURATED_MAX_TOTAL_BYTES;
   const result: CuratedLoadResult = { loaded: 0, failed: [], skipped: [] };
   const requestedIds = options.ids ? new Set(options.ids) : undefined;
   if (requestedIds) {
@@ -250,23 +270,50 @@ export async function loadCuratedLayer(
   if (samples.length === 0) return result;
 
   let totalBytes = 0;
-  const queue = [...samples];
+  const queue = samples.map((sample, index) => ({ sample, index }));
+  // The fetch runs in parallel, but the bytes are COUNTED in the canonical
+  // sample order: a worker that answers early waits for the previous
+  // sample's decision. Otherwise the truncation point depends on which fetch
+  // answered first, and the same project exported twice carried different
+  // masters.
+  const decisions = samples.map(() => {
+    let resolve!: () => void;
+    const done = new Promise<void>((r) => {
+      resolve = r;
+    });
+    return { done, resolve };
+  });
+  /** Unblock every worker waiting on a decision (an abort leaves holes). */
+  const resolveAll = (): void => {
+    for (const decision of decisions) decision.resolve();
+  };
   const worker = async () => {
     while (queue.length > 0) {
-      if (options.signal?.aborted) return;
-      const sample = queue.shift()!;
+      if (options.signal?.aborted) {
+        resolveAll();
+        return;
+      }
+      const { sample, index } = queue.shift()!;
       try {
         const response = await doFetch(assetUrl(`/samples/${sample.file}`), { signal: options.signal });
         if (!response.ok) {
           // Missing file = the slot simply stays synthesized (offline-first
           // installs, seed-less checkouts). Not an error worth reporting.
           result.skipped.push(sample.id);
+          decisions[index].resolve();
           continue;
         }
         const data = await response.arrayBuffer();
+        // Wait until the canonical order reaches this sample.
+        if (index > 0) await decisions[index - 1].done;
+        if (options.signal?.aborted) {
+          decisions[index].resolve();
+          return;
+        }
         totalBytes += data.byteLength;
-        if (totalBytes > MAX_TOTAL_BYTES) {
+        if (totalBytes > maxTotalBytes) {
           result.skipped.push(sample.id);
+          decisions[index].resolve();
           continue;
         }
         const buffer = await decode(data);
@@ -284,7 +331,11 @@ export async function loadCuratedLayer(
           console.warn(`[curated] RR re-derivation skipped for ${sample.id}:`, error);
         }
         result.loaded += 1;
+        decisions[index].resolve();
       } catch (err) {
+        // The decision chain must never stall, or the workers waiting on it
+        // would hang — including on an abort.
+        decisions[index].resolve();
         if (options.signal?.aborted) return;
         console.warn(`[curated] failed to load ${sample.file}:`, err);
         result.failed.push(sample.id);

@@ -1,5 +1,5 @@
 import type { PadRole } from "./pad-roles";
-import { DEFAULT_AI_METER, isAnchorForRole, type AiMeter } from "./meter";
+import { accentGroupSteps, DEFAULT_AI_METER, isAnchorForRole, type AiMeter } from "./meter";
 
 export type PhraseSection = "main" | "variation" | "drop" | "fill" | "outro";
 
@@ -81,7 +81,7 @@ export function applyPhraseDynamics(
         } else {
           row[step] = Math.max(0.1, row[step] * (0.42 + rand() * 0.16));
         }
-      } else if (phrase.section === "fill" && step >= phrase.endStep - meter.pulseSteps) {
+      } else if (phrase.section === "fill" && step >= phrase.endStep - accentGroupSteps(meter)) {
         const boost = role === "kick" ? 0.04 : 0.08 + rand() * 0.08;
         row[step] = Math.min(1, row[step] + boost);
       } else if (phrase.section === "outro") {

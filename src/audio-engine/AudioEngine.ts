@@ -128,6 +128,14 @@ interface FxChainState {
    */
   pdcDelay: DelayNode | null;
   /**
+   * The chain's TAIL (the last effect's output, or the chain input when the
+   * chain is dry) and its SINK (the node the chain feeds). Kept so the
+   * compensation delay can be INSERTED later: a dry chain owns no delay node
+   * until the graph actually has latency to compensate for.
+   */
+  chainTail?: AudioNode | null;
+  chainSink?: AudioNode | null;
+  /**
    * Latency-change subscriptions from runtimes whose DSP latency is only
    * known asynchronously (worklet plugins). Each fires syncPdc() so PDC
    * tracks latency without waiting for the next document sync.
@@ -1347,12 +1355,19 @@ export class AudioEngine {
     // re-assert the hint on the fresh runtimes at "now" (writes 0 when the
     // track holds no note — the fresh default anyway).
     this.applyPitchHint(ownerId, ctx.currentTime);
-    // PDC tap: a chain WITH effects routes through a compensation delay so
-    // syncPdc() can align latency-introducing effects (look-ahead limiter)
-    // across the graph; delayTime stays 0 when no compensation is needed. A
-    // DRY chain carries no latency, so it connects straight through and the
-    // delay node (plus its 0.2 s buffer) is only ever built for chains that can
-    // need it — measured: 100 delays for 100 effect-free tracks before this.
+    // PDC tap: the compensation delay sits AFTER the chain, so it can wait out
+    // the latency OTHER chains in the graph impose. A chain WITH effects owns
+    // the node from the start; a DRY chain connects straight through and gets
+    // the node ONLY when the graph has latency to compensate for (see
+    // ensurePdcDelay). The 2026-10-17 optimization (ADR 0048) dropped the node
+    // from every dry chain to save 100 delay nodes for 100 effect-free tracks —
+    // but a dry chain is EXACTLY the chain that waits out someone else's
+    // look-ahead, so without the node its compensation had nowhere to go and a
+    // dry track landed 2.5 ms (the gate's look-ahead) earlier than the gated
+    // one. The node is now allocated on demand, so the graph cost is paid only
+    // when the alignment needs it.
+    state.chainTail = head;
+    state.chainSink = output;
     if (effects.some((fx) => !fx.bypassed)) {
       if (!state.pdcDelay) state.pdcDelay = ctx.createDelay(0.2);
       head.connect(state.pdcDelay);
@@ -1363,6 +1378,36 @@ export class AudioEngine {
       head.connect(output);
     }
     state.signature = this.fxSignature(effects);
+  }
+
+  /**
+   * Make sure this chain HAS a compensation delay, and route the chain's tail
+   * through it.
+   *
+   * The delay is what waits out the latency the rest of the graph imposes, so
+   * a chain that owns none cannot be aligned — the compensation syncPdc()
+   * computes for it had nowhere to go. The node is allocated only when the
+   * compensation is actually positive: a project whose graph has no latency
+   * anywhere still pays for no delay nodes at all (the reason the node was
+   * made lazy in the first place).
+   */
+  private ensurePdcDelay(state: FxChainState, ctx: BaseAudioContext): DelayNode | null {
+    if (state.pdcDelay) return state.pdcDelay;
+    const tail = state.chainTail;
+    const sink = state.chainSink;
+    if (!tail || !sink) return null;
+    const delay = ctx.createDelay(0.2);
+    try {
+      // Only the tail→sink leg: the tail may feed other nodes (the sends tap
+      // post-chain), and a blanket disconnect() would silence the chain.
+      tail.disconnect(sink);
+    } catch {
+      /* not connected — nothing to detach */
+    }
+    tail.connect(delay);
+    delay.connect(sink);
+    state.pdcDelay = delay;
+    return delay;
   }
 
   private syncFxParams(effects: EffectInstance[], state: FxChainState): void {
@@ -1966,7 +2011,12 @@ export class AudioEngine {
       else delay?.delayTime.setTargetAtTime(target, now, 0.02);
     };
     for (const [id, nodes] of this.trackNodes) {
-      writeDelay(nodes.fx.pdcDelay, Math.max(0, maxEffective - (effective.get(id) ?? 0)));
+      const compensation = Math.max(0, maxEffective - (effective.get(id) ?? 0));
+      // A dry chain owns no delay node — without one its compensation would be
+      // dropped and the track would land early against the latency-carrying
+      // chain it has to wait for. The node is allocated here, on demand.
+      if (compensation > 0 && !nodes.fx.pdcDelay) this.ensurePdcDelay(nodes.fx, ctx);
+      writeDelay(nodes.fx.pdcDelay, compensation);
     }
     for (const nodes of this.groupNodes.values()) {
       writeDelay(nodes.fx.pdcDelay, 0);

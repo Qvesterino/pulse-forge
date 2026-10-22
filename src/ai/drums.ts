@@ -6,7 +6,7 @@ import { applyPhraseDynamics, buildPhrasePlan } from "./phrase";
 import { enforceDrumAnchors, repairDrumRow } from "./quality";
 import { enforceSyncopationBudget } from "./style-quality";
 import { metricalGroovePadRows, projectRowToMeter } from "./groove-view";
-import { aiMeterFor, barCount, stepInBar, type AiMeter } from "./meter";
+import { accentGroupSteps, aiMeterFor, barCount, isPulse, metricalTier, type AiMeter } from "./meter";
 
 export interface DrumRandomStreams {
   variation?: () => number;
@@ -79,8 +79,8 @@ function pruneOrDensifyRow(
     const sorted = [...hits].sort((a, b) => a.v - b.v);
     for (let k = 0; k < toPrune; k++) {
       const pick = sorted[k];
-      // Keep anchors (the metrical pulse) 50% of the time even when sparse
-      if (pick.i % meter.pulseSteps === 0 && rand() < 0.5) continue;
+      // Keep anchors (the metrical grid) 50% of the time even when sparse
+      if (isPulse(meter, pick.i) && rand() < 0.5) continue;
       row[pick.i] = 0;
     }
   } else if (density > 0.55 && allowGhosts) {
@@ -368,15 +368,15 @@ export function applyMetricAccents(
   // dynamic survives and a 16th never collapses to the floor.
   const amount = strength * roleGain * 0.3;
   const GHOST_FLOOR = 0.35;
-  // The metrical hierarchy of the document's bar (ADR 0057 Stage 2b):
-  // downbeat, half-bar, pulse, off-pulse. In 4/4 that is the legacy
-  // 0 / 8 / 4-and-12 / rest.
-  const halfBar = meter.stepsPerBar / 2;
+  // The metrical hierarchy of the document's bar (ADR 0057 Stage 2b, and
+  // Stage 2i's groups for the irregular metres): downbeat, secondary accent,
+  // group downbeat, off-grid. In 4/4 that is the legacy 0 / 8 / 4-and-12 /
+  // rest.
   for (let i = 0; i < row.length; i++) {
     const v = row[i];
     if (v <= 0 || v < GHOST_FLOOR) continue;
-    const s = stepInBar(meter, i);
-    const shape = s === 0 ? 1 : s === halfBar ? 0.4 : s % meter.pulseSteps === 0 ? 0.1 : -1;
+    const tier = metricalTier(meter, i);
+    const shape = tier === 0 ? 1 : tier === 1 ? 0.4 : tier === 2 ? 0.1 : -1;
     row[i] = Math.max(0.1, Math.min(1, v + shape * amount));
   }
 }
@@ -400,8 +400,9 @@ function addFillVariation(
   for (let bar = fillBars - 1; bar * stepsPerBar < row.length; bar += fillBars) {
     const fillStart = bar * stepsPerBar;
     const fillEnd = Math.min(fillStart + stepsPerBar, row.length);
-    // Last pulse of each fill phrase
-    for (let i = Math.max(fillStart, fillEnd - meter.pulseSteps); i < fillEnd; i++) {
+    // Last pulse of each fill phrase — in an irregular metre, the accent
+    // group (ADR 0057 Stage 2i): a 7/8 fill swells into its "5".
+    for (let i = Math.max(fillStart, fillEnd - accentGroupSteps(meter)); i < fillEnd; i++) {
       if (row[i] > 0) {
         row[i] = Math.min(1, row[i] + 0.1 + rand() * 0.1); // boost existing hits
       } else if (allowGhosts && rand() < ghostWeight * 0.6) {

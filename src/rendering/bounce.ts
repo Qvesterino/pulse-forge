@@ -3,7 +3,7 @@ import type { ClipWindow } from "./renderer";
 import { buildTempoMap } from "./tempoMap";
 import type { ProjectDocument } from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
-import { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
+import { audioClipSourceSecondsPerWallSecond, warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
 import { patternPhaseOffsetAtTick, sceneOffsetAtTick } from "../project-model/events";
 
 /**
@@ -106,8 +106,7 @@ export function buildBounceZoneDoc(
     const headTrimSec = Math.max(0, tempoMap.timeAt(overlapStart) - tempoMap.timeAt(clipStart));
     const tailTrimSec = Math.max(0, tempoMap.timeAt(clipEnd) - tempoMap.timeAt(overlapEnd));
     const stretchRate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
-    const pitchPreservingStretch = clip.stretchMode === "stretch" && Math.abs(stretchRate - 1) >= 0.01;
-    const sourceSecondsPerWallSecond = pitchPreservingStretch ? 1 / stretchRate : stretchRate;
+    const sourceSecondsPerWallSecond = audioClipSourceSecondsPerWallSecond(clip);
     const sourceHeadAdvanceSec = headTrimSec * sourceSecondsPerWallSecond;
     const sourceTailAdvanceSec = tailTrimSec * sourceSecondsPerWallSecond;
     const sourceDuration = options.sourceDurationsByBufferId?.get(clip.bufferId);
