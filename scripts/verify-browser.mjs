@@ -25,6 +25,11 @@ const BOOT_TIMEOUT_MS = 600_000;
 const server = await createServer({
   root,
   logLevel: "error",
+  // Its OWN dep-optimizer cache: the dev server uses .vite-cache/, and two
+  // Vite servers over ONE optimized-deps directory overwrite each other's
+  // optimized deps — the page then loads two copies of React ("Invalid hook
+  // call") and the app never mounts.
+  cacheDir: path.join(root, ".vite-cache", "browser-check"),
   // Vite's default dep-scan walks EVERY html file in the tree, and this repo
   // carries a lot of them (coverage/, playwright-report/, docs/audits/…). A
   // stray page that pulls a dependency with a broken exports map (lib0, the

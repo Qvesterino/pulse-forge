@@ -29,7 +29,9 @@ const server = await createServer({
   // node_modules is a junction into another one shares the cache, and two
   // Vite servers then overwrite each other's optimized deps — the page loads
   // two copies of React ("Invalid hook call") and the app never mounts.
-  cacheDir: path.join(root, ".vite-cache"),
+  // Its OWN sub-directory too: the dev server uses .vite-cache/, and two
+  // servers in the SAME checkout would fight over one optimized-deps dir.
+  cacheDir: path.join(root, ".vite-cache", "parity-probe"),
   // NO dep scan: the probe imports the modules it needs from the page
   // context, so the app's crawl is not needed — and the crawl is what breaks
   // on a shared tree (a parallel session's broken import kills the scan, the
