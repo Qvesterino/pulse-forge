@@ -220,6 +220,7 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Commits: 23aa2e1a.
 
 ### 2026-10-07 (latest) / Timeline unification sessions 1-2 — the tick lanes join the structural ops (23aa2e1a + the structural commit + ADR amendment)
+
 - Discovery: ADR 0025's program had LANDED; the real gap was that the structural operations (duplicate range, ripple ×4, consolidate-to-audio, Delete-key sweep) knew only scene+audio — while MIDI (ADR 0044) and automation (ADR 0045) clips are PLAYED by the scheduler. Confirmed user-visible defects: duplicate range dropped MIDI content; ripple desynced tick clips; consolidate-to-audio double-played (print contains tick-lane audio, covered clips not removed).
 - Built: lane seams in timeline.ts (midiLaneOf/automationLaneOf/tickClipSpan/withMidiClips/withAutomationClips/rippleShiftTickClips — field-absence-preserving, sorted canonical); duplicate range + all four ripples + consolidate-to-audio + Delete-key sweep now cover the tick lanes with locked semantics (duplicate: shared patternId/phase/mute/lock carried, points deep-copied, straddle refuses; consolidate: straddle splits, in-range unmuted removed, MUTED KEPT — deliberate deviation from the audio precedent documented; locked → throw).
 - Verified: 10 new pins (tests/timeline-structural-clips.test.ts); 205/205 across eleven behavior-pinned families; project typecheck clean of my files.
