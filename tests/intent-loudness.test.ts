@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { parseLoudnessIntent, applyLoudnessIntent, applyPreviewLoudness } from "../src/intent/loudness";
+import { compareMasteringSnapshots, snapshotBuffer } from "../src/intent/mastering-verification";
 import { analyzeLoudnessBuffer } from "../src/audio-engine/kweighting";
 import { testDoc } from "./fixtures/doc";
 import { routeIntentText } from "../src/intent/route";
@@ -185,6 +186,10 @@ describe("loudness apply loop (injected render)", () => {
     expect(outcome.report.trim).toBeGreaterThan(0);
     // the loop verified: measured-after within ±1 LU of the nudge target
     expect(outcome.report.measuredAfter).not.toBeNull();
+    expect(outcome.report.before?.lufs).not.toBeNull();
+    expect(outcome.report.after?.lufs).not.toBeNull();
+    expect(outcome.report.verification).toContain("crest");
+    expect(outcome.report.verification).toContain("low-end");
     expect(Math.abs((outcome.report.measuredAfter as number) - outcome.report.target) || 3).toBeLessThanOrEqual(6);
   });
 
@@ -326,5 +331,41 @@ describe("preview loudness (single measure → trim, injected render)", () => {
     });
     expect(preview.applied).toBe(false);
     expect(preview.doc).toBe(doc);
+  });
+});
+
+describe("mastering verification — loudness is not the whole story", () => {
+  it("compares LUFS, crest, low-end and stereo correlation", () => {
+    const comparison = compareMasteringSnapshots(
+      { lufs: -14.2, crestDb: 10.4, lowEndPct: 31.5, stereoCorrelation: 0.42 },
+      { lufs: -12.1, crestDb: 8.2, lowEndPct: 27.0, stereoCorrelation: 0.18 },
+    );
+    expect(comparison.deltaLufs).toBeCloseTo(2.1, 6);
+    expect(comparison.deltaCrestDb).toBeCloseTo(-2.2, 6);
+    expect(comparison.deltaLowEndPct).toBeCloseTo(-4.5, 6);
+    expect(comparison.deltaStereoCorrelation).toBeCloseTo(-0.24, 6);
+    expect(comparison.line).toContain("crest");
+    expect(comparison.line).toContain("low-end");
+    expect(comparison.line).toContain("stereo corr");
+  });
+
+  it("snapshots a real AudioBuffer through the Mix Doctor", () => {
+    const sampleRate = 44100;
+    const length = sampleRate;
+    const data = new Float32Array(length);
+    for (let index = 0; index < length; index += 1) {
+      data[index] = 0.25 * Math.sin((2 * Math.PI * 220 * index) / sampleRate);
+    }
+    const buffer = {
+      numberOfChannels: 1,
+      sampleRate,
+      length,
+      duration: 1,
+      getChannelData: () => data,
+    } as unknown as AudioBuffer;
+    const snapshot = snapshotBuffer(buffer);
+    expect(Number.isFinite(snapshot.crestDb)).toBe(true);
+    expect(snapshot.lowEndPct).toBeGreaterThanOrEqual(0);
+    expect(snapshot.lowEndPct).toBeLessThanOrEqual(100);
   });
 });

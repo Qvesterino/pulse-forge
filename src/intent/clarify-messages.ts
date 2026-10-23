@@ -38,6 +38,8 @@ export const CLARIFY_MESSAGES: Readonly<Record<string, string>> = {
     'That describes how the mix sounds right now, so I didn\'t change anything. Say what you want changed, for example "turn down the bass".',
   "model-route-rejected":
     "The local model proposed a change that could not be validated against the project, so I didn't change anything. Name the target and the action.",
+  "scene-reference":
+    'Section-relative references ("same as the chorus", "quieter than the drop") aren\'t supported yet. I didn\'t change anything — name the track and the amount.',
   "param-target": "That names a parameter but not the track it belongs to. I didn't change anything — pick a track.",
   "prior-adjustment-target":
     "That track doesn't resolve in this project (or in the remembered adjustment). I didn't change anything — name an existing track.",

@@ -4,6 +4,7 @@ import { routeIntentText } from "../src/intent/route";
 import { ROUTE_PRECEDENCE } from "../src/intent/route-precedence";
 import { ROUTE_ADJUSTMENT } from "../src/intent/apply-boundary";
 import { buildCapabilityMatrix } from "../src/intent/semantics/param-registry";
+import { buildSupportMatrix, ROUTE_DOMAINS } from "../src/intent/semantics/support-matrix";
 import { planIntent } from "../src/intent/semantics/intent-plan";
 import { gateModelRoute } from "../src/intent/model-route-gate";
 import { parseFaderIntent } from "../src/intent/conversation";
@@ -266,7 +267,7 @@ describe("route precedence contract", () => {
       kind: "sceneIntensity",
       scenes: true,
     },
-    { stage: "send", text: "more reverb send on the lead", kind: "sendIntent" },
+    { stage: "send", text: "more reverb send on the 808", kind: "sendIntent" },
     { stage: "fader", text: "turn down the bass", kind: "fader" },
     { stage: "loudness-tempo", text: "make it louder", kind: "loudness" },
     { stage: "loudness-tempo", text: "zníž tempo", kind: "tempo" },
@@ -622,5 +623,111 @@ describe("ordinal target validation", () => {
   it("an in-range ordinal still parses to its param/effect route", () => {
     expect(routeIntentText("more reverb on track three", doc).kind).toBe("effectIntent");
     expect(routeIntentText("slightly longer reverb decay on track three", doc).kind).toBe("paramIntent");
+  });
+});
+
+describe("intent support matrix", () => {
+  it("covers generation, editing and mastering and every param capability", () => {
+    const rows = buildSupportMatrix();
+    for (const domain of ["generation", "editing", "mastering"] as const) {
+      expect(
+        rows.some((row) => row.domains.includes(domain)),
+        domain,
+      ).toBe(true);
+    }
+    const expected = buildCapabilityMatrix()
+      .filter((capability) => capability.exposedBy === "param")
+      .map((capability) => `${capability.effectType}.${capability.paramId}`);
+    for (const operation of expected) {
+      expect(
+        rows.some((row) => row.operation === operation),
+        operation,
+      ).toBe(true);
+    }
+  });
+
+  it("classifies every routed kind (the Record is exhaustive by type)", () => {
+    for (const [kind, domains] of Object.entries(ROUTE_DOMAINS)) {
+      expect(Array.isArray(domains), kind).toBe(true);
+    }
+  });
+});
+
+describe("long-tail invariant corpus", () => {
+  const EDITING = [
+    "make the kick a touch quieter",
+    "pull the hats back a hair",
+    "set the delay time to 375 ms on the 808",
+    "set the compressor threshold to -20 db on the drums",
+    "more reverb send on the 808",
+    "bypass the delay on the 808",
+    "add a marker at bar 8",
+    "mute the kick",
+    "set tempo to 128",
+    "make the drums and bass quieter",
+    "more reverb on track three",
+    "slightly longer reverb decay on track three",
+  ];
+  const MASTERING = ["make it louder", "loudness na -9", "make the mix brighter", "make the bass warmer"];
+  const GENERATION = ["dark techno at 140", "a beat that is dark and warm", "make a 3/4 beat"];
+  const NEGATIVE = [
+    "don't make the bass quieter",
+    "the bass is quieter than the lead",
+    "the pads have too much reverb",
+    "make the bass the same as the chorus",
+    "make it quieter than the drop",
+    "match the chorus",
+    "more reverb on track 99",
+  ];
+  const MUTATION = new Set([
+    "fader",
+    "effectIntent",
+    "paramIntent",
+    "exact",
+    "compound",
+    "tempo",
+    "sendIntent",
+    "bypassIntent",
+    "preset",
+    "sceneIntensity",
+    "clips",
+    "arrange",
+    "selectedStepAssist",
+    "selectedClipArrange",
+    "selectedRangeArrange",
+    "grooveIntent",
+    "sectionGrooveIntent",
+    "automateIntent",
+    "markerIntent",
+    "stepEditIntent",
+    "soundSwapIntent",
+    "production",
+  ]);
+
+  it("editing and mastering asks never fall into pattern generation", () => {
+    for (const text of [...EDITING, ...MASTERING]) {
+      const route = routeIntentText(text, doc);
+      expect(route.kind, text).not.toBe("pattern");
+      if (MUTATION.has(route.kind)) {
+        const plan = planIntent(doc, route);
+        // A no-op ask (bypass an effect that is not there) is still correctly
+        // routed; the plan must state a warning, not silently claim a change.
+        expect(plan.executable || plan.warnings.length > 0, text).toBe(true);
+      }
+    }
+  });
+
+  it("generation briefs still generate", () => {
+    for (const text of GENERATION) {
+      expect(routeIntentText(text, doc).kind, text).toBe("pattern");
+    }
+  });
+
+  it("negative and unsupported references never mutate", () => {
+    for (const text of NEGATIVE) {
+      const route = routeIntentText(text, doc);
+      expect(route.kind, text).toBe("clarify");
+      expect(planIntent(doc, route).mutates, text).toBe(false);
+    }
   });
 });

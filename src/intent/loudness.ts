@@ -1,4 +1,6 @@
 import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
+import { analyzeMixHealthBuffer } from "../analysis/mixDoctor";
+import { compareMasteringSnapshots, snapshotMixHealth, type MasteringSnapshot } from "./mastering-verification";
 import type { SampleBank } from "../sample-library/factory";
 import type { ProjectDocument } from "../project-model/types";
 import { setMasterConfig } from "../commands/commands";
@@ -70,6 +72,12 @@ export interface LoudnessReport {
   measuredAfter: number | null;
   trim: number;
   target: number;
+  /** Mix-health snapshot of the pre-trim render. */
+  before?: MasteringSnapshot;
+  /** Mix-health snapshot of the verified render. */
+  after?: MasteringSnapshot | null;
+  /** What changed beyond LUFS: crest, low-end, stereo correlation. */
+  verification?: string;
 }
 
 export type LoudnessRenderFn = (doc: ProjectDocument, bank: SampleBank) => Promise<AudioBuffer>;
@@ -141,7 +149,7 @@ export async function applyPreviewLoudness(
 export async function measureLoudness(
   doc: ProjectDocument,
   bank: SampleBank,
-): Promise<{ integrated: number; measured: boolean }> {
+): Promise<{ integrated: number; measured: boolean; snapshot: MasteringSnapshot }> {
   // Dynamic import: the offline renderer carries AudioEngine + worklet
   // loaders — it must not sit in the landing route's static payload.
   const { renderProject } = await import("../rendering/renderer");
@@ -151,7 +159,8 @@ export async function measureLoudness(
     channels.push(buffer.getChannelData(channel));
   }
   const reading = analyzeLoudnessBuffer(channels, buffer.sampleRate);
-  return { integrated: reading.integrated, measured: reading.measured };
+  const snapshot = snapshotMixHealth(analyzeMixHealthBuffer(buffer));
+  return { integrated: reading.integrated, measured: reading.measured, snapshot };
 }
 
 // ── FÁZA 6 — measure → recommend → confirm (nothing auto-masters) ─────────
@@ -281,14 +290,15 @@ async function measureWithRender(
   doc: ProjectDocument,
   bank: SampleBank,
   render: LoudnessRenderFn,
-): Promise<{ integrated: number; measured: boolean }> {
+): Promise<{ integrated: number; measured: boolean; snapshot: MasteringSnapshot }> {
   const buffer = await render(doc, bank);
   const channels: Float32Array[] = [];
   for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
     channels.push(buffer.getChannelData(channel));
   }
   const reading = analyzeLoudnessBuffer(channels, buffer.sampleRate);
-  return { integrated: reading.integrated, measured: reading.measured };
+  const snapshot = snapshotMixHealth(analyzeMixHealthBuffer(buffer));
+  return { integrated: reading.integrated, measured: reading.measured, snapshot };
 }
 
 export async function applyLoudnessIntent(
@@ -307,11 +317,13 @@ export async function applyLoudnessIntent(
       }));
 
   let measured: number;
+  let beforeSnapshot: MasteringSnapshot | null = null;
   try {
     const reading = await measureWithRender(doc, bank, render);
     if (!reading.measured)
       return { ok: false, error: "could not measure loudness — the render was too quiet or empty" };
     measured = reading.integrated;
+    beforeSnapshot = reading.snapshot;
   } catch (error) {
     return { ok: false, error: `loudness render failed: ${error instanceof Error ? error.message : String(error)}` };
   }
@@ -335,7 +347,9 @@ export async function applyLoudnessIntent(
     measuredAfter: null,
     trim: Math.round(trim * 10) / 10,
     target,
+    before: beforeSnapshot ?? undefined,
   };
+  let afterSnapshot: MasteringSnapshot | null = null;
 
   // Verify loop: re-render with the applied trim and correct once more — the
   // limiter makes the chain nonlinear, so the first step can undershoot.
@@ -346,6 +360,7 @@ export async function applyLoudnessIntent(
       const reading = await measureWithRender(cursor, bank, render);
       if (!reading.measured) break;
       after = reading.integrated;
+      afterSnapshot = reading.snapshot;
     } catch {
       break;
     }
@@ -359,5 +374,9 @@ export async function applyLoudnessIntent(
     cursor = command.execute(doc);
   }
   report.trim = Math.round(trim * 10) / 10;
+  report.after = afterSnapshot;
+  if (beforeSnapshot && afterSnapshot) {
+    report.verification = compareMasteringSnapshots(beforeSnapshot, afterSnapshot).line;
+  }
   return { ok: true, command, report };
 }

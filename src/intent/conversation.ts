@@ -127,6 +127,8 @@ const FADER_DOWN_COMPARATIVE =
  * bare "less": that word is also the primary effect-reduction verb ("less
  * reverb on the pads"), and the fader runs first — see `effectNounNamed`.
  */
+const FADER_DOWN_PULL_BACK = /\b(?:pull|take|dial)\b.{0,36}\bback\b/;
+
 const FADER_DOWN_INTENSIFIED = /\b(?:much|way|far|a\s+lot|lots|a\s+little|a\s+bit|slightly)\s+(?:less|fewer|menej)\b/;
 
 /** "less loud/volume/level" — a fader magnitude phrase, not an effect ask. */
@@ -285,7 +287,9 @@ export function parseFaderIntent(text: string): FaderIntent | null {
     (FADER_DOWN_LESS_MAGNITUDE.test(commandText) || FADER_DOWN_LESS_NOUN.test(commandText)) &&
     (imperative || bareLessFragment);
   const outcomeDown = FADER_DOWN_OUTCOME.test(commandText) && imperative;
-  const down = FADER_DOWN.test(commandText) || comparativeDown || intensifiedDown || magnitudeDown || outcomeDown;
+  const pullBackDown = FADER_DOWN_PULL_BACK.test(commandText) && !effectNounNamed;
+  const down =
+    FADER_DOWN.test(commandText) || pullBackDown || comparativeDown || intensifiedDown || magnitudeDown || outcomeDown;
   const up =
     !down && (FADER_UP.test(commandText) || FADER_UP_COMPARATIVE.test(commandText) || SK_ADD_FADER.test(commandText));
   if (!down && !up) return null;

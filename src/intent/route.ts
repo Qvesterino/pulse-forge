@@ -529,6 +529,26 @@ function clarifyOrdinalTarget(doc: ProjectDocument): Extract<RoutedIntent, { kin
 }
 
 /**
+ * SECTION-RELATIVE REFERENCES — "same as the chorus", "quieter than the drop".
+ *
+ * A section is a time range, while the mix command layer addresses whole
+ * tracks. Treating "the chorus" as a track family would silently change the
+ * whole song, so these decline until a section-scoped adjustment contract
+ * exists. Naming the track and the amount remains executable.
+ */
+const SCENE_REFERENCE =
+  /\b(?:same as|like|match|copy)\s+(?:the\s+)?(?:intro|outro|verse|build|break|bridge|chorus|drop|fill)\b(?!\s+(?:clip|clips|loop|section|part|bar|bars|to|region|audio))|\b(?:less|quieter|louder|more|softer)\s+than\s+(?:the\s+)?(?:intro|outro|verse|build|break|bridge|chorus|drop|fill)\b/;
+
+function clarifySceneReference(): Extract<RoutedIntent, { kind: "clarify" }> {
+  return {
+    kind: "clarify",
+    reason: "scene-reference",
+    suggestions: [],
+    advice: ["Section-relative references aren't supported yet; name the track and the amount."],
+  };
+}
+
+/**
  * PRIOR-DELTA DECLINE — the fallback when the ledger cannot answer.
  *
  * "a little less than last time", "half that adjustment" and "do the same on
@@ -878,6 +898,9 @@ export function routeIntentText(
       suggestions: [],
       advice: ['Say what to change, for example "turn down the bass".'],
     };
+  }
+  if (SCENE_REFERENCE.test(deaccent(text))) {
+    return clarifySceneReference();
   }
   // P2 (domain calibration 2026-10-20): a fully resolved EFFECT × KNOB ×
   // TARGET is more specific than a generic fader/tempo ask and must win.

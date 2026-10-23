@@ -152,6 +152,29 @@ knob curves moved at levels 5/6, and plugin parameters use physical steps. The
 unit tests pin ordering, bounds and exact family steps; a human listening pass
 is still required before calling the magnitudes final.
 
+## Reliability surfaces (2026-10-23)
+
+- **MCP dry-run.** `kyx_intent { instruction, dry_run: true }` returns the
+  resolved route, `IntentPlan` steps, clamps and warnings without executing or
+  consulting the model. The mirrors are regenerated from `src/mcp/tools.ts`.
+- **Support matrix.** `src/intent/semantics/support-matrix.ts` classifies every
+  route kind into generation/editing/mastering and derives parameter rows from
+  `buildCapabilityMatrix()`. A new route kind is a compile-time error until its
+  domain is stated; a family that is not in the registry cannot appear.
+- **Long-tail corpus.** The router corpus now includes editing/mastering asks
+  that must not fall into pattern generation, generation briefs that must, and
+  negative/unsupported references that must never mutate. It is curated from
+  documented product phrases, not telemetry (no telemetry exists in this repo).
+- **Mastering verification.** `src/intent/mastering-verification.ts` snapshots
+  LUFS, crest, low-end share and stereo correlation from the same Mix Doctor
+  report, and the loudness verify loop records before/after plus a verification
+  line. This measures what changed beyond loudness; a human A/B is still the
+  final gate for tonal quality.
+- **Section-relative references.** “same as the chorus”, “quieter than the
+  drop” name a time range while the mix layer addresses whole tracks. They
+  decline with `scene-reference` instead of silently changing the whole song;
+  the support matrix marks them `clarify-only`.
+
 ## Consequences
 
 - Adding a parameter family is one registry entry; parser, matrix, corpus and
@@ -186,10 +209,10 @@ is still required before calling the magnitudes final.
 
 - `src/intent/semantics/param-registry.ts`, `src/intent/semantics/intent-plan.ts`
 - `src/intent/semantics/target-registry.ts`, `src/intent/semantics/target-resolution.ts`,
-  `src/intent/semantics/quantity.ts`,
-  `src/intent/model-route-gate.ts`
+  `src/intent/semantics/quantity.ts`, `src/intent/semantics/support-matrix.ts`
+- `src/intent/mastering-verification.ts`
 - `src/intent/apply-boundary.ts`, `src/intent/route-precedence.ts`,
-  `src/intent/command-for-route.ts`
+  `src/intent/command-for-route.ts`, `src/intent/model-route-gate.ts`
 - `tests/param-intent.test.ts`, `tests/param-readback.test.ts`,
   `tests/intent-router-corpus.test.ts`, `tests/intent-conversation-memory.test.ts`,
   `tests/ui/IntentPanel.test.tsx`
