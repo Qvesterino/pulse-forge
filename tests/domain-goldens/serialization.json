@@ -37,7 +37,7 @@
       },
       "expected": {
         "doc": {
-          "schemaVersion": 1,
+          "schemaVersion": 38,
           "id": "project-test-0000",
           "name": "House Beat",
           "bpm": 124,
