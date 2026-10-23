@@ -40,6 +40,8 @@ The suites are:
 - `tests/clip-edit-audio-integrity.test.ts` — the audible leg.
 - `tests/clip-edit-gesture-history.test.ts` — the gesture/history leg.
 - `tests/scene-clip-edit-matrix.test.ts` — the SCENE lane's own matrix.
+- `tests/tick-lane-edit-matrix.test.ts` — the TICK lanes' matrix (MIDI and
+  automation).
 
 The property-isolation axis is an ALLOW-list: each verb declares the fields it
 owns, and any other field that moves fails the test. That is what turns "the
@@ -86,6 +88,10 @@ Every row below is covered by an executable spec in the three suites above.
 | snap to grid          | `snapBar` / `snapDelta`                | —                                         | —            | —           | —                                          |
 | snap to edge / marker | `snapBarToTargets`                     | —                                         | —            | —           | —                                          |
 
+**The table above is the AUDIO lane.** The other three lanes have their own
+contracts and their own matrices: the scene lane (§3), the MIDI and
+automation lanes (§4), and the audio lane's audible leg (§9).
+
 **The lock contract is narrower than "locked clips are frozen", and the matrix
 pins the real one:** a locked clip refuses every GEOMETRY verb (move, resize,
 trim, split, slip, stretch, delete, crossfade, source-position patches) and
@@ -120,7 +126,54 @@ pinned.
 
 ---
 
-## 4. Repaired defects
+## 4. The tick-addressed lanes (MIDI and automation)
+
+Two more lanes, addressed in TICKS rather than bars, and with their content
+living OUTSIDE the clip. They got their own matrix — 25 specs — because their
+contracts differ from every other lane's.
+
+**The MIDI lane** points at a PATTERN. Its visible range maps onto the pattern
+through `phaseOffsetTicks`, and the pattern repeats until the range ends. The
+period is the PHRASE length, not the step grid: a note may outlive the grid,
+and both the renderer and the scheduler repeat at the phrase length. A trim or
+a split that wrapped the phase against the GRID would play different notes at
+different times — a defect an earlier wave repaired in the command layer and
+that this matrix now pins against regression.
+
+**The automation lane** carries its POINTS, in SOURCE-relative ticks. The
+visible window starts at `phaseOffsetTicks` into that source curve, so a trim
+advances the PHASE and leaves the points alone — and a point the user adds at
+visible tick 0 lands at source tick = phase.
+
+What the matrix pins:
+
+| Contract                     | Verified                                                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Property isolation**       | a move changes only `startTick`, a resize only `lengthTicks`; neither touches the pattern, the phase or the curve  |
+| **Phase continuity (trim)**  | the phase advances by the trimmed ticks, modulo the PHRASE length                                                  |
+| **Phase continuity (split)** | the right fragment continues the phase; the left keeps the original id                                             |
+| **Curve continuity (trim)**  | the phase advances and the SOURCE-relative points stay exactly as they were                                        |
+| **Curve mapping**            | a point added at visible tick 0 lands at source tick = the phase                                                   |
+| **Curve hygiene**            | a moved point keeps the curve sorted and inside the window; a removed point leaves the rest untouched              |
+| **Target linking**           | the PRIMARY target cannot be unlinked; a linked one can                                                            |
+| **No shared mutable state**  | a duplicate does not share its curve with the source, and a split's two fragments do not share one curve array     |
+| **Geometry clamps**          | a negative start clamps to 0, a zero length becomes one tick, a huge length clamps to `MAX_ARRANGEMENT_CLIP_TICKS` |
+| **Lock**                     | refuses move/resize/delete/split/trim; mute stays allowed                                                          |
+| **Undo/redo**                | every verb in both lanes is ONE history entry with an exact restore and an exact redo                              |
+| **Persistence**              | an edited MIDI clip and an edited automation clip round-trip with their phase, curve and geometry unchanged        |
+| **Lane isolation**           | a MIDI edit does not touch the automation clips, and vice versa                                                    |
+| **No bar-grid leakage**      | a tick-addressed lane keeps an odd tick (bar + 7) — it is not snapped to the bar grid                              |
+
+**One defect repaired here (D3 below): the split's two fragments shared one
+curve array.** The command layer is immutable today — every point verb
+rebuilds the array — so the aliasing was latent rather than live. But the
+DUPLICATE path already deep-copied its points, and a split must not be the
+weaker sibling: the first in-place edit of one fragment's curve would have
+rewritten the other's.
+
+---
+
+## 5. Repaired defects
 
 ### D1 — the quarter-bar CREATION floor leaked into the EDIT verbs
 
@@ -180,9 +233,27 @@ would have disagreed with the commit for a sub-floor clip — the panel's
 previewed-value contract broken in the other direction. Both now read the one
 policy.
 
+### D3 — a split's two fragments shared one curve array (latent, closed)
+
+`splitAutomationClipAtTick` built both fragments with a shallow spread, so
+the LEFT and the RIGHT fragment pointed at the SAME `points` array. The
+command layer is immutable today — every point verb rebuilds the array with
+`filter` + `insertPointSorted` — so nothing could exploit it yet. But the
+DUPLICATE path already deep-copies its points
+(`points: source.points.map((p) => ({ ...p }))`), and the objective asks
+explicitly for duplicated objects not to "share mutable state accidentally": a
+split must not be the weaker sibling. The first in-place edit of one
+fragment's curve would have rewritten the other's.
+
+**Fix:** both fragments get their own copy of the curve. Behaviour is
+unchanged today; the trap is gone.
+
+**Regression coverage:** "a split's fragments do not share one curve array" —
+the fragments carry the same curve VALUES but not the same array.
+
 ---
 
-## 5. Edge cases covered
+## 6. Edge cases covered
 
 | Edge case                         | Where                                                                                                                   |
 | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
@@ -208,7 +279,7 @@ policy.
 
 ---
 
-## 6. Undo / redo issues found
+## 7. Undo / redo issues found
 
 **None outstanding.** What the matrix proved:
 
@@ -230,7 +301,7 @@ wrote to the store would create a history entry per pointer event.
 
 ---
 
-## 7. Persistence issues found
+## 8. Persistence issues found
 
 **None outstanding.** The matrix round-trips every edited clip through
 `JSON.stringify → normalizeProject` (the loader's normalizer — the same path
@@ -246,7 +317,7 @@ ceiling themselves (the earlier wave's finding).
 
 ---
 
-## 8. Audio-integrity risks
+## 9. Audio-integrity risks
 
 The audible leg is now checked end to end for the verbs, not for the window
 functions in isolation. What the matrix proves:
@@ -274,15 +345,16 @@ existing render suites (`tests/render-manifest.test.ts`,
 `tests/audio-clip-played-source-window.test.ts`, the bounce/stem suites), not
 by this wave. A browser-level render assertion on an EDITED project (render →
 inspect PCM → compare against the pre-edit render) is the strongest remaining
-test — see §10.
+test — see §11.
 
 ---
 
-## 9. Remaining incomplete operations / out-of-scope items
+## 10. Remaining incomplete operations / out-of-scope items
 
-- **MIDI lanes and automation lanes**: their commands are covered by the
-  existing suites; they were not re-audited here (the objective's focus is
-  the audio/stem lane and the scene regions).
+- **MIDI lanes and automation lanes**: covered by their own matrix (§4) — but
+  only at the DOMAIN level. Their audible leg (a MIDI clip's notes after a
+  trim, a curve after a phase advance) was verified through the phase
+  arithmetic and the source-relative point model, not through rendered audio.
 - **Warp-marker editing** (ADR 0057 stage 2j) was flagged in the earlier wave
   as a design question, not a defect, and is unchanged.
 - **Browser-level interaction**: this wave tested the command and domain
@@ -296,15 +368,16 @@ test — see §10.
 
 ---
 
-## 10. Recommended next tests
+## 11. Recommended next tests
 
 1. **A render-level assertion on an edited project** — render a clip, trim
    it, render again, and compare the PCM against the expected source window.
    This closes the last gap between "the window is right" and "the audio is
    right".
-2. **The MIDI / automation lane matrices** — property isolation for the
-   note-level verbs (`moveMidiClip`, `resizeMidiClip`, automation point
-   drags), including their undo grouping.
+2. **The MIDI / automation lane AUDIBLE legs** — a trimmed MIDI clip must
+   play the notes its phase points at, and a trimmed automation clip must
+   draw the curve its phase points at. The matrices pin the ARITHMETIC; the
+   audible half is still asserted only by the engine's own suites.
 3. **A browser drag test for the edge gestures** — a pointer-level test that
    drags a 0.05-bar fragment's edge and asserts the committed length (the
    defect D1 lived in the DOMAIN, but the preview/commit agreement is a UI
@@ -317,7 +390,7 @@ test — see §10.
 
 ---
 
-## 11. Verification record
+## 12. Verification record
 
 | Check                                      | Result                                                               |
 | ------------------------------------------ | -------------------------------------------------------------------- |
@@ -325,7 +398,9 @@ test — see §10.
 | `tests/clip-edit-audio-integrity.test.ts`  | ✅ new — 12 specs                                                    |
 | `tests/clip-edit-gesture-history.test.ts`  | ✅ new — 7 specs                                                     |
 | `tests/scene-clip-edit-matrix.test.ts`     | ✅ new — 14 specs                                                    |
+| `tests/tick-lane-edit-matrix.test.ts`      | ✅ new — 25 specs                                                    |
 | The 8 pre-existing clip/editor/undo suites | ✅ green                                                             |
+| The 7 pre-existing MIDI/automation suites  | ✅ green                                                             |
 | The full Vitest suite                      | ✅ green except two failures owned by a parallel session (see below) |
 | `tsc --noEmit`                             | ✅ clean for every file in this wave                                 |
 | Prettier                                   | ✅ clean                                                             |

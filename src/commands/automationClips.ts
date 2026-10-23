@@ -158,14 +158,22 @@ export function splitAutomationClipAtTick(doc: ProjectDocument, clipId: string, 
   const end = clip.startTick + clip.lengthTicks;
   if (split <= clip.startTick || split >= end) throw new Error("Split must leave two non-empty automation clips");
   const phase = (clip.phaseOffsetTicks ?? 0) + split - clip.startTick;
+  // The two fragments must NOT share one curve array. The points are
+  // source-relative, so both halves carry the SAME curve — but a shared
+  // array is a shared mutable object: the first in-place edit of one
+  // fragment's curve would rewrite the other's. The command layer is
+  // immutable today (every point verb rebuilds the array), so this is a
+  // latent trap rather than a live defect — but the duplicate path already
+  // deep-copies its points, and a split must not be the weaker sibling.
   const right: ArrangementAutomationClip = {
     ...clip,
     id: uid("autoclip"),
     startTick: split,
     lengthTicks: end - split,
     ...(phase > 0 ? { phaseOffsetTicks: phase } : {}),
+    points: clip.points.map((point) => ({ ...point })),
   };
-  const left = { ...clip, lengthTicks: split - clip.startTick };
+  const left = { ...clip, lengthTicks: split - clip.startTick, points: clip.points.map((point) => ({ ...point })) };
   const automationClips = (doc.arrangement.automationClips ?? [])
     .flatMap((candidate) => (candidate.id === clipId ? [left, right] : [candidate]))
     .sort((a, b) => a.startTick - b.startTick);
