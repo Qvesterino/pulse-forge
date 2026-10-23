@@ -82,6 +82,7 @@ import {
 } from "../intent/mix";
 import { noteAppliedRoute, noteExternalMutation, noteUndoRedo } from "../intent/apply-boundary";
 import { buildIntentCommand as intentCommand } from "../intent/command-for-route";
+import { formatPlan, planIntent } from "../intent/semantics/intent-plan";
 import { transcribeTrack } from "../reference/transcribe";
 import { unsunoCommand } from "../reference/unsuno";
 import { restyleCommand } from "../reference/restyle";
@@ -1459,7 +1460,14 @@ export const MCP_TOOLS: McpToolDef[] = [
       "Generation requests are refused (candidates need in-app auditioning).",
     inputSchema: {
       type: "object",
-      properties: { instruction: { type: "string", description: "Producer instruction, EN or SK" } },
+      properties: {
+        instruction: { type: "string", description: "Producer instruction, EN or SK" },
+        dry_run: {
+          type: "boolean",
+          description:
+            "Plan only: return the resolved target, current→proposed values, clamps and warnings without mutating the project.",
+        },
+      },
       required: ["instruction"],
     },
   },
@@ -4295,7 +4303,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       return dispatchTransport(ctx, action);
     }
     case "kyx_intent":
-      return executeIntentTool(ctx, String(record.instruction ?? ""));
+      return executeIntentTool(ctx, String(record.instruction ?? ""), record.dry_run === true);
     case "kyx_generate": {
       const doc = ctx.getDoc();
       const bars = record.bars;
@@ -11542,9 +11550,39 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
 // Intent Bar's destructive-intent checkpoint — the UI must not import the
 // lazy MCP surface, so the predicate moved to the intent layer).
 
-function executeIntentTool(ctx: McpToolContext, instruction: string): McpToolResult {
+function executeIntentTool(ctx: McpToolContext, instruction: string, dryRun = false): McpToolResult {
   const trimmed = instruction.trim();
   if (trimmed.length === 0) return { text: "empty instruction", mutated: false };
+  if (dryRun) {
+    // DRY RUN — the same route and the same canonical command the executor
+    // would build, applied to the document VALUE only. Nothing is committed,
+    // and a model fallback is deliberately not consulted: a plan must be
+    // deterministic and inspectable.
+    const doc = ctx.getDoc();
+    const route = routeIntentText(trimmed, doc);
+    const plan = planIntent(doc, route);
+    const text = plan.executable
+      ? `Plan (dry run): ${formatPlan(plan)}`
+      : `Plan (dry run): ${plan.warnings[0] ?? "nothing to execute"}`;
+    return {
+      text,
+      mutated: false,
+      data: {
+        dryRun: true,
+        routeKind: route.kind,
+        executable: plan.executable,
+        mutates: plan.mutates,
+        warnings: plan.warnings,
+        steps: plan.steps.map((step) => ({
+          kind: step.kind,
+          target: step.target,
+          parameter: "parameter" in step ? step.parameter : undefined,
+          next: "nextLabel" in step ? step.nextLabel : undefined,
+          note: step.note,
+        })),
+      },
+    };
+  }
   return executeRoutedIntent(ctx, routeIntentText(trimmed, ctx.getDoc()));
 }
 
@@ -11677,3 +11715,5 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
 
 /** Back-compat alias — there is exactly ONE executor now; both names are the same function. */
 export const executeMcpToolAsync = executeMcpTool;
+
+
