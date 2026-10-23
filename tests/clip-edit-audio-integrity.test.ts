@@ -19,7 +19,7 @@ import { audioClipPlayWindow } from "../src/audio-engine/warpManager";
 import { audioClipWaveformWindow } from "../src/audio-engine/audioClipChannels";
 import { audioClipPlayedSourceSec, audioClipSourceSecondsPerWallSecond } from "../src/project-model/audio-clip-warp";
 import { audioClipsForPlayback } from "../src/project-model/audio-takes";
-import { ticksPerBar } from "../src/project-model/schema";
+import { normalizeProject, ticksPerBar } from "../src/project-model/schema";
 import type { AudioClip, ProjectDocument } from "../src/project-model/types";
 
 /**
@@ -51,6 +51,11 @@ function storeWithClip(patch: Partial<AudioClip> = {}): { store: ProjectStore; c
 }
 
 const clipOf = (doc: ProjectDocument, id: string): AudioClip => doc.arrangement.audioClips!.find((c) => c.id === id)!;
+
+/** The save/load round trip: JSON on disk, then the loader's normalizer. */
+function persistRoundTrip(doc: ProjectDocument): ProjectDocument {
+  return normalizeProject(JSON.parse(JSON.stringify(doc)) as ProjectDocument);
+}
 
 /** Wall seconds the transport gives this clip. */
 function wallSec(doc: ProjectDocument, clip: AudioClip): number {
@@ -257,5 +262,61 @@ describe("the audible source follows the clip's own rate", () => {
       wall * 2,
       6,
     );
+  });
+});
+
+describe("loop / repeat", () => {
+  it("setting the loop flag changes nothing but the flag", () => {
+    const { store, clipId } = storeWithClip({ gain: 0.5, fadeIn: 0.2 });
+    const beforeDoc = store.doc;
+    const before = clipOf(beforeDoc, clipId);
+    store.execute(updateAudioClip(store.doc, clipId, { loop: true }));
+    const after = clipOf(store.doc, clipId);
+    expect(after.loop).toBe(true);
+    expect(after.gain, "the loop flag must not touch the gain").toBe(0.5);
+    expect(after.fadeIn, "the loop flag must not touch the fades").toBe(0.2);
+    expect(after.lengthBars, "the loop flag must not touch the geometry").toBe(before.lengthBars);
+    store.undo();
+    expect(JSON.stringify(store.doc)).toBe(JSON.stringify(beforeDoc));
+  });
+
+  it("a looped clip repeats its content region for the whole clip", () => {
+    const { store, clipId } = storeWithClip({ loop: true });
+    const clip = clipOf(store.doc, clipId);
+    const wall = wallSec(store.doc, clip);
+    const timeScale = timeScaleFor(clip);
+    const win = audioClipPlayWindow(clip, SOURCE_SEC * timeScale, wall, timeScale);
+    // The window REPEATS: the engine plays the content for the whole clip,
+    // so the audible duration is the clip's duration, not the content's.
+    expect(win.duration, "a looped clip sounds for its whole length").toBeCloseTo(wall, 6);
+    expect(win.loopEnd - win.loopStart, "the loop region is the source window").toBeCloseTo(win.contentDur, 6);
+  });
+
+  it("the loop phase is engine-owned: a split advances it, and it survives persistence", () => {
+    // The phase is NOT a user-editable property: `updateAudioClip` does not
+    // accept it, and the split is what produces it. The creation path may
+    // seed one (a recorded take arrives with its phase already set).
+    const { store, clipId } = storeWithClip({ loop: true, loopPhaseOffsetSec: 1.5 });
+    const seeded = clipOf(store.doc, clipId);
+    expect(seeded.loopPhaseOffsetSec, "a created loop may carry its phase").toBe(1.5);
+
+    store.execute(splitAudioClipAtTick(store.doc, clipId, 2 * ticksPerBar(store.doc)));
+    const clips = [...store.doc.arrangement.audioClips!].sort((a, b) => a.startBar - b.startBar);
+    expect(clips).toHaveLength(2);
+    expect(clips[0]!.loopPhaseOffsetSec, "the left fragment keeps the phase").toBe(1.5);
+    expect(clips[1]!.loopPhaseOffsetSec!, "the right fragment advances the phase").toBeGreaterThan(1.5);
+
+    const restored = persistRoundTrip(store.doc);
+    for (const clip of restored.arrangement.audioClips!) {
+      expect(clip.loopPhaseOffsetSec, "the phase must survive a save/load").toBe(
+        clipOf(store.doc, clip.id).loopPhaseOffsetSec,
+      );
+    }
+  });
+
+  it("turning the loop off clears the phase", () => {
+    const { store, clipId } = storeWithClip({ loop: true, loopPhaseOffsetSec: 1.5 });
+    store.execute(updateAudioClip(store.doc, clipId, { loop: false }));
+    expect(clipOf(store.doc, clipId).loopPhaseOffsetSec, "a phase without a loop is meaningless").toBeUndefined();
   });
 });

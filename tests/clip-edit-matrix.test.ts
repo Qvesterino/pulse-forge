@@ -810,6 +810,17 @@ describe("the clip edit matrix — snapping", () => {
   it("the grid is the default answer when nothing is closer", () => {
     expect(snapBarToTargets(2.4, 0.5, [8], 0.2)).toBe(2.5);
   });
+
+  it("a MARKER is a snap target like any other edge", () => {
+    // The panel feeds the marker ticks into the same target list as the
+    // neighbouring clips' edges — one snap rule, one threshold.
+    const markerBar = 3;
+    expect(snapBarToTargets(3.06, 1, [markerBar], 0.2)).toBe(markerBar);
+  });
+
+  it("the playhead is a snap target too", () => {
+    expect(snapBarToTargets(5.04, 1, [5], 0.2)).toBe(5);
+  });
 });
 
 describe("the clip edit matrix — crossfade", () => {

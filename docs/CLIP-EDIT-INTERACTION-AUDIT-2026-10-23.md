@@ -75,6 +75,7 @@ Every row below is covered by an executable spec in the three suites above.
 | gain                  | `updateAudioClip`                      | `gain` only                               | ✅           | ✅          | —                                          |
 | reverse               | `updateAudioClip`                      | `reverse` only                            | ✅           | ✅          | ✅ window starts at the high edge          |
 | mute clip             | `toggleAudioClipsMute`                 | `muted` only                              | ✅           | ✅          | ✅ leaves the scheduler                    |
+| loop / repeat         | `updateAudioClip` (flag)               | `loop` only                               | ✅           | ✅          | ✅ the engine repeats the content region   |
 | split                 | `splitAudioClipAtTick`                 | the two fragments                         | ✅           | ✅          | ✅ fragments tile the source               |
 | copy / duplicate      | `duplicateAudioClip`, `duplicateClips` | —                                         | ✅           | ✅          | ✅ same source window                      |
 | paste                 | `pasteClips`                           | —                                         | ✅ one entry | ✅          | ✅ same source window                      |
@@ -394,8 +395,8 @@ test — see §11.
 
 | Check                                      | Result                                                               |
 | ------------------------------------------ | -------------------------------------------------------------------- |
-| `tests/clip-edit-matrix.test.ts`           | ✅ new — 54 specs                                                    |
-| `tests/clip-edit-audio-integrity.test.ts`  | ✅ new — 12 specs                                                    |
+| `tests/clip-edit-matrix.test.ts`           | ✅ new — 56 specs                                                    |
+| `tests/clip-edit-audio-integrity.test.ts`  | ✅ new — 16 specs                                                    |
 | `tests/clip-edit-gesture-history.test.ts`  | ✅ new — 7 specs                                                     |
 | `tests/scene-clip-edit-matrix.test.ts`     | ✅ new — 14 specs                                                    |
 | `tests/tick-lane-edit-matrix.test.ts`      | ✅ new — 25 specs                                                    |
