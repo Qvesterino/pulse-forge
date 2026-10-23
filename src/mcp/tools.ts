@@ -11715,5 +11715,3 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
 
 /** Back-compat alias — there is exactly ONE executor now; both names are the same function. */
 export const executeMcpToolAsync = executeMcpTool;
-
-

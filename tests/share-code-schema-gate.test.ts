@@ -36,9 +36,7 @@ describe("the share route uses the schema gate", () => {
     const doc = { ...house(), schemaVersion: SCHEMA_VERSION - 5 };
     const decoded = decodeShareCode(encodeShareCode(doc));
     expect(decoded, "an older share link must still open").not.toBeNull();
-    expect(decoded!.schemaVersion, "the opened document must carry the current schema version").toBe(
-      SCHEMA_VERSION,
-    );
+    expect(decoded!.schemaVersion, "the opened document must carry the current schema version").toBe(SCHEMA_VERSION);
   });
 
   it("a current document round-trips", () => {
