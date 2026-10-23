@@ -264,7 +264,7 @@ describe("the scene-clip matrix — undo, persistence and deletion", () => {
     const { store, clipId } = storeWithSceneClip();
     store.execute(deleteArrangementClip(store.doc, clipId));
     expect(store.doc.arrangement.clips.some((c) => c.id === clipId)).toBe(false);
-    expect((store.doc.markers ?? []).some((m) => m.clipId === clipId)).toBe(false);
+    expect((store.doc.markers ?? []).some((m) => m.linkedClipId === clipId)).toBe(false);
     const restored = persistRoundTrip(store.doc);
     expect(restored.arrangement.clips.some((c) => c.id === clipId)).toBe(false);
   });
