@@ -252,6 +252,25 @@ export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
   // backward delta restores them together with the track.
   const stripSidechain = (effects: (typeof doc.tracks)[number]["effects"]) =>
     effects.map((e) => (e.sidechainTrackId === trackId ? { ...e, sidechainTrackId: undefined } : e));
+  // The TAKE LANES, the LIVE SET routing and the drum step metadata all point
+  // AT the deleted track. The post-apply normalize pass prunes all three
+  // OUTSIDE the captured delta, so an undo of delete-track could never
+  // restore them: the take lanes were gone for good (every take audible at
+  // once, the lane structure lost) and the Live Set had lost its track.
+  // Cleaning them here makes the removal part of `next`, and the backward
+  // delta restores them together with the track - the same contract as the
+  // sidechain/MIDI cleanup above.
+  const takeGroups = doc.arrangement.takeGroups?.filter((group) => group.trackId !== trackId);
+  const liveSets = doc.liveSets?.map((set) => (set.trackId === trackId ? { ...set, trackId: undefined } : set));
+  const stepMeta =
+    doc.patterns.some((pattern) => pattern.stepMeta && removedPadIds.size > 0)
+      ? doc.patterns.map((pattern) => {
+          if (!pattern.stepMeta) return pattern;
+          const entries = Object.entries(pattern.stepMeta).filter(([padId]) => !removedPadIds.has(padId));
+          if (entries.length === Object.keys(pattern.stepMeta).length) return pattern;
+          return { ...pattern, stepMeta: Object.fromEntries(entries) as typeof pattern.stepMeta };
+        })
+      : doc.patterns;
   const midi = doc.midi;
   const next: ProjectDocument = {
     ...doc,
@@ -275,7 +294,7 @@ export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
           },
         }
       : {}),
-    patterns: doc.patterns.map((pattern) => ({
+    patterns: stepMeta.map((pattern) => ({
       ...pattern,
       rows: Object.fromEntries(Object.entries(pattern.rows).filter(([padId]) => !removedPadIds.has(padId))),
       notes: Object.fromEntries(Object.entries(pattern.notes ?? {}).filter(([tid]) => tid !== trackId)),
@@ -287,7 +306,10 @@ export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
       ...(doc.arrangement.automationClips ? { automationClips } : {}),
       ...(clipGroups ? { clipGroups } : {}),
       ...(doc.arrangement.clipGroups && !clipGroups ? { clipGroups: undefined } : {}),
+      ...(doc.arrangement.takeGroups ? { takeGroups } : {}),
+      ...(doc.arrangement.takeGroups && !takeGroups ? { takeGroups: undefined } : {}),
     },
+    ...(doc.liveSets ? { liveSets } : {}),
     ...(doc.automation ? { automation } : {}),
     ...(doc.lfos ? { lfos } : {}),
     ...(doc.sceneAutomation ? { sceneAutomation } : {}),
