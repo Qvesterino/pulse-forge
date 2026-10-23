@@ -10,13 +10,7 @@
  * stops spawning the worker for the rest of the session.
  */
 import {
-  coerceDrumsManifest,
-  isDrumsPriorManifest,
-  isDrumsV2PriorManifest,
-  isDrumsV3PriorManifest,
-  isMelodicPriorManifest,
-  isMelodicV2PriorManifest,
-  isMelodicV3PriorManifest,
+  acceptPriorManifest,
   type MelodicPriorManifest,
   type MelodicV3PriorManifest,
   type PersonalWeightsPayloadLike,
@@ -204,26 +198,12 @@ async function loadManifest(kind: PriorKind): Promise<PriorManifest | null> {
     ]);
     if (!response.ok) return null;
     const manifest = (await response.json()) as unknown;
-    // The drums v1 manifest on disk has no kind field (legacy artifact) —
-    // coerce it; v2 and melodic manifests carry their kind explicitly.
-    const validated =
-      kind === "drums"
-        ? coerceDrumsManifest(manifest)
-        : kind === "drums-v2"
-          ? isDrumsV2PriorManifest(manifest)
-            ? manifest
-            : null
-          : kind === "melodic-v2"
-            ? isMelodicV2PriorManifest(manifest)
-              ? manifest
-              : null
-            : kind === "melodic-v3"
-              ? isMelodicV3PriorManifest(manifest)
-                ? manifest
-                : null
-              : isMelodicPriorManifest(manifest)
-                ? manifest
-                : null;
+    // The routing has ONE owner (acceptPriorManifest in prior-types.ts): the
+    // dispatch used to live inline here and had NO arm for "drums-v3", so the
+    // shipped drums v3 manifest fell through to the melodic branch, failed the
+    // melodic guard and was rejected — the 60-feature drums v3 prior never
+    // loaded, and the provider fell back to drums v2 without a word.
+    const validated = acceptPriorManifest(kind, manifest);
     if (!validated) return null;
     cachedManifests.set(kind, validated);
     return validated;

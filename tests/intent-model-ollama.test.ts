@@ -2,6 +2,10 @@ import { describe, it, expect, afterEach } from "vitest";
 import { toJsonObjectSchema, validateModelAction } from "../src/intent/model-schema";
 import { disableOllamaIntentProvider, ensureOllamaIntentProvider } from "../src/intent/model-ollama";
 import { getIntentModelProvider, setIntentModelProvider } from "../src/intent/model-resolver";
+import { addEffectToTracks } from "../src/commands/commands";
+import { createDefaultProject } from "../src/project-model/schema";
+import { buildIntentProjectContext, intentModelUserMessage } from "../src/intent/model-context";
+import { getEffectCatalogEntry } from "../src/plugin-catalog";
 
 /**
  * OLLAMA PROVIDER (desktop path) — schema generator + adapter wiring tests.
@@ -116,6 +120,49 @@ describe("ollama provider wiring", () => {
     // SFT model's kinds — f27406b9); validation stays with validateModelAction.
     expect(bodies[0].format).toBeUndefined();
     expect(bodies[0].options.temperature).toBe(0);
+  });
+
+  it("adds a bounded, registry-backed project context for plugin requests only", async () => {
+    const doc = createDefaultProject();
+    const bass = doc.tracks.find((track) => track.kind === "instrument" && /bass|808/i.test(track.name));
+    if (bass?.kind !== "instrument") throw new Error("default project has no bass instrument track");
+    const withReverb = addEffectToTracks(doc, [bass.id], "reverb").execute(doc);
+
+    const context = buildIntentProjectContext(withReverb, "make the reverb wetter on the bass");
+    expect(context).not.toBeNull();
+    const target = context!.tracks.find((track) => track.name === bass.name);
+    const reverb = target?.effects.find((effect) => effect.type === "reverb");
+    expect(reverb).toMatchObject({ modelActionSupported: true, name: "Reverb" });
+    expect(reverb?.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "mix",
+          min: getEffectCatalogEntry("reverb")!.parameters.find((p) => p.id === "mix")!.min,
+        }),
+      ]),
+    );
+    expect(context!.actionContract.instrumentParameterWrites).toBe("not-supported-by-intent-model");
+    expect(buildIntentProjectContext(withReverb, "set tempo to 140")).toBeNull();
+    expect(intentModelUserMessage("set tempo to 140", withReverb)).toBe("set tempo to 140");
+
+    const bodies: any[] = [];
+    vi_stubFetch(async (_url, init) => {
+      if (String(_url).endsWith("/api/tags")) {
+        return new Response(JSON.stringify({ models: [{ name: "kyx-intent-v33-q8" }] }), { status: 200 });
+      }
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ message: { content: '{"kind":"clarify","suggestions":[]}' } }), {
+        status: 200,
+      });
+    });
+    await ensureOllamaIntentProvider();
+    const provider = getIntentModelProvider();
+    await provider!.generate("make the reverb wetter on the bass", withReverb);
+    await provider!.generate("set tempo to 140", withReverb);
+    expect(bodies[0].messages[1].content).toContain("KYX project context (read-only JSON");
+    expect(bodies[0].messages[1].content).toContain(JSON.stringify(context));
+    expect(bodies[1].messages[1].content).toBe("set tempo to 140");
+    expect(bodies[0].messages[0].content).toBe(bodies[1].messages[0].content);
   });
 
   it("disable removes only the ollama provider", async () => {

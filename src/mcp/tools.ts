@@ -73,10 +73,8 @@ const masterAbStore = new Map<string, Map<string, AbSnapshot>>();
 import { MASTER_SIGNAL_FLOW, type MasterSignalFlowStageId } from "../mastering/signalFlow";
 import { isCreativeBriefRoute } from "../intent/model-fallback-policy";
 import {
-  applyBypassIntent,
   applyEffectIntent,
   applyMixIntent,
-  bypassReadback,
   effectReadback,
   EFFECT_KNOB,
   planMixProfile,
@@ -167,6 +165,7 @@ import {
   setSceneRole,
   setTrackSend,
   setEffectParam,
+  setEffectBypassOnTracks,
   setStepMeta,
   setStepVelocityCommand,
   duplicateTrack,
@@ -184,6 +183,12 @@ import { applyGenerationResultCommand } from "../commands/aiPattern";
 import { isAutomationTargetValid, targetParamDef } from "../project-model/targets";
 import { clampEffectParam, EFFECT_META, type EffectDefinitionMeta } from "../effects/definitions";
 import { clampInstrumentParam, INSTRUMENT_DEFS, INSTRUMENT_ORDER } from "../instruments/registry";
+import {
+  getEffectCatalogEntry,
+  listEffectCatalogEntries,
+  listInstrumentCatalogEntries,
+  pluginCatalogParameter,
+} from "../plugin-catalog";
 import type { McpAudioContent, McpAudioPreviewArtifact } from "./audio-preview";
 
 /**
@@ -4799,22 +4804,24 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         // more/less turn the primary knob; remove deletes (D4-gated).
         if (action === "bypass" || action === "enable") {
           const bypassed = action === "bypass";
-          const command = applyBypassIntent(ctx.getDoc(), {
-            effectType: effect,
-            target: targets[0],
-            bypassed,
-          } as unknown as Parameters<typeof applyBypassIntent>[1]);
+          const command = setEffectBypassOnTracks(before, targetIds, effect, bypassed);
           ctx.execute(command);
-          const readback = bypassReadback(ctx.getDoc(), {
-            effectType: effect,
-            target: targets[0],
-            bypassed,
-          } as Parameters<typeof applyBypassIntent>[1]);
+          const readback = targetIds
+            .map((targetId) => {
+              const track = ctx.getDoc().tracks.find((candidate) => candidate.id === targetId);
+              const instances = track?.effects.filter((instance) => instance.type === effect) ?? [];
+              return track
+                ? `${track.name}: ${instances.length} ${effect} instance(s) ${bypassed ? "bypassed" : "enabled"}`
+                : null;
+            })
+            .filter((line): line is string => line !== null)
+            .join("; ");
           return { text: `${command.label}${readback ? ` — ${readback}` : ""} (one undo step)`, mutated: true };
         }
         const intent = {
           effectType: effect,
           targets,
+          trackIds: targetIds,
           direction: action === "remove" ? "remove" : action,
           amount: "medium",
           ...(typeof record.percent === "number" ? { percent: record.percent } : {}),
@@ -8811,19 +8818,7 @@ function publicInstrumentParams(kind: InstrumentKind): McpInstrumentParamDef[] {
 }
 
 function instrumentParamDefinition(param: McpInstrumentParamDef) {
-  return {
-    id: param.id,
-    label: param.label,
-    min: param.min,
-    max: param.max,
-    default: param.default,
-    unit: param.unit ?? null,
-    description: param.description ?? null,
-    kind: param.kind ?? null,
-    step: param.step ?? null,
-    taper: param.taper ?? null,
-    options: (param.options ?? []).map((option) => ({ value: option.value, label: option.label })),
-  };
+  return pluginCatalogParameter(param);
 }
 
 function instrumentParamReadback(param: McpInstrumentParamDef, value: number | null) {
@@ -8841,10 +8836,10 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
     return mcpError("UNKNOWN_REQUEST", `unknown catalog subject: ${subject.slice(0, 32)}`);
   }
   if (subject === "instruments") {
-    const instruments = INSTRUMENT_ORDER.map((kind) => ({
-      kind,
-      name: INSTRUMENT_DEFS[kind].name,
-      parameterCount: publicInstrumentParams(kind).length,
+    const instruments = listInstrumentCatalogEntries().map((instrument) => ({
+      kind: instrument.kind,
+      name: instrument.name,
+      parameterCount: instrument.parameters.length,
     }));
     const lines = instruments.map(
       (instrument) => `${instrument.kind} — ${instrument.name} (${instrument.parameterCount} params)`,
@@ -8905,8 +8900,8 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
     }
     const type = record.effect.trim();
     if (type.length > 128) return mcpError("INVALID_ARGUMENTS", "effect type must be at most 128 characters");
-    const meta = (EFFECT_META as Record<string, EffectDefinitionMeta | undefined>)[type];
-    if (meta == null) {
+    const catalog = getEffectCatalogEntry(type);
+    if (catalog == null) {
       const known = Object.keys(EFFECT_META).slice(0, 12).join(", ");
       return mcpError(
         "UNKNOWN_TARGET",
@@ -8914,19 +8909,8 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
       );
     }
     const knob = EFFECT_KNOB[type as keyof typeof EFFECT_KNOB];
-    const parameters = meta.params.map((param) => ({
-      id: param.id,
-      label: param.label,
-      min: param.min,
-      max: param.max,
-      default: param.default,
-      unit: param.unit ?? null,
-      description: param.description ?? null,
-      kind: param.kind ?? null,
-      step: param.step ?? null,
-      taper: param.taper ?? null,
-      options: (param.options ?? []).map((option) => ({ value: option.value, label: option.label })),
-    }));
+    const meta = EFFECT_META[type as keyof typeof EFFECT_META];
+    const parameters = catalog.parameters;
     const lines = [
       `${meta.type} — ${meta.name} (${meta.category})`,
       knob
@@ -8956,9 +8940,9 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
         status: "listed",
         subject,
         effect: {
-          type: meta.type,
-          name: meta.name,
-          category: meta.category,
+          type: catalog.type,
+          name: catalog.name,
+          category: catalog.category,
           primaryKnob: knob ?? null,
           parameters,
         },
@@ -8966,12 +8950,12 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
     };
   }
   // effects list
-  const effects = Object.values(EFFECT_META).map((meta) => ({
+  const effects = listEffectCatalogEntries().map((meta) => ({
     type: meta.type,
     name: meta.name,
     category: meta.category,
     primaryKnob: EFFECT_KNOB[meta.type as keyof typeof EFFECT_KNOB] ?? null,
-    parameterCount: meta.params.length,
+    parameterCount: meta.parameters.length,
   }));
   const lines = effects.map((effect) => {
     return `${effect.type} — ${effect.name} (${effect.category})${effect.primaryKnob ? ` [knob: ${effect.primaryKnob}]` : " [no single knob]"}`;

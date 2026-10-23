@@ -603,3 +603,24 @@ describe("model route gate", () => {
     ).toBe("clarify");
   });
 });
+
+describe("ordinal target validation", () => {
+  it("an out-of-range effect ordinal clarifies instead of reaching apply", () => {
+    const route = routeIntentText("more reverb on track 99", doc);
+    expect(route.kind).toBe("clarify");
+    if (route.kind === "clarify") expect(route.reason).toBe("prior-adjustment-target");
+    expect(planIntent(doc, route).mutates).toBe(false);
+  });
+
+  it("an out-of-range param ordinal clarifies instead of reaching apply", () => {
+    const route = routeIntentText("slightly longer reverb decay on track 99", doc);
+    expect(route.kind).toBe("clarify");
+    if (route.kind === "clarify") expect(route.reason).toBe("prior-adjustment-target");
+    expect(planIntent(doc, route).mutates).toBe(false);
+  });
+
+  it("an in-range ordinal still parses to its param/effect route", () => {
+    expect(routeIntentText("more reverb on track three", doc).kind).toBe("effectIntent");
+    expect(routeIntentText("slightly longer reverb decay on track three", doc).kind).toBe("paramIntent");
+  });
+});

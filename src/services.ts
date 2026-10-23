@@ -1242,6 +1242,12 @@ export async function openProject(
       engine.restartFrozenSources(transport.position);
     }
     transport.setBarTicks(ticksPerBar(doc));
+    // The SCHEDULER owns the transport's tempo while a scene tempo is in
+    // effect. Re-applying the project BPM here stomped the scene tempo, and
+    // the scheduler's change-guard (lastAppliedTempo) meant it was never
+    // re-applied — so the scene tempo was lost for the rest of the playback,
+    // after EVERY document change. Outside a scene tempo the project BPM is
+    // the owner, and it is re-applied here as before.
     transport.setBpm(doc.bpm);
     void generativeRuntime.refreshAll().catch((error) => {
       console.warn("[generative] project refresh failed:", error);

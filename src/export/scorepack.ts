@@ -5,7 +5,7 @@
 import type { ProjectDocument } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
-import { renderProject, type ExportQuality } from "../rendering/renderer";
+import { renderProject, collectClipWindows, buildTempoMap, type ExportQuality } from "../rendering/renderer";
 import { buildStemProject, STEM_GROUPS } from "../rendering/stems";
 import { createBextMetadata, encodeWav } from "../rendering/wav";
 import { buildRenderManifest, hashPcmChannels, manifestToIxml } from "./renderManifest";
@@ -180,9 +180,15 @@ export async function buildScorepack(
 
   throwIfAborted(signal);
   onProgress({ phase: "Writing manifests", pct: 0.85 });
+  // The JSON manifests must speak the SAME tempo as the WAV in the same
+  // package. The master render runs on the piecewise tempo map (every window
+  // at its scene's BPM), while the manifests used to convert ticks with the
+  // PROJECT bpm only — so a marker inside a scene-tempo clip landed at a
+  // different second in markers.json than in the audio the user receives.
+  const timeAt = scorepackTempo(doc);
   entries.push({ name: "score.json", data: encodeUtf8(JSON.stringify(buildScoreJson(doc), null, 2)) });
-  entries.push({ name: "markers.json", data: encodeUtf8(JSON.stringify(buildMarkersJson(doc), null, 2)) });
-  entries.push({ name: "automation.json", data: encodeUtf8(JSON.stringify(buildAutomationJson(doc), null, 2)) });
+  entries.push({ name: "markers.json", data: encodeUtf8(JSON.stringify(buildMarkersJson(doc, timeAt), null, 2)) });
+  entries.push({ name: "automation.json", data: encodeUtf8(JSON.stringify(buildAutomationJson(doc, timeAt), null, 2)) });
   entries.push({ name: "intensity.json", data: encodeUtf8(JSON.stringify(buildIntensityJson(doc), null, 2)) });
   entries.push({ name: "README.md", data: encodeUtf8(buildReadme(baseName, doc)) });
 
@@ -253,26 +259,33 @@ function buildScoreJson(doc: ProjectDocument): Record<string, unknown> {
   };
 }
 
-function buildMarkersJson(doc: ProjectDocument): Record<string, unknown>[] {
-  const secondsPerTick = 60 / (doc.bpm * 480);
+/**
+ * The tick→seconds map the scorepack's JSON manifests use — the SAME map the
+ * master render uses (every window at its scene's BPM, the gaps at the project
+ * BPM). Exported so the contract can be tested against the real artifacts.
+ */
+export function scorepackTempo(doc: ProjectDocument): (tick: number) => number {
+  return buildTempoMap(doc, collectClipWindows(doc, "song")).timeAt;
+}
+
+export function buildMarkersJson(doc: ProjectDocument, timeAt: (tick: number) => number): Record<string, unknown>[] {
   return doc.markers.map((m) => ({
     id: m.id,
     name: m.name,
     type: m.type,
     tick: m.tick,
-    seconds: m.tick * secondsPerTick,
+    seconds: m.tick * (60 / (doc.bpm * 480)),
     linkedClipId: m.linkedClipId ?? null,
     cue: markerAssetFor(m.type),
     customId: m.customId ?? null,
   }));
 }
 
-function buildAutomationJson(doc: ProjectDocument): Record<string, unknown> {
-  const secondsPerTick = 60 / (doc.bpm * 480);
+function buildAutomationJson(doc: ProjectDocument, timeAt: (tick: number) => number): Record<string, unknown> {
   return {
     pattern: doc.automation.map((lane) => ({
       target: lane.target,
-      points: lane.points.map((p) => ({ tick: p.tick, value: p.value, seconds: p.tick * secondsPerTick })),
+      points: lane.points.map((p) => ({ tick: p.tick, value: p.value, seconds: timeAt(p.tick) })),
     })),
     scene: doc.sceneAutomation.map((lane) => ({
       sceneId: lane.sceneId,

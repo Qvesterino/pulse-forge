@@ -342,3 +342,24 @@ export function isMelodicV3PriorManifest(value: unknown): value is MelodicV3Prio
     (manifest.durationClasses as number) > 0
   );
 }
+
+/**
+ * THE ROUTING: does this raw manifest belong to this kind?
+ *
+ * One owner for the kind→manifest mapping, so the client cannot grow an arm
+ * for one kind and forget another. The dispatch used to live inline in the
+ * client's loadManifest and had NO arm for "drums-v3" — the shipped drums v3
+ * manifest fell through to the melodic branch, failed the melodic guard (its
+ * kind is "drums-v3") and was rejected, so the 60-feature drums v3 prior never
+ * loaded and the provider silently fell back to drums v2.
+ *
+ * The v1 manifests (drums, melodic) are legacy artifacts without a `kind`
+ * field and are coerced; every other field still has to validate.
+ */
+export function acceptPriorManifest(kind: PriorKind, value: unknown): PriorManifest | null {
+  if (kind === "drums") return coerceDrumsManifest(value);
+  if (kind === "drums-v2") return isDrumsV2PriorManifest(value) ? value : null;
+  if (kind === "melodic-v2") return isMelodicV2PriorManifest(value) ? value : null;
+  if (kind === "melodic-v3") return isMelodicV3PriorManifest(value) ? value : null;
+  return isMelodicPriorManifest(value) ? value : null;
+}

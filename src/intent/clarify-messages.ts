@@ -40,7 +40,7 @@ export const CLARIFY_MESSAGES: Readonly<Record<string, string>> = {
     "The local model proposed a change that could not be validated against the project, so I didn't change anything. Name the target and the action.",
   "param-target": "That names a parameter but not the track it belongs to. I didn't change anything — pick a track.",
   "prior-adjustment-target":
-    "I remember the last adjustment, but not which track you mean. I didn't change anything — name the track.",
+    "That track doesn't resolve in this project (or in the remembered adjustment). I didn't change anything — name an existing track.",
   "hypothetical-action-question":
     "That was a question about what would happen, not an instruction to change something — I left the project alone.",
   "conflicting-values":

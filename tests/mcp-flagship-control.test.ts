@@ -4,6 +4,8 @@ import { routeIntentText } from "../src/intent/route";
 import { createHeadlessMcpHost } from "../src/mcp/headless-host";
 import { createDefaultProject } from "../src/project-model/schema";
 import { isFactoryPresetsWarm } from "../src/presets/factory-loader";
+import { buildIntentProjectContext } from "../src/intent/model-context";
+import { getEffectCatalogEntry, listEffectCatalogEntries, listInstrumentCatalogEntries } from "../src/plugin-catalog";
 
 function bassTrack(host: ReturnType<typeof createHeadlessMcpHost>) {
   const track = host.store.doc.tracks.find(
@@ -49,7 +51,7 @@ describe("KOREŇ flagship MCP and Intent control", () => {
       trackId: bass.id,
       action: "more",
     });
-    expect(inserted.isError).not.toBe(true);
+    expect(inserted.isError, inserted.text).not.toBe(true);
     expect(inserted.mutated).toBe(true);
     expect(host.store.doc.tracks.find((track) => track.id === bass.id)?.effects).toEqual(
       expect.arrayContaining([expect.objectContaining({ type: "bassHarmonic" })]),
@@ -100,6 +102,101 @@ describe("KOREŇ flagship MCP and Intent control", () => {
     host.store.undo();
     expect(host.store.doc.tracks.find((track) => track.id === bass.id)?.effects).not.toContainEqual(
       expect.objectContaining({ type: "bassHarmonic" }),
+    );
+  });
+
+  it("evaluates real plugin tasks against the shared catalog, intent context, readback, and undo", async () => {
+    const host = createHeadlessMcpHost({ document: createDefaultProject() });
+    const bass = bassTrack(host);
+
+    const effects = await host.call("kyx_catalog", { subject: "effects" });
+    const effectRows = (effects.data as { effects: Array<Record<string, unknown>> }).effects;
+    expect(effectRows.map((row) => row.type)).toEqual(listEffectCatalogEntries().map((entry) => entry.type));
+    expect(effectRows.map((row) => row.parameterCount)).toEqual(
+      listEffectCatalogEntries().map((entry) => entry.parameters.length),
+    );
+
+    const instruments = await host.call("kyx_catalog", { subject: "instruments" });
+    const instrumentRows = (instruments.data as { instruments: Array<Record<string, unknown>> }).instruments;
+    expect(instrumentRows.map((row) => row.kind)).toEqual(listInstrumentCatalogEntries().map((entry) => entry.kind));
+    expect(instrumentRows.map((row) => row.parameterCount)).toEqual(
+      listInstrumentCatalogEntries().map((entry) => entry.parameters.length),
+    );
+
+    const reverbCatalog = await host.call("kyx_catalog", { subject: "effect", effect: "reverb" });
+    const reverbData = (reverbCatalog.data as { effect: { parameters: unknown[] } }).effect;
+    expect(reverbData.parameters).toEqual(getEffectCatalogEntry("reverb")!.parameters);
+
+    for (const effect of ["reverb", "bassHarmonic"] as const) {
+      const inserted = await host.call("kyx_fx", { effect, trackId: bass.id, action: "more" });
+      expect(inserted.isError, `${effect}: ${inserted.text}`).not.toBe(true);
+      expect(inserted.mutated, effect).toBe(true);
+    }
+
+    const bypass = await host.call("kyx_fx", { effect: "bassHarmonic", trackId: bass.id, action: "bypass" });
+    expect(bypass.isError, bypass.text).not.toBe(true);
+    expect(
+      host.store.doc.tracks.find((track) => track.id === bass.id)?.effects.find((fx) => fx.type === "bassHarmonic")
+        ?.bypassed,
+    ).toBe(true);
+    const enable = await host.call("kyx_fx", { effect: "bassHarmonic", trackId: bass.id, action: "enable" });
+    expect(enable.isError, enable.text).not.toBe(true);
+    expect(
+      host.store.doc.tracks.find((track) => track.id === bass.id)?.effects.find((fx) => fx.type === "bassHarmonic")
+        ?.bypassed,
+    ).toBe(false);
+
+    const beforeSet = await host.call("kyx_plugin_param", {
+      op: "list",
+      trackId: bass.id,
+      effect: "reverb",
+    });
+    const reverbBefore = (
+      beforeSet.data as { instances: Array<{ parameters: Array<{ id: string; value: number | null }> }> }
+    ).instances[0]!.parameters.find((param) => param.id === "mix")!.value;
+    const set = await host.call("kyx_plugin_param", {
+      op: "set",
+      trackId: bass.id,
+      effect: "reverb",
+      param: "mix",
+      value: 0.72,
+    });
+    expect(set).toMatchObject({ mutated: true, data: { status: "updated", param: "mix", undoSteps: 1 } });
+
+    const context = buildIntentProjectContext(host.store.doc, `make the reverb wetter on ${bass.name}`);
+    const contextualBass = context?.tracks.find((track) => track.name === bass.name);
+    expect(contextualBass?.effects.find((effect) => effect.type === "reverb")).toMatchObject({
+      modelActionSupported: true,
+      intentControls: expect.arrayContaining([expect.objectContaining({ role: "mix", paramId: "mix", value: 0.72 })]),
+    });
+    expect(contextualBass?.effects.find((effect) => effect.type === "bassHarmonic")).toMatchObject({
+      modelActionSupported: false,
+      intentControls: [],
+    });
+    expect(getEffectCatalogEntry("reverb")!.parameters.find((param) => param.id === "mix")!.default).toBeDefined();
+
+    host.store.undo();
+    const afterUndo = host.store.doc.tracks
+      .find((track) => track.id === bass.id)
+      ?.effects.find((fx) => fx.type === "reverb");
+    expect(afterUndo?.params.mix).toBe(reverbBefore);
+    host.store.undo();
+    expect(
+      host.store.doc.tracks.find((track) => track.id === bass.id)?.effects.find((fx) => fx.type === "bassHarmonic")
+        ?.bypassed,
+    ).toBe(true);
+    host.store.undo();
+    expect(
+      host.store.doc.tracks.find((track) => track.id === bass.id)?.effects.find((fx) => fx.type === "bassHarmonic")
+        ?.bypassed,
+    ).toBe(false);
+    host.store.undo();
+    expect(host.store.doc.tracks.find((track) => track.id === bass.id)?.effects).not.toContainEqual(
+      expect.objectContaining({ type: "bassHarmonic" }),
+    );
+    host.store.undo();
+    expect(host.store.doc.tracks.find((track) => track.id === bass.id)?.effects).not.toContainEqual(
+      expect.objectContaining({ type: "reverb" }),
     );
   });
 

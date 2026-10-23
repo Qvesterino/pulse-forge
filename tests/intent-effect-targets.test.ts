@@ -141,3 +141,22 @@ describe("applyEffectIntent execution", () => {
     expect(touched.length).toBeGreaterThan(0);
   }, 60_000);
 });
+
+describe("ordinal targeting for effects", () => {
+  it("parses 'on track three' and applies to that exact track", () => {
+    const doc = testDoc();
+    const intent = parseEffectIntent("more reverb on track three")!;
+    expect(intent.trackOrdinal).toBe(2);
+    expect(intent.targets).toEqual([]);
+    const after = applyEffectIntent(doc, intent)!.execute(doc);
+    const chords = after.tracks.find((track) => track.name === "Chords")!;
+    expect(chords.effects.some((effect) => effect.type === "reverb")).toBe(true);
+  });
+
+  it("out-of-range ordinals do not claim a family", () => {
+    const intent = parseEffectIntent("more reverb on track 99")!;
+    expect(intent.trackOrdinal).toBe(98);
+    expect(intent.targets).toEqual([]);
+    expect(() => applyEffectIntent(testDoc(), intent)!).toThrow(/no tracks match/);
+  });
+});

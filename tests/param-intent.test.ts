@@ -682,3 +682,20 @@ describe("quantity wiring — movement vs destination vs scale", () => {
   });
 });
 
+describe("ordinal targeting for params", () => {
+  it("parses 'on track three' and moves that exact track", () => {
+    const doc = testDoc();
+    const intent = mustParse("slightly longer reverb decay on track three");
+    expect(intent.trackOrdinal).toBe(2);
+    expect(intent.targets).toEqual([]);
+    const after = applyParamIntent(doc, intent).execute(doc);
+    const chords = after.tracks.find((track) => track.name === "Chords")!;
+    const reverb = chords.effects.find((effect) => effect.type === "reverb")!;
+    expect(reverb.params.decay).toBeCloseTo(1.98, 2);
+  });
+
+  it("the plan names the resolved track, not a family", () => {
+    const lines = paramPlanLines(mustParse("slightly longer reverb decay on track three"), testDoc());
+    expect(lines.join(" ")).toContain("Chords: reverb.decay");
+  });
+});

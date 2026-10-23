@@ -129,13 +129,19 @@ direction, degree}` tool. `ToolSpec.resolve` receives the running
 - **Quantity parser.** `src/intent/semantics/quantity.ts` distinguishes
   destinations (`to −9 dB`), movements (`by 2 dB`), factors (`half`, `twice`)
   and step counts (`one step further`); a bare number without a unit is not a
-  quantity.
-- **Ledger coverage.** `adjustment-ledger.ts` now records a measured fader
+  quantity. It is wired into exact gain (explicit dB movement/destination that
+  the gain regexes do not own) and into param as relative dB/percent and as a
+  `scale` mode (`half the decay` = current × 0.5).
+- **Ledger coverage.** `adjustment-ledger.ts` records a measured fader
   factor, effect step fraction or param range fraction. `prior-adjustment.ts`
   resolves “half that adjustment”, “a little less than last time”, “do the same
-  on <family>” and “one step further” for all three. Effect/param target
-  switching uses families; an ordinal track remains fader-only until a
-  track-id targeting contract exists.
+  on <target>” and “one step further” for all three.
+- **Ordinal targeting.** `trackOrdinalFromText` (target registry) and
+  `targetTrackIds` (target resolution) give effect/param the same “track two”
+  capability as the fader: parsers carry an optional `trackOrdinal`, appliers,
+  read-backs and plans resolve it through the same helper, and the ledger
+  records the resolved track ids so a follow-up reuse stays on that track.
+  Family and ordinal targeting cannot silently diverge.
 - **Model gate.** `src/intent/model-route-gate.ts` is the final authority: a
   specific deterministic route outranks the model, a description cannot become
   a mutation, and a model mutation must produce an executable, actually-changing
@@ -179,7 +185,8 @@ is still required before calling the magnitudes final.
 ## References
 
 - `src/intent/semantics/param-registry.ts`, `src/intent/semantics/intent-plan.ts`
-- `src/intent/semantics/target-registry.ts`, `src/intent/semantics/quantity.ts`,
+- `src/intent/semantics/target-registry.ts`, `src/intent/semantics/target-resolution.ts`,
+  `src/intent/semantics/quantity.ts`,
   `src/intent/model-route-gate.ts`
 - `src/intent/apply-boundary.ts`, `src/intent/route-precedence.ts`,
   `src/intent/command-for-route.ts`

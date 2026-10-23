@@ -215,6 +215,11 @@ export function pasteClips(doc: ProjectDocument, clipboard: ClipClipboard, playh
           sourceChannel: stored.sourceChannel,
           warpMarkers: stored.warpMarkers,
         },
+        // A paste is a COPY: it inherits the source's length, so the
+        // quarter-bar CREATION floor does not apply. A pasted split fragment
+        // (which can be far shorter) used to be inflated to a quarter bar —
+        // the copy played material the original never contained.
+        { preserveLength: true },
       ).execute(pasted);
     }
   }

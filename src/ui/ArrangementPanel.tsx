@@ -83,6 +83,7 @@ import {
   updateArrangementTransition,
   updateAudioClip,
   sliceToPads,
+  MIN_NEW_AUDIO_CLIP_BARS,
 } from "../commands/commands";
 import { generatePatternCommand } from "../commands/aiPattern";
 import { makeMidiClipUnique } from "../commands/midiClips";
@@ -3442,6 +3443,15 @@ export function ArrangementPanel() {
     // Snap grid for THIS event: Shift suspends it (the DAW convention).
     // Fades/gain/slip live in source-time/audio-rate domains — never snapped.
     const grid = event.shiftKey ? null : snapBarsFor(snapGrid);
+    // THE FLOOR OF AN EDGE GESTURE. The quarter-bar floor is a CREATION policy
+    // (a clip drawn from scratch must be grabbable). A clip that is ALREADY
+    // shorter than that — a split fragment, a comp fragment — must never be
+    // INFLATED by an edge gesture: the preview used to show a 0.05-bar
+    // fragment growing to a quarter bar while the user dragged its edge
+    // *shorter*, and the commit stored that longer clip. The preview and the
+    // commit share this floor, so the geometry the user is shown is the
+    // geometry that lands.
+    const editFloorBars = Math.min(MIN_NEW_AUDIO_CLIP_BARS, cur.origLength);
     if (cur.groupId && cur.groupClipIds) {
       const liveDoc = services.store.doc;
       const liveGroup = liveDoc.arrangement.clipGroups?.find((group) => group.id === cur.groupId);
@@ -3494,7 +3504,7 @@ export function ArrangementPanel() {
     else if (cur.mode === "resize") {
       // Snap the END edge (musical: land on a grid line), start stays put.
       const endEdge = snapTo(cur.origStart + cur.origLength + delta);
-      setAudioDragLive({ startBar: cur.origStart, lengthBars: Math.max(0.25, endEdge - cur.origStart) });
+      setAudioDragLive({ startBar: cur.origStart, lengthBars: Math.max(editFloorBars, endEdge - cur.origStart) });
     } else if (cur.mode === "trimStart") {
       // Snap the START edge; the length is whatever remains up to the fixed end.
       //
@@ -3508,7 +3518,7 @@ export function ArrangementPanel() {
       // earlier material". The head now stops at the file's start.
       const headroomBars = cur.origOffsetSec / cur.sourcePerWallSecond / secPerBar;
       const newStart = Math.max(0, cur.origStart - headroomBars, snapTo(cur.origStart + delta));
-      const newLen = Math.max(0.25, cur.origStart + cur.origLength - newStart);
+      const newLen = Math.max(editFloorBars, cur.origStart + cur.origLength - newStart);
       setAudioDragLive({ startBar: newStart, lengthBars: newLen });
     } else if (cur.mode === "stretch") {
       // Alt+drag: length follows the pointer like resize/trim, the rate
@@ -3516,7 +3526,7 @@ export function ArrangementPanel() {
       // filling the clip. Right edge pins the start (snap the end edge like
       // resize), left edge pins the end (snap the start like trimStart).
       if (cur.edge === "right") {
-        const newLen = Math.max(0.25, snapTo(cur.origStart + cur.origLength + delta) - cur.origStart);
+        const newLen = Math.max(editFloorBars, snapTo(cur.origStart + cur.origLength + delta) - cur.origStart);
         setAudioDragLive({ startBar: cur.origStart, lengthBars: newLen });
         setAudioStretchLive({
           clipId: cur.clipId,
@@ -3524,7 +3534,7 @@ export function ArrangementPanel() {
         });
       } else {
         const newStart = Math.max(0, snapTo(cur.origStart + delta));
-        const newLen = Math.max(0.25, cur.origStart + cur.origLength - newStart);
+        const newLen = Math.max(editFloorBars, cur.origStart + cur.origLength - newStart);
         setAudioDragLive({ startBar: newStart, lengthBars: newLen });
         setAudioStretchLive({
           clipId: cur.clipId,

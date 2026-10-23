@@ -7,6 +7,7 @@ import {
 import { toJsonObjectSchema } from "./model-schema";
 void toJsonObjectSchema; // kept exported for the manifest grammar pin + tests
 import type { ProjectDocument } from "../project-model/types";
+import { intentModelUserMessage } from "./model-context";
 
 /**
  * LOCAL INTENT MODEL — OLLAMA PROVIDER (desktop path, pipeline step [C]).
@@ -188,7 +189,7 @@ export async function probeOllama(): Promise<string | null> {
   }
 }
 
-async function generate(instruction: string, _doc: ProjectDocument): Promise<string> {
+async function generate(instruction: string, doc: ProjectDocument): Promise<string> {
   const model = ollamaModelOverride ?? ollamaIntentModel();
   const response = await fetchWithTimeout(
     `${OLLAMA_BASE}/api/chat`,
@@ -216,7 +217,7 @@ async function generate(instruction: string, _doc: ProjectDocument): Promise<str
         options: { temperature: 0, num_predict: 384 },
         messages: [
           { role: "system", content: systemPromptInternal() },
-          { role: "user", content: instruction },
+          { role: "user", content: intentModelUserMessage(instruction, doc) },
         ],
       }),
     },

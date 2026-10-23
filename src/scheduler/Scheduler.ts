@@ -286,6 +286,19 @@ export class Scheduler {
   private stopped = true;
   /** Last BPM handed to applySceneTempo (null = project tempo) — change-guard. */
   private lastAppliedTempo: number | null | undefined = undefined;
+
+  /**
+   * The scene tempo currently in effect (null = the project tempo owns the
+   * transport). The SCHEDULER owns the transport's tempo while a scene tempo
+   * is active (roadmap 2.2), so the document-change path must ask before it
+   * re-applies the project BPM: a scene tempo that gets stomped back to the
+   * project BPM is never re-applied (the scheduler's change-guard sees the
+   * same scene tempo as last time), so the tempo was lost for the rest of the
+   * playback — after every edit.
+   */
+  get sceneTempo(): number | null {
+    return this.lastAppliedTempo ?? null;
+  }
   /**
    * Last observed AudioContext state. Used to detect the
    * suspended → running transition (Defect A02.D2, browser audio

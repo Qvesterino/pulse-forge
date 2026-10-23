@@ -1396,6 +1396,3 @@ export function bypassReadback(after: ProjectDocument, intent: BypassIntent): st
   }
   return entries.slice(0, 4).join(", ");
 }
-
-
-

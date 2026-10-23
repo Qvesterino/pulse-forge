@@ -274,5 +274,3 @@ export function recordParamAdjustment(
     degreeLevel: intent.degree?.level ?? AMOUNT_LEVEL[intent.amount],
   });
 }
-
-

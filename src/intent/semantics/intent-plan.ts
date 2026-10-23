@@ -229,62 +229,62 @@ function effectSteps(
   const steps: PlanStep[] = [];
   const knob = EFFECT_KNOB[intent.effectType];
   for (const trackId of targetTrackIds(before, intent.targets, intent.trackIds, intent.trackOrdinal)) {
-      const oldTrack = before.tracks.find((track) => track.id === trackId);
-      const newTrack = after.tracks.find((track) => track.id === trackId);
-      if (!oldTrack || !newTrack) continue;
-      const oldFx = oldTrack.effects.find((effect) => effect.type === intent.effectType);
-      const newFx = newTrack.effects.find((effect) => effect.type === intent.effectType);
-      if (oldFx && !newFx) {
+    const oldTrack = before.tracks.find((track) => track.id === trackId);
+    const newTrack = after.tracks.find((track) => track.id === trackId);
+    if (!oldTrack || !newTrack) continue;
+    const oldFx = oldTrack.effects.find((effect) => effect.type === intent.effectType);
+    const newFx = newTrack.effects.find((effect) => effect.type === intent.effectType);
+    if (oldFx && !newFx) {
+      steps.push({
+        kind: "state",
+        target: oldTrack.name,
+        parameter: `${intent.effectType}`,
+        beforeLabel: "on",
+        afterLabel: "removed",
+      });
+      continue;
+    }
+    if (!oldFx && newFx) {
+      // The add is a change even when the knob lands on its default value
+      // ("set reverb mix to 30%": the effect appears, the mix is unchanged).
+      steps.push({
+        kind: "state",
+        target: oldTrack.name,
+        parameter: intent.effectType,
+        beforeLabel: "off",
+        afterLabel: "on",
+        note: "add effect",
+      });
+    }
+    const paramIds = new Set([
+      ...(oldFx ? Object.keys(oldFx.params) : []),
+      ...(newFx ? Object.keys(newFx.params) : []),
+    ]);
+    if (knob) paramIds.add(knob);
+    for (const paramId of paramIds) {
+      const def = EFFECT_META[intent.effectType]?.params.find((param) => param.id === paramId);
+      if (!def) continue;
+      const from = oldFx?.params[paramId] ?? def.default;
+      const to = newFx?.params[paramId];
+      if (to == null || from === to) continue;
+      const label = paramFormat(def);
+      const note = !oldFx ? "add effect" : paramId === knob ? intent.direction : undefined;
+      if (def.kind === "enum" || def.kind === "toggle") {
         steps.push({
           kind: "state",
           target: oldTrack.name,
-          parameter: `${intent.effectType}`,
-          beforeLabel: "on",
-          afterLabel: "removed",
+          parameter: `${intent.effectType}.${paramId}`,
+          beforeLabel: label(from),
+          afterLabel: label(to),
+          ...(note ? { note } : {}),
         });
-        continue;
-      }
-      if (!oldFx && newFx) {
-        // The add is a change even when the knob lands on its default value
-        // ("set reverb mix to 30%": the effect appears, the mix is unchanged).
-        steps.push({
-          kind: "state",
-          target: oldTrack.name,
-          parameter: intent.effectType,
-          beforeLabel: "off",
-          afterLabel: "on",
-          note: "add effect",
-        });
-      }
-      const paramIds = new Set([
-        ...(oldFx ? Object.keys(oldFx.params) : []),
-        ...(newFx ? Object.keys(newFx.params) : []),
-      ]);
-      if (knob) paramIds.add(knob);
-      for (const paramId of paramIds) {
-        const def = EFFECT_META[intent.effectType]?.params.find((param) => param.id === paramId);
-        if (!def) continue;
-        const from = oldFx?.params[paramId] ?? def.default;
-        const to = newFx?.params[paramId];
-        if (to == null || from === to) continue;
-        const label = paramFormat(def);
-        const note = !oldFx ? "add effect" : paramId === knob ? intent.direction : undefined;
-        if (def.kind === "enum" || def.kind === "toggle") {
-          steps.push({
-            kind: "state",
-            target: oldTrack.name,
-            parameter: `${intent.effectType}.${paramId}`,
-            beforeLabel: label(from),
-            afterLabel: label(to),
-            ...(note ? { note } : {}),
-          });
-        } else {
-          steps.push(
-            numberStep(oldTrack.name, `${intent.effectType}.${paramId}`, from, to, to, label, domainOf(def), note),
-          );
-        }
+      } else {
+        steps.push(
+          numberStep(oldTrack.name, `${intent.effectType}.${paramId}`, from, to, to, label, domainOf(def), note),
+        );
       }
     }
+  }
   return steps;
 }
 
@@ -544,4 +544,3 @@ export function formatPlan(plan: IntentPlan): string {
   if (plan.steps.length === 0) return plan.warnings[0] ?? plan.summary;
   return plan.steps.map(formatStep).join("  ·  ");
 }
-

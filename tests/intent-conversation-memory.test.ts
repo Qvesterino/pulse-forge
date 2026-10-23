@@ -414,3 +414,48 @@ describe("prior adjustment — effect and param moves", () => {
     expect(resolvePriorAdjustment("half that adjustment", after)?.kind).toBe("effect");
   });
 });
+
+describe("prior adjustment — ordinal targets", () => {
+  it("reuses an effect on an ordinal track", () => {
+    const first = parseEffectIntent("slightly more reverb on the pads")!;
+    const after1 = applyEffectIntent(doc, first)!.execute(doc);
+    recordEffectAdjustment(doc.id, first, doc, after1);
+    const same = resolvePriorAdjustment("do the same on track two", after1);
+    expect(same?.kind).toBe("effect");
+    if (same?.kind !== "effect") return;
+    const target = doc.tracks.filter((track) => track.kind !== "group")[1]!;
+    expect(same.intent.trackIds).toEqual([target.id]);
+    const after2 = applyEffectIntent(after1, same.intent)!.execute(after1);
+    expect(after2.tracks.find((track) => track.id === target.id)?.effects.some((fx) => fx.type === "reverb")).toBe(
+      true,
+    );
+  });
+
+  it("reuses a param move on an ordinal track", () => {
+    const first = parseParamIntent("slightly longer reverb decay on the 808")!;
+    const after1 = applyParamIntent(doc, first)!.execute(doc);
+    recordParamAdjustment(doc.id, first, doc, after1);
+    const same = resolvePriorAdjustment("do the same on track three", after1);
+    expect(same?.kind).toBe("param");
+    if (same?.kind !== "param") return;
+    const target = doc.tracks.filter((track) => track.kind !== "group")[2]!;
+    expect(same.intent.trackIds).toEqual([target.id]);
+    const after2 = applyParamIntent(after1, same.intent)!.execute(after1);
+    const reverb = after2.tracks.find((track) => track.id === target.id)?.effects.find((fx) => fx.type === "reverb");
+    expect(reverb?.params.decay).toBeCloseTo(1.98, 2);
+  });
+
+  it("records an ordinal effect and halves on the SAME track", () => {
+    const first = parseEffectIntent("slightly more reverb on track three")!;
+    const after1 = applyEffectIntent(doc, first)!.execute(doc);
+    recordEffectAdjustment(doc.id, first, doc, after1);
+    const entry = lastAdjustment(doc.id) as EffectRecord;
+    const target = doc.tracks.filter((track) => track.kind !== "group")[2]!;
+    expect(entry.trackIds).toEqual([target.id]);
+    const half = resolvePriorAdjustment("half that adjustment", after1);
+    expect(half?.kind).toBe("effect");
+    if (half?.kind !== "effect") return;
+    expect(half.intent.trackIds).toEqual([target.id]);
+    expect(half.intent.targets).toEqual([]);
+  });
+});

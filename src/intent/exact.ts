@@ -403,7 +403,7 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
   if (!gainDb && !gainAbs) {
     const quantity = parseQuantity(lower);
     const target = firstTarget(lower);
-    if (quantity?.kind === "db" && target) {
+    if (quantity?.kind === "db" && target && target !== "vocal") {
       if (quantity.absolute) {
         ops.push({ kind: "gainDbAbsolute", target, absDb: quantity.value });
       } else {

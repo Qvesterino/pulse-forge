@@ -117,4 +117,3 @@ export function lastAdjustment(docId?: string): AdjustmentRecord | null {
 export function clearAdjustments(): void {
   last = null;
 }
-

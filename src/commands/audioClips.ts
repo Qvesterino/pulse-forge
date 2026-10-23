@@ -35,6 +35,44 @@ export function quantizeAudioBar(bar: number, barUnitTicks: number): number {
   return Number.isFinite(bar) ? Math.round(bar * barUnitTicks) / barUnitTicks : bar;
 }
 
+/**
+ * THE CLIP-LENGTH FLOOR IS A CREATION POLICY, NOT AN EDIT POLICY.
+ *
+ * A newly DRAWN clip is floored at a quarter bar: a shorter clip is too small
+ * to grab, and an accidental one-tick clip is noise, not music.
+ *
+ * But the document model accepts any POSITIVE length on purpose (see
+ * `sanitizeAudioClips`: "Recorded comp fragments can be shorter than the normal
+ * UI clip-size floor"), because a SPLIT of a take produces fragments that are
+ * as short as the split point allows — 0.05 bars in the default split.
+ *
+ * Applying the CREATION floor to those clips as an EDIT clamp made an edit
+ * silently REWRITE a length the user never touched: resizing a 0.05-bar
+ * fragment to "the same length" turned it into a 0.25-bar clip — five times
+ * longer, playing material past the fragment's end, with a source offset that
+ * no longer matches what the waveform showed. The clip grew because the user
+ * nudged an edge.
+ *
+ * So: an edit may never leave a clip LONGER than it already is. The floor for
+ * an edit is the clip's own length when the clip is already below the
+ * creation floor, and the creation floor otherwise.
+ */
+export const MIN_NEW_AUDIO_CLIP_BARS = 0.25;
+
+/** The shortest length an EDIT may leave an audio clip at. Never inflates it. */
+export function minEditableClipBars(clip: AudioClip): number {
+  return Math.min(MIN_NEW_AUDIO_CLIP_BARS, clip.lengthBars);
+}
+
+/**
+ * The shortest length the document can hold: one tick. The model drops a clip
+ * whose length is not positive, so a copy of a sub-floor clip must not be
+ * allowed to round itself to nothing.
+ */
+export function minPositiveAudioClipBars(doc: ProjectDocument): number {
+  return 1 / ticksPerBar(doc);
+}
+
 export function addAudioClip(
   doc: ProjectDocument,
   trackId: string,
@@ -42,6 +80,7 @@ export function addAudioClip(
   startBar: number,
   lengthBars = 4,
   patch: Partial<Omit<AudioClip, "id" | "trackId" | "bufferId" | "startBar" | "lengthBars">> = {},
+  options: { preserveLength?: boolean } = {},
 ): Command {
   const track = doc.tracks.find((t) => t.id === trackId);
   if (!track) throw new Error(`Track ${trackId} not found`);
@@ -51,12 +90,15 @@ export function addAudioClip(
   const finiteOr = (value: number, fallback: number): number => (Number.isFinite(value) ? value : fallback);
   const barUnitTicks = ticksPerBar(doc);
   const pitchSemitones = Math.round(Math.min(24, Math.max(-24, finiteOr(patch.pitchSemitones ?? 0, 0))));
+  // A COPY inherits its length; the creation floor does not apply to it. A
+  // pasted sub-floor fragment must stay the fragment the user copied.
+  const lengthFloorBars = options.preserveLength ? minPositiveAudioClipBars(doc) : MIN_NEW_AUDIO_CLIP_BARS;
   const clip: AudioClip = {
     id: uid("audioClip"),
     trackId,
     bufferId,
     startBar: Math.max(0, quantizeAudioBar(finiteOr(startBar, 0), barUnitTicks)),
-    lengthBars: Math.max(0.25, quantizeAudioBar(finiteOr(lengthBars, 4), barUnitTicks)),
+    lengthBars: Math.max(lengthFloorBars, quantizeAudioBar(finiteOr(lengthBars, 4), barUnitTicks)),
     offsetSec: Math.max(0, finiteOr(patch.offsetSec ?? 0, 0)),
     trimStart: Math.max(0, finiteOr(patch.trimStart ?? 0, 0)),
     trimEnd: Math.max(0, finiteOr(patch.trimEnd ?? 0, 0)),
@@ -638,7 +680,10 @@ export function stretchAudioClip(
   // MAX_ARRANGEMENT_CLIP_BARS, and ProjectStore.applyCommand normalizes after
   // every command — so an unclamped value here did not store an oversized clip,
   // it silently DELETED the user's clip with no error and no undo entry.
-  const bars = Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(0.25, quantizeAudioBar(lengthBars, ticksPerBar(doc))));
+  const bars = Math.min(
+    MAX_ARRANGEMENT_CLIP_BARS,
+    Math.max(minEditableClipBars(clip), quantizeAudioBar(lengthBars, ticksPerBar(doc))),
+  );
   const rate = Number.isFinite(stretchRate) ? Math.round(Math.min(4, Math.max(0.25, stretchRate)) * 100) / 100 : 1;
   // Fades must stay inside the clip (clampClipFades) — same rule as resize.
   const { fadeIn, fadeOut } = clampClipFades(doc, clip, bars, clip.startBar);
@@ -664,7 +709,10 @@ export function resizeAudioClip(doc: ProjectDocument, clipId: string, lengthBars
   // drops the clip outright, and because normalization runs inside
   // applyCommand the clip vanished from the store with no error and no undo —
   // a drag past the limit destroyed the user's take.
-  const bars = Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(0.25, quantizeAudioBar(lengthBars, ticksPerBar(doc))));
+  const bars = Math.min(
+    MAX_ARRANGEMENT_CLIP_BARS,
+    Math.max(minEditableClipBars(clip), quantizeAudioBar(lengthBars, ticksPerBar(doc))),
+  );
   // Fades must stay inside the resized clip (audit §8): the engine clamps
   // audibly, but out-of-bounds state desyncs the fade handles from the
   // visual clip width.
@@ -711,7 +759,7 @@ export function trimAudioClipStart(
   assertClipEditable(clip, "trim");
   const barUnitTicks = ticksPerBar(doc);
   const bars = Number.isFinite(patch.lengthBars)
-    ? Math.max(0.25, quantizeAudioBar(patch.lengthBars, barUnitTicks))
+    ? Math.max(minEditableClipBars(clip), quantizeAudioBar(patch.lengthBars, barUnitTicks))
     : clip.lengthBars;
   const startBar = Number.isFinite(patch.startBar)
     ? Math.max(0, quantizeAudioBar(patch.startBar as number, barUnitTicks))

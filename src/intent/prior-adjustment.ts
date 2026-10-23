@@ -280,4 +280,3 @@ export function resolvePriorAdjustment(text: string, doc: ProjectDocument): Prio
       return resolveParam(text, doc, entry, scale);
   }
 }
-

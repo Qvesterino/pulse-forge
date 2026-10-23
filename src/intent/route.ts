@@ -512,6 +512,22 @@ function ambiguousSendReturnChoices(text: string, doc: ProjectDocument): IntentC
   return choices;
 }
 
+/** An ordinal beyond the project's non-group track list never reaches apply. */
+function outOfRangeOrdinal(ordinal: number | undefined, doc: ProjectDocument): boolean {
+  if (ordinal == null) return false;
+  return ordinal < 0 || ordinal >= doc.tracks.filter((track) => track.kind !== "group").length;
+}
+
+function clarifyOrdinalTarget(doc: ProjectDocument): Extract<RoutedIntent, { kind: "clarify" }> {
+  const count = doc.tracks.filter((track) => track.kind !== "group").length;
+  return {
+    kind: "clarify",
+    reason: "prior-adjustment-target",
+    suggestions: [],
+    advice: [`This project has ${count} tracks; name one, for example "track 1".`],
+  };
+}
+
 /**
  * PRIOR-DELTA DECLINE — the fallback when the ledger cannot answer.
  *
@@ -872,6 +888,7 @@ export function routeIntentText(
   // cannot capture a plain "turn down the bass".
   const paramIntent = parseParamIntent(text);
   if (paramIntent) {
+    if (outOfRangeOrdinal(paramIntent.trackOrdinal, doc)) return clarifyOrdinalTarget(doc);
     return { kind: "paramIntent", intent: paramIntent };
   }
   // A non-structural request that says the arrangement needs more or less
@@ -1081,6 +1098,7 @@ export function routeIntentText(
   // parse that now runs early (above), so a param ask cannot be stolen by
   // tempo/fader/send on the way here.
   const effectIntent = parseEffectIntent(text);
+  if (outOfRangeOrdinal(effectIntent?.trackOrdinal, doc)) return clarifyOrdinalTarget(doc);
   const normalizedEffectText = deaccent(text).toLowerCase();
   const hasExplicitEffectVerb =
     /\b(?:add|apply|insert|remove|take out|less|more|reduce|ease off|pull|turn down|bypass|disable|increase|decrease|set)\b.{0,32}\b(?:reverb|delay|echo|chorus|compress(?:ion|or)?|saturat\w*|sidechain|pump|eq|bass.?harmon|koren|harmonik)\b/.test(

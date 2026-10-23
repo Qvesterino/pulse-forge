@@ -678,10 +678,7 @@ interface ParamTargetEntry {
 }
 
 /** Family first-id rows + explicit/ordinal tracks, deduplicated. */
-function paramTargetEntries(
-  doc: Parameters<typeof applyMixIntent>[0],
-  intent: ParamIntent,
-): ParamTargetEntry[] {
+function paramTargetEntries(doc: Parameters<typeof applyMixIntent>[0], intent: ParamIntent): ParamTargetEntry[] {
   const entries: ParamTargetEntry[] = [];
   const covered = new Set<string>();
   for (const target of intent.targets) {
@@ -854,7 +851,3 @@ export function paramReadback(
   if (entries.length === 0) return "";
   return entries.slice(0, 3).join(", ") + (entries.length > 3 ? ` +${entries.length - 3}` : "");
 }
-
-
-
-

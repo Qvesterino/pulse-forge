@@ -108,14 +108,34 @@ function detectBarUnitViolations(label: string, source: string): Violation[] {
     const pos = sf.getLineAndCharacterOfPosition(node.getStart(sf));
     return { line: pos.line + 1, column: pos.character + 1 };
   };
-  const visit = (node: ts.Node): void => {
+  const visit = (node: ts.Node, parent: ts.Node | null): void => {
     if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.AsteriskToken) {
-      const left = node.left;
-      const right = node.right;
-      const isFormula =
-        (ts.isIdentifier(left) && left.text === "PPQ" && ts.isNumericLiteral(right) && right.text === "4") ||
-        (ts.isIdentifier(right) && right.text === "PPQ" && ts.isNumericLiteral(left) && left.text === "4");
-      if (isFormula) {
+      // The bar-length formula is "PPQ MULTIPLIED BY 4". The expression may
+      // carry EXTRA factors — `4 * 4 * PPQ` is the same formula written with
+      // the bar count in front, and it is what the intent route's default
+      // loop range used. Reading only the node's DIRECT children missed that
+      // shape entirely (the outer operand is itself a BinaryExpression), so
+      // the operands are searched as a TREE.
+      //
+      // A DIVISION is a barrier: `PPQ / 4` is a sixteenth note (a grid
+      // position), not a bar length, and `PPQ * (4 / sig.denominator)` is the
+      // meter-aware beats-per-bar formula, not a copy of the 4/4 one.
+      //
+      // Only the OUTERMEST matching multiplication is reported, so one
+      // expression yields one violation.
+      const left = barOperands(node.left);
+      const right = barOperands(node.right);
+      const matches = (left.ppq && right.four) || (left.four && right.ppq);
+      const parentMatches =
+        parent !== null &&
+        ts.isBinaryExpression(parent) &&
+        parent.operatorToken.kind === ts.SyntaxKind.AsteriskToken &&
+        (() => {
+          const pLeft = barOperands(parent.left);
+          const pRight = barOperands(parent.right);
+          return (pLeft.ppq && pRight.four) || (pLeft.four && pRight.ppq);
+        })();
+      if (matches && !parentMatches) {
         out.push({ file: label, ...at(node), kind: "formula", text: "PPQ * 4" });
       }
     }
@@ -128,10 +148,32 @@ function detectBarUnitViolations(label: string, source: string): Violation[] {
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === "PPQ") {
       out.push({ file: label, ...at(node), kind: "ppq-copy", text: "const PPQ = ..." });
     }
-    ts.forEachChild(node, visit);
+    ts.forEachChild(node, (child) => visit(child, node));
   };
-  visit(sf);
+  visit(sf, null);
   return out;
+}
+
+/**
+ * The two operands of the bar-length formula inside a subtree: the PPQ
+ * identifier and the literal 4. A division is a BARRIER — the operands of
+ * `PPQ / 4` (a sixteenth note) and of `PPQ * (4 / denominator)` (the
+ * meter-aware beats-per-bar formula) are not a bar length.
+ */
+function barOperands(node: ts.Node): { ppq: boolean; four: boolean } {
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.SlashToken) {
+    return { ppq: false, four: false };
+  }
+  if (ts.isIdentifier(node) && node.text === "PPQ") return { ppq: true, four: false };
+  if (ts.isNumericLiteral(node) && node.text.replace(/_/g, "") === "4") return { ppq: false, four: true };
+  let ppq = false;
+  let four = false;
+  ts.forEachChild(node, (child) => {
+    const found = barOperands(child);
+    ppq = ppq || found.ppq;
+    four = four || found.four;
+  });
+  return { ppq, four };
 }
 
 /** Every TypeScript source file under `src/`, as repo-relative labels. */
@@ -182,6 +224,49 @@ describe("ADR 0056 Stage 2 — the bar length has one formula (guard self-proof)
     // `grep "PPQ \* 4"` misses this. The intent route had exactly this shape.
     const found = detectBarUnitViolations("src/intent/studio-words.ts", "const bar = 4 * PPQ;\n");
     expect(found.map((v) => v.kind)).toEqual(["formula"]);
+  });
+
+  it("GUARD PROOF: the formula with an EXTRA factor in front is detected", () => {
+    // `4 * 4 * PPQ` is the bar length with the bar count in front. Reading the
+    // multiplication's DIRECT children missed it (the outer operand is
+    // itself a BinaryExpression), so the intent route's default loop range
+    // could hardcode 4/4 in a 6/8 project and the guard stayed green.
+    const found = detectBarUnitViolations("src/ui/IntentPanel.tsx", "const end = t.loopStart + 4 * 4 * PPQ;\n");
+    expect(found.map((v) => v.kind)).toEqual(["formula"]);
+    expect(found[0]!.line).toBe(1);
+  });
+
+  it("GUARD PROOF: one expression yields ONE violation, not one per factor", () => {
+    const found = detectBarUnitViolations("src/ui/IntentPanel.tsx", "const end = 4 * PPQ * 2;\n");
+    expect(found.map((v) => v.kind)).toEqual(["formula"]);
+  });
+
+  it("GUARD PROOF: the METER-AWARE form is not a violation", () => {
+    // `ticksPerBar(doc) * 4` is the legal shape — the bar length comes from
+    // the document. The guard must not flag it.
+    const found = detectBarUnitViolations(
+      "src/ui/IntentPanel.tsx",
+      "const end = t.loopStart + ticksPerBar(doc) * 4;\n",
+    );
+    expect(found.map((v) => v.kind)).toEqual([]);
+  });
+
+  it("GUARD PROOF: a SIXTEENTH note is not a bar length", () => {
+    // `PPQ / 4` is a grid position (a sixteenth), and the templates are 4/4
+    // by definition. A division is a barrier — the guard must not read the
+    // divisor as the bar count.
+    const found = detectBarUnitViolations("src/project-model/templates.ts", "note(28, 3 * (PPQ / 4), PPQ / 2, 0.7);\n");
+    expect(found.map((v) => v.kind)).toEqual([]);
+  });
+
+  it("GUARD PROOF: the meter-aware beats-per-bar formula is not a violation", () => {
+    // `PPQ * (4 / sig.denominator) * sig.numerator` is the ADR 0056 formula
+    // itself (in schema.ts) — not a copy of the 4/4 one.
+    const found = detectBarUnitViolations(
+      "src/project-model/schema.ts",
+      "return PPQ * (4 / sig.denominator) * sig.numerator;\n",
+    );
+    expect(found.map((v) => v.kind)).toEqual([]);
   });
 
   it("GUARD PROOF: a local copy of the PPQ constant is detected", () => {
