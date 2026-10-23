@@ -32,7 +32,17 @@ import { snapshot } from "./core";
 import { cloneStepMeta, unlinkMarkersOfClips } from "./docOps";
 import { addAudioClip } from "./audioClips";
 import { splitAudioClipAtTickWithMinimumFragment } from "./clipEditing";
-import { audioLaneOf, audioSpanBars, sceneSpanTicks, withAudioLane } from "../project-model/timeline";
+import {
+  automationLaneOf,
+  audioLaneOf,
+  audioSpanBars,
+  midiLaneOf,
+  sceneSpanTicks,
+  tickClipSpan,
+  withAudioLane,
+  withAutomationClips,
+  withMidiClips,
+} from "../project-model/timeline";
 
 /* ---------------- time range ---------------- */
 /**
@@ -189,6 +199,59 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
     })
     .sort((a, b) => a.startBar - b.startBar);
   nextDoc = withAudioLane(nextDoc, nextAudioClips);
+
+  // MIDI + arrangement automation clips (ADR 0044/0045): free-placement
+  // integer-tick lanes — the same duplicate contract as the audio lane
+  // (straddle refuses; wholly-inside copies; trailing shifts), but all math
+  // in TICKS: the bar-aligned delta keeps tick-exact clips tick-exact.
+  // Copies keep SHARING the source patternId (shared-source semantics,
+  // ADR 0044 decision 4) and carry phase/mute/lock/points verbatim.
+  const tickClipPolicy = (
+    clip: { startTick: number; lengthTicks: number },
+    kind: string,
+  ): "copy" | "shift" | "keep" => {
+    const { from: f, to: t } = tickClipSpan(clip);
+    if (f >= from && t <= to) return "copy";
+    if ((f < from && t > from) || (f < to && t > to)) {
+      throw new Error(`Cannot duplicate a time range when a ${kind} clip crosses its boundary; adjust the range first.`);
+    }
+    return f >= to ? "shift" : "keep";
+  };
+  const midiClips = midiLaneOf(doc.arrangement);
+  const nextMidiClips = midiClips.flatMap((clip) => {
+    switch (tickClipPolicy(clip, "MIDI")) {
+      case "copy":
+        return [
+          { ...clip, id: uid("midiClip"), startTick: clip.startTick + delta },
+          clip,
+        ];
+      case "shift":
+        return [{ ...clip, startTick: clip.startTick + delta }];
+      default:
+        return [clip];
+    }
+  });
+  nextDoc = withMidiClips(nextDoc, nextMidiClips);
+  const automationClips = automationLaneOf(doc.arrangement);
+  const nextAutomationClips = automationClips.flatMap((clip) => {
+    switch (tickClipPolicy(clip, "automation")) {
+      case "copy":
+        return [
+          {
+            ...clip,
+            id: uid("automationClip"),
+            startTick: clip.startTick + delta,
+            points: clip.points.map((point) => ({ ...point })),
+          },
+          clip,
+        ];
+      case "shift":
+        return [{ ...clip, startTick: clip.startTick + delta }];
+      default:
+        return [clip];
+    }
+  });
+  nextDoc = withAutomationClips(nextDoc, nextAutomationClips);
 
   // Markers inside zone are duplicated; trailing markers are shifted
   const nextMarkers = doc.markers.flatMap((m) => {

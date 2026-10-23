@@ -151,7 +151,11 @@ export function generateDrumPattern(
     // what makes an irregular groove generate AS ITSELF instead of a bar with
     // two steps of a fallback tail.
     const sourceSequence = generatePadSequence(model, grooveBarSteps(groove), rand, options.temperature);
-    const baseSequence = projectRowToMeter(sourceSequence, role, meter);
+    // The source is the groove's OWN bar, in the groove's OWN metre — so the
+    // projection knows what it is mapping (a 7/8 groove read at a 4/4 bar is
+    // not the identity, and reading it as one used to leave the tail of the
+    // 4/4 bar undefined).
+    const baseSequence = projectRowToMeter(sourceSequence, role, meter, aiMeterFor(groove.timeSignature ?? null));
 
     // Extend to full stepCount with bar-level variation (dice complexity/variation widens it)
     const barVarChance = diceComplexity != null ? 0.08 + diceComplexity * 0.22 : 0.15; // 0.08 sparse → 0.30 dense

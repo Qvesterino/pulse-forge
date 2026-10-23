@@ -1,6 +1,6 @@
 import type { GrooveData } from "./types";
 import { inferPadRole, type PadRole } from "./pad-roles";
-import { isAnchorForRole, isDefaultMeter, type AiMeter } from "./meter";
+import { aiMeterFor, DEFAULT_AI_METER, isAnchorForRole, isDefaultMeter, type AiMeter } from "./meter";
 import { getGroovePadModel } from "./markov";
 
 /**
@@ -15,8 +15,18 @@ import { getGroovePadModel } from "./markov";
  * backbeat on the "ands" of 1 and 3 lands on the wrong units.
  *
  * This module is the metrical VIEW of that material: a DERIVED PROJECTION, not
- * a second library. The library stays the source of truth and stays 4/4; the
- * projection answers "what does this groove say in THIS metre?".
+ * a second library. The library stays the source of truth; the projection
+ * answers "what does this groove say in THIS metre?".
+ *
+ * ## The library grew an irregular half (ADR 0057 Stage 2j)
+ *
+ * The library was 4/4 material; now it also holds grooves WRITTEN in 7/8 and
+ * 5/8, and a groove declares its own metre (`GrooveData.timeSignature`). That
+ * changes one thing here: the identity is no longer "the target is 4/4" but
+ * "the SOURCE is in the target's metre". A 7/8 groove asked to play in a 4/4
+ * bar is not an identity — it is a projection like any other, and before this
+ * stage it was read at the target's length, which left the tail of the 4/4
+ * bar undefined.
  *
  * ## The projection
  *
@@ -47,11 +57,14 @@ import { getGroovePadModel } from "./markov";
  *   irregular bar) keeps its material.
  * - A role with no material at all (a groove with no clap) is not invented.
  *
- * ## 4/4 is the identity
+ * ## The identity
  *
- * In 4/4 the projection does not run: the metre IS the library's metre, so the
- * material is already in the right shape. That is what keeps 4/4
- * byte-identical — not a comparison, a short-circuit.
+ * When the source is already in the target's metre, the projection does not
+ * run: the material is already in the right shape. In 4/4 that is the library's
+ * own metre, so the row keeps its own length (one groove in the library carries
+ * a fifteen-step row; the projection must not "fix" it in the metre that never
+ * asked) — and that is what keeps 4/4 byte-identical. Not a comparison, a
+ * short-circuit.
  */
 
 /** The anchor a role rides in this metre — the roles the metre re-voices. */
@@ -83,12 +96,25 @@ export function anchorPositions(meter: AiMeter, role: PadRole): number[] {
  * Level-agnostic on purpose: the same projection maps the groove library's
  * velocities AND the Markov model's quantized levels, so the reference and the
  * generated content can never disagree about where the metre puts a hit.
+ *
+ * `sourceMeter` is the metre the ROW was written in — the groove's own metre
+ * (ADR 0057 Stage 2j). It decides the identity: a row that is ALREADY in the
+ * target's metre must not move, and a row that is NOT (a 7/8 groove asked to
+ * play in a 4/4 bar) must be mapped rather than read at the target's length.
  */
-export function projectRowToMeter(row: readonly number[], role: PadRole, meter: AiMeter): number[] {
-  // 4/4 is the identity — the library's own metre. Nothing moves, and the
-  // row keeps its own length (one groove in the library carries a fifteen-step
-  // row; the projection must not "fix" it in the metre that never asked).
-  if (isDefaultMeter(meter.signature)) return Array.from(row);
+export function projectRowToMeter(
+  row: readonly number[],
+  role: PadRole,
+  meter: AiMeter,
+  sourceMeter: AiMeter = DEFAULT_AI_METER,
+): number[] {
+  // The identity — the source IS in the target's metre. In 4/4 that is the
+  // library's own metre, so nothing moves (and one groove in the library
+  // carries a fifteen-step row; the projection must not "fix" it in the metre
+  // that never asked). A row from ANOTHER metre is not an identity any more,
+  // and reading it at the target's length is what used to leave a 7/8 groove's
+  // last two steps of a 4/4 bar undefined.
+  if (isDefaultMeter(meter.signature) && isDefaultMeter(sourceMeter.signature)) return Array.from(row);
 
   const target = Math.max(1, Math.floor(meter.stepsPerBar));
   const sourceLength = row.length;
@@ -135,8 +161,8 @@ function roleAt(roles: readonly PadRole[], padIndex: number): PadRole {
  * The metrical view of one pad's rows: the groove's patterns with that pad's
  * row projected into the document's metre.
  *
- * In 4/4 this is the groove's own rows, unchanged — the identity the whole
- * stage rests on.
+ * In 4/4 with a 4/4 groove this is the groove's own rows, unchanged — the
+ * identity the whole stage rests on.
  */
 export function metricalGroovePadRows(
   groove: GrooveData,
@@ -144,11 +170,12 @@ export function metricalGroovePadRows(
   role: PadRole,
   meter: AiMeter,
 ): readonly number[][] {
-  if (isDefaultMeter(meter.signature)) {
+  const source = aiMeterFor(groove.timeSignature ?? null);
+  if (isDefaultMeter(meter.signature) && isDefaultMeter(source.signature)) {
     // The generator's own reference — the very same rows it has always read.
     return getGroovePadModel(groove, padIndex).patterns;
   }
-  return groove.patterns.map((pattern) => projectRowToMeter(pattern[padIndex] ?? [], role, meter));
+  return groove.patterns.map((pattern) => projectRowToMeter(pattern[padIndex] ?? [], role, meter, source));
 }
 
 /**
@@ -164,12 +191,13 @@ export function metricalGroovePatterns(
   roles: readonly PadRole[],
   meter: AiMeter,
 ): { [padIndex: number]: number[] }[] {
-  if (isDefaultMeter(meter.signature)) return groove.patterns;
+  const source = aiMeterFor(groove.timeSignature ?? null);
+  if (isDefaultMeter(meter.signature) && isDefaultMeter(source.signature)) return groove.patterns;
   return groove.patterns.map((pattern) => {
     const projected: { [padIndex: number]: number[] } = {};
     for (const key of Object.keys(pattern)) {
       const padIndex = Number(key);
-      projected[padIndex] = projectRowToMeter(pattern[padIndex] ?? [], roleAt(roles, padIndex), meter);
+      projected[padIndex] = projectRowToMeter(pattern[padIndex] ?? [], roleAt(roles, padIndex), meter, source);
     }
     return projected;
   });

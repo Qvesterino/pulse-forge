@@ -1,6 +1,6 @@
 # ADR 0057 — The step grid follows the meter: one bar is `ticksPerBar(doc) / STEP_TICKS` steps
 
-Date: 2026-10-20 · Status: Accepted (v8 — Stage 1, 1b, 2a, 2b, 2c, 2d, 2e, 2f, 2g, 2h and 2i shipped) · Scope: pattern grid, sequencer ruler, piano roll grid, pattern labels, transfer disclosure, intent engine, MCP surface, AI layer, AI groove material, MIDI import, pinned model feature contracts, assist layer, metre disclosure, irregular metres
+Date: 2026-10-20 · Status: Accepted (v9 — Stage 1, 1b, 2a, 2b, 2c, 2d, 2e, 2f, 2g, 2h, 2i and 2j shipped) · Scope: pattern grid, sequencer ruler, piano roll grid, pattern labels, transfer disclosure, intent engine, MCP surface, AI layer, AI groove material, MIDI import, pinned model feature contracts, assist layer, metre disclosure, irregular metres, irregular groove library
 
 ## Context
 
@@ -1086,12 +1086,195 @@ lane has no training data at all — that is the same to-do as in Stage 2e: a
 versioned `features.v3` contract, re-validated manifests, and metrical
 training data that does not exist yet.
 
-### The groove LIBRARY is still 4/4
+### The groove LIBRARY is still 4/4 — **SUPERSEDED IN STAGE 2j**
 
 An irregular groove is produced by the METRICAL VIEW, not by a library entry.
 A library of real 7/8 grooves is a content project, and for the model to
 learn them it is also the retrain above. What ships now is a 7/8 document
 that finally plays like 7/8 instead of clicking on the downbeat.
+
+> **SUPERSEDED IN STAGE 2j.** The library is no longer 4/4-only: six grooves
+> now DECLARE 7/8 or 5/8 and their rows are that metrical bar long. The claim
+> above was true when it was written and false when Stage 2j landed — the
+> irregular groove is now a library entry, not a projection of a 4/4 one.
+
+## Stage 2j — the GROOVE LIBRARY has an irregular half
+
+### What was measured, before anything changed
+
+Stage 2i made an irregular BAR speak — the grouping, the anchors, the
+syncopation grid. But the MATERIAL it drew from was still a 4/4 groove read at
+the metrical bar. MEASURED on the pre-2j commit (b4fde8c6) with the same
+script used after it (house, seed "measure", two bars, the product's
+generation path):
+
+| metre | the groove the filter picked | kick               | clap        |
+| ----- | ---------------------------- | ------------------ | ----------- |
+| 7/8   | `house.slaphouse` (16 steps) | `[0,4,8,14,18,22]` | `[8,22,23]` |
+| 5/8   | `house.slaphouse` (16 steps) | `[0,6,10,16]`      | `[5,6,16]`  |
+
+The rest of the lanes were a FOUR-FOUR groove's: 7/8 carried Hat Closed
+`[1,4,5,8,11,15,17,19,21,25,27]`, Hat Open `[6,18,20]` and Tick
+`[3,4,11,12,17,18,25,26]`; 5/8 carried Hat Closed `[5,7,10,11,19]` and Tick
+`[0,2,3,4,5,7,8,10,13,14,17,18]`.
+
+The kick and the clap were right — Stage 2i's skeleton held. Everything else
+was a FOUR-FOUR groove's: the tick, the hat rhythm, the ghost note that rode
+with the accent. A 7/8 bar was a 4/4 bar with a 7/8 ruler over it.
+
+### The decision: a groove DECLARES its metre, and only plays in it
+
+1. `GrooveData.timeSignature` — a groove declares the metre it was WRITTEN in.
+   Absent means 4/4, the carrier rule from Stage 2a.
+2. `grooveBarSteps(groove)` — the groove's OWN bar in steps: 16 for 4/4, 14
+   for 7/8, 10 for 5/8.
+3. `preferGroovesForMeter(grooves, meter)` — a groove only ever plays its own
+   metre. The 4/4 candidate set is EXACTLY the grooves that declare no metre,
+   which is the set it always hashed over, so the 4/4 pick does not move. A
+   metre the library does NOT have falls back to the 4/4 material.
+4. The model generates the groove's OWN bar (`grooveBarSteps`), so a 7/8
+   groove generates as itself instead of a bar with a two-step fallback tail.
+5. The candidate lists in `src/intent/candidate-search.ts` are metre-aware.
+6. The near-duplicate guard's identity triple gained the metre: a 7/8 groove
+   and a 4/4 groove can share a tempo, a swing and a kit and still be two
+   different pockets — they are not even the same length.
+
+The metrical VIEW learned one thing: the identity is no longer "the target is
+4/4" but "the SOURCE is in the target's metre". A 7/8 groove asked to play in
+a 4/4 bar is not an identity — and before this stage it was read at the
+target's length, which left the tail of the 4/4 bar undefined.
+
+### The content: six grooves, authored in the metre
+
+`src/ai/grooves/irregular.ts` — the first irregular half of the library:
+
+| groove               | metre       | bar | pads         | the pocket                                                      |
+| -------------------- | ----------- | --- | ------------ | --------------------------------------------------------------- |
+| `house.seven8`       | 7/8 (2+2+3) | 14  | 0,1,6,7,8,10 | the house pocket in a bar that does not divide by three         |
+| `house.five8`        | 5/8 (3+2)   | 10  | 0,1,6,7,8,10 | the same pocket in "1-2-3 \| 4-5"                               |
+| `techno.seven8`      | 7/8 (2+2+3) | 14  | 0,6,8,10     | the driving floor, the hat on every off-beat sixteenth          |
+| `eurodance.balkan78` | 7/8 (2+2+3) | 14  | 0,1,6,7,12   | the Balkan 7/8, the toms answering at the end of the long group |
+| `eurodance.balkan58` | 5/8 (3+2)   | 10  | 0,1,6,7,12   | the same in "1-2-3 \| 4-5"                                      |
+| `rock.seven8`        | 7/8 (2+2+3) | 14  | 0,4,6,8,12   | the prog 7/8: snare and clap on the accent, hats on the eighths |
+
+The rows are AUTHORED, not derived, and they obey four rules — the metre, not
+decoration:
+
+1. The KICK lanes ride the GROUP downbeats — one hit per group, in order.
+2. The CLAP / SNARE sits on the ACCENT group — ONE hit. An irregular bar has
+   one accent besides its downbeat.
+3. The closed hat rides the off-beat sixteenths (the house shuffle) or the
+   eighths (the rock pocket).
+4. The open hat sits two sixteenths before the accent and two before the bar
+   line — the 4/4 house rule (6 and 14) carried into the odd bar.
+
+Rules 1 and 2 are what make the metrical view's projection the IDENTITY for
+every one of these rows: a groove written in the metre needs no re-voicing,
+so the reference the quality metrics grade against is already in the metre.
+The rows were written NUMERICALLY and encoded with the library's own compact
+codec (`scratch/author-irregular.mts`), so the readable source and the
+committed rows cannot drift.
+
+### What changed, measured
+
+MEASURED with the same script, the same seeds and the product's generation
+path — after this stage (`scratch/measure-2j.mts`), before it in a worktree at
+b4fde8c6 (`scratch/measure-2j-before.mts`):
+
+| metre               | before (b4fde8c6)        | after (this stage)          |
+| ------------------- | ------------------------ | --------------------------- |
+| 4/4                 | `house.slaphouse`        | **identical, lane by lane** |
+| 3/4, 6/8, 5/4, 11/8 | the 4/4 groove projected | **identical, lane by lane** |
+| 7/8                 | `house.slaphouse`        | `house.seven8`              |
+| 5/8                 | `house.slaphouse`        | `house.five8`               |
+
+The 4/4 lanes are Kick Deep `[0,4,7,8,12,16,20,23,24,28]`, Kick Punch
+`[4,12,19,20,28]`, Clap `[4,5,12,20,28,30]`, Hat Closed `[1]` and Tick
+`[3,4,7,8,15,19,20,23,24,31]` — the same before and after.
+
+The 7/8 lanes before: Clap `[8,22,23]`, Hat Closed
+`[1,4,5,8,11,15,17,19,21,25,27]`, Hat Open `[6,18,20]`, Tick
+`[3,4,11,12,17,18,25,26]`. After: Clap `[8,22]`, **Shaker
+`[0,2,4,6,8,10,12,14,16,18,20,22,24,26]`**, Hat Closed `[3,4,17,23,27]`, Hat
+Open `[6,10,12,20,26]`, and the Tick is gone.
+
+The 5/8 lanes before: Clap `[5,6,16]`, Hat Closed `[5,7,10,11,19]`, Tick
+`[0,2,3,4,5,7,8,10,13,14,17,18]`. After: Clap `[6,7,16]`, **Shaker
+`[0,2,4,5,6,8,10,12,14,15,16,18]`**, Hat Closed `[1]`, Hat Open `[4,8,14,18]`,
+and the Tick is gone.
+
+Two things to read out of that table.
+
+**The skeleton did not move.** The kick still rides the groups and the clap
+still sits on the accent — the metre still governs. What moved is the
+MATERIAL: the odd bar now carries the odd-metre groove's own percussion (the
+shaker riding the eighths) instead of a projected 4/4 groove's tick and hat
+rhythm. The 4/4 groove's ghost note that rode with the accent is gone,
+because the 7/8 groove's clap row carries one hit and no ghost.
+
+**The 4/4 half did not move at all.** Every lane of 4/4, 3/4, 6/8, 5/4 and
+11/8 is byte-identical, and the four canonical 4/4 content hashes are
+unchanged:
+
+| genre / seed             | before     | after      |
+| ------------------------ | ---------- | ---------- |
+| house / baseline-house-1 | `17e1439d` | `17e1439d` |
+| trap / baseline-trap-1   | `688279c1` | `688279c1` |
+| dnb / baseline-dnb-1     | `47f20c59` | `47f20c59` |
+| house / baseline-house-2 | `b4f0ae78` | `b4f0ae78` |
+
+The library grew from 258 to 264 grooves, and the 4/4 candidate sets are
+exactly the grooves that declare no metre (measured): house 68 of 70, techno
+22 of 23, eurodance 12 of 14, rock 3 of 4. A metre the library does not have
+— 11/8 — falls back to the 4/4 material, exactly as before.
+
+### The lanes are reachable by TEXT
+
+A groove nobody can ask for is a groove nobody hears. The irregular lanes are
+in the style vocabulary ("seven eight", "five eight", "balkan seven eight",
+"balkan five eight"), and an irregular lane carries its metre with it: a
+groove only ever plays in its own metre, so "seven eight house" has to mean a
+seven-eight BAR and not a four-four one wearing an odd lane name. An explicit
+metre phrase in the same text still wins.
+
+### The guards
+
+`tests/adr0057-irregular-library.test.ts` — sixteen specs:
+
+1. the library HAS irregular material, in both odd metres, each DECLARING its
+   metre, and every one of them REGISTERED;
+2. every row is the groove's OWN metrical bar — fourteen for 7/8, ten for 5/8
+   — and the 4/4 library keeps its sixteen, with the ONE legacy fifteen-step
+   row pinned rather than left to drift;
+3. the metrical projection is the IDENTITY for every row — a groove written in
+   the metre needs no re-voicing;
+4. the kick lanes carry EXACTLY the group downbeats and the backbeat EXACTLY
+   the accent;
+5. the 4/4 candidate set is EXACTLY the grooves that declare no metre, a 7/8
+   document gets the 7/8 grooves, a 5/8 document the 5/8 ones, and 11/8 falls
+   back to the 4/4 material;
+6. the PRODUCT plays it — a 7/8 and a 5/8 document generate the kick on the
+   groups, and a 4/4 document never plays an irregular groove (40 seeds × 4
+   genres).
+
+The grouping this spec uses is re-declared inside the spec, not imported from
+the production module, so it cannot be satisfied by the code agreeing with
+itself.
+
+### What this is NOT
+
+- **The pinned models are NOT retrained and NOT edited.** The irregular
+  grooves have no training data in the ONNX corpora, exactly like the rest of
+  the irregular work: that is the same to-do as Stage 2e — a versioned
+  `features.v3` contract, re-validated manifests, and metrical training data
+  that does not exist yet.
+- **The Markov model keeps its frame.** It is built per groove from that
+  groove's own rows, so a 14-step groove's model generates a 14-step bar
+  without a retrain; the frame is still sixteen positions and the model's
+  state space is unchanged.
+- **The metrical view is still a VIEW.** The library stays the source of
+  truth; the projection still refuses to invent material and still imposes
+  nothing on a bar whose grouping is not declared.
 
 ## Stage 2 — what is still open (and where)
 
@@ -1113,7 +1296,13 @@ document's meter. The highest-risk sites, mapped (read-only sweep,
    has GROUPS (7/8 is 2+2+3, 5/8 is 3+2), the kick rides the group downbeats,
    the backbeat sits on the accent, and the syncopation grid follows the
    group — so a 7/8 document finally plays like 7/8 instead of clicking on
-   the downbeat.
+   the downbeat. **The irregular GROOVE LIBRARY** — **DONE in Stage 2j**: a
+   groove declares the metre it was written in, its rows are that metrical bar
+   long, and it only ever plays in its own metre — so a 7/8 document plays
+   material WRITTEN in 7/8 (the shaker riding the eighths, the toms answering
+   at the end of the long group) instead of a 4/4 groove read at the metrical
+   bar. The 4/4 candidate set is exactly the grooves that declare no metre,
+   so 4/4 is byte-identical.
 2. **The intent / brief contracts.** **DONE in Stage 2a** — the five gates
    (`src/intent/schema.ts`, `project-brief.ts`, `creative-task-contract.ts`,
    `src/project-model/producer-brief.ts`, `src/intent/normalize.ts`) no longer
@@ -1209,6 +1398,15 @@ preview drew a fixed sixteen-cell 4/4 bar, and it now draws one metrical bar.
   (the kick on the groups, the backbeat on the accent), not a click on the
   downbeat; and 4/4 and every regular metre are byte-identical to what they
   were before this stage.
+- **A groove only plays in its own metre** — it DECLARES the metre it was
+  written in, its rows are that metrical bar long, and the 4/4 candidate set
+  is exactly the grooves that declare no metre.
+- **A groove written in the metre needs no re-voicing** — the metrical
+  projection is the IDENTITY for every row of every irregular groove, the kick
+  lanes carry exactly the group downbeats and the backbeat exactly the accent.
+- **An odd bar carries ODD material** — the shaker rides the eighths of the
+  7/8 bar because the groove that PLAYS is the one written in 7/8, not a 4/4
+  groove read at the metrical bar.
 - **The metre is never changed silently**: every surface that can change a
   project's metre discloses what the new metre MEASURES and what happens to
   the material, and they all say the same words.

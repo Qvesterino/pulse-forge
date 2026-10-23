@@ -347,10 +347,33 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
 ];
 
 /**
+ * The metre an IRREGULAR lane lives in (ADR 0057 Stage 2j).
+ *
+ * A groove declares its metre and only ever plays in it, so naming the lane
+ * names the metre with it. The lane's metre is a REQUEST — an explicit metre
+ * phrase in the same text still wins ("in 5/4 seven eight house" is a
+ * five-four bar).
+ */
+const IRREGULAR_LANE_METRES: Readonly<Record<string, { numerator: number; denominator: number }>> = {
+  seven8: { numerator: 7, denominator: 8 },
+  five8: { numerator: 5, denominator: 8 },
+  balkan78: { numerator: 7, denominator: 8 },
+  balkan58: { numerator: 5, denominator: 8 },
+};
+
+/**
  * Style phrases → canonical groove style names (resolveGroove expects these).
  * SK stems share the entry with EN where the meaning is identical.
  */
 const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
+  // ── The IRREGULAR lanes (ADR 0057 Stage 2j) — BEFORE every generic entry.
+  // A groove only ever plays its own metre, so a lane that lives in 7/8 or
+  // 5/8 is a request for that metre: "seven eight house" asks for a
+  // seven-eight bar, not a four-four one with an odd name on it.
+  [/\bseven ?eight\b/, "seven8"],
+  [/\bfive ?eight\b/, "five8"],
+  [/\bbalkan ?seven ?eight\b/, "balkan78"],
+  [/\bbalkan ?five ?eight\b/, "balkan58"],
   // ── Chiptune school tree — BEFORE every generic entry (a chip ask must
   // not be stolen by "pop" / "game" / "hard"). ─────────────────────────────
   [/\bnintendo\b|\bnes era\b|\boverworld\b|\bplatformer\b/, "nintendo"],
@@ -1175,6 +1198,15 @@ export function parseIntentText(text: string): ParsedIntent {
   if (style) {
     input.style = style;
     detected.push(style);
+    // An irregular lane carries its metre with it: a groove only ever plays
+    // its own metre (ADR 0057 Stage 2j), so "seven eight house" has to mean a
+    // seven-eight BAR and not a four-four one wearing an odd lane name. An
+    // explicit metre phrase in the same text still wins — the block below
+    // overwrites this.
+    const laneMetre = IRREGULAR_LANE_METRES[style];
+    if (laneMetre) {
+      input.timeSignature = { numerator: laneMetre.numerator, denominator: laneMetre.denominator };
+    }
   }
   // Rap flow grid (flowDensity): "triplet flow" / "offbeat flow" reshapes
   // the lead/hook rhythm in multi-voice generation. Separate from style —

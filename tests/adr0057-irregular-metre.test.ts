@@ -29,6 +29,13 @@
  *      INDEPENDENT: the spec re-implements the legacy formula and compares it
  *      against the production one, so it cannot be satisfied by the code
  *      agreeing with itself.
+ *
+ * STAGE 2j (the irregular groove LIBRARY) moved two expectations in this
+ * file — the 7/8 clap and the 5/8 clap. The irregular bar no longer plays a
+ * 4/4 groove read at the metrical bar; it plays material WRITTEN in that
+ * metre, and the ghost note that rode with the accent was the 4/4 groove's.
+ * The measured before/after is written at the two assertions, and the guards
+ * for the library itself live in `tests/adr0057-irregular-library.test.ts`.
  */
 import { describe, expect, it } from "vitest";
 import { createDefaultProject } from "../src/project-model/schema";
@@ -237,9 +244,16 @@ describe("ADR 0057 Stage 2i — the generated CONTENT", () => {
     const expectedKick = [0, 1].flatMap((bar) => [0, 4, 8].map((step) => bar * 14 + step));
     expect(hits.get("Kick Deep")).toEqual(expectedKick);
     expect(hits.get("Kick Punch")).toEqual(expectedKick);
-    // The clap rides the accent group of every bar — the "5" — and the
-    // groove's own ghost note rides with it (the 23).
-    expect(hits.get("Clap")).toEqual([8, 22, 23]);
+    // The clap rides the accent group of every bar — the "5".
+    //
+    // MEASURED before and after Stage 2j (the same script, run against the
+    // pre-2j commit in a worktree and against this one): the clap was
+    // [8, 22, 23] and is now [8, 22]. The ghost note that rode with the accent
+    // was the 4/4 GROOVE's — a 4/4 house groove read at the metrical bar. The
+    // irregular library plays material WRITTEN in 7/8, and that groove's clap
+    // row carries one hit on the accent and no ghost. The SKELETON is
+    // unchanged; the MATERIAL is the odd-metre groove's own.
+    expect(hits.get("Clap")).toEqual([8, 22]);
   });
 
   it("makes a real 5/8 groove — the kick on the groups, the backbeat on the accent", () => {
@@ -250,9 +264,13 @@ describe("ADR 0057 Stage 2i — the generated CONTENT", () => {
     const expectedKick = [0, 1].flatMap((bar) => [0, 6].map((step) => bar * 10 + step));
     expect(hits.get("Kick Deep")).toEqual(expectedKick);
     expect(hits.get("Kick Punch")).toEqual(expectedKick);
-    // The clap rides the accent — the "4" — with the groove's own ghost note
-    // just before it (the 5).
-    expect(hits.get("Clap")).toEqual([5, 6, 16]);
+    // The clap rides the accent — the "4".
+    //
+    // MEASURED before and after Stage 2j (the same script, against the pre-2j
+    // commit in a worktree and against this one): the clap was [5, 6, 16] and
+    // is now [6, 7, 16]. The ghost note is still there — it is the ghost of the
+    // groove that PLAYS, and that groove is now the one written in 5/8.
+    expect(hits.get("Clap")).toEqual([6, 7, 16]);
   });
 
   it("keeps the 4/4 CONTENT — the same lanes at the same places", () => {

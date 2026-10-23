@@ -28,6 +28,7 @@ import { BASS_EXOTICS_GROOVES } from "./bass-exotics";
 import { BALKAN_GROOVES } from "./balkan";
 import { EMO_NICHE_GROOVES } from "./emo-niche";
 import { DRONE_GROOVES } from "./drone";
+import { IRREGULAR_GROOVES } from "./irregular";
 
 export const GROOVE_LIBRARY: readonly GrooveData[] = [
   ...HOUSE_GROOVES,
@@ -58,6 +59,9 @@ export const GROOVE_LIBRARY: readonly GrooveData[] = [
   ...BALKAN_GROOVES,
   ...EMO_NICHE_GROOVES,
   ...DRONE_GROOVES,
+  // The irregular (7/8, 5/8) material LAST (ADR 0057 Stage 2j): the library's
+  // order is the index-based pick's order, and the 4/4 grooves keep theirs.
+  ...IRREGULAR_GROOVES,
 ];
 
 /** Get all groove styles for a genre */

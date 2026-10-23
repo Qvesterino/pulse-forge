@@ -1,4 +1,4 @@
-import type { AudioClip, ArrangementClip, ProjectDocument } from "./types";
+import type { AudioClip, ArrangementAutomationClip, ArrangementClip, MidiClip, ProjectDocument } from "./types";
 import { ticksPerBar } from "./schema";
 
 /**
@@ -90,4 +90,43 @@ export function audioLaneOf(arrangement: ProjectDocument["arrangement"]): AudioC
 export function withAudioLane(doc: ProjectDocument, clips: AudioClip[]): ProjectDocument {
   if (doc.arrangement.audioClips === undefined) return doc;
   return { ...doc, arrangement: { ...doc.arrangement, audioClips: clips } };
+}
+
+// ── Tick-addressed lanes (MIDI + arrangement automation — ADR 0044/0045) ────
+// Both are free-placement integer-tick lanes: clips may overlap, geometry is
+// NOT bar-quantized. Structural operations address them in tick space, never
+// through the bar math the scene/audio lanes use.
+
+/** A tick-addressed clip's span (MIDI or arrangement automation). */
+export function tickClipSpan(clip: Pick<MidiClip, "startTick" | "lengthTicks">): { from: number; to: number } {
+  return { from: clip.startTick, to: clip.startTick + clip.lengthTicks };
+}
+
+/** The MIDI clip lane; `[]` for documents predating the field. */
+export function midiLaneOf(arrangement: ProjectDocument["arrangement"]): MidiClip[] {
+  return arrangement.midiClips ?? [];
+}
+
+/** The arrangement-automation clip lane; `[]` for documents predating the field. */
+export function automationLaneOf(arrangement: ProjectDocument["arrangement"]): ArrangementAutomationClip[] {
+  return arrangement.automationClips ?? [];
+}
+
+/** MIDI-lane write-back that preserves field absence (same contract as
+ * {@link withAudioLane}); output sorted by startTick (the schema's canonical order). */
+export function withMidiClips(doc: ProjectDocument, clips: MidiClip[]): ProjectDocument {
+  if (doc.arrangement.midiClips === undefined) return doc;
+  return {
+    ...doc,
+    arrangement: { ...doc.arrangement, midiClips: [...clips].sort((a, b) => a.startTick - b.startTick) },
+  };
+}
+
+/** Automation-lane write-back that preserves field absence; sorted by startTick. */
+export function withAutomationClips(doc: ProjectDocument, clips: ArrangementAutomationClip[]): ProjectDocument {
+  if (doc.arrangement.automationClips === undefined) return doc;
+  return {
+    ...doc,
+    arrangement: { ...doc.arrangement, automationClips: [...clips].sort((a, b) => a.startTick - b.startTick) },
+  };
 }
