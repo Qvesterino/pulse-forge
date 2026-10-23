@@ -1,6 +1,7 @@
 import type { DrumSynthPreset, InstrumentPreset } from "./types";
 import { KOPA_FACTORY_PRESETS } from "./kopa-factory";
 import { CHORAL_FACTORY_PRESETS } from "./choral-factory";
+import { LADIC_FACTORY_PRESETS } from "./ladic-factory";
 import {
   FACTORY_808_VELOCITY,
   FACTORY_ACID_VELOCITY,
@@ -9307,6 +9308,7 @@ export const FACTORY_PRESETS: InstrumentPreset[] = [
   },
   ...KOPA_FACTORY_PRESETS,
   ...CHORAL_FACTORY_PRESETS,
+  ...LADIC_FACTORY_PRESETS,
 ];
 
 export const DRUM_FACTORY_PRESETS: DrumSynthPreset[] = [

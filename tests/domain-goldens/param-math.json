@@ -638,6 +638,58 @@
             "formant": 1,
             "level": 0.8
           }
+        },
+        {
+          "kind": "ladic",
+          "defaults": {
+            "algorithm": 1,
+            "feedback": 0.1,
+            "op1Ratio": 1,
+            "op1Detune": 0,
+            "op1Level": 1,
+            "op1Atk": 0.005,
+            "op1Dec": 0.4,
+            "op1Sus": 0.6,
+            "op1Rel": 0.3,
+            "op2Ratio": 2,
+            "op2Detune": 0,
+            "op2Level": 0.4,
+            "op2Atk": 0.005,
+            "op2Dec": 0.4,
+            "op2Sus": 0.6,
+            "op2Rel": 0.3,
+            "op3Ratio": 1,
+            "op3Detune": 0,
+            "op3Level": 0,
+            "op3Atk": 0.005,
+            "op3Dec": 0.4,
+            "op3Sus": 0.6,
+            "op3Rel": 0.3,
+            "op4Ratio": 3,
+            "op4Detune": 0,
+            "op4Level": 0,
+            "op4Atk": 0.005,
+            "op4Dec": 0.4,
+            "op4Sus": 0.6,
+            "op4Rel": 0.3,
+            "op5Ratio": 1,
+            "op5Detune": 0,
+            "op5Level": 0,
+            "op5Atk": 0.005,
+            "op5Dec": 0.4,
+            "op5Sus": 0.6,
+            "op5Rel": 0.3,
+            "op6Ratio": 1,
+            "op6Detune": 0,
+            "op6Level": 0,
+            "op6Atk": 0.005,
+            "op6Dec": 0.4,
+            "op6Sus": 0.6,
+            "op6Rel": 0.3,
+            "glide": 0,
+            "cutoff": 16000,
+            "level": 0.8
+          }
         }
       ]
     },
@@ -2009,6 +2061,28 @@
         54,
         84,
         84
+      ]
+    },
+    {
+      "name": "clampInstrumentParam ladic:algorithm",
+      "operation": "clampInstrumentParam",
+      "input": {
+        "kind": "ladic",
+        "paramId": "algorithm",
+        "probes": [
+          -100,
+          0,
+          3.5,
+          7,
+          107
+        ]
+      },
+      "expected": [
+        0,
+        0,
+        3.5,
+        7,
+        7
       ]
     },
     {

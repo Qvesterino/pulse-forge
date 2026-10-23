@@ -11,6 +11,8 @@ import { createTsarRuntime, createTsarFallbackRuntime } from "./tsarNode";
 import { createKopaRuntime, createKopaFallbackRuntime } from "./kopaNode";
 import { createChoralRuntime } from "./choralNode";
 import { createChoralFallbackRuntime } from "./choralFallback";
+import { createLadicRuntime } from "./ladicNode";
+import { createLadicFallbackRuntime } from "./ladicFallback";
 import { tsarParams } from "../tsar/params";
 import { scheduleVoiceModMatrix, updateVoiceModMatrix } from "./modmatrix";
 import { shapeOscillator } from "./bandlimited";
@@ -41,6 +43,7 @@ import {
   drumsynthParams,
   kopaParams,
   choralParams,
+  ladicParams,
   WAVE_NAMES,
   SYNC_BEATS,
   syncRateHz,
@@ -6899,6 +6902,35 @@ const choral: InstrumentDefinition = {
   },
 };
 
+/**
+ * LADIČ (ADR 0055) — the 6-operator FM flagship. The worklet runs the full
+ * engine; without the module a native 2-op FM voice (modulator osc into
+ * carrier.frequency) keeps the track audible.
+ */
+const ladic: InstrumentDefinition = {
+  kind: "ladic",
+  name: "LADIČ",
+  params: ladicParams,
+  factory(ctx, track) {
+    const offline = offlineRenderContext(ctx);
+    if (isWorkletReady("ladic", ctx)) {
+      return createLadicRuntime({
+        createGain: () => ctx.createGain(),
+        createNode: (processorOptions) =>
+          new AudioWorkletNode(ctx, "ladic-processor", {
+            numberOfInputs: 0,
+            numberOfOutputs: 1,
+            outputChannelCount: [2],
+            processorOptions,
+          }),
+        offline,
+        track,
+      });
+    }
+    return createLadicFallbackRuntime(ctx, track);
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 function withNoteExpressionTargets(definition: InstrumentDefinition): InstrumentDefinition {
@@ -6936,6 +6968,7 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   tsar,
   kopa,
   choral,
+  ladic,
 };
 
 export function instrumentTrackKindLabel(track: InstrumentTrack): string {

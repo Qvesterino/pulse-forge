@@ -314,6 +314,7 @@ export const DEFAULT_GM_PROGRAM_BY_INSTRUMENT: Readonly<Record<InstrumentKind, n
   tsar: 81,
   kopa: 38,
   choral: 53,
+  ladic: 6,
 };
 
 type DrumMappingResult =

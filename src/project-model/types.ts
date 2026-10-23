@@ -99,7 +99,8 @@ export type InstrumentKind =
   | "drumsynth"
   | "tsar"
   | "kopa"
-  | "choral";
+  | "choral"
+  | "ladic";
 
 export interface EffectInstance {
   id: ID;

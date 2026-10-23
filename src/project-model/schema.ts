@@ -197,6 +197,7 @@ const INSTRUMENT_NAMES: Record<InstrumentKind, string> = {
   tsar: "TSAR",
   kopa: "Kopa",
   choral: "Chorál",
+  ladic: "Ladič",
 };
 
 export function createInstrumentTrackModel(kind: InstrumentKind, index: number): InstrumentTrack {

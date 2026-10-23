@@ -638,6 +638,21 @@ let choralWorkletKb = 0;
 }
 console.log(`[size-budget] CHORÁL worklet: ${choralWorkletKb.toFixed(0)} KB (budget ${CHORAL_WORKLET_BUDGET_KB})`);
 
+// LADIČ FM flagship worklet: lazy INSTRUMENT module (ADR 0055), loaded
+// only for projects with a LADIČ track. Sine-only 6-op engine, no
+// wavetables; measured at implementation, 48 KB is the ceiling.
+const LADIC_WORKLET_BUDGET_KB = 48;
+let ladicWorkletKb = 0;
+{
+  const path = join(dist, "ladic-worklet.js");
+  if (!statSync(path).isFile()) {
+    console.error("[size-budget] FAIL — missing LADIČ worklet: dist/ladic-worklet.js");
+    process.exit(1);
+  }
+  ladicWorkletKb = statSync(path).size / 1024;
+}
+console.log(`[size-budget] LADIČ worklet: ${ladicWorkletKb.toFixed(0)} KB (budget ${LADIC_WORKLET_BUDGET_KB})`);
+
 // SKRUTKA phase-dispersion effect worklet: a LAZY first-party effect module
 // (loaded only for projects that use the effect), so it carries its own
 // budget row instead of inflating the core boot bundle. All-pass-only DSP —
