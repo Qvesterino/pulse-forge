@@ -42,7 +42,7 @@ class FakeWorker {
   onerror: ((event: unknown) => void) | null = null;
   terminated = false;
 
-  constructor(private readonly spec: FakeWorkerSpec) {
+  constructor(spec: FakeWorkerSpec) {
     FakeWorker.instances.push(this);
     setTimeout(() => {
       if (spec.crash !== undefined) {

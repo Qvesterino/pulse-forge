@@ -262,15 +262,14 @@ export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
   // sidechain/MIDI cleanup above.
   const takeGroups = doc.arrangement.takeGroups?.filter((group) => group.trackId !== trackId);
   const liveSets = doc.liveSets?.map((set) => (set.trackId === trackId ? { ...set, trackId: undefined } : set));
-  const stepMeta =
-    doc.patterns.some((pattern) => pattern.stepMeta && removedPadIds.size > 0)
-      ? doc.patterns.map((pattern) => {
-          if (!pattern.stepMeta) return pattern;
-          const entries = Object.entries(pattern.stepMeta).filter(([padId]) => !removedPadIds.has(padId));
-          if (entries.length === Object.keys(pattern.stepMeta).length) return pattern;
-          return { ...pattern, stepMeta: Object.fromEntries(entries) as typeof pattern.stepMeta };
-        })
-      : doc.patterns;
+  const stepMeta = doc.patterns.some((pattern) => pattern.stepMeta && removedPadIds.size > 0)
+    ? doc.patterns.map((pattern) => {
+        if (!pattern.stepMeta) return pattern;
+        const entries = Object.entries(pattern.stepMeta).filter(([padId]) => !removedPadIds.has(padId));
+        if (entries.length === Object.keys(pattern.stepMeta).length) return pattern;
+        return { ...pattern, stepMeta: Object.fromEntries(entries) as typeof pattern.stepMeta };
+      })
+    : doc.patterns;
   const midi = doc.midi;
   const next: ProjectDocument = {
     ...doc,
