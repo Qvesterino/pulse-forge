@@ -4804,7 +4804,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         // more/less turn the primary knob; remove deletes (D4-gated).
         if (action === "bypass" || action === "enable") {
           const bypassed = action === "bypass";
-          const command = setEffectBypassOnTracks(before, targetIds, effect, bypassed);
+          const command = setEffectBypassOnTracks(before, targetIds, effect as keyof typeof EFFECT_META, bypassed);
           ctx.execute(command);
           const readback = targetIds
             .map((targetId) => {
