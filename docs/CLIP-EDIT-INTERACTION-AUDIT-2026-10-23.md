@@ -394,26 +394,31 @@ test — see §11.
 
 ## 12. Verification record
 
-| Check                                      | Result                                                               |
-| ------------------------------------------ | -------------------------------------------------------------------- |
-| `tests/clip-edit-matrix.test.ts`           | ✅ new — 56 specs                                                    |
-| `tests/clip-edit-audio-integrity.test.ts`  | ✅ new — 16 specs                                                    |
-| `tests/clip-edit-gesture-history.test.ts`  | ✅ new — 7 specs                                                     |
-| `tests/scene-clip-edit-matrix.test.ts`     | ✅ new — 14 specs                                                    |
-| `tests/tick-lane-edit-matrix.test.ts`      | ✅ new — 25 specs                                                    |
-| The 8 pre-existing clip/editor/undo suites | ✅ green                                                             |
-| The 7 pre-existing MIDI/automation suites  | ✅ green                                                             |
-| The full Vitest suite                      | ✅ green except two failures owned by a parallel session (see below) |
-| `tsc --noEmit`                             | ✅ clean for every file in this wave                                 |
-| Prettier                                   | ✅ clean                                                             |
+| Check                                      | Result                                                                               |
+| ------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `tests/clip-edit-matrix.test.ts`           | ✅ new — 56 specs                                                                    |
+| `tests/clip-edit-audio-integrity.test.ts`  | ✅ new — 16 specs                                                                    |
+| `tests/clip-edit-gesture-history.test.ts`  | ✅ new — 7 specs                                                                     |
+| `tests/scene-clip-edit-matrix.test.ts`     | ✅ new — 14 specs                                                                    |
+| `tests/tick-lane-edit-matrix.test.ts`      | ✅ new — 25 specs                                                                    |
+| The 8 pre-existing clip/editor/undo suites | ✅ green                                                                             |
+| The 7 pre-existing MIDI/automation suites  | ✅ green                                                                             |
+| The 3 playback/loop suites                 | ✅ green (`cancel-orphaned-clip-sources`, `clip-editing-audit2`, `edit-tools-audit`) |
+| The full Vitest suite                      | ✅ green except ONE failure owned by a parallel session (see below)                  |
+| `tsc --noEmit`                             | ✅ clean for every file in this wave                                                 |
+| Prettier                                   | ✅ clean                                                                             |
 
-**Two pre-existing failures are NOT this wave's** — they belong to a parallel
-session's in-flight work and were left alone on purpose:
+**The one remaining failure is NOT this wave's.**
+`tests/adr0057-meter-disclosure.test.ts` flags `src/intent/model-context.ts`
+— a new metre site from the parallel intent-semantics session, committed and
+not yet ledgered under ADR 0056's disclosure contract. It is outside the
+editing surface this audit owns, and fixing it would mean editing another
+session's domain (or the guard's allow-list) without knowing their intent, so
+it was left alone on purpose.
 
-1. `tests/adr0056-stage2-bar-formula-guard.test.ts` — flags
-   `src/ui/IntentPanel.tsx` (`ticksPerBar(doc) * 4`, a bar-length formula
-   copy outside the one owner). That file is modified in the working tree by
-   another session; the guard was edited in the same commit. Not touched.
-2. `tests/adr0057-meter-disclosure.test.ts` — flags
-   `src/intent/model-context.ts` (a new metre site from the same parallel
-   session). Not touched.
+Two other failures seen during the full run were LOAD-INDUCED TIMEOUTS, not
+defects: `tests/audio-engine-lifecycle-stress.test.ts` (24 dispose/reinit
+cycles) and `tests/mcp-idempotency.test.ts` (the ledger's bounded eviction).
+Both were re-run in isolation and are GREEN. The bar-formula guard
+(`tests/adr0056-stage2-bar-formula-guard.test.ts`), which this wave's changes
+could have tripped, is green too.
