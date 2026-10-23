@@ -57,7 +57,7 @@ import type { Frame, ChannelLevels } from "./metering";
 
 // The audibility rule lives in the model layer: the mixer, the drum scheduler
 // and the group commands must all read the SAME rule (see the file's note).
-import { soloAudibility, type SoloAudibility } from "../project-model/solo-audibility";
+import { soloAudibility } from "../project-model/solo-audibility";
 export { soloAudibility, type SoloAudibility } from "../project-model/solo-audibility";
 
 /**
@@ -1158,6 +1158,13 @@ export class AudioEngine {
         this.callRuntime(() => rt.onTransportStarted?.(time, beatPhase, positionBeats));
       }
     }
+    // The MASTER chain carries phase-locked runtimes too (a step-gated or
+    // phase-locked effect on the master bus). It was missing from this sweep,
+    // so the master effect started out of phase with the transport for the
+    // whole play.
+    for (const rt of this.masterFx.runtimes.values()) {
+      this.callRuntime(() => rt.onTransportStarted?.(time, beatPhase, positionBeats));
+    }
   }
 
   /**
@@ -2118,6 +2125,10 @@ export class AudioEngine {
     for (const nodes of [...this.trackNodes.values(), ...this.groupNodes.values(), ...this.returnNodes.values()]) {
       for (const rt of nodes.fx.runtimes.values()) this.callRuntime(() => rt.syncBpm?.(bpm, when));
     }
+    // The MASTER chain holds tempo-synced runtimes too (a SYNC delay on the
+    // master bus). It was missing from this sweep, so a tempo change left the
+    // master delay on the old BPM and its echoes landed off-grid.
+    for (const rt of this.masterFx.runtimes.values()) this.callRuntime(() => rt.syncBpm?.(bpm, when));
     // Instrument runtimes: tempo-synced modulators (LFO sync, texture delay,
     // granular rate sync) pick the new tempo up live. `when` schedules the
     // write for offline scene lanes where the runtime supports it.

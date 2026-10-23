@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
-import {
-  addToGroup,
-  createGroupTrack,
-  removeFromGroup,
-  setGroupMute,
-  setGroupSolo,
-} from "../src/commands/commands";
+import { addToGroup, createGroupTrack, removeFromGroup, setGroupMute, setGroupSolo } from "../src/commands/commands";
 import { soloAudibility } from "../src/project-model/solo-audibility";
 import { drumHitsInWindow } from "../src/project-model/groove";
 import type { ProjectDocument } from "../src/project-model/types";

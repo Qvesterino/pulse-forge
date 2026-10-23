@@ -21,9 +21,7 @@ class ScriptedWorker {
   private readonly listeners = new Map<string, ((event: unknown) => void)[]>();
   terminated = false;
 
-  constructor(
-    private readonly script: (worker: ScriptedWorker) => void,
-  ) {
+  constructor(private readonly script: (worker: ScriptedWorker) => void) {
     ScriptedWorker.last = this;
     // Deliver the scripted message on the next tick, like a real worker.
     setTimeout(() => this.script(this), 0);
@@ -56,7 +54,7 @@ class ScriptedWorker {
   }
 }
 
-const settled = <T,>(promise: Promise<T>, ms: number): Promise<"settled" | "still-pending"> =>
+const settled = <T>(promise: Promise<T>, ms: number): Promise<"settled" | "still-pending"> =>
   Promise.race([
     promise.then(() => "settled" as const),
     new Promise<"still-pending">((resolve) => setTimeout(() => resolve("still-pending"), ms)),

@@ -1248,7 +1248,7 @@ export async function openProject(
     // re-applied — so the scene tempo was lost for the rest of the playback,
     // after EVERY document change. Outside a scene tempo the project BPM is
     // the owner, and it is re-applied here as before.
-    transport.setBpm(doc.bpm);
+    if (scheduler.sceneTempo === null) transport.setBpm(doc.bpm);
     void generativeRuntime.refreshAll().catch((error) => {
       console.warn("[generative] project refresh failed:", error);
     });

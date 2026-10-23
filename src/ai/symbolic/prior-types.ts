@@ -359,7 +359,8 @@ export function isMelodicV3PriorManifest(value: unknown): value is MelodicV3Prio
 export function acceptPriorManifest(kind: PriorKind, value: unknown): PriorManifest | null {
   if (kind === "drums") return coerceDrumsManifest(value);
   if (kind === "drums-v2") return isDrumsV2PriorManifest(value) ? value : null;
+  if (kind === "drums-v3") return isDrumsV3PriorManifest(value) ? value : null;
+  if (kind === "melodic") return coerceMelodicManifest(value);
   if (kind === "melodic-v2") return isMelodicV2PriorManifest(value) ? value : null;
-  if (kind === "melodic-v3") return isMelodicV3PriorManifest(value) ? value : null;
-  return isMelodicPriorManifest(value) ? value : null;
+  return isMelodicV3PriorManifest(value) ? value : null;
 }

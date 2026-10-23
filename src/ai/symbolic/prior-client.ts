@@ -11,6 +11,10 @@
  */
 import {
   acceptPriorManifest,
+  isDrumsPriorManifest,
+  isDrumsV2PriorManifest,
+  isDrumsV3PriorManifest,
+  isMelodicV2PriorManifest,
   type MelodicPriorManifest,
   type MelodicV3PriorManifest,
   type PersonalWeightsPayloadLike,
@@ -507,7 +511,7 @@ export async function runMelodicNextV3(values: Float32Array, rowCount: number): 
       { type: "run", requestId: nextRequestId++, kind: "melodic-v3", batch: values, rowCount },
       RUN_TIMEOUT_MS,
     );
-    if (!response.ok === false || response.type !== "run" || !response.outputs) {
+    if (!response.ok || response.type !== "run" || !response.outputs) {
       return { ok: false, degree: null, duration: null, source: "fallback" };
     }
     const degreeSize = rowCount * v3Manifest.degreeClasses;

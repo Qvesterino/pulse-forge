@@ -188,7 +188,10 @@ export async function buildScorepack(
   const timeAt = scorepackTempo(doc);
   entries.push({ name: "score.json", data: encodeUtf8(JSON.stringify(buildScoreJson(doc), null, 2)) });
   entries.push({ name: "markers.json", data: encodeUtf8(JSON.stringify(buildMarkersJson(doc, timeAt), null, 2)) });
-  entries.push({ name: "automation.json", data: encodeUtf8(JSON.stringify(buildAutomationJson(doc, timeAt), null, 2)) });
+  entries.push({
+    name: "automation.json",
+    data: encodeUtf8(JSON.stringify(buildAutomationJson(doc, timeAt), null, 2)),
+  });
   entries.push({ name: "intensity.json", data: encodeUtf8(JSON.stringify(buildIntensityJson(doc), null, 2)) });
   entries.push({ name: "README.md", data: encodeUtf8(buildReadme(baseName, doc)) });
 
@@ -274,7 +277,7 @@ export function buildMarkersJson(doc: ProjectDocument, timeAt: (tick: number) =>
     name: m.name,
     type: m.type,
     tick: m.tick,
-    seconds: m.tick * (60 / (doc.bpm * 480)),
+    seconds: timeAt(m.tick),
     linkedClipId: m.linkedClipId ?? null,
     cue: markerAssetFor(m.type),
     customId: m.customId ?? null,

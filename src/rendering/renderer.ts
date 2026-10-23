@@ -383,7 +383,7 @@ export function computeRenderTicks(doc: ProjectDocument, mode: PlayMode): number
   return getActivePattern(doc).stepCount * STEP_TICKS;
 }
 
-function collectClipWindows(doc: ProjectDocument, mode: PlayMode, arrangementOnly = false): ClipWindow[] {
+export function collectClipWindows(doc: ProjectDocument, mode: PlayMode, arrangementOnly = false): ClipWindow[] {
   const barUnit = ticksPerBar(doc);
   if (mode === "song") {
     const windows: ClipWindow[] = [];

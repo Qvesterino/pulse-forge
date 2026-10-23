@@ -211,7 +211,6 @@ import type { IntentModelState } from "../intent/model-loader-types";
 import { normalizeIntent } from "../intent/normalize";
 import type { IntentInput } from "../intent/types";
 import type { NoteEvent } from "../project-model/types";
-import { PPQ } from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
 import { rankerMode } from "../ai/ranking/ranker-client";
 import { playAuditionBuffer, renderAuditionBuffer, renderSongAuditionBuffer, stopAudition } from "../intent/audition";
@@ -4153,9 +4152,11 @@ export function IntentPanel() {
           setStatus("⚡ metronome on");
         } else if (route.action === "loopOn") {
           // Preserve the existing loop range; a fresh project has none, so
-          // loop the first 4 bars (4/4 at PPQ 480) as the bounded default.
+          // loop the first 4 bars as the bounded default. The bar length comes
+          // from the document's METER (ADR 0056) — a hardcoded 4/4 (4 * 4 * PPQ)
+          // made the default loop cut mid-bar in 6/8 and 7/8.
           const t = services.transport;
-          const end = t.loopEnd > t.loopStart ? t.loopEnd : t.loopStart + 4 * 4 * PPQ;
+          const end = t.loopEnd > t.loopStart ? t.loopEnd : t.loopStart + ticksPerBar(doc) * 4;
           t.setLoop(true, t.loopStart, end);
           setStatus(`⚡ loop on [${t.loopStart}–${end}]`);
         } else if (route.action === "loopOff") {
