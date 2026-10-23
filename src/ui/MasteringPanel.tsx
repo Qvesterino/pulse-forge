@@ -2,7 +2,7 @@ import { memo, useCallback, useMemo, useState } from "react";
 import { MASTER_EFFECT_OWNER_ID, type GroupTrack } from "../project-model/types";
 import { MasterMeter } from "./MasterMeter";
 import { ExportPanel, type MasteringWorkspaceState } from "./ExportPanel";
-import { useDoc, useMaster } from "./context";
+import { useDoc, useMaster, useServices } from "./context";
 import { EffectRack } from "./EffectRack";
 import { projectRevisionIdFor } from "../mastering/report";
 import { isMasterProfileSourceReviewDue, MASTER_PROFILE_SOURCES, resolveDeliveryTarget } from "../mastering/profiles";
@@ -14,6 +14,7 @@ import { MAX_OFFLINE_RENDER_PCM_BYTES } from "../rendering/renderer";
 import { MasteringFileSessionPanel } from "./MasteringFileSessionPanel";
 import { MasterProfileFileGuidance } from "./MasterProfileFileGuidance";
 import { MASTERING_RENDER_SAMPLE_RATE_LABELS, MASTERING_RENDER_SAMPLE_RATES } from "../mastering/sampleRates";
+import { MasteringIterateShow, type IterateShowData } from "./MasteringIterateShow";
 
 const StableMasterMeter = memo(MasterMeter);
 const StableEffectRack = memo(EffectRack);
@@ -23,12 +24,15 @@ export function MasteringPanel() {
   const doc = useDoc();
   const revisionId = projectRevisionIdFor(doc);
   const master = useMaster();
+  const services = useServices();
   const profile = resolveDeliveryTarget(master);
   const profileSource = MASTER_PROFILE_SOURCES[profile.id];
   const profileSourceReviewDue = profileSource ? isMasterProfileSourceReviewDue(profileSource) : false;
   const [workspaceState, setWorkspaceState] = useState<MasteringWorkspaceState | null>(null);
   const [comparisonBusy, setComparisonBusy] = useState(false);
   const [fileSessionBusy, setFileSessionBusy] = useState(false);
+  const [iterateShow, setIterateShow] = useState<IterateShowData | null>(null);
+  const [iterateBusy, setIterateBusy] = useState(false);
   const [controlView, setControlView] = useState<"simple" | "advanced">("simple");
   const renderPcmLimitMiB = MAX_OFFLINE_RENDER_PCM_BYTES / (1024 * 1024);
   const handleWorkspaceStateChange = useCallback((state: MasteringWorkspaceState) => {
@@ -475,6 +479,42 @@ export function MasteringPanel() {
         blockNewWork={isAnalyzing || fileSessionBusy}
         onBusyChange={setComparisonBusy}
       />
+      {iterateShow && <MasteringIterateShow data={iterateShow} onClose={() => setIterateShow(null)} />}
+      <section className="mastering-render-section" aria-label="AI master">
+        <header>
+          <span className="mastering-panel-kicker">AI MASTER</span>
+          <h3>Iterate</h3>
+          <p>
+            Closed-loop AI mastering: render → measure → adjust → re-render, bounded at 3 phases. The AI hears the mix
+            through the render pipeline and converges toward the target.
+          </p>
+        </header>
+        <button
+          type="button"
+          className="btn"
+          disabled={iterateBusy}
+          onClick={async () => {
+            setIterateBusy(true);
+            try {
+              const { mcpToolContextFromServices: fromServices } = await import("../mcp/desktop-host");
+              const { executeMcpTool } = await import("../mcp/tools");
+              const mcpCtx = fromServices(services);
+              const result = await executeMcpTool(mcpCtx, "kyx_master", {
+                op: "iterate",
+                targetLufs: profile.targetLufs,
+              });
+              const data = result.data as IterateShowData | undefined;
+              if (data?.iterations) setIterateShow(data);
+            } catch {
+              /* the tool reports errors in result.text */
+            } finally {
+              setIterateBusy(false);
+            }
+          }}
+        >
+          {iterateBusy ? "◉ MASTERING…" : "⚡ AI MASTER"}
+        </button>
+      </section>
       <section className="mastering-render-section" aria-label="Master render analysis and delivery">
         <header>
           <span className="mastering-panel-kicker">OFFLINE CHECK</span>
