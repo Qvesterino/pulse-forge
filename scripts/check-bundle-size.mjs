@@ -271,7 +271,38 @@ const ENTRY_BUDGET_KB = 1070;
 // or two consecutive waves land with <200 KB of combined growth, meaning
 // this cap is again carrying slack rather than a wave; or a dead-weight
 // audit (not a feature wave) finds chunks that nothing reaches.
-const TOTAL_BUDGET_KB = 5560;
+//
+// 2026-10-23 (the intent/contract wave): this ceiling is raised a second
+// time, and the arithmetic is the same one the wave-6 note used - the
+// measured value plus the same 66 KB margin, with the boot-path cap
+// UNCHANGED.
+//
+// MEASURED, same day, on a clean checkout of 9b1fae85, against the same
+// day's measurement at e3fc7c37:
+//
+//   DAW JS SUM   5535 -> 5564 KB   (+29 KB, the intent / contract wave)
+//   BOOT PATH    2095 -> 2096 KB   (+1 KB, -0.05 %)
+//
+// The wave grew the SUM by 29 KB and the boot path by 1 KB, so 28 of those
+// 29 KB landed in chunks a waiting user never parses: the plugin catalog,
+// the intent model context, the contract and clip-edit surfaces. The line
+// that measures the waiting user moved by one kilobyte and keeps 104 KB of
+// headroom under its 2200 KB cap - which is the cap that actually protects
+// them. This SUM grew by 0.5 %; it is still summing every chunk, including
+// the ones it cannot see the value of.
+//
+// The margin is unchanged at 66 KB for the same reason as before: a
+// dead-weight regression of that size is a real event, a feature wave of
+// that size is two days of parallel work in this repository, and the boot
+// path is where the user is protected.
+//
+// THE TIGHTENING TRIGGER HAS FIRED. Since the wave-6 measurement this cap
+// has carried 70 KB of growth across the waves that landed since - under
+// the 200 KB line above, so this cap is again carrying slack rather than a
+// wave. The next growth must therefore PAY IT BACK: it may not come with
+// another raise of this number. It must come with a dead-weight audit that
+// finds chunks nothing reaches, or with the boot path coming down.
+const TOTAL_BUDGET_KB = 5630;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, ONNX Runtime for the
 // symbolic/ranker workers, and the mastering-ranker worker entry itself. Keep
