@@ -219,6 +219,13 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Open (future session, ADR-amendment question): unify the time-range op DISPATCH (one clip-agnostic iterator) — deliberately NOT done silently; and re-scan for new hand-rolled unions when timeline features land (the twice-tax check).
 - Commits: 23aa2e1a.
 
+### 2026-10-07 (latest) / Timeline session 3 — op-dispatch unification, right-sized (056558b6)
+- Decision: the FULL four-kind dispatch table was over-abstraction (scene/audio lanes genuinely differ); the RIGHT-SIZED unification consolidated the two structurally-identical TICK lanes (midi + automation): duplicateTickClips (one shared pass over a TickLaneSpec registry replaces two ~20-line pasted blocks in duplicateTimeRange) + rippleShiftTickLanes (one pure patch helper replaces 3× duplicated blocks in the ripple commands).
+- CRITICAL catch: the first helper draft MUTATED the pre-snapshot lane arrays in place — snapshot(doc, next) captures the old doc whose lanes reference the same arrays → undo corruption. Rewritten PURE (patch-returning, spread into next arrangement).
+- Verified: 10/10 structural pins, 202/202 families, typecheck clean; ADR 0025 amendment notes the TickLaneSpec registry (all-kinds registry stays future — scene/audio deliberately not unified).
+- Commits: 056558b6 + ADR note.
+- Recommended continuation: nothing open in the timeline lane; the twice-tax re-scan applies to NEW features only.
+
 ### 2026-10-07 (latest) / Timeline unification sessions 1-2 — the tick lanes join the structural ops (23aa2e1a + the structural commit + ADR amendment)
 
 - Discovery: ADR 0025's program had LANDED; the real gap was that the structural operations (duplicate range, ripple ×4, consolidate-to-audio, Delete-key sweep) knew only scene+audio — while MIDI (ADR 0044) and automation (ADR 0045) clips are PLAYED by the scheduler. Confirmed user-visible defects: duplicate range dropped MIDI content; ripple desynced tick clips; consolidate-to-audio double-played (print contains tick-lane audio, covered clips not removed).
