@@ -10,7 +10,7 @@
 import type { Command } from "./types";
 import type { AudioClip, IntensityPoint, ProjectDocument } from "../project-model/types";
 import { MAX_ARRANGEMENT_CLIP_BARS, ticksPerBar } from "../project-model/schema";
-import { rippleShiftTickClips } from "../project-model/timeline";
+import { midiLaneOf, automationLaneOf, rippleShiftTickClips } from "../project-model/timeline";
 import { snapshot } from "./core";
 import { markerClampPatch, unlinkMarkersOfClips } from "./docOps";
 import { assertClipEditable } from "./clipGroups";
@@ -114,6 +114,33 @@ export function setArrangementClipScene(doc: ProjectDocument, clipId: string, sc
  * layering contract allows it to keep sounding across the moved seam, and
  * yanking it would teleport audible content the user did not grab.
  */
+/**
+ * W1-adjacent: the tick-addressed lanes (MIDI + arrangement automation,
+ * ADR 0044/0045) ride the same ripple in TICKS — clips at/after the
+ * threshold tick shift by deltaTicks (clamped ≥ 0); straddling clips stay
+ * (the layering contract). PURE — returns a lane patch to spread into the
+ * next arrangement; MUST be called before the snapshot captures `next`
+ * (mutating the pre-snapshot lanes would corrupt the undo baseline).
+ */
+function rippleShiftTickLanes(
+  arrangement: ProjectDocument["arrangement"],
+  thresholdTick: number,
+  deltaTicks: number,
+): {
+  midiClips?: ProjectDocument["arrangement"]["midiClips"];
+  automationClips?: ProjectDocument["arrangement"]["automationClips"];
+} {
+  const patch: {
+    midiClips?: ProjectDocument["arrangement"]["midiClips"];
+    automationClips?: ProjectDocument["arrangement"]["automationClips"];
+  } = {};
+  const midi = rippleShiftTickClips(midiLaneOf(arrangement), thresholdTick, deltaTicks);
+  if (midi !== undefined) patch.midiClips = midi;
+  const automation = rippleShiftTickClips(automationLaneOf(arrangement), thresholdTick, deltaTicks);
+  if (automation !== undefined) patch.automationClips = automation;
+  return patch;
+}
+
 function rippleShiftAudioClips(
   audioClips: AudioClip[] | undefined,
   threshold: number,
@@ -161,17 +188,12 @@ export function moveArrangementClipRipple(doc: ProjectDocument, clipId: string, 
       ...doc.arrangement,
       clips,
       audioClips: rippleShiftAudioClips(doc.arrangement.audioClips, clip.startBar + clip.lengthBars, delta),
-      midiClips: rippleShiftTickClips(
-        doc.arrangement.midiClips,
-        (clip.startBar + clip.lengthBars) * ticksPerBar(doc),
-        delta * ticksPerBar(doc),
-      ),
-      automationClips: rippleShiftTickClips(
-        doc.arrangement.automationClips,
-        (clip.startBar + clip.lengthBars) * ticksPerBar(doc),
-        delta * ticksPerBar(doc),
-      ),
       transitions: transitionsForClips(doc, clips),
+      ...rippleShiftTickLanes(
+        doc.arrangement,
+        (clip.startBar + clip.lengthBars) * ticksPerBar(doc),
+        delta * ticksPerBar(doc),
+      ),
     },
   };
   return snapshot("moveArrangementClipRipple", `Ripple move to bar ${target + 1}`, doc, next);
@@ -205,17 +227,8 @@ export function resizeArrangementClipRipple(doc: ProjectDocument, clipId: string
       ...doc.arrangement,
       clips,
       audioClips: rippleShiftAudioClips(doc.arrangement.audioClips, oldEnd, deltaBars),
-      midiClips: rippleShiftTickClips(
-        doc.arrangement.midiClips,
-        oldEnd * ticksPerBar(doc),
-        deltaBars * ticksPerBar(doc),
-      ),
-      automationClips: rippleShiftTickClips(
-        doc.arrangement.automationClips,
-        oldEnd * ticksPerBar(doc),
-        deltaBars * ticksPerBar(doc),
-      ),
       transitions: transitionsForClips(doc, clips),
+      ...rippleShiftTickLanes(doc.arrangement, oldEnd * ticksPerBar(doc), deltaBars * ticksPerBar(doc)),
     },
   };
   return snapshot("resizeArrangementClipRipple", `Ripple resize to ${bars} bars`, doc, next);
@@ -254,17 +267,8 @@ export function deleteArrangementClipRipple(doc: ProjectDocument, clipId: string
       ...doc.arrangement,
       clips,
       audioClips: rippleShiftAudioClips(doc.arrangement.audioClips, oldEnd, -clip.lengthBars),
-      midiClips: rippleShiftTickClips(
-        doc.arrangement.midiClips,
-        oldEnd * ticksPerBar(doc),
-        -clip.lengthBars * ticksPerBar(doc),
-      ),
-      automationClips: rippleShiftTickClips(
-        doc.arrangement.automationClips,
-        oldEnd * ticksPerBar(doc),
-        -clip.lengthBars * ticksPerBar(doc),
-      ),
       transitions: transitionsForClips(doc, clips),
+      ...rippleShiftTickLanes(doc.arrangement, oldEnd * ticksPerBar(doc), -clip.lengthBars * ticksPerBar(doc)),
     },
   };
   return snapshot("deleteArrangementClipRipple", `Ripple delete clip`, doc, next);

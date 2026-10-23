@@ -9,9 +9,11 @@
  */
 import type { Command } from "./types";
 import type {
+  ArrangementAutomationClip,
   ArrangementClip,
   AudioClip,
   DrumTrack,
+  MidiClip,
   NoteEvent,
   Pattern,
   ProjectDocument,
@@ -45,6 +47,67 @@ import {
   withAutomationClips,
   withMidiClips,
 } from "../project-model/timeline";
+
+/**
+ * One shared duplicate pass over BOTH tick-addressed lanes (MIDI + arrange-
+ * ment automation): straddle refuses, wholly-inside copies at +deltaTicks,
+ * trailing shifts. The lanes differ only in payload — the copy hooks keep
+ * the kind-specific fields (shared patternId for MIDI per ADR 0044 decision
+ * 4; deep-copied source-relative points for automation). Lane absence is
+ * preserved (with* write-backs).
+ */
+type TickClipLike = MidiClip | ArrangementAutomationClip;
+
+interface TickLaneSpec {
+  kind: "MIDI" | "automation";
+  laneOf: (arr: ProjectDocument["arrangement"]) => TickClipLike[] | undefined;
+  write: (doc: ProjectDocument, clips: TickClipLike[]) => ProjectDocument;
+  /** New id + shifted start; kind-specific fields carried (or deep-copied). */
+  copyShifted: (clip: TickClipLike, deltaTicks: number) => TickClipLike;
+}
+
+const TICK_LANES: TickLaneSpec[] = [
+  {
+    kind: "MIDI",
+    laneOf: (arr) => midiLaneOf(arr),
+    // The lane-specific write is reached only with that lane's own clips —
+    // the boundary cast keeps the shared pass generic without a registry.
+    write: (doc, clips) => withMidiClips(doc, clips as MidiClip[]),
+    copyShifted: (clip, deltaTicks) => ({ ...clip, id: uid("midiClip"), startTick: clip.startTick + deltaTicks }),
+  },
+  {
+    kind: "automation",
+    laneOf: (arr) => automationLaneOf(arr),
+    write: (doc, clips) => withAutomationClips(doc, clips as ArrangementAutomationClip[]),
+    copyShifted: (clip, deltaTicks) => {
+      const automation = clip as ArrangementAutomationClip;
+      return {
+        ...automation,
+        id: uid("automationClip"),
+        startTick: automation.startTick + deltaTicks,
+        points: automation.points.map((point) => ({ ...point })),
+      };
+    },
+  },
+];
+
+function duplicateTickClips(doc: ProjectDocument, from: number, to: number, deltaTicks: number): ProjectDocument {
+  let next = doc;
+  for (const lane of TICK_LANES) {
+    const nextClips = (lane.laneOf(next.arrangement) ?? []).flatMap((clip) => {
+      const { from: f, to: t } = tickClipSpan(clip);
+      if (f >= from && t <= to) return [lane.copyShifted(clip, deltaTicks), clip];
+      if ((f < from && t > from) || (f < to && t > to)) {
+        throw new Error(
+          `Cannot duplicate a time range when a ${lane.kind} clip crosses its boundary; adjust the range first.`,
+        );
+      }
+      return f >= to ? [{ ...clip, startTick: clip.startTick + deltaTicks }] : [clip];
+    });
+    next = lane.write(next, nextClips);
+  }
+  return next;
+}
 
 /* ---------------- time range ---------------- */
 /**
@@ -203,56 +266,11 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
   nextDoc = withAudioLane(nextDoc, nextAudioClips);
 
   // MIDI + arrangement automation clips (ADR 0044/0045): free-placement
-  // integer-tick lanes — the same duplicate contract as the audio lane
-  // (straddle refuses; wholly-inside copies; trailing shifts), but all math
-  // in TICKS: the bar-aligned delta keeps tick-exact clips tick-exact.
-  // Copies keep SHARING the source patternId (shared-source semantics,
-  // ADR 0044 decision 4) and carry phase/mute/lock/points verbatim.
-  const tickClipPolicy = (
-    clip: { startTick: number; lengthTicks: number },
-    kind: string,
-  ): "copy" | "shift" | "keep" => {
-    const { from: f, to: t } = tickClipSpan(clip);
-    if (f >= from && t <= to) return "copy";
-    if ((f < from && t > from) || (f < to && t > to)) {
-      throw new Error(
-        `Cannot duplicate a time range when a ${kind} clip crosses its boundary; adjust the range first.`,
-      );
-    }
-    return f >= to ? "shift" : "keep";
-  };
-  const midiClips = midiLaneOf(doc.arrangement);
-  const nextMidiClips = midiClips.flatMap((clip) => {
-    switch (tickClipPolicy(clip, "MIDI")) {
-      case "copy":
-        return [{ ...clip, id: uid("midiClip"), startTick: clip.startTick + delta }, clip];
-      case "shift":
-        return [{ ...clip, startTick: clip.startTick + delta }];
-      default:
-        return [clip];
-    }
-  });
-  nextDoc = withMidiClips(nextDoc, nextMidiClips);
-  const automationClips = automationLaneOf(doc.arrangement);
-  const nextAutomationClips = automationClips.flatMap((clip) => {
-    switch (tickClipPolicy(clip, "automation")) {
-      case "copy":
-        return [
-          {
-            ...clip,
-            id: uid("automationClip"),
-            startTick: clip.startTick + delta,
-            points: clip.points.map((point) => ({ ...point })),
-          },
-          clip,
-        ];
-      case "shift":
-        return [{ ...clip, startTick: clip.startTick + delta }];
-      default:
-        return [clip];
-    }
-  });
-  nextDoc = withAutomationClips(nextDoc, nextAutomationClips);
+  // integer-tick lanes with IDENTICAL structural semantics — one shared
+  // duplicate pass instead of two pasted blocks (a tick-lane policy change
+  // now lands in one place; the scene/audio lanes stay explicit because
+  // their differences are real: bar grid vs float layering).
+  nextDoc = duplicateTickClips(nextDoc, from, to, delta);
 
   // Markers inside zone are duplicated; trailing markers are shifted
   const nextMarkers = doc.markers.flatMap((m) => {
