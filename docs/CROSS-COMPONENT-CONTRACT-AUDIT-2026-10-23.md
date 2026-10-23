@@ -501,6 +501,34 @@ npx vitest run <7 new files> tests/adr0056-stage2-bar-formula-guard.test.ts \
 No regression: the mixer, the scheduler, the prior/melodic lanes, the export and the
 live/offline parity are all green with the fixes in place.
 
+**The final run, with C10 in place, was the 37-file run (the eight above plus
+`tests/share-code-schema-gate.test.ts`):**
+
+```
+→ Test Files 35 passed | 2 failed (37)
+  Tests      369 passed | 2 failed (371)
+```
+
+Both failures are **`Test timed out in 5000ms`**, in
+`tests/mixer-audit3.test.ts` and `tests/mixer-send-leak.test.ts` — and **both files
+belong to other sessions** (`5e239c67`, `c4badde2`), not to this wave. Re-run **alone**,
+with the load of 37 parallel workers removed, they are green:
+
+```
+npx vitest run tests/mixer-audit3.test.ts tests/mixer-send-leak.test.ts --testTimeout=30000
+→ Test Files 2 passed (2)
+  Tests      16 passed (16)
+  ✓ hostile out-of-range gain/pan/send values are clamped at the graph write  3458ms
+  ✓ removing a send disconnects the modMacroPan → sendGain edge (leak guard)   3477ms
+```
+
+Each of those two tests needs about **3.5 s** against vitest's **5 s** default budget, so
+they only overrun when the machine is already busy (this tree runs on a host shared with
+several other agent sessions). That is a **timeout-budget fragility in a foreign test
+file**, not a product defect and not a regression from this wave — it is recorded as risk
+9 below rather than patched here, because editing another session's test file to widen a
+budget is not this wave's to take.
+
 ### 5.3 The revert check (the proof that the tests have teeth)
 
 Every fix was undone and the suites re-run: **17 tests failed across all 8 files**, each
@@ -521,21 +549,24 @@ The fixes were then restored and the suites re-run green.
 
 ### 5.4 The full check list
 
-| Check                                                 | Result                                                                                            |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| New + extended suites                                 | **8 files, 50 tests passed** (plus 3 more for C10 → 9 files, 53 tests)                            |
-| New + related existing suites                         | **36 files, 368 tests passed** — mixer, scheduler, prior/melodic, scorepack/export, tempo, parity |
-| `npx tsc --noEmit`                                    | **exit 0**                                                                                        |
-| `npx prettier --check` (every file this wave touched) | **"All matched files use Prettier code style!"**                                                  |
-| `npm run build`                                       | **fails — not on this wave's code** (see below)                                                   |
-| `node-gc`                                             | **ABANDONED: none**                                                                               |
+| Check                                                 | Result                                                                                                  |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| New + extended suites                                 | **8 files, 50 tests passed** (plus 3 more for C10 → 9 files, 53 tests)                                  |
+| New + related existing suites                         | **35 of 37 files green, 369 passed** — the 2 failures are 5 s **timeouts** in foreign mixer files (5.2) |
+| `npx tsc --noEmit`                                    | **exit 2 — one error, in a concurrent session's in-flight file** (see below)                            |
+| `npx prettier --check` (every file this wave touched) | **"All matched files use Prettier code style!"**                                                        |
+| `npm run build`                                       | **fails — not on this wave's code** (see below)                                                         |
+| `node-gc`                                             | **ABANDONED: none**                                                                                     |
 
 **The build.** `npm run build` runs `tsc --noEmit && vite build && … && check-bundle-size.mjs`.
 Two things are red on the tree, and neither is this wave's:
 
-1. the `tsc` step fails on `tests/scene-clip-edit-matrix.test.ts` — a **concurrent
-   session's untracked, in-flight test file** (it imports a command that does not exist
-   yet). A typecheck of the tree **without** that file passes (exit 0, measured);
+1. the `tsc` step fails **only in a concurrent session's in-flight test file**
+   (the name moves as that session works — it was `tests/scene-clip-edit-matrix.test.ts`,
+   then `tests/mcp-tools.test.ts`, and at the last measurement
+   `tests/master-assistant-corrections.test.ts`; all of them theirs, none of them touched
+   by this wave). Every file this wave touched typechecks: the typecheck reports the
+   files that carry errors, and it lists **one** path, and it is not one of them;
 2. the budget step reports **DAW JS 5563 KB against a 5560 KB budget** — 3 KB over.
 
 The budget overage was **measured for attribution**: the same tree was built with this
@@ -579,3 +610,11 @@ product decision and needs its own measured justification
 8. **The editor is not proven bug-free.** This wave looked at seven seams, not at the
    whole product, and it stopped at the first confirmed defect per seam. What is left
    behind is a list, not a guarantee.
+9. **Two foreign mixer tests sit too close to vitest's 5 s default.** The "hostile
+   out-of-range gain/pan/send" clamp test and the "send teardown" leak guard each need
+   ~3.5 s; under a busy host they overrun and are reported as failures (two consecutive
+   full-suite runs did). Alone they are green (16/16). They belong to other sessions
+   (`5e239c67`, `c4badde2`), so this wave recorded the fragility instead of widening
+   another session's timeout budget. **Whoever owns those files should give the two
+   tests an explicit timeout** — a green/red signal that depends on the host's load is
+   not a signal.

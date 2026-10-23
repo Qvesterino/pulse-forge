@@ -1,5 +1,5 @@
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from "lz-string";
-import { normalizeProject, validateProjectShape } from "../project-model/schema";
+import { migrateProject, validateProjectShape } from "../project-model/schema";
 import { appUrl } from "../shared/mountBase";
 import type { ProjectDocument } from "../project-model/types";
 
@@ -24,7 +24,20 @@ export function encodeShareCode(doc: ProjectDocument): string {
 const MAX_TOKEN_CHARS = 2_000_000;
 const MAX_DECOMPRESSED_CHARS = 8_000_000;
 
-/** Decompress a share token back into a normalized project. Null when invalid. */
+/**
+ * Decompress a share token back into a migrated project. Null when invalid.
+ *
+ * The share route runs the SAME schema gate as the file route
+ * (`src/export/project-io.ts`): `migrateProject` refuses a document from a
+ * newer build (it throws → this function returns null) and migrates + stamps
+ * an older one back to the current `SCHEMA_VERSION`.
+ *
+ * It used to call `normalizeProject` instead, which only checks the SHAPE.
+ * A share link from a newer build then opened, was persisted with the future
+ * `schemaVersion`, and the project VANISHED from the library on the next boot:
+ * `repo.load` migrates, the version gate throws, and the project is no longer
+ * listed (it only shows up under "incompatible").
+ */
 export function decodeShareCode(code: string): ProjectDocument | null {
   try {
     if (typeof code !== "string" || code.length > MAX_TOKEN_CHARS) return null;
@@ -33,7 +46,7 @@ export function decodeShareCode(code: string): ProjectDocument | null {
     const parsed: unknown = JSON.parse(json);
     if (typeof parsed !== "object" || parsed === null) return null;
     if (!validateProjectShape(parsed as Record<string, unknown>)) return null;
-    return normalizeProject(parsed as ProjectDocument);
+    return migrateProject(parsed as ProjectDocument);
   } catch {
     return null;
   }
