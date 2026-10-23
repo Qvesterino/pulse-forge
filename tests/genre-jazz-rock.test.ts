@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { GENRES } from "../src/ai/types";
-import { getGrooveById, getGroovesForGenre, getStyleNamesForGenre } from "../src/ai/grooves/index";
+import { getGrooveById, getGroovesForGenre, getStyleNamesForGenre, grooveBarSteps } from "../src/ai/grooves/index";
 import { parseIntentText } from "../src/intent/text-parser";
 import { planSongForm } from "../src/intent/song";
 import { normalizeIntent } from "../src/intent/normalize";
@@ -27,15 +27,20 @@ describe("first-class genre promotion (jazz + rock)", () => {
     for (const genre of PROMOTED) expect(GENRES).toContain(genre);
   });
 
-  it("each promoted genre owns real grooves with unique ids and 16-step rows", () => {
+  it("each promoted genre owns real grooves with unique ids and rows of their own metrical bar", () => {
     for (const genre of PROMOTED) {
       const grooves = getGroovesForGenre(genre);
       expect(grooves.length, genre).toBeGreaterThanOrEqual(3);
       for (const groove of grooves) {
         expect(groove.genre, groove.id).toBe(genre);
+        // The row length IS the groove's OWN metrical bar (ADR 0057 Stage 2j):
+        // 16 steps for 4/4, 14 for 7/8, 10 for 5/8. grooveBarSteps is the one
+        // owner of that number, so the spec asks instead of re-deriving it —
+        // and a groove whose rows disagree with its own metre fails here.
+        const barSteps = grooveBarSteps(groove);
         for (const pattern of groove.patterns) {
           for (const row of Object.values(pattern)) {
-            expect(row).toHaveLength(16);
+            expect(row, `${groove.id} row length vs its own bar (${barSteps})`).toHaveLength(barSteps);
           }
         }
       }
