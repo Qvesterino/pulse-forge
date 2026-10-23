@@ -21,7 +21,7 @@ import { isPriorDeltaReference } from "./reference-delta";
 import { isDescriptiveStatement } from "./declarative";
 import { calibrateKnobScale, degreeToEffectAmount, parseDegree, type Degree } from "./degree";
 import type { IntentSpec } from "./types";
-import { MIX_TARGET_WORDS, ROLE_TARGETS, trackOrdinalFromText } from "./semantics/target-registry";
+import { MIX_TARGET_WORDS, ROLE_TARGETS, trackOrdinalFromText, type MixTargetId } from "./semantics/target-registry";
 import { targetTrackIds } from "./semantics/target-resolution";
 
 /**
@@ -38,7 +38,7 @@ import { targetTrackIds } from "./semantics/target-resolution";
  * arrangeWords).
  */
 
-export type MixTarget = "drums" | "bass" | "chords" | "lead" | "vocal";
+export type MixTarget = MixTargetId;
 
 export interface MixDecision {
   target: MixTarget;
@@ -1362,6 +1362,8 @@ export function sendReadback(after: ProjectDocument, intent: SendIntent): string
 export interface BypassIntent {
   effectType: EffectType;
   target: MixTarget;
+  /** Model binding: exact matching tracks that currently carry the instance. */
+  trackIds?: string[];
   bypassed: boolean;
 }
 
@@ -1378,7 +1380,9 @@ export function parseBypassIntent(text: string): BypassIntent | null {
 }
 
 export function applyBypassIntent(doc: ProjectDocument, intent: BypassIntent): ReturnType<typeof snapshot> {
-  const trackIds = trackIdsForTarget(doc, intent.target);
+  const trackIds = intent.trackIds?.length
+    ? intent.trackIds.filter((id) => doc.tracks.some((track) => track.id === id))
+    : trackIdsForTarget(doc, intent.target);
   if (trackIds.length === 0) {
     throw new Error(`no tracks match the target (${intent.target})`);
   }
@@ -1389,7 +1393,10 @@ export function applyBypassIntent(doc: ProjectDocument, intent: BypassIntent): R
 /** Read-back — the bypass flag per family track carrying the effect. */
 export function bypassReadback(after: ProjectDocument, intent: BypassIntent): string {
   const entries: string[] = [];
-  for (const trackId of trackIdsForTarget(after, intent.target)) {
+  const trackIds = intent.trackIds?.length
+    ? intent.trackIds.filter((id) => after.tracks.some((track) => track.id === id))
+    : trackIdsForTarget(after, intent.target);
+  for (const trackId of trackIds) {
     const track = after.tracks.find((t) => t.id === trackId);
     const fx = track?.effects.find((effect) => effect.type === intent.effectType);
     if (track && fx) entries.push(`${track.name} bypass=${fx.bypassed}`);

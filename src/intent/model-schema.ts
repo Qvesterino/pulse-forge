@@ -1,4 +1,5 @@
 import type { ProjectDocument } from "../project-model/types";
+import { MIX_TARGET_IDS } from "./semantics/target-registry";
 
 /**
  * LOCAL INTENT MODEL — MODEL-FACING ACTION SCHEMA + CONSTRAINED DECODING.
@@ -76,7 +77,7 @@ export const VOCAB = {
   padFamily: ["kick", "snare", "clap", "hat", "perc", "tom"] as const,
   faderAmount: ["subtle", "normal", "big", "full"] as const,
   faderDirection: ["down", "up", "set"] as const,
-  mixTarget: ["drums", "bass", "chords", "lead", "vocal"] as const,
+  mixTarget: MIX_TARGET_IDS,
   effectType: [
     "reverb",
     "delay",

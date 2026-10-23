@@ -17,8 +17,10 @@
  * What it unifies is the SOURCE: adding an alias is one edit, and the derived
  * tables in conversation.ts / mix.ts cannot disagree about the family id.
  */
-export type FamilyTargetId = "drums" | "bass" | "chords" | "lead" | "vocal" | "master";
-export type MixTargetId = Exclude<FamilyTargetId, "master">;
+export const MIX_TARGET_IDS = ["drums", "bass", "chords", "lead", "vocal"] as const;
+export const FAMILY_TARGET_IDS = [...MIX_TARGET_IDS, "master"] as const;
+export type MixTargetId = (typeof MIX_TARGET_IDS)[number];
+export type FamilyTargetId = (typeof FAMILY_TARGET_IDS)[number];
 export type PadFamilyId = "kick" | "snare" | "clap" | "hat" | "perc" | "tom";
 export type SceneRoleId = "intro" | "outro" | "verse" | "build" | "break" | "bridge" | "chorus" | "drop" | "fill";
 

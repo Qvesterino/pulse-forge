@@ -76,9 +76,9 @@ import {
   applyEffectIntent,
   applyMixIntent,
   effectReadback,
-  EFFECT_KNOB,
   planMixProfile,
   type MixOverrides,
+  type MixTarget,
 } from "../intent/mix";
 import { noteAppliedRoute, noteExternalMutation, noteUndoRedo } from "../intent/apply-boundary";
 import { buildIntentCommand as intentCommand } from "../intent/command-for-route";
@@ -182,14 +182,18 @@ import {
 import { applyExactIntentCommand } from "../commands/intentRouting";
 import { applyGenerationResultCommand } from "../commands/aiPattern";
 import { isAutomationTargetValid, targetParamDef } from "../project-model/targets";
-import { clampEffectParam, EFFECT_META, type EffectDefinitionMeta } from "../effects/definitions";
-import { clampInstrumentParam, INSTRUMENT_DEFS, INSTRUMENT_ORDER } from "../instruments/registry";
+import { clampEffectParam, EFFECT_META } from "../effects/definitions";
+import { clampInstrumentParam, INSTRUMENT_ORDER } from "../instruments/registry";
 import {
+  EFFECT_CATALOG_TYPES,
   getEffectCatalogEntry,
+  getInstrumentCatalogEntry,
+  listInstalledEffectInstances,
   listEffectCatalogEntries,
   listInstrumentCatalogEntries,
-  pluginCatalogParameter,
+  pluginTargetTrackIds,
 } from "../plugin-catalog";
+import { MIX_TARGET_IDS } from "../intent/semantics/target-registry";
 import type { McpAudioContent, McpAudioPreviewArtifact } from "./audio-preview";
 
 /**
@@ -1030,6 +1034,23 @@ const OUTPUT_CATALOG: McpOutputSchema = {
         name: { type: "string" },
         category: { type: "string", enum: ["tone", "dynamics", "character", "space", "movement"] },
         primaryKnob: { type: ["string", "null"] },
+        primaryRole: { type: ["string", "null"] },
+        intentControls: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              role: { type: "string" },
+              paramId: { type: "string" },
+              min: { type: "number" },
+              max: { type: "number" },
+              default: { type: "number" },
+              unit: { type: ["string", "null"] },
+            },
+            required: ["role", "paramId", "min", "max", "default", "unit"],
+          },
+        },
         parameters: {
           type: "array",
           items: {
@@ -1075,7 +1096,7 @@ const OUTPUT_CATALOG: McpOutputSchema = {
           },
         },
       },
-      required: ["type", "name", "category", "primaryKnob", "parameters"],
+      required: ["type", "name", "category", "primaryKnob", "primaryRole", "intentControls", "parameters"],
     },
     instruments: {
       type: "array",
@@ -1745,12 +1766,12 @@ export const MCP_TOOLS: McpToolDef[] = [
       properties: {
         effect: {
           type: "string",
-          enum: Object.keys(EFFECT_META),
+          enum: EFFECT_CATALOG_TYPES,
           description: "Any registered effect; more/less requires a primary knob (see kyx_catalog)",
         },
         family: {
           type: "string",
-          enum: ["drums", "bass", "chords", "lead", "vocal"],
+          enum: MIX_TARGET_IDS,
           description: "Track family target — required unless trackId is given",
         },
         trackId: {
@@ -2129,7 +2150,7 @@ export const MCP_TOOLS: McpToolDef[] = [
         },
         family: {
           type: "string",
-          enum: ["drums", "bass", "chords", "lead", "vocal"],
+          enum: MIX_TARGET_IDS,
           description: "Track family target — required unless trackId is given",
         },
         effect: {
@@ -4597,7 +4618,8 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
         );
       }
       const effect = record.effect.trim();
-      if (!Object.prototype.hasOwnProperty.call(EFFECT_META, effect)) {
+      const effectCatalog = getEffectCatalogEntry(effect);
+      if (effectCatalog == null) {
         return mcpError("UNKNOWN_TARGET", `fx op failed — unknown effect "${effect}"; list effects via kyx_catalog`);
       }
 
@@ -4740,7 +4762,7 @@ async function executeMcpToolDispatch(ctx: McpToolContext, name: string, args: u
       // eq (and any knob-less effect) has no single "primary knob" — never
       // pretend: point at kyx_plugin_param instead of throwing deep inside
       // the applier. remove/bypass/reorder do NOT need a knob.
-      if ((action === "more" || action === "less") && !(effect in EFFECT_KNOB)) {
+      if ((action === "more" || action === "less") && effectCatalog.primaryKnob == null) {
         return mcpError(
           "UNKNOWN_REQUEST",
           `fx op failed: "${effect}" has no single primary knob for more/less — ` +
@@ -7212,10 +7234,10 @@ function explicitTargets(
   const rawTrackId = record.trackId;
   const hasFamily = Object.prototype.hasOwnProperty.call(record, "family");
   const rawFamily = record.family;
-  const validFamilies = ["drums", "bass", "chords", "lead", "vocal"];
+  const validFamilies: readonly string[] = MIX_TARGET_IDS;
 
   if (hasFamily && (typeof rawFamily !== "string" || !validFamilies.includes(rawFamily.trim()))) {
-    return { errorCode: "INVALID_ARGUMENTS", reason: "family must be drums, bass, chords, lead, or vocal" };
+    return { errorCode: "INVALID_ARGUMENTS", reason: `family must be ${MIX_TARGET_IDS.join(", ")}` };
   }
   if (hasTrackId) {
     if (typeof rawTrackId !== "string" || rawTrackId.trim() === "" || rawTrackId.length > 128) {
@@ -7240,7 +7262,7 @@ function explicitTargets(
     };
   }
   const family = rawFamily.trim();
-  const trackIds = tracksInFamily(doc, family);
+  const trackIds = pluginTargetTrackIds(doc, [family as MixTarget]);
   if (trackIds.length === 0) {
     return { errorCode: "UNKNOWN_TARGET", reason: `no track matches family "${family}"` };
   }
@@ -8819,14 +8841,14 @@ async function executeBatchTool(ctx: McpToolContext, record: Record<string, unkn
   };
 }
 
-type McpInstrumentParamDef = (typeof INSTRUMENT_DEFS)[InstrumentKind]["params"][number];
+type McpInstrumentParamDef = NonNullable<ReturnType<typeof getInstrumentCatalogEntry>>["parameters"][number];
 
 function publicInstrumentParams(kind: InstrumentKind): McpInstrumentParamDef[] {
-  return INSTRUMENT_DEFS[kind].params.filter((param) => param.deprecated !== true);
+  return getInstrumentCatalogEntry(kind)?.parameters ?? [];
 }
 
 function instrumentParamDefinition(param: McpInstrumentParamDef) {
-  return pluginCatalogParameter(param);
+  return param;
 }
 
 function instrumentParamReadback(param: McpInstrumentParamDef, value: number | null) {
@@ -8869,14 +8891,14 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
     if (kind == null) {
       return mcpError("UNKNOWN_TARGET", `unknown instrument "${requestedKind}" — see kyx_catalog subject:instruments`);
     }
-    const definition = INSTRUMENT_DEFS[kind];
+    const catalog = getInstrumentCatalogEntry(kind)!;
     const params = publicInstrumentParams(kind);
     if (params.length > 128) {
       return mcpError("RESOURCE_LIMIT", `${kind} has more than 128 public parameters; catalog response is capped`);
     }
-    const parameters = params.map(instrumentParamDefinition);
+    const parameters = params;
     const lines = [
-      `${kind} — ${definition.name} (${parameters.length} parameters)`,
+      `${kind} — ${catalog.name} (${parameters.length} parameters)`,
       "parameters (native units; set through kyx_instrument_param):",
       ...params.map((param) => {
         const extras = [
@@ -8884,7 +8906,7 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
           param.kind ?? null,
           param.step != null ? `step ${param.step}` : null,
           param.taper != null ? `${param.taper} taper` : null,
-          param.options != null
+          param.options.length > 0
             ? `options: ${param.options.map((option) => `${option.value}=${option.label}`).join("|")}`
             : null,
         ].filter(Boolean);
@@ -8898,7 +8920,7 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
       data: {
         status: "listed",
         subject,
-        instrument: { kind, name: definition.name, parameterCount: parameters.length, parameters },
+        instrument: { kind, name: catalog.name, parameterCount: parameters.length, parameters },
       },
     };
   }
@@ -8916,26 +8938,28 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
         `unknown effect "${type}" — see kyx_catalog subject:effects (first kinds: ${known}, …)`,
       );
     }
-    const knob = EFFECT_KNOB[type as keyof typeof EFFECT_KNOB];
-    const meta = EFFECT_META[type as keyof typeof EFFECT_META];
+    const knob = catalog.primaryKnob;
     const parameters = catalog.parameters;
     const lines = [
-      `${meta.type} — ${meta.name} (${meta.category})`,
+      `${catalog.type} — ${catalog.name} (${catalog.category})`,
       knob
-        ? `primary knob (kyx_fx more/less): ${knob}`
+        ? `primary knob (kyx_fx more/less): ${knob}${catalog.primaryRole ? ` [role: ${catalog.primaryRole}]` : ""}`
         : "no single primary knob — set parameters via kyx_plugin_param",
+      `intent secondary controls: ${catalog.intentControls.map((control) => `${control.role} → ${control.paramId}`).join(", ") || "none"}`,
       "parameters (native units; kyx_plugin_param set clamps into these ranges):",
       // A range alone is not a contract an agent can reason about: every
       // parameter may carry a one-sentence DESCRIPTION of what it does, on its
       // own indented line. Effects that have not been documented yet simply
       // omit the line — the catalog never invents one.
-      ...meta.params.flatMap((param) => {
+      ...parameters.flatMap((param) => {
         const extras = [
           param.unit != null ? `unit ${param.unit}` : null,
           param.kind != null ? param.kind : null,
           param.step != null ? `step ${param.step}` : null,
           param.taper != null ? `${param.taper} taper` : null,
-          param.options != null ? `options: ${param.options.map((o) => `${o.value}=${o.label}`).join("|")}` : null,
+          param.options.length > 0
+            ? `options: ${param.options.map((option) => `${option.value}=${option.label}`).join("|")}`
+            : null,
         ].filter(Boolean);
         const line = `  ${param.id} "${param.label}": ${param.min} .. ${param.max}, default ${param.default}${extras.length > 0 ? ` (${extras.join(", ")})` : ""}`;
         return param.description != null ? [line, `      ${param.description}`] : [line];
@@ -8951,7 +8975,9 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
           type: catalog.type,
           name: catalog.name,
           category: catalog.category,
-          primaryKnob: knob ?? null,
+          primaryKnob: knob,
+          primaryRole: catalog.primaryRole,
+          intentControls: catalog.intentControls,
           parameters,
         },
       },
@@ -8962,7 +8988,7 @@ function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
     type: meta.type,
     name: meta.name,
     category: meta.category,
-    primaryKnob: EFFECT_KNOB[meta.type as keyof typeof EFFECT_KNOB] ?? null,
+    primaryKnob: meta.primaryKnob,
     parameterCount: meta.parameters.length,
   }));
   const lines = effects.map((effect) => {
@@ -9167,9 +9193,9 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
   }
   const trackId = typeof rawTrackId === "string" ? rawTrackId.trim() : "";
   const rawFamily = record.family;
-  const validFamilies = ["drums", "bass", "chords", "lead", "vocal"];
+  const validFamilies: readonly string[] = MIX_TARGET_IDS;
   if (hasField("family") && (typeof rawFamily !== "string" || !validFamilies.includes(rawFamily.trim()))) {
-    return mcpError("INVALID_ARGUMENTS", "family must be drums, bass, chords, lead, or vocal");
+    return mcpError("INVALID_ARGUMENTS", `family must be ${MIX_TARGET_IDS.join(", ")}`);
   }
   const family = typeof rawFamily === "string" ? rawFamily.trim() : "";
 
@@ -9178,8 +9204,8 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
     return mcpError("INVALID_ARGUMENTS", "effect must be a non-empty string of at most 128 characters");
   }
   const effect = typeof rawEffect === "string" ? rawEffect.trim() : "";
-  const meta = effect !== "" ? (EFFECT_META as Record<string, EffectDefinitionMeta | undefined>)[effect] : undefined;
-  if (effect !== "" && meta == null) {
+  const catalog = effect !== "" ? getEffectCatalogEntry(effect) : null;
+  if (effect !== "" && catalog == null) {
     return mcpError("UNKNOWN_TARGET", `unknown effect "${effect}" — see kyx_catalog subject:effects`);
   }
   if (op === "set" && effect === "") {
@@ -9190,17 +9216,17 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
   let rawValue: number | null = null;
   let clampedValue: number | null = null;
   let instanceWanted: number | null = null;
-  let paramDef: EffectDefinitionMeta["params"][number] | undefined;
+  let paramDef: NonNullable<typeof catalog>["parameters"][number] | undefined;
   if (op === "set") {
     if (typeof record.param !== "string" || record.param.trim() === "" || record.param.length > 128) {
       return mcpError("INVALID_ARGUMENTS", "set needs a parameter id from kyx_catalog subject:effect");
     }
     paramId = record.param.trim();
-    paramDef = meta!.params.find((p) => p.id === paramId);
+    paramDef = catalog!.parameters.find((parameter) => parameter.id === paramId);
     if (paramDef == null) {
       return mcpError(
         "UNKNOWN_TARGET",
-        `unknown param "${paramId}" on ${effect} — parameters: ${meta!.params.map((p) => p.id).join(", ")}`,
+        `unknown param "${paramId}" on ${effect} — parameters: ${catalog!.parameters.map((parameter) => parameter.id).join(", ")}`,
       );
     }
     if (typeof record.value !== "number" || !Number.isFinite(record.value)) {
@@ -9236,7 +9262,7 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
       return mcpError("UNKNOWN_TARGET", `no track with id "${trackId}" — list ids via kyx_state subject:tracks`);
     targets = [track];
   } else if (family !== "") {
-    targets = tracksInFamily(doc, family)
+    targets = pluginTargetTrackIds(doc, [family as MixTarget])
       .map((id) => doc.tracks.find((t) => t.id === id))
       .filter((t): t is Track => t != null);
     if (targets.length === 0) return mcpError("UNKNOWN_TARGET", `no track matches family "${family}"`);
@@ -9302,54 +9328,50 @@ function executePluginParamTool(ctx: McpToolContext, record: Record<string, unkn
   if (op === "list") {
     const lines: string[] = [];
     const allInstances: NonNullable<ReturnType<typeof resultData>["instances"]> = [];
+    const installedInstances = listInstalledEffectInstances(
+      doc,
+      targets.map((track) => track.id),
+    );
     for (const track of targets) {
-      const matching = track.effects.filter((fx) => effect === "" || fx.type === effect);
+      const matching = installedInstances.filter(
+        (instance) => instance.trackId === track.id && (effect === "" || instance.type === effect),
+      );
       if (matching.length === 0) {
         const reason = effect !== "" ? `no ${effect} instance in the chain` : "no FX";
         unmatched.push({ trackId: track.id, trackName: track.name, reason });
         if (effect !== "" || track.effects.length === 0) lines.push(`${track.name}: ${reason}`);
         continue;
       }
-      for (const fx of matching) {
-        const fxMeta = (EFFECT_META as Record<string, EffectDefinitionMeta | undefined>)[fx.type];
-        const params = fxMeta?.params ?? [];
-        const parameterData: Array<{
-          id: string;
-          value: number;
-          min: number;
-          max: number;
-          default: number;
-          unit: string | null;
-        }> = [];
-        for (const param of params) {
-          const current = fx.params[param.id] ?? param.default;
-          if (!Number.isFinite(current)) {
-            return mcpError("EXECUTION_FAILED", `${track.name}: ${fx.type}.${param.id} has a non-finite stored value`);
-          }
-          parameterData.push({
-            id: param.id,
-            value: current,
-            min: param.min,
-            max: param.max,
-            default: param.default,
-            unit: param.unit ?? null,
-          });
+      for (const instance of matching) {
+        if (instance.invalidParameters.length > 0) {
+          const paramId = instance.invalidParameters[0];
+          return mcpError(
+            "EXECUTION_FAILED",
+            `${track.name}: ${instance.type}.${paramId} has a non-finite stored value`,
+          );
         }
+        const parameterData = instance.parameters.map((parameter) => ({
+          id: parameter.id,
+          value: parameter.value,
+          min: parameter.min,
+          max: parameter.max,
+          default: parameter.default,
+          unit: parameter.unit,
+        }));
         const values = parameterData.map(
           (param) =>
             `${param.id}=${param.value} (${param.min}..${param.max}${param.unit ? ` ${param.unit}` : ""}, def ${param.default})`,
         );
-        const instance = matching.indexOf(fx) + 1;
         lines.push(
-          `${track.name}: ${fx.type}#${instance}${fx.bypassed ? " [bypassed]" : ""} ${values.join(", ") || "(no numeric params)"}`,
+          `${track.name}: ${instance.type}#${instance.instance}${instance.bypassed ? " [bypassed]" : ""} ${values.join(", ") || "(no numeric params)"}`,
         );
         allInstances.push({
-          trackId: track.id,
-          trackName: track.name,
-          fxId: fx.id,
-          effect: fx.type,
-          instance,
-          bypassed: !!fx.bypassed,
+          trackId: instance.trackId,
+          trackName: instance.trackName,
+          fxId: instance.effectId,
+          effect: instance.type,
+          instance: instance.instance,
+          bypassed: instance.bypassed,
           parameters: parameterData,
         });
       }

@@ -8,11 +8,11 @@
  */
 import type { ProjectDocument } from "../../project-model/types";
 import { trackIdsForTarget } from "../conversation";
-import type { FamilyTargetId } from "./target-registry";
+import type { MixTargetId } from "./target-registry";
 
 export function targetTrackIds(
   doc: ProjectDocument,
-  targets: readonly FamilyTargetId[],
+  targets: readonly MixTargetId[],
   trackIds?: readonly string[],
   trackOrdinal?: number,
 ): string[] {

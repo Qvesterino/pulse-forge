@@ -18,6 +18,10 @@ import type { RoutedIntent } from "./route";
 import { routeIntentText } from "./route";
 import { planIntent } from "./semantics/intent-plan";
 import { isDescriptiveStatement } from "./declarative";
+import { installedEffectTrackIds } from "../plugin-catalog";
+import type { EffectIntent, BypassIntent } from "./mix";
+import type { ParamIntent } from "./param-intent";
+import type { CompoundPart } from "./compound";
 
 /** Route kinds that change the project and therefore need a plan. */
 const MUTATION_KINDS: ReadonlySet<RoutedIntent["kind"]> = new Set([
@@ -50,6 +54,84 @@ const MUTATION_KINDS: ReadonlySet<RoutedIntent["kind"]> = new Set([
 /** Non-mutating model routes that are useful and safe to accept. */
 const READ_ONLY_KINDS: ReadonlySet<RoutedIntent["kind"]> = new Set(["clarify", "queryIntent"]);
 
+function explicitlyRequestsEffectInsertion(source: string): boolean {
+  const normalized = source
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  return /\b(?:add|insert|apply|put|pridaj|vloz|nasad|zaved)\b/.test(normalized);
+}
+
+function bindEffectIntent(doc: ProjectDocument, intent: EffectIntent, source: string): EffectIntent | null {
+  const installed = installedEffectTrackIds(
+    doc,
+    intent.effectType,
+    intent.targets,
+    intent.trackIds,
+    intent.trackOrdinal,
+  );
+  if (installed.length === 0) {
+    return explicitlyRequestsEffectInsertion(source) && (intent.direction === "more" || intent.direction === "set")
+      ? intent
+      : null;
+  }
+  // Resolve the model's family choice against the live chains and pin the
+  // proposal to only those exact tracks. This prevents add-if-missing from
+  // silently inserting an effect on other tracks in that family.
+  return { ...intent, targets: [], trackIds: installed, trackOrdinal: undefined };
+}
+
+function bindParamIntent(doc: ProjectDocument, intent: ParamIntent, source: string): ParamIntent | null {
+  const installed = installedEffectTrackIds(
+    doc,
+    intent.effectType,
+    intent.targets,
+    intent.trackIds,
+    intent.trackOrdinal,
+  );
+  if (installed.length === 0) {
+    return explicitlyRequestsEffectInsertion(source) ? intent : null;
+  }
+  return { ...intent, targets: [], trackIds: installed, trackOrdinal: undefined };
+}
+
+function bindBypassIntent(doc: ProjectDocument, intent: BypassIntent): BypassIntent | null {
+  const installed = installedEffectTrackIds(doc, intent.effectType, [intent.target], intent.trackIds);
+  return installed.length > 0 ? { ...intent, trackIds: installed } : null;
+}
+
+function bindCompoundPart(doc: ProjectDocument, part: CompoundPart, source: string): CompoundPart | null {
+  if (part.kind === "effect") {
+    const intent = bindEffectIntent(doc, part.intent, source);
+    return intent ? { ...part, intent } : null;
+  }
+  if (part.kind === "bypass") {
+    const intent = bindBypassIntent(doc, part.intent);
+    return intent ? { ...part, intent } : null;
+  }
+  return part;
+}
+
+function bindInstalledPluginTargets(doc: ProjectDocument, route: RoutedIntent, source: string): RoutedIntent | null {
+  if (route.kind === "effectIntent") {
+    const intent = bindEffectIntent(doc, route.intent, source);
+    return intent ? { ...route, intent } : null;
+  }
+  if (route.kind === "paramIntent") {
+    const intent = bindParamIntent(doc, route.intent, source);
+    return intent ? { ...route, intent } : null;
+  }
+  if (route.kind === "bypassIntent") {
+    const intent = bindBypassIntent(doc, route.intent);
+    return intent ? { ...route, intent } : null;
+  }
+  if (route.kind === "compound") {
+    const parts = route.parts.map((part) => bindCompoundPart(doc, part, source));
+    return parts.every((part) => part != null) ? { ...route, parts: parts as CompoundPart[] } : null;
+  }
+  return route;
+}
+
 export function isModelMutation(route: RoutedIntent): boolean {
   return MUTATION_KINDS.has(route.kind);
 }
@@ -74,8 +156,11 @@ export function gateModelRoute(source: string, modelRoute: RoutedIntent, doc: Pr
   if (modelRoute.kind === "pattern" || modelRoute.kind === "revise") return null;
   if (!isModelMutation(modelRoute)) return null;
 
+  const boundRoute = bindInstalledPluginTargets(doc, modelRoute, source);
+  if (!boundRoute) return null;
+
   // 4. A model mutation must build an executable, actually-changing plan.
-  const plan = planIntent(doc, modelRoute);
+  const plan = planIntent(doc, boundRoute);
   if (!plan.executable || !plan.mutates) return null;
-  return modelRoute;
+  return boundRoute;
 }
