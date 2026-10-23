@@ -16,7 +16,12 @@
  * exception), session-cached pipeline, nothing in the audio callback.
  */
 
-import { semanticBatchTexts, type SemanticManifest, type SemanticRequest, type SemanticResponse } from "./semantic-types";
+import {
+  semanticBatchTexts,
+  type SemanticManifest,
+  type SemanticRequest,
+  type SemanticResponse,
+} from "./semantic-types";
 
 type Transformers = typeof import("@huggingface/transformers");
 type Extractor = Awaited<ReturnType<Transformers["pipeline"]>>;

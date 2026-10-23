@@ -58,6 +58,14 @@ The hunt is for two shapes of problem:
 - No unrelated features, no broad rewrites.
 - After every meaningful change, the relevant suites were re-run.
 
+### The worker-boundary wave (a second pass over boundary 7)
+
+After this wave was reported, Daniel named the **worker-robustness gaps of §2.3** as the next
+scope item. They were re-opened as findings rather than prose, and they produced **six more
+defects (C11–C16)** plus two new test files that drive the **real worker modules**. The second
+pass also found a defect **in the first pass's own guard** (C14) — see risk 11. The §2.3
+section is kept as the historical record; §1.2b and §3.9–§3.13 are the current state.
+
 ---
 
 ## 1. Findings
@@ -311,7 +319,7 @@ stale version, so `listIncompatible` later misclassified it.
 
 ---
 
-### 1.2b The worker-boundary wave (C11–C15)
+### 1.2b The worker-boundary wave (C11–C16)
 
 Daniel named the worker-robustness gaps of §2.3 as the next scope item, so they were
 re-audited as findings rather than left as prose. Five defects, all on the worker ↔ main-thread
@@ -339,7 +347,7 @@ Two defects live in that shape:
    classify). The worker is not killed by the throw; it is **deafened**: it never answers, and
    the failure is mis-attributed to the model.
 2. `handle()` treats every type it does not know as **"dispose"**. An unknown message type
-   therefore **released the loaded model** — the prior worker releases *every* kind's session —
+   therefore **released the loaded model** — the prior worker releases _every_ kind's session —
    and the next request answered "model not loaded". The lane then degraded to the heuristic
    fallback with no word.
 
@@ -387,7 +395,7 @@ so a request for three texts (one of them empty) came back as **two** vectors. T
 not notice — it returned whatever the worker said — and the caller used the short answer as if
 it were complete.
 
-The consumer *did* notice: `buildReferenceEmbedding` checks `vectors.length !== texts.length`
+The consumer _did_ notice: `buildReferenceEmbedding` checks `vectors.length !== texts.length`
 and returns null. But that is a **silent loss of the whole reference-informed conditioning**
 (labels + feature poles), not a report. The user gets a beat with no reference conditioning and
 no explanation.
@@ -492,12 +500,12 @@ Found, not fixed — each is masked today but each is a drift waiting for a call
 This section listed four gaps that were real and deliberately left unchanged. Daniel named them
 as the next scope item, so they were **fixed** and re-documented as findings:
 
-| Finding (as it was listed here)                                       | Now                                                                                |
-| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Four workers do not validate `event.data` before using it             | **C11** — fixed (§3.9). The sweep also proved they were the only four of 19        |
-| Three clients register no worker `error` listener                      | **C12** — fixed (§3.10)                                                            |
-| The semantic worker filters the batch but the client does not assert it | **C13** — fixed (§3.11)                                                            |
-| The warp-render error string is dropped; the reference `jobId` is never compared | **C16** and **C15** — fixed (§3.13, §3.12)                            |
+| Finding (as it was listed here)                                                  | Now                                                                         |
+| -------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Four workers do not validate `event.data` before using it                        | **C11** — fixed (§3.9). The sweep also proved they were the only four of 19 |
+| Three clients register no worker `error` listener                                | **C12** — fixed (§3.10)                                                     |
+| The semantic worker filters the batch but the client does not assert it          | **C13** — fixed (§3.11)                                                     |
+| The warp-render error string is dropped; the reference `jobId` is never compared | **C16** and **C15** — fixed (§3.13, §3.12)                                  |
 
 The worker-boundary wave added two findings the section had not seen: **C14** (the reference
 worker's transcription lane posted the analysis lane's error type — a defect the previous wave's
@@ -600,6 +608,83 @@ token — a link cannot report a reason, and the caller already handles null.
 
 ---
 
+### 3.9 C11 — an envelope validator per AI worker
+
+`src/ai/ranking/ranker-worker.ts` · `src/ai/audio/audio-worker.ts` ·
+`src/ai/symbolic/prior-worker.ts` · `src/ai/semantic/semantic-worker.ts`
+
+Each worker got an `is…Request(value)` validator that mirrors `src/intent/model-worker.ts`:
+the payload must be an object, carry an integer `requestId`, and carry a **known** type. A
+payload that fails is **dropped silently** — there is no requestId to answer with — and the
+`catch` block can now always answer, because `request` is validated before `handle()` sees it.
+
+Two deliberate boundaries:
+
+- only the **envelope** is validated there. The body stays with `handle()`, which answers a
+  broken body with a **correlated** error (`ok: false`, the caller's requestId) instead of
+  dropping it — dropping a body would cost the caller its whole timeout;
+- the **type** is validated, because `handle()`'s fall-through treats an unknown type as
+  "dispose". That is what made an unknown message type release the loaded model.
+
+### 3.10 C12 — the semantic client's failure shape, applied to three clients
+
+`src/ai/ranking/ranker-client.ts` · `src/ai/symbolic/prior-client.ts` ·
+`src/ai/audio/audio-client.ts`
+
+Each `request()` now registers an `error` and a `messageerror` listener beside the `message`
+one, routes every failure through one `fail(error)` that **settles the promise now**, removes
+all three listeners on settlement, and counts the failure toward the circuit breaker — so a
+worker that stays dead is not respawned for every request of the rest of the session. The
+`postMessage` call is wrapped, so a payload that cannot be cloned settles instead of throwing
+into the caller.
+
+The shape is copied from `src/ai/semantic/semantic-client.ts`, which already had it.
+
+### 3.11 C13 — the batch the worker was asked for
+
+`src/ai/semantic/semantic-types.ts` (new `semanticBatchTexts`) ·
+`src/ai/semantic/semantic-worker.ts` · `src/ai/semantic/semantic-client.ts`
+
+The worker no longer filters the batch: it embeds **the texts it was given** (a request that
+is not a batch — not an array, empty, or holding a non-string — is a controlled failure). The
+client asserts the answer's `rowCount` against the number of texts it sent, so a short answer
+can never be used as a complete one. The consumer's own length check
+(`buildReferenceEmbedding`) stays as the second line of defence.
+
+**One honest limit.** The spec drives the worker with a **mocked** model pipeline, so it proves
+that the worker hands the pipeline the whole batch — it cannot prove that the real model
+accepts an empty string. If the model refuses one, the batch now fails as a **controlled
+failure** instead of silently losing a row: the same end state as before, but explicit and
+attributable, and the client turns it into the documented fallback.
+
+### 3.12 C14, C15 — one error type per lane, and a job id that is checked
+
+`src/reference/workers/reference.worker.ts` · `src/reference/reference-client.ts`
+
+The protocol union gains `TRANSCRIBE_ERROR`, and the transcription lane posts **its own**
+error type — so the worker's explanation reaches the lane it was meant for, and the call
+settles now instead of after the 120 s timeout.
+
+The job id is a monotonic counter instead of `Date.now() & 0xffff` (which wrapped every
+65 536 ms), and **every** worker message is checked against it: a result of another job does
+not settle the call, and a progress stage of another job is not mirrored to the caller.
+
+### 3.13 C16 — a failed warp worker rejects with its own reason
+
+`src/audio-workers/warp-render-client.ts`
+
+The worker-failure path now **rejects** with the worker's message instead of dropping it and
+re-running the phase vocoder on the main thread — which is what the client's own contract
+forbids. The synchronous fallback stays where it belongs: no worker support, a render too
+short to be worth a worker, a payload that could not be posted.
+
+**Behaviour change, stated plainly:** a worker that crashes after a worker-capable browser
+started it now degrades that clip to repitch instead of rendering on the main thread. That is
+the documented degradation of this client, and it is the same trade the timeout path already
+made.
+
+---
+
 ## 4. Tests added
 
 | File                                                        | What it pins                                                                                                                                                                                                                                                                                        |
@@ -614,6 +699,17 @@ token — a link cannot report a reason, and the caller already handles null.
 | `tests/share-code-schema-gate.test.ts`                      | A share link from a **newer** build does not open, and a link from an **older** build is migrated and stamped with the current schema version — the same gate the file route has always used                                                                                                        |
 | `tests/adr0056-stage2-bar-formula-guard.test.ts` (extended) | Five new guard proofs, including the `4 * 4 * PPQ` shape the old guard could not see                                                                                                                                                                                                                |
 
+### The worker-boundary wave
+
+| File                                                  | What it pins                                                                                                                                                                                                                                                                                                                                                                 |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/ai-worker-payload-validation.test.ts` (new)    | The **real** worker module is mounted in jsdom and driven: a null / non-object payload is survived and answered with **nothing**, an unknown message type is **not** answered (the dispose fall-through would release the model), and a request that carries a requestId is always answered — correlated, even when the body is broken. Four workers, three properties each. |
+| `tests/ai-worker-client-error-listener.test.ts` (new) | A dead worker settles the ranker / prior / audio client **now** (not after 400 ms / 500 ms / 20 s), and repeated deaths open the **circuit breaker** instead of respawning a dead worker for the rest of the session.                                                                                                                                                        |
+| `tests/semantic-batch-coverage.test.ts` (new)         | The **real** semantic worker (only the model pipeline mocked) embeds **every** text of the batch — including an empty one — and answers `rowCount: 3` for three texts; a batch that is not a batch is a controlled failure; the client refuses a short answer.                                                                                                               |
+| `tests/warp-render-error-contract.test.ts` (new)      | A worker that reported a failure makes the client **reject with the worker's own reason**, and the expensive core is not re-run on the main thread; the deterministic fallback (no worker, short render) still resolves.                                                                                                                                                     |
+| `tests/reference-job-correlation.test.ts` (new)       | The **real** reference worker posts `TRANSCRIBE_ERROR` for a transcription failure — the type the transcription client listens for; the client ignores a result or progress stage that belongs to **another job**; and the job id does not repeat after 65 536 ms.                                                                                                           |
+| `tests/reference-client-error.test.ts` (extended)     | The scripted worker now **echoes the job id** it was given, because the client checks it.                                                                                                                                                                                                                                                                                    |
+
 ---
 
 ## 5. Verification
@@ -622,6 +718,33 @@ token — a link cannot report a reason, and the caller already handles null.
 
 `npx vitest run` over the seven new files plus the extended guard:
 **8 files passed, 50 tests passed.**
+
+### 5.1b The worker-boundary wave
+
+The five new files, plus the extended reference suite:
+
+```
+npx vitest run tests/ai-worker-payload-validation.test.ts \
+  tests/ai-worker-client-error-listener.test.ts tests/semantic-batch-coverage.test.ts \
+  tests/warp-render-error-contract.test.ts tests/reference-job-correlation.test.ts \
+  tests/reference-client-error.test.ts
+→ Test Files 6 passed (6)
+  Tests      33 passed (33)
+```
+
+**The falsification (the proof that the guards have teeth).** Every one of the five defects was
+confirmed RED before the fix, with its own message:
+
+| Fix | The failure the un-fixed code produced                                                                                                                                                                                                                              |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C11 | `ranker: a null payload must not take the worker down` · `prior: an unknown type must not be answered — the dispose fall-through would release the model: expected [ { type: 'dispose', …(2) } ] to have a length of +0 but got 1` (12 assertions across 4 workers) |
+| C12 | `a dead worker must not wait for the timeout: expected 'still-pending' to be 'settled'` · `a dead worker must not wait for the 20 s timeout` (5 assertions across 3 clients)                                                                                        |
+| C13 | `the worker must embed the texts it was given — a filtered batch answers a different question: expected [ 'alpha', 'beta' ] to deeply equal [ 'alpha', '', 'beta' ]` · `a short answer is not an answer — the caller must see the failure` (3 assertions)           |
+| C14 | `the transcription lane must post the transcription error type: expected 'REFERENCE_ERROR' to be 'TRANSCRIBE_ERROR'`                                                                                                                                                |
+| C15 | `a stage of another job must not be mirrored to the caller: expected [ 'analyzing' ] to have a length of +0 but got 1` · `two analyses 65 s apart must not share a job id: expected 55808 not to be 55808`                                                          |
+| C16 | `promise resolved "[ Float32Array[ 0, …(88201) ] ]" instead of rejecting` (3 assertions)                                                                                                                                                                            |
+
+**26 red assertions across 5 files → 0.**
 
 ### 5.2 The related existing suites
 
@@ -676,6 +799,39 @@ file**, not a product defect and not a regression from this wave — it is recor
 9 below rather than patched here, because editing another session's test file to widen a
 budget is not this wave's to take.
 
+**The worker-boundary wave's regression run** covered every existing suite that touches a
+changed module (the file list was derived by grepping the test tree for the changed module
+paths — 34 files, including the intent pipeline, the prior/melodic lanes, the ranker, the
+reference lanes and the warp client):
+
+```
+npx vitest run <34 files>
+→ Test Files 34 passed (34)
+  Tests      286 passed (286)
+```
+
+One real regression surfaced there and was fixed honestly: `tests/reference-client-lifecycle.test.ts`
+hand-wrote a worker reply **without** the `jobId` the real worker always echoes. The client
+now checks the job id (§3.12), so that message is no longer a valid answer — the test now
+echoes the id, as the worker does. The same correction was applied to the C2 test, whose
+hard-coded ids (`1`, `2`, `3`) were a coincidence of the old clock-based id.
+
+**A note on the host's load.** The tree ran at **100 % CPU** (16 logical processors) during the
+worker wave — another session was building in parallel. Under that load three suites need more
+than vitest's 5 s default: the reference transcribe spec (14 s), the semantic client spec
+(3.5 s on its own) and the model import inside the payload spec. A first 20-file run reported
+them as failures; **every one of them was a timeout, not an assertion** — and the same suites
+pass with a timeout the load cannot break:
+
+```
+npx vitest run <the 20 affected files> --testTimeout=30000
+→ Test Files 20 passed (20)
+  Tests      167 passed (167)
+```
+
+The same shape as risk 9, in a different suite: a green/red signal that depends on the host's
+load is not a signal. The product code was not touched to make these pass.
+
 ### 5.3 The revert check (the proof that the tests have teeth)
 
 Every fix was undone and the suites re-run: **17 tests failed across all 8 files**, each
@@ -700,6 +856,8 @@ The fixes were then restored and the suites re-run green.
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | New + extended suites                                 | **8 files, 50 tests passed** (plus 3 more for C10 → 9 files, 53 tests)                                  |
 | New + related existing suites                         | **35 of 37 files green, 369 passed** — the 2 failures are 5 s **timeouts** in foreign mixer files (5.2) |
+| Worker wave: new + extended suites                    | **6 files, 33 tests passed** (5 new files + the extended reference suite)                               |
+| Worker wave: related existing suites                  | **34 files, 286 tests passed** — every suite that touches a changed module                              |
 | `npx tsc --noEmit`                                    | **exit 0** on the final pushed tree (see below)                                                         |
 | `npx prettier --check` (every file this wave touched) | **"All matched files use Prettier code style!"**                                                        |
 | `npm run build`                                       | **fails on the budget step — not on this wave's code** (see below)                                      |
@@ -730,9 +888,11 @@ product decision and needs its own measured justification
 
 ## 6. Remaining risks
 
-1. **The worker-robustness gaps in §2.3** are real and unfixed. They need their own
-   failing-test-first cycle; the wave did not have the budget for it, and half-fixing
-   them would be worse than leaving them visible.
+1. **The worker-robustness gaps of §2.3 are now FIXED** (C11–C16, §3.9–§3.13) — but one
+   behaviour change rides along with C16 and is stated here rather than buried: a warp worker
+   that crashes now degrades that clip to **repitch** instead of rendering the phase vocoder on
+   the main thread. That is the documented degradation of that client and the same trade its
+   timeout path already made, but it is a change in what the user hears when the worker dies.
 2. **The plugin-host latent inconsistencies in §2.2** — the two worklet defaults, the two
    missing scale bridges, the eight copies of the dB conversion. Masked today; each is
    a drift waiting for the next caller.
@@ -766,3 +926,14 @@ product decision and needs its own measured justification
    another session's timeout budget. **Whoever owns those files should give the two
    tests an explicit timeout** — a green/red signal that depends on the host's load is
    not a signal.
+10. **C15 was a half-open contract, not a reachable failure.** With one worker per call, a
+    foreign answer could not reach the reference client — so comparing the `jobId` and making
+    it unique is **hardening**, not a repair of an observed failure. It is in the report
+    because the protocol carried a field that nothing honoured; anyone reading the old code
+    should know the fix did not repair a symptom they could have seen.
+11. **The previous wave's own guard was blind in a way this wave found.** C2's test asserted
+    against a hand-written `{ type: "TRANSCRIBE_ERROR" }` — a message the worker never posted —
+    so it could not see that the transcription lane still waited 120 s (C14). The new suite
+    drives the **real worker module** and reads what it posts. The lesson generalises: a
+    guard that invents the message it asserts on is testing the contract, not the behaviour.
+    Other guards in this repository may have the same shape.
