@@ -288,6 +288,29 @@ otherwise — §3.7.
 
 ---
 
+#### C10 — The share route skipped the schema gate the file route enforces
+
+**Boundary:** persistence ↔ runtime model
+**The two sides:** `src/export/project-io.ts` (the file import) · `src/export/shareCode.ts`
+(the share link) — both read the same document
+
+**The drift.** Two import routes, one rule. The file route has always used
+`migrateProject`, which **refuses** a document from a newer build
+(`schema.ts:3524`: _"Project schema 39 is newer than supported 38"_) and
+**stamps** the version back (`schema.ts:3585`). The share route used
+`normalizeProject`, which does neither — it only checked the shape.
+
+**The consequence.** A share link from a newer build **opened in an older client**.
+The forked project was persisted with the future `schemaVersion`, and the project
+then **vanished from the library on the next boot**: `repo.load` migrates, the
+version gate throws, and the project is not listed any more (it only appears
+under "incompatible"). A share link from an older build was persisted with its
+stale version, so `listIncompatible` later misclassified it.
+
+**Fixed by** giving the share route the same gate — §3.8.
+
+---
+
 ### 1.3 The pattern behind the findings
 
 Four of the ten findings (C1, C3, C4, C5) are the same shape: **one rule, two copies, and
@@ -340,6 +363,23 @@ they are not lost.
 The AI bridge allows +12 dB of make-up gain; the mixer fader tops out at 1.5. Low
 reachability (it needs the AI bridge to write a gain outside the fader's range), no
 audible defect today — reported, not changed.
+
+### 2.5 Confirmed in this wave, left for the next one
+
+The last boundary sweep (UI ↔ project state, persistence ↔ runtime model) found seven
+more drifts. One (C10, above) was fixed here; the other six are recorded with their
+reachability so they are not lost. Each needs its own red-test-first cycle, and the
+wave did not have the budget to do six of them honestly — half-fixing a boundary is
+worse than naming it.
+
+| #   | Boundary                    | The drift                                                                                                                                                                                                                                        | The consequence                                                                                                                                                                                                                                                                                                                                                                         | Status                                                                        |
+| --- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| D-1 | UI ↔ project state          | The Reference Map panel keeps its own BPM domain (`MIN_BPM 20 / MAX_BPM 400` — `src/ui/ReferenceMapPanel.tsx:86-87`) while the document's domain is `20..300` (`src/project-model/schema.ts:63-65`)                                              | A detected or typed tempo above 300 BPM is clamped in the document but the **marker ticks are computed at the panel's tempo** — the markers land ~27 % off in musical position, and the tempo-mismatch warning stays on with no way to clear it. Reachable with no user input at all: the detector emits a double-time candidate up to 400 BPM (`src/reference/analysis/rhythm.ts:140`) | confirmed                                                                     |
+| D-2 | persistence ↔ runtime model | `bpmRange` has **three** legal ranges: `20..300` (`src/intent/normalize.ts:91`), `20..400` (`src/intent/producer-lineage-core.ts:267`) and `40..240`, integers only (`src/intent/project-brief.ts:67`, `src/project-model/producer-brief.ts:71`) | A normalized intent may carry a `bpmRange` the brief store refuses, and the fact is then **silently dropped** from the project brief — the tempo the user confirmed disappears without a word, and the next generation produces a different tempo                                                                                                                                       | confirmed                                                                     |
+| D-3 | UI ↔ project state          | The master-gain domain is implemented twice: `clampMasterGain` (`src/project-model/schema.ts:295-298`, non-finite → 1) and an inline clamp in the engine (`src/audio-engine/AudioEngine.ts:3469`, non-finite → _leave the old value_)            | The preview and the commit disagree on a non-finite master gain — the exact class of mismatch the neighbouring comment says it fixed. Only reachable through a hand-edited or collab-merged master config                                                                                                                                                                               | confirmed                                                                     |
+| D-4 | persistence ↔ runtime model | `clampUnit` exists three times: `0..1` with non-finite → 0 (`src/project-model/schema.ts:498-501`), `0..1` with **NaN passing through** (`src/intent/producer-session.ts:191-193`) and `0.1..1` (`src/ai/melodic.ts:191-193`)                    | The melodic generator floors a note velocity at 0.1 while every other unit clamp allows 0 — a value the schema's own clamp would accept never reaches the document                                                                                                                                                                                                                      | **suspected** (needs a runtime check on what the generator actually produces) |
+| D-6 | persistence ↔ runtime model | `producerBrief` invalidity means "this document is invalid" in `validateProjectShape` (`schema.ts:3625`) and "drop this one field" in `normalizeProducerBriefDomain` (`schema.ts:2528-2534`)                                                     | `repo.load` validates **before** it migrates (`src/persistence/ProjectRepository.ts:67-69`), so a stored record with a malformed brief makes the **whole project** unopenable — even though the normalizer in the same file is prepared to heal exactly that. A collab peer can inject the state (`src/collab/YDocAdapter.ts:115-117` copies the brief as an unchecked cast)            | confirmed                                                                     |
+| D-7 | persistence ↔ runtime model | The recovery buffer stores the document as `unknown` and reads it back with only a null check (`src/persistence/recoveryBuffer.ts:51,72-99`); the recovery path casts it and saves it (`src/ui/ProjectBrowser.tsx:390-399`)                      | A corrupt recovery buffer is committed as a project record that the next boot refuses — the recovered work appears to have **vanished**. The trigger is a truncated write rather than a malformed document                                                                                                                                                                              | **suspected** (needs a runtime check on what the buffer can actually hold)    |
 
 ---
 
@@ -404,6 +444,13 @@ uses.
 - `src/services.ts` — the document-change path re-applies the project bpm **only** when
   no scene tempo is in effect.
 
+### 3.8 C10 — one schema gate for both import routes
+
+`src/export/shareCode.ts` — the share route migrates instead of merely normalizing, so it
+refuses a document from a newer build and stamps the version back. The migration's throw is
+caught by the function's existing try/catch, which already returns `null` for an invalid
+token — a link cannot report a reason, and the caller already handles null.
+
 ---
 
 ## 4. Tests added
@@ -417,6 +464,7 @@ uses.
 | `tests/master-chain-broadcast.test.ts`                      | The master chain receives the tempo push and the transport start, exactly like a track chain                                                                                                                                                                                                        |
 | `tests/scorepack-tempo-contract.test.ts`                    | The scorepack's tempo map **is** the render's tempo map, and the markers it writes use it                                                                                                                                                                                                           |
 | `tests/scene-tempo-survives-edit.test.ts`                   | A document change does not stomp the scene tempo; without a scene tempo the project bpm still follows the document                                                                                                                                                                                  |
+| `tests/share-code-schema-gate.test.ts`                      | A share link from a **newer** build does not open, and a link from an **older** build is migrated and stamped with the current schema version — the same gate the file route has always used                                                                                                        |
 | `tests/adr0056-stage2-bar-formula-guard.test.ts` (extended) | Five new guard proofs, including the `4 * 4 * PPQ` shape the old guard could not see                                                                                                                                                                                                                |
 
 ---
@@ -473,11 +521,31 @@ The fixes were then restored and the suites re-run green.
 
 ### 5.4 The full check list
 
-- [ ] Editor + engine + export + intent suites (the broad regression run)
-- [ ] `npx tsc --noEmit`
-- [ ] `npm run format:check`
-- [ ] `npm run build` (bundle budgets)
-- [ ] `node-gc` (process hygiene)
+| Check                                                 | Result                                                                                            |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| New + extended suites                                 | **8 files, 50 tests passed** (plus 3 more for C10 → 9 files, 53 tests)                            |
+| New + related existing suites                         | **36 files, 368 tests passed** — mixer, scheduler, prior/melodic, scorepack/export, tempo, parity |
+| `npx tsc --noEmit`                                    | **exit 0**                                                                                        |
+| `npx prettier --check` (every file this wave touched) | **"All matched files use Prettier code style!"**                                                  |
+| `npm run build`                                       | **fails — not on this wave's code** (see below)                                                   |
+| `node-gc`                                             | **ABANDONED: none**                                                                               |
+
+**The build.** `npm run build` runs `tsc --noEmit && vite build && … && check-bundle-size.mjs`.
+Two things are red on the tree, and neither is this wave's:
+
+1. the `tsc` step fails on `tests/scene-clip-edit-matrix.test.ts` — a **concurrent
+   session's untracked, in-flight test file** (it imports a command that does not exist
+   yet). A typecheck of the tree **without** that file passes (exit 0, measured);
+2. the budget step reports **DAW JS 5563 KB against a 5560 KB budget** — 3 KB over.
+
+The budget overage was **measured for attribution**: the same tree was built with this
+wave's source changes reverted, and it produced the **same** number — DAW JS **5563 KB**,
+shipped JS **8065 KB**, studio boot path **2095 KB** (against 2096 KB with this wave's
+changes). So this wave contributes about **1 KB** of the boot path and **nothing** to the
+DAW JS total; the 3 KB overage belongs to the tree, i.e. to other sessions' commits.
+It is reported here rather than papered over by raising the budget — a budget raise is a
+product decision and needs its own measured justification
+(`scripts/check-bundle-size.mjs`).
 
 ---
 

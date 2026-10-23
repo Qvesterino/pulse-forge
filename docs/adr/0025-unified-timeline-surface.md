@@ -63,3 +63,41 @@ locators).
 - New timeline features are written once against the projection; the "twice
   tax" stops growing.
 - The document schema, persistence and collab payloads do not change.
+
+## Amendment (2026-10-07): structural operations cover every registered kind
+
+The original decision unified the INTERACTION surface; a follow-up audit
+found the structural operations (duplicate range, ripple ×3,
+consolidate-to-audio, Delete-key range sweep) still enumerated scene + audio
+lanes by hand — the two tick-addressed kinds added by ADR 0044/0045 were
+invisible to them (duplicate dropped MIDI content from the copy; ripple
+desynced tick clips from the shifted arrangement; consolidate-to-audio baked
+tick content into the print without removing the covered clips = double
+playback).
+
+**Resolution:** the structural operations now cover all four kinds through
+the lane seams in `project-model/timeline.ts` (`midiLaneOf`,
+`automationLaneOf`, `tickClipSpan`, `withMidiClips`, `withAutomationClips`,
+`rippleShiftTickClips`). Locked semantics per kind:
+
+| op                          | scene lane                                                    | audio lane                                        | midi lane                                                                                                         | automation lane                                 |
+| --------------------------- | ------------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| duplicate range             | refuse straddle; inside copied (+deltaBars), trailing shifted | same, float-bar geometry, warp pins carried       | same, tick geometry (+delta ticks), patternId SHARED (ADR 0044 shared-source), phase carried                      | same, points DEEP-copied, linkedTargets carried |
+| ripple (move/resize/delete) | at/after threshold shifts                                     | same                                              | same, in ticks                                                                                                    | same, in ticks                                  |
+| consolidate-to-audio        | straddle → split + placeholder                                | straddle → split; in-range removed                | straddle → split (phase math via `splitMidiClipAtTick`); in-range unmuted removed; **muted KEPT**; locked → throw | same as midi (`splitAutomationClipAtTick`)      |
+| Delete-key range sweep      | overlapping removed                                           | not applied (audio is layering — future decision) | wholly-inside removed; straddlers stay; locked skipped                                                            | same as midi                                    |
+
+Standing rules recorded by this amendment:
+
+1. **Field-absence is persistence shape** — lane write-backs
+   (`withAudioLane`/`withMidiClips`/`withAutomationClips`) never materialize
+   a lane a document did not have.
+2. **Muted content is never consolidated away** on the tick lanes (not in
+   the print → not deletable by a consolidation). The audio lane's existing
+   remove-muted behavior is a documented latent inconsistency, unchanged.
+3. **A fifth clip kind must extend the lane seams and every structural
+   operation** — the seam module is the checklist. (A declarative
+   clip-kind registry remains the future shape if a fifth kind lands.)
+4. `consolidateTimeRange` (the legacy musical-only variant) is documented
+   as NOT consuming midi/automation clips — a known limitation, not a
+   sanctioned behavior.

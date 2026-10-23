@@ -19,6 +19,11 @@ const MCP_TOOL_DEFS = [
           type: "string",
           description: "Producer instruction, EN or SK",
         },
+        dry_run: {
+          type: "boolean",
+          description:
+            "Plan only: return the resolved target, current→proposed values, clamps and warnings without mutating the project.",
+        },
         requestId: {
           type: "string",
           maxLength: 128,

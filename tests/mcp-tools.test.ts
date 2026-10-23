@@ -257,6 +257,33 @@ describe("mcp tools — headless execution", async () => {
     expect(stale.mutated).toBe(false);
   });
 
+  it("kyx_intent dry_run returns the plan and never mutates", async () => {
+    const ctx = makeCtx(datasetDoc());
+    const before = ctx.getDoc();
+    const result = await executeMcpTool(ctx, "kyx_intent", {
+      instruction: "turn down the bass a little",
+      dry_run: true,
+    });
+    expect(result.mutated).toBe(false);
+    expect(result.text).toContain("Plan (dry run)");
+    expect(result.text).toContain("fader.gain");
+    expect(result.data).toMatchObject({ dryRun: true, executable: true, mutates: true });
+    expect(ctx.getDoc()).toBe(before);
+  });
+
+  it("kyx_intent dry_run reports an unrunnable generation ask without generating", async () => {
+    const ctx = makeCtx(datasetDoc());
+    const before = ctx.getDoc();
+    const result = await executeMcpTool(ctx, "kyx_intent", {
+      instruction: "a beat that is dark and warm",
+      dry_run: true,
+    });
+    expect(result.mutated).toBe(false);
+    expect(result.text).toContain("Plan (dry run)");
+    expect(result.data).toMatchObject({ executable: false, mutates: false });
+    expect(ctx.getDoc()).toBe(before);
+  });
+
   it("kyx_intent generation asks are REFUSED honestly (no hallucinated beats over MCP)", async () => {
     const doc = datasetDoc();
     const ctx = makeCtx(doc);
