@@ -57,6 +57,6 @@
     "src/intent/creative-task-ollama.ts": "b2411211ce95b95e427e66acbed1b378f13d8cb4315277acd7c7fd882d7e4601",
     "src/intent/brief-contract.ts": "af7d12d6654e008e2d9bbd2504075eb5f662f265a47abd169c3158944a95c3d8",
     "src/intent/text-parser.ts": "f4caa9ed0a6756bd389113bc5dd1d3ab6752a39b4d33547b5cd9d7c4d259658c",
-    "src/project-model/types.ts": "ff6ffe6644d10f914df23bc3e72747b47ff325b2b18f3e4b527608784401bbbf"
+    "src/project-model/types.ts": "cad6eeed38b1b6d9af7c442386b64d039333950f045586162304353cbb84b050"
   }
 }

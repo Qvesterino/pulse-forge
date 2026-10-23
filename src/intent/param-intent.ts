@@ -315,6 +315,12 @@ function parseParamIntentCore(text: string): ParamIntent | null {
   // as an ABSOLUTE set to 2 dB.
   if (relativeDb && quantity?.kind === "db") {
     const value = quantity.value;
+    // A dB ask belongs only on a dB knob. The ABSOLUTE path already refuses
+    // that (toParamUnit returns NaN and the branch declines); the relative
+    // path did not, so "raise the saturation mix by 2 dB" turned a 2 dB ask
+    // into a full-range jump - mix 0.40 -> 1.00, i.e. 100 % wet. Declining
+    // hands the ask to the generic layer instead of mis-scaling it.
+    if ((param.unit ?? "").toLowerCase() !== "db") return null;
     const mode = value < 0 ? "less" : directionForRole(role, lower);
     const range = param.max - param.min;
     if (!(range > 0)) return null;
