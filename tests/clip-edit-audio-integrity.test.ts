@@ -50,8 +50,7 @@ function storeWithClip(patch: Partial<AudioClip> = {}): { store: ProjectStore; c
   return { store, clipId: store.doc.arrangement.audioClips![0]!.id };
 }
 
-const clipOf = (doc: ProjectDocument, id: string): AudioClip =>
-  doc.arrangement.audioClips!.find((c) => c.id === id)!;
+const clipOf = (doc: ProjectDocument, id: string): AudioClip => doc.arrangement.audioClips!.find((c) => c.id === id)!;
 
 /** Wall seconds the transport gives this clip. */
 function wallSec(doc: ProjectDocument, clip: AudioClip): number {
@@ -63,19 +62,6 @@ function timeScaleFor(clip: AudioClip): number {
   const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
   const preStretched = clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01;
   return preStretched ? rate : 1;
-}
-
-/**
- * How many ORIGINAL-sample seconds the engine plays for this clip — derived
- * from the engine's own resolver, never from a second copy of the rule.
- */
-function enginePlayedSourceSec(clip: AudioClip, wall: number): number {
-  const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
-  const preStretched = clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01;
-  const timeScale = preStretched ? rate : 1;
-  const win = audioClipPlayWindow(clip, SOURCE_SEC * timeScale, wall, timeScale);
-  const looping = clip.loop === true && clip.reverse !== true;
-  return (looping ? win.contentDur : win.bufferDuration) / timeScale;
 }
 
 /** The window the editor draws for this clip. */
@@ -103,10 +89,7 @@ function expectPictureMatchesSound(doc: ProjectDocument, clipId: string, label: 
   const wall = wallSec(doc, clip);
   const drawn = drawnWindow(clip, wall);
   const played = playedWindow(clip, wall);
-  expect(drawn.startSec, `${label}: the drawn window must start where playback starts`).toBeCloseTo(
-    played.startSec,
-    6,
-  );
+  expect(drawn.startSec, `${label}: the drawn window must start where playback starts`).toBeCloseTo(played.startSec, 6);
   expect(
     drawn.endSec - drawn.startSec,
     `${label}: the drawn window must be as long as the source that plays`,
@@ -216,10 +199,7 @@ describe("a split leaves no gap and no duplicate in the source", () => {
     for (let i = 1; i < clips.length; i++) {
       const prev = playedWindow(clips[i - 1]!, wallSec(store.doc, clips[i - 1]!));
       const next = playedWindow(clips[i]!, wallSec(store.doc, clips[i]!));
-      expect(next.startSec, `fragment ${i} must continue where fragment ${i - 1} stopped`).toBeCloseTo(
-        prev.endSec,
-        6,
-      );
+      expect(next.startSec, `fragment ${i} must continue where fragment ${i - 1} stopped`).toBeCloseTo(prev.endSec, 6);
     }
   });
 });

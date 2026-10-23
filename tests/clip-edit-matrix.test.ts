@@ -88,11 +88,13 @@ function changedFields(before: AudioClip, after: AudioClip): Watched[] {
   return WATCHED.filter((field) => JSON.stringify(a[field]) !== JSON.stringify(b[field]));
 }
 
-const clipOf = (doc: ProjectDocument, id: string): AudioClip =>
-  doc.arrangement.audioClips!.find((c) => c.id === id)!;
+const clipOf = (doc: ProjectDocument, id: string): AudioClip => doc.arrangement.audioClips!.find((c) => c.id === id)!;
 
 /** A store with one audio clip on the first track. */
-function storeWithClip(patch: Parameters<typeof addAudioClip>[4] = {}): { store: ProjectStore; clipId: string } {
+function storeWithClip(patch: NonNullable<Parameters<typeof addAudioClip>[5]> = {}): {
+  store: ProjectStore;
+  clipId: string;
+} {
   const store = new ProjectStore(createProjectFromTemplate("house"));
   store.execute(addAudioClip(store.doc, store.doc.tracks[0]!.id, "factory.kick", 0, 4, patch));
   return { store, clipId: store.doc.arrangement.audioClips![0]!.id };
@@ -142,10 +144,7 @@ function expectEditIsSound(
   const restored = persistRoundTrip(store.doc);
   const restoredClip = restored.arrangement.audioClips!.find((c) => c.id === clipId);
   expect(restoredClip, `${label}: the clip did not survive persistence`).toBeDefined();
-  expect(
-    changedFields(clipOf(store.doc, clipId), restoredClip!),
-    `${label}: persistence changed the clip`,
-  ).toEqual([]);
+  expect(changedFields(clipOf(store.doc, clipId), restoredClip!), `${label}: persistence changed the clip`).toEqual([]);
 }
 
 /** The id of the clip that a command ADDED (the one that was not there before). */
@@ -329,10 +328,9 @@ describe("the clip edit matrix — split", () => {
     const clips = [...store.doc.arrangement.audioClips!].sort((a, b) => a.startBar - b.startBar);
     expect(clips).toHaveLength(3);
     for (let i = 1; i < clips.length; i++) {
-      expect(
-        clips[i]!.offsetSec,
-        `fragment ${i} must continue where fragment ${i - 1} stopped`,
-      ).toBeGreaterThan(clips[i - 1]!.offsetSec);
+      expect(clips[i]!.offsetSec, `fragment ${i} must continue where fragment ${i - 1} stopped`).toBeGreaterThan(
+        clips[i - 1]!.offsetSec,
+      );
       expect(clips[i]!.startBar).toBeCloseTo(clips[i - 1]!.startBar + clips[i - 1]!.lengthBars, 6);
     }
   });
@@ -629,9 +627,7 @@ describe("the clip edit matrix — lock", () => {
     expect(() => store.execute(slipAudioClip(store.doc, clipId, 1))).toThrow(/locked/);
     expect(() => store.execute(stretchAudioClip(store.doc, clipId, 8, 0.5))).toThrow(/locked/);
     expect(() =>
-      store.execute(
-        trimAudioClipStart(store.doc, clipId, { startBar: 1, lengthBars: 3, trimStart: 0, offsetSec: 1 }),
-      ),
+      store.execute(trimAudioClipStart(store.doc, clipId, { startBar: 1, lengthBars: 3, trimStart: 0, offsetSec: 1 })),
     ).toThrow(/locked/);
     // The refused verbs changed nothing.
     expect(clipOf(store.doc, clipId).startBar).toBe(0);

@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { addAudioClip, moveAudioClip, resizeAudioClip, trimAudioClipStart } from "../src/commands/commands";
-import { ticksPerBar } from "../src/project-model/schema";
 
 /**
  * ONE GESTURE, ONE HISTORY ENTRY.
@@ -78,9 +77,7 @@ describe("a committed gesture is one history entry", () => {
     const before = JSON.stringify(store.doc);
     // ONE command for the whole trim: the source offset and the new length
     // are the same gesture (two commands meant one Ctrl+Z undid only half).
-    store.execute(
-      trimAudioClipStart(store.doc, clipId, { startBar: 1, lengthBars: 3, trimStart: 0, offsetSec: 1 }),
-    );
+    store.execute(trimAudioClipStart(store.doc, clipId, { startBar: 1, lengthBars: 3, trimStart: 0, offsetSec: 1 }));
     store.undo();
     expect(JSON.stringify(store.doc), "one undo must restore the whole trim").toBe(before);
   });
@@ -112,10 +109,9 @@ describe("a committed gesture is one history entry", () => {
     store.undo();
     store.undo();
     store.undo();
-    expect(
-      (store.doc.arrangement.audioClips ?? []).length,
-      "undoing past the start must not resurrect the clip",
-    ).toBe(0);
+    expect((store.doc.arrangement.audioClips ?? []).length, "undoing past the start must not resurrect the clip").toBe(
+      0,
+    );
     store.redo();
     store.redo();
     store.redo();
