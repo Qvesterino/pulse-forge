@@ -256,27 +256,28 @@ the fragments carry the same curve VALUES but not the same array.
 
 ## 6. Edge cases covered
 
-| Edge case                         | Where                                                                                                                   |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| zero-duration result              | a zero-length resize keeps a playable clip; `sanitizeAudioClips` drops non-positive lengths                             |
-| negative timeline position        | a move clamps to bar 0                                                                                                  |
-| NaN / invalid numerics            | a NaN move leaves the document finite; every command guards non-finite input                                            |
-| huge drag distance                | a 1e12 move stays finite and non-negative                                                                               |
-| minimum clip length               | a legal 0.05-bar fragment survives every verb unchanged                                                                 |
-| operation at the timeline start   | a trim past the file's head is refused with a message, not silently clamped                                             |
-| operation at the project end      | `MAX_ARRANGEMENT_CLIP_BARS` ceiling; a drag past it used to DELETE the clip silently (fixed in an earlier wave)         |
-| large / very short clips          | the whole matrix runs on 4-bar and 0.05-bar clips                                                                       |
-| overlapping clips                 | the audio lane layers; both survive a move onto each other                                                              |
-| adjacent clips                    | split fragments tile; a move never displaces a neighbour                                                                |
-| clips with fades                  | the fade clamp runs on every length rewrite                                                                             |
-| clips with automation             | the automation lane is unaffected by audio-clip edits                                                                   |
-| clips with offset / source ranges | `offsetSec` + `trimStart` are the audible start; the matrix pins it                                                     |
-| repeated fast edits               | a 36-command burst is fully reversible, one entry per command                                                           |
-| editing during playback           | `services.ts` re-syncs the engine and cancels orphaned sources (`cancelOrphanedClipSources`)                            |
-| deleting a playing clip           | the orphan cancellation de-clicks the source instead of letting it ring                                                 |
-| undo during an active interaction | the drag preview never writes to the document — see §7                                                                  |
-| multi-select edits                | one `nudgeClips` = one history entry, all members move together                                                         |
-| switching project mid-edit        | `replaceDoc` clears the undo stack; the commands are delta-based, so a stale command cannot revert a different document |
+| Edge case                         | Where                                                                                                                                                                                               |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| zero-duration result              | a zero-length resize keeps a playable clip; `sanitizeAudioClips` drops non-positive lengths                                                                                                         |
+| negative timeline position        | a move clamps to bar 0                                                                                                                                                                              |
+| NaN / invalid numerics            | a NaN move leaves the document finite; every command guards non-finite input                                                                                                                        |
+| huge drag distance                | a 1e12 move stays finite and non-negative                                                                                                                                                           |
+| minimum clip length               | a legal 0.05-bar fragment survives every verb unchanged                                                                                                                                             |
+| operation at the timeline start   | a trim past the file's head is refused with a message, not silently clamped                                                                                                                         |
+| operation at the project end      | `MAX_ARRANGEMENT_CLIP_BARS` ceiling; a drag past it used to DELETE the clip silently (fixed in an earlier wave)                                                                                     |
+| large / very short clips          | the whole matrix runs on 4-bar and 0.05-bar clips                                                                                                                                                   |
+| overlapping clips                 | the audio lane layers; both survive a move onto each other                                                                                                                                          |
+| adjacent clips                    | split fragments tile; a move never displaces a neighbour                                                                                                                                            |
+| clips with fades                  | the fade clamp runs on every length rewrite                                                                                                                                                         |
+| clips with automation             | the automation lane is unaffected by audio-clip edits                                                                                                                                               |
+| clips with offset / source ranges | `offsetSec` + `trimStart` are the audible start; the matrix pins it                                                                                                                                 |
+| repeated fast edits               | a 36-command burst is fully reversible, one entry per command                                                                                                                                       |
+| editing during playback           | `services.ts` re-syncs the engine on every document change and cancels the orphaned sources (`cancelOrphanedClipSources`)                                                                           |
+| editing during recording          | the recorder lane is INDEPENDENT of the timeline: a take is committed on stop, and the command layer holds no recording lock, so a timeline edit during a take neither disturbs nor blocks the take |
+| deleting a playing clip           | the orphan cancellation de-clicks the source instead of letting it ring                                                                                                                             |
+| undo during an active interaction | the drag preview never writes to the document — see §7                                                                                                                                              |
+| multi-select edits                | one `nudgeClips` = one history entry, all members move together                                                                                                                                     |
+| switching project mid-edit        | `replaceDoc` clears the undo stack; the commands are delta-based, so a stale command cannot revert a different document                                                                             |
 
 ---
 
